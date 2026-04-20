@@ -1,0 +1,23 @@
+stocks:
+  - ticker: AAPL
+    expected_type: stock
+  - ticker: MSFT
+    expected_type: stock
+  - ticker: NVDA
+    expected_type: stock
+  - ticker: TSLA
+    expected_type: stock
+
+etfs:
+  - ticker: VOO
+    expected_type: etf
+  - ticker: SPY
+    expected_type: etf
+  - ticker: VTI
+    expected_type: etf
+  - ticker: QQQ
+    expected_type: etf
+  - ticker: VGT
+    expected_type: etf
+  - ticker: SOXX
+    expected_type: etf

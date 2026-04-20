@@ -1,0 +1,17 @@
+cases:
+  - id: citation_etf_expense_ratio
+    asset_type: etf
+    claim_type: factual
+    claim: "An ETF expense ratio must cite a source document or normalized fact."
+    citation_required: true
+
+  - id: citation_recent_development
+    asset_type: stock
+    claim_type: recent
+    claim: "A recent earnings claim must cite a recent-development source."
+    citation_required: true
+
+  - id: citation_wrong_asset
+    claim_type: factual
+    claim: "A citation from the wrong asset should be rejected."
+    expected_behavior: "reject_wrong_asset_citation"

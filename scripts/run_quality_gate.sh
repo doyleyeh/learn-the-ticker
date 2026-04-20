@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ -n "${PYTHON:-}" ]; then
+  PYTHON_BIN="$PYTHON"
+elif command -v python3 >/dev/null 2>&1; then
+  PYTHON_BIN="python3"
+elif command -v python >/dev/null 2>&1; then
+  PYTHON_BIN="python"
+else
+  echo "Python is required, but neither python3 nor python was found on PATH."
+  exit 127
+fi
+
+echo "== Quality gate started =="
+echo "== Python: $($PYTHON_BIN --version) =="
+
+echo "== Python tests =="
+"$PYTHON_BIN" -m pytest tests -q
+
+echo "== Static evals =="
+"$PYTHON_BIN" evals/run_static_evals.py
+
+if [ -f package.json ]; then
+  echo "== Frontend checks =="
+  npm run lint --if-present
+  npm run test --if-present
+  npm run typecheck --if-present
+fi
+
+if [ -d backend ]; then
+  echo "== Backend checks =="
+  "$PYTHON_BIN" -m pytest backend tests -q
+fi
+
+echo "== Quality gate passed =="
