@@ -17,7 +17,6 @@ echo "== Python: $($PYTHON_BIN --version) =="
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PYTHONDONTWRITEBYTECODE=1
-export LTT_FORCE_COMPAT_FASTAPI=1
 
 run_pytest() {
   if "$PYTHON_BIN" -c "import pytest" >/dev/null 2>&1; then
@@ -44,6 +43,7 @@ if [ -f package.json ]; then
   npm run lint --if-present
   npm run test --if-present
   npm run typecheck --if-present
+  npm run build --if-present
 fi
 
 if [ -d backend ]; then
