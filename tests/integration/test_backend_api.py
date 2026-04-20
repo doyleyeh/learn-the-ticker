@@ -37,9 +37,13 @@ def test_overview_has_beginner_sections_and_citations():
     assert body["freshness"]["freshness_state"] == "fresh"
     assert body["beginner_summary"]["what_it_is"]
     assert len(body["top_risks"]) == 3
-    assert body["claims"][0]["citation_ids"] == ["c_voo_profile"]
-    assert body["citations"][0]["citation_id"] == "c_voo_profile"
-    assert body["source_documents"][0]["source_document_id"] == "src_voo_fact_sheet"
+    citation_ids = {citation["citation_id"] for citation in body["citations"]}
+    source_ids = {source["source_document_id"] for source in body["source_documents"]}
+    assert body["claims"][0]["citation_ids"][0] in citation_ids
+    assert body["top_risks"][0]["citation_ids"][0] in citation_ids
+    assert body["recent_developments"][0]["citation_ids"][0] in citation_ids
+    assert "src_voo_fact_sheet_fixture" in source_ids
+    assert "src_voo_recent_review" in source_ids
 
 
 def test_details_sources_and_recent_routes_exist():
@@ -51,6 +55,7 @@ def test_details_sources_and_recent_routes_exist():
     assert sources.status_code == 200
     assert recent.status_code == 200
     assert details.json()["facts"]["business_model"]
+    assert sources.json()["sources"][0]["source_document_id"] == "src_aapl_10k_fixture"
     assert sources.json()["sources"][0]["publisher"] == "U.S. SEC"
     assert recent.json()["recent_developments"][0]["freshness_state"] == "fresh"
 
