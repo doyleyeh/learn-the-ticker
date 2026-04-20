@@ -2,12 +2,12 @@
 
 ## Current task
 
-### T-005: Add source-backed retrieval fixtures
+### T-006: Add asset overview generation pipeline
 
 Goal:
-Create local fixture data and retrieval contracts for supported stocks and ETFs without live external calls in CI.
+Generate beginner asset overview responses from structured local facts, source metadata, and citation mappings.
 
-This is a retrieval-fixture task. It should create deterministic source documents, chunks, normalized facts, freshness metadata, and bounded asset knowledge packs that future generation and chat code can use. It must not add live external market-data, SEC, issuer, news, brokerage, tax, or LLM calls.
+This is a deterministic generation-pipeline task. It should turn the local retrieval knowledge packs into schema-valid beginner overview responses for supported stocks and ETFs. It must not add live external market-data, SEC, issuer, news, brokerage, tax, or LLM calls.
 
 Allowed files:
 
@@ -37,21 +37,24 @@ Do not change:
 
 Acceptance criteria:
 
-- Local source-backed fixture data exists for at least one supported stock and two supported ETFs, including `AAPL`, `VOO`, and `QQQ`.
-- Each supported fixture includes:
-  - canonical asset identity
-  - official or structured source document metadata
-  - source chunks with stable chunk IDs and supporting passages
-  - normalized facts with source document and chunk references
-  - freshness or as-of metadata
-  - separated recent-development fixture data, even when the state is no major recent development found
-- A retrieval contract or service can build an asset knowledge pack filtered to a single asset.
-- Retrieval results never include chunks, facts, or citations from the wrong asset.
-- Retrieval can return both normalized facts and source chunks, with source metadata attached to every returned item.
-- Comparison retrieval can build a bounded pack for `VOO` vs `QQQ` without mixing unrelated assets.
-- Missing, stale, unsupported, or insufficient fixture evidence is represented explicitly instead of inventing facts.
-- Golden asset or static eval coverage checks fixture shape, asset filtering, citation/source linkage, freshness fields, and no live external calls.
-- Existing citation validation, safety evals, backend route tests, frontend smoke checks, static evals, and quality gate behavior continue to pass.
+- A deterministic overview generation module or service builds an `OverviewResponse`-compatible payload from an `AssetKnowledgePack`.
+- Supported overview generation works for at least `AAPL`, `VOO`, and `QQQ`.
+- Generated overviews include:
+  - canonical asset identity and state
+  - freshness or as-of metadata from the knowledge pack
+  - snapshot fields derived from normalized facts
+  - beginner summary with `what_it_is`, `why_people_consider_it`, and `main_catch`
+  - exactly three top risks first
+  - recent developments kept separate from stable facts, including a clear no-major-recent-development state when applicable
+  - suitability summary in educational framing only
+  - source documents and citation chips for important factual claims
+- Citation IDs generated for claims, summary facts, risks, and recent developments resolve to same-asset source documents or chunks.
+- Citation validation is applied to generated claims, and wrong-asset, missing, stale-unlabeled, or unsupported citations are rejected or surfaced as explicit uncertainty.
+- Unsupported or unknown assets return clear unsupported/unknown states without generated factual claims, invented summaries, or citations.
+- Generated copy avoids buy/sell/hold recommendations, personalized allocation advice, unsupported price targets, tax advice, brokerage/trading behavior, and certainty around future returns.
+- Backend asset overview endpoint uses the generation pipeline for supported fixture-backed assets without breaking the existing response schema.
+- Golden asset or static eval coverage checks schema validity, citation coverage, top-risk count, freshness fields, stable/recent separation, unsupported states, and no live external calls.
+- Existing retrieval fixture tests, citation validation, safety evals, backend route tests, frontend smoke checks, static evals, and quality gate behavior continue to pass.
 - No endpoint, test, or CI command makes live external calls.
 - If dependencies are added, document why they are needed and keep the dependency set minimal.
 - The main quality gate passes.
@@ -65,6 +68,26 @@ Iteration budget:
 - Max 3 Codex implementation loops before reporting blockers.
 
 ## Completed
+
+### T-005: Add source-backed retrieval fixtures
+
+Goal:
+Create local fixture data and retrieval contracts for supported stocks and ETFs without live external calls in CI.
+
+Completed:
+
+- Local retrieval fixture data exists in `data/retrieval_fixtures.json` for `AAPL`, `VOO`, and `QQQ`.
+- Retrieval models and services exist in `backend/retrieval.py`.
+- Asset knowledge packs include canonical identity, source document metadata, stable chunk IDs, normalized facts, freshness fields, recent-development layer data, and explicit evidence gaps.
+- Single-asset retrieval is filtered to the requested asset and does not return wrong-asset evidence.
+- Comparison retrieval builds a bounded `VOO` vs `QQQ` comparison pack.
+- Tests and static evals check fixture shape, source linkage, asset filtering, freshness metadata, explicit evidence states, and no network-client imports.
+- Existing citation validation, safety evals, backend route tests, frontend smoke checks, static evals, and quality gate behavior pass.
+
+Completion commits:
+
+- `ef731a3 agent(T-005): implement current task`
+- `92c54c9 Merge pull request #5 from doyleyeh/agent/T-005-20260420T205818Z`
 
 ### T-004: Add safety guardrail tests
 
@@ -172,8 +195,3 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-006: Add asset overview generation pipeline
-
-Goal:
-Generate beginner asset overview responses from structured local facts, source metadata, and citation mappings.
