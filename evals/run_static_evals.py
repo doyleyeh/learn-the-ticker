@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT))
 
 from backend.citations import validate_claims
 from backend.main import app
+from backend.retrieval import build_asset_knowledge_pack, build_comparison_knowledge_pack, load_retrieval_fixture_dataset
 from backend.safety import find_forbidden_output_phrases
 from backend.testing import TestClient
 
@@ -115,8 +116,58 @@ def test_citation_cases():
         )
 
 
+def test_retrieval_fixture_contract():
+    dataset = load_retrieval_fixture_dataset()
+    assert dataset.no_live_external_calls is True
+
+    required_tickers = {"AAPL", "VOO", "QQQ"}
+    fixture_tickers = {fixture.asset.ticker for fixture in dataset.assets}
+    assert required_tickers <= fixture_tickers
+
+    all_gap_states = set()
+    for ticker in required_tickers:
+        pack = build_asset_knowledge_pack(ticker)
+        assert pack.asset.supported is True
+        assert pack.freshness.facts_as_of
+        assert pack.freshness.recent_events_as_of
+        assert pack.source_documents, f"{ticker} must include source document metadata"
+        assert pack.source_chunks, f"{ticker} must include retrievable chunks"
+        assert pack.normalized_facts, f"{ticker} must include normalized facts"
+        assert pack.recent_developments, f"{ticker} must include a separate recent-development layer"
+
+        returned_assets = {
+            *{source.asset_ticker for source in pack.source_documents},
+            *{chunk.chunk.asset_ticker for chunk in pack.source_chunks},
+            *{fact.fact.asset_ticker for fact in pack.normalized_facts},
+            *{fact.source_document.asset_ticker for fact in pack.normalized_facts},
+            *{fact.source_chunk.asset_ticker for fact in pack.normalized_facts},
+            *{recent.recent_development.asset_ticker for recent in pack.recent_developments},
+            *{recent.source_document.asset_ticker for recent in pack.recent_developments},
+        }
+        assert returned_assets == {ticker}
+
+        for fact in pack.normalized_facts:
+            assert fact.source_document.source_document_id == fact.fact.source_document_id
+            assert fact.source_chunk.chunk_id == fact.fact.source_chunk_id
+            assert fact.source_document.retrieved_at
+
+        all_gap_states.update(gap.evidence_state for gap in pack.evidence_gaps)
+
+    comparison_pack = build_comparison_knowledge_pack("VOO", "QQQ")
+    assert comparison_pack.computed_differences
+    assert {source.asset_ticker for source in comparison_pack.comparison_sources} <= {"VOO", "QQQ"}
+
+    all_gap_states.update(gap.evidence_state for gap in build_asset_knowledge_pack("BTC").evidence_gaps)
+    assert {"missing", "stale", "unsupported", "insufficient"} <= all_gap_states
+
+    retrieval_source = (ROOT / "backend" / "retrieval.py").read_text(encoding="utf-8")
+    for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import"]:
+        assert forbidden not in retrieval_source
+
+
 if __name__ == "__main__":
     test_golden_assets()
     test_safety_cases()
     test_citation_cases()
+    test_retrieval_fixture_contract()
     print("Static evals passed.")
