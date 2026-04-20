@@ -1,9 +1,14 @@
 from pathlib import Path
+import sys
 import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
 EVALS_DIR = ROOT / "evals"
+
+sys.path.insert(0, str(ROOT))
+
+from backend.citations import validate_claims
 
 
 def load_yaml(filename: str) -> dict:
@@ -46,6 +51,22 @@ def test_citation_cases():
 
     assert any(case.get("citation_required") for case in cases)
     assert any(case.get("expected_behavior") == "reject_wrong_asset_citation" for case in cases)
+
+    validation_cases = [case for case in cases if "validation_claim" in case]
+    assert validation_cases, "citation_eval_cases.yaml must include deterministic validation inputs"
+
+    for case in validation_cases:
+        expected_status = case.get("expected_status")
+        assert expected_status, f"{case['id']} must define expected_status"
+        report = validate_claims(
+            claims=[case["validation_claim"]],
+            evidence=case.get("evidence", []),
+            context=case["context"],
+        )
+        assert report.status.value == expected_status, (
+            f"{case['id']} expected {expected_status}, got {report.status.value}: "
+            f"{[issue.message for issue in report.issues]}"
+        )
 
 
 if __name__ == "__main__":
