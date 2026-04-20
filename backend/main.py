@@ -39,6 +39,7 @@ from backend.models import (
     SourcesResponse,
     StateMessage,
 )
+from backend.overview import generate_asset_overview
 from backend.safety import classify_question, educational_redirect
 
 
@@ -113,30 +114,7 @@ def search(q: str) -> SearchResponse:
 
 @app.get("/api/assets/{ticker}/overview", response_model=OverviewResponse, tags=["assets"])
 def asset_overview(ticker: str, mode: str = "beginner") -> OverviewResponse:
-    asset, payload = _asset_payload(ticker)
-    state = state_for_asset(asset)
-
-    if not payload:
-        return OverviewResponse(
-            asset=asset,
-            state=state,
-            freshness=empty_freshness(),
-            snapshot={},
-        )
-
-    return OverviewResponse(
-        asset=asset,
-        state=state,
-        freshness=payload["freshness"],
-        snapshot=payload["snapshot"],
-        beginner_summary=payload["summary"],
-        top_risks=payload["risks"][:3],
-        recent_developments=payload["recent"],
-        suitability_summary=payload["suitability"],
-        claims=payload["claims"],
-        citations=payload["citations"],
-        source_documents=payload["sources"],
-    )
+    return generate_asset_overview(ticker)
 
 
 @app.get("/api/assets/{ticker}/details", response_model=DetailsResponse, tags=["assets"])
@@ -158,20 +136,18 @@ def asset_details(ticker: str) -> DetailsResponse:
 
 @app.get("/api/assets/{ticker}/sources", response_model=SourcesResponse, tags=["assets"])
 def asset_sources(ticker: str) -> SourcesResponse:
-    asset, payload = _asset_payload(ticker)
-    state = state_for_asset(asset)
-    return SourcesResponse(asset=asset, state=state, sources=payload["sources"] if payload else [])
+    overview = generate_asset_overview(ticker)
+    return SourcesResponse(asset=overview.asset, state=overview.state, sources=overview.source_documents)
 
 
 @app.get("/api/assets/{ticker}/recent", response_model=RecentResponse, tags=["assets"])
 def asset_recent(ticker: str) -> RecentResponse:
-    asset, payload = _asset_payload(ticker)
-    state = state_for_asset(asset)
+    overview = generate_asset_overview(ticker)
     return RecentResponse(
-        asset=asset,
-        state=state,
-        recent_developments=payload["recent"] if payload else [],
-        citations=payload["citations"] if payload else [],
+        asset=overview.asset,
+        state=overview.state,
+        recent_developments=overview.recent_developments,
+        citations=overview.citations,
     )
 
 

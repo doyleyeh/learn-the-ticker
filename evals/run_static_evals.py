@@ -12,6 +12,8 @@ sys.path.insert(0, str(ROOT))
 
 from backend.citations import validate_claims
 from backend.main import app
+from backend.models import MetricValue
+from backend.overview import generate_asset_overview, validate_overview_response
 from backend.retrieval import build_asset_knowledge_pack, build_comparison_knowledge_pack, load_retrieval_fixture_dataset
 from backend.safety import find_forbidden_output_phrases
 from backend.testing import TestClient
@@ -165,9 +167,70 @@ def test_retrieval_fixture_contract():
         assert forbidden not in retrieval_source
 
 
+def test_generated_overview_contract():
+    for ticker in ["AAPL", "VOO", "QQQ"]:
+        pack = build_asset_knowledge_pack(ticker)
+        overview = generate_asset_overview(ticker)
+        citation_ids = {citation.citation_id for citation in overview.citations}
+        source_ids = {source.source_document_id for source in overview.source_documents}
+        used_citation_ids = {
+            *{citation_id for claim in overview.claims for citation_id in claim.citation_ids},
+            *{citation_id for risk in overview.top_risks for citation_id in risk.citation_ids},
+            *{citation_id for recent in overview.recent_developments for citation_id in recent.citation_ids},
+            *{
+                citation_id
+                for value in overview.snapshot.values()
+                if isinstance(value, MetricValue)
+                for citation_id in value.citation_ids
+            },
+        }
+
+        assert overview.asset.supported is True
+        assert overview.beginner_summary is not None
+        assert overview.beginner_summary.what_it_is
+        assert overview.beginner_summary.why_people_consider_it
+        assert overview.beginner_summary.main_catch
+        assert len(overview.top_risks) == 3
+        assert overview.freshness.facts_as_of
+        assert overview.freshness.recent_events_as_of
+        assert overview.recent_developments
+        assert "No high-signal recent development" in overview.recent_developments[0].title
+        assert overview.claims
+        assert used_citation_ids <= citation_ids
+        assert {citation.source_document_id for citation in overview.citations} <= source_ids
+        assert validate_overview_response(overview, pack).valid
+
+        combined_output = " ".join(
+            [
+                overview.beginner_summary.what_it_is,
+                overview.beginner_summary.why_people_consider_it,
+                overview.beginner_summary.main_catch,
+                " ".join(risk.plain_english_explanation for risk in overview.top_risks),
+                " ".join(recent.summary for recent in overview.recent_developments),
+                overview.suitability_summary.may_fit if overview.suitability_summary else "",
+                overview.suitability_summary.may_not_fit if overview.suitability_summary else "",
+                overview.suitability_summary.learn_next if overview.suitability_summary else "",
+            ]
+        )
+        assert not find_forbidden_output_phrases(combined_output)
+
+    for ticker in ["BTC", "ZZZZ"]:
+        overview = generate_asset_overview(ticker)
+        assert overview.asset.supported is False
+        assert overview.beginner_summary is None
+        assert overview.claims == []
+        assert overview.citations == []
+        assert overview.source_documents == []
+
+    overview_source = (ROOT / "backend" / "overview.py").read_text(encoding="utf-8")
+    for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import"]:
+        assert forbidden not in overview_source
+
+
 if __name__ == "__main__":
     test_golden_assets()
     test_safety_cases()
     test_citation_cases()
     test_retrieval_fixture_contract()
+    test_generated_overview_contract()
     print("Static evals passed.")
