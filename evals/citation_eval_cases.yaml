@@ -4,14 +4,221 @@ cases:
     claim_type: factual
     claim: "An ETF expense ratio must cite a source document or normalized fact."
     citation_required: true
+    expected_status: valid
+    context:
+      allowed_asset_tickers: [VOO]
+    validation_claim:
+      claim_id: citation_etf_expense_ratio
+      claim_text: "VOO has an expense ratio in the local fixture."
+      claim_type: factual
+      citation_ids: [c_voo_profile]
+      citation_required: true
+    evidence:
+      - citation_id: c_voo_profile
+        asset_ticker: VOO
+        source_document_id: src_voo_fact_sheet
+        source_type: issuer_fact_sheet
+        freshness_state: fresh
+        evidence_kind: source_document
+        supporting_text: "VOO fact sheet fixture includes fund costs, holdings, and risk information."
+
+  - id: citation_missing_required
+    claim_type: factual
+    citation_required: true
+    expected_status: missing_citation
+    context:
+      allowed_asset_tickers: [VOO]
+    validation_claim:
+      claim_id: citation_missing_required
+      claim_text: "Important factual claims need citations."
+      claim_type: factual
+      citation_ids: []
+      citation_required: true
+    evidence: []
 
   - id: citation_recent_development
     asset_type: stock
     claim_type: recent
     claim: "A recent earnings claim must cite a recent-development source."
     citation_required: true
+    expected_status: valid
+    context:
+      allowed_asset_tickers: [AAPL]
+    validation_claim:
+      claim_id: citation_recent_development
+      claim_text: "Apple had a recent development in the local fixture."
+      claim_type: recent
+      citation_ids: [c_aapl_recent]
+      citation_required: true
+    evidence:
+      - citation_id: c_aapl_recent
+        asset_ticker: AAPL
+        source_document_id: src_aapl_recent_fixture
+        source_type: recent_development
+        freshness_state: fresh
+        evidence_kind: source_document
+        supporting_text: "Recent-development fixture for Apple."
+
+  - id: citation_recent_rejects_non_recent_source
+    claim_type: recent
+    expected_status: non_recent_source
+    context:
+      allowed_asset_tickers: [AAPL]
+    validation_claim:
+      claim_id: citation_recent_rejects_non_recent_source
+      claim_text: "A recent-development claim cannot cite a stable profile source."
+      claim_type: recent
+      citation_ids: [c_aapl_profile]
+    evidence:
+      - citation_id: c_aapl_profile
+        asset_ticker: AAPL
+        source_document_id: src_aapl_10k
+        source_type: sec_filing
+        freshness_state: fresh
+        evidence_kind: source_document
+        supporting_text: "Apple 10-K fixture describes stable business facts."
 
   - id: citation_wrong_asset
     claim_type: factual
     claim: "A citation from the wrong asset should be rejected."
-    expected_behavior: "reject_wrong_asset_citation"
+    expected_behavior: reject_wrong_asset_citation
+    expected_status: wrong_asset
+    context:
+      allowed_asset_tickers: [VOO]
+    validation_claim:
+      claim_id: citation_wrong_asset
+      claim_text: "VOO tracks the S&P 500 Index."
+      claim_type: factual
+      citation_ids: [c_qqq_profile]
+    evidence:
+      - citation_id: c_qqq_profile
+        asset_ticker: QQQ
+        source_document_id: src_qqq_fact_sheet
+        source_type: issuer_fact_sheet
+        freshness_state: fresh
+        evidence_kind: source_document
+        supporting_text: "QQQ fact sheet fixture describes the Nasdaq-100 Index."
+
+  - id: citation_stale_unlabeled
+    claim_type: factual
+    expected_status: stale_source
+    context:
+      allowed_asset_tickers: [VOO]
+    validation_claim:
+      claim_id: citation_stale_unlabeled
+      claim_text: "A stale fact must be labeled before display."
+      claim_type: factual
+      citation_ids: [c_voo_stale]
+    evidence:
+      - citation_id: c_voo_stale
+        asset_ticker: VOO
+        source_document_id: src_voo_old_fact_sheet
+        source_type: issuer_fact_sheet
+        freshness_state: stale
+        evidence_kind: source_document
+        supporting_text: "Old VOO fact sheet fixture."
+
+  - id: citation_stale_labeled
+    claim_type: factual
+    expected_status: valid
+    context:
+      allowed_asset_tickers: [VOO]
+    validation_claim:
+      claim_id: citation_stale_labeled
+      claim_text: "A stale fact can be displayed when it is labeled stale."
+      claim_type: factual
+      citation_ids: [c_voo_stale]
+      freshness_label: stale
+    evidence:
+      - citation_id: c_voo_stale
+        asset_ticker: VOO
+        source_document_id: src_voo_old_fact_sheet
+        source_type: issuer_fact_sheet
+        freshness_state: stale
+        evidence_kind: source_document
+        supporting_text: "Old VOO fact sheet fixture."
+
+  - id: citation_unknown_freshness
+    claim_type: factual
+    expected_status: insufficient_evidence
+    context:
+      allowed_asset_tickers: [VOO]
+    validation_claim:
+      claim_id: citation_unknown_freshness
+      claim_text: "Unknown freshness must not be silently treated as fresh."
+      claim_type: factual
+      citation_ids: [c_voo_unknown]
+    evidence:
+      - citation_id: c_voo_unknown
+        asset_ticker: VOO
+        source_document_id: src_voo_unknown
+        source_type: issuer_fact_sheet
+        freshness_state: unknown
+        evidence_kind: source_document
+        supporting_text: "VOO fixture with unknown freshness."
+
+  - id: citation_unsupported_source_type
+    claim_type: factual
+    expected_status: unsupported_source
+    context:
+      allowed_asset_tickers: [VOO]
+    validation_claim:
+      claim_id: citation_unsupported_source_type
+      claim_text: "A factual ETF claim cannot cite a generic news article in this contract."
+      claim_type: factual
+      citation_ids: [c_voo_news]
+    evidence:
+      - citation_id: c_voo_news
+        asset_ticker: VOO
+        source_document_id: src_voo_news
+        source_type: news_article
+        freshness_state: fresh
+        evidence_kind: source_document
+        supporting_text: "News fixture."
+
+  - id: citation_insufficient_evidence
+    claim_type: factual
+    expected_status: insufficient_evidence
+    context:
+      allowed_asset_tickers: [VOO]
+    validation_claim:
+      claim_id: citation_insufficient_evidence
+      claim_text: "A citation with no supporting passage is insufficient."
+      claim_type: factual
+      citation_ids: [c_voo_empty]
+    evidence:
+      - citation_id: c_voo_empty
+        asset_ticker: VOO
+        source_document_id: src_voo_empty
+        source_type: issuer_fact_sheet
+        freshness_state: fresh
+        evidence_kind: source_document
+        supporting_text: ""
+
+  - id: citation_comparison_pack
+    claim_type: comparison
+    expected_status: valid
+    context:
+      allowed_asset_tickers: [VOO, QQQ]
+      comparison_pack_id: VOO_vs_QQQ
+    validation_claim:
+      claim_id: citation_comparison_pack
+      claim_text: "VOO is broader than QQQ in the local comparison fixture."
+      claim_type: comparison
+      citation_ids: [c_voo_profile, c_qqq_profile]
+      required_asset_tickers: [VOO, QQQ]
+    evidence:
+      - citation_id: c_voo_profile
+        asset_ticker: VOO
+        source_document_id: src_voo_fact_sheet
+        source_type: issuer_fact_sheet
+        freshness_state: fresh
+        evidence_kind: source_document
+        supporting_text: "VOO fact sheet fixture describes broad S&P 500 exposure."
+      - citation_id: c_qqq_profile
+        asset_ticker: QQQ
+        source_document_id: src_qqq_fact_sheet
+        source_type: issuer_fact_sheet
+        freshness_state: fresh
+        evidence_kind: source_document
+        supporting_text: "QQQ fact sheet fixture describes narrower Nasdaq-100 exposure."

@@ -1,3 +1,7 @@
+import os
+
+os.environ.setdefault("LTT_FORCE_COMPAT_FASTAPI", "1")
+
 from backend.main import app
 from backend.testing import TestClient
 
