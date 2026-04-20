@@ -1,0 +1,5 @@
+# T-001 backend skeleton production dependencies.
+# FastAPI is the minimal API framework required by the technical design.
+fastapi>=0.115,<1
+# Uvicorn serves the ASGI app locally; the skeleton makes no live external calls.
+uvicorn>=0.32,<1

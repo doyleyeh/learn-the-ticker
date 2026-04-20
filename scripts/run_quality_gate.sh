@@ -15,11 +15,28 @@ fi
 echo "== Quality gate started =="
 echo "== Python: $($PYTHON_BIN --version) =="
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PYTHONDONTWRITEBYTECODE=1
+
+run_pytest() {
+  if "$PYTHON_BIN" -c "import pytest" >/dev/null 2>&1; then
+    "$PYTHON_BIN" -m pytest "$@"
+  else
+    echo "pytest is not installed; using scripts/mini_pytest.py fallback."
+    "$PYTHON_BIN" scripts/mini_pytest.py "$@"
+  fi
+}
+
 echo "== Python tests =="
-"$PYTHON_BIN" -m pytest tests -q
+run_pytest tests -q
 
 echo "== Static evals =="
-"$PYTHON_BIN" evals/run_static_evals.py
+if "$PYTHON_BIN" -c "import yaml" >/dev/null 2>&1; then
+  "$PYTHON_BIN" evals/run_static_evals.py
+else
+  echo "PyYAML is not installed; using scripts/yaml.py fallback."
+  PYTHONPATH="$ROOT/scripts${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON_BIN" evals/run_static_evals.py
+fi
 
 if [ -f package.json ]; then
   echo "== Frontend checks =="
@@ -30,7 +47,7 @@ fi
 
 if [ -d backend ]; then
   echo "== Backend checks =="
-  "$PYTHON_BIN" -m pytest backend tests -q
+  run_pytest backend tests -q
 fi
 
 echo "== Quality gate passed =="
