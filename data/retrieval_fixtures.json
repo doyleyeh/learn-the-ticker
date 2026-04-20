@@ -1,0 +1,695 @@
+{
+  "generated_at": "2026-04-20T00:00:00Z",
+  "no_live_external_calls": true,
+  "unsupported_assets": {
+    "BTC": "Crypto assets are outside the current U.S. stock and plain-vanilla ETF scope.",
+    "ETH": "Crypto assets are outside the current U.S. stock and plain-vanilla ETF scope.",
+    "TQQQ": "Leveraged ETFs are outside the current plain-vanilla ETF scope.",
+    "SQQQ": "Inverse ETFs are outside the current plain-vanilla ETF scope."
+  },
+  "assets": [
+    {
+      "asset": {
+        "ticker": "AAPL",
+        "name": "Apple Inc.",
+        "asset_type": "stock",
+        "exchange": "NASDAQ",
+        "issuer": null,
+        "status": "supported",
+        "supported": true
+      },
+      "freshness": {
+        "page_last_updated_at": "2026-04-20T00:00:00Z",
+        "facts_as_of": "2026-04-01",
+        "holdings_as_of": null,
+        "recent_events_as_of": "2026-04-20",
+        "freshness_state": "fresh"
+      },
+      "source_documents": [
+        {
+          "source_document_id": "src_aapl_10k_fixture",
+          "asset_ticker": "AAPL",
+          "source_type": "sec_filing",
+          "source_rank": 1,
+          "title": "Apple Inc. Form 10-K fixture excerpt",
+          "publisher": "U.S. SEC",
+          "url": "https://www.sec.gov/",
+          "published_at": "2026-04-01",
+          "retrieved_at": "2026-04-20T00:00:00Z",
+          "content_type": "text",
+          "is_official": true,
+          "freshness_state": "fresh",
+          "as_of_date": "2026-04-01"
+        },
+        {
+          "source_document_id": "src_aapl_recent_review",
+          "asset_ticker": "AAPL",
+          "source_type": "recent_development",
+          "source_rank": 5,
+          "title": "Apple recent-development local fixture review",
+          "publisher": "Learn the Ticker fixtures",
+          "url": "local://fixtures/aapl/recent-review",
+          "published_at": "2026-04-20",
+          "retrieved_at": "2026-04-20T00:00:00Z",
+          "content_type": "text",
+          "is_official": false,
+          "freshness_state": "fresh",
+          "as_of_date": "2026-04-20"
+        }
+      ],
+      "source_chunks": [
+        {
+          "chunk_id": "chk_aapl_business_001",
+          "asset_ticker": "AAPL",
+          "source_document_id": "src_aapl_10k_fixture",
+          "section_name": "Business",
+          "chunk_order": 1,
+          "text": "Apple designs, manufactures, and markets smartphones, personal computers, tablets, wearables, accessories, and related services.",
+          "token_count": 16,
+          "char_start": 0,
+          "char_end": 126,
+          "supported_claim_types": ["factual", "interpretation"]
+        },
+        {
+          "chunk_id": "chk_aapl_products_001",
+          "asset_ticker": "AAPL",
+          "source_document_id": "src_aapl_10k_fixture",
+          "section_name": "Products and services",
+          "chunk_order": 2,
+          "text": "The fixture separates Apple's product business from its services business so beginner summaries can describe both without relying on recent news.",
+          "token_count": 20,
+          "char_start": 127,
+          "char_end": 263,
+          "supported_claim_types": ["factual", "risk"]
+        },
+        {
+          "chunk_id": "chk_aapl_risks_001",
+          "asset_ticker": "AAPL",
+          "source_document_id": "src_aapl_10k_fixture",
+          "section_name": "Risk factors",
+          "chunk_order": 3,
+          "text": "Single-company stock results can be affected by product demand, competition, supply chain disruption, regulation, and other company-specific risks.",
+          "token_count": 20,
+          "char_start": 264,
+          "char_end": 406,
+          "supported_claim_types": ["risk"]
+        },
+        {
+          "chunk_id": "chk_aapl_recent_none_001",
+          "asset_ticker": "AAPL",
+          "source_document_id": "src_aapl_recent_review",
+          "section_name": "Recent developments",
+          "chunk_order": 1,
+          "text": "The local fixture review found no high-signal recent development for Apple to include in this deterministic retrieval pack.",
+          "token_count": 17,
+          "char_start": 0,
+          "char_end": 111,
+          "supported_claim_types": ["recent"]
+        }
+      ],
+      "normalized_facts": [
+        {
+          "fact_id": "fact_aapl_asset_identity",
+          "asset_ticker": "AAPL",
+          "fact_type": "identity",
+          "field_name": "canonical_asset_identity",
+          "value": {
+            "ticker": "AAPL",
+            "name": "Apple Inc.",
+            "asset_type": "stock",
+            "exchange": "NASDAQ",
+            "cik": "0000320193"
+          },
+          "unit": null,
+          "period": null,
+          "as_of_date": "2026-04-01",
+          "source_document_id": "src_aapl_10k_fixture",
+          "source_chunk_id": "chk_aapl_business_001",
+          "extraction_method": "manual_fixture",
+          "confidence": 1.0,
+          "freshness_state": "fresh",
+          "evidence_state": "supported"
+        },
+        {
+          "fact_id": "fact_aapl_primary_business",
+          "asset_ticker": "AAPL",
+          "fact_type": "business_model",
+          "field_name": "primary_business",
+          "value": "Sells devices, software, accessories, and services.",
+          "unit": null,
+          "period": null,
+          "as_of_date": "2026-04-01",
+          "source_document_id": "src_aapl_10k_fixture",
+          "source_chunk_id": "chk_aapl_business_001",
+          "extraction_method": "manual_fixture",
+          "confidence": 0.98,
+          "freshness_state": "fresh",
+          "evidence_state": "supported"
+        },
+        {
+          "fact_id": "fact_aapl_risk_context",
+          "asset_ticker": "AAPL",
+          "fact_type": "risk",
+          "field_name": "company_specific_risk",
+          "value": "A single-company stock is less diversified than an ETF and can be affected by company-specific issues.",
+          "unit": null,
+          "period": null,
+          "as_of_date": "2026-04-01",
+          "source_document_id": "src_aapl_10k_fixture",
+          "source_chunk_id": "chk_aapl_risks_001",
+          "extraction_method": "manual_fixture",
+          "confidence": 0.95,
+          "freshness_state": "fresh",
+          "evidence_state": "supported"
+        }
+      ],
+      "recent_developments": [
+        {
+          "event_id": "recent_aapl_none",
+          "asset_ticker": "AAPL",
+          "event_type": "no_major_recent_development",
+          "title": "No high-signal recent development found in local fixture review",
+          "summary": "The deterministic fixture keeps recent context separate and explicitly records that no major recent item is available.",
+          "event_date": null,
+          "source_document_id": "src_aapl_recent_review",
+          "source_chunk_id": "chk_aapl_recent_none_001",
+          "importance_score": 0,
+          "freshness_state": "fresh",
+          "evidence_state": "no_major_recent_development"
+        }
+      ],
+      "evidence_gaps": [
+        {
+          "gap_id": "gap_aapl_valuation_context",
+          "asset_ticker": "AAPL",
+          "field_name": "valuation_context",
+          "evidence_state": "missing",
+          "message": "No local fixture evidence is available for valuation context, so retrieval must not invent valuation facts.",
+          "freshness_state": "unavailable",
+          "source_document_id": null,
+          "source_chunk_id": null
+        }
+      ]
+    },
+    {
+      "asset": {
+        "ticker": "VOO",
+        "name": "Vanguard S&P 500 ETF",
+        "asset_type": "etf",
+        "exchange": "NYSE Arca",
+        "issuer": "Vanguard",
+        "status": "supported",
+        "supported": true
+      },
+      "freshness": {
+        "page_last_updated_at": "2026-04-20T00:00:00Z",
+        "facts_as_of": "2026-04-01",
+        "holdings_as_of": "2026-04-01",
+        "recent_events_as_of": "2026-04-20",
+        "freshness_state": "fresh"
+      },
+      "source_documents": [
+        {
+          "source_document_id": "src_voo_fact_sheet_fixture",
+          "asset_ticker": "VOO",
+          "source_type": "issuer_fact_sheet",
+          "source_rank": 1,
+          "title": "Vanguard S&P 500 ETF fact sheet fixture excerpt",
+          "publisher": "Vanguard",
+          "url": "https://investor.vanguard.com/",
+          "published_at": "2026-04-01",
+          "retrieved_at": "2026-04-20T00:00:00Z",
+          "content_type": "text",
+          "is_official": true,
+          "freshness_state": "fresh",
+          "as_of_date": "2026-04-01"
+        },
+        {
+          "source_document_id": "src_voo_prospectus_fixture",
+          "asset_ticker": "VOO",
+          "source_type": "summary_prospectus",
+          "source_rank": 2,
+          "title": "Vanguard S&P 500 ETF summary prospectus fixture excerpt",
+          "publisher": "Vanguard",
+          "url": "https://investor.vanguard.com/",
+          "published_at": "2026-04-01",
+          "retrieved_at": "2026-04-20T00:00:00Z",
+          "content_type": "text",
+          "is_official": true,
+          "freshness_state": "fresh",
+          "as_of_date": "2026-04-01"
+        },
+        {
+          "source_document_id": "src_voo_recent_review",
+          "asset_ticker": "VOO",
+          "source_type": "recent_development",
+          "source_rank": 5,
+          "title": "VOO recent-development local fixture review",
+          "publisher": "Learn the Ticker fixtures",
+          "url": "local://fixtures/voo/recent-review",
+          "published_at": "2026-04-20",
+          "retrieved_at": "2026-04-20T00:00:00Z",
+          "content_type": "text",
+          "is_official": false,
+          "freshness_state": "fresh",
+          "as_of_date": "2026-04-20"
+        }
+      ],
+      "source_chunks": [
+        {
+          "chunk_id": "chk_voo_profile_001",
+          "asset_ticker": "VOO",
+          "source_document_id": "src_voo_fact_sheet_fixture",
+          "section_name": "Fund profile",
+          "chunk_order": 1,
+          "text": "VOO seeks to track the performance of the S&P 500 Index, which represents large U.S. companies.",
+          "token_count": 17,
+          "char_start": 0,
+          "char_end": 99,
+          "supported_claim_types": ["factual", "comparison", "interpretation"]
+        },
+        {
+          "chunk_id": "chk_voo_cost_holdings_001",
+          "asset_ticker": "VOO",
+          "source_document_id": "src_voo_fact_sheet_fixture",
+          "section_name": "Costs and holdings",
+          "chunk_order": 2,
+          "text": "The local fixture records VOO as an index ETF with a 0.03% expense ratio and about 500 holdings.",
+          "token_count": 19,
+          "char_start": 100,
+          "char_end": 197,
+          "supported_claim_types": ["factual", "comparison"]
+        },
+        {
+          "chunk_id": "chk_voo_risks_001",
+          "asset_ticker": "VOO",
+          "source_document_id": "src_voo_prospectus_fixture",
+          "section_name": "Principal risks",
+          "chunk_order": 1,
+          "text": "The fund can lose value when U.S. large-company stocks decline, and index tracking does not remove market risk.",
+          "token_count": 19,
+          "char_start": 0,
+          "char_end": 109,
+          "supported_claim_types": ["risk", "suitability"]
+        },
+        {
+          "chunk_id": "chk_voo_recent_none_001",
+          "asset_ticker": "VOO",
+          "source_document_id": "src_voo_recent_review",
+          "section_name": "Recent developments",
+          "chunk_order": 1,
+          "text": "The local fixture review found no high-signal recent development for VOO to include in this deterministic retrieval pack.",
+          "token_count": 18,
+          "char_start": 0,
+          "char_end": 109,
+          "supported_claim_types": ["recent"]
+        }
+      ],
+      "normalized_facts": [
+        {
+          "fact_id": "fact_voo_asset_identity",
+          "asset_ticker": "VOO",
+          "fact_type": "identity",
+          "field_name": "canonical_asset_identity",
+          "value": {
+            "ticker": "VOO",
+            "name": "Vanguard S&P 500 ETF",
+            "asset_type": "etf",
+            "exchange": "NYSE Arca",
+            "issuer": "Vanguard"
+          },
+          "unit": null,
+          "period": null,
+          "as_of_date": "2026-04-01",
+          "source_document_id": "src_voo_fact_sheet_fixture",
+          "source_chunk_id": "chk_voo_profile_001",
+          "extraction_method": "manual_fixture",
+          "confidence": 1.0,
+          "freshness_state": "fresh",
+          "evidence_state": "supported"
+        },
+        {
+          "fact_id": "fact_voo_benchmark",
+          "asset_ticker": "VOO",
+          "fact_type": "etf_profile",
+          "field_name": "benchmark",
+          "value": "S&P 500 Index",
+          "unit": null,
+          "period": null,
+          "as_of_date": "2026-04-01",
+          "source_document_id": "src_voo_fact_sheet_fixture",
+          "source_chunk_id": "chk_voo_profile_001",
+          "extraction_method": "manual_fixture",
+          "confidence": 0.99,
+          "freshness_state": "fresh",
+          "evidence_state": "supported"
+        },
+        {
+          "fact_id": "fact_voo_expense_ratio",
+          "asset_ticker": "VOO",
+          "fact_type": "cost",
+          "field_name": "expense_ratio",
+          "value": 0.03,
+          "unit": "%",
+          "period": null,
+          "as_of_date": "2026-04-01",
+          "source_document_id": "src_voo_fact_sheet_fixture",
+          "source_chunk_id": "chk_voo_cost_holdings_001",
+          "extraction_method": "manual_fixture",
+          "confidence": 0.98,
+          "freshness_state": "fresh",
+          "evidence_state": "supported"
+        },
+        {
+          "fact_id": "fact_voo_holdings_count",
+          "asset_ticker": "VOO",
+          "fact_type": "holdings",
+          "field_name": "holdings_count",
+          "value": 500,
+          "unit": "approximate companies",
+          "period": null,
+          "as_of_date": "2026-04-01",
+          "source_document_id": "src_voo_fact_sheet_fixture",
+          "source_chunk_id": "chk_voo_cost_holdings_001",
+          "extraction_method": "manual_fixture",
+          "confidence": 0.9,
+          "freshness_state": "fresh",
+          "evidence_state": "supported"
+        },
+        {
+          "fact_id": "fact_voo_role",
+          "asset_ticker": "VOO",
+          "fact_type": "education",
+          "field_name": "beginner_role",
+          "value": "Broad U.S. large-company ETF",
+          "unit": null,
+          "period": null,
+          "as_of_date": "2026-04-01",
+          "source_document_id": "src_voo_fact_sheet_fixture",
+          "source_chunk_id": "chk_voo_profile_001",
+          "extraction_method": "manual_fixture",
+          "confidence": 0.92,
+          "freshness_state": "fresh",
+          "evidence_state": "supported"
+        }
+      ],
+      "recent_developments": [
+        {
+          "event_id": "recent_voo_none",
+          "asset_ticker": "VOO",
+          "event_type": "no_major_recent_development",
+          "title": "No high-signal recent development found in local fixture review",
+          "summary": "The deterministic fixture keeps recent context separate and explicitly records that no major recent item is available.",
+          "event_date": null,
+          "source_document_id": "src_voo_recent_review",
+          "source_chunk_id": "chk_voo_recent_none_001",
+          "importance_score": 0,
+          "freshness_state": "fresh",
+          "evidence_state": "no_major_recent_development"
+        }
+      ],
+      "evidence_gaps": [
+        {
+          "gap_id": "gap_voo_bid_ask_spread",
+          "asset_ticker": "VOO",
+          "field_name": "bid_ask_spread",
+          "evidence_state": "missing",
+          "message": "No local fixture evidence is available for bid-ask spread.",
+          "freshness_state": "unavailable",
+          "source_document_id": null,
+          "source_chunk_id": null
+        },
+        {
+          "gap_id": "gap_voo_stale_old_fee_snapshot",
+          "asset_ticker": "VOO",
+          "field_name": "old_fee_snapshot",
+          "evidence_state": "stale",
+          "message": "An older local fee snapshot exists only as a stale example and must not be used as fresh evidence.",
+          "freshness_state": "stale",
+          "source_document_id": null,
+          "source_chunk_id": null
+        }
+      ]
+    },
+    {
+      "asset": {
+        "ticker": "QQQ",
+        "name": "Invesco QQQ Trust",
+        "asset_type": "etf",
+        "exchange": "NASDAQ",
+        "issuer": "Invesco",
+        "status": "supported",
+        "supported": true
+      },
+      "freshness": {
+        "page_last_updated_at": "2026-04-20T00:00:00Z",
+        "facts_as_of": "2026-04-01",
+        "holdings_as_of": "2026-04-01",
+        "recent_events_as_of": "2026-04-20",
+        "freshness_state": "fresh"
+      },
+      "source_documents": [
+        {
+          "source_document_id": "src_qqq_fact_sheet_fixture",
+          "asset_ticker": "QQQ",
+          "source_type": "issuer_fact_sheet",
+          "source_rank": 1,
+          "title": "Invesco QQQ Trust fact sheet fixture excerpt",
+          "publisher": "Invesco",
+          "url": "https://www.invesco.com/",
+          "published_at": "2026-04-01",
+          "retrieved_at": "2026-04-20T00:00:00Z",
+          "content_type": "text",
+          "is_official": true,
+          "freshness_state": "fresh",
+          "as_of_date": "2026-04-01"
+        },
+        {
+          "source_document_id": "src_qqq_prospectus_fixture",
+          "asset_ticker": "QQQ",
+          "source_type": "summary_prospectus",
+          "source_rank": 2,
+          "title": "Invesco QQQ Trust summary prospectus fixture excerpt",
+          "publisher": "Invesco",
+          "url": "https://www.invesco.com/",
+          "published_at": "2026-04-01",
+          "retrieved_at": "2026-04-20T00:00:00Z",
+          "content_type": "text",
+          "is_official": true,
+          "freshness_state": "fresh",
+          "as_of_date": "2026-04-01"
+        },
+        {
+          "source_document_id": "src_qqq_recent_review",
+          "asset_ticker": "QQQ",
+          "source_type": "recent_development",
+          "source_rank": 5,
+          "title": "QQQ recent-development local fixture review",
+          "publisher": "Learn the Ticker fixtures",
+          "url": "local://fixtures/qqq/recent-review",
+          "published_at": "2026-04-20",
+          "retrieved_at": "2026-04-20T00:00:00Z",
+          "content_type": "text",
+          "is_official": false,
+          "freshness_state": "fresh",
+          "as_of_date": "2026-04-20"
+        }
+      ],
+      "source_chunks": [
+        {
+          "chunk_id": "chk_qqq_profile_001",
+          "asset_ticker": "QQQ",
+          "source_document_id": "src_qqq_fact_sheet_fixture",
+          "section_name": "Fund profile",
+          "chunk_order": 1,
+          "text": "QQQ seeks investment results that generally correspond to the Nasdaq-100 Index.",
+          "token_count": 12,
+          "char_start": 0,
+          "char_end": 79,
+          "supported_claim_types": ["factual", "comparison", "interpretation"]
+        },
+        {
+          "chunk_id": "chk_qqq_cost_holdings_001",
+          "asset_ticker": "QQQ",
+          "source_document_id": "src_qqq_fact_sheet_fixture",
+          "section_name": "Costs and holdings",
+          "chunk_order": 2,
+          "text": "The local fixture records QQQ as an index ETF with a 0.20% expense ratio and about 100 holdings.",
+          "token_count": 19,
+          "char_start": 80,
+          "char_end": 177,
+          "supported_claim_types": ["factual", "comparison"]
+        },
+        {
+          "chunk_id": "chk_qqq_risks_001",
+          "asset_ticker": "QQQ",
+          "source_document_id": "src_qqq_prospectus_fixture",
+          "section_name": "Principal risks",
+          "chunk_order": 1,
+          "text": "QQQ can be more concentrated than broader equity funds, so a smaller group of companies or sectors can drive more of the fund's results.",
+          "token_count": 25,
+          "char_start": 0,
+          "char_end": 135,
+          "supported_claim_types": ["risk", "suitability"]
+        },
+        {
+          "chunk_id": "chk_qqq_recent_none_001",
+          "asset_ticker": "QQQ",
+          "source_document_id": "src_qqq_recent_review",
+          "section_name": "Recent developments",
+          "chunk_order": 1,
+          "text": "The local fixture review found no high-signal recent development for QQQ to include in this deterministic retrieval pack.",
+          "token_count": 18,
+          "char_start": 0,
+          "char_end": 109,
+          "supported_claim_types": ["recent"]
+        }
+      ],
+      "normalized_facts": [
+        {
+          "fact_id": "fact_qqq_asset_identity",
+          "asset_ticker": "QQQ",
+          "fact_type": "identity",
+          "field_name": "canonical_asset_identity",
+          "value": {
+            "ticker": "QQQ",
+            "name": "Invesco QQQ Trust",
+            "asset_type": "etf",
+            "exchange": "NASDAQ",
+            "issuer": "Invesco"
+          },
+          "unit": null,
+          "period": null,
+          "as_of_date": "2026-04-01",
+          "source_document_id": "src_qqq_fact_sheet_fixture",
+          "source_chunk_id": "chk_qqq_profile_001",
+          "extraction_method": "manual_fixture",
+          "confidence": 1.0,
+          "freshness_state": "fresh",
+          "evidence_state": "supported"
+        },
+        {
+          "fact_id": "fact_qqq_benchmark",
+          "asset_ticker": "QQQ",
+          "fact_type": "etf_profile",
+          "field_name": "benchmark",
+          "value": "Nasdaq-100 Index",
+          "unit": null,
+          "period": null,
+          "as_of_date": "2026-04-01",
+          "source_document_id": "src_qqq_fact_sheet_fixture",
+          "source_chunk_id": "chk_qqq_profile_001",
+          "extraction_method": "manual_fixture",
+          "confidence": 0.99,
+          "freshness_state": "fresh",
+          "evidence_state": "supported"
+        },
+        {
+          "fact_id": "fact_qqq_expense_ratio",
+          "asset_ticker": "QQQ",
+          "fact_type": "cost",
+          "field_name": "expense_ratio",
+          "value": 0.2,
+          "unit": "%",
+          "period": null,
+          "as_of_date": "2026-04-01",
+          "source_document_id": "src_qqq_fact_sheet_fixture",
+          "source_chunk_id": "chk_qqq_cost_holdings_001",
+          "extraction_method": "manual_fixture",
+          "confidence": 0.98,
+          "freshness_state": "fresh",
+          "evidence_state": "supported"
+        },
+        {
+          "fact_id": "fact_qqq_holdings_count",
+          "asset_ticker": "QQQ",
+          "fact_type": "holdings",
+          "field_name": "holdings_count",
+          "value": 100,
+          "unit": "approximate companies",
+          "period": null,
+          "as_of_date": "2026-04-01",
+          "source_document_id": "src_qqq_fact_sheet_fixture",
+          "source_chunk_id": "chk_qqq_cost_holdings_001",
+          "extraction_method": "manual_fixture",
+          "confidence": 0.9,
+          "freshness_state": "fresh",
+          "evidence_state": "supported"
+        },
+        {
+          "fact_id": "fact_qqq_role",
+          "asset_ticker": "QQQ",
+          "fact_type": "education",
+          "field_name": "beginner_role",
+          "value": "Narrower growth-oriented ETF",
+          "unit": null,
+          "period": null,
+          "as_of_date": "2026-04-01",
+          "source_document_id": "src_qqq_fact_sheet_fixture",
+          "source_chunk_id": "chk_qqq_profile_001",
+          "extraction_method": "manual_fixture",
+          "confidence": 0.92,
+          "freshness_state": "fresh",
+          "evidence_state": "supported"
+        }
+      ],
+      "recent_developments": [
+        {
+          "event_id": "recent_qqq_none",
+          "asset_ticker": "QQQ",
+          "event_type": "no_major_recent_development",
+          "title": "No high-signal recent development found in local fixture review",
+          "summary": "The deterministic fixture keeps recent context separate and explicitly records that no major recent item is available.",
+          "event_date": null,
+          "source_document_id": "src_qqq_recent_review",
+          "source_chunk_id": "chk_qqq_recent_none_001",
+          "importance_score": 0,
+          "freshness_state": "fresh",
+          "evidence_state": "no_major_recent_development"
+        }
+      ],
+      "evidence_gaps": [
+        {
+          "gap_id": "gap_qqq_holdings_overlap",
+          "asset_ticker": "QQQ",
+          "field_name": "holdings_overlap",
+          "evidence_state": "insufficient",
+          "message": "The fixture has enough evidence for a bounded high-level VOO vs QQQ comparison but not a full holdings-overlap calculation.",
+          "freshness_state": "unknown",
+          "source_document_id": null,
+          "source_chunk_id": null
+        }
+      ]
+    }
+  ],
+  "comparison_packs": [
+    {
+      "comparison_pack_id": "VOO_vs_QQQ",
+      "left_ticker": "VOO",
+      "right_ticker": "QQQ",
+      "computed_differences": [
+        {
+          "difference_id": "diff_voo_qqq_benchmark",
+          "dimension": "Benchmark",
+          "summary": "VOO tracks broad S&P 500 exposure, while QQQ tracks Nasdaq-100 exposure.",
+          "fact_ids": ["fact_voo_benchmark", "fact_qqq_benchmark"],
+          "source_chunk_ids": ["chk_voo_profile_001", "chk_qqq_profile_001"]
+        },
+        {
+          "difference_id": "diff_voo_qqq_cost",
+          "dimension": "Expense ratio",
+          "summary": "The local fixture records a lower expense ratio for VOO than for QQQ.",
+          "fact_ids": ["fact_voo_expense_ratio", "fact_qqq_expense_ratio"],
+          "source_chunk_ids": ["chk_voo_cost_holdings_001", "chk_qqq_cost_holdings_001"]
+        },
+        {
+          "difference_id": "diff_voo_qqq_role",
+          "dimension": "Beginner role",
+          "summary": "VOO is represented as broad large-company ETF exposure, while QQQ is represented as narrower growth-oriented ETF exposure.",
+          "fact_ids": ["fact_voo_role", "fact_qqq_role"],
+          "source_chunk_ids": ["chk_voo_profile_001", "chk_qqq_profile_001"]
+        }
+      ]
+    }
+  ]
+}
