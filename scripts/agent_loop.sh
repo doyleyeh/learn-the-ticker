@@ -1,6 +1,40 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+COMMIT_FAILURES=0
+
+usage() {
+  cat <<'EOF'
+Usage: bash scripts/agent_loop.sh [--commit-failures]
+
+Runs the current TASKS.md task through Codex, the quality gate, and retry
+attempts up to the iteration budget. Passing runs are committed. Failing runs
+are left uncommitted by default for review.
+
+Options:
+  --commit-failures  Commit the final failing attempt as a WIP audit commit.
+  -h, --help         Show this help.
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --commit-failures)
+      COMMIT_FAILURES=1
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1"
+      usage
+      exit 2
+      ;;
+  esac
+  shift
+done
+
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
@@ -36,11 +70,17 @@ else
   TASK_ID="$(echo "$TASK_LINE" | sed -E 's/^### ([^: ]+).*/\1/')"
 fi
 
+ITERATION_BUDGET="$(sed -nE 's/.*Max[[:space:]]+([0-9]+).*/\1/p' TASKS.md | head -n1)"
+if [ -z "$ITERATION_BUDGET" ]; then
+  ITERATION_BUDGET=3
+fi
+
 BRANCH="agent/${TASK_ID}-${RUN_ID}"
 
 echo "== Agent run: $RUN_ID =="
 echo "== Task: $TASK_ID =="
 echo "== Branch: $BRANCH =="
+echo "== Iteration budget: $ITERATION_BUDGET =="
 
 if [ -n "$(git status --porcelain)" ]; then
   echo "Working tree is not clean. Commit or stash your changes first."
@@ -53,8 +93,29 @@ git checkout -b "$BRANCH"
 mkdir -p ".agent-runs/$RUN_ID"
 mkdir -p "docs/agent-journal"
 
-cat > ".agent-runs/$RUN_ID/prompt.txt" <<EOF
+QUALITY_STATUS=1
+CODEX_STATUS=0
+
+for ATTEMPT in $(seq 1 "$ITERATION_BUDGET"); do
+  ATTEMPT_DIR=".agent-runs/$RUN_ID/attempt-$ATTEMPT"
+  mkdir -p "$ATTEMPT_DIR"
+
+  RETRY_CONTEXT=""
+  if [ "$ATTEMPT" -gt 1 ]; then
+    PREVIOUS_ATTEMPT=$((ATTEMPT - 1))
+    RETRY_CONTEXT="
+This is retry attempt ${ATTEMPT} of ${ITERATION_BUDGET}.
+The previous attempt did not pass. Inspect these local logs before editing:
+- .agent-runs/${RUN_ID}/attempt-${PREVIOUS_ATTEMPT}/codex-final.md
+- .agent-runs/${RUN_ID}/attempt-${PREVIOUS_ATTEMPT}/quality-gate.log
+- .agent-runs/${RUN_ID}/attempt-${PREVIOUS_ATTEMPT}/diff.patch
+"
+  fi
+
+  cat > "$ATTEMPT_DIR/prompt.txt" <<EOF
 You are working on this repository as a coding agent.
+
+This is attempt ${ATTEMPT} of ${ITERATION_BUDGET}.
 
 First read:
 - AGENTS.md
@@ -76,6 +137,7 @@ Rules:
 - Run the required tests/evals from EVALS.md.
 - If tests fail, make one focused revision and run them again.
 - Stop after the iteration budget in TASKS.md.
+${RETRY_CONTEXT}
 
 Before finishing, write a concise Markdown summary to:
 docs/agent-journal/${RUN_ID}.md
@@ -88,22 +150,45 @@ The summary must include:
 - remaining risks
 EOF
 
-echo "== Running Codex =="
-codex exec \
-  --sandbox workspace-write \
-  --ask-for-approval never \
-  "$(cat ".agent-runs/$RUN_ID/prompt.txt")" \
-  | tee ".agent-runs/$RUN_ID/codex-final.md"
+  echo "== Running Codex attempt $ATTEMPT/$ITERATION_BUDGET =="
+  set +e
+  codex exec \
+    --sandbox workspace-write \
+    --ask-for-approval never \
+    "$(cat "$ATTEMPT_DIR/prompt.txt")" \
+    | tee "$ATTEMPT_DIR/codex-final.md"
+  CODEX_STATUS=$?
+  set -e
 
-echo "== Running quality gate =="
-set +e
-bash scripts/run_quality_gate.sh > ".agent-runs/$RUN_ID/quality-gate.log" 2>&1
-QUALITY_STATUS=$?
-set -e
+  if [ "$CODEX_STATUS" -ne 0 ]; then
+    echo "Codex exited with status $CODEX_STATUS."
+    echo "Quality gate skipped because Codex exited with status $CODEX_STATUS." > "$ATTEMPT_DIR/quality-gate.log"
+    QUALITY_STATUS=$CODEX_STATUS
+  else
+    echo "== Running quality gate for attempt $ATTEMPT/$ITERATION_BUDGET =="
+    set +e
+    bash scripts/run_quality_gate.sh > "$ATTEMPT_DIR/quality-gate.log" 2>&1
+    QUALITY_STATUS=$?
+    set -e
 
-cat ".agent-runs/$RUN_ID/quality-gate.log"
+    cat "$ATTEMPT_DIR/quality-gate.log"
+  fi
 
-echo "== Capturing Git status =="
+  echo "== Capturing Git status for attempt $ATTEMPT/$ITERATION_BUDGET =="
+  git status --short | tee "$ATTEMPT_DIR/git-status.txt"
+  git diff > "$ATTEMPT_DIR/diff.patch" || true
+
+  if [ "$QUALITY_STATUS" -eq 0 ]; then
+    echo "== Quality gate passed on attempt $ATTEMPT/$ITERATION_BUDGET =="
+    break
+  fi
+
+  if [ "$ATTEMPT" -lt "$ITERATION_BUDGET" ]; then
+    echo "== Quality gate failed; retrying with diagnostics from attempt $ATTEMPT =="
+  fi
+done
+
+echo "== Capturing final Git status =="
 git status --short | tee ".agent-runs/$RUN_ID/git-status.txt"
 git diff > ".agent-runs/$RUN_ID/diff.patch" || true
 
@@ -120,13 +205,21 @@ Codex completed a run, but did not create a detailed journal entry.
 ## Quality gate
 
 Exit status: ${QUALITY_STATUS}
+Iteration budget: ${ITERATION_BUDGET}
 
 See local ignored logs:
 
-- .agent-runs/${RUN_ID}/codex-final.md
-- .agent-runs/${RUN_ID}/quality-gate.log
+- .agent-runs/${RUN_ID}/attempt-*/codex-final.md
+- .agent-runs/${RUN_ID}/attempt-*/quality-gate.log
 - .agent-runs/${RUN_ID}/diff.patch
 EOF
+fi
+
+if [ "$QUALITY_STATUS" -ne 0 ] && [ "$COMMIT_FAILURES" -ne 1 ]; then
+  echo "Quality gate failed after ${ITERATION_BUDGET} attempt(s)."
+  echo "Leaving changes uncommitted and unstaged for review."
+  echo "Rerun with --commit-failures to create a WIP audit commit."
+  exit "$QUALITY_STATUS"
 fi
 
 git add -A

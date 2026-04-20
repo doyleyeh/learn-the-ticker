@@ -59,3 +59,18 @@ def test_agents_contains_git_safety_rules():
 
     for command in forbidden_commands:
         assert command in agents, f"AGENTS.md should explicitly restrict {command}"
+
+
+def test_agent_loop_uses_retry_budget_and_clean_commit_policy():
+    bash_loop = read_file("scripts/agent_loop.sh")
+    powershell_loop = read_file("scripts/agent_loop.ps1")
+
+    assert "ITERATION_BUDGET" in bash_loop
+    assert "for ATTEMPT in" in bash_loop
+    assert "--commit-failures" in bash_loop
+    assert "Leaving changes uncommitted and unstaged for review." in bash_loop
+
+    assert "$IterationBudget" in powershell_loop
+    assert "for ($Attempt = 1" in powershell_loop
+    assert "CommitFailures" in powershell_loop
+    assert "Leaving changes uncommitted and unstaged for review." in powershell_loop
