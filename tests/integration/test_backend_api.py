@@ -3,6 +3,7 @@ import os
 os.environ.setdefault("LTT_FORCE_COMPAT_FASTAPI", "1")
 
 from backend.main import app
+from backend.safety import find_forbidden_output_phrases
 from backend.testing import TestClient
 
 
@@ -90,6 +91,28 @@ def test_chat_advice_like_question_redirects_to_education():
     assert body["citations"] == []
 
 
+def test_chat_advice_like_questions_redirect_without_citations():
+    cases = [
+        ("VOO", "How much of my portfolio should I put in VOO?"),
+        ("AAPL", "Give me a price target for AAPL."),
+        ("VOO", "Is VOO right for my taxes this year?"),
+        ("QQQ", "Which brokerage should I use and how do I place a trade for QQQ?"),
+        ("QQQ", "Will QQQ definitely outperform next year?"),
+        ("AAPL", "Should I sell or hold AAPL this week?"),
+    ]
+
+    for ticker, question in cases:
+        response = client.post(f"/api/assets/{ticker}/chat", json={"question": question})
+
+        assert response.status_code == 200
+        body = response.json()
+        combined = f"{body['direct_answer']} {body['why_it_matters']} {' '.join(body['uncertainty'])}"
+        assert body["safety_classification"] == "personalized_advice_redirect"
+        assert "educational" in combined.lower()
+        assert body["citations"] == []
+        assert find_forbidden_output_phrases(combined) == []
+
+
 def test_chat_supported_question_is_grounded_with_citation():
     response = client.post("/api/assets/QQQ/chat", json={"question": "What is this fund?"})
 
@@ -100,11 +123,22 @@ def test_chat_supported_question_is_grounded_with_citation():
     assert body["uncertainty"]
 
 
-def test_chat_unknown_asset_redirects():
-    response = client.post("/api/assets/DOGE/chat", json={"question": "What is this?"})
+def test_chat_unsupported_assets_redirect_to_scope_language():
+    cases = [
+        ("DOGE", "What is this?", "local skeleton data"),
+        ("BTC", "Should I buy BTC?", "Crypto assets are outside"),
+        ("TQQQ", "What should I do with TQQQ?", "Leveraged ETFs are outside"),
+        ("SQQQ", "Should I hold SQQQ?", "Inverse ETFs are outside"),
+    ]
 
-    assert response.status_code == 200
-    body = response.json()
-    assert body["safety_classification"] == "unsupported_asset_redirect"
-    assert body["citations"] == []
-    assert body["uncertainty"]
+    for ticker, question, expected_phrase in cases:
+        response = client.post(f"/api/assets/{ticker}/chat", json={"question": question})
+
+        assert response.status_code == 200
+        body = response.json()
+        combined = f"{body['direct_answer']} {body['why_it_matters']} {' '.join(body['uncertainty'])}"
+        assert body["safety_classification"] == "unsupported_asset_redirect"
+        assert expected_phrase in combined
+        assert body["citations"] == []
+        assert body["uncertainty"]
+        assert find_forbidden_output_phrases(combined) == []
