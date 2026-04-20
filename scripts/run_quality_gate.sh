@@ -43,6 +43,7 @@ if [ -f package.json ]; then
   npm run lint --if-present
   npm run test --if-present
   npm run typecheck --if-present
+  npm run build --if-present
 fi
 
 if [ -d backend ]; then

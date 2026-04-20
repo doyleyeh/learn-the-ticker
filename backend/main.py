@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
-try:
-    from fastapi import FastAPI
-except ModuleNotFoundError:  # pragma: no cover - exercised only in dependency-free local gates.
+if os.environ.get("LTT_FORCE_COMPAT_FASTAPI") == "1":
     from backend.compat import FastAPI
+else:
+    try:
+        from fastapi import FastAPI
+    except ModuleNotFoundError:  # pragma: no cover - exercised only in dependency-free local gates.
+        from backend.compat import FastAPI
 
 from backend.data import (
     ASSETS,
