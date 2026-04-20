@@ -2,12 +2,12 @@
 
 ## Current task
 
-### T-006: Add asset overview generation pipeline
+### T-007: Add comparison generation pipeline
 
 Goal:
-Generate beginner asset overview responses from structured local facts, source metadata, and citation mappings.
+Generate beginner comparison responses from structured local facts, comparison knowledge packs, source metadata, and citation mappings.
 
-This is a deterministic generation-pipeline task. It should turn the local retrieval knowledge packs into schema-valid beginner overview responses for supported stocks and ETFs. It must not add live external market-data, SEC, issuer, news, brokerage, tax, or LLM calls.
+This is a deterministic comparison-pipeline task. It should turn bounded comparison knowledge packs into schema-valid beginner comparison responses for supported assets, starting with `VOO` vs `QQQ`. It must not add live external market-data, SEC, issuer, news, brokerage, tax, or LLM calls.
 
 Allowed files:
 
@@ -16,6 +16,8 @@ Allowed files:
 - backend/\*\*
 - data/\*\*
 - lib/\*\*
+- app/\*\*
+- components/\*\*
 - tests/\*\*
 - evals/\*\*
 - scripts/\*\*
@@ -32,29 +34,26 @@ Do not change:
 - product requirements
 - financial safety rules
 - advice-boundary rules
-- frontend visual design except where existing fixtures must stay aligned
+- frontend visual design except where existing comparison fixtures or data contracts must stay aligned
 - production dependency files unless a dependency is clearly justified
 
 Acceptance criteria:
 
-- A deterministic overview generation module or service builds an `OverviewResponse`-compatible payload from an `AssetKnowledgePack`.
-- Supported overview generation works for at least `AAPL`, `VOO`, and `QQQ`.
-- Generated overviews include:
-  - canonical asset identity and state
-  - freshness or as-of metadata from the knowledge pack
-  - snapshot fields derived from normalized facts
-  - beginner summary with `what_it_is`, `why_people_consider_it`, and `main_catch`
-  - exactly three top risks first
-  - recent developments kept separate from stable facts, including a clear no-major-recent-development state when applicable
-  - suitability summary in educational framing only
-  - source documents and citation chips for important factual claims
-- Citation IDs generated for claims, summary facts, risks, and recent developments resolve to same-asset source documents or chunks.
-- Citation validation is applied to generated claims, and wrong-asset, missing, stale-unlabeled, or unsupported citations are rejected or surfaced as explicit uncertainty.
-- Unsupported or unknown assets return clear unsupported/unknown states without generated factual claims, invented summaries, or citations.
-- Generated copy avoids buy/sell/hold recommendations, personalized allocation advice, unsupported price targets, tax advice, brokerage/trading behavior, and certainty around future returns.
-- Backend asset overview endpoint uses the generation pipeline for supported fixture-backed assets without breaking the existing response schema.
-- Golden asset or static eval coverage checks schema validity, citation coverage, top-risk count, freshness fields, stable/recent separation, unsupported states, and no live external calls.
-- Existing retrieval fixture tests, citation validation, safety evals, backend route tests, frontend smoke checks, static evals, and quality gate behavior continue to pass.
+- A deterministic comparison generation module or service builds a `CompareResponse`-compatible payload from a `ComparisonKnowledgePack`.
+- Supported comparison generation works for `VOO` vs `QQQ` in either ticker order.
+- Generated ETF comparison includes:
+  - left and right canonical asset identities
+  - supported state and `etf_vs_etf` comparison type
+  - side-by-side or key-difference content for benchmark, expense ratio, holdings count, concentration or breadth, and educational role
+  - a beginner bottom-line summary that is educational, not prescriptive
+  - citations for important comparison claims
+- Citation IDs used by comparison differences and bottom-line content resolve to sources from the same comparison pack only.
+- Citation validation rejects or surfaces wrong-asset, missing, stale-unlabeled, unsupported, or insufficient comparison evidence.
+- Unsupported, unknown, or unavailable comparison requests return clear states without generated factual claims, invented summaries, or citations.
+- Generated comparison copy avoids buy/sell/hold recommendations, personalized allocation advice, unsupported price targets, tax advice, brokerage/trading behavior, and certainty around future returns.
+- Backend `/api/compare` uses the comparison generation pipeline for fixture-backed supported comparisons without breaking the existing response schema.
+- Static evals or focused tests check schema validity, citation coverage, same-pack source binding, ETF comparison dimensions, unsupported states, and no live external calls.
+- Existing overview generation tests, retrieval fixture tests, citation validation, safety evals, backend route tests, frontend smoke checks, static evals, and quality gate behavior continue to pass.
 - No endpoint, test, or CI command makes live external calls.
 - If dependencies are added, document why they are needed and keep the dependency set minimal.
 - The main quality gate passes.
@@ -68,6 +67,27 @@ Iteration budget:
 - Max 3 Codex implementation loops before reporting blockers.
 
 ## Completed
+
+### T-006: Add asset overview generation pipeline
+
+Goal:
+Generate beginner asset overview responses from structured local facts, source metadata, and citation mappings.
+
+Completed:
+
+- Deterministic overview generation exists in `backend/overview.py`.
+- Supported overview generation works for fixture-backed `AAPL`, `VOO`, and `QQQ`.
+- Generated overviews include canonical identity, state, freshness metadata, snapshot fields, beginner summary, exactly three top risks, separated recent developments, suitability summary, claims, citations, and source documents.
+- Citation IDs generated for claims, summary facts, risks, and recent developments resolve to same-asset sources.
+- Unsupported and unknown assets return explicit states without generated factual claims, invented summaries, or citations.
+- Backend asset overview, source, and recent routes use generated overview output for fixture-backed assets.
+- Tests and static evals cover schema validity, citation coverage, top-risk count, freshness fields, stable/recent separation, unsupported states, safety language, and no live external calls.
+- Existing retrieval fixture tests, citation validation, safety evals, backend route tests, frontend smoke checks, static evals, and quality gate behavior pass.
+
+Completion commits:
+
+- `0f4fd70 feat(T-006): add asset overview generation pipeline`
+- `910761c Merge pull request #6 from doyleyeh/agent/T-006-20260420T214313Z`
 
 ### T-005: Add source-backed retrieval fixtures
 
@@ -195,3 +215,8 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
+
+### T-008: Add grounded asset chat pipeline
+
+Goal:
+Generate asset-specific chat responses from selected asset knowledge packs, citation mappings, and safety classification.
