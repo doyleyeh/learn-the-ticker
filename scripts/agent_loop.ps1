@@ -138,7 +138,7 @@ The summary must include:
 
   Write-Host "== Running Codex attempt $Attempt/$IterationBudget =="
   $CodexOutputPath = "$AttemptDir/codex-final.md"
-  & codex exec --sandbox workspace-write --ask-for-approval never $Prompt |
+  & codex -a never exec --sandbox workspace-write $Prompt |
     Tee-Object -FilePath $CodexOutputPath
   $CodexStatus = $LASTEXITCODE
 

@@ -152,9 +152,8 @@ EOF
 
   echo "== Running Codex attempt $ATTEMPT/$ITERATION_BUDGET =="
   set +e
-  codex exec \
+  codex -a never exec \
     --sandbox workspace-write \
-    --ask-for-approval never \
     "$(cat "$ATTEMPT_DIR/prompt.txt")" \
     | tee "$ATTEMPT_DIR/codex-final.md"
   CODEX_STATUS=$?
