@@ -2,21 +2,20 @@
 
 ## Current task
 
-### T-004: Add safety guardrail tests
+### T-005: Add source-backed retrieval fixtures
 
 Goal:
-Add deterministic safety guardrail tests and eval coverage that detect buy/sell/hold recommendation leakage, personalized allocation advice, unsupported price targets, tax advice, brokerage/trading behavior, and certainty around future returns.
+Create local fixture data and retrieval contracts for supported stocks and ETFs without live external calls in CI.
 
-This is a safety-test task. It should strengthen classifiers, fixtures, evals, and tests for existing backend/frontend outputs, but it must not add live external market-data, SEC, issuer, news, brokerage, tax, or LLM calls.
+This is a retrieval-fixture task. It should create deterministic source documents, chunks, normalized facts, freshness metadata, and bounded asset knowledge packs that future generation and chat code can use. It must not add live external market-data, SEC, issuer, news, brokerage, tax, or LLM calls.
 
 Allowed files:
 
 - TASKS.md
 - Makefile
 - backend/\*\*
+- data/\*\*
 - lib/\*\*
-- app/\*\*
-- components/\*\*
 - tests/\*\*
 - evals/\*\*
 - scripts/\*\*
@@ -33,24 +32,26 @@ Do not change:
 - product requirements
 - financial safety rules
 - advice-boundary rules
+- frontend visual design except where existing fixtures must stay aligned
 - production dependency files unless a dependency is clearly justified
 
 Acceptance criteria:
 
-- Safety eval cases include representative prompts for:
-  - direct buy/sell/hold questions
-  - personalized allocation or position sizing
-  - unsupported price targets
-  - tax advice
-  - brokerage/trading execution
-  - certainty around future returns
-  - unsupported assets such as crypto, leveraged ETFs, and inverse ETFs
-- A deterministic safety test or eval runner checks outputs, not only input fixture structure.
-- Backend chat tests verify advice-like questions are redirected into educational framing and return no citations unless the answer is grounded in supported asset facts.
-- Safety tests assert forbidden phrases do not appear in backend responses, frontend copy, fixture summaries, or comparison output.
-- Safe educational prompts still produce educational responses rather than being over-blocked.
-- Unsupported asset prompts are redirected into clear unsupported-scope language.
-- Existing citation validation, backend route, frontend smoke, static eval, and quality gate behavior continue to pass.
+- Local source-backed fixture data exists for at least one supported stock and two supported ETFs, including `AAPL`, `VOO`, and `QQQ`.
+- Each supported fixture includes:
+  - canonical asset identity
+  - official or structured source document metadata
+  - source chunks with stable chunk IDs and supporting passages
+  - normalized facts with source document and chunk references
+  - freshness or as-of metadata
+  - separated recent-development fixture data, even when the state is no major recent development found
+- A retrieval contract or service can build an asset knowledge pack filtered to a single asset.
+- Retrieval results never include chunks, facts, or citations from the wrong asset.
+- Retrieval can return both normalized facts and source chunks, with source metadata attached to every returned item.
+- Comparison retrieval can build a bounded pack for `VOO` vs `QQQ` without mixing unrelated assets.
+- Missing, stale, unsupported, or insufficient fixture evidence is represented explicitly instead of inventing facts.
+- Golden asset or static eval coverage checks fixture shape, asset filtering, citation/source linkage, freshness fields, and no live external calls.
+- Existing citation validation, safety evals, backend route tests, frontend smoke checks, static evals, and quality gate behavior continue to pass.
 - No endpoint, test, or CI command makes live external calls.
 - If dependencies are added, document why they are needed and keep the dependency set minimal.
 - The main quality gate passes.
@@ -64,6 +65,26 @@ Iteration budget:
 - Max 3 Codex implementation loops before reporting blockers.
 
 ## Completed
+
+### T-004: Add safety guardrail tests
+
+Goal:
+Add deterministic safety guardrail tests and eval coverage that detect buy/sell/hold recommendation leakage, personalized allocation advice, unsupported price targets, tax advice, brokerage/trading behavior, and certainty around future returns.
+
+Completed:
+
+- Safety eval cases cover direct buy/sell/hold questions, allocation or position sizing, unsupported price targets, tax advice, brokerage/trading execution, future-return certainty, unsupported assets, and safe educational prompts.
+- Static safety evals check backend chat outputs and forbidden output phrases, not only fixture structure.
+- Backend chat tests verify advice-like questions redirect into educational framing and return no citations unless grounded in supported asset facts.
+- Safety tests assert forbidden phrases do not appear in backend responses, frontend copy, fixture summaries, or comparison output.
+- Safe educational prompts continue to produce grounded educational responses.
+- Unsupported asset prompts redirect into clear unsupported-scope language.
+- Existing citation validation, backend route, frontend smoke, static eval, and quality gate behavior pass.
+
+Completion commits:
+
+- `3be6ff1 agent(T-004): implement current task`
+- `08f68d0 Merge pull request #4 from doyleyeh/agent/T-004-20260420T182024Z`
 
 ### T-003: Add citation validation module
 
@@ -151,11 +172,6 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-005: Add source-backed retrieval fixtures
-
-Goal:
-Create local fixture data and retrieval contracts for supported stocks and ETFs without live external calls in CI.
 
 ### T-006: Add asset overview generation pipeline
 
