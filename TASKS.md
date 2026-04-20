@@ -2,21 +2,21 @@
 
 ## Current task
 
-### T-003: Add citation validation module
+### T-004: Add safety guardrail tests
 
 Goal:
-Add a citation validation module that verifies generated or fixture-backed claims only cite source documents, chunks, or normalized facts that belong to the same asset or comparison pack and support the claim type.
+Add deterministic safety guardrail tests and eval coverage that detect buy/sell/hold recommendation leakage, personalized allocation advice, unsupported price targets, tax advice, brokerage/trading behavior, and certainty around future returns.
 
-This is a validation-contract task. It should add deterministic local validation logic, schemas, fixtures, and tests. It must not add live external market-data, SEC, issuer, news, or LLM calls yet.
+This is a safety-test task. It should strengthen classifiers, fixtures, evals, and tests for existing backend/frontend outputs, but it must not add live external market-data, SEC, issuer, news, brokerage, tax, or LLM calls.
 
 Allowed files:
 
 - TASKS.md
 - Makefile
-- requirements.txt
-- requirements-dev.txt
 - backend/\*\*
 - lib/\*\*
+- app/\*\*
+- components/\*\*
 - tests/\*\*
 - evals/\*\*
 - scripts/\*\*
@@ -33,24 +33,24 @@ Do not change:
 - product requirements
 - financial safety rules
 - advice-boundary rules
-- frontend visual design except where tests need deterministic citation fixture exports
+- production dependency files unless a dependency is clearly justified
 
 Acceptance criteria:
 
-- A citation validation module exists in the backend or shared project code.
-- The validator accepts structured claims, citation IDs, source documents, and asset or comparison-pack context.
-- The validator rejects:
-  - missing citations for important factual claims
-  - citations that do not exist
-  - citations from the wrong asset
-  - recent-development claims that cite non-recent sources
-  - stale sources unless the claim or result labels them stale
-  - citations whose supporting source type does not support the claim type
-- The validator returns explicit statuses such as valid, missing citation, wrong asset, stale source, unsupported source, or insufficient evidence.
-- Supported asset fixtures and comparison fixtures can be checked without live external calls.
-- Citation eval cases in `evals/citation_eval_cases.yaml` are exercised by tests or a deterministic eval runner.
-- Tests cover single-asset claims, comparison claims, recent-development claims, stale/unknown states, and wrong-asset citations.
-- Existing backend, frontend smoke, static eval, and quality gate behavior continue to pass.
+- Safety eval cases include representative prompts for:
+  - direct buy/sell/hold questions
+  - personalized allocation or position sizing
+  - unsupported price targets
+  - tax advice
+  - brokerage/trading execution
+  - certainty around future returns
+  - unsupported assets such as crypto, leveraged ETFs, and inverse ETFs
+- A deterministic safety test or eval runner checks outputs, not only input fixture structure.
+- Backend chat tests verify advice-like questions are redirected into educational framing and return no citations unless the answer is grounded in supported asset facts.
+- Safety tests assert forbidden phrases do not appear in backend responses, frontend copy, fixture summaries, or comparison output.
+- Safe educational prompts still produce educational responses rather than being over-blocked.
+- Unsupported asset prompts are redirected into clear unsupported-scope language.
+- Existing citation validation, backend route, frontend smoke, static eval, and quality gate behavior continue to pass.
 - No endpoint, test, or CI command makes live external calls.
 - If dependencies are added, document why they are needed and keep the dependency set minimal.
 - The main quality gate passes.
@@ -64,6 +64,26 @@ Iteration budget:
 - Max 3 Codex implementation loops before reporting blockers.
 
 ## Completed
+
+### T-003: Add citation validation module
+
+Goal:
+Add a citation validation module that verifies generated or fixture-backed claims only cite source documents, chunks, or normalized facts that belong to the same asset or comparison pack and support the claim type.
+
+Completed:
+
+- Citation validation module exists in `backend/citations.py`.
+- Validator accepts structured claims, citation IDs, source evidence, and asset or comparison-pack context.
+- Validator rejects missing citations, nonexistent citations, wrong-asset citations, non-recent sources for recent claims, stale unlabeled sources, unsupported source types, and insufficient evidence.
+- Citation eval cases are exercised by deterministic static evals and unit tests.
+- Tests cover single-asset claims, comparison claims, recent-development claims, stale/unknown states, and wrong-asset citations.
+- Existing backend, frontend, static eval, and quality gate behavior pass.
+
+Completion commits:
+
+- `98be660 agent(T-003): implement current task`
+- `78a6508 fix: skip codex review without api key`
+- `72535b7 Merge pull request #3 from doyleyeh/agent/T-003-20260420T054020Z`
 
 ### T-002: Create frontend Next.js skeleton
 
@@ -131,11 +151,6 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-004: Add safety guardrail tests
-
-Goal:
-Detect buy/sell language, personalized allocation advice, unsupported price targets, and certainty around future returns.
 
 ### T-005: Add source-backed retrieval fixtures
 
