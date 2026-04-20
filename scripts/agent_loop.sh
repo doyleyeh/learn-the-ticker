@@ -66,9 +66,32 @@ TASK_LINE="$(grep -m1 '^### T-' TASKS.md || true)"
 
 if [ -z "$TASK_LINE" ]; then
   TASK_ID="T-unknown"
+  TASK_TITLE="current task"
 else
   TASK_ID="$(echo "$TASK_LINE" | sed -E 's/^### ([^: ]+).*/\1/')"
+  TASK_TITLE="$(echo "$TASK_LINE" | sed -E 's/^### [^: ]+:[[:space:]]*//')"
 fi
+
+if [ -z "$TASK_TITLE" ] || [ "$TASK_TITLE" = "$TASK_LINE" ]; then
+  TASK_TITLE="current task"
+fi
+
+TASK_TITLE_LOWER="$(printf '%s' "$TASK_TITLE" | tr '[:upper:]' '[:lower:]')"
+if printf '%s' "$TASK_TITLE_LOWER" | grep -Eq '(^|[^[:alnum:]])fix(es|ed)?([^[:alnum:]]|$)'; then
+  COMMIT_TYPE="fix"
+elif printf '%s' "$TASK_TITLE_LOWER" | grep -Eq '(^|[^[:alnum:]])(test|tests|eval|evals)([^[:alnum:]]|$)'; then
+  COMMIT_TYPE="test"
+elif printf '%s' "$TASK_TITLE_LOWER" | grep -Eq '(^|[^[:alnum:]])(doc|docs|documentation)([^[:alnum:]]|$)'; then
+  COMMIT_TYPE="docs"
+elif printf '%s' "$TASK_TITLE_LOWER" | grep -Eq '(^|[^[:alnum:]])(scaffold|prepare|setup|chore)([^[:alnum:]]|$)'; then
+  COMMIT_TYPE="chore"
+elif printf '%s' "$TASK_TITLE_LOWER" | grep -Eq '(^|[^[:alnum:]])refactor([^[:alnum:]]|$)'; then
+  COMMIT_TYPE="refactor"
+else
+  COMMIT_TYPE="feat"
+fi
+
+TASK_COMMIT_SUBJECT="$(printf '%s%s' "$(printf '%s' "$TASK_TITLE" | cut -c1 | tr '[:upper:]' '[:lower:]')" "$(printf '%s' "$TASK_TITLE" | cut -c2-)")"
 
 ITERATION_BUDGET="$(sed -nE 's/.*Max[[:space:]]+([0-9]+).*/\1/p' TASKS.md | head -n1)"
 if [ -z "$ITERATION_BUDGET" ]; then
@@ -79,7 +102,9 @@ BRANCH="agent/${TASK_ID}-${RUN_ID}"
 
 echo "== Agent run: $RUN_ID =="
 echo "== Task: $TASK_ID =="
+echo "== Task title: $TASK_TITLE =="
 echo "== Branch: $BRANCH =="
+echo "== Commit subject: ${COMMIT_TYPE}(${TASK_ID}): ${TASK_COMMIT_SUBJECT} =="
 echo "== Iteration budget: $ITERATION_BUDGET =="
 
 if [ -n "$(git status --porcelain)" ]; then
@@ -128,8 +153,8 @@ First read:
 Work only on the current task in TASKS.md.
 
 Rules:
-- Do not run git commit.
-- Do not run git push.
+- Leave changes uncommitted for the harness commit step after the quality gate.
+- Do not push from inside a Codex attempt.
 - Do not run git reset --hard.
 - Do not run git clean -fd.
 - Do not change unrelated files.
@@ -230,12 +255,12 @@ fi
 
 if [ "$QUALITY_STATUS" -eq 0 ]; then
   git commit \
-    -m "agent(${TASK_ID}): implement current task" \
+    -m "${COMMIT_TYPE}(${TASK_ID}): ${TASK_COMMIT_SUBJECT}" \
     -m "Run ID: ${RUN_ID}" \
     -m "Quality gate: passed"
 else
   git commit \
-    -m "wip(${TASK_ID}): agent attempt with failing quality gate" \
+    -m "chore(${TASK_ID}): record failed ${TASK_COMMIT_SUBJECT} attempt" \
     -m "Run ID: ${RUN_ID}" \
     -m "Quality gate: failed. Review before merge."
 fi

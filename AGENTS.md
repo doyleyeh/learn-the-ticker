@@ -60,11 +60,11 @@ You may run:
 - `git log`
 - `git branch`
 - `git show`
+- `git commit`
+- `git push`
 
 Do not run these unless the user or harness explicitly allows it:
 
-- `git commit`
-- `git push`
 - `git reset --hard`
 - `git clean -fd`
 - `git rebase`
@@ -72,7 +72,9 @@ Do not run these unless the user or harness explicitly allows it:
 - `git checkout main`
 - `git push --force`
 
-The harness script handles branch creation, journaling, tests, and commits.
+Commit messages must follow Conventional Commits and describe the completed task, for example `feat(T-005): add source-backed retrieval fixtures`. Do not use vague subjects such as `implement current task`.
+
+The harness script handles branch creation, journaling, tests, and routine task commits.
 
 ## Product guardrails
 

@@ -28,6 +28,44 @@ function Get-IterationBudget {
   return 3
 }
 
+function Get-ConventionalCommitType {
+  param([string]$Title)
+
+  $LowerTitle = $Title.ToLowerInvariant()
+
+  if ($LowerTitle -match "(^|[^a-z0-9])fix(es|ed)?([^a-z0-9]|$)") {
+    return "fix"
+  }
+  if ($LowerTitle -match "(^|[^a-z0-9])(test|tests|eval|evals)([^a-z0-9]|$)") {
+    return "test"
+  }
+  if ($LowerTitle -match "(^|[^a-z0-9])(doc|docs|documentation)([^a-z0-9]|$)") {
+    return "docs"
+  }
+  if ($LowerTitle -match "(^|[^a-z0-9])(scaffold|prepare|setup|chore)([^a-z0-9]|$)") {
+    return "chore"
+  }
+  if ($LowerTitle -match "(^|[^a-z0-9])refactor([^a-z0-9]|$)") {
+    return "refactor"
+  }
+
+  return "feat"
+}
+
+function Get-CommitSubject {
+  param([string]$Title)
+
+  if ([string]::IsNullOrWhiteSpace($Title)) {
+    return "current task"
+  }
+
+  if ($Title.Length -eq 1) {
+    return $Title.ToLowerInvariant()
+  }
+
+  return $Title.Substring(0, 1).ToLowerInvariant() + $Title.Substring(1)
+}
+
 $Root = (git rev-parse --show-toplevel).Trim()
 Set-Location $Root
 
@@ -50,16 +88,27 @@ $TaskLine = Select-String -Path "TASKS.md" -Pattern "^### T-" | Select-Object -F
 
 if ($null -eq $TaskLine) {
   $TaskId = "T-unknown"
+  $TaskTitle = "current task"
 } else {
   $TaskId = [regex]::Match($TaskLine.Line, "^### ([^: ]+)").Groups[1].Value
+  $TaskTitleMatch = [regex]::Match($TaskLine.Line, "^### [^: ]+:\s*(.+)$")
+  if ($TaskTitleMatch.Success) {
+    $TaskTitle = $TaskTitleMatch.Groups[1].Value.Trim()
+  } else {
+    $TaskTitle = "current task"
+  }
 }
 
 $Branch = "agent/$TaskId-$RunId"
 $IterationBudget = Get-IterationBudget
+$CommitType = Get-ConventionalCommitType -Title $TaskTitle
+$TaskCommitSubject = Get-CommitSubject -Title $TaskTitle
 
 Write-Host "== Agent run: $RunId =="
 Write-Host "== Task: $TaskId =="
+Write-Host "== Task title: $TaskTitle =="
 Write-Host "== Branch: $Branch =="
+Write-Host "== Commit subject: ${CommitType}(${TaskId}): $TaskCommitSubject =="
 Write-Host "== Iteration budget: $IterationBudget =="
 
 $Status = git status --porcelain
@@ -112,8 +161,8 @@ First read:
 Work only on the current task in TASKS.md.
 
 Rules:
-- Do not run git commit.
-- Do not run git push.
+- Leave changes uncommitted for the harness commit step after the quality gate.
+- Do not push from inside a Codex attempt.
 - Do not run git reset --hard.
 - Do not run git clean -fd.
 - Do not change unrelated files.
@@ -215,12 +264,12 @@ if (-not $StagedFiles) {
 
 if ($QualityStatus -eq 0) {
   git commit `
-    -m "agent($TaskId): implement current task" `
+    -m "${CommitType}(${TaskId}): $TaskCommitSubject" `
     -m "Run ID: $RunId" `
     -m "Quality gate: passed"
 } else {
   git commit `
-    -m "wip($TaskId): agent attempt with failing quality gate" `
+    -m "chore(${TaskId}): record failed $TaskCommitSubject attempt" `
     -m "Run ID: $RunId" `
     -m "Quality gate: failed. Review before merge."
 }
