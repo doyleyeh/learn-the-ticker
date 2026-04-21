@@ -288,3 +288,9 @@ Completion commits:
 ## Backlog
 
 ### T-011: Add comparison source metadata contract
+
+### T-012: Render comparison source metadata on compare page
+
+### T-013: Add fixture-backed asset name search states
+
+### T-014: Add beginner chat starter prompts
