@@ -70,7 +70,6 @@ $Root = (git rev-parse --show-toplevel).Trim()
 Set-Location $Root
 
 Require-Command git
-Require-Command bash
 Require-Command codex
 
 $CodexVersion = (& codex --version 2>&1)
@@ -199,7 +198,7 @@ The summary must include:
   } else {
     Write-Host "== Running quality gate for attempt $Attempt/$IterationBudget =="
     $QualityLogPath = "$AttemptDir/quality-gate.log"
-    & bash scripts/run_quality_gate.sh *> $QualityLogPath
+    & .\scripts\run_quality_gate.ps1 *> $QualityLogPath
     $QualityStatus = $LASTEXITCODE
     Get-Content -LiteralPath $QualityLogPath
   }

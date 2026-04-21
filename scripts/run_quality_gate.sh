@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=scripts/activate_agent_env.sh
+source "$ROOT/scripts/activate_agent_env.sh"
+
 if [ -n "${PYTHON:-}" ]; then
   PYTHON_BIN="$PYTHON"
 elif command -v python3 >/dev/null 2>&1; then
@@ -13,9 +17,11 @@ else
 fi
 
 echo "== Quality gate started =="
+if [ -n "${CONDA_DEFAULT_ENV:-}" ]; then
+  echo "== Conda env: ${CONDA_DEFAULT_ENV} =="
+fi
 echo "== Python: $($PYTHON_BIN --version) =="
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PYTHONDONTWRITEBYTECODE=1
 
 run_pytest() {
@@ -40,6 +46,7 @@ fi
 
 if [ -f package.json ]; then
   echo "== Frontend checks =="
+  ltt_require_frontend_toolchain
   npm run lint --if-present
   npm run test --if-present
   npm run typecheck --if-present

@@ -38,28 +38,9 @@ done
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
-if ! command -v codex >/dev/null 2>&1; then
-  echo "Codex CLI is required. Install it or add it to PATH before running the agent loop."
-  exit 127
-fi
-
-if command -v node >/dev/null 2>&1; then
-  NODE_MAJOR="$(node -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null || echo 0)"
-else
-  NODE_MAJOR=0
-fi
-
-if [ "$NODE_MAJOR" -lt 18 ]; then
-  echo "Codex CLI requires a modern Node.js runtime in this shell."
-  echo "Detected Node major version: $NODE_MAJOR"
-  echo "Use Node 18+ in Bash/WSL, or run scripts/agent_loop.ps1 from PowerShell where Codex already works."
-  exit 1
-fi
-
-if ! codex --version >/dev/null 2>&1; then
-  echo "Codex CLI was found but could not start. Check the Node.js runtime used by this shell."
-  exit 1
-fi
+# shellcheck source=scripts/activate_agent_env.sh
+source "$ROOT/scripts/activate_agent_env.sh"
+ltt_require_codex_toolchain
 
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 TASK_LINE="$(grep -m1 '^### T-' TASKS.md || true)"
