@@ -342,6 +342,22 @@ input {
   vertical-align: baseline;
 }
 
+.starter-prompt-group {
+  align-items: stretch;
+}
+
+.starter-prompt-button {
+  justify-content: flex-start;
+  max-width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .freshness-label {
   display: inline-grid;
   gap: 2px;
@@ -559,6 +575,10 @@ blockquote {
   }
 
   .search-button {
+    width: 100%;
+  }
+
+  .starter-prompt-button {
     width: 100%;
   }
 

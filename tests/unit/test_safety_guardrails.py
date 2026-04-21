@@ -28,6 +28,18 @@ def assert_no_forbidden_phrases(label: str, text: str) -> None:
     assert hits == [], f"{label} leaked forbidden phrases: {hits}"
 
 
+def test_forbidden_output_phrase_detector_rejects_advice_like_copy():
+    forbidden_examples = [
+        "You should buy VOO.",
+        "Allocate 20% to QQQ.",
+        "The price target is $100.",
+        "Open a brokerage account.",
+    ]
+
+    for example in forbidden_examples:
+        assert find_forbidden_output_phrases(example), f"Expected forbidden phrase hit for: {example}"
+
+
 def test_backend_responses_do_not_leak_advice_phrases():
     response_payloads = []
 
@@ -73,3 +85,19 @@ def test_frontend_copy_fixtures_and_comparison_do_not_leak_advice_phrases():
     for path in paths:
         text = (ROOT / path).read_text(encoding="utf-8")
         assert_no_forbidden_phrases(path, text)
+
+
+def test_chat_starter_prompt_copy_is_advice_safe():
+    text = (ROOT / "components/AssetChatPanel.tsx").read_text(encoding="utf-8")
+    prompt_copy_markers = [
+        "What is ${normalizedTicker} in plain English?",
+        "business model work?",
+        "fund exposure",
+        "What top risk should a beginner understand",
+        "What changed recently",
+        "without a personal recommendation",
+    ]
+
+    for marker in prompt_copy_markers:
+        assert marker in text
+        assert_no_forbidden_phrases(marker, marker)
