@@ -2,24 +2,22 @@
 
 ## Current task
 
-### T-012: Render comparison source metadata on compare page
+### T-013: Add fixture-backed asset name search states
 
 Goal:
-Render comparison source-document metadata on the compare page so beginners can inspect the sources, freshness, and supporting passages behind generated comparison citations.
+Let the home-page search workflow resolve supported fixture-backed assets by ticker or asset name, while preserving clear unsupported, unknown, and multi-match states without live calls or invented facts.
 
-This is a frontend/UI task. T-011 added deterministic `source_documents` metadata to generated comparison responses for the local `VOO` vs `QQQ` comparison pack. Update the compare page so comparison citation chips resolve to same-pack source details instead of relying on the left asset's primary source. Keep the comparison page fixture-backed and deterministic for this task. Do not add live external market-data, SEC, issuer, news, brokerage, tax, or LLM calls. Do not change backend comparison generation, backend source metadata validation, or retrieval fixture content.
+This is a narrow frontend/search-state task. The backend `/api/search` already supports deterministic fixture-backed ticker and name matching, but the home-page `SearchBox` currently resolves only exact ticker keys from local fixtures. Update the fixture-backed frontend search workflow so beginner users can type supported asset names such as Apple, Apple Inc., Vanguard S&P 500 ETF, or Invesco QQQ Trust and see deterministic local results. Keep the workflow local and fixture-backed for this task. Do not add live external market-data, SEC, issuer, news, brokerage, tax, or LLM calls. Do not turn search into advice, ranking, recommendations, portfolio guidance, or market commentary.
 
 Allowed files:
 
 - TASKS.md
-- app/compare/page.tsx
-- components/CitationChip.tsx
-- components/SourceDrawer.tsx
-- components/ComparisonSourceDetails.tsx
+- app/page.tsx
+- components/SearchBox.tsx
 - lib/fixtures.ts
-- lib/compare.ts
 - styles/globals.css
 - tests/frontend/smoke.mjs
+- tests/integration/test_backend_api.py
 - tests/unit/test_safety_guardrails.py
 - docs/agent-journal/\*\*
 
@@ -30,11 +28,11 @@ Do not change:
 - EVALS.md
 - docs/learn_the_ticker_PRD.md
 - docs/learn_the_ticker_technical_design_spec.md
-- backend models, routes, comparison generation, chat generation, overview generation, citation validation, or retrieval logic
+- backend models, routes, search behavior, comparison generation, chat generation, overview generation, citation validation, or retrieval logic
 - retrieval fixture content in `data/`
 - asset page rendering
 - asset page chat panel behavior
-- search workflow behavior
+- comparison page rendering
 - comparison fixture coverage beyond the existing local `VOO` vs `QQQ` comparison pack
 - financial safety rules
 - advice-boundary rules
@@ -42,16 +40,17 @@ Do not change:
 
 Acceptance criteria:
 
-- The compare page renders source details for every comparison source document needed by the displayed comparison citations.
-- Comparison citation chips for key differences and the beginner bottom line link to matching source details by citation/source metadata, not to a hard-coded primary asset source.
-- Each rendered comparison source detail includes source document ID, title, publisher, source type, URL, published or as-of date when available, retrieved timestamp, freshness state, official-source badge, and supporting passage when available.
-- Source details identify the related comparison claim or citation context so a beginner can trace the chip back to the evidence.
-- `VOO` vs `QQQ` and `QQQ` vs `VOO` compare-page states use only same-pack `VOO` and `QQQ` comparison source metadata; no `AAPL`, unsupported, stale-unlabeled, or wrong-asset source appears for generated comparison claims.
-- Unsupported, unknown, or unavailable comparison UI states, if represented by the touched fixtures/components, show no factual citation chips or source drawers and clearly label missing evidence as unknown, unavailable, stale, or insufficient evidence.
-- Existing citation chips, source drawer behavior, freshness labels, stale/unknown labels, and beginner-readable comparison copy remain visible and accessible.
-- Frontend smoke checks cover comparison source metadata rendering markers, chip-to-source linkage, official-source display, freshness display, supporting passages, and absence of live external compare calls.
-- Safety guardrail checks continue to reject buy/sell/hold recommendations, personalized allocation advice, unsupported price targets, tax advice, brokerage/trading behavior, and certainty around future returns in frontend comparison copy.
-- Existing backend comparison source metadata tests and static evals continue to pass.
+- The home-page search accepts supported tickers and supported asset-name queries using local fixture data only, case-insensitively and with leading or trailing whitespace ignored.
+- Supported name queries resolve deterministic local matches for at least `Apple`, `Apple Inc.`, `Vanguard S&P 500 ETF`, `S&P 500`, `Invesco QQQ Trust`, and `Nasdaq-100` where the match is supported by existing fixture names, summaries, or source-backed identity fields.
+- A single supported match shows a supported state with the canonical ticker, asset name, asset type, exchange, and issuer when available, and the Open action links to `/assets/{ticker}` for that canonical ticker.
+- A query that matches more than one supported local fixture, such as a broad ETF name fragment, is not silently guessed. It shows a multi-match or disambiguation state with each matching ticker/name as an asset-page link.
+- Unsupported ticker queries such as `BTC`, `ETH`, `TQQQ`, and `SQQQ` still show the existing unsupported-scope message, do not link to an asset page, and do not show factual citation chips or source drawers.
+- Unknown ticker or name queries such as `ZZZZ` or a non-fixture company still show an unknown local-fixture state, explicitly say no facts are invented, do not link to an asset page, and do not imply stale or unsupported evidence as a fact.
+- Existing quick links for supported examples and `VOO vs QQQ` remain visible.
+- Search result copy stays educational and does not include buy/sell/hold recommendations, personalized allocation advice, unsupported price targets, tax advice, brokerage/trading behavior, or certainty around future returns.
+- Frontend smoke checks cover ticker search markers, supported asset-name search markers, single-match state, multi-match/disambiguation state, unsupported state, unknown state, and absence of live external search calls.
+- If backend search tests are touched, they only assert the existing deterministic local `/api/search` fixture behavior and do not require backend implementation changes or live external calls.
+- Existing citation chips, source drawer behavior, freshness labels, stale/unknown labels, comparison source metadata rendering, and asset chat UI behavior remain unchanged.
 - No endpoint, frontend helper, test, or CI command makes live external calls.
 - No new production dependency is added.
 - The main quality gate passes.
@@ -61,7 +60,7 @@ Required commands:
 - npm test
 - npm run typecheck
 - npm run build
-- python3 -m pytest tests/unit/test_comparison_generation.py tests/integration/test_backend_api.py -q
+- python3 -m pytest tests/integration/test_backend_api.py -q
 - python3 -m pytest tests/unit/test_safety_guardrails.py -q
 - python3 evals/run_static_evals.py
 - bash scripts/run_quality_gate.sh
@@ -71,6 +70,31 @@ Iteration budget:
 - Max 3 Codex implementation loops before reporting blockers.
 
 ## Completed
+
+### T-012: Render comparison source metadata on compare page
+
+Goal:
+Render comparison source-document metadata on the compare page so beginners can inspect the sources, freshness, and supporting passages behind generated comparison citations.
+
+Completed:
+
+- Reworked `app/compare/page.tsx` to use a comparison-specific fixture shape from `lib/compare.ts` instead of the older `compareFixture` and left-asset primary-source fallback.
+- Added `lib/compare.ts` with deterministic `VOO` vs `QQQ` and `QQQ` vs `VOO` compare-page fixtures, comparison citation IDs for benchmark, expense ratio, holdings count, and educational role, same-pack comparison source documents, and unsupported/unknown unavailable states with no citations or source documents.
+- Added `getComparisonCitationMetadata` so compare-page citation chips resolve to the matching comparison source document and related claim context.
+- Added `components/ComparisonSourceDetails.tsx` to render comparison source document ID, title, source type, publisher, URL, published or as-of date, retrieved timestamp, freshness state, official-source badge, related comparison claims, and supporting passage.
+- Updated `CitationChip` to expose `data-source-document-id` and `data-freshness-state` markers used by comparison source metadata smoke checks.
+- Updated compare-page unavailable states so unsupported, unknown, or unavailable comparison pairs show an unavailable comparison source-pack label and explicitly avoid factual citation chips or source drawers.
+- Added source-context list styling in `styles/globals.css`.
+- Extended frontend smoke checks to cover comparison source metadata markers, chip-to-source linkage markers, official-source display, freshness display, supporting passages, absence of live compare calls, absence of `/api/compare` calls from the fixture-backed compare page, and absence of `AAPL` sources in comparison metadata.
+- Extended safety guardrail frontend-copy coverage to include `components/ComparisonSourceDetails.tsx` and `lib/compare.ts`.
+- T-012 agent journal records that `npm test`, `npm run typecheck`, `npm run build`, focused comparison/API pytest, safety pytest, static evals, and the main quality gate passed. The initial `npm test` and `npm run typecheck` required one focused revision to make smoke citation markers literal and narrow the comparison bottom-line value.
+- Remaining documented risk: comparison source rendering remains deterministic and fixture-backed for the existing local `VOO` vs `QQQ` / `QQQ` vs `VOO` comparison pack only.
+- Remaining documented risk: frontend coverage is static smoke coverage plus build/typecheck; it does not browser-click citation chips to verify scrolling or focus behavior.
+
+Completion commits:
+
+- `b5f1d1d feat(T-012): render comparison source metadata on compare page`
+- `ecacb1b chore(T-012): merge render comparison source metadata on compare page`
 
 ### T-011: Add comparison source metadata contract
 
@@ -341,7 +365,5 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-013: Add fixture-backed asset name search states
 
 ### T-014: Add beginner chat starter prompts
