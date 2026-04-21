@@ -20,11 +20,11 @@ from backend.data import (
     state_for_asset,
     supported_asset,
 )
+from backend.chat import generate_asset_chat
 from backend.comparison import generate_comparison
 from backend.models import (
     AssetIdentity,
     AssetStatus,
-    ChatCitation,
     ChatRequest,
     ChatResponse,
     CompareRequest,
@@ -38,7 +38,6 @@ from backend.models import (
     StateMessage,
 )
 from backend.overview import generate_asset_overview
-from backend.safety import classify_question, educational_redirect
 
 
 app = FastAPI(
@@ -156,43 +155,4 @@ def compare_assets(request: CompareRequest) -> CompareResponse:
 
 @app.post("/api/assets/{ticker}/chat", response_model=ChatResponse, tags=["chat"])
 def asset_chat(ticker: str, request: ChatRequest) -> ChatResponse:
-    asset, payload = _asset_payload(ticker)
-    safety_classification = classify_question(request.question, supported=payload is not None)
-
-    if safety_classification.value == "unsupported_asset_redirect":
-        return ChatResponse(
-            asset=asset,
-            direct_answer=state_for_asset(asset).message,
-            why_it_matters="The product currently focuses on U.S.-listed common stocks and plain-vanilla ETFs.",
-            citations=[],
-            uncertainty=["No local asset knowledge pack is available for this ticker."],
-            safety_classification=safety_classification,
-        )
-
-    if safety_classification.value == "personalized_advice_redirect":
-        direct_answer, why_it_matters = educational_redirect()
-        return ChatResponse(
-            asset=asset,
-            direct_answer=direct_answer,
-            why_it_matters=why_it_matters,
-            citations=[],
-            uncertainty=["This skeleton does not use personal circumstances or live market data."],
-            safety_classification=safety_classification,
-        )
-
-    source = payload["sources"][0]
-    citation = payload["citations"][0]
-    return ChatResponse(
-        asset=asset,
-        direct_answer=payload["summary"].what_it_is,
-        why_it_matters="Understanding the basic structure helps a beginner separate stable asset facts from recent developments and personal decision-making.",
-        citations=[
-            ChatCitation(
-                claim=payload["summary"].what_it_is,
-                source_document_id=source.source_document_id,
-                chunk_id=f"chk_{citation.citation_id}",
-            )
-        ],
-        uncertainty=["This is deterministic skeleton data; full retrieval and citation validation arrive in later tasks."],
-        safety_classification=safety_classification,
-    )
+    return generate_asset_chat(ticker, request.question)
