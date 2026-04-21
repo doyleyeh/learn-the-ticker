@@ -446,6 +446,15 @@ input {
   font-weight: 700;
 }
 
+.source-context-list {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding-left: 20px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
 blockquote {
   margin: 0;
   padding: 12px 14px;
