@@ -5,12 +5,15 @@ MAIN_BRANCH="main"
 PREPARE_NEXT=1
 PUSH_MAIN=0
 COMMIT_FAILURES=0
+REPEAT=0
+MAX_CYCLES=""
+NEXT_TASK_PREPARED=0
 
 usage() {
   cat <<'EOF'
 Usage: bash scripts/run_task_cycle.sh [options]
 
-Runs one full local task cycle:
+Runs one or more full local task cycles:
   1. Run scripts/agent_loop.sh for the current TASKS.md task.
   2. Merge the completed agent/T-... branch into main with scripts/local_merge_task.sh.
   3. Ask Codex to prepare TASKS.md for the next backlog task.
@@ -20,6 +23,9 @@ Options:
   --main <branch>       Main branch to merge into. Default: main.
   --no-prepare-next     Stop after local merge; do not update TASKS.md.
   --commit-failures     Pass --commit-failures through to agent_loop.sh.
+  --repeat              Continue running prepared next tasks until stopped.
+  --max-cycles <n>      Maximum task cycles to run. Implies --repeat when n > 1.
+                        Default with --repeat: 3. Default without --repeat: 1.
   --push                Push main after the local merge and next-task prep commit.
   -h, --help            Show this help.
 EOF
@@ -41,6 +47,20 @@ while [ "$#" -gt 0 ]; do
     --commit-failures)
       COMMIT_FAILURES=1
       ;;
+    --repeat)
+      REPEAT=1
+      ;;
+    --max-cycles)
+      MAX_CYCLES="${2:-}"
+      if ! printf '%s' "$MAX_CYCLES" | grep -Eq '^[1-9][0-9]*$'; then
+        echo "--max-cycles requires a positive integer."
+        exit 2
+      fi
+      if [ "$MAX_CYCLES" -gt 1 ]; then
+        REPEAT=1
+      fi
+      shift
+      ;;
     --push)
       PUSH_MAIN=1
       ;;
@@ -56,6 +76,19 @@ while [ "$#" -gt 0 ]; do
   esac
   shift
 done
+
+if [ -z "$MAX_CYCLES" ]; then
+  if [ "$REPEAT" -eq 1 ]; then
+    MAX_CYCLES=3
+  else
+    MAX_CYCLES=1
+  fi
+fi
+
+if [ "$REPEAT" -eq 1 ] && [ "$PREPARE_NEXT" -ne 1 ]; then
+  echo "--repeat requires next-task preparation. Remove --no-prepare-next or run one cycle only."
+  exit 2
+fi
 
 require_clean_tree() {
   if [ -n "$(git status --porcelain)" ]; then
@@ -101,6 +134,8 @@ prepare_next_task() {
   local next_task_id
   local next_task_title
   local next_subject
+
+  NEXT_TASK_PREPARED=0
 
   if ! has_backlog_task; then
     echo "No backlog task found. Skipping next-task preparation."
@@ -183,6 +218,75 @@ EOF
     -m "Previous task: ${completed_task_id}" \
     -m "Merged branch: ${task_branch}" \
     -m "Quality gate: passed"
+
+  NEXT_TASK_PREPARED=1
+}
+
+run_one_cycle() {
+  local cycle_number="$1"
+  local task_line
+  local task_id
+  local task_title
+  local task_branch
+  local merge_commit
+  local agent_args=()
+
+  require_clean_tree
+
+  task_line="$(current_task_line)"
+  if [ -z "$task_line" ]; then
+    echo "Could not find a current task in TASKS.md."
+    exit 1
+  fi
+
+  task_id="$(printf '%s\n' "$task_line" | task_id_from_line)"
+  task_title="$(printf '%s\n' "$task_line" | task_title_from_line)"
+
+  echo "== Task cycle ${cycle_number}/${MAX_CYCLES} =="
+  echo "== Current task: ${task_id}: ${task_title} =="
+  echo "== Main branch: ${MAIN_BRANCH} =="
+  echo "== Prepare next: ${PREPARE_NEXT} =="
+  echo "== Repeat: ${REPEAT} =="
+  echo "== Push main: ${PUSH_MAIN} =="
+
+  if [ "$COMMIT_FAILURES" -eq 1 ]; then
+    agent_args+=(--commit-failures)
+  fi
+
+  echo "== Running agent loop =="
+  bash scripts/agent_loop.sh "${agent_args[@]}"
+
+  task_branch="$(git branch --show-current)"
+  if ! printf '%s\n' "$task_branch" | grep -Eq "^agent/${task_id}-"; then
+    echo "Expected to be on agent/${task_id}-... after agent loop, but current branch is: $task_branch"
+    exit 1
+  fi
+
+  echo "== Merging completed task branch =="
+  bash scripts/local_merge_task.sh "$task_branch" --main "$MAIN_BRANCH"
+
+  merge_commit="$(git rev-parse --short HEAD)"
+
+  if [ "$PREPARE_NEXT" -eq 1 ]; then
+    prepare_next_task "$task_id" "$task_title" "$task_branch" "$merge_commit"
+  else
+    NEXT_TASK_PREPARED=0
+  fi
+
+  if [ "$PUSH_MAIN" -eq 1 ]; then
+    echo "== Pushing ${MAIN_BRANCH} =="
+    git push origin "$MAIN_BRANCH"
+  fi
+
+  echo "== Task cycle ${cycle_number}/${MAX_CYCLES} complete =="
+  git status --short
+  git log --oneline -5
+
+  if [ "$PREPARE_NEXT" -eq 1 ] && [ "$NEXT_TASK_PREPARED" -eq 1 ]; then
+    return 0
+  fi
+
+  return 1
 }
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -192,51 +296,30 @@ cd "$ROOT"
 source "$ROOT/scripts/activate_agent_env.sh"
 ltt_require_codex_toolchain
 
-require_clean_tree
+CYCLE=1
+while [ "$CYCLE" -le "$MAX_CYCLES" ]; do
+  if run_one_cycle "$CYCLE"; then
+    CAN_CONTINUE=1
+  else
+    CAN_CONTINUE=0
+  fi
 
-TASK_LINE="$(current_task_line)"
-if [ -z "$TASK_LINE" ]; then
-  echo "Could not find a current task in TASKS.md."
-  exit 1
+  if [ "$REPEAT" -ne 1 ]; then
+    break
+  fi
+
+  if [ "$CAN_CONTINUE" -ne 1 ]; then
+    echo "== Repeat stopped: no prepared next task is available. =="
+    break
+  fi
+
+  CYCLE=$((CYCLE + 1))
+done
+
+if [ "$REPEAT" -eq 1 ] && [ "$CYCLE" -gt "$MAX_CYCLES" ]; then
+  echo "== Repeat stopped: reached max cycles (${MAX_CYCLES}). =="
 fi
 
-TASK_ID="$(printf '%s\n' "$TASK_LINE" | task_id_from_line)"
-TASK_TITLE="$(printf '%s\n' "$TASK_LINE" | task_title_from_line)"
-
-echo "== Task cycle =="
-echo "== Current task: ${TASK_ID}: ${TASK_TITLE} =="
-echo "== Main branch: ${MAIN_BRANCH} =="
-echo "== Prepare next: ${PREPARE_NEXT} =="
-echo "== Push main: ${PUSH_MAIN} =="
-
-AGENT_ARGS=()
-if [ "$COMMIT_FAILURES" -eq 1 ]; then
-  AGENT_ARGS+=(--commit-failures)
-fi
-
-echo "== Running agent loop =="
-bash scripts/agent_loop.sh "${AGENT_ARGS[@]}"
-
-TASK_BRANCH="$(git branch --show-current)"
-if ! printf '%s\n' "$TASK_BRANCH" | grep -Eq "^agent/${TASK_ID}-"; then
-  echo "Expected to be on agent/${TASK_ID}-... after agent loop, but current branch is: $TASK_BRANCH"
-  exit 1
-fi
-
-echo "== Merging completed task branch =="
-bash scripts/local_merge_task.sh "$TASK_BRANCH" --main "$MAIN_BRANCH"
-
-MERGE_COMMIT="$(git rev-parse --short HEAD)"
-
-if [ "$PREPARE_NEXT" -eq 1 ]; then
-  prepare_next_task "$TASK_ID" "$TASK_TITLE" "$TASK_BRANCH" "$MERGE_COMMIT"
-fi
-
-if [ "$PUSH_MAIN" -eq 1 ]; then
-  echo "== Pushing ${MAIN_BRANCH} =="
-  git push origin "$MAIN_BRANCH"
-fi
-
-echo "== Task cycle complete =="
+echo "== Task cycle run complete =="
 git status --short
 git log --oneline -5
