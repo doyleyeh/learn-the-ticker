@@ -20,18 +20,16 @@ from backend.data import (
     state_for_asset,
     supported_asset,
 )
+from backend.comparison import generate_comparison
 from backend.models import (
     AssetIdentity,
     AssetStatus,
-    BeginnerBottomLine,
     ChatCitation,
     ChatRequest,
     ChatResponse,
     CompareRequest,
     CompareResponse,
     DetailsResponse,
-    FreshnessState,
-    KeyDifference,
     OverviewResponse,
     RecentResponse,
     SearchResponse,
@@ -153,63 +151,7 @@ def asset_recent(ticker: str) -> RecentResponse:
 
 @app.post("/api/compare", response_model=CompareResponse, tags=["compare"])
 def compare_assets(request: CompareRequest) -> CompareResponse:
-    left, left_payload = _asset_payload(request.left_ticker)
-    right, right_payload = _asset_payload(request.right_ticker)
-
-    if not left_payload or not right_payload:
-        unsupported = left if not left_payload else right
-        return CompareResponse(
-            left_asset=left,
-            right_asset=right,
-            state=state_for_asset(unsupported),
-            comparison_type="unavailable",
-            key_differences=[],
-            bottom_line_for_beginners=None,
-            citations=[],
-        )
-
-    comparison_type = f"{left.asset_type.value}_vs_{right.asset_type.value}"
-    citations = left_payload["citations"] + right_payload["citations"]
-
-    if {left.ticker, right.ticker} == {"VOO", "QQQ"}:
-        key_differences = [
-            KeyDifference(
-                dimension="Exposure",
-                plain_english_summary="VOO is built around broad U.S. large-company exposure, while QQQ is narrower and more concentrated in Nasdaq-100 companies.",
-                citation_ids=["c_voo_profile", "c_qqq_profile"],
-            ),
-            KeyDifference(
-                dimension="Diversification",
-                plain_english_summary="The local stub data describes VOO as holding about five times as many companies as QQQ.",
-                citation_ids=["c_voo_profile", "c_qqq_profile"],
-            ),
-        ]
-        bottom_line = BeginnerBottomLine(
-            summary="For learning purposes, this comparison highlights broad index exposure versus narrower growth-oriented ETF exposure.",
-            citation_ids=["c_voo_profile", "c_qqq_profile"],
-        )
-    else:
-        key_differences = [
-            KeyDifference(
-                dimension="Structure",
-                plain_english_summary=f"{left.ticker} is a {left.asset_type.value}, while {right.ticker} is a {right.asset_type.value}; compare structure before comparing metrics.",
-                citation_ids=[citations[0].citation_id, citations[-1].citation_id],
-            )
-        ]
-        bottom_line = BeginnerBottomLine(
-            summary="Use the comparison to understand structure, diversification, costs, and risks; it is educational context, not a personal decision rule.",
-            citation_ids=[citations[0].citation_id, citations[-1].citation_id],
-        )
-
-    return CompareResponse(
-        left_asset=left,
-        right_asset=right,
-        state=StateMessage(status=AssetStatus.supported, message="Comparison is available from deterministic stub data."),
-        comparison_type=comparison_type,
-        key_differences=key_differences,
-        bottom_line_for_beginners=bottom_line,
-        citations=citations,
-    )
+    return generate_comparison(request.left_ticker, request.right_ticker)
 
 
 @app.post("/api/assets/{ticker}/chat", response_model=ChatResponse, tags=["chat"])

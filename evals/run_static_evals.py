@@ -11,8 +11,9 @@ os.environ.setdefault("LTT_FORCE_COMPAT_FASTAPI", "1")
 sys.path.insert(0, str(ROOT))
 
 from backend.citations import validate_claims
+from backend.comparison import generate_comparison, validate_comparison_response
 from backend.main import app
-from backend.models import MetricValue
+from backend.models import MetricValue, CompareResponse
 from backend.overview import generate_asset_overview, validate_overview_response
 from backend.retrieval import build_asset_knowledge_pack, build_comparison_knowledge_pack, load_retrieval_fixture_dataset
 from backend.safety import find_forbidden_output_phrases
@@ -227,10 +228,51 @@ def test_generated_overview_contract():
         assert forbidden not in overview_source
 
 
+def test_generated_comparison_contract():
+    pack = build_comparison_knowledge_pack("VOO", "QQQ")
+    comparison = generate_comparison("VOO", "QQQ")
+    reverse = generate_comparison("QQQ", "VOO")
+    validated = CompareResponse.model_validate(comparison.model_dump(mode="json"))
+    citation_ids = {citation.citation_id for citation in validated.citations}
+    used_citation_ids = {
+        *{citation_id for item in validated.key_differences for citation_id in item.citation_ids},
+        *validated.bottom_line_for_beginners.citation_ids,
+    }
+
+    assert validated.left_asset.ticker == "VOO"
+    assert validated.right_asset.ticker == "QQQ"
+    assert validated.state.status.value == "supported"
+    assert validated.comparison_type == "etf_vs_etf"
+    assert validated.bottom_line_for_beginners is not None
+    assert {"Benchmark", "Expense ratio", "Holdings count", "Breadth", "Educational role"} <= {
+        item.dimension for item in validated.key_differences
+    }
+    assert used_citation_ids <= citation_ids
+    assert {citation.source_document_id for citation in validated.citations} <= {
+        source.source_document_id for source in pack.comparison_sources
+    }
+    assert validate_comparison_response(validated, pack).valid
+    assert reverse.left_asset.ticker == "QQQ"
+    assert reverse.right_asset.ticker == "VOO"
+    assert validate_comparison_response(reverse, build_comparison_knowledge_pack("QQQ", "VOO")).valid
+
+    for pair in [("VOO", "BTC"), ("VOO", "ZZZZ"), ("AAPL", "VOO")]:
+        unavailable = generate_comparison(*pair)
+        assert unavailable.comparison_type == "unavailable"
+        assert unavailable.key_differences == []
+        assert unavailable.bottom_line_for_beginners is None
+        assert unavailable.citations == []
+
+    comparison_source = (ROOT / "backend" / "comparison.py").read_text(encoding="utf-8")
+    for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import"]:
+        assert forbidden not in comparison_source
+
+
 if __name__ == "__main__":
     test_golden_assets()
     test_safety_cases()
     test_citation_cases()
     test_retrieval_fixture_contract()
     test_generated_overview_contract()
+    test_generated_comparison_contract()
     print("Static evals passed.")

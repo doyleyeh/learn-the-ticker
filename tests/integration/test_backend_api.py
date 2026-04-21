@@ -81,6 +81,28 @@ def test_compare_route_returns_educational_shape():
     assert body["bottom_line_for_beginners"]["summary"]
     assert body["key_differences"][0]["citation_ids"]
     assert body["state"]["status"] == "supported"
+    assert {item["dimension"] for item in body["key_differences"]} >= {
+        "Benchmark",
+        "Expense ratio",
+        "Holdings count",
+        "Breadth",
+        "Educational role",
+    }
+
+
+def test_compare_route_uses_fixture_pipeline_in_reverse_order_and_unavailable_states():
+    reverse = client.post("/api/compare", json={"left_ticker": "QQQ", "right_ticker": "VOO"}).json()
+    unsupported = client.post("/api/compare", json={"left_ticker": "VOO", "right_ticker": "BTC"}).json()
+
+    assert reverse["left_asset"]["ticker"] == "QQQ"
+    assert reverse["right_asset"]["ticker"] == "VOO"
+    assert reverse["comparison_type"] == "etf_vs_etf"
+    assert reverse["key_differences"][0]["plain_english_summary"].startswith("QQQ tracks")
+    assert unsupported["state"]["status"] == "unsupported"
+    assert unsupported["comparison_type"] == "unavailable"
+    assert unsupported["key_differences"] == []
+    assert unsupported["bottom_line_for_beginners"] is None
+    assert unsupported["citations"] == []
 
 
 def test_chat_advice_like_question_redirects_to_education():
