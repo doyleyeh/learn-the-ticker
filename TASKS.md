@@ -2,26 +2,21 @@
 
 ## Current task
 
-### T-007: Add comparison generation pipeline
+### T-008: Add grounded asset chat pipeline
 
 Goal:
-Generate beginner comparison responses from structured local facts, comparison knowledge packs, source metadata, and citation mappings.
+Generate asset-specific chat responses from selected asset knowledge packs, citation mappings, and safety classification.
 
-This is a deterministic comparison-pipeline task. It should turn bounded comparison knowledge packs into schema-valid beginner comparison responses for supported assets, starting with `VOO` vs `QQQ`. It must not add live external market-data, SEC, issuer, news, brokerage, tax, or LLM calls.
+This is a deterministic backend chat-pipeline task. It should replace the remaining stub chat response path with a source-backed local generation path that answers bounded beginner questions from `AssetKnowledgePack` data for fixture-backed supported assets. It must keep advice-like questions on the existing educational redirect path, keep unsupported assets on the unsupported redirect path, and must not add live external market-data, SEC, issuer, news, brokerage, tax, or LLM calls.
 
 Allowed files:
 
 - TASKS.md
-- Makefile
 - backend/\*\*
 - data/\*\*
-- lib/\*\*
-- app/\*\*
-- components/\*\*
 - tests/\*\*
 - evals/\*\*
 - scripts/\*\*
-- .github/\*\*
 - docs/agent-journal/\*\*
 
 Do not change:
@@ -34,32 +29,47 @@ Do not change:
 - product requirements
 - financial safety rules
 - advice-boundary rules
-- frontend visual design except where existing comparison fixtures or data contracts must stay aligned
+- frontend UI or visual design
+- comparison generation behavior except where shared citation or safety helpers must stay compatible
+- overview generation behavior except where shared citation or safety helpers must stay compatible
 - production dependency files unless a dependency is clearly justified
+- endpoint response schemas unless the existing `ChatResponse` contract cannot satisfy citation validation, in which case keep the change minimal and test compatibility
 
 Acceptance criteria:
 
-- A deterministic comparison generation module or service builds a `CompareResponse`-compatible payload from a `ComparisonKnowledgePack`.
-- Supported comparison generation works for `VOO` vs `QQQ` in either ticker order.
-- Generated ETF comparison includes:
-  - left and right canonical asset identities
-  - supported state and `etf_vs_etf` comparison type
-  - side-by-side or key-difference content for benchmark, expense ratio, holdings count, concentration or breadth, and educational role
-  - a beginner bottom-line summary that is educational, not prescriptive
-  - citations for important comparison claims
-- Citation IDs used by comparison differences and bottom-line content resolve to sources from the same comparison pack only.
-- Citation validation rejects or surfaces wrong-asset, missing, stale-unlabeled, unsupported, or insufficient comparison evidence.
-- Unsupported, unknown, or unavailable comparison requests return clear states without generated factual claims, invented summaries, or citations.
-- Generated comparison copy avoids buy/sell/hold recommendations, personalized allocation advice, unsupported price targets, tax advice, brokerage/trading behavior, and certainty around future returns.
-- Backend `/api/compare` uses the comparison generation pipeline for fixture-backed supported comparisons without breaking the existing response schema.
-- Static evals or focused tests check schema validity, citation coverage, same-pack source binding, ETF comparison dimensions, unsupported states, and no live external calls.
-- Existing overview generation tests, retrieval fixture tests, citation validation, safety evals, backend route tests, frontend smoke checks, static evals, and quality gate behavior continue to pass.
+- A deterministic chat generation module or service builds `ChatResponse`-compatible payloads from `AssetKnowledgePack` data.
+- Backend `/api/assets/{ticker}/chat` uses the chat generation pipeline for fixture-backed supported assets instead of the previous generic stub summary path.
+- Supported educational chat works for `AAPL`, `VOO`, and `QQQ`.
+- Generated supported chat answers include:
+  - the canonical asset identity
+  - a direct answer
+  - a beginner-friendly `why_it_matters`
+  - at least one citation for factual claims when evidence exists
+  - an uncertainty or limits note that names missing, partial, stale, unavailable, or fixture-bounded evidence when relevant
+  - `educational` safety classification for safe educational questions
+- The deterministic question handling covers a narrow but useful set of beginner intents:
+  - asset identity or "what is this?"
+  - stock business basics for supported stocks when local evidence exists
+  - ETF holdings, benchmark, breadth, or cost basics for supported ETFs when local evidence exists
+  - top-risk or "biggest risk" questions from source-backed risk evidence
+  - recent-development questions from the recent-development layer
+  - educational suitability or "why do beginners consider it?" questions without giving personal advice
+- When the selected asset knowledge pack does not contain enough evidence for a supported educational question, the response says insufficient evidence or unknown, does not invent facts, and does not attach unsupported citations.
+- Chat citations bind only to source documents and chunks from the selected asset knowledge pack.
+- Chat citation validation rejects or surfaces missing citations, wrong-asset citations, stale-unlabeled citations, unsupported source types, and insufficient evidence.
+- Advice-like questions continue to redirect into educational framing with no citations and no factual claims beyond the redirect.
+- Unsupported or unknown assets continue to return clear unsupported-scope or unknown states with no generated factual claims or citations.
+- Generated chat copy avoids buy/sell/hold recommendations, personalized allocation advice, unsupported price targets, tax advice, brokerage/trading behavior, and certainty around future returns.
+- Static evals or focused tests check schema validity, citation coverage, same-asset source binding, supported educational chat intents, advice redirects, unsupported states, stale/unknown/insufficient evidence handling, and no live external calls.
+- Existing overview generation tests, comparison generation tests, retrieval fixture tests, citation validation, safety evals, backend route tests, frontend smoke checks, static evals, and quality gate behavior continue to pass.
 - No endpoint, test, or CI command makes live external calls.
 - If dependencies are added, document why they are needed and keep the dependency set minimal.
 - The main quality gate passes.
 
 Required commands:
 
+- python3 -m pytest tests/unit/test_safety_guardrails.py tests/integration/test_backend_api.py -q
+- python3 evals/run_static_evals.py
 - bash scripts/run_quality_gate.sh
 
 Iteration budget:
@@ -67,6 +77,31 @@ Iteration budget:
 - Max 3 Codex implementation loops before reporting blockers.
 
 ## Completed
+
+### T-007: Add comparison generation pipeline
+
+Goal:
+Generate beginner comparison responses from structured local facts, comparison knowledge packs, source metadata, and citation mappings.
+
+Completed:
+
+- Added deterministic comparison generation in `backend/comparison.py`.
+- Backend `/api/compare` now uses `generate_comparison` for fixture-backed comparison responses.
+- Supported `VOO` vs `QQQ` comparison generation works in either ticker order.
+- Generated ETF comparison responses include canonical left/right assets, supported state, `etf_vs_etf` type, key differences for benchmark, expense ratio, holdings count, breadth, educational role, a beginner bottom line, and citations.
+- Comparison citation binding maps generated citation IDs to same-pack source documents, normalized facts, and source chunks from the local comparison knowledge pack.
+- Comparison validation covers generated responses and planned claims, including missing citations, wrong-asset citations, stale sources, unsupported source types, and insufficient evidence.
+- Unsupported, unknown, or unavailable comparison requests return `unavailable` comparison state without key differences, bottom-line content, or citations.
+- Static evals now include the generated comparison contract, reverse ticker order, unavailable states, same-pack citation binding, safety phrase checks, and no network-client imports.
+- Focused unit and integration tests were added for comparison generation and `/api/compare`.
+- T-007 agent journal records that focused comparison/API tests, static evals, backend compile check, and the main quality gate passed.
+- Remaining documented risk: comparison generation is deterministic and fixture-backed for `VOO` vs `QQQ` only; other supported ticker pairs intentionally return an unavailable comparison state until a local comparison pack exists.
+- Remaining documented risk: `CompareResponse` exposes citation metadata but not full comparison source documents, so source drawer-style rendering would need a later schema/UI extension if required.
+
+Completion commits:
+
+- `46b05f2 feat(T-007): add comparison generation pipeline`
+- `285948d chore(T-007): merge comparison generation pipeline`
 
 ### T-006: Add asset overview generation pipeline
 
@@ -215,8 +250,3 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-008: Add grounded asset chat pipeline
-
-Goal:
-Generate asset-specific chat responses from selected asset knowledge packs, citation mappings, and safety classification.
