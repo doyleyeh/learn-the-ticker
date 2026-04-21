@@ -2,17 +2,19 @@
 
 ## Current task
 
-### T-009: Add chat source metadata contract
+### T-010: Add asset page chat panel for fixture-backed assets
 
 Goal:
-Expose source-document metadata for grounded chat citations so UI clients can render source drawer details for chat answers without making unsupported assumptions from citation IDs alone.
+Add a beginner-facing asset page chat panel that calls the grounded chat API for fixture-backed supported assets and renders citations, source metadata, advice redirects, unsupported states, and insufficient-evidence states.
 
-This is a backend contract and validation task. T-008 added grounded chat responses with citation IDs tied to selected asset knowledge packs, but the response still does not expose full source-document metadata for those citations. Add the smallest compatible response extension needed for chat clients to show source titles, source types, dates, freshness labels, URLs, and supporting passages from the selected asset pack. Keep generation deterministic and fixture-backed. Do not add live external calls or LLM calls.
+This is a frontend integration task. T-009 exposed chat source metadata from the backend, and the asset page should now provide an "ask about this asset" workflow for the supported fixture-backed assets. Keep the UI deterministic and beginner-readable. Do not add live external market-data, SEC, issuer, news, brokerage, tax, or LLM calls. Do not change backend generation behavior except for a minimal typed helper or test fixture adjustment if the UI needs it.
 
 Allowed files:
 
 - TASKS.md
-- backend/\*\*
+- app/\*\*
+- components/\*\*
+- lib/\*\*
 - tests/\*\*
 - evals/\*\*
 - docs/agent-journal/\*\*
@@ -24,8 +26,9 @@ Do not change:
 - EVALS.md
 - docs/learn_the_ticker_PRD.md
 - docs/learn_the_ticker_technical_design_spec.md
-- frontend UI or visual design
-- retrieval fixture content unless a missing metadata field is required for this contract
+- backend chat generation logic
+- backend response schemas except for strictly necessary typed test helpers
+- retrieval fixture content
 - overview generation behavior
 - comparison generation behavior
 - financial safety rules
@@ -34,15 +37,15 @@ Do not change:
 
 Acceptance criteria:
 
-- `ChatResponse` or a narrowly scoped companion field exposes source-document metadata for chat citations.
-- Chat source metadata includes source document ID, title, source type, publication or as-of date when available, retrieved timestamp when available, URL when available, freshness or stale state when available, and supporting passage or chunk text when available.
-- Source metadata is derived only from the selected `AssetKnowledgePack`.
-- Supported chat responses for `AAPL`, `VOO`, and `QQQ` include source metadata for grounded citations.
-- Advice-like chat redirects continue to return no citations and no source metadata.
-- Unsupported or unknown asset chat responses continue to return no generated factual claims, no citations, and no source metadata.
-- Chat citation validation continues to reject or surface missing citations, wrong-asset citations, stale-unlabeled citations, unsupported source types, and insufficient evidence.
-- Backend route tests cover the serialized API shape for grounded chat source metadata.
-- Static evals cover same-asset source binding for chat source metadata and no live external calls.
+- Asset pages for `AAPL`, `VOO`, and `QQQ` include a usable chat panel or chat section.
+- The chat panel provides a text input, submit control, loading state, error state, and empty state.
+- The panel calls the local backend chat endpoint or a local typed API helper for `/api/assets/{ticker}/chat`.
+- Supported educational responses render the direct answer, `why_it_matters`, uncertainty or limits notes, citations, and source-document metadata returned by the backend.
+- Citation chips or source controls expose source title, source type, date or freshness details when available, URL when available, and supporting passage when available.
+- Advice-like questions render the educational redirect without citations or source metadata.
+- Unsupported, unknown, and insufficient-evidence responses render clear non-factual states without invented claims.
+- The UI copy avoids buy/sell/hold recommendations, personalized allocation advice, unsupported price targets, tax advice, brokerage/trading behavior, and certainty around future returns.
+- Frontend smoke tests cover the presence of the chat panel, source metadata rendering hooks, advice redirect handling, and unsupported or insufficient-evidence state copy.
 - Existing overview generation tests, comparison generation tests, retrieval fixture tests, citation validation, safety evals, backend route tests, frontend smoke checks, static evals, and quality gate behavior continue to pass.
 - No endpoint, test, or CI command makes live external calls.
 - No new production dependency is added.
@@ -50,7 +53,9 @@ Acceptance criteria:
 
 Required commands:
 
-- python3 -m pytest tests/unit/test_chat_generation.py tests/integration/test_backend_api.py -q
+- npm test
+- npm run typecheck
+- npm run build
 - python3 evals/run_static_evals.py
 - bash scripts/run_quality_gate.sh
 
@@ -59,6 +64,29 @@ Iteration budget:
 - Max 3 Codex implementation loops before reporting blockers.
 
 ## Completed
+
+### T-009: Add chat source metadata contract
+
+Goal:
+Expose source-document metadata for grounded chat citations so UI clients can render source drawer details for chat answers without making unsupported assumptions from citation IDs alone.
+
+Completed:
+
+- Added chat source metadata fields to the backend response models.
+- Grounded chat responses now include source-document metadata derived from the selected asset knowledge pack.
+- Chat source metadata includes citation ID, source document ID, title, source type, URL, as-of date, retrieved timestamp, freshness state, stale flag, and supporting passage where available.
+- Supported grounded chat responses for `AAPL`, `VOO`, and `QQQ` include source metadata for grounded citations.
+- Advice-like redirects, unsupported assets, unknown assets, and insufficient-evidence responses continue to return no generated factual citations or source metadata.
+- Chat validation now checks response source metadata against selected-pack citation evidence.
+- Backend route tests cover the serialized `source_documents` shape.
+- Static evals cover chat source metadata same-asset binding and no live external calls.
+- T-009 agent journal records that the focused pytest slice, static evals, and main quality gate passed.
+- Remaining documented risk: chat source metadata remains deterministic and fixture-backed for the current supported assets.
+- Remaining documented risk: UI rendering for the new chat `source_documents` field was not changed in this backend-only task.
+
+Completion commits:
+
+- `8306738 feat(T-009): add chat source metadata contract`
 
 ### T-008: Add grounded asset chat pipeline
 
@@ -258,7 +286,5 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-010: Add asset page chat panel for fixture-backed assets
 
 ### T-011: Add comparison source metadata contract
