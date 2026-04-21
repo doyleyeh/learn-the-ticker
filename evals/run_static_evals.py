@@ -283,6 +283,8 @@ def test_generated_chat_contract():
         response = generate_asset_chat(ticker, question)
         validated = ChatResponse.model_validate(response.model_dump(mode="json"))
         source_ids = {source.source_document_id for source in pack.source_documents}
+        citations_by_id = {citation.citation_id: citation for citation in validated.citations}
+        source_documents_by_id = {source.citation_id: source for source in validated.source_documents}
 
         assert validated.asset.ticker == ticker
         assert validated.asset.supported is True
@@ -290,7 +292,20 @@ def test_generated_chat_contract():
         assert expected_text in validated.direct_answer
         assert validated.why_it_matters
         assert validated.citations
+        assert validated.source_documents
         assert {citation.source_document_id for citation in validated.citations} <= source_ids
+        assert set(citations_by_id) == set(source_documents_by_id)
+        for citation_id, citation in citations_by_id.items():
+            source_document = source_documents_by_id[citation_id]
+            assert source_document.source_document_id == citation.source_document_id
+            assert source_document.chunk_id == citation.chunk_id
+            assert source_document.source_document_id in source_ids
+            assert source_document.title
+            assert source_document.source_type
+            assert source_document.url
+            assert source_document.published_at or source_document.as_of_date
+            assert source_document.retrieved_at
+            assert source_document.supporting_passage
         assert validate_chat_response(validated, pack).valid
         assert not find_forbidden_output_phrases(
             " ".join(
@@ -306,6 +321,7 @@ def test_generated_chat_contract():
     assert insufficient.safety_classification.value == "educational"
     assert "Insufficient evidence" in insufficient.direct_answer
     assert insufficient.citations == []
+    assert insufficient.source_documents == []
     assert validate_chat_response(insufficient, build_asset_knowledge_pack("AAPL")).valid
 
     for ticker in ["BTC", "ZZZZ"]:
@@ -313,6 +329,7 @@ def test_generated_chat_contract():
         assert unavailable.asset.supported is False
         assert unavailable.safety_classification.value == "unsupported_asset_redirect"
         assert unavailable.citations == []
+        assert unavailable.source_documents == []
 
     chat_source = (ROOT / "backend" / "chat.py").read_text(encoding="utf-8")
     for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import"]:

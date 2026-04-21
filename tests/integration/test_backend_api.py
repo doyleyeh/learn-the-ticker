@@ -116,6 +116,7 @@ def test_chat_advice_like_question_redirects_to_education():
     assert "you should buy" not in combined
     assert "price target" not in combined
     assert body["citations"] == []
+    assert body["source_documents"] == []
 
 
 def test_chat_advice_like_questions_redirect_without_citations():
@@ -137,6 +138,7 @@ def test_chat_advice_like_questions_redirect_without_citations():
         assert body["safety_classification"] == "personalized_advice_redirect"
         assert "educational" in combined.lower()
         assert body["citations"] == []
+        assert body["source_documents"] == []
         assert find_forbidden_output_phrases(combined) == []
 
 
@@ -148,6 +150,18 @@ def test_chat_supported_question_is_grounded_with_citation():
     assert body["safety_classification"] == "educational"
     assert "Nasdaq-100 Index" in body["direct_answer"]
     assert body["citations"][0]["source_document_id"] == "src_qqq_fact_sheet_fixture"
+    assert body["source_documents"]
+    source = body["source_documents"][0]
+    assert source["citation_id"] == body["citations"][0]["citation_id"]
+    assert source["source_document_id"] == body["citations"][0]["source_document_id"]
+    assert source["chunk_id"] == body["citations"][0]["chunk_id"]
+    assert source["title"]
+    assert source["source_type"] == "issuer_fact_sheet"
+    assert source["published_at"] or source["as_of_date"]
+    assert source["retrieved_at"]
+    assert source["url"]
+    assert source["freshness_state"] == "fresh"
+    assert source["supporting_passage"]
     assert body["uncertainty"]
 
 
@@ -170,10 +184,13 @@ def test_chat_supported_beginner_intents_use_selected_asset_pack():
         assert expected_answer in body["direct_answer"]
         if expected_source is None:
             assert body["citations"] == []
+            assert body["source_documents"] == []
             assert "valuation" in " ".join(body["uncertainty"]).lower()
         else:
             assert body["citations"]
+            assert body["source_documents"]
             assert expected_source in {citation["source_document_id"] for citation in body["citations"]}
+            assert expected_source in {source["source_document_id"] for source in body["source_documents"]}
 
 
 def test_chat_unsupported_assets_redirect_to_scope_language():
@@ -193,5 +210,6 @@ def test_chat_unsupported_assets_redirect_to_scope_language():
         assert body["safety_classification"] == "unsupported_asset_redirect"
         assert expected_phrase in combined
         assert body["citations"] == []
+        assert body["source_documents"] == []
         assert body["uncertainty"]
         assert find_forbidden_output_phrases(combined) == []

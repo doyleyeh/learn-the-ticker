@@ -88,6 +88,7 @@ class SourceDocument(BaseModel):
     publisher: str
     url: str
     published_at: str | None = None
+    as_of_date: str | None = None
     retrieved_at: str
     freshness_state: FreshnessState
     is_official: bool
@@ -204,9 +205,26 @@ class ChatRequest(BaseModel):
 
 
 class ChatCitation(BaseModel):
+    citation_id: str
     claim: str
     source_document_id: str
     chunk_id: str
+
+
+class ChatSourceDocument(BaseModel):
+    citation_id: str
+    source_document_id: str
+    chunk_id: str
+    title: str
+    source_type: str
+    publisher: str
+    url: str
+    published_at: str | None = None
+    as_of_date: str | None = None
+    retrieved_at: str
+    freshness_state: FreshnessState
+    is_official: bool
+    supporting_passage: str
 
 
 class ChatResponse(BaseModel):
@@ -214,5 +232,6 @@ class ChatResponse(BaseModel):
     direct_answer: str
     why_it_matters: str
     citations: list[ChatCitation] = Field(default_factory=list)
+    source_documents: list[ChatSourceDocument] = Field(default_factory=list)
     uncertainty: list[str] = Field(default_factory=list)
     safety_classification: SafetyClassification

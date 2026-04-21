@@ -37,7 +37,10 @@ def test_supported_chat_intents_are_schema_valid_and_source_backed():
         assert expected_text in validated.direct_answer
         assert validated.why_it_matters
         assert validated.citations
+        assert validated.source_documents
         assert any(citation.source_document_id == expected_source for citation in validated.citations)
+        assert any(source.source_document_id == expected_source for source in validated.source_documents)
+        _assert_chat_source_metadata_matches_citations(validated)
         assert validated.uncertainty
         assert validate_chat_response(validated, pack).valid
 
@@ -50,6 +53,7 @@ def test_supported_chat_unknown_evidence_does_not_invent_or_cite():
     assert "Insufficient evidence" in response.direct_answer
     assert "valuation" in " ".join(response.uncertainty).lower()
     assert response.citations == []
+    assert response.source_documents == []
     assert validate_chat_response(response, pack).valid
 
 
@@ -61,6 +65,8 @@ def test_chat_advice_and_unsupported_redirects_have_no_citations():
     assert unsupported.safety_classification is SafetyClassification.unsupported_asset_redirect
     assert advice.citations == []
     assert unsupported.citations == []
+    assert advice.source_documents == []
+    assert unsupported.source_documents == []
     assert "educational" in f"{advice.direct_answer} {advice.why_it_matters}".lower()
     assert "outside" in unsupported.direct_answer
 
@@ -76,6 +82,10 @@ def test_chat_response_validation_surfaces_missing_and_unknown_citations():
     nonexistent = response.model_copy(deep=True)
     nonexistent.citations[0].chunk_id = "chk_voo_profile_001"
     assert validate_chat_response(nonexistent, pack).status is CitationValidationStatus.citation_not_found
+
+    missing_source_metadata = response.model_copy(deep=True)
+    missing_source_metadata.source_documents = []
+    assert validate_chat_response(missing_source_metadata, pack).status is CitationValidationStatus.citation_not_found
 
 
 def test_generated_chat_claim_validation_rejects_wrong_stale_unsupported_and_empty_evidence():
@@ -177,3 +187,21 @@ def _flatten_text(value: Any) -> str:
     if isinstance(value, dict):
         return " ".join(_flatten_text(item) for item in value.values())
     return ""
+
+
+def _assert_chat_source_metadata_matches_citations(response: ChatResponse) -> None:
+    citations_by_id = {citation.citation_id: citation for citation in response.citations}
+    sources_by_id = {source.citation_id: source for source in response.source_documents}
+
+    assert set(citations_by_id) == set(sources_by_id)
+    for citation_id, citation in citations_by_id.items():
+        source = sources_by_id[citation_id]
+        assert source.source_document_id == citation.source_document_id
+        assert source.chunk_id == citation.chunk_id
+        assert source.title
+        assert source.source_type
+        assert source.url
+        assert source.published_at or source.as_of_date
+        assert source.retrieved_at
+        assert source.freshness_state
+        assert source.supporting_passage

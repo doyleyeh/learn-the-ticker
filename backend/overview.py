@@ -530,6 +530,7 @@ def _source_document_from_fixture(source: SourceDocumentFixture, supporting_pass
         publisher=source.publisher,
         url=source.url,
         published_at=source.published_at,
+        as_of_date=source.as_of_date,
         retrieved_at=source.retrieved_at,
         freshness_state=source.freshness_state,
         is_official=source.is_official,

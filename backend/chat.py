@@ -7,7 +7,10 @@ from backend.citations import (
     CitationEvidence,
     CitationValidationClaim,
     CitationValidationContext,
+    CitationValidationIssue,
     CitationValidationReport,
+    CitationValidationResult,
+    CitationValidationStatus,
     EvidenceKind,
     validate_claims,
 )
@@ -16,6 +19,7 @@ from backend.models import (
     AssetType,
     ChatCitation,
     ChatResponse,
+    ChatSourceDocument,
     FreshnessState,
     SafetyClassification,
 )
@@ -36,6 +40,7 @@ class ChatGenerationError(ValueError):
 @dataclass(frozen=True)
 class ChatCitationBinding:
     citation: ChatCitation
+    source_document: ChatSourceDocument
     evidence: CitationEvidence
 
 
@@ -86,6 +91,7 @@ def generate_chat_from_pack(pack: AssetKnowledgePack, question: str) -> ChatResp
         direct_answer=plan.direct_answer,
         why_it_matters=plan.why_it_matters,
         citations=bindings.citations_for_claims(plan.planned_claims),
+        source_documents=bindings.source_documents_for_claims(plan.planned_claims),
         uncertainty=plan.uncertainty,
         safety_classification=safety_classification,
     )
@@ -96,7 +102,10 @@ def generate_chat_from_pack(pack: AssetKnowledgePack, question: str) -> ChatResp
 def validate_chat_response(response: ChatResponse, pack: AssetKnowledgePack) -> CitationValidationReport:
     evidence = _evidence_from_chat_response(pack, response)
     claims = _claims_from_chat_response(response, pack)
-    return validate_claims(claims, evidence, CitationValidationContext(allowed_asset_tickers=[pack.asset.ticker]))
+    report = validate_claims(claims, evidence, CitationValidationContext(allowed_asset_tickers=[pack.asset.ticker]))
+    if not report.valid:
+        return report
+    return _validate_chat_source_documents(response, pack)
 
 
 def validate_generated_chat_claims(
@@ -175,12 +184,24 @@ class _ChatCitationRegistry:
                 binding = self._bindings_by_citation_id[citation_id]
                 citations.append(
                     ChatCitation(
+                        citation_id=citation_id,
                         claim=claim.claim_text,
                         source_document_id=binding.citation.source_document_id,
                         chunk_id=binding.citation.chunk_id,
                     )
                 )
         return citations
+
+    def source_documents_for_claims(self, planned_claims: Iterable[PlannedChatClaim]) -> list[ChatSourceDocument]:
+        source_documents: list[ChatSourceDocument] = []
+        seen_citation_ids: set[str] = set()
+        for claim in planned_claims:
+            for citation_id in claim.citation_ids:
+                if citation_id in seen_citation_ids:
+                    continue
+                source_documents.append(self._bindings_by_citation_id[citation_id].source_document)
+                seen_citation_ids.add(citation_id)
+        return source_documents
 
     def _add_binding(
         self,
@@ -190,12 +211,15 @@ class _ChatCitationRegistry:
         evidence: CitationEvidence,
     ) -> str:
         if citation_id not in self._bindings_by_citation_id:
+            source_document = _chat_source_document_from_chunk(citation_id, retrieved_chunk)
             self._bindings_by_citation_id[citation_id] = ChatCitationBinding(
                 citation=ChatCitation(
+                    citation_id=citation_id,
                     claim=claim_text,
                     source_document_id=retrieved_chunk.source_document.source_document_id,
                     chunk_id=retrieved_chunk.chunk.chunk_id,
                 ),
+                source_document=source_document,
                 evidence=evidence,
             )
         return citation_id
@@ -630,6 +654,144 @@ def _format_metric(value: Any, unit: str | None) -> str:
     if unit:
         return f"{value}{unit}"
     return str(value)
+
+
+def _chat_source_document_from_chunk(citation_id: str, retrieved_chunk: RetrievedSourceChunk) -> ChatSourceDocument:
+    source = retrieved_chunk.source_document
+    return ChatSourceDocument(
+        citation_id=citation_id,
+        source_document_id=source.source_document_id,
+        chunk_id=retrieved_chunk.chunk.chunk_id,
+        title=source.title,
+        source_type=source.source_type,
+        publisher=source.publisher,
+        url=source.url,
+        published_at=source.published_at,
+        as_of_date=source.as_of_date,
+        retrieved_at=source.retrieved_at,
+        freshness_state=source.freshness_state,
+        is_official=source.is_official,
+        supporting_passage=retrieved_chunk.chunk.text,
+    )
+
+
+def _validate_chat_source_documents(response: ChatResponse, pack: AssetKnowledgePack) -> CitationValidationReport:
+    citation_ids = {citation.citation_id for citation in response.citations}
+    if not citation_ids and not response.source_documents:
+        return _valid_chat_validation_report()
+
+    source_documents_by_citation_id = {source.citation_id: source for source in response.source_documents}
+    source_chunks_by_key = {
+        (item.source_document.source_document_id, item.chunk.chunk_id): item for item in pack.source_chunks
+    }
+
+    issues: list[CitationValidationIssue] = []
+    for citation in response.citations:
+        source_document = source_documents_by_citation_id.get(citation.citation_id)
+        if source_document is None:
+            issues.append(
+                CitationValidationIssue(
+                    status=CitationValidationStatus.citation_not_found,
+                    claim_id="chat_source_metadata",
+                    citation_id=citation.citation_id,
+                    source_document_id=citation.source_document_id,
+                    message="Chat citation is missing source-document metadata.",
+                )
+            )
+            continue
+
+        if source_document.source_document_id != citation.source_document_id or source_document.chunk_id != citation.chunk_id:
+            issues.append(
+                CitationValidationIssue(
+                    status=CitationValidationStatus.citation_not_found,
+                    claim_id="chat_source_metadata",
+                    citation_id=citation.citation_id,
+                    source_document_id=source_document.source_document_id,
+                    message="Chat source-document metadata does not match the citation binding.",
+                )
+            )
+            continue
+
+        expected = source_chunks_by_key.get((source_document.source_document_id, source_document.chunk_id))
+        if expected is None:
+            issues.append(
+                CitationValidationIssue(
+                    status=CitationValidationStatus.citation_not_found,
+                    claim_id="chat_source_metadata",
+                    citation_id=source_document.citation_id,
+                    source_document_id=source_document.source_document_id,
+                    message="Chat source-document metadata is not present in the selected asset knowledge pack.",
+                )
+            )
+            continue
+
+        if expected.chunk.asset_ticker != pack.asset.ticker or expected.source_document.asset_ticker != pack.asset.ticker:
+            issues.append(
+                CitationValidationIssue(
+                    status=CitationValidationStatus.wrong_asset,
+                    claim_id="chat_source_metadata",
+                    citation_id=source_document.citation_id,
+                    source_document_id=source_document.source_document_id,
+                    message="Chat source-document metadata belongs to an asset outside the selected pack.",
+                )
+            )
+            continue
+
+        expected_source = expected.source_document
+        metadata_matches_pack = (
+            source_document.title == expected_source.title
+            and source_document.source_type == expected_source.source_type
+            and source_document.url == expected_source.url
+            and source_document.published_at == expected_source.published_at
+            and source_document.as_of_date == expected_source.as_of_date
+            and source_document.retrieved_at == expected_source.retrieved_at
+            and source_document.freshness_state is expected_source.freshness_state
+            and source_document.supporting_passage == expected.chunk.text
+        )
+        if not metadata_matches_pack:
+            issues.append(
+                CitationValidationIssue(
+                    status=CitationValidationStatus.insufficient_evidence,
+                    claim_id="chat_source_metadata",
+                    citation_id=source_document.citation_id,
+                    source_document_id=source_document.source_document_id,
+                    message="Chat source-document metadata does not match the selected asset knowledge pack.",
+                )
+            )
+
+    extra_metadata_ids = set(source_documents_by_citation_id) - citation_ids
+    for citation_id in sorted(extra_metadata_ids):
+        source_document = source_documents_by_citation_id[citation_id]
+        issues.append(
+            CitationValidationIssue(
+                status=CitationValidationStatus.citation_not_found,
+                claim_id="chat_source_metadata",
+                citation_id=citation_id,
+                source_document_id=source_document.source_document_id,
+                message="Chat source-document metadata has no matching chat citation.",
+            )
+        )
+
+    if not issues:
+        return _valid_chat_validation_report()
+
+    return CitationValidationReport(
+        status=issues[0].status,
+        results=[
+            CitationValidationResult(
+                claim_id="chat_source_metadata",
+                status=issues[0].status,
+                issues=issues,
+            )
+        ],
+    )
+
+
+def _valid_chat_validation_report() -> CitationValidationReport:
+    return CitationValidationReport(
+        status=CitationValidationStatus.valid,
+        results=[CitationValidationResult(claim_id="chat_source_metadata", status=CitationValidationStatus.valid)],
+    )
 
 
 def _evidence_from_chat_response(pack: AssetKnowledgePack, response: ChatResponse) -> list[CitationEvidence]:
