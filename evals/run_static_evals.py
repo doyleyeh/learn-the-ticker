@@ -10,10 +10,11 @@ EVALS_DIR = ROOT / "evals"
 os.environ.setdefault("LTT_FORCE_COMPAT_FASTAPI", "1")
 sys.path.insert(0, str(ROOT))
 
+from backend.chat import generate_asset_chat, validate_chat_response
 from backend.citations import validate_claims
 from backend.comparison import generate_comparison, validate_comparison_response
 from backend.main import app
-from backend.models import MetricValue, CompareResponse
+from backend.models import MetricValue, CompareResponse, ChatResponse
 from backend.overview import generate_asset_overview, validate_overview_response
 from backend.retrieval import build_asset_knowledge_pack, build_comparison_knowledge_pack, load_retrieval_fixture_dataset
 from backend.safety import find_forbidden_output_phrases
@@ -268,6 +269,56 @@ def test_generated_comparison_contract():
         assert forbidden not in comparison_source
 
 
+def test_generated_chat_contract():
+    supported_cases = [
+        ("AAPL", "What does Apple do?", "primary business"),
+        ("VOO", "What is VOO and what risks should a beginner understand?", "market risk"),
+        ("QQQ", "What does QQQ hold?", "about 100"),
+        ("VOO", "What changed recently?", "No high-signal recent development"),
+        ("QQQ", "Why do beginners consider it?", "Beginners may study QQQ"),
+    ]
+
+    for ticker, question, expected_text in supported_cases:
+        pack = build_asset_knowledge_pack(ticker)
+        response = generate_asset_chat(ticker, question)
+        validated = ChatResponse.model_validate(response.model_dump(mode="json"))
+        source_ids = {source.source_document_id for source in pack.source_documents}
+
+        assert validated.asset.ticker == ticker
+        assert validated.asset.supported is True
+        assert validated.safety_classification.value == "educational"
+        assert expected_text in validated.direct_answer
+        assert validated.why_it_matters
+        assert validated.citations
+        assert {citation.source_document_id for citation in validated.citations} <= source_ids
+        assert validate_chat_response(validated, pack).valid
+        assert not find_forbidden_output_phrases(
+            " ".join(
+                [
+                    validated.direct_answer,
+                    validated.why_it_matters,
+                    " ".join(validated.uncertainty),
+                ]
+            )
+        )
+
+    insufficient = generate_asset_chat("AAPL", "Is Apple expensive based on valuation?")
+    assert insufficient.safety_classification.value == "educational"
+    assert "Insufficient evidence" in insufficient.direct_answer
+    assert insufficient.citations == []
+    assert validate_chat_response(insufficient, build_asset_knowledge_pack("AAPL")).valid
+
+    for ticker in ["BTC", "ZZZZ"]:
+        unavailable = generate_asset_chat(ticker, "What is this?")
+        assert unavailable.asset.supported is False
+        assert unavailable.safety_classification.value == "unsupported_asset_redirect"
+        assert unavailable.citations == []
+
+    chat_source = (ROOT / "backend" / "chat.py").read_text(encoding="utf-8")
+    for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import"]:
+        assert forbidden not in chat_source
+
+
 if __name__ == "__main__":
     test_golden_assets()
     test_safety_cases()
@@ -275,4 +326,5 @@ if __name__ == "__main__":
     test_retrieval_fixture_contract()
     test_generated_overview_contract()
     test_generated_comparison_contract()
+    test_generated_chat_contract()
     print("Static evals passed.")

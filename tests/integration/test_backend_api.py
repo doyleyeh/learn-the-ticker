@@ -146,8 +146,34 @@ def test_chat_supported_question_is_grounded_with_citation():
     assert response.status_code == 200
     body = response.json()
     assert body["safety_classification"] == "educational"
-    assert body["citations"][0]["source_document_id"] == "src_qqq_fact_sheet"
+    assert "Nasdaq-100 Index" in body["direct_answer"]
+    assert body["citations"][0]["source_document_id"] == "src_qqq_fact_sheet_fixture"
     assert body["uncertainty"]
+
+
+def test_chat_supported_beginner_intents_use_selected_asset_pack():
+    cases = [
+        ("AAPL", "What does Apple do?", "primary business", "src_aapl_10k_fixture"),
+        ("VOO", "What does VOO hold?", "about 500", "src_voo_fact_sheet_fixture"),
+        ("QQQ", "What is the biggest risk?", "concentration", "src_qqq_prospectus_fixture"),
+        ("VOO", "What changed recently?", "No high-signal recent development", "src_voo_recent_review"),
+        ("AAPL", "Is Apple expensive based on valuation?", "Insufficient evidence", None),
+    ]
+
+    for ticker, question, expected_answer, expected_source in cases:
+        response = client.post(f"/api/assets/{ticker}/chat", json={"question": question})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["asset"]["ticker"] == ticker
+        assert body["safety_classification"] == "educational"
+        assert expected_answer in body["direct_answer"]
+        if expected_source is None:
+            assert body["citations"] == []
+            assert "valuation" in " ".join(body["uncertainty"]).lower()
+        else:
+            assert body["citations"]
+            assert expected_source in {citation["source_document_id"] for citation in body["citations"]}
 
 
 def test_chat_unsupported_assets_redirect_to_scope_language():
