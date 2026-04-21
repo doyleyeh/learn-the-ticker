@@ -17,6 +17,42 @@ Options:
 EOF
 }
 
+current_task_line() {
+  awk '
+    /^## Current task/ { in_current = 1; next }
+    in_current && /^## / { exit }
+    in_current && /^### T-/ { print; exit }
+  ' TASKS.md
+}
+
+ensure_agent_branch() {
+  local context="$1"
+  local current_branch
+  local current_head
+
+  current_branch="$(git branch --show-current || true)"
+  if [ "$current_branch" = "$BRANCH" ]; then
+    return 0
+  fi
+
+  current_head="$(git rev-parse --short HEAD)"
+  echo "Branch drift detected during ${context}: expected ${BRANCH}, current branch is ${current_branch:-detached} at ${current_head}."
+
+  if [ -n "$(git status --porcelain)" ]; then
+    echo "Attempting to return to ${BRANCH} while preserving uncommitted attempt changes."
+    if git switch "$BRANCH"; then
+      current_branch="$(git branch --show-current || true)"
+      if [ "$current_branch" = "$BRANCH" ]; then
+        return 0
+      fi
+    fi
+  fi
+
+  echo "Could not safely recover the expected agent branch."
+  echo "The attempt may have changed branches or committed on the wrong branch. Review git status before continuing."
+  return 1
+}
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --commit-failures)
@@ -43,7 +79,7 @@ source "$ROOT/scripts/activate_agent_env.sh"
 ltt_require_codex_toolchain
 
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
-TASK_LINE="$(grep -m1 '^### T-' TASKS.md || true)"
+TASK_LINE="$(current_task_line)"
 
 if [ -z "$TASK_LINE" ]; then
   TASK_ID="T-unknown"
@@ -80,6 +116,8 @@ if [ -z "$ITERATION_BUDGET" ]; then
 fi
 
 BRANCH="agent/${TASK_ID}-${RUN_ID}"
+REAL_GIT="$(command -v git)"
+AGENT_GIT_WRAPPER_DIR=".agent-runs/$RUN_ID/bin"
 
 echo "== Agent run: $RUN_ID =="
 echo "== Task: $TASK_ID =="
@@ -98,6 +136,19 @@ git checkout -b "$BRANCH"
 
 mkdir -p ".agent-runs/$RUN_ID"
 mkdir -p "docs/agent-journal"
+mkdir -p "$AGENT_GIT_WRAPPER_DIR"
+
+cat > "$AGENT_GIT_WRAPPER_DIR/git" <<EOF
+#!/usr/bin/env bash
+case "\${1:-}" in
+  checkout|switch|commit|push|merge|rebase|reset|clean)
+    echo "agent_loop blocks 'git \${1:-}' inside Codex attempts; leave branch, commit, merge, and push operations to the harness." >&2
+    exit 2
+    ;;
+esac
+exec "$REAL_GIT" "\$@"
+EOF
+chmod +x "$AGENT_GIT_WRAPPER_DIR/git"
 
 QUALITY_STATUS=1
 CODEX_STATUS=0
@@ -135,7 +186,10 @@ Work only on the current task in TASKS.md.
 
 Rules:
 - Leave changes uncommitted for the harness commit step after the quality gate.
+- Stay on the current agent branch; do not run git switch or git checkout.
 - Do not push from inside a Codex attempt.
+- Do not run git commit.
+- Do not run git merge.
 - Do not run git reset --hard.
 - Do not run git clean -fd.
 - Do not change unrelated files.
@@ -158,7 +212,7 @@ EOF
 
   echo "== Running Codex attempt $ATTEMPT/$ITERATION_BUDGET =="
   set +e
-  codex -a never exec \
+  PATH="$ROOT/$AGENT_GIT_WRAPPER_DIR:$PATH" codex -a never exec \
     --sandbox workspace-write \
     "$(cat "$ATTEMPT_DIR/prompt.txt")" \
     | tee "$ATTEMPT_DIR/codex-final.md"
@@ -169,6 +223,9 @@ EOF
     echo "Codex exited with status $CODEX_STATUS."
     echo "Quality gate skipped because Codex exited with status $CODEX_STATUS." > "$ATTEMPT_DIR/quality-gate.log"
     QUALITY_STATUS=$CODEX_STATUS
+  elif ! ensure_agent_branch "attempt ${ATTEMPT}"; then
+    echo "Quality gate skipped because the Codex attempt did not leave the repo on ${BRANCH}." > "$ATTEMPT_DIR/quality-gate.log"
+    QUALITY_STATUS=1
   else
     echo "== Running quality gate for attempt $ATTEMPT/$ITERATION_BUDGET =="
     set +e
@@ -226,6 +283,8 @@ if [ "$QUALITY_STATUS" -ne 0 ] && [ "$COMMIT_FAILURES" -ne 1 ]; then
   echo "Rerun with --commit-failures to create a WIP audit commit."
   exit "$QUALITY_STATUS"
 fi
+
+ensure_agent_branch "final commit"
 
 git add -A
 

@@ -75,6 +75,9 @@ def test_agent_loop_uses_retry_budget_and_clean_commit_policy():
     assert "for ATTEMPT in" in bash_loop
     assert "--commit-failures" in bash_loop
     assert "Leaving changes uncommitted and unstaged for review." in bash_loop
+    assert "ensure_agent_branch" in bash_loop
+    assert "agent_loop blocks 'git" in bash_loop
+    assert 'PATH="$ROOT/$AGENT_GIT_WRAPPER_DIR:$PATH" codex' in bash_loop
 
     assert "$IterationBudget" in powershell_loop
     assert "for ($Attempt = 1" in powershell_loop
