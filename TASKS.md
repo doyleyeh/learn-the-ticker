@@ -2,21 +2,22 @@
 
 ## Current task
 
-### T-010: Add asset page chat panel for fixture-backed assets
+### T-011: Add comparison source metadata contract
 
 Goal:
-Add a beginner-facing asset page chat panel that calls the grounded chat API for fixture-backed supported assets and renders citations, source metadata, advice redirects, unsupported states, and insufficient-evidence states.
+Expose source-document metadata for comparison citations so UI clients can render source drawer details for generated comparison answers without making unsupported assumptions from citation IDs alone.
 
-This is a frontend integration task. T-009 exposed chat source metadata from the backend, and the asset page should now provide an "ask about this asset" workflow for the supported fixture-backed assets. Keep the UI deterministic and beginner-readable. Do not add live external market-data, SEC, issuer, news, brokerage, tax, or LLM calls. Do not change backend generation behavior except for a minimal typed helper or test fixture adjustment if the UI needs it.
+This is a backend/API contract task. T-007 added deterministic fixture-backed comparison generation for `VOO` vs `QQQ`, and that response currently exposes citation metadata but not full comparison source-document details. Add comparison source metadata to the response using only the existing local comparison knowledge pack and selected asset packs. Keep the comparison generator deterministic and fixture-backed. Do not add live external market-data, SEC, issuer, news, brokerage, tax, or LLM calls. Do not render the new metadata on the compare page in this task; that is reserved for T-012.
 
 Allowed files:
 
 - TASKS.md
-- app/\*\*
-- components/\*\*
-- lib/\*\*
-- tests/\*\*
-- evals/\*\*
+- backend/models.py
+- backend/comparison.py
+- backend/main.py
+- tests/unit/test_comparison_generation.py
+- tests/integration/test_backend_api.py
+- evals/run_static_evals.py
 - docs/agent-journal/\*\*
 
 Do not change:
@@ -26,37 +27,38 @@ Do not change:
 - EVALS.md
 - docs/learn_the_ticker_PRD.md
 - docs/learn_the_ticker_technical_design_spec.md
+- frontend rendering files
+- asset page chat panel behavior
 - backend chat generation logic
-- backend response schemas except for strictly necessary typed test helpers
-- retrieval fixture content
 - overview generation behavior
+- retrieval fixture content
 - comparison generation behavior
+- comparison fixture coverage beyond the existing local comparison pack
 - financial safety rules
 - advice-boundary rules
 - production dependency files
 
 Acceptance criteria:
 
-- Asset pages for `AAPL`, `VOO`, and `QQQ` include a usable chat panel or chat section.
-- The chat panel provides a text input, submit control, loading state, error state, and empty state.
-- The panel calls the local backend chat endpoint or a local typed API helper for `/api/assets/{ticker}/chat`.
-- Supported educational responses render the direct answer, `why_it_matters`, uncertainty or limits notes, citations, and source-document metadata returned by the backend.
-- Citation chips or source controls expose source title, source type, date or freshness details when available, URL when available, and supporting passage when available.
-- Advice-like questions render the educational redirect without citations or source metadata.
-- Unsupported, unknown, and insufficient-evidence responses render clear non-factual states without invented claims.
-- The UI copy avoids buy/sell/hold recommendations, personalized allocation advice, unsupported price targets, tax advice, brokerage/trading behavior, and certainty around future returns.
-- Frontend smoke tests cover the presence of the chat panel, source metadata rendering hooks, advice redirect handling, and unsupported or insufficient-evidence state copy.
-- Existing overview generation tests, comparison generation tests, retrieval fixture tests, citation validation, safety evals, backend route tests, frontend smoke checks, static evals, and quality gate behavior continue to pass.
+- `CompareResponse` exposes a `source_documents` field or equivalently named typed field for comparison source metadata.
+- Supported generated `VOO` vs `QQQ` comparison responses include source-document metadata for every source document needed by the response citations.
+- Reverse-order `QQQ` vs `VOO` comparison responses include source-document metadata bound to the reversed comparison pack and selected assets.
+- Each comparison source metadata item includes source document ID, title, publisher, source type, URL, published or as-of date when available, retrieved timestamp, freshness state, official-source flag, and a supporting passage when available.
+- Comparison citation IDs used by key differences and the beginner bottom line resolve to source metadata belonging only to the same comparison pack assets.
+- Unsupported, unknown, and unavailable comparison responses return no generated factual citations and no source metadata.
+- Comparison validation checks that source metadata belongs to the selected comparison pack and does not introduce wrong-asset, stale-unlabeled, unsupported-source, or missing-evidence claims.
+- Backend route tests cover the serialized comparison source metadata shape for `/api/compare`.
+- Static evals cover comparison source metadata same-pack binding and no live external calls.
+- Existing overview generation tests, chat generation tests, comparison generation tests, retrieval fixture tests, citation validation, safety evals, backend route tests, frontend smoke checks, static evals, and quality gate behavior continue to pass.
 - No endpoint, test, or CI command makes live external calls.
 - No new production dependency is added.
 - The main quality gate passes.
 
 Required commands:
 
-- npm test
-- npm run typecheck
-- npm run build
+- python3 -m pytest tests/unit/test_comparison_generation.py tests/integration/test_backend_api.py -q
 - python3 evals/run_static_evals.py
+- python3 -m compileall backend
 - bash scripts/run_quality_gate.sh
 
 Iteration budget:
@@ -64,6 +66,29 @@ Iteration budget:
 - Max 3 Codex implementation loops before reporting blockers.
 
 ## Completed
+
+### T-010: Add asset page chat panel for fixture-backed assets
+
+Goal:
+Add a beginner-facing asset page chat panel that calls the grounded chat API for fixture-backed supported assets and renders citations, source metadata, advice redirects, unsupported states, and insufficient-evidence states.
+
+Completed:
+
+- Added `AssetChatPanel` to asset pages for fixture-backed assets and wired `app/assets/[ticker]/page.tsx` to render it.
+- Added a client-side chat workflow with starter prompts, text input, submit control, empty state, loading state, error state, answer state, and explicit advice redirect, unsupported or unknown, and insufficient-evidence labels.
+- Added `lib/assetChat.ts` with typed chat response shapes and an injectable `postAssetChat` helper that calls the local relative `/api/assets/{ticker}/chat` endpoint.
+- Rendered supported chat answers with direct answer, `why_it_matters`, uncertainty notes, citation chips, and chat source metadata details including title, source type, publisher, published or as-of date, retrieved timestamp, freshness state, official-source badge, source URL, chunk/source IDs, and supporting passage.
+- Rendered no-citation copy for educational redirects, unsupported states, and insufficient-evidence states without inventing factual claims.
+- Frontend smoke checks now cover the chat panel, local endpoint helper, chat state markers, source metadata hooks, educational redirect copy, unsupported or unknown copy, insufficient-evidence copy, and no live external chat URLs.
+- Safety guardrail tests include the new asset chat panel in frontend copy checks.
+- T-010 agent journal records that `npm test`, `npm run typecheck`, `npm run build`, static evals, and the main quality gate passed. The initial `npm test` failed because the new smoke check rejected existing fixture source URLs; the check was narrowed to the new chat helper/component and passed on rerun.
+- Remaining documented risk: the frontend chat helper uses the local relative `/api/assets/{ticker}/chat` path, so deployment still needs the frontend and backend served or proxied so that path resolves at runtime.
+- Remaining documented risk: frontend coverage is static smoke coverage, not browser automation of typed questions and rendered network responses.
+
+Completion commits:
+
+- `6f51ae2 feat(T-010): add asset page chat panel for fixture-backed assets`
+- `167f1b9 chore(T-010): merge asset page chat panel for fixture-backed assets`
 
 ### T-009: Add chat source metadata contract
 
@@ -286,8 +311,6 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-011: Add comparison source metadata contract
 
 ### T-012: Render comparison source metadata on compare page
 
