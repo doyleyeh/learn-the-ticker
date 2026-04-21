@@ -2,22 +2,25 @@
 
 ## Current task
 
-### T-011: Add comparison source metadata contract
+### T-012: Render comparison source metadata on compare page
 
 Goal:
-Expose source-document metadata for comparison citations so UI clients can render source drawer details for generated comparison answers without making unsupported assumptions from citation IDs alone.
+Render comparison source-document metadata on the compare page so beginners can inspect the sources, freshness, and supporting passages behind generated comparison citations.
 
-This is a backend/API contract task. T-007 added deterministic fixture-backed comparison generation for `VOO` vs `QQQ`, and that response currently exposes citation metadata but not full comparison source-document details. Add comparison source metadata to the response using only the existing local comparison knowledge pack and selected asset packs. Keep the comparison generator deterministic and fixture-backed. Do not add live external market-data, SEC, issuer, news, brokerage, tax, or LLM calls. Do not render the new metadata on the compare page in this task; that is reserved for T-012.
+This is a frontend/UI task. T-011 added deterministic `source_documents` metadata to generated comparison responses for the local `VOO` vs `QQQ` comparison pack. Update the compare page so comparison citation chips resolve to same-pack source details instead of relying on the left asset's primary source. Keep the comparison page fixture-backed and deterministic for this task. Do not add live external market-data, SEC, issuer, news, brokerage, tax, or LLM calls. Do not change backend comparison generation, backend source metadata validation, or retrieval fixture content.
 
 Allowed files:
 
 - TASKS.md
-- backend/models.py
-- backend/comparison.py
-- backend/main.py
-- tests/unit/test_comparison_generation.py
-- tests/integration/test_backend_api.py
-- evals/run_static_evals.py
+- app/compare/page.tsx
+- components/CitationChip.tsx
+- components/SourceDrawer.tsx
+- components/ComparisonSourceDetails.tsx
+- lib/fixtures.ts
+- lib/compare.ts
+- styles/globals.css
+- tests/frontend/smoke.mjs
+- tests/unit/test_safety_guardrails.py
 - docs/agent-journal/\*\*
 
 Do not change:
@@ -27,38 +30,40 @@ Do not change:
 - EVALS.md
 - docs/learn_the_ticker_PRD.md
 - docs/learn_the_ticker_technical_design_spec.md
-- frontend rendering files
+- backend models, routes, comparison generation, chat generation, overview generation, citation validation, or retrieval logic
+- retrieval fixture content in `data/`
+- asset page rendering
 - asset page chat panel behavior
-- backend chat generation logic
-- overview generation behavior
-- retrieval fixture content
-- comparison generation behavior
-- comparison fixture coverage beyond the existing local comparison pack
+- search workflow behavior
+- comparison fixture coverage beyond the existing local `VOO` vs `QQQ` comparison pack
 - financial safety rules
 - advice-boundary rules
 - production dependency files
 
 Acceptance criteria:
 
-- `CompareResponse` exposes a `source_documents` field or equivalently named typed field for comparison source metadata.
-- Supported generated `VOO` vs `QQQ` comparison responses include source-document metadata for every source document needed by the response citations.
-- Reverse-order `QQQ` vs `VOO` comparison responses include source-document metadata bound to the reversed comparison pack and selected assets.
-- Each comparison source metadata item includes source document ID, title, publisher, source type, URL, published or as-of date when available, retrieved timestamp, freshness state, official-source flag, and a supporting passage when available.
-- Comparison citation IDs used by key differences and the beginner bottom line resolve to source metadata belonging only to the same comparison pack assets.
-- Unsupported, unknown, and unavailable comparison responses return no generated factual citations and no source metadata.
-- Comparison validation checks that source metadata belongs to the selected comparison pack and does not introduce wrong-asset, stale-unlabeled, unsupported-source, or missing-evidence claims.
-- Backend route tests cover the serialized comparison source metadata shape for `/api/compare`.
-- Static evals cover comparison source metadata same-pack binding and no live external calls.
-- Existing overview generation tests, chat generation tests, comparison generation tests, retrieval fixture tests, citation validation, safety evals, backend route tests, frontend smoke checks, static evals, and quality gate behavior continue to pass.
-- No endpoint, test, or CI command makes live external calls.
+- The compare page renders source details for every comparison source document needed by the displayed comparison citations.
+- Comparison citation chips for key differences and the beginner bottom line link to matching source details by citation/source metadata, not to a hard-coded primary asset source.
+- Each rendered comparison source detail includes source document ID, title, publisher, source type, URL, published or as-of date when available, retrieved timestamp, freshness state, official-source badge, and supporting passage when available.
+- Source details identify the related comparison claim or citation context so a beginner can trace the chip back to the evidence.
+- `VOO` vs `QQQ` and `QQQ` vs `VOO` compare-page states use only same-pack `VOO` and `QQQ` comparison source metadata; no `AAPL`, unsupported, stale-unlabeled, or wrong-asset source appears for generated comparison claims.
+- Unsupported, unknown, or unavailable comparison UI states, if represented by the touched fixtures/components, show no factual citation chips or source drawers and clearly label missing evidence as unknown, unavailable, stale, or insufficient evidence.
+- Existing citation chips, source drawer behavior, freshness labels, stale/unknown labels, and beginner-readable comparison copy remain visible and accessible.
+- Frontend smoke checks cover comparison source metadata rendering markers, chip-to-source linkage, official-source display, freshness display, supporting passages, and absence of live external compare calls.
+- Safety guardrail checks continue to reject buy/sell/hold recommendations, personalized allocation advice, unsupported price targets, tax advice, brokerage/trading behavior, and certainty around future returns in frontend comparison copy.
+- Existing backend comparison source metadata tests and static evals continue to pass.
+- No endpoint, frontend helper, test, or CI command makes live external calls.
 - No new production dependency is added.
 - The main quality gate passes.
 
 Required commands:
 
+- npm test
+- npm run typecheck
+- npm run build
 - python3 -m pytest tests/unit/test_comparison_generation.py tests/integration/test_backend_api.py -q
+- python3 -m pytest tests/unit/test_safety_guardrails.py -q
 - python3 evals/run_static_evals.py
-- python3 -m compileall backend
 - bash scripts/run_quality_gate.sh
 
 Iteration budget:
@@ -66,6 +71,31 @@ Iteration budget:
 - Max 3 Codex implementation loops before reporting blockers.
 
 ## Completed
+
+### T-011: Add comparison source metadata contract
+
+Goal:
+Expose source-document metadata for comparison citations so UI clients can render source drawer details for generated comparison answers without making unsupported assumptions from citation IDs alone.
+
+Completed:
+
+- Added `source_documents` to `CompareResponse`.
+- Updated deterministic comparison generation so citation bindings carry both citation metadata and full `SourceDocument` metadata built from same-pack comparison source fixtures.
+- Supported `VOO` vs `QQQ` comparison responses now include deduplicated source-document metadata for cited comparison facts and supporting chunks.
+- Reverse-order `QQQ` vs `VOO` comparison responses include source-document metadata bound to the reversed local comparison pack and selected assets.
+- Unavailable, unsupported, and unknown comparison responses return empty key differences, no beginner bottom line, no factual citations, and no source documents.
+- Comparison validation now checks source metadata after citation validation and rejects missing citation metadata, wrong-asset source documents, stale sources, unsupported source types, and empty supporting passages.
+- Backend route tests cover serialized `/api/compare` source metadata, including source document ID, title, publisher, source type, URL, published or as-of date, retrieved timestamp, freshness state, official-source flag, and supporting passage.
+- Unit tests cover schema-valid source-backed comparison metadata, reverse-order metadata, unavailable responses with no metadata, and validation failures for missing, wrong-asset, stale, unsupported, and insufficient source metadata.
+- Static evals cover comparison source metadata same-pack binding, reverse-order source binding, required source metadata fields, unavailable responses with no source metadata, and no live external calls.
+- T-011 agent journal records that focused comparison/API tests, static evals, backend compile check, and the main quality gate passed.
+- Remaining documented risk: comparison source metadata is deterministic and fixture-backed for the existing local `VOO` vs `QQQ` comparison pack only.
+- Remaining documented risk: UI rendering of comparison `source_documents` was intentionally not included in this backend/API contract task.
+
+Completion commits:
+
+- `f9313b1 feat(T-011): add comparison source metadata contract`
+- `e9b9c7f chore(T-011): merge comparison source metadata contract`
 
 ### T-010: Add asset page chat panel for fixture-backed assets
 
@@ -311,8 +341,6 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-012: Render comparison source metadata on compare page
 
 ### T-013: Add fixture-backed asset name search states
 
