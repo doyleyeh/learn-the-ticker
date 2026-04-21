@@ -65,6 +65,13 @@ includes("components/ComparisonSourceDetails.tsx", "Related comparison claims");
 includes("components/ComparisonSourceDetails.tsx", "supportingPassage");
 includes("components/CitationChip.tsx", "data-source-document-id");
 includes("components/SearchBox.tsx", "data-search-state");
+includes("components/SearchBox.tsx", "resolveLocalFixtureSearch");
+includes("components/SearchBox.tsx", "data-search-supported-result");
+includes("components/SearchBox.tsx", "data-search-multi-result");
+includes("components/SearchBox.tsx", "data-search-unsupported-result");
+includes("components/SearchBox.tsx", "data-search-unknown-result");
+includes("components/SearchBox.tsx", "data-search-result-link");
+includes("components/SearchBox.tsx", "No facts are invented for this ticker or name");
 includes("components/FreshnessLabel.tsx", "data-freshness-state");
 
 const fixtures = read("lib/fixtures.ts");
@@ -86,6 +93,11 @@ for (const marker of [
   "freshnessState",
   "Unknown in the local skeleton data",
   "No facts are invented",
+  "Apple Inc.",
+  "Vanguard S&P 500 ETF",
+  "S&P 500",
+  "Invesco QQQ Trust",
+  "Nasdaq-100",
   "beginner",
   "expense ratio"
 ]) {
@@ -128,6 +140,14 @@ assert.equal(
     read("components/AssetChatPanel.tsx").includes("http://"),
   false,
   "Frontend chat integration should not add live external calls"
+);
+
+assert.equal(read("components/SearchBox.tsx").includes("fetch("), false, "Home search should stay local");
+assert.equal(read("components/SearchBox.tsx").includes("/api/search"), false, "Home search should not call /api/search");
+assert.equal(
+  read("components/SearchBox.tsx").includes("https://") || read("components/SearchBox.tsx").includes("http://"),
+  false,
+  "Home search should not add live external calls"
 );
 
 const compareSource = [
