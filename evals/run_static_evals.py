@@ -235,6 +235,8 @@ def test_generated_comparison_contract():
     reverse = generate_comparison("QQQ", "VOO")
     validated = CompareResponse.model_validate(comparison.model_dump(mode="json"))
     citation_ids = {citation.citation_id for citation in validated.citations}
+    source_ids = {source.source_document_id for source in validated.source_documents}
+    pack_source_ids = {source.source_document_id for source in pack.comparison_sources}
     used_citation_ids = {
         *{citation_id for item in validated.key_differences for citation_id in item.citation_ids},
         *validated.bottom_line_for_beginners.citation_ids,
@@ -252,10 +254,27 @@ def test_generated_comparison_contract():
     assert {citation.source_document_id for citation in validated.citations} <= {
         source.source_document_id for source in pack.comparison_sources
     }
+    assert validated.source_documents
+    assert {citation.source_document_id for citation in validated.citations} <= source_ids
+    assert source_ids <= pack_source_ids
+    assert all(source.title for source in validated.source_documents)
+    assert all(source.publisher for source in validated.source_documents)
+    assert all(source.source_type for source in validated.source_documents)
+    assert all(source.url for source in validated.source_documents)
+    assert all(source.published_at or source.as_of_date for source in validated.source_documents)
+    assert all(source.retrieved_at for source in validated.source_documents)
+    assert all(source.freshness_state.value == "fresh" for source in validated.source_documents)
+    assert all(source.is_official is True for source in validated.source_documents)
+    assert all(source.supporting_passage for source in validated.source_documents)
     assert validate_comparison_response(validated, pack).valid
     assert reverse.left_asset.ticker == "QQQ"
     assert reverse.right_asset.ticker == "VOO"
-    assert validate_comparison_response(reverse, build_comparison_knowledge_pack("QQQ", "VOO")).valid
+    reverse_pack = build_comparison_knowledge_pack("QQQ", "VOO")
+    reverse_source_ids = {source.source_document_id for source in reverse.source_documents}
+    assert reverse.source_documents
+    assert reverse_source_ids <= {source.source_document_id for source in reverse_pack.comparison_sources}
+    assert {citation.source_document_id for citation in reverse.citations} <= reverse_source_ids
+    assert validate_comparison_response(reverse, reverse_pack).valid
 
     for pair in [("VOO", "BTC"), ("VOO", "ZZZZ"), ("AAPL", "VOO")]:
         unavailable = generate_comparison(*pair)
@@ -263,6 +282,7 @@ def test_generated_comparison_contract():
         assert unavailable.key_differences == []
         assert unavailable.bottom_line_for_beginners is None
         assert unavailable.citations == []
+        assert unavailable.source_documents == []
 
     comparison_source = (ROOT / "backend" / "comparison.py").read_text(encoding="utf-8")
     for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import"]:

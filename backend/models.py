@@ -195,6 +195,7 @@ class CompareResponse(BaseModel):
     key_differences: list[KeyDifference] = Field(default_factory=list)
     bottom_line_for_beginners: BeginnerBottomLine | None = None
     citations: list[Citation] = Field(default_factory=list)
+    source_documents: list[SourceDocument] = Field(default_factory=list)
 
 
 class ChatRequest(BaseModel):

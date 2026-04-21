@@ -8,7 +8,7 @@ from backend.comparison import (
     validate_comparison_response,
     validate_generated_comparison_claims,
 )
-from backend.models import AssetStatus, CompareResponse, FreshnessState
+from backend.models import AssetStatus, CompareResponse, FreshnessState, SourceDocument
 from backend.retrieval import build_comparison_knowledge_pack
 from backend.safety import find_forbidden_output_phrases
 
@@ -32,6 +32,7 @@ def test_voo_qqq_comparison_is_schema_valid_and_source_backed():
     assert {"Benchmark", "Expense ratio", "Holdings count", "Breadth", "Educational role"} <= dimensions
 
     citation_ids = {citation.citation_id for citation in validated.citations}
+    source_ids = {source.source_document_id for source in validated.source_documents}
     used_citation_ids = {
         *{citation_id for item in validated.key_differences for citation_id in item.citation_ids},
         *validated.bottom_line_for_beginners.citation_ids,
@@ -40,6 +41,17 @@ def test_voo_qqq_comparison_is_schema_valid_and_source_backed():
     assert {citation.source_document_id for citation in validated.citations} <= {
         source.source_document_id for source in pack.comparison_sources
     }
+    assert {citation.source_document_id for citation in validated.citations} <= source_ids
+    assert source_ids <= {source.source_document_id for source in pack.comparison_sources}
+    assert all(source.title for source in validated.source_documents)
+    assert all(source.publisher for source in validated.source_documents)
+    assert all(source.source_type for source in validated.source_documents)
+    assert all(source.url for source in validated.source_documents)
+    assert all(source.published_at or source.as_of_date for source in validated.source_documents)
+    assert all(source.retrieved_at for source in validated.source_documents)
+    assert all(source.freshness_state is FreshnessState.fresh for source in validated.source_documents)
+    assert all(source.is_official is True for source in validated.source_documents)
+    assert all(source.supporting_passage for source in validated.source_documents)
     assert validate_comparison_response(validated, pack).valid
 
 
@@ -51,6 +63,10 @@ def test_voo_qqq_comparison_supports_reverse_ticker_order():
     assert comparison.right_asset.ticker == "VOO"
     assert comparison.comparison_type == "etf_vs_etf"
     assert comparison.key_differences[0].plain_english_summary.startswith("QQQ tracks")
+    assert comparison.source_documents
+    assert {source.source_document_id for source in comparison.source_documents} <= {
+        source.source_document_id for source in pack.comparison_sources
+    }
     assert validate_comparison_response(comparison, pack).valid
 
 
@@ -69,6 +85,7 @@ def test_unavailable_comparisons_do_not_generate_claims_or_citations():
         assert comparison.key_differences == []
         assert comparison.bottom_line_for_beginners is None
         assert comparison.citations == []
+        assert comparison.source_documents == []
 
 
 def test_comparison_validation_surfaces_missing_and_insufficient_evidence():
@@ -86,6 +103,33 @@ def test_comparison_validation_surfaces_missing_and_insufficient_evidence():
     outside_pack = comparison.model_copy(deep=True)
     outside_pack.key_differences[0].citation_ids = ["c_fact_aapl_primary_business"]
     assert validate_comparison_response(outside_pack, pack).status is CitationValidationStatus.citation_not_found
+
+
+def test_comparison_source_metadata_validation_rejects_missing_wrong_stale_unsupported_and_empty_metadata():
+    pack = build_comparison_knowledge_pack("VOO", "QQQ")
+    comparison = generate_comparison("VOO", "QQQ")
+
+    missing = comparison.model_copy(deep=True)
+    missing.source_documents = []
+    assert validate_comparison_response(missing, pack).status is CitationValidationStatus.citation_not_found
+
+    wrong_asset = comparison.model_copy(deep=True)
+    for citation in wrong_asset.citations:
+        citation.source_document_id = "src_aapl_10k_fixture"
+    wrong_asset.source_documents = [_aapl_source_document()]
+    assert validate_comparison_response(wrong_asset, pack).status is CitationValidationStatus.wrong_asset
+
+    stale = comparison.model_copy(deep=True)
+    stale.source_documents[0].freshness_state = FreshnessState.stale
+    assert validate_comparison_response(stale, pack).status is CitationValidationStatus.stale_source
+
+    unsupported = comparison.model_copy(deep=True)
+    unsupported.source_documents[0].source_type = "news_article"
+    assert validate_comparison_response(unsupported, pack).status is CitationValidationStatus.unsupported_source
+
+    insufficient = comparison.model_copy(deep=True)
+    insufficient.source_documents[0].supporting_passage = ""
+    assert validate_comparison_response(insufficient, pack).status is CitationValidationStatus.insufficient_evidence
 
 
 def test_comparison_claim_validation_rejects_wrong_stale_unsupported_and_empty_evidence():
@@ -189,3 +233,19 @@ def _flatten_text(value: Any) -> str:
     if isinstance(value, dict):
         return " ".join(_flatten_text(item) for item in value.values())
     return ""
+
+
+def _aapl_source_document() -> SourceDocument:
+    return SourceDocument(
+        source_document_id="src_aapl_10k_fixture",
+        source_type="sec_filing",
+        title="Apple Form 10-K fixture excerpt",
+        publisher="U.S. SEC",
+        url="https://www.sec.gov/",
+        published_at="2025-11-01",
+        as_of_date="2025-09-27",
+        retrieved_at="2026-04-20T00:00:00Z",
+        freshness_state=FreshnessState.fresh,
+        is_official=True,
+        supporting_passage="Apple 10-K fixture evidence.",
+    )
