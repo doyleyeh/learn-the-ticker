@@ -69,6 +69,7 @@ def test_agents_contains_git_safety_rules():
 
 def test_agent_loop_uses_retry_budget_and_clean_commit_policy():
     bash_loop = read_file("scripts/agent_loop.sh")
+    task_cycle = read_file("scripts/run_task_cycle.sh")
     powershell_loop = read_file("scripts/agent_loop.ps1")
 
     assert "ITERATION_BUDGET" in bash_loop
@@ -78,6 +79,9 @@ def test_agent_loop_uses_retry_budget_and_clean_commit_policy():
     assert "ensure_agent_branch" in bash_loop
     assert "agent_loop blocks 'git" in bash_loop
     assert 'PATH="$ROOT/$AGENT_GIT_WRAPPER_DIR:$PATH" codex' in bash_loop
+    assert "ensure_repeat_backlog_capacity" in task_cycle
+    assert "Repeat backlog preflight" in task_cycle
+    assert "human_action_marker_present" in task_cycle
 
     assert "$IterationBudget" in powershell_loop
     assert "for ($Attempt = 1" in powershell_loop

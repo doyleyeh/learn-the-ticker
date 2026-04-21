@@ -14,6 +14,7 @@ usage() {
 Usage: bash scripts/run_task_cycle.sh [options]
 
 Runs one or more full local task cycles:
+  0. In repeat mode, prepare enough Backlog headings for the requested cycle count when safe.
   1. Run scripts/agent_loop.sh for the current TASKS.md task.
   2. Merge the completed agent/T-... branch into main with scripts/local_merge_task.sh.
   3. Ask Codex to prepare TASKS.md for the next backlog task, or finalize the task board when the backlog is empty.
@@ -126,6 +127,158 @@ has_backlog_task() {
     in_backlog && /^### T-/ { found = 1 }
     END { exit found ? 0 : 1 }
   ' TASKS.md
+}
+
+backlog_task_count() {
+  awk '
+    /^## Backlog/ { in_backlog = 1; next }
+    in_backlog && /^## / { exit }
+    in_backlog && /^### T-/ { count++ }
+    END { print count + 0 }
+  ' TASKS.md
+}
+
+planned_cycle_count() {
+  local current_count=0
+  local backlog_count
+
+  if [ -n "$(current_task_line)" ]; then
+    current_count=1
+  fi
+
+  backlog_count="$(backlog_task_count)"
+  echo $((current_count + backlog_count))
+}
+
+human_action_marker_present() {
+  awk '
+    /^## Current task/ { in_scope = 1; next }
+    /^## Completed/ { in_scope = 0 }
+    /^## Backlog/ { in_scope = 1; next }
+    /^## / && !/^## Backlog/ && !/^## Current task/ { if (in_scope) in_scope = 0 }
+    !in_scope { next }
+    {
+      line = tolower($0)
+    }
+    BEGIN { found = 0 }
+    line ~ /human[[:space:]-]*(review|test|testing|action|approval|required)/ { found = 1 }
+    line ~ /manual[[:space:]-]*(review|test|testing|validation|approval|required)/ { found = 1 }
+    line ~ /needs[[:space:]-]*human/ { found = 1 }
+    line ~ /requires[[:space:]-]*human/ { found = 1 }
+    line ~ /stop[[:space:]-]*repeat/ { found = 1 }
+    END { exit found ? 0 : 1 }
+  ' TASKS.md
+}
+
+ensure_repeat_backlog_capacity() {
+  local current_line
+  local requested_cycles="$1"
+  local planned_cycles
+  local missing_count
+  local prompt_path
+  local changed_files
+
+  if [ "$REPEAT" -ne 1 ] || [ "$PREPARE_NEXT" -ne 1 ]; then
+    return 0
+  fi
+
+  require_clean_tree
+
+  current_line="$(current_task_line)"
+  if [ -z "$current_line" ]; then
+    echo "Repeat backlog preflight skipped because TASKS.md has no current task."
+    return 0
+  fi
+
+  planned_cycles="$(planned_cycle_count)"
+  if [ "$planned_cycles" -ge "$requested_cycles" ]; then
+    echo "== Repeat backlog preflight: ${planned_cycles}/${requested_cycles} cycles already planned =="
+    return 0
+  fi
+
+  if human_action_marker_present; then
+    echo "== Repeat backlog preflight stopped: TASKS.md contains a human/manual action marker. =="
+    echo "== Planned cycles available: ${planned_cycles}/${requested_cycles}. =="
+    return 0
+  fi
+
+  missing_count=$((requested_cycles - planned_cycles))
+  prompt_path="$(mktemp)"
+  cat > "$prompt_path" <<EOF
+You are preparing lightweight Backlog headings for a local repeat-mode agent loop.
+
+Read:
+- AGENTS.md
+- SPEC.md
+- TASKS.md
+- EVALS.md
+- docs/learn_the_ticker_PRD.md
+- docs/learn_the_ticker_technical_design_spec.md
+
+Only edit TASKS.md. Do not edit any other file. Do not run git commit or git push.
+
+Repeat-mode request:
+- requested cycles: ${requested_cycles}
+- currently planned cycles from Current + Backlog: ${planned_cycles}
+- new Backlog headings needed: ${missing_count}
+
+Update TASKS.md as follows:
+1. Append exactly ${missing_count} new Backlog task heading(s) under the existing Backlog section.
+2. Use the next sequential T-### IDs after the highest task ID already present in TASKS.md.
+3. Add only headings in this format: "### T-012: Short concrete task title".
+4. Do not expand new Backlog tasks into full contracts; the cycle wrapper expands a task when it is promoted.
+5. Do not modify the Current task or Completed tasks.
+6. Choose small, high-confidence next tasks that advance the MVP in SPEC.md and the PRD.
+7. Preserve product guardrails: no investment advice, no live external calls, citations for important claims, freshness/unknown/stale handling.
+8. If the current project stage appears to require human review, manual browser testing, API keys, product decisions, deployment credentials, or other human action before more autonomous work is safe, do not add backlog tasks. Instead, leave TASKS.md unchanged.
+EOF
+
+  echo "== Repeat backlog preflight: preparing ${missing_count} backlog task(s) for ${requested_cycles} requested cycles =="
+  set +e
+  codex -a never exec --sandbox workspace-write "$(cat "$prompt_path")"
+  local codex_status=$?
+  set -e
+  rm -f "$prompt_path"
+
+  if [ "$codex_status" -ne 0 ]; then
+    echo "Repeat backlog preparation failed with status $codex_status."
+    exit "$codex_status"
+  fi
+
+  changed_files="$(git diff --name-only)"
+  if [ -z "$changed_files" ]; then
+    echo "Repeat backlog preflight did not change TASKS.md. Continuing with ${planned_cycles}/${requested_cycles} planned cycle(s)."
+    return 0
+  fi
+
+  if [ "$changed_files" != "TASKS.md" ]; then
+    echo "Repeat backlog preparation changed files other than TASKS.md:"
+    printf '%s\n' "$changed_files"
+    echo "Review the working tree before continuing."
+    exit 1
+  fi
+
+  planned_cycles="$(planned_cycle_count)"
+  if [ "$planned_cycles" -lt "$requested_cycles" ]; then
+    echo "Repeat backlog preparation left only ${planned_cycles}/${requested_cycles} planned cycle(s)."
+    echo "Review TASKS.md before continuing."
+    exit 1
+  fi
+
+  echo "== Running quality gate after repeat backlog preparation =="
+  bash scripts/run_quality_gate.sh
+
+  git add TASKS.md
+  git commit \
+    -m "chore(agent-loop): prepare repeat backlog" \
+    -m "Requested cycles: ${requested_cycles}" \
+    -m "Planned cycles after preparation: ${planned_cycles}" \
+    -m "Quality gate: passed"
+
+  if [ "$PUSH_MAIN" -eq 1 ]; then
+    echo "== Pushing ${MAIN_BRANCH} after repeat backlog preparation =="
+    git push origin "$MAIN_BRANCH"
+  fi
 }
 
 prepare_next_task() {
@@ -321,6 +474,8 @@ cd "$ROOT"
 # shellcheck source=scripts/activate_agent_env.sh
 source "$ROOT/scripts/activate_agent_env.sh"
 ltt_require_codex_toolchain
+
+ensure_repeat_backlog_capacity "$MAX_CYCLES"
 
 CYCLE=1
 while [ "$CYCLE" -le "$MAX_CYCLES" ]; do
