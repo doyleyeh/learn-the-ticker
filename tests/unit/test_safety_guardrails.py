@@ -57,11 +57,13 @@ def test_frontend_copy_fixtures_and_comparison_do_not_leak_advice_phrases():
         "app/assets/[ticker]/page.tsx",
         "app/compare/page.tsx",
         "components/AssetHeader.tsx",
+        "components/AssetChatPanel.tsx",
         "components/CitationChip.tsx",
         "components/FreshnessLabel.tsx",
         "components/GlossaryPopover.tsx",
         "components/SearchBox.tsx",
         "components/SourceDrawer.tsx",
+        "lib/assetChat.ts",
         "lib/fixtures.ts",
         "lib/glossary.ts",
     ]

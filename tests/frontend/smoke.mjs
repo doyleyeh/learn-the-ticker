@@ -20,10 +20,12 @@ function includes(path, marker) {
   "app/page.tsx",
   "app/assets/[ticker]/page.tsx",
   "app/compare/page.tsx",
+  "components/AssetChatPanel.tsx",
   "components/CitationChip.tsx",
   "components/SourceDrawer.tsx",
   "components/FreshnessLabel.tsx",
   "components/GlossaryPopover.tsx",
+  "lib/assetChat.ts",
   "lib/fixtures.ts",
   "styles/globals.css"
 ].forEach(exists);
@@ -35,7 +37,17 @@ includes("app/assets/[ticker]/page.tsx", "Recent developments");
 includes("app/assets/[ticker]/page.tsx", "Stale and unknown treatment");
 includes("app/assets/[ticker]/page.tsx", "SourceDrawer");
 includes("app/assets/[ticker]/page.tsx", "GlossaryPopover");
+includes("app/assets/[ticker]/page.tsx", "AssetChatPanel");
 includes("app/compare/page.tsx", "Bottom line for beginners");
+includes("components/AssetChatPanel.tsx", "Ask about this asset");
+includes("components/AssetChatPanel.tsx", "data-chat-state");
+includes("components/AssetChatPanel.tsx", "data-chat-citation-id");
+includes("components/AssetChatPanel.tsx", "Chat source metadata");
+includes("components/AssetChatPanel.tsx", "Educational redirect");
+includes("components/AssetChatPanel.tsx", "Unsupported or unknown asset");
+includes("components/AssetChatPanel.tsx", "Insufficient evidence");
+includes("lib/assetChat.ts", "/api/assets/");
+includes("lib/assetChat.ts", "/chat");
 includes("components/SearchBox.tsx", "data-search-state");
 includes("components/FreshnessLabel.tsx", "data-freshness-state");
 
@@ -68,7 +80,9 @@ const frontendSource = [
   read("app/page.tsx"),
   read("app/assets/[ticker]/page.tsx"),
   read("app/compare/page.tsx"),
+  read("components/AssetChatPanel.tsx"),
   read("components/SearchBox.tsx"),
+  read("lib/assetChat.ts"),
   read("lib/fixtures.ts")
 ].join("\n");
 
@@ -84,6 +98,18 @@ for (const forbidden of [
   assert.equal(frontendSource.toLowerCase().includes(forbidden), false, `Frontend copy must not include ${forbidden}`);
 }
 
-assert.equal(frontendSource.includes("fetch("), false, "Frontend skeleton should not make live external calls");
+assert.match(
+  read("lib/assetChat.ts"),
+  /fetcher\(endpoint/,
+  "Chat helper should call the local relative chat endpoint through an injectable fetcher"
+);
+assert.equal(
+  read("lib/assetChat.ts").includes("https://") ||
+    read("lib/assetChat.ts").includes("http://") ||
+    read("components/AssetChatPanel.tsx").includes("https://") ||
+    read("components/AssetChatPanel.tsx").includes("http://"),
+  false,
+  "Frontend chat integration should not add live external calls"
+);
 
 console.log("Frontend smoke checks passed.");
