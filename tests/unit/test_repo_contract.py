@@ -43,6 +43,12 @@ def test_tasks_has_current_task_and_acceptance_criteria():
     tasks = read_file("TASKS.md").lower()
 
     assert "current task" in tasks
+    if "no current task is prepared" in tasks:
+        assert "## backlog" in tasks
+        backlog = tasks.split("## backlog", 1)[1]
+        assert "### t-" not in backlog
+        return
+
     assert "acceptance criteria" in tasks
     assert "required commands" in tasks
     assert "iteration budget" in tasks

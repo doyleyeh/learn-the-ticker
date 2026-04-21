@@ -2,21 +2,19 @@
 
 ## Current task
 
-### T-008: Add grounded asset chat pipeline
+### T-009: Add chat source metadata contract
 
 Goal:
-Generate asset-specific chat responses from selected asset knowledge packs, citation mappings, and safety classification.
+Expose source-document metadata for grounded chat citations so UI clients can render source drawer details for chat answers without making unsupported assumptions from citation IDs alone.
 
-This is a deterministic backend chat-pipeline task. It should replace the remaining stub chat response path with a source-backed local generation path that answers bounded beginner questions from `AssetKnowledgePack` data for fixture-backed supported assets. It must keep advice-like questions on the existing educational redirect path, keep unsupported assets on the unsupported redirect path, and must not add live external market-data, SEC, issuer, news, brokerage, tax, or LLM calls.
+This is a backend contract and validation task. T-008 added grounded chat responses with citation IDs tied to selected asset knowledge packs, but the response still does not expose full source-document metadata for those citations. Add the smallest compatible response extension needed for chat clients to show source titles, source types, dates, freshness labels, URLs, and supporting passages from the selected asset pack. Keep generation deterministic and fixture-backed. Do not add live external calls or LLM calls.
 
 Allowed files:
 
 - TASKS.md
 - backend/\*\*
-- data/\*\*
 - tests/\*\*
 - evals/\*\*
-- scripts/\*\*
 - docs/agent-journal/\*\*
 
 Do not change:
@@ -26,49 +24,33 @@ Do not change:
 - EVALS.md
 - docs/learn_the_ticker_PRD.md
 - docs/learn_the_ticker_technical_design_spec.md
-- product requirements
+- frontend UI or visual design
+- retrieval fixture content unless a missing metadata field is required for this contract
+- overview generation behavior
+- comparison generation behavior
 - financial safety rules
 - advice-boundary rules
-- frontend UI or visual design
-- comparison generation behavior except where shared citation or safety helpers must stay compatible
-- overview generation behavior except where shared citation or safety helpers must stay compatible
-- production dependency files unless a dependency is clearly justified
-- endpoint response schemas unless the existing `ChatResponse` contract cannot satisfy citation validation, in which case keep the change minimal and test compatibility
+- production dependency files
 
 Acceptance criteria:
 
-- A deterministic chat generation module or service builds `ChatResponse`-compatible payloads from `AssetKnowledgePack` data.
-- Backend `/api/assets/{ticker}/chat` uses the chat generation pipeline for fixture-backed supported assets instead of the previous generic stub summary path.
-- Supported educational chat works for `AAPL`, `VOO`, and `QQQ`.
-- Generated supported chat answers include:
-  - the canonical asset identity
-  - a direct answer
-  - a beginner-friendly `why_it_matters`
-  - at least one citation for factual claims when evidence exists
-  - an uncertainty or limits note that names missing, partial, stale, unavailable, or fixture-bounded evidence when relevant
-  - `educational` safety classification for safe educational questions
-- The deterministic question handling covers a narrow but useful set of beginner intents:
-  - asset identity or "what is this?"
-  - stock business basics for supported stocks when local evidence exists
-  - ETF holdings, benchmark, breadth, or cost basics for supported ETFs when local evidence exists
-  - top-risk or "biggest risk" questions from source-backed risk evidence
-  - recent-development questions from the recent-development layer
-  - educational suitability or "why do beginners consider it?" questions without giving personal advice
-- When the selected asset knowledge pack does not contain enough evidence for a supported educational question, the response says insufficient evidence or unknown, does not invent facts, and does not attach unsupported citations.
-- Chat citations bind only to source documents and chunks from the selected asset knowledge pack.
-- Chat citation validation rejects or surfaces missing citations, wrong-asset citations, stale-unlabeled citations, unsupported source types, and insufficient evidence.
-- Advice-like questions continue to redirect into educational framing with no citations and no factual claims beyond the redirect.
-- Unsupported or unknown assets continue to return clear unsupported-scope or unknown states with no generated factual claims or citations.
-- Generated chat copy avoids buy/sell/hold recommendations, personalized allocation advice, unsupported price targets, tax advice, brokerage/trading behavior, and certainty around future returns.
-- Static evals or focused tests check schema validity, citation coverage, same-asset source binding, supported educational chat intents, advice redirects, unsupported states, stale/unknown/insufficient evidence handling, and no live external calls.
+- `ChatResponse` or a narrowly scoped companion field exposes source-document metadata for chat citations.
+- Chat source metadata includes source document ID, title, source type, publication or as-of date when available, retrieved timestamp when available, URL when available, freshness or stale state when available, and supporting passage or chunk text when available.
+- Source metadata is derived only from the selected `AssetKnowledgePack`.
+- Supported chat responses for `AAPL`, `VOO`, and `QQQ` include source metadata for grounded citations.
+- Advice-like chat redirects continue to return no citations and no source metadata.
+- Unsupported or unknown asset chat responses continue to return no generated factual claims, no citations, and no source metadata.
+- Chat citation validation continues to reject or surface missing citations, wrong-asset citations, stale-unlabeled citations, unsupported source types, and insufficient evidence.
+- Backend route tests cover the serialized API shape for grounded chat source metadata.
+- Static evals cover same-asset source binding for chat source metadata and no live external calls.
 - Existing overview generation tests, comparison generation tests, retrieval fixture tests, citation validation, safety evals, backend route tests, frontend smoke checks, static evals, and quality gate behavior continue to pass.
 - No endpoint, test, or CI command makes live external calls.
-- If dependencies are added, document why they are needed and keep the dependency set minimal.
+- No new production dependency is added.
 - The main quality gate passes.
 
 Required commands:
 
-- python3 -m pytest tests/unit/test_safety_guardrails.py tests/integration/test_backend_api.py -q
+- python3 -m pytest tests/unit/test_chat_generation.py tests/integration/test_backend_api.py -q
 - python3 evals/run_static_evals.py
 - bash scripts/run_quality_gate.sh
 
@@ -77,6 +59,32 @@ Iteration budget:
 - Max 3 Codex implementation loops before reporting blockers.
 
 ## Completed
+
+### T-008: Add grounded asset chat pipeline
+
+Goal:
+Generate asset-specific chat responses from selected asset knowledge packs, citation mappings, and safety classification.
+
+Completed:
+
+- Added deterministic grounded chat generation in `backend/chat.py`.
+- Backend `/api/assets/{ticker}/chat` now uses the grounded chat pipeline for fixture-backed supported assets.
+- Supported educational chat works for `AAPL`, `VOO`, and `QQQ`.
+- Chat intent handling covers asset identity, stock business basics, ETF holdings or benchmark basics, ETF cost or breadth questions, top risks, recent developments, and beginner educational suitability framing.
+- Generated supported chat responses include canonical asset identity, a direct answer, `why_it_matters`, citations when evidence exists, source-backed uncertainty or limits notes, and an educational safety classification.
+- Chat citation binding is restricted to source documents and chunks from the selected asset knowledge pack.
+- Advice-like questions continue to redirect into educational framing without generated factual claims or citations.
+- Unsupported and unknown assets continue to return clear unsupported-scope or unknown states without generated factual claims.
+- Static evals and tests cover schema validity, supported chat intents, same-asset citation binding, advice redirects, unsupported states, insufficient-evidence behavior, safety phrasing, and no live external calls.
+- T-008 agent journal records that focused chat tests, the required safety/API test slice, static evals, and the main quality gate passed.
+- Remaining documented risk: chat generation is deterministic and fixture-backed for `AAPL`, `VOO`, and `QQQ`; unsupported, unknown, or non-fixture-backed assets intentionally return redirect or insufficient-evidence states.
+- Remaining documented risk: intent handling is narrow by design and covers only the beginner intents required for this task.
+- Remaining documented risk: `ChatResponse` still exposes chat citations as source document and chunk IDs rather than full source-document metadata; richer source drawer behavior would need a later schema/UI extension.
+
+Completion commits:
+
+- `37e6f59 feat(T-008): add grounded asset chat pipeline`
+- `dbbab3c chore(T-008): merge grounded asset chat pipeline`
 
 ### T-007: Add comparison generation pipeline
 
@@ -250,3 +258,7 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
+
+### T-010: Add asset page chat panel for fixture-backed assets
+
+### T-011: Add comparison source metadata contract

@@ -16,8 +16,8 @@ Usage: bash scripts/run_task_cycle.sh [options]
 Runs one or more full local task cycles:
   1. Run scripts/agent_loop.sh for the current TASKS.md task.
   2. Merge the completed agent/T-... branch into main with scripts/local_merge_task.sh.
-  3. Ask Codex to prepare TASKS.md for the next backlog task.
-  4. Run the quality gate and commit the next-task preparation.
+  3. Ask Codex to prepare TASKS.md for the next backlog task, or finalize the task board when the backlog is empty.
+  4. Run the quality gate and commit the TASKS.md update.
 
 Options:
   --main <branch>       Main branch to merge into. Default: main.
@@ -99,7 +99,11 @@ require_clean_tree() {
 }
 
 current_task_line() {
-  grep -m1 '^### T-' TASKS.md || true
+  awk '
+    /^## Current task/ { in_current = 1; next }
+    in_current && /^## / { exit }
+    in_current && /^### T-/ { print; exit }
+  ' TASKS.md
 }
 
 task_id_from_line() {
@@ -118,6 +122,7 @@ commit_subject_from_title() {
 has_backlog_task() {
   awk '
     /^## Backlog/ { in_backlog = 1; next }
+    in_backlog && /^## / { exit }
     in_backlog && /^### T-/ { found = 1 }
     END { exit found ? 0 : 1 }
   ' TASKS.md
@@ -130,6 +135,7 @@ prepare_next_task() {
   local merge_commit="$4"
   local prompt_path
   local changed_files
+  local has_next_task=0
   local next_line
   local next_task_id
   local next_task_title
@@ -137,9 +143,8 @@ prepare_next_task() {
 
   NEXT_TASK_PREPARED=0
 
-  if ! has_backlog_task; then
-    echo "No backlog task found. Skipping next-task preparation."
-    return 0
+  if has_backlog_task; then
+    has_next_task=1
   fi
 
   prompt_path="$(mktemp)"
@@ -166,8 +171,9 @@ Update TASKS.md as follows:
 1. Move the completed current task into the top of the Completed section.
 2. Summarize completion using concrete implementation details from the task branch commit, tests, evals, and docs/agent-journal if present. Do not invent unsupported details.
 3. Include completion commits, including the implementation commit(s) and local merge commit.
-4. Promote the first Backlog task into Current task.
-5. Expand the promoted task into a full task contract with:
+4. If a Backlog task exists, promote the first Backlog task into Current task.
+5. If no Backlog task exists, replace Current task with a short note that no current task is prepared and the backlog is empty. Do not invent a new task.
+6. When a task is promoted, expand it into a full task contract with:
    - Goal
    - task-scope paragraph
    - Allowed files
@@ -175,8 +181,8 @@ Update TASKS.md as follows:
    - detailed Acceptance criteria
    - Required commands
    - Iteration budget
-6. Preserve product guardrails: no investment advice, no live external calls, citations for important claims, freshness/unknown/stale handling.
-7. Keep the next task narrow enough for one agent loop.
+7. Preserve product guardrails: no investment advice, no live external calls, citations for important claims, freshness/unknown/stale handling.
+8. Keep any promoted next task narrow enough for one agent loop.
 EOF
 
   echo "== Preparing next task in TASKS.md =="
@@ -204,22 +210,37 @@ EOF
     exit 1
   fi
 
-  next_line="$(current_task_line)"
-  next_task_id="$(printf '%s\n' "$next_line" | task_id_from_line)"
-  next_task_title="$(printf '%s\n' "$next_line" | task_title_from_line)"
-  next_subject="$(commit_subject_from_title "$next_task_title")"
-
   echo "== Running quality gate after next-task preparation =="
   bash scripts/run_quality_gate.sh
 
   git add TASKS.md
-  git commit \
-    -m "chore(${next_task_id}): prepare ${next_subject} task" \
-    -m "Previous task: ${completed_task_id}" \
-    -m "Merged branch: ${task_branch}" \
-    -m "Quality gate: passed"
 
-  NEXT_TASK_PREPARED=1
+  if [ "$has_next_task" -eq 1 ]; then
+    next_line="$(current_task_line)"
+    if [ -z "$next_line" ]; then
+      echo "Expected next task to be promoted from Backlog, but Current task is empty."
+      exit 1
+    fi
+
+    next_task_id="$(printf '%s\n' "$next_line" | task_id_from_line)"
+    next_task_title="$(printf '%s\n' "$next_line" | task_title_from_line)"
+    next_subject="$(commit_subject_from_title "$next_task_title")"
+
+    git commit \
+      -m "chore(${next_task_id}): prepare ${next_subject} task" \
+      -m "Previous task: ${completed_task_id}" \
+      -m "Merged branch: ${task_branch}" \
+      -m "Quality gate: passed"
+
+    NEXT_TASK_PREPARED=1
+  else
+    git commit \
+      -m "chore(${completed_task_id}): finalize task board" \
+      -m "Completed task: ${completed_task_title}" \
+      -m "Merged branch: ${task_branch}" \
+      -m "Quality gate: passed" \
+      -m "No backlog task was available to promote."
+  fi
 }
 
 run_one_cycle() {
@@ -236,6 +257,11 @@ run_one_cycle() {
   task_line="$(current_task_line)"
   if [ -z "$task_line" ]; then
     echo "Could not find a current task in TASKS.md."
+    if has_backlog_task; then
+      echo "Backlog tasks exist, but none is promoted. Prepare TASKS.md before running the cycle."
+    else
+      echo "Backlog is empty. Add a new Backlog task before running the cycle."
+    fi
     exit 1
   fi
 
