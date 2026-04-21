@@ -179,6 +179,34 @@ input {
   color: var(--muted);
 }
 
+.search-result-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding-top: 2px;
+}
+
+.search-result-panel a,
+.search-result-panel span {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f7f9fa;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.search-result-panel a {
+  color: var(--accent-strong);
+}
+
 .status-unsupported,
 .freshness-stale {
   color: var(--stale);
