@@ -2,69 +2,32 @@
 
 ## Current task
 
+No current task is prepared. The backlog is empty.
+
+## Completed
+
 ### T-014: Add beginner chat starter prompts
 
 Goal:
 Make the asset-page grounded chat easier for beginners to start by showing asset-aware starter prompts that cover identity, holdings or business model, risks, recent developments, and advice-boundary education.
 
-This is a narrow frontend chat-usability task. The grounded chat backend and local `/api/assets/{ticker}/chat` helper already exist, and the chat panel already renders starter prompt buttons. Improve the starter prompt experience so a beginner can choose clear, educational questions that map to the current supported fixture-backed asset type without typing first. Keep the prompts deterministic and local. Do not add live external market-data, SEC, issuer, news, brokerage, tax, or LLM calls. Do not change backend chat generation, citation binding, source metadata contracts, retrieval fixtures, or safety classification behavior.
+Completed:
 
-Allowed files:
+- Updated `components/AssetChatPanel.tsx` with typed deterministic starter prompt intents for identity, stock business model, ETF holdings/exposure, top risk, recent developments, and advice-boundary education.
+- Added asset-aware prompt selection so the local stock fixture `AAPL` receives business-model language, while ETF fixtures such as `VOO` and `QQQ` receive holdings and fund-exposure language.
+- Preserved the existing local chat submission flow: clicking a starter prompt submits that exact question through the current `postAssetChat` path and leaves loading, error, answer, citation, source metadata, educational redirect, unsupported, and insufficient-evidence rendering in place.
+- Added stable frontend markers for smoke checks with `data-chat-starter-group="beginner-prompts"` and per-intent `data-chat-starter-intent` values.
+- Added responsive starter prompt styling in `styles/globals.css` so longer beginner questions wrap cleanly and become full-width on narrow viewports.
+- Extended frontend smoke checks for starter prompt markers, stock-specific prompt text, ETF-specific prompt text, advice-boundary prompt text, and no live external chat calls.
+- Extended safety guardrail tests with explicit forbidden advice-like examples and starter-prompt copy checks.
+- T-014 agent journal records that `npm test`, `npm run typecheck`, `npm run build`, `python3 -m pytest tests/unit/test_safety_guardrails.py -q`, `python3 evals/run_static_evals.py`, and `bash scripts/run_quality_gate.sh` passed.
+- Remaining documented risk: starter prompts remain deterministic and fixture-aware for the current local supported assets `AAPL`, `VOO`, and `QQQ`.
+- Remaining documented risk: frontend coverage is static smoke coverage plus typecheck/build; it does not browser-click every starter prompt.
 
-- TASKS.md
-- components/AssetChatPanel.tsx
-- styles/globals.css
-- tests/frontend/smoke.mjs
-- tests/unit/test_safety_guardrails.py
-- docs/agent-journal/\*\*
+Completion commits:
 
-Do not change:
-
-- AGENTS.md
-- SPEC.md
-- EVALS.md
-- docs/learn_the_ticker_PRD.md
-- docs/learn_the_ticker_technical_design_spec.md
-- backend models, routes, search behavior, comparison generation, chat generation, overview generation, citation validation, or retrieval logic
-- retrieval fixture content in `data/`
-- asset page rendering outside the chat panel
-- asset page chat panel request, answer-rendering, citation, source metadata, redirect, unsupported, and insufficient-evidence behavior outside starter prompt selection
-- comparison page rendering
-- comparison fixture coverage beyond the existing local `VOO` vs `QQQ` comparison pack
-- financial safety rules
-- advice-boundary rules
-- production dependency files
-
-Acceptance criteria:
-
-- The asset chat panel shows a beginner starter prompt area before any answer is submitted, with prompts written as questions a beginner would naturally ask.
-- Starter prompts are asset-aware: stock fixtures such as `AAPL` include business-model language, while ETF fixtures such as `VOO` and `QQQ` include holdings or fund-exposure language.
-- Starter prompts cover at least these educational intents: asset identity, business model or holdings, top risk, recent developments, and beginner suitability or advice-boundary education.
-- Prompt copy remains plain English and does not include buy/sell/hold recommendations, personalized allocation advice, exact position sizing, unsupported price targets, tax advice, brokerage/trading behavior, or certainty around future returns.
-- Clicking a starter prompt still submits that exact prompt through the existing local relative chat helper and preserves the current loading, error, answer, citation, source metadata, educational redirect, unsupported, and insufficient-evidence UI states.
-- Starter prompts have stable frontend markers suitable for smoke checks, including a marker for the prompt group and markers for individual prompt intent categories.
-- The prompt area remains usable on narrow viewports without overlapping text or controls, and styling stays consistent with existing citation-chip/button patterns.
-- Existing chat citation chips, chat source metadata rendering, source freshness labels, unsupported/unknown copy, insufficient-evidence copy, comparison source metadata rendering, search behavior, and asset page content outside the chat panel remain unchanged.
-- Frontend smoke checks cover the starter prompt markers, stock-specific prompt text, ETF-specific prompt text, advice-boundary prompt text, and absence of live external chat calls.
-- Safety guardrail tests include the revised prompt copy and continue to reject forbidden advice-like phrases.
-- No endpoint, frontend helper, test, or CI command makes live external calls.
-- No new production dependency is added.
-- The main quality gate passes.
-
-Required commands:
-
-- npm test
-- npm run typecheck
-- npm run build
-- python3 -m pytest tests/unit/test_safety_guardrails.py -q
-- python3 evals/run_static_evals.py
-- bash scripts/run_quality_gate.sh
-
-Iteration budget:
-
-- Max 3 Codex implementation loops before reporting blockers.
-
-## Completed
+- `99adaf3 feat(T-014): add beginner chat starter prompts`
+- `e12735a chore(T-014): merge beginner chat starter prompts`
 
 ### T-013: Add fixture-backed asset name search states
 
