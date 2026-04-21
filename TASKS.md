@@ -2,22 +2,19 @@
 
 ## Current task
 
-### T-013: Add fixture-backed asset name search states
+### T-014: Add beginner chat starter prompts
 
 Goal:
-Let the home-page search workflow resolve supported fixture-backed assets by ticker or asset name, while preserving clear unsupported, unknown, and multi-match states without live calls or invented facts.
+Make the asset-page grounded chat easier for beginners to start by showing asset-aware starter prompts that cover identity, holdings or business model, risks, recent developments, and advice-boundary education.
 
-This is a narrow frontend/search-state task. The backend `/api/search` already supports deterministic fixture-backed ticker and name matching, but the home-page `SearchBox` currently resolves only exact ticker keys from local fixtures. Update the fixture-backed frontend search workflow so beginner users can type supported asset names such as Apple, Apple Inc., Vanguard S&P 500 ETF, or Invesco QQQ Trust and see deterministic local results. Keep the workflow local and fixture-backed for this task. Do not add live external market-data, SEC, issuer, news, brokerage, tax, or LLM calls. Do not turn search into advice, ranking, recommendations, portfolio guidance, or market commentary.
+This is a narrow frontend chat-usability task. The grounded chat backend and local `/api/assets/{ticker}/chat` helper already exist, and the chat panel already renders starter prompt buttons. Improve the starter prompt experience so a beginner can choose clear, educational questions that map to the current supported fixture-backed asset type without typing first. Keep the prompts deterministic and local. Do not add live external market-data, SEC, issuer, news, brokerage, tax, or LLM calls. Do not change backend chat generation, citation binding, source metadata contracts, retrieval fixtures, or safety classification behavior.
 
 Allowed files:
 
 - TASKS.md
-- app/page.tsx
-- components/SearchBox.tsx
-- lib/fixtures.ts
+- components/AssetChatPanel.tsx
 - styles/globals.css
 - tests/frontend/smoke.mjs
-- tests/integration/test_backend_api.py
 - tests/unit/test_safety_guardrails.py
 - docs/agent-journal/\*\*
 
@@ -30,8 +27,8 @@ Do not change:
 - docs/learn_the_ticker_technical_design_spec.md
 - backend models, routes, search behavior, comparison generation, chat generation, overview generation, citation validation, or retrieval logic
 - retrieval fixture content in `data/`
-- asset page rendering
-- asset page chat panel behavior
+- asset page rendering outside the chat panel
+- asset page chat panel request, answer-rendering, citation, source metadata, redirect, unsupported, and insufficient-evidence behavior outside starter prompt selection
 - comparison page rendering
 - comparison fixture coverage beyond the existing local `VOO` vs `QQQ` comparison pack
 - financial safety rules
@@ -40,17 +37,16 @@ Do not change:
 
 Acceptance criteria:
 
-- The home-page search accepts supported tickers and supported asset-name queries using local fixture data only, case-insensitively and with leading or trailing whitespace ignored.
-- Supported name queries resolve deterministic local matches for at least `Apple`, `Apple Inc.`, `Vanguard S&P 500 ETF`, `S&P 500`, `Invesco QQQ Trust`, and `Nasdaq-100` where the match is supported by existing fixture names, summaries, or source-backed identity fields.
-- A single supported match shows a supported state with the canonical ticker, asset name, asset type, exchange, and issuer when available, and the Open action links to `/assets/{ticker}` for that canonical ticker.
-- A query that matches more than one supported local fixture, such as a broad ETF name fragment, is not silently guessed. It shows a multi-match or disambiguation state with each matching ticker/name as an asset-page link.
-- Unsupported ticker queries such as `BTC`, `ETH`, `TQQQ`, and `SQQQ` still show the existing unsupported-scope message, do not link to an asset page, and do not show factual citation chips or source drawers.
-- Unknown ticker or name queries such as `ZZZZ` or a non-fixture company still show an unknown local-fixture state, explicitly say no facts are invented, do not link to an asset page, and do not imply stale or unsupported evidence as a fact.
-- Existing quick links for supported examples and `VOO vs QQQ` remain visible.
-- Search result copy stays educational and does not include buy/sell/hold recommendations, personalized allocation advice, unsupported price targets, tax advice, brokerage/trading behavior, or certainty around future returns.
-- Frontend smoke checks cover ticker search markers, supported asset-name search markers, single-match state, multi-match/disambiguation state, unsupported state, unknown state, and absence of live external search calls.
-- If backend search tests are touched, they only assert the existing deterministic local `/api/search` fixture behavior and do not require backend implementation changes or live external calls.
-- Existing citation chips, source drawer behavior, freshness labels, stale/unknown labels, comparison source metadata rendering, and asset chat UI behavior remain unchanged.
+- The asset chat panel shows a beginner starter prompt area before any answer is submitted, with prompts written as questions a beginner would naturally ask.
+- Starter prompts are asset-aware: stock fixtures such as `AAPL` include business-model language, while ETF fixtures such as `VOO` and `QQQ` include holdings or fund-exposure language.
+- Starter prompts cover at least these educational intents: asset identity, business model or holdings, top risk, recent developments, and beginner suitability or advice-boundary education.
+- Prompt copy remains plain English and does not include buy/sell/hold recommendations, personalized allocation advice, exact position sizing, unsupported price targets, tax advice, brokerage/trading behavior, or certainty around future returns.
+- Clicking a starter prompt still submits that exact prompt through the existing local relative chat helper and preserves the current loading, error, answer, citation, source metadata, educational redirect, unsupported, and insufficient-evidence UI states.
+- Starter prompts have stable frontend markers suitable for smoke checks, including a marker for the prompt group and markers for individual prompt intent categories.
+- The prompt area remains usable on narrow viewports without overlapping text or controls, and styling stays consistent with existing citation-chip/button patterns.
+- Existing chat citation chips, chat source metadata rendering, source freshness labels, unsupported/unknown copy, insufficient-evidence copy, comparison source metadata rendering, search behavior, and asset page content outside the chat panel remain unchanged.
+- Frontend smoke checks cover the starter prompt markers, stock-specific prompt text, ETF-specific prompt text, advice-boundary prompt text, and absence of live external chat calls.
+- Safety guardrail tests include the revised prompt copy and continue to reject forbidden advice-like phrases.
 - No endpoint, frontend helper, test, or CI command makes live external calls.
 - No new production dependency is added.
 - The main quality gate passes.
@@ -60,7 +56,6 @@ Required commands:
 - npm test
 - npm run typecheck
 - npm run build
-- python3 -m pytest tests/integration/test_backend_api.py -q
 - python3 -m pytest tests/unit/test_safety_guardrails.py -q
 - python3 evals/run_static_evals.py
 - bash scripts/run_quality_gate.sh
@@ -70,6 +65,30 @@ Iteration budget:
 - Max 3 Codex implementation loops before reporting blockers.
 
 ## Completed
+
+### T-013: Add fixture-backed asset name search states
+
+Goal:
+Let the home-page search workflow resolve supported fixture-backed assets by ticker or asset name, while preserving clear unsupported, unknown, and multi-match states without live calls or invented facts.
+
+Completed:
+
+- Updated `components/SearchBox.tsx` with deterministic local fixture search resolution over supported asset tickers, names, asset type, exchange, issuer, beginner summaries, claims, facts, and source-document fields.
+- Added case-insensitive, trimmed query handling with scoring so exact ticker and name matches rank ahead of broader text matches.
+- Added a multi-match state that lists each matching local fixture as an asset-page link instead of silently choosing one.
+- Added supported-result rendering with canonical ticker, asset name, asset type, exchange, and issuer when available, and kept the Open action pointed at `/assets/{ticker}` only for a single supported result.
+- Preserved unsupported and unknown states with no asset-page link, including explicit no-invented-facts copy for unknown ticker or name searches.
+- Updated search helper text and placeholders to include supported name-search examples such as Apple, Vanguard S&P 500 ETF, Invesco QQQ Trust, and Nasdaq-100.
+- Added search result panel styling in `styles/globals.css`.
+- Extended frontend smoke checks with markers for local search resolution, supported result, multi-match result, unsupported result, unknown result, result links, supported fixture name examples, and no live external search calls or `/api/search` call from the fixture-backed home search.
+- T-013 agent journal records that `npm test`, `npm run typecheck`, `npm run build`, backend API pytest, safety pytest, static evals, and the main quality gate passed.
+- Remaining documented risk: home search remains deterministic and fixture-backed for the current local `AAPL`, `VOO`, and `QQQ` fixtures only.
+- Remaining documented risk: frontend coverage is static smoke coverage plus typecheck/build; it does not browser-type every search query.
+
+Completion commits:
+
+- `8e963c8 feat(T-013): add fixture-backed asset name search states`
+- `e1b59db chore(T-013): merge fixture-backed asset name search states`
 
 ### T-012: Render comparison source metadata on compare page
 
@@ -366,4 +385,4 @@ Completion commits:
 
 ## Backlog
 
-### T-014: Add beginner chat starter prompts
+No backlog tasks prepared.
