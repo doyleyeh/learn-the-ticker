@@ -9,6 +9,54 @@ type AssetChatPanelProps = {
 };
 
 type ChatRequestState = "empty" | "loading" | "answered" | "error";
+type StarterPromptIntent =
+  | "identity"
+  | "business-model"
+  | "holdings-exposure"
+  | "top-risk"
+  | "recent-developments"
+  | "advice-boundary";
+
+type StarterPrompt = {
+  intent: StarterPromptIntent;
+  question: string;
+};
+
+const stockFixtureTickers = new Set(["AAPL"]);
+
+function starterPromptsForAsset(ticker: string, assetName: string): StarterPrompt[] {
+  const normalizedTicker = ticker.toUpperCase();
+  const isStockFixture = stockFixtureTickers.has(normalizedTicker);
+  const assetLabel = isStockFixture ? assetName.replace(/ Inc\.$/, "") : normalizedTicker;
+
+  return [
+    {
+      intent: "identity",
+      question: `What is ${normalizedTicker} in plain English?`
+    },
+    isStockFixture
+      ? {
+          intent: "business-model",
+          question: `How does ${assetLabel}'s business model work?`
+        }
+      : {
+          intent: "holdings-exposure",
+          question: `What does ${normalizedTicker} hold, and what fund exposure does it give?`
+        },
+    {
+      intent: "top-risk",
+      question: `What top risk should a beginner understand about ${normalizedTicker}?`
+    },
+    {
+      intent: "recent-developments",
+      question: `What changed recently for ${normalizedTicker}?`
+    },
+    {
+      intent: "advice-boundary",
+      question: `How should a beginner frame ${normalizedTicker} without a personal recommendation?`
+    }
+  ];
+}
 
 export function AssetChatPanel({ ticker, assetName }: AssetChatPanelProps) {
   const [question, setQuestion] = useState("");
@@ -16,15 +64,7 @@ export function AssetChatPanel({ ticker, assetName }: AssetChatPanelProps) {
   const [response, setResponse] = useState<AssetChatResponse | null>(null);
   const [error, setError] = useState("");
 
-  const starterPrompts = useMemo(
-    () => [
-      `What is ${ticker}?`,
-      ticker === "AAPL" ? "What does the company do?" : "What does this fund hold?",
-      "What risk should a beginner understand?",
-      "What changed recently?"
-    ],
-    [ticker]
-  );
+  const starterPrompts = useMemo(() => starterPromptsForAsset(ticker, assetName), [assetName, ticker]);
 
   async function submitQuestion(nextQuestion: string) {
     const trimmed = nextQuestion.trim();
@@ -72,16 +112,21 @@ export function AssetChatPanel({ ticker, assetName }: AssetChatPanelProps) {
         details when the backend returns grounded citations.
       </p>
 
-      <div className="inline-tools" aria-label="Starter questions">
+      <div
+        className="starter-prompt-group inline-tools"
+        aria-label="Beginner starter questions"
+        data-chat-starter-group="beginner-prompts"
+      >
         {starterPrompts.map((prompt) => (
           <button
-            className="citation-chip"
-            key={prompt}
+            className="citation-chip starter-prompt-button"
+            key={prompt.intent}
             type="button"
-            onClick={() => void submitQuestion(prompt)}
+            data-chat-starter-intent={prompt.intent}
+            onClick={() => void submitQuestion(prompt.question)}
             disabled={requestState === "loading"}
           >
-            {prompt}
+            {prompt.question}
           </button>
         ))}
       </div>
