@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: quality test eval local-merge setup-wsl-agent-env
+.PHONY: quality test eval local-merge task-cycle setup-wsl-agent-env
 
 quality:
 	bash scripts/run_quality_gate.sh
@@ -13,6 +13,9 @@ eval:
 
 local-merge:
 	bash scripts/local_merge_task.sh
+
+task-cycle:
+	bash scripts/run_task_cycle.sh
 
 setup-wsl-agent-env:
 	bash scripts/setup_wsl_agent_env.sh
