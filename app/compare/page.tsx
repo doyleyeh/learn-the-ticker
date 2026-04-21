@@ -1,7 +1,8 @@
 import { CitationChip } from "../../components/CitationChip";
+import { ComparisonSourceDetails } from "../../components/ComparisonSourceDetails";
 import { FreshnessLabel } from "../../components/FreshnessLabel";
-import { SourceDrawer } from "../../components/SourceDrawer";
-import { compareFixture, getAssetFixture, getPrimarySource } from "../../lib/fixtures";
+import { getComparePageFixture, getComparisonCitationMetadata, type CompareAssetIdentity } from "../../lib/compare";
+import { getAssetFixture, type AssetFixture } from "../../lib/fixtures";
 
 type ComparePageProps = {
   searchParams?: Promise<{
@@ -14,15 +15,22 @@ export default async function ComparePage({ searchParams }: ComparePageProps) {
   const query = await searchParams;
   const leftTicker = query?.left?.toUpperCase() ?? "VOO";
   const rightTicker = query?.right?.toUpperCase() ?? "QQQ";
-  const left = getAssetFixture(leftTicker) ?? getAssetFixture("VOO")!;
-  const right = getAssetFixture(rightTicker) ?? getAssetFixture("QQQ")!;
+  const comparison = getComparePageFixture(leftTicker, rightTicker);
+  const leftFixture = getAssetFixture(comparison.leftAsset.ticker);
+  const rightFixture = getAssetFixture(comparison.rightAsset.ticker);
+  const { citationsById, contextsBySourceDocumentId } = getComparisonCitationMetadata(comparison);
+  const bottomLine = comparison.bottomLineForBeginners;
+  const hasSourceBackedComparison =
+    comparison.state.status === "supported" &&
+    comparison.keyDifferences.length > 0 &&
+    bottomLine !== null;
 
   return (
     <main>
       <section className="asset-hero">
         <p className="eyebrow">Fixture-backed comparison</p>
         <h1>
-          {left.ticker} vs {right.ticker}
+          {comparison.leftAsset.ticker} vs {comparison.rightAsset.ticker}
         </h1>
         <p>
           This page compares deterministic local fixtures for broad-market exposure, concentration, costs, and beginner
@@ -36,73 +44,102 @@ export default async function ComparePage({ searchParams }: ComparePageProps) {
 
       <section className="content-band">
         <div className="compare-grid" aria-label="VOO and QQQ deterministic comparison">
-          <article className="compare-column">
-            <h2>{left.name}</h2>
-            <p>{left.beginnerSummary.whatItIs}</p>
-            <dl className="fact-list compact">
-              {left.facts.slice(0, 4).map((fact) => (
-                <div key={fact.label}>
-                  <dt>{fact.label}</dt>
-                  <dd>{fact.value}</dd>
-                </div>
-              ))}
-            </dl>
-          </article>
-          <article className="compare-column">
-            <h2>{right.name}</h2>
-            <p>{right.beginnerSummary.whatItIs}</p>
-            <dl className="fact-list compact">
-              {right.facts.slice(0, 4).map((fact) => (
-                <div key={fact.label}>
-                  <dt>{fact.label}</dt>
-                  <dd>{fact.value}</dd>
-                </div>
-              ))}
-            </dl>
-          </article>
+          <CompareColumn asset={comparison.leftAsset} fixture={leftFixture} />
+          <CompareColumn asset={comparison.rightAsset} fixture={rightFixture} />
         </div>
 
-        <section className="plain-panel" aria-labelledby="differences">
-          <div className="section-heading">
-            <p className="eyebrow">Key differences</p>
-            <h2 id="differences">Plain-English comparison</h2>
-          </div>
-          <div className="difference-list">
-            {compareFixture.keyDifferences.map((difference) => (
-              <article className="difference-item" key={difference.dimension}>
-                <h3>{difference.dimension}</h3>
-                <p>{difference.plainEnglishSummary}</p>
-                <span className="chip-row">
-                  {difference.citationIds.map((citationId) => (
-                    <CitationChip
-                      key={citationId}
-                      citation={citationId.startsWith("c_voo") ? left.citations[0] : right.citations[0]}
-                      label={citationId}
-                    />
-                  ))}
-                </span>
-              </article>
-            ))}
-          </div>
-        </section>
+        {hasSourceBackedComparison && bottomLine ? (
+          <>
+            <section className="plain-panel" aria-labelledby="differences">
+              <div className="section-heading">
+                <p className="eyebrow">Key differences</p>
+                <h2 id="differences">Plain-English comparison</h2>
+              </div>
+              <div className="difference-list">
+                {comparison.keyDifferences.map((difference) => (
+                  <article className="difference-item" key={difference.dimension}>
+                    <h3>{difference.dimension}</h3>
+                    <p>{difference.plainEnglishSummary}</p>
+                    <span className="chip-row">
+                      {difference.citationIds.map((citationId) => {
+                        const citation = citationsById.get(citationId);
+                        return citation ? <CitationChip key={citationId} citation={citation} label={citationId} /> : null;
+                      })}
+                    </span>
+                  </article>
+                ))}
+              </div>
+            </section>
 
-        <section className="plain-panel bottom-line" aria-labelledby="bottom-line">
-          <p className="eyebrow">Bottom line for beginners</p>
-          <h2 id="bottom-line">Educational context, not a decision rule</h2>
-          <p>{compareFixture.bottomLineForBeginners.summary}</p>
-          <span className="chip-row">
-            {compareFixture.bottomLineForBeginners.citationIds.map((citationId) => (
-              <CitationChip
-                key={citationId}
-                citation={citationId.startsWith("c_voo") ? left.citations[0] : right.citations[0]}
-                label={citationId}
-              />
-            ))}
-          </span>
-        </section>
+            <section className="plain-panel bottom-line" aria-labelledby="bottom-line">
+              <p className="eyebrow">Bottom line for beginners</p>
+              <h2 id="bottom-line">Educational context, not a decision rule</h2>
+              <p>{bottomLine.summary}</p>
+              <span className="chip-row">
+                {bottomLine.citationIds.map((citationId) => {
+                  const citation = citationsById.get(citationId);
+                  return citation ? <CitationChip key={citationId} citation={citation} label={citationId} /> : null;
+                })}
+              </span>
+            </section>
 
-        <SourceDrawer source={getPrimarySource(left)} claim={compareFixture.keyDifferences[0].plainEnglishSummary} />
+            <section className="plain-panel" aria-labelledby="comparison-sources">
+              <div className="section-heading">
+                <p className="eyebrow">Comparison source metadata</p>
+                <h2 id="comparison-sources">Sources behind these citations</h2>
+              </div>
+              <div className="section-stack" aria-label="Comparison source metadata">
+                {comparison.sourceDocuments.map((sourceDocument) => (
+                  <ComparisonSourceDetails
+                    key={sourceDocument.sourceDocumentId}
+                    sourceDocument={sourceDocument}
+                    contexts={contextsBySourceDocumentId.get(sourceDocument.sourceDocumentId) ?? []}
+                  />
+                ))}
+              </div>
+            </section>
+          </>
+        ) : (
+          <section className="plain-panel unknown-state" aria-labelledby="comparison-unavailable">
+            <div className="section-heading">
+              <p className="eyebrow">
+                {comparison.state.status === "unsupported" ? "Unsupported comparison" : "Insufficient evidence"}
+              </p>
+              <h2 id="comparison-unavailable">Comparison evidence unavailable</h2>
+            </div>
+            <FreshnessLabel label="Comparison source pack" value="Unavailable in local fixtures" state="unavailable" />
+            <p>{comparison.state.message}</p>
+            <p className="notice-text">
+              No factual citation chips or source drawers are shown because this local fixture has no source-backed
+              comparison pack for the requested pair.
+            </p>
+          </section>
+        )}
       </section>
     </main>
+  );
+}
+
+function CompareColumn({ asset, fixture }: { asset: CompareAssetIdentity; fixture?: AssetFixture }) {
+  return (
+    <article className="compare-column">
+      <h2>{asset.name}</h2>
+      <p>
+        {fixture?.beginnerSummary.whatItIs ??
+          "Unknown in the local skeleton data. No facts are invented for assets without fixture-backed evidence."}
+      </p>
+      {fixture ? (
+        <dl className="fact-list compact">
+          {fixture.facts.slice(0, 4).map((fact) => (
+            <div key={fact.label}>
+              <dt>{fact.label}</dt>
+              <dd>{fact.value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : (
+        <FreshnessLabel label="Evidence state" value={asset.status} state="unknown" />
+      )}
+    </article>
   );
 }

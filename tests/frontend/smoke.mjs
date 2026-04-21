@@ -22,10 +22,12 @@ function includes(path, marker) {
   "app/compare/page.tsx",
   "components/AssetChatPanel.tsx",
   "components/CitationChip.tsx",
+  "components/ComparisonSourceDetails.tsx",
   "components/SourceDrawer.tsx",
   "components/FreshnessLabel.tsx",
   "components/GlossaryPopover.tsx",
   "lib/assetChat.ts",
+  "lib/compare.ts",
   "lib/fixtures.ts",
   "styles/globals.css"
 ].forEach(exists);
@@ -39,6 +41,8 @@ includes("app/assets/[ticker]/page.tsx", "SourceDrawer");
 includes("app/assets/[ticker]/page.tsx", "GlossaryPopover");
 includes("app/assets/[ticker]/page.tsx", "AssetChatPanel");
 includes("app/compare/page.tsx", "Bottom line for beginners");
+includes("app/compare/page.tsx", "ComparisonSourceDetails");
+includes("app/compare/page.tsx", "getComparisonCitationMetadata");
 includes("components/AssetChatPanel.tsx", "Ask about this asset");
 includes("components/AssetChatPanel.tsx", "data-chat-state");
 includes("components/AssetChatPanel.tsx", "data-chat-citation-id");
@@ -48,6 +52,18 @@ includes("components/AssetChatPanel.tsx", "Unsupported or unknown asset");
 includes("components/AssetChatPanel.tsx", "Insufficient evidence");
 includes("lib/assetChat.ts", "/api/assets/");
 includes("lib/assetChat.ts", "/chat");
+includes("lib/compare.ts", "sourceDocuments");
+includes("lib/compare.ts", "c_fact_voo_benchmark");
+includes("lib/compare.ts", "c_fact_qqq_benchmark");
+includes("lib/compare.ts", "src_voo_fact_sheet_fixture");
+includes("lib/compare.ts", "src_qqq_fact_sheet_fixture");
+includes("components/ComparisonSourceDetails.tsx", "Comparison source metadata");
+includes("components/ComparisonSourceDetails.tsx", "data-comparison-source-document-id");
+includes("components/ComparisonSourceDetails.tsx", "Official source");
+includes("components/ComparisonSourceDetails.tsx", "Published or as of");
+includes("components/ComparisonSourceDetails.tsx", "Related comparison claims");
+includes("components/ComparisonSourceDetails.tsx", "supportingPassage");
+includes("components/CitationChip.tsx", "data-source-document-id");
 includes("components/SearchBox.tsx", "data-search-state");
 includes("components/FreshnessLabel.tsx", "data-freshness-state");
 
@@ -81,8 +97,10 @@ const frontendSource = [
   read("app/assets/[ticker]/page.tsx"),
   read("app/compare/page.tsx"),
   read("components/AssetChatPanel.tsx"),
+  read("components/ComparisonSourceDetails.tsx"),
   read("components/SearchBox.tsx"),
   read("lib/assetChat.ts"),
+  read("lib/compare.ts"),
   read("lib/fixtures.ts")
 ].join("\n");
 
@@ -111,5 +129,17 @@ assert.equal(
   false,
   "Frontend chat integration should not add live external calls"
 );
+
+const compareSource = [
+  read("app/compare/page.tsx"),
+  read("components/ComparisonSourceDetails.tsx"),
+  read("lib/compare.ts")
+].join("\n");
+
+assert.equal(compareSource.includes("fetch("), false, "Compare page should not make live external calls");
+assert.equal(compareSource.includes("/api/compare"), false, "Compare page should stay fixture-backed");
+assert.equal(read("app/compare/page.tsx").includes("getPrimarySource"), false, "Compare chips must not use a primary asset source fallback");
+assert.equal(compareSource.includes("src_aapl"), false, "Compare source metadata must not include AAPL sources");
+assert.match(compareSource, /No factual citation chips or source drawers/, "Unavailable compare states must avoid factual citation UI");
 
 console.log("Frontend smoke checks passed.");
