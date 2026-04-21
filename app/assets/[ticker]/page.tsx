@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { AssetHeader } from "../../../components/AssetHeader";
+import { AssetChatPanel } from "../../../components/AssetChatPanel";
 import { CitationChip } from "../../../components/CitationChip";
 import { FreshnessLabel } from "../../../components/FreshnessLabel";
 import { GlossaryPopover } from "../../../components/GlossaryPopover";
@@ -53,6 +54,8 @@ export default async function AssetPage({ params }: AssetPageProps) {
               <GlossaryPopover term={asset.assetType === "etf" ? "index tracking" : "market risk"} />
             </div>
           </section>
+
+          <AssetChatPanel ticker={asset.ticker} assetName={asset.name} />
 
           <section className="plain-panel" aria-labelledby="top-risks">
             <div className="section-heading">
