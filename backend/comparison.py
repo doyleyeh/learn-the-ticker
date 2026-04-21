@@ -7,7 +7,10 @@ from backend.citations import (
     CitationEvidence,
     CitationValidationClaim,
     CitationValidationContext,
+    CitationValidationIssue,
     CitationValidationReport,
+    CitationValidationResult,
+    CitationValidationStatus,
     EvidenceKind,
     validate_claims,
 )
@@ -18,6 +21,7 @@ from backend.models import (
     CompareResponse,
     FreshnessState,
     KeyDifference,
+    SourceDocument,
     StateMessage,
 )
 from backend.retrieval import (
@@ -40,6 +44,7 @@ class ComparisonGenerationError(ValueError):
 @dataclass(frozen=True)
 class CitationBinding:
     citation: Citation
+    source_document: SourceDocument
     evidence: CitationEvidence
 
 
@@ -112,6 +117,7 @@ def generate_comparison_from_pack(pack: ComparisonKnowledgePack) -> CompareRespo
         key_differences=key_differences,
         bottom_line_for_beginners=bottom_line,
         citations=bindings.citations(),
+        source_documents=bindings.source_documents(),
     )
     _assert_safe_copy(response)
     return response
@@ -152,7 +158,7 @@ def validate_comparison_response(
             )
         )
 
-    return validate_claims(
+    report = validate_claims(
         claims,
         evidence,
         CitationValidationContext(
@@ -160,6 +166,9 @@ def validate_comparison_response(
             comparison_pack_id=pack.comparison_pack_id,
         ),
     )
+    if not report.valid:
+        return report
+    return _validate_comparison_source_documents(comparison, pack)
 
 
 def validate_generated_comparison_claims(
@@ -237,6 +246,10 @@ class _ComparisonCitationRegistry:
     def citations(self) -> list[Citation]:
         return [binding.citation for binding in self._sorted_bindings()]
 
+    def source_documents(self) -> list[SourceDocument]:
+        by_id = {binding.source_document.source_document_id: binding.source_document for binding in self._sorted_bindings()}
+        return list(by_id.values())
+
     def evidence(self) -> list[CitationEvidence]:
         return [binding.evidence for binding in self._sorted_bindings()]
 
@@ -283,6 +296,7 @@ class _ComparisonCitationRegistry:
                 publisher=source_fixture.publisher,
                 freshness_state=source_fixture.freshness_state,
             ),
+            source_document=_source_document_from_fixture(source_fixture, evidence.supporting_text or ""),
             evidence=evidence,
         )
         self._bindings_by_citation_id[citation_id] = binding
@@ -466,6 +480,7 @@ def _unavailable_comparison(
         key_differences=[],
         bottom_line_for_beginners=None,
         citations=[],
+        source_documents=[],
     )
 
 
@@ -520,6 +535,213 @@ def _format_metric(value: Any, unit: str | None) -> str:
 def _role_phrase(value: Any) -> str:
     text = str(value)
     return f"{text[:1].lower()}{text[1:]}" if text else text
+
+
+def _source_document_from_fixture(source: SourceDocumentFixture, supporting_passage: str) -> SourceDocument:
+    return SourceDocument(
+        source_document_id=source.source_document_id,
+        source_type=source.source_type,
+        title=source.title,
+        publisher=source.publisher,
+        url=source.url,
+        published_at=source.published_at,
+        as_of_date=source.as_of_date,
+        retrieved_at=source.retrieved_at,
+        freshness_state=source.freshness_state,
+        is_official=source.is_official,
+        supporting_passage=supporting_passage,
+    )
+
+
+def _validate_comparison_source_documents(
+    comparison: CompareResponse,
+    pack: ComparisonKnowledgePack,
+) -> CitationValidationReport:
+    used_citation_ids = {
+        *{citation_id for item in comparison.key_differences for citation_id in item.citation_ids},
+        *(
+            set(comparison.bottom_line_for_beginners.citation_ids)
+            if comparison.bottom_line_for_beginners is not None
+            else set()
+        ),
+    }
+    if not used_citation_ids and not comparison.citations and not comparison.source_documents:
+        return _valid_comparison_validation_report()
+
+    issues: list[CitationValidationIssue] = []
+    citations_by_id = {citation.citation_id: citation for citation in comparison.citations}
+    extra_citation_ids = set(citations_by_id) - used_citation_ids
+    missing_citation_ids = used_citation_ids - set(citations_by_id)
+
+    for citation_id in sorted(missing_citation_ids):
+        issues.append(
+            CitationValidationIssue(
+                status=CitationValidationStatus.citation_not_found,
+                claim_id="comparison_source_metadata",
+                citation_id=citation_id,
+                message="Comparison response is missing citation metadata for a used citation.",
+            )
+        )
+    for citation_id in sorted(extra_citation_ids):
+        citation = citations_by_id[citation_id]
+        issues.append(
+            CitationValidationIssue(
+                status=CitationValidationStatus.citation_not_found,
+                claim_id="comparison_source_metadata",
+                citation_id=citation_id,
+                source_document_id=citation.source_document_id,
+                message="Comparison response includes citation metadata that is not used by generated claims.",
+            )
+        )
+
+    source_documents_by_id = {source.source_document_id: source for source in comparison.source_documents}
+    expected_sources_by_id = {source.source_document_id: source for source in pack.comparison_sources}
+    source_chunks_by_id = {
+        item.chunk.chunk_id: item for item in [*pack.left_asset_pack.source_chunks, *pack.right_asset_pack.source_chunks]
+    }
+    facts_by_id = {
+        item.fact.fact_id: item for item in [*pack.left_asset_pack.normalized_facts, *pack.right_asset_pack.normalized_facts]
+    }
+
+    needed_source_ids = {
+        citation.source_document_id for citation_id, citation in citations_by_id.items() if citation_id in used_citation_ids
+    }
+    missing_source_ids = needed_source_ids - set(source_documents_by_id)
+    extra_source_ids = set(source_documents_by_id) - needed_source_ids
+
+    for source_document_id in sorted(missing_source_ids):
+        issues.append(
+            CitationValidationIssue(
+                status=CitationValidationStatus.citation_not_found,
+                claim_id="comparison_source_metadata",
+                source_document_id=source_document_id,
+                message="Comparison citation is missing source-document metadata.",
+            )
+        )
+    for source_document_id in sorted(extra_source_ids):
+        issues.append(
+            CitationValidationIssue(
+                status=CitationValidationStatus.citation_not_found,
+                claim_id="comparison_source_metadata",
+                source_document_id=source_document_id,
+                message="Comparison source-document metadata has no matching generated citation.",
+            )
+        )
+
+    expected_passages_by_source_id: dict[str, set[str]] = {}
+    for citation_id in used_citation_ids:
+        evidence_id = citation_id[2:] if citation_id.startswith("c_") else citation_id
+        fact = facts_by_id.get(evidence_id)
+        if fact is not None:
+            expected_passages_by_source_id.setdefault(fact.source_document.source_document_id, set()).add(
+                fact.source_chunk.text
+            )
+            continue
+        chunk = source_chunks_by_id.get(evidence_id)
+        if chunk is not None:
+            expected_passages_by_source_id.setdefault(chunk.source_document.source_document_id, set()).add(chunk.chunk.text)
+
+    for source_document_id in sorted(needed_source_ids & set(source_documents_by_id)):
+        source_document = source_documents_by_id[source_document_id]
+        expected_source = expected_sources_by_id.get(source_document_id)
+        if expected_source is None:
+            issues.append(
+                CitationValidationIssue(
+                    status=CitationValidationStatus.wrong_asset,
+                    claim_id="comparison_source_metadata",
+                    source_document_id=source_document_id,
+                    message="Comparison source-document metadata belongs outside the selected comparison pack.",
+                )
+            )
+            continue
+
+        issues.extend(_comparison_source_metadata_issues(source_document, expected_source, expected_passages_by_source_id))
+
+    if not issues:
+        return _valid_comparison_validation_report()
+
+    return CitationValidationReport(
+        status=issues[0].status,
+        results=[
+            CitationValidationResult(
+                claim_id="comparison_source_metadata",
+                status=issues[0].status,
+                issues=issues,
+            )
+        ],
+    )
+
+
+def _comparison_source_metadata_issues(
+    source_document: SourceDocument,
+    expected_source: SourceDocumentFixture,
+    expected_passages_by_source_id: dict[str, set[str]],
+) -> list[CitationValidationIssue]:
+    issues: list[CitationValidationIssue] = []
+    source_document_id = source_document.source_document_id
+
+    if source_document.source_type != expected_source.source_type:
+        issues.append(
+            CitationValidationIssue(
+                status=CitationValidationStatus.unsupported_source,
+                claim_id="comparison_source_metadata",
+                source_document_id=source_document_id,
+                message="Comparison source-document metadata changed the source type from the selected comparison pack.",
+            )
+        )
+
+    if (
+        source_document.title != expected_source.title
+        or source_document.publisher != expected_source.publisher
+        or source_document.url != expected_source.url
+        or source_document.published_at != expected_source.published_at
+        or source_document.as_of_date != expected_source.as_of_date
+        or source_document.retrieved_at != expected_source.retrieved_at
+        or source_document.is_official != expected_source.is_official
+    ):
+        issues.append(
+            CitationValidationIssue(
+                status=CitationValidationStatus.insufficient_evidence,
+                claim_id="comparison_source_metadata",
+                source_document_id=source_document_id,
+                message="Comparison source-document metadata does not match the selected comparison pack.",
+            )
+        )
+
+    if source_document.freshness_state != expected_source.freshness_state:
+        status = (
+            CitationValidationStatus.stale_source
+            if source_document.freshness_state is FreshnessState.stale
+            else CitationValidationStatus.insufficient_evidence
+        )
+        issues.append(
+            CitationValidationIssue(
+                status=status,
+                claim_id="comparison_source_metadata",
+                source_document_id=source_document_id,
+                message="Comparison source-document freshness does not match the selected comparison pack.",
+            )
+        )
+
+    expected_passages = expected_passages_by_source_id.get(source_document_id, set())
+    if not source_document.supporting_passage.strip() or source_document.supporting_passage not in expected_passages:
+        issues.append(
+            CitationValidationIssue(
+                status=CitationValidationStatus.insufficient_evidence,
+                claim_id="comparison_source_metadata",
+                source_document_id=source_document_id,
+                message="Comparison source-document metadata is missing a supporting passage from the selected comparison pack.",
+            )
+        )
+
+    return issues
+
+
+def _valid_comparison_validation_report() -> CitationValidationReport:
+    return CitationValidationReport(
+        status=CitationValidationStatus.valid,
+        results=[CitationValidationResult(claim_id="comparison_source_metadata", status=CitationValidationStatus.valid)],
+    )
 
 
 def _claim_slug(value: str) -> str:

@@ -81,6 +81,20 @@ def test_compare_route_returns_educational_shape():
     assert body["bottom_line_for_beginners"]["summary"]
     assert body["key_differences"][0]["citation_ids"]
     assert body["state"]["status"] == "supported"
+    assert body["source_documents"]
+    source_ids = {source["source_document_id"] for source in body["source_documents"]}
+    assert {citation["source_document_id"] for citation in body["citations"]} <= source_ids
+    source = body["source_documents"][0]
+    assert source["source_document_id"]
+    assert source["title"]
+    assert source["publisher"]
+    assert source["source_type"]
+    assert source["url"]
+    assert source["published_at"] or source["as_of_date"]
+    assert source["retrieved_at"]
+    assert source["freshness_state"] == "fresh"
+    assert source["is_official"] is True
+    assert source["supporting_passage"]
     assert {item["dimension"] for item in body["key_differences"]} >= {
         "Benchmark",
         "Expense ratio",
@@ -103,6 +117,7 @@ def test_compare_route_uses_fixture_pipeline_in_reverse_order_and_unavailable_st
     assert unsupported["key_differences"] == []
     assert unsupported["bottom_line_for_beginners"] is None
     assert unsupported["citations"] == []
+    assert unsupported["source_documents"] == []
 
 
 def test_chat_advice_like_question_redirects_to_education():
