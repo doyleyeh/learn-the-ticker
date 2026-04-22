@@ -248,6 +248,55 @@ class IngestionJobResponse(BaseModel):
     message: str
 
 
+class PreCacheJobResponse(BaseModel):
+    batch_id: str | None = None
+    ticker: str
+    name: str | None = None
+    asset_type: AssetType
+    launch_group: str | None = None
+    job_type: IngestionJobType = IngestionJobType.pre_cache
+    job_id: str
+    job_state: IngestionJobState
+    worker_status: IngestionWorkerStatus | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    status_url: str
+    retryable: bool = False
+    error_metadata: IngestionErrorMetadata | None = None
+    generated_route: str | None = None
+    capabilities: IngestionCapabilities = Field(default_factory=IngestionCapabilities)
+    generated_output_available: bool = False
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    message: str
+
+
+class PreCacheBatchSummary(BaseModel):
+    total_launch_assets: int
+    cached_or_already_available_assets: int
+    queued_or_pending_assets: int
+    running_assets: int
+    failed_assets: int
+    unsupported_assets: int
+    unknown_assets: int
+    generated_output_available_assets: int
+
+
+class PreCacheBatchResponse(BaseModel):
+    batch_id: str
+    job_type: IngestionJobType = IngestionJobType.pre_cache
+    status_url: str
+    created_at: str
+    updated_at: str
+    deterministic: bool = True
+    no_live_external_calls: bool = True
+    summary: PreCacheBatchSummary
+    jobs: list[PreCacheJobResponse]
+    message: str
+
+
 class ProviderRequestMetadata(BaseModel):
     request_id: str
     requested_ticker: str

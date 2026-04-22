@@ -164,6 +164,80 @@ def test_ingestion_status_route_returns_fixture_backed_states():
     assert missing["asset_type"] == "unknown"
 
 
+def test_launch_universe_pre_cache_routes_return_same_deterministic_contract():
+    requested = client.post("/api/admin/pre-cache/launch-universe")
+    inspected = client.get("/api/admin/pre-cache/launch-universe")
+
+    assert requested.status_code == 200
+    assert inspected.status_code == 200
+    assert requested.json() == inspected.json()
+
+    body = requested.json()
+    jobs_by_ticker = {job["ticker"]: job for job in body["jobs"]}
+    assert body["batch_id"] == "pre-cache-launch-universe-v1"
+    assert body["summary"]["total_launch_assets"] == len(body["jobs"])
+    assert body["summary"]["cached_or_already_available_assets"] == 3
+    assert body["summary"]["generated_output_available_assets"] == 3
+    assert {"AAPL", "VOO", "QQQ", "SPY", "MSFT", "AMZN", "NVDA"} <= set(jobs_by_ticker)
+    assert jobs_by_ticker["VOO"]["job_state"] == "succeeded"
+    assert jobs_by_ticker["VOO"]["generated_route"] == "/assets/VOO"
+    assert jobs_by_ticker["SPY"]["job_state"] == "pending"
+    assert jobs_by_ticker["SPY"]["generated_route"] is None
+    assert jobs_by_ticker["MSFT"]["job_state"] == "running"
+    assert jobs_by_ticker["AMZN"]["job_state"] == "failed"
+
+    for ticker, job in jobs_by_ticker.items():
+        if ticker not in {"AAPL", "VOO", "QQQ"}:
+            assert job["generated_route"] is None
+            assert job["generated_output_available"] is False
+            assert job["citation_ids"] == []
+            assert job["source_document_ids"] == []
+            assert job["capabilities"]["can_open_generated_page"] is False
+            assert job["capabilities"]["can_answer_chat"] is False
+            assert job["capabilities"]["can_compare"] is False
+
+
+def test_pre_cache_asset_and_status_routes_cover_non_generated_states():
+    cached = client.post("/api/admin/pre-cache/AAPL").json()
+    queued_etf = client.get("/api/admin/pre-cache/jobs/pre-cache-launch-spy").json()
+    queued_stock = client.get("/api/admin/pre-cache/jobs/pre-cache-launch-nvda").json()
+    running = client.get("/api/admin/pre-cache/jobs/pre-cache-launch-msft").json()
+    failed = client.get("/api/admin/pre-cache/jobs/pre-cache-launch-amzn").json()
+    unsupported = client.post("/api/admin/pre-cache/TQQQ").json()
+    unsupported_status = client.get("/api/admin/pre-cache/jobs/pre-cache-unsupported-tqqq").json()
+    unknown = client.post("/api/admin/pre-cache/ZZZZ").json()
+    unknown_status = client.get("/api/admin/pre-cache/jobs/pre-cache-unknown-zzzz").json()
+    missing = client.get("/api/admin/pre-cache/jobs/missing-pre-cache-job").json()
+
+    assert cached["job_state"] == "succeeded"
+    assert cached["generated_route"] == "/assets/AAPL"
+    assert cached["generated_output_available"] is True
+    assert queued_etf["ticker"] == "SPY"
+    assert queued_etf["job_state"] == "pending"
+    assert queued_stock["ticker"] == "NVDA"
+    assert queued_stock["job_state"] == "pending"
+    assert running["job_state"] == "running"
+    assert failed["job_state"] == "failed"
+    assert failed["error_metadata"]["code"] == "fixture_pre_cache_failed"
+    assert unsupported == unsupported_status
+    assert unsupported["asset_type"] == "unsupported"
+    assert unsupported["job_state"] == "unsupported"
+    assert unknown == unknown_status
+    assert unknown["asset_type"] == "unknown"
+    assert unknown["job_state"] == "unknown"
+    assert missing["job_state"] == "unavailable"
+    assert missing["generated_route"] is None
+
+    for body in [queued_etf, queued_stock, running, failed, unsupported, unknown, missing]:
+        assert body["generated_route"] is None
+        assert body["generated_output_available"] is False
+        assert body["citation_ids"] == []
+        assert body["source_document_ids"] == []
+        assert body["capabilities"]["can_open_generated_page"] is False
+        assert body["capabilities"]["can_answer_chat"] is False
+        assert body["capabilities"]["can_compare"] is False
+
+
 def test_overview_has_beginner_sections_and_citations():
     response = client.get("/api/assets/VOO/overview")
 

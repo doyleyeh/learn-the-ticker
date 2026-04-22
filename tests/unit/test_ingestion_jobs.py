@@ -1,6 +1,12 @@
-from backend.data import ELIGIBLE_NOT_CACHED_ASSETS
-from backend.ingestion import get_ingestion_job_status, request_ingestion
-from backend.models import IngestionJobResponse
+from backend.data import ASSETS, ELIGIBLE_NOT_CACHED_ASSETS
+from backend.ingestion import (
+    get_ingestion_job_status,
+    get_pre_cache_job_status,
+    request_ingestion,
+    request_launch_universe_pre_cache,
+    request_pre_cache_for_asset,
+)
+from backend.models import IngestionJobResponse, PreCacheBatchResponse, PreCacheJobResponse
 
 
 def test_eligible_not_cached_asset_requests_deterministic_on_demand_job():
@@ -122,3 +128,120 @@ def test_status_lookup_covers_running_succeeded_refresh_needed_failed_and_unavai
     assert missing.asset_type.value == "unknown"
     assert missing.job_state.value == "unavailable"
     assert missing.generated_route is None
+
+
+def test_launch_universe_pre_cache_batch_is_deterministic_and_covers_control_set():
+    first = request_launch_universe_pre_cache()
+    second = request_launch_universe_pre_cache()
+
+    assert first == second
+    validated = PreCacheBatchResponse.model_validate(first.model_dump(mode="json"))
+    expected_tickers = {*ASSETS, *ELIGIBLE_NOT_CACHED_ASSETS}
+    jobs_by_ticker = {job.ticker: job for job in validated.jobs}
+
+    assert validated.batch_id == "pre-cache-launch-universe-v1"
+    assert validated.status_url == "/api/admin/pre-cache/launch-universe"
+    assert validated.deterministic is True
+    assert validated.no_live_external_calls is True
+    assert set(jobs_by_ticker) == expected_tickers
+    assert validated.summary.total_launch_assets == len(expected_tickers)
+    assert validated.summary.cached_or_already_available_assets == 3
+    assert validated.summary.generated_output_available_assets == 3
+    assert validated.summary.running_assets == 1
+    assert validated.summary.failed_assets == 1
+    assert validated.summary.unsupported_assets == 0
+    assert validated.summary.unknown_assets == 0
+
+    for ticker, job in jobs_by_ticker.items():
+        assert job.batch_id == validated.batch_id
+        assert job.job_type.value == "pre_cache"
+        assert job.job_id == f"pre-cache-launch-{ticker.lower()}"
+        assert job.status_url == f"/api/admin/pre-cache/jobs/pre-cache-launch-{ticker.lower()}"
+        assert job.launch_group
+
+
+def test_pre_cache_cached_assets_preserve_existing_generated_capabilities_only():
+    batch = request_launch_universe_pre_cache()
+
+    for ticker in ["AAPL", "VOO", "QQQ"]:
+        job = next(job for job in batch.jobs if job.ticker == ticker)
+        assert job.job_state.value == "succeeded"
+        assert job.worker_status.value == "succeeded"
+        assert job.generated_route == f"/assets/{ticker}"
+        assert job.generated_output_available is True
+        assert job.capabilities.can_open_generated_page is True
+        assert job.capabilities.can_answer_chat is True
+        assert job.capabilities.can_compare is True
+        assert job.capabilities.can_request_ingestion is False
+
+
+def test_pre_cache_eligible_not_cached_assets_have_no_generated_output_or_sources():
+    batch = request_launch_universe_pre_cache()
+    jobs_by_ticker = {job.ticker: job for job in batch.jobs}
+
+    for ticker, metadata in ELIGIBLE_NOT_CACHED_ASSETS.items():
+        job = jobs_by_ticker[ticker]
+        assert job.asset_type.value == metadata["asset_type"]
+        assert job.launch_group == metadata["launch_group"]
+        assert job.generated_route is None
+        assert job.generated_output_available is False
+        assert job.citation_ids == []
+        assert job.source_document_ids == []
+        assert job.capabilities.can_open_generated_page is False
+        assert job.capabilities.can_answer_chat is False
+        assert job.capabilities.can_compare is False
+        assert job.capabilities.can_request_ingestion is True
+        assert "no generated" in job.message.lower()
+
+
+def test_pre_cache_status_lookup_covers_required_deterministic_states():
+    cases = {
+        "pre-cache-launch-voo": ("VOO", "etf", "succeeded", "succeeded", "/assets/VOO", True),
+        "pre-cache-launch-aapl": ("AAPL", "stock", "succeeded", "succeeded", "/assets/AAPL", True),
+        "pre-cache-launch-spy": ("SPY", "etf", "pending", "queued", None, False),
+        "pre-cache-launch-nvda": ("NVDA", "stock", "pending", "queued", None, False),
+        "pre-cache-launch-msft": ("MSFT", "stock", "running", "running", None, False),
+        "pre-cache-launch-amzn": ("AMZN", "stock", "failed", "failed", None, False),
+        "pre-cache-unsupported-tqqq": ("TQQQ", "unsupported", "unsupported", None, None, False),
+        "pre-cache-unknown-zzzz": ("ZZZZ", "unknown", "unknown", None, None, False),
+        "missing-pre-cache-job": ("UNKNOWN", "unknown", "unavailable", None, None, False),
+    }
+
+    for job_id, (ticker, asset_type, job_state, worker_status, generated_route, output_available) in cases.items():
+        response = get_pre_cache_job_status(job_id)
+        validated = PreCacheJobResponse.model_validate(response.model_dump(mode="json"))
+        actual_worker_status = validated.worker_status.value if validated.worker_status else None
+        assert validated.job_id == job_id
+        assert validated.ticker == ticker
+        assert validated.asset_type.value == asset_type
+        assert validated.job_type.value == "pre_cache"
+        assert validated.job_state.value == job_state
+        assert actual_worker_status == worker_status
+        assert validated.status_url == f"/api/admin/pre-cache/jobs/{job_id}"
+        assert validated.generated_route == generated_route
+        assert validated.generated_output_available is output_available
+
+    failed = get_pre_cache_job_status("pre-cache-launch-amzn")
+    assert failed.error_metadata is not None
+    assert failed.error_metadata.code == "fixture_pre_cache_failed"
+    assert failed.error_metadata.retryable is True
+
+
+def test_pre_cache_asset_helper_returns_unsupported_or_unknown_without_generated_output():
+    for ticker, expected_type, expected_state in [
+        ("TQQQ", "unsupported", "unsupported"),
+        ("BTC", "unsupported", "unsupported"),
+        ("ZZZZ", "unknown", "unknown"),
+    ]:
+        response = request_pre_cache_for_asset(ticker)
+
+        assert response.ticker == ticker
+        assert response.asset_type.value == expected_type
+        assert response.job_state.value == expected_state
+        assert response.generated_route is None
+        assert response.generated_output_available is False
+        assert response.citation_ids == []
+        assert response.source_document_ids == []
+        assert response.capabilities.can_open_generated_page is False
+        assert response.capabilities.can_answer_chat is False
+        assert response.capabilities.can_compare is False

@@ -27,6 +27,7 @@ from backend.comparison import generate_comparison, validate_comparison_response
 from backend.data import ASSETS, ELIGIBLE_NOT_CACHED_ASSETS
 from backend.export import export_asset_page, export_asset_source_list, export_chat_transcript, export_comparison
 from backend.ingestion import get_ingestion_job_status, request_ingestion
+from backend.ingestion import get_pre_cache_job_status, request_launch_universe_pre_cache, request_pre_cache_for_asset
 from backend.main import app
 from backend.models import (
     CacheEntryKind,
@@ -46,6 +47,8 @@ from backend.models import (
     IngestionJobResponse,
     KnowledgePackFreshnessInput,
     MetricValue,
+    PreCacheBatchResponse,
+    PreCacheJobResponse,
     ProviderDataCategory,
     ProviderKind,
     ProviderResponse,
@@ -492,6 +495,132 @@ def test_ingestion_cases():
     ingestion_source = (ROOT / "backend" / "ingestion.py").read_text(encoding="utf-8")
     main_source = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
     for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import"]:
+        assert forbidden not in ingestion_source
+        assert forbidden not in main_source
+
+
+def test_pre_cache_cases():
+    data = load_yaml("pre_cache_eval_cases.yaml")
+    required_models = set(data.get("required_models", []))
+    missing_models = {name for name in required_models if not hasattr(models, name)}
+    assert not missing_models, f"Missing pre-cache contract models: {missing_models}"
+
+    required_helpers = {
+        "request_launch_universe_pre_cache",
+        "request_pre_cache_for_asset",
+        "get_pre_cache_job_status",
+    }
+    missing_helpers = {name for name in required_helpers if name not in globals()}
+    assert not missing_helpers, f"Missing pre-cache helper functions: {missing_helpers}"
+
+    batch = request_launch_universe_pre_cache()
+    endpoint_response = client.post("/api/admin/pre-cache/launch-universe")
+    status_response = client.get("/api/admin/pre-cache/launch-universe")
+    assert endpoint_response.status_code == 200
+    assert status_response.status_code == 200
+    validated = PreCacheBatchResponse.model_validate(batch.model_dump(mode="json"))
+    assert endpoint_response.json() == validated.model_dump(mode="json")
+    assert status_response.json() == validated.model_dump(mode="json")
+
+    expected_batch_id = data["expected_batch_id"]
+    assert validated.batch_id == expected_batch_id
+    assert validated.status_url == data["expected_status_url"]
+    assert validated.deterministic is True
+    assert validated.no_live_external_calls is True
+    assert validated.summary.total_launch_assets == len(validated.jobs)
+    assert validated.summary.total_launch_assets == len({*ASSETS, *ELIGIBLE_NOT_CACHED_ASSETS})
+    assert validated.summary.cached_or_already_available_assets == len(ASSETS)
+    assert validated.summary.generated_output_available_assets == len(ASSETS)
+
+    jobs_by_ticker = {job.ticker: job for job in validated.jobs}
+    assert set(jobs_by_ticker) == {*ASSETS, *ELIGIBLE_NOT_CACHED_ASSETS}
+    for ticker, expected_route in data["cached_generated_routes"].items():
+        job = jobs_by_ticker[ticker]
+        assert job.job_id == f"pre-cache-launch-{ticker.lower()}"
+        assert job.job_state.value == "succeeded"
+        assert job.worker_status.value == "succeeded"
+        assert job.generated_route == expected_route
+        assert job.generated_output_available is True
+        assert job.capabilities.can_open_generated_page is True
+        assert job.capabilities.can_answer_chat is True
+        assert job.capabilities.can_compare is True
+        assert get_pre_cache_job_status(job.job_id).model_dump(mode="json") == job.model_dump(mode="json")
+
+    for ticker in ELIGIBLE_NOT_CACHED_ASSETS:
+        job = jobs_by_ticker[ticker]
+        assert job.job_type.value == "pre_cache"
+        assert job.launch_group == ELIGIBLE_NOT_CACHED_ASSETS[ticker]["launch_group"]
+        assert job.generated_route is None
+        assert job.generated_output_available is False
+        assert job.citation_ids == []
+        assert job.source_document_ids == []
+        assert job.capabilities.can_open_generated_page is False
+        assert job.capabilities.can_answer_chat is False
+        assert job.capabilities.can_compare is False
+
+        overview = generate_asset_overview(ticker)
+        chat = generate_asset_chat(ticker, "What is this asset?")
+        export = export_asset_page(ticker)
+        assert overview.beginner_summary is None
+        assert overview.citations == []
+        assert overview.source_documents == []
+        assert chat.citations == []
+        assert chat.source_documents == []
+        assert export.citations == []
+        assert export.source_documents == []
+
+    required_status_states = set(data.get("required_status_states", []))
+    found_status_states = set()
+    for case in data.get("status_cases", []):
+        if case["lookup"] == "status":
+            response = client.get(f"/api/admin/pre-cache/jobs/{case['job_id']}")
+            direct = get_pre_cache_job_status(case["job_id"])
+        elif case["lookup"] == "asset":
+            response = client.post(f"/api/admin/pre-cache/{case['ticker']}")
+            direct = request_pre_cache_for_asset(case["ticker"])
+        else:
+            raise AssertionError(f"Unknown pre-cache lookup: {case['lookup']}")
+
+        assert response.status_code == 200, f"{case['id']} pre-cache endpoint failed"
+        validated_job = PreCacheJobResponse.model_validate(response.json())
+        assert validated_job.model_dump(mode="json") == direct.model_dump(mode="json")
+        assert validated_job.ticker == case["expected_ticker"]
+        assert validated_job.asset_type.value == case["expected_asset_type"]
+        assert validated_job.job_state.value == case["expected_job_state"]
+        assert (validated_job.worker_status.value if validated_job.worker_status else None) == case["expected_worker_status"]
+        assert validated_job.generated_route == case["expected_generated_route"]
+        assert validated_job.generated_output_available is case["expected_generated_output_available"]
+        found_status_states.add(validated_job.job_state.value)
+
+        if not validated_job.generated_output_available:
+            assert validated_job.generated_route is None
+            assert validated_job.citation_ids == []
+            assert validated_job.source_document_ids == []
+            assert validated_job.capabilities.can_open_generated_page is False
+            assert validated_job.capabilities.can_answer_chat is False
+            assert validated_job.capabilities.can_compare is False
+
+    missing_states = required_status_states - found_status_states
+    assert not missing_states, f"Missing pre-cache status states: {missing_states}"
+
+    cache_key = build_cache_key(
+        CacheKeyMetadata(
+            entry_kind=CacheEntryKind.pre_cache_job,
+            scope=CacheScope.job,
+            asset_ticker="SPY",
+            mode_or_output_type="launch-universe",
+            schema_version="pre-cache-job-v1",
+            source_freshness_state=FreshnessState.unavailable,
+            input_freshness_hash=expected_batch_id,
+        )
+    )
+    blocked = evaluate_cache_revalidation(None, cache_key, input_state=CacheEntryState.unavailable)
+    assert "pre-cache-job" in cache_key
+    assert blocked.reusable is False
+
+    ingestion_source = (ROOT / "backend" / "ingestion.py").read_text(encoding="utf-8")
+    main_source = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
+    for forbidden in data.get("forbidden_live_call_imports", []):
         assert forbidden not in ingestion_source
         assert forbidden not in main_source
 
@@ -1183,6 +1312,7 @@ if __name__ == "__main__":
     test_citation_cases()
     test_search_cases()
     test_ingestion_cases()
+    test_pre_cache_cases()
     test_provider_cases()
     test_cache_cases()
     test_retrieval_fixture_contract()
