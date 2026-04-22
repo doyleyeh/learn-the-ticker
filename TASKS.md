@@ -2,29 +2,27 @@
 
 ## Current task
 
-### T-028: Add pre-cache launch-universe job contracts
+### T-029: Add deterministic asset knowledge-pack builder
 
 Goal:
-Add deterministic pre-cache launch-universe job contracts so the MVP operational pre-cache set can be requested and inspected as fixture-backed job state without starting real workers, making provider calls, generating new asset output, or changing search/support classification.
+Add a deterministic asset knowledge-pack builder contract that makes the bounded evidence set for each local cached asset inspectable, freshness-hashable, and explicitly unavailable for eligible-not-cached, unsupported, and unknown assets without adding new source facts, generated output, live calls, or frontend UI.
 
 Task scope:
-This is a backend/API contract task only. Define a deterministic local pre-cache launch-universe request/status contract over the existing cached supported assets and eligible-not-cached launch assets introduced by T-027. The contract may add typed response models, fixture-backed planner/status helpers, API routes, eval cases, and tests for queued/running/succeeded/failed/unsupported/unknown/unavailable states. It must not add real ingestion workers, queues, Redis/PostgreSQL persistence, provider fetches, SEC/issuer/market/news calls, LLM calls, source facts, retrieval knowledge packs, generated pages, generated chat answers, generated comparisons, frontend UI, analytics, authentication, or deployment config.
+This is a backend retrieval/cache contract task only. Build on the existing deterministic retrieval fixtures and `build_asset_knowledge_pack` behavior to expose a typed, stable knowledge-pack build result for cached local assets (`AAPL`, `VOO`, and `QQQ`) and explicit non-generated states for eligible-not-cached launch assets, unsupported assets, and unknown assets. The contract may add typed response models, fixture-backed builder helpers, a read-only API route, cache/freshness-hash wiring, eval cases, and tests. It must not add or modify source fixture content, provider fetches, SEC/issuer/market/news calls, LLM calls, ingestion workers, queues, persistence, generated pages, generated chat answers, generated comparisons, frontend UI, analytics, authentication, or deployment config.
 
 Allowed files:
 
 - backend/models.py
-- backend/data.py
-- backend/ingestion.py
+- backend/retrieval.py
 - backend/main.py
 - backend/cache.py
-- tests/unit/test_ingestion_jobs.py
+- tests/unit/test_retrieval_fixtures.py
 - tests/unit/test_cache_contracts.py
 - tests/integration/test_backend_api.py
-- tests/unit/test_search_classification.py
-- evals/golden_assets.yaml
-- evals/ingestion_eval_cases.yaml
-- evals/cache_eval_cases.yaml
-- evals/pre_cache_eval_cases.yaml
+- tests/unit/test_overview_generation.py
+- tests/unit/test_chat_generation.py
+- tests/unit/test_comparison_generation.py
+- evals/knowledge_pack_eval_cases.yaml
 - evals/run_static_evals.py
 - docs/agent-journal/
 
@@ -38,37 +36,37 @@ Do not change:
 - backend/chat.py
 - backend/comparison.py
 - backend/export.py
+- backend/ingestion.py
 - backend/providers.py
 - backend/overview.py
-- backend/retrieval.py
 - backend/search.py
 - package files
 - provider network clients, credentials, environment variables, Redis, PostgreSQL, persistence, ingestion workers, real queues, scheduler code, frontend UI, analytics, authentication, deployment config, or live cache infrastructure
-- source fixture content, retrieval fixtures, overview generation behavior, generated overview sections, comparison generation behavior, chat generation behavior, glossary data, export behavior, cached-output behavior, or generated asset routes
-- supported generated behavior for assets that are not already cached local fixtures (`AAPL`, `VOO`, and `QQQ`)
-- generated behavior for unsupported, unknown, ambiguous, unsupported comparison, unavailable comparison, eligible-not-cached, stale, unavailable, permission-limited, queued, failed, or pending pre-cache states
+- source fixture content, retrieval fixture JSON, provider fixture content, overview generation behavior, generated overview sections, comparison generation behavior, chat generation behavior, glossary data, export behavior, cached-output behavior, search/support classification behavior, ingestion behavior, pre-cache behavior, or generated asset routes
+- generated behavior for assets that are not already cached local fixtures (`AAPL`, `VOO`, and `QQQ`)
+- generated behavior for unsupported, unknown, ambiguous, unsupported comparison, unavailable comparison, eligible-not-cached, stale, unavailable, permission-limited, queued, failed, running, or pending pre-cache states
 
 Acceptance criteria:
 
-- Add a deterministic pre-cache launch-universe request function or API contract that returns a stable batch/job response for the T-027 launch-universe control set without starting workers or making live calls.
-- The pre-cache contract covers cached supported local assets `AAPL`, `VOO`, and `QQQ` plus every eligible-not-cached launch asset currently in `ELIGIBLE_NOT_CACHED_ASSETS`.
-- The launch-universe pre-cache batch uses stable IDs and status URLs, for example a stable launch batch ID and stable per-asset job IDs derived from normalized tickers; repeated requests return the same deterministic response.
-- Cached supported local assets may be marked succeeded or already cached only when they preserve existing generated routes and page/chat/comparison capabilities from their local fixtures.
-- Eligible-not-cached launch assets are represented as queued, pending, running, failed, or planned pre-cache job states, but still have no generated route, no generated page capability, no chat capability, no comparison capability, no citations, no source documents, and no generated output.
-- The contract exposes per-asset job type `pre_cache`, ticker, asset type, launch group, job state, worker status, retryability, status URL, generated route if one already exists, capability flags, and an educational/no-generated-output message.
-- The contract exposes a summary count of total launch assets, cached/already-available assets, queued or pending assets, running assets, failed assets, unsupported assets, unknown assets, and assets with generated output available.
-- Status lookup covers deterministic pre-cache states for at least one cached supported ETF, one cached supported stock, one queued eligible ETF, one queued eligible stock, one running eligible asset, one failed pre-cache fixture, one unsupported pre-cache fixture, one unknown pre-cache fixture, and one unavailable/missing job ID.
-- Any unsupported or unknown ticker passed into a pre-cache helper or route returns an unsupported/unknown non-generated state and does not create source facts, citations, generated output, or reusable generated-output cache hits.
-- If `backend/cache.py` is touched, the only cache behavior added is deterministic pre-cache job cache-key or revalidation coverage using existing cache contract models; do not add storage, Redis, databases, TTL workers, cache refreshers, or generated-output reuse for unavailable/unsupported/eligible-not-cached states.
-- Static evals include pre-cache cases that verify launch-universe coverage, deterministic IDs, no generated output for eligible-not-cached/failed/unsupported/unknown states, no citations/source documents from nonexistent packs, stable capability flags, and no live-call or credential imports.
-- API coverage, if routes are added, verifies request and status endpoints serialize the same deterministic contract and preserve existing `/api/admin/ingest/{ticker}` and `/api/jobs/{job_id}` behavior.
-- Existing search, on-demand ingestion, provider adapter, overview, comparison, chat, export, cache, retrieval, citation, safety, frontend smoke, and generated local fixture behavior for `AAPL`, `VOO`, `QQQ`, unsupported assets, unknown assets, and unavailable comparisons remains unchanged except for the new pre-cache contract surface.
+- Add a deterministic knowledge-pack builder function or response contract that returns the same schema and stable identifiers for repeated requests.
+- The builder covers cached supported local assets `AAPL`, `VOO`, and `QQQ` using only existing local retrieval fixtures.
+- Supported cached pack responses expose ticker, asset identity, asset type, pack ID, build state, generated-output availability, capability flags, page/section freshness metadata, source-document IDs, citation IDs where derivable from the existing fixture bindings, fact counts, chunk counts, recent-development counts, evidence-gap counts, and a knowledge-pack freshness hash.
+- Supported cached pack responses include enough source/fact/recent-event metadata to prove same-asset binding without exporting full source documents or adding new factual claims.
+- `AAPL`, `VOO`, and `QQQ` knowledge-pack freshness hashes are deterministic across repeated builds and change when existing source/fact/recent-event freshness inputs would change through the existing cache helpers.
+- Eligible-not-cached launch assets currently in `ELIGIBLE_NOT_CACHED_ASSETS` return an explicit non-generated state such as eligible-not-cached or unavailable, with no source documents, no citations, no normalized facts, no chunks, no recent developments, no generated route, no page/chat/comparison capability, and no reusable generated-output cache hit.
+- Unsupported assets return unsupported non-generated pack states, and unknown assets return unknown or unavailable non-generated pack states. Neither state may create source facts, citations, generated output, or reusable generated-output cache hits.
+- If a read-only API route is added, it serializes the same deterministic builder response for supported, eligible-not-cached, unsupported, and unknown tickers and does not change existing overview, search, ingestion, pre-cache, chat, comparison, export, or provider routes.
+- Existing `build_asset_knowledge_pack` and `build_comparison_knowledge_pack` callers in overview, chat, comparison, export, and cache flows continue to produce the same generated outputs and unavailable states as before.
+- The builder does not make live external calls, import provider credentials, import network clients, read environment secrets, create queues, write to Redis/PostgreSQL/S3, or start workers.
+- Static evals include knowledge-pack cases that verify deterministic pack IDs, supported cached coverage, eligible-not-cached non-generation, unsupported/unknown non-generation, citation/source absence for nonexistent packs, same-asset binding, freshness-hash determinism, no raw full-document export, and forbidden live-call or credential imports.
+- Tests verify schema validation, deterministic repeated builds, same-asset source/fact/recent-event binding, freshness hash integration, explicit stale/unknown/unavailable/evidence-gap handling, no generated output for non-cached states, and preservation of existing generated overview/chat/comparison behavior.
 - Normal CI remains deterministic and does not require provider credentials, market-data calls, SEC calls, ETF issuer calls, news calls, LLM calls, Redis, PostgreSQL, queues, backend server availability, browser automation, or network access.
 
 Required commands:
 
 - git status --short
-- python3 -m pytest tests/unit/test_ingestion_jobs.py tests/unit/test_cache_contracts.py -q
+- python3 -m pytest tests/unit/test_retrieval_fixtures.py tests/unit/test_cache_contracts.py -q
+- python3 -m pytest tests/unit/test_overview_generation.py tests/unit/test_chat_generation.py tests/unit/test_comparison_generation.py -q
 - python3 -m pytest tests/integration/test_backend_api.py -q
 - python3 -m pytest tests -q
 - python3 evals/run_static_evals.py
@@ -78,6 +76,35 @@ Iteration budget:
 Max 2 attempts
 
 ## Completed
+
+### T-028: Add pre-cache launch-universe job contracts
+
+Goal:
+Add deterministic pre-cache launch-universe job contracts so the MVP operational pre-cache set can be requested and inspected as fixture-backed job state without starting real workers, making provider calls, generating new asset output, or changing search/support classification.
+
+Completed:
+
+- Added pre-cache response models in `backend/models.py`: `PreCacheJobResponse`, `PreCacheBatchSummary`, and `PreCacheBatchResponse`, using existing ingestion job types, job states, worker states, capabilities, retryability, generated-output flags, citation/source ID lists, and status URLs.
+- Added deterministic pre-cache contract helpers in `backend/ingestion.py`, including stable launch batch ID `pre-cache-launch-universe-v1`, stable launch status URL `/api/admin/pre-cache/launch-universe`, stable per-asset job IDs such as `pre-cache-launch-voo`, and fixture-backed request/status helpers for launch-universe assets.
+- The launch-universe pre-cache contract covers cached local generated assets `AAPL`, `VOO`, and `QQQ` plus the eligible-not-cached launch assets from `ELIGIBLE_NOT_CACHED_ASSETS`.
+- Cached local assets are marked succeeded/already available with existing generated routes and page/chat/comparison capability flags preserved.
+- Eligible-not-cached assets remain non-generated: the contract gives pending/queued states for most launch assets, a deterministic running fixture for `MSFT`, and a deterministic failed retryable fixture for `AMZN`, with no generated route, citations, source documents, generated page, chat answer, comparison, or reusable generated-output cache hit.
+- Unsupported and unknown pre-cache requests return explicit unsupported or unknown non-generated states, and missing pre-cache job IDs return an unavailable non-generated state.
+- Added API routes in `backend/main.py` for `POST /api/admin/pre-cache/launch-universe`, `GET /api/admin/pre-cache/launch-universe`, `GET /api/admin/pre-cache/jobs/{job_id}`, and `POST /api/admin/pre-cache/{ticker}` while preserving existing `/api/admin/ingest/{ticker}` and `/api/jobs/{job_id}` behavior.
+- Added `evals/pre_cache_eval_cases.yaml` and extended `evals/run_static_evals.py` to verify required models, status states, launch-universe coverage, stable IDs, capability flags, no generated output for non-cached states, absence of citations/source documents from nonexistent packs, and forbidden live-call or credential imports.
+- Added focused coverage in `tests/unit/test_ingestion_jobs.py`, `tests/unit/test_cache_contracts.py`, and `tests/integration/test_backend_api.py` for deterministic batch/status responses, cached versus eligible-not-cached capabilities, running/failed/unsupported/unknown/unavailable states, cache non-reuse for non-generated states, and API serialization.
+- Added `docs/agent-journal/20260422T184635Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- T-028 agent journal records that `git status --short`, focused ingestion/cache pytest, backend API pytest, full pytest, static evals, and the full quality gate passed.
+- T-028 agent journal records focused ingestion/cache pytest as 24 tests passed, backend API integration pytest as 22 tests passed, full Python pytest as 113 tests passed, static evals as passed, and the full quality gate as passed including Python tests, static evals, frontend smoke checks, TypeScript typecheck, production build, and backend checks.
+- Merged local branch: `agent/T-028-20260422T184635Z`.
+- Remaining documented risk: the pre-cache work is contract-only; it does not add real workers, queues, Redis/PostgreSQL persistence, provider calls, source facts, retrieval packs, generated pages, generated chat answers, generated comparisons, frontend UI, analytics, auth, or deployment config.
+- Remaining documented risk: eligible-not-cached launch assets remain non-generated even though their pre-cache jobs expose deterministic pending/running/failed states and status URLs.
+- Remaining documented risk: cached local assets `AAPL`, `VOO`, and `QQQ` are marked pre-cache succeeded only because existing fixture-backed generated routes and capabilities already exist.
+
+Completion commits:
+
+- `a61de16 feat(T-028): add pre-cache launch-universe job contracts`
+- `f23e33f chore(T-028): merge pre-cache launch-universe job contracts`
 
 ### T-027: Expand golden asset eval coverage for MVP launch universe
 
@@ -805,7 +832,6 @@ Completion commits:
 
 ## Backlog
 
-### T-029: Add deterministic asset knowledge-pack builder
 ### T-030: Add frontend export controls for saved learning outputs
 ### T-031: Add common comparison suggestions for supported assets
 ### T-032: Add trust metrics event contract for MVP workflows
