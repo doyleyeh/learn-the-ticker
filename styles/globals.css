@@ -313,7 +313,8 @@ input {
 
 .risk-card,
 .difference-item,
-.timeline-item {
+.timeline-item,
+.stock-section-item {
   min-width: 0;
   padding: 16px;
   border: 1px solid var(--line);
@@ -323,8 +324,57 @@ input {
 
 .risk-card h3,
 .difference-item h3,
-.timeline-item h3 {
+.timeline-item h3,
+.stock-section-item h3 {
   margin: 0 0 8px;
+}
+
+.stock-prd-sections {
+  gap: 22px;
+}
+
+.stock-section-state,
+.stock-item-heading {
+  justify-content: space-between;
+}
+
+.stock-section-items {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.stock-item-heading {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.state-pill {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f7f9fa;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: capitalize;
+}
+
+.compact-state {
+  flex: none;
+  min-height: 28px;
+  font-size: 12px;
+}
+
+.source-gap-note {
+  margin: 10px 0 0;
+  color: var(--unknown);
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .citation-chip {
@@ -584,6 +634,10 @@ blockquote {
 
   .source-title-row {
     align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .stock-item-heading {
     flex-direction: column;
   }
 }

@@ -21,6 +21,7 @@ function includes(path, marker) {
   "app/assets/[ticker]/page.tsx",
   "app/compare/page.tsx",
   "components/AssetChatPanel.tsx",
+  "components/AssetStockSections.tsx",
   "components/CitationChip.tsx",
   "components/ComparisonSourceDetails.tsx",
   "components/SourceDrawer.tsx",
@@ -40,6 +41,8 @@ includes("app/assets/[ticker]/page.tsx", "Stale and unknown treatment");
 includes("app/assets/[ticker]/page.tsx", "SourceDrawer");
 includes("app/assets/[ticker]/page.tsx", "GlossaryPopover");
 includes("app/assets/[ticker]/page.tsx", "AssetChatPanel");
+includes("app/assets/[ticker]/page.tsx", "AssetStockSections");
+includes("app/assets/[ticker]/page.tsx", "hasStockPrdSections");
 includes("app/compare/page.tsx", "Bottom line for beginners");
 includes("app/compare/page.tsx", "ComparisonSourceDetails");
 includes("app/compare/page.tsx", "getComparisonCitationMetadata");
@@ -60,6 +63,11 @@ includes("components/AssetChatPanel.tsx", "advice-boundary");
 includes("components/AssetChatPanel.tsx", "business model work");
 includes("components/AssetChatPanel.tsx", "fund exposure");
 includes("components/AssetChatPanel.tsx", "without a personal recommendation");
+includes("components/AssetStockSections.tsx", "data-stock-prd-sections");
+includes("components/AssetStockSections.tsx", "data-stock-section-id");
+includes("components/AssetStockSections.tsx", "data-stock-stable-recent-separation");
+includes("components/AssetStockSections.tsx", "data-stock-top-risk-count");
+includes("components/AssetStockSections.tsx", "No citation chip is shown because this item is an explicit evidence gap");
 includes("lib/assetChat.ts", "/api/assets/");
 includes("lib/assetChat.ts", "/chat");
 includes("lib/compare.ts", "sourceDocuments");
@@ -73,6 +81,12 @@ includes("components/ComparisonSourceDetails.tsx", "Official source");
 includes("components/ComparisonSourceDetails.tsx", "Published or as of");
 includes("components/ComparisonSourceDetails.tsx", "Related comparison claims");
 includes("components/ComparisonSourceDetails.tsx", "supportingPassage");
+includes("components/SourceDrawer.tsx", "data-source-document-id");
+includes("components/SourceDrawer.tsx", "Published or as of");
+includes("components/SourceDrawer.tsx", "Related claim context");
+includes("components/SourceDrawer.tsx", "Supporting passage");
+includes("components/SourceDrawer.tsx", "Official source");
+includes("components/SourceDrawer.tsx", "URL");
 includes("components/CitationChip.tsx", "data-source-document-id");
 includes("components/SearchBox.tsx", "data-search-state");
 includes("components/SearchBox.tsx", "resolveLocalFixtureSearch");
@@ -88,6 +102,40 @@ const fixtures = read("lib/fixtures.ts");
 for (const ticker of ["VOO", "QQQ", "AAPL"]) {
   assert.match(fixtures, new RegExp(`${ticker}: \\{`), `${ticker} fixture should exist`);
 }
+
+const aaplFixture = fixtures.slice(fixtures.indexOf("AAPL: {"), fixtures.indexOf("}\n};", fixtures.indexOf("AAPL: {")));
+for (const sectionId of [
+  "business_overview",
+  "products_services",
+  "strengths",
+  "financial_quality",
+  "valuation_context",
+  "top_risks",
+  "recent_developments",
+  "educational_suitability"
+]) {
+  assert.match(aaplFixture, new RegExp(`sectionId: "${sectionId}"`), `AAPL fixture should include stock section ${sectionId}`);
+}
+for (const marker of [
+  "c_fact_aapl_products_services_detail",
+  "c_fact_aapl_business_quality_strength",
+  "c_fact_aapl_revenue_trend",
+  "c_fact_aapl_valuation_limitation",
+  "c_recent_aapl_none",
+  "src_aapl_xbrl_fixture",
+  "src_aapl_valuation_limitation",
+  "src_aapl_recent_review",
+  "business_segments",
+  "financial_quality_detail_gap",
+  "valuation_metrics_gap",
+  "no_major_recent_development"
+]) {
+  assert.match(aaplFixture, new RegExp(marker), `AAPL stock fixture should include ${marker}`);
+}
+const vooFixture = fixtures.slice(fixtures.indexOf("VOO: {"), fixtures.indexOf("  QQQ:", fixtures.indexOf("VOO: {")));
+const qqqFixture = fixtures.slice(fixtures.indexOf("QQQ: {"), fixtures.indexOf("  AAPL:", fixtures.indexOf("QQQ: {")));
+assert.equal(vooFixture.includes("stockSections"), false, "VOO should not receive stock PRD section rendering in T-020");
+assert.equal(qqqFixture.includes("stockSections"), false, "QQQ should not receive stock PRD section rendering in T-020");
 
 const riskBlocks = [...fixtures.matchAll(/topRisks: \[([\s\S]*?)\],\n    facts:/g)];
 assert.equal(riskBlocks.length, 3, "Each asset fixture should expose a topRisks block");
@@ -119,8 +167,10 @@ const frontendSource = [
   read("app/assets/[ticker]/page.tsx"),
   read("app/compare/page.tsx"),
   read("components/AssetChatPanel.tsx"),
+  read("components/AssetStockSections.tsx"),
   read("components/ComparisonSourceDetails.tsx"),
   read("components/SearchBox.tsx"),
+  read("components/SourceDrawer.tsx"),
   read("lib/assetChat.ts"),
   read("lib/compare.ts"),
   read("lib/fixtures.ts")
@@ -159,6 +209,9 @@ assert.equal(
   false,
   "Home search should not add live external calls"
 );
+assert.equal(read("app/assets/[ticker]/page.tsx").includes("fetch("), false, "Asset page should stay fixture-backed");
+assert.equal(read("app/assets/[ticker]/page.tsx").includes("/api/assets/"), false, "Asset page should not call backend overview APIs");
+assert.equal(read("components/AssetStockSections.tsx").includes("fetch("), false, "Stock sections should stay fixture-backed");
 
 const compareSource = [
   read("app/compare/page.tsx"),
