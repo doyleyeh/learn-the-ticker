@@ -32,6 +32,7 @@ function includes(path, marker) {
   "lib/assetChat.ts",
   "lib/compare.ts",
   "lib/fixtures.ts",
+  "lib/glossary.ts",
   "styles/globals.css"
 ].forEach(exists);
 
@@ -48,6 +49,12 @@ includes("app/assets/[ticker]/page.tsx", "data-beginner-recent-developments");
 includes("app/assets/[ticker]/page.tsx", "data-beginner-educational-framing");
 includes("app/assets/[ticker]/page.tsx", "SourceDrawer");
 includes("app/assets/[ticker]/page.tsx", "GlossaryPopover");
+includes("app/assets/[ticker]/page.tsx", "data-beginner-glossary-area");
+includes("app/assets/[ticker]/page.tsx", "data-glossary-asset-ticker");
+includes("app/assets/[ticker]/page.tsx", "data-glossary-asset-type");
+includes("app/assets/[ticker]/page.tsx", "data-glossary-no-generated-context");
+includes("app/assets/[ticker]/page.tsx", "data-glossary-generic-education");
+includes("app/assets/[ticker]/page.tsx", "beginnerGlossaryGroupsByAssetType");
 includes("app/assets/[ticker]/page.tsx", "AssetChatPanel");
 includes("app/assets/[ticker]/page.tsx", "AssetEtfSections");
 includes("app/assets/[ticker]/page.tsx", "AssetStockSections");
@@ -118,6 +125,78 @@ includes("components/SearchBox.tsx", "data-search-unknown-result");
 includes("components/SearchBox.tsx", "data-search-result-link");
 includes("components/SearchBox.tsx", "No facts are invented for this ticker or name");
 includes("components/FreshnessLabel.tsx", "data-freshness-state");
+includes("components/GlossaryPopover.tsx", "data-glossary-term");
+includes("components/GlossaryPopover.tsx", "data-glossary-category");
+includes("components/GlossaryPopover.tsx", "data-glossary-definition");
+includes("components/GlossaryPopover.tsx", "data-glossary-why-it-matters");
+includes("components/GlossaryPopover.tsx", "data-glossary-beginner-mistake");
+includes("components/GlossaryPopover.tsx", "data-glossary-available");
+includes("components/GlossaryPopover.tsx", "Definition unavailable for this glossary term");
+includes("components/GlossaryPopover.tsx", "aria-expanded");
+includes("components/GlossaryPopover.tsx", "role=\"dialog\"");
+
+const glossarySource = read("lib/glossary.ts");
+const requiredGlossaryTerms = [
+  "expense ratio",
+  "AUM",
+  "market cap",
+  "P/E ratio",
+  "forward P/E",
+  "dividend yield",
+  "revenue",
+  "gross margin",
+  "operating margin",
+  "EPS",
+  "free cash flow",
+  "debt",
+  "benchmark",
+  "index",
+  "holdings",
+  "top 10 concentration",
+  "sector exposure",
+  "country exposure",
+  "tracking error",
+  "tracking difference",
+  "NAV",
+  "premium/discount",
+  "bid-ask spread",
+  "liquidity",
+  "rebalancing",
+  "market risk",
+  "concentration risk",
+  "credit risk",
+  "interest-rate risk"
+];
+for (const term of requiredGlossaryTerms) {
+  assert.match(glossarySource, new RegExp(`term: "${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`), `Glossary should include ${term}`);
+}
+assert.ok(
+  (glossarySource.match(/definition:/g) ?? []).length >= requiredGlossaryTerms.length,
+  "Each required glossary term should have a definition"
+);
+assert.ok(
+  (glossarySource.match(/whyItMatters:/g) ?? []).length >= requiredGlossaryTerms.length,
+  "Each required glossary term should explain why it matters"
+);
+assert.ok(
+  (glossarySource.match(/beginnerMistake:/g) ?? []).length >= requiredGlossaryTerms.length,
+  "Each required glossary term should include a beginner mistake"
+);
+for (const marker of [
+  "stock-business-metrics",
+  "stock-valuation-risk",
+  "etf-fund-basics",
+  "etf-exposure-risk",
+  "etf-trading-tracking",
+  "\"market cap\", \"revenue\", \"operating margin\", \"EPS\", \"free cash flow\", \"debt\"",
+  "\"expense ratio\", \"AUM\", \"benchmark\", \"index\", \"holdings\"",
+  "\"bid-ask spread\", \"premium/discount\", \"NAV\", \"liquidity\", \"tracking error\", \"tracking difference\""
+]) {
+  assert.match(glossarySource, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `Glossary grouping should include ${marker}`);
+}
+for (const tickerSpecificMarker of ["AAPL", "VOO", "QQQ", "Apple Inc.", "Vanguard S&P 500 ETF", "Invesco QQQ Trust"]) {
+  assert.equal(glossarySource.includes(tickerSpecificMarker), false, `Glossary should not add asset-specific claim ${tickerSpecificMarker}`);
+}
 
 const assetPage = read("app/assets/[ticker]/page.tsx");
 assert.ok(
@@ -264,11 +343,13 @@ const frontendSource = [
   read("components/AssetStockSections.tsx"),
   read("components/AssetModeLayout.tsx"),
   read("components/ComparisonSourceDetails.tsx"),
+  read("components/GlossaryPopover.tsx"),
   read("components/SearchBox.tsx"),
   read("components/SourceDrawer.tsx"),
   read("lib/assetChat.ts"),
   read("lib/compare.ts"),
-  read("lib/fixtures.ts")
+  read("lib/fixtures.ts"),
+  read("lib/glossary.ts")
 ].join("\n");
 
 for (const forbidden of [
@@ -309,6 +390,8 @@ assert.equal(read("app/assets/[ticker]/page.tsx").includes("/api/assets/"), fals
 assert.equal(read("components/AssetModeLayout.tsx").includes("fetch("), false, "Mode layout should stay fixture-backed");
 assert.equal(read("components/AssetEtfSections.tsx").includes("fetch("), false, "ETF sections should stay fixture-backed");
 assert.equal(read("components/AssetStockSections.tsx").includes("fetch("), false, "Stock sections should stay fixture-backed");
+assert.equal(read("components/GlossaryPopover.tsx").includes("fetch("), false, "Glossary popover should stay static");
+assert.equal(read("lib/glossary.ts").includes("fetch("), false, "Glossary catalog should stay static");
 
 const compareSource = [
   read("app/compare/page.tsx"),

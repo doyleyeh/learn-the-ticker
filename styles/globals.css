@@ -523,6 +523,42 @@ input {
   color: var(--muted);
 }
 
+.glossary-category {
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.glossary-learning-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.glossary-group-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.glossary-term-group {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f9fbfb;
+}
+
+.glossary-term-group h3 {
+  margin: 0;
+}
+
+.glossary-term-list {
+  align-items: flex-start;
+}
+
 .sidebar {
   display: grid;
   gap: 20px;
@@ -651,7 +687,8 @@ blockquote {
 
   .search-row,
   .fact-list div,
-  .source-meta div {
+  .source-meta div,
+  .glossary-group-grid {
     grid-template-columns: 1fr;
   }
 
