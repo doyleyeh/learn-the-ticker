@@ -2,22 +2,22 @@
 
 ## Current task
 
-### T-022: Add Beginner Mode and Deep-Dive Mode page structure
+### T-023: Add hybrid glossary baseline terms and UI hooks
 
 Goal:
-Add a clear Beginner Mode first and Deep-Dive Mode baseline structure to the fixture-backed asset pages so beginners can start with the plain-English learning view and still reach the richer cited PRD sections without live calls.
+Add a broader curated glossary baseline and deterministic frontend hooks so Beginner Mode can expose beginner-friendly finance terms for local fixture-backed stock and ETF pages without adding unsupported asset-specific claims or live calls.
 
 Task scope:
-This is a frontend page-structure task for existing local supported asset pages only. Add an accessible mode structure for `AAPL`, `VOO`, and `QQQ` that keeps Beginner Mode as the first reading path and places the already-rendered stock/ETF PRD sections in a Deep-Dive Mode area. Use deterministic local fixtures and existing source/citation data. Preserve visible citations, source access, freshness states, explicit evidence gaps, stable/recent separation, and educational framing. Keep the task narrow: this does not add new content, new fixture facts, client-side data fetching, backend overview calls, generated pages for unsupported assets, export, glossary-term expansion, chat behavior changes, comparison behavior, ingestion, providers, caching, or freshness-hash behavior.
+This is a frontend and local glossary-data task for existing local supported asset pages only. Expand the curated static glossary in `lib/glossary.ts` with beginner-readable generic definitions, then expose deterministic glossary UI hooks in Beginner Mode for `AAPL`, `VOO`, and `QQQ`. Keep asset-specific glossary context limited to labels or source-backed page context that already exists; do not add new asset facts, uncited asset-specific claims, generated glossary output, backend glossary APIs, provider calls, export behavior, chat behavior, comparison behavior, ingestion, caching, or freshness-hash behavior. The glossary should help users understand terms already present in the fixture-backed page flow while preserving visible citations, source access, freshness states, explicit evidence gaps, stable/recent separation, and educational framing.
 
 Allowed files:
 
 - app/assets/[ticker]/page.tsx
 - components/AssetModeLayout.tsx
-- components/AssetHeader.tsx
 - components/AssetEtfSections.tsx
 - components/AssetStockSections.tsx
-- components/SourceDrawer.tsx
+- components/GlossaryPopover.tsx
+- lib/glossary.ts
 - tests/frontend/smoke.mjs
 - tests/unit/test_safety_guardrails.py
 - styles/globals.css
@@ -30,35 +30,34 @@ Do not change:
 - evals/
 - app/compare/
 - app/page.tsx
+- components/AssetHeader.tsx
 - components/AssetChatPanel.tsx
 - components/ComparisonSourceDetails.tsx
 - components/SearchBox.tsx
+- components/SourceDrawer.tsx
 - lib/fixtures.ts
 - lib/assetChat.ts
 - lib/compare.ts
-- lib/glossary.ts
 - package files
 - provider adapters, ingestion workers, queues, caches, export implementations, or API routes
-- source fixture content, retrieval fixtures, overview generation, search classification, comparison generation, chat generation, or glossary definitions
+- source fixture content, retrieval fixtures, overview generation, search classification, comparison generation, chat generation, backend glossary APIs, or generated glossary output
 - generated behavior for unsupported, unknown, ambiguous, or eligible-not-cached assets
 
 Acceptance criteria:
 
-- The `AAPL`, `VOO`, and `QQQ` asset pages render a visible, accessible two-mode structure with Beginner Mode first and Deep-Dive Mode second.
-- The mode structure exposes stable frontend markers for smoke tests, including one Beginner Mode region and one Deep-Dive Mode region per supported asset page.
-- Beginner Mode includes the existing plain-English beginner overview, citation chip for the primary supported factual claim, page/section freshness context, educational framing, glossary access, chat access, exactly three top risks first, and recent developments kept visually separate from stable facts.
-- Beginner Mode copy remains educational and does not tell users to buy, sell, hold, allocate, trade, rely on tax advice, accept a price target, or treat the page as personalized advice.
-- Deep-Dive Mode renders the existing PRD section component for each supported local asset: `AssetStockSections` for `AAPL` and `AssetEtfSections` for `VOO` and `QQQ`.
-- Deep-Dive Mode preserves all existing stock section IDs for `AAPL`: `business_overview`, `products_services`, `strengths`, `financial_quality`, `valuation_context`, `top_risks`, `recent_developments`, and `educational_suitability`.
-- Deep-Dive Mode preserves all existing ETF section IDs for `VOO` and `QQQ`: `fund_objective_role`, `holdings_exposure`, `construction_methodology`, `cost_trading_context`, `etf_specific_risks`, `similar_assets_alternatives`, `recent_developments`, and `educational_suitability`.
-- Important factual claims in both modes continue to render visible citation chips near the claim text and bind only to same-asset source documents.
-- Source metadata remains reachable through the existing source drawer pattern and still includes title, source type, publisher, URL, published or as-of date, retrieved timestamp, freshness state, official-source status, related claim context, and supporting passage.
-- Freshness, stale, unknown, unavailable, insufficient-evidence, mixed-evidence, and no-high-signal states remain visible where the existing local fixtures support those states.
-- Stable facts and recent developments remain structurally and visually separated in both the Beginner Mode flow and the Deep-Dive Mode sections.
-- Exactly three top risks remain shown first for each supported asset; no extra uncited risk claims are inserted ahead of them.
-- The mode structure does not add, remove, or rewrite local fixture facts, citation IDs, source document IDs, source metadata, retrieval fixture data, or backend overview schemas.
-- Unsupported, unknown, ambiguous, and eligible-not-cached assets do not gain generated pages, generated factual claims, citations, source documents, chat answers, or comparison output as part of this task.
-- Frontend smoke checks cover mode markers, Beginner Mode ordering, Deep-Dive Mode section preservation for stock and ETF pages, citation/source drawer availability, freshness/unknown/unavailable/stale/insufficient-evidence states, stable/recent separation, risk count preservation, and absence of live external calls.
+- `lib/glossary.ts` defines a curated static glossary baseline that includes at least these PRD core terms: `expense ratio`, `AUM`, `market cap`, `P/E ratio`, `forward P/E`, `dividend yield`, `revenue`, `gross margin`, `operating margin`, `EPS`, `free cash flow`, `debt`, `benchmark`, `index`, `holdings`, `top 10 concentration`, `sector exposure`, `country exposure`, `tracking error`, `tracking difference`, `NAV`, `premium/discount`, `bid-ask spread`, `liquidity`, `rebalancing`, `market risk`, `concentration risk`, `credit risk`, and `interest-rate risk`.
+- Each glossary entry includes a short beginner-readable definition, why it matters, and a common beginner mistake.
+- Glossary definitions are generic educational explanations; they do not include uncited asset-specific facts, price targets, allocation guidance, tax guidance, brokerage behavior, or buy/sell/hold recommendations.
+- `GlossaryPopover` remains accessible by keyboard and screen reader, exposes stable frontend markers for term, category, definition, why-it-matters, and beginner-mistake content, and handles missing or unavailable terms without inventing definitions.
+- Beginner Mode for `AAPL`, `VOO`, and `QQQ` exposes a deterministic glossary area with stable smoke-test markers and term groups relevant to the local page content.
+- ETF pages expose ETF-relevant glossary hooks such as expense ratio, AUM, benchmark, index, holdings, top 10 concentration, sector exposure, bid-ask spread, premium/discount, and concentration risk where the UI can do so without adding new facts.
+- The stock page exposes stock-relevant glossary hooks such as market cap, revenue, operating margin, EPS, free cash flow, debt, P/E ratio, forward P/E, market risk, and concentration risk where the UI can do so without adding new facts.
+- Existing inline glossary access near the beginner overview remains available and does not obscure citation chips, freshness labels, source drawer access, chat access, top risks, or recent developments on mobile-sized layouts.
+- Deep-Dive Mode stock and ETF section IDs, citation chips, source drawer metadata, freshness states, explicit evidence gaps, stable/recent separation, and exactly-three-top-risks-first behavior remain unchanged.
+- Important factual claims continue to render visible citation chips near the claim text and bind only to same-asset source documents; glossary entries are not used as citations for asset-specific facts.
+- Unsupported, unknown, ambiguous, and eligible-not-cached assets do not gain generated pages, generated factual claims, citations, source documents, chat answers, comparison output, or generated glossary context as part of this task.
+- Frontend smoke checks cover glossary catalog coverage, glossary UI markers, stock/ETF term grouping, no unsupported asset-specific glossary claims, preservation of citation/source/freshness states, and absence of live external calls.
+- Safety guardrail coverage scans the expanded glossary data and glossary UI copy for forbidden advice-like language.
 - Normal CI remains deterministic and does not require provider credentials, market-data calls, news calls, LLM calls, Redis, PostgreSQL, queues, backend server availability, or network access.
 
 Required commands:
@@ -75,6 +74,36 @@ Iteration budget:
 Max 2 attempts
 
 ## Completed
+
+### T-022: Add Beginner Mode and Deep-Dive Mode page structure
+
+Goal:
+Add a clear Beginner Mode first and Deep-Dive Mode baseline structure to the fixture-backed asset pages so beginners can start with the plain-English learning view and still reach the richer cited PRD sections without live calls.
+
+Completed:
+
+- Added `components/AssetModeLayout.tsx` with accessible Beginner Mode and Deep-Dive Mode regions, stable frontend markers, and a sidebar area for source and learning tools.
+- Updated `app/assets/[ticker]/page.tsx` so `AAPL`, `VOO`, and `QQQ` render Beginner Mode first and Deep-Dive Mode second through the new layout component.
+- Built the Beginner Mode flow from existing local fixture data: plain-English beginner overview, primary citation chip, page and section freshness labels, glossary access, exactly three top risks first, stable fact details, visually separate recent developments, educational suitability copy, and the existing asset chat panel.
+- Preserved educational framing in Beginner Mode without adding buy/sell/hold, allocation, tax, brokerage, or price-target language.
+- Preserved Deep-Dive Mode rendering by routing `AAPL` through `AssetStockSections` and `VOO`/`QQQ` through `AssetEtfSections`.
+- Preserved the existing stock PRD section IDs for `AAPL`: `business_overview`, `products_services`, `strengths`, `financial_quality`, `valuation_context`, `top_risks`, `recent_developments`, and `educational_suitability`.
+- Preserved the existing ETF PRD section IDs for `VOO` and `QQQ`: `fund_objective_role`, `holdings_exposure`, `construction_methodology`, `cost_trading_context`, `etf_specific_risks`, `similar_assets_alternatives`, `recent_developments`, and `educational_suitability`.
+- Updated source-tool rendering on the asset page so pages with PRD sections render `SourceDrawer` entries for section source documents with related claim contexts; the primary-source fallback remains for pages without PRD sections.
+- Added CSS for the two-mode layout, mode stack, mode regions, and mode headings in `styles/globals.css`.
+- Extended frontend smoke checks to require mode layout markers, Beginner Mode ordering, top-risk ordering, stable/recent separation, chat placement, PRD section preservation, source/citation/freshness availability, risk count preservation, and no live external calls from the mode layout.
+- Extended safety guardrail coverage so `components/AssetModeLayout.tsx` is scanned for forbidden advice-like frontend copy.
+- Added `docs/agent-journal/20260422T070202Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- T-022 agent journal records that `git status --short`, `npm test`, `npm run typecheck`, `npm run build`, safety guardrail pytest, static evals, and the full quality gate passed.
+- T-022 agent journal records the full quality gate as passed with Python tests 73 passed, frontend smoke checks passed, production build passed and prerendered `/assets/VOO`, `/assets/QQQ`, and `/assets/AAPL`, and backend checks 73 passed.
+- Remaining documented risk: the mode structure is frontend-only and fixture-backed; it does not add backend overview calls, ingestion, providers, caching, export, glossary expansion, comparison changes, or chat behavior changes.
+- Remaining documented risk: Beginner Mode reuses existing local fixture fields and citations; it does not add new evidence or fill existing unknown, stale, unavailable, insufficient-evidence, or no-high-signal gaps.
+- Remaining documented risk: Deep-Dive Mode preserves the existing stock and ETF PRD section components, so source drawer links still use the existing source-document drawer anchor pattern rather than per-citation deep links.
+
+Completion commits:
+
+- `fd7d0f5 feat(T-022): add Beginner Mode and Deep-Dive Mode page structure`
+- `65c538f chore(T-022): merge Beginner Mode and Deep-Dive Mode page structure`
 
 ### T-021: Render ETF PRD sections on asset pages
 
@@ -619,7 +648,6 @@ Completion commits:
 
 ## Backlog
 
-### T-023: Add hybrid glossary baseline terms and UI hooks
 ### T-024: Add export/download contracts for pages, comparisons, sources, and chat
 ### T-025: Add provider adapter interfaces with mocked tests
 ### T-026: Add caching and freshness-hash contracts
