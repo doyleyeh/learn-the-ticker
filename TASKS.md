@@ -705,3 +705,8 @@ Completion commits:
 
 ### T-026: Add caching and freshness-hash contracts
 ### T-027: Expand golden asset eval coverage for MVP launch universe
+### T-028: Add pre-cache launch-universe job contracts
+### T-029: Add deterministic asset knowledge-pack builder
+### T-030: Add frontend export controls for saved learning outputs
+### T-031: Add common comparison suggestions for supported assets
+### T-032: Add trust metrics event contract for MVP workflows
