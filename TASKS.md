@@ -2,13 +2,13 @@
 
 ## Current task
 
-### T-016: Define search support-classification contract
+### T-017: Add on-demand ingestion job-state contract
 
 Goal:
-Define a deterministic search support-classification contract that lets backend clients distinguish cached supported assets, recognized-but-unsupported assets, unknown assets, ambiguous matches, and eligible assets that would require on-demand ingestion later.
+Define a deterministic backend/API contract for on-demand ingestion job states so eligible-but-not-cached assets from search can expose a future ingestion path without making live provider calls or generating unsupported pages.
 
 Task scope:
-This is a backend/API contract and deterministic test-fixture task. Extend the existing `/api/search` shape and local search classification logic so future UI and on-demand ingestion work can rely on structured fields instead of parsing status copy. Use only local fixtures or mocks. Do not add live provider lookup, ingestion workers, or generated asset pages for newly classified non-cached assets.
+This is a backend/API contract and deterministic fixture task. Add typed job-state models, a local fixture-backed ingestion service, and API routes for requesting or reading ingestion job status. The contract should build on T-016 search classification: only assets classified as eligible-not-cached may receive an on-demand ingestion job. Cached supported assets, recognized unsupported assets, and unknown assets must return explicit non-job states. Use only local fixtures or mocks. Do not implement provider adapters, real queues, source fetching, parsing, embeddings, LLM generation, or generated asset pages for newly queued assets.
 
 Allowed files:
 
@@ -16,11 +16,14 @@ Allowed files:
 - backend/main.py
 - backend/data.py
 - backend/search.py
-- data/retrieval_fixtures.json
+- backend/ingestion.py
 - tests/unit/test_search_classification.py
+- tests/unit/test_ingestion_jobs.py
 - tests/integration/test_backend_api.py
+- evals/ingestion_eval_cases.yaml
 - evals/search_eval_cases.yaml
 - evals/run_static_evals.py
+- docs/agent-journal/
 
 Do not change:
 
@@ -32,6 +35,8 @@ Do not change:
 - backend/chat.py
 - backend/comparison.py
 - backend/citations.py
+- backend/retrieval.py
+- data/retrieval_fixtures.json
 - package files
 - docs other than the agent journal
 - provider adapter or ingestion worker implementations
@@ -39,21 +44,24 @@ Do not change:
 
 Acceptance criteria:
 
-- `/api/search` returns structured support-classification fields for each result, without requiring clients to parse human-readable messages.
-- Search response state can explicitly represent supported single-result, ambiguous multi-result, recognized-but-unsupported, unknown, and eligible-but-not-cached / ingestion-needed outcomes.
-- Fixture-backed supported assets such as `AAPL`, `VOO`, and `QQQ` still resolve by ticker and name and are marked safe to open as generated local asset pages.
-- Ambiguous local searches return multiple candidate results and do not silently choose one ticker.
-- Recognized unsupported examples, including crypto and leveraged or inverse ETFs, are marked unsupported and are not marked safe for generated pages, generated chat, or generated comparisons.
-- Unknown searches return an unknown/unavailable state with no invented asset facts and no generated route.
-- At least one deterministic fixture or mock case represents an eligible U.S.-listed common stock or plain-vanilla ETF that is not locally cached yet and therefore requires on-demand ingestion later; it must not receive generated page/chat/comparison output in this task.
-- Search result copy remains educational and avoids buy/sell/hold, allocation, price-target, tax, brokerage, or personalized recommendation language.
-- Static evals cover same-result classification, unsupported blocking, ambiguous handling, unknown handling, the ingestion-needed contract, and absence of live external calls.
-- Normal CI remains deterministic and does not require provider credentials, market-data calls, news calls, or LLM calls.
+- Add typed ingestion job response models with stable structured fields for ticker, asset type, job type, job ID, user-facing job state, worker-style status where applicable, timestamps, status URL, retryability, error metadata, generated route, and page/chat/comparison capability flags.
+- The job-state contract can represent pending or queued work, running work, succeeded work, failed work, stale refresh-needed work, cached/no-ingestion-needed assets, recognized unsupported assets, and unknown/unavailable assets without clients parsing human-readable messages.
+- Add a deterministic request route, aligned with the technical design spec, for starting or requesting on-demand ingestion for a ticker such as `POST /api/admin/ingest/{ticker}`.
+- Add a deterministic status route, aligned with the technical design spec, such as `GET /api/jobs/{job_id}`, that returns fixture-backed job states by stable job ID.
+- Requesting ingestion for eligible-not-cached fixtures such as `SPY` or `MSFT` returns an on-demand job state and status URL, but does not create a generated asset page, generated chat answer, generated comparison, source documents, citations, or new facts.
+- Re-requesting ingestion for the same eligible-not-cached ticker is deterministic and does not depend on random IDs, wall-clock timing, live queues, provider credentials, market-data calls, news calls, or LLM calls.
+- Requesting ingestion for cached supported assets such as `AAPL`, `VOO`, or `QQQ` returns a no-ingestion-needed or already-cached state and preserves the existing generated route and generated-page/chat/comparison capability flags.
+- Requesting ingestion for recognized unsupported examples such as `BTC`, `TQQQ`, or `SQQQ` returns an unsupported state, does not create a job, and is not marked safe for generated pages, generated chat, or generated comparisons.
+- Requesting ingestion for unknown tickers returns an unknown or unavailable state with no invented asset facts, no job ID, no citations, and no generated route.
+- Search results for eligible-not-cached assets may expose an ingestion request route or `can_request_ingestion` flag, but cached, unsupported, ambiguous, and unknown states must remain structurally clear and safe.
+- Job-state copy remains educational and avoids buy/sell/hold, allocation, price-target, tax, brokerage, or personalized recommendation language.
+- Static evals cover eligible-not-cached ingestion request behavior, unsupported and unknown blocking, cached no-op behavior, status lookup states, stale/failed states, and absence of live external calls.
+- Normal CI remains deterministic and does not require provider credentials, market-data calls, news calls, LLM calls, a real queue, Redis, PostgreSQL, or network access.
 
 Required commands:
 
 - git status --short
-- python3 -m pytest tests/integration/test_backend_api.py tests/unit/test_search_classification.py -q
+- python3 -m pytest tests/unit/test_ingestion_jobs.py tests/unit/test_search_classification.py tests/integration/test_backend_api.py -q
 - python3 -m pytest tests -q
 - npm test
 - python3 evals/run_static_evals.py
@@ -63,6 +71,34 @@ Iteration budget:
 Max 2 attempts
 
 ## Completed
+
+### T-016: Define search support-classification contract
+
+Goal:
+Define a deterministic search support-classification contract that lets backend clients distinguish cached supported assets, recognized-but-unsupported assets, unknown assets, ambiguous matches, and eligible assets that would require on-demand ingestion later.
+
+Completed:
+
+- Added structured search support-classification models in `backend/models.py`, including response/result status enums, support classifications, disambiguation and ingestion flags, generated routes, and generated page/chat/comparison capability flags.
+- Added deterministic fixture-backed search logic in `backend/search.py` and wired `/api/search` in `backend/main.py` to use it.
+- Search now ranks cached supported local assets from `ASSETS`, recognized unsupported assets from `UNSUPPORTED_ASSETS` plus search metadata, and eligible-not-cached assets from `ELIGIBLE_NOT_CACHED_ASSETS`.
+- Cached supported fixtures such as `AAPL`, `VOO`, and `QQQ` resolve by ticker or name and are marked safe to open only when a local generated asset page is available.
+- Ambiguous searches such as `S&P 500 ETF` return multiple candidates and require disambiguation instead of silently choosing a ticker.
+- Recognized unsupported examples such as crypto, leveraged ETFs, and inverse ETFs are blocked from generated pages, generated chat, and generated comparisons.
+- Unknown searches return an unknown state without invented facts, citations, or generated routes.
+- Eligible-but-not-cached examples such as `SPY` and `MSFT` expose the future ingestion-needed contract while remaining blocked from generated page, chat, and comparison output.
+- Added focused unit and integration coverage in `tests/unit/test_search_classification.py` and `tests/integration/test_backend_api.py`.
+- Added search eval cases in `evals/search_eval_cases.yaml` and static eval checks in `evals/run_static_evals.py` for supported, ambiguous, unsupported, unknown, ingestion-needed, capability flags, and no live external calls.
+- Added `docs/agent-journal/20260422T041752Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- T-016 agent journal records that `git status --short`, focused search/API pytest, full pytest, `npm test`, static evals, and the full quality gate passed.
+- Remaining documented risk: search classification is deterministic and fixture-backed only; it does not perform live provider lookup or start ingestion jobs.
+- Remaining documented risk: eligible-but-not-cached examples expose the future ingestion-needed contract but intentionally do not generate pages, chat, or comparisons in this task.
+- Remaining documented risk: the frontend still uses its existing local search path; this task only defined and tested the backend `/api/search` contract.
+
+Completion commits:
+
+- `b2c71d9 feat(T-016): define search support-classification contract`
+- `d49a938 chore(T-016): merge define search support-classification contract`
 
 ### T-015: Align MVP control docs with PRD v0.2
 
@@ -427,7 +463,6 @@ Completion commits:
 
 ## Backlog
 
-### T-017: Add on-demand ingestion job-state contract
 ### T-018: Expand asset overview schema for PRD content sections
 ### T-019: Add richer stock and ETF fixture data for MVP content sections
 ### T-020: Render stock PRD sections on asset pages
