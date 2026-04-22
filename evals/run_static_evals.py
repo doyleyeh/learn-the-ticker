@@ -15,7 +15,7 @@ from backend.citations import validate_claims
 from backend.comparison import generate_comparison, validate_comparison_response
 from backend.ingestion import get_ingestion_job_status, request_ingestion
 from backend.main import app
-from backend.models import MetricValue, CompareResponse, ChatResponse, IngestionJobResponse
+from backend.models import EvidenceState, MetricValue, CompareResponse, ChatResponse, IngestionJobResponse
 from backend.overview import generate_asset_overview, validate_overview_response
 from backend.retrieval import build_asset_knowledge_pack, build_comparison_knowledge_pack, load_retrieval_fixture_dataset
 from backend.safety import find_forbidden_output_phrases
@@ -323,11 +323,33 @@ def test_retrieval_fixture_contract():
 
 
 def test_generated_overview_contract():
+    stock_sections = {
+        "business_overview",
+        "products_services",
+        "strengths",
+        "financial_quality",
+        "valuation_context",
+        "top_risks",
+        "recent_developments",
+        "educational_suitability",
+    }
+    etf_sections = {
+        "fund_objective_role",
+        "holdings_exposure",
+        "construction_methodology",
+        "cost_trading_context",
+        "etf_specific_risks",
+        "similar_assets_alternatives",
+        "recent_developments",
+        "educational_suitability",
+    }
+
     for ticker in ["AAPL", "VOO", "QQQ"]:
         pack = build_asset_knowledge_pack(ticker)
         overview = generate_asset_overview(ticker)
         citation_ids = {citation.citation_id for citation in overview.citations}
         source_ids = {source.source_document_id for source in overview.source_documents}
+        pack_source_ids = {source.source_document_id for source in pack.source_documents}
         used_citation_ids = {
             *{citation_id for claim in overview.claims for citation_id in claim.citation_ids},
             *{citation_id for risk in overview.top_risks for citation_id in risk.citation_ids},
@@ -338,6 +360,14 @@ def test_generated_overview_contract():
                 if isinstance(value, MetricValue)
                 for citation_id in value.citation_ids
             },
+            *{citation_id for section in overview.sections for citation_id in section.citation_ids},
+            *{citation_id for section in overview.sections for item in section.items for citation_id in item.citation_ids},
+            *{citation_id for section in overview.sections for metric in section.metrics for citation_id in metric.citation_ids},
+        }
+        used_source_ids = {
+            *{source_id for section in overview.sections for source_id in section.source_document_ids},
+            *{source_id for section in overview.sections for item in section.items for source_id in item.source_document_ids},
+            *{source_id for section in overview.sections for metric in section.metrics for source_id in metric.source_document_ids},
         }
 
         assert overview.asset.supported is True
@@ -353,7 +383,31 @@ def test_generated_overview_contract():
         assert overview.claims
         assert used_citation_ids <= citation_ids
         assert {citation.source_document_id for citation in overview.citations} <= source_ids
+        assert used_source_ids <= source_ids
+        assert used_source_ids <= pack_source_ids
         assert validate_overview_response(overview, pack).valid
+        section_ids = {section.section_id for section in overview.sections}
+        if ticker == "AAPL":
+            assert stock_sections <= section_ids
+            sections = {section.section_id: section for section in overview.sections}
+            assert sections["valuation_context"].evidence_state is EvidenceState.unavailable
+            assert sections["financial_quality"].evidence_state is EvidenceState.unavailable
+            assert sections["strengths"].evidence_state is EvidenceState.unknown
+        else:
+            assert etf_sections <= section_ids
+            sections = {section.section_id: section for section in overview.sections}
+            assert sections["holdings_exposure"].evidence_state is EvidenceState.mixed
+            assert sections["construction_methodology"].evidence_state is EvidenceState.mixed
+            assert sections["cost_trading_context"].evidence_state is EvidenceState.mixed
+            assert sections["recent_developments"].evidence_state is EvidenceState.no_major_recent_development
+            assert sections["recent_developments"].items[0].retrieved_at
+            assert len(sections["etf_specific_risks"].items) == 3
+        assert any(
+            item.evidence_state
+            in {EvidenceState.unavailable, EvidenceState.unknown, EvidenceState.stale, EvidenceState.insufficient_evidence}
+            for section in overview.sections
+            for item in section.items
+        )
 
         combined_output = " ".join(
             [
@@ -376,6 +430,7 @@ def test_generated_overview_contract():
         assert overview.claims == []
         assert overview.citations == []
         assert overview.source_documents == []
+        assert overview.sections == []
 
     overview_source = (ROOT / "backend" / "overview.py").read_text(encoding="utf-8")
     for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import"]:

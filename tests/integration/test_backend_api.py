@@ -161,6 +161,43 @@ def test_overview_has_beginner_sections_and_citations():
     assert body["recent_developments"][0]["citation_ids"][0] in citation_ids
     assert "src_voo_fact_sheet_fixture" in source_ids
     assert "src_voo_recent_review" in source_ids
+    sections = {section["section_id"]: section for section in body["sections"]}
+    assert {
+        "fund_objective_role",
+        "holdings_exposure",
+        "construction_methodology",
+        "cost_trading_context",
+        "etf_specific_risks",
+        "similar_assets_alternatives",
+        "recent_developments",
+        "educational_suitability",
+    } <= set(sections)
+    assert sections["fund_objective_role"]["metrics"][0]["citation_ids"][0] in citation_ids
+    assert sections["cost_trading_context"]["evidence_state"] == "mixed"
+    assert sections["recent_developments"]["items"][0]["retrieved_at"]
+    assert sections["similar_assets_alternatives"]["citation_ids"] == []
+
+
+def test_stock_overview_serializes_structured_prd_sections():
+    response = client.get("/api/assets/AAPL/overview")
+
+    assert response.status_code == 200
+    body = response.json()
+    sections = {section["section_id"]: section for section in body["sections"]}
+    assert {
+        "business_overview",
+        "products_services",
+        "strengths",
+        "financial_quality",
+        "valuation_context",
+        "top_risks",
+        "recent_developments",
+        "educational_suitability",
+    } <= set(sections)
+    assert sections["business_overview"]["items"][0]["citation_ids"]
+    assert sections["valuation_context"]["evidence_state"] == "unavailable"
+    assert sections["valuation_context"]["citation_ids"] == []
+    assert sections["top_risks"]["items"][0]["source_document_ids"]
 
 
 def test_details_sources_and_recent_routes_exist():
@@ -179,11 +216,16 @@ def test_details_sources_and_recent_routes_exist():
 
 def test_unknown_and_unsupported_assets_return_clear_states():
     unknown = client.get("/api/assets/ZZZZ/overview").json()
+    unsupported_overview = client.get("/api/assets/BTC/overview").json()
     unsupported = client.get("/api/search", params={"q": "BTC"}).json()
 
     assert unknown["state"]["status"] == "unknown"
     assert unknown["asset"]["supported"] is False
     assert unknown["beginner_summary"] is None
+    assert unknown["sections"] == []
+    assert unsupported_overview["state"]["status"] == "unsupported"
+    assert unsupported_overview["asset"]["supported"] is False
+    assert unsupported_overview["sections"] == []
     assert unsupported["state"]["status"] == "unsupported"
     assert unsupported["state"]["support_classification"] == "recognized_unsupported"
     assert unsupported["results"][0]["supported"] is False
