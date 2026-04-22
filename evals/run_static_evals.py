@@ -56,6 +56,9 @@ from backend.models import (
     ProviderResponseState,
     ProviderSourceUsage,
     SourceChecksumInput,
+    TrustMetricCatalogResponse,
+    TrustMetricEvent,
+    TrustMetricSummary,
 )
 from backend.overview import generate_asset_overview, validate_overview_response
 from backend.providers import fetch_mock_provider_response, get_mock_provider_adapters
@@ -67,6 +70,12 @@ from backend.retrieval import (
 )
 from backend.safety import find_forbidden_output_phrases
 from backend.testing import TestClient
+from backend.trust_metrics import (
+    get_trust_metric_event_catalog,
+    summarize_trust_metric_events,
+    validate_trust_metric_event,
+    validate_trust_metric_events,
+)
 
 
 client = TestClient(app)
@@ -629,6 +638,103 @@ def test_pre_cache_cases():
     for forbidden in data.get("forbidden_live_call_imports", []):
         assert forbidden not in ingestion_source
         assert forbidden not in main_source
+
+
+def test_trust_metrics_cases():
+    data = load_yaml("trust_metrics_eval_cases.yaml")
+    required_models = set(data.get("required_models", []))
+    missing_models = {name for name in required_models if not hasattr(models, name)}
+    assert not missing_models, f"Missing trust metrics contract models: {missing_models}"
+
+    required_helpers = set(data.get("required_helpers", []))
+    missing_helpers = {name for name in required_helpers if name not in globals()}
+    assert not missing_helpers, f"Missing trust metrics helper functions: {missing_helpers}"
+
+    catalog = get_trust_metric_event_catalog()
+    validated_catalog = TrustMetricCatalogResponse.model_validate(catalog.model_dump(mode="json"))
+    assert validated_catalog.schema_version == data["schema_version"].replace("evals", "event").replace("-v1", "-v1")
+    assert validated_catalog.validation_only is True
+    assert validated_catalog.persistence_enabled is False
+    assert validated_catalog.external_analytics_enabled is False
+    assert validated_catalog.no_live_external_calls is True
+
+    product_events = {event.event_type.value for event in validated_catalog.product_events}
+    trust_events = {event.event_type.value for event in validated_catalog.trust_events}
+    assert set(data.get("required_product_events", [])) <= product_events
+    assert set(data.get("required_trust_events", [])) <= trust_events
+    assert set(data.get("required_forbidden_fields", [])) <= set(validated_catalog.forbidden_field_names)
+
+    accepted = validate_trust_metric_event(
+        {
+            "event_type": "citation_coverage",
+            "workflow_area": "citation",
+            "asset_ticker": "voo",
+            "generated_output_available": True,
+            "output_metadata": {
+                "output_kind": "asset_page",
+                "schema_valid": True,
+                "citation_coverage_rate": 1,
+                "citation_ids": ["c_voo_profile"],
+                "source_document_ids": ["src_voo_fact_sheet_fixture"],
+                "freshness_state": "fresh",
+                "latency_ms": 10,
+            },
+        }
+    )
+    assert accepted.validation_status.value == "accepted"
+    assert accepted.normalized_event is not None
+    assert accepted.normalized_event.asset_ticker == "VOO"
+    assert accepted.normalized_event.asset_support_state.value == "cached_supported"
+    assert TrustMetricEvent.model_validate(accepted.normalized_event.model_dump(mode="json"))
+
+    rejected_privacy = validate_trust_metric_event(
+        {"event_type": "chat_answer_outcome", "workflow_area": "chat", "asset_ticker": "VOO", "question": "raw text"}
+    )
+    rejected_state = validate_trust_metric_event(
+        {
+            "event_type": "asset_page_view",
+            "workflow_area": "asset_page",
+            "asset_ticker": "SPY",
+            "generated_output_available": True,
+        }
+    )
+    rejected_freshness = validate_trust_metric_event(
+        {"event_type": "freshness_accuracy", "workflow_area": "freshness", "asset_ticker": "VOO"}
+    )
+    for rejected in [rejected_privacy, rejected_state, rejected_freshness]:
+        assert rejected.validation_status.value == "rejected"
+        assert rejected.rejection_reasons
+        assert rejected.normalized_event is None
+
+    batch = validate_trust_metric_events(
+        [
+            {"event_type": "search_success", "workflow_area": "search", "asset_ticker": "VOO", "metadata": {"latency_ms": 20}},
+            {"event_type": "chat_safety_redirect", "workflow_area": "chat", "asset_ticker": "VOO"},
+            {"event_type": "source_retrieval_failure", "workflow_area": "retrieval", "metadata": {"freshness_state": "unavailable"}},
+            {"event_type": "chat_answer_outcome", "workflow_area": "chat", "answer": "raw text"},
+        ]
+    )
+    accepted_events = [event.normalized_event for event in batch.events if event.normalized_event is not None]
+    summary = summarize_trust_metric_events(accepted_events)
+    validated_summary = TrustMetricSummary.model_validate(summary.model_dump(mode="json"))
+    assert batch.accepted_count == 3
+    assert batch.rejected_count == 1
+    assert batch.summary == validated_summary
+    assert summary.product_metric_counts["search_success"] == 1
+    assert summary.product_metric_counts["chat_safety_redirect"] == 1
+    assert summary.trust_metric_counts["source_retrieval_failure"] == 1
+    assert summary.rates["safety_redirect_rate"] == 0.3333
+    assert summary.latency_ms["average"] == 20
+
+    for route in data.get("required_api_routes", []):
+        assert route in (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
+
+    trust_metrics_source = (ROOT / "backend" / "trust_metrics.py").read_text(encoding="utf-8")
+    main_source = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
+    for forbidden in data.get("forbidden_imports", []):
+        assert forbidden not in trust_metrics_source
+        if forbidden != "os.environ":
+            assert forbidden not in main_source
 
 
 def test_knowledge_pack_cases():
