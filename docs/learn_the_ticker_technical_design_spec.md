@@ -1245,6 +1245,8 @@ Supported MVP export shapes:
 
 Export behavior must respect provider licensing. Paid news or restricted provider content should be summarized or omitted unless redistribution rights are confirmed.
 
+Exported outputs should include the persistent educational disclaimer and should preserve the same citation, freshness, uncertainty, and advice-boundary labels shown in the UI.
+
 ---
 
 ## 15. Frontend design
@@ -1598,14 +1600,16 @@ Before deploy:
 - Add citation validation for chat.
 - Add starter prompts.
 
-### Phase 4: Reliability and learning features
+### Phase 4: MVP reliability and accountless learning features
 
-- Add saved assets.
-- Add saved comparisons.
-- Add watchlist.
-- Add learning paths.
-- Add richer glossary pages.
+- Add export/download flows for asset pages, comparisons, source lists, and chat transcripts.
+- Add cache and freshness-hash invalidation.
+- Add pre-cache orchestration for the high-demand launch universe.
+- Add on-demand ingestion job states for eligible supported assets outside the pre-cache set.
+- Add hybrid glossary baseline and richer glossary pages.
 - Add evaluation dashboard.
+
+Saved assets, saved comparisons, watchlists, learning paths, and user accounts are post-MVP features and should not be required for v1.
 
 ---
 
@@ -1625,7 +1629,10 @@ MVP is technically ready when:
 - Comparison works for at least ETF-vs-ETF and stock-vs-stock.
 - Chat answers only from the selected asset knowledge pack.
 - Safety guardrails prevent buy/sell, price-target, and allocation advice.
-- Citation coverage, unsupported claim rate, latency, and freshness accuracy are logged.
+- Users can export asset pages, comparison output, source lists, and chat transcripts with citations, freshness metadata, and the educational disclaimer.
+- Hybrid glossary support covers core beginner terms and does not introduce uncited asset-specific facts.
+- Shared server-side caching, source checksums, and freshness hashes avoid repeated provider and LLM work while preserving freshness labels.
+- Citation coverage, unsupported claim rate, latency, glossary usage, export usage, safety redirects, and freshness accuracy are logged.
 
 ---
 
@@ -1637,8 +1644,10 @@ MVP is technically ready when:
 4. Citation strictness is per important factual claim, not per sentence.
 5. Recent developments should prefer official filings, company investor-relations releases, ETF issuer announcements, and prospectus updates before reputable ticker-tagged news.
 6. V1 should be accountless.
-7. ETF issuer parser maintenance remains an implementation risk; parsers should store raw snapshots, checksums, and parser diagnostics.
-8. Leveraged ETFs, inverse ETFs, ETNs, crypto, options, international equities, and complex products are unsupported for generated pages, chat, and comparisons.
+7. Export/download is the v1 save-for-later workflow; exported output must include citations, freshness metadata, and the educational disclaimer while respecting provider licensing.
+8. Server-side caching, source-document checksums, generated-summary freshness hashes, and pre-cached knowledge packs should reduce provider and LLM calls.
+9. ETF issuer parser maintenance remains an implementation risk; parsers should store raw snapshots, checksums, and parser diagnostics.
+10. Leveraged ETFs, inverse ETFs, ETNs, crypto, options, international equities, preferred stocks, warrants, rights, and complex products are unsupported for generated pages, chat, and comparisons unless explicitly added later.
 
 ---
 
