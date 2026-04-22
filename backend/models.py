@@ -128,6 +128,40 @@ class ExportState(str, Enum):
     unavailable = "unavailable"
 
 
+class ProviderKind(str, Enum):
+    sec = "sec"
+    etf_issuer = "etf_issuer"
+    market_reference = "market_reference"
+    recent_development = "recent_development"
+
+
+class ProviderDataCategory(str, Enum):
+    asset_resolution = "asset_resolution"
+    canonical_stock_facts = "canonical_stock_facts"
+    etf_issuer_facts = "etf_issuer_facts"
+    etf_holdings_metadata = "etf_holdings_metadata"
+    market_reference = "market_reference"
+    recent_developments = "recent_developments"
+
+
+class ProviderResponseState(str, Enum):
+    supported = "supported"
+    eligible_not_cached = "eligible_not_cached"
+    unsupported = "unsupported"
+    unknown = "unknown"
+    unavailable = "unavailable"
+    stale = "stale"
+    permission_limited = "permission_limited"
+    rate_limited = "rate_limited"
+    no_high_signal = "no_high_signal"
+
+
+class ProviderSourceUsage(str, Enum):
+    canonical = "canonical"
+    structured_reference = "structured_reference"
+    recent_context = "recent_context"
+
+
 class AssetIdentity(BaseModel):
     ticker: str
     name: str
@@ -211,6 +245,134 @@ class IngestionJobResponse(BaseModel):
     error_metadata: IngestionErrorMetadata | None = None
     generated_route: str | None = None
     capabilities: IngestionCapabilities = Field(default_factory=IngestionCapabilities)
+    message: str
+
+
+class ProviderRequestMetadata(BaseModel):
+    request_id: str
+    requested_ticker: str
+    normalized_ticker: str
+    requested_at: str
+    data_category: ProviderDataCategory
+
+
+class ProviderCapability(BaseModel):
+    provider_name: str
+    provider_kind: ProviderKind
+    data_categories: list[ProviderDataCategory]
+    supports_asset_resolution: bool = False
+    supports_canonical_facts: bool = False
+    supports_recent_developments: bool = False
+    requires_credentials: bool = False
+    live_calls_allowed: bool = False
+
+
+class ProviderLicensing(BaseModel):
+    provider_name: str
+    attribution_required: bool
+    display_allowed: bool
+    cache_allowed: bool
+    export_allowed: bool
+    redistribution_allowed: bool
+    allowed_export_fields: list[str] = Field(default_factory=list)
+    permission_note: str
+
+
+class ProviderSourceAttribution(BaseModel):
+    source_document_id: str
+    asset_ticker: str
+    source_type: str
+    title: str
+    publisher: str
+    url: str | None = None
+    published_at: str | None = None
+    as_of_date: str | None = None
+    retrieved_at: str
+    freshness_state: FreshnessState
+    is_official: bool
+    provider_name: str
+    provider_kind: ProviderKind
+    data_category: ProviderDataCategory
+    usage: ProviderSourceUsage
+    source_rank: int
+    can_support_canonical_facts: bool
+    can_support_recent_developments: bool
+    licensing: ProviderLicensing
+
+
+class ProviderFact(BaseModel):
+    fact_id: str
+    asset_ticker: str
+    data_category: ProviderDataCategory
+    field_name: str
+    value: Any
+    unit: str | None = None
+    as_of_date: str | None = None
+    retrieved_at: str
+    freshness_state: FreshnessState
+    evidence_state: EvidenceState
+    source_document_ids: list[str]
+    citation_ids: list[str] = Field(default_factory=list)
+    fact_layer: Literal["canonical", "structured_reference"] = "canonical"
+    uses_glossary_as_support: bool = False
+
+
+class ProviderRecentDevelopmentCandidate(BaseModel):
+    event_id: str
+    asset_ticker: str
+    event_type: str
+    title: str
+    summary: str
+    event_date: str
+    source_date: str | None = None
+    as_of_date: str | None = None
+    retrieved_at: str
+    freshness_state: FreshnessState
+    source_document_id: str
+    citation_ids: list[str] = Field(default_factory=list)
+    is_high_signal: bool
+    can_overwrite_canonical_facts: bool = False
+
+
+class ProviderResponseFreshness(BaseModel):
+    as_of_date: str | None = None
+    retrieved_at: str
+    freshness_state: FreshnessState
+    stale_reason: str | None = None
+
+
+class ProviderError(BaseModel):
+    code: str
+    message: str
+    retryable: bool
+    response_state: ProviderResponseState
+
+
+class ProviderGeneratedOutputFlags(BaseModel):
+    creates_generated_asset_page: bool = False
+    creates_generated_chat_answer: bool = False
+    creates_generated_comparison: bool = False
+    creates_overview_sections: bool = False
+    creates_export_payload: bool = False
+    creates_frontend_route: bool = False
+
+
+class ProviderResponse(BaseModel):
+    request_metadata: ProviderRequestMetadata
+    provider_name: str
+    provider_kind: ProviderKind
+    data_category: ProviderDataCategory
+    state: ProviderResponseState
+    capability: ProviderCapability
+    asset: AssetIdentity | None = None
+    source_attributions: list[ProviderSourceAttribution] = Field(default_factory=list)
+    facts: list[ProviderFact] = Field(default_factory=list)
+    recent_developments: list[ProviderRecentDevelopmentCandidate] = Field(default_factory=list)
+    freshness: ProviderResponseFreshness
+    licensing: ProviderLicensing
+    errors: list[ProviderError] = Field(default_factory=list)
+    generated_output: ProviderGeneratedOutputFlags = Field(default_factory=ProviderGeneratedOutputFlags)
+    no_live_external_calls: bool = True
     message: str
 
 

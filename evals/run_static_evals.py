@@ -26,8 +26,14 @@ from backend.models import (
     ExportResponse,
     IngestionJobResponse,
     MetricValue,
+    ProviderDataCategory,
+    ProviderKind,
+    ProviderResponse,
+    ProviderResponseState,
+    ProviderSourceUsage,
 )
 from backend.overview import generate_asset_overview, validate_overview_response
+from backend.providers import fetch_mock_provider_response, get_mock_provider_adapters
 from backend.retrieval import build_asset_knowledge_pack, build_comparison_knowledge_pack, load_retrieval_fixture_dataset
 from backend.safety import find_forbidden_output_phrases
 from backend.testing import TestClient
@@ -282,6 +288,116 @@ def test_ingestion_cases():
     for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import"]:
         assert forbidden not in ingestion_source
         assert forbidden not in main_source
+
+
+def test_provider_cases():
+    data = load_yaml("provider_eval_cases.yaml")
+    adapters = get_mock_provider_adapters()
+    required_provider_kinds = {ProviderKind(kind) for kind in data.get("required_provider_kinds", [])}
+    assert required_provider_kinds <= set(adapters), f"Missing provider adapters: {required_provider_kinds - set(adapters)}"
+
+    for adapter in adapters.values():
+        assert adapter.capability.requires_credentials is False
+        assert adapter.capability.live_calls_allowed is False
+        assert adapter.capability.data_categories
+
+    for case in data.get("supported_cases", []):
+        response = fetch_mock_provider_response(
+            ProviderKind(case["provider_kind"]),
+            case["ticker"],
+            ProviderDataCategory(case["data_category"]),
+        )
+        validated = ProviderResponse.model_validate(response.model_dump(mode="json"))
+        assert validated.state.value == case["expected_state"], f"{case['id']} returned {validated.state.value}"
+        assert validated.asset is not None, f"{case['id']} should include asset identity"
+        assert validated.asset.ticker == case["ticker"]
+        assert validated.asset.asset_type.value == case["expected_asset_type"]
+        assert validated.no_live_external_calls is True
+        _assert_provider_generated_flags_off(validated, case["id"])
+        assert bool(validated.licensing.export_allowed) is case["expected_export_allowed"]
+
+        source_ids = {source.source_document_id for source in validated.source_attributions}
+        assert source_ids, f"{case['id']} should include source attribution"
+        assert {source.asset_ticker for source in validated.source_attributions} == {case["ticker"]}
+        assert all(source.usage is ProviderSourceUsage(case["expected_source_usage"]) for source in validated.source_attributions)
+        assert all(source.is_official is case["expected_official_source"] for source in validated.source_attributions)
+        assert all(source.retrieved_at for source in validated.source_attributions)
+        assert all(source.freshness_state.value in {"fresh", "stale", "unknown", "unavailable"} for source in validated.source_attributions)
+        assert all(source.licensing.provider_name == validated.licensing.provider_name for source in validated.source_attributions)
+
+        expected_fact_fields = set(case.get("expected_fact_fields", []))
+        fact_fields = {fact.field_name for fact in validated.facts}
+        assert expected_fact_fields <= fact_fields, f"{case['id']} missing facts: {expected_fact_fields - fact_fields}"
+        assert {fact.asset_ticker for fact in validated.facts} <= {case["ticker"]}
+        assert all(set(fact.source_document_ids) <= source_ids for fact in validated.facts)
+        assert all(fact.uses_glossary_as_support is False for fact in validated.facts)
+        assert not any("glossary" in citation_id.lower() for fact in validated.facts for citation_id in fact.citation_ids)
+
+        if case.get("expected_recent_events"):
+            assert validated.recent_developments, f"{case['id']} expected recent-development candidates"
+            assert all(event.asset_ticker == case["ticker"] for event in validated.recent_developments)
+            assert all(event.event_date for event in validated.recent_developments)
+            assert all(event.source_date or event.as_of_date for event in validated.recent_developments)
+            assert all(event.retrieved_at for event in validated.recent_developments)
+            assert all(event.source_document_id in source_ids for event in validated.recent_developments)
+            assert all(event.can_overwrite_canonical_facts is False for event in validated.recent_developments)
+
+    for case in data.get("eligible_not_cached_cases", []):
+        response = fetch_mock_provider_response(ProviderKind(case["provider_kind"]), case["ticker"])
+        validated = ProviderResponse.model_validate(response.model_dump(mode="json"))
+        assert validated.state is ProviderResponseState.eligible_not_cached
+        assert validated.asset is not None
+        assert validated.asset.asset_type.value == case["expected_asset_type"]
+        _assert_provider_generated_flags_off(validated, case["id"])
+
+    for case in data.get("failure_cases", []):
+        response = fetch_mock_provider_response(ProviderKind(case["provider_kind"]), case["ticker"])
+        validated = ProviderResponse.model_validate(response.model_dump(mode="json"))
+        assert validated.state.value == case["expected_state"]
+        assert validated.facts == []
+        assert validated.recent_developments == []
+        assert validated.errors
+        assert validated.errors[0].code == case["expected_error_code"]
+        _assert_provider_generated_flags_off(validated, case["id"])
+
+    for case in data.get("recent_no_high_signal_cases", []):
+        response = fetch_mock_provider_response(ProviderKind(case["provider_kind"]), case["ticker"])
+        validated = ProviderResponse.model_validate(response.model_dump(mode="json"))
+        assert validated.state is ProviderResponseState.no_high_signal
+        assert validated.recent_developments == []
+        assert validated.source_attributions
+        assert all(source.usage is ProviderSourceUsage.recent_context for source in validated.source_attributions)
+        assert all(source.can_support_canonical_facts is False for source in validated.source_attributions)
+        _assert_provider_generated_flags_off(validated, case["id"])
+
+    sec_aapl = fetch_mock_provider_response(ProviderKind.sec, "AAPL")
+    market_aapl = fetch_mock_provider_response(ProviderKind.market_reference, "AAPL")
+    issuer_voo = fetch_mock_provider_response(ProviderKind.etf_issuer, "VOO")
+    market_voo = fetch_mock_provider_response(ProviderKind.market_reference, "VOO")
+    assert min(source.source_rank for source in sec_aapl.source_attributions) < min(
+        source.source_rank for source in market_aapl.source_attributions
+    )
+    assert min(source.source_rank for source in issuer_voo.source_attributions) < min(
+        source.source_rank for source in market_voo.source_attributions
+    )
+    assert market_aapl.licensing.export_allowed is False
+    assert market_aapl.licensing.redistribution_allowed is False
+
+    providers_source = (ROOT / "backend" / "providers.py").read_text(encoding="utf-8")
+    for forbidden in [
+        "import requests",
+        "import httpx",
+        "urllib",
+        "socket",
+        "boto3",
+        "polygon",
+        "massive",
+        "finnhub",
+        "benzinga",
+        "os.environ",
+        "api_key",
+    ]:
+        assert forbidden not in providers_source
 
 
 def test_retrieval_fixture_contract():
@@ -708,12 +824,23 @@ def _flatten_static_text(value):
     return ""
 
 
+def _assert_provider_generated_flags_off(response: ProviderResponse, case_id: str) -> None:
+    flags = response.generated_output
+    assert flags.creates_generated_asset_page is False, f"{case_id} created generated asset page"
+    assert flags.creates_generated_chat_answer is False, f"{case_id} created generated chat answer"
+    assert flags.creates_generated_comparison is False, f"{case_id} created generated comparison"
+    assert flags.creates_overview_sections is False, f"{case_id} created overview sections"
+    assert flags.creates_export_payload is False, f"{case_id} created export payload"
+    assert flags.creates_frontend_route is False, f"{case_id} created frontend route"
+
+
 if __name__ == "__main__":
     test_golden_assets()
     test_safety_cases()
     test_citation_cases()
     test_search_cases()
     test_ingestion_cases()
+    test_provider_cases()
     test_retrieval_fixture_contract()
     test_generated_overview_contract()
     test_generated_comparison_contract()

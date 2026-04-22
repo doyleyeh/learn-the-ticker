@@ -1,0 +1,125 @@
+required_provider_kinds:
+  - sec
+  - etf_issuer
+  - market_reference
+  - recent_development
+
+supported_cases:
+  - id: provider_sec_aapl_stock_facts
+    provider_kind: sec
+    ticker: AAPL
+    data_category: canonical_stock_facts
+    expected_state: supported
+    expected_asset_type: stock
+    expected_fact_fields:
+      - primary_business
+      - net_sales_trend_available
+    expected_source_usage: canonical
+    expected_official_source: true
+    expected_export_allowed: true
+
+  - id: provider_issuer_voo_etf_facts
+    provider_kind: etf_issuer
+    ticker: VOO
+    data_category: etf_issuer_facts
+    expected_state: supported
+    expected_asset_type: etf
+    expected_fact_fields:
+      - benchmark
+      - expense_ratio
+      - holdings_count
+    expected_source_usage: canonical
+    expected_official_source: true
+    expected_export_allowed: true
+
+  - id: provider_issuer_qqq_etf_facts
+    provider_kind: etf_issuer
+    ticker: QQQ
+    data_category: etf_issuer_facts
+    expected_state: supported
+    expected_asset_type: etf
+    expected_fact_fields:
+      - benchmark
+      - expense_ratio
+      - holdings_count
+    expected_source_usage: canonical
+    expected_official_source: true
+    expected_export_allowed: true
+
+  - id: provider_market_aapl_reference
+    provider_kind: market_reference
+    ticker: AAPL
+    data_category: asset_resolution
+    expected_state: supported
+    expected_asset_type: stock
+    expected_fact_fields:
+      - asset_resolution
+    expected_source_usage: structured_reference
+    expected_official_source: false
+    expected_export_allowed: false
+
+  - id: provider_recent_aapl_context
+    provider_kind: recent_development
+    ticker: AAPL
+    data_category: recent_developments
+    expected_state: supported
+    expected_asset_type: stock
+    expected_recent_events: true
+    expected_source_usage: recent_context
+    expected_official_source: true
+    expected_export_allowed: false
+
+eligible_not_cached_cases:
+  - id: provider_market_spy_eligible_not_cached
+    provider_kind: market_reference
+    ticker: SPY
+    expected_state: eligible_not_cached
+    expected_asset_type: etf
+
+  - id: provider_market_msft_eligible_not_cached
+    provider_kind: market_reference
+    ticker: MSFT
+    expected_state: eligible_not_cached
+    expected_asset_type: stock
+
+failure_cases:
+  - id: provider_market_btc_unsupported
+    provider_kind: market_reference
+    ticker: BTC
+    expected_state: unsupported
+    expected_error_code: recognized_unsupported_asset
+
+  - id: provider_market_tqqq_unsupported
+    provider_kind: market_reference
+    ticker: TQQQ
+    expected_state: unsupported
+    expected_error_code: recognized_unsupported_asset
+
+  - id: provider_market_sqqq_unsupported
+    provider_kind: market_reference
+    ticker: SQQQ
+    expected_state: unsupported
+    expected_error_code: recognized_unsupported_asset
+
+  - id: provider_market_zzzz_unknown
+    provider_kind: market_reference
+    ticker: ZZZZ
+    expected_state: unknown
+    expected_error_code: unknown_asset
+
+  - id: provider_recent_zzzz_unavailable
+    provider_kind: recent_development
+    ticker: ZZZZ
+    expected_state: unavailable
+    expected_error_code: provider_fixture_unavailable
+
+recent_no_high_signal_cases:
+  - id: provider_recent_voo_no_high_signal
+    provider_kind: recent_development
+    ticker: VOO
+    expected_state: no_high_signal
+
+  - id: provider_recent_qqq_no_high_signal
+    provider_kind: recent_development
+    ticker: QQQ
+    expected_state: no_high_signal
