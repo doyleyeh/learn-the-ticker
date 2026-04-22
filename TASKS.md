@@ -2,26 +2,21 @@
 
 ## Current task
 
-### T-017: Add on-demand ingestion job-state contract
+### T-018: Expand asset overview schema for PRD content sections
 
 Goal:
-Define a deterministic backend/API contract for on-demand ingestion job states so eligible-but-not-cached assets from search can expose a future ingestion path without making live provider calls or generating unsupported pages.
+Expand the backend asset overview response schema so supported stock and ETF pages can expose the PRD-required content sections with citations, freshness, and explicit unknown/stale/unavailable states before richer fixtures and frontend rendering are added.
 
 Task scope:
-This is a backend/API contract and deterministic fixture task. Add typed job-state models, a local fixture-backed ingestion service, and API routes for requesting or reading ingestion job status. The contract should build on T-016 search classification: only assets classified as eligible-not-cached may receive an on-demand ingestion job. Cached supported assets, recognized unsupported assets, and unknown assets must return explicit non-job states. Use only local fixtures or mocks. Do not implement provider adapters, real queues, source fetching, parsing, embeddings, LLM generation, or generated asset pages for newly queued assets.
+This is a backend/API schema and deterministic generation task. Add typed overview section models and extend the existing fixture-backed overview generator so `AAPL`, `VOO`, and `QQQ` return structured shared sections plus stock- or ETF-specific PRD sections. Use only existing local retrieval packs and source metadata. When the current fixtures do not contain enough evidence for a section, return a structured unavailable, unknown, stale, or insufficient-evidence state instead of inventing facts. Preserve the existing overview fields for backward compatibility. Do not add richer fixture source data, frontend rendering, provider adapters, live ingestion, embeddings, LLM calls, or export behavior in this task.
 
 Allowed files:
 
 - backend/models.py
-- backend/main.py
-- backend/data.py
-- backend/search.py
-- backend/ingestion.py
-- tests/unit/test_search_classification.py
-- tests/unit/test_ingestion_jobs.py
+- backend/overview.py
+- tests/unit/test_overview_generation.py
+- tests/unit/test_safety_guardrails.py
 - tests/integration/test_backend_api.py
-- evals/ingestion_eval_cases.yaml
-- evals/search_eval_cases.yaml
 - evals/run_static_evals.py
 - docs/agent-journal/
 
@@ -31,39 +26,42 @@ Do not change:
 - components/
 - lib/
 - styles/
-- backend/overview.py
 - backend/chat.py
 - backend/comparison.py
 - backend/citations.py
 - backend/retrieval.py
+- backend/ingestion.py
+- backend/search.py
 - data/retrieval_fixtures.json
 - package files
 - docs other than the agent journal
-- provider adapter or ingestion worker implementations
-- generated asset, chat, or comparison behavior for unsupported or unknown assets
+- provider adapter, ingestion worker, queue, cache, or export implementations
+- frontend asset-page rendering
+- generated chat or comparison behavior
+- generated behavior for unsupported, unknown, or eligible-not-cached assets
 
 Acceptance criteria:
 
-- Add typed ingestion job response models with stable structured fields for ticker, asset type, job type, job ID, user-facing job state, worker-style status where applicable, timestamps, status URL, retryability, error metadata, generated route, and page/chat/comparison capability flags.
-- The job-state contract can represent pending or queued work, running work, succeeded work, failed work, stale refresh-needed work, cached/no-ingestion-needed assets, recognized unsupported assets, and unknown/unavailable assets without clients parsing human-readable messages.
-- Add a deterministic request route, aligned with the technical design spec, for starting or requesting on-demand ingestion for a ticker such as `POST /api/admin/ingest/{ticker}`.
-- Add a deterministic status route, aligned with the technical design spec, such as `GET /api/jobs/{job_id}`, that returns fixture-backed job states by stable job ID.
-- Requesting ingestion for eligible-not-cached fixtures such as `SPY` or `MSFT` returns an on-demand job state and status URL, but does not create a generated asset page, generated chat answer, generated comparison, source documents, citations, or new facts.
-- Re-requesting ingestion for the same eligible-not-cached ticker is deterministic and does not depend on random IDs, wall-clock timing, live queues, provider credentials, market-data calls, news calls, or LLM calls.
-- Requesting ingestion for cached supported assets such as `AAPL`, `VOO`, or `QQQ` returns a no-ingestion-needed or already-cached state and preserves the existing generated route and generated-page/chat/comparison capability flags.
-- Requesting ingestion for recognized unsupported examples such as `BTC`, `TQQQ`, or `SQQQ` returns an unsupported state, does not create a job, and is not marked safe for generated pages, generated chat, or generated comparisons.
-- Requesting ingestion for unknown tickers returns an unknown or unavailable state with no invented asset facts, no job ID, no citations, and no generated route.
-- Search results for eligible-not-cached assets may expose an ingestion request route or `can_request_ingestion` flag, but cached, unsupported, ambiguous, and unknown states must remain structurally clear and safe.
-- Job-state copy remains educational and avoids buy/sell/hold, allocation, price-target, tax, brokerage, or personalized recommendation language.
-- Static evals cover eligible-not-cached ingestion request behavior, unsupported and unknown blocking, cached no-op behavior, status lookup states, stale/failed states, and absence of live external calls.
-- Normal CI remains deterministic and does not require provider credentials, market-data calls, news calls, LLM calls, a real queue, Redis, PostgreSQL, or network access.
+- Add typed overview section models with stable fields for section ID, title, section type, asset-type applicability, beginner-mode summary or items, metrics where applicable, citation IDs, source document IDs where applicable, freshness state, as-of or retrieved dates where available, evidence state, and limitations or unknown-state copy.
+- `OverviewResponse` keeps the existing `beginner_summary`, `top_risks`, `recent_developments`, `suitability_summary`, `claims`, `citations`, and `source_documents` fields so current backend and frontend callers remain compatible.
+- Supported stock overview responses expose structured sections for at least business overview, products or services, strengths, financial quality, valuation context, top risks, recent developments, and educational suitability.
+- Supported ETF overview responses expose structured sections for at least fund objective or role, holdings or exposure, construction or methodology, cost and trading context, ETF-specific risks, similar assets or simpler alternatives, recent developments, and educational suitability.
+- New section content for existing supported fixtures uses only current local retrieval-pack facts, chunks, recent-development entries, citations, and source documents.
+- Sections that lack current fixture evidence return explicit unavailable, unknown, stale, mixed, or insufficient-evidence states with no invented metrics, holdings, alternatives, source documents, or citations.
+- Important factual claims in new supported sections either carry citation IDs that validate against the same asset knowledge pack or are represented as explicit evidence gaps.
+- Recent-development section data remains separate from stable asset basics and includes event date, source/as-of or retrieved-date context where the current models provide it.
+- Top risks still expose exactly three items first for supported generated overviews.
+- Unsupported assets such as `BTC`, leveraged/inverse ETF examples, unknown tickers, and eligible-not-cached assets must not receive generated PRD sections, generated factual claims, citations, source documents, generated routes, chat answers, or comparison output.
+- New copy remains educational and avoids buy/sell/hold, allocation, price-target, tax, brokerage, or personalized recommendation language.
+- Backend API tests verify `/api/assets/{ticker}/overview` serializes the new section schema for stock and ETF fixtures while preserving unsupported and unknown empty states.
+- Static evals cover stock section presence, ETF section presence, same-asset citation binding for new section claims, explicit evidence-gap handling, stable/recent separation, top-risk count, safety copy, and absence of live external calls.
+- Normal CI remains deterministic and does not require provider credentials, market-data calls, news calls, LLM calls, Redis, PostgreSQL, queues, or network access.
 
 Required commands:
 
 - git status --short
-- python3 -m pytest tests/unit/test_ingestion_jobs.py tests/unit/test_search_classification.py tests/integration/test_backend_api.py -q
+- python3 -m pytest tests/unit/test_overview_generation.py tests/unit/test_safety_guardrails.py tests/integration/test_backend_api.py -q
 - python3 -m pytest tests -q
-- npm test
 - python3 evals/run_static_evals.py
 - bash scripts/run_quality_gate.sh
 
@@ -71,6 +69,36 @@ Iteration budget:
 Max 2 attempts
 
 ## Completed
+
+### T-017: Add on-demand ingestion job-state contract
+
+Goal:
+Define a deterministic backend/API contract for on-demand ingestion job states so eligible-but-not-cached assets from search can expose a future ingestion path without making live provider calls or generating unsupported pages.
+
+Completed:
+
+- Added typed ingestion job models in `backend/models.py`, including job type, job state, worker status, retryability, capabilities, error metadata, status URL, timestamps, generated route, and page/chat/comparison capability flags.
+- Added deterministic fixture-backed ingestion service functions in `backend/ingestion.py` for requesting ingestion by ticker and reading job status by stable job ID.
+- Wired `POST /api/admin/ingest/{ticker}` and `GET /api/jobs/{job_id}` in `backend/main.py`.
+- Eligible-not-cached fixtures such as `SPY` and `MSFT` return deterministic on-demand job states with stable IDs such as `ingest-on-demand-spy` and `ingest-on-demand-msft`.
+- Re-requesting an eligible-not-cached ticker is deterministic and does not depend on random IDs, wall-clock timing, live queues, provider credentials, market-data calls, news calls, or LLM calls.
+- Cached supported fixtures such as `AAPL`, `VOO`, and `QQQ` return no-ingestion-needed behavior while preserving generated route and generated page/chat/comparison capability flags.
+- Recognized unsupported assets such as `BTC`, `TQQQ`, and `SQQQ` return unsupported non-job states with no generated-page, chat, or comparison capabilities.
+- Unknown tickers return unknown non-job states with no invented asset facts, job ID, citations, or generated route.
+- Added fixture status coverage for pending, running, succeeded, refresh-needed, failed, and unavailable job states, including a deterministic failed job error code `fixture_ingestion_failed`.
+- Extended search classification output so eligible-not-cached results expose `can_request_ingestion` and an ingestion request route, while cached, unsupported, ambiguous, and unknown states remain structurally blocked.
+- Added focused unit and integration coverage in `tests/unit/test_ingestion_jobs.py`, `tests/unit/test_search_classification.py`, and `tests/integration/test_backend_api.py`.
+- Added ingestion eval cases in `evals/ingestion_eval_cases.yaml` and extended `evals/run_static_evals.py` plus `evals/search_eval_cases.yaml` for ingestion request/status states, capability flags, deterministic reruns, and no live external calls.
+- Added `docs/agent-journal/20260422T044335Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- T-017 agent journal records that `git status --short`, focused ingestion/search/API pytest, full pytest, `npm test`, static evals, and the full quality gate passed.
+- Remaining documented risk: the ingestion contract is deterministic and fixture-backed only; it does not start real queues, fetch sources, parse documents, generate embeddings, call providers, or call LLMs.
+- Remaining documented risk: eligible-not-cached assets such as `SPY` and `MSFT` expose request/status job states but still do not receive generated asset pages, chat answers, comparisons, citations, source documents, or new facts.
+- Remaining documented risk: admin ingestion routes are unauthenticated in this local skeleton; the technical design still requires authentication and rate limiting before production use.
+
+Completion commits:
+
+- `188ce86 feat(T-017): add on-demand ingestion job-state contract`
+- `226744d chore(T-017): merge on-demand ingestion job-state contract`
 
 ### T-016: Define search support-classification contract
 
@@ -463,7 +491,6 @@ Completion commits:
 
 ## Backlog
 
-### T-018: Expand asset overview schema for PRD content sections
 ### T-019: Add richer stock and ETF fixture data for MVP content sections
 ### T-020: Render stock PRD sections on asset pages
 ### T-021: Render ETF PRD sections on asset pages
