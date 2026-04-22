@@ -3,6 +3,7 @@ import { AssetHeader } from "../../../components/AssetHeader";
 import { AssetChatPanel } from "../../../components/AssetChatPanel";
 import { AssetEtfSections } from "../../../components/AssetEtfSections";
 import { AssetStockSections } from "../../../components/AssetStockSections";
+import { AssetModeLayout } from "../../../components/AssetModeLayout";
 import { CitationChip } from "../../../components/CitationChip";
 import { FreshnessLabel } from "../../../components/FreshnessLabel";
 import { GlossaryPopover } from "../../../components/GlossaryPopover";
@@ -10,6 +11,7 @@ import { SourceDrawer } from "../../../components/SourceDrawer";
 import {
   assetFixtures,
   citationLabel,
+  getCitationById,
   getCitationContextsForSource,
   getAssetFixture,
   getPrimarySource
@@ -35,6 +37,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
 
   const primarySource = getPrimarySource(asset);
   const firstClaim = asset.claims[0];
+  const firstClaimCitation = getCitationById(asset, firstClaim.citationIds[0]) ?? asset.citations[0];
   const hasStockPrdSections = asset.assetType === "stock" && Boolean(asset.stockSections?.length);
   const hasEtfPrdSections = asset.assetType === "etf" && Boolean(asset.etfSections?.length);
   const hasPrdSections = hasStockPrdSections || hasEtfPrdSections;
@@ -46,123 +49,159 @@ export default async function AssetPage({ params }: AssetPageProps) {
   return (
     <main>
       <AssetHeader asset={asset} />
-      <section className="content-band two-column">
-        <div className="section-stack">
-          <section className="plain-panel">
-            <div className="section-heading">
-              <p className="eyebrow">Stable facts</p>
-              <h2>Beginner overview</h2>
-            </div>
-            <p>
-              {asset.beginnerSummary.whatItIs}{" "}
-              <CitationChip citation={asset.citations[0]} />
-            </p>
-            <p>{asset.beginnerSummary.whyPeopleConsiderIt}</p>
-            <p className="notice-text">{asset.beginnerSummary.mainCatch}</p>
-            <div className="inline-tools">
-              <GlossaryPopover term="expense ratio" />
-              <GlossaryPopover term={asset.assetType === "etf" ? "index tracking" : "market risk"} />
-            </div>
-          </section>
+      <AssetModeLayout
+        asset={asset}
+        beginnerMode={
+          <>
+            <section
+              className="plain-panel stable-section"
+              aria-labelledby="beginner-overview"
+              data-beginner-stable-recent-separation="stable"
+              data-beginner-primary-claim={firstClaim.claimId}
+            >
+              <div className="section-heading">
+                <p className="eyebrow">Stable facts</p>
+                <h2 id="beginner-overview">Beginner overview</h2>
+              </div>
+              <div className="state-row">
+                <FreshnessLabel label="Page last updated" value={asset.freshness.pageLastUpdatedAt} state="fresh" />
+                <FreshnessLabel label="Beginner overview as of" value={asset.freshness.factsAsOf} state="fresh" />
+              </div>
+              <p>
+                {asset.beginnerSummary.whatItIs} <CitationChip citation={firstClaimCitation} />
+              </p>
+              <p>{asset.beginnerSummary.whyPeopleConsiderIt}</p>
+              <p className="notice-text">{asset.beginnerSummary.mainCatch}</p>
+              <div className="inline-tools" aria-label="Beginner glossary terms">
+                <GlossaryPopover term="expense ratio" />
+                <GlossaryPopover term={asset.assetType === "etf" ? "index tracking" : "market risk"} />
+              </div>
+            </section>
 
-          <AssetChatPanel ticker={asset.ticker} assetName={asset.name} />
-
-          {hasStockPrdSections ? (
-            <AssetStockSections asset={asset} />
-          ) : hasEtfPrdSections ? (
-            <AssetEtfSections asset={asset} />
-          ) : (
-            <>
-              <section className="plain-panel" aria-labelledby="top-risks">
-                <div className="section-heading">
-                  <p className="eyebrow">Exactly three shown first</p>
-                  <h2 id="top-risks">Top risks</h2>
-                </div>
-                <div className="risk-grid" data-risk-count={asset.topRisks.length}>
-                  {asset.topRisks.map((risk) => (
+            <section
+              className="plain-panel stable-section"
+              aria-labelledby="beginner-top-risks"
+              data-beginner-stable-recent-separation="stable"
+              data-beginner-top-risks
+            >
+              <div className="section-heading">
+                <p className="eyebrow">Exactly three shown first</p>
+                <h2 id="beginner-top-risks">Top risks</h2>
+              </div>
+              <FreshnessLabel label="Top risks as of" value={asset.freshness.factsAsOf} state="fresh" />
+              <div className="risk-grid" data-beginner-top-risk-count={asset.topRisks.slice(0, 3).length}>
+                {asset.topRisks.slice(0, 3).map((risk) => {
+                  const citation = getCitationById(asset, risk.citationIds[0]);
+                  return (
                     <article className="risk-card" key={risk.title}>
                       <h3>{risk.title}</h3>
                       <p>{risk.plainEnglishExplanation}</p>
-                      <CitationChip citation={asset.citations[0]} label={citationLabel(risk.citationIds[0])} />
+                      {citation ? <CitationChip citation={citation} label={citationLabel(risk.citationIds[0])} /> : null}
                     </article>
-                  ))}
-                </div>
-              </section>
+                  );
+                })}
+              </div>
+            </section>
 
-              <section className="plain-panel stable-section" aria-labelledby="details">
-                <div className="section-heading">
-                  <p className="eyebrow">What this is</p>
-                  <h2 id="details">{asset.assetType === "etf" ? "Fund facts" : "Business facts"}</h2>
-                </div>
-                <dl className="fact-list">
-                  {asset.facts.map((fact) => (
+            <section
+              className="plain-panel stable-section"
+              aria-labelledby="beginner-details"
+              data-beginner-stable-recent-separation="stable"
+            >
+              <div className="section-heading">
+                <p className="eyebrow">What this is</p>
+                <h2 id="beginner-details">{asset.assetType === "etf" ? "Fund facts" : "Business facts"}</h2>
+              </div>
+              <FreshnessLabel label="Stable facts as of" value={asset.freshness.factsAsOf} state="fresh" />
+              <dl className="fact-list">
+                {asset.facts.map((fact) => {
+                  const citation = fact.citationId ? getCitationById(asset, fact.citationId) : undefined;
+                  return (
                     <div key={fact.label}>
                       <dt>{fact.label}</dt>
                       <dd>
                         {fact.value}{" "}
-                        {fact.citationId ? (
-                          <CitationChip citation={asset.citations[0]} label={citationLabel(fact.citationId)} />
-                        ) : null}
+                        {citation ? <CitationChip citation={citation} label={citationLabel(fact.citationId ?? "")} /> : null}
                       </dd>
                     </div>
-                  ))}
-                </dl>
-              </section>
+                  );
+                })}
+              </dl>
+            </section>
 
-              <section className="plain-panel recent-section" aria-labelledby="recent">
-                <div className="section-heading">
-                  <p className="eyebrow">Recent developments</p>
-                  <h2 id="recent">Separate from stable facts</h2>
-                </div>
-                <FreshnessLabel label="Recent developments checked" value={asset.freshness.recentEventsAsOf} state="fresh" />
-                {asset.recentDevelopments.map((item) => (
-                  <article className="timeline-item" key={item.title}>
+            <section
+              className="plain-panel recent-section"
+              aria-labelledby="beginner-recent"
+              data-beginner-stable-recent-separation="recent"
+              data-beginner-recent-developments
+            >
+              <div className="section-heading">
+                <p className="eyebrow">Recent developments</p>
+                <h2 id="beginner-recent">Separate from stable facts</h2>
+              </div>
+              <FreshnessLabel label="Recent developments checked" value={asset.freshness.recentEventsAsOf} state="fresh" />
+              {asset.recentDevelopments.map((item) => {
+                const citation = getCitationById(asset, item.citationIds[0]);
+                return (
+                  <article className="timeline-item" key={item.title} data-freshness-state={item.freshnessState}>
                     <h3>{item.title}</h3>
                     <p>{item.summary}</p>
-                    <CitationChip citation={asset.citations[0]} label={citationLabel(item.citationIds[0])} />
+                    {citation ? <CitationChip citation={citation} label={citationLabel(item.citationIds[0])} /> : null}
                   </article>
-                ))}
-              </section>
+                );
+              })}
+            </section>
 
-              <section className="plain-panel unknown-state" aria-labelledby="unknowns">
-                <div className="section-heading">
-                  <p className="eyebrow">Uncertainty</p>
-                  <h2 id="unknowns">Stale and unknown treatment</h2>
-                </div>
-                <div className="state-row">
-                  <FreshnessLabel label="Valuation context" value="Unknown in local fixture" state="unknown" />
-                  <FreshnessLabel label="Live market quote" value="Unavailable by design" state="stale" />
-                </div>
-                <p>
-                  Missing live facts are labeled instead of being filled in from model memory. This skeleton uses local fixture
-                  data only.
-                </p>
-              </section>
-            </>
-          )}
-        </div>
-
-        <aside className="sidebar" aria-label="Source and learning tools">
-          {hasPrdSections ? null : (
-            <section className="plain-panel">
-              <h2>Educational framing</h2>
+            <section className="plain-panel" aria-labelledby="beginner-educational-framing" data-beginner-educational-framing>
+              <div className="section-heading">
+                <p className="eyebrow">Educational framing</p>
+                <h2 id="beginner-educational-framing">Educational suitability</h2>
+              </div>
               <p>{asset.suitabilitySummary.mayFit}</p>
               <p>{asset.suitabilitySummary.mayNotFit}</p>
               <p>{asset.suitabilitySummary.learnNext}</p>
             </section>
-          )}
-          {hasPrdSections
-            ? sectionSources.map((source) => (
-                <SourceDrawer
-                  key={source.sourceDocumentId}
-                  source={source}
-                  claim={getCitationContextsForSource(asset, source.sourceDocumentId)[0]?.claimContext ?? firstClaim.claimText}
-                  contexts={getCitationContextsForSource(asset, source.sourceDocumentId)}
-                />
-              ))
-            : <SourceDrawer source={primarySource} claim={firstClaim.claimText} />}
-        </aside>
-      </section>
+
+            <AssetChatPanel ticker={asset.ticker} assetName={asset.name} />
+          </>
+        }
+        deepDiveMode={
+          hasStockPrdSections ? (
+            <AssetStockSections asset={asset} />
+          ) : hasEtfPrdSections ? (
+            <AssetEtfSections asset={asset} />
+          ) : (
+            <section className="plain-panel unknown-state" aria-labelledby="unknowns">
+              <div className="section-heading">
+                <p className="eyebrow">Uncertainty</p>
+                <h2 id="unknowns">Stale and unknown treatment</h2>
+              </div>
+              <div className="state-row">
+                <FreshnessLabel label="Valuation context" value="Unknown in local fixture" state="unknown" />
+                <FreshnessLabel label="Live market quote" value="Unavailable by design" state="stale" />
+              </div>
+              <p>
+                Missing live facts are labeled instead of being filled in from model memory. This skeleton uses local fixture
+                data only.
+              </p>
+            </section>
+          )
+        }
+        sourceTools={
+          hasPrdSections ? (
+            sectionSources.map((source) => (
+              <SourceDrawer
+                key={source.sourceDocumentId}
+                source={source}
+                claim={getCitationContextsForSource(asset, source.sourceDocumentId)[0]?.claimContext ?? firstClaim.claimText}
+                contexts={getCitationContextsForSource(asset, source.sourceDocumentId)}
+              />
+            ))
+          ) : (
+            <SourceDrawer source={primarySource} claim={firstClaim.claimText} />
+          )
+        }
+      />
     </main>
   );
 }
