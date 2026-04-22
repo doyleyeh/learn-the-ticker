@@ -2,87 +2,43 @@
 
 ## Current task
 
+No current task is prepared. The backlog is empty.
+
+## Completed
+
 ### T-032: Add trust metrics event contract for MVP workflows
 
 Goal:
 Add a deterministic backend trust-metrics event contract so MVP workflows can validate and inspect privacy-preserving product/trust event payloads without adding real analytics, persistence, user tracking, live calls, or changes to generated learning output.
 
-Task scope:
-This is a backend/API contract task only. Add typed trust-metrics event models, a pure validation/summarization helper, and deterministic API route(s) for validating event payloads and inspecting the allowed event catalog. The contract should cover the MVP product and trust metrics named in SPEC/PRD/technical design: search/support outcomes, asset-page views, comparison usage, source drawer usage, glossary usage, export usage, chat answer/safety redirect outcomes, citation coverage, unsupported-claim drops, weak citation counts, freshness accuracy, stale-data incidents, and generated-output validation failures. Events must be anonymous metadata only: no raw user questions, generated answers, source passages, source URLs, account IDs, IP addresses, user agents, emails, portfolios, allocation amounts, cookies, or external analytics identifiers. The implementation must not emit events from frontend components, persist events, add analytics SDKs, add dependencies, make live external calls, mutate generated overview/chat/comparison/export payloads, or weaken unsupported/unknown/stale/insufficient-evidence handling.
+Completed:
 
-Allowed files:
+- Added trust-metrics contract models in `backend/models.py`, including workflow areas, event types, metric kind, validation status, asset support states, output kinds, safety status, generated-output metadata, event, validated event, catalog, validation request/response, and summary response models.
+- Added `backend/trust_metrics.py` with schema version `trust-metrics-event-v1`, deterministic default timestamp `1970-01-01T00:00:00Z`, a validation-only product/trust event catalog, and pure helpers for event validation, batch validation, and in-memory summarization.
+- Product event catalog coverage includes search success, unsupported asset outcomes, asset-page views, comparison usage, source drawer usage, glossary usage, export usage, chat follow-up, chat answer outcomes, chat safety redirects, and latency-to-first-meaningful-result metadata.
+- Trust event catalog coverage includes citation coverage, unsupported-claim drops, weak citation counts, generated-output validation failures, safety redirect rate, freshness accuracy, source retrieval failure, hallucination/unsupported-fact incidents, and stale data incidents.
+- Validation normalizes asset tickers and infers support states for cached supported assets, eligible-not-cached assets, recognized unsupported assets, and unknown assets without implying generated output exists for non-generated states.
+- Validation rejects privacy-sensitive or licensing-sensitive field names such as `raw_query`, `question`, `answer`, `source_passage`, `source_url`, `email`, `ip_address`, `user_agent`, `account_id`, `portfolio`, `allocation`, cookies, and external analytics identifiers.
+- Validation rejects inconsistent metric payloads including generated-output availability for eligible-not-cached, unsupported, unknown, or unavailable assets; citation coverage outside `0..1`; negative counts or latency; source/citation IDs when no generated output exists; and freshness/retrieval/stale-data metrics without explicit freshness state.
+- Generated-output metadata can carry compact validation metadata such as output kind, prompt version, model name, schema-valid flag, citation coverage rate, citation IDs, source document IDs, freshness hash/state, safety status, unsupported-claim count, weak-citation count, stale-source count, and latency, while raw generated text, retrieved text, source passages, URLs, prompts, and personal identifiers remain forbidden.
+- Deterministic summarization aggregates accepted events only into event-type counts, workflow-area counts, product/trust metric counts, rates, and latency min/max/average without persistence, clock dependence, analytics services, or network calls.
+- Added validation-only API routes in `backend/main.py`: `GET /api/trust-metrics/catalog` and `POST /api/trust-metrics/validate`; responses explicitly report validation-only behavior and do not store, forward, or enrich events from live services.
+- Added `evals/trust_metrics_eval_cases.yaml` and extended `evals/run_static_evals.py` to verify required models, helpers, product/trust event coverage, forbidden fields, required routes, deterministic validation/summarization, and absence of persistence, analytics SDK, credential, environment, and live-network imports.
+- Added `tests/unit/test_trust_metrics.py` for catalog coverage, anonymous metadata normalization, eligible-not-cached/unsupported/unknown state distinction, generated-output metadata acceptance, privacy/state rejection cases, and deterministic summarization.
+- Extended `tests/integration/test_backend_api.py` for catalog/validation API serialization, accepted and rejected payloads, no-storage response flags, invalid generated-output states, and no mutation of existing overview/chat/comparison/export responses.
+- Extended `tests/unit/test_safety_guardrails.py` so trust-metrics contract and API copy are scanned for forbidden advice-like language.
+- Added `docs/agent-journal/20260422T203211Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- T-032 agent journal records that `git status --short`, focused trust metrics/API/safety pytest, full pytest, safety guardrail pytest, static evals, and the full quality gate passed.
+- T-032 agent journal records focused trust metrics/API/safety pytest as 42 tests passed, full Python pytest as 136 tests passed, safety guardrail pytest as 7 tests passed, static evals as passed, and the full quality gate as passed including Python tests, static evals, frontend smoke checks, TypeScript typecheck, production build, and backend checks.
+- Merged local branch: `agent/T-032-20260422T203211Z`.
+- Remaining documented risk: this is a deterministic validation and summarization contract only; it does not emit analytics from frontend components, persist events, forward payloads, add an analytics SDK, or create a real metrics store.
+- Remaining documented risk: accepted event payloads intentionally carry compact anonymous metadata only; future instrumentation must continue to reject raw questions, generated answers, source passages, source URLs, personal identifiers, cookies, portfolio/allocation details, and external analytics IDs.
+- Remaining documented risk: aggregation is in-memory and count/rate based for contract validation; production observability would need separate privacy and licensing review before any storage or vendor integration is added.
 
-- backend/models.py
-- backend/trust_metrics.py
-- backend/main.py
-- evals/trust_metrics_eval_cases.yaml
-- evals/run_static_evals.py
-- tests/unit/test_trust_metrics.py
-- tests/integration/test_backend_api.py
-- tests/unit/test_safety_guardrails.py
-- docs/agent-journal/
+Completion commits:
 
-Do not change:
-
-- app/
-- components/
-- lib/
-- styles/
-- data/retrieval_fixtures.json
-- package files
-- backend/overview.py
-- backend/chat.py
-- backend/comparison.py
-- backend/export.py
-- backend/ingestion.py
-- backend/providers.py
-- backend/retrieval.py
-- backend/search.py
-- backend/cache.py
-- backend/citations.py
-- backend/safety.py
-- tests/frontend/smoke.mjs
-- tests/unit/test_retrieval_fixtures.py
-- tests/unit/test_cache_contracts.py
-- tests/unit/test_overview_generation.py
-- tests/unit/test_chat_generation.py
-- tests/unit/test_comparison_generation.py
-- tests/unit/test_exports.py
-- backend generated overview/chat/comparison/export behavior, retrieval packs, source fixtures, provider mocks, cache/freshness helpers, search/support classification, ingestion/pre-cache contracts, citation validation behavior, safety redirect behavior, frontend UI, export controls, glossary data, comparison suggestions, package dependencies, environment variables, credentials, Redis, PostgreSQL, persistence, queues, schedulers, analytics SDKs, cookies, authentication, deployment config, or live cache infrastructure
-- generated behavior for cached local assets (`AAPL`, `VOO`, and `QQQ`)
-- generated behavior for unsupported, unknown, ambiguous, unsupported comparison, unavailable comparison, eligible-not-cached, stale, unavailable, permission-limited, queued, failed, running, or pending pre-cache states
-
-Acceptance criteria:
-
-- A trust-metrics contract model exists with a stable schema version, event type, workflow area, deterministic timestamp handling, optional asset/comparison identity fields, optional generated-output metadata, validation status, rejection reasons, and anonymous client-provided event IDs where useful.
-- The event catalog covers product metrics from the PRD and technical design: search success, unsupported asset rate, asset-page usage, comparison usage, source drawer usage, glossary usage, chat follow-up/chat answer outcomes, export usage, and latency-to-first-meaningful-result metadata.
-- The event catalog covers trust metrics from the PRD and technical design: citation coverage rate, unsupported claim rate, weak citation rate, generated-output validation failure rate, safety redirect rate, freshness accuracy, source retrieval failure, hallucination/unsupported factual-output incidents, and stale data incidents.
-- Event payloads that reference an asset normalize tickers and distinguish cached supported, eligible-not-cached, recognized unsupported, and unknown states without implying generated output is available for unsupported, unknown, eligible-not-cached, or unavailable assets.
-- Generated-output validation events can carry metadata such as output kind, prompt version, model name, schema-valid flag, citation coverage rate, citation IDs, source document IDs, freshness hash, freshness state, safety status, unsupported-claim count, weak-citation count, stale-source count, and latency milliseconds, but they must not carry raw generated text, raw retrieved text, full source passages, source URLs, user prompts, or personal identifiers.
-- Source drawer, citation, glossary, export, search, comparison, and chat events use compact workflow metadata only; they must not store raw user questions, generated answers, source passages, export payloads, downloaded content, or unrestricted query text.
-- The validator rejects or marks invalid any payload containing privacy-sensitive or licensing-sensitive fields such as `raw_query`, `question`, `answer`, `source_passage`, `source_url`, `email`, `ip_address`, `user_agent`, `account_id`, `portfolio`, `allocation`, cookies, or external analytics identifiers.
-- The validator rejects inconsistent states, including generated-output availability for unsupported or unknown assets, citation coverage above `1`, negative counts, negative latency, source/citation IDs on unavailable unsupported-output incidents where no generated output exists, and recent-development/freshness metrics without an explicit freshness state.
-- A pure summarization helper can aggregate an in-memory list of accepted events into deterministic counts/rates for the named product/trust metrics without persistence, clock dependence, network calls, or external analytics services.
-- API route coverage exposes deterministic validation/catalog behavior, for example a read-only catalog route and a validate-only POST route that returns normalized accepted/rejected event details and never stores, forwards, or enriches events from live services.
-- Unsupported, unknown, stale, unavailable, insufficient-evidence, safety-redirect, and no-high-signal states remain representable as metric metadata and are not converted into factual claims, generated content, citations, source documents, reusable cache hits, or advice.
-- Safety guardrail coverage confirms trust-metrics model/helper/API copy does not introduce buy/sell/hold recommendations, personalized allocation language, unsupported price targets, tax advice, brokerage/trading instructions, or certainty about future returns.
-- Static evals verify the required trust-metrics models/helpers/routes/catalog, privacy-field rejection, product/trust metric coverage, deterministic summarization, no persistence imports, no analytics SDK imports, no credential/environment dependency, and no live network/client imports.
-- Backend/API tests verify schema validation, accepted and rejected event cases, supported versus unsupported/unknown asset metadata, generated-output validation metadata, deterministic aggregation, API serialization, and no mutation of existing overview/chat/comparison/export responses.
-- Normal CI remains deterministic and does not require provider credentials, market-data calls, SEC calls, ETF issuer calls, news calls, LLM calls, Redis, PostgreSQL, queues, browser automation beyond existing smoke checks, backend server availability, analytics services, cookies, or network access.
-
-Required commands:
-
-- git status --short
-- python3 -m pytest tests/unit/test_trust_metrics.py tests/integration/test_backend_api.py tests/unit/test_safety_guardrails.py -q
-- python3 -m pytest tests -q
-- python3 -m pytest tests/unit/test_safety_guardrails.py -q
-- python3 evals/run_static_evals.py
-- bash scripts/run_quality_gate.sh
-
-Iteration budget:
-Max 2 attempts
-
-## Completed
+- `4e84de1 feat(T-032): add trust metrics event contract for MVP workflows`
+- `3138655 chore(T-032): merge trust metrics event contract for MVP workflows`
 
 ### T-031: Add common comparison suggestions for supported assets
 
