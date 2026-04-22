@@ -2,77 +2,79 @@
 
 ## Current task
 
-### T-031: Add common comparison suggestions for supported assets
+### T-032: Add trust metrics event contract for MVP workflows
 
 Goal:
-Add deterministic common comparison suggestions for fixture-backed supported assets so beginners can discover available local comparisons and understand when comparison evidence is unavailable, without generating unsupported comparisons, adding new asset facts, or making live calls.
+Add a deterministic backend trust-metrics event contract so MVP workflows can validate and inspect privacy-preserving product/trust event payloads without adding real analytics, persistence, user tracking, live calls, or changes to generated learning output.
 
 Task scope:
-This is a frontend UI discovery task only. Add a small deterministic comparison-suggestions helper/component that uses existing local fixture identity and comparison availability to show beginner-friendly comparison entry points on fixture-backed asset pages and, where useful, on unavailable comparison states. The only actionable source-backed local comparison should remain the existing `VOO`/`QQQ` pair in either direction. `AAPL` and any unsupported, unknown, cross-type, missing-pack, or unavailable comparison state must show explicit no-local-comparison-pack or unavailable messaging rather than factual differences, citation chips, source documents, generated output, or new claims. The UI should use relative in-app `/compare?left={left}&right={right}` links, stable markers, accessible labels, and responsive styling. It must not change backend comparison contracts, generated comparison payloads, source fixtures, retrieval packs, provider adapters, cache contracts, export behavior, glossary data, search classification, ingestion/pre-cache behavior, authentication, analytics, deployment config, or package dependencies.
+This is a backend/API contract task only. Add typed trust-metrics event models, a pure validation/summarization helper, and deterministic API route(s) for validating event payloads and inspecting the allowed event catalog. The contract should cover the MVP product and trust metrics named in SPEC/PRD/technical design: search/support outcomes, asset-page views, comparison usage, source drawer usage, glossary usage, export usage, chat answer/safety redirect outcomes, citation coverage, unsupported-claim drops, weak citation counts, freshness accuracy, stale-data incidents, and generated-output validation failures. Events must be anonymous metadata only: no raw user questions, generated answers, source passages, source URLs, account IDs, IP addresses, user agents, emails, portfolios, allocation amounts, cookies, or external analytics identifiers. The implementation must not emit events from frontend components, persist events, add analytics SDKs, add dependencies, make live external calls, mutate generated overview/chat/comparison/export payloads, or weaken unsupported/unknown/stale/insufficient-evidence handling.
 
 Allowed files:
 
-- app/assets/[ticker]/page.tsx
-- app/compare/page.tsx
-- components/ComparisonSuggestions.tsx
-- lib/compareSuggestions.ts
-- styles/globals.css
-- tests/frontend/smoke.mjs
+- backend/models.py
+- backend/trust_metrics.py
+- backend/main.py
+- evals/trust_metrics_eval_cases.yaml
+- evals/run_static_evals.py
+- tests/unit/test_trust_metrics.py
+- tests/integration/test_backend_api.py
 - tests/unit/test_safety_guardrails.py
 - docs/agent-journal/
 
 Do not change:
 
-- backend/
+- app/
+- components/
+- lib/
+- styles/
 - data/retrieval_fixtures.json
-- lib/fixtures.ts
-- lib/compare.ts
-- lib/glossary.ts
-- lib/assetChat.ts
-- lib/exportControls.ts
 - package files
-- evals/
-- tests/integration/test_backend_api.py
+- backend/overview.py
+- backend/chat.py
+- backend/comparison.py
+- backend/export.py
+- backend/ingestion.py
+- backend/providers.py
+- backend/retrieval.py
+- backend/search.py
+- backend/cache.py
+- backend/citations.py
+- backend/safety.py
+- tests/frontend/smoke.mjs
 - tests/unit/test_retrieval_fixtures.py
 - tests/unit/test_cache_contracts.py
 - tests/unit/test_overview_generation.py
 - tests/unit/test_chat_generation.py
 - tests/unit/test_comparison_generation.py
 - tests/unit/test_exports.py
-- backend comparison/export contracts, API response models, API routes, retrieval fixtures, provider mocks, cache/freshness helpers, ingestion/pre-cache contracts, generated overview/chat/comparison/export payload behavior, source fixture content, glossary definitions, search/support classification, or comparison fixture content
-- backend/chat.py
-- backend/comparison.py
-- backend/export.py
-- backend/ingestion.py
-- backend/providers.py
-- backend/overview.py
-- backend/search.py
-- provider network clients, credentials, environment variables, Redis, PostgreSQL, persistence, ingestion workers, real queues, scheduler code, analytics, authentication, deployment config, or live cache infrastructure
-- generated behavior for assets that are not already cached local fixtures (`AAPL`, `VOO`, and `QQQ`)
+- backend generated overview/chat/comparison/export behavior, retrieval packs, source fixtures, provider mocks, cache/freshness helpers, search/support classification, ingestion/pre-cache contracts, citation validation behavior, safety redirect behavior, frontend UI, export controls, glossary data, comparison suggestions, package dependencies, environment variables, credentials, Redis, PostgreSQL, persistence, queues, schedulers, analytics SDKs, cookies, authentication, deployment config, or live cache infrastructure
+- generated behavior for cached local assets (`AAPL`, `VOO`, and `QQQ`)
 - generated behavior for unsupported, unknown, ambiguous, unsupported comparison, unavailable comparison, eligible-not-cached, stale, unavailable, permission-limited, queued, failed, running, or pending pre-cache states
 
 Acceptance criteria:
 
-- Asset pages for fixture-backed supported assets `AAPL`, `VOO`, and `QQQ` render a visible comparison-suggestions area with stable markers for the selected ticker, suggestion state, comparison target, and relative compare URL where a supported local pair exists.
-- `VOO` shows a deterministic suggestion to compare with `QQQ`, and `QQQ` shows a deterministic suggestion to compare with `VOO`, using relative links `/compare?left=VOO&right=QQQ` and `/compare?left=QQQ&right=VOO`.
-- The `VOO`/`QQQ` suggestion copy stays educational and capability-focused: it may say a local source-backed comparison exists and that the comparison page covers benchmark, cost, holdings breadth, and beginner role, but it must not present uncited factual values or personal decision guidance in the suggestion itself.
-- `AAPL` renders an explicit no-local-comparison-pack state with no compare link, no citation chips, no source documents, no generated factual differences, and no invented peer list.
-- The compare page preserves the existing supported `VOO`/`QQQ` and `QQQ`/`VOO` rendered comparison behavior and may add a deterministic suggestions area that links back to available local comparison pairs without changing the comparison output.
-- Unsupported, unknown, cross-type, missing-pack, and unavailable comparison states remain non-generated: they show no factual citation chips, source drawers, generated differences, beginner bottom line, source documents, generated route, chat answer, export payload mutation, or reusable generated-output cache hit.
-- If the compare page shows suggestions from an unavailable state, those suggestions are clearly labeled as existing local fixture examples, not facts about the unsupported or unknown requested assets.
-- Comparison suggestion links are keyboard-usable and include accessible names that identify both tickers and the educational, non-advice purpose of the comparison.
-- Suggestion UI does not obscure citation chips, source drawer access, freshness labels, export controls, glossary access, Beginner Mode, Deep-Dive Mode, comparison content, or chat controls on mobile or desktop.
-- Suggestion UI copy avoids buy/sell/hold recommendations, personalized allocation language, unsupported price targets, tax advice, brokerage/trading instructions, certainty about future returns, and unsupported claims presented as facts.
-- Frontend smoke coverage verifies comparison suggestion markers, `VOO`/`QQQ` bidirectional relative links, `AAPL` no-local-pack state, unavailable comparison guardrail copy, no live external URLs, no `/api/compare` calls from the fixture-backed suggestion UI, no package dependency changes, and no backend comparison-contract edits.
-- Safety guardrail coverage includes the new comparison suggestion component/helper copy and rejects forbidden advice-like language.
-- Normal CI remains deterministic and does not require provider credentials, market-data calls, SEC calls, ETF issuer calls, news calls, LLM calls, Redis, PostgreSQL, queues, browser automation beyond existing smoke checks, backend server availability, or network access.
+- A trust-metrics contract model exists with a stable schema version, event type, workflow area, deterministic timestamp handling, optional asset/comparison identity fields, optional generated-output metadata, validation status, rejection reasons, and anonymous client-provided event IDs where useful.
+- The event catalog covers product metrics from the PRD and technical design: search success, unsupported asset rate, asset-page usage, comparison usage, source drawer usage, glossary usage, chat follow-up/chat answer outcomes, export usage, and latency-to-first-meaningful-result metadata.
+- The event catalog covers trust metrics from the PRD and technical design: citation coverage rate, unsupported claim rate, weak citation rate, generated-output validation failure rate, safety redirect rate, freshness accuracy, source retrieval failure, hallucination/unsupported factual-output incidents, and stale data incidents.
+- Event payloads that reference an asset normalize tickers and distinguish cached supported, eligible-not-cached, recognized unsupported, and unknown states without implying generated output is available for unsupported, unknown, eligible-not-cached, or unavailable assets.
+- Generated-output validation events can carry metadata such as output kind, prompt version, model name, schema-valid flag, citation coverage rate, citation IDs, source document IDs, freshness hash, freshness state, safety status, unsupported-claim count, weak-citation count, stale-source count, and latency milliseconds, but they must not carry raw generated text, raw retrieved text, full source passages, source URLs, user prompts, or personal identifiers.
+- Source drawer, citation, glossary, export, search, comparison, and chat events use compact workflow metadata only; they must not store raw user questions, generated answers, source passages, export payloads, downloaded content, or unrestricted query text.
+- The validator rejects or marks invalid any payload containing privacy-sensitive or licensing-sensitive fields such as `raw_query`, `question`, `answer`, `source_passage`, `source_url`, `email`, `ip_address`, `user_agent`, `account_id`, `portfolio`, `allocation`, cookies, or external analytics identifiers.
+- The validator rejects inconsistent states, including generated-output availability for unsupported or unknown assets, citation coverage above `1`, negative counts, negative latency, source/citation IDs on unavailable unsupported-output incidents where no generated output exists, and recent-development/freshness metrics without an explicit freshness state.
+- A pure summarization helper can aggregate an in-memory list of accepted events into deterministic counts/rates for the named product/trust metrics without persistence, clock dependence, network calls, or external analytics services.
+- API route coverage exposes deterministic validation/catalog behavior, for example a read-only catalog route and a validate-only POST route that returns normalized accepted/rejected event details and never stores, forwards, or enriches events from live services.
+- Unsupported, unknown, stale, unavailable, insufficient-evidence, safety-redirect, and no-high-signal states remain representable as metric metadata and are not converted into factual claims, generated content, citations, source documents, reusable cache hits, or advice.
+- Safety guardrail coverage confirms trust-metrics model/helper/API copy does not introduce buy/sell/hold recommendations, personalized allocation language, unsupported price targets, tax advice, brokerage/trading instructions, or certainty about future returns.
+- Static evals verify the required trust-metrics models/helpers/routes/catalog, privacy-field rejection, product/trust metric coverage, deterministic summarization, no persistence imports, no analytics SDK imports, no credential/environment dependency, and no live network/client imports.
+- Backend/API tests verify schema validation, accepted and rejected event cases, supported versus unsupported/unknown asset metadata, generated-output validation metadata, deterministic aggregation, API serialization, and no mutation of existing overview/chat/comparison/export responses.
+- Normal CI remains deterministic and does not require provider credentials, market-data calls, SEC calls, ETF issuer calls, news calls, LLM calls, Redis, PostgreSQL, queues, browser automation beyond existing smoke checks, backend server availability, analytics services, cookies, or network access.
 
 Required commands:
 
 - git status --short
-- npm test
-- npm run typecheck
-- npm run build
+- python3 -m pytest tests/unit/test_trust_metrics.py tests/integration/test_backend_api.py tests/unit/test_safety_guardrails.py -q
+- python3 -m pytest tests -q
 - python3 -m pytest tests/unit/test_safety_guardrails.py -q
 - python3 evals/run_static_evals.py
 - bash scripts/run_quality_gate.sh
@@ -81,6 +83,34 @@ Iteration budget:
 Max 2 attempts
 
 ## Completed
+
+### T-031: Add common comparison suggestions for supported assets
+
+Goal:
+Add deterministic common comparison suggestions for fixture-backed supported assets so beginners can discover available local comparisons and understand when comparison evidence is unavailable, without generating unsupported comparisons, adding new asset facts, or making live calls.
+
+Completed:
+
+- Added `lib/compareSuggestions.ts` with a deterministic comparison-suggestion model, `local_comparison_available`, `no_local_comparison_pack`, and `unavailable_with_fixture_examples` states, relative `/compare?left={left}&right={right}` URL construction, and local availability checks against the existing compare-page fixture.
+- Kept the only actionable local comparison pair as `VOO`/`QQQ`: `VOO` suggests `QQQ`, `QQQ` suggests `VOO`, and `AAPL` receives an explicit no-local-comparison-pack state with no generated peer list or factual differences.
+- Added `components/ComparisonSuggestions.tsx` with stable markers for suggestion scope, selected ticker, state, requested comparison tickers, target ticker, left/right tickers, compare URL, and no-local-pack state, plus accessible link labels that preserve educational non-advice framing.
+- Wired comparison suggestions into `app/assets/[ticker]/page.tsx` for fixture-backed asset pages and into `app/compare/page.tsx` for supported and unavailable comparison states without changing the generated comparison output.
+- Added responsive comparison-suggestion styling in `styles/globals.css`.
+- Extended `tests/frontend/smoke.mjs` for the new comparison-suggestion component/helper markers, `VOO`/`QQQ` fixture pair coverage, unavailable-state copy, no-local-pack copy, and absence of live external comparison behavior from the suggestion UI.
+- Extended `tests/unit/test_safety_guardrails.py` so comparison suggestion copy is scanned for forbidden advice-like language.
+- Added `docs/agent-journal/20260422T200644Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- T-031 agent journal records that the initial `npm test` failed because a new smoke-test regex marker did not escape literal parentheses, then passed after one focused smoke-test assertion revision.
+- T-031 agent journal records that `npm test`, `npm run typecheck`, `npm run build`, safety guardrail pytest, static evals, and the full quality gate passed.
+- T-031 agent journal records safety guardrail pytest as 6 tests passed and the full quality gate as passed including 123 Python tests, static evals, frontend smoke checks, TypeScript typecheck, production build, and backend checks.
+- Merged local branch: `agent/T-031-20260422T200644Z`.
+- Remaining documented risk: comparison suggestions remain deterministic frontend discovery only; no new comparison evidence, backend contract, retrieval pack, source fixture, generated output, export behavior, analytics, or live-call path was added.
+- Remaining documented risk: `AAPL` and unavailable requested comparison states intentionally show no-local-pack or fixture-example messaging rather than generated peer lists or factual differences.
+- Remaining documented risk: the only actionable local comparison suggestion remains the existing `VOO`/`QQQ` fixture-backed pair in either direction.
+
+Completion commits:
+
+- `5f7d041 feat(T-031): add common comparison suggestions for supported assets`
+- `a2cb228 chore(T-031): merge common comparison suggestions for supported assets`
 
 ### T-030: Add frontend export controls for saved learning outputs
 
@@ -895,4 +925,4 @@ Completion commits:
 
 ## Backlog
 
-### T-032: Add trust metrics event contract for MVP workflows
+Backlog is empty.
