@@ -2,18 +2,20 @@
 
 ## Current task
 
-### T-018: Expand asset overview schema for PRD content sections
+### T-019: Add richer stock and ETF fixture data for MVP content sections
 
 Goal:
-Expand the backend asset overview response schema so supported stock and ETF pages can expose the PRD-required content sections with citations, freshness, and explicit unknown/stale/unavailable states before richer fixtures and frontend rendering are added.
+Add richer deterministic local retrieval fixture evidence so the PRD asset overview sections introduced in T-018 can carry more source-backed stock and ETF content without live calls, frontend rendering changes, or schema changes.
 
 Task scope:
-This is a backend/API schema and deterministic generation task. Add typed overview section models and extend the existing fixture-backed overview generator so `AAPL`, `VOO`, and `QQQ` return structured shared sections plus stock- or ETF-specific PRD sections. Use only existing local retrieval packs and source metadata. When the current fixtures do not contain enough evidence for a section, return a structured unavailable, unknown, stale, or insufficient-evidence state instead of inventing facts. Preserve the existing overview fields for backward compatibility. Do not add richer fixture source data, frontend rendering, provider adapters, live ingestion, embeddings, LLM calls, or export behavior in this task.
+This is a fixture, retrieval-contract, and deterministic overview-generation task. Expand the existing local retrieval fixtures for `AAPL`, `VOO`, and `QQQ` with source documents, source chunks, normalized facts, and explicit evidence gaps that better cover the MVP stock and ETF content sections. Update retrieval and overview generation only as needed to surface the new fixture-backed facts through the existing T-018 `sections` contract. Preserve all product guardrails: citations for important factual claims, section-level freshness or explicit unknown/stale/unavailable states, stable facts separated from recent developments, no live external calls, and educational framing instead of investment advice. Keep this narrow; do not implement frontend rendering, provider adapters, ingestion workers, caching, export, glossary, or new asset coverage.
 
 Allowed files:
 
-- backend/models.py
+- data/retrieval_fixtures.json
+- backend/retrieval.py
 - backend/overview.py
+- tests/unit/test_retrieval_fixtures.py
 - tests/unit/test_overview_generation.py
 - tests/unit/test_safety_guardrails.py
 - tests/integration/test_backend_api.py
@@ -22,6 +24,7 @@ Allowed files:
 
 Do not change:
 
+- backend/models.py
 - app/
 - components/
 - lib/
@@ -29,38 +32,37 @@ Do not change:
 - backend/chat.py
 - backend/comparison.py
 - backend/citations.py
-- backend/retrieval.py
 - backend/ingestion.py
 - backend/search.py
-- data/retrieval_fixtures.json
 - package files
 - docs other than the agent journal
 - provider adapter, ingestion worker, queue, cache, or export implementations
 - frontend asset-page rendering
 - generated chat or comparison behavior
-- generated behavior for unsupported, unknown, or eligible-not-cached assets
+- generated behavior for unsupported, unknown, ambiguous, or eligible-not-cached assets
+- asset coverage beyond the existing `AAPL`, `VOO`, and `QQQ` fixture-backed generated overview assets
 
 Acceptance criteria:
 
-- Add typed overview section models with stable fields for section ID, title, section type, asset-type applicability, beginner-mode summary or items, metrics where applicable, citation IDs, source document IDs where applicable, freshness state, as-of or retrieved dates where available, evidence state, and limitations or unknown-state copy.
-- `OverviewResponse` keeps the existing `beginner_summary`, `top_risks`, `recent_developments`, `suitability_summary`, `claims`, `citations`, and `source_documents` fields so current backend and frontend callers remain compatible.
-- Supported stock overview responses expose structured sections for at least business overview, products or services, strengths, financial quality, valuation context, top risks, recent developments, and educational suitability.
-- Supported ETF overview responses expose structured sections for at least fund objective or role, holdings or exposure, construction or methodology, cost and trading context, ETF-specific risks, similar assets or simpler alternatives, recent developments, and educational suitability.
-- New section content for existing supported fixtures uses only current local retrieval-pack facts, chunks, recent-development entries, citations, and source documents.
-- Sections that lack current fixture evidence return explicit unavailable, unknown, stale, mixed, or insufficient-evidence states with no invented metrics, holdings, alternatives, source documents, or citations.
-- Important factual claims in new supported sections either carry citation IDs that validate against the same asset knowledge pack or are represented as explicit evidence gaps.
-- Recent-development section data remains separate from stable asset basics and includes event date, source/as-of or retrieved-date context where the current models provide it.
-- Top risks still expose exactly three items first for supported generated overviews.
-- Unsupported assets such as `BTC`, leveraged/inverse ETF examples, unknown tickers, and eligible-not-cached assets must not receive generated PRD sections, generated factual claims, citations, source documents, generated routes, chat answers, or comparison output.
-- New copy remains educational and avoids buy/sell/hold, allocation, price-target, tax, brokerage, or personalized recommendation language.
-- Backend API tests verify `/api/assets/{ticker}/overview` serializes the new section schema for stock and ETF fixtures while preserving unsupported and unknown empty states.
-- Static evals cover stock section presence, ETF section presence, same-asset citation binding for new section claims, explicit evidence-gap handling, stable/recent separation, top-risk count, safety copy, and absence of live external calls.
+- Expand `data/retrieval_fixtures.json` for `AAPL` with same-asset source chunks and normalized facts that support richer stock PRD sections beyond primary business and top risks, including at least products/services detail, one source-backed strength or business-quality point, one financial-quality metric or trend item, and one valuation-context metric or explicit sourced valuation limitation.
+- Expand `data/retrieval_fixtures.json` for both `VOO` and `QQQ` with same-asset source chunks and normalized facts that support richer ETF PRD sections beyond benchmark, expense ratio, holdings count, and top risks, including at least holdings/exposure detail, construction or methodology detail, and one cost/trading-context metric or explicit sourced trading-data limitation.
+- Every new normalized fact references an existing or newly added source document and source chunk for the same asset; fixture validation rejects wrong-asset references, dangling source IDs, dangling chunk IDs, and duplicate IDs.
+- New fixture source metadata includes source type, publisher, URL or local fixture URL, published/as-of date where applicable, retrieved timestamp, freshness state, and official-source status consistent with the existing fixture conventions.
+- Existing overview sections consume the new fixture-backed facts where appropriate and reduce `unknown`, `unavailable`, `mixed`, `stale`, or `insufficient_evidence` states only when the new fixture evidence directly supports the section item or metric.
+- Fields that still lack fixture evidence remain explicit gaps with no invented metrics, holdings, alternatives, source documents, or citations.
+- Important factual claims introduced through the richer section content carry citation IDs and source document IDs that validate against the same asset knowledge pack.
+- Recent-development fixture entries and overview sections remain separate from stable asset facts; do not turn recent-review fixture text into canonical business, holdings, valuation, or cost facts.
+- Top risks still expose exactly three items first for each supported generated overview.
+- Unsupported assets such as `BTC`, leveraged/inverse ETF examples, unknown tickers, ambiguous search results, and eligible-not-cached assets such as `SPY` and `MSFT` must not receive generated overview sections, generated factual claims, citations, source documents, generated routes, chat answers, or comparison output as part of this task.
+- New fixture and overview copy remains educational and avoids buy/sell/hold, allocation, price-target, tax, brokerage, or personalized recommendation language.
+- Backend API tests verify `/api/assets/{ticker}/overview` serializes the richer stock and ETF section content while preserving unsupported and unknown empty states.
+- Static evals cover richer stock fixture coverage, richer ETF fixture coverage, same-asset citation binding for new section items and metrics, explicit residual evidence gaps, stable/recent separation, top-risk count, safety copy, and absence of live external calls.
 - Normal CI remains deterministic and does not require provider credentials, market-data calls, news calls, LLM calls, Redis, PostgreSQL, queues, or network access.
 
 Required commands:
 
 - git status --short
-- python3 -m pytest tests/unit/test_overview_generation.py tests/unit/test_safety_guardrails.py tests/integration/test_backend_api.py -q
+- python3 -m pytest tests/unit/test_retrieval_fixtures.py tests/unit/test_overview_generation.py tests/unit/test_safety_guardrails.py tests/integration/test_backend_api.py -q
 - python3 -m pytest tests -q
 - python3 evals/run_static_evals.py
 - bash scripts/run_quality_gate.sh
@@ -69,6 +71,36 @@ Iteration budget:
 Max 2 attempts
 
 ## Completed
+
+### T-018: Expand asset overview schema for PRD content sections
+
+Goal:
+Expand the backend asset overview response schema so supported stock and ETF pages can expose the PRD-required content sections with citations, freshness, and explicit unknown/stale/unavailable states before richer fixtures and frontend rendering are added.
+
+Completed:
+
+- Added overview section contract models in `backend/models.py`, including `EvidenceState`, `OverviewSectionType`, `OverviewMetric`, `OverviewSectionItem`, and `OverviewSection`.
+- Extended `OverviewResponse` with a `sections` field while preserving the existing `beginner_summary`, `top_risks`, `recent_developments`, `suitability_summary`, `claims`, `citations`, and `source_documents` fields.
+- Updated deterministic overview generation in `backend/overview.py` so fixture-backed stock overview responses expose `business_overview`, `products_services`, `strengths`, `financial_quality`, `valuation_context`, `top_risks`, `recent_developments`, and `educational_suitability` sections.
+- Updated deterministic overview generation so fixture-backed ETF overview responses expose `fund_objective_role`, `holdings_exposure`, `construction_methodology`, `cost_trading_context`, `etf_specific_risks`, `similar_assets_alternatives`, `recent_developments`, and `educational_suitability` sections.
+- Added section-level citation IDs, source document IDs, freshness state, evidence state, as-of dates, retrieved timestamps, limitations, items, and metrics where supported by the existing local retrieval packs.
+- Represented missing fixture evidence as explicit `unknown`, `unavailable`, `stale`, `mixed`, `insufficient_evidence`, or `no_major_recent_development` states instead of inventing unsupported strengths, financial-quality metrics, valuation metrics, holdings details, trading metrics, alternatives, or recent events.
+- Kept recent-development section data separate from stable asset basics, including source/as-of or retrieved-date context where the existing models provide it.
+- Preserved exactly three top risks first for supported generated overviews.
+- Kept unsupported and unknown assets such as `BTC` and `ZZZZ` blocked from generated PRD sections, generated factual claims, citations, source documents, and generated routes.
+- Extended backend API tests so `/api/assets/VOO/overview` and `/api/assets/AAPL/overview` serialize the new section schema while unsupported and unknown overview responses keep empty `sections`.
+- Extended overview unit tests and static evals for stock section presence, ETF section presence, same-asset citation/source binding for section items and metrics, explicit evidence-gap handling, stable/recent separation, top-risk count, safety copy, and absence of live external calls.
+- Added `docs/agent-journal/20260422T050742Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- T-018 agent journal records that `git status --short`, focused backend/API/safety pytest, full pytest, static evals, and the full quality gate passed.
+- T-018 agent journal records focused backend/API/safety pytest as 29 passed, the full pytest suite as 73 passed, static evals as passed, and the quality gate as passed including Python tests, static evals, frontend smoke checks, typecheck, production build, and backend checks.
+- Remaining documented risk: the new overview sections are deterministic and fixture-backed only; they do not add richer source data, provider adapters, live ingestion, embeddings, LLM calls, or frontend rendering.
+- Remaining documented risk: several PRD sections intentionally return `unknown`, `unavailable`, `stale`, `mixed`, or `insufficient_evidence` states because current local packs do not contain enough evidence for detailed strengths, financial quality, holdings exposure, trading metrics, or alternatives.
+- Remaining documented risk: unsupported, unknown, and eligible-not-cached assets remain blocked from generated PRD sections, citations, source documents, chat answers, comparisons, and generated routes.
+
+Completion commits:
+
+- `a7564f4 feat(T-018): expand asset overview schema for PRD content sections`
+- `d8c52a9 chore(T-018): merge expand asset overview schema for PRD content sections`
 
 ### T-017: Add on-demand ingestion job-state contract
 
@@ -491,7 +523,6 @@ Completion commits:
 
 ## Backlog
 
-### T-019: Add richer stock and ETF fixture data for MVP content sections
 ### T-020: Render stock PRD sections on asset pages
 ### T-021: Render ETF PRD sections on asset pages
 ### T-022: Add Beginner Mode and Deep-Dive Mode page structure
