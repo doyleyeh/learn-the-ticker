@@ -2,21 +2,20 @@
 
 ## Current task
 
-### T-030: Add frontend export controls for saved learning outputs
+### T-031: Add common comparison suggestions for supported assets
 
 Goal:
-Add deterministic frontend export controls so users can save fixture-backed asset-page output, asset source lists, comparison output, and chat transcripts through the existing export API contracts, while preserving citations, freshness labels, source metadata, educational disclaimers, licensing scope, unsupported/unavailable states, and no-live-call behavior.
+Add deterministic common comparison suggestions for fixture-backed supported assets so beginners can discover available local comparisons and understand when comparison evidence is unavailable, without generating unsupported comparisons, adding new asset facts, or making live calls.
 
 Task scope:
-This is a frontend UI wiring task only. Build small, reusable export controls around the existing backend export endpoints from T-024: asset-page export, asset source-list export, comparison export, and chat transcript export. The controls should appear in the existing fixture-backed asset page, comparison page, and chat panel flows, using relative local API paths and deterministic UI state. The task may add a small frontend helper/component for export URLs, download/copy affordances, loading/error/success states where needed, accessible labels, and smoke/safety coverage. It must not change backend export schemas, generated export payload content, source fixture content, retrieval packs, provider adapters, cache contracts, ingestion jobs, generated overview/comparison/chat behavior, glossary data, search behavior, authentication, analytics, deployment config, or package dependencies.
+This is a frontend UI discovery task only. Add a small deterministic comparison-suggestions helper/component that uses existing local fixture identity and comparison availability to show beginner-friendly comparison entry points on fixture-backed asset pages and, where useful, on unavailable comparison states. The only actionable source-backed local comparison should remain the existing `VOO`/`QQQ` pair in either direction. `AAPL` and any unsupported, unknown, cross-type, missing-pack, or unavailable comparison state must show explicit no-local-comparison-pack or unavailable messaging rather than factual differences, citation chips, source documents, generated output, or new claims. The UI should use relative in-app `/compare?left={left}&right={right}` links, stable markers, accessible labels, and responsive styling. It must not change backend comparison contracts, generated comparison payloads, source fixtures, retrieval packs, provider adapters, cache contracts, export behavior, glossary data, search classification, ingestion/pre-cache behavior, authentication, analytics, deployment config, or package dependencies.
 
 Allowed files:
 
 - app/assets/[ticker]/page.tsx
 - app/compare/page.tsx
-- components/AssetChatPanel.tsx
-- components/ExportControls.tsx
-- lib/exportControls.ts
+- components/ComparisonSuggestions.tsx
+- lib/compareSuggestions.ts
 - styles/globals.css
 - tests/frontend/smoke.mjs
 - tests/unit/test_safety_guardrails.py
@@ -30,16 +29,17 @@ Do not change:
 - lib/compare.ts
 - lib/glossary.ts
 - lib/assetChat.ts
+- lib/exportControls.ts
 - package files
 - evals/
-- tests/unit/test_exports.py
 - tests/integration/test_backend_api.py
 - tests/unit/test_retrieval_fixtures.py
 - tests/unit/test_cache_contracts.py
 - tests/unit/test_overview_generation.py
 - tests/unit/test_chat_generation.py
 - tests/unit/test_comparison_generation.py
-- backend export contracts, API response models, API routes, retrieval fixtures, provider mocks, cache/freshness helpers, ingestion/pre-cache contracts, generated overview/chat/comparison/export payload behavior, source fixture content, glossary definitions, search/support classification, or comparison fixture content
+- tests/unit/test_exports.py
+- backend comparison/export contracts, API response models, API routes, retrieval fixtures, provider mocks, cache/freshness helpers, ingestion/pre-cache contracts, generated overview/chat/comparison/export payload behavior, source fixture content, glossary definitions, search/support classification, or comparison fixture content
 - backend/chat.py
 - backend/comparison.py
 - backend/export.py
@@ -53,20 +53,18 @@ Do not change:
 
 Acceptance criteria:
 
-- Asset pages for fixture-backed supported assets `AAPL`, `VOO`, and `QQQ` render a visible export/save area with deterministic controls for asset-page export and source-list export.
-- Asset export controls use the existing relative API routes `/api/assets/{ticker}/export?export_format=markdown` and `/api/assets/{ticker}/sources/export?export_format=markdown`; they must not fetch live external URLs or require provider credentials.
-- Asset export UI clearly preserves the trust context users need before saving: citations, source metadata, freshness/as-of dates, licensing scope, and the educational disclaimer are represented in labels, helper copy, or control metadata without adding new asset facts.
-- Comparison pages render export controls for supported local comparison output using the existing relative route `/api/compare/export?left_ticker={left}&right_ticker={right}&export_format=markdown`.
-- Comparison export controls are shown for the deterministic `VOO`/`QQQ` and `QQQ`/`VOO` comparison fixture paths and preserve unavailable-state handling for unsupported, unknown, cross-type, or missing comparison packs without factual citation chips or invented differences.
-- The asset chat panel exposes a chat transcript export control after a submitted question has a deterministic response, using the existing relative `POST /api/assets/{ticker}/chat/export` contract with the current question and `markdown` format.
-- Chat transcript export controls preserve educational redirect, unsupported/unknown, and insufficient-evidence states; advice-like transcript export must not add factual citations or source documents for redirected answers.
-- Export controls include accessible names, stable frontend markers, keyboard-usable buttons or links, and responsive styling that does not obscure citation chips, source drawer access, freshness labels, glossary access, Beginner Mode, Deep-Dive Mode, comparison content, or chat controls.
-- Export UI copy stays educational and must not use buy/sell/hold recommendations, personalized allocation language, unsupported price targets, tax advice, brokerage/trading instructions, or certainty about future returns.
-- Export controls must not expose full source documents, raw paid-news articles, restricted provider payloads, provider credentials, environment secrets, or live external download URLs.
-- Supported fixture export controls should make the existing backend-export disclaimer/licensing boundaries visible enough for beginners to understand that saved output is educational and source-backed.
-- Unsupported, unknown, eligible-not-cached, and unavailable export paths remain non-generated: no generated page, chat answer, comparison, citations, source documents, or reusable generated-output cache hit is created by the frontend controls.
-- Frontend smoke coverage verifies asset export controls, source-list export controls, comparison export controls, chat transcript export controls, relative API paths, stable markers, unsupported/unavailable guardrail copy, no live external calls, no package dependency changes, and no backend export-contract edits.
-- Safety guardrail coverage includes any new frontend export components or helper copy and rejects forbidden advice-like language.
+- Asset pages for fixture-backed supported assets `AAPL`, `VOO`, and `QQQ` render a visible comparison-suggestions area with stable markers for the selected ticker, suggestion state, comparison target, and relative compare URL where a supported local pair exists.
+- `VOO` shows a deterministic suggestion to compare with `QQQ`, and `QQQ` shows a deterministic suggestion to compare with `VOO`, using relative links `/compare?left=VOO&right=QQQ` and `/compare?left=QQQ&right=VOO`.
+- The `VOO`/`QQQ` suggestion copy stays educational and capability-focused: it may say a local source-backed comparison exists and that the comparison page covers benchmark, cost, holdings breadth, and beginner role, but it must not present uncited factual values or personal decision guidance in the suggestion itself.
+- `AAPL` renders an explicit no-local-comparison-pack state with no compare link, no citation chips, no source documents, no generated factual differences, and no invented peer list.
+- The compare page preserves the existing supported `VOO`/`QQQ` and `QQQ`/`VOO` rendered comparison behavior and may add a deterministic suggestions area that links back to available local comparison pairs without changing the comparison output.
+- Unsupported, unknown, cross-type, missing-pack, and unavailable comparison states remain non-generated: they show no factual citation chips, source drawers, generated differences, beginner bottom line, source documents, generated route, chat answer, export payload mutation, or reusable generated-output cache hit.
+- If the compare page shows suggestions from an unavailable state, those suggestions are clearly labeled as existing local fixture examples, not facts about the unsupported or unknown requested assets.
+- Comparison suggestion links are keyboard-usable and include accessible names that identify both tickers and the educational, non-advice purpose of the comparison.
+- Suggestion UI does not obscure citation chips, source drawer access, freshness labels, export controls, glossary access, Beginner Mode, Deep-Dive Mode, comparison content, or chat controls on mobile or desktop.
+- Suggestion UI copy avoids buy/sell/hold recommendations, personalized allocation language, unsupported price targets, tax advice, brokerage/trading instructions, certainty about future returns, and unsupported claims presented as facts.
+- Frontend smoke coverage verifies comparison suggestion markers, `VOO`/`QQQ` bidirectional relative links, `AAPL` no-local-pack state, unavailable comparison guardrail copy, no live external URLs, no `/api/compare` calls from the fixture-backed suggestion UI, no package dependency changes, and no backend comparison-contract edits.
+- Safety guardrail coverage includes the new comparison suggestion component/helper copy and rejects forbidden advice-like language.
 - Normal CI remains deterministic and does not require provider credentials, market-data calls, SEC calls, ETF issuer calls, news calls, LLM calls, Redis, PostgreSQL, queues, browser automation beyond existing smoke checks, backend server availability, or network access.
 
 Required commands:
@@ -76,7 +74,6 @@ Required commands:
 - npm run typecheck
 - npm run build
 - python3 -m pytest tests/unit/test_safety_guardrails.py -q
-- python3 -m pytest tests/unit/test_exports.py tests/integration/test_backend_api.py -q
 - python3 evals/run_static_evals.py
 - bash scripts/run_quality_gate.sh
 
@@ -84,6 +81,34 @@ Iteration budget:
 Max 2 attempts
 
 ## Completed
+
+### T-030: Add frontend export controls for saved learning outputs
+
+Goal:
+Add deterministic frontend export controls so users can save fixture-backed asset-page output, asset source lists, comparison output, and chat transcripts through the existing export API contracts, while preserving citations, freshness labels, source metadata, educational disclaimers, licensing scope, unsupported/unavailable states, and no-live-call behavior.
+
+Completed:
+
+- Added reusable frontend export URL/request helpers in `lib/exportControls.ts` for asset-page, asset source-list, comparison, and chat transcript exports using relative local API paths.
+- Added `components/ExportControls.tsx` with accessible link controls for GET exports and a deterministic POST/copy flow for chat transcript Markdown exports.
+- Wired fixture-backed asset pages in `app/assets/[ticker]/page.tsx` so `AAPL`, `VOO`, and `QQQ` show asset-page and source-list export controls with citation, freshness, disclaimer, and licensing context.
+- Wired supported `VOO`/`QQQ` and `QQQ`/`VOO` comparison pages in `app/compare/page.tsx` to show comparison export controls, while unavailable comparison states keep export controls hidden and preserve non-generated guardrail copy.
+- Added chat transcript export controls in `components/AssetChatPanel.tsx` after a deterministic chat answer is returned, preserving educational redirect, unsupported/unknown, and insufficient-evidence states through the backend export contract.
+- Added responsive export-control styling in `styles/globals.css`.
+- Extended `tests/frontend/smoke.mjs` for export markers, relative API paths, no live external URLs, unavailable export states, package dependency shape, and backend export-route presence.
+- Extended `tests/unit/test_safety_guardrails.py` for advice-safe export helper and component copy.
+- Added `docs/agent-journal/20260422T193929Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- T-030 agent journal records that `git status --short`, `npm test`, `npm run typecheck`, `npm run build`, safety guardrail pytest, focused export/API pytest, static evals, and the full quality gate passed.
+- T-030 agent journal records safety guardrail pytest as 5 tests passed, focused export/API pytest as 29 tests passed, static evals as passed, and the full quality gate as passed including 122 Python tests, static evals, frontend smoke checks, TypeScript typecheck, production build, and backend checks.
+- Merged local branch: `agent/T-030-20260422T193929Z`.
+- Remaining documented risk: export controls open or prepare existing JSON/Markdown-style backend export payloads; this task does not add PDF generation, file storage, browser file naming, authentication, analytics, or persistence.
+- Remaining documented risk: chat transcript export still depends on the local backend route being available at runtime; normal CI remains deterministic and uses no provider credentials or live external calls.
+- Remaining documented risk: licensing copy is frontend trust-context UI only; final provider-specific redistribution rules still need review before paid or restricted provider content is exposed.
+
+Completion commits:
+
+- `982b1a2 feat(T-030): add frontend export controls for saved learning outputs`
+- `fbc5484 chore(T-030): merge frontend export controls for saved learning outputs`
 
 ### T-029: Add deterministic asset knowledge-pack builder
 
@@ -870,5 +895,4 @@ Completion commits:
 
 ## Backlog
 
-### T-031: Add common comparison suggestions for supported assets
 ### T-032: Add trust metrics event contract for MVP workflows
