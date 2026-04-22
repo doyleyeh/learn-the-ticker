@@ -5,10 +5,12 @@ import { AssetEtfSections } from "../../../components/AssetEtfSections";
 import { AssetStockSections } from "../../../components/AssetStockSections";
 import { AssetModeLayout } from "../../../components/AssetModeLayout";
 import { CitationChip } from "../../../components/CitationChip";
+import { ExportControls } from "../../../components/ExportControls";
 import { FreshnessLabel } from "../../../components/FreshnessLabel";
 import { GlossaryPopover } from "../../../components/GlossaryPopover";
 import { SourceDrawer } from "../../../components/SourceDrawer";
 import { beginnerGlossaryGroupsByAssetType } from "../../../lib/glossary";
+import { assetPageExportUrl, assetSourceListExportUrl } from "../../../lib/exportControls";
 import {
   assetFixtures,
   citationLabel,
@@ -223,18 +225,40 @@ export default async function AssetPage({ params }: AssetPageProps) {
           )
         }
         sourceTools={
-          hasPrdSections ? (
-            sectionSources.map((source) => (
-              <SourceDrawer
-                key={source.sourceDocumentId}
-                source={source}
-                claim={getCitationContextsForSource(asset, source.sourceDocumentId)[0]?.claimContext ?? firstClaim.claimText}
-                contexts={getCitationContextsForSource(asset, source.sourceDocumentId)}
-              />
-            ))
-          ) : (
-            <SourceDrawer source={primarySource} claim={firstClaim.claimText} />
-          )
+          <>
+            <ExportControls
+              title={`Save ${asset.ticker} learning output`}
+              marker={`asset-export-${asset.ticker.toLowerCase()}`}
+              controls={[
+                {
+                  kind: "link",
+                  controlId: "asset-page",
+                  label: "Open asset-page Markdown export",
+                  href: assetPageExportUrl(asset.ticker),
+                  helper: "Includes page sections, citation IDs, freshness labels, disclaimer, and licensing scope."
+                },
+                {
+                  kind: "link",
+                  controlId: "asset-source-list",
+                  label: "Open source-list Markdown export",
+                  href: assetSourceListExportUrl(asset.ticker),
+                  helper: "Includes source titles, publishers, URLs, dates, retrieved timestamps, and allowed excerpts."
+                }
+              ]}
+            />
+            {hasPrdSections ? (
+              sectionSources.map((source) => (
+                <SourceDrawer
+                  key={source.sourceDocumentId}
+                  source={source}
+                  claim={getCitationContextsForSource(asset, source.sourceDocumentId)[0]?.claimContext ?? firstClaim.claimText}
+                  contexts={getCitationContextsForSource(asset, source.sourceDocumentId)}
+                />
+              ))
+            ) : (
+              <SourceDrawer source={primarySource} claim={firstClaim.claimText} />
+            )}
+          </>
         }
       />
     </main>

@@ -1,7 +1,9 @@
 import { CitationChip } from "../../components/CitationChip";
 import { ComparisonSourceDetails } from "../../components/ComparisonSourceDetails";
+import { ExportControls } from "../../components/ExportControls";
 import { FreshnessLabel } from "../../components/FreshnessLabel";
 import { getComparePageFixture, getComparisonCitationMetadata, type CompareAssetIdentity } from "../../lib/compare";
+import { comparisonExportUrl } from "../../lib/exportControls";
 import { getAssetFixture, type AssetFixture } from "../../lib/fixtures";
 
 type ComparePageProps = {
@@ -50,6 +52,21 @@ export default async function ComparePage({ searchParams }: ComparePageProps) {
 
         {hasSourceBackedComparison && bottomLine ? (
           <>
+            <ExportControls
+              title={`Save ${comparison.leftAsset.ticker} vs ${comparison.rightAsset.ticker} comparison`}
+              marker={`comparison-export-${comparison.leftAsset.ticker.toLowerCase()}-${comparison.rightAsset.ticker.toLowerCase()}`}
+              helper="Save the deterministic comparison export with cited differences, source metadata, freshness context, the educational disclaimer, and licensing scope."
+              controls={[
+                {
+                  kind: "link",
+                  controlId: "comparison",
+                  label: "Open comparison Markdown export",
+                  href: comparisonExportUrl(comparison.leftAsset.ticker, comparison.rightAsset.ticker),
+                  helper: "Uses the local comparison export route for this supported fixture-backed pair."
+                }
+              ]}
+            />
+
             <section className="plain-panel" aria-labelledby="differences">
               <div className="section-heading">
                 <p className="eyebrow">Key differences</p>
@@ -112,6 +129,9 @@ export default async function ComparePage({ searchParams }: ComparePageProps) {
             <p className="notice-text">
               No factual citation chips or source drawers are shown because this local fixture has no source-backed
               comparison pack for the requested pair.
+            </p>
+            <p className="source-gap-note" data-export-unavailable-state>
+              Export controls stay unavailable until a deterministic local comparison pack exists for both requested assets.
             </p>
           </section>
         )}

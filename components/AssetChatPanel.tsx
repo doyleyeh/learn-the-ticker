@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
+import { ExportControls } from "./ExportControls";
 import { postAssetChat, type AssetChatResponse, type ChatSourceDocument } from "../lib/assetChat";
 
 type AssetChatPanelProps = {
@@ -62,6 +63,7 @@ export function AssetChatPanel({ ticker, assetName }: AssetChatPanelProps) {
   const [question, setQuestion] = useState("");
   const [requestState, setRequestState] = useState<ChatRequestState>("empty");
   const [response, setResponse] = useState<AssetChatResponse | null>(null);
+  const [submittedQuestion, setSubmittedQuestion] = useState("");
   const [error, setError] = useState("");
 
   const starterPrompts = useMemo(() => starterPromptsForAsset(ticker, assetName), [assetName, ticker]);
@@ -79,6 +81,7 @@ export function AssetChatPanel({ ticker, assetName }: AssetChatPanelProps) {
     try {
       const nextResponse = await postAssetChat(ticker, trimmed);
       setResponse(nextResponse);
+      setSubmittedQuestion(trimmed);
       setRequestState("answered");
     } catch (caught) {
       setResponse(null);
@@ -226,6 +229,25 @@ export function AssetChatPanel({ ticker, assetName }: AssetChatPanelProps) {
                 <ChatSourceDetails key={sourceDocument.citation_id} sourceDocument={sourceDocument} />
               ))}
             </div>
+          ) : null}
+
+          {submittedQuestion ? (
+            <ExportControls
+              title="Save chat transcript"
+              marker={`chat-export-${ticker.toLowerCase()}`}
+              helper="Save the current chat transcript with the backend safety label, uncertainty notes, citation metadata when present, the educational disclaimer, and licensing scope."
+              controls={[
+                {
+                  kind: "chat-transcript",
+                  controlId: "chat-transcript",
+                  label: "Prepare transcript Markdown",
+                  ticker,
+                  question: submittedQuestion,
+                  helper:
+                    "Uses POST /api/assets/{ticker}/chat/export with this submitted question and the local Markdown format."
+                }
+              ]}
+            />
           ) : null}
         </article>
       ) : null}
