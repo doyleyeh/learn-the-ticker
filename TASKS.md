@@ -2,68 +2,68 @@
 
 ## Current task
 
-### T-019: Add richer stock and ETF fixture data for MVP content sections
+### T-020: Render stock PRD sections on asset pages
 
 Goal:
-Add richer deterministic local retrieval fixture evidence so the PRD asset overview sections introduced in T-018 can carry more source-backed stock and ETF content without live calls, frontend rendering changes, or schema changes.
+Render the richer stock PRD overview sections for the local `AAPL` asset page so beginners can inspect stock business, products/services, strengths, financial quality, valuation-context limitations, top risks, recent developments, educational suitability, citations, and freshness states in the frontend without live calls.
 
 Task scope:
-This is a fixture, retrieval-contract, and deterministic overview-generation task. Expand the existing local retrieval fixtures for `AAPL`, `VOO`, and `QQQ` with source documents, source chunks, normalized facts, and explicit evidence gaps that better cover the MVP stock and ETF content sections. Update retrieval and overview generation only as needed to surface the new fixture-backed facts through the existing T-018 `sections` contract. Preserve all product guardrails: citations for important factual claims, section-level freshness or explicit unknown/stale/unavailable states, stable facts separated from recent developments, no live external calls, and educational framing instead of investment advice. Keep this narrow; do not implement frontend rendering, provider adapters, ingestion workers, caching, export, glossary, or new asset coverage.
+This is a frontend rendering and deterministic fixture task for stock asset pages only. Add a narrow stock-section UI path for `AAPL` using local frontend fixtures that mirror the already completed backend overview section contract where needed. The page should show stock PRD sections with visible citation chips, source metadata access, freshness or unknown/unavailable states, residual evidence gaps, and stable/recent separation. Preserve the existing asset-page route and deterministic local behavior. Keep this task limited to stock rendering; do not render ETF PRD sections yet, do not add Beginner Mode or Deep-Dive Mode structure, do not call backend APIs from the page, and do not change retrieval, overview generation, chat, comparison, ingestion, providers, caching, export, or glossary behavior.
 
 Allowed files:
 
-- data/retrieval_fixtures.json
-- backend/retrieval.py
-- backend/overview.py
-- tests/unit/test_retrieval_fixtures.py
-- tests/unit/test_overview_generation.py
+- app/assets/[ticker]/page.tsx
+- components/AssetStockSections.tsx
+- components/SourceDrawer.tsx
+- lib/fixtures.ts
+- tests/frontend/smoke.mjs
 - tests/unit/test_safety_guardrails.py
-- tests/integration/test_backend_api.py
-- evals/run_static_evals.py
+- styles/globals.css
 - docs/agent-journal/
 
 Do not change:
 
-- backend/models.py
-- app/
-- components/
-- lib/
-- styles/
-- backend/chat.py
-- backend/comparison.py
-- backend/citations.py
-- backend/ingestion.py
-- backend/search.py
+- backend/
+- data/retrieval_fixtures.json
+- evals/
+- app/compare/
+- app/page.tsx
+- components/AssetChatPanel.tsx
+- components/ComparisonSourceDetails.tsx
+- components/SearchBox.tsx
+- lib/assetChat.ts
+- lib/compare.ts
+- lib/glossary.ts
 - package files
-- docs other than the agent journal
-- provider adapter, ingestion worker, queue, cache, or export implementations
-- frontend asset-page rendering
-- generated chat or comparison behavior
+- provider adapters, ingestion workers, queues, caches, export implementations, or API routes
+- ETF PRD section rendering for `VOO` or `QQQ`; that remains for T-021
 - generated behavior for unsupported, unknown, ambiguous, or eligible-not-cached assets
-- asset coverage beyond the existing `AAPL`, `VOO`, and `QQQ` fixture-backed generated overview assets
 
 Acceptance criteria:
 
-- Expand `data/retrieval_fixtures.json` for `AAPL` with same-asset source chunks and normalized facts that support richer stock PRD sections beyond primary business and top risks, including at least products/services detail, one source-backed strength or business-quality point, one financial-quality metric or trend item, and one valuation-context metric or explicit sourced valuation limitation.
-- Expand `data/retrieval_fixtures.json` for both `VOO` and `QQQ` with same-asset source chunks and normalized facts that support richer ETF PRD sections beyond benchmark, expense ratio, holdings count, and top risks, including at least holdings/exposure detail, construction or methodology detail, and one cost/trading-context metric or explicit sourced trading-data limitation.
-- Every new normalized fact references an existing or newly added source document and source chunk for the same asset; fixture validation rejects wrong-asset references, dangling source IDs, dangling chunk IDs, and duplicate IDs.
-- New fixture source metadata includes source type, publisher, URL or local fixture URL, published/as-of date where applicable, retrieved timestamp, freshness state, and official-source status consistent with the existing fixture conventions.
-- Existing overview sections consume the new fixture-backed facts where appropriate and reduce `unknown`, `unavailable`, `mixed`, `stale`, or `insufficient_evidence` states only when the new fixture evidence directly supports the section item or metric.
-- Fields that still lack fixture evidence remain explicit gaps with no invented metrics, holdings, alternatives, source documents, or citations.
-- Important factual claims introduced through the richer section content carry citation IDs and source document IDs that validate against the same asset knowledge pack.
-- Recent-development fixture entries and overview sections remain separate from stable asset facts; do not turn recent-review fixture text into canonical business, holdings, valuation, or cost facts.
-- Top risks still expose exactly three items first for each supported generated overview.
-- Unsupported assets such as `BTC`, leveraged/inverse ETF examples, unknown tickers, ambiguous search results, and eligible-not-cached assets such as `SPY` and `MSFT` must not receive generated overview sections, generated factual claims, citations, source documents, generated routes, chat answers, or comparison output as part of this task.
-- New fixture and overview copy remains educational and avoids buy/sell/hold, allocation, price-target, tax, brokerage, or personalized recommendation language.
-- Backend API tests verify `/api/assets/{ticker}/overview` serializes the richer stock and ETF section content while preserving unsupported and unknown empty states.
-- Static evals cover richer stock fixture coverage, richer ETF fixture coverage, same-asset citation binding for new section items and metrics, explicit residual evidence gaps, stable/recent separation, top-risk count, safety copy, and absence of live external calls.
-- Normal CI remains deterministic and does not require provider credentials, market-data calls, news calls, LLM calls, Redis, PostgreSQL, queues, or network access.
+- The `AAPL` asset page renders stock PRD sections for `business_overview`, `products_services`, `strengths`, `financial_quality`, `valuation_context`, `top_risks`, `recent_developments`, and `educational_suitability` using deterministic local frontend fixtures.
+- Important stock section claims render citation chips near the claim text and bind to the matching same-asset frontend source document; do not reuse the primary source as a fallback for unrelated stock section claims.
+- Source metadata for stock section citations is visible through the existing source drawer pattern and includes title, source type, publisher, URL, published or as-of date, retrieved timestamp, freshness state, official-source status, related claim context, and supporting passage.
+- The rendered `AAPL` products/services section includes source-backed product and services detail from the local fixture, while still showing explicit gaps for unsupported business-segment or revenue-driver detail.
+- The rendered `AAPL` strengths section shows the source-backed business-quality point from the local fixture and avoids unsupported competitive-advantage claims beyond that evidence.
+- The rendered `AAPL` financial-quality section shows the source-backed net sales trend and keeps residual gaps for unavailable earnings, margin, cash-flow, debt, cash, ROE, and ROIC metrics.
+- The rendered `AAPL` valuation-context section shows the cited valuation-data limitation and keeps valuation metrics labeled unavailable or insufficient rather than inventing P/E, forward P/E, price/sales, price/free-cash-flow, peer, or own-history valuation metrics.
+- The rendered `AAPL` top risks still show exactly three risk items first, with citation chips and no additional uncited risk claims inserted ahead of them.
+- Recent developments remain visually and structurally separate from stable stock facts and preserve the no-high-signal recent-development state when local evidence does not support a major recent event.
+- Freshness labels or state markers are visible for supported, unknown, unavailable, and no-high-signal sections where relevant.
+- `VOO` and `QQQ` asset pages continue to render their existing ETF page content without new ETF PRD section UI or regressions; T-021 will handle ETF section rendering.
+- Unsupported or unknown asset routes do not gain generated pages, generated factual claims, citations, source documents, chat answers, or comparison output as part of this task.
+- Frontend copy remains educational and avoids buy/sell/hold, allocation, price-target, tax, brokerage, or personalized recommendation language.
+- Frontend smoke checks cover the stock PRD section markers, AAPL-only stock section rendering, citation-to-source metadata binding, source drawer metadata, freshness/unknown/unavailable states, stable/recent separation, top-risk count, and absence of live external calls.
+- Normal CI remains deterministic and does not require provider credentials, market-data calls, news calls, LLM calls, Redis, PostgreSQL, queues, backend server availability, or network access.
 
 Required commands:
 
 - git status --short
-- python3 -m pytest tests/unit/test_retrieval_fixtures.py tests/unit/test_overview_generation.py tests/unit/test_safety_guardrails.py tests/integration/test_backend_api.py -q
-- python3 -m pytest tests -q
+- npm test
+- npm run typecheck
+- npm run build
+- python3 -m pytest tests/unit/test_safety_guardrails.py -q
 - python3 evals/run_static_evals.py
 - bash scripts/run_quality_gate.sh
 
@@ -71,6 +71,36 @@ Iteration budget:
 Max 2 attempts
 
 ## Completed
+
+### T-019: Add richer stock and ETF fixture data for MVP content sections
+
+Goal:
+Add richer deterministic local retrieval fixture evidence so the PRD asset overview sections introduced in T-018 can carry more source-backed stock and ETF content without live calls, frontend rendering changes, or schema changes.
+
+Completed:
+
+- Expanded `data/retrieval_fixtures.json` for `AAPL` with additional same-asset source documents, chunks, and normalized facts for products/services detail, a business-quality strength, an FY2023-FY2024 net sales trend, and a cited valuation-data limitation.
+- Added an `AAPL` SEC XBRL fixture source and a local valuation-data limitation source with source type, publisher, URL, published/as-of date, retrieved timestamp, freshness state, and official-source metadata.
+- Expanded `data/retrieval_fixtures.json` for `VOO` and `QQQ` with holdings-file sources, holdings/exposure detail chunks, construction/methodology chunks, and local trading-data limitation sources.
+- Added normalized ETF facts for holdings exposure detail, construction methodology, and trading-data limitations for both `VOO` and `QQQ`, with same-asset source document and chunk bindings.
+- Updated `backend/overview.py` so AAPL stock sections consume the richer fixture facts: products/services uses supported product and services detail, strengths becomes supported when the business-quality point exists, financial quality becomes mixed with a net sales trend and residual metric gaps, and valuation context becomes mixed with a cited valuation limitation plus remaining valuation metric gaps.
+- Updated `backend/overview.py` so VOO and QQQ ETF sections consume richer fixture facts for holdings exposure detail, construction methodology, and cited trading-data limitations while preserving residual gaps for full holdings weights, concentration, sector/country exposure, trading metrics, overlap, and alternatives.
+- Preserved stable/recent separation, exactly three top risks first, educational framing, and blocking for unsupported, unknown, ambiguous, and eligible-not-cached assets.
+- Extended `tests/unit/test_retrieval_fixtures.py` to require the richer stock and ETF fact fields for `AAPL`, `VOO`, and `QQQ`.
+- Extended `tests/unit/test_overview_generation.py` and `tests/integration/test_backend_api.py` to verify richer stock and ETF section item IDs, citation/source presence, and updated evidence states.
+- Extended `evals/run_static_evals.py` to cover richer fixture field coverage and richer generated overview section expectations.
+- Added `docs/agent-journal/20260422T053337Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- T-019 agent journal records an initial focused test failure from an outdated T-018 assertion expecting AAPL strengths to remain unknown, followed by a focused revision and passing reruns.
+- T-019 agent journal records focused retrieval/overview/safety/API pytest as 36 passed, full pytest as 73 passed, static evals as passed, and the quality gate as passed including Python tests, static evals, frontend smoke checks, typecheck, production build, and backend checks.
+- Remaining documented risk: richer content remains deterministic local fixture evidence only; no provider adapters, live ingestion, embeddings, LLM calls, cache refresh, export behavior, or frontend rendering were added.
+- Remaining documented risk: AAPL still has explicit gaps for segment, revenue-driver, geographic, competitor, margin, cash-flow, debt, cash, ROE/ROIC, and valuation metrics.
+- Remaining documented risk: VOO and QQQ still have explicit gaps for full top-10 weights, concentration, sector/country exposure, largest position, full methodology details, bid-ask spread, average volume, premium/discount, overlap, and alternatives.
+- Remaining documented risk: unsupported, unknown, ambiguous, and eligible-not-cached assets remain blocked from generated overview content, citations, source documents, chat answers, and comparison output.
+
+Completion commits:
+
+- `ef06a5e feat(T-019): add richer stock and ETF fixture data for MVP content sections`
+- `693350f chore(T-019): merge richer stock and ETF fixture data for MVP content sections`
 
 ### T-018: Expand asset overview schema for PRD content sections
 
@@ -523,7 +553,6 @@ Completion commits:
 
 ## Backlog
 
-### T-020: Render stock PRD sections on asset pages
 ### T-021: Render ETF PRD sections on asset pages
 ### T-022: Add Beginner Mode and Deep-Dive Mode page structure
 ### T-023: Add hybrid glossary baseline terms and UI hooks
