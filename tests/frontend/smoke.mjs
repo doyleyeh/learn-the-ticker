@@ -26,11 +26,13 @@ function includes(path, marker) {
   "components/AssetModeLayout.tsx",
   "components/CitationChip.tsx",
   "components/ComparisonSourceDetails.tsx",
+  "components/ExportControls.tsx",
   "components/SourceDrawer.tsx",
   "components/FreshnessLabel.tsx",
   "components/GlossaryPopover.tsx",
   "lib/assetChat.ts",
   "lib/compare.ts",
+  "lib/exportControls.ts",
   "lib/fixtures.ts",
   "lib/glossary.ts",
   "styles/globals.css"
@@ -56,17 +58,23 @@ includes("app/assets/[ticker]/page.tsx", "data-glossary-no-generated-context");
 includes("app/assets/[ticker]/page.tsx", "data-glossary-generic-education");
 includes("app/assets/[ticker]/page.tsx", "beginnerGlossaryGroupsByAssetType");
 includes("app/assets/[ticker]/page.tsx", "AssetChatPanel");
+includes("app/assets/[ticker]/page.tsx", "assetPageExportUrl");
+includes("app/assets/[ticker]/page.tsx", "assetSourceListExportUrl");
 includes("app/assets/[ticker]/page.tsx", "AssetEtfSections");
 includes("app/assets/[ticker]/page.tsx", "AssetStockSections");
 includes("app/assets/[ticker]/page.tsx", "hasEtfPrdSections");
 includes("app/assets/[ticker]/page.tsx", "hasStockPrdSections");
 includes("app/compare/page.tsx", "Bottom line for beginners");
 includes("app/compare/page.tsx", "ComparisonSourceDetails");
+includes("app/compare/page.tsx", "comparisonExportUrl");
+includes("app/compare/page.tsx", "data-export-unavailable-state");
 includes("app/compare/page.tsx", "getComparisonCitationMetadata");
 includes("components/AssetChatPanel.tsx", "Ask about this asset");
 includes("components/AssetChatPanel.tsx", "data-chat-state");
 includes("components/AssetChatPanel.tsx", "data-chat-citation-id");
 includes("components/AssetChatPanel.tsx", "Chat source metadata");
+includes("components/AssetChatPanel.tsx", "Save chat transcript");
+includes("components/AssetChatPanel.tsx", "chat-transcript");
 includes("components/AssetChatPanel.tsx", "Educational redirect");
 includes("components/AssetChatPanel.tsx", "Unsupported or unknown asset");
 includes("components/AssetChatPanel.tsx", "Insufficient evidence");
@@ -86,6 +94,14 @@ includes("components/AssetModeLayout.tsx", "data-beginner-mode-region");
 includes("components/AssetModeLayout.tsx", "data-deep-dive-mode-region");
 includes("components/AssetModeLayout.tsx", "Beginner Mode");
 includes("components/AssetModeLayout.tsx", "Deep-Dive Mode");
+includes("components/ExportControls.tsx", "data-export-controls");
+includes("components/ExportControls.tsx", "data-export-relative-api");
+includes("components/ExportControls.tsx", "data-export-no-live-external");
+includes("components/ExportControls.tsx", "data-export-control");
+includes("components/ExportControls.tsx", "data-export-href");
+includes("components/ExportControls.tsx", "data-export-post-url");
+includes("components/ExportControls.tsx", "data-export-copy-markdown");
+includes("components/ExportControls.tsx", "data-export-rendered-markdown");
 includes("components/AssetStockSections.tsx", "data-stock-prd-sections");
 includes("components/AssetStockSections.tsx", "data-stock-section-id");
 includes("components/AssetStockSections.tsx", "data-stock-stable-recent-separation");
@@ -98,6 +114,12 @@ includes("components/AssetEtfSections.tsx", "data-etf-top-risk-count");
 includes("components/AssetEtfSections.tsx", "No citation chip is shown because this ETF item is an explicit evidence gap");
 includes("lib/assetChat.ts", "/api/assets/");
 includes("lib/assetChat.ts", "/chat");
+includes("lib/exportControls.ts", "/api/assets/");
+includes("lib/exportControls.ts", "/export\\?export_format=");
+includes("lib/exportControls.ts", "/sources/export\\?export_format=");
+includes("lib/exportControls.ts", "/api/compare/export\\?");
+includes("lib/exportControls.ts", "/chat/export");
+includes("lib/exportControls.ts", "postChatTranscriptExport");
 includes("lib/compare.ts", "sourceDocuments");
 includes("lib/compare.ts", "c_fact_voo_benchmark");
 includes("lib/compare.ts", "c_fact_qqq_benchmark");
@@ -343,11 +365,13 @@ const frontendSource = [
   read("components/AssetStockSections.tsx"),
   read("components/AssetModeLayout.tsx"),
   read("components/ComparisonSourceDetails.tsx"),
+  read("components/ExportControls.tsx"),
   read("components/GlossaryPopover.tsx"),
   read("components/SearchBox.tsx"),
   read("components/SourceDrawer.tsx"),
   read("lib/assetChat.ts"),
   read("lib/compare.ts"),
+  read("lib/exportControls.ts"),
   read("lib/fixtures.ts"),
   read("lib/glossary.ts")
 ].join("\n");
@@ -369,13 +393,48 @@ assert.match(
   /fetcher\(endpoint/,
   "Chat helper should call the local relative chat endpoint through an injectable fetcher"
 );
+assert.match(
+  read("lib/exportControls.ts"),
+  /fetcher\(endpoint/,
+  "Chat transcript export helper should call the local relative export endpoint through an injectable fetcher"
+);
 assert.equal(
   read("lib/assetChat.ts").includes("https://") ||
     read("lib/assetChat.ts").includes("http://") ||
     read("components/AssetChatPanel.tsx").includes("https://") ||
-    read("components/AssetChatPanel.tsx").includes("http://"),
+    read("components/AssetChatPanel.tsx").includes("http://") ||
+    read("lib/exportControls.ts").includes("https://") ||
+    read("lib/exportControls.ts").includes("http://") ||
+    read("components/ExportControls.tsx").includes("https://") ||
+    read("components/ExportControls.tsx").includes("http://"),
   false,
-  "Frontend chat integration should not add live external calls"
+  "Frontend chat and export integration should not add live external calls"
+);
+
+const exportControlsSource = read("lib/exportControls.ts") + read("components/ExportControls.tsx");
+for (const marker of [
+  "/api/assets/${encodedTicker}/export?export_format=${exportFormat}",
+  "/api/assets/${encodedTicker}/sources/export?export_format=${exportFormat}",
+  "/api/compare/export?${params.toString()}",
+  "/api/assets/${encodeTicker(ticker)}/chat/export",
+  "export_format: EXPORT_FORMAT",
+  "citation IDs",
+  "source metadata",
+  "freshness/as-of dates",
+  "educational disclaimer",
+  "licensing scope",
+  "full source documents",
+  "restricted provider payloads",
+  "live external download URLs"
+]) {
+  assert.ok(exportControlsSource.includes(marker), `Export controls should include ${marker}`);
+}
+
+const packageJson = JSON.parse(read("package.json"));
+assert.deepEqual(Object.keys(packageJson.dependencies).sort(), ["next", "react", "react-dom"]);
+assert.deepEqual(
+  Object.keys(packageJson.devDependencies).sort(),
+  ["@types/node", "@types/react", "@types/react-dom", "typescript"]
 );
 
 assert.equal(read("components/SearchBox.tsx").includes("fetch("), false, "Home search should stay local");
@@ -404,5 +463,16 @@ assert.equal(compareSource.includes("/api/compare"), false, "Compare page should
 assert.equal(read("app/compare/page.tsx").includes("getPrimarySource"), false, "Compare chips must not use a primary asset source fallback");
 assert.equal(compareSource.includes("src_aapl"), false, "Compare source metadata must not include AAPL sources");
 assert.match(compareSource, /No factual citation chips or source drawers/, "Unavailable compare states must avoid factual citation UI");
+
+const backendMain = read("backend/main.py");
+for (const marker of [
+  "@app.get(\"/api/assets/{ticker}/export\"",
+  "@app.get(\"/api/assets/{ticker}/sources/export\"",
+  "@app.post(\"/api/compare/export\"",
+  "@app.get(\"/api/compare/export\"",
+  "@app.post(\"/api/assets/{ticker}/chat/export\""
+]) {
+  assert.ok(backendMain.includes(marker), `Backend export contract route should remain present: ${marker}`);
+}
 
 console.log("Frontend smoke checks passed.");

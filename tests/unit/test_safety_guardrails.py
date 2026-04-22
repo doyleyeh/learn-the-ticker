@@ -81,12 +81,14 @@ def test_frontend_copy_fixtures_and_comparison_do_not_leak_advice_phrases():
         "components/AssetModeLayout.tsx",
         "components/CitationChip.tsx",
         "components/ComparisonSourceDetails.tsx",
+        "components/ExportControls.tsx",
         "components/FreshnessLabel.tsx",
         "components/GlossaryPopover.tsx",
         "components/SearchBox.tsx",
         "components/SourceDrawer.tsx",
         "lib/assetChat.ts",
         "lib/compare.ts",
+        "lib/exportControls.ts",
         "lib/fixtures.ts",
         "lib/glossary.ts",
     ]
@@ -110,3 +112,33 @@ def test_chat_starter_prompt_copy_is_advice_safe():
     for marker in prompt_copy_markers:
         assert marker in text
         assert_no_forbidden_phrases(marker, marker)
+
+
+def test_frontend_export_control_copy_is_advice_safe():
+    combined = "\n".join(
+        [
+            (ROOT / "components/ExportControls.tsx").read_text(encoding="utf-8"),
+            (ROOT / "lib/exportControls.ts").read_text(encoding="utf-8"),
+            (ROOT / "app/assets/[ticker]/page.tsx").read_text(encoding="utf-8"),
+            (ROOT / "app/compare/page.tsx").read_text(encoding="utf-8"),
+            (ROOT / "components/AssetChatPanel.tsx").read_text(encoding="utf-8"),
+        ]
+    )
+    export_copy_markers = [
+        "citation IDs",
+        "source metadata",
+        "freshness/as-of dates",
+        "educational disclaimer",
+        "licensing scope",
+        "full source documents",
+        "restricted provider payloads",
+        "live external download URLs",
+        "Export controls stay unavailable",
+        "Save chat transcript",
+    ]
+
+    for marker in export_copy_markers:
+        assert marker in combined
+        assert_no_forbidden_phrases(marker, marker)
+
+    assert_no_forbidden_phrases("frontend export controls", combined)
