@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from backend.data import ELIGIBLE_NOT_CACHED_ASSETS
 from backend.models import (
     FreshnessState,
     ProviderDataCategory,
@@ -129,14 +130,24 @@ def test_market_reference_adapter_covers_supported_and_eligible_not_cached_with_
         _assert_same_asset_binding(response, ticker)
         _assert_no_generated_outputs(response)
 
-    for ticker in ["SPY", "MSFT"]:
+    for ticker in sorted(ELIGIBLE_NOT_CACHED_ASSETS):
         response = adapter.fetch(adapter.request(ticker, ProviderDataCategory.asset_resolution))
         assert response.state is ProviderResponseState.eligible_not_cached
         assert response.asset is not None
         assert response.asset.ticker == ticker
+        assert response.asset.asset_type.value == ELIGIBLE_NOT_CACHED_ASSETS[ticker]["asset_type"]
+        assert response.asset.name == ELIGIBLE_NOT_CACHED_ASSETS[ticker]["name"]
         assert response.asset.supported is True
         assert response.facts[0].value["eligible_not_cached"] is True
+        assert response.facts[0].field_name == "asset_resolution"
+        assert response.source_attributions[0].asset_ticker == ticker
+        assert response.source_attributions[0].usage is ProviderSourceUsage.structured_reference
+        assert response.source_attributions[0].is_official is False
+        assert response.licensing.export_allowed is False
+        assert response.licensing.redistribution_allowed is False
         assert response.generated_output.creates_generated_asset_page is False
+        assert response.generated_output.creates_generated_chat_answer is False
+        assert response.generated_output.creates_generated_comparison is False
 
 
 def test_provider_failure_states_are_explicit_without_invented_facts():

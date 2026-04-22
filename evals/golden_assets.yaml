@@ -1,23 +1,199 @@
-stocks:
+schema_version: golden-assets-v2
+description: Deterministic MVP launch-universe contract. Eligible-not-cached assets are resolution metadata only.
+
+technical_design_golden_assets:
+  stocks: [AAPL, MSFT, NVDA, TSLA]
+  etfs: [VOO, SPY, VTI, QQQ, VGT, SOXX]
+
+cached_supported_assets:
   - ticker: AAPL
     expected_type: stock
-  - ticker: MSFT
-    expected_type: stock
-  - ticker: NVDA
-    expected_type: stock
-  - ticker: TSLA
-    expected_type: stock
+    expected_name: Apple Inc.
+    expected_generated_route: /assets/AAPL
+    expected_can_open_generated_page: true
+    expected_can_answer_chat: true
+    expected_can_compare: true
+    expected_can_request_ingestion: false
+    expected_top_risk_count: 3
+    expected_citations: true
+    expected_source_documents: true
+    expected_freshness: true
+    expected_recent_developments_separate: true
 
-etfs:
   - ticker: VOO
     expected_type: etf
-  - ticker: SPY
-    expected_type: etf
-  - ticker: VTI
-    expected_type: etf
+    expected_name: Vanguard S&P 500 ETF
+    expected_generated_route: /assets/VOO
+    expected_can_open_generated_page: true
+    expected_can_answer_chat: true
+    expected_can_compare: true
+    expected_can_request_ingestion: false
+    expected_top_risk_count: 3
+    expected_citations: true
+    expected_source_documents: true
+    expected_freshness: true
+    expected_recent_developments_separate: true
+
   - ticker: QQQ
     expected_type: etf
+    expected_name: Invesco QQQ Trust
+    expected_generated_route: /assets/QQQ
+    expected_can_open_generated_page: true
+    expected_can_answer_chat: true
+    expected_can_compare: true
+    expected_can_request_ingestion: false
+    expected_top_risk_count: 3
+    expected_citations: true
+    expected_source_documents: true
+    expected_freshness: true
+    expected_recent_developments_separate: true
+
+eligible_not_cached_launch_assets:
+  - ticker: SPY
+    expected_type: etf
+    expected_name: SPDR S&P 500 ETF Trust
+    launch_group: broad_etf
+  - ticker: VTI
+    expected_type: etf
+    expected_name: Vanguard Total Stock Market ETF
+    launch_group: broad_etf
+  - ticker: IVV
+    expected_type: etf
+    expected_name: iShares Core S&P 500 ETF
+    launch_group: broad_etf
+  - ticker: IWM
+    expected_type: etf
+    expected_name: iShares Russell 2000 ETF
+    launch_group: broad_etf
+  - ticker: DIA
+    expected_type: etf
+    expected_name: SPDR Dow Jones Industrial Average ETF Trust
+    launch_group: broad_etf
   - ticker: VGT
     expected_type: etf
+    expected_name: Vanguard Information Technology ETF
+    launch_group: sector_theme_etf
+  - ticker: XLK
+    expected_type: etf
+    expected_name: Technology Select Sector SPDR Fund
+    launch_group: sector_theme_etf
   - ticker: SOXX
     expected_type: etf
+    expected_name: iShares Semiconductor ETF
+    launch_group: sector_theme_etf
+  - ticker: SMH
+    expected_type: etf
+    expected_name: VanEck Semiconductor ETF
+    launch_group: sector_theme_etf
+  - ticker: XLF
+    expected_type: etf
+    expected_name: Financial Select Sector SPDR Fund
+    launch_group: sector_theme_etf
+  - ticker: XLV
+    expected_type: etf
+    expected_name: Health Care Select Sector SPDR Fund
+    launch_group: sector_theme_etf
+  - ticker: MSFT
+    expected_type: stock
+    expected_name: Microsoft Corporation
+    launch_group: large_stock
+  - ticker: NVDA
+    expected_type: stock
+    expected_name: NVIDIA Corporation
+    launch_group: large_stock
+  - ticker: AMZN
+    expected_type: stock
+    expected_name: Amazon.com, Inc.
+    launch_group: large_stock
+  - ticker: GOOGL
+    expected_type: stock
+    expected_name: Alphabet Inc. Class A
+    launch_group: large_stock
+  - ticker: META
+    expected_type: stock
+    expected_name: Meta Platforms, Inc.
+    launch_group: large_stock
+  - ticker: TSLA
+    expected_type: stock
+    expected_name: Tesla, Inc.
+    launch_group: large_stock
+  - ticker: BRK.B
+    expected_type: stock
+    expected_name: Berkshire Hathaway Inc. Class B
+    launch_group: large_stock
+  - ticker: JPM
+    expected_type: stock
+    expected_name: JPMorgan Chase & Co.
+    launch_group: large_stock
+  - ticker: UNH
+    expected_type: stock
+    expected_name: UnitedHealth Group Incorporated
+    launch_group: large_stock
+
+unsupported_samples:
+  - ticker: BTC
+    expected_type: unsupported
+    expected_support_classification: recognized_unsupported
+  - ticker: TQQQ
+    expected_type: unsupported
+    expected_support_classification: recognized_unsupported
+  - ticker: SQQQ
+    expected_type: unsupported
+    expected_support_classification: recognized_unsupported
+
+unknown_samples:
+  - ticker: ZZZZ
+    expected_type: unknown
+    expected_support_classification: unknown
+
+common_comparison_pairs:
+  - left: VOO
+    right: SPY
+    expected_state: unavailable
+    expected_generated_output: false
+  - left: VTI
+    right: VOO
+    expected_state: unavailable
+    expected_generated_output: false
+  - left: QQQ
+    right: VOO
+    expected_state: supported
+    expected_generated_output: true
+    expected_citations: true
+    expected_source_documents: true
+  - left: QQQ
+    right: VGT
+    expected_state: unavailable
+    expected_generated_output: false
+  - left: VGT
+    right: SOXX
+    expected_state: unavailable
+    expected_generated_output: false
+  - left: AAPL
+    right: MSFT
+    expected_state: unavailable
+    expected_generated_output: false
+  - left: NVDA
+    right: SOXX
+    expected_state: unavailable
+    expected_generated_output: false
+
+local_generated_comparison_pairs:
+  - left: VOO
+    right: QQQ
+    expected_state: supported
+    expected_generated_output: true
+    expected_citations: true
+    expected_source_documents: true
+
+eligible_not_cached_expected_capabilities:
+  expected_generated_route: null
+  expected_can_open_generated_page: false
+  expected_can_answer_chat: false
+  expected_can_compare: false
+  expected_can_request_ingestion: true
+  expected_citations: false
+  expected_source_documents: false
+  expected_generated_asset_output: false
+  expected_generated_chat_answer: false
+  expected_generated_comparison: false

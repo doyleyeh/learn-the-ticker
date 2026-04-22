@@ -44,6 +44,8 @@ def test_search_classification_states_cover_ambiguous_unknown_and_ingestion_need
     ambiguous = client.get("/api/search", params={"q": "S&P 500 ETF"}).json()
     unknown = client.get("/api/search", params={"q": "ZZZZ"}).json()
     ingestion_needed = client.get("/api/search", params={"q": "SPY"}).json()
+    launch_stock = client.get("/api/search", params={"q": "BRK.B"}).json()
+    launch_etf = client.get("/api/search", params={"q": "SOXX"}).json()
 
     assert ambiguous["state"]["status"] == "ambiguous"
     assert ambiguous["state"]["requires_disambiguation"] is True
@@ -76,10 +78,20 @@ def test_search_classification_states_cover_ambiguous_unknown_and_ingestion_need
     assert ingestion_needed["results"][0]["can_request_ingestion"] is True
     assert ingestion_needed["results"][0]["ingestion_request_route"] == "/api/admin/ingest/SPY"
 
+    for body, expected_ticker, expected_type in [(launch_stock, "BRK.B", "stock"), (launch_etf, "SOXX", "etf")]:
+        assert body["state"]["status"] == "ingestion_needed"
+        assert body["state"]["support_classification"] == "eligible_not_cached"
+        assert body["results"][0]["ticker"] == expected_ticker
+        assert body["results"][0]["asset_type"] == expected_type
+        assert body["results"][0]["generated_route"] is None
+        assert body["results"][0]["can_answer_chat"] is False
+        assert body["results"][0]["can_compare"] is False
+
 
 def test_ingestion_request_route_returns_deterministic_job_or_non_job_states():
     eligible = client.post("/api/admin/ingest/SPY").json()
     eligible_again = client.post("/api/admin/ingest/spy").json()
+    eligible_launch = client.post("/api/admin/ingest/SOXX").json()
     cached = client.post("/api/admin/ingest/VOO").json()
     unsupported = client.post("/api/admin/ingest/TQQQ").json()
     unknown = client.post("/api/admin/ingest/ZZZZ").json()
@@ -96,6 +108,13 @@ def test_ingestion_request_route_returns_deterministic_job_or_non_job_states():
     assert eligible["capabilities"]["can_open_generated_page"] is False
     assert eligible["capabilities"]["can_answer_chat"] is False
     assert eligible["capabilities"]["can_compare"] is False
+
+    assert eligible_launch["ticker"] == "SOXX"
+    assert eligible_launch["asset_type"] == "etf"
+    assert eligible_launch["job_id"] == "ingest-on-demand-soxx"
+    assert eligible_launch["status_url"] == "/api/jobs/ingest-on-demand-soxx"
+    assert eligible_launch["generated_route"] is None
+    assert eligible_launch["capabilities"]["can_open_generated_page"] is False
 
     assert cached["ticker"] == "VOO"
     assert cached["job_id"] is None

@@ -1,3 +1,4 @@
+from backend.data import ELIGIBLE_NOT_CACHED_ASSETS
 from backend.ingestion import get_ingestion_job_status, request_ingestion
 from backend.models import IngestionJobResponse
 
@@ -21,6 +22,27 @@ def test_eligible_not_cached_asset_requests_deterministic_on_demand_job():
     assert validated.capabilities.can_open_generated_page is False
     assert validated.capabilities.can_answer_chat is False
     assert validated.capabilities.can_compare is False
+
+
+def test_all_launch_universe_eligible_not_cached_assets_get_stable_non_generated_jobs():
+    for ticker, metadata in sorted(ELIGIBLE_NOT_CACHED_ASSETS.items()):
+        response = request_ingestion(ticker)
+        status = get_ingestion_job_status(f"ingest-on-demand-{ticker.lower()}")
+
+        assert response.model_dump(mode="json") == status.model_dump(mode="json")
+        assert response.ticker == ticker
+        assert response.asset_type.value == metadata["asset_type"]
+        assert response.job_type.value == "on_demand"
+        assert response.job_id == f"ingest-on-demand-{ticker.lower()}"
+        assert response.status_url == f"/api/jobs/ingest-on-demand-{ticker.lower()}"
+        assert response.generated_route is None
+        assert response.capabilities.can_open_generated_page is False
+        assert response.capabilities.can_answer_chat is False
+        assert response.capabilities.can_compare is False
+        assert response.capabilities.can_request_ingestion is True
+        assert "buy" not in response.message.lower()
+        assert "sell" not in response.message.lower()
+        assert "hold" not in response.message.lower()
 
 
 def test_cached_supported_asset_returns_no_ingestion_needed_with_existing_capabilities():
