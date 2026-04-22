@@ -227,6 +227,8 @@ def _candidate_to_result(candidate: SearchCandidate) -> SearchResult:
         can_answer_chat=cached_supported,
         can_compare=cached_supported,
         generated_route=generated_route,
+        can_request_ingestion=eligible_not_cached,
+        ingestion_request_route=f"/api/admin/ingest/{candidate.ticker}" if eligible_not_cached else None,
         message=candidate.message,
     )
 
@@ -251,6 +253,8 @@ def _state_for_single_result(result: SearchResult) -> SearchState:
             result_count=1,
             support_classification=result.support_classification,
             requires_ingestion=True,
+            can_request_ingestion=True,
+            ingestion_request_route=f"/api/admin/ingest/{result.ticker}",
         )
     if result.support_classification is SearchSupportClassification.recognized_unsupported:
         return SearchState(

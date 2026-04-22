@@ -48,6 +48,33 @@ class FreshnessState(str, Enum):
     unavailable = "unavailable"
 
 
+class IngestionJobType(str, Enum):
+    pre_cache = "pre_cache"
+    on_demand = "on_demand"
+    refresh = "refresh"
+    repair = "repair"
+
+
+class IngestionJobState(str, Enum):
+    pending = "pending"
+    running = "running"
+    succeeded = "succeeded"
+    failed = "failed"
+    refresh_needed = "refresh_needed"
+    no_ingestion_needed = "no_ingestion_needed"
+    unsupported = "unsupported"
+    unknown = "unknown"
+    unavailable = "unavailable"
+
+
+class IngestionWorkerStatus(str, Enum):
+    queued = "queued"
+    running = "running"
+    succeeded = "succeeded"
+    failed = "failed"
+    cancelled = "cancelled"
+
+
 class SafetyClassification(str, Enum):
     educational = "educational"
     personalized_advice_redirect = "personalized_advice_redirect"
@@ -79,6 +106,8 @@ class SearchState(BaseModel):
     requires_ingestion: bool = False
     can_open_generated_page: bool = False
     generated_route: str | None = None
+    can_request_ingestion: bool = False
+    ingestion_request_route: str | None = None
 
 
 class SearchResult(BaseModel):
@@ -96,6 +125,8 @@ class SearchResult(BaseModel):
     can_answer_chat: bool = False
     can_compare: bool = False
     generated_route: str | None = None
+    can_request_ingestion: bool = False
+    ingestion_request_route: str | None = None
     message: str | None = None
 
 
@@ -103,6 +134,38 @@ class SearchResponse(BaseModel):
     query: str
     results: list[SearchResult]
     state: SearchState
+
+
+class IngestionErrorMetadata(BaseModel):
+    code: str
+    message: str
+    retryable: bool
+
+
+class IngestionCapabilities(BaseModel):
+    can_open_generated_page: bool = False
+    can_answer_chat: bool = False
+    can_compare: bool = False
+    can_request_ingestion: bool = False
+
+
+class IngestionJobResponse(BaseModel):
+    ticker: str
+    asset_type: AssetType
+    job_type: IngestionJobType | None = None
+    job_id: str | None = None
+    job_state: IngestionJobState
+    worker_status: IngestionWorkerStatus | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    status_url: str | None = None
+    retryable: bool = False
+    error_metadata: IngestionErrorMetadata | None = None
+    generated_route: str | None = None
+    capabilities: IngestionCapabilities = Field(default_factory=IngestionCapabilities)
+    message: str
 
 
 class Freshness(BaseModel):

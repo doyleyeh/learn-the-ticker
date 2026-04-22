@@ -6,6 +6,7 @@ cases:
     expected_support_classifications: [cached_supported]
     expected_can_open_generated_page: true
     expected_requires_ingestion: false
+    expected_can_request_ingestion: false
 
   - id: search_supported_name_aapl
     query: Apple
@@ -14,6 +15,7 @@ cases:
     expected_support_classifications: [cached_supported]
     expected_can_open_generated_page: true
     expected_requires_ingestion: false
+    expected_can_request_ingestion: false
 
   - id: search_ambiguous_sp500
     query: S&P 500 ETF
@@ -22,6 +24,7 @@ cases:
     expected_support_classifications: [cached_supported, eligible_not_cached]
     expected_requires_disambiguation: true
     expected_can_open_generated_page: false
+    expected_can_request_ingestion: false
 
   - id: search_unsupported_crypto
     query: BTC
@@ -29,6 +32,7 @@ cases:
     expected_result_tickers: [BTC]
     expected_support_classifications: [recognized_unsupported]
     expected_can_open_generated_page: false
+    expected_can_request_ingestion: false
 
   - id: search_unsupported_leveraged_etf
     query: TQQQ
@@ -36,6 +40,7 @@ cases:
     expected_result_tickers: [TQQQ]
     expected_support_classifications: [recognized_unsupported]
     expected_can_open_generated_page: false
+    expected_can_request_ingestion: false
 
   - id: search_unsupported_inverse_etf
     query: SQQQ
@@ -43,6 +48,7 @@ cases:
     expected_result_tickers: [SQQQ]
     expected_support_classifications: [recognized_unsupported]
     expected_can_open_generated_page: false
+    expected_can_request_ingestion: false
 
   - id: search_unknown
     query: ZZZZ
@@ -50,6 +56,7 @@ cases:
     expected_result_tickers: [ZZZZ]
     expected_support_classifications: [unknown]
     expected_can_open_generated_page: false
+    expected_can_request_ingestion: false
 
   - id: search_eligible_not_cached_spy
     query: SPY
@@ -58,3 +65,5 @@ cases:
     expected_support_classifications: [eligible_not_cached]
     expected_can_open_generated_page: false
     expected_requires_ingestion: true
+    expected_can_request_ingestion: true
+    expected_ingestion_request_route: /api/admin/ingest/SPY

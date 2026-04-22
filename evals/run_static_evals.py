@@ -13,8 +13,9 @@ sys.path.insert(0, str(ROOT))
 from backend.chat import generate_asset_chat, validate_chat_response
 from backend.citations import validate_claims
 from backend.comparison import generate_comparison, validate_comparison_response
+from backend.ingestion import get_ingestion_job_status, request_ingestion
 from backend.main import app
-from backend.models import MetricValue, CompareResponse, ChatResponse
+from backend.models import MetricValue, CompareResponse, ChatResponse, IngestionJobResponse
 from backend.overview import generate_asset_overview, validate_overview_response
 from backend.retrieval import build_asset_knowledge_pack, build_comparison_knowledge_pack, load_retrieval_fixture_dataset
 from backend.safety import find_forbidden_output_phrases
@@ -150,8 +151,14 @@ def test_search_cases():
             f"{case['id']} expected {case['expected_state']}, got {state['status']}"
         )
         assert state["can_open_generated_page"] is case["expected_can_open_generated_page"]
+        assert state["can_request_ingestion"] is case.get("expected_can_request_ingestion", False)
         assert state["requires_disambiguation"] is case.get("expected_requires_disambiguation", False)
         assert state["requires_ingestion"] is case.get("expected_requires_ingestion", False)
+        expected_ingestion_route = case.get("expected_ingestion_request_route")
+        if expected_ingestion_route:
+            assert state["ingestion_request_route"] == expected_ingestion_route
+        else:
+            assert state["ingestion_request_route"] is None
 
         result_tickers = {result["ticker"] for result in results}
         expected_tickers = set(case["expected_result_tickers"])
@@ -169,16 +176,100 @@ def test_search_cases():
                 assert result["can_open_generated_page"] is True
                 assert result["can_answer_chat"] is True
                 assert result["can_compare"] is True
+                assert result["can_request_ingestion"] is False
+                assert result["ingestion_request_route"] is None
+            elif result["support_classification"] == "eligible_not_cached":
+                assert result["generated_route"] is None
+                assert result["can_open_generated_page"] is False
+                assert result["can_answer_chat"] is False
+                assert result["can_compare"] is False
+                assert result["can_request_ingestion"] is True
+                assert result["ingestion_request_route"] == f"/api/admin/ingest/{result['ticker']}"
             else:
                 assert result["generated_route"] is None
                 assert result["can_open_generated_page"] is False
                 assert result["can_answer_chat"] is False
                 assert result["can_compare"] is False
+                assert result["can_request_ingestion"] is False
+                assert result["ingestion_request_route"] is None
 
     search_source = (ROOT / "backend" / "search.py").read_text(encoding="utf-8")
     main_source = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
     for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import"]:
         assert forbidden not in search_source
+        assert forbidden not in main_source
+
+
+def test_ingestion_cases():
+    data = load_yaml("ingestion_eval_cases.yaml")
+    request_cases = data.get("request_cases", [])
+    status_cases = data.get("status_cases", [])
+    assert request_cases, "ingestion_eval_cases.yaml must define request cases"
+    assert status_cases, "ingestion_eval_cases.yaml must define status cases"
+
+    required_request_states = {"pending", "running", "no_ingestion_needed", "unsupported", "unknown"}
+    found_request_states = {case.get("expected_job_state") for case in request_cases}
+    missing_request_states = required_request_states - found_request_states
+    assert not missing_request_states, f"Missing ingestion request states: {missing_request_states}"
+
+    required_status_states = {"pending", "running", "succeeded", "refresh_needed", "failed", "unavailable"}
+    found_status_states = {case.get("expected_job_state") for case in status_cases}
+    missing_status_states = required_status_states - found_status_states
+    assert not missing_status_states, f"Missing ingestion status states: {missing_status_states}"
+
+    for case in request_cases:
+        response = client.post(f"/api/admin/ingest/{case['ticker']}")
+        assert response.status_code == 200, f"{case['id']} ingestion request failed"
+        body = response.json()
+        validated = IngestionJobResponse.model_validate(body)
+
+        assert validated.ticker == case["ticker"]
+        assert validated.asset_type.value == case["expected_asset_type"]
+        assert (validated.job_type.value if validated.job_type else None) == case["expected_job_type"]
+        assert validated.job_id == case["expected_job_id"]
+        assert validated.job_state.value == case["expected_job_state"]
+        assert (validated.worker_status.value if validated.worker_status else None) == case["expected_worker_status"]
+        assert validated.status_url == case["expected_status_url"]
+        assert validated.generated_route == case["expected_generated_route"]
+        assert validated.retryable is case["expected_retryable"]
+        expected_capabilities = case["expected_capabilities"]
+        assert validated.capabilities.can_open_generated_page is expected_capabilities["can_open_generated_page"]
+        assert validated.capabilities.can_answer_chat is expected_capabilities["can_answer_chat"]
+        assert validated.capabilities.can_compare is expected_capabilities["can_compare"]
+        assert validated.capabilities.can_request_ingestion is expected_capabilities["can_request_ingestion"]
+        assert "buy" not in validated.message.lower()
+        assert "sell" not in validated.message.lower()
+        assert "hold" not in validated.message.lower()
+
+        rerun = request_ingestion(case["ticker"])
+        assert rerun.model_dump(mode="json") == body
+
+    for case in status_cases:
+        response = client.get(f"/api/jobs/{case['job_id']}")
+        assert response.status_code == 200, f"{case['id']} status lookup failed"
+        validated = IngestionJobResponse.model_validate(response.json())
+
+        assert validated.job_id == case["job_id"]
+        assert validated.ticker == case["expected_ticker"]
+        assert validated.asset_type.value == case["expected_asset_type"]
+        assert validated.job_state.value == case["expected_job_state"]
+        assert (validated.worker_status.value if validated.worker_status else None) == case["expected_worker_status"]
+        assert validated.status_url == f"/api/jobs/{case['job_id']}"
+        assert validated.generated_route == case["expected_generated_route"]
+        expected_error_code = case.get("expected_error_code")
+        if expected_error_code:
+            assert validated.error_metadata is not None
+            assert validated.error_metadata.code == expected_error_code
+        else:
+            assert validated.error_metadata is None
+
+        direct = get_ingestion_job_status(case["job_id"])
+        assert direct.model_dump(mode="json") == validated.model_dump(mode="json")
+
+    ingestion_source = (ROOT / "backend" / "ingestion.py").read_text(encoding="utf-8")
+    main_source = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
+    for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import"]:
+        assert forbidden not in ingestion_source
         assert forbidden not in main_source
 
 
@@ -423,6 +514,7 @@ if __name__ == "__main__":
     test_safety_cases()
     test_citation_cases()
     test_search_cases()
+    test_ingestion_cases()
     test_retrieval_fixture_contract()
     test_generated_overview_contract()
     test_generated_comparison_contract()

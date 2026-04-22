@@ -1,0 +1,130 @@
+request_cases:
+  - id: request_eligible_not_cached_spy
+    ticker: SPY
+    expected_asset_type: etf
+    expected_job_type: on_demand
+    expected_job_id: ingest-on-demand-spy
+    expected_job_state: pending
+    expected_worker_status: queued
+    expected_status_url: /api/jobs/ingest-on-demand-spy
+    expected_generated_route: null
+    expected_retryable: true
+    expected_capabilities:
+      can_open_generated_page: false
+      can_answer_chat: false
+      can_compare: false
+      can_request_ingestion: true
+
+  - id: request_eligible_not_cached_msft
+    ticker: MSFT
+    expected_asset_type: stock
+    expected_job_type: on_demand
+    expected_job_id: ingest-on-demand-msft
+    expected_job_state: running
+    expected_worker_status: running
+    expected_status_url: /api/jobs/ingest-on-demand-msft
+    expected_generated_route: null
+    expected_retryable: false
+    expected_capabilities:
+      can_open_generated_page: false
+      can_answer_chat: false
+      can_compare: false
+      can_request_ingestion: true
+
+  - id: request_cached_supported_aapl
+    ticker: AAPL
+    expected_asset_type: stock
+    expected_job_type: null
+    expected_job_id: null
+    expected_job_state: no_ingestion_needed
+    expected_worker_status: null
+    expected_status_url: null
+    expected_generated_route: /assets/AAPL
+    expected_retryable: false
+    expected_capabilities:
+      can_open_generated_page: true
+      can_answer_chat: true
+      can_compare: true
+      can_request_ingestion: false
+
+  - id: request_unsupported_tqqq
+    ticker: TQQQ
+    expected_asset_type: unsupported
+    expected_job_type: null
+    expected_job_id: null
+    expected_job_state: unsupported
+    expected_worker_status: null
+    expected_status_url: null
+    expected_generated_route: null
+    expected_retryable: false
+    expected_capabilities:
+      can_open_generated_page: false
+      can_answer_chat: false
+      can_compare: false
+      can_request_ingestion: false
+
+  - id: request_unknown
+    ticker: ZZZZ
+    expected_asset_type: unknown
+    expected_job_type: null
+    expected_job_id: null
+    expected_job_state: unknown
+    expected_worker_status: null
+    expected_status_url: null
+    expected_generated_route: null
+    expected_retryable: false
+    expected_capabilities:
+      can_open_generated_page: false
+      can_answer_chat: false
+      can_compare: false
+      can_request_ingestion: false
+
+status_cases:
+  - id: status_queued_spy
+    job_id: ingest-on-demand-spy
+    expected_ticker: SPY
+    expected_asset_type: etf
+    expected_job_state: pending
+    expected_worker_status: queued
+    expected_generated_route: null
+
+  - id: status_running_msft
+    job_id: ingest-on-demand-msft
+    expected_ticker: MSFT
+    expected_asset_type: stock
+    expected_job_state: running
+    expected_worker_status: running
+    expected_generated_route: null
+
+  - id: status_succeeded_voo
+    job_id: pre-cache-succeeded-voo
+    expected_ticker: VOO
+    expected_asset_type: etf
+    expected_job_state: succeeded
+    expected_worker_status: succeeded
+    expected_generated_route: /assets/VOO
+
+  - id: status_refresh_needed_aapl
+    job_id: refresh-needed-aapl
+    expected_ticker: AAPL
+    expected_asset_type: stock
+    expected_job_state: refresh_needed
+    expected_worker_status: null
+    expected_generated_route: /assets/AAPL
+
+  - id: status_failed_msft
+    job_id: ingest-on-demand-msft-failed
+    expected_ticker: MSFT
+    expected_asset_type: stock
+    expected_job_state: failed
+    expected_worker_status: failed
+    expected_generated_route: null
+    expected_error_code: fixture_ingestion_failed
+
+  - id: status_unavailable_missing
+    job_id: missing-job
+    expected_ticker: UNKNOWN
+    expected_asset_type: unknown
+    expected_job_state: unavailable
+    expected_worker_status: null
+    expected_generated_route: null
