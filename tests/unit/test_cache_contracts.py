@@ -29,6 +29,7 @@ from backend.models import (
 )
 from backend.providers import fetch_mock_provider_response
 from backend.retrieval import build_asset_knowledge_pack, build_comparison_knowledge_pack
+from backend.retrieval import build_asset_knowledge_pack_result
 from backend.models import ProviderKind, ProviderResponseState
 
 
@@ -207,6 +208,48 @@ def test_knowledge_pack_hash_is_order_insensitive_for_sources_facts_and_events()
     )
 
     assert compute_knowledge_pack_freshness_hash(freshness_input) == compute_knowledge_pack_freshness_hash(reordered)
+
+
+def test_knowledge_pack_build_result_uses_cache_freshness_hash_contract():
+    result = build_asset_knowledge_pack_result("VOO")
+    pack = build_asset_knowledge_pack("VOO")
+    expected_input = build_knowledge_pack_freshness_input(pack, section_freshness_labels=result.section_freshness)
+    expected_hash = compute_knowledge_pack_freshness_hash(expected_input)
+
+    assert result.knowledge_pack_freshness_hash == expected_hash
+    assert result.source_checksums == expected_input.source_checksums
+    assert result.cache_key is not None
+    assert "asset-voo" in result.cache_key
+    assert "knowledge-pack" in result.cache_key
+    assert result.cache_revalidation is not None
+    assert result.cache_revalidation.state is CacheEntryState.miss
+    assert result.cache_revalidation.expected_freshness_hash == expected_hash
+
+    changed_label = result.section_freshness[0].model_copy(update={"freshness_state": FreshnessState.stale})
+    changed_input = KnowledgePackFreshnessInput(
+        **{
+            **expected_input.model_dump(mode="json"),
+            "section_freshness_labels": [changed_label, *result.section_freshness[1:]],
+        }
+    )
+    assert expected_hash != compute_knowledge_pack_freshness_hash(changed_input)
+
+
+def test_non_cached_knowledge_pack_states_block_generated_output_cache_reuse():
+    for ticker, expected_state in [
+        ("SPY", CacheEntryState.eligible_not_cached),
+        ("BTC", CacheEntryState.unsupported),
+        ("ZZZZ", CacheEntryState.unknown),
+    ]:
+        result = build_asset_knowledge_pack_result(ticker)
+
+        assert result.generated_output_available is False
+        assert result.reusable_generated_output_cache_hit is False
+        assert result.cache_revalidation is not None
+        assert result.cache_revalidation.state is expected_state
+        assert result.cache_revalidation.reusable is False
+        assert result.source_checksums == []
+        assert result.knowledge_pack_freshness_hash is None
 
 
 def test_freshness_hash_changes_when_evidence_inputs_change():

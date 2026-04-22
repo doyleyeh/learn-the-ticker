@@ -313,6 +313,71 @@ def test_details_sources_and_recent_routes_exist():
     assert recent.json()["recent_developments"][0]["freshness_state"] == "fresh"
 
 
+def test_knowledge_pack_route_serializes_cached_and_non_generated_states():
+    cached = client.get("/api/assets/VOO/knowledge-pack")
+    cached_again = client.get("/api/assets/voo/knowledge-pack")
+    eligible = client.get("/api/assets/SPY/knowledge-pack")
+    unsupported = client.get("/api/assets/TQQQ/knowledge-pack")
+    unknown = client.get("/api/assets/ZZZZ/knowledge-pack")
+
+    assert cached.status_code == 200
+    assert cached_again.status_code == 200
+    assert cached.json() == cached_again.json()
+
+    body = cached.json()
+    assert body["schema_version"] == "asset-knowledge-pack-build-v1"
+    assert body["ticker"] == "VOO"
+    assert body["asset"]["ticker"] == "VOO"
+    assert body["asset_type"] == "etf"
+    assert body["pack_id"] == "asset-knowledge-pack-voo-local-fixture-v1"
+    assert body["build_state"] == "available"
+    assert body["generated_output_available"] is True
+    assert body["reusable_generated_output_cache_hit"] is False
+    assert body["generated_route"] == "/assets/VOO"
+    assert body["capabilities"]["can_open_generated_page"] is True
+    assert body["capabilities"]["can_answer_chat"] is True
+    assert body["capabilities"]["can_compare"] is True
+    assert body["freshness"]["freshness_state"] == "fresh"
+    assert body["knowledge_pack_freshness_hash"]
+    assert body["cache_revalidation"]["state"] == "miss"
+    assert body["source_document_ids"]
+    assert body["citation_ids"]
+    assert body["counts"]["source_document_count"] == len(body["source_documents"])
+    assert body["counts"]["normalized_fact_count"] == len(body["normalized_facts"])
+    assert body["counts"]["source_chunk_count"] == len(body["source_chunks"])
+    assert body["counts"]["recent_development_count"] == len(body["recent_developments"])
+    assert "canonical_facts" in {label["section_id"] for label in body["section_freshness"]}
+    assert {source["asset_ticker"] for source in body["source_documents"]} == {"VOO"}
+    assert {fact["asset_ticker"] for fact in body["normalized_facts"]} == {"VOO"}
+    assert {chunk["asset_ticker"] for chunk in body["source_chunks"]} == {"VOO"}
+    assert {recent["asset_ticker"] for recent in body["recent_developments"]} == {"VOO"}
+    assert "supporting_passage" not in str(body)
+
+    for response, expected_state, expected_cache_state in [
+        (eligible, "eligible_not_cached", "eligible_not_cached"),
+        (unsupported, "unsupported", "unsupported"),
+        (unknown, "unknown", "unknown"),
+    ]:
+        assert response.status_code == 200
+        non_generated = response.json()
+        assert non_generated["build_state"] == expected_state
+        assert non_generated["generated_output_available"] is False
+        assert non_generated["generated_route"] is None
+        assert non_generated["capabilities"]["can_open_generated_page"] is False
+        assert non_generated["capabilities"]["can_answer_chat"] is False
+        assert non_generated["capabilities"]["can_compare"] is False
+        assert non_generated["source_document_ids"] == []
+        assert non_generated["citation_ids"] == []
+        assert non_generated["source_documents"] == []
+        assert non_generated["normalized_facts"] == []
+        assert non_generated["source_chunks"] == []
+        assert non_generated["recent_developments"] == []
+        assert non_generated["source_checksums"] == []
+        assert non_generated["knowledge_pack_freshness_hash"] is None
+        assert non_generated["cache_revalidation"]["state"] == expected_cache_state
+        assert non_generated["cache_revalidation"]["reusable"] is False
+
+
 def test_asset_page_and_source_list_export_routes_return_contract_payloads():
     asset_export = client.get("/api/assets/VOO/export")
     source_export = client.get("/api/assets/VOO/sources/export")

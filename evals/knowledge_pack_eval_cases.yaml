@@ -1,0 +1,90 @@
+schema_version: knowledge-pack-evals-v1
+
+required_models:
+  - KnowledgePackBuildState
+  - KnowledgePackCounts
+  - KnowledgePackSourceMetadata
+  - KnowledgePackFactMetadata
+  - KnowledgePackChunkMetadata
+  - KnowledgePackRecentDevelopmentMetadata
+  - KnowledgePackEvidenceGapMetadata
+  - KnowledgePackBuildResponse
+
+required_helpers:
+  - build_asset_knowledge_pack_result
+
+supported_cached_cases:
+  - id: knowledge_pack_cached_aapl
+    ticker: AAPL
+    expected_asset_type: stock
+    expected_pack_id: asset-knowledge-pack-aapl-local-fixture-v1
+    expected_generated_route: /assets/AAPL
+
+  - id: knowledge_pack_cached_voo
+    ticker: VOO
+    expected_asset_type: etf
+    expected_pack_id: asset-knowledge-pack-voo-local-fixture-v1
+    expected_generated_route: /assets/VOO
+
+  - id: knowledge_pack_cached_qqq
+    ticker: QQQ
+    expected_asset_type: etf
+    expected_pack_id: asset-knowledge-pack-qqq-local-fixture-v1
+    expected_generated_route: /assets/QQQ
+
+non_generated_cases:
+  - id: knowledge_pack_eligible_not_cached_spy
+    ticker: SPY
+    expected_asset_type: etf
+    expected_build_state: eligible_not_cached
+    expected_cache_state: eligible_not_cached
+    expected_can_request_ingestion: true
+
+  - id: knowledge_pack_unsupported_tqqq
+    ticker: TQQQ
+    expected_asset_type: unsupported
+    expected_build_state: unsupported
+    expected_cache_state: unsupported
+    expected_can_request_ingestion: false
+
+  - id: knowledge_pack_unknown_zzzz
+    ticker: ZZZZ
+    expected_asset_type: unknown
+    expected_build_state: unknown
+    expected_cache_state: unknown
+    expected_can_request_ingestion: false
+
+required_section_freshness_ids:
+  - page
+  - canonical_facts
+  - source_documents
+  - recent_developments
+
+required_cached_metadata:
+  - source_document_ids
+  - citation_ids
+  - source_documents
+  - normalized_facts
+  - source_chunks
+  - recent_developments
+  - evidence_gaps
+  - source_checksums
+  - knowledge_pack_freshness_hash
+
+forbidden_raw_export_fields:
+  - supporting_passage
+  - text
+
+forbidden_live_call_imports:
+  - import requests
+  - import httpx
+  - urllib.request
+  - from socket import
+  - import redis
+  - psycopg
+  - sqlalchemy
+  - boto3
+  - openai
+  - anthropic
+  - os.environ
+  - api_key

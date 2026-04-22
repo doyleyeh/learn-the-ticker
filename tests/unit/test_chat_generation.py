@@ -9,7 +9,7 @@ from backend.chat import (
 )
 from backend.citations import CitationEvidence, CitationValidationStatus
 from backend.models import AssetStatus, ChatResponse, FreshnessState, SafetyClassification
-from backend.retrieval import build_asset_knowledge_pack
+from backend.retrieval import build_asset_knowledge_pack, build_asset_knowledge_pack_result
 from backend.safety import find_forbidden_output_phrases
 
 
@@ -55,6 +55,15 @@ def test_supported_chat_unknown_evidence_does_not_invent_or_cite():
     assert response.citations == []
     assert response.source_documents == []
     assert validate_chat_response(response, pack).valid
+
+
+def test_knowledge_pack_builder_does_not_change_chat_output():
+    before = generate_asset_chat("QQQ", "What is this fund?").model_dump(mode="json")
+    build_result = build_asset_knowledge_pack_result("QQQ")
+    after = generate_asset_chat("QQQ", "What is this fund?").model_dump(mode="json")
+
+    assert build_result.build_state.value == "available"
+    assert after == before
 
 
 def test_chat_advice_and_unsupported_redirects_have_no_citations():

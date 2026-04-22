@@ -3,6 +3,7 @@ from pathlib import Path
 from backend.models import AssetStatus, FreshnessState
 from backend.retrieval import (
     build_asset_knowledge_pack,
+    build_asset_knowledge_pack_result,
     build_comparison_knowledge_pack,
     load_retrieval_fixture_dataset,
     supported_fixture_tickers,
@@ -125,6 +126,95 @@ def test_missing_stale_unsupported_and_insufficient_evidence_are_explicit():
     assert unknown.normalized_facts == []
 
 
+def test_knowledge_pack_build_result_is_deterministic_and_metadata_only_for_cached_assets():
+    for ticker in ["AAPL", "VOO", "QQQ"]:
+        first = build_asset_knowledge_pack_result(ticker)
+        second = build_asset_knowledge_pack_result(ticker.lower())
+        pack = build_asset_knowledge_pack(ticker)
+
+        assert first.model_dump(mode="json") == second.model_dump(mode="json")
+        assert first.schema_version == "asset-knowledge-pack-build-v1"
+        assert first.pack_id == f"asset-knowledge-pack-{ticker.lower()}-local-fixture-v1"
+        assert first.build_state.value == "available"
+        assert first.generated_output_available is True
+        assert first.generated_route == f"/assets/{ticker}"
+        assert first.capabilities.can_open_generated_page is True
+        assert first.capabilities.can_answer_chat is True
+        assert first.capabilities.can_compare is True
+        assert first.counts.source_document_count == len(pack.source_documents)
+        assert first.counts.normalized_fact_count == len(pack.normalized_facts)
+        assert first.counts.source_chunk_count == len(pack.source_chunks)
+        assert first.counts.recent_development_count == len(pack.recent_developments)
+        assert first.counts.evidence_gap_count == len(pack.evidence_gaps)
+        assert first.knowledge_pack_freshness_hash
+        assert first.cache_key and "knowledge-pack" in first.cache_key
+        assert first.cache_revalidation is not None
+        assert first.cache_revalidation.reusable is False
+        assert first.cache_revalidation.state.value == "miss"
+        assert first.no_live_external_calls is True
+        assert first.exports_full_source_documents is False
+
+        assert set(first.source_document_ids) == {source.source_document_id for source in pack.source_documents}
+        assert {source.asset_ticker for source in first.source_documents} == {ticker}
+        assert {fact.asset_ticker for fact in first.normalized_facts} == {ticker}
+        assert {chunk.asset_ticker for chunk in first.source_chunks} == {ticker}
+        assert {recent.asset_ticker for recent in first.recent_developments} == {ticker}
+        assert all(fact.source_document_id in first.source_document_ids for fact in first.normalized_facts)
+        assert all(chunk.source_document_id in first.source_document_ids for chunk in first.source_chunks)
+        assert all(recent.source_document_id in first.source_document_ids for recent in first.recent_developments)
+        assert any(citation_id.startswith("c_fact_") for citation_id in first.citation_ids)
+        assert any(citation_id.startswith("c_chk_") for citation_id in first.citation_ids)
+        assert any(citation_id.startswith("c_recent_") for citation_id in first.citation_ids)
+
+        dumped = first.model_dump(mode="json")
+        assert "supporting_passage" not in dumped
+        assert "Apple designs, manufactures" not in str(dumped)
+        assert "VOO seeks to track" not in str(dumped)
+        assert "QQQ tracks the Nasdaq-100" not in str(dumped)
+
+
+def test_knowledge_pack_build_result_non_generated_states_do_not_expose_pack_evidence():
+    cases = [
+        ("SPY", "eligible_not_cached", "eligible_not_cached"),
+        ("TQQQ", "unsupported", "unsupported"),
+        ("ZZZZ", "unknown", "unknown"),
+    ]
+
+    for ticker, expected_build_state, expected_cache_state in cases:
+        result = build_asset_knowledge_pack_result(ticker)
+
+        assert result.ticker == ticker
+        assert result.build_state.value == expected_build_state
+        assert result.generated_output_available is False
+        assert result.reusable_generated_output_cache_hit is False
+        assert result.generated_route is None
+        assert result.capabilities.can_open_generated_page is False
+        assert result.capabilities.can_answer_chat is False
+        assert result.capabilities.can_compare is False
+        assert result.source_document_ids == []
+        assert result.citation_ids == []
+        assert result.source_documents == []
+        assert result.normalized_facts == []
+        assert result.source_chunks == []
+        assert result.recent_developments == []
+        assert result.source_checksums == []
+        assert result.knowledge_pack_freshness_hash is None
+        assert result.counts.source_document_count == 0
+        assert result.counts.citation_count == 0
+        assert result.counts.normalized_fact_count == 0
+        assert result.counts.source_chunk_count == 0
+        assert result.counts.recent_development_count == 0
+        assert result.counts.evidence_gap_count == 1
+        assert result.evidence_gaps[0].field_name == "asset_knowledge_pack"
+        assert result.cache_revalidation is not None
+        assert result.cache_revalidation.state.value == expected_cache_state
+        assert result.cache_revalidation.reusable is False
+
+    eligible = build_asset_knowledge_pack_result("SPY")
+    assert eligible.asset.asset_type.value == "etf"
+    assert eligible.capabilities.can_request_ingestion is True
+
+
 def test_retrieval_module_does_not_import_network_clients():
     retrieval_source = (ROOT / "backend" / "retrieval.py").read_text(encoding="utf-8")
 
@@ -133,6 +223,14 @@ def test_retrieval_module_does_not_import_network_clients():
         "import httpx",
         "urllib.request",
         "from socket import",
+        "import redis",
+        "psycopg",
+        "sqlalchemy",
+        "boto3",
+        "openai",
+        "anthropic",
+        "os.environ",
+        "api_key",
     ]
     for forbidden in forbidden_network_imports:
         assert forbidden not in retrieval_source

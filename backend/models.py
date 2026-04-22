@@ -459,6 +459,14 @@ class CacheEntryState(str, Enum):
     eligible_not_cached = "eligible_not_cached"
 
 
+class KnowledgePackBuildState(str, Enum):
+    available = "available"
+    eligible_not_cached = "eligible_not_cached"
+    unsupported = "unsupported"
+    unknown = "unknown"
+    unavailable = "unavailable"
+
+
 class CacheInvalidationReason(str, Enum):
     none = "none"
     no_entry = "no_entry"
@@ -635,6 +643,114 @@ class Freshness(BaseModel):
     holdings_as_of: str | None = None
     recent_events_as_of: str | None = None
     freshness_state: FreshnessState
+
+
+class KnowledgePackCounts(BaseModel):
+    source_document_count: int = 0
+    citation_count: int = 0
+    normalized_fact_count: int = 0
+    source_chunk_count: int = 0
+    recent_development_count: int = 0
+    evidence_gap_count: int = 0
+
+
+class KnowledgePackSourceMetadata(BaseModel):
+    source_document_id: str
+    asset_ticker: str
+    source_type: str
+    source_rank: int
+    title: str
+    publisher: str
+    url: str
+    published_at: str | None = None
+    as_of_date: str | None = None
+    retrieved_at: str
+    freshness_state: FreshnessState
+    is_official: bool
+    citation_ids: list[str] = Field(default_factory=list)
+    fact_ids: list[str] = Field(default_factory=list)
+    recent_event_ids: list[str] = Field(default_factory=list)
+    chunk_ids: list[str] = Field(default_factory=list)
+
+
+class KnowledgePackFactMetadata(BaseModel):
+    fact_id: str
+    asset_ticker: str
+    fact_type: str
+    field_name: str
+    source_document_id: str
+    source_chunk_id: str
+    extraction_method: str
+    freshness_state: FreshnessState
+    evidence_state: str
+    as_of_date: str | None = None
+    citation_ids: list[str] = Field(default_factory=list)
+
+
+class KnowledgePackChunkMetadata(BaseModel):
+    chunk_id: str
+    asset_ticker: str
+    source_document_id: str
+    section_name: str
+    chunk_order: int
+    token_count: int
+    supported_claim_types: list[str] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+
+
+class KnowledgePackRecentDevelopmentMetadata(BaseModel):
+    event_id: str
+    asset_ticker: str
+    event_type: str
+    event_date: str | None = None
+    source_document_id: str
+    source_chunk_id: str
+    importance_score: float
+    freshness_state: FreshnessState
+    evidence_state: str
+    citation_ids: list[str] = Field(default_factory=list)
+
+
+class KnowledgePackEvidenceGapMetadata(BaseModel):
+    gap_id: str
+    asset_ticker: str
+    field_name: str
+    evidence_state: str
+    freshness_state: FreshnessState
+    source_document_id: str | None = None
+    source_chunk_id: str | None = None
+    message: str | None = None
+
+
+class KnowledgePackBuildResponse(BaseModel):
+    schema_version: str
+    ticker: str
+    asset: AssetIdentity
+    asset_type: AssetType
+    pack_id: str
+    build_state: KnowledgePackBuildState
+    state: StateMessage
+    generated_output_available: bool = False
+    reusable_generated_output_cache_hit: bool = False
+    generated_route: str | None = None
+    capabilities: IngestionCapabilities = Field(default_factory=IngestionCapabilities)
+    freshness: Freshness
+    section_freshness: list[SectionFreshnessInput] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+    counts: KnowledgePackCounts = Field(default_factory=KnowledgePackCounts)
+    source_documents: list[KnowledgePackSourceMetadata] = Field(default_factory=list)
+    normalized_facts: list[KnowledgePackFactMetadata] = Field(default_factory=list)
+    source_chunks: list[KnowledgePackChunkMetadata] = Field(default_factory=list)
+    recent_developments: list[KnowledgePackRecentDevelopmentMetadata] = Field(default_factory=list)
+    evidence_gaps: list[KnowledgePackEvidenceGapMetadata] = Field(default_factory=list)
+    source_checksums: list[SourceChecksumRecord] = Field(default_factory=list)
+    knowledge_pack_freshness_hash: str | None = None
+    cache_key: str | None = None
+    cache_revalidation: CacheRevalidationResult | None = None
+    no_live_external_calls: bool = True
+    exports_full_source_documents: bool = False
+    message: str
 
 
 class Citation(BaseModel):
