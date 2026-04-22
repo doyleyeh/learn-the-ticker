@@ -2,50 +2,88 @@
 
 ## Current task
 
-### T-015: Align MVP control docs with PRD v0.2
+### T-016: Define search support-classification contract
 
 Goal:
-Update SPEC.md, EVALS.md, TASKS.md, and the technical design spec where needed so the agent loop follows the updated PRD v0.2 MVP direction.
+Define a deterministic search support-classification contract that lets backend clients distinguish cached supported assets, recognized-but-unsupported assets, unknown assets, ambiguous matches, and eligible assets that would require on-demand ingestion later.
 
 Task scope:
-This is a documentation/control-plane task only. Do not implement product code. Translate the updated PRD decisions into concise, actionable project rules, MVP checklist items, task-specific eval guidance, and the next backlog headings.
+This is a backend/API contract and deterministic test-fixture task. Extend the existing `/api/search` shape and local search classification logic so future UI and on-demand ingestion work can rely on structured fields instead of parsing status copy. Use only local fixtures or mocks. Do not add live provider lookup, ingestion workers, or generated asset pages for newly classified non-cached assets.
 
 Allowed files:
 
-- SPEC.md
-- EVALS.md
-- TASKS.md
-- docs/learn_the_ticker_technical_design_spec.md
+- backend/models.py
+- backend/main.py
+- backend/data.py
+- backend/search.py
+- data/retrieval_fixtures.json
+- tests/unit/test_search_classification.py
+- tests/integration/test_backend_api.py
+- evals/search_eval_cases.yaml
+- evals/run_static_evals.py
 
 Do not change:
 
 - app/
 - components/
-- backend/
 - lib/
-- tests/
-- evals/
+- styles/
+- backend/overview.py
+- backend/chat.py
+- backend/comparison.py
+- backend/citations.py
 - package files
-- retrieval fixtures
+- docs other than the agent journal
+- provider adapter or ingestion worker implementations
+- generated asset, chat, or comparison behavior for unsupported or unknown assets
 
 Acceptance criteria:
 
-- SPEC.md reflects PRD v0.2 MVP decisions without contradicting safety/citation rules.
-- EVALS.md lists required checks by task category.
-- TASKS.md contains 8-12 small backlog headings after T-015.
-- Technical design spec is updated only for durable architecture decisions from PRD v0.2.
-- No product implementation code is changed.
-- Quality gate passes.
+- `/api/search` returns structured support-classification fields for each result, without requiring clients to parse human-readable messages.
+- Search response state can explicitly represent supported single-result, ambiguous multi-result, recognized-but-unsupported, unknown, and eligible-but-not-cached / ingestion-needed outcomes.
+- Fixture-backed supported assets such as `AAPL`, `VOO`, and `QQQ` still resolve by ticker and name and are marked safe to open as generated local asset pages.
+- Ambiguous local searches return multiple candidate results and do not silently choose one ticker.
+- Recognized unsupported examples, including crypto and leveraged or inverse ETFs, are marked unsupported and are not marked safe for generated pages, generated chat, or generated comparisons.
+- Unknown searches return an unknown/unavailable state with no invented asset facts and no generated route.
+- At least one deterministic fixture or mock case represents an eligible U.S.-listed common stock or plain-vanilla ETF that is not locally cached yet and therefore requires on-demand ingestion later; it must not receive generated page/chat/comparison output in this task.
+- Search result copy remains educational and avoids buy/sell/hold, allocation, price-target, tax, brokerage, or personalized recommendation language.
+- Static evals cover same-result classification, unsupported blocking, ambiguous handling, unknown handling, the ingestion-needed contract, and absence of live external calls.
+- Normal CI remains deterministic and does not require provider credentials, market-data calls, news calls, or LLM calls.
 
 Required commands:
 
 - git status --short
+- python3 -m pytest tests/integration/test_backend_api.py tests/unit/test_search_classification.py -q
+- python3 -m pytest tests -q
+- npm test
+- python3 evals/run_static_evals.py
 - bash scripts/run_quality_gate.sh
 
 Iteration budget:
 Max 2 attempts
 
 ## Completed
+
+### T-015: Align MVP control docs with PRD v0.2
+
+Goal:
+Update SPEC.md, EVALS.md, TASKS.md, and the technical design spec where needed so the agent loop follows the updated PRD v0.2 MVP direction.
+
+Completed:
+
+- Updated `SPEC.md` so MVP direction covers all eligible U.S.-listed common stocks and plain-vanilla ETFs, recognized-but-unsupported blocking, Massive / ETF Global provider planning, provider licensing review, glossary support, export/download metadata, freshness hashes, and expanded trust metrics.
+- Expanded `EVALS.md` with task-specific guidance for search/support classification, glossary/beginner education, export/download, and broader no-live-provider-call expectations across task categories.
+- Updated `TASKS.md` backlog from T-016 through T-027 to align with PRD v0.2 MVP sequencing, including search classification, on-demand ingestion job states, PRD asset sections, glossary, export, provider adapters, caching/freshness hashes, and golden asset coverage.
+- Updated `docs/learn_the_ticker_technical_design_spec.md` for durable v0.2 architecture details: accountless export behavior, Phase 4 MVP reliability/accountless learning features, caching and freshness-hash work, glossary support, export acceptance, trust metrics, and unsupported asset exclusions.
+- Added `docs/agent-journal/20260422T035714Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- T-015 agent journal records that `git status --short` and `bash scripts/run_quality_gate.sh` passed on attempt 1.
+- Remaining documented risk: this was a documentation/control-plane task only; no product behavior was implemented.
+- Remaining documented risk: future provider, export, and on-demand ingestion tasks still need mocked tests and licensing review before exposing restricted data or live external calls.
+
+Completion commits:
+
+- `1828e06 docs(T-015): align MVP control docs with PRD v0.2`
+- `7231055 chore(T-015): merge align MVP control docs with PRD v0.2`
 
 ### T-014: Add beginner chat starter prompts
 
@@ -389,7 +427,6 @@ Completion commits:
 
 ## Backlog
 
-### T-016: Define search support-classification contract
 ### T-017: Add on-demand ingestion job-state contract
 ### T-018: Expand asset overview schema for PRD content sections
 ### T-019: Add richer stock and ETF fixture data for MVP content sections
