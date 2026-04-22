@@ -24,6 +24,7 @@ from backend.cache import (
 from backend.chat import generate_asset_chat, validate_chat_response
 from backend.citations import validate_claims
 from backend.comparison import generate_comparison, validate_comparison_response
+from backend.data import ASSETS, ELIGIBLE_NOT_CACHED_ASSETS
 from backend.export import export_asset_page, export_asset_source_list, export_chat_transcript, export_comparison
 from backend.ingestion import get_ingestion_job_status, request_ingestion
 from backend.main import app
@@ -73,10 +74,195 @@ def load_yaml(filename: str) -> dict:
 
 def test_golden_assets():
     data = load_yaml("golden_assets.yaml")
-    assert "stocks" in data
-    assert "etfs" in data
-    assert len(data["stocks"]) >= 4
-    assert len(data["etfs"]) >= 6
+    assert data.get("schema_version") == "golden-assets-v2"
+
+    required_technical_stocks = {"AAPL", "MSFT", "NVDA", "TSLA"}
+    required_technical_etfs = {"VOO", "SPY", "VTI", "QQQ", "VGT", "SOXX"}
+    required_launch_tickers = {
+        "VOO",
+        "SPY",
+        "VTI",
+        "IVV",
+        "QQQ",
+        "IWM",
+        "DIA",
+        "VGT",
+        "XLK",
+        "SOXX",
+        "SMH",
+        "XLF",
+        "XLV",
+        "AAPL",
+        "MSFT",
+        "NVDA",
+        "AMZN",
+        "GOOGL",
+        "META",
+        "TSLA",
+        "BRK.B",
+        "JPM",
+        "UNH",
+    }
+    required_common_pairs = {
+        ("VOO", "SPY"),
+        ("VTI", "VOO"),
+        ("QQQ", "VOO"),
+        ("QQQ", "VGT"),
+        ("VGT", "SOXX"),
+        ("AAPL", "MSFT"),
+        ("NVDA", "SOXX"),
+    }
+
+    technical = data.get("technical_design_golden_assets", {})
+    assert required_technical_stocks <= set(technical.get("stocks", []))
+    assert required_technical_etfs <= set(technical.get("etfs", []))
+
+    cached_cases = data.get("cached_supported_assets", [])
+    eligible_cases = data.get("eligible_not_cached_launch_assets", [])
+    unsupported_cases = data.get("unsupported_samples", [])
+    unknown_cases = data.get("unknown_samples", [])
+    comparison_cases = data.get("common_comparison_pairs", [])
+
+    assert {case["ticker"] for case in cached_cases} == {"AAPL", "VOO", "QQQ"}
+    assert {case["ticker"] for case in cached_cases + eligible_cases} == required_launch_tickers
+    assert required_launch_tickers - set(ASSETS) == set(ELIGIBLE_NOT_CACHED_ASSETS)
+    assert {case["ticker"] for case in eligible_cases} == set(ELIGIBLE_NOT_CACHED_ASSETS)
+    assert {case["ticker"] for case in unsupported_cases} >= {"BTC", "TQQQ", "SQQQ"}
+    assert {case["ticker"] for case in unknown_cases} >= {"ZZZZ"}
+    assert required_common_pairs <= {(case["left"], case["right"]) for case in comparison_cases}
+
+    for case in cached_cases:
+        response = client.get("/api/search", params={"q": case["ticker"]})
+        assert response.status_code == 200, f"{case['ticker']} search failed"
+        result = response.json()["results"][0]
+        assert result["support_classification"] == "cached_supported"
+        assert result["asset_type"] == case["expected_type"]
+        assert result["name"] == case["expected_name"]
+        assert result["generated_route"] == case["expected_generated_route"]
+        assert result["can_open_generated_page"] is case["expected_can_open_generated_page"]
+        assert result["can_answer_chat"] is case["expected_can_answer_chat"]
+        assert result["can_compare"] is case["expected_can_compare"]
+        assert result["can_request_ingestion"] is case["expected_can_request_ingestion"]
+
+        overview = generate_asset_overview(case["ticker"])
+        assert overview.asset.supported is True
+        assert len(overview.top_risks) == case["expected_top_risk_count"]
+        assert bool(overview.citations) is case["expected_citations"]
+        assert bool(overview.source_documents) is case["expected_source_documents"]
+        assert bool(overview.freshness.page_last_updated_at) is case["expected_freshness"]
+        assert bool(overview.recent_developments) is case["expected_recent_developments_separate"]
+
+        chat = generate_asset_chat(case["ticker"], "What is this asset?")
+        assert chat.asset.supported is True
+        assert chat.safety_classification.value == "educational"
+        assert chat.citations
+        assert chat.source_documents
+
+        ingestion = request_ingestion(case["ticker"])
+        assert ingestion.job_state.value == "no_ingestion_needed"
+        assert ingestion.generated_route == case["expected_generated_route"]
+
+    eligible_expectations = data["eligible_not_cached_expected_capabilities"]
+    for case in eligible_cases:
+        ticker = case["ticker"]
+        metadata = ELIGIBLE_NOT_CACHED_ASSETS[ticker]
+        assert metadata["name"] == case["expected_name"]
+        assert metadata["asset_type"] == case["expected_type"]
+        assert metadata["launch_group"] == case["launch_group"]
+
+        response = client.get("/api/search", params={"q": ticker})
+        assert response.status_code == 200, f"{ticker} search failed"
+        body = response.json()
+        result = body["results"][0]
+        assert body["state"]["status"] == "ingestion_needed"
+        assert body["state"]["support_classification"] == "eligible_not_cached"
+        assert body["state"]["can_request_ingestion"] is True
+        assert result["support_classification"] == "eligible_not_cached"
+        assert result["asset_type"] == case["expected_type"]
+        assert result["name"] == case["expected_name"]
+        assert result["generated_route"] == eligible_expectations["expected_generated_route"]
+        assert result["can_open_generated_page"] is eligible_expectations["expected_can_open_generated_page"]
+        assert result["can_answer_chat"] is eligible_expectations["expected_can_answer_chat"]
+        assert result["can_compare"] is eligible_expectations["expected_can_compare"]
+        assert result["can_request_ingestion"] is eligible_expectations["expected_can_request_ingestion"]
+        assert result["ingestion_request_route"] == f"/api/admin/ingest/{ticker}"
+
+        ingestion = request_ingestion(ticker)
+        assert ingestion.ticker == ticker
+        assert ingestion.asset_type.value == case["expected_type"]
+        assert ingestion.job_type.value == "on_demand"
+        assert ingestion.job_id == f"ingest-on-demand-{ticker.lower()}"
+        assert ingestion.status_url == f"/api/jobs/ingest-on-demand-{ticker.lower()}"
+        assert ingestion.generated_route is None
+        assert ingestion.capabilities.can_open_generated_page is False
+        assert ingestion.capabilities.can_answer_chat is False
+        assert ingestion.capabilities.can_compare is False
+        assert ingestion.capabilities.can_request_ingestion is True
+        assert get_ingestion_job_status(ingestion.job_id).model_dump(mode="json") == ingestion.model_dump(mode="json")
+
+        provider = fetch_mock_provider_response(ProviderKind.market_reference, ticker, ProviderDataCategory.asset_resolution)
+        assert provider.state is ProviderResponseState.eligible_not_cached
+        assert provider.asset is not None
+        assert provider.asset.ticker == ticker
+        assert provider.asset.asset_type.value == case["expected_type"]
+        assert provider.asset.supported is True
+        assert provider.licensing.export_allowed is False
+        _assert_provider_generated_flags_off(provider, f"golden_provider_{ticker}")
+
+        overview = generate_asset_overview(ticker)
+        assert overview.asset.supported is False
+        assert overview.beginner_summary is None
+        assert overview.claims == []
+        assert overview.citations == []
+        assert overview.source_documents == []
+        assert overview.sections == []
+
+        chat = generate_asset_chat(ticker, "What is this asset?")
+        assert chat.asset.supported is False
+        assert chat.citations == []
+        assert chat.source_documents == []
+
+        export = export_asset_page(ticker)
+        assert export.export_state.value == "unavailable"
+        assert export.sections == []
+        assert export.citations == []
+        assert export.source_documents == []
+        assert export.metadata["generated_asset_output"] is False
+
+    for case in unsupported_cases:
+        response = client.get("/api/search", params={"q": case["ticker"]})
+        result = response.json()["results"][0]
+        assert result["support_classification"] == case["expected_support_classification"]
+        assert result["asset_type"] == case["expected_type"]
+        assert result["can_open_generated_page"] is False
+        assert result["can_answer_chat"] is False
+        assert result["can_compare"] is False
+
+    for case in unknown_cases:
+        response = client.get("/api/search", params={"q": case["ticker"]})
+        result = response.json()["results"][0]
+        assert result["support_classification"] == case["expected_support_classification"]
+        assert result["asset_type"] == case["expected_type"]
+        assert result["generated_route"] is None
+
+    for case in [*comparison_cases, *data.get("local_generated_comparison_pairs", [])]:
+        comparison = generate_comparison(case["left"], case["right"])
+        if case["expected_state"] == "supported":
+            assert comparison.state.status.value == "supported"
+            assert comparison.comparison_type != "unavailable"
+            assert bool(comparison.key_differences) is case["expected_generated_output"]
+            assert bool(comparison.citations) is case.get("expected_citations", False)
+            assert bool(comparison.source_documents) is case.get("expected_source_documents", False)
+        else:
+            assert comparison.comparison_type == "unavailable"
+            assert comparison.key_differences == []
+            assert comparison.bottom_line_for_beginners is None
+            assert comparison.citations == []
+            assert comparison.source_documents == []
+
+    data_source = (ROOT / "backend" / "data.py").read_text(encoding="utf-8")
+    for forbidden in ["import requests", "import httpx", "urllib", "socket", "os.environ", "api_key"]:
+        assert forbidden not in data_source
 
 
 def test_safety_cases():

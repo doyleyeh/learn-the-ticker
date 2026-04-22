@@ -67,3 +67,23 @@ cases:
     expected_requires_ingestion: true
     expected_can_request_ingestion: true
     expected_ingestion_request_route: /api/admin/ingest/SPY
+
+  - id: search_eligible_not_cached_golden_etf_soxx
+    query: SOXX
+    expected_state: ingestion_needed
+    expected_result_tickers: [SOXX]
+    expected_support_classifications: [eligible_not_cached]
+    expected_can_open_generated_page: false
+    expected_requires_ingestion: true
+    expected_can_request_ingestion: true
+    expected_ingestion_request_route: /api/admin/ingest/SOXX
+
+  - id: search_eligible_not_cached_launch_stock_brkb
+    query: BRK.B
+    expected_state: ingestion_needed
+    expected_result_tickers: [BRK.B]
+    expected_support_classifications: [eligible_not_cached]
+    expected_can_open_generated_page: false
+    expected_requires_ingestion: true
+    expected_can_request_ingestion: true
+    expected_ingestion_request_route: /api/admin/ingest/BRK.B

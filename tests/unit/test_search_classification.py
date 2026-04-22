@@ -1,3 +1,4 @@
+from backend.data import ELIGIBLE_NOT_CACHED_ASSETS
 from backend.models import SearchResponse
 from backend.search import search_assets
 
@@ -105,3 +106,53 @@ def test_eligible_not_cached_assets_require_future_ingestion_only():
     assert result.generated_route is None
     assert result.can_request_ingestion is True
     assert result.ingestion_request_route == "/api/admin/ingest/SPY"
+
+
+def test_launch_universe_assets_without_local_packs_are_eligible_not_cached_not_unknown():
+    expected_tickers = {
+        "SPY",
+        "VTI",
+        "IVV",
+        "IWM",
+        "DIA",
+        "VGT",
+        "XLK",
+        "SOXX",
+        "SMH",
+        "XLF",
+        "XLV",
+        "MSFT",
+        "NVDA",
+        "AMZN",
+        "GOOGL",
+        "META",
+        "TSLA",
+        "BRK.B",
+        "JPM",
+        "UNH",
+    }
+    assert set(ELIGIBLE_NOT_CACHED_ASSETS) == expected_tickers
+
+    for ticker in sorted(expected_tickers):
+        response = search_assets(ticker)
+        validated = SearchResponse.model_validate(response.model_dump(mode="json"))
+        result = validated.results[0]
+
+        assert validated.state.status.value == "ingestion_needed"
+        assert validated.state.support_classification.value == "eligible_not_cached"
+        assert validated.state.can_open_generated_page is False
+        assert validated.state.requires_ingestion is True
+        assert validated.state.can_request_ingestion is True
+        assert validated.state.ingestion_request_route == f"/api/admin/ingest/{ticker}"
+        assert result.ticker == ticker
+        assert result.supported is False
+        assert result.status.value == "ingestion_needed"
+        assert result.support_classification.value == "eligible_not_cached"
+        assert result.eligible_for_ingestion is True
+        assert result.requires_ingestion is True
+        assert result.can_open_generated_page is False
+        assert result.can_answer_chat is False
+        assert result.can_compare is False
+        assert result.generated_route is None
+        assert result.can_request_ingestion is True
+        assert result.ingestion_request_route == f"/api/admin/ingest/{ticker}"

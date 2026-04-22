@@ -31,6 +31,22 @@ request_cases:
       can_compare: false
       can_request_ingestion: true
 
+  - id: request_eligible_not_cached_soxx
+    ticker: SOXX
+    expected_asset_type: etf
+    expected_job_type: on_demand
+    expected_job_id: ingest-on-demand-soxx
+    expected_job_state: pending
+    expected_worker_status: queued
+    expected_status_url: /api/jobs/ingest-on-demand-soxx
+    expected_generated_route: null
+    expected_retryable: true
+    expected_capabilities:
+      can_open_generated_page: false
+      can_answer_chat: false
+      can_compare: false
+      can_request_ingestion: true
+
   - id: request_cached_supported_aapl
     ticker: AAPL
     expected_asset_type: stock
@@ -94,6 +110,14 @@ status_cases:
     expected_asset_type: stock
     expected_job_state: running
     expected_worker_status: running
+    expected_generated_route: null
+
+  - id: status_queued_soxx
+    job_id: ingest-on-demand-soxx
+    expected_ticker: SOXX
+    expected_asset_type: etf
+    expected_job_state: pending
+    expected_worker_status: queued
     expected_generated_route: null
 
   - id: status_succeeded_voo

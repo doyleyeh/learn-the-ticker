@@ -44,6 +44,7 @@ def request_ingestion(ticker: str) -> IngestionJobResponse:
         job = _STATUS_FIXTURES.get(_on_demand_job_id(normalized))
         if job:
             return job.model_copy(deep=True)
+        return _eligible_on_demand_job_response(normalized, eligible_asset)
 
     if normalized in UNSUPPORTED_ASSETS:
         return IngestionJobResponse(
@@ -70,6 +71,12 @@ def get_ingestion_job_status(job_id: str) -> IngestionJobResponse:
     if job:
         return job.model_copy(deep=True)
 
+    if job_id.startswith("ingest-on-demand-"):
+        ticker = job_id.removeprefix("ingest-on-demand-").upper()
+        eligible_asset = ELIGIBLE_NOT_CACHED_ASSETS.get(ticker)
+        if eligible_asset:
+            return _eligible_on_demand_job_response(ticker, eligible_asset)
+
     return IngestionJobResponse(
         ticker="UNKNOWN",
         asset_type=AssetType.unknown,
@@ -84,6 +91,23 @@ def get_ingestion_job_status(job_id: str) -> IngestionJobResponse:
 
 def _on_demand_job_id(ticker: str) -> str:
     return f"ingest-on-demand-{ticker.lower()}"
+
+
+def _eligible_on_demand_job_response(ticker: str, metadata: dict[str, str | list[str] | None]) -> IngestionJobResponse:
+    return _job_response(
+        ticker=ticker,
+        asset_type=AssetType(str(metadata["asset_type"])),
+        job_type=IngestionJobType.on_demand,
+        job_id=_on_demand_job_id(ticker),
+        job_state=IngestionJobState.pending,
+        worker_status=IngestionWorkerStatus.queued,
+        retryable=True,
+        capabilities=_capabilities(can_request_ingestion=True),
+        message=(
+            f"{ticker} is eligible-not-cached and queued for deterministic fixture-backed on-demand ingestion. "
+            "No generated asset page, chat answer, or comparison is available yet."
+        ),
+    )
 
 
 def _capabilities(

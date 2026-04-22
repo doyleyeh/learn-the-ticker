@@ -82,6 +82,18 @@ eligible_not_cached_cases:
     expected_state: eligible_not_cached
     expected_asset_type: stock
 
+  - id: provider_market_soxx_eligible_not_cached
+    provider_kind: market_reference
+    ticker: SOXX
+    expected_state: eligible_not_cached
+    expected_asset_type: etf
+
+  - id: provider_market_brkb_eligible_not_cached
+    provider_kind: market_reference
+    ticker: BRK.B
+    expected_state: eligible_not_cached
+    expected_asset_type: stock
+
 failure_cases:
   - id: provider_market_btc_unsupported
     provider_kind: market_reference

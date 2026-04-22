@@ -260,7 +260,7 @@ def _build_sec_response(adapter: MockProviderAdapter, request: ProviderRequestMe
             message="Deterministic SEC-like canonical stock facts for AAPL.",
         )
 
-    if ticker in {"MSFT", "SPY"}:
+    if ticker in ELIGIBLE_NOT_CACHED_ASSETS:
         return _eligible_not_cached_response(adapter, request, licensing)
     if ticker in UNSUPPORTED_ASSETS:
         return _unsupported_response(adapter, request, licensing)
@@ -378,7 +378,7 @@ def _build_etf_issuer_response(adapter: MockProviderAdapter, request: ProviderRe
             message=f"Deterministic official ETF issuer facts and holdings metadata for {ticker}.",
         )
 
-    if ticker in {"SPY", "MSFT"}:
+    if ticker in ELIGIBLE_NOT_CACHED_ASSETS:
         return _eligible_not_cached_response(adapter, request, licensing)
     if ticker in UNSUPPORTED_ASSETS:
         return _unsupported_response(adapter, request, licensing)
@@ -389,7 +389,7 @@ def _build_market_reference_response(adapter: MockProviderAdapter, request: Prov
     ticker = request.normalized_ticker
     licensing = _restricted_market_licensing(adapter.provider_name)
 
-    if ticker in {"AAPL", "VOO", "QQQ", "SPY", "MSFT"}:
+    if ticker in ASSETS or ticker in ELIGIBLE_NOT_CACHED_ASSETS:
         asset = _known_asset_identity(ticker)
         state = ProviderResponseState.supported if ticker in ASSETS else ProviderResponseState.eligible_not_cached
         source = _source(
@@ -535,7 +535,7 @@ def _build_recent_development_response(adapter: MockProviderAdapter, request: Pr
             message=f"No supported high-signal recent-development candidate is present for {ticker}.",
         )
 
-    if ticker in {"SPY", "MSFT"}:
+    if ticker in ELIGIBLE_NOT_CACHED_ASSETS:
         return _eligible_not_cached_response(adapter, request, licensing)
     if ticker in UNSUPPORTED_ASSETS:
         return _unsupported_response(adapter, request, licensing)
