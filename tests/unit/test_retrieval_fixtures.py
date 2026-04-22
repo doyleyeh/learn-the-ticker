@@ -23,8 +23,20 @@ def test_required_stock_and_etf_retrieval_fixtures_exist():
 
 
 def test_each_supported_fixture_has_source_chunks_facts_freshness_and_recent_layer():
+    richer_fields_by_ticker = {
+        "AAPL": {
+            "products_services_detail",
+            "business_quality_strength",
+            "financial_quality_revenue_trend",
+            "valuation_data_limitation",
+        },
+        "VOO": {"holdings_exposure_detail", "construction_methodology", "trading_data_limitation"},
+        "QQQ": {"holdings_exposure_detail", "construction_methodology", "trading_data_limitation"},
+    }
+
     for ticker in ["AAPL", "VOO", "QQQ"]:
         pack = build_asset_knowledge_pack(ticker)
+        fact_fields = {fact.fact.field_name for fact in pack.normalized_facts}
 
         assert pack.asset.status is AssetStatus.supported
         assert pack.freshness.facts_as_of
@@ -38,6 +50,7 @@ def test_each_supported_fixture_has_source_chunks_facts_freshness_and_recent_lay
         assert all(chunk.chunk.asset_ticker == ticker for chunk in pack.source_chunks)
         assert all(fact.fact.asset_ticker == ticker for fact in pack.normalized_facts)
         assert all(recent.recent_development.asset_ticker == ticker for recent in pack.recent_developments)
+        assert richer_fields_by_ticker[ticker] <= fact_fields
 
 
 def test_retrieval_items_attach_source_metadata_to_facts_chunks_and_recent_developments():

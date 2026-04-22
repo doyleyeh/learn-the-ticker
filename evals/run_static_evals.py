@@ -284,6 +284,7 @@ def test_retrieval_fixture_contract():
     all_gap_states = set()
     for ticker in required_tickers:
         pack = build_asset_knowledge_pack(ticker)
+        fact_fields = {fact.fact.field_name for fact in pack.normalized_facts}
         assert pack.asset.supported is True
         assert pack.freshness.facts_as_of
         assert pack.freshness.recent_events_as_of
@@ -309,6 +310,20 @@ def test_retrieval_fixture_contract():
             assert fact.source_document.retrieved_at
 
         all_gap_states.update(gap.evidence_state for gap in pack.evidence_gaps)
+
+        if ticker == "AAPL":
+            assert {
+                "products_services_detail",
+                "business_quality_strength",
+                "financial_quality_revenue_trend",
+                "valuation_data_limitation",
+            } <= fact_fields
+        else:
+            assert {
+                "holdings_exposure_detail",
+                "construction_methodology",
+                "trading_data_limitation",
+            } <= fact_fields
 
     comparison_pack = build_comparison_knowledge_pack("VOO", "QQQ")
     assert comparison_pack.computed_differences
@@ -390,15 +405,20 @@ def test_generated_overview_contract():
         if ticker == "AAPL":
             assert stock_sections <= section_ids
             sections = {section.section_id: section for section in overview.sections}
-            assert sections["valuation_context"].evidence_state is EvidenceState.unavailable
-            assert sections["financial_quality"].evidence_state is EvidenceState.unavailable
-            assert sections["strengths"].evidence_state is EvidenceState.unknown
+            assert sections["strengths"].evidence_state is EvidenceState.supported
+            assert sections["financial_quality"].evidence_state is EvidenceState.mixed
+            assert sections["valuation_context"].evidence_state is EvidenceState.mixed
+            assert "net_sales_trend" in {item.item_id for item in sections["financial_quality"].items}
+            assert "valuation_data_limitation" in {item.item_id for item in sections["valuation_context"].items}
         else:
             assert etf_sections <= section_ids
             sections = {section.section_id: section for section in overview.sections}
             assert sections["holdings_exposure"].evidence_state is EvidenceState.mixed
             assert sections["construction_methodology"].evidence_state is EvidenceState.mixed
             assert sections["cost_trading_context"].evidence_state is EvidenceState.mixed
+            assert "holdings_exposure_detail" in {item.item_id for item in sections["holdings_exposure"].items}
+            assert "construction_methodology" in {item.item_id for item in sections["construction_methodology"].items}
+            assert "trading_data_limitation" in {item.item_id for item in sections["cost_trading_context"].items}
             assert sections["recent_developments"].evidence_state is EvidenceState.no_major_recent_development
             assert sections["recent_developments"].items[0].retrieved_at
             assert len(sections["etf_specific_risks"].items) == 3
