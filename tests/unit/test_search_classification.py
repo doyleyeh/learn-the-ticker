@@ -13,6 +13,8 @@ def test_cached_supported_assets_resolve_by_ticker_and_name():
         assert validated.state.support_classification.value == "cached_supported"
         assert validated.state.can_open_generated_page is True
         assert validated.state.generated_route == f"/assets/{expected_ticker}"
+        assert validated.state.can_request_ingestion is False
+        assert validated.state.ingestion_request_route is None
         assert result.ticker == expected_ticker
         assert result.supported is True
         assert result.support_classification.value == "cached_supported"
@@ -20,6 +22,8 @@ def test_cached_supported_assets_resolve_by_ticker_and_name():
         assert result.can_answer_chat is True
         assert result.can_compare is True
         assert result.generated_route == f"/assets/{expected_ticker}"
+        assert result.can_request_ingestion is False
+        assert result.ingestion_request_route is None
 
 
 def test_ambiguous_search_requires_disambiguation_without_selecting_one_result():
@@ -29,9 +33,14 @@ def test_ambiguous_search_requires_disambiguation_without_selecting_one_result()
     assert response.state.requires_disambiguation is True
     assert response.state.can_open_generated_page is False
     assert response.state.generated_route is None
+    assert response.state.can_request_ingestion is False
+    assert response.state.ingestion_request_route is None
     assert {result.ticker for result in response.results} >= {"VOO", "SPY"}
     assert any(result.support_classification.value == "cached_supported" for result in response.results)
     assert any(result.support_classification.value == "eligible_not_cached" for result in response.results)
+    spy_result = next(result for result in response.results if result.ticker == "SPY")
+    assert spy_result.can_request_ingestion is True
+    assert spy_result.ingestion_request_route == "/api/admin/ingest/SPY"
 
 
 def test_recognized_unsupported_assets_are_blocked_from_generated_outputs():
@@ -53,6 +62,8 @@ def test_recognized_unsupported_assets_are_blocked_from_generated_outputs():
         assert result.can_answer_chat is False
         assert result.can_compare is False
         assert result.generated_route is None
+        assert result.can_request_ingestion is False
+        assert result.ingestion_request_route is None
         assert expected_reason in (result.message or "")
 
 
@@ -70,6 +81,8 @@ def test_unknown_search_returns_no_generated_route_or_invented_asset_facts():
     assert result.can_answer_chat is False
     assert result.can_compare is False
     assert result.generated_route is None
+    assert result.can_request_ingestion is False
+    assert result.ingestion_request_route is None
 
 
 def test_eligible_not_cached_assets_require_future_ingestion_only():
@@ -79,6 +92,8 @@ def test_eligible_not_cached_assets_require_future_ingestion_only():
     assert response.state.status.value == "ingestion_needed"
     assert response.state.support_classification.value == "eligible_not_cached"
     assert response.state.requires_ingestion is True
+    assert response.state.can_request_ingestion is True
+    assert response.state.ingestion_request_route == "/api/admin/ingest/SPY"
     assert result.ticker == "SPY"
     assert result.asset_type.value == "etf"
     assert result.supported is False
@@ -88,3 +103,5 @@ def test_eligible_not_cached_assets_require_future_ingestion_only():
     assert result.can_answer_chat is False
     assert result.can_compare is False
     assert result.generated_route is None
+    assert result.can_request_ingestion is True
+    assert result.ingestion_request_route == "/api/admin/ingest/SPY"

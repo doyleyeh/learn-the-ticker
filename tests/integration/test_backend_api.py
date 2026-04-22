@@ -26,6 +26,8 @@ def test_search_supported_asset_schema():
     assert body["state"]["support_classification"] == "cached_supported"
     assert body["state"]["can_open_generated_page"] is True
     assert body["state"]["generated_route"] == "/assets/VOO"
+    assert body["state"]["can_request_ingestion"] is False
+    assert body["state"]["ingestion_request_route"] is None
     assert body["results"][0]["ticker"] == "VOO"
     assert body["results"][0]["asset_type"] == "etf"
     assert body["results"][0]["supported"] is True
@@ -34,6 +36,8 @@ def test_search_supported_asset_schema():
     assert body["results"][0]["can_answer_chat"] is True
     assert body["results"][0]["can_compare"] is True
     assert body["results"][0]["generated_route"] == "/assets/VOO"
+    assert body["results"][0]["can_request_ingestion"] is False
+    assert body["results"][0]["ingestion_request_route"] is None
 
 
 def test_search_classification_states_cover_ambiguous_unknown_and_ingestion_needed():
@@ -44,24 +48,101 @@ def test_search_classification_states_cover_ambiguous_unknown_and_ingestion_need
     assert ambiguous["state"]["status"] == "ambiguous"
     assert ambiguous["state"]["requires_disambiguation"] is True
     assert ambiguous["state"]["can_open_generated_page"] is False
+    assert ambiguous["state"]["can_request_ingestion"] is False
     assert {result["ticker"] for result in ambiguous["results"]} >= {"VOO", "SPY"}
     assert "eligible_not_cached" in {result["support_classification"] for result in ambiguous["results"]}
+    spy_result = next(result for result in ambiguous["results"] if result["ticker"] == "SPY")
+    assert spy_result["can_request_ingestion"] is True
+    assert spy_result["ingestion_request_route"] == "/api/admin/ingest/SPY"
 
     assert unknown["state"]["status"] == "unknown"
     assert unknown["state"]["support_classification"] == "unknown"
     assert unknown["results"][0]["asset_type"] == "unknown"
     assert unknown["results"][0]["generated_route"] is None
     assert unknown["results"][0]["can_open_generated_page"] is False
+    assert unknown["results"][0]["can_request_ingestion"] is False
 
     assert ingestion_needed["state"]["status"] == "ingestion_needed"
     assert ingestion_needed["state"]["support_classification"] == "eligible_not_cached"
     assert ingestion_needed["state"]["requires_ingestion"] is True
+    assert ingestion_needed["state"]["can_request_ingestion"] is True
+    assert ingestion_needed["state"]["ingestion_request_route"] == "/api/admin/ingest/SPY"
     assert ingestion_needed["results"][0]["ticker"] == "SPY"
     assert ingestion_needed["results"][0]["eligible_for_ingestion"] is True
     assert ingestion_needed["results"][0]["requires_ingestion"] is True
     assert ingestion_needed["results"][0]["can_open_generated_page"] is False
     assert ingestion_needed["results"][0]["can_answer_chat"] is False
     assert ingestion_needed["results"][0]["can_compare"] is False
+    assert ingestion_needed["results"][0]["can_request_ingestion"] is True
+    assert ingestion_needed["results"][0]["ingestion_request_route"] == "/api/admin/ingest/SPY"
+
+
+def test_ingestion_request_route_returns_deterministic_job_or_non_job_states():
+    eligible = client.post("/api/admin/ingest/SPY").json()
+    eligible_again = client.post("/api/admin/ingest/spy").json()
+    cached = client.post("/api/admin/ingest/VOO").json()
+    unsupported = client.post("/api/admin/ingest/TQQQ").json()
+    unknown = client.post("/api/admin/ingest/ZZZZ").json()
+
+    assert eligible == eligible_again
+    assert eligible["ticker"] == "SPY"
+    assert eligible["asset_type"] == "etf"
+    assert eligible["job_type"] == "on_demand"
+    assert eligible["job_id"] == "ingest-on-demand-spy"
+    assert eligible["job_state"] == "pending"
+    assert eligible["worker_status"] == "queued"
+    assert eligible["status_url"] == "/api/jobs/ingest-on-demand-spy"
+    assert eligible["generated_route"] is None
+    assert eligible["capabilities"]["can_open_generated_page"] is False
+    assert eligible["capabilities"]["can_answer_chat"] is False
+    assert eligible["capabilities"]["can_compare"] is False
+
+    assert cached["ticker"] == "VOO"
+    assert cached["job_id"] is None
+    assert cached["job_state"] == "no_ingestion_needed"
+    assert cached["generated_route"] == "/assets/VOO"
+    assert cached["capabilities"]["can_open_generated_page"] is True
+    assert cached["capabilities"]["can_answer_chat"] is True
+    assert cached["capabilities"]["can_compare"] is True
+
+    assert unsupported["ticker"] == "TQQQ"
+    assert unsupported["job_id"] is None
+    assert unsupported["job_state"] == "unsupported"
+    assert unsupported["generated_route"] is None
+    assert unsupported["capabilities"]["can_open_generated_page"] is False
+    assert unsupported["capabilities"]["can_answer_chat"] is False
+    assert unsupported["capabilities"]["can_compare"] is False
+
+    assert unknown["ticker"] == "ZZZZ"
+    assert unknown["asset_type"] == "unknown"
+    assert unknown["job_id"] is None
+    assert unknown["job_state"] == "unknown"
+    assert unknown["generated_route"] is None
+    assert "no asset facts are invented" in unknown["message"].lower()
+
+
+def test_ingestion_status_route_returns_fixture_backed_states():
+    queued = client.get("/api/jobs/ingest-on-demand-spy").json()
+    running = client.get("/api/jobs/ingest-on-demand-msft").json()
+    succeeded = client.get("/api/jobs/pre-cache-succeeded-voo").json()
+    refresh_needed = client.get("/api/jobs/refresh-needed-aapl").json()
+    failed = client.get("/api/jobs/ingest-on-demand-msft-failed").json()
+    missing = client.get("/api/jobs/missing-job").json()
+
+    assert queued["job_state"] == "pending"
+    assert queued["worker_status"] == "queued"
+    assert running["job_state"] == "running"
+    assert running["worker_status"] == "running"
+    assert succeeded["job_state"] == "succeeded"
+    assert succeeded["generated_route"] == "/assets/VOO"
+    assert refresh_needed["job_state"] == "refresh_needed"
+    assert refresh_needed["retryable"] is True
+    assert failed["job_state"] == "failed"
+    assert failed["worker_status"] == "failed"
+    assert failed["error_metadata"]["code"] == "fixture_ingestion_failed"
+    assert failed["error_metadata"]["retryable"] is True
+    assert missing["job_state"] == "unavailable"
+    assert missing["asset_type"] == "unknown"
 
 
 def test_overview_has_beginner_sections_and_citations():

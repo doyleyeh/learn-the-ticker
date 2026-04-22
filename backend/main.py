@@ -20,6 +20,7 @@ from backend.data import (
 )
 from backend.chat import generate_asset_chat
 from backend.comparison import generate_comparison
+from backend.ingestion import get_ingestion_job_status, request_ingestion
 from backend.models import (
     AssetIdentity,
     ChatRequest,
@@ -27,6 +28,7 @@ from backend.models import (
     CompareRequest,
     CompareResponse,
     DetailsResponse,
+    IngestionJobResponse,
     OverviewResponse,
     RecentResponse,
     SearchResponse,
@@ -59,6 +61,16 @@ def health() -> dict[str, str]:
 @app.get("/api/search", response_model=SearchResponse, tags=["search"])
 def search(q: str) -> SearchResponse:
     return search_assets(q)
+
+
+@app.post("/api/admin/ingest/{ticker}", response_model=IngestionJobResponse, tags=["ingestion"])
+def ingest_asset(ticker: str) -> IngestionJobResponse:
+    return request_ingestion(ticker)
+
+
+@app.get("/api/jobs/{job_id}", response_model=IngestionJobResponse, tags=["ingestion"])
+def ingestion_job_status(job_id: str) -> IngestionJobResponse:
+    return get_ingestion_job_status(job_id)
 
 
 @app.get("/api/assets/{ticker}/overview", response_model=OverviewResponse, tags=["assets"])
