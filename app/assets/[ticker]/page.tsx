@@ -8,6 +8,7 @@ import { CitationChip } from "../../../components/CitationChip";
 import { FreshnessLabel } from "../../../components/FreshnessLabel";
 import { GlossaryPopover } from "../../../components/GlossaryPopover";
 import { SourceDrawer } from "../../../components/SourceDrawer";
+import { beginnerGlossaryGroupsByAssetType } from "../../../lib/glossary";
 import {
   assetFixtures,
   citationLabel,
@@ -45,6 +46,9 @@ export default async function AssetPage({ params }: AssetPageProps) {
     [...(asset.stockSections ?? []), ...(asset.etfSections ?? [])].flatMap((section) => section.sourceDocumentIds)
   );
   const sectionSources = asset.sourceDocuments.filter((source) => sectionSourceDocumentIds.has(source.sourceDocumentId));
+  const glossaryGroups = beginnerGlossaryGroupsByAssetType[asset.assetType];
+  const inlineGlossaryTerms =
+    asset.assetType === "etf" ? (["expense ratio", "index tracking"] as const) : (["market risk", "P/E ratio"] as const);
 
   return (
     <main>
@@ -73,9 +77,40 @@ export default async function AssetPage({ params }: AssetPageProps) {
               <p>{asset.beginnerSummary.whyPeopleConsiderIt}</p>
               <p className="notice-text">{asset.beginnerSummary.mainCatch}</p>
               <div className="inline-tools" aria-label="Beginner glossary terms">
-                <GlossaryPopover term="expense ratio" />
-                <GlossaryPopover term={asset.assetType === "etf" ? "index tracking" : "market risk"} />
+                {inlineGlossaryTerms.map((term) => (
+                  <GlossaryPopover key={term} term={term} />
+                ))}
               </div>
+            </section>
+
+            <section
+              className="plain-panel stable-section glossary-learning-panel"
+              aria-labelledby={`beginner-glossary-${asset.ticker.toLowerCase()}`}
+              data-beginner-stable-recent-separation="stable"
+              data-beginner-glossary-area
+              data-glossary-asset-ticker={asset.ticker}
+              data-glossary-asset-type={asset.assetType}
+              data-glossary-no-generated-context
+            >
+              <div className="section-heading">
+                <p className="eyebrow">Learning terms</p>
+                <h2 id={`beginner-glossary-${asset.ticker.toLowerCase()}`}>Glossary for this page</h2>
+              </div>
+              <div className="glossary-group-grid">
+                {glossaryGroups.map((group) => (
+                  <article className="glossary-term-group" key={group.groupId} data-glossary-term-group={group.groupId}>
+                    <h3>{group.title}</h3>
+                    <div className="inline-tools glossary-term-list" data-glossary-term-list={group.groupId}>
+                      {group.terms.map((term) => (
+                        <GlossaryPopover key={term} term={term} />
+                      ))}
+                    </div>
+                  </article>
+                ))}
+              </div>
+              <p className="source-gap-note" data-glossary-generic-education>
+                Generic glossary entries do not create asset facts, citation chips, or source documents.
+              </p>
             </section>
 
             <section
