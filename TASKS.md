@@ -2,71 +2,68 @@
 
 ## Current task
 
-### T-023: Add hybrid glossary baseline terms and UI hooks
+### T-024: Add export/download contracts for pages, comparisons, sources, and chat
 
 Goal:
-Add a broader curated glossary baseline and deterministic frontend hooks so Beginner Mode can expose beginner-friendly finance terms for local fixture-backed stock and ETF pages without adding unsupported asset-specific claims or live calls.
+Add deterministic accountless export/download API contracts for fixture-backed asset pages, comparison output, source lists, and chat transcripts so users can save learning outputs with citations, source metadata, freshness context, and the educational disclaimer, without adding live calls or unsupported asset facts.
 
 Task scope:
-This is a frontend and local glossary-data task for existing local supported asset pages only. Expand the curated static glossary in `lib/glossary.ts` with beginner-readable generic definitions, then expose deterministic glossary UI hooks in Beginner Mode for `AAPL`, `VOO`, and `QQQ`. Keep asset-specific glossary context limited to labels or source-backed page context that already exists; do not add new asset facts, uncited asset-specific claims, generated glossary output, backend glossary APIs, provider calls, export behavior, chat behavior, comparison behavior, ingestion, caching, or freshness-hash behavior. The glossary should help users understand terms already present in the fixture-backed page flow while preserving visible citations, source access, freshness states, explicit evidence gaps, stable/recent separation, and educational framing.
+This is a backend/API contract task for the current local fixture-backed MVP surface. Add typed export response models and deterministic export service functions that shape existing overview, comparison, source, and chat outputs into exportable JSON/Markdown-style payloads. The implementation should reuse existing generated overview, comparison, source, and chat data rather than adding new source fixtures or generation behavior. Keep exports accountless and local-fixture-backed; do not add PDF rendering, browser download UI, frontend buttons, provider adapters, ingestion workers, caching/freshness hashes, persistence, analytics, package dependencies, or live external calls. Exported content must preserve citation IDs, source metadata, freshness/as-of/retrieved dates, explicit unknown/stale/unavailable/insufficient-evidence states, stable/recent separation, safety classifications, licensing notes, and the educational disclaimer.
 
 Allowed files:
 
-- app/assets/[ticker]/page.tsx
-- components/AssetModeLayout.tsx
-- components/AssetEtfSections.tsx
-- components/AssetStockSections.tsx
-- components/GlossaryPopover.tsx
-- lib/glossary.ts
-- tests/frontend/smoke.mjs
+- backend/export.py
+- backend/main.py
+- backend/models.py
+- tests/unit/test_exports.py
+- tests/integration/test_backend_api.py
 - tests/unit/test_safety_guardrails.py
-- styles/globals.css
+- evals/export_eval_cases.yaml
+- evals/run_static_evals.py
 - docs/agent-journal/
 
 Do not change:
 
-- backend/
+- app/
+- components/
+- lib/
+- styles/
 - data/retrieval_fixtures.json
-- evals/
-- app/compare/
-- app/page.tsx
-- components/AssetHeader.tsx
-- components/AssetChatPanel.tsx
-- components/ComparisonSourceDetails.tsx
-- components/SearchBox.tsx
-- components/SourceDrawer.tsx
-- lib/fixtures.ts
-- lib/assetChat.ts
-- lib/compare.ts
+- backend/chat.py
+- backend/comparison.py
+- backend/ingestion.py
+- backend/overview.py
+- backend/retrieval.py
+- backend/search.py
 - package files
-- provider adapters, ingestion workers, queues, caches, export implementations, or API routes
-- source fixture content, retrieval fixtures, overview generation, search classification, comparison generation, chat generation, backend glossary APIs, or generated glossary output
-- generated behavior for unsupported, unknown, ambiguous, or eligible-not-cached assets
+- provider adapters, ingestion workers, queues, caches, persistence, PDF rendering, frontend export/download UI, analytics, or authentication
+- source fixture content, retrieval fixtures, overview generation behavior, search classification behavior, comparison generation behavior, chat generation behavior, glossary data, or generated routes
+- generated behavior for unsupported, unknown, ambiguous, unsupported comparison, or eligible-not-cached assets
 
 Acceptance criteria:
 
-- `lib/glossary.ts` defines a curated static glossary baseline that includes at least these PRD core terms: `expense ratio`, `AUM`, `market cap`, `P/E ratio`, `forward P/E`, `dividend yield`, `revenue`, `gross margin`, `operating margin`, `EPS`, `free cash flow`, `debt`, `benchmark`, `index`, `holdings`, `top 10 concentration`, `sector exposure`, `country exposure`, `tracking error`, `tracking difference`, `NAV`, `premium/discount`, `bid-ask spread`, `liquidity`, `rebalancing`, `market risk`, `concentration risk`, `credit risk`, and `interest-rate risk`.
-- Each glossary entry includes a short beginner-readable definition, why it matters, and a common beginner mistake.
-- Glossary definitions are generic educational explanations; they do not include uncited asset-specific facts, price targets, allocation guidance, tax guidance, brokerage behavior, or buy/sell/hold recommendations.
-- `GlossaryPopover` remains accessible by keyboard and screen reader, exposes stable frontend markers for term, category, definition, why-it-matters, and beginner-mistake content, and handles missing or unavailable terms without inventing definitions.
-- Beginner Mode for `AAPL`, `VOO`, and `QQQ` exposes a deterministic glossary area with stable smoke-test markers and term groups relevant to the local page content.
-- ETF pages expose ETF-relevant glossary hooks such as expense ratio, AUM, benchmark, index, holdings, top 10 concentration, sector exposure, bid-ask spread, premium/discount, and concentration risk where the UI can do so without adding new facts.
-- The stock page exposes stock-relevant glossary hooks such as market cap, revenue, operating margin, EPS, free cash flow, debt, P/E ratio, forward P/E, market risk, and concentration risk where the UI can do so without adding new facts.
-- Existing inline glossary access near the beginner overview remains available and does not obscure citation chips, freshness labels, source drawer access, chat access, top risks, or recent developments on mobile-sized layouts.
-- Deep-Dive Mode stock and ETF section IDs, citation chips, source drawer metadata, freshness states, explicit evidence gaps, stable/recent separation, and exactly-three-top-risks-first behavior remain unchanged.
-- Important factual claims continue to render visible citation chips near the claim text and bind only to same-asset source documents; glossary entries are not used as citations for asset-specific facts.
-- Unsupported, unknown, ambiguous, and eligible-not-cached assets do not gain generated pages, generated factual claims, citations, source documents, chat answers, comparison output, or generated glossary context as part of this task.
-- Frontend smoke checks cover glossary catalog coverage, glossary UI markers, stock/ETF term grouping, no unsupported asset-specific glossary claims, preservation of citation/source/freshness states, and absence of live external calls.
-- Safety guardrail coverage scans the expanded glossary data and glossary UI copy for forbidden advice-like language.
-- Normal CI remains deterministic and does not require provider credentials, market-data calls, news calls, LLM calls, Redis, PostgreSQL, queues, backend server availability, or network access.
+- `backend/models.py` defines typed export models for export format, export content type, export state, exported sections/items, exported citations, exported source metadata, licensing/export notes, and a reusable educational disclaimer.
+- `backend/export.py` exposes deterministic functions for asset-page export, asset-source-list export, comparison export, and chat-transcript export using existing local overview, source, comparison, and chat services.
+- `backend/main.py` wires local export endpoints for asset page export, asset source-list export, comparison export, and chat transcript export. Endpoint names and request shapes are explicit and covered by integration tests.
+- Asset-page exports for `AAPL`, `VOO`, and `QQQ` include asset identity, page freshness, beginner summary, exactly three top risks first, recent developments separated from stable facts, educational suitability, PRD section summaries or explicit evidence states, citation IDs, source metadata, the educational disclaimer, and a licensing/export note.
+- Asset-source-list exports include source document ID, title, source type, publisher, URL, published/as-of date, retrieved timestamp, freshness state, official-source flag, and allowed supporting passage or excerpt metadata without adding full paid-news or restricted-provider content.
+- Comparison exports for `VOO` vs `QQQ` and `QQQ` vs `VOO` include left/right asset identity, key differences, beginner bottom line, citation IDs, comparison source metadata, freshness context where available, the educational disclaimer, and a licensing/export note.
+- Chat transcript exports preserve the selected ticker, submitted question, direct answer, why-it-matters text, uncertainty notes, safety classification, citation IDs, chat source metadata, the educational disclaimer, and a licensing/export note.
+- Advice-like chat transcript exports preserve the educational redirect and return no generated factual citations or source documents for the redirected answer.
+- Unsupported, unknown, unsupported-comparison, unavailable-comparison, and eligible-not-cached export requests return an unavailable or unsupported export state without generated factual claims, citations, source documents, generated pages, chat answers, comparison output, or invented facts.
+- Export payloads expose Markdown-style rendered content or text sections with visible citation IDs and freshness/source labels, but this task does not add PDF generation, file storage, browser download controls, or clipboard behavior.
+- Export models and service functions preserve citation binding to the same asset or same comparison pack and never use glossary entries as citations for asset-specific facts.
+- Export copy avoids buy/sell/hold recommendations, personalized allocation or position sizing, unsupported price targets, tax advice, brokerage/trading instructions, and certainty around future returns.
+- Static evals cover export schema shape, supported asset exports, supported comparison exports, chat transcript exports, unsupported/unknown/unavailable states, citation/source metadata preservation, disclaimer presence, licensing/export-note presence, and absence of live external calls.
+- Normal CI remains deterministic and does not require provider credentials, market-data calls, news calls, LLM calls, Redis, PostgreSQL, queues, backend server availability, browser automation, or network access.
 
 Required commands:
 
 - git status --short
-- npm test
-- npm run typecheck
-- npm run build
+- python3 -m pytest tests/unit/test_exports.py tests/integration/test_backend_api.py -q
 - python3 -m pytest tests/unit/test_safety_guardrails.py -q
+- python3 -m pytest tests -q
+- npm test
 - python3 evals/run_static_evals.py
 - bash scripts/run_quality_gate.sh
 
@@ -74,6 +71,34 @@ Iteration budget:
 Max 2 attempts
 
 ## Completed
+
+### T-023: Add hybrid glossary baseline terms and UI hooks
+
+Goal:
+Add a broader curated glossary baseline and deterministic frontend hooks so Beginner Mode can expose beginner-friendly finance terms for local fixture-backed stock and ETF pages without adding unsupported asset-specific claims or live calls.
+
+Completed:
+
+- Expanded `lib/glossary.ts` into a curated static glossary baseline covering the required PRD core terms, including ETF cost/size/structure/exposure/tracking/pricing/trading terms, stock company-size/fundamental/profitability/cash-generation/balance-sheet/valuation terms, and risk terms.
+- Added `category` metadata to glossary entries and preserved short beginner-readable definitions, why-it-matters text, and common beginner mistakes for each curated term.
+- Added stock and ETF glossary term groups in `lib/glossary.ts`, including `stock-business-metrics`, `stock-valuation-risk`, `etf-fund-basics`, `etf-exposure-risk`, and `etf-trading-tracking`.
+- Added `getGlossaryTerm` lookup behavior so `GlossaryPopover` can accept a string term and handle unavailable terms without inventing definitions.
+- Updated `components/GlossaryPopover.tsx` with stable glossary markers for term, category, definition, why-it-matters, beginner-mistake, and availability state.
+- Preserved keyboard and screen-reader behavior in `GlossaryPopover` with `aria-expanded`, `aria-controls`, dialog labeling, and Escape handling for the open popover.
+- Updated `app/assets/[ticker]/page.tsx` so fixture-backed Beginner Mode pages render a deterministic `Glossary for this page` learning area with stock/ETF term groups, asset ticker/type markers, and a no-generated-context marker.
+- Kept inline glossary access near the beginner overview and made ETF pages show `expense ratio` and `index tracking`, while stock pages show `market risk` and `P/E ratio`.
+- Added glossary learning-area CSS in `styles/globals.css`.
+- Extended `tests/frontend/smoke.mjs` to require glossary catalog coverage, glossary UI markers, glossary term groups, generic-education/no-generated-context markers, no asset-specific glossary claims in `lib/glossary.ts`, preservation of fixture-backed citations/freshness/source checks, and absence of live external glossary calls.
+- T-023 agent journal records that `git status --short`, `npm test`, `npm run typecheck`, `npm run build`, safety guardrail pytest, static evals, and the full quality gate passed.
+- T-023 agent journal records the full quality gate as passed with Python tests 73 passed, frontend smoke checks passed, production build passed and prerendered `/assets/VOO`, `/assets/QQQ`, and `/assets/AAPL`, and backend checks 73 passed.
+- Remaining documented risk: glossary content is static frontend data only; it does not add backend glossary APIs, generated asset-specific glossary context, glossary detail pages, exports, analytics, or persistence.
+- Remaining documented risk: AAPL, VOO, and QQQ glossary hooks are grouped by asset type and local page vocabulary, but they do not fill existing explicit evidence gaps such as unavailable ETF exposure/trading metrics or stock valuation metrics.
+- Remaining documented risk: glossary entries are generic educational explanations and are intentionally not citation sources for asset-specific claims.
+
+Completion commits:
+
+- `c22f022 feat(T-023): add hybrid glossary baseline terms and UI hooks`
+- `3e53e25 chore(T-023): merge hybrid glossary baseline terms and UI hooks`
 
 ### T-022: Add Beginner Mode and Deep-Dive Mode page structure
 
@@ -648,7 +673,6 @@ Completion commits:
 
 ## Backlog
 
-### T-024: Add export/download contracts for pages, comparisons, sources, and chat
 ### T-025: Add provider adapter interfaces with mocked tests
 ### T-026: Add caching and freshness-hash contracts
 ### T-027: Expand golden asset eval coverage for MVP launch universe
