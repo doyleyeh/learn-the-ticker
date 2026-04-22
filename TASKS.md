@@ -2,21 +2,21 @@
 
 ## Current task
 
-### T-025: Add provider adapter interfaces with mocked tests
+### T-026: Add caching and freshness-hash contracts
 
 Goal:
-Add typed provider adapter interfaces and deterministic mocked adapter responses for the future SEC, ETF issuer, market/reference, and recent-development provider layer so ingestion work has explicit contracts for source-backed data, attribution, freshness, licensing, and failure states without making live external calls.
+Add deterministic backend cache-key, source-checksum, and freshness-hash contracts so future cached asset pages, comparisons, chat answers, exports, pre-cache jobs, and refresh jobs can decide whether cached outputs are reusable without making live external calls or weakening citation, freshness, licensing, or safety guarantees.
 
 Task scope:
-This is a backend contract task only. Define small provider request/response models and a provider adapter module that can represent asset resolution, canonical stock facts from SEC-like sources, ETF issuer facts/holdings metadata, structured market/reference fields, and recent-development candidates. Add deterministic mock adapters/factory functions and tests that prove the contracts preserve source hierarchy, same-asset binding, freshness/as-of/retrieved timestamps, licensing/export constraints, unsupported/unknown/unavailable states, and no-live-call behavior. Do not wire the provider adapters into search, ingestion jobs, retrieval fixtures, overview generation, comparisons, chat, exports, frontend UI, persistence, queues, caches, LLM calls, or generated asset behavior.
+This is a backend contract task only. Define small typed models and pure deterministic helper functions for cache identity, source-document checksums, knowledge-pack freshness inputs, generated-output freshness hashes, cache entry metadata, and cache revalidation decisions. The helpers may read existing local fixture-backed knowledge packs and provider contract objects in tests, but they must not wire caching into search, ingestion jobs, retrieval, overview generation, comparisons, chat, exports, frontend UI, persistence, Redis, PostgreSQL, queues, provider calls, LLM calls, or generated asset behavior. The task should establish the invalidation contract for later implementation, not add a real cache store.
 
 Allowed files:
 
-- backend/providers.py
 - backend/models.py
-- tests/unit/test_provider_adapters.py
+- backend/cache.py
+- tests/unit/test_cache_contracts.py
 - tests/integration/test_backend_api.py
-- evals/provider_eval_cases.yaml
+- evals/cache_eval_cases.yaml
 - evals/run_static_evals.py
 - docs/agent-journal/
 
@@ -31,36 +31,42 @@ Do not change:
 - backend/comparison.py
 - backend/export.py
 - backend/ingestion.py
+- backend/main.py
 - backend/overview.py
+- backend/providers.py
 - backend/retrieval.py
 - backend/search.py
 - package files
-- provider network clients, credentials, environment variables, ingestion workers, queues, caches, persistence, frontend UI, analytics, authentication, or deployment config
-- source fixture content, retrieval fixtures, overview generation behavior, search classification behavior, ingestion job behavior, comparison generation behavior, chat generation behavior, glossary data, export behavior, or generated routes
-- generated behavior for unsupported, unknown, ambiguous, unsupported comparison, unavailable comparison, or eligible-not-cached assets
+- provider network clients, credentials, environment variables, Redis, PostgreSQL, persistence, ingestion workers, queues, frontend UI, analytics, authentication, deployment config, or live cache infrastructure
+- source fixture content, retrieval fixtures, provider mock response content, overview generation behavior, search classification behavior, ingestion job behavior, comparison generation behavior, chat generation behavior, glossary data, export behavior, or generated routes
+- generated behavior for unsupported, unknown, ambiguous, unsupported comparison, unavailable comparison, eligible-not-cached, stale, unavailable, or permission-limited assets
 
 Acceptance criteria:
 
-- `backend/models.py` defines typed provider contract models/enums for provider kind, data category, request metadata, provider capability, licensing/export permissions, source attribution, normalized provider facts, recent-development candidates, response freshness, response state, and provider errors.
-- `backend/providers.py` defines a small adapter interface or protocol plus deterministic mock adapters/factory functions for SEC-like stock canonical data, ETF issuer data, structured market/reference data, and recent-development data.
-- Mock provider responses include supported examples for `AAPL`, `VOO`, and `QQQ`; eligible-not-cached examples such as `SPY` or `MSFT`; recognized unsupported examples such as `BTC`, `TQQQ`, or `SQQQ`; and unknown/unavailable examples such as `ZZZZ`.
-- Provider responses never create generated asset pages, generated chat answers, generated comparisons, overview sections, export payloads, or frontend routes.
-- Provider responses preserve source hierarchy metadata: SEC/official issuer sources rank ahead of structured providers, and recent-development/news-like sources are marked as recent-context sources that cannot overwrite canonical facts.
-- Provider responses include source document IDs, source type, publisher, URL where available, published/as-of date where available, retrieved timestamp, freshness state, official-source flag, provider name, provider kind, and licensing/export permission metadata.
-- Provider facts and recent-development candidates bind to one requested asset only, include citation/source identifiers where applicable, and do not reuse glossary entries as support for asset-specific claims.
-- Missing, stale, unsupported, unknown, unavailable, permission-limited, or rate-limited provider states are represented explicitly without invented facts.
-- Mock recent-development responses distinguish event date, source date or as-of date, retrieved timestamp, source document ID, freshness state, and a no-high-signal state when no supported recent event is present.
-- Mock market/reference responses include licensing/export constraints and do not imply redistribution rights for restricted provider payloads.
-- The provider adapter module does not import or use network clients such as `requests`, `httpx`, `urllib`, `socket`, provider SDKs, API keys, or environment variables.
-- Unit tests cover supported provider responses, unsupported/unknown/unavailable states, same-asset binding, source hierarchy metadata, freshness fields, licensing/export metadata, recent-context separation, no-high-signal recent-development handling, and absence of live external calls.
-- Static evals cover provider schema shape, provider fixture coverage for stock/ETF/market/recent categories, explicit provider failure states, licensing constraints, source hierarchy, and no-live-call imports.
-- Existing search, ingestion, overview, comparison, chat, export, frontend smoke, and safety behavior remain unchanged.
+- `backend/models.py` defines typed cache contract models/enums for cache entry kind, cache scope, cache entry state, invalidation reason, cache key metadata, source checksum records, freshness-hash inputs, cache entry metadata, and cache revalidation results.
+- `backend/cache.py` defines pure deterministic helpers to build cache keys, compute source-document checksums, compute knowledge-pack freshness hashes, compute generated-output freshness hashes, and evaluate whether a cached entry is reusable or must be refreshed/regenerated.
+- Cache keys include the asset ticker or comparison pair/pack identity, entry kind, mode or output type, schema version, source freshness state, and prompt/model metadata where generation is involved.
+- Comparison cache keys preserve left/right comparison direction when output text or beginner bottom line could differ by direction.
+- Source-document checksums are deterministic and based on stable source identity and evidence inputs such as source document ID, asset ticker, source type/rank, publisher, URL, published/as-of/retrieved dates, freshness state, content type, and associated local chunk text or fact/event bindings where available.
+- Source checksums and freshness hashes never store or expose full paid-news articles, restricted provider payloads, credentials, API keys, raw provider responses, or unrelated source text.
+- Knowledge-pack freshness inputs include same-asset source checksums, normalized fact identifiers/values/as-of dates/freshness states, recent event identifiers/event dates/freshness states, evidence-gap states, and page/section freshness labels.
+- Generated-output freshness hashes include the asset or comparison identity, entry kind, schema version, prompt version where applicable, model name where applicable, source-document checksums, canonical fact inputs, recent-event inputs, and freshness labels.
+- Changing a source checksum, canonical fact input, recent-development input, prompt version, model name, schema version, or freshness state changes the relevant generated-output freshness hash.
+- Reordering unordered equivalent source/fact/event inputs does not change the relevant checksum or freshness hash.
+- Cache revalidation can represent at least `hit`, `miss`, `stale`, `hash_mismatch`, `expired`, `permission_limited`, `unsupported`, `unknown`, and `unavailable` states without inventing facts.
+- Unsupported, unknown, eligible-not-cached, unavailable, permission-limited, and stale inputs are represented explicitly and do not become reusable generated-output cache hits.
+- Provider licensing metadata is respected at the contract level: `cache_allowed=False` or equivalent permission limits produce permission-limited cache decisions and do not imply export or redistribution rights.
+- Cached metadata preserves citation IDs, source document IDs, source freshness states, section-level freshness labels, and unknown/stale/unavailable states needed by existing UI/export/API contracts.
+- The cache contract module does not import or use Redis, PostgreSQL clients, file-system persistence for cache entries, browser APIs, network clients such as `requests`, `httpx`, `urllib`, `socket`, provider SDKs, API keys, environment variables, or LLM clients.
+- Unit tests cover deterministic cache-key generation, source checksum determinism, freshness-hash determinism, hash changes when evidence inputs change, order-insensitive hashing where appropriate, direction-preserving comparison keys, stale/unknown/unavailable handling, unsupported and eligible-not-cached blocking, provider licensing cache limits, and absence of live external calls.
+- Static evals cover cache schema shape, required invalidation states, source checksum inputs, freshness-hash inputs, licensing constraints, unsupported/unknown/unavailable handling, and no-live-call/no-store imports.
+- Existing search, ingestion, provider adapter, overview, comparison, chat, export, frontend smoke, and safety behavior remain unchanged.
 - Normal CI remains deterministic and does not require provider credentials, market-data calls, SEC calls, ETF issuer calls, news calls, LLM calls, Redis, PostgreSQL, queues, backend server availability, browser automation, or network access.
 
 Required commands:
 
 - git status --short
-- python3 -m pytest tests/unit/test_provider_adapters.py -q
+- python3 -m pytest tests/unit/test_cache_contracts.py -q
 - python3 -m pytest tests/integration/test_backend_api.py -q
 - python3 -m pytest tests -q
 - python3 evals/run_static_evals.py
@@ -70,6 +76,39 @@ Iteration budget:
 Max 2 attempts
 
 ## Completed
+
+### T-025: Add provider adapter interfaces with mocked tests
+
+Goal:
+Add typed provider adapter interfaces and deterministic mocked adapter responses for the future SEC, ETF issuer, market/reference, and recent-development provider layer so ingestion work has explicit contracts for source-backed data, attribution, freshness, licensing, and failure states without making live external calls.
+
+Completed:
+
+- Added provider contract enums and models in `backend/models.py`, including `ProviderKind`, `ProviderDataCategory`, `ProviderResponseState`, `ProviderSourceUsage`, `ProviderRequestMetadata`, `ProviderCapability`, `ProviderLicensing`, `ProviderSourceAttribution`, `ProviderFact`, `ProviderRecentDevelopmentCandidate`, `ProviderResponseFreshness`, `ProviderError`, `ProviderGeneratedOutputFlags`, and `ProviderResponse`.
+- Added `backend/providers.py` with a `ProviderAdapter` protocol, deterministic `MockProviderAdapter`, `NO_LIVE_EXTERNAL_CALLS`, `DEFAULT_PROVIDER_RETRIEVED_AT`, factory functions for SEC-like, ETF issuer, market/reference, and recent-development mock adapters, plus `get_mock_provider_adapters` and `fetch_mock_provider_response`.
+- Added a deterministic SEC-like stock provider response for `AAPL` with official SEC source attribution, source rank `1`, canonical usage, `primary_business`, and `net_sales_trend_available` facts.
+- Added deterministic ETF issuer provider responses for `VOO` and `QQQ` with official issuer fact-sheet and holdings-file attribution, source rank `1`, benchmark, expense-ratio, and holdings-count facts.
+- Added deterministic structured market/reference responses for `AAPL`, `VOO`, and `QQQ` as supported local assets, and `SPY` and `MSFT` as eligible-not-cached assets.
+- Market/reference responses use structured-reference source usage, source rank `4`, non-official attribution, and restricted licensing metadata with export and redistribution disallowed for restricted provider payloads.
+- Added deterministic recent-development responses where `AAPL` has a high-signal recent-context filing-review candidate, while `VOO` and `QQQ` return an explicit `no_high_signal` state.
+- Recent-development source attribution and candidates are marked as recent context only and cannot overwrite canonical facts.
+- Added explicit provider failure states for recognized unsupported assets such as `BTC`, `TQQQ`, and `SQQQ`, unknown assets such as `ZZZZ`, and unavailable recent-development fixtures without invented facts.
+- Provider responses include source document IDs, source types, publishers, URLs where available, published/as-of dates, retrieved timestamps, freshness states, official-source flags, provider names/kinds, data categories, source usage/rank, licensing metadata, provider errors, and generated-output flags.
+- Generated-output flags remain false for asset pages, chat answers, comparisons, overview sections, export payloads, and frontend routes.
+- Provider facts and recent-development candidates bind to the requested asset only, bind citations to source document IDs where applicable, and do not use glossary entries as support for asset-specific claims.
+- Added focused provider adapter tests in `tests/unit/test_provider_adapters.py` covering adapter capabilities, supported responses, eligible-not-cached states, unsupported/unknown/unavailable states, same-asset binding, source hierarchy, freshness fields, licensing constraints, recent-context separation, no-high-signal recent-development handling, generated-output flags, and absence of live-call or credential imports.
+- Added provider static eval cases in `evals/provider_eval_cases.yaml` and extended `evals/run_static_evals.py` for required provider kinds, supported stock/ETF/market/recent cases, eligible-not-cached cases, failure states, no-high-signal recent-development cases, licensing constraints, source hierarchy, generated-output flags, and forbidden live-call imports.
+- Added `docs/agent-journal/20260422T172010Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- T-025 agent journal records that `git status --short`, provider adapter pytest, backend API pytest, full pytest, static evals, and the full quality gate passed.
+- T-025 agent journal records provider adapter pytest as 8 passed, backend API pytest as 20 passed, full pytest as 91 passed, static evals as passed, and the quality gate as passed including provider contract tests, static evals, full Python suite, frontend smoke/type/build checks, and backend checks.
+- Remaining documented risk: provider adapters are deterministic mock contracts only; they do not fetch SEC, ETF issuer, market/reference, or news data.
+- Remaining documented risk: provider contracts are intentionally not wired into search, ingestion jobs, overview generation, comparison, chat, export, persistence, caching, queues, or frontend UI.
+- Remaining documented risk: licensing metadata documents export/display constraints at the contract level, but real provider terms still require review before paid or restricted data is exposed, cached, or exported.
+
+Completion commits:
+
+- `e14a798 test(T-025): add provider adapter interfaces with mocked tests`
+- `0d0cbb6 chore(T-025): merge provider adapter interfaces with mocked tests`
 
 ### T-024: Add export/download contracts for pages, comparisons, sources, and chat
 
@@ -703,7 +742,6 @@ Completion commits:
 
 ## Backlog
 
-### T-026: Add caching and freshness-hash contracts
 ### T-027: Expand golden asset eval coverage for MVP launch universe
 ### T-028: Add pre-cache launch-universe job contracts
 ### T-029: Add deterministic asset knowledge-pack builder
