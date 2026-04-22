@@ -23,7 +23,7 @@ MVP direction:
 
 - accountless v1
 - responsive web experience
-- search and supported/unsupported classification for eligible U.S.-listed common stocks and plain-vanilla U.S.-listed ETFs
+- search and supported/unsupported classification for all eligible U.S.-listed common stocks and plain-vanilla U.S.-listed ETFs
 - pre-cached high-demand launch universe for reliability and latency
 - on-demand ingestion path for supported assets outside the pre-cached universe
 - stock and ETF asset pages with Beginner Mode first and Deep-Dive Mode baseline
@@ -33,14 +33,19 @@ MVP direction:
 - export/download for asset pages, comparison output, source lists, and chat transcripts
 - server-side caching, source checksums, generated-summary freshness hashes, and section-level freshness labels
 
+Unsupported v1 assets include options, crypto, international equities, leveraged ETFs, inverse ETFs, ETNs, preferred stocks, warrants, rights, and other complex products unless explicitly added later. Recognized-but-unsupported assets may appear in search, but must not receive generated pages, generated chat answers, or generated comparisons.
+
 Provider hierarchy for MVP planning:
 
 - canonical stock facts: SEC EDGAR submissions, SEC XBRL company facts, SEC filings, then company investor relations
 - canonical ETF facts: issuer pages, fact sheets, prospectuses, shareholder reports, holdings files, and exposure files
-- structured market/reference data: provider-backed ticker reference, snapshots, prices, volume, valuation, AUM, and trading metrics
+- structured market/reference data: Massive, formerly Polygon.io, or an equivalent validated provider for ticker reference, snapshots, prices, volume, valuation, AUM, and trading metrics
+- ETF structured data: official issuer data first, with Massive plus ETF Global where budget allows, or lower-cost fallbacks only after validation against issuer sources
 - recent developments: official filings, investor-relations releases, issuer announcements, prospectus changes, then reputable ticker-tagged news
 
 No live external API, market-data, news, or LLM calls should be required in normal CI. Provider and ingestion work must use mocks, fixtures, or explicit manual-only paths until credentials, licensing, and deployment constraints are settled.
+
+Provider licensing must be checked before exposing paid or restricted data in product UI, caches, or downloads. Exports should include citations, source metadata, freshness dates, and the educational disclaimer, but should not redistribute full paid news articles or restricted provider content unless rights are confirmed.
 
 ## Hard product rules
 
@@ -107,7 +112,8 @@ MVP is ready when:
 - page and major sections show freshness labels or unknown/stale/unavailable states
 - comparison works for supported stock and ETF pairs, with an educational beginner bottom line
 - limited asset-specific chat answers only from the selected asset knowledge pack
+- glossary explains core beginner terms and avoids uncited asset-specific facts
 - safety guardrails block buy/sell/hold, price-target, tax, brokerage, and allocation advice
 - users can export/download asset page content, comparison output, source lists, and chat transcripts where licensing permits
 - caching and freshness hashes prevent unnecessary repeated API and LLM work
-- trust metrics can track citation coverage, unsupported claims, freshness accuracy, source drawer usage, safety redirects, and export usage
+- trust metrics can track citation coverage, unsupported claims, freshness accuracy, glossary usage, comparison usage, source drawer usage, safety redirects, and export usage

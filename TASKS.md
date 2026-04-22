@@ -389,13 +389,15 @@ Completion commits:
 
 ## Backlog
 
-### T-016: Expand asset overview schema for PRD content sections
-### T-017: Add richer stock and ETF fixture data for MVP content sections
-### T-018: Render stock PRD sections on asset pages
-### T-019: Render ETF PRD sections on asset pages
-### T-020: Add Beginner Mode and Deep-Dive Mode page structure
-### T-021: Add export/download controls for asset pages and comparisons
-### T-022: Add provider and ingestion adapter interfaces with mocked tests
-### T-023: Add caching and freshness-hash contracts
-### T-024: Add high-signal recent developments model and empty-state behavior
-### T-025: Expand golden asset eval coverage for MVP launch universe
+### T-016: Define search support-classification contract
+### T-017: Add on-demand ingestion job-state contract
+### T-018: Expand asset overview schema for PRD content sections
+### T-019: Add richer stock and ETF fixture data for MVP content sections
+### T-020: Render stock PRD sections on asset pages
+### T-021: Render ETF PRD sections on asset pages
+### T-022: Add Beginner Mode and Deep-Dive Mode page structure
+### T-023: Add hybrid glossary baseline terms and UI hooks
+### T-024: Add export/download contracts for pages, comparisons, sources, and chat
+### T-025: Add provider adapter interfaces with mocked tests
+### T-026: Add caching and freshness-hash contracts
+### T-027: Expand golden asset eval coverage for MVP launch universe
