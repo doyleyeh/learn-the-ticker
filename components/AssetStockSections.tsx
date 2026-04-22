@@ -1,0 +1,143 @@
+import {
+  citationLabel,
+  getCitationById,
+  type AssetFixture,
+  type StockOverviewSection,
+  type StockSectionItem
+} from "../lib/fixtures";
+import { CitationChip } from "./CitationChip";
+import { FreshnessLabel } from "./FreshnessLabel";
+
+type AssetStockSectionsProps = {
+  asset: AssetFixture;
+};
+
+export function AssetStockSections({ asset }: AssetStockSectionsProps) {
+  if (asset.assetType !== "stock" || !asset.stockSections?.length) {
+    return null;
+  }
+
+  return (
+    <div className="section-stack stock-prd-sections" data-stock-prd-sections data-asset-ticker={asset.ticker}>
+      {asset.stockSections.map((section) => (
+        <StockSection key={section.sectionId} asset={asset} section={section} />
+      ))}
+    </div>
+  );
+}
+
+function StockSection({ asset, section }: { asset: AssetFixture; section: StockOverviewSection }) {
+  const isRecent = section.sectionId === "recent_developments";
+  const isRisk = section.sectionId === "top_risks";
+  const riskItems = isRisk ? section.items.slice(0, 3) : section.items;
+  const sectionClassName = [
+    "plain-panel",
+    isRecent ? "recent-section" : "stable-section",
+    section.sectionType === "evidence_gap" ? "unknown-state" : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <section
+      className={sectionClassName}
+      aria-labelledby={`stock-section-${section.sectionId}`}
+      data-stock-section-id={section.sectionId}
+      data-section-type={section.sectionType}
+      data-evidence-state={section.evidenceState}
+      data-freshness-state={section.freshnessState}
+      data-stock-stable-recent-separation={isRecent ? "recent" : "stable"}
+    >
+      <div className="section-heading">
+        <p className="eyebrow">
+          {isRecent ? "Recent developments" : section.sectionType === "risk" ? "Exactly three shown first" : "Stable stock facts"}
+        </p>
+        <h2 id={`stock-section-${section.sectionId}`}>{section.title}</h2>
+      </div>
+
+      <div className="state-row stock-section-state">
+        <FreshnessLabel
+          label="Section freshness"
+          value={section.asOfDate ?? section.retrievedAt ?? section.limitations ?? "Unknown in local fixture"}
+          state={section.freshnessState}
+        />
+        <span className="state-pill" data-evidence-state={section.evidenceState}>
+          Evidence: {section.evidenceState.replaceAll("_", " ")}
+        </span>
+      </div>
+
+      <p>{section.beginnerSummary}</p>
+
+      {section.metrics?.length ? (
+        <dl className="fact-list stock-metric-list">
+          {section.metrics.map((metric) => (
+            <div key={metric.metricId} data-stock-section-metric-id={metric.metricId}>
+              <dt>{metric.label}</dt>
+              <dd>
+                {metric.value} <CitationChips asset={asset} citationIds={metric.citationIds} />
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+
+      <div
+        className={isRisk ? "risk-grid stock-section-items" : "stock-section-items"}
+        data-stock-top-risk-count={isRisk ? riskItems.length : undefined}
+      >
+        {riskItems.map((item) => (
+          <StockSectionItemCard key={item.itemId} asset={asset} item={item} isRisk={isRisk} />
+        ))}
+      </div>
+
+      {section.limitations ? <p className="notice-text">{section.limitations}</p> : null}
+    </section>
+  );
+}
+
+function StockSectionItemCard({ asset, item, isRisk }: { asset: AssetFixture; item: StockSectionItem; isRisk: boolean }) {
+  const className = isRisk ? "risk-card" : "stock-section-item";
+
+  return (
+    <article
+      className={className}
+      data-stock-section-item-id={item.itemId}
+      data-evidence-state={item.evidenceState}
+      data-freshness-state={item.freshnessState}
+    >
+      <div className="stock-item-heading">
+        <h3>{item.title}</h3>
+        <span className="state-pill compact-state" data-evidence-state={item.evidenceState}>
+          {item.evidenceState.replaceAll("_", " ")}
+        </span>
+      </div>
+      <p>{item.summary}</p>
+      <div className="state-row">
+        <FreshnessLabel
+          label={item.eventDate ? "Event date" : "As of"}
+          value={item.eventDate ?? item.asOfDate ?? item.limitations ?? "Unknown in local fixture"}
+          state={item.freshnessState}
+        />
+        {item.retrievedAt ? <FreshnessLabel label="Retrieved" value={item.retrievedAt} state={item.freshnessState} /> : null}
+      </div>
+      {item.citationIds.length ? (
+        <span className="chip-row">
+          <CitationChips asset={asset} citationIds={item.citationIds} />
+        </span>
+      ) : (
+        <p className="source-gap-note">No citation chip is shown because this item is an explicit evidence gap.</p>
+      )}
+    </article>
+  );
+}
+
+function CitationChips({ asset, citationIds }: { asset: AssetFixture; citationIds: string[] }) {
+  return (
+    <>
+      {citationIds.map((citationId) => {
+        const citation = getCitationById(asset, citationId);
+        return citation ? <CitationChip key={citationId} citation={citation} label={citationLabel(citationId)} /> : null;
+      })}
+    </>
+  );
+}
