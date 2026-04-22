@@ -314,6 +314,48 @@ UNSUPPORTED_ASSETS: dict[str, str] = {
 }
 
 
+UNSUPPORTED_ASSET_SEARCH_METADATA: dict[str, dict[str, str | list[str] | None]] = {
+    "BTC": {
+        "name": "Bitcoin",
+        "category": "crypto",
+        "aliases": ["bitcoin", "crypto"],
+    },
+    "ETH": {
+        "name": "Ethereum",
+        "category": "crypto",
+        "aliases": ["ethereum", "ether", "crypto"],
+    },
+    "TQQQ": {
+        "name": "ProShares UltraPro QQQ",
+        "category": "leveraged_etf",
+        "aliases": ["leveraged qqq", "ultrapro qqq", "leveraged etf"],
+    },
+    "SQQQ": {
+        "name": "ProShares UltraPro Short QQQ",
+        "category": "inverse_etf",
+        "aliases": ["inverse qqq", "short qqq", "inverse etf"],
+    },
+}
+
+
+ELIGIBLE_NOT_CACHED_ASSETS: dict[str, dict[str, str | list[str] | None]] = {
+    "SPY": {
+        "name": "SPDR S&P 500 ETF Trust",
+        "asset_type": "etf",
+        "exchange": "NYSE Arca",
+        "issuer": "State Street Global Advisors",
+        "aliases": ["s&p 500 etf", "spdr s&p 500 etf", "plain vanilla etf"],
+    },
+    "MSFT": {
+        "name": "Microsoft Corporation",
+        "asset_type": "stock",
+        "exchange": "NASDAQ",
+        "issuer": None,
+        "aliases": ["microsoft", "microsoft corp", "common stock"],
+    },
+}
+
+
 def normalize_ticker(ticker: str) -> str:
     return ticker.strip().upper()
 

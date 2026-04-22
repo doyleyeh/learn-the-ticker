@@ -23,9 +23,45 @@ def test_search_supported_asset_schema():
     assert response.status_code == 200
     body = response.json()
     assert body["state"]["status"] == "supported"
+    assert body["state"]["support_classification"] == "cached_supported"
+    assert body["state"]["can_open_generated_page"] is True
+    assert body["state"]["generated_route"] == "/assets/VOO"
     assert body["results"][0]["ticker"] == "VOO"
     assert body["results"][0]["asset_type"] == "etf"
     assert body["results"][0]["supported"] is True
+    assert body["results"][0]["support_classification"] == "cached_supported"
+    assert body["results"][0]["can_open_generated_page"] is True
+    assert body["results"][0]["can_answer_chat"] is True
+    assert body["results"][0]["can_compare"] is True
+    assert body["results"][0]["generated_route"] == "/assets/VOO"
+
+
+def test_search_classification_states_cover_ambiguous_unknown_and_ingestion_needed():
+    ambiguous = client.get("/api/search", params={"q": "S&P 500 ETF"}).json()
+    unknown = client.get("/api/search", params={"q": "ZZZZ"}).json()
+    ingestion_needed = client.get("/api/search", params={"q": "SPY"}).json()
+
+    assert ambiguous["state"]["status"] == "ambiguous"
+    assert ambiguous["state"]["requires_disambiguation"] is True
+    assert ambiguous["state"]["can_open_generated_page"] is False
+    assert {result["ticker"] for result in ambiguous["results"]} >= {"VOO", "SPY"}
+    assert "eligible_not_cached" in {result["support_classification"] for result in ambiguous["results"]}
+
+    assert unknown["state"]["status"] == "unknown"
+    assert unknown["state"]["support_classification"] == "unknown"
+    assert unknown["results"][0]["asset_type"] == "unknown"
+    assert unknown["results"][0]["generated_route"] is None
+    assert unknown["results"][0]["can_open_generated_page"] is False
+
+    assert ingestion_needed["state"]["status"] == "ingestion_needed"
+    assert ingestion_needed["state"]["support_classification"] == "eligible_not_cached"
+    assert ingestion_needed["state"]["requires_ingestion"] is True
+    assert ingestion_needed["results"][0]["ticker"] == "SPY"
+    assert ingestion_needed["results"][0]["eligible_for_ingestion"] is True
+    assert ingestion_needed["results"][0]["requires_ingestion"] is True
+    assert ingestion_needed["results"][0]["can_open_generated_page"] is False
+    assert ingestion_needed["results"][0]["can_answer_chat"] is False
+    assert ingestion_needed["results"][0]["can_compare"] is False
 
 
 def test_overview_has_beginner_sections_and_citations():
@@ -68,7 +104,13 @@ def test_unknown_and_unsupported_assets_return_clear_states():
     assert unknown["asset"]["supported"] is False
     assert unknown["beginner_summary"] is None
     assert unsupported["state"]["status"] == "unsupported"
+    assert unsupported["state"]["support_classification"] == "recognized_unsupported"
     assert unsupported["results"][0]["supported"] is False
+    assert unsupported["results"][0]["support_classification"] == "recognized_unsupported"
+    assert unsupported["results"][0]["can_open_generated_page"] is False
+    assert unsupported["results"][0]["can_answer_chat"] is False
+    assert unsupported["results"][0]["can_compare"] is False
+    assert unsupported["results"][0]["generated_route"] is None
     assert "outside" in unsupported["state"]["message"]
 
 

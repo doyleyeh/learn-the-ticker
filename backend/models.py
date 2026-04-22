@@ -19,6 +19,28 @@ class AssetStatus(str, Enum):
     unknown = "unknown"
 
 
+class SearchResultStatus(str, Enum):
+    supported = "supported"
+    unsupported = "unsupported"
+    unknown = "unknown"
+    ingestion_needed = "ingestion_needed"
+
+
+class SearchResponseStatus(str, Enum):
+    supported = "supported"
+    ambiguous = "ambiguous"
+    unsupported = "unsupported"
+    unknown = "unknown"
+    ingestion_needed = "ingestion_needed"
+
+
+class SearchSupportClassification(str, Enum):
+    cached_supported = "cached_supported"
+    recognized_unsupported = "recognized_unsupported"
+    unknown = "unknown"
+    eligible_not_cached = "eligible_not_cached"
+
+
 class FreshnessState(str, Enum):
     fresh = "fresh"
     stale = "stale"
@@ -48,6 +70,17 @@ class StateMessage(BaseModel):
     message: str
 
 
+class SearchState(BaseModel):
+    status: SearchResponseStatus
+    message: str
+    result_count: int
+    support_classification: SearchSupportClassification | None = None
+    requires_disambiguation: bool = False
+    requires_ingestion: bool = False
+    can_open_generated_page: bool = False
+    generated_route: str | None = None
+
+
 class SearchResult(BaseModel):
     ticker: str
     name: str
@@ -55,14 +88,21 @@ class SearchResult(BaseModel):
     exchange: str | None = None
     issuer: str | None = None
     supported: bool
-    status: AssetStatus
+    status: SearchResultStatus
+    support_classification: SearchSupportClassification
+    eligible_for_ingestion: bool = False
+    requires_ingestion: bool = False
+    can_open_generated_page: bool = False
+    can_answer_chat: bool = False
+    can_compare: bool = False
+    generated_route: str | None = None
     message: str | None = None
 
 
 class SearchResponse(BaseModel):
     query: str
     results: list[SearchResult]
-    state: StateMessage
+    state: SearchState
 
 
 class Freshness(BaseModel):
