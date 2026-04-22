@@ -1,0 +1,132 @@
+required_models:
+  - CacheEntryKind
+  - CacheScope
+  - CacheEntryState
+  - CacheInvalidationReason
+  - CacheKeyMetadata
+  - SourceChecksumInput
+  - SourceChecksumRecord
+  - KnowledgePackFreshnessInput
+  - GeneratedOutputFreshnessInput
+  - CacheEntryMetadata
+  - CacheRevalidationResult
+
+required_helpers:
+  - build_cache_key
+  - compute_source_document_checksum
+  - compute_knowledge_pack_freshness_hash
+  - compute_generated_output_freshness_hash
+  - evaluate_cache_revalidation
+  - build_knowledge_pack_freshness_input
+  - build_comparison_pack_freshness_input
+  - build_generated_output_freshness_input
+
+required_revalidation_states:
+  - hit
+  - miss
+  - stale
+  - hash_mismatch
+  - expired
+  - permission_limited
+  - unsupported
+  - unknown
+  - unavailable
+  - eligible_not_cached
+
+required_invalidation_reasons:
+  - none
+  - no_entry
+  - cache_key_mismatch
+  - stale_input
+  - hash_mismatch
+  - expired
+  - permission_limited
+  - unsupported
+  - unknown
+  - unavailable
+  - eligible_not_cached
+
+source_checksum_required_inputs:
+  - source_document_id
+  - asset_ticker
+  - source_type
+  - source_rank
+  - publisher
+  - url
+  - published_at
+  - as_of_date
+  - retrieved_at
+  - freshness_state
+  - content_type
+  - fact_bindings
+  - recent_event_bindings
+  - citation_ids
+  - local_chunk_text_fingerprints
+  - cache_allowed
+  - redistribution_allowed
+
+knowledge_pack_required_inputs:
+  - source_checksums
+  - canonical_facts
+  - recent_events
+  - evidence_gaps
+  - page_freshness_state
+  - section_freshness_labels
+
+generated_output_required_inputs:
+  - output_identity
+  - entry_kind
+  - scope
+  - schema_version
+  - source_freshness_state
+  - prompt_version
+  - model_name
+  - source_checksums
+  - canonical_facts
+  - recent_events
+  - evidence_gaps
+  - section_freshness_labels
+
+forbidden_cache_imports:
+  - import requests
+  - import httpx
+  - urllib
+  - socket
+  - import redis
+  - psycopg
+  - sqlalchemy
+  - boto3
+  - openai
+  - anthropic
+  - os.environ
+  - api_key
+
+cases:
+  - id: cache_key_asset_page_generation
+    expected_entry_kind: asset_page
+    expected_scope: asset
+    expected_ticker: VOO
+    expected_mode: beginner
+    expected_schema_version: asset-page-v1
+    expected_prompt_version: asset-page-prompt-v1
+    expected_model_name: deterministic-fixture-model
+
+  - id: cache_key_comparison_direction_preserved
+    expected_entry_kind: comparison
+    expected_scope: comparison
+    left_ticker: VOO
+    right_ticker: QQQ
+    expected_mode: beginner
+    expected_schema_version: comparison-v1
+
+  - id: cache_revalidation_permission_limited_blocks_reuse
+    expected_state: permission_limited
+    expected_reusable: false
+
+  - id: cache_revalidation_unsupported_blocks_reuse
+    expected_state: unsupported
+    expected_reusable: false
+
+  - id: cache_revalidation_hash_mismatch_blocks_reuse
+    expected_state: hash_mismatch
+    expected_reusable: false
