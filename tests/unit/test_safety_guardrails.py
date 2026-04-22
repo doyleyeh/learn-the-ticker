@@ -47,8 +47,13 @@ def test_backend_responses_do_not_leak_advice_phrases():
         response_payloads.append(client.get(f"/api/assets/{ticker}/overview").json())
         response_payloads.append(client.get(f"/api/assets/{ticker}/details").json())
         response_payloads.append(client.get(f"/api/assets/{ticker}/recent").json())
+        response_payloads.append(client.get(f"/api/assets/{ticker}/export").json())
+        response_payloads.append(client.get(f"/api/assets/{ticker}/sources/export").json())
 
     response_payloads.append(client.post("/api/compare", json={"left_ticker": "VOO", "right_ticker": "QQQ"}).json())
+    response_payloads.append(
+        client.post("/api/compare/export", json={"left_ticker": "VOO", "right_ticker": "QQQ"}).json()
+    )
 
     chat_cases = [
         ("VOO", "What is VOO?"),
@@ -58,6 +63,7 @@ def test_backend_responses_do_not_leak_advice_phrases():
     ]
     for ticker, question in chat_cases:
         response_payloads.append(client.post(f"/api/assets/{ticker}/chat", json={"question": question}).json())
+        response_payloads.append(client.post(f"/api/assets/{ticker}/chat/export", json={"question": question}).json())
 
     for index, payload in enumerate(response_payloads):
         assert_no_forbidden_phrases(f"backend response {index}", flatten_text(payload))
