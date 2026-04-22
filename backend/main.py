@@ -21,7 +21,13 @@ from backend.data import (
 from backend.chat import generate_asset_chat
 from backend.comparison import generate_comparison
 from backend.export import export_asset_page, export_asset_source_list, export_chat_transcript, export_comparison
-from backend.ingestion import get_ingestion_job_status, request_ingestion
+from backend.ingestion import (
+    get_ingestion_job_status,
+    get_pre_cache_job_status,
+    request_ingestion,
+    request_launch_universe_pre_cache,
+    request_pre_cache_for_asset,
+)
 from backend.models import (
     AssetIdentity,
     ChatRequest,
@@ -35,6 +41,8 @@ from backend.models import (
     ExportResponse,
     IngestionJobResponse,
     OverviewResponse,
+    PreCacheBatchResponse,
+    PreCacheJobResponse,
     RecentResponse,
     SearchResponse,
     SourcesResponse,
@@ -76,6 +84,26 @@ def ingest_asset(ticker: str) -> IngestionJobResponse:
 @app.get("/api/jobs/{job_id}", response_model=IngestionJobResponse, tags=["ingestion"])
 def ingestion_job_status(job_id: str) -> IngestionJobResponse:
     return get_ingestion_job_status(job_id)
+
+
+@app.post("/api/admin/pre-cache/launch-universe", response_model=PreCacheBatchResponse, tags=["ingestion"])
+def launch_universe_pre_cache() -> PreCacheBatchResponse:
+    return request_launch_universe_pre_cache()
+
+
+@app.get("/api/admin/pre-cache/launch-universe", response_model=PreCacheBatchResponse, tags=["ingestion"])
+def launch_universe_pre_cache_status() -> PreCacheBatchResponse:
+    return request_launch_universe_pre_cache()
+
+
+@app.get("/api/admin/pre-cache/jobs/{job_id}", response_model=PreCacheJobResponse, tags=["ingestion"])
+def pre_cache_job_status(job_id: str) -> PreCacheJobResponse:
+    return get_pre_cache_job_status(job_id)
+
+
+@app.post("/api/admin/pre-cache/{ticker}", response_model=PreCacheJobResponse, tags=["ingestion"])
+def pre_cache_asset(ticker: str) -> PreCacheJobResponse:
+    return request_pre_cache_for_asset(ticker)
 
 
 @app.get("/api/assets/{ticker}/overview", response_model=OverviewResponse, tags=["assets"])

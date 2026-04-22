@@ -1,0 +1,127 @@
+schema_version: pre-cache-evals-v1
+
+expected_batch_id: pre-cache-launch-universe-v1
+expected_status_url: /api/admin/pre-cache/launch-universe
+
+required_models:
+  - PreCacheJobResponse
+  - PreCacheBatchSummary
+  - PreCacheBatchResponse
+
+required_status_states:
+  - succeeded
+  - pending
+  - running
+  - failed
+  - unsupported
+  - unknown
+  - unavailable
+
+cached_generated_routes:
+  AAPL: /assets/AAPL
+  QQQ: /assets/QQQ
+  VOO: /assets/VOO
+
+status_cases:
+  - id: status_cached_etf_voo
+    lookup: status
+    job_id: pre-cache-launch-voo
+    expected_ticker: VOO
+    expected_asset_type: etf
+    expected_job_state: succeeded
+    expected_worker_status: succeeded
+    expected_generated_route: /assets/VOO
+    expected_generated_output_available: true
+
+  - id: status_cached_stock_aapl
+    lookup: status
+    job_id: pre-cache-launch-aapl
+    expected_ticker: AAPL
+    expected_asset_type: stock
+    expected_job_state: succeeded
+    expected_worker_status: succeeded
+    expected_generated_route: /assets/AAPL
+    expected_generated_output_available: true
+
+  - id: status_queued_eligible_etf_spy
+    lookup: status
+    job_id: pre-cache-launch-spy
+    expected_ticker: SPY
+    expected_asset_type: etf
+    expected_job_state: pending
+    expected_worker_status: queued
+    expected_generated_route: null
+    expected_generated_output_available: false
+
+  - id: status_queued_eligible_stock_nvda
+    lookup: status
+    job_id: pre-cache-launch-nvda
+    expected_ticker: NVDA
+    expected_asset_type: stock
+    expected_job_state: pending
+    expected_worker_status: queued
+    expected_generated_route: null
+    expected_generated_output_available: false
+
+  - id: status_running_eligible_msft
+    lookup: status
+    job_id: pre-cache-launch-msft
+    expected_ticker: MSFT
+    expected_asset_type: stock
+    expected_job_state: running
+    expected_worker_status: running
+    expected_generated_route: null
+    expected_generated_output_available: false
+
+  - id: status_failed_pre_cache_amzn
+    lookup: status
+    job_id: pre-cache-launch-amzn
+    expected_ticker: AMZN
+    expected_asset_type: stock
+    expected_job_state: failed
+    expected_worker_status: failed
+    expected_generated_route: null
+    expected_generated_output_available: false
+
+  - id: status_unsupported_fixture_tqqq
+    lookup: asset
+    ticker: TQQQ
+    expected_ticker: TQQQ
+    expected_asset_type: unsupported
+    expected_job_state: unsupported
+    expected_worker_status: null
+    expected_generated_route: null
+    expected_generated_output_available: false
+
+  - id: status_unknown_fixture_zzzz
+    lookup: asset
+    ticker: ZZZZ
+    expected_ticker: ZZZZ
+    expected_asset_type: unknown
+    expected_job_state: unknown
+    expected_worker_status: null
+    expected_generated_route: null
+    expected_generated_output_available: false
+
+  - id: status_missing_pre_cache_job
+    lookup: status
+    job_id: missing-pre-cache-job
+    expected_ticker: UNKNOWN
+    expected_asset_type: unknown
+    expected_job_state: unavailable
+    expected_worker_status: null
+    expected_generated_route: null
+    expected_generated_output_available: false
+
+forbidden_live_call_imports:
+  - import requests
+  - import httpx
+  - urllib.request
+  - from socket import
+  - import redis
+  - psycopg
+  - sqlalchemy
+  - boto3
+  - openai
+  - anthropic
+  - api_key

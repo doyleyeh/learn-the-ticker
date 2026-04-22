@@ -98,6 +98,39 @@ def test_comparison_cache_keys_preserve_left_right_direction():
     assert "comparison-qqq-to-voo" in reverse
 
 
+def test_pre_cache_job_cache_key_is_deterministic_without_storage_or_reuse_for_unavailable_states():
+    key = build_cache_key(
+        CacheKeyMetadata(
+            entry_kind=CacheEntryKind.pre_cache_job,
+            scope=CacheScope.job,
+            asset_ticker="SPY",
+            mode_or_output_type="launch-universe",
+            schema_version="pre-cache-job-v1",
+            source_freshness_state=FreshnessState.unavailable,
+            input_freshness_hash="pre-cache-launch-universe-v1",
+        )
+    )
+    repeated = build_cache_key(
+        CacheKeyMetadata(
+            entry_kind=CacheEntryKind.pre_cache_job,
+            scope=CacheScope.job,
+            asset_ticker="spy",
+            mode_or_output_type="launch-universe",
+            schema_version="pre-cache-job-v1",
+            source_freshness_state=FreshnessState.unavailable,
+            input_freshness_hash="pre-cache-launch-universe-v1",
+        )
+    )
+    blocked = evaluate_cache_revalidation(None, key, input_state=CacheEntryState.unavailable)
+
+    assert key == repeated
+    assert "job" in key
+    assert "pre-cache-job" in key
+    assert "asset-spy" in key
+    assert blocked.reusable is False
+    assert blocked.invalidation_reason is CacheInvalidationReason.unavailable
+
+
 def test_source_checksum_is_order_insensitive_and_excludes_raw_chunk_text():
     pack = build_asset_knowledge_pack("VOO")
     source = pack.source_documents[0]
