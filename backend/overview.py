@@ -452,8 +452,10 @@ def _build_stock_sections(
 ) -> list[OverviewSection]:
     primary_business = _require_fact(facts_by_field, "primary_business")
     primary_business_binding = bindings.for_fact(primary_business)
-    products_chunk = _select_chunk_by_id(pack, "chk_aapl_products_001")
-    products_binding = bindings.for_chunk(products_chunk)
+    products_services = facts_by_field.get("products_services_detail")
+    strength = facts_by_field.get("business_quality_strength")
+    revenue_trend = facts_by_field.get("financial_quality_revenue_trend")
+    valuation_limitation = facts_by_field.get("valuation_data_limitation")
     valuation_gap = _gap_for_field(pack, "valuation_context")
     risk_binding = bindings.for_chunk(risk_chunk)
 
@@ -484,8 +486,9 @@ def _build_stock_sections(
                 _supported_item(
                     item_id="products_and_services",
                     title="Products and services",
-                    summary=products_chunk.chunk.text,
-                    binding=products_binding,
+                    summary=str(products_services.fact.value) if products_services else "The local fixture supports only high-level products and services detail.",
+                    binding=bindings.for_fact(products_services) if products_services else bindings.for_fact(primary_business),
+                    as_of_date=products_services.fact.as_of_date if products_services else primary_business.fact.as_of_date,
                 ),
                 _gap_item(
                     item_id="business_segments",
@@ -497,32 +500,107 @@ def _build_stock_sections(
             ],
             evidence_state=EvidenceState.mixed,
         ),
-        _gap_section(
+        _section(
             section_id="strengths",
             title="Strengths",
+            section_type=OverviewSectionType.stable_facts,
             applies_to=[AssetType.stock],
-            summary="The current local fixture does not include source-backed evidence for competitive advantages, industry tailwinds, or other strengths.",
-            evidence_state=EvidenceState.unknown,
-            freshness_state=FreshnessState.unknown,
+            beginner_summary=(
+                str(strength.fact.value)
+                if strength
+                else "The current local fixture does not include source-backed evidence for competitive advantages, industry tailwinds, or other strengths."
+            ),
+            items=[
+                _supported_item(
+                    item_id="business_quality_strength",
+                    title="Business-quality point",
+                    summary=str(strength.fact.value),
+                    binding=bindings.for_fact(strength),
+                    as_of_date=strength.fact.as_of_date,
+                )
+            ]
+            if strength
+            else [
+                _gap_item(
+                    item_id="strengths_gap",
+                    title="Strengths",
+                    summary="The current local fixture does not include source-backed evidence for competitive advantages, industry tailwinds, or other strengths.",
+                    evidence_state=EvidenceState.unknown,
+                    freshness_state=FreshnessState.unknown,
+                )
+            ],
+            evidence_state=EvidenceState.supported if strength else EvidenceState.unknown,
         ),
-        _gap_section(
+        _section(
             section_id="financial_quality",
             title="Financial Quality",
+            section_type=OverviewSectionType.stable_facts,
             applies_to=[AssetType.stock],
-            summary=(
-                "The current local fixture does not include source-backed multi-year revenue, earnings, margin, cash-flow, debt, "
-                "cash, ROE, or ROIC metrics."
+            beginner_summary=(
+                "The fixture supports one multi-year net sales trend, while earnings, margins, cash flow, debt, cash, ROE, and ROIC remain unavailable."
             ),
-            evidence_state=EvidenceState.unavailable,
-            freshness_state=FreshnessState.unavailable,
+            items=([
+                _supported_item(
+                    item_id="net_sales_trend",
+                    title="Net sales trend",
+                    summary=f"The local fixture records Apple net sales moving from {revenue_trend.fact.value}.",
+                    binding=bindings.for_fact(revenue_trend),
+                    as_of_date=revenue_trend.fact.as_of_date,
+                )
+            ]
+            if revenue_trend
+            else [])
+            + [
+                _gap_item(
+                    item_id="financial_quality_detail_gap",
+                    title="Additional financial-quality metrics",
+                    summary="The local fixture still lacks earnings, margin, cash-flow, debt, cash, ROE, and ROIC metrics.",
+                    evidence_state=EvidenceState.unavailable,
+                    freshness_state=FreshnessState.unavailable,
+                )
+            ],
+            metrics=[
+                _metric_for_fact("net_sales_trend", "Net sales trend", revenue_trend, bindings.for_fact(revenue_trend))
+            ]
+            if revenue_trend
+            else [],
+            evidence_state=EvidenceState.mixed if revenue_trend else EvidenceState.unavailable,
+            limitations="The local fixture still lacks earnings, margin, cash-flow, debt, cash, ROE, and ROIC metrics.",
         ),
-        _gap_section(
+        _section(
             section_id="valuation_context",
             title="Valuation Context",
+            section_type=OverviewSectionType.evidence_gap,
             applies_to=[AssetType.stock],
-            summary=valuation_gap.message if valuation_gap else "No local fixture evidence is available for valuation context.",
-            evidence_state=_gap_evidence_state(valuation_gap.evidence_state if valuation_gap else "missing"),
-            freshness_state=valuation_gap.freshness_state if valuation_gap else FreshnessState.unavailable,
+            beginner_summary=(
+                str(valuation_limitation.fact.value)
+                if valuation_limitation
+                else valuation_gap.message if valuation_gap else "No local fixture evidence is available for valuation context."
+            ),
+            items=([
+                _supported_item(
+                    item_id="valuation_data_limitation",
+                    title="Valuation data limitation",
+                    summary=str(valuation_limitation.fact.value),
+                    binding=bindings.for_fact(valuation_limitation),
+                    freshness_state=valuation_limitation.fact.freshness_state,
+                    as_of_date=valuation_limitation.fact.as_of_date,
+                )
+            ]
+            if valuation_limitation
+            else [])
+            + [
+                _gap_item(
+                    item_id="valuation_metrics_gap",
+                    title="Valuation metrics",
+                    summary=valuation_gap.message if valuation_gap else "No local fixture evidence is available for valuation context.",
+                    evidence_state=_gap_evidence_state(valuation_gap.evidence_state if valuation_gap else "missing"),
+                    freshness_state=valuation_gap.freshness_state if valuation_gap else FreshnessState.unavailable,
+                )
+            ],
+            evidence_state=EvidenceState.mixed if valuation_limitation else _gap_evidence_state(valuation_gap.evidence_state if valuation_gap else "missing"),
+            freshness_state=FreshnessState.unavailable if valuation_limitation else valuation_gap.freshness_state if valuation_gap else FreshnessState.unavailable,
+            limitations=valuation_gap.message if valuation_gap else None,
         ),
         _risk_section(
             applies_to=[AssetType.stock],
@@ -562,6 +640,9 @@ def _build_etf_sections(
     expense_ratio = _require_fact(facts_by_field, "expense_ratio")
     holdings_count = _require_fact(facts_by_field, "holdings_count")
     beginner_role = _require_fact(facts_by_field, "beginner_role")
+    holdings_exposure = facts_by_field.get("holdings_exposure_detail")
+    construction_methodology = facts_by_field.get("construction_methodology")
+    trading_data_limitation = facts_by_field.get("trading_data_limitation")
     benchmark_binding = bindings.for_fact(benchmark)
     expense_binding = bindings.for_fact(expense_ratio)
     holdings_binding = bindings.for_fact(holdings_count)
@@ -603,7 +684,10 @@ def _build_etf_sections(
             title="Holdings Or Exposure",
             section_type=OverviewSectionType.stable_facts,
             applies_to=[AssetType.etf],
-            beginner_summary=f"The local fixture records about {holdings_count.fact.value} holdings, but it does not include top holdings, sector exposure, or country exposure.",
+            beginner_summary=(
+                f"The local fixture records about {holdings_count.fact.value} holdings and includes a bounded top-holdings exposure note, "
+                "but sector, country, concentration, and largest-position data remain incomplete."
+            ),
             items=[
                 _supported_item(
                     item_id="holdings_count",
@@ -612,10 +696,23 @@ def _build_etf_sections(
                     binding=holdings_binding,
                     as_of_date=holdings_count.fact.as_of_date,
                 ),
+                *(
+                    [
+                        _supported_item(
+                            item_id="holdings_exposure_detail",
+                            title="Holdings exposure detail",
+                            summary=str(holdings_exposure.fact.value),
+                            binding=bindings.for_fact(holdings_exposure),
+                            as_of_date=holdings_exposure.fact.as_of_date,
+                        )
+                    ]
+                    if holdings_exposure
+                    else []
+                ),
                 _gap_item(
                     item_id="holdings_detail_gap",
-                    title="Top holdings and exposures",
-                    summary="The current local fixture does not include top holdings, concentration, sector, country, or largest-position data.",
+                    title="Remaining holdings and exposure gaps",
+                    summary="The current local fixture does not include top-10 weights, top-10 concentration, sector exposure, country exposure, or largest-position data.",
                     evidence_state=EvidenceState.unavailable,
                     freshness_state=FreshnessState.unavailable,
                 ),
@@ -628,7 +725,7 @@ def _build_etf_sections(
             title="Construction Or Methodology",
             section_type=OverviewSectionType.stable_facts,
             applies_to=[AssetType.etf],
-            beginner_summary="The local fixture supports index-tracking context, but not rebalancing, screening, or weighting-method detail.",
+            beginner_summary="The local fixture supports index-tracking and construction context, but not full rebalancing or screening-rule detail.",
             items=[
                 _supported_item(
                     item_id="index_tracking",
@@ -637,10 +734,23 @@ def _build_etf_sections(
                     binding=benchmark_binding,
                     as_of_date=benchmark.fact.as_of_date,
                 ),
+                *(
+                    [
+                        _supported_item(
+                            item_id="construction_methodology",
+                            title="Construction methodology",
+                            summary=str(construction_methodology.fact.value),
+                            binding=bindings.for_fact(construction_methodology),
+                            as_of_date=construction_methodology.fact.as_of_date,
+                        )
+                    ]
+                    if construction_methodology
+                    else []
+                ),
                 _gap_item(
                     item_id="methodology_detail_gap",
-                    title="Methodology details",
-                    summary="The current local fixture does not include weighting method, rebalancing frequency, screening rules, or detailed methodology evidence.",
+                    title="Remaining methodology details",
+                    summary="The current local fixture does not include rebalancing frequency, complete screening rules, or full methodology evidence.",
                     evidence_state=EvidenceState.unavailable,
                     freshness_state=FreshnessState.unavailable,
                 ),
@@ -652,7 +762,7 @@ def _build_etf_sections(
             title="Cost And Trading Context",
             section_type=OverviewSectionType.stable_facts,
             applies_to=[AssetType.etf],
-            beginner_summary="Expense ratio is supported by the local fixture; trading metrics remain evidence gaps.",
+            beginner_summary="Expense ratio is supported by the local fixture; unavailable trading metrics are called out as cited limitations.",
             items=[
                 _supported_item(
                     item_id="expense_ratio",
@@ -660,6 +770,20 @@ def _build_etf_sections(
                     summary=f"The local fixture records a {_format_metric(expense_ratio.fact.value, expense_ratio.fact.unit)} expense ratio.",
                     binding=expense_binding,
                     as_of_date=expense_ratio.fact.as_of_date,
+                ),
+                *(
+                    [
+                        _supported_item(
+                            item_id="trading_data_limitation",
+                            title="Trading-data limitation",
+                            summary=str(trading_data_limitation.fact.value),
+                            binding=bindings.for_fact(trading_data_limitation),
+                            freshness_state=trading_data_limitation.fact.freshness_state,
+                            as_of_date=trading_data_limitation.fact.as_of_date,
+                        )
+                    ]
+                    if trading_data_limitation
+                    else []
                 ),
                 *cost_gap_items,
             ],

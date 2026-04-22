@@ -63,11 +63,20 @@ def test_stock_overview_exposes_prd_sections_with_explicit_gaps():
     } <= set(sections)
     assert sections["business_overview"].evidence_state is EvidenceState.supported
     assert sections["products_services"].evidence_state is EvidenceState.mixed
-    assert sections["strengths"].evidence_state is EvidenceState.unknown
-    assert sections["financial_quality"].evidence_state is EvidenceState.unavailable
-    assert sections["valuation_context"].evidence_state is EvidenceState.unavailable
-    assert sections["valuation_context"].citation_ids == []
-    assert sections["valuation_context"].source_document_ids == []
+    assert sections["strengths"].evidence_state is EvidenceState.supported
+    assert sections["financial_quality"].evidence_state is EvidenceState.mixed
+    assert sections["valuation_context"].evidence_state is EvidenceState.mixed
+    assert sections["valuation_context"].citation_ids
+    assert sections["valuation_context"].source_document_ids
+    assert {item.item_id for item in sections["products_services"].items} >= {"products_and_services", "business_segments"}
+    assert {item.item_id for item in sections["financial_quality"].items} >= {
+        "net_sales_trend",
+        "financial_quality_detail_gap",
+    }
+    assert {item.item_id for item in sections["valuation_context"].items} >= {
+        "valuation_data_limitation",
+        "valuation_metrics_gap",
+    }
     assert sections["top_risks"].items[:3]
     assert len(sections["top_risks"].items) == 3
 
@@ -93,6 +102,12 @@ def test_etf_overviews_expose_prd_sections_and_gap_states():
         assert sections["holdings_exposure"].evidence_state is EvidenceState.mixed
         assert sections["construction_methodology"].evidence_state is EvidenceState.mixed
         assert sections["cost_trading_context"].evidence_state is EvidenceState.mixed
+        assert "holdings_exposure_detail" in {item.item_id for item in sections["holdings_exposure"].items}
+        assert "construction_methodology" in {item.item_id for item in sections["construction_methodology"].items}
+        assert "trading_data_limitation" in {item.item_id for item in sections["cost_trading_context"].items}
+        assert sections["holdings_exposure"].citation_ids
+        assert sections["construction_methodology"].citation_ids
+        assert sections["cost_trading_context"].citation_ids
         assert len(sections["etf_specific_risks"].items) == 3
         assert sections["recent_developments"].evidence_state is EvidenceState.no_major_recent_development
         assert sections["recent_developments"].items[0].retrieved_at

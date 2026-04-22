@@ -174,6 +174,9 @@ def test_overview_has_beginner_sections_and_citations():
     } <= set(sections)
     assert sections["fund_objective_role"]["metrics"][0]["citation_ids"][0] in citation_ids
     assert sections["cost_trading_context"]["evidence_state"] == "mixed"
+    assert "holdings_exposure_detail" in {item["item_id"] for item in sections["holdings_exposure"]["items"]}
+    assert "construction_methodology" in {item["item_id"] for item in sections["construction_methodology"]["items"]}
+    assert "trading_data_limitation" in {item["item_id"] for item in sections["cost_trading_context"]["items"]}
     assert sections["recent_developments"]["items"][0]["retrieved_at"]
     assert sections["similar_assets_alternatives"]["citation_ids"] == []
 
@@ -195,8 +198,11 @@ def test_stock_overview_serializes_structured_prd_sections():
         "educational_suitability",
     } <= set(sections)
     assert sections["business_overview"]["items"][0]["citation_ids"]
-    assert sections["valuation_context"]["evidence_state"] == "unavailable"
-    assert sections["valuation_context"]["citation_ids"] == []
+    assert sections["strengths"]["evidence_state"] == "supported"
+    assert sections["financial_quality"]["evidence_state"] == "mixed"
+    assert sections["valuation_context"]["evidence_state"] == "mixed"
+    assert sections["valuation_context"]["citation_ids"]
+    assert "valuation_data_limitation" in {item["item_id"] for item in sections["valuation_context"]["items"]}
     assert sections["top_risks"]["items"][0]["source_document_ids"]
 
 
