@@ -2,24 +2,29 @@
 
 ## Current task
 
-### T-027: Expand golden asset eval coverage for MVP launch universe
+### T-028: Add pre-cache launch-universe job contracts
 
 Goal:
-Expand deterministic golden eval coverage so the MVP launch-universe control set catches regressions in search/support classification, on-demand ingestion eligibility, provider mock states, unavailable comparisons, citations/freshness expectations, and advice-boundary safety without making live external calls or generating unsupported asset content.
+Add deterministic pre-cache launch-universe job contracts so the MVP operational pre-cache set can be requested and inspected as fixture-backed job state without starting real workers, making provider calls, generating new asset output, or changing search/support classification.
 
 Task scope:
-This is an eval and deterministic metadata task only. Expand the existing golden asset eval fixture from a minimal ticker/type list into a structured MVP launch-universe contract based on the PRD Appendix B operational pre-cache list and the technical design golden set. The task may add local eligibility metadata and deterministic mocked states needed for those evals, but it must not add real source facts, generated asset pages, generated chat answers, generated comparisons, frontend UI, ingestion workers, provider network calls, LLM calls, persistence, analytics, or pre-cache orchestration. Assets outside the current cached fixtures must remain eligible-not-cached or unavailable, with explicit no-generated-output behavior.
+This is a backend/API contract task only. Define a deterministic local pre-cache launch-universe request/status contract over the existing cached supported assets and eligible-not-cached launch assets introduced by T-027. The contract may add typed response models, fixture-backed planner/status helpers, API routes, eval cases, and tests for queued/running/succeeded/failed/unsupported/unknown/unavailable states. It must not add real ingestion workers, queues, Redis/PostgreSQL persistence, provider fetches, SEC/issuer/market/news calls, LLM calls, source facts, retrieval knowledge packs, generated pages, generated chat answers, generated comparisons, frontend UI, analytics, authentication, or deployment config.
 
 Allowed files:
 
+- backend/models.py
 - backend/data.py
-- backend/providers.py
 - backend/ingestion.py
-- tests/unit/test_search_classification.py
-- tests/unit/test_provider_adapters.py
+- backend/main.py
+- backend/cache.py
 - tests/unit/test_ingestion_jobs.py
+- tests/unit/test_cache_contracts.py
 - tests/integration/test_backend_api.py
+- tests/unit/test_search_classification.py
 - evals/golden_assets.yaml
+- evals/ingestion_eval_cases.yaml
+- evals/cache_eval_cases.yaml
+- evals/pre_cache_eval_cases.yaml
 - evals/run_static_evals.py
 - docs/agent-journal/
 
@@ -30,45 +35,40 @@ Do not change:
 - lib/
 - styles/
 - data/retrieval_fixtures.json
-- backend/cache.py
 - backend/chat.py
 - backend/comparison.py
 - backend/export.py
-- backend/main.py
-- backend/models.py
+- backend/providers.py
 - backend/overview.py
 - backend/retrieval.py
 - backend/search.py
 - package files
-- provider network clients, credentials, environment variables, Redis, PostgreSQL, persistence, ingestion workers, queues, frontend UI, analytics, authentication, deployment config, pre-cache orchestration, or live cache infrastructure
-- source fixture content, retrieval fixtures, overview generation behavior, generated overview sections, comparison generation behavior, chat generation behavior, glossary data, export behavior, cached-output behavior, or generated routes
-- supported generated behavior for assets that are not already cached local fixtures
-- generated behavior for unsupported, unknown, ambiguous, unsupported comparison, unavailable comparison, eligible-not-cached, stale, unavailable, or permission-limited assets
+- provider network clients, credentials, environment variables, Redis, PostgreSQL, persistence, ingestion workers, real queues, scheduler code, frontend UI, analytics, authentication, deployment config, or live cache infrastructure
+- source fixture content, retrieval fixtures, overview generation behavior, generated overview sections, comparison generation behavior, chat generation behavior, glossary data, export behavior, cached-output behavior, or generated asset routes
+- supported generated behavior for assets that are not already cached local fixtures (`AAPL`, `VOO`, and `QQQ`)
+- generated behavior for unsupported, unknown, ambiguous, unsupported comparison, unavailable comparison, eligible-not-cached, stale, unavailable, permission-limited, queued, failed, or pending pre-cache states
 
 Acceptance criteria:
 
-- `evals/golden_assets.yaml` is expanded into a structured golden contract with cached supported assets, eligible-not-cached MVP launch assets, unsupported samples, unknown samples, and common comparison pairs.
-- The golden contract includes the technical design golden assets: `AAPL`, `MSFT`, `NVDA`, `TSLA`, `VOO`, `SPY`, `VTI`, `QQQ`, `VGT`, and `SOXX`.
-- The golden contract includes the PRD Appendix B operational launch-universe tickers: `VOO`, `SPY`, `VTI`, `IVV`, `QQQ`, `IWM`, `DIA`, `VGT`, `XLK`, `SOXX`, `SMH`, `XLF`, `XLV`, `AAPL`, `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `META`, `TSLA`, `BRK.B`, `JPM`, and `UNH`.
-- The golden contract includes the PRD Appendix B common comparison pairs: `VOO/SPY`, `VTI/VOO`, `QQQ/VOO`, `QQQ/VGT`, `VGT/SOXX`, `AAPL/MSFT`, and `NVDA/SOXX`.
-- Golden eval cases explicitly mark the existing local generated fixtures `AAPL`, `VOO`, and `QQQ` as cached supported assets and preserve their generated-route, chat, comparison, citation, source metadata, freshness, and exactly-three-top-risks expectations.
-- Golden eval cases explicitly mark launch-universe assets without local knowledge packs as eligible-not-cached, not as unknown, and verify they cannot open generated pages, receive generated chat answers, receive generated comparisons, or expose citations/source documents from nonexistent local packs.
-- Any new local metadata for eligible-not-cached launch assets is limited to deterministic asset-resolution fields needed for search and evals, such as ticker, name, asset type, exchange, issuer, aliases, and operational launch-universe grouping. It must not add unsupported canonical facts, holdings, financial metrics, recent developments, citations, source documents, or generated page content.
-- Search coverage verifies cached supported, eligible-not-cached, recognized-unsupported, ambiguous, and unknown states from the golden fixture, including ingestion request routes only where an asset is eligible-not-cached.
-- Ingestion coverage verifies eligible-not-cached launch assets return deterministic on-demand job responses or existing deterministic fixture states with no generated route, no generated page/chat/comparison capability, no invented facts, and stable job IDs/status URLs.
-- Provider adapter coverage verifies market/reference asset-resolution responses for golden launch assets are deterministic, same-asset-bound, permission-aware, and marked supported or eligible-not-cached as appropriate, while provider-generated output flags remain false.
-- Provider adapter coverage preserves official-source hierarchy for existing cached fixtures and does not invent SEC, ETF issuer, holdings, financial, or recent-development facts for newly added eligible-not-cached assets.
-- Comparison golden coverage verifies supported local comparison pairs still work where a local comparison pack exists, and all pairs involving eligible-not-cached or missing local comparison packs return unavailable/unsupported states without factual differences, beginner bottom lines, citations, source documents, or invented facts.
-- Golden static evals check citation presence for key claims on cached supported assets, same-asset or same-comparison-pack citation binding, visible freshness metadata, exactly three top risks first, stable/recent separation, and no forbidden advice-like output for generated local fixtures.
-- Golden static evals check eligible-not-cached, unsupported, unknown, and unavailable states preserve explicit uncertainty and do not create factual citations, source documents, generated routes, chat answers, comparisons, or exportable generated content.
-- Static evals continue to reject live-call imports or credential use in touched modules, including `requests`, `httpx`, `urllib`, `socket`, provider SDK imports, API keys, environment-variable credential reads, Redis, PostgreSQL, and LLM clients.
-- Existing overview, comparison, chat, export, cache, retrieval, citation, safety, frontend smoke, and API behavior for `AAPL`, `VOO`, `QQQ`, unsupported assets, unknown assets, and unavailable comparisons remains unchanged except for the newly expanded deterministic golden coverage.
+- Add a deterministic pre-cache launch-universe request function or API contract that returns a stable batch/job response for the T-027 launch-universe control set without starting workers or making live calls.
+- The pre-cache contract covers cached supported local assets `AAPL`, `VOO`, and `QQQ` plus every eligible-not-cached launch asset currently in `ELIGIBLE_NOT_CACHED_ASSETS`.
+- The launch-universe pre-cache batch uses stable IDs and status URLs, for example a stable launch batch ID and stable per-asset job IDs derived from normalized tickers; repeated requests return the same deterministic response.
+- Cached supported local assets may be marked succeeded or already cached only when they preserve existing generated routes and page/chat/comparison capabilities from their local fixtures.
+- Eligible-not-cached launch assets are represented as queued, pending, running, failed, or planned pre-cache job states, but still have no generated route, no generated page capability, no chat capability, no comparison capability, no citations, no source documents, and no generated output.
+- The contract exposes per-asset job type `pre_cache`, ticker, asset type, launch group, job state, worker status, retryability, status URL, generated route if one already exists, capability flags, and an educational/no-generated-output message.
+- The contract exposes a summary count of total launch assets, cached/already-available assets, queued or pending assets, running assets, failed assets, unsupported assets, unknown assets, and assets with generated output available.
+- Status lookup covers deterministic pre-cache states for at least one cached supported ETF, one cached supported stock, one queued eligible ETF, one queued eligible stock, one running eligible asset, one failed pre-cache fixture, one unsupported pre-cache fixture, one unknown pre-cache fixture, and one unavailable/missing job ID.
+- Any unsupported or unknown ticker passed into a pre-cache helper or route returns an unsupported/unknown non-generated state and does not create source facts, citations, generated output, or reusable generated-output cache hits.
+- If `backend/cache.py` is touched, the only cache behavior added is deterministic pre-cache job cache-key or revalidation coverage using existing cache contract models; do not add storage, Redis, databases, TTL workers, cache refreshers, or generated-output reuse for unavailable/unsupported/eligible-not-cached states.
+- Static evals include pre-cache cases that verify launch-universe coverage, deterministic IDs, no generated output for eligible-not-cached/failed/unsupported/unknown states, no citations/source documents from nonexistent packs, stable capability flags, and no live-call or credential imports.
+- API coverage, if routes are added, verifies request and status endpoints serialize the same deterministic contract and preserve existing `/api/admin/ingest/{ticker}` and `/api/jobs/{job_id}` behavior.
+- Existing search, on-demand ingestion, provider adapter, overview, comparison, chat, export, cache, retrieval, citation, safety, frontend smoke, and generated local fixture behavior for `AAPL`, `VOO`, `QQQ`, unsupported assets, unknown assets, and unavailable comparisons remains unchanged except for the new pre-cache contract surface.
 - Normal CI remains deterministic and does not require provider credentials, market-data calls, SEC calls, ETF issuer calls, news calls, LLM calls, Redis, PostgreSQL, queues, backend server availability, browser automation, or network access.
 
 Required commands:
 
 - git status --short
-- python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_ingestion_jobs.py tests/unit/test_provider_adapters.py -q
+- python3 -m pytest tests/unit/test_ingestion_jobs.py tests/unit/test_cache_contracts.py -q
 - python3 -m pytest tests/integration/test_backend_api.py -q
 - python3 -m pytest tests -q
 - python3 evals/run_static_evals.py
@@ -78,6 +78,34 @@ Iteration budget:
 Max 2 attempts
 
 ## Completed
+
+### T-027: Expand golden asset eval coverage for MVP launch universe
+
+Goal:
+Expand deterministic golden eval coverage so the MVP launch-universe control set catches regressions in search/support classification, on-demand ingestion eligibility, provider mock states, unavailable comparisons, citations/freshness expectations, and advice-boundary safety without making live external calls or generating unsupported asset content.
+
+Completed:
+
+- Expanded `evals/golden_assets.yaml` to schema `golden-assets-v2` with technical-design golden assets, cached supported assets, eligible-not-cached launch assets, unsupported samples, unknown samples, common comparison pairs, local generated comparison pairs, and expected capability flags.
+- Preserved `AAPL`, `VOO`, and `QQQ` as the only cached supported local generated fixtures with generated routes, page/chat/comparison capabilities, citations, source documents, freshness expectations, stable/recent separation, and exactly three top risks.
+- Added deterministic eligible-not-cached launch-universe metadata in `backend/data.py` for non-cached launch assets including broad ETFs, sector/theme ETFs, and large stocks such as `SPY`, `VTI`, `IVV`, `IWM`, `DIA`, `VGT`, `XLK`, `SOXX`, `SMH`, `XLF`, `XLV`, `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `META`, `TSLA`, `BRK.B`, `JPM`, and `UNH`.
+- Extended deterministic ingestion behavior in `backend/ingestion.py` so eligible-not-cached launch assets return stable on-demand job IDs and status URLs with no generated route, page capability, chat capability, comparison capability, citations, or invented facts.
+- Extended mocked provider behavior in `backend/providers.py` so market/reference asset-resolution responses cover eligible-not-cached launch assets with same-asset identity and generated-output flags still false.
+- Extended search, ingestion, provider, backend API, and static eval coverage through `tests/unit/test_search_classification.py`, `tests/unit/test_ingestion_jobs.py`, `tests/unit/test_provider_adapters.py`, `tests/integration/test_backend_api.py`, `evals/search_eval_cases.yaml`, `evals/ingestion_eval_cases.yaml`, `evals/provider_eval_cases.yaml`, and `evals/run_static_evals.py`.
+- Golden comparison coverage now preserves the existing generated local `VOO`/`QQQ` comparison where a local pack exists and verifies common pairs involving eligible-not-cached or missing packs stay unavailable without generated factual differences, beginner bottom lines, citations, source documents, or invented facts.
+- Static evals verify launch-universe membership, cached-supported versus eligible-not-cached capability boundaries, citation/source/freshness expectations for cached fixtures, unavailable states for missing comparison packs, advice-boundary safety, and no live-call or credential imports.
+- Added `docs/agent-journal/20260422T181551Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- T-027 agent journal records that `git status --short`, focused search/ingestion/provider pytest, backend API pytest, full pytest, static evals, and the full quality gate passed.
+- T-027 agent journal records focused search/ingestion/provider pytest as 20 tests passed, backend API pytest as 20 tests passed, full pytest as 105 tests passed, static evals as passed, and the quality gate as passed including Python tests, static evals, frontend smoke checks, TypeScript typecheck, production build, and backend checks.
+- Merged local branch: `agent/T-027-20260422T181551Z`.
+- Remaining documented risk: launch-universe additions are deterministic resolution and eval metadata only; they do not add real source facts, retrieval knowledge packs, generated pages, chat answers, comparison packs, exports, provider network calls, or ingestion workers.
+- Remaining documented risk: eligible-not-cached generated API paths remain blocked by the existing local fixture behavior, but forced overview/chat calls still surface unavailable or unsupported-redirect style responses because no retrieval packs exist yet.
+- Remaining documented risk: provider responses for newly added launch assets are mocked asset-resolution contracts only; future real provider ingestion must preserve same-asset binding, licensing constraints, freshness metadata, and no-live-call CI behavior.
+
+Completion commits:
+
+- `c803eee test(T-027): expand golden asset eval coverage for MVP launch universe`
+- `d6be27a chore(T-027): merge expand golden asset eval coverage for MVP launch universe`
 
 ### T-026: Add caching and freshness-hash contracts
 
@@ -777,7 +805,6 @@ Completion commits:
 
 ## Backlog
 
-### T-028: Add pre-cache launch-universe job contracts
 ### T-029: Add deterministic asset knowledge-pack builder
 ### T-030: Add frontend export controls for saved learning outputs
 ### T-031: Add common comparison suggestions for supported assets
