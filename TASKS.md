@@ -2,37 +2,44 @@
 
 ## Current task
 
-### T-029: Add deterministic asset knowledge-pack builder
+### T-030: Add frontend export controls for saved learning outputs
 
 Goal:
-Add a deterministic asset knowledge-pack builder contract that makes the bounded evidence set for each local cached asset inspectable, freshness-hashable, and explicitly unavailable for eligible-not-cached, unsupported, and unknown assets without adding new source facts, generated output, live calls, or frontend UI.
+Add deterministic frontend export controls so users can save fixture-backed asset-page output, asset source lists, comparison output, and chat transcripts through the existing export API contracts, while preserving citations, freshness labels, source metadata, educational disclaimers, licensing scope, unsupported/unavailable states, and no-live-call behavior.
 
 Task scope:
-This is a backend retrieval/cache contract task only. Build on the existing deterministic retrieval fixtures and `build_asset_knowledge_pack` behavior to expose a typed, stable knowledge-pack build result for cached local assets (`AAPL`, `VOO`, and `QQQ`) and explicit non-generated states for eligible-not-cached launch assets, unsupported assets, and unknown assets. The contract may add typed response models, fixture-backed builder helpers, a read-only API route, cache/freshness-hash wiring, eval cases, and tests. It must not add or modify source fixture content, provider fetches, SEC/issuer/market/news calls, LLM calls, ingestion workers, queues, persistence, generated pages, generated chat answers, generated comparisons, frontend UI, analytics, authentication, or deployment config.
+This is a frontend UI wiring task only. Build small, reusable export controls around the existing backend export endpoints from T-024: asset-page export, asset source-list export, comparison export, and chat transcript export. The controls should appear in the existing fixture-backed asset page, comparison page, and chat panel flows, using relative local API paths and deterministic UI state. The task may add a small frontend helper/component for export URLs, download/copy affordances, loading/error/success states where needed, accessible labels, and smoke/safety coverage. It must not change backend export schemas, generated export payload content, source fixture content, retrieval packs, provider adapters, cache contracts, ingestion jobs, generated overview/comparison/chat behavior, glossary data, search behavior, authentication, analytics, deployment config, or package dependencies.
 
 Allowed files:
 
-- backend/models.py
-- backend/retrieval.py
-- backend/main.py
-- backend/cache.py
-- tests/unit/test_retrieval_fixtures.py
-- tests/unit/test_cache_contracts.py
-- tests/integration/test_backend_api.py
-- tests/unit/test_overview_generation.py
-- tests/unit/test_chat_generation.py
-- tests/unit/test_comparison_generation.py
-- evals/knowledge_pack_eval_cases.yaml
-- evals/run_static_evals.py
+- app/assets/[ticker]/page.tsx
+- app/compare/page.tsx
+- components/AssetChatPanel.tsx
+- components/ExportControls.tsx
+- lib/exportControls.ts
+- styles/globals.css
+- tests/frontend/smoke.mjs
+- tests/unit/test_safety_guardrails.py
 - docs/agent-journal/
 
 Do not change:
 
-- app/
-- components/
-- lib/
-- styles/
+- backend/
 - data/retrieval_fixtures.json
+- lib/fixtures.ts
+- lib/compare.ts
+- lib/glossary.ts
+- lib/assetChat.ts
+- package files
+- evals/
+- tests/unit/test_exports.py
+- tests/integration/test_backend_api.py
+- tests/unit/test_retrieval_fixtures.py
+- tests/unit/test_cache_contracts.py
+- tests/unit/test_overview_generation.py
+- tests/unit/test_chat_generation.py
+- tests/unit/test_comparison_generation.py
+- backend export contracts, API response models, API routes, retrieval fixtures, provider mocks, cache/freshness helpers, ingestion/pre-cache contracts, generated overview/chat/comparison/export payload behavior, source fixture content, glossary definitions, search/support classification, or comparison fixture content
 - backend/chat.py
 - backend/comparison.py
 - backend/export.py
@@ -40,35 +47,36 @@ Do not change:
 - backend/providers.py
 - backend/overview.py
 - backend/search.py
-- package files
-- provider network clients, credentials, environment variables, Redis, PostgreSQL, persistence, ingestion workers, real queues, scheduler code, frontend UI, analytics, authentication, deployment config, or live cache infrastructure
-- source fixture content, retrieval fixture JSON, provider fixture content, overview generation behavior, generated overview sections, comparison generation behavior, chat generation behavior, glossary data, export behavior, cached-output behavior, search/support classification behavior, ingestion behavior, pre-cache behavior, or generated asset routes
+- provider network clients, credentials, environment variables, Redis, PostgreSQL, persistence, ingestion workers, real queues, scheduler code, analytics, authentication, deployment config, or live cache infrastructure
 - generated behavior for assets that are not already cached local fixtures (`AAPL`, `VOO`, and `QQQ`)
 - generated behavior for unsupported, unknown, ambiguous, unsupported comparison, unavailable comparison, eligible-not-cached, stale, unavailable, permission-limited, queued, failed, running, or pending pre-cache states
 
 Acceptance criteria:
 
-- Add a deterministic knowledge-pack builder function or response contract that returns the same schema and stable identifiers for repeated requests.
-- The builder covers cached supported local assets `AAPL`, `VOO`, and `QQQ` using only existing local retrieval fixtures.
-- Supported cached pack responses expose ticker, asset identity, asset type, pack ID, build state, generated-output availability, capability flags, page/section freshness metadata, source-document IDs, citation IDs where derivable from the existing fixture bindings, fact counts, chunk counts, recent-development counts, evidence-gap counts, and a knowledge-pack freshness hash.
-- Supported cached pack responses include enough source/fact/recent-event metadata to prove same-asset binding without exporting full source documents or adding new factual claims.
-- `AAPL`, `VOO`, and `QQQ` knowledge-pack freshness hashes are deterministic across repeated builds and change when existing source/fact/recent-event freshness inputs would change through the existing cache helpers.
-- Eligible-not-cached launch assets currently in `ELIGIBLE_NOT_CACHED_ASSETS` return an explicit non-generated state such as eligible-not-cached or unavailable, with no source documents, no citations, no normalized facts, no chunks, no recent developments, no generated route, no page/chat/comparison capability, and no reusable generated-output cache hit.
-- Unsupported assets return unsupported non-generated pack states, and unknown assets return unknown or unavailable non-generated pack states. Neither state may create source facts, citations, generated output, or reusable generated-output cache hits.
-- If a read-only API route is added, it serializes the same deterministic builder response for supported, eligible-not-cached, unsupported, and unknown tickers and does not change existing overview, search, ingestion, pre-cache, chat, comparison, export, or provider routes.
-- Existing `build_asset_knowledge_pack` and `build_comparison_knowledge_pack` callers in overview, chat, comparison, export, and cache flows continue to produce the same generated outputs and unavailable states as before.
-- The builder does not make live external calls, import provider credentials, import network clients, read environment secrets, create queues, write to Redis/PostgreSQL/S3, or start workers.
-- Static evals include knowledge-pack cases that verify deterministic pack IDs, supported cached coverage, eligible-not-cached non-generation, unsupported/unknown non-generation, citation/source absence for nonexistent packs, same-asset binding, freshness-hash determinism, no raw full-document export, and forbidden live-call or credential imports.
-- Tests verify schema validation, deterministic repeated builds, same-asset source/fact/recent-event binding, freshness hash integration, explicit stale/unknown/unavailable/evidence-gap handling, no generated output for non-cached states, and preservation of existing generated overview/chat/comparison behavior.
-- Normal CI remains deterministic and does not require provider credentials, market-data calls, SEC calls, ETF issuer calls, news calls, LLM calls, Redis, PostgreSQL, queues, backend server availability, browser automation, or network access.
+- Asset pages for fixture-backed supported assets `AAPL`, `VOO`, and `QQQ` render a visible export/save area with deterministic controls for asset-page export and source-list export.
+- Asset export controls use the existing relative API routes `/api/assets/{ticker}/export?export_format=markdown` and `/api/assets/{ticker}/sources/export?export_format=markdown`; they must not fetch live external URLs or require provider credentials.
+- Asset export UI clearly preserves the trust context users need before saving: citations, source metadata, freshness/as-of dates, licensing scope, and the educational disclaimer are represented in labels, helper copy, or control metadata without adding new asset facts.
+- Comparison pages render export controls for supported local comparison output using the existing relative route `/api/compare/export?left_ticker={left}&right_ticker={right}&export_format=markdown`.
+- Comparison export controls are shown for the deterministic `VOO`/`QQQ` and `QQQ`/`VOO` comparison fixture paths and preserve unavailable-state handling for unsupported, unknown, cross-type, or missing comparison packs without factual citation chips or invented differences.
+- The asset chat panel exposes a chat transcript export control after a submitted question has a deterministic response, using the existing relative `POST /api/assets/{ticker}/chat/export` contract with the current question and `markdown` format.
+- Chat transcript export controls preserve educational redirect, unsupported/unknown, and insufficient-evidence states; advice-like transcript export must not add factual citations or source documents for redirected answers.
+- Export controls include accessible names, stable frontend markers, keyboard-usable buttons or links, and responsive styling that does not obscure citation chips, source drawer access, freshness labels, glossary access, Beginner Mode, Deep-Dive Mode, comparison content, or chat controls.
+- Export UI copy stays educational and must not use buy/sell/hold recommendations, personalized allocation language, unsupported price targets, tax advice, brokerage/trading instructions, or certainty about future returns.
+- Export controls must not expose full source documents, raw paid-news articles, restricted provider payloads, provider credentials, environment secrets, or live external download URLs.
+- Supported fixture export controls should make the existing backend-export disclaimer/licensing boundaries visible enough for beginners to understand that saved output is educational and source-backed.
+- Unsupported, unknown, eligible-not-cached, and unavailable export paths remain non-generated: no generated page, chat answer, comparison, citations, source documents, or reusable generated-output cache hit is created by the frontend controls.
+- Frontend smoke coverage verifies asset export controls, source-list export controls, comparison export controls, chat transcript export controls, relative API paths, stable markers, unsupported/unavailable guardrail copy, no live external calls, no package dependency changes, and no backend export-contract edits.
+- Safety guardrail coverage includes any new frontend export components or helper copy and rejects forbidden advice-like language.
+- Normal CI remains deterministic and does not require provider credentials, market-data calls, SEC calls, ETF issuer calls, news calls, LLM calls, Redis, PostgreSQL, queues, browser automation beyond existing smoke checks, backend server availability, or network access.
 
 Required commands:
 
 - git status --short
-- python3 -m pytest tests/unit/test_retrieval_fixtures.py tests/unit/test_cache_contracts.py -q
-- python3 -m pytest tests/unit/test_overview_generation.py tests/unit/test_chat_generation.py tests/unit/test_comparison_generation.py -q
-- python3 -m pytest tests/integration/test_backend_api.py -q
-- python3 -m pytest tests -q
+- npm test
+- npm run typecheck
+- npm run build
+- python3 -m pytest tests/unit/test_safety_guardrails.py -q
+- python3 -m pytest tests/unit/test_exports.py tests/integration/test_backend_api.py -q
 - python3 evals/run_static_evals.py
 - bash scripts/run_quality_gate.sh
 
@@ -76,6 +84,36 @@ Iteration budget:
 Max 2 attempts
 
 ## Completed
+
+### T-029: Add deterministic asset knowledge-pack builder
+
+Goal:
+Add a deterministic asset knowledge-pack builder contract that makes the bounded evidence set for each local cached asset inspectable, freshness-hashable, and explicitly unavailable for eligible-not-cached, unsupported, and unknown assets without adding new source facts, generated output, live calls, or frontend UI.
+
+Completed:
+
+- Added knowledge-pack build contract models in `backend/models.py`: `KnowledgePackBuildState`, `KnowledgePackCounts`, `KnowledgePackSourceMetadata`, `KnowledgePackFactMetadata`, `KnowledgePackChunkMetadata`, `KnowledgePackRecentDevelopmentMetadata`, `KnowledgePackEvidenceGapMetadata`, and `KnowledgePackBuildResponse`.
+- Added `build_asset_knowledge_pack_result` in `backend/retrieval.py` with schema version `asset-knowledge-pack-build-v1` and stable pack IDs such as `asset-knowledge-pack-aapl-local-fixture-v1`, `asset-knowledge-pack-voo-local-fixture-v1`, and `asset-knowledge-pack-qqq-local-fixture-v1`.
+- Supported cached local assets `AAPL`, `VOO`, and `QQQ` now return available knowledge-pack metadata from existing local retrieval fixtures, including generated routes, generated-output availability, page/chat/comparison capability flags, page and section freshness labels, source-document IDs, derived citation IDs, counts, source checksums, cache keys, cache revalidation state, and deterministic knowledge-pack freshness hashes.
+- Supported cached responses expose same-asset source, fact, chunk, recent-development, and evidence-gap metadata while intentionally omitting raw chunk text, supporting passages, and full source-document exports.
+- Eligible-not-cached assets such as `SPY` return explicit non-generated `eligible_not_cached` knowledge-pack states with no sources, citations, normalized facts, chunks, recent developments, source checksums, freshness hash, generated route, page/chat/comparison capability, or reusable generated-output cache hit; only the ingestion-request capability is true for eligible-not-cached states.
+- Unsupported assets such as `TQQQ` and unknown assets such as `ZZZZ` return explicit non-generated `unsupported` or `unknown` knowledge-pack states with no generated output, no source evidence, no citations, no freshness hash, and non-reusable cache revalidation results.
+- Added the read-only API route `GET /api/assets/{ticker}/knowledge-pack` in `backend/main.py`, serializing the same deterministic response for supported cached, eligible-not-cached, unsupported, and unknown tickers.
+- Preserved existing generated overview, chat, and comparison behavior by keeping existing `build_asset_knowledge_pack` and `build_comparison_knowledge_pack` callers compatible.
+- Added `evals/knowledge_pack_eval_cases.yaml` and extended `evals/run_static_evals.py` to verify required models/helpers, stable pack IDs, supported cached coverage, eligible-not-cached and unsupported/unknown non-generation, source/citation absence for nonexistent packs, same-asset binding, freshness-hash determinism, no raw full-document export, API serialization, and forbidden live-call or credential imports scoped to retrieval.
+- Added focused coverage in `tests/unit/test_retrieval_fixtures.py`, `tests/unit/test_cache_contracts.py`, `tests/unit/test_overview_generation.py`, `tests/unit/test_chat_generation.py`, `tests/unit/test_comparison_generation.py`, and `tests/integration/test_backend_api.py` for deterministic repeated builds, metadata-only supported responses, no generated output for non-cached states, freshness-hash integration, route serialization, and preservation of generated overview/chat/comparison outputs.
+- Added `docs/agent-journal/20260422T191056Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- T-029 agent journal records that `git status --short`, focused retrieval/cache pytest, focused overview/chat/comparison pytest, backend API pytest, full pytest, static evals, and the full quality gate passed.
+- T-029 agent journal records focused retrieval/cache pytest as 24 tests passed, focused overview/chat/comparison pytest as 27 tests passed, backend API integration pytest as 23 tests passed, full Python pytest as 121 tests passed, static evals as passed after one eval-only revision, and the full quality gate as passed including Python tests, static evals, frontend smoke checks, TypeScript typecheck, production build, and backend checks.
+- Merged local branch: `agent/T-029-20260422T191056Z`.
+- Remaining documented risk: the knowledge-pack builder is a deterministic read-only contract over existing local fixtures; it does not add ingestion workers, persistence, provider calls, source facts, LLM calls, frontend UI, or generated output for non-cached assets.
+- Remaining documented risk: eligible-not-cached assets remain explicit non-generated states with no source evidence, citations, facts, chunks, recent developments, freshness hash, generated route, or reusable generated-output cache hit.
+- Remaining documented risk: supported cached assets expose metadata and freshness hashes for existing `AAPL`, `VOO`, and `QQQ` fixture packs, but intentionally omit raw chunk text and full source-document passages.
+
+Completion commits:
+
+- `bfeba12 feat(T-029): add deterministic asset knowledge-pack builder`
+- `5ac1597 chore(T-029): merge deterministic asset knowledge-pack builder`
 
 ### T-028: Add pre-cache launch-universe job contracts
 
@@ -832,6 +870,5 @@ Completion commits:
 
 ## Backlog
 
-### T-030: Add frontend export controls for saved learning outputs
 ### T-031: Add common comparison suggestions for supported assets
 ### T-032: Add trust metrics event contract for MVP workflows
