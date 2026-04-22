@@ -2,23 +2,21 @@
 
 ## Current task
 
-### T-024: Add export/download contracts for pages, comparisons, sources, and chat
+### T-025: Add provider adapter interfaces with mocked tests
 
 Goal:
-Add deterministic accountless export/download API contracts for fixture-backed asset pages, comparison output, source lists, and chat transcripts so users can save learning outputs with citations, source metadata, freshness context, and the educational disclaimer, without adding live calls or unsupported asset facts.
+Add typed provider adapter interfaces and deterministic mocked adapter responses for the future SEC, ETF issuer, market/reference, and recent-development provider layer so ingestion work has explicit contracts for source-backed data, attribution, freshness, licensing, and failure states without making live external calls.
 
 Task scope:
-This is a backend/API contract task for the current local fixture-backed MVP surface. Add typed export response models and deterministic export service functions that shape existing overview, comparison, source, and chat outputs into exportable JSON/Markdown-style payloads. The implementation should reuse existing generated overview, comparison, source, and chat data rather than adding new source fixtures or generation behavior. Keep exports accountless and local-fixture-backed; do not add PDF rendering, browser download UI, frontend buttons, provider adapters, ingestion workers, caching/freshness hashes, persistence, analytics, package dependencies, or live external calls. Exported content must preserve citation IDs, source metadata, freshness/as-of/retrieved dates, explicit unknown/stale/unavailable/insufficient-evidence states, stable/recent separation, safety classifications, licensing notes, and the educational disclaimer.
+This is a backend contract task only. Define small provider request/response models and a provider adapter module that can represent asset resolution, canonical stock facts from SEC-like sources, ETF issuer facts/holdings metadata, structured market/reference fields, and recent-development candidates. Add deterministic mock adapters/factory functions and tests that prove the contracts preserve source hierarchy, same-asset binding, freshness/as-of/retrieved timestamps, licensing/export constraints, unsupported/unknown/unavailable states, and no-live-call behavior. Do not wire the provider adapters into search, ingestion jobs, retrieval fixtures, overview generation, comparisons, chat, exports, frontend UI, persistence, queues, caches, LLM calls, or generated asset behavior.
 
 Allowed files:
 
-- backend/export.py
-- backend/main.py
+- backend/providers.py
 - backend/models.py
-- tests/unit/test_exports.py
+- tests/unit/test_provider_adapters.py
 - tests/integration/test_backend_api.py
-- tests/unit/test_safety_guardrails.py
-- evals/export_eval_cases.yaml
+- evals/provider_eval_cases.yaml
 - evals/run_static_evals.py
 - docs/agent-journal/
 
@@ -31,39 +29,40 @@ Do not change:
 - data/retrieval_fixtures.json
 - backend/chat.py
 - backend/comparison.py
+- backend/export.py
 - backend/ingestion.py
 - backend/overview.py
 - backend/retrieval.py
 - backend/search.py
 - package files
-- provider adapters, ingestion workers, queues, caches, persistence, PDF rendering, frontend export/download UI, analytics, or authentication
-- source fixture content, retrieval fixtures, overview generation behavior, search classification behavior, comparison generation behavior, chat generation behavior, glossary data, or generated routes
-- generated behavior for unsupported, unknown, ambiguous, unsupported comparison, or eligible-not-cached assets
+- provider network clients, credentials, environment variables, ingestion workers, queues, caches, persistence, frontend UI, analytics, authentication, or deployment config
+- source fixture content, retrieval fixtures, overview generation behavior, search classification behavior, ingestion job behavior, comparison generation behavior, chat generation behavior, glossary data, export behavior, or generated routes
+- generated behavior for unsupported, unknown, ambiguous, unsupported comparison, unavailable comparison, or eligible-not-cached assets
 
 Acceptance criteria:
 
-- `backend/models.py` defines typed export models for export format, export content type, export state, exported sections/items, exported citations, exported source metadata, licensing/export notes, and a reusable educational disclaimer.
-- `backend/export.py` exposes deterministic functions for asset-page export, asset-source-list export, comparison export, and chat-transcript export using existing local overview, source, comparison, and chat services.
-- `backend/main.py` wires local export endpoints for asset page export, asset source-list export, comparison export, and chat transcript export. Endpoint names and request shapes are explicit and covered by integration tests.
-- Asset-page exports for `AAPL`, `VOO`, and `QQQ` include asset identity, page freshness, beginner summary, exactly three top risks first, recent developments separated from stable facts, educational suitability, PRD section summaries or explicit evidence states, citation IDs, source metadata, the educational disclaimer, and a licensing/export note.
-- Asset-source-list exports include source document ID, title, source type, publisher, URL, published/as-of date, retrieved timestamp, freshness state, official-source flag, and allowed supporting passage or excerpt metadata without adding full paid-news or restricted-provider content.
-- Comparison exports for `VOO` vs `QQQ` and `QQQ` vs `VOO` include left/right asset identity, key differences, beginner bottom line, citation IDs, comparison source metadata, freshness context where available, the educational disclaimer, and a licensing/export note.
-- Chat transcript exports preserve the selected ticker, submitted question, direct answer, why-it-matters text, uncertainty notes, safety classification, citation IDs, chat source metadata, the educational disclaimer, and a licensing/export note.
-- Advice-like chat transcript exports preserve the educational redirect and return no generated factual citations or source documents for the redirected answer.
-- Unsupported, unknown, unsupported-comparison, unavailable-comparison, and eligible-not-cached export requests return an unavailable or unsupported export state without generated factual claims, citations, source documents, generated pages, chat answers, comparison output, or invented facts.
-- Export payloads expose Markdown-style rendered content or text sections with visible citation IDs and freshness/source labels, but this task does not add PDF generation, file storage, browser download controls, or clipboard behavior.
-- Export models and service functions preserve citation binding to the same asset or same comparison pack and never use glossary entries as citations for asset-specific facts.
-- Export copy avoids buy/sell/hold recommendations, personalized allocation or position sizing, unsupported price targets, tax advice, brokerage/trading instructions, and certainty around future returns.
-- Static evals cover export schema shape, supported asset exports, supported comparison exports, chat transcript exports, unsupported/unknown/unavailable states, citation/source metadata preservation, disclaimer presence, licensing/export-note presence, and absence of live external calls.
-- Normal CI remains deterministic and does not require provider credentials, market-data calls, news calls, LLM calls, Redis, PostgreSQL, queues, backend server availability, browser automation, or network access.
+- `backend/models.py` defines typed provider contract models/enums for provider kind, data category, request metadata, provider capability, licensing/export permissions, source attribution, normalized provider facts, recent-development candidates, response freshness, response state, and provider errors.
+- `backend/providers.py` defines a small adapter interface or protocol plus deterministic mock adapters/factory functions for SEC-like stock canonical data, ETF issuer data, structured market/reference data, and recent-development data.
+- Mock provider responses include supported examples for `AAPL`, `VOO`, and `QQQ`; eligible-not-cached examples such as `SPY` or `MSFT`; recognized unsupported examples such as `BTC`, `TQQQ`, or `SQQQ`; and unknown/unavailable examples such as `ZZZZ`.
+- Provider responses never create generated asset pages, generated chat answers, generated comparisons, overview sections, export payloads, or frontend routes.
+- Provider responses preserve source hierarchy metadata: SEC/official issuer sources rank ahead of structured providers, and recent-development/news-like sources are marked as recent-context sources that cannot overwrite canonical facts.
+- Provider responses include source document IDs, source type, publisher, URL where available, published/as-of date where available, retrieved timestamp, freshness state, official-source flag, provider name, provider kind, and licensing/export permission metadata.
+- Provider facts and recent-development candidates bind to one requested asset only, include citation/source identifiers where applicable, and do not reuse glossary entries as support for asset-specific claims.
+- Missing, stale, unsupported, unknown, unavailable, permission-limited, or rate-limited provider states are represented explicitly without invented facts.
+- Mock recent-development responses distinguish event date, source date or as-of date, retrieved timestamp, source document ID, freshness state, and a no-high-signal state when no supported recent event is present.
+- Mock market/reference responses include licensing/export constraints and do not imply redistribution rights for restricted provider payloads.
+- The provider adapter module does not import or use network clients such as `requests`, `httpx`, `urllib`, `socket`, provider SDKs, API keys, or environment variables.
+- Unit tests cover supported provider responses, unsupported/unknown/unavailable states, same-asset binding, source hierarchy metadata, freshness fields, licensing/export metadata, recent-context separation, no-high-signal recent-development handling, and absence of live external calls.
+- Static evals cover provider schema shape, provider fixture coverage for stock/ETF/market/recent categories, explicit provider failure states, licensing constraints, source hierarchy, and no-live-call imports.
+- Existing search, ingestion, overview, comparison, chat, export, frontend smoke, and safety behavior remain unchanged.
+- Normal CI remains deterministic and does not require provider credentials, market-data calls, SEC calls, ETF issuer calls, news calls, LLM calls, Redis, PostgreSQL, queues, backend server availability, browser automation, or network access.
 
 Required commands:
 
 - git status --short
-- python3 -m pytest tests/unit/test_exports.py tests/integration/test_backend_api.py -q
-- python3 -m pytest tests/unit/test_safety_guardrails.py -q
+- python3 -m pytest tests/unit/test_provider_adapters.py -q
+- python3 -m pytest tests/integration/test_backend_api.py -q
 - python3 -m pytest tests -q
-- npm test
 - python3 evals/run_static_evals.py
 - bash scripts/run_quality_gate.sh
 
@@ -71,6 +70,37 @@ Iteration budget:
 Max 2 attempts
 
 ## Completed
+
+### T-024: Add export/download contracts for pages, comparisons, sources, and chat
+
+Goal:
+Add deterministic accountless export/download API contracts for fixture-backed asset pages, comparison output, source lists, and chat transcripts so users can save learning outputs with citations, source metadata, freshness context, and the educational disclaimer, without adding live calls or unsupported asset facts.
+
+Completed:
+
+- Added typed export contract models in `backend/models.py`, including `ExportFormat`, `ExportContentType`, `ExportState`, `ExportExcerpt`, `ExportSourceMetadata`, `ExportCitation`, `ExportedItem`, `ExportedSection`, `ExportNote`, `ComparisonExportRequest`, `ChatTranscriptExportRequest`, `ExportResponse`, and the reusable `EDUCATIONAL_DISCLAIMER`.
+- Added `backend/export.py` with deterministic `export_asset_page`, `export_asset_source_list`, `export_comparison`, and `export_chat_transcript` functions that shape existing local overview, source, comparison, and chat outputs into JSON/Markdown-style export payloads.
+- Added the export licensing note `export_licensing_scope`, including citation IDs, source attribution, freshness metadata, short allowed fixture passages, and an explicit restriction against exporting full paid-news articles, full filings, full issuer documents, or restricted provider payloads unless rights are confirmed.
+- Wired export API routes in `backend/main.py`: `GET /api/assets/{ticker}/export`, `GET /api/assets/{ticker}/sources/export`, `POST /api/compare/export`, `GET /api/compare/export`, and `POST /api/assets/{ticker}/chat/export`.
+- Asset-page exports preserve asset identity, page freshness, beginner summary, exactly three top risks first, recent developments separated from stable facts, educational suitability, PRD sections, citation IDs, source metadata, rendered Markdown, disclaimer, and licensing note for supported local assets.
+- Source-list exports preserve source document ID, title, source type, publisher, URL, published/as-of date, retrieved timestamp, freshness state, official-source flag, metadata, and short allowed excerpt notes without exporting full source documents.
+- Comparison exports preserve left/right asset identity, key differences, beginner bottom line, comparison type metadata, citation IDs, comparison source metadata, rendered Markdown, disclaimer, and licensing note for `VOO` vs `QQQ` in both directions.
+- Chat transcript exports preserve ticker, question, direct answer, why-it-matters text, uncertainty notes, safety classification, citations, source metadata, disclaimer, and licensing note.
+- Advice-like chat transcript exports preserve the educational redirect and avoid generated factual citations or source documents for the redirected answer.
+- Unsupported, unknown, unavailable-comparison, unsupported-comparison, and eligible-not-cached export requests return `unsupported` or `unavailable` states with no generated factual sections, citations, source documents, pages, chat answers, comparisons, or invented facts.
+- Added focused export tests in `tests/unit/test_exports.py`, API route coverage in `tests/integration/test_backend_api.py`, and export static eval coverage in `evals/export_eval_cases.yaml` plus `evals/run_static_evals.py`.
+- Extended safety guardrail coverage so `backend/export.py` is scanned for forbidden advice-like output.
+- Added `docs/agent-journal/20260422T081035Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- T-024 agent journal records that `git status --short`, focused export/API pytest, safety guardrail pytest, full pytest, frontend smoke via `npm test`, static evals, and the full quality gate passed.
+- T-024 agent journal records focused export/API pytest as 26 passed, safety guardrail pytest as 4 passed, full pytest as 83 passed, frontend smoke as passed, static evals as passed, and the quality gate as passed including Python tests, static evals, frontend smoke, TypeScript typecheck, production build, and backend checks.
+- Remaining documented risk: exports are JSON/Markdown-style contract payloads only; no PDF rendering, file storage, browser download controls, clipboard behavior, persistence, analytics, caching, provider adapters, or live ingestion were added.
+- Remaining documented risk: exported content is limited to existing deterministic local overview, comparison, source, and chat outputs; it does not add new evidence or fill existing unknown, stale, unavailable, mixed, or insufficient-evidence gaps.
+- Remaining documented risk: source excerpts are short local fixture supporting passages with licensing notes; final provider-specific redistribution rules still need legal/licensing review before using paid or restricted provider content.
+
+Completion commits:
+
+- `2e6ccf7 feat(T-024): add export/download contracts for pages, comparisons, sources, and chat`
+- `df9a0f9 chore(T-024): merge export/download contracts for pages, comparisons, sources, and chat`
 
 ### T-023: Add hybrid glossary baseline terms and UI hooks
 
@@ -673,6 +703,5 @@ Completion commits:
 
 ## Backlog
 
-### T-025: Add provider adapter interfaces with mocked tests
 ### T-026: Add caching and freshness-hash contracts
 ### T-027: Expand golden asset eval coverage for MVP launch universe
