@@ -101,6 +101,33 @@ class SafetyClassification(str, Enum):
     insufficient_evidence = "insufficient_evidence"
 
 
+EDUCATIONAL_DISCLAIMER = (
+    "This page is for educational and research purposes only. It is not investment, financial, legal, "
+    "or tax advice and is not a recommendation to buy, sell, or hold any security. Content is generated "
+    "from public filings, issuer materials, market/reference data, and news sources where available. "
+    "Data may be delayed, incomplete, inaccurate, or outdated. Please review the cited sources and "
+    "consider consulting a qualified professional before making financial decisions."
+)
+
+
+class ExportFormat(str, Enum):
+    markdown = "markdown"
+    json = "json"
+
+
+class ExportContentType(str, Enum):
+    asset_page = "asset_page"
+    asset_source_list = "asset_source_list"
+    comparison = "comparison"
+    chat_transcript = "chat_transcript"
+
+
+class ExportState(str, Enum):
+    available = "available"
+    unsupported = "unsupported"
+    unavailable = "unavailable"
+
+
 class AssetIdentity(BaseModel):
     ticker: str
     name: str
@@ -404,3 +431,107 @@ class ChatResponse(BaseModel):
     source_documents: list[ChatSourceDocument] = Field(default_factory=list)
     uncertainty: list[str] = Field(default_factory=list)
     safety_classification: SafetyClassification
+
+
+class ExportExcerpt(BaseModel):
+    excerpt_id: str
+    kind: Literal["supporting_passage", "excerpt_metadata"] = "supporting_passage"
+    text: str | None = None
+    citation_id: str | None = None
+    chunk_id: str | None = None
+    redistribution_allowed: bool = True
+    note: str
+
+
+class ExportSourceMetadata(BaseModel):
+    source_document_id: str
+    title: str
+    source_type: str
+    publisher: str
+    url: str
+    published_at: str | None = None
+    as_of_date: str | None = None
+    retrieved_at: str
+    freshness_state: FreshnessState
+    is_official: bool
+    allowed_excerpt: ExportExcerpt | None = None
+
+
+class ExportCitation(BaseModel):
+    citation_id: str
+    source_document_id: str
+    title: str | None = None
+    publisher: str | None = None
+    freshness_state: FreshnessState | None = None
+    claim: str | None = None
+
+
+class ExportedItem(BaseModel):
+    item_id: str
+    title: str
+    text: str
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    freshness_state: FreshnessState | None = None
+    evidence_state: EvidenceState | None = None
+    event_date: str | None = None
+    as_of_date: str | None = None
+    retrieved_at: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ExportedSection(BaseModel):
+    section_id: str
+    title: str
+    section_type: ExportContentType | OverviewSectionType | None = None
+    text: str | None = None
+    items: list[ExportedItem] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    freshness_state: FreshnessState | None = None
+    evidence_state: EvidenceState | None = None
+    as_of_date: str | None = None
+    retrieved_at: str | None = None
+    limitations: str | None = None
+
+
+class ExportNote(BaseModel):
+    note_id: str
+    label: str
+    text: str
+
+
+class ComparisonExportRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    left_ticker: str = Field(min_length=1, max_length=12)
+    right_ticker: str = Field(min_length=1, max_length=12)
+    mode: Literal["beginner", "deep_dive"] = "beginner"
+    export_format: ExportFormat = ExportFormat.markdown
+
+
+class ChatTranscriptExportRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    question: str = Field(min_length=1, max_length=1000)
+    conversation_id: str | None = Field(default=None, max_length=100)
+    export_format: ExportFormat = ExportFormat.markdown
+
+
+class ExportResponse(BaseModel):
+    content_type: ExportContentType
+    export_format: ExportFormat
+    export_state: ExportState
+    title: str
+    state: StateMessage
+    asset: AssetIdentity | None = None
+    left_asset: AssetIdentity | None = None
+    right_asset: AssetIdentity | None = None
+    freshness: Freshness | None = None
+    sections: list[ExportedSection] = Field(default_factory=list)
+    citations: list[ExportCitation] = Field(default_factory=list)
+    source_documents: list[ExportSourceMetadata] = Field(default_factory=list)
+    disclaimer: str = EDUCATIONAL_DISCLAIMER
+    licensing_note: ExportNote
+    rendered_markdown: str
+    metadata: dict[str, Any] = Field(default_factory=dict)

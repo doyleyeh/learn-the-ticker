@@ -220,6 +220,107 @@ def test_details_sources_and_recent_routes_exist():
     assert recent.json()["recent_developments"][0]["freshness_state"] == "fresh"
 
 
+def test_asset_page_and_source_list_export_routes_return_contract_payloads():
+    asset_export = client.get("/api/assets/VOO/export")
+    source_export = client.get("/api/assets/VOO/sources/export")
+
+    assert asset_export.status_code == 200
+    assert source_export.status_code == 200
+
+    asset_body = asset_export.json()
+    source_body = source_export.json()
+    assert asset_body["content_type"] == "asset_page"
+    assert asset_body["export_format"] == "markdown"
+    assert asset_body["export_state"] == "available"
+    assert asset_body["asset"]["ticker"] == "VOO"
+    assert asset_body["disclaimer"]
+    assert asset_body["licensing_note"]["note_id"] == "export_licensing_scope"
+    assert "Educational Disclaimer" in asset_body["rendered_markdown"]
+    assert "top_risks" in {section["section_id"] for section in asset_body["sections"]}
+    assert len(next(section for section in asset_body["sections"] if section["section_id"] == "top_risks")["items"]) == 3
+    assert asset_body["citations"]
+    assert asset_body["source_documents"]
+
+    assert source_body["content_type"] == "asset_source_list"
+    assert source_body["export_state"] == "available"
+    assert source_body["sections"][0]["section_id"] == "asset_source_list"
+    assert source_body["source_documents"][0]["source_document_id"]
+    assert source_body["source_documents"][0]["allowed_excerpt"]["note"]
+
+
+def test_comparison_and_chat_export_routes_return_explicit_shapes():
+    comparison = client.post(
+        "/api/compare/export",
+        json={"left_ticker": "VOO", "right_ticker": "QQQ", "export_format": "markdown"},
+    )
+    comparison_query = client.get("/api/compare/export", params={"left_ticker": "VOO", "right_ticker": "QQQ"})
+    chat = client.post(
+        "/api/assets/QQQ/chat/export",
+        json={"question": "What is this fund?", "conversation_id": "local-test"},
+    )
+
+    assert comparison.status_code == 200
+    assert comparison_query.status_code == 200
+    assert chat.status_code == 200
+
+    comparison_body = comparison.json()
+    assert comparison_query.json() == comparison_body
+    assert comparison_body["content_type"] == "comparison"
+    assert comparison_body["export_state"] == "available"
+    assert comparison_body["left_asset"]["ticker"] == "VOO"
+    assert comparison_body["right_asset"]["ticker"] == "QQQ"
+    assert comparison_body["metadata"]["comparison_type"] == "etf_vs_etf"
+    assert "key_differences" in {section["section_id"] for section in comparison_body["sections"]}
+    assert comparison_body["citations"]
+    assert comparison_body["source_documents"]
+
+    chat_body = chat.json()
+    assert chat_body["content_type"] == "chat_transcript"
+    assert chat_body["export_state"] == "available"
+    assert chat_body["asset"]["ticker"] == "QQQ"
+    assert chat_body["metadata"]["submitted_question"] == "What is this fund?"
+    assert chat_body["metadata"]["safety_classification"] == "educational"
+    assert "chat_answer" in {section["section_id"] for section in chat_body["sections"]}
+    assert chat_body["citations"]
+    assert chat_body["source_documents"]
+
+
+def test_advice_chat_export_redirects_without_factual_sources():
+    response = client.post("/api/assets/VOO/chat/export", json={"question": "Should I buy VOO today?"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["content_type"] == "chat_transcript"
+    assert body["export_state"] == "available"
+    assert body["metadata"]["safety_classification"] == "personalized_advice_redirect"
+    assert "educational" in body["rendered_markdown"].lower()
+    assert body["citations"] == []
+    assert body["source_documents"] == []
+
+
+def test_export_routes_block_unsupported_unknown_and_eligible_not_cached_outputs():
+    unsupported = client.get("/api/assets/BTC/export").json()
+    unknown = client.get("/api/assets/ZZZZ/export").json()
+    eligible_not_cached = client.get("/api/assets/SPY/export").json()
+    unavailable_comparison = client.post(
+        "/api/compare/export",
+        json={"left_ticker": "VOO", "right_ticker": "BTC"},
+    ).json()
+    unsupported_chat = client.post("/api/assets/BTC/chat/export", json={"question": "What is this?"}).json()
+
+    for body in [unsupported, unknown, eligible_not_cached, unavailable_comparison, unsupported_chat]:
+        assert body["export_state"] in {"unsupported", "unavailable"}
+        assert body["sections"] == []
+        assert body["citations"] == []
+        assert body["source_documents"] == []
+        assert "Export unavailable" in body["rendered_markdown"]
+
+    assert unsupported["export_state"] == "unsupported"
+    assert unknown["export_state"] == "unavailable"
+    assert eligible_not_cached["export_state"] == "unavailable"
+    assert unsupported_chat["metadata"]["generated_chat_answer"] is False
+
+
 def test_unknown_and_unsupported_assets_return_clear_states():
     unknown = client.get("/api/assets/ZZZZ/overview").json()
     unsupported_overview = client.get("/api/assets/BTC/overview").json()

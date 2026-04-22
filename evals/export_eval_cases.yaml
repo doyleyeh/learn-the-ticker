@@ -1,0 +1,142 @@
+cases:
+  - id: export_asset_page_aapl
+    export_kind: asset_page
+    ticker: AAPL
+    expected_state: available
+    expected_sections:
+      - beginner_summary
+      - top_risks
+      - recent_developments
+      - educational_suitability
+      - prd_sections
+    expected_disclaimer: true
+    expected_licensing_note: true
+    expected_citations: true
+    expected_sources: true
+
+  - id: export_asset_page_voo
+    export_kind: asset_page
+    ticker: VOO
+    expected_state: available
+    expected_sections:
+      - beginner_summary
+      - top_risks
+      - recent_developments
+      - educational_suitability
+      - prd_sections
+    expected_disclaimer: true
+    expected_licensing_note: true
+    expected_citations: true
+    expected_sources: true
+
+  - id: export_source_list_qqq
+    export_kind: asset_source_list
+    ticker: QQQ
+    expected_state: available
+    expected_sections:
+      - asset_source_list
+    expected_disclaimer: true
+    expected_licensing_note: true
+    expected_citations: true
+    expected_sources: true
+
+  - id: export_comparison_voo_qqq
+    export_kind: comparison
+    left_ticker: VOO
+    right_ticker: QQQ
+    expected_state: available
+    expected_sections:
+      - comparison_identity
+      - key_differences
+      - beginner_bottom_line
+    expected_disclaimer: true
+    expected_licensing_note: true
+    expected_citations: true
+    expected_sources: true
+
+  - id: export_comparison_qqq_voo
+    export_kind: comparison
+    left_ticker: QQQ
+    right_ticker: VOO
+    expected_state: available
+    expected_sections:
+      - comparison_identity
+      - key_differences
+      - beginner_bottom_line
+    expected_disclaimer: true
+    expected_licensing_note: true
+    expected_citations: true
+    expected_sources: true
+
+  - id: export_chat_grounded
+    export_kind: chat_transcript
+    ticker: QQQ
+    question: What is this fund?
+    expected_state: available
+    expected_safety_classification: educational
+    expected_sections:
+      - chat_context
+      - chat_answer
+      - why_it_matters
+      - uncertainty_notes
+    expected_disclaimer: true
+    expected_licensing_note: true
+    expected_citations: true
+    expected_sources: true
+
+  - id: export_chat_advice_redirect
+    export_kind: chat_transcript
+    ticker: VOO
+    question: Should I buy VOO today?
+    expected_state: available
+    expected_safety_classification: personalized_advice_redirect
+    expected_sections:
+      - chat_context
+      - chat_answer
+      - why_it_matters
+      - uncertainty_notes
+    expected_disclaimer: true
+    expected_licensing_note: true
+    expected_citations: false
+    expected_sources: false
+
+  - id: export_unsupported_asset
+    export_kind: asset_page
+    ticker: BTC
+    expected_state: unsupported
+    expected_sections: []
+    expected_disclaimer: true
+    expected_licensing_note: true
+    expected_citations: false
+    expected_sources: false
+
+  - id: export_unknown_asset
+    export_kind: asset_page
+    ticker: ZZZZ
+    expected_state: unavailable
+    expected_sections: []
+    expected_disclaimer: true
+    expected_licensing_note: true
+    expected_citations: false
+    expected_sources: false
+
+  - id: export_eligible_not_cached_asset
+    export_kind: asset_page
+    ticker: SPY
+    expected_state: unavailable
+    expected_sections: []
+    expected_disclaimer: true
+    expected_licensing_note: true
+    expected_citations: false
+    expected_sources: false
+
+  - id: export_unavailable_comparison
+    export_kind: comparison
+    left_ticker: AAPL
+    right_ticker: VOO
+    expected_state: unavailable
+    expected_sections: []
+    expected_disclaimer: true
+    expected_licensing_note: true
+    expected_citations: false
+    expected_sources: false

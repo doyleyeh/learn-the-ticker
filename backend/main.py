@@ -20,14 +20,19 @@ from backend.data import (
 )
 from backend.chat import generate_asset_chat
 from backend.comparison import generate_comparison
+from backend.export import export_asset_page, export_asset_source_list, export_chat_transcript, export_comparison
 from backend.ingestion import get_ingestion_job_status, request_ingestion
 from backend.models import (
     AssetIdentity,
     ChatRequest,
     ChatResponse,
+    ChatTranscriptExportRequest,
+    ComparisonExportRequest,
     CompareRequest,
     CompareResponse,
     DetailsResponse,
+    ExportFormat,
+    ExportResponse,
     IngestionJobResponse,
     OverviewResponse,
     RecentResponse,
@@ -101,6 +106,16 @@ def asset_sources(ticker: str) -> SourcesResponse:
     return SourcesResponse(asset=overview.asset, state=overview.state, sources=overview.source_documents)
 
 
+@app.get("/api/assets/{ticker}/export", response_model=ExportResponse, tags=["exports"])
+def asset_page_export(ticker: str, export_format: ExportFormat = ExportFormat.markdown) -> ExportResponse:
+    return export_asset_page(ticker, export_format)
+
+
+@app.get("/api/assets/{ticker}/sources/export", response_model=ExportResponse, tags=["exports"])
+def asset_sources_export(ticker: str, export_format: ExportFormat = ExportFormat.markdown) -> ExportResponse:
+    return export_asset_source_list(ticker, export_format)
+
+
 @app.get("/api/assets/{ticker}/recent", response_model=RecentResponse, tags=["assets"])
 def asset_recent(ticker: str) -> RecentResponse:
     overview = generate_asset_overview(ticker)
@@ -117,6 +132,27 @@ def compare_assets(request: CompareRequest) -> CompareResponse:
     return generate_comparison(request.left_ticker, request.right_ticker)
 
 
+@app.post("/api/compare/export", response_model=ExportResponse, tags=["exports"])
+def compare_assets_export(request: ComparisonExportRequest) -> ExportResponse:
+    return export_comparison(request)
+
+
+@app.get("/api/compare/export", response_model=ExportResponse, tags=["exports"])
+def compare_assets_export_query(
+    left_ticker: str,
+    right_ticker: str,
+    export_format: ExportFormat = ExportFormat.markdown,
+) -> ExportResponse:
+    return export_comparison(
+        ComparisonExportRequest(left_ticker=left_ticker, right_ticker=right_ticker, export_format=export_format)
+    )
+
+
 @app.post("/api/assets/{ticker}/chat", response_model=ChatResponse, tags=["chat"])
 def asset_chat(ticker: str, request: ChatRequest) -> ChatResponse:
     return generate_asset_chat(ticker, request.question)
+
+
+@app.post("/api/assets/{ticker}/chat/export", response_model=ExportResponse, tags=["exports"])
+def asset_chat_export(ticker: str, request: ChatTranscriptExportRequest) -> ExportResponse:
+    return export_chat_transcript(ticker, request)

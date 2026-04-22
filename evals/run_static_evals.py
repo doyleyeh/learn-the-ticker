@@ -13,9 +13,20 @@ sys.path.insert(0, str(ROOT))
 from backend.chat import generate_asset_chat, validate_chat_response
 from backend.citations import validate_claims
 from backend.comparison import generate_comparison, validate_comparison_response
+from backend.export import export_asset_page, export_asset_source_list, export_chat_transcript, export_comparison
 from backend.ingestion import get_ingestion_job_status, request_ingestion
 from backend.main import app
-from backend.models import EvidenceState, MetricValue, CompareResponse, ChatResponse, IngestionJobResponse
+from backend.models import (
+    ChatResponse,
+    ChatTranscriptExportRequest,
+    CompareResponse,
+    ComparisonExportRequest,
+    EDUCATIONAL_DISCLAIMER,
+    EvidenceState,
+    ExportResponse,
+    IngestionJobResponse,
+    MetricValue,
+)
 from backend.overview import generate_asset_overview, validate_overview_response
 from backend.retrieval import build_asset_knowledge_pack, build_comparison_knowledge_pack, load_retrieval_fixture_dataset
 from backend.safety import find_forbidden_output_phrases
@@ -584,6 +595,119 @@ def test_generated_chat_contract():
         assert forbidden not in chat_source
 
 
+def test_export_cases():
+    data = load_yaml("export_eval_cases.yaml")
+    cases = data.get("cases", [])
+    assert cases, "export_eval_cases.yaml must define cases"
+
+    required_kinds = {"asset_page", "asset_source_list", "comparison", "chat_transcript"}
+    found_kinds = {case.get("export_kind") for case in cases}
+    missing_kinds = required_kinds - found_kinds
+    assert not missing_kinds, f"Missing export kinds: {missing_kinds}"
+
+    required_states = {"available", "unsupported", "unavailable"}
+    found_states = {case.get("expected_state") for case in cases}
+    missing_states = required_states - found_states
+    assert not missing_states, f"Missing export states: {missing_states}"
+
+    for case in cases:
+        export_kind = case["export_kind"]
+        if export_kind == "asset_page":
+            export = export_asset_page(case["ticker"])
+            endpoint_response = client.get(f"/api/assets/{case['ticker']}/export")
+        elif export_kind == "asset_source_list":
+            export = export_asset_source_list(case["ticker"])
+            endpoint_response = client.get(f"/api/assets/{case['ticker']}/sources/export")
+        elif export_kind == "comparison":
+            request = ComparisonExportRequest(
+                left_ticker=case["left_ticker"],
+                right_ticker=case["right_ticker"],
+            )
+            export = export_comparison(request)
+            endpoint_response = client.post("/api/compare/export", json=request.model_dump(mode="json"))
+        elif export_kind == "chat_transcript":
+            request = ChatTranscriptExportRequest(question=case["question"])
+            export = export_chat_transcript(case["ticker"], request)
+            endpoint_response = client.post(f"/api/assets/{case['ticker']}/chat/export", json=request.model_dump(mode="json"))
+        else:
+            raise AssertionError(f"Unknown export kind: {export_kind}")
+
+        assert endpoint_response.status_code == 200, f"{case['id']} export endpoint failed"
+        endpoint_export = ExportResponse.model_validate(endpoint_response.json())
+        validated = ExportResponse.model_validate(export.model_dump(mode="json"))
+        assert endpoint_export.model_dump(mode="json") == validated.model_dump(mode="json")
+
+        assert validated.content_type.value == export_kind
+        assert validated.export_state.value == case["expected_state"]
+        assert validated.disclaimer == EDUCATIONAL_DISCLAIMER
+        assert bool(validated.licensing_note.text) is case["expected_licensing_note"]
+        assert "full paid-news articles" in validated.licensing_note.text
+        assert "Educational Disclaimer" in validated.rendered_markdown
+
+        section_ids = {section.section_id for section in validated.sections}
+        expected_sections = set(case["expected_sections"])
+        assert expected_sections <= section_ids, f"{case['id']} missing sections: {expected_sections - section_ids}"
+
+        if case["expected_citations"]:
+            assert validated.citations, f"{case['id']} expected citations"
+            used_citation_ids = {
+                *{citation_id for section in validated.sections for citation_id in section.citation_ids},
+                *{citation_id for section in validated.sections for item in section.items for citation_id in item.citation_ids},
+            }
+            assert used_citation_ids <= {citation.citation_id for citation in validated.citations}
+            assert not any("glossary" in citation.citation_id.lower() for citation in validated.citations)
+        else:
+            assert validated.citations == [], f"{case['id']} should not export citations"
+
+        if case["expected_sources"]:
+            assert validated.source_documents, f"{case['id']} expected source metadata"
+            assert all(source.source_document_id for source in validated.source_documents)
+            assert all(source.title for source in validated.source_documents)
+            assert all(source.source_type for source in validated.source_documents)
+            assert all(source.publisher for source in validated.source_documents)
+            assert all(source.url for source in validated.source_documents)
+            assert all(source.retrieved_at for source in validated.source_documents)
+            assert all(source.allowed_excerpt is not None for source in validated.source_documents)
+            assert {citation.source_document_id for citation in validated.citations} <= {
+                source.source_document_id for source in validated.source_documents
+            }
+        else:
+            assert validated.source_documents == [], f"{case['id']} should not export source documents"
+
+        expected_classification = case.get("expected_safety_classification")
+        if expected_classification:
+            assert validated.metadata["safety_classification"] == expected_classification
+
+        if validated.content_type.value == "asset_page" and validated.export_state.value == "available":
+            top_risks = next(section for section in validated.sections if section.section_id == "top_risks")
+            assert len(top_risks.items) == 3
+            assert any(section.section_id == "recent_developments" for section in validated.sections)
+            assert validated.metadata["recent_developments_separate"] is True
+
+        if validated.export_state.value in {"unsupported", "unavailable"}:
+            assert validated.sections == []
+            assert validated.citations == []
+            assert validated.source_documents == []
+
+        assert not find_forbidden_output_phrases(_flatten_static_text(validated.model_dump(mode="json")))
+
+    export_source = (ROOT / "backend" / "export.py").read_text(encoding="utf-8")
+    main_source = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
+    for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import", "reportlab", "weasyprint"]:
+        assert forbidden not in export_source
+        assert forbidden not in main_source
+
+
+def _flatten_static_text(value):
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return " ".join(_flatten_static_text(item) for item in value)
+    if isinstance(value, dict):
+        return " ".join(_flatten_static_text(item) for item in value.values())
+    return ""
+
+
 if __name__ == "__main__":
     test_golden_assets()
     test_safety_cases()
@@ -594,4 +718,5 @@ if __name__ == "__main__":
     test_generated_overview_contract()
     test_generated_comparison_contract()
     test_generated_chat_contract()
+    test_export_cases()
     print("Static evals passed.")
