@@ -120,6 +120,68 @@ def test_citation_cases():
         )
 
 
+def test_search_cases():
+    data = load_yaml("search_eval_cases.yaml")
+    cases = data.get("cases", [])
+    assert cases, "search_eval_cases.yaml must define cases"
+
+    required_states = {"supported", "ambiguous", "unsupported", "unknown", "ingestion_needed"}
+    found_states = {case.get("expected_state") for case in cases}
+    missing_states = required_states - found_states
+    assert not missing_states, f"Missing search states: {missing_states}"
+
+    required_classifications = {"cached_supported", "recognized_unsupported", "unknown", "eligible_not_cached"}
+    found_classifications = {
+        classification
+        for case in cases
+        for classification in case.get("expected_support_classifications", [])
+    }
+    missing_classifications = required_classifications - found_classifications
+    assert not missing_classifications, f"Missing search support classifications: {missing_classifications}"
+
+    for case in cases:
+        response = client.get("/api/search", params={"q": case["query"]})
+        assert response.status_code == 200, f"{case['id']} search request failed"
+        body = response.json()
+        state = body["state"]
+        results = body["results"]
+
+        assert state["status"] == case["expected_state"], (
+            f"{case['id']} expected {case['expected_state']}, got {state['status']}"
+        )
+        assert state["can_open_generated_page"] is case["expected_can_open_generated_page"]
+        assert state["requires_disambiguation"] is case.get("expected_requires_disambiguation", False)
+        assert state["requires_ingestion"] is case.get("expected_requires_ingestion", False)
+
+        result_tickers = {result["ticker"] for result in results}
+        expected_tickers = set(case["expected_result_tickers"])
+        assert expected_tickers <= result_tickers, f"{case['id']} missing expected tickers: {expected_tickers - result_tickers}"
+
+        result_classifications = {result["support_classification"] for result in results}
+        expected_classifications = set(case["expected_support_classifications"])
+        assert expected_classifications <= result_classifications, (
+            f"{case['id']} missing classifications: {expected_classifications - result_classifications}"
+        )
+
+        for result in results:
+            if result["support_classification"] == "cached_supported":
+                assert result["generated_route"] == f"/assets/{result['ticker']}"
+                assert result["can_open_generated_page"] is True
+                assert result["can_answer_chat"] is True
+                assert result["can_compare"] is True
+            else:
+                assert result["generated_route"] is None
+                assert result["can_open_generated_page"] is False
+                assert result["can_answer_chat"] is False
+                assert result["can_compare"] is False
+
+    search_source = (ROOT / "backend" / "search.py").read_text(encoding="utf-8")
+    main_source = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
+    for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import"]:
+        assert forbidden not in search_source
+        assert forbidden not in main_source
+
+
 def test_retrieval_fixture_contract():
     dataset = load_retrieval_fixture_dataset()
     assert dataset.no_live_external_calls is True
@@ -360,6 +422,7 @@ if __name__ == "__main__":
     test_golden_assets()
     test_safety_cases()
     test_citation_cases()
+    test_search_cases()
     test_retrieval_fixture_contract()
     test_generated_overview_contract()
     test_generated_comparison_contract()

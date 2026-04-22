@@ -12,11 +12,9 @@ else:
         from backend.compat import FastAPI
 
 from backend.data import (
-    ASSETS,
     STUB_TIMESTAMP,
     empty_freshness,
     fallback_asset,
-    normalize_ticker,
     state_for_asset,
     supported_asset,
 )
@@ -24,7 +22,6 @@ from backend.chat import generate_asset_chat
 from backend.comparison import generate_comparison
 from backend.models import (
     AssetIdentity,
-    AssetStatus,
     ChatRequest,
     ChatResponse,
     CompareRequest,
@@ -33,11 +30,10 @@ from backend.models import (
     OverviewResponse,
     RecentResponse,
     SearchResponse,
-    SearchResult,
     SourcesResponse,
-    StateMessage,
 )
 from backend.overview import generate_asset_overview
+from backend.search import search_assets
 
 
 app = FastAPI(
@@ -62,51 +58,7 @@ def health() -> dict[str, str]:
 
 @app.get("/api/search", response_model=SearchResponse, tags=["search"])
 def search(q: str) -> SearchResponse:
-    query = normalize_ticker(q)
-    matches: list[SearchResult] = []
-
-    for payload in ASSETS.values():
-        identity: AssetIdentity = payload["identity"]
-        name_match = q.strip().lower() in identity.name.lower()
-        ticker_match = query == identity.ticker
-        if ticker_match or name_match:
-            matches.append(
-                SearchResult(
-                    ticker=identity.ticker,
-                    name=identity.name,
-                    asset_type=identity.asset_type,
-                    exchange=identity.exchange,
-                    issuer=identity.issuer,
-                    supported=identity.supported,
-                    status=identity.status,
-                )
-            )
-
-    if matches:
-        return SearchResponse(
-            query=q,
-            results=matches,
-            state=StateMessage(status=AssetStatus.supported, message="One or more supported assets matched the query."),
-        )
-
-    fallback = fallback_asset(q)
-    state = state_for_asset(fallback)
-    return SearchResponse(
-        query=q,
-        results=[
-            SearchResult(
-                ticker=fallback.ticker,
-                name=fallback.name,
-                asset_type=fallback.asset_type,
-                exchange=fallback.exchange,
-                issuer=fallback.issuer,
-                supported=False,
-                status=fallback.status,
-                message=state.message,
-            )
-        ],
-        state=state,
-    )
+    return search_assets(q)
 
 
 @app.get("/api/assets/{ticker}/overview", response_model=OverviewResponse, tags=["assets"])
