@@ -495,6 +495,42 @@ input {
   resize: vertical;
 }
 
+.comparison-suggestions {
+  display: grid;
+  gap: 14px;
+}
+
+.comparison-suggestion-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.comparison-suggestion-link {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  min-height: 78px;
+  padding: 14px;
+  border: 1px solid #b7d7d0;
+  border-radius: 8px;
+  background: #ecfaf7;
+  color: var(--accent-strong);
+  text-decoration: none;
+}
+
+.comparison-suggestion-link strong,
+.comparison-suggestion-link span {
+  overflow-wrap: anywhere;
+}
+
+.comparison-suggestion-link span {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
 .freshness-label {
   display: inline-grid;
   gap: 2px;
@@ -744,7 +780,8 @@ blockquote {
   .search-row,
   .fact-list div,
   .source-meta div,
-  .glossary-group-grid {
+  .glossary-group-grid,
+  .comparison-suggestion-list {
     grid-template-columns: 1fr;
   }
 

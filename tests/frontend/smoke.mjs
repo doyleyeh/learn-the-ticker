@@ -25,6 +25,7 @@ function includes(path, marker) {
   "components/AssetStockSections.tsx",
   "components/AssetModeLayout.tsx",
   "components/CitationChip.tsx",
+  "components/ComparisonSuggestions.tsx",
   "components/ComparisonSourceDetails.tsx",
   "components/ExportControls.tsx",
   "components/SourceDrawer.tsx",
@@ -32,6 +33,7 @@ function includes(path, marker) {
   "components/GlossaryPopover.tsx",
   "lib/assetChat.ts",
   "lib/compare.ts",
+  "lib/compareSuggestions.ts",
   "lib/exportControls.ts",
   "lib/fixtures.ts",
   "lib/glossary.ts",
@@ -60,6 +62,8 @@ includes("app/assets/[ticker]/page.tsx", "beginnerGlossaryGroupsByAssetType");
 includes("app/assets/[ticker]/page.tsx", "AssetChatPanel");
 includes("app/assets/[ticker]/page.tsx", "assetPageExportUrl");
 includes("app/assets/[ticker]/page.tsx", "assetSourceListExportUrl");
+includes("app/assets/[ticker]/page.tsx", "getAssetComparisonSuggestions");
+includes("app/assets/[ticker]/page.tsx", "ComparisonSuggestions");
 includes("app/assets/[ticker]/page.tsx", "AssetEtfSections");
 includes("app/assets/[ticker]/page.tsx", "AssetStockSections");
 includes("app/assets/[ticker]/page.tsx", "hasEtfPrdSections");
@@ -69,6 +73,8 @@ includes("app/compare/page.tsx", "ComparisonSourceDetails");
 includes("app/compare/page.tsx", "comparisonExportUrl");
 includes("app/compare/page.tsx", "data-export-unavailable-state");
 includes("app/compare/page.tsx", "getComparisonCitationMetadata");
+includes("app/compare/page.tsx", "getComparePageSuggestions");
+includes("app/compare/page.tsx", "ComparisonSuggestions");
 includes("components/AssetChatPanel.tsx", "Ask about this asset");
 includes("components/AssetChatPanel.tsx", "data-chat-state");
 includes("components/AssetChatPanel.tsx", "data-chat-citation-id");
@@ -102,6 +108,18 @@ includes("components/ExportControls.tsx", "data-export-href");
 includes("components/ExportControls.tsx", "data-export-post-url");
 includes("components/ExportControls.tsx", "data-export-copy-markdown");
 includes("components/ExportControls.tsx", "data-export-rendered-markdown");
+includes("components/ComparisonSuggestions.tsx", "data-comparison-suggestions");
+includes("components/ComparisonSuggestions.tsx", "data-comparison-suggestion-selected-ticker");
+includes("components/ComparisonSuggestions.tsx", "data-comparison-suggestion-state");
+includes("components/ComparisonSuggestions.tsx", "data-comparison-suggestion-target");
+includes("components/ComparisonSuggestions.tsx", "data-comparison-suggestion-url");
+includes("components/ComparisonSuggestions.tsx", "data-comparison-no-local-pack");
+includes("lib/compareSuggestions.ts", "localComparisonPairs");
+includes("lib/compareSuggestions.ts", "VOO");
+includes("lib/compareSuggestions.ts", "QQQ");
+includes("lib/compareSuggestions.ts", "buildSuggestion\\(rightTicker, leftTicker\\)");
+includes("lib/compareSuggestions.ts", "No local source-backed comparison pack");
+includes("lib/compareSuggestions.ts", "not facts about the requested pair");
 includes("components/AssetStockSections.tsx", "data-stock-prd-sections");
 includes("components/AssetStockSections.tsx", "data-stock-section-id");
 includes("components/AssetStockSections.tsx", "data-stock-stable-recent-separation");
@@ -364,6 +382,7 @@ const frontendSource = [
   read("components/AssetEtfSections.tsx"),
   read("components/AssetStockSections.tsx"),
   read("components/AssetModeLayout.tsx"),
+  read("components/ComparisonSuggestions.tsx"),
   read("components/ComparisonSourceDetails.tsx"),
   read("components/ExportControls.tsx"),
   read("components/GlossaryPopover.tsx"),
@@ -371,6 +390,7 @@ const frontendSource = [
   read("components/SourceDrawer.tsx"),
   read("lib/assetChat.ts"),
   read("lib/compare.ts"),
+  read("lib/compareSuggestions.ts"),
   read("lib/exportControls.ts"),
   read("lib/fixtures.ts"),
   read("lib/glossary.ts")
@@ -454,8 +474,10 @@ assert.equal(read("lib/glossary.ts").includes("fetch("), false, "Glossary catalo
 
 const compareSource = [
   read("app/compare/page.tsx"),
+  read("components/ComparisonSuggestions.tsx"),
   read("components/ComparisonSourceDetails.tsx"),
-  read("lib/compare.ts")
+  read("lib/compare.ts"),
+  read("lib/compareSuggestions.ts")
 ].join("\n");
 
 assert.equal(compareSource.includes("fetch("), false, "Compare page should not make live external calls");
@@ -463,6 +485,52 @@ assert.equal(compareSource.includes("/api/compare"), false, "Compare page should
 assert.equal(read("app/compare/page.tsx").includes("getPrimarySource"), false, "Compare chips must not use a primary asset source fallback");
 assert.equal(compareSource.includes("src_aapl"), false, "Compare source metadata must not include AAPL sources");
 assert.match(compareSource, /No factual citation chips or source drawers/, "Unavailable compare states must avoid factual citation UI");
+
+const comparisonSuggestionSource = read("components/ComparisonSuggestions.tsx") + read("lib/compareSuggestions.ts");
+for (const marker of [
+  "data-comparison-suggestions",
+  "data-comparison-suggestion-selected-ticker",
+  "data-comparison-suggestion-state",
+  "data-comparison-suggestion-target",
+  "data-comparison-suggestion-url",
+  "data-comparison-no-local-pack",
+  "local_comparison_available",
+  "no_local_comparison_pack",
+  "unavailable_with_fixture_examples",
+  "benchmark, cost, holdings breadth, and beginner role",
+  "peer list, citation chips, source documents",
+  "not facts about the requested pair"
+]) {
+  assert.ok(comparisonSuggestionSource.includes(marker), `Comparison suggestions should include ${marker}`);
+}
+assert.match(
+  comparisonSuggestionSource,
+  /localComparisonPairs = \[\["VOO", "QQQ"\] as const\]/,
+  "Only the VOO/QQQ local comparison pair should be suggested"
+);
+assert.match(
+  comparisonSuggestionSource,
+  /buildSuggestion\(leftTicker, rightTicker\)/,
+  "VOO should keep the VOO to QQQ relative comparison direction"
+);
+assert.match(
+  comparisonSuggestionSource,
+  /buildSuggestion\(rightTicker, leftTicker\)/,
+  "QQQ should keep the QQQ to VOO relative comparison direction"
+);
+assert.equal(comparisonSuggestionSource.includes("fetch("), false, "Comparison suggestions should stay local");
+assert.equal(comparisonSuggestionSource.includes("/api/compare"), false, "Comparison suggestions should not call compare APIs");
+assert.equal(
+  comparisonSuggestionSource.includes("https://") || comparisonSuggestionSource.includes("http://"),
+  false,
+  "Comparison suggestions should not include live external URLs"
+);
+assert.equal(
+  read("backend/comparison.py").includes("ComparisonSuggestions") ||
+    read("backend/comparison.py").includes("compareSuggestions"),
+  false,
+  "Frontend comparison suggestions should not modify backend comparison contracts"
+);
 
 const backendMain = read("backend/main.py");
 for (const marker of [
