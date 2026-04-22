@@ -1,15 +1,15 @@
-# Technical Design Spec: Citation-First Beginner U.S. Stock & ETF Research Assistant
+# Technical Design Spec: Learn the Ticker — Citation-First Beginner U.S. Stock & ETF Research Assistant
 
-**Document version:** v0.1  
+**Document version:** v0.2 control-doc alignment
 **Product stage:** MVP / v1 planning  
-**Related doc:** PRD v0.1  
-**Source basis:** Current project proposal: *Citation-First Beginner U.S. Stock & ETF Research Assistant*.
+**Related doc:** PRD v0.2 refined
+**Source basis:** Current project proposal, PRD v0.2, and completed fixture-backed MVP slices.
 
 ---
 
 ## 1. Executive summary
 
-This system is a web app that lets a beginner search a U.S.-listed stock or plain-vanilla ETF, then returns a source-grounded educational page with beginner explanations, cited facts, recent developments, comparisons, glossary help, and asset-specific grounded chat.
+This system is an accountless web app that lets a beginner search a U.S.-listed common stock or plain-vanilla U.S.-listed ETF, then returns a source-grounded educational page with beginner explanations, cited facts, recent developments, comparisons, glossary help, limited asset-specific grounded chat, and exportable learning outputs.
 
 The core technical challenge is not simply generating good prose. The system must reliably separate:
 
@@ -17,7 +17,7 @@ The core technical challenge is not simply generating good prose. The system mus
 2. **Timely context** — recent news, filings, fee changes, earnings, or methodology updates.
 3. **Teaching layer** — AI-written plain-English explanation and chat answers.
 
-That three-layer knowledge architecture comes directly from the proposal and is the backbone of this design.
+That three-layer knowledge architecture comes directly from the proposal and remains the backbone of this design. PRD v0.2 adds functional-MVP direction: pre-cache a high-demand launch universe, support on-demand ingestion for eligible assets, keep v1 accountless, expose export/download flows, and use caching plus freshness hashes to control API and LLM cost.
 
 ---
 
@@ -34,10 +34,12 @@ That three-layer knowledge architecture comes directly from the proposal and is 
 | Grounded asset-specific chat | Build an `asset_knowledge_pack` per asset and restrict chat retrieval to that pack. |
 | Compare-first learning | Support side-by-side comparison using normalized facts and generated beginner summaries. |
 | Education over advice | Add query classification, output validation, and safety filters to avoid buy/sell or allocation instructions. |
+| Accountless v1 | Store shared cached artifacts and exportable outputs without requiring user accounts. |
+| Cost-aware freshness | Use source checksums, TTLs, and freshness hashes to avoid unnecessary provider and LLM calls. |
 
 ### 2.2 Non-goals for v1
 
-The system will not support brokerage trading, tax advice, options, crypto, international equities, portfolio optimization, leveraged ETFs, inverse ETFs, or personalized position sizing. These exclusions match the current proposal’s v1 scope.
+The system will not support brokerage trading, tax advice, options, crypto, international equities, portfolio optimization, leveraged ETFs, inverse ETFs, ETNs, complex exchange-traded products, user accounts, saved watchlists, saved assets, or personalized position sizing.
 
 ---
 
@@ -55,6 +57,9 @@ The system will not support brokerage trading, tax advice, options, crypto, inte
 | Structured generation | JSON-schema outputs where provider supports it | Produces predictable UI-renderable output and supports server-side validation. |
 | Retrieval | Self-managed hybrid retrieval first; hosted file search optional | Self-managed retrieval gives stricter control over citation binding and freshness metadata. |
 | Source freshness | Section-level freshness hashes | Summaries are invalidated when underlying facts, chunks, or recent events change. |
+| Coverage model | Pre-cached high-demand universe plus on-demand ingestion | Improves launch latency while keeping the architecture open to all eligible supported assets. |
+| User model | Accountless MVP | Defers identity, saved assets, and watchlists while preserving export/download workflows. |
+| Export model | Server-shaped summaries and source lists | Lets users save learning outputs while respecting citation, freshness, and licensing constraints. |
 
 ---
 
@@ -111,6 +116,7 @@ The system will not support brokerage trading, tax advice, options, crypto, inte
 - Glossary popovers.
 - Comparison page.
 - Asset-specific chat panel.
+- Export/download controls for asset pages, comparisons, sources, and chat transcripts.
 - Stale, unknown, and mixed-evidence states.
 
 **Recommended routes**
@@ -134,7 +140,9 @@ The system will not support brokerage trading, tax advice, options, crypto, inte
 - Response shaping.
 - Safety checks.
 - Rate limiting.
-- Auth, if user accounts are added later.
+- Supported/unsupported asset classification.
+- Export response shaping.
+- Auth only if user accounts are added after v1.
 
 **Suggested internal endpoints**
 
@@ -146,6 +154,8 @@ GET  /api/assets/{ticker}/sources
 GET  /api/assets/{ticker}/recent
 POST /api/compare
 POST /api/assets/{ticker}/chat
+GET  /api/assets/{ticker}/export
+GET  /api/compare/export?left=VOO&right=QQQ
 POST /api/admin/ingest/{ticker}
 GET  /api/jobs/{job_id}
 ```
@@ -157,6 +167,7 @@ The proposal already suggests this API surface; this spec formalizes the respons
 **Responsibilities**
 
 - Resolve assets.
+- Classify supported, unsupported, unknown, and pending states.
 - Fetch source documents.
 - Store raw source snapshots.
 - Parse filings, fact sheets, issuer pages, and holdings files.
@@ -164,6 +175,7 @@ The proposal already suggests this API surface; this spec formalizes the respons
 - Chunk source text.
 - Generate embeddings.
 - Refresh stale assets.
+- Support pre-cache jobs for the launch universe and on-demand jobs for eligible assets outside it.
 - Track ingestion job status.
 
 **Recommended queue model**
@@ -213,10 +225,10 @@ The LLM orchestration service should hide provider-specific details behind a sma
 | SEC XBRL company facts | Financial metrics and multi-year trends | P0 |
 | SEC filings: 10-K, 10-Q, 8-K | Business overview, risks, MD&A, recent events | P0 |
 | Company investor relations | Earnings releases, presentations, segment explanations | P1 |
-| Structured market/reference provider | price, market cap, sector, industry, valuation fields | P0 |
-| Reputable news provider | recent developments only | P1 |
+| Structured market/reference provider | ticker reference, price, market cap, sector, industry, valuation fields, volume | P0 |
+| Reputable ticker-tagged news provider | recent developments only, after official filings and investor-relations sources | P1 |
 
-SEC EDGAR APIs should be used server-side, cached aggressively, and rate-limited. Stock ingestion should never depend on live user-page calls to SEC.
+SEC EDGAR APIs should be used server-side, cached aggressively, and rate-limited. Stock ingestion should never depend on live user-page calls to SEC. PRD v0.2 names Massive, formerly Polygon.io, as the preferred structured market/reference provider direction, with lower-cost alternatives allowed only behind validation and licensing review.
 
 ### 6.2 ETF sources
 
@@ -227,10 +239,10 @@ SEC EDGAR APIs should be used server-side, cached aggressively, and rate-limited
 | Summary prospectus / full prospectus | risks, methodology, objective, fees | P0 |
 | Shareholder reports | official fund reporting context | P1 |
 | Holdings CSV / JSON / Excel | top holdings, concentration, country/sector exposure | P0 |
-| Structured market/reference provider | quote, AUM, average volume, spread data | P0 |
+| Structured market/reference provider | quote, AUM, average volume, spread data, ETF reference metadata | P0 |
 | Sponsor press releases / reputable news | fee cuts, methodology changes, mergers, liquidations | P1 |
 
-ETF issuer websites are especially important because ETF disclosure includes investor-facing items such as holdings, premium/discount information, and bid-ask spread disclosures.
+ETF issuer websites are especially important because ETF disclosure includes investor-facing items such as holdings, premium/discount information, and bid-ask spread disclosures. PRD v0.2 prefers official issuer data plus Massive and ETF Global where budget allows; lower-cost ETF data fallbacks must be validated against issuer sources.
 
 ---
 
@@ -244,7 +256,7 @@ The system should rank evidence using the hierarchy from the proposal. Stable fa
 2. Company investor relations pages.
 3. Earnings releases and presentations.
 4. Structured market/reference data provider.
-5. Reputable news.
+5. Reputable ticker-tagged news, used only for recent-development context.
 
 ### 7.2 ETF source ranking
 
@@ -253,7 +265,7 @@ The system should rank evidence using the hierarchy from the proposal. Stable fa
 3. Summary prospectus and full prospectus.
 4. Shareholder reports.
 5. Structured market/reference data provider.
-6. Reputable news.
+6. Reputable ticker-tagged news, used only for recent-development context.
 
 ---
 
@@ -275,7 +287,7 @@ assets (
   cik TEXT,
   provider TEXT,
   issuer TEXT,
-  status TEXT NOT NULL, -- supported | unsupported | stale | pending
+  status TEXT NOT NULL, -- supported | unsupported | unknown | pending | stale
   created_at TIMESTAMPTZ,
   updated_at TIMESTAMPTZ
 )
@@ -499,7 +511,7 @@ glossary_terms (
 ingestion_jobs (
   id UUID PRIMARY KEY,
   asset_id UUID REFERENCES assets(id),
-  job_type TEXT NOT NULL,
+  job_type TEXT NOT NULL, -- pre_cache | on_demand | refresh | repair
   status TEXT NOT NULL, -- queued | running | succeeded | failed | cancelled
   priority INT,
   started_at TIMESTAMPTZ,
@@ -517,18 +529,22 @@ ingestion_jobs (
 
 ```text
 1. Resolve asset
-2. Fetch source documents
-3. Save raw snapshots
-4. Parse source documents
-5. Chunk parsed text
-6. Generate embeddings
-7. Extract normalized facts
-8. Retrieve recent developments
-9. Build or refresh asset knowledge pack
-10. Generate or invalidate summaries
-11. Validate citations
-12. Mark freshness state
+2. Classify asset as supported, unsupported, unknown, pending, or stale
+3. Fetch source documents for supported assets
+4. Save raw snapshots
+5. Parse source documents
+6. Chunk parsed text
+7. Generate embeddings
+8. Extract normalized facts
+9. Retrieve high-signal recent developments
+10. Build or refresh asset knowledge pack
+11. Generate or invalidate summaries
+12. Validate citations
+13. Mark freshness state
+14. Update shared cache entries and freshness hashes
 ```
+
+MVP should support both pre-cache ingestion for the launch universe and on-demand ingestion for eligible assets outside that universe. Unsupported assets should return a recognized-but-unsupported state from search and must not trigger generated pages, generated chat, or generated comparisons.
 
 ### 9.2 Stock ingestion flow
 
@@ -1094,7 +1110,8 @@ GET /api/search?q=VOO
       "asset_type": "etf",
       "exchange": "NYSE Arca",
       "issuer": "Vanguard",
-      "supported": true
+      "supported": true,
+      "status": "supported"
     }
   ]
 }
@@ -1215,6 +1232,19 @@ POST /api/assets/QQQ/chat
 }
 ```
 
+### 14.5 Export
+
+Export endpoints should return server-shaped educational outputs, not raw unrestricted provider payloads.
+
+Supported MVP export shapes:
+
+- asset page summary with citation IDs and freshness metadata
+- comparison output with source list
+- source list with URLs, publisher, source type, dates, retrieved timestamp, and allowed excerpts
+- chat transcript with safety classification, citations, uncertainty notes, and source metadata
+
+Export behavior must respect provider licensing. Paid news or restricted provider content should be summarized or omitted unless redistribution rights are confirmed.
+
 ---
 
 ## 15. Frontend design
@@ -1268,6 +1298,8 @@ Freshness should be section-specific, not just page-level.
 
 ## 16. Freshness, caching, and invalidation
 
+MVP cost control should come from shared server-side caching, source-document checksums, and freshness hashes rather than user accounts. Repeated requests for the same asset should reuse cached source packs and generated summaries while freshness rules still pass.
+
 ### 16.1 Freshness hash
 
 Every generated summary should store a `freshness_hash`.
@@ -1284,6 +1316,8 @@ freshness_hash = hash(
 ```
 
 If any input changes, regenerate the affected summary.
+
+Cache keys should include the asset or comparison pack, mode, source freshness state, prompt version where generation is involved, and schema version. Cached outputs must preserve citation IDs, source metadata, section-level freshness, and stale/unknown/unavailable labels.
 
 ### 16.2 Suggested refresh rules
 
@@ -1449,7 +1483,9 @@ External HTML and PDF content should be sanitized before display. Never render a
 
 ### 20.3 User data
 
-MVP can be accountless. If accounts are added later, store only minimal user data:
+MVP should be accountless. Users can download asset summaries, comparison output, source lists, and chat transcripts without creating accounts. These exports should include citations and freshness metadata, and should omit or summarize restricted provider content unless redistribution rights are confirmed.
+
+If accounts are added later, store only minimal user data:
 
 - saved tickers
 - saved comparisons
@@ -1593,16 +1629,16 @@ MVP is technically ready when:
 
 ---
 
-## 25. Open technical questions
+## 25. Resolved MVP planning assumptions
 
-1. Which market/reference data provider should be used for price, market cap, AUM, valuation, sector, and spread data?
-2. Should MVP pre-ingest a curated asset universe or support on-demand ingestion for all U.S. listed stocks and ETFs?
-3. Should OpenAI hosted File Search be used for chat, or should pgvector remain the sole retrieval source?
-4. What level of citation strictness is required: citation per sentence, per paragraph, or per important claim?
-5. Which news provider should power recent developments?
-6. Should user accounts exist in v1, or should the first release be accountless?
-7. How should ETF issuer-page parsers be maintained when issuer websites change?
-8. Should leveraged and inverse ETFs be fully blocked, or shown with a warning and no generated educational summary?
+1. Market/reference data should use official and structured sources first. PRD v0.2 prefers Massive for market/reference data and Massive plus ETF Global for ETF data where budget allows, with lower-cost fallbacks only after validation and licensing review.
+2. MVP should pre-cache a high-demand launch universe and support on-demand ingestion for eligible supported assets outside it.
+3. Retrieval should remain self-managed first so citation binding, source freshness, and asset filters stay under application control.
+4. Citation strictness is per important factual claim, not per sentence.
+5. Recent developments should prefer official filings, company investor-relations releases, ETF issuer announcements, and prospectus updates before reputable ticker-tagged news.
+6. V1 should be accountless.
+7. ETF issuer parser maintenance remains an implementation risk; parsers should store raw snapshots, checksums, and parser diagnostics.
+8. Leveraged ETFs, inverse ETFs, ETNs, crypto, options, international equities, and complex products are unsupported for generated pages, chat, and comparisons.
 
 ---
 

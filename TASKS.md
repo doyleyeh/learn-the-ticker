@@ -2,7 +2,48 @@
 
 ## Current task
 
-No current task is prepared. The backlog is empty.
+### T-015: Align MVP control docs with PRD v0.2
+
+Goal:
+Update SPEC.md, EVALS.md, TASKS.md, and the technical design spec where needed so the agent loop follows the updated PRD v0.2 MVP direction.
+
+Task scope:
+This is a documentation/control-plane task only. Do not implement product code. Translate the updated PRD decisions into concise, actionable project rules, MVP checklist items, task-specific eval guidance, and the next backlog headings.
+
+Allowed files:
+
+- SPEC.md
+- EVALS.md
+- TASKS.md
+- docs/learn_the_ticker_technical_design_spec.md
+
+Do not change:
+
+- app/
+- components/
+- backend/
+- lib/
+- tests/
+- evals/
+- package files
+- retrieval fixtures
+
+Acceptance criteria:
+
+- SPEC.md reflects PRD v0.2 MVP decisions without contradicting safety/citation rules.
+- EVALS.md lists required checks by task category.
+- TASKS.md contains 8-12 small backlog headings after T-015.
+- Technical design spec is updated only for durable architecture decisions from PRD v0.2.
+- No product implementation code is changed.
+- Quality gate passes.
+
+Required commands:
+
+- git status --short
+- bash scripts/run_quality_gate.sh
+
+Iteration budget:
+Max 2 attempts
 
 ## Completed
 
@@ -348,4 +389,13 @@ Completion commits:
 
 ## Backlog
 
-No backlog tasks prepared.
+### T-016: Expand asset overview schema for PRD content sections
+### T-017: Add richer stock and ETF fixture data for MVP content sections
+### T-018: Render stock PRD sections on asset pages
+### T-019: Render ETF PRD sections on asset pages
+### T-020: Add Beginner Mode and Deep-Dive Mode page structure
+### T-021: Add export/download controls for asset pages and comparisons
+### T-022: Add provider and ingestion adapter interfaces with mocked tests
+### T-023: Add caching and freshness-hash contracts
+### T-024: Add high-signal recent developments model and empty-state behavior
+### T-025: Expand golden asset eval coverage for MVP launch universe
