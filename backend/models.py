@@ -376,6 +376,210 @@ class ProviderResponse(BaseModel):
     message: str
 
 
+class CacheEntryKind(str, Enum):
+    asset_page = "asset_page"
+    comparison = "comparison"
+    chat_answer = "chat_answer"
+    export_payload = "export_payload"
+    source_list = "source_list"
+    pre_cache_job = "pre_cache_job"
+    refresh_job = "refresh_job"
+    knowledge_pack = "knowledge_pack"
+
+
+class CacheScope(str, Enum):
+    asset = "asset"
+    comparison = "comparison"
+    chat = "chat"
+    export = "export"
+    job = "job"
+    knowledge_pack = "knowledge_pack"
+
+
+class CacheEntryState(str, Enum):
+    available = "available"
+    hit = "hit"
+    miss = "miss"
+    stale = "stale"
+    hash_mismatch = "hash_mismatch"
+    expired = "expired"
+    permission_limited = "permission_limited"
+    unsupported = "unsupported"
+    unknown = "unknown"
+    unavailable = "unavailable"
+    eligible_not_cached = "eligible_not_cached"
+
+
+class CacheInvalidationReason(str, Enum):
+    none = "none"
+    no_entry = "no_entry"
+    cache_key_mismatch = "cache_key_mismatch"
+    stale_input = "stale_input"
+    hash_mismatch = "hash_mismatch"
+    expired = "expired"
+    permission_limited = "permission_limited"
+    unsupported = "unsupported"
+    unknown = "unknown"
+    unavailable = "unavailable"
+    eligible_not_cached = "eligible_not_cached"
+
+
+class CacheKeyMetadata(BaseModel):
+    entry_kind: CacheEntryKind
+    scope: CacheScope
+    schema_version: str
+    source_freshness_state: FreshnessState
+    mode_or_output_type: str
+    asset_ticker: str | None = None
+    comparison_left_ticker: str | None = None
+    comparison_right_ticker: str | None = None
+    pack_identity: str | None = None
+    prompt_version: str | None = None
+    model_name: str | None = None
+    input_freshness_hash: str | None = None
+
+
+class SourceChecksumInput(BaseModel):
+    source_document_id: str
+    asset_ticker: str
+    source_type: str
+    source_rank: int | None = None
+    publisher: str
+    url: str | None = None
+    published_at: str | None = None
+    as_of_date: str | None = None
+    retrieved_at: str | None = None
+    freshness_state: FreshnessState
+    content_type: str | None = None
+    provider_name: str | None = None
+    fact_bindings: list[str] = Field(default_factory=list)
+    recent_event_bindings: list[str] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+    local_chunk_text_fingerprints: list[str] = Field(default_factory=list)
+    cache_allowed: bool = True
+    redistribution_allowed: bool = False
+
+
+class SourceChecksumRecord(BaseModel):
+    source_document_id: str
+    asset_ticker: str
+    checksum: str
+    freshness_state: FreshnessState
+    cache_allowed: bool
+    source_type: str
+    source_rank: int | None = None
+    citation_ids: list[str] = Field(default_factory=list)
+    fact_bindings: list[str] = Field(default_factory=list)
+    recent_event_bindings: list[str] = Field(default_factory=list)
+
+
+class FreshnessFactInput(BaseModel):
+    fact_id: str
+    asset_ticker: str
+    field_name: str
+    value: Any
+    as_of_date: str | None = None
+    freshness_state: FreshnessState
+    evidence_state: str
+    source_document_ids: list[str] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+
+
+class FreshnessRecentEventInput(BaseModel):
+    event_id: str
+    asset_ticker: str
+    event_type: str
+    event_date: str | None = None
+    source_date: str | None = None
+    as_of_date: str | None = None
+    freshness_state: FreshnessState
+    evidence_state: str
+    source_document_id: str | None = None
+    citation_ids: list[str] = Field(default_factory=list)
+
+
+class FreshnessEvidenceGapInput(BaseModel):
+    gap_id: str
+    asset_ticker: str
+    field_name: str
+    evidence_state: str
+    freshness_state: FreshnessState
+    source_document_id: str | None = None
+
+
+class SectionFreshnessInput(BaseModel):
+    section_id: str
+    freshness_state: FreshnessState
+    evidence_state: str | None = None
+    as_of_date: str | None = None
+    retrieved_at: str | None = None
+
+
+class KnowledgePackFreshnessInput(BaseModel):
+    asset_ticker: str | None = None
+    comparison_left_ticker: str | None = None
+    comparison_right_ticker: str | None = None
+    pack_identity: str | None = None
+    source_checksums: list[SourceChecksumRecord] = Field(default_factory=list)
+    canonical_facts: list[FreshnessFactInput] = Field(default_factory=list)
+    recent_events: list[FreshnessRecentEventInput] = Field(default_factory=list)
+    evidence_gaps: list[FreshnessEvidenceGapInput] = Field(default_factory=list)
+    page_freshness_state: FreshnessState
+    section_freshness_labels: list[SectionFreshnessInput] = Field(default_factory=list)
+
+
+class GeneratedOutputFreshnessInput(BaseModel):
+    output_identity: str
+    entry_kind: CacheEntryKind
+    scope: CacheScope
+    schema_version: str
+    source_freshness_state: FreshnessState
+    prompt_version: str | None = None
+    model_name: str | None = None
+    source_checksums: list[SourceChecksumRecord] = Field(default_factory=list)
+    canonical_facts: list[FreshnessFactInput] = Field(default_factory=list)
+    recent_events: list[FreshnessRecentEventInput] = Field(default_factory=list)
+    evidence_gaps: list[FreshnessEvidenceGapInput] = Field(default_factory=list)
+    section_freshness_labels: list[SectionFreshnessInput] = Field(default_factory=list)
+
+
+class CacheEntryMetadata(BaseModel):
+    cache_key: str
+    entry_kind: CacheEntryKind
+    scope: CacheScope
+    entry_state: CacheEntryState = CacheEntryState.available
+    schema_version: str
+    generated_output_freshness_hash: str | None = None
+    source_checksum_hashes: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+    source_freshness_states: dict[str, FreshnessState] = Field(default_factory=dict)
+    section_freshness_labels: dict[str, FreshnessState] = Field(default_factory=dict)
+    unknown_states: list[str] = Field(default_factory=list)
+    stale_states: list[str] = Field(default_factory=list)
+    unavailable_states: list[str] = Field(default_factory=list)
+    cache_allowed: bool = True
+    export_allowed: bool = False
+    created_at: str | None = None
+    expires_at: str | None = None
+    prompt_version: str | None = None
+    model_name: str | None = None
+
+
+class CacheRevalidationResult(BaseModel):
+    state: CacheEntryState
+    reusable: bool
+    invalidation_reason: CacheInvalidationReason
+    cache_key: str | None = None
+    expected_freshness_hash: str | None = None
+    cached_freshness_hash: str | None = None
+    source_document_ids: list[str] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+    source_freshness_states: dict[str, FreshnessState] = Field(default_factory=dict)
+    section_freshness_labels: dict[str, FreshnessState] = Field(default_factory=dict)
+    message: str
+
+
 class Freshness(BaseModel):
     page_last_updated_at: str
     facts_as_of: str | None = None

@@ -10,6 +10,17 @@ EVALS_DIR = ROOT / "evals"
 os.environ.setdefault("LTT_FORCE_COMPAT_FASTAPI", "1")
 sys.path.insert(0, str(ROOT))
 
+import backend.models as models
+from backend.cache import (
+    build_cache_key,
+    build_comparison_pack_freshness_input,
+    build_generated_output_freshness_input,
+    build_knowledge_pack_freshness_input,
+    compute_generated_output_freshness_hash,
+    compute_knowledge_pack_freshness_hash,
+    compute_source_document_checksum,
+    evaluate_cache_revalidation,
+)
 from backend.chat import generate_asset_chat, validate_chat_response
 from backend.citations import validate_claims
 from backend.comparison import generate_comparison, validate_comparison_response
@@ -17,6 +28,12 @@ from backend.export import export_asset_page, export_asset_source_list, export_c
 from backend.ingestion import get_ingestion_job_status, request_ingestion
 from backend.main import app
 from backend.models import (
+    CacheEntryKind,
+    CacheEntryMetadata,
+    CacheEntryState,
+    CacheInvalidationReason,
+    CacheKeyMetadata,
+    CacheScope,
     ChatResponse,
     ChatTranscriptExportRequest,
     CompareResponse,
@@ -24,13 +41,16 @@ from backend.models import (
     EDUCATIONAL_DISCLAIMER,
     EvidenceState,
     ExportResponse,
+    FreshnessState,
     IngestionJobResponse,
+    KnowledgePackFreshnessInput,
     MetricValue,
     ProviderDataCategory,
     ProviderKind,
     ProviderResponse,
     ProviderResponseState,
     ProviderSourceUsage,
+    SourceChecksumInput,
 )
 from backend.overview import generate_asset_overview, validate_overview_response
 from backend.providers import fetch_mock_provider_response, get_mock_provider_adapters
@@ -398,6 +418,143 @@ def test_provider_cases():
         "api_key",
     ]:
         assert forbidden not in providers_source
+
+
+def test_cache_cases():
+    data = load_yaml("cache_eval_cases.yaml")
+    required_models = set(data.get("required_models", []))
+    missing_models = {name for name in required_models if not hasattr(models, name)}
+    assert not missing_models, f"Missing cache contract models: {missing_models}"
+
+    required_helpers = set(data.get("required_helpers", []))
+    missing_helpers = {name for name in required_helpers if name not in globals()}
+    assert not missing_helpers, f"Missing cache helper functions: {missing_helpers}"
+
+    required_states = set(data.get("required_revalidation_states", []))
+    actual_states = {state.value for state in CacheEntryState}
+    missing_states = required_states - actual_states
+    assert not missing_states, f"Missing cache revalidation states: {missing_states}"
+
+    required_reasons = set(data.get("required_invalidation_reasons", []))
+    actual_reasons = {reason.value for reason in CacheInvalidationReason}
+    missing_reasons = required_reasons - actual_reasons
+    assert not missing_reasons, f"Missing cache invalidation reasons: {missing_reasons}"
+
+    source_fields = set(SourceChecksumInput.model_fields)
+    missing_source_fields = set(data.get("source_checksum_required_inputs", [])) - source_fields
+    assert not missing_source_fields, f"Missing source checksum inputs: {missing_source_fields}"
+
+    knowledge_fields = set(KnowledgePackFreshnessInput.model_fields)
+    missing_knowledge_fields = set(data.get("knowledge_pack_required_inputs", [])) - knowledge_fields
+    assert not missing_knowledge_fields, f"Missing knowledge-pack freshness inputs: {missing_knowledge_fields}"
+
+    generated_fields = set(models.GeneratedOutputFreshnessInput.model_fields)
+    missing_generated_fields = set(data.get("generated_output_required_inputs", [])) - generated_fields
+    assert not missing_generated_fields, f"Missing generated-output freshness inputs: {missing_generated_fields}"
+
+    voo_pack = build_asset_knowledge_pack("VOO")
+    knowledge_input = build_knowledge_pack_freshness_input(voo_pack)
+    knowledge_hash = compute_knowledge_pack_freshness_hash(knowledge_input)
+    generated_input = build_generated_output_freshness_input(
+        output_identity="asset:VOO",
+        entry_kind=CacheEntryKind.asset_page,
+        scope=CacheScope.asset,
+        schema_version="asset-page-v1",
+        prompt_version="asset-page-prompt-v1",
+        model_name="deterministic-fixture-model",
+        knowledge_input=knowledge_input,
+    )
+    generated_hash = compute_generated_output_freshness_hash(generated_input)
+    changed_prompt_hash = compute_generated_output_freshness_hash(
+        generated_input.model_copy(update={"prompt_version": "asset-page-prompt-v2"})
+    )
+    assert generated_hash != changed_prompt_hash
+
+    reordered_knowledge = KnowledgePackFreshnessInput(
+        **{
+            **knowledge_input.model_dump(mode="json"),
+            "source_checksums": list(reversed(knowledge_input.source_checksums)),
+            "canonical_facts": list(reversed(knowledge_input.canonical_facts)),
+            "recent_events": list(reversed(knowledge_input.recent_events)),
+            "evidence_gaps": list(reversed(knowledge_input.evidence_gaps)),
+            "section_freshness_labels": list(reversed(knowledge_input.section_freshness_labels)),
+        }
+    )
+    assert knowledge_hash == compute_knowledge_pack_freshness_hash(reordered_knowledge)
+
+    key = build_cache_key(
+        CacheKeyMetadata(
+            entry_kind=CacheEntryKind.asset_page,
+            scope=CacheScope.asset,
+            asset_ticker="VOO",
+            mode_or_output_type="beginner",
+            schema_version="asset-page-v1",
+            source_freshness_state=FreshnessState.fresh,
+            prompt_version="asset-page-prompt-v1",
+            model_name="deterministic-fixture-model",
+            input_freshness_hash=generated_hash,
+        )
+    )
+    assert "asset-voo" in key
+    assert "prompt-asset-page-prompt-v1" in key
+    assert "model-deterministic-fixture-model" in key
+
+    comparison_pack = build_comparison_knowledge_pack("VOO", "QQQ")
+    comparison_input = build_comparison_pack_freshness_input(comparison_pack)
+    assert comparison_input.comparison_left_ticker == "VOO"
+    assert comparison_input.comparison_right_ticker == "QQQ"
+    forward_key = build_cache_key(
+        CacheKeyMetadata(
+            entry_kind=CacheEntryKind.comparison,
+            scope=CacheScope.comparison,
+            comparison_left_ticker="VOO",
+            comparison_right_ticker="QQQ",
+            pack_identity=comparison_input.pack_identity,
+            mode_or_output_type="beginner",
+            schema_version="comparison-v1",
+            source_freshness_state=FreshnessState.fresh,
+        )
+    )
+    reverse_key = build_cache_key(
+        CacheKeyMetadata(
+            entry_kind=CacheEntryKind.comparison,
+            scope=CacheScope.comparison,
+            comparison_left_ticker="QQQ",
+            comparison_right_ticker="VOO",
+            pack_identity=comparison_input.pack_identity,
+            mode_or_output_type="beginner",
+            schema_version="comparison-v1",
+            source_freshness_state=FreshnessState.fresh,
+        )
+    )
+    assert forward_key != reverse_key
+    assert "comparison-voo-to-qqq" in forward_key
+    assert "comparison-qqq-to-voo" in reverse_key
+
+    reusable_entry = CacheEntryMetadata(
+        cache_key=key,
+        entry_kind=CacheEntryKind.asset_page,
+        scope=CacheScope.asset,
+        schema_version="asset-page-v1",
+        generated_output_freshness_hash=generated_hash,
+        source_document_ids=["src_voo_fact_sheet_fixture"],
+        citation_ids=["c_voo_profile"],
+        source_freshness_states={"src_voo_fact_sheet_fixture": FreshnessState.fresh},
+        section_freshness_labels={"top_risks": FreshnessState.fresh},
+        cache_allowed=True,
+    )
+    assert evaluate_cache_revalidation(reusable_entry, key, generated_hash).state is CacheEntryState.hit
+    assert evaluate_cache_revalidation(reusable_entry, key, changed_prompt_hash).state is CacheEntryState.hash_mismatch
+    assert evaluate_cache_revalidation(None, key).state is CacheEntryState.miss
+    assert evaluate_cache_revalidation(None, key, input_state=ProviderResponseState.unsupported).state is CacheEntryState.unsupported
+    assert evaluate_cache_revalidation(None, key, cache_allowed=False).state is CacheEntryState.permission_limited
+
+    case_states = {case["expected_state"] for case in data.get("cases", []) if "expected_state" in case}
+    assert {"permission_limited", "unsupported", "hash_mismatch"} <= case_states
+
+    cache_source = (ROOT / "backend" / "cache.py").read_text(encoding="utf-8")
+    for forbidden in data.get("forbidden_cache_imports", []):
+        assert forbidden not in cache_source
 
 
 def test_retrieval_fixture_contract():
@@ -841,6 +998,7 @@ if __name__ == "__main__":
     test_search_cases()
     test_ingestion_cases()
     test_provider_cases()
+    test_cache_cases()
     test_retrieval_fixture_contract()
     test_generated_overview_contract()
     test_generated_comparison_contract()
