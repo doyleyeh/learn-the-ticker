@@ -2,18 +2,18 @@
 
 ## Current task
 
-### T-020: Render stock PRD sections on asset pages
+### T-021: Render ETF PRD sections on asset pages
 
 Goal:
-Render the richer stock PRD overview sections for the local `AAPL` asset page so beginners can inspect stock business, products/services, strengths, financial quality, valuation-context limitations, top risks, recent developments, educational suitability, citations, and freshness states in the frontend without live calls.
+Render the richer ETF PRD overview sections for the local `VOO` and `QQQ` asset pages so beginners can inspect fund objective/role, holdings/exposure, construction/methodology, cost/trading limitations, ETF-specific risks, similar-assets gaps, recent developments, educational suitability, citations, and freshness states in the frontend without live calls.
 
 Task scope:
-This is a frontend rendering and deterministic fixture task for stock asset pages only. Add a narrow stock-section UI path for `AAPL` using local frontend fixtures that mirror the already completed backend overview section contract where needed. The page should show stock PRD sections with visible citation chips, source metadata access, freshness or unknown/unavailable states, residual evidence gaps, and stable/recent separation. Preserve the existing asset-page route and deterministic local behavior. Keep this task limited to stock rendering; do not render ETF PRD sections yet, do not add Beginner Mode or Deep-Dive Mode structure, do not call backend APIs from the page, and do not change retrieval, overview generation, chat, comparison, ingestion, providers, caching, export, or glossary behavior.
+This is a frontend rendering and deterministic fixture task for ETF asset pages only. Add a narrow ETF-section UI path for `VOO` and `QQQ` using local frontend fixtures that mirror the already completed backend overview section contract where needed. The page should show ETF PRD sections with visible citation chips, source metadata access, freshness, stale, unknown, unavailable, insufficient-evidence, and no-high-signal states, residual evidence gaps, and stable/recent separation. Preserve the existing asset-page route and deterministic local behavior. Keep this task limited to ETF rendering; do not add Beginner Mode or Deep-Dive Mode structure, do not call backend APIs from the page, and do not change retrieval, overview generation, chat, comparison, ingestion, providers, caching, export, or glossary behavior.
 
 Allowed files:
 
 - app/assets/[ticker]/page.tsx
-- components/AssetStockSections.tsx
+- components/AssetEtfSections.tsx
 - components/SourceDrawer.tsx
 - lib/fixtures.ts
 - tests/frontend/smoke.mjs
@@ -29,6 +29,7 @@ Do not change:
 - app/compare/
 - app/page.tsx
 - components/AssetChatPanel.tsx
+- components/AssetStockSections.tsx
 - components/ComparisonSourceDetails.tsx
 - components/SearchBox.tsx
 - lib/assetChat.ts
@@ -36,25 +37,26 @@ Do not change:
 - lib/glossary.ts
 - package files
 - provider adapters, ingestion workers, queues, caches, export implementations, or API routes
-- ETF PRD section rendering for `VOO` or `QQQ`; that remains for T-021
+- stock PRD section rendering for `AAPL`
 - generated behavior for unsupported, unknown, ambiguous, or eligible-not-cached assets
 
 Acceptance criteria:
 
-- The `AAPL` asset page renders stock PRD sections for `business_overview`, `products_services`, `strengths`, `financial_quality`, `valuation_context`, `top_risks`, `recent_developments`, and `educational_suitability` using deterministic local frontend fixtures.
-- Important stock section claims render citation chips near the claim text and bind to the matching same-asset frontend source document; do not reuse the primary source as a fallback for unrelated stock section claims.
-- Source metadata for stock section citations is visible through the existing source drawer pattern and includes title, source type, publisher, URL, published or as-of date, retrieved timestamp, freshness state, official-source status, related claim context, and supporting passage.
-- The rendered `AAPL` products/services section includes source-backed product and services detail from the local fixture, while still showing explicit gaps for unsupported business-segment or revenue-driver detail.
-- The rendered `AAPL` strengths section shows the source-backed business-quality point from the local fixture and avoids unsupported competitive-advantage claims beyond that evidence.
-- The rendered `AAPL` financial-quality section shows the source-backed net sales trend and keeps residual gaps for unavailable earnings, margin, cash-flow, debt, cash, ROE, and ROIC metrics.
-- The rendered `AAPL` valuation-context section shows the cited valuation-data limitation and keeps valuation metrics labeled unavailable or insufficient rather than inventing P/E, forward P/E, price/sales, price/free-cash-flow, peer, or own-history valuation metrics.
-- The rendered `AAPL` top risks still show exactly three risk items first, with citation chips and no additional uncited risk claims inserted ahead of them.
-- Recent developments remain visually and structurally separate from stable stock facts and preserve the no-high-signal recent-development state when local evidence does not support a major recent event.
-- Freshness labels or state markers are visible for supported, unknown, unavailable, and no-high-signal sections where relevant.
-- `VOO` and `QQQ` asset pages continue to render their existing ETF page content without new ETF PRD section UI or regressions; T-021 will handle ETF section rendering.
+- The `VOO` and `QQQ` asset pages render ETF PRD sections for `fund_objective_role`, `holdings_exposure`, `construction_methodology`, `cost_trading_context`, `etf_specific_risks`, `similar_assets_alternatives`, `recent_developments`, and `educational_suitability` using deterministic local frontend fixtures.
+- Important ETF section claims render citation chips near the claim text and bind to the matching same-asset frontend source document; do not reuse the primary source as a fallback for unrelated ETF section claims and do not cross-bind `VOO`, `QQQ`, or `AAPL` sources.
+- Source metadata for ETF section citations is visible through the existing source drawer pattern and includes title, source type, publisher, URL, published or as-of date, retrieved timestamp, freshness state, official-source status, related claim context, and supporting passage.
+- The rendered `VOO` fund objective/role section shows its S&P 500 benchmark and broad U.S. large-company ETF role from the local fixture; the rendered `QQQ` fund objective/role section shows its Nasdaq-100 benchmark and narrower growth-oriented ETF role from the local fixture.
+- The rendered ETF holdings/exposure section includes source-backed holdings-count and holdings-exposure detail from the local fixtures, including the bounded VOO and QQQ top-holdings examples already present in fixture evidence, while still showing explicit gaps for top-10 weights, top-10 concentration, sector exposure, country exposure, and largest-position data.
+- The rendered ETF construction/methodology section shows the source-backed VOO passive market-cap-weighted S&P 500 indexing detail and QQQ Nasdaq-100 modified market-cap-weighted, non-financial-company detail while keeping residual gaps for full rebalancing frequency, screening rules, and methodology detail.
+- The rendered ETF cost/trading section shows cited expense-ratio facts and cited trading-data limitations, keeps bid-ask spread, average volume, premium/discount, and other unavailable trading metrics labeled unavailable, and preserves any stale fee snapshot state from the local fixture.
+- The rendered ETF-specific risks section still shows exactly three risk items first, with citation chips and no additional uncited risk claims inserted ahead of them.
+- The rendered similar-assets/alternatives section preserves the explicit insufficient-evidence or unknown gap state when local fixture evidence does not support similar ETFs, simpler alternatives, holdings overlap, or diversification-addition claims.
+- Recent developments remain visually and structurally separate from stable ETF facts and preserve the no-high-signal recent-development state when local evidence does not support a major recent event.
+- Freshness labels or state markers are visible for supported, mixed, stale, unknown, unavailable, insufficient-evidence, and no-high-signal sections where relevant.
+- The `AAPL` asset page continues to render its existing stock PRD sections without stock-section regressions.
 - Unsupported or unknown asset routes do not gain generated pages, generated factual claims, citations, source documents, chat answers, or comparison output as part of this task.
 - Frontend copy remains educational and avoids buy/sell/hold, allocation, price-target, tax, brokerage, or personalized recommendation language.
-- Frontend smoke checks cover the stock PRD section markers, AAPL-only stock section rendering, citation-to-source metadata binding, source drawer metadata, freshness/unknown/unavailable states, stable/recent separation, top-risk count, and absence of live external calls.
+- Frontend smoke checks cover the ETF PRD section markers, VOO/QQQ-only ETF section rendering, citation-to-source metadata binding, source drawer metadata, freshness/stale/unknown/unavailable/insufficient-evidence states, stable/recent separation, ETF-specific risk count, AAPL stock-section preservation, and absence of live external calls.
 - Normal CI remains deterministic and does not require provider credentials, market-data calls, news calls, LLM calls, Redis, PostgreSQL, queues, backend server availability, or network access.
 
 Required commands:
@@ -71,6 +73,37 @@ Iteration budget:
 Max 2 attempts
 
 ## Completed
+
+### T-020: Render stock PRD sections on asset pages
+
+Goal:
+Render the richer stock PRD overview sections for the local `AAPL` asset page so beginners can inspect stock business, products/services, strengths, financial quality, valuation-context limitations, top risks, recent developments, educational suitability, citations, and freshness states in the frontend without live calls.
+
+Completed:
+
+- Added `components/AssetStockSections.tsx` to render stock-only PRD sections from deterministic local fixtures with section, item, metric, evidence-state, freshness-state, stable/recent-separation, and top-risk-count markers.
+- Updated `app/assets/[ticker]/page.tsx` so `AAPL` uses the stock PRD section path while `VOO` and `QQQ` intentionally stay on the existing ETF rendering path until T-021.
+- Updated the asset-page sidebar so stock PRD pages render source drawers for the stock section source documents instead of a single primary-source fallback.
+- Extended `components/SourceDrawer.tsx` to accept citation contexts, render related claim context lists, and deduplicate supporting passages while preserving title, source type, publisher, URL, published/as-of date, retrieved timestamp, freshness state, and official-source metadata.
+- Extended `lib/fixtures.ts` with stock-section fixture types, AAPL `stockSections`, `citationContexts`, additional AAPL source-document bindings, and citation IDs for primary business, products/services detail, business-quality strength, SEC XBRL net sales trend, valuation-data limitation, risk context, and no-high-signal recent-development review.
+- Rendered the AAPL stock PRD sections for `business_overview`, `products_services`, `strengths`, `financial_quality`, `valuation_context`, `top_risks`, `recent_developments`, and `educational_suitability`.
+- Preserved explicit evidence gaps in the AAPL UI for business segments, revenue drivers, geographic exposure, competitor detail, earnings, margins, cash flow, debt, cash, ROE, ROIC, valuation metrics, and no high-signal recent developments instead of inventing unsupported facts.
+- Preserved exactly three AAPL top risks first, with citation chips and no extra risk claims inserted ahead of them.
+- Added CSS for stock PRD section spacing, stock section item cards, compact evidence-state pills, evidence-gap notes, and source context lists.
+- Extended frontend smoke checks to require the new stock PRD component, AAPL section IDs, AAPL section citation/source markers, explicit gap markers, source drawer metadata hooks, stable/recent markers, exactly three top risks, no `stockSections` on `VOO` or `QQQ`, no asset-page backend overview calls, and no live external calls.
+- Extended safety guardrail coverage so `components/AssetStockSections.tsx` is scanned for forbidden advice-like frontend copy.
+- Added `docs/agent-journal/20260422T060036Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- T-020 agent journal records that `git status --short`, `npm test`, `npm run typecheck`, `npm run build`, safety guardrail pytest, static evals, and the full quality gate passed.
+- T-020 agent journal records the final quality gate as passed with Python tests 73 passed, static evals passed, frontend smoke passed, typecheck passed, production build passed, and backend checks 73 passed.
+- Remaining documented risk: AAPL stock PRD sections are deterministic local frontend fixtures only; no backend overview API calls, provider adapters, ingestion, caching, export, chat, comparison, glossary, or ETF-section behavior were added.
+- Remaining documented risk: VOO and QQQ intentionally remain on the existing ETF page rendering path; ETF PRD section rendering is left for T-021.
+- Remaining documented risk: AAPL still shows explicit evidence gaps for business segments, revenue drivers, geographic exposure, competitor detail, earnings, margins, cash flow, debt, cash, ROE, ROIC, and valuation metrics.
+- Remaining documented risk: source drawers expose local fixture source metadata and claim context, but do not deep-link per citation beyond the existing source-document drawer anchor pattern.
+
+Completion commits:
+
+- `56e1a07 feat(T-020): render stock PRD sections on asset pages`
+- `48d9db2 chore(T-020): merge render stock PRD sections on asset pages`
 
 ### T-019: Add richer stock and ETF fixture data for MVP content sections
 
@@ -553,7 +586,6 @@ Completion commits:
 
 ## Backlog
 
-### T-021: Render ETF PRD sections on asset pages
 ### T-022: Add Beginner Mode and Deep-Dive Mode page structure
 ### T-023: Add hybrid glossary baseline terms and UI hooks
 ### T-024: Add export/download contracts for pages, comparisons, sources, and chat
