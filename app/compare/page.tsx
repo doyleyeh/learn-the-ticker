@@ -1,8 +1,10 @@
 import { CitationChip } from "../../components/CitationChip";
+import { ComparisonSuggestions } from "../../components/ComparisonSuggestions";
 import { ComparisonSourceDetails } from "../../components/ComparisonSourceDetails";
 import { ExportControls } from "../../components/ExportControls";
 import { FreshnessLabel } from "../../components/FreshnessLabel";
 import { getComparePageFixture, getComparisonCitationMetadata, type CompareAssetIdentity } from "../../lib/compare";
+import { getComparePageSuggestions } from "../../lib/compareSuggestions";
 import { comparisonExportUrl } from "../../lib/exportControls";
 import { getAssetFixture, type AssetFixture } from "../../lib/fixtures";
 
@@ -20,6 +22,7 @@ export default async function ComparePage({ searchParams }: ComparePageProps) {
   const comparison = getComparePageFixture(leftTicker, rightTicker);
   const leftFixture = getAssetFixture(comparison.leftAsset.ticker);
   const rightFixture = getAssetFixture(comparison.rightAsset.ticker);
+  const comparisonSuggestions = getComparePageSuggestions(comparison.leftAsset.ticker, comparison.rightAsset.ticker);
   const { citationsById, contextsBySourceDocumentId } = getComparisonCitationMetadata(comparison);
   const bottomLine = comparison.bottomLineForBeginners;
   const hasSourceBackedComparison =
@@ -49,6 +52,8 @@ export default async function ComparePage({ searchParams }: ComparePageProps) {
           <CompareColumn asset={comparison.leftAsset} fixture={leftFixture} />
           <CompareColumn asset={comparison.rightAsset} fixture={rightFixture} />
         </div>
+
+        <ComparisonSuggestions model={comparisonSuggestions} />
 
         {hasSourceBackedComparison && bottomLine ? (
           <>

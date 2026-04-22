@@ -5,11 +5,13 @@ import { AssetEtfSections } from "../../../components/AssetEtfSections";
 import { AssetStockSections } from "../../../components/AssetStockSections";
 import { AssetModeLayout } from "../../../components/AssetModeLayout";
 import { CitationChip } from "../../../components/CitationChip";
+import { ComparisonSuggestions } from "../../../components/ComparisonSuggestions";
 import { ExportControls } from "../../../components/ExportControls";
 import { FreshnessLabel } from "../../../components/FreshnessLabel";
 import { GlossaryPopover } from "../../../components/GlossaryPopover";
 import { SourceDrawer } from "../../../components/SourceDrawer";
 import { beginnerGlossaryGroupsByAssetType } from "../../../lib/glossary";
+import { getAssetComparisonSuggestions } from "../../../lib/compareSuggestions";
 import { assetPageExportUrl, assetSourceListExportUrl } from "../../../lib/exportControls";
 import {
   assetFixtures,
@@ -49,6 +51,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
   );
   const sectionSources = asset.sourceDocuments.filter((source) => sectionSourceDocumentIds.has(source.sourceDocumentId));
   const glossaryGroups = beginnerGlossaryGroupsByAssetType[asset.assetType];
+  const comparisonSuggestions = getAssetComparisonSuggestions(asset.ticker);
   const inlineGlossaryTerms =
     asset.assetType === "etf" ? (["expense ratio", "index tracking"] as const) : (["market risk", "P/E ratio"] as const);
 
@@ -198,6 +201,8 @@ export default async function AssetPage({ params }: AssetPageProps) {
               <p>{asset.suitabilitySummary.mayNotFit}</p>
               <p>{asset.suitabilitySummary.learnNext}</p>
             </section>
+
+            <ComparisonSuggestions model={comparisonSuggestions} />
 
             <AssetChatPanel ticker={asset.ticker} assetName={asset.name} />
           </>

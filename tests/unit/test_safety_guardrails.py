@@ -80,6 +80,7 @@ def test_frontend_copy_fixtures_and_comparison_do_not_leak_advice_phrases():
         "components/AssetStockSections.tsx",
         "components/AssetModeLayout.tsx",
         "components/CitationChip.tsx",
+        "components/ComparisonSuggestions.tsx",
         "components/ComparisonSourceDetails.tsx",
         "components/ExportControls.tsx",
         "components/FreshnessLabel.tsx",
@@ -88,6 +89,7 @@ def test_frontend_copy_fixtures_and_comparison_do_not_leak_advice_phrases():
         "components/SourceDrawer.tsx",
         "lib/assetChat.ts",
         "lib/compare.ts",
+        "lib/compareSuggestions.ts",
         "lib/exportControls.ts",
         "lib/fixtures.ts",
         "lib/glossary.ts",
@@ -142,3 +144,28 @@ def test_frontend_export_control_copy_is_advice_safe():
         assert_no_forbidden_phrases(marker, marker)
 
     assert_no_forbidden_phrases("frontend export controls", combined)
+
+
+def test_frontend_comparison_suggestion_copy_is_advice_safe():
+    combined = "\n".join(
+        [
+            (ROOT / "components/ComparisonSuggestions.tsx").read_text(encoding="utf-8"),
+            (ROOT / "lib/compareSuggestions.ts").read_text(encoding="utf-8"),
+            (ROOT / "app/assets/[ticker]/page.tsx").read_text(encoding="utf-8"),
+            (ROOT / "app/compare/page.tsx").read_text(encoding="utf-8"),
+        ]
+    )
+    suggestion_copy_markers = [
+        "local source-backed comparison",
+        "benchmark, cost, holdings breadth, and beginner role",
+        "No local source-backed comparison pack",
+        "peer list, citation chips, source documents",
+        "not facts about the requested pair",
+        "this is not personal advice",
+    ]
+
+    for marker in suggestion_copy_markers:
+        assert marker in combined
+        assert_no_forbidden_phrases(marker, marker)
+
+    assert_no_forbidden_phrases("frontend comparison suggestions", combined)
