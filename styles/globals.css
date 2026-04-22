@@ -314,7 +314,8 @@ input {
 .risk-card,
 .difference-item,
 .timeline-item,
-.stock-section-item {
+.stock-section-item,
+.etf-section-item {
   min-width: 0;
   padding: 16px;
   border: 1px solid var(--line);
@@ -325,26 +326,32 @@ input {
 .risk-card h3,
 .difference-item h3,
 .timeline-item h3,
-.stock-section-item h3 {
+.stock-section-item h3,
+.etf-section-item h3 {
   margin: 0 0 8px;
 }
 
-.stock-prd-sections {
+.stock-prd-sections,
+.etf-prd-sections {
   gap: 22px;
 }
 
 .stock-section-state,
-.stock-item-heading {
+.stock-item-heading,
+.etf-section-state,
+.etf-item-heading {
   justify-content: space-between;
 }
 
-.stock-section-items {
+.stock-section-items,
+.etf-section-items {
   display: grid;
   gap: 14px;
   margin-top: 16px;
 }
 
-.stock-item-heading {
+.stock-item-heading,
+.etf-item-heading {
   display: flex;
   gap: 12px;
   align-items: flex-start;
@@ -637,7 +644,8 @@ blockquote {
     flex-direction: column;
   }
 
-  .stock-item-heading {
+  .stock-item-heading,
+  .etf-item-heading {
     flex-direction: column;
   }
 }

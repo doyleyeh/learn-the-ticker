@@ -21,6 +21,7 @@ function includes(path, marker) {
   "app/assets/[ticker]/page.tsx",
   "app/compare/page.tsx",
   "components/AssetChatPanel.tsx",
+  "components/AssetEtfSections.tsx",
   "components/AssetStockSections.tsx",
   "components/CitationChip.tsx",
   "components/ComparisonSourceDetails.tsx",
@@ -41,7 +42,9 @@ includes("app/assets/[ticker]/page.tsx", "Stale and unknown treatment");
 includes("app/assets/[ticker]/page.tsx", "SourceDrawer");
 includes("app/assets/[ticker]/page.tsx", "GlossaryPopover");
 includes("app/assets/[ticker]/page.tsx", "AssetChatPanel");
+includes("app/assets/[ticker]/page.tsx", "AssetEtfSections");
 includes("app/assets/[ticker]/page.tsx", "AssetStockSections");
+includes("app/assets/[ticker]/page.tsx", "hasEtfPrdSections");
 includes("app/assets/[ticker]/page.tsx", "hasStockPrdSections");
 includes("app/compare/page.tsx", "Bottom line for beginners");
 includes("app/compare/page.tsx", "ComparisonSourceDetails");
@@ -68,6 +71,11 @@ includes("components/AssetStockSections.tsx", "data-stock-section-id");
 includes("components/AssetStockSections.tsx", "data-stock-stable-recent-separation");
 includes("components/AssetStockSections.tsx", "data-stock-top-risk-count");
 includes("components/AssetStockSections.tsx", "No citation chip is shown because this item is an explicit evidence gap");
+includes("components/AssetEtfSections.tsx", "data-etf-prd-sections");
+includes("components/AssetEtfSections.tsx", "data-etf-section-id");
+includes("components/AssetEtfSections.tsx", "data-etf-stable-recent-separation");
+includes("components/AssetEtfSections.tsx", "data-etf-top-risk-count");
+includes("components/AssetEtfSections.tsx", "No citation chip is shown because this ETF item is an explicit evidence gap");
 includes("lib/assetChat.ts", "/api/assets/");
 includes("lib/assetChat.ts", "/chat");
 includes("lib/compare.ts", "sourceDocuments");
@@ -134,8 +142,61 @@ for (const marker of [
 }
 const vooFixture = fixtures.slice(fixtures.indexOf("VOO: {"), fixtures.indexOf("  QQQ:", fixtures.indexOf("VOO: {")));
 const qqqFixture = fixtures.slice(fixtures.indexOf("QQQ: {"), fixtures.indexOf("  AAPL:", fixtures.indexOf("QQQ: {")));
-assert.equal(vooFixture.includes("stockSections"), false, "VOO should not receive stock PRD section rendering in T-020");
-assert.equal(qqqFixture.includes("stockSections"), false, "QQQ should not receive stock PRD section rendering in T-020");
+assert.equal(vooFixture.includes("stockSections"), false, "VOO should not receive stock PRD section rendering");
+assert.equal(qqqFixture.includes("stockSections"), false, "QQQ should not receive stock PRD section rendering");
+assert.equal(aaplFixture.includes("etfSections"), false, "AAPL should not receive ETF PRD section rendering");
+
+for (const [ticker, fixture] of [
+  ["VOO", vooFixture],
+  ["QQQ", qqqFixture]
+]) {
+  for (const sectionId of [
+    "fund_objective_role",
+    "holdings_exposure",
+    "construction_methodology",
+    "cost_trading_context",
+    "etf_specific_risks",
+    "similar_assets_alternatives",
+    "recent_developments",
+    "educational_suitability"
+  ]) {
+    assert.match(fixture, new RegExp(`sectionId: "${sectionId}"`), `${ticker} fixture should include ETF section ${sectionId}`);
+  }
+  for (const marker of [
+    `c_fact_${ticker.toLowerCase()}_benchmark`,
+    `c_fact_${ticker.toLowerCase()}_holdings_exposure_detail`,
+    `c_fact_${ticker.toLowerCase()}_construction_methodology`,
+    `c_fact_${ticker.toLowerCase()}_trading_data_limitation`,
+    `c_chk_${ticker.toLowerCase()}_risks_001`,
+    `c_recent_${ticker.toLowerCase()}_none`,
+    `src_${ticker.toLowerCase()}_fact_sheet_fixture`,
+    `src_${ticker.toLowerCase()}_holdings_fixture`,
+    `src_${ticker.toLowerCase()}_prospectus_fixture`,
+    `src_${ticker.toLowerCase()}_trading_limitation`,
+    `src_${ticker.toLowerCase()}_recent_review`,
+    "holdings_detail_gap",
+    "methodology_detail_gap",
+    "bid_ask_spread_gap",
+    "average_volume_gap",
+    "premium_discount_gap",
+    "no_major_recent_development"
+  ]) {
+    assert.match(fixture, new RegExp(marker), `${ticker} ETF fixture should include ${marker}`);
+  }
+  assert.match(fixture, /top-10 weights/, `${ticker} ETF fixture should show top-10 weight gap`);
+  assert.match(fixture, /sector exposure/, `${ticker} ETF fixture should show sector exposure gap`);
+  assert.match(fixture, /country exposure/, `${ticker} ETF fixture should show country exposure gap`);
+  assert.match(fixture, /largest-position data/, `${ticker} ETF fixture should show largest-position gap`);
+}
+assert.match(vooFixture, /S&P 500 Index/, "VOO ETF fixture should include its benchmark");
+assert.match(vooFixture, /Broad U\.S\. large-company ETF/, "VOO ETF fixture should include its broad ETF role");
+assert.match(vooFixture, /stale_fee_snapshot_gap/, "VOO ETF fixture should preserve stale fee snapshot state");
+assert.match(qqqFixture, /Nasdaq-100 Index/, "QQQ ETF fixture should include its benchmark");
+assert.match(qqqFixture, /Narrower growth-oriented ETF/, "QQQ ETF fixture should include its narrower growth-oriented ETF role");
+assert.match(qqqFixture, /insufficient_evidence/, "QQQ ETF fixture should preserve insufficient evidence state");
+assert.equal(vooFixture.includes("src_qqq_"), false, "VOO ETF fixture should not cross-bind QQQ sources");
+assert.equal(qqqFixture.includes("src_voo_"), false, "QQQ ETF fixture should not cross-bind VOO sources");
+assert.equal(aaplFixture.includes("src_voo_") || aaplFixture.includes("src_qqq_"), false, "AAPL fixture should not bind ETF sources");
 
 const riskBlocks = [...fixtures.matchAll(/topRisks: \[([\s\S]*?)\],\n    facts:/g)];
 assert.equal(riskBlocks.length, 3, "Each asset fixture should expose a topRisks block");
@@ -167,6 +228,7 @@ const frontendSource = [
   read("app/assets/[ticker]/page.tsx"),
   read("app/compare/page.tsx"),
   read("components/AssetChatPanel.tsx"),
+  read("components/AssetEtfSections.tsx"),
   read("components/AssetStockSections.tsx"),
   read("components/ComparisonSourceDetails.tsx"),
   read("components/SearchBox.tsx"),
@@ -211,6 +273,7 @@ assert.equal(
 );
 assert.equal(read("app/assets/[ticker]/page.tsx").includes("fetch("), false, "Asset page should stay fixture-backed");
 assert.equal(read("app/assets/[ticker]/page.tsx").includes("/api/assets/"), false, "Asset page should not call backend overview APIs");
+assert.equal(read("components/AssetEtfSections.tsx").includes("fetch("), false, "ETF sections should stay fixture-backed");
 assert.equal(read("components/AssetStockSections.tsx").includes("fetch("), false, "Stock sections should stay fixture-backed");
 
 const compareSource = [

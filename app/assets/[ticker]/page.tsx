@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { AssetHeader } from "../../../components/AssetHeader";
 import { AssetChatPanel } from "../../../components/AssetChatPanel";
+import { AssetEtfSections } from "../../../components/AssetEtfSections";
 import { AssetStockSections } from "../../../components/AssetStockSections";
 import { CitationChip } from "../../../components/CitationChip";
 import { FreshnessLabel } from "../../../components/FreshnessLabel";
@@ -35,10 +36,12 @@ export default async function AssetPage({ params }: AssetPageProps) {
   const primarySource = getPrimarySource(asset);
   const firstClaim = asset.claims[0];
   const hasStockPrdSections = asset.assetType === "stock" && Boolean(asset.stockSections?.length);
-  const stockSourceDocumentIds = new Set(
-    asset.stockSections?.flatMap((section) => section.sourceDocumentIds) ?? []
+  const hasEtfPrdSections = asset.assetType === "etf" && Boolean(asset.etfSections?.length);
+  const hasPrdSections = hasStockPrdSections || hasEtfPrdSections;
+  const sectionSourceDocumentIds = new Set(
+    [...(asset.stockSections ?? []), ...(asset.etfSections ?? [])].flatMap((section) => section.sourceDocumentIds)
   );
-  const stockSources = asset.sourceDocuments.filter((source) => stockSourceDocumentIds.has(source.sourceDocumentId));
+  const sectionSources = asset.sourceDocuments.filter((source) => sectionSourceDocumentIds.has(source.sourceDocumentId));
 
   return (
     <main>
@@ -66,6 +69,8 @@ export default async function AssetPage({ params }: AssetPageProps) {
 
           {hasStockPrdSections ? (
             <AssetStockSections asset={asset} />
+          ) : hasEtfPrdSections ? (
+            <AssetEtfSections asset={asset} />
           ) : (
             <>
               <section className="plain-panel" aria-labelledby="top-risks">
@@ -138,7 +143,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
         </div>
 
         <aside className="sidebar" aria-label="Source and learning tools">
-          {hasStockPrdSections ? null : (
+          {hasPrdSections ? null : (
             <section className="plain-panel">
               <h2>Educational framing</h2>
               <p>{asset.suitabilitySummary.mayFit}</p>
@@ -146,8 +151,8 @@ export default async function AssetPage({ params }: AssetPageProps) {
               <p>{asset.suitabilitySummary.learnNext}</p>
             </section>
           )}
-          {hasStockPrdSections
-            ? stockSources.map((source) => (
+          {hasPrdSections
+            ? sectionSources.map((source) => (
                 <SourceDrawer
                   key={source.sourceDocumentId}
                   source={source}
