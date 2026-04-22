@@ -2,21 +2,24 @@
 
 ## Current task
 
-### T-026: Add caching and freshness-hash contracts
+### T-027: Expand golden asset eval coverage for MVP launch universe
 
 Goal:
-Add deterministic backend cache-key, source-checksum, and freshness-hash contracts so future cached asset pages, comparisons, chat answers, exports, pre-cache jobs, and refresh jobs can decide whether cached outputs are reusable without making live external calls or weakening citation, freshness, licensing, or safety guarantees.
+Expand deterministic golden eval coverage so the MVP launch-universe control set catches regressions in search/support classification, on-demand ingestion eligibility, provider mock states, unavailable comparisons, citations/freshness expectations, and advice-boundary safety without making live external calls or generating unsupported asset content.
 
 Task scope:
-This is a backend contract task only. Define small typed models and pure deterministic helper functions for cache identity, source-document checksums, knowledge-pack freshness inputs, generated-output freshness hashes, cache entry metadata, and cache revalidation decisions. The helpers may read existing local fixture-backed knowledge packs and provider contract objects in tests, but they must not wire caching into search, ingestion jobs, retrieval, overview generation, comparisons, chat, exports, frontend UI, persistence, Redis, PostgreSQL, queues, provider calls, LLM calls, or generated asset behavior. The task should establish the invalidation contract for later implementation, not add a real cache store.
+This is an eval and deterministic metadata task only. Expand the existing golden asset eval fixture from a minimal ticker/type list into a structured MVP launch-universe contract based on the PRD Appendix B operational pre-cache list and the technical design golden set. The task may add local eligibility metadata and deterministic mocked states needed for those evals, but it must not add real source facts, generated asset pages, generated chat answers, generated comparisons, frontend UI, ingestion workers, provider network calls, LLM calls, persistence, analytics, or pre-cache orchestration. Assets outside the current cached fixtures must remain eligible-not-cached or unavailable, with explicit no-generated-output behavior.
 
 Allowed files:
 
-- backend/models.py
-- backend/cache.py
-- tests/unit/test_cache_contracts.py
+- backend/data.py
+- backend/providers.py
+- backend/ingestion.py
+- tests/unit/test_search_classification.py
+- tests/unit/test_provider_adapters.py
+- tests/unit/test_ingestion_jobs.py
 - tests/integration/test_backend_api.py
-- evals/cache_eval_cases.yaml
+- evals/golden_assets.yaml
 - evals/run_static_evals.py
 - docs/agent-journal/
 
@@ -27,46 +30,45 @@ Do not change:
 - lib/
 - styles/
 - data/retrieval_fixtures.json
+- backend/cache.py
 - backend/chat.py
 - backend/comparison.py
 - backend/export.py
-- backend/ingestion.py
 - backend/main.py
+- backend/models.py
 - backend/overview.py
-- backend/providers.py
 - backend/retrieval.py
 - backend/search.py
 - package files
-- provider network clients, credentials, environment variables, Redis, PostgreSQL, persistence, ingestion workers, queues, frontend UI, analytics, authentication, deployment config, or live cache infrastructure
-- source fixture content, retrieval fixtures, provider mock response content, overview generation behavior, search classification behavior, ingestion job behavior, comparison generation behavior, chat generation behavior, glossary data, export behavior, or generated routes
+- provider network clients, credentials, environment variables, Redis, PostgreSQL, persistence, ingestion workers, queues, frontend UI, analytics, authentication, deployment config, pre-cache orchestration, or live cache infrastructure
+- source fixture content, retrieval fixtures, overview generation behavior, generated overview sections, comparison generation behavior, chat generation behavior, glossary data, export behavior, cached-output behavior, or generated routes
+- supported generated behavior for assets that are not already cached local fixtures
 - generated behavior for unsupported, unknown, ambiguous, unsupported comparison, unavailable comparison, eligible-not-cached, stale, unavailable, or permission-limited assets
 
 Acceptance criteria:
 
-- `backend/models.py` defines typed cache contract models/enums for cache entry kind, cache scope, cache entry state, invalidation reason, cache key metadata, source checksum records, freshness-hash inputs, cache entry metadata, and cache revalidation results.
-- `backend/cache.py` defines pure deterministic helpers to build cache keys, compute source-document checksums, compute knowledge-pack freshness hashes, compute generated-output freshness hashes, and evaluate whether a cached entry is reusable or must be refreshed/regenerated.
-- Cache keys include the asset ticker or comparison pair/pack identity, entry kind, mode or output type, schema version, source freshness state, and prompt/model metadata where generation is involved.
-- Comparison cache keys preserve left/right comparison direction when output text or beginner bottom line could differ by direction.
-- Source-document checksums are deterministic and based on stable source identity and evidence inputs such as source document ID, asset ticker, source type/rank, publisher, URL, published/as-of/retrieved dates, freshness state, content type, and associated local chunk text or fact/event bindings where available.
-- Source checksums and freshness hashes never store or expose full paid-news articles, restricted provider payloads, credentials, API keys, raw provider responses, or unrelated source text.
-- Knowledge-pack freshness inputs include same-asset source checksums, normalized fact identifiers/values/as-of dates/freshness states, recent event identifiers/event dates/freshness states, evidence-gap states, and page/section freshness labels.
-- Generated-output freshness hashes include the asset or comparison identity, entry kind, schema version, prompt version where applicable, model name where applicable, source-document checksums, canonical fact inputs, recent-event inputs, and freshness labels.
-- Changing a source checksum, canonical fact input, recent-development input, prompt version, model name, schema version, or freshness state changes the relevant generated-output freshness hash.
-- Reordering unordered equivalent source/fact/event inputs does not change the relevant checksum or freshness hash.
-- Cache revalidation can represent at least `hit`, `miss`, `stale`, `hash_mismatch`, `expired`, `permission_limited`, `unsupported`, `unknown`, and `unavailable` states without inventing facts.
-- Unsupported, unknown, eligible-not-cached, unavailable, permission-limited, and stale inputs are represented explicitly and do not become reusable generated-output cache hits.
-- Provider licensing metadata is respected at the contract level: `cache_allowed=False` or equivalent permission limits produce permission-limited cache decisions and do not imply export or redistribution rights.
-- Cached metadata preserves citation IDs, source document IDs, source freshness states, section-level freshness labels, and unknown/stale/unavailable states needed by existing UI/export/API contracts.
-- The cache contract module does not import or use Redis, PostgreSQL clients, file-system persistence for cache entries, browser APIs, network clients such as `requests`, `httpx`, `urllib`, `socket`, provider SDKs, API keys, environment variables, or LLM clients.
-- Unit tests cover deterministic cache-key generation, source checksum determinism, freshness-hash determinism, hash changes when evidence inputs change, order-insensitive hashing where appropriate, direction-preserving comparison keys, stale/unknown/unavailable handling, unsupported and eligible-not-cached blocking, provider licensing cache limits, and absence of live external calls.
-- Static evals cover cache schema shape, required invalidation states, source checksum inputs, freshness-hash inputs, licensing constraints, unsupported/unknown/unavailable handling, and no-live-call/no-store imports.
-- Existing search, ingestion, provider adapter, overview, comparison, chat, export, frontend smoke, and safety behavior remain unchanged.
+- `evals/golden_assets.yaml` is expanded into a structured golden contract with cached supported assets, eligible-not-cached MVP launch assets, unsupported samples, unknown samples, and common comparison pairs.
+- The golden contract includes the technical design golden assets: `AAPL`, `MSFT`, `NVDA`, `TSLA`, `VOO`, `SPY`, `VTI`, `QQQ`, `VGT`, and `SOXX`.
+- The golden contract includes the PRD Appendix B operational launch-universe tickers: `VOO`, `SPY`, `VTI`, `IVV`, `QQQ`, `IWM`, `DIA`, `VGT`, `XLK`, `SOXX`, `SMH`, `XLF`, `XLV`, `AAPL`, `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `META`, `TSLA`, `BRK.B`, `JPM`, and `UNH`.
+- The golden contract includes the PRD Appendix B common comparison pairs: `VOO/SPY`, `VTI/VOO`, `QQQ/VOO`, `QQQ/VGT`, `VGT/SOXX`, `AAPL/MSFT`, and `NVDA/SOXX`.
+- Golden eval cases explicitly mark the existing local generated fixtures `AAPL`, `VOO`, and `QQQ` as cached supported assets and preserve their generated-route, chat, comparison, citation, source metadata, freshness, and exactly-three-top-risks expectations.
+- Golden eval cases explicitly mark launch-universe assets without local knowledge packs as eligible-not-cached, not as unknown, and verify they cannot open generated pages, receive generated chat answers, receive generated comparisons, or expose citations/source documents from nonexistent local packs.
+- Any new local metadata for eligible-not-cached launch assets is limited to deterministic asset-resolution fields needed for search and evals, such as ticker, name, asset type, exchange, issuer, aliases, and operational launch-universe grouping. It must not add unsupported canonical facts, holdings, financial metrics, recent developments, citations, source documents, or generated page content.
+- Search coverage verifies cached supported, eligible-not-cached, recognized-unsupported, ambiguous, and unknown states from the golden fixture, including ingestion request routes only where an asset is eligible-not-cached.
+- Ingestion coverage verifies eligible-not-cached launch assets return deterministic on-demand job responses or existing deterministic fixture states with no generated route, no generated page/chat/comparison capability, no invented facts, and stable job IDs/status URLs.
+- Provider adapter coverage verifies market/reference asset-resolution responses for golden launch assets are deterministic, same-asset-bound, permission-aware, and marked supported or eligible-not-cached as appropriate, while provider-generated output flags remain false.
+- Provider adapter coverage preserves official-source hierarchy for existing cached fixtures and does not invent SEC, ETF issuer, holdings, financial, or recent-development facts for newly added eligible-not-cached assets.
+- Comparison golden coverage verifies supported local comparison pairs still work where a local comparison pack exists, and all pairs involving eligible-not-cached or missing local comparison packs return unavailable/unsupported states without factual differences, beginner bottom lines, citations, source documents, or invented facts.
+- Golden static evals check citation presence for key claims on cached supported assets, same-asset or same-comparison-pack citation binding, visible freshness metadata, exactly three top risks first, stable/recent separation, and no forbidden advice-like output for generated local fixtures.
+- Golden static evals check eligible-not-cached, unsupported, unknown, and unavailable states preserve explicit uncertainty and do not create factual citations, source documents, generated routes, chat answers, comparisons, or exportable generated content.
+- Static evals continue to reject live-call imports or credential use in touched modules, including `requests`, `httpx`, `urllib`, `socket`, provider SDK imports, API keys, environment-variable credential reads, Redis, PostgreSQL, and LLM clients.
+- Existing overview, comparison, chat, export, cache, retrieval, citation, safety, frontend smoke, and API behavior for `AAPL`, `VOO`, `QQQ`, unsupported assets, unknown assets, and unavailable comparisons remains unchanged except for the newly expanded deterministic golden coverage.
 - Normal CI remains deterministic and does not require provider credentials, market-data calls, SEC calls, ETF issuer calls, news calls, LLM calls, Redis, PostgreSQL, queues, backend server availability, browser automation, or network access.
 
 Required commands:
 
 - git status --short
-- python3 -m pytest tests/unit/test_cache_contracts.py -q
+- python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_ingestion_jobs.py tests/unit/test_provider_adapters.py -q
 - python3 -m pytest tests/integration/test_backend_api.py -q
 - python3 -m pytest tests -q
 - python3 evals/run_static_evals.py
@@ -76,6 +78,39 @@ Iteration budget:
 Max 2 attempts
 
 ## Completed
+
+### T-026: Add caching and freshness-hash contracts
+
+Goal:
+Add deterministic backend cache-key, source-checksum, and freshness-hash contracts so future cached asset pages, comparisons, chat answers, exports, pre-cache jobs, and refresh jobs can decide whether cached outputs are reusable without making live external calls or weakening citation, freshness, licensing, or safety guarantees.
+
+Completed:
+
+- Added cache contract enums and models in `backend/models.py`, including `CacheEntryKind`, `CacheScope`, `CacheEntryState`, `CacheInvalidationReason`, `CacheKeyMetadata`, `SourceChecksumInput`, `SourceChecksumRecord`, `FreshnessFactInput`, `FreshnessRecentEventInput`, `FreshnessEvidenceGapInput`, `SectionFreshnessInput`, `KnowledgePackFreshnessInput`, `GeneratedOutputFreshnessInput`, `CacheEntryMetadata`, and `CacheRevalidationResult`.
+- Added `backend/cache.py` with pure deterministic helpers for cache-key construction, source-document checksum computation, knowledge-pack freshness hashes, generated-output freshness hashes, cache revalidation decisions, local text fingerprinting, retrieval/provider source checksum adapters, knowledge/comparison pack freshness inputs, generated-output freshness inputs, and generated-output cache metadata.
+- Cache keys include schema version, cache scope, entry kind, asset or comparison identity, mode/output type, source freshness state, prompt version, model name, and input freshness hash where provided.
+- Comparison cache keys preserve left/right direction with identities such as `comparison-voo-to-qqq` and `comparison-qqq-to-voo`.
+- Source checksums normalize unordered fact bindings, recent-event bindings, citation IDs, and local chunk text fingerprints so equivalent reordering does not change checksums.
+- Source checksum records preserve source document ID, asset ticker, checksum, freshness state, cache permission, source type/rank, citation IDs, fact bindings, and recent-event bindings without storing raw local chunk text.
+- Knowledge-pack and generated-output freshness hashes sort source checksum, fact, recent-event, evidence-gap, and section-freshness inputs so unordered equivalent inputs hash consistently.
+- Generated-output freshness hashes change when prompt version, model name, schema version, source freshness state, source checksum, canonical fact input, or recent-development input changes.
+- Cache revalidation can return `hit`, `miss`, `stale`, `hash_mismatch`, `expired`, `permission_limited`, `unsupported`, `unknown`, `unavailable`, and `eligible_not_cached` states without inventing facts.
+- Unsupported, unknown, eligible-not-cached, unavailable, stale, and permission-limited inputs are explicitly blocked from reusable generated-output cache hits.
+- Provider/source licensing metadata is respected at the contract level: `cache_allowed=False` produces a permission-limited non-reusable cache decision.
+- Cache entry metadata preserves source document IDs, citation IDs, source freshness states, section freshness labels, unknown/stale/unavailable evidence-gap states, prompt/model metadata, cache permission, and export permission.
+- Added focused cache contract tests in `tests/unit/test_cache_contracts.py` covering deterministic cache keys, direction-preserving comparison keys, source checksum determinism, raw text exclusion, provider cache permissions, order-insensitive knowledge hashes, generated-output hash invalidation, revalidation states, no-live-call/no-store imports, and preserved metadata.
+- Added `evals/cache_eval_cases.yaml` and extended `evals/run_static_evals.py` for required cache models, required helpers, revalidation states, invalidation reasons, checksum inputs, freshness-hash inputs, cache-key cases, permission-limited blocking, unsupported blocking, hash-mismatch blocking, and forbidden imports.
+- Added `docs/agent-journal/20260422T174755Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- T-026 agent journal records that `git status --short`, cache contract pytest, backend API pytest, full pytest, static evals, and the full quality gate passed.
+- T-026 agent journal records cache contract pytest as 12 passed, backend API pytest as 20 passed, full pytest as 103 passed, static evals as passed, and the quality gate as passed including Python tests, static evals, frontend smoke checks, TypeScript typecheck, production build, and backend checks.
+- Remaining documented risk: the cache work is contract-only; no Redis, PostgreSQL, persistence layer, queue, provider fetch path, LLM path, API route, frontend UI, or generated-output behavior was wired to these helpers.
+- Remaining documented risk: freshness hashes are deterministic over local fixture/provider-contract inputs, but future ingestion/provider implementations must map real source metadata, normalized facts, recent events, evidence gaps, and licensing permissions into these models consistently.
+- Remaining documented risk: provider licensing is enforced only at the cache-contract decision level; real paid or restricted provider terms still need review before storing, exporting, or redistributing any provider content.
+
+Completion commits:
+
+- `a44dada feat(T-026): add caching and freshness-hash contracts`
+- `9b1896a chore(T-026): merge caching and freshness-hash contracts`
 
 ### T-025: Add provider adapter interfaces with mocked tests
 
@@ -742,7 +777,6 @@ Completion commits:
 
 ## Backlog
 
-### T-027: Expand golden asset eval coverage for MVP launch universe
 ### T-028: Add pre-cache launch-universe job contracts
 ### T-029: Add deterministic asset knowledge-pack builder
 ### T-030: Add frontend export controls for saved learning outputs
