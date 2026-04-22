@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Any
 
-from backend.models import AssetStatus, MetricValue, OverviewResponse
+from backend.models import AssetStatus, EvidenceState, MetricValue, OverviewResponse
 from backend.overview import generate_asset_overview, validate_overview_response
 from backend.retrieval import build_asset_knowledge_pack
 from backend.safety import find_forbidden_output_phrases
@@ -29,6 +29,7 @@ def test_supported_asset_overviews_are_schema_valid_and_source_backed():
         assert len(validated.top_risks) == 3
         assert validated.recent_developments
         assert validated.suitability_summary is not None
+        assert validated.sections
         assert validated.claims
         assert validated.citations
         assert validated.source_documents
@@ -46,15 +47,88 @@ def test_generated_overview_citations_validate_against_same_asset_pack():
         assert report.valid, [issue.message for issue in report.issues]
 
 
+def test_stock_overview_exposes_prd_sections_with_explicit_gaps():
+    overview = generate_asset_overview("AAPL")
+    sections = {section.section_id: section for section in overview.sections}
+
+    assert {
+        "business_overview",
+        "products_services",
+        "strengths",
+        "financial_quality",
+        "valuation_context",
+        "top_risks",
+        "recent_developments",
+        "educational_suitability",
+    } <= set(sections)
+    assert sections["business_overview"].evidence_state is EvidenceState.supported
+    assert sections["products_services"].evidence_state is EvidenceState.mixed
+    assert sections["strengths"].evidence_state is EvidenceState.unknown
+    assert sections["financial_quality"].evidence_state is EvidenceState.unavailable
+    assert sections["valuation_context"].evidence_state is EvidenceState.unavailable
+    assert sections["valuation_context"].citation_ids == []
+    assert sections["valuation_context"].source_document_ids == []
+    assert sections["top_risks"].items[:3]
+    assert len(sections["top_risks"].items) == 3
+
+
+def test_etf_overviews_expose_prd_sections_and_gap_states():
+    required_sections = {
+        "fund_objective_role",
+        "holdings_exposure",
+        "construction_methodology",
+        "cost_trading_context",
+        "etf_specific_risks",
+        "similar_assets_alternatives",
+        "recent_developments",
+        "educational_suitability",
+    }
+
+    for ticker in ["VOO", "QQQ"]:
+        overview = generate_asset_overview(ticker)
+        sections = {section.section_id: section for section in overview.sections}
+
+        assert required_sections <= set(sections)
+        assert sections["fund_objective_role"].evidence_state is EvidenceState.supported
+        assert sections["holdings_exposure"].evidence_state is EvidenceState.mixed
+        assert sections["construction_methodology"].evidence_state is EvidenceState.mixed
+        assert sections["cost_trading_context"].evidence_state is EvidenceState.mixed
+        assert len(sections["etf_specific_risks"].items) == 3
+        assert sections["recent_developments"].evidence_state is EvidenceState.no_major_recent_development
+        assert sections["recent_developments"].items[0].retrieved_at
+        assert sections["recent_developments"].items[0].as_of_date
+
+    voo_sections = {section.section_id: section for section in generate_asset_overview("VOO").sections}
+    voo_cost_items = {item.item_id: item for item in voo_sections["cost_trading_context"].items}
+    qqq_sections = {section.section_id: section for section in generate_asset_overview("QQQ").sections}
+    assert voo_cost_items["stale_fee_snapshot_gap"].evidence_state is EvidenceState.stale
+    assert qqq_sections["similar_assets_alternatives"].evidence_state is EvidenceState.insufficient_evidence
+
+
+def test_new_section_citations_bind_to_same_asset_source_documents():
+    for ticker in ["AAPL", "VOO", "QQQ"]:
+        overview = generate_asset_overview(ticker)
+        citation_ids = {citation.citation_id for citation in overview.citations}
+        source_ids = {source.source_document_id for source in overview.source_documents}
+        pack_source_ids = {source.source_document_id for source in build_asset_knowledge_pack(ticker).source_documents}
+
+        assert _section_citation_ids(overview) <= citation_ids
+        assert _section_source_document_ids(overview) <= source_ids
+        assert _section_source_document_ids(overview) <= pack_source_ids
+
+
 def test_generated_overviews_keep_recent_context_separate_and_explicit():
     for ticker in ["AAPL", "VOO", "QQQ"]:
         overview = generate_asset_overview(ticker)
         recent = overview.recent_developments[0]
+        recent_section = next(section for section in overview.sections if section.section_id == "recent_developments")
 
         assert "No high-signal recent development" in recent.title
         assert "recent" not in overview.beginner_summary.what_it_is.lower()
         assert recent.citation_ids
         assert recent.citation_ids[0].startswith("c_recent_")
+        assert recent_section.citation_ids == recent.citation_ids
+        assert recent_section.items[0].event_date == recent.event_date
 
 
 def test_unknown_and_unsupported_overviews_do_not_generate_facts_or_citations():
@@ -71,6 +145,7 @@ def test_unknown_and_unsupported_overviews_do_not_generate_facts_or_citations():
         assert overview.claims == []
         assert overview.citations == []
         assert overview.source_documents == []
+        assert overview.sections == []
 
 
 def test_generated_overview_copy_avoids_forbidden_advice_phrases():
@@ -94,7 +169,32 @@ def _all_citation_ids(overview: OverviewResponse) -> set[str]:
         citation_id for development in overview.recent_developments for citation_id in development.citation_ids
     )
     citation_ids.update(_snapshot_citation_ids(overview.snapshot))
+    citation_ids.update(_section_citation_ids(overview))
     return citation_ids
+
+
+def _section_citation_ids(overview: OverviewResponse) -> set[str]:
+    citation_ids: set[str] = set()
+    citation_ids.update(citation_id for section in overview.sections for citation_id in section.citation_ids)
+    citation_ids.update(
+        citation_id for section in overview.sections for item in section.items for citation_id in item.citation_ids
+    )
+    citation_ids.update(
+        citation_id for section in overview.sections for metric in section.metrics for citation_id in metric.citation_ids
+    )
+    return citation_ids
+
+
+def _section_source_document_ids(overview: OverviewResponse) -> set[str]:
+    source_ids: set[str] = set()
+    source_ids.update(source_id for section in overview.sections for source_id in section.source_document_ids)
+    source_ids.update(
+        source_id for section in overview.sections for item in section.items for source_id in item.source_document_ids
+    )
+    source_ids.update(
+        source_id for section in overview.sections for metric in section.metrics for source_id in metric.source_document_ids
+    )
+    return source_ids
 
 
 def _snapshot_citation_ids(snapshot: dict[str, Any]) -> set[str]:

@@ -17,9 +17,14 @@ from backend.models import (
     BeginnerSummary,
     Citation,
     Claim,
+    EvidenceState,
     FreshnessState,
     MetricValue,
+    OverviewMetric,
     OverviewResponse,
+    OverviewSection,
+    OverviewSectionItem,
+    OverviewSectionType,
     RecentDevelopment,
     RiskItem,
     SourceDocument,
@@ -66,7 +71,6 @@ def generate_overview_from_pack(pack: AssetKnowledgePack) -> OverviewResponse:
         return _unsupported_overview(pack)
 
     facts_by_field = {item.fact.field_name: item for item in pack.normalized_facts if item.fact.evidence_state == "supported"}
-    source_chunks_by_id = {item.chunk.chunk_id: item for item in pack.source_chunks}
     bindings = _CitationRegistry(pack)
 
     identity_fact = _require_fact(facts_by_field, "canonical_asset_identity")
@@ -79,6 +83,15 @@ def generate_overview_from_pack(pack: AssetKnowledgePack) -> OverviewResponse:
     top_risks = _build_top_risks(pack, risk_citation_id)
     recent_developments = _build_recent_developments(pack, bindings)
     suitability_summary = _build_suitability_summary(pack, facts_by_field)
+    sections = _build_overview_sections(
+        pack=pack,
+        facts_by_field=facts_by_field,
+        bindings=bindings,
+        top_risks=top_risks,
+        recent_developments=recent_developments,
+        suitability_summary=suitability_summary,
+        risk_chunk=risk_chunk,
+    )
 
     planned_claims = _build_planned_claims(
         pack=pack,
@@ -111,6 +124,7 @@ def generate_overview_from_pack(pack: AssetKnowledgePack) -> OverviewResponse:
         claims=[planned.claim for planned in planned_claims],
         citations=bindings.citations(),
         source_documents=bindings.source_documents(),
+        sections=sections,
     )
     _assert_safe_copy(response)
     return response
@@ -127,6 +141,7 @@ def validate_overview_response(overview: OverviewResponse, pack: AssetKnowledgeP
         )
         for claim in overview.claims
     ]
+    claims.extend(_section_validation_claims(overview))
     return validate_claims(claims, evidence, CitationValidationContext(allowed_asset_tickers=[pack.asset.ticker]))
 
 
@@ -256,6 +271,7 @@ def _unsupported_overview(pack: AssetKnowledgePack) -> OverviewResponse:
         claims=[],
         citations=[],
         source_documents=[],
+        sections=[],
     )
 
 
@@ -391,6 +407,566 @@ def _build_suitability_summary(pack: AssetKnowledgePack, facts_by_field: dict[st
     )
 
 
+def _build_overview_sections(
+    *,
+    pack: AssetKnowledgePack,
+    facts_by_field: dict[str, RetrievedFact],
+    bindings: _CitationRegistry,
+    top_risks: list[RiskItem],
+    recent_developments: list[RecentDevelopment],
+    suitability_summary: SuitabilitySummary,
+    risk_chunk: RetrievedSourceChunk,
+) -> list[OverviewSection]:
+    if pack.asset.asset_type is AssetType.stock:
+        return _build_stock_sections(
+            pack=pack,
+            facts_by_field=facts_by_field,
+            bindings=bindings,
+            top_risks=top_risks,
+            recent_developments=recent_developments,
+            suitability_summary=suitability_summary,
+            risk_chunk=risk_chunk,
+        )
+    if pack.asset.asset_type is AssetType.etf:
+        return _build_etf_sections(
+            pack=pack,
+            facts_by_field=facts_by_field,
+            bindings=bindings,
+            top_risks=top_risks,
+            recent_developments=recent_developments,
+            suitability_summary=suitability_summary,
+            risk_chunk=risk_chunk,
+        )
+    return []
+
+
+def _build_stock_sections(
+    *,
+    pack: AssetKnowledgePack,
+    facts_by_field: dict[str, RetrievedFact],
+    bindings: _CitationRegistry,
+    top_risks: list[RiskItem],
+    recent_developments: list[RecentDevelopment],
+    suitability_summary: SuitabilitySummary,
+    risk_chunk: RetrievedSourceChunk,
+) -> list[OverviewSection]:
+    primary_business = _require_fact(facts_by_field, "primary_business")
+    primary_business_binding = bindings.for_fact(primary_business)
+    products_chunk = _select_chunk_by_id(pack, "chk_aapl_products_001")
+    products_binding = bindings.for_chunk(products_chunk)
+    valuation_gap = _gap_for_field(pack, "valuation_context")
+    risk_binding = bindings.for_chunk(risk_chunk)
+
+    return [
+        _section(
+            section_id="business_overview",
+            title="Business Overview",
+            section_type=OverviewSectionType.stable_facts,
+            applies_to=[AssetType.stock],
+            beginner_summary=f"{pack.asset.name} is described in the local fixture as a company that sells devices, software, accessories, and services.",
+            items=[
+                _supported_item(
+                    item_id="primary_business",
+                    title="Primary business",
+                    summary=str(primary_business.fact.value),
+                    binding=primary_business_binding,
+                    as_of_date=primary_business.fact.as_of_date,
+                )
+            ],
+        ),
+        _section(
+            section_id="products_services",
+            title="Products Or Services",
+            section_type=OverviewSectionType.stable_facts,
+            applies_to=[AssetType.stock],
+            beginner_summary="The current fixture supports a high-level split between product and services activity, but not a full segment table.",
+            items=[
+                _supported_item(
+                    item_id="products_and_services",
+                    title="Products and services",
+                    summary=products_chunk.chunk.text,
+                    binding=products_binding,
+                ),
+                _gap_item(
+                    item_id="business_segments",
+                    title="Business segments",
+                    summary="The local fixture does not include source-backed segment, revenue-driver, geographic-exposure, or competitor detail.",
+                    evidence_state=EvidenceState.unknown,
+                    freshness_state=FreshnessState.unknown,
+                ),
+            ],
+            evidence_state=EvidenceState.mixed,
+        ),
+        _gap_section(
+            section_id="strengths",
+            title="Strengths",
+            applies_to=[AssetType.stock],
+            summary="The current local fixture does not include source-backed evidence for competitive advantages, industry tailwinds, or other strengths.",
+            evidence_state=EvidenceState.unknown,
+            freshness_state=FreshnessState.unknown,
+        ),
+        _gap_section(
+            section_id="financial_quality",
+            title="Financial Quality",
+            applies_to=[AssetType.stock],
+            summary=(
+                "The current local fixture does not include source-backed multi-year revenue, earnings, margin, cash-flow, debt, "
+                "cash, ROE, or ROIC metrics."
+            ),
+            evidence_state=EvidenceState.unavailable,
+            freshness_state=FreshnessState.unavailable,
+        ),
+        _gap_section(
+            section_id="valuation_context",
+            title="Valuation Context",
+            applies_to=[AssetType.stock],
+            summary=valuation_gap.message if valuation_gap else "No local fixture evidence is available for valuation context.",
+            evidence_state=_gap_evidence_state(valuation_gap.evidence_state if valuation_gap else "missing"),
+            freshness_state=valuation_gap.freshness_state if valuation_gap else FreshnessState.unavailable,
+        ),
+        _risk_section(
+            applies_to=[AssetType.stock],
+            top_risks=top_risks,
+            risk_binding=risk_binding,
+        ),
+        _recent_section(pack, recent_developments, bindings),
+        _section(
+            section_id="educational_suitability",
+            title="Educational Suitability",
+            section_type=OverviewSectionType.educational_suitability,
+            applies_to=[AssetType.stock],
+            beginner_summary=suitability_summary.may_fit,
+            items=[
+                _supported_item(
+                    item_id="company_specific_risk_context",
+                    title="Company-specific risk context",
+                    summary=f"{suitability_summary.may_not_fit} {suitability_summary.learn_next}",
+                    binding=risk_binding,
+                )
+            ],
+        ),
+    ]
+
+
+def _build_etf_sections(
+    *,
+    pack: AssetKnowledgePack,
+    facts_by_field: dict[str, RetrievedFact],
+    bindings: _CitationRegistry,
+    top_risks: list[RiskItem],
+    recent_developments: list[RecentDevelopment],
+    suitability_summary: SuitabilitySummary,
+    risk_chunk: RetrievedSourceChunk,
+) -> list[OverviewSection]:
+    benchmark = _require_fact(facts_by_field, "benchmark")
+    expense_ratio = _require_fact(facts_by_field, "expense_ratio")
+    holdings_count = _require_fact(facts_by_field, "holdings_count")
+    beginner_role = _require_fact(facts_by_field, "beginner_role")
+    benchmark_binding = bindings.for_fact(benchmark)
+    expense_binding = bindings.for_fact(expense_ratio)
+    holdings_binding = bindings.for_fact(holdings_count)
+    role_binding = bindings.for_fact(beginner_role)
+    risk_binding = bindings.for_chunk(risk_chunk)
+
+    cost_gap_items = _cost_gap_items(pack)
+    similar_assets_item = _similar_assets_gap_item(pack)
+
+    return [
+        _section(
+            section_id="fund_objective_role",
+            title="Fund Objective Or Role",
+            section_type=OverviewSectionType.stable_facts,
+            applies_to=[AssetType.etf],
+            beginner_summary=f"{pack.asset.ticker} seeks to track {benchmark.fact.value} and is represented as {str(beginner_role.fact.value).lower()} in the local fixture.",
+            items=[
+                _supported_item(
+                    item_id="benchmark",
+                    title="Benchmark",
+                    summary=f"The fund seeks to track {benchmark.fact.value}.",
+                    binding=benchmark_binding,
+                    as_of_date=benchmark.fact.as_of_date,
+                ),
+                _supported_item(
+                    item_id="beginner_role",
+                    title="Beginner role",
+                    summary=str(beginner_role.fact.value),
+                    binding=role_binding,
+                    as_of_date=beginner_role.fact.as_of_date,
+                ),
+            ],
+            metrics=[
+                _metric_for_fact("benchmark", "Benchmark", benchmark, benchmark_binding),
+            ],
+        ),
+        _section(
+            section_id="holdings_exposure",
+            title="Holdings Or Exposure",
+            section_type=OverviewSectionType.stable_facts,
+            applies_to=[AssetType.etf],
+            beginner_summary=f"The local fixture records about {holdings_count.fact.value} holdings, but it does not include top holdings, sector exposure, or country exposure.",
+            items=[
+                _supported_item(
+                    item_id="holdings_count",
+                    title="Holdings count",
+                    summary=f"The local fixture records about {holdings_count.fact.value} holdings.",
+                    binding=holdings_binding,
+                    as_of_date=holdings_count.fact.as_of_date,
+                ),
+                _gap_item(
+                    item_id="holdings_detail_gap",
+                    title="Top holdings and exposures",
+                    summary="The current local fixture does not include top holdings, concentration, sector, country, or largest-position data.",
+                    evidence_state=EvidenceState.unavailable,
+                    freshness_state=FreshnessState.unavailable,
+                ),
+            ],
+            metrics=[_metric_for_fact("holdings_count", "Holdings count", holdings_count, holdings_binding)],
+            evidence_state=EvidenceState.mixed,
+        ),
+        _section(
+            section_id="construction_methodology",
+            title="Construction Or Methodology",
+            section_type=OverviewSectionType.stable_facts,
+            applies_to=[AssetType.etf],
+            beginner_summary="The local fixture supports index-tracking context, but not rebalancing, screening, or weighting-method detail.",
+            items=[
+                _supported_item(
+                    item_id="index_tracking",
+                    title="Index tracking",
+                    summary=f"{pack.asset.ticker} seeks to track {benchmark.fact.value}.",
+                    binding=benchmark_binding,
+                    as_of_date=benchmark.fact.as_of_date,
+                ),
+                _gap_item(
+                    item_id="methodology_detail_gap",
+                    title="Methodology details",
+                    summary="The current local fixture does not include weighting method, rebalancing frequency, screening rules, or detailed methodology evidence.",
+                    evidence_state=EvidenceState.unavailable,
+                    freshness_state=FreshnessState.unavailable,
+                ),
+            ],
+            evidence_state=EvidenceState.mixed,
+        ),
+        _section(
+            section_id="cost_trading_context",
+            title="Cost And Trading Context",
+            section_type=OverviewSectionType.stable_facts,
+            applies_to=[AssetType.etf],
+            beginner_summary="Expense ratio is supported by the local fixture; trading metrics remain evidence gaps.",
+            items=[
+                _supported_item(
+                    item_id="expense_ratio",
+                    title="Expense ratio",
+                    summary=f"The local fixture records a {_format_metric(expense_ratio.fact.value, expense_ratio.fact.unit)} expense ratio.",
+                    binding=expense_binding,
+                    as_of_date=expense_ratio.fact.as_of_date,
+                ),
+                *cost_gap_items,
+            ],
+            metrics=[_metric_for_fact("expense_ratio", "Expense ratio", expense_ratio, expense_binding)],
+            evidence_state=EvidenceState.mixed if cost_gap_items else EvidenceState.supported,
+        ),
+        _risk_section(
+            applies_to=[AssetType.etf],
+            top_risks=top_risks,
+            risk_binding=risk_binding,
+        ),
+        _section(
+            section_id="similar_assets_alternatives",
+            title="Similar Assets Or Simpler Alternatives",
+            section_type=OverviewSectionType.evidence_gap,
+            applies_to=[AssetType.etf],
+            beginner_summary=similar_assets_item.summary,
+            items=[similar_assets_item],
+            evidence_state=similar_assets_item.evidence_state,
+            freshness_state=similar_assets_item.freshness_state,
+            limitations=similar_assets_item.limitations,
+        ),
+        _recent_section(pack, recent_developments, bindings),
+        _section(
+            section_id="educational_suitability",
+            title="Educational Suitability",
+            section_type=OverviewSectionType.educational_suitability,
+            applies_to=[AssetType.etf],
+            beginner_summary=suitability_summary.may_fit,
+            items=[
+                _supported_item(
+                    item_id="risk_and_role_context",
+                    title="Risk and role context",
+                    summary=f"{suitability_summary.may_not_fit} {suitability_summary.learn_next}",
+                    binding=risk_binding,
+                )
+            ],
+        ),
+    ]
+
+
+def _risk_section(
+    *,
+    applies_to: list[AssetType],
+    top_risks: list[RiskItem],
+    risk_binding: CitationBinding,
+) -> OverviewSection:
+    return _section(
+        section_id="top_risks" if AssetType.stock in applies_to else "etf_specific_risks",
+        title="Top Risks" if AssetType.stock in applies_to else "ETF-Specific Risks",
+        section_type=OverviewSectionType.risk,
+        applies_to=applies_to,
+        beginner_summary="Exactly three top risks are shown first for beginner readability.",
+        items=[
+            _supported_item(
+                item_id=f"risk_{index}",
+                title=risk.title,
+                summary=risk.plain_english_explanation,
+                binding=risk_binding,
+            )
+            for index, risk in enumerate(top_risks, start=1)
+        ],
+    )
+
+
+def _recent_section(
+    pack: AssetKnowledgePack,
+    recent_developments: list[RecentDevelopment],
+    bindings: _CitationRegistry,
+) -> OverviewSection:
+    items: list[OverviewSectionItem] = []
+    for index, development in enumerate(recent_developments, start=1):
+        recent = pack.recent_developments[index - 1]
+        binding = bindings.for_recent_development(recent)
+        items.append(
+            _supported_item(
+                item_id=f"recent_{index}",
+                title=development.title,
+                summary=development.summary,
+                binding=binding,
+                evidence_state=EvidenceState.no_major_recent_development
+                if recent.recent_development.evidence_state == "no_major_recent_development"
+                else EvidenceState.supported,
+                freshness_state=development.freshness_state,
+                event_date=development.event_date,
+                as_of_date=recent.source_document.as_of_date or recent.source_document.published_at,
+            )
+        )
+
+    section_state = EvidenceState.no_major_recent_development if items and all(
+        item.evidence_state is EvidenceState.no_major_recent_development for item in items
+    ) else EvidenceState.supported
+    return _section(
+        section_id="recent_developments",
+        title="Recent Developments",
+        section_type=OverviewSectionType.recent_developments,
+        applies_to=[pack.asset.asset_type],
+        beginner_summary="Recent context is kept separate from stable asset basics.",
+        items=items,
+        evidence_state=section_state,
+    )
+
+
+def _section(
+    *,
+    section_id: str,
+    title: str,
+    section_type: OverviewSectionType,
+    applies_to: list[AssetType],
+    beginner_summary: str | None = None,
+    items: list[OverviewSectionItem] | None = None,
+    metrics: list[OverviewMetric] | None = None,
+    evidence_state: EvidenceState | None = None,
+    freshness_state: FreshnessState | None = None,
+    limitations: str | None = None,
+) -> OverviewSection:
+    items = items or []
+    metrics = metrics or []
+    citation_ids = _dedupe(
+        [
+            *[citation_id for item in items for citation_id in item.citation_ids],
+            *[citation_id for metric in metrics for citation_id in metric.citation_ids],
+        ]
+    )
+    source_document_ids = _dedupe(
+        [
+            *[source_id for item in items for source_id in item.source_document_ids],
+            *[source_id for metric in metrics for source_id in metric.source_document_ids],
+        ]
+    )
+    section_freshness = freshness_state or _section_freshness(items, metrics)
+    section_evidence = evidence_state or _section_evidence(items, metrics)
+
+    dated_items = [item for item in items if item.as_of_date or item.retrieved_at]
+    dated_metrics = [metric for metric in metrics if metric.as_of_date or metric.retrieved_at]
+    return OverviewSection(
+        section_id=section_id,
+        title=title,
+        section_type=section_type,
+        applies_to=applies_to,
+        beginner_summary=beginner_summary,
+        items=items,
+        metrics=metrics,
+        citation_ids=citation_ids,
+        source_document_ids=source_document_ids,
+        freshness_state=section_freshness,
+        evidence_state=section_evidence,
+        as_of_date=next((item.as_of_date for item in dated_items if item.as_of_date), None)
+        or next((metric.as_of_date for metric in dated_metrics if metric.as_of_date), None),
+        retrieved_at=next((item.retrieved_at for item in dated_items if item.retrieved_at), None)
+        or next((metric.retrieved_at for metric in dated_metrics if metric.retrieved_at), None),
+        limitations=limitations,
+    )
+
+
+def _gap_section(
+    *,
+    section_id: str,
+    title: str,
+    applies_to: list[AssetType],
+    summary: str,
+    evidence_state: EvidenceState,
+    freshness_state: FreshnessState,
+) -> OverviewSection:
+    return _section(
+        section_id=section_id,
+        title=title,
+        section_type=OverviewSectionType.evidence_gap,
+        applies_to=applies_to,
+        beginner_summary=summary,
+        items=[
+            _gap_item(
+                item_id=f"{section_id}_gap",
+                title=title,
+                summary=summary,
+                evidence_state=evidence_state,
+                freshness_state=freshness_state,
+            )
+        ],
+        evidence_state=evidence_state,
+        freshness_state=freshness_state,
+        limitations=summary,
+    )
+
+
+def _supported_item(
+    *,
+    item_id: str,
+    title: str,
+    summary: str,
+    binding: CitationBinding,
+    evidence_state: EvidenceState = EvidenceState.supported,
+    freshness_state: FreshnessState | None = None,
+    event_date: str | None = None,
+    as_of_date: str | None = None,
+) -> OverviewSectionItem:
+    return OverviewSectionItem(
+        item_id=item_id,
+        title=title,
+        summary=summary,
+        citation_ids=[binding.citation.citation_id],
+        source_document_ids=[binding.source_document.source_document_id],
+        freshness_state=freshness_state or binding.source_document.freshness_state,
+        evidence_state=evidence_state,
+        event_date=event_date,
+        as_of_date=as_of_date or binding.source_document.as_of_date or binding.source_document.published_at,
+        retrieved_at=binding.source_document.retrieved_at,
+    )
+
+
+def _gap_item(
+    *,
+    item_id: str,
+    title: str,
+    summary: str,
+    evidence_state: EvidenceState,
+    freshness_state: FreshnessState,
+) -> OverviewSectionItem:
+    return OverviewSectionItem(
+        item_id=item_id,
+        title=title,
+        summary=summary,
+        citation_ids=[],
+        source_document_ids=[],
+        freshness_state=freshness_state,
+        evidence_state=evidence_state,
+        limitations=summary,
+    )
+
+
+def _metric_for_fact(
+    metric_id: str,
+    label: str,
+    retrieved_fact: RetrievedFact,
+    binding: CitationBinding,
+) -> OverviewMetric:
+    return OverviewMetric(
+        metric_id=metric_id,
+        label=label,
+        value=retrieved_fact.fact.value,
+        unit=retrieved_fact.fact.unit,
+        citation_ids=[binding.citation.citation_id],
+        source_document_ids=[binding.source_document.source_document_id],
+        freshness_state=retrieved_fact.fact.freshness_state,
+        evidence_state=EvidenceState.supported,
+        as_of_date=retrieved_fact.fact.as_of_date or binding.source_document.as_of_date,
+        retrieved_at=binding.source_document.retrieved_at,
+    )
+
+
+def _cost_gap_items(pack: AssetKnowledgePack) -> list[OverviewSectionItem]:
+    items: list[OverviewSectionItem] = []
+    bid_ask_gap = _gap_for_field(pack, "bid_ask_spread")
+    if bid_ask_gap is not None:
+        items.append(
+            _gap_item(
+                item_id="bid_ask_spread_gap",
+                title="Bid-ask spread",
+                summary=bid_ask_gap.message,
+                evidence_state=_gap_evidence_state(bid_ask_gap.evidence_state),
+                freshness_state=bid_ask_gap.freshness_state,
+            )
+        )
+    else:
+        items.append(
+            _gap_item(
+                item_id="trading_metrics_gap",
+                title="Trading metrics",
+                summary="The current local fixture does not include bid-ask spread, average volume, AUM, or premium/discount evidence.",
+                evidence_state=EvidenceState.unavailable,
+                freshness_state=FreshnessState.unavailable,
+            )
+        )
+
+    stale_fee_gap = _gap_for_field(pack, "old_fee_snapshot")
+    if stale_fee_gap is not None:
+        items.append(
+            _gap_item(
+                item_id="stale_fee_snapshot_gap",
+                title="Stale fee snapshot",
+                summary=stale_fee_gap.message,
+                evidence_state=EvidenceState.stale,
+                freshness_state=stale_fee_gap.freshness_state,
+            )
+        )
+    return items
+
+
+def _similar_assets_gap_item(pack: AssetKnowledgePack) -> OverviewSectionItem:
+    gap = _gap_for_field(pack, "holdings_overlap")
+    if gap is not None:
+        return _gap_item(
+            item_id="similar_assets_gap",
+            title="Similar assets and alternatives",
+            summary=gap.message,
+            evidence_state=_gap_evidence_state(gap.evidence_state),
+            freshness_state=gap.freshness_state,
+        )
+    return _gap_item(
+        item_id="similar_assets_gap",
+        title="Similar assets and alternatives",
+        summary="The current local fixture does not include asset-specific evidence for similar ETFs, simpler alternatives, or holdings overlap.",
+        evidence_state=EvidenceState.unknown,
+        freshness_state=FreshnessState.unknown,
+    )
+
+
 def _build_planned_claims(
     *,
     pack: AssetKnowledgePack,
@@ -494,11 +1070,61 @@ def _claim_text_for_fact(pack: AssetKnowledgePack, fact: RetrievedFact) -> str:
     return f"{pack.asset.ticker} {fact.fact.field_name.replace('_', ' ')} is {value}."
 
 
+def _section_validation_claims(overview: OverviewResponse) -> list[CitationValidationClaim]:
+    claims: list[CitationValidationClaim] = []
+    for section in overview.sections:
+        claim_type = _claim_type_from_section(section)
+        for item in section.items:
+            if item.citation_ids and item.evidence_state in {
+                EvidenceState.supported,
+                EvidenceState.no_major_recent_development,
+            }:
+                claims.append(
+                    CitationValidationClaim(
+                        claim_id=f"section_{section.section_id}_{item.item_id}",
+                        claim_text=f"{item.title}: {item.summary}",
+                        claim_type=claim_type,
+                        citation_ids=item.citation_ids,
+                        freshness_label=item.freshness_state,
+                    )
+                )
+        for metric in section.metrics:
+            if metric.citation_ids and metric.evidence_state is EvidenceState.supported:
+                formatted_value = _format_metric(metric.value, metric.unit)
+                claims.append(
+                    CitationValidationClaim(
+                        claim_id=f"section_{section.section_id}_{metric.metric_id}",
+                        claim_text=f"{metric.label}: {formatted_value}",
+                        claim_type="factual",
+                        citation_ids=metric.citation_ids,
+                        freshness_label=metric.freshness_state,
+                    )
+                )
+    return claims
+
+
+def _claim_type_from_section(section: OverviewSection) -> str:
+    if section.section_type is OverviewSectionType.risk:
+        return "risk"
+    if section.section_type is OverviewSectionType.recent_developments:
+        return "recent"
+    if section.section_type is OverviewSectionType.educational_suitability:
+        return "risk"
+    return "factual"
+
+
 def _select_risk_chunk(pack: AssetKnowledgePack) -> RetrievedSourceChunk:
     for item in pack.source_chunks:
         if "risk" in item.chunk.supported_claim_types:
             return item
     raise OverviewGenerationError(f"No risk evidence chunk is available for {pack.asset.ticker}.")
+
+
+def _select_chunk_by_id(pack: AssetKnowledgePack, chunk_id: str) -> RetrievedSourceChunk:
+    for item in pack.source_chunks:
+        if item.chunk.chunk_id == chunk_id:
+            return item
+    raise OverviewGenerationError(f"Required source chunk is missing from retrieval pack: {chunk_id}.")
 
 
 def _require_fact(facts_by_field: dict[str, RetrievedFact], field_name: str) -> RetrievedFact:
@@ -514,6 +1140,63 @@ def _metric_from_fact(retrieved_fact: RetrievedFact, citation_id: str) -> Metric
 
 def _fact_value(facts_by_field: dict[str, RetrievedFact], field_name: str) -> Any:
     return _require_fact(facts_by_field, field_name).fact.value
+
+
+def _gap_for_field(pack: AssetKnowledgePack, field_name: str) -> Any | None:
+    for gap in pack.evidence_gaps:
+        if gap.field_name == field_name:
+            return gap
+    return None
+
+
+def _gap_evidence_state(raw_state: str) -> EvidenceState:
+    if raw_state == "missing":
+        return EvidenceState.unavailable
+    if raw_state == "insufficient":
+        return EvidenceState.insufficient_evidence
+    if raw_state == "stale":
+        return EvidenceState.stale
+    if raw_state == "unsupported":
+        return EvidenceState.unsupported
+    if raw_state == "unknown":
+        return EvidenceState.unknown
+    return EvidenceState.unknown
+
+
+def _section_freshness(items: list[OverviewSectionItem], metrics: list[OverviewMetric]) -> FreshnessState:
+    states = [item.freshness_state for item in items] + [metric.freshness_state for metric in metrics]
+    if not states:
+        return FreshnessState.unknown
+    if FreshnessState.stale in states:
+        return FreshnessState.stale
+    if FreshnessState.unavailable in states:
+        return FreshnessState.unavailable
+    if FreshnessState.unknown in states:
+        return FreshnessState.unknown
+    return FreshnessState.fresh
+
+
+def _section_evidence(items: list[OverviewSectionItem], metrics: list[OverviewMetric]) -> EvidenceState:
+    states = [item.evidence_state for item in items] + [metric.evidence_state for metric in metrics]
+    if not states:
+        return EvidenceState.unknown
+    unique_states = set(states)
+    supported_states = {EvidenceState.supported, EvidenceState.no_major_recent_development}
+    if len(unique_states) == 1:
+        return states[0]
+    if unique_states & supported_states and unique_states - supported_states:
+        return EvidenceState.mixed
+    return EvidenceState.mixed
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for value in values:
+        if value not in seen:
+            seen.add(value)
+            deduped.append(value)
+    return deduped
 
 
 def _format_metric(value: Any, unit: str | None) -> str:

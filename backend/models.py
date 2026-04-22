@@ -48,6 +48,25 @@ class FreshnessState(str, Enum):
     unavailable = "unavailable"
 
 
+class EvidenceState(str, Enum):
+    supported = "supported"
+    no_major_recent_development = "no_major_recent_development"
+    unavailable = "unavailable"
+    unknown = "unknown"
+    stale = "stale"
+    mixed = "mixed"
+    insufficient_evidence = "insufficient_evidence"
+    unsupported = "unsupported"
+
+
+class OverviewSectionType(str, Enum):
+    stable_facts = "stable_facts"
+    risk = "risk"
+    recent_developments = "recent_developments"
+    educational_suitability = "educational_suitability"
+    evidence_gap = "evidence_gap"
+
+
 class IngestionJobType(str, Enum):
     pre_cache = "pre_cache"
     on_demand = "on_demand"
@@ -236,6 +255,51 @@ class Claim(BaseModel):
     citation_ids: list[str]
 
 
+class OverviewMetric(BaseModel):
+    metric_id: str
+    label: str
+    value: str | float | int | None = None
+    unit: str | None = None
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    freshness_state: FreshnessState
+    evidence_state: EvidenceState
+    as_of_date: str | None = None
+    retrieved_at: str | None = None
+    limitations: str | None = None
+
+
+class OverviewSectionItem(BaseModel):
+    item_id: str
+    title: str
+    summary: str
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    freshness_state: FreshnessState
+    evidence_state: EvidenceState
+    event_date: str | None = None
+    as_of_date: str | None = None
+    retrieved_at: str | None = None
+    limitations: str | None = None
+
+
+class OverviewSection(BaseModel):
+    section_id: str
+    title: str
+    section_type: OverviewSectionType
+    applies_to: list[AssetType]
+    beginner_summary: str | None = None
+    items: list[OverviewSectionItem] = Field(default_factory=list)
+    metrics: list[OverviewMetric] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    freshness_state: FreshnessState
+    evidence_state: EvidenceState
+    as_of_date: str | None = None
+    retrieved_at: str | None = None
+    limitations: str | None = None
+
+
 class OverviewResponse(BaseModel):
     asset: AssetIdentity
     state: StateMessage
@@ -248,6 +312,7 @@ class OverviewResponse(BaseModel):
     claims: list[Claim] = Field(default_factory=list)
     citations: list[Citation] = Field(default_factory=list)
     source_documents: list[SourceDocument] = Field(default_factory=list)
+    sections: list[OverviewSection] = Field(default_factory=list)
 
 
 class DetailsResponse(BaseModel):
