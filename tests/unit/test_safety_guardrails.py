@@ -54,6 +54,22 @@ def test_backend_responses_do_not_leak_advice_phrases():
     response_payloads.append(
         client.post("/api/compare/export", json={"left_ticker": "VOO", "right_ticker": "QQQ"}).json()
     )
+    response_payloads.append(client.get("/api/trust-metrics/catalog").json())
+    response_payloads.append(
+        client.post(
+            "/api/trust-metrics/validate",
+            json={
+                "events": [
+                    {
+                        "event_type": "chat_safety_redirect",
+                        "workflow_area": "chat",
+                        "asset_ticker": "VOO",
+                        "metadata": {"safety_classification": "personalized_advice_redirect"},
+                    }
+                ]
+            },
+        ).json()
+    )
 
     chat_cases = [
         ("VOO", "What is VOO?"),
@@ -169,3 +185,25 @@ def test_frontend_comparison_suggestion_copy_is_advice_safe():
         assert_no_forbidden_phrases(marker, marker)
 
     assert_no_forbidden_phrases("frontend comparison suggestions", combined)
+
+
+def test_trust_metrics_contract_copy_is_advice_safe():
+    combined = "\n".join(
+        [
+            (ROOT / "backend" / "trust_metrics.py").read_text(encoding="utf-8"),
+            (ROOT / "backend" / "models.py").read_text(encoding="utf-8"),
+        ]
+    )
+    markers = [
+        "trust-metrics-event-v1",
+        "validation_only",
+        "external_analytics_enabled",
+        "chat_safety_redirect",
+        "generated_output_validation_failure",
+    ]
+
+    for marker in markers:
+        assert marker in combined
+        assert_no_forbidden_phrases(marker, marker)
+
+    assert_no_forbidden_phrases("trust metrics contract", combined)

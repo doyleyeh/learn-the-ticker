@@ -406,6 +406,143 @@ def test_asset_page_and_source_list_export_routes_return_contract_payloads():
     assert source_body["source_documents"][0]["allowed_excerpt"]["note"]
 
 
+def test_trust_metrics_catalog_route_is_validation_only_contract():
+    response = client.get("/api/trust-metrics/catalog")
+
+    assert response.status_code == 200
+    body = response.json()
+    product_types = {event["event_type"] for event in body["product_events"]}
+    trust_types = {event["event_type"] for event in body["trust_events"]}
+    assert body["schema_version"] == "trust-metrics-event-v1"
+    assert body["validation_only"] is True
+    assert body["persistence_enabled"] is False
+    assert body["external_analytics_enabled"] is False
+    assert body["no_live_external_calls"] is True
+    assert "search_success" in product_types
+    assert "asset_page_view" in product_types
+    assert "chat_answer_outcome" in product_types
+    assert "citation_coverage" in trust_types
+    assert "generated_output_validation_failure" in trust_types
+    assert "freshness_accuracy" in trust_types
+    assert "source_url" in body["forbidden_field_names"]
+
+
+def test_trust_metrics_validate_route_accepts_rejects_and_summarizes_without_storage():
+    response = client.post(
+        "/api/trust-metrics/validate",
+        json={
+            "events": [
+                {
+                    "event_type": "search_success",
+                    "workflow_area": "search",
+                    "asset_ticker": "voo",
+                    "metadata": {"result_count": 1, "latency_ms": 15},
+                },
+                {
+                    "event_type": "citation_coverage",
+                    "workflow_area": "citation",
+                    "asset_ticker": "VOO",
+                    "generated_output_available": True,
+                    "output_metadata": {
+                        "output_kind": "asset_page",
+                        "schema_valid": True,
+                        "citation_coverage_rate": 1,
+                        "citation_ids": ["c_voo_profile"],
+                        "source_document_ids": ["src_voo_fact_sheet_fixture"],
+                        "freshness_state": "fresh",
+                    },
+                },
+                {
+                    "event_type": "chat_answer_outcome",
+                    "workflow_area": "chat",
+                    "asset_ticker": "VOO",
+                    "question": "raw question text is not allowed",
+                },
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["accepted_count"] == 2
+    assert body["rejected_count"] == 1
+    assert body["stored"] is False
+    assert body["forwarded"] is False
+    assert body["enriched_from_live_services"] is False
+    accepted_event = body["events"][0]["normalized_event"]
+    assert accepted_event["asset_ticker"] == "VOO"
+    assert accepted_event["asset_support_state"] == "cached_supported"
+    assert accepted_event["occurred_at"] == "1970-01-01T00:00:00Z"
+    assert body["events"][2]["validation_status"] == "rejected"
+    assert "question" in body["events"][2]["rejected_field_paths"]
+    assert body["summary"]["event_type_counts"] == {"citation_coverage": 1, "search_success": 1}
+    assert body["summary"]["rates"]["citation_coverage_event_rate"] == 0.5
+
+
+def test_trust_metrics_validate_route_blocks_non_generated_asset_inconsistency():
+    response = client.post(
+        "/api/trust-metrics/validate",
+        json={
+            "events": [
+                {
+                    "event_type": "asset_page_view",
+                    "workflow_area": "asset_page",
+                    "asset_ticker": "SPY",
+                    "generated_output_available": True,
+                },
+                {
+                    "event_type": "generated_output_validation_failure",
+                    "workflow_area": "generated_output",
+                    "asset_ticker": "TQQQ",
+                    "output_metadata": {
+                        "output_kind": "asset_page",
+                        "schema_valid": False,
+                        "citation_ids": ["c_bad"],
+                        "source_document_ids": ["src_bad"],
+                    },
+                },
+                {
+                    "event_type": "stale_data_incident",
+                    "workflow_area": "freshness",
+                    "asset_ticker": "VOO",
+                },
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["accepted_count"] == 0
+    assert body["rejected_count"] == 3
+    joined_reasons = " ".join(reason for event in body["events"] for reason in event["rejection_reasons"])
+    assert "generated output cannot be available" in joined_reasons
+    assert "citation and source document IDs" in joined_reasons
+    assert "freshness_state" in joined_reasons
+
+
+def test_trust_metrics_validation_does_not_mutate_existing_generated_payloads():
+    overview_before = client.get("/api/assets/VOO/overview").json()
+    chat_before = client.post("/api/assets/VOO/chat", json={"question": "What is VOO?"}).json()
+    comparison_before = client.post("/api/compare", json={"left_ticker": "VOO", "right_ticker": "QQQ"}).json()
+    export_before = client.get("/api/assets/VOO/export").json()
+
+    validation = client.post(
+        "/api/trust-metrics/validate",
+        json={
+            "events": [
+                {"event_type": "export_usage", "workflow_area": "export", "asset_ticker": "VOO"},
+                {"event_type": "chat_safety_redirect", "workflow_area": "chat", "asset_ticker": "VOO"},
+            ]
+        },
+    )
+
+    assert validation.status_code == 200
+    assert client.get("/api/assets/VOO/overview").json() == overview_before
+    assert client.post("/api/assets/VOO/chat", json={"question": "What is VOO?"}).json() == chat_before
+    assert client.post("/api/compare", json={"left_ticker": "VOO", "right_ticker": "QQQ"}).json() == comparison_before
+    assert client.get("/api/assets/VOO/export").json() == export_before
+
+
 def test_comparison_and_chat_export_routes_return_explicit_shapes():
     comparison = client.post(
         "/api/compare/export",

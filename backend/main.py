@@ -47,10 +47,14 @@ from backend.models import (
     RecentResponse,
     SearchResponse,
     SourcesResponse,
+    TrustMetricCatalogResponse,
+    TrustMetricValidationRequest,
+    TrustMetricValidationResponse,
 )
 from backend.overview import generate_asset_overview
 from backend.retrieval import build_asset_knowledge_pack_result
 from backend.search import search_assets
+from backend.trust_metrics import get_trust_metric_event_catalog, validate_trust_metric_events
 
 
 app = FastAPI(
@@ -191,3 +195,13 @@ def asset_chat(ticker: str, request: ChatRequest) -> ChatResponse:
 @app.post("/api/assets/{ticker}/chat/export", response_model=ExportResponse, tags=["exports"])
 def asset_chat_export(ticker: str, request: ChatTranscriptExportRequest) -> ExportResponse:
     return export_chat_transcript(ticker, request)
+
+
+@app.get("/api/trust-metrics/catalog", response_model=TrustMetricCatalogResponse, tags=["trust-metrics"])
+def trust_metrics_catalog() -> TrustMetricCatalogResponse:
+    return get_trust_metric_event_catalog()
+
+
+@app.post("/api/trust-metrics/validate", response_model=TrustMetricValidationResponse, tags=["trust-metrics"])
+def trust_metrics_validate(request: TrustMetricValidationRequest) -> TrustMetricValidationResponse:
+    return validate_trust_metric_events(request.events)

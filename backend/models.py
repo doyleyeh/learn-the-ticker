@@ -753,6 +753,169 @@ class KnowledgePackBuildResponse(BaseModel):
     message: str
 
 
+class TrustMetricWorkflowArea(str, Enum):
+    search = "search"
+    asset_page = "asset_page"
+    comparison = "comparison"
+    source_drawer = "source_drawer"
+    glossary = "glossary"
+    export = "export"
+    chat = "chat"
+    citation = "citation"
+    freshness = "freshness"
+    generated_output = "generated_output"
+    retrieval = "retrieval"
+    safety = "safety"
+
+
+class TrustMetricEventType(str, Enum):
+    search_success = "search_success"
+    unsupported_asset_outcome = "unsupported_asset_outcome"
+    asset_page_view = "asset_page_view"
+    comparison_usage = "comparison_usage"
+    source_drawer_usage = "source_drawer_usage"
+    glossary_usage = "glossary_usage"
+    export_usage = "export_usage"
+    chat_follow_up = "chat_follow_up"
+    chat_answer_outcome = "chat_answer_outcome"
+    chat_safety_redirect = "chat_safety_redirect"
+    latency_to_first_meaningful_result = "latency_to_first_meaningful_result"
+    citation_coverage = "citation_coverage"
+    unsupported_claim_drop = "unsupported_claim_drop"
+    weak_citation_count = "weak_citation_count"
+    generated_output_validation_failure = "generated_output_validation_failure"
+    safety_redirect_rate = "safety_redirect_rate"
+    freshness_accuracy = "freshness_accuracy"
+    source_retrieval_failure = "source_retrieval_failure"
+    hallucination_unsupported_fact_incident = "hallucination_unsupported_fact_incident"
+    stale_data_incident = "stale_data_incident"
+
+
+class TrustMetricKind(str, Enum):
+    product = "product"
+    trust = "trust"
+
+
+class TrustMetricValidationStatus(str, Enum):
+    accepted = "accepted"
+    rejected = "rejected"
+
+
+class TrustMetricAssetSupportState(str, Enum):
+    cached_supported = "cached_supported"
+    eligible_not_cached = "eligible_not_cached"
+    recognized_unsupported = "recognized_unsupported"
+    unknown = "unknown"
+    unavailable = "unavailable"
+
+
+class TrustMetricOutputKind(str, Enum):
+    asset_page = "asset_page"
+    comparison = "comparison"
+    chat_answer = "chat_answer"
+    export_payload = "export_payload"
+    source_list = "source_list"
+
+
+class TrustMetricSafetyStatus(str, Enum):
+    educational = "educational"
+    safety_redirect = "safety_redirect"
+    unsupported_asset_redirect = "unsupported_asset_redirect"
+    insufficient_evidence = "insufficient_evidence"
+
+
+class TrustMetricGeneratedOutputMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    output_kind: TrustMetricOutputKind
+    prompt_version: str | None = None
+    model_name: str | None = None
+    schema_valid: bool | None = None
+    citation_coverage_rate: float | None = None
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    freshness_hash: str | None = None
+    freshness_state: FreshnessState | None = None
+    safety_status: TrustMetricSafetyStatus | None = None
+    unsupported_claim_count: int = 0
+    weak_citation_count: int = 0
+    stale_source_count: int = 0
+    latency_ms: int | None = None
+
+
+class TrustMetricEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    schema_version: Literal["trust-metrics-event-v1"] = "trust-metrics-event-v1"
+    event_type: TrustMetricEventType
+    workflow_area: TrustMetricWorkflowArea
+    occurred_at: str = "1970-01-01T00:00:00Z"
+    client_event_id: str | None = Field(default=None, max_length=100)
+    asset_ticker: str | None = Field(default=None, max_length=12)
+    asset_support_state: TrustMetricAssetSupportState | None = None
+    comparison_left_ticker: str | None = Field(default=None, max_length=12)
+    comparison_right_ticker: str | None = Field(default=None, max_length=12)
+    generated_output_available: bool = False
+    output_metadata: TrustMetricGeneratedOutputMetadata | None = None
+    metadata: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+
+
+class TrustMetricValidatedEvent(BaseModel):
+    validation_status: TrustMetricValidationStatus
+    rejection_reasons: list[str] = Field(default_factory=list)
+    rejected_field_paths: list[str] = Field(default_factory=list)
+    normalized_event: TrustMetricEvent | None = None
+
+
+class TrustMetricCatalogEvent(BaseModel):
+    event_type: TrustMetricEventType
+    workflow_area: TrustMetricWorkflowArea
+    metric_kind: TrustMetricKind
+    description: str
+    allowed_metadata_fields: list[str] = Field(default_factory=list)
+    allows_generated_output_metadata: bool = False
+    requires_freshness_state: bool = False
+
+
+class TrustMetricCatalogResponse(BaseModel):
+    schema_version: Literal["trust-metrics-event-v1"] = "trust-metrics-event-v1"
+    product_events: list[TrustMetricCatalogEvent]
+    trust_events: list[TrustMetricCatalogEvent]
+    forbidden_field_names: list[str]
+    deterministic_timestamp_default: str = "1970-01-01T00:00:00Z"
+    validation_only: bool = True
+    persistence_enabled: bool = False
+    external_analytics_enabled: bool = False
+    no_live_external_calls: bool = True
+
+
+class TrustMetricValidationRequest(BaseModel):
+    events: list[dict[str, Any]]
+
+
+class TrustMetricSummary(BaseModel):
+    schema_version: Literal["trust-metrics-event-v1"] = "trust-metrics-event-v1"
+    accepted_event_count: int
+    event_type_counts: dict[str, int] = Field(default_factory=dict)
+    workflow_area_counts: dict[str, int] = Field(default_factory=dict)
+    product_metric_counts: dict[str, int] = Field(default_factory=dict)
+    trust_metric_counts: dict[str, int] = Field(default_factory=dict)
+    rates: dict[str, float] = Field(default_factory=dict)
+    latency_ms: dict[str, int | float | None] = Field(default_factory=dict)
+
+
+class TrustMetricValidationResponse(BaseModel):
+    schema_version: Literal["trust-metrics-event-v1"] = "trust-metrics-event-v1"
+    accepted_count: int
+    rejected_count: int
+    events: list[TrustMetricValidatedEvent]
+    summary: TrustMetricSummary
+    validation_only: bool = True
+    stored: bool = False
+    forwarded: bool = False
+    enriched_from_live_services: bool = False
+
+
 class Citation(BaseModel):
     citation_id: str
     source_document_id: str

@@ -1,0 +1,79 @@
+schema_version: trust-metrics-evals-v1
+required_models:
+  - TrustMetricWorkflowArea
+  - TrustMetricEventType
+  - TrustMetricKind
+  - TrustMetricValidationStatus
+  - TrustMetricAssetSupportState
+  - TrustMetricOutputKind
+  - TrustMetricSafetyStatus
+  - TrustMetricGeneratedOutputMetadata
+  - TrustMetricEvent
+  - TrustMetricValidatedEvent
+  - TrustMetricCatalogEvent
+  - TrustMetricCatalogResponse
+  - TrustMetricValidationRequest
+  - TrustMetricValidationResponse
+  - TrustMetricSummary
+required_helpers:
+  - get_trust_metric_event_catalog
+  - validate_trust_metric_event
+  - validate_trust_metric_events
+  - summarize_trust_metric_events
+required_product_events:
+  - search_success
+  - unsupported_asset_outcome
+  - asset_page_view
+  - comparison_usage
+  - source_drawer_usage
+  - glossary_usage
+  - export_usage
+  - chat_follow_up
+  - chat_answer_outcome
+  - chat_safety_redirect
+  - latency_to_first_meaningful_result
+required_trust_events:
+  - citation_coverage
+  - unsupported_claim_drop
+  - weak_citation_count
+  - generated_output_validation_failure
+  - safety_redirect_rate
+  - freshness_accuracy
+  - source_retrieval_failure
+  - hallucination_unsupported_fact_incident
+  - stale_data_incident
+required_forbidden_fields:
+  - raw_query
+  - question
+  - answer
+  - source_passage
+  - source_url
+  - email
+  - ip_address
+  - user_agent
+  - account_id
+  - portfolio
+  - allocation
+  - cookies
+  - external_analytics_id
+required_api_routes:
+  - /api/trust-metrics/catalog
+  - /api/trust-metrics/validate
+forbidden_imports:
+  - import requests
+  - import httpx
+  - urllib.request
+  - from socket import
+  - boto3
+  - redis
+  - psycopg
+  - sqlalchemy
+  - import analytics
+  - from analytics
+  - import segment
+  - from segment
+  - import amplitude
+  - from amplitude
+  - posthog
+  - os.environ
+  - api_key
