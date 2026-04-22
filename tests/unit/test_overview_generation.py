@@ -3,7 +3,7 @@ from typing import Any
 
 from backend.models import AssetStatus, EvidenceState, MetricValue, OverviewResponse
 from backend.overview import generate_asset_overview, validate_overview_response
-from backend.retrieval import build_asset_knowledge_pack
+from backend.retrieval import build_asset_knowledge_pack, build_asset_knowledge_pack_result
 from backend.safety import find_forbidden_output_phrases
 
 
@@ -45,6 +45,15 @@ def test_generated_overview_citations_validate_against_same_asset_pack():
         report = validate_overview_response(overview, pack)
 
         assert report.valid, [issue.message for issue in report.issues]
+
+
+def test_knowledge_pack_builder_does_not_change_overview_output():
+    before = generate_asset_overview("VOO").model_dump(mode="json")
+    build_result = build_asset_knowledge_pack_result("VOO")
+    after = generate_asset_overview("VOO").model_dump(mode="json")
+
+    assert build_result.build_state.value == "available"
+    assert after == before
 
 
 def test_stock_overview_exposes_prd_sections_with_explicit_gaps():

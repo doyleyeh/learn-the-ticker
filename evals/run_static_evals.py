@@ -45,6 +45,7 @@ from backend.models import (
     ExportResponse,
     FreshnessState,
     IngestionJobResponse,
+    KnowledgePackBuildResponse,
     KnowledgePackFreshnessInput,
     MetricValue,
     PreCacheBatchResponse,
@@ -58,7 +59,12 @@ from backend.models import (
 )
 from backend.overview import generate_asset_overview, validate_overview_response
 from backend.providers import fetch_mock_provider_response, get_mock_provider_adapters
-from backend.retrieval import build_asset_knowledge_pack, build_comparison_knowledge_pack, load_retrieval_fixture_dataset
+from backend.retrieval import (
+    build_asset_knowledge_pack,
+    build_asset_knowledge_pack_result,
+    build_comparison_knowledge_pack,
+    load_retrieval_fixture_dataset,
+)
 from backend.safety import find_forbidden_output_phrases
 from backend.testing import TestClient
 
@@ -623,6 +629,134 @@ def test_pre_cache_cases():
     for forbidden in data.get("forbidden_live_call_imports", []):
         assert forbidden not in ingestion_source
         assert forbidden not in main_source
+
+
+def test_knowledge_pack_cases():
+    data = load_yaml("knowledge_pack_eval_cases.yaml")
+    required_models = set(data.get("required_models", []))
+    missing_models = {name for name in required_models if not hasattr(models, name)}
+    assert not missing_models, f"Missing knowledge-pack contract models: {missing_models}"
+
+    required_helpers = set(data.get("required_helpers", []))
+    missing_helpers = {name for name in required_helpers if name not in globals()}
+    assert not missing_helpers, f"Missing knowledge-pack helper functions: {missing_helpers}"
+
+    required_sections = set(data.get("required_section_freshness_ids", []))
+    required_cached_metadata = set(data.get("required_cached_metadata", []))
+
+    for case in data.get("supported_cached_cases", []):
+        result = build_asset_knowledge_pack_result(case["ticker"])
+        endpoint_response = client.get(f"/api/assets/{case['ticker']}/knowledge-pack")
+        repeated = build_asset_knowledge_pack_result(case["ticker"].lower())
+        pack = build_asset_knowledge_pack(case["ticker"])
+        expected_input = build_knowledge_pack_freshness_input(pack, section_freshness_labels=result.section_freshness)
+        expected_hash = compute_knowledge_pack_freshness_hash(expected_input)
+
+        assert endpoint_response.status_code == 200, f"{case['id']} endpoint failed"
+        validated = KnowledgePackBuildResponse.model_validate(endpoint_response.json())
+        assert validated.model_dump(mode="json") == result.model_dump(mode="json")
+        assert repeated.model_dump(mode="json") == result.model_dump(mode="json")
+
+        assert result.schema_version == "asset-knowledge-pack-build-v1"
+        assert result.ticker == case["ticker"]
+        assert result.asset.ticker == case["ticker"]
+        assert result.asset.asset_type.value == case["expected_asset_type"]
+        assert result.pack_id == case["expected_pack_id"]
+        assert result.build_state.value == "available"
+        assert result.generated_output_available is True
+        assert result.generated_route == case["expected_generated_route"]
+        assert result.capabilities.can_open_generated_page is True
+        assert result.capabilities.can_answer_chat is True
+        assert result.capabilities.can_compare is True
+        assert result.capabilities.can_request_ingestion is False
+        assert result.reusable_generated_output_cache_hit is False
+        assert result.no_live_external_calls is True
+        assert result.exports_full_source_documents is False
+
+        assert result.knowledge_pack_freshness_hash == expected_hash
+        assert result.cache_key is not None and "knowledge-pack" in result.cache_key
+        assert result.cache_revalidation is not None
+        assert result.cache_revalidation.state is CacheEntryState.miss
+        assert result.cache_revalidation.expected_freshness_hash == expected_hash
+        assert result.source_checksums == expected_input.source_checksums
+
+        section_ids = {label.section_id for label in result.section_freshness}
+        assert required_sections <= section_ids
+        assert required_cached_metadata <= set(KnowledgePackBuildResponse.model_fields)
+        assert set(result.source_document_ids) == {source.source_document_id for source in pack.source_documents}
+        assert result.counts.source_document_count == len(result.source_documents)
+        assert result.counts.citation_count == len(result.citation_ids)
+        assert result.counts.normalized_fact_count == len(result.normalized_facts)
+        assert result.counts.source_chunk_count == len(result.source_chunks)
+        assert result.counts.recent_development_count == len(result.recent_developments)
+        assert result.counts.evidence_gap_count == len(result.evidence_gaps)
+        assert {source.asset_ticker for source in result.source_documents} == {case["ticker"]}
+        assert {fact.asset_ticker for fact in result.normalized_facts} == {case["ticker"]}
+        assert {chunk.asset_ticker for chunk in result.source_chunks} == {case["ticker"]}
+        assert {recent.asset_ticker for recent in result.recent_developments} == {case["ticker"]}
+        assert all(fact.source_document_id in result.source_document_ids for fact in result.normalized_facts)
+        assert all(chunk.source_document_id in result.source_document_ids for chunk in result.source_chunks)
+        assert all(recent.source_document_id in result.source_document_ids for recent in result.recent_developments)
+        assert any(citation_id.startswith("c_fact_") for citation_id in result.citation_ids)
+        assert any(citation_id.startswith("c_recent_") for citation_id in result.citation_ids)
+
+        dumped = result.model_dump(mode="json")
+        for forbidden in data.get("forbidden_raw_export_fields", []):
+            assert forbidden not in dumped, f"{case['id']} exported raw field {forbidden}"
+        assert "Apple designs, manufactures" not in str(dumped)
+        assert "VOO seeks to track" not in str(dumped)
+        assert "QQQ tracks the Nasdaq-100" not in str(dumped)
+
+    for case in data.get("non_generated_cases", []):
+        result = build_asset_knowledge_pack_result(case["ticker"])
+        endpoint_response = client.get(f"/api/assets/{case['ticker']}/knowledge-pack")
+        assert endpoint_response.status_code == 200, f"{case['id']} endpoint failed"
+        validated = KnowledgePackBuildResponse.model_validate(endpoint_response.json())
+        assert validated.model_dump(mode="json") == result.model_dump(mode="json")
+
+        assert result.asset.asset_type.value == case["expected_asset_type"]
+        assert result.build_state.value == case["expected_build_state"]
+        assert result.generated_output_available is False
+        assert result.reusable_generated_output_cache_hit is False
+        assert result.generated_route is None
+        assert result.capabilities.can_open_generated_page is False
+        assert result.capabilities.can_answer_chat is False
+        assert result.capabilities.can_compare is False
+        assert result.capabilities.can_request_ingestion is case["expected_can_request_ingestion"]
+        assert result.source_document_ids == []
+        assert result.citation_ids == []
+        assert result.source_documents == []
+        assert result.normalized_facts == []
+        assert result.source_chunks == []
+        assert result.recent_developments == []
+        assert result.source_checksums == []
+        assert result.knowledge_pack_freshness_hash is None
+        assert result.counts.source_document_count == 0
+        assert result.counts.citation_count == 0
+        assert result.counts.normalized_fact_count == 0
+        assert result.counts.source_chunk_count == 0
+        assert result.counts.recent_development_count == 0
+        assert result.counts.evidence_gap_count == 1
+        assert result.cache_revalidation is not None
+        assert result.cache_revalidation.state.value == case["expected_cache_state"]
+        assert result.cache_revalidation.reusable is False
+
+        overview = generate_asset_overview(case["ticker"])
+        chat = generate_asset_chat(case["ticker"], "What is this asset?")
+        comparison = generate_comparison("VOO", case["ticker"])
+        assert overview.citations == []
+        assert overview.source_documents == []
+        assert chat.citations == []
+        assert chat.source_documents == []
+        assert comparison.citations == []
+        assert comparison.source_documents == []
+
+    retrieval_source = (ROOT / "backend" / "retrieval.py").read_text(encoding="utf-8")
+    main_source = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
+    for forbidden in data.get("forbidden_live_call_imports", []):
+        assert forbidden not in retrieval_source
+        if forbidden != "os.environ":
+            assert forbidden not in main_source
 
 
 def test_provider_cases():
@@ -1313,6 +1447,7 @@ if __name__ == "__main__":
     test_search_cases()
     test_ingestion_cases()
     test_pre_cache_cases()
+    test_knowledge_pack_cases()
     test_provider_cases()
     test_cache_cases()
     test_retrieval_fixture_contract()

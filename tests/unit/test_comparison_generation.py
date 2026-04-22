@@ -10,6 +10,7 @@ from backend.comparison import (
 )
 from backend.models import AssetStatus, CompareResponse, FreshnessState, SourceDocument
 from backend.retrieval import build_comparison_knowledge_pack
+from backend.retrieval import build_asset_knowledge_pack_result
 from backend.safety import find_forbidden_output_phrases
 
 
@@ -68,6 +69,15 @@ def test_voo_qqq_comparison_supports_reverse_ticker_order():
         source.source_document_id for source in pack.comparison_sources
     }
     assert validate_comparison_response(comparison, pack).valid
+
+
+def test_knowledge_pack_builder_does_not_change_comparison_output():
+    before = generate_comparison("VOO", "QQQ").model_dump(mode="json")
+    build_result = build_asset_knowledge_pack_result("VOO")
+    after = generate_comparison("VOO", "QQQ").model_dump(mode="json")
+
+    assert build_result.build_state.value == "available"
+    assert after == before
 
 
 def test_unavailable_comparisons_do_not_generate_claims_or_citations():

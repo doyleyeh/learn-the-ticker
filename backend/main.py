@@ -40,6 +40,7 @@ from backend.models import (
     ExportFormat,
     ExportResponse,
     IngestionJobResponse,
+    KnowledgePackBuildResponse,
     OverviewResponse,
     PreCacheBatchResponse,
     PreCacheJobResponse,
@@ -48,6 +49,7 @@ from backend.models import (
     SourcesResponse,
 )
 from backend.overview import generate_asset_overview
+from backend.retrieval import build_asset_knowledge_pack_result
 from backend.search import search_assets
 
 
@@ -109,6 +111,11 @@ def pre_cache_asset(ticker: str) -> PreCacheJobResponse:
 @app.get("/api/assets/{ticker}/overview", response_model=OverviewResponse, tags=["assets"])
 def asset_overview(ticker: str, mode: str = "beginner") -> OverviewResponse:
     return generate_asset_overview(ticker)
+
+
+@app.get("/api/assets/{ticker}/knowledge-pack", response_model=KnowledgePackBuildResponse, tags=["assets"])
+def asset_knowledge_pack(ticker: str) -> KnowledgePackBuildResponse:
+    return build_asset_knowledge_pack_result(ticker)
 
 
 @app.get("/api/assets/{ticker}/details", response_model=DetailsResponse, tags=["assets"])
