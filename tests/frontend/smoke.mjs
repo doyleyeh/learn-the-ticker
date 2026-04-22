@@ -23,6 +23,7 @@ function includes(path, marker) {
   "components/AssetChatPanel.tsx",
   "components/AssetEtfSections.tsx",
   "components/AssetStockSections.tsx",
+  "components/AssetModeLayout.tsx",
   "components/CitationChip.tsx",
   "components/ComparisonSourceDetails.tsx",
   "components/SourceDrawer.tsx",
@@ -39,6 +40,12 @@ includes("app/page.tsx", "unsupported");
 includes("app/assets/[ticker]/page.tsx", "Stable facts");
 includes("app/assets/[ticker]/page.tsx", "Recent developments");
 includes("app/assets/[ticker]/page.tsx", "Stale and unknown treatment");
+includes("app/assets/[ticker]/page.tsx", "AssetModeLayout");
+includes("app/assets/[ticker]/page.tsx", "data-beginner-primary-claim");
+includes("app/assets/[ticker]/page.tsx", "data-beginner-top-risk-count");
+includes("app/assets/[ticker]/page.tsx", "data-beginner-stable-recent-separation");
+includes("app/assets/[ticker]/page.tsx", "data-beginner-recent-developments");
+includes("app/assets/[ticker]/page.tsx", "data-beginner-educational-framing");
 includes("app/assets/[ticker]/page.tsx", "SourceDrawer");
 includes("app/assets/[ticker]/page.tsx", "GlossaryPopover");
 includes("app/assets/[ticker]/page.tsx", "AssetChatPanel");
@@ -66,6 +73,12 @@ includes("components/AssetChatPanel.tsx", "advice-boundary");
 includes("components/AssetChatPanel.tsx", "business model work");
 includes("components/AssetChatPanel.tsx", "fund exposure");
 includes("components/AssetChatPanel.tsx", "without a personal recommendation");
+includes("components/AssetModeLayout.tsx", "data-asset-mode-layout");
+includes("components/AssetModeLayout.tsx", "data-asset-mode-region");
+includes("components/AssetModeLayout.tsx", "data-beginner-mode-region");
+includes("components/AssetModeLayout.tsx", "data-deep-dive-mode-region");
+includes("components/AssetModeLayout.tsx", "Beginner Mode");
+includes("components/AssetModeLayout.tsx", "Deep-Dive Mode");
 includes("components/AssetStockSections.tsx", "data-stock-prd-sections");
 includes("components/AssetStockSections.tsx", "data-stock-section-id");
 includes("components/AssetStockSections.tsx", "data-stock-stable-recent-separation");
@@ -105,6 +118,25 @@ includes("components/SearchBox.tsx", "data-search-unknown-result");
 includes("components/SearchBox.tsx", "data-search-result-link");
 includes("components/SearchBox.tsx", "No facts are invented for this ticker or name");
 includes("components/FreshnessLabel.tsx", "data-freshness-state");
+
+const assetPage = read("app/assets/[ticker]/page.tsx");
+assert.ok(
+  assetPage.indexOf("beginnerMode=") < assetPage.indexOf("deepDiveMode="),
+  "Asset page should pass Beginner Mode before Deep-Dive Mode"
+);
+assert.ok(
+  assetPage.indexOf("data-beginner-top-risks") < assetPage.indexOf("data-beginner-recent-developments"),
+  "Beginner Mode should show top risks before recent developments"
+);
+assert.ok(
+  assetPage.indexOf("data-beginner-stable-recent-separation=\"stable\"") <
+    assetPage.indexOf("data-beginner-stable-recent-separation=\"recent\""),
+  "Beginner Mode should keep stable facts before recent developments"
+);
+assert.ok(
+  assetPage.lastIndexOf("AssetChatPanel") > assetPage.indexOf("data-beginner-educational-framing"),
+  "Beginner Mode should keep chat access in the beginner flow"
+);
 
 const fixtures = read("lib/fixtures.ts");
 for (const ticker of ["VOO", "QQQ", "AAPL"]) {
@@ -230,6 +262,7 @@ const frontendSource = [
   read("components/AssetChatPanel.tsx"),
   read("components/AssetEtfSections.tsx"),
   read("components/AssetStockSections.tsx"),
+  read("components/AssetModeLayout.tsx"),
   read("components/ComparisonSourceDetails.tsx"),
   read("components/SearchBox.tsx"),
   read("components/SourceDrawer.tsx"),
@@ -273,6 +306,7 @@ assert.equal(
 );
 assert.equal(read("app/assets/[ticker]/page.tsx").includes("fetch("), false, "Asset page should stay fixture-backed");
 assert.equal(read("app/assets/[ticker]/page.tsx").includes("/api/assets/"), false, "Asset page should not call backend overview APIs");
+assert.equal(read("components/AssetModeLayout.tsx").includes("fetch("), false, "Mode layout should stay fixture-backed");
 assert.equal(read("components/AssetEtfSections.tsx").includes("fetch("), false, "ETF sections should stay fixture-backed");
 assert.equal(read("components/AssetStockSections.tsx").includes("fetch("), false, "Stock sections should stay fixture-backed");
 

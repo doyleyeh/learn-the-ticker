@@ -72,6 +72,7 @@ def test_frontend_copy_fixtures_and_comparison_do_not_leak_advice_phrases():
         "components/AssetChatPanel.tsx",
         "components/AssetEtfSections.tsx",
         "components/AssetStockSections.tsx",
+        "components/AssetModeLayout.tsx",
         "components/CitationChip.tsx",
         "components/ComparisonSourceDetails.tsx",
         "components/FreshnessLabel.tsx",
