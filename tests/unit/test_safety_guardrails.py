@@ -71,6 +71,7 @@ def test_backend_responses_do_not_leak_advice_phrases():
             },
         ).json()
     )
+    response_payloads.append(client.get("/api/llm/runtime").json())
 
     chat_cases = [
         ("VOO", "What is VOO?"),
@@ -208,3 +209,25 @@ def test_trust_metrics_contract_copy_is_advice_safe():
         assert_no_forbidden_phrases(marker, marker)
 
     assert_no_forbidden_phrases("trust metrics contract", combined)
+
+
+def test_llm_contract_copy_is_advice_safe():
+    combined = "\n".join(
+        [
+            (ROOT / "backend" / "llm.py").read_text(encoding="utf-8"),
+            (ROOT / "backend" / "models.py").read_text(encoding="utf-8"),
+        ]
+    )
+    markers = [
+        "llm-runtime-contract-v1",
+        "deterministic_mock",
+        "gated_live",
+        "reasoning_summary",
+        "validation_failed_after_repair",
+    ]
+
+    for marker in markers:
+        assert marker in combined
+        assert_no_forbidden_phrases(marker, marker)
+
+    assert_no_forbidden_phrases("llm contract", combined)

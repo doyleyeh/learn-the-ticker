@@ -590,6 +590,29 @@ def test_trust_metrics_validation_does_not_mutate_existing_generated_payloads():
     assert client.get("/api/assets/VOO/export").json() == export_before
 
 
+def test_llm_runtime_route_is_sanitized_diagnostics_only_contract():
+    response = client.get("/api/llm/runtime")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["schema_version"] == "llm-runtime-contract-v1"
+    assert body["runtime"]["provider_kind"] == "mock"
+    assert body["runtime"]["runtime_mode"] == "deterministic_mock"
+    assert body["runtime"]["live_generation_enabled"] is False
+    assert body["runtime"]["live_gate_state"] == "disabled"
+    assert body["runtime"]["server_side_key_present"] is False
+    assert body["runtime"]["live_network_calls_allowed"] is False
+    assert body["credential_values_exposed"] is False
+    assert body["private_prompt_fields_exposed"] is False
+    assert body["model_reasoning_payload_exposed"] is False
+    assert body["restricted_source_payload_exposed"] is False
+    assert "reasoning_summary" in body["public_metadata_fields"]
+    serialized = str(body).lower()
+    assert "api_key" not in serialized
+    assert "reasoning_details" not in serialized
+    assert "raw_source_text" not in serialized
+
+
 def test_comparison_and_chat_export_routes_return_explicit_shapes():
     comparison = client.post(
         "/api/compare/export",

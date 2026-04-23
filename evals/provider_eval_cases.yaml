@@ -4,6 +4,20 @@ required_provider_kinds:
   - market_reference
   - recent_development
 
+llm_runtime_provider_contract:
+  default_provider_kind: mock
+  live_provider_kind: openrouter
+  live_generation_flag: LLM_LIVE_GENERATION_ENABLED
+  requires_sanitized_key_presence_flag: true
+  no_secret_values_allowed: true
+  default_live_network_calls_allowed: false
+  free_model_order:
+    - openai/gpt-oss-120b:free
+    - google/gemma-4-31b-it:free
+    - qwen/qwen3-next-80b-a3b-instruct:free
+    - meta-llama/llama-3.3-70b-instruct:free
+  paid_fallback_model: deepseek/deepseek-v3.2
+
 supported_cases:
   - id: provider_sec_aapl_stock_facts
     provider_kind: sec

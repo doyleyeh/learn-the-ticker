@@ -1,0 +1,96 @@
+schema_version: llm-provider-evals-v1
+
+required_models:
+  - LlmProviderKind
+  - LlmRuntimeMode
+  - LlmModelTier
+  - LlmLiveGateState
+  - LlmGenerationRequestMetadata
+  - LlmGenerationAttemptMetadata
+  - LlmValidationResult
+  - LlmFallbackDecision
+  - LlmPublicResponseMetadata
+  - LlmCacheEligibilityDecision
+  - LlmOrchestrationResult
+  - LlmRuntimeDiagnosticsResponse
+
+required_helpers:
+  - build_llm_runtime_config
+  - default_openrouter_settings
+  - validate_llm_generated_output
+  - decide_paid_fallback
+  - decide_cache_eligibility
+  - run_deterministic_mock_generation
+  - runtime_diagnostics
+
+default_runtime:
+  provider_kind: mock
+  live_generation_enabled: false
+  live_gate_state: disabled
+  live_network_calls_allowed: false
+
+openrouter_free_model_order:
+  - openai/gpt-oss-120b:free
+  - google/gemma-4-31b-it:free
+  - qwen/qwen3-next-80b-a3b-instruct:free
+  - meta-llama/llama-3.3-70b-instruct:free
+
+paid_fallback_model: deepseek/deepseek-v3.2
+
+fallback_triggers:
+  - free_chain_error
+  - rate_limit
+  - structured_output_failure
+  - validation_failed_after_repair
+
+public_metadata_allowed_fields:
+  - provider_kind
+  - live_enabled
+  - model_name
+  - model_tier
+  - validation_status
+  - attempt_count
+  - answer_state
+  - cached
+  - latency_ms
+  - prompt_tokens
+  - completion_tokens
+  - cost_usd
+  - reasoning_summary
+
+forbidden_public_markers:
+  - api_key
+  - secret
+  - hidden_prompt
+  - prompt_text
+  - reasoning_details
+  - raw_reasoning
+  - raw_source_text
+  - unrestricted_source_text
+  - failed_raw_response
+
+forbidden_imports:
+  - import requests
+  - import httpx
+  - urllib
+  - socket
+  - import openai
+  - anthropic
+  - os.environ
+  - api_key
+
+validation_rejection_cases:
+  - id: schema_invalid
+    expected_status: invalid_schema
+  - id: missing_citation
+    expected_status: invalid_citation
+  - id: disallowed_source_policy
+    expected_status: invalid_citation
+  - id: advice_like_language
+    expected_status: invalid_safety
+  - id: hidden_prompt_leakage
+    expected_status: invalid_hidden_prompt
+  - id: raw_reasoning_leakage
+    expected_status: invalid_raw_reasoning
+  - id: unrestricted_source_text_leakage
+    expected_status: invalid_unrestricted_source_text

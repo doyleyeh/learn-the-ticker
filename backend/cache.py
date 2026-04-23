@@ -22,6 +22,7 @@ from backend.models import (
     FreshnessState,
     GeneratedOutputFreshnessInput,
     KnowledgePackFreshnessInput,
+    LlmCacheEligibilityDecision,
     SectionFreshnessInput,
     SourceChecksumInput,
     SourceChecksumRecord,
@@ -443,6 +444,38 @@ def cache_entry_metadata_from_generated_output(
         expires_at=expires_at,
         prompt_version=freshness_input.prompt_version,
         model_name=freshness_input.model_name,
+    )
+
+
+def cache_entry_metadata_from_llm_generation(
+    *,
+    cache_key: str,
+    freshness_input: GeneratedOutputFreshnessInput,
+    freshness_hash: str,
+    cache_decision: LlmCacheEligibilityDecision,
+    citation_ids: list[str] | None = None,
+    expires_at: str | None = None,
+    created_at: str | None = None,
+    export_allowed: bool = False,
+) -> CacheEntryMetadata:
+    metadata = cache_entry_metadata_from_generated_output(
+        cache_key=cache_key,
+        freshness_input=freshness_input,
+        freshness_hash=freshness_hash,
+        citation_ids=citation_ids,
+        expires_at=expires_at,
+        created_at=created_at,
+        cache_allowed=cache_decision.cacheable,
+        export_allowed=export_allowed,
+    )
+    return metadata.model_copy(
+        update={
+            "cache_allowed": metadata.cache_allowed and cache_decision.cacheable,
+            "model_name": cache_decision.model_name,
+            "model_tier": cache_decision.model_tier,
+            "validation_status": cache_decision.validation_status,
+            "generation_attempt_count": cache_decision.attempt_count,
+        }
     )
 
 
