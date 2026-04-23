@@ -10,6 +10,12 @@ from backend.testing import TestClient
 client = TestClient(app)
 
 
+def _without_session(payload: dict) -> dict:
+    stripped = dict(payload)
+    stripped.pop("session", None)
+    return stripped
+
+
 def test_health_endpoint_available():
     response = client.get("/health")
 
@@ -585,7 +591,9 @@ def test_trust_metrics_validation_does_not_mutate_existing_generated_payloads():
 
     assert validation.status_code == 200
     assert client.get("/api/assets/VOO/overview").json() == overview_before
-    assert client.post("/api/assets/VOO/chat", json={"question": "What is VOO?"}).json() == chat_before
+    assert _without_session(client.post("/api/assets/VOO/chat", json={"question": "What is VOO?"}).json()) == _without_session(
+        chat_before
+    )
     assert client.post("/api/compare", json={"left_ticker": "VOO", "right_ticker": "QQQ"}).json() == comparison_before
     assert client.get("/api/assets/VOO/export").json() == export_before
 
@@ -815,6 +823,68 @@ def test_chat_supported_question_is_grounded_with_citation():
     assert source["freshness_state"] == "fresh"
     assert source["supporting_passage"]
     assert body["uncertainty"]
+    assert body["session"]["lifecycle_state"] == "active"
+    assert body["session"]["selected_asset"]["ticker"] == "QQQ"
+    assert body["session"]["turn_count"] == 1
+    assert body["session"]["export_available"] is True
+
+
+def test_chat_session_status_continue_mismatch_delete_and_export_routes():
+    first = client.post("/api/assets/VOO/chat", json={"question": "What is VOO?"})
+    assert first.status_code == 200
+    first_body = first.json()
+    conversation_id = first_body["session"]["conversation_id"]
+
+    continued = client.post(
+        "/api/assets/VOO/chat",
+        json={"question": "What top risk should a beginner understand?", "conversation_id": conversation_id},
+    )
+    status = client.get(f"/api/chat-sessions/{conversation_id}")
+    mismatch = client.post(
+        "/api/assets/QQQ/chat",
+        json={"question": "What is this fund?", "conversation_id": conversation_id},
+    )
+    export = client.get(f"/api/chat-sessions/{conversation_id}/export")
+    deleted = client.post(f"/api/chat-sessions/{conversation_id}/delete")
+    deleted_again = client.post(f"/api/chat-sessions/{conversation_id}/delete")
+    deleted_export = client.get(f"/api/chat-sessions/{conversation_id}/export")
+
+    assert continued.status_code == 200
+    assert status.status_code == 200
+    assert mismatch.status_code == 200
+    assert export.status_code == 200
+    assert deleted.status_code == 200
+    assert deleted_again.status_code == 200
+    assert deleted_export.status_code == 200
+
+    continued_body = continued.json()
+    status_body = status.json()
+    mismatch_body = mismatch.json()
+    export_body = export.json()
+    deleted_body = deleted.json()
+    deleted_again_body = deleted_again.json()
+    deleted_export_body = deleted_export.json()
+
+    assert continued_body["session"]["conversation_id"] == conversation_id
+    assert continued_body["session"]["turn_count"] == 2
+    assert status_body["session"]["lifecycle_state"] == "active"
+    assert status_body["session"]["selected_asset"]["ticker"] == "VOO"
+    assert len(status_body["turn_summaries"]) == 2
+    assert "What is VOO?" not in str(status_body)
+    assert mismatch_body["session"]["lifecycle_state"] == "ticker_mismatch"
+    assert mismatch_body["citations"] == []
+    assert mismatch_body["source_documents"] == []
+    assert export_body["content_type"] == "chat_transcript"
+    assert export_body["export_state"] == "available"
+    assert export_body["metadata"]["conversation_id"] == conversation_id
+    assert export_body["citations"]
+    assert export_body["source_documents"]
+    assert "What top risk should a beginner understand?" not in export_body["rendered_markdown"]
+    assert deleted_body["deleted"] is True
+    assert deleted_again_body["deleted"] is True
+    assert deleted_body["session"]["lifecycle_state"] == "deleted"
+    assert deleted_export_body["export_state"] == "unavailable"
+    assert deleted_export_body["sections"] == []
 
 
 def test_chat_supported_beginner_intents_use_selected_asset_pack():

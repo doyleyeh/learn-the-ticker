@@ -3,12 +3,16 @@ from __future__ import annotations
 from typing import Any
 
 from backend.chat import generate_asset_chat
+from backend.chat_sessions import chat_session_export_payload
 from backend.comparison import generate_comparison
 from backend.models import (
     AssetIdentity,
     AssetStatus,
     ChatSourceDocument,
+    ChatSessionLifecycleState,
+    ChatSessionPublicMetadata,
     ChatTranscriptExportRequest,
+    ChatTurnRecord,
     Citation,
     ComparisonExportRequest,
     EDUCATIONAL_DISCLAIMER,
@@ -274,6 +278,11 @@ def export_comparison(request: ComparisonExportRequest) -> ExportResponse:
 def export_chat_transcript(ticker: str, request: ChatTranscriptExportRequest) -> ExportResponse:
     """Export a single deterministic chat turn for a selected cached asset."""
 
+    if request.conversation_id:
+        session_export = _maybe_export_existing_chat_session(request.conversation_id, request.export_format)
+        if session_export is not None:
+            return session_export
+
     blocked = _blocked_asset_response(ticker, ExportContentType.chat_transcript, request.export_format)
     if blocked is not None:
         blocked.metadata["submitted_question"] = request.question
@@ -373,6 +382,177 @@ def export_chat_transcript(ticker: str, request: ChatTranscriptExportRequest) ->
             "source": "local_fixture_chat",
         },
     )
+
+
+def export_chat_session_transcript(
+    conversation_id: str,
+    export_format: ExportFormat | str = ExportFormat.markdown,
+) -> ExportResponse:
+    metadata, turns = chat_session_export_payload(conversation_id)
+    return _export_chat_session_payload(metadata, turns, export_format)
+
+
+def _maybe_export_existing_chat_session(
+    conversation_id: str,
+    export_format: ExportFormat | str,
+) -> ExportResponse | None:
+    metadata, turns = chat_session_export_payload(conversation_id)
+    if metadata.lifecycle_state is ChatSessionLifecycleState.unavailable and metadata.selected_asset is None:
+        return None
+    return _export_chat_session_payload(metadata, turns, export_format)
+
+
+def _export_chat_session_payload(
+    metadata: ChatSessionPublicMetadata,
+    turns: list[ChatTurnRecord],
+    export_format: ExportFormat | str,
+) -> ExportResponse:
+    resolved_format = _coerce_format(export_format)
+    conversation_id = metadata.conversation_id or "unavailable"
+    title = f"Chat session {conversation_id} transcript export"
+
+    if metadata.lifecycle_state is not ChatSessionLifecycleState.active or not turns:
+        message = f"Chat transcript export is unavailable because the session state is {metadata.lifecycle_state.value}."
+        return ExportResponse(
+            content_type=ExportContentType.chat_transcript,
+            export_format=resolved_format,
+            export_state=ExportState.unavailable,
+            title=title,
+            state=StateMessage(
+                status=metadata.selected_asset.status if metadata.selected_asset else AssetStatus.unknown,
+                message=message,
+            ),
+            asset=metadata.selected_asset,
+            sections=[],
+            citations=[],
+            source_documents=[],
+            disclaimer=EDUCATIONAL_DISCLAIMER,
+            licensing_note=EXPORT_LICENSING_NOTE,
+            rendered_markdown=_unavailable_markdown(title, message),
+            metadata=_chat_session_export_metadata(metadata, generated_chat_answer=False),
+        )
+
+    all_citations = _dedupe_by_id([citation for turn in turns for citation in turn.citations], "citation_id")
+    all_sources = _dedupe_by_id([source for turn in turns for source in turn.source_documents], "citation_id")
+    sections = [
+        ExportedSection(
+            section_id="chat_session_metadata",
+            title="Chat Session Metadata",
+            section_type=ExportContentType.chat_transcript,
+            items=[
+                ExportedItem(
+                    item_id="conversation_id",
+                    title="Conversation ID",
+                    text=conversation_id,
+                    evidence_state=EvidenceState.supported,
+                ),
+                ExportedItem(
+                    item_id="selected_ticker",
+                    title="Selected Ticker",
+                    text=metadata.selected_asset.ticker if metadata.selected_asset else "unknown",
+                    evidence_state=EvidenceState.supported if metadata.selected_asset else EvidenceState.unknown,
+                ),
+                ExportedItem(
+                    item_id="session_lifecycle_state",
+                    title="Session State",
+                    text=metadata.lifecycle_state.value,
+                    evidence_state=EvidenceState.supported,
+                ),
+                ExportedItem(
+                    item_id="expires_at",
+                    title="Expires At",
+                    text=metadata.expires_at or "unknown",
+                    evidence_state=EvidenceState.supported if metadata.expires_at else EvidenceState.unknown,
+                ),
+            ],
+            evidence_state=EvidenceState.supported,
+        ),
+        ExportedSection(
+            section_id="chat_turns",
+            title="Chat Turns",
+            section_type=ExportContentType.chat_transcript,
+            items=[
+                ExportedItem(
+                    item_id=turn.turn_id,
+                    title=f"Turn {index + 1}",
+                    text=_with_citations(
+                        f"{turn.direct_answer} Why it matters: {turn.why_it_matters}",
+                        turn.citation_ids,
+                    ),
+                    citation_ids=turn.citation_ids,
+                    source_document_ids=turn.source_document_ids,
+                    freshness_state=turn.freshness_state,
+                    evidence_state=turn.evidence_state,
+                    metadata={"safety_classification": turn.safety_classification.value},
+                )
+                for index, turn in enumerate(turns)
+            ],
+            citation_ids=sorted({citation_id for turn in turns for citation_id in turn.citation_ids}),
+            source_document_ids=sorted({source_id for turn in turns for source_id in turn.source_document_ids}),
+            evidence_state=EvidenceState.supported,
+        ),
+        ExportedSection(
+            section_id="uncertainty_notes",
+            title="Uncertainty Notes",
+            section_type=ExportContentType.chat_transcript,
+            items=[
+                ExportedItem(
+                    item_id=f"{turn.turn_id}_uncertainty_{index + 1}",
+                    title=f"{turn.turn_id} uncertainty {index + 1}",
+                    text=note,
+                    evidence_state=EvidenceState.unknown,
+                )
+                for turn in turns
+                for index, note in enumerate(turn.uncertainty_labels)
+            ],
+            evidence_state=EvidenceState.unknown,
+        ),
+    ]
+    markdown = _render_markdown(title, sections, all_sources, None)
+    return ExportResponse(
+        content_type=ExportContentType.chat_transcript,
+        export_format=resolved_format,
+        export_state=ExportState.available,
+        title=title,
+        state=StateMessage(
+            status=metadata.selected_asset.status if metadata.selected_asset else AssetStatus.unknown,
+            message="Chat transcript export uses safe session turn records from the selected asset knowledge pack.",
+        ),
+        asset=metadata.selected_asset,
+        sections=sections,
+        citations=_export_citations_from_chat(all_citations, all_sources),
+        source_documents=_export_sources(all_sources),
+        disclaimer=EDUCATIONAL_DISCLAIMER,
+        licensing_note=EXPORT_LICENSING_NOTE,
+        rendered_markdown=markdown,
+        metadata=_chat_session_export_metadata(metadata, generated_chat_answer=True),
+    )
+
+
+def _chat_session_export_metadata(
+    metadata: ChatSessionPublicMetadata,
+    *,
+    generated_chat_answer: bool,
+) -> dict[str, Any]:
+    return {
+        "conversation_id": metadata.conversation_id,
+        "session_lifecycle_state": metadata.lifecycle_state.value,
+        "selected_ticker": metadata.selected_asset.ticker if metadata.selected_asset else None,
+        "created_at": metadata.created_at,
+        "last_activity_at": metadata.last_activity_at,
+        "expires_at": metadata.expires_at,
+        "deleted_at": metadata.deleted_at,
+        "turn_count": metadata.turn_count,
+        "latest_safety_classification": (
+            metadata.latest_safety_classification.value if metadata.latest_safety_classification else None
+        ),
+        "latest_evidence_state": metadata.latest_evidence_state.value if metadata.latest_evidence_state else None,
+        "latest_freshness_state": metadata.latest_freshness_state.value if metadata.latest_freshness_state else None,
+        "export_available": metadata.export_available,
+        "deletion_status": metadata.deletion_status.value,
+        "generated_chat_answer": generated_chat_answer,
+        "source": "local_accountless_chat_session",
+    }
 
 
 def _asset_page_sections(overview: OverviewResponse) -> list[ExportedSection]:
@@ -1013,6 +1193,18 @@ def _source_ids_for_citation_ids(citation_ids: list[str], citations: list[Citati
         if citation.citation_id in set(citation_ids)
     }
     return sorted(source_ids)
+
+
+def _dedupe_by_id(items: list[Any], id_field: str) -> list[Any]:
+    result: list[Any] = []
+    seen: set[str] = set()
+    for item in items:
+        item_id = getattr(item, id_field)
+        if item_id in seen:
+            continue
+        seen.add(item_id)
+        result.append(item)
+    return result
 
 
 def _freshness_for_citation_ids(citation_ids: list[str], citations: list[Citation]) -> FreshnessState | None:

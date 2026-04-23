@@ -22,6 +22,15 @@ from backend.cache import (
     evaluate_cache_revalidation,
 )
 from backend.chat import generate_asset_chat, validate_chat_response
+from backend.chat_sessions import (
+    CHAT_SESSION_TTL_DAYS,
+    CHAT_SESSION_TTL_SECONDS,
+    ChatSessionStore,
+    answer_chat_with_session,
+    chat_session_export_payload,
+    delete_chat_session,
+    get_chat_session_status,
+)
 from backend.citations import validate_claims
 from backend.comparison import generate_comparison, validate_comparison_response
 from backend.data import (
@@ -56,6 +65,8 @@ from backend.models import (
     CacheKeyMetadata,
     CacheScope,
     ChatResponse,
+    ChatRequest,
+    ChatSessionLifecycleState,
     ChatTranscriptExportRequest,
     CompareResponse,
     ComparisonExportRequest,
@@ -1557,6 +1568,89 @@ def test_generated_chat_contract():
     chat_source = (ROOT / "backend" / "chat.py").read_text(encoding="utf-8")
     for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import"]:
         assert forbidden not in chat_source
+
+
+def test_chat_session_cases():
+    from datetime import datetime, timedelta, timezone
+
+    data = load_yaml("chat_session_eval_cases.yaml")
+    assert data.get("schema_version") == "chat-session-evals-v1"
+
+    missing_models = {name for name in data["required_models"] if not hasattr(models, name)}
+    assert not missing_models, f"Missing chat session contract models: {missing_models}"
+
+    helper_globals = {
+        "ChatSessionStore",
+        "answer_chat_with_session",
+        "get_chat_session_status",
+        "delete_chat_session",
+        "chat_session_export_payload",
+    }
+    assert set(data["required_helpers"]) <= helper_globals
+    assert CHAT_SESSION_TTL_DAYS == data["ttl"]["days"]
+    assert CHAT_SESSION_TTL_SECONDS == data["ttl"]["seconds"]
+    assert {state.value for state in ChatSessionLifecycleState} == set(data["required_lifecycle_states"])
+
+    chat_session_source = (ROOT / "backend" / "chat_sessions.py").read_text(encoding="utf-8")
+    main_source = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
+    export_source = (ROOT / "backend" / "export.py").read_text(encoding="utf-8")
+    for route in data["required_routes"]:
+        assert route in main_source
+    for forbidden in data["forbidden_imports"]:
+        assert forbidden not in chat_session_source
+    for forbidden in data["forbidden_storage_markers"]:
+        assert forbidden not in chat_session_source
+
+    class Clock:
+        def __init__(self) -> None:
+            self.now = datetime(2026, 4, 23, 13, 1, 25, tzinfo=timezone.utc)
+
+        def __call__(self) -> datetime:
+            return self.now
+
+        def advance(self, **kwargs):
+            self.now += timedelta(**kwargs)
+
+    for index, case in enumerate(data["cases"]):
+        clock = Clock()
+        store = ChatSessionStore(id_generator=lambda i=index: f"abcdeffedcba4{i:03d}8abcdeffedcba{i:03d}", clock=clock)
+        response = answer_chat_with_session(case["ticker"], ChatRequest(question=case["question"]), store=store)
+        validated = ChatResponse.model_validate(response.model_dump(mode="json"))
+        assert validated.session.lifecycle_state.value == case["expected_state"]
+        assert validated.session.turn_count == case["expected_turn_count"]
+        assert validated.session.export_available is case["expected_export_available"]
+        assert validated.safety_classification.value == case["expected_safety_classification"]
+        assert not find_forbidden_output_phrases(_flatten_static_text(validated.model_dump(mode="json")))
+        if validated.session.conversation_id:
+            assert case["ticker"] not in validated.session.conversation_id
+            status = get_chat_session_status(validated.session.conversation_id, store=store)
+            assert status.session.conversation_id == validated.session.conversation_id
+            assert case["question"] not in str(status.model_dump(mode="json"))
+
+    clock = Clock()
+    store = ChatSessionStore(id_generator=lambda: "fedcbaabcdef44448fedcbaabcdef444", clock=clock)
+    created = answer_chat_with_session("VOO", ChatRequest(question="What is VOO?"), store=store)
+    conversation_id = created.session.conversation_id
+    continued = answer_chat_with_session(
+        "VOO",
+        ChatRequest(question="What top risk should a beginner understand?", conversation_id=conversation_id),
+        store=store,
+    )
+    mismatch = answer_chat_with_session("QQQ", ChatRequest(question="What is QQQ?", conversation_id=conversation_id), store=store)
+    metadata, turns = chat_session_export_payload(conversation_id, store=store)
+    deleted = delete_chat_session(conversation_id, store=store)
+    deleted_status = get_chat_session_status(conversation_id, store=store)
+
+    assert continued.session.turn_count == 2
+    assert mismatch.session.lifecycle_state is ChatSessionLifecycleState.ticker_mismatch
+    assert mismatch.citations == []
+    assert metadata.export_available is True
+    assert len(turns) == 2
+    assert "What top risk should a beginner understand?" not in str([turn.model_dump(mode="json") for turn in turns])
+    assert deleted.deleted is True
+    assert deleted_status.session.lifecycle_state is ChatSessionLifecycleState.deleted
+    assert deleted_status.turn_summaries == []
+    assert "chat_session_export_payload" in export_source
 
 
 def test_export_cases():
