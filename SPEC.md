@@ -49,6 +49,24 @@ MVP product scope:
 
 Unsupported and out-of-scope v1 assets include options, crypto, international equities, leveraged ETFs, inverse ETFs, ETNs, fixed income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, preferred stocks, warrants, rights, and other complex products unless explicitly added later. Recognized-but-unsupported and out-of-scope assets may appear in search, but must not receive generated pages, generated chat answers, generated comparisons, or generated risk summaries.
 
+## Current Implementation Direction
+
+The repository is no longer planning-only. It is currently a deterministic, fixture-backed MVP scaffold with substantial backend and frontend surface area already in place.
+
+Current implementation stage:
+
+- backend contracts exist for search, overview/details, Weekly News Focus, AI Comprehensive Analysis, comparison, grounded chat, glossary, exports, ingestion states, provider adapters, trust metrics, and LLM runtime diagnostics
+- frontend routes and components exist for home search, asset pages, comparison, chat, source metadata, glossary, and export controls
+- CI and local checks are deterministic and fixture-backed; normal quality gates do not depend on live provider, market-data, news, or LLM calls
+
+Near-term implementation priority order:
+
+1. converge frontend rendering onto the richer deterministic backend contracts instead of expanding duplicate frontend-only fixture logic
+2. close MVP-visible UX gaps first, especially Weekly News Focus and AI Comprehensive Analysis rendering, support-state parity, comparison-state parity, and source/freshness parity
+3. defer live-provider, persistence, deployment-hardening, and broader ingestion work until deterministic contract parity and quality gates are stable
+
+When choosing the next task, prefer improving PRD/TDS alignment of the current deterministic scaffold over adding new domains or speculative infrastructure.
+
 ## Source And Freshness Rules
 
 Stable facts must come from official or structured sources before model-written explanations.

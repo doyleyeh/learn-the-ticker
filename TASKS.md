@@ -2,7 +2,53 @@
 
 ## Current task
 
-No current task is prepared. The backlog is empty.
+### T-046: Render Weekly News Focus and AI analysis on asset pages
+
+Goal:
+Render the existing deterministic Weekly News Focus and AI Comprehensive Analysis contract on supported frontend asset pages so the UI matches the PRD/TDS separation between stable facts and timely context without introducing live calls, new assets, or advice-like copy.
+
+Task scope:
+Use the current deterministic frontend scaffold to add explicit Weekly News Focus and AI Comprehensive Analysis rendering for supported asset pages. Reuse existing local fixture-backed evidence only. Keep the work narrowly focused on asset-page rendering, states, and smoke coverage rather than broader frontend data fetching, backend rewrites, or live provider integration.
+
+Allowed files:
+
+- `apps/web/app/assets/[ticker]/page.tsx`
+- `apps/web/components/**`
+- `apps/web/lib/**`
+- `tests/frontend/**`
+- narrowly related docs or fixture helpers only if required by the rendering change
+
+Do not change:
+
+- backend route contracts, schemas, or fixture semantics
+- compare-page behavior
+- search-page behavior
+- live-provider, database, cache, or deployment wiring
+- supported asset scope, source-use policy, or safety guardrails
+
+Acceptance criteria:
+
+- supported asset pages show a visually separate Weekly News Focus module distinct from stable canonical facts
+- supported asset pages show AI Comprehensive Analysis state handling that matches the deterministic contract:
+  available analysis renders in the required section order
+  suppressed or insufficient-evidence states render clear beginner-readable copy instead of fabricated analysis
+- citation, freshness, and uncertainty treatment remains visible and educational
+- no new buy/sell/hold, allocation, price-target, tax, or brokerage language is introduced
+- frontend smoke coverage checks the new timely-context rendering and separation markers
+- normal local and CI checks remain deterministic with no live external calls
+
+Required commands:
+
+- `git status --short`
+- `npm test`
+- `npm run typecheck`
+- `npm run build`
+- `python3 -m pytest tests/unit/test_repo_contract.py -q`
+- `bash scripts/run_quality_gate.sh`
+
+Iteration budget:
+
+- Max 3 attempts
 
 ## Completed
 
@@ -1248,4 +1294,8 @@ Completion commits:
 
 ## Backlog
 
-No additional backlog tasks are currently prepared.
+### T-047: Align home search UI with backend support-classification states
+
+### T-048: Replace compare-page fixture logic with backend-aligned deterministic comparison contracts
+
+### T-049: Reduce frontend fixture drift by introducing shared deterministic view adapters

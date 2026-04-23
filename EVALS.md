@@ -212,6 +212,7 @@ Verify:
 - task instructions are narrow enough for one agent-loop cycle
 - `TASKS.md` has a current task or backlog when continuous agent work is expected
 - backlog headings are small, sequential, and aligned with MVP scope
+- near-term task sequencing prioritizes frontend/backend deterministic contract convergence before live-provider or deployment expansion
 - agent prompts read proposal, PRD, technical design, SPEC, TASKS, and EVALS
 - PRD/TDS/proposal are treated as the current baseline after safety rules
 - root npm scripts delegate to `apps/web`
