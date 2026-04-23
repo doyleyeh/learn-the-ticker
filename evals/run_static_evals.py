@@ -1581,6 +1581,95 @@ def test_generated_comparison_contract():
         assert forbidden not in comparison_source
 
 
+def test_comparison_evidence_availability_contract():
+    data = load_yaml("comparison_evidence_eval_cases.yaml")
+    assert data.get("schema_version") == "comparison-evidence-evals-v1"
+
+    for model_name in data["required_models"]:
+        assert hasattr(models, model_name), f"Missing comparison evidence model: {model_name}"
+
+    comparison_source = (ROOT / "backend" / "comparison.py").read_text(encoding="utf-8")
+    models_source = (ROOT / "backend" / "models.py").read_text(encoding="utf-8")
+    for helper_name in data["required_helpers"]:
+        assert helper_name in comparison_source, f"Missing comparison evidence helper: {helper_name}"
+
+    for state in data["required_non_generated_states"]:
+        assert f'{state} = "{state}"' in models_source
+
+    required_dimensions = set(data["required_dimensions"])
+    for case in data["supported_pairs"]:
+        comparison = generate_comparison(case["left"], case["right"])
+        validated = CompareResponse.model_validate(comparison.model_dump(mode="json"))
+        availability = validated.evidence_availability
+        assert availability is not None
+        assert availability.schema_version == "comparison-evidence-availability-v1"
+        assert availability.availability_state.value == case["expected_state"]
+        assert availability.left_asset.ticker == case["left"]
+        assert availability.right_asset.ticker == case["right"]
+        assert set(availability.required_dimensions) == required_dimensions
+        assert {dimension.dimension for dimension in availability.required_evidence_dimensions} == required_dimensions
+        assert all(dimension.availability_state.value == "available" for dimension in availability.required_evidence_dimensions)
+        assert availability.evidence_items
+        assert availability.claim_bindings
+        assert availability.citation_bindings
+        assert availability.source_references
+        assert {binding.side_role.value for binding in availability.citation_bindings} >= {
+            "left_side_support",
+            "right_side_support",
+        }
+        assert {binding.side_role.value for binding in availability.claim_bindings} == {"shared_comparison_support"}
+        citation_ids = {citation.citation_id for citation in validated.citations}
+        source_ids = {source.source_document_id for source in validated.source_documents}
+        assert {binding.citation_id for binding in availability.citation_bindings} <= citation_ids
+        assert {binding.source_document_id for binding in availability.citation_bindings} <= source_ids
+        assert {reference.source_document_id for reference in availability.source_references} <= source_ids
+        assert {reference.asset_ticker for reference in availability.source_references} <= {case["left"], case["right"]}
+        assert all(reference.allowlist_status.value == "allowed" for reference in availability.source_references)
+        assert all(
+            reference.source_use_policy in {SourceUsePolicy.full_text_allowed, SourceUsePolicy.summary_allowed}
+            for reference in availability.source_references
+        )
+        assert all(
+            reference.permitted_operations.can_support_generated_output
+            and reference.permitted_operations.can_support_citations
+            for reference in availability.source_references
+        )
+        assert all(binding.supports_generated_claim is True for binding in availability.citation_bindings)
+        assert all(item.freshness_state.value == "fresh" for item in availability.evidence_items)
+        assert availability.diagnostics.no_live_external_calls is True
+        assert availability.diagnostics.live_provider_calls_attempted is False
+        assert availability.diagnostics.live_llm_calls_attempted is False
+        assert availability.diagnostics.availability_contract_created_generated_output is False
+        assert availability.diagnostics.no_new_generated_output is True
+        serialized = str(availability.model_dump(mode="json")).lower()
+        for forbidden in ["supporting_passage", "supporting_text", "raw_source_text", "reasoning_details"]:
+            assert forbidden not in serialized
+        for phrase in data["forbidden_advice_phrases"]:
+            assert phrase not in serialized
+
+    for case in data["non_generated_cases"]:
+        comparison = generate_comparison(case["left"], case["right"])
+        availability = comparison.evidence_availability
+        assert comparison.comparison_type == "unavailable"
+        assert comparison.key_differences == []
+        assert comparison.bottom_line_for_beginners is None
+        assert comparison.citations == []
+        assert comparison.source_documents == []
+        assert availability is not None
+        assert availability.availability_state.value == case["expected_state"]
+        assert availability.evidence_items == []
+        assert availability.claim_bindings == []
+        assert availability.citation_bindings == []
+        assert availability.source_references == []
+        assert availability.diagnostics.generated_comparison_available is False
+        assert availability.diagnostics.no_live_external_calls is True
+        assert availability.diagnostics.no_new_generated_output is True
+        assert availability.diagnostics.unavailable_reasons
+
+    for marker in data["forbidden_static_markers"]:
+        assert marker not in comparison_source
+
+
 def test_generated_chat_contract():
     supported_cases = [
         ("AAPL", "What does Apple do?", "primary business"),
@@ -2094,6 +2183,7 @@ if __name__ == "__main__":
     test_generated_overview_contract()
     test_source_drawer_cases()
     test_generated_comparison_contract()
+    test_comparison_evidence_availability_contract()
     test_generated_chat_contract()
     test_export_cases()
     test_weekly_news_cases()

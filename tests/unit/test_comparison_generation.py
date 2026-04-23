@@ -54,6 +54,57 @@ def test_voo_qqq_comparison_is_schema_valid_and_source_backed():
     assert all(source.is_official is True for source in validated.source_documents)
     assert all(source.supporting_passage for source in validated.source_documents)
     assert validate_comparison_response(validated, pack).valid
+    assert validated.evidence_availability is not None
+    assert validated.evidence_availability.schema_version == "comparison-evidence-availability-v1"
+    assert validated.evidence_availability.availability_state.value == "available"
+    assert validated.evidence_availability.left_asset.ticker == "VOO"
+    assert validated.evidence_availability.right_asset.ticker == "QQQ"
+    assert set(validated.evidence_availability.required_dimensions) == {
+        "Benchmark",
+        "Expense ratio",
+        "Holdings count",
+        "Breadth",
+        "Educational role",
+    }
+    assert {dimension.dimension for dimension in validated.evidence_availability.required_evidence_dimensions} == {
+        "Benchmark",
+        "Expense ratio",
+        "Holdings count",
+        "Breadth",
+        "Educational role",
+    }
+    assert all(
+        dimension.availability_state.value == "available"
+        for dimension in validated.evidence_availability.required_evidence_dimensions
+    )
+    assert all(
+        binding.citation_id in citation_ids
+        and binding.source_document_id in source_ids
+        and binding.supports_generated_claim is True
+        for binding in validated.evidence_availability.citation_bindings
+    )
+    assert {
+        binding.side_role.value for binding in validated.evidence_availability.citation_bindings
+    } >= {"left_side_support", "right_side_support"}
+    assert {
+        binding.side_role.value for binding in validated.evidence_availability.claim_bindings
+    } == {"shared_comparison_support"}
+    assert {
+        reference.source_document_id for reference in validated.evidence_availability.source_references
+    } <= source_ids
+    assert {
+        reference.allowlist_status.value for reference in validated.evidence_availability.source_references
+    } == {"allowed"}
+    assert {
+        reference.source_use_policy.value for reference in validated.evidence_availability.source_references
+    } <= {"full_text_allowed", "summary_allowed"}
+    assert all(
+        reference.permitted_operations.can_support_generated_output
+        for reference in validated.evidence_availability.source_references
+    )
+    assert validated.evidence_availability.diagnostics.no_live_external_calls is True
+    assert validated.evidence_availability.diagnostics.no_new_generated_output is True
+    assert validated.evidence_availability.diagnostics.availability_contract_created_generated_output is False
 
 
 def test_voo_qqq_comparison_supports_reverse_ticker_order():
@@ -64,6 +115,21 @@ def test_voo_qqq_comparison_supports_reverse_ticker_order():
     assert comparison.right_asset.ticker == "VOO"
     assert comparison.comparison_type == "etf_vs_etf"
     assert comparison.key_differences[0].plain_english_summary.startswith("QQQ tracks")
+    assert comparison.evidence_availability is not None
+    assert comparison.evidence_availability.left_asset.ticker == "QQQ"
+    assert comparison.evidence_availability.right_asset.ticker == "VOO"
+    left_side_assets = {
+        item.asset_ticker
+        for item in comparison.evidence_availability.evidence_items
+        if item.side_role.value == "left_side_support"
+    }
+    right_side_assets = {
+        item.asset_ticker
+        for item in comparison.evidence_availability.evidence_items
+        if item.side_role.value == "right_side_support"
+    }
+    assert left_side_assets == {"QQQ"}
+    assert right_side_assets == {"VOO"}
     assert comparison.source_documents
     assert {source.source_document_id for source in comparison.source_documents} <= {
         source.source_document_id for source in pack.comparison_sources
@@ -82,12 +148,15 @@ def test_knowledge_pack_builder_does_not_change_comparison_output():
 
 def test_unavailable_comparisons_do_not_generate_claims_or_citations():
     cases = [
-        ("VOO", "BTC", AssetStatus.unsupported),
-        ("VOO", "ZZZZ", AssetStatus.unknown),
-        ("AAPL", "VOO", AssetStatus.unknown),
+        ("VOO", "BTC", AssetStatus.unsupported, "unsupported"),
+        ("VOO", "TQQQ", AssetStatus.unsupported, "unsupported"),
+        ("VOO", "GME", AssetStatus.unknown, "out_of_scope"),
+        ("VOO", "SPY", AssetStatus.unknown, "eligible_not_cached"),
+        ("VOO", "ZZZZ", AssetStatus.unknown, "unknown"),
+        ("AAPL", "VOO", AssetStatus.unknown, "no_local_pack"),
     ]
 
-    for left_ticker, right_ticker, expected_status in cases:
+    for left_ticker, right_ticker, expected_status, expected_availability_state in cases:
         comparison = generate_comparison(left_ticker, right_ticker)
 
         assert comparison.state.status is expected_status
@@ -96,6 +165,19 @@ def test_unavailable_comparisons_do_not_generate_claims_or_citations():
         assert comparison.bottom_line_for_beginners is None
         assert comparison.citations == []
         assert comparison.source_documents == []
+        assert comparison.evidence_availability is not None
+        assert comparison.evidence_availability.availability_state.value == expected_availability_state
+        assert comparison.evidence_availability.evidence_items == []
+        assert comparison.evidence_availability.claim_bindings == []
+        assert comparison.evidence_availability.citation_bindings == []
+        assert comparison.evidence_availability.source_references == []
+        assert comparison.evidence_availability.diagnostics.generated_comparison_available is False
+        assert comparison.evidence_availability.diagnostics.no_live_external_calls is True
+        assert comparison.evidence_availability.diagnostics.no_new_generated_output is True
+        assert all(
+            dimension.availability_state.value == expected_availability_state
+            for dimension in comparison.evidence_availability.required_evidence_dimensions
+        )
 
 
 def test_comparison_validation_surfaces_missing_and_insufficient_evidence():

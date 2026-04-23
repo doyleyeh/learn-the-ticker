@@ -734,8 +734,31 @@ def test_compare_route_returns_educational_shape():
     assert body["key_differences"][0]["citation_ids"]
     assert body["state"]["status"] == "supported"
     assert body["source_documents"]
+    assert body["evidence_availability"]["schema_version"] == "comparison-evidence-availability-v1"
+    assert body["evidence_availability"]["availability_state"] == "available"
+    assert body["evidence_availability"]["left_asset"]["ticker"] == "VOO"
+    assert body["evidence_availability"]["right_asset"]["ticker"] == "QQQ"
+    assert set(body["evidence_availability"]["required_dimensions"]) == {
+        "Benchmark",
+        "Expense ratio",
+        "Holdings count",
+        "Breadth",
+        "Educational role",
+    }
+    assert body["evidence_availability"]["evidence_items"]
+    assert body["evidence_availability"]["claim_bindings"]
+    assert body["evidence_availability"]["citation_bindings"]
+    assert body["evidence_availability"]["source_references"]
+    assert body["evidence_availability"]["diagnostics"]["no_live_external_calls"] is True
+    assert body["evidence_availability"]["diagnostics"]["no_new_generated_output"] is True
     source_ids = {source["source_document_id"] for source in body["source_documents"]}
     assert {citation["source_document_id"] for citation in body["citations"]} <= source_ids
+    assert {
+        binding["citation_id"] for binding in body["evidence_availability"]["citation_bindings"]
+    } <= {citation["citation_id"] for citation in body["citations"]}
+    assert {
+        binding["source_document_id"] for binding in body["evidence_availability"]["citation_bindings"]
+    } <= source_ids
     source = body["source_documents"][0]
     assert source["source_document_id"]
     assert source["title"]
@@ -759,17 +782,44 @@ def test_compare_route_returns_educational_shape():
 def test_compare_route_uses_fixture_pipeline_in_reverse_order_and_unavailable_states():
     reverse = client.post("/api/compare", json={"left_ticker": "QQQ", "right_ticker": "VOO"}).json()
     unsupported = client.post("/api/compare", json={"left_ticker": "VOO", "right_ticker": "BTC"}).json()
+    eligible = client.post("/api/compare", json={"left_ticker": "VOO", "right_ticker": "SPY"}).json()
+    out_of_scope = client.post("/api/compare", json={"left_ticker": "VOO", "right_ticker": "GME"}).json()
+    no_local_pack = client.post("/api/compare", json={"left_ticker": "AAPL", "right_ticker": "VOO"}).json()
 
     assert reverse["left_asset"]["ticker"] == "QQQ"
     assert reverse["right_asset"]["ticker"] == "VOO"
     assert reverse["comparison_type"] == "etf_vs_etf"
     assert reverse["key_differences"][0]["plain_english_summary"].startswith("QQQ tracks")
+    assert reverse["evidence_availability"]["left_asset"]["ticker"] == "QQQ"
+    assert reverse["evidence_availability"]["right_asset"]["ticker"] == "VOO"
+    assert {
+        item["asset_ticker"]
+        for item in reverse["evidence_availability"]["evidence_items"]
+        if item["side_role"] == "left_side_support"
+    } == {"QQQ"}
     assert unsupported["state"]["status"] == "unsupported"
     assert unsupported["comparison_type"] == "unavailable"
     assert unsupported["key_differences"] == []
     assert unsupported["bottom_line_for_beginners"] is None
     assert unsupported["citations"] == []
     assert unsupported["source_documents"] == []
+    assert unsupported["evidence_availability"]["availability_state"] == "unsupported"
+
+    for body, expected_state in [
+        (eligible, "eligible_not_cached"),
+        (out_of_scope, "out_of_scope"),
+        (no_local_pack, "no_local_pack"),
+    ]:
+        assert body["comparison_type"] == "unavailable"
+        assert body["key_differences"] == []
+        assert body["bottom_line_for_beginners"] is None
+        assert body["citations"] == []
+        assert body["source_documents"] == []
+        assert body["evidence_availability"]["availability_state"] == expected_state
+        assert body["evidence_availability"]["evidence_items"] == []
+        assert body["evidence_availability"]["claim_bindings"] == []
+        assert body["evidence_availability"]["citation_bindings"] == []
+        assert body["evidence_availability"]["source_references"] == []
 
 
 def test_chat_advice_like_question_redirects_to_education():

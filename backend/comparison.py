@@ -16,14 +16,30 @@ from backend.citations import (
 )
 from backend.models import (
     AssetStatus,
+    AssetIdentity,
+    AssetType,
     BeginnerBottomLine,
     Citation,
+    ComparisonEvidenceAvailability,
+    ComparisonEvidenceAvailabilityState,
+    ComparisonEvidenceCitationBinding,
+    ComparisonEvidenceClaimBinding,
+    ComparisonEvidenceDiagnostics,
+    ComparisonEvidenceDimension,
+    ComparisonEvidenceItem,
+    ComparisonEvidenceSide,
+    ComparisonEvidenceSideRole,
+    ComparisonEvidenceSourceReference,
     CompareResponse,
+    EvidenceState,
     FreshnessState,
     KeyDifference,
+    SourceAllowlistStatus,
     SourceDocument,
+    SourceUsePolicy,
     StateMessage,
 )
+from backend.data import ELIGIBLE_NOT_CACHED_ASSETS, OUT_OF_SCOPE_COMMON_STOCKS
 from backend.retrieval import (
     AssetKnowledgePack,
     ComparisonKnowledgePack,
@@ -57,6 +73,23 @@ class PlannedComparisonClaim:
     claim_type: str = "comparison"
     required_asset_tickers: list[str] | None = None
     freshness_label: FreshnessState | None = None
+
+
+REQUIRED_COMPARISON_DIMENSIONS = [
+    "Benchmark",
+    "Expense ratio",
+    "Holdings count",
+    "Breadth",
+    "Educational role",
+]
+
+COMPARISON_FACT_FIELDS_BY_DIMENSION = {
+    "Benchmark": ["benchmark"],
+    "Expense ratio": ["expense_ratio"],
+    "Holdings count": ["holdings_count"],
+    "Breadth": ["holdings_count"],
+    "Educational role": ["beginner_role"],
+}
 
 
 def generate_comparison(left_ticker: str, right_ticker: str) -> CompareResponse:
@@ -119,6 +152,13 @@ def generate_comparison_from_pack(pack: ComparisonKnowledgePack) -> CompareRespo
         bottom_line_for_beginners=bottom_line,
         citations=bindings.citations(),
         source_documents=bindings.source_documents(),
+    )
+    response.evidence_availability = _available_evidence_availability(
+        response=response,
+        pack=pack,
+        bindings=bindings,
+        left_facts=left_facts,
+        right_facts=right_facts,
     )
     _assert_safe_copy(response)
     return response
@@ -265,6 +305,9 @@ class _ComparisonCitationRegistry:
             if binding is not None:
                 evidence.append(binding.evidence)
         return evidence
+
+    def binding_for_citation_id(self, citation_id: str) -> CitationBinding | None:
+        return self._binding_for_citation_id(citation_id)
 
     def _binding_for_citation_id(self, citation_id: str) -> CitationBinding | None:
         existing = self._bindings_by_citation_id.get(citation_id)
@@ -486,7 +529,377 @@ def _unavailable_comparison(
         bottom_line_for_beginners=None,
         citations=[],
         source_documents=[],
+        evidence_availability=_non_generated_evidence_availability(
+            left_pack=left_pack,
+            right_pack=right_pack,
+            state=_non_generated_availability_state(left_pack, right_pack, message),
+            comparison_type="unavailable",
+            message=state.message,
+        ),
     )
+
+
+def _available_evidence_availability(
+    response: CompareResponse,
+    pack: ComparisonKnowledgePack,
+    bindings: _ComparisonCitationRegistry,
+    left_facts: dict[str, RetrievedFact],
+    right_facts: dict[str, RetrievedFact],
+) -> ComparisonEvidenceAvailability:
+    evidence_items: list[ComparisonEvidenceItem] = []
+    dimensions: list[ComparisonEvidenceDimension] = []
+    claim_bindings: list[ComparisonEvidenceClaimBinding] = []
+    citation_bindings: list[ComparisonEvidenceCitationBinding] = []
+
+    evidence_item_ids_by_dimension: dict[str, list[str]] = {}
+
+    for dimension in REQUIRED_COMPARISON_DIMENSIONS:
+        dimension_items: list[ComparisonEvidenceItem] = []
+        for side, facts in [
+            (ComparisonEvidenceSide.left, left_facts),
+            (ComparisonEvidenceSide.right, right_facts),
+        ]:
+            for field_name in COMPARISON_FACT_FIELDS_BY_DIMENSION[dimension]:
+                fact = _require_fact(facts, field_name)
+                citation_binding = bindings.for_fact(fact)
+                side_role = _side_role_for_asset(
+                    fact.fact.asset_ticker,
+                    pack.left_asset_pack.asset.ticker,
+                    pack.right_asset_pack.asset.ticker,
+                )
+                item = _evidence_item_for_fact(dimension, side, side_role, fact, citation_binding)
+                dimension_items.append(item)
+                evidence_items.append(item)
+
+        item_ids = [item.evidence_item_id for item in dimension_items]
+        citation_ids = sorted({citation_id for item in dimension_items for citation_id in item.citation_ids})
+        source_document_ids = sorted(
+            {source_id for item in dimension_items for source_id in [item.source_document_id] if source_id is not None}
+        )
+        evidence_item_ids_by_dimension[dimension] = item_ids
+        dimensions.append(
+            ComparisonEvidenceDimension(
+                dimension=dimension,
+                availability_state=ComparisonEvidenceAvailabilityState.available,
+                evidence_state=EvidenceState.supported,
+                freshness_state=_combined_freshness([item.freshness_state for item in dimension_items]),
+                left_evidence_item_ids=[item.evidence_item_id for item in dimension_items if item.side is ComparisonEvidenceSide.left],
+                right_evidence_item_ids=[item.evidence_item_id for item in dimension_items if item.side is ComparisonEvidenceSide.right],
+                shared_evidence_item_ids=[],
+                citation_ids=citation_ids,
+                source_document_ids=source_document_ids,
+                generated_claim_ids=[f"claim_comparison_{_claim_slug(dimension)}"],
+            )
+        )
+
+    for difference in response.key_differences:
+        claim_id = f"claim_comparison_{_claim_slug(difference.dimension)}"
+        claim_bindings.append(
+            ComparisonEvidenceClaimBinding(
+                claim_id=claim_id,
+                claim_kind="key_difference",
+                dimension=difference.dimension,
+                side_role=ComparisonEvidenceSideRole.shared_comparison_support,
+                citation_ids=difference.citation_ids,
+                source_document_ids=_source_document_ids_for_citations(difference.citation_ids, bindings),
+                evidence_item_ids=evidence_item_ids_by_dimension.get(difference.dimension, []),
+                availability_state=ComparisonEvidenceAvailabilityState.available,
+            )
+        )
+        citation_bindings.extend(
+            _citation_bindings_for_claim(
+                claim_id=claim_id,
+                dimension=difference.dimension,
+                citation_ids=difference.citation_ids,
+                bindings=bindings,
+                left_ticker=pack.left_asset_pack.asset.ticker,
+                right_ticker=pack.right_asset_pack.asset.ticker,
+            )
+        )
+
+    if response.bottom_line_for_beginners is not None:
+        bottom_line_citation_ids = response.bottom_line_for_beginners.citation_ids
+        claim_bindings.append(
+            ComparisonEvidenceClaimBinding(
+                claim_id="claim_comparison_bottom_line",
+                claim_kind="beginner_bottom_line",
+                dimension="Beginner bottom line",
+                side_role=ComparisonEvidenceSideRole.shared_comparison_support,
+                citation_ids=bottom_line_citation_ids,
+                source_document_ids=_source_document_ids_for_citations(bottom_line_citation_ids, bindings),
+                evidence_item_ids=sorted({item.evidence_item_id for item in evidence_items if item.dimension in {
+                    "Expense ratio",
+                    "Holdings count",
+                    "Educational role",
+                }}),
+                availability_state=ComparisonEvidenceAvailabilityState.available,
+            )
+        )
+        citation_bindings.extend(
+            _citation_bindings_for_claim(
+                claim_id="claim_comparison_bottom_line",
+                dimension="Beginner bottom line",
+                citation_ids=bottom_line_citation_ids,
+                bindings=bindings,
+                left_ticker=pack.left_asset_pack.asset.ticker,
+                right_ticker=pack.right_asset_pack.asset.ticker,
+            )
+        )
+
+    return ComparisonEvidenceAvailability(
+        comparison_id=_comparison_id(pack.left_asset_pack.asset.ticker, pack.right_asset_pack.asset.ticker),
+        comparison_type=response.comparison_type,
+        left_asset=response.left_asset,
+        right_asset=response.right_asset,
+        availability_state=ComparisonEvidenceAvailabilityState.available,
+        required_dimensions=REQUIRED_COMPARISON_DIMENSIONS,
+        required_evidence_dimensions=dimensions,
+        evidence_items=evidence_items,
+        claim_bindings=claim_bindings,
+        citation_bindings=sorted(citation_bindings, key=lambda item: item.binding_id),
+        source_references=[
+            _source_reference_from_fixture(source)
+            for source in sorted(pack.comparison_sources, key=lambda source: source.source_document_id)
+            if source.source_document_id in {source.source_document_id for source in response.source_documents}
+        ],
+        diagnostics=ComparisonEvidenceDiagnostics(
+            generated_comparison_available=True,
+            unavailable_reasons=[],
+        ),
+    )
+
+
+def _non_generated_evidence_availability(
+    left_pack: AssetKnowledgePack,
+    right_pack: AssetKnowledgePack,
+    state: ComparisonEvidenceAvailabilityState,
+    comparison_type: str,
+    message: str,
+) -> ComparisonEvidenceAvailability:
+    dimensions = [
+        ComparisonEvidenceDimension(
+            dimension=dimension,
+            availability_state=state,
+            evidence_state=_evidence_state_for_availability(state),
+            freshness_state=FreshnessState.unavailable if state is not ComparisonEvidenceAvailabilityState.stale else FreshnessState.stale,
+            unavailable_reason=message,
+        )
+        for dimension in REQUIRED_COMPARISON_DIMENSIONS
+    ]
+    return ComparisonEvidenceAvailability(
+        comparison_id=_comparison_id(left_pack.asset.ticker, right_pack.asset.ticker),
+        comparison_type=comparison_type,
+        left_asset=_selected_asset_for_availability(left_pack.asset),
+        right_asset=_selected_asset_for_availability(right_pack.asset),
+        availability_state=state,
+        required_dimensions=REQUIRED_COMPARISON_DIMENSIONS,
+        required_evidence_dimensions=dimensions,
+        evidence_items=[],
+        claim_bindings=[],
+        citation_bindings=[],
+        source_references=[],
+        diagnostics=ComparisonEvidenceDiagnostics(
+            generated_comparison_available=False,
+            unavailable_reasons=[message],
+            empty_state_reason=message,
+        ),
+    )
+
+
+def _non_generated_availability_state(
+    left_pack: AssetKnowledgePack,
+    right_pack: AssetKnowledgePack,
+    message: str | None,
+) -> ComparisonEvidenceAvailabilityState:
+    for pack in [left_pack, right_pack]:
+        ticker = pack.asset.ticker
+        if ticker in OUT_OF_SCOPE_COMMON_STOCKS:
+            return ComparisonEvidenceAvailabilityState.out_of_scope
+        if ticker in ELIGIBLE_NOT_CACHED_ASSETS:
+            return ComparisonEvidenceAvailabilityState.eligible_not_cached
+        if pack.asset.status is AssetStatus.unsupported:
+            return ComparisonEvidenceAvailabilityState.unsupported
+        if pack.asset.status is AssetStatus.unknown:
+            return ComparisonEvidenceAvailabilityState.unknown
+
+    if message:
+        return ComparisonEvidenceAvailabilityState.no_local_pack
+    return ComparisonEvidenceAvailabilityState.unavailable
+
+
+def _evidence_state_for_availability(state: ComparisonEvidenceAvailabilityState) -> EvidenceState:
+    if state is ComparisonEvidenceAvailabilityState.unsupported:
+        return EvidenceState.unsupported
+    if state is ComparisonEvidenceAvailabilityState.stale:
+        return EvidenceState.stale
+    if state in {ComparisonEvidenceAvailabilityState.partial, ComparisonEvidenceAvailabilityState.no_local_pack}:
+        return EvidenceState.mixed
+    if state is ComparisonEvidenceAvailabilityState.insufficient_evidence:
+        return EvidenceState.insufficient_evidence
+    if state is ComparisonEvidenceAvailabilityState.unknown:
+        return EvidenceState.unknown
+    return EvidenceState.unavailable
+
+
+def _selected_asset_for_availability(asset: AssetIdentity) -> AssetIdentity:
+    ticker = asset.ticker
+    if ticker in ELIGIBLE_NOT_CACHED_ASSETS:
+        metadata = ELIGIBLE_NOT_CACHED_ASSETS[ticker]
+        return AssetIdentity(
+            ticker=ticker,
+            name=str(metadata["name"]),
+            asset_type=AssetType(str(metadata["asset_type"])),
+            exchange=str(metadata["exchange"]) if metadata.get("exchange") else None,
+            issuer=str(metadata["issuer"]) if metadata.get("issuer") else None,
+            status=AssetStatus.unknown,
+            supported=False,
+        )
+    if ticker in OUT_OF_SCOPE_COMMON_STOCKS:
+        metadata = OUT_OF_SCOPE_COMMON_STOCKS[ticker]
+        return AssetIdentity(
+            ticker=ticker,
+            name=str(metadata["name"]),
+            asset_type=AssetType(str(metadata["asset_type"])),
+            exchange=str(metadata["exchange"]) if metadata.get("exchange") else None,
+            issuer=str(metadata["issuer"]) if metadata.get("issuer") else None,
+            status=AssetStatus.unknown,
+            supported=False,
+        )
+    return asset
+
+
+def _evidence_item_for_fact(
+    dimension: str,
+    side: ComparisonEvidenceSide,
+    side_role: ComparisonEvidenceSideRole,
+    fact: RetrievedFact,
+    citation_binding: CitationBinding,
+) -> ComparisonEvidenceItem:
+    decision = resolve_source_policy(
+        url=fact.source_document.url,
+        source_identifier=fact.source_document.url if fact.source_document.url.startswith("local://") else None,
+    )
+    return ComparisonEvidenceItem(
+        evidence_item_id=f"evidence_{_claim_slug(dimension)}_{side.value}_{fact.fact.fact_id}",
+        dimension=dimension,
+        side=side,
+        side_role=side_role,
+        asset_ticker=fact.fact.asset_ticker,
+        field_name=fact.fact.field_name,
+        fact_id=fact.fact.fact_id,
+        source_chunk_id=fact.source_chunk.chunk_id,
+        source_document_id=fact.source_document.source_document_id,
+        citation_ids=[citation_binding.citation.citation_id],
+        evidence_state=EvidenceState(fact.fact.evidence_state),
+        freshness_state=fact.fact.freshness_state,
+        as_of_date=fact.fact.as_of_date,
+        retrieved_at=fact.source_document.retrieved_at,
+        is_official=fact.source_document.is_official,
+        source_quality=fact.source_document.source_quality,
+        allowlist_status=fact.source_document.allowlist_status,
+        source_use_policy=fact.source_document.source_use_policy,
+        permitted_operations=decision.permitted_operations,
+    )
+
+
+def _citation_bindings_for_claim(
+    claim_id: str,
+    dimension: str,
+    citation_ids: list[str],
+    bindings: _ComparisonCitationRegistry,
+    left_ticker: str,
+    right_ticker: str,
+) -> list[ComparisonEvidenceCitationBinding]:
+    availability_bindings: list[ComparisonEvidenceCitationBinding] = []
+    for citation_id in citation_ids:
+        binding = bindings.binding_for_citation_id(citation_id)
+        if binding is None:
+            continue
+        side_role = _side_role_for_asset(binding.evidence.asset_ticker, left_ticker, right_ticker)
+        source_document = binding.source_document
+        availability_bindings.append(
+            ComparisonEvidenceCitationBinding(
+                binding_id=f"binding_{claim_id}_{citation_id}",
+                claim_id=claim_id,
+                dimension=dimension,
+                citation_id=citation_id,
+                source_document_id=source_document.source_document_id,
+                asset_ticker=binding.evidence.asset_ticker,
+                side_role=side_role,
+                freshness_state=source_document.freshness_state,
+                source_quality=source_document.source_quality,
+                allowlist_status=source_document.allowlist_status,
+                source_use_policy=source_document.source_use_policy,
+                permitted_operations=source_document.permitted_operations,
+                supports_generated_claim=(
+                    binding.evidence.supports_claim
+                    and source_document.permitted_operations.can_support_generated_output
+                    and source_document.permitted_operations.can_support_citations
+                    and source_document.source_use_policy
+                    not in {SourceUsePolicy.rejected, SourceUsePolicy.metadata_only, SourceUsePolicy.link_only}
+                    and source_document.allowlist_status is SourceAllowlistStatus.allowed
+                ),
+            )
+        )
+    return availability_bindings
+
+
+def _source_document_ids_for_citations(citation_ids: Iterable[str], bindings: _ComparisonCitationRegistry) -> list[str]:
+    source_document_ids = []
+    for citation_id in citation_ids:
+        binding = bindings.binding_for_citation_id(citation_id)
+        if binding is not None:
+            source_document_ids.append(binding.source_document.source_document_id)
+    return sorted(set(source_document_ids))
+
+
+def _source_reference_from_fixture(source: SourceDocumentFixture) -> ComparisonEvidenceSourceReference:
+    decision = resolve_source_policy(
+        url=source.url,
+        source_identifier=source.url if source.url.startswith("local://") else None,
+    )
+    return ComparisonEvidenceSourceReference(
+        source_document_id=source.source_document_id,
+        asset_ticker=source.asset_ticker,
+        source_type=source.source_type,
+        title=source.title,
+        publisher=source.publisher,
+        url=source.url,
+        published_at=source.published_at,
+        as_of_date=source.as_of_date,
+        retrieved_at=source.retrieved_at,
+        freshness_state=source.freshness_state,
+        is_official=source.is_official,
+        source_quality=source.source_quality,
+        allowlist_status=source.allowlist_status,
+        source_use_policy=source.source_use_policy,
+        permitted_operations=decision.permitted_operations,
+    )
+
+
+def _side_role_for_asset(
+    asset_ticker: str,
+    left_ticker: str,
+    right_ticker: str,
+) -> ComparisonEvidenceSideRole:
+    if asset_ticker == left_ticker:
+        return ComparisonEvidenceSideRole.left_side_support
+    if asset_ticker == right_ticker:
+        return ComparisonEvidenceSideRole.right_side_support
+    return ComparisonEvidenceSideRole.shared_comparison_support
+
+
+def _combined_freshness(states: list[FreshnessState]) -> FreshnessState:
+    if not states:
+        return FreshnessState.unavailable
+    for state in [FreshnessState.unavailable, FreshnessState.unknown, FreshnessState.stale]:
+        if state in states:
+            return state
+    return FreshnessState.fresh
+
+
+def _comparison_id(left_ticker: str, right_ticker: str) -> str:
+    return f"comparison-{left_ticker.lower()}-to-{right_ticker.lower()}-local-fixture-v1"
 
 
 def _state_for_pack(pack: AssetKnowledgePack) -> StateMessage:

@@ -1,0 +1,75 @@
+schema_version: comparison-evidence-evals-v1
+required_models:
+  - ComparisonEvidenceAvailabilityState
+  - ComparisonEvidenceSide
+  - ComparisonEvidenceSideRole
+  - ComparisonEvidenceDiagnostics
+  - ComparisonEvidenceSourceReference
+  - ComparisonEvidenceItem
+  - ComparisonEvidenceDimension
+  - ComparisonEvidenceCitationBinding
+  - ComparisonEvidenceClaimBinding
+  - ComparisonEvidenceAvailability
+  - CompareResponse
+required_helpers:
+  - _available_evidence_availability
+  - _non_generated_evidence_availability
+supported_pairs:
+  - left: VOO
+    right: QQQ
+    expected_state: available
+  - left: QQQ
+    right: VOO
+    expected_state: available
+required_dimensions:
+  - Benchmark
+  - Expense ratio
+  - Holdings count
+  - Breadth
+  - Educational role
+non_generated_cases:
+  - left: VOO
+    right: BTC
+    expected_state: unsupported
+  - left: VOO
+    right: TQQQ
+    expected_state: unsupported
+  - left: VOO
+    right: GME
+    expected_state: out_of_scope
+  - left: VOO
+    right: SPY
+    expected_state: eligible_not_cached
+  - left: VOO
+    right: ZZZZ
+    expected_state: unknown
+  - left: AAPL
+    right: VOO
+    expected_state: no_local_pack
+required_non_generated_states:
+  - unsupported
+  - out_of_scope
+  - unknown
+  - eligible_not_cached
+  - no_local_pack
+  - stale
+  - partial
+  - unavailable
+  - insufficient_evidence
+forbidden_static_markers:
+  - import requests
+  - import httpx
+  - urllib.request
+  - from socket import
+  - OPENROUTER_API_KEY
+  - reasoning_details
+  - unrestricted_source_text
+  - raw_provider_payload
+forbidden_advice_phrases:
+  - should buy
+  - should sell
+  - should hold
+  - price target
+  - target price
+  - exact allocation
+  - use a broker

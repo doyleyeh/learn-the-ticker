@@ -1788,6 +1788,143 @@ class BeginnerBottomLine(BaseModel):
     citation_ids: list[str]
 
 
+class ComparisonEvidenceAvailabilityState(str, Enum):
+    available = "available"
+    unsupported = "unsupported"
+    out_of_scope = "out_of_scope"
+    unknown = "unknown"
+    eligible_not_cached = "eligible_not_cached"
+    no_local_pack = "no_local_pack"
+    stale = "stale"
+    partial = "partial"
+    unavailable = "unavailable"
+    insufficient_evidence = "insufficient_evidence"
+
+
+class ComparisonEvidenceSide(str, Enum):
+    left = "left"
+    right = "right"
+    shared = "shared"
+
+
+class ComparisonEvidenceSideRole(str, Enum):
+    left_side_support = "left_side_support"
+    right_side_support = "right_side_support"
+    shared_comparison_support = "shared_comparison_support"
+
+
+class ComparisonEvidenceDiagnostics(BaseModel):
+    no_live_external_calls: bool = True
+    live_provider_calls_attempted: bool = False
+    live_llm_calls_attempted: bool = False
+    availability_contract_created_generated_output: bool = False
+    no_new_generated_output: bool = True
+    generated_comparison_available: bool = False
+    source_policy_enforced: bool = True
+    same_comparison_pack_sources_only: bool = True
+    unavailable_reasons: list[str] = Field(default_factory=list)
+    empty_state_reason: str | None = None
+
+
+class ComparisonEvidenceSourceReference(BaseModel):
+    source_document_id: str
+    asset_ticker: str
+    source_type: str
+    title: str
+    publisher: str
+    url: str
+    published_at: str | None = None
+    as_of_date: str | None = None
+    retrieved_at: str
+    freshness_state: FreshnessState
+    is_official: bool
+    source_quality: SourceQuality
+    allowlist_status: SourceAllowlistStatus
+    source_use_policy: SourceUsePolicy
+    permitted_operations: SourceOperationPermissions
+
+
+class ComparisonEvidenceItem(BaseModel):
+    evidence_item_id: str
+    dimension: str
+    side: ComparisonEvidenceSide
+    side_role: ComparisonEvidenceSideRole
+    asset_ticker: str
+    field_name: str | None = None
+    fact_id: str | None = None
+    source_chunk_id: str | None = None
+    source_document_id: str | None = None
+    citation_ids: list[str] = Field(default_factory=list)
+    evidence_state: EvidenceState
+    freshness_state: FreshnessState
+    as_of_date: str | None = None
+    retrieved_at: str | None = None
+    is_official: bool = False
+    source_quality: SourceQuality = SourceQuality.unknown
+    allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.not_allowlisted
+    source_use_policy: SourceUsePolicy = SourceUsePolicy.rejected
+    permitted_operations: SourceOperationPermissions = Field(default_factory=lambda: DEFAULT_BLOCKED_SOURCE_OPERATIONS.model_copy())
+    unavailable_reason: str | None = None
+
+
+class ComparisonEvidenceDimension(BaseModel):
+    dimension: str
+    required: bool = True
+    availability_state: ComparisonEvidenceAvailabilityState
+    evidence_state: EvidenceState
+    freshness_state: FreshnessState
+    left_evidence_item_ids: list[str] = Field(default_factory=list)
+    right_evidence_item_ids: list[str] = Field(default_factory=list)
+    shared_evidence_item_ids: list[str] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    generated_claim_ids: list[str] = Field(default_factory=list)
+    unavailable_reason: str | None = None
+
+
+class ComparisonEvidenceCitationBinding(BaseModel):
+    binding_id: str
+    claim_id: str
+    dimension: str
+    citation_id: str
+    source_document_id: str
+    asset_ticker: str
+    side_role: ComparisonEvidenceSideRole
+    freshness_state: FreshnessState
+    source_quality: SourceQuality
+    allowlist_status: SourceAllowlistStatus
+    source_use_policy: SourceUsePolicy
+    permitted_operations: SourceOperationPermissions
+    supports_generated_claim: bool
+
+
+class ComparisonEvidenceClaimBinding(BaseModel):
+    claim_id: str
+    claim_kind: Literal["key_difference", "beginner_bottom_line"]
+    dimension: str
+    side_role: ComparisonEvidenceSideRole
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    evidence_item_ids: list[str] = Field(default_factory=list)
+    availability_state: ComparisonEvidenceAvailabilityState
+
+
+class ComparisonEvidenceAvailability(BaseModel):
+    schema_version: Literal["comparison-evidence-availability-v1"] = "comparison-evidence-availability-v1"
+    comparison_id: str
+    comparison_type: str
+    left_asset: AssetIdentity
+    right_asset: AssetIdentity
+    availability_state: ComparisonEvidenceAvailabilityState
+    required_dimensions: list[str] = Field(default_factory=list)
+    required_evidence_dimensions: list[ComparisonEvidenceDimension] = Field(default_factory=list)
+    evidence_items: list[ComparisonEvidenceItem] = Field(default_factory=list)
+    claim_bindings: list[ComparisonEvidenceClaimBinding] = Field(default_factory=list)
+    citation_bindings: list[ComparisonEvidenceCitationBinding] = Field(default_factory=list)
+    source_references: list[ComparisonEvidenceSourceReference] = Field(default_factory=list)
+    diagnostics: ComparisonEvidenceDiagnostics = Field(default_factory=ComparisonEvidenceDiagnostics)
+
+
 class CompareResponse(BaseModel):
     left_asset: AssetIdentity
     right_asset: AssetIdentity
@@ -1797,6 +1934,7 @@ class CompareResponse(BaseModel):
     bottom_line_for_beginners: BeginnerBottomLine | None = None
     citations: list[Citation] = Field(default_factory=list)
     source_documents: list[SourceDocument] = Field(default_factory=list)
+    evidence_availability: ComparisonEvidenceAvailability | None = None
 
 
 class ChatRequest(BaseModel):
