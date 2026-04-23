@@ -2,83 +2,71 @@
 
 ## Current task
 
-### T-033: Rebase agent instructions and local environment to updated PRD/TDS
+### T-034: Add Top-500 stock universe manifest contract
 
 Goal:
-Rebaseline the project control plane, local agent-loop environment, and frontend workspace layout around the updated proposal, PRD, and technical design spec without rolling back the user's documentation changes, changing product behavior, adding live provider calls, or exposing secrets.
+Add a deterministic Top-500 U.S.-listed common stock universe manifest contract so stock support scope is driven by a versioned local manifest instead of live provider queries, without adding live market/reference calls, changing generated asset pages, or treating the manifest as an endorsement, recommendation, portfolio, or ranking surface.
 
 Task scope:
-This is a documentation, workflow, workspace-layout, and local-environment scaffold task. Update `AGENTS.md`, `SPEC.md`, `EVALS.md`, `TASKS.md`, agent-loop scripts, quality-gate scripts, frontend workspace files, frontend path-sensitive tests, review prompt, and placeholder-only environment/Docker scaffolds so future agent cycles follow the new PRD/TDS baseline.
+This is a backend data-contract, fixture, eval, and test task. Add the versioned manifest at `data/universes/us_common_stocks_top500.current.json`, add deterministic manifest loading/validation helpers, connect existing supported cached and eligible-not-cached stock classification to the manifest contract where appropriate, and extend tests/evals so future changes cannot silently replace the manifest with live provider scope.
 
 Allowed files:
 
-- `AGENTS.md`
-- `SPEC.md`
 - `TASKS.md`
-- `EVALS.md`
-- `package.json`
-- `package-lock.json`
-- `apps/web/**`
-- `tests/frontend/smoke.mjs`
+- `data/universes/**`
+- `backend/data.py`
+- `backend/search.py`
+- `backend/ingestion.py`
+- `backend/providers.py`
+- `backend/models.py`
+- `evals/golden_assets.yaml`
+- `evals/search_eval_cases.yaml`
+- `evals/ingestion_eval_cases.yaml`
+- `evals/provider_eval_cases.yaml`
+- `evals/run_static_evals.py`
+- `tests/unit/test_search_classification.py`
+- `tests/unit/test_ingestion_jobs.py`
+- `tests/unit/test_provider_adapters.py`
+- `tests/integration/test_backend_api.py`
 - `tests/unit/test_repo_contract.py`
-- `tests/unit/test_safety_guardrails.py`
-- `scripts/agent_loop.sh`
-- `scripts/agent_loop.ps1`
-- `scripts/run_task_cycle.sh`
-- `scripts/run_quality_gate.sh`
-- `scripts/run_quality_gate.ps1`
-- `.github/codex/prompts/review.md`
-- `.gitignore`
-- `.env.example`
-- `apps/web/.env.example`
-- `deploy/env/*.example.env`
-- `docker-compose.yml`
-- `docker/**`
 
 Do not change:
 
-- Do not roll back or overwrite the user's updated proposal, PRD, or technical design spec.
-- Do not move the Python backend out of `backend`.
-- Do not add functional live provider, market-data, news, or LLM integrations.
-- Do not add real API keys, copied local secret values, or `NEXT_PUBLIC_*` secrets.
-- Do not change public backend API behavior.
-- Do not make Docker Compose required for CI.
+- Do not add live provider, market-data, news, or LLM calls.
+- Do not add real provider keys, copied local secret values, or new `NEXT_PUBLIC_*` secrets.
+- Do not add generated pages, generated chat answers, generated comparisons, or generated risk summaries for assets that do not already have local generated packs.
+- Do not treat manifest rank or membership as investment merit, recommendation, portfolio inclusion, or personalized suitability.
+- Do not expand MVP scope beyond U.S.-listed common stocks and supported non-leveraged equity ETFs.
+- Do not change frontend UI unless a path-sensitive test fixture requires a minimal marker update.
+- Do not move the Python backend or frontend workspace.
 
 Acceptance criteria:
 
-- `AGENTS.md` required reading includes `docs/learn-the-ticker_proposal.md`, and conflict order is safety, PRD, TDS, proposal, SPEC, TASKS, EVALS.
-- `AGENTS.md`, `SPEC.md`, and `EVALS.md` describe Top-500 manifest scope, `unsupported` / `out_of_scope` / `pending_ingestion`, Weekly News Focus, AI Comprehensive Analysis, source-use rights, OpenRouter/live-provider gating, secret handling, and the `apps/web` frontend root.
-- The advice-boundary example in `AGENTS.md` has no mojibake.
-- Bash and PowerShell agent prompts read proposal, PRD, TDS, SPEC, TASKS, and EVALS and preserve PRD/TDS-first authority after safety.
-- Frontend files are rooted at `apps/web`, and root npm scripts still expose `npm test`, `npm run typecheck`, `npm run build`, `npm run dev`, and `npm run start`.
-- `apps/web` has its own package scripts for Next.js dev/build/start/typecheck.
-- Frontend smoke and safety tests read frontend files from `apps/web`.
-- Placeholder env examples include only safe placeholder names and no real secrets.
-- Docker Compose scaffolding validates with `docker compose config` when Docker is installed and remains local-only.
-- `.github/codex/prompts/review.md` covers source-order drift, Weekly News Focus/source-rights violations, live-call leakage, secret exposure, and monorepo/environment regressions.
-- `TASKS.md` contains this current task and a small sequential backlog aligned with the updated PRD/TDS.
+- `data/universes/us_common_stocks_top500.current.json` exists and validates as the runtime source of truth for top-500-first stock scope.
+- Each manifest entry includes ticker, name, asset type or security type, CIK when available, exchange, rank, rank basis, source/provider provenance, snapshot date, generated checksum or manifest checksum input, and approval timestamp.
+- The manifest is explicitly documented or encoded as operational coverage metadata only, not an endorsement, recommendation, portfolio, or buy/sell signal.
+- Existing cached generated stock fixtures such as `AAPL` remain supported because they are present in the manifest and have local generated packs.
+- Eligible-not-cached launch stocks such as `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `META`, `TSLA`, `BRK.B`, `JPM`, and `UNH` are manifest-backed eligible assets, but still receive no generated page, chat answer, comparison, source evidence, citations, or risk summary until a local pack exists.
+- A recognizable U.S. common stock outside the manifest returns `out_of_scope` or an equivalent non-generated state rather than `eligible_not_cached`, unless it is explicitly added to the approved on-demand ingestion queue.
+- Unknown symbols still return `unknown` / `unavailable` without invented facts.
+- Unsupported assets such as crypto, leveraged ETFs, inverse ETFs, and non-MVP products remain blocked from generated outputs.
+- Static evals verify the manifest path, required fields, supported cached and eligible-not-cached stock membership, non-generation boundaries, no live provider imports, and no advice-like manifest language.
+- Tests verify search/support classification, ingestion routing, provider mock state, and backend API serialization against the manifest contract.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_repo_contract.py -q
-npm test
+python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_ingestion_jobs.py tests/unit/test_provider_adapters.py -q
+python3 -m pytest tests/integration/test_backend_api.py -q
 python3 -m pytest tests -q
 python3 evals/run_static_evals.py
-npm run typecheck
-npm run build
 bash scripts/run_quality_gate.sh
-docker compose config
 ```
-
-If Docker is unavailable, record that `docker compose config` was not run and why.
 
 Iteration budget:
 Max 3 attempts.
 
 ## Backlog
-
-### T-034: Add Top-500 stock universe manifest contract
 
 ### T-035: Add source allowlist and rights-tiered raw text policy contract
 
@@ -89,6 +77,40 @@ Max 3 attempts.
 ### T-038: Add accountless chat session lifecycle contract
 
 ## Completed
+
+### T-033: Rebase agent instructions and local environment to updated PRD/TDS
+
+Goal:
+Rebaseline the project control plane, local agent-loop environment, and frontend workspace layout around the updated proposal, PRD, and technical design spec without rolling back the user's documentation changes, changing product behavior, adding live provider calls, or exposing secrets.
+
+Completed:
+
+- Updated `AGENTS.md`, `SPEC.md`, `EVALS.md`, `TASKS.md`, and `.github/codex/prompts/review.md` around the updated PRD/TDS/proposal authority order, Top-500-first MVP scope, Weekly News Focus and AI Comprehensive Analysis separation, source-use rights, OpenRouter/live-provider gating, secret handling, and `apps/web` frontend root.
+- Moved the Next.js frontend into `apps/web` with 100% file renames for the `app`, `components`, `lib`, styles, Next config, and TypeScript config files.
+- Added root npm workspace delegation so `npm run dev`, `npm run build`, `npm run start`, and `npm run typecheck` delegate to `apps/web`, while `npm test` continues to run frontend smoke checks from the repo root.
+- Added `apps/web/package.json` with local Next.js dev/build/start/typecheck scripts and updated `package-lock.json` for the workspace layout.
+- Updated frontend smoke and safety tests so path-sensitive checks read frontend files from `apps/web`.
+- Updated Bash and PowerShell agent-loop and quality-gate scripts so prompts read the proposal, PRD, TDS, SPEC, TASKS, and EVALS with PRD/TDS-first authority after safety.
+- Added placeholder-only local environment examples in `.env.example`, `apps/web/.env.example`, and `deploy/env/*.example.env` without real secret values or browser-exposed provider keys.
+- Added local-only Docker Compose scaffolding for web, API, ingestion-worker placeholder, Postgres/pgvector, Redis, and MinIO-compatible object storage, plus web/API Dockerfiles.
+- Normalized the updated PRD, technical design spec, and proposal docs to LF line endings so `git diff --check` passes.
+- Verified the staged diff detected frontend moves as `R100` renames and found no P0/P1 review blockers before commit.
+- Ran `python3 -m pytest tests/unit/test_repo_contract.py -q`: 9 tests passed.
+- Ran `npm test`: frontend smoke checks passed.
+- Ran `python3 -m pytest tests -q`: 140 tests passed.
+- Ran `python3 evals/run_static_evals.py`: passed.
+- Ran `npm run typecheck`: passed.
+- Ran `npm run build`: passed.
+- Ran `bash scripts/run_quality_gate.sh`: passed, including Python tests, static evals, frontend smoke checks, TypeScript typecheck, production build, and backend checks.
+- Ran `docker compose config`: passed.
+- Pushed `main` to `origin/main` with commit `2a3175f`.
+- Remaining documented risk: Docker Compose was syntax-validated only; it was not used to build images or run the local stack end to end.
+- Remaining documented risk: the workspace move did not add new frontend behavior; future UI tasks still need browser/mobile verification when they change rendered flows.
+- Remaining documented risk: placeholder provider environment variables remain configuration readiness only; live provider behavior still requires separate licensing, caching, display, export, and validation work.
+
+Completion commits:
+
+- `2a3175f chore(T-033): rebase control plane for updated PRD/TDS`
 
 ### T-032: Add trust metrics event contract for MVP workflows
 
@@ -962,7 +984,3 @@ Completion commits:
 
 - `4be1fa3 chore: add agentic development scaffold`
 - `c7e2004 chore: add agent loop retries`
-
-## Backlog
-
-Backlog is empty.
