@@ -1,6 +1,6 @@
 import type { CitationContext, SourceDrawerSourceDocument } from "../lib/fixtures";
 
-type SourceDrawerState =
+export type SourceDrawerState =
   | "available"
   | "unsupported"
   | "out_of_scope"
@@ -11,6 +11,62 @@ type SourceDrawerState =
   | "partial"
   | "unavailable"
   | "insufficient_evidence";
+
+export function sourceDrawerStateFromSupportState(supportState: string): SourceDrawerState {
+  if (supportState === "supported") {
+    return "available";
+  }
+  if (supportState === "unsupported") {
+    return "unsupported";
+  }
+  if (supportState === "out_of_scope") {
+    return "out_of_scope";
+  }
+  if (supportState === "eligible_not_cached") {
+    return "eligible_not_cached";
+  }
+  if (supportState === "unknown") {
+    return "unknown";
+  }
+  if (supportState === "deleted") {
+    return "deleted";
+  }
+  if (supportState === "stale") {
+    return "stale";
+  }
+  if (supportState === "partial") {
+    return "partial";
+  }
+  if (supportState === "unavailable") {
+    return "unavailable";
+  }
+  if (supportState === "insufficient_evidence") {
+    return "insufficient_evidence";
+  }
+  return "unknown";
+}
+
+export function sourceDrawerStateFromFreshnessState(freshnessState: string): SourceDrawerState {
+  if (freshnessState === "fresh") {
+    return "available";
+  }
+  if (freshnessState === "stale") {
+    return "stale";
+  }
+  if (freshnessState === "unknown") {
+    return "unknown";
+  }
+  if (freshnessState === "unavailable") {
+    return "unavailable";
+  }
+  if (freshnessState === "partial") {
+    return "partial";
+  }
+  if (freshnessState === "insufficient_evidence") {
+    return "insufficient_evidence";
+  }
+  return "unknown";
+}
 
 type SourceDrawerProps = {
   source: SourceDrawerSourceDocument;
