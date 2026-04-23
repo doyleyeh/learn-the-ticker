@@ -1299,3 +1299,5 @@ Completion commits:
 ### T-048: Replace compare-page fixture logic with backend-aligned deterministic comparison contracts
 
 ### T-049: Reduce frontend fixture drift by introducing shared deterministic view adapters
+
+### T-050: Align asset-page source drawer and freshness labels with backend contracts
