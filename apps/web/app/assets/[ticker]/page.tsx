@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { AssetHeader } from "../../../components/AssetHeader";
+import { AIComprehensiveAnalysisPanel } from "../../../components/AIComprehensiveAnalysisPanel";
 import { AssetChatPanel } from "../../../components/AssetChatPanel";
 import { AssetEtfSections } from "../../../components/AssetEtfSections";
 import { AssetStockSections } from "../../../components/AssetStockSections";
@@ -10,16 +11,19 @@ import { ExportControls } from "../../../components/ExportControls";
 import { FreshnessLabel } from "../../../components/FreshnessLabel";
 import { GlossaryPopover } from "../../../components/GlossaryPopover";
 import { SourceDrawer } from "../../../components/SourceDrawer";
+import { WeeklyNewsPanel } from "../../../components/WeeklyNewsPanel";
 import { beginnerGlossaryGroupsByAssetType } from "../../../lib/glossary";
 import { getAssetComparisonSuggestions } from "../../../lib/compareSuggestions";
 import { assetPageExportUrl, assetSourceListExportUrl } from "../../../lib/exportControls";
 import {
+  getAIComprehensiveAnalysisFixture,
   assetFixtures,
   citationLabel,
   getCitationById,
   getCitationContextsForSource,
   getAssetFixture,
-  getPrimarySource
+  getPrimarySource,
+  getWeeklyNewsFocusFixture
 } from "../../../lib/fixtures";
 
 type AssetPageProps = {
@@ -40,6 +44,13 @@ export default async function AssetPage({ params }: AssetPageProps) {
     notFound();
   }
 
+  const weeklyNewsFocus = getWeeklyNewsFocusFixture(asset.ticker);
+  const aiComprehensiveAnalysis = getAIComprehensiveAnalysisFixture(asset.ticker);
+
+  if (!weeklyNewsFocus || !aiComprehensiveAnalysis) {
+    notFound();
+  }
+
   const primarySource = getPrimarySource(asset);
   const firstClaim = asset.claims[0];
   const firstClaimCitation = getCitationById(asset, firstClaim.citationIds[0]) ?? asset.citations[0];
@@ -49,7 +60,39 @@ export default async function AssetPage({ params }: AssetPageProps) {
   const sectionSourceDocumentIds = new Set(
     [...(asset.stockSections ?? []), ...(asset.etfSections ?? [])].flatMap((section) => section.sourceDocumentIds)
   );
-  const sectionSources = asset.sourceDocuments.filter((source) => sectionSourceDocumentIds.has(source.sourceDocumentId));
+  const mergedCitations = [
+    ...asset.citations,
+    ...weeklyNewsFocus.citations,
+    ...aiComprehensiveAnalysis.citations
+  ].filter((citation, index, collection) => collection.findIndex((entry) => entry.citationId === citation.citationId) === index);
+  const mergedSources = [
+    ...asset.sourceDocuments,
+    ...weeklyNewsFocus.sourceDocuments,
+    ...aiComprehensiveAnalysis.sourceDocuments
+  ].filter(
+    (source, index, collection) =>
+      collection.findIndex((entry) => entry.sourceDocumentId === source.sourceDocumentId) === index
+  );
+  const timelyContextSourceDocumentIds = new Set([
+    ...weeklyNewsFocus.sourceDocuments.map((source) => source.sourceDocumentId),
+    ...aiComprehensiveAnalysis.sourceDocumentIds
+  ]);
+  const drawerSourceDocumentIds = new Set([...sectionSourceDocumentIds, ...timelyContextSourceDocumentIds]);
+  const drawerSources = mergedSources.filter((source) => drawerSourceDocumentIds.has(source.sourceDocumentId));
+  const timelyContextClaimsBySourceDocumentId = new Map(
+    weeklyNewsFocus.items.map((item) => [
+      item.source.sourceDocumentId,
+      `Weekly News Focus: ${item.title}. ${item.summary}`
+    ])
+  );
+  for (const sourceDocumentId of aiComprehensiveAnalysis.sourceDocumentIds) {
+    if (!timelyContextClaimsBySourceDocumentId.has(sourceDocumentId)) {
+      timelyContextClaimsBySourceDocumentId.set(
+        sourceDocumentId,
+        `AI Comprehensive Analysis cites this source while keeping timely context separate from stable facts for ${asset.ticker}.`
+      );
+    }
+  }
   const glossaryGroups = beginnerGlossaryGroupsByAssetType[asset.assetType];
   const comparisonSuggestions = getAssetComparisonSuggestions(asset.ticker);
   const inlineGlossaryTerms =
@@ -169,28 +212,9 @@ export default async function AssetPage({ params }: AssetPageProps) {
               </dl>
             </section>
 
-            <section
-              className="plain-panel recent-section"
-              aria-labelledby="beginner-recent"
-              data-beginner-stable-recent-separation="recent"
-              data-beginner-recent-developments
-            >
-              <div className="section-heading">
-                <p className="eyebrow">Recent developments</p>
-                <h2 id="beginner-recent">Separate from stable facts</h2>
-              </div>
-              <FreshnessLabel label="Recent developments checked" value={asset.freshness.recentEventsAsOf} state="fresh" />
-              {asset.recentDevelopments.map((item) => {
-                const citation = getCitationById(asset, item.citationIds[0]);
-                return (
-                  <article className="timeline-item" key={item.title} data-freshness-state={item.freshnessState}>
-                    <h3>{item.title}</h3>
-                    <p>{item.summary}</p>
-                    {citation ? <CitationChip citation={citation} label={citationLabel(item.citationIds[0])} /> : null}
-                  </article>
-                );
-              })}
-            </section>
+            <WeeklyNewsPanel focus={weeklyNewsFocus} citations={mergedCitations} />
+
+            <AIComprehensiveAnalysisPanel analysis={aiComprehensiveAnalysis} citations={mergedCitations} />
 
             <section className="plain-panel" aria-labelledby="beginner-educational-framing" data-beginner-educational-framing>
               <div className="section-heading">
@@ -252,11 +276,15 @@ export default async function AssetPage({ params }: AssetPageProps) {
               ]}
             />
             {hasPrdSections ? (
-              sectionSources.map((source) => (
+              drawerSources.map((source) => (
                 <SourceDrawer
                   key={source.sourceDocumentId}
                   source={source}
-                  claim={getCitationContextsForSource(asset, source.sourceDocumentId)[0]?.claimContext ?? firstClaim.claimText}
+                  claim={
+                    getCitationContextsForSource(asset, source.sourceDocumentId)[0]?.claimContext ??
+                    timelyContextClaimsBySourceDocumentId.get(source.sourceDocumentId) ??
+                    firstClaim.claimText
+                  }
                   contexts={getCitationContextsForSource(asset, source.sourceDocumentId)}
                 />
               ))
