@@ -1,8 +1,12 @@
 from pathlib import Path
 from typing import Any
 
-from backend.models import AssetStatus, EvidenceState, MetricValue, OverviewResponse
-from backend.overview import generate_asset_overview, validate_overview_response
+from backend.models import AssetStatus, EvidenceState, FreshnessState, MetricValue, OverviewResponse
+from backend.overview import (
+    build_overview_section_freshness_validation,
+    generate_asset_overview,
+    validate_overview_response,
+)
 from backend.retrieval import build_asset_knowledge_pack, build_asset_knowledge_pack_result
 from backend.safety import find_forbidden_output_phrases
 
@@ -38,9 +42,18 @@ def test_supported_asset_overviews_are_schema_valid_and_source_backed():
         assert validated.ai_comprehensive_analysis.sections == []
         assert validated.suitability_summary is not None
         assert validated.sections
+        assert validated.section_freshness_validation
         assert validated.claims
         assert validated.citations
         assert validated.source_documents
+        validation_by_id = {
+            item.section_id: item
+            for item in validated.section_freshness_validation
+        }
+        assert {section.section_id for section in validated.sections} <= set(validation_by_id)
+        assert {"weekly_news_focus", "ai_comprehensive_analysis"} <= set(validation_by_id)
+        assert all(item.validation_outcome.value in {"validated", "validated_with_limitations"} for item in validation_by_id.values())
+        assert all(item.diagnostics.derived_from_existing_local_evidence_only is True for item in validation_by_id.values())
         assert _all_citation_ids(validated) <= citation_ids
         assert {citation.source_document_id for citation in validated.citations} <= source_ids
         assert all(source.supporting_passage for source in validated.source_documents)
@@ -131,9 +144,17 @@ def test_etf_overviews_expose_prd_sections_and_gap_states():
         assert sections["recent_developments"].items[0].as_of_date
 
     voo_sections = {section.section_id: section for section in generate_asset_overview("VOO").sections}
+    voo_validation = {
+        item.section_id: item
+        for item in generate_asset_overview("VOO").section_freshness_validation
+    }
     voo_cost_items = {item.item_id: item for item in voo_sections["cost_trading_context"].items}
     qqq_sections = {section.section_id: section for section in generate_asset_overview("QQQ").sections}
     assert voo_cost_items["stale_fee_snapshot_gap"].evidence_state is EvidenceState.stale
+    assert voo_validation["cost_trading_context"].displayed_freshness_state.value == "stale"
+    assert voo_validation["cost_trading_context"].validated_freshness_state.value == "stale"
+    assert voo_validation["cost_trading_context"].validation_outcome.value == "validated_with_limitations"
+    assert "evidence_gaps" in voo_validation["cost_trading_context"].diagnostics.matched_knowledge_pack_section_ids
     assert qqq_sections["similar_assets_alternatives"].evidence_state is EvidenceState.insufficient_evidence
 
 
@@ -154,6 +175,10 @@ def test_generated_overviews_keep_recent_context_separate_and_explicit():
         overview = generate_asset_overview(ticker)
         recent = overview.recent_developments[0]
         recent_section = next(section for section in overview.sections if section.section_id == "recent_developments")
+        freshness_validation = {
+            item.section_id: item
+            for item in overview.section_freshness_validation
+        }
 
         assert "No high-signal recent development" in recent.title
         assert "recent" not in overview.beginner_summary.what_it_is.lower()
@@ -165,6 +190,12 @@ def test_generated_overviews_keep_recent_context_separate_and_explicit():
         assert overview.weekly_news_focus.stable_facts_are_separate is True
         assert overview.ai_comprehensive_analysis is not None
         assert overview.ai_comprehensive_analysis.stable_facts_are_separate is True
+        assert freshness_validation["recent_developments"].displayed_as_of_date == overview.freshness.recent_events_as_of
+        assert freshness_validation["weekly_news_focus"].displayed_as_of_date == overview.weekly_news_focus.window.as_of_date
+        assert freshness_validation["weekly_news_focus"].validation_outcome.value == "validated_with_limitations"
+        assert freshness_validation["ai_comprehensive_analysis"].displayed_as_of_date == overview.freshness.recent_events_as_of
+        assert freshness_validation["ai_comprehensive_analysis"].displayed_freshness_state.value == "fresh"
+        assert freshness_validation["ai_comprehensive_analysis"].displayed_evidence_state.value == "insufficient_evidence"
 
 
 def test_unknown_and_unsupported_overviews_do_not_generate_facts_or_citations():
@@ -182,6 +213,32 @@ def test_unknown_and_unsupported_overviews_do_not_generate_facts_or_citations():
         assert overview.citations == []
         assert overview.source_documents == []
         assert overview.sections == []
+        assert overview.section_freshness_validation == []
+
+
+def test_section_freshness_validation_detects_mismatched_displayed_label():
+    pack = build_asset_knowledge_pack("VOO")
+    overview = generate_asset_overview("VOO")
+    mutated_sections = [
+        section.model_copy(update={"freshness_state": FreshnessState.fresh})
+        if section.section_id == "cost_trading_context"
+        else section
+        for section in overview.sections
+    ]
+    mutated = overview.model_copy(update={"sections": mutated_sections})
+
+    validation = {
+        item.section_id: item
+        for item in build_overview_section_freshness_validation(
+            overview=mutated,
+            pack=pack,
+        )
+    }
+
+    assert validation["cost_trading_context"].displayed_freshness_state.value == "fresh"
+    assert validation["cost_trading_context"].validated_freshness_state.value == "stale"
+    assert validation["cost_trading_context"].validation_outcome.value == "mismatch"
+    assert "displayed_freshness_state_not_supported" in validation["cost_trading_context"].diagnostics.mismatch_reasons
 
 
 def test_generated_overview_copy_avoids_forbidden_advice_phrases():

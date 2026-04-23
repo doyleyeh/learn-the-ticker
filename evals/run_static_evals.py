@@ -89,6 +89,8 @@ from backend.models import (
     LlmRuntimeDiagnosticsResponse,
     LlmValidationStatus,
     MetricValue,
+    OverviewSectionFreshnessValidation,
+    OverviewSectionFreshnessValidationOutcome,
     PreCacheBatchResponse,
     PreCacheJobResponse,
     ProviderDataCategory,
@@ -104,7 +106,11 @@ from backend.models import (
     TrustMetricSummary,
     WeeklyNewsContractState,
 )
-from backend.overview import generate_asset_overview, validate_overview_response
+from backend.overview import (
+    build_overview_section_freshness_validation,
+    generate_asset_overview,
+    validate_overview_response,
+)
 from backend.providers import fetch_mock_provider_response, get_mock_provider_adapters
 from backend.retrieval import (
     build_asset_knowledge_pack,
@@ -1373,6 +1379,18 @@ def test_retrieval_fixture_contract():
 
 
 def test_generated_overview_contract():
+    required_validation_fields = {
+        "section_id",
+        "section_type",
+        "displayed_freshness_state",
+        "displayed_evidence_state",
+        "validated_freshness_state",
+        "validation_outcome",
+        "citation_bindings",
+        "source_bindings",
+        "knowledge_pack_freshness_inputs",
+        "diagnostics",
+    }
     stock_sections = {
         "business_overview",
         "products_services",
@@ -1436,6 +1454,22 @@ def test_generated_overview_contract():
         assert used_source_ids <= source_ids
         assert used_source_ids <= pack_source_ids
         assert validate_overview_response(overview, pack).valid
+        freshness_validation = {item.section_id: item for item in overview.section_freshness_validation}
+        assert OverviewSectionFreshnessValidationOutcome.validated in set(OverviewSectionFreshnessValidationOutcome)
+        assert required_validation_fields <= set(OverviewSectionFreshnessValidation.model_fields)
+        assert build_overview_section_freshness_validation(overview=overview, pack=pack) == overview.section_freshness_validation
+        assert {section.section_id for section in overview.sections} <= set(freshness_validation)
+        assert {"weekly_news_focus", "ai_comprehensive_analysis"} <= set(freshness_validation)
+        assert all(item.diagnostics.derived_from_existing_local_evidence_only for item in freshness_validation.values())
+        assert all(item.diagnostics.used_knowledge_pack_freshness_inputs for item in freshness_validation.values())
+        assert all(item.diagnostics.no_live_external_calls for item in freshness_validation.values())
+        assert all(item.diagnostics.same_asset_citation_bindings_only for item in freshness_validation.values())
+        assert all(item.diagnostics.same_asset_source_bindings_only for item in freshness_validation.values())
+        assert all(
+            binding.asset_ticker == ticker
+            for item in freshness_validation.values()
+            for binding in [*item.citation_bindings, *item.source_bindings]
+        )
         section_ids = {section.section_id for section in overview.sections}
         if ticker == "AAPL":
             assert stock_sections <= section_ids
@@ -1451,12 +1485,32 @@ def test_generated_overview_contract():
             assert sections["holdings_exposure"].evidence_state is EvidenceState.mixed
             assert sections["construction_methodology"].evidence_state is EvidenceState.mixed
             assert sections["cost_trading_context"].evidence_state is EvidenceState.mixed
+            expected_cost_freshness = FreshnessState.stale if ticker == "VOO" else FreshnessState.unavailable
+            assert freshness_validation["cost_trading_context"].displayed_freshness_state is expected_cost_freshness
             assert "holdings_exposure_detail" in {item.item_id for item in sections["holdings_exposure"].items}
             assert "construction_methodology" in {item.item_id for item in sections["construction_methodology"].items}
             assert "trading_data_limitation" in {item.item_id for item in sections["cost_trading_context"].items}
             assert sections["recent_developments"].evidence_state is EvidenceState.no_major_recent_development
             assert sections["recent_developments"].items[0].retrieved_at
             assert len(sections["etf_specific_risks"].items) == 3
+            assert freshness_validation["weekly_news_focus"].displayed_evidence_state is EvidenceState.no_high_signal
+            assert freshness_validation["ai_comprehensive_analysis"].displayed_evidence_state is EvidenceState.insufficient_evidence
+            if ticker == "VOO":
+                mutated = overview.model_copy(
+                    update={
+                        "sections": [
+                            section.model_copy(update={"freshness_state": FreshnessState.fresh})
+                            if section.section_id == "cost_trading_context"
+                            else section
+                            for section in overview.sections
+                        ]
+                    }
+                )
+                mismatched = {
+                    item.section_id: item
+                    for item in build_overview_section_freshness_validation(overview=mutated, pack=pack)
+                }
+                assert mismatched["cost_trading_context"].validation_outcome is OverviewSectionFreshnessValidationOutcome.mismatch
         assert any(
             item.evidence_state
             in {EvidenceState.unavailable, EvidenceState.unknown, EvidenceState.stale, EvidenceState.insufficient_evidence}
@@ -1483,6 +1537,7 @@ def test_generated_overview_contract():
         assert overview.asset.supported is False
         assert overview.beginner_summary is None
         assert overview.claims == []
+        assert overview.section_freshness_validation == []
         assert overview.citations == []
         assert overview.source_documents == []
         assert overview.sections == []

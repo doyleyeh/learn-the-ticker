@@ -304,6 +304,10 @@ def test_overview_has_beginner_sections_and_citations():
     assert "src_voo_fact_sheet_fixture" in source_ids
     assert "src_voo_recent_review" in source_ids
     sections = {section["section_id"]: section for section in body["sections"]}
+    freshness_validation = {
+        item["section_id"]: item
+        for item in body["section_freshness_validation"]
+    }
     assert {
         "fund_objective_role",
         "holdings_exposure",
@@ -321,6 +325,16 @@ def test_overview_has_beginner_sections_and_citations():
     assert "trading_data_limitation" in {item["item_id"] for item in sections["cost_trading_context"]["items"]}
     assert sections["recent_developments"]["items"][0]["retrieved_at"]
     assert sections["similar_assets_alternatives"]["citation_ids"] == []
+    assert set(sections) <= set(freshness_validation)
+    assert {"weekly_news_focus", "ai_comprehensive_analysis"} <= set(freshness_validation)
+    assert freshness_validation["cost_trading_context"]["displayed_freshness_state"] == "stale"
+    assert freshness_validation["cost_trading_context"]["validated_freshness_state"] == "stale"
+    assert freshness_validation["cost_trading_context"]["validation_outcome"] == "validated_with_limitations"
+    assert freshness_validation["cost_trading_context"]["diagnostics"]["same_asset_source_bindings_only"] is True
+    assert freshness_validation["cost_trading_context"]["diagnostics"]["same_asset_citation_bindings_only"] is True
+    assert freshness_validation["weekly_news_focus"]["displayed_as_of_date"] == "2026-04-23"
+    assert freshness_validation["ai_comprehensive_analysis"]["displayed_evidence_state"] == "insufficient_evidence"
+    assert freshness_validation["ai_comprehensive_analysis"]["validation_outcome"] == "validated_with_limitations"
 
 
 def test_stock_overview_serializes_structured_prd_sections():
@@ -329,6 +343,10 @@ def test_stock_overview_serializes_structured_prd_sections():
     assert response.status_code == 200
     body = response.json()
     sections = {section["section_id"]: section for section in body["sections"]}
+    freshness_validation = {
+        item["section_id"]: item
+        for item in body["section_freshness_validation"]
+    }
     assert {
         "business_overview",
         "products_services",
@@ -346,6 +364,9 @@ def test_stock_overview_serializes_structured_prd_sections():
     assert sections["valuation_context"]["citation_ids"]
     assert "valuation_data_limitation" in {item["item_id"] for item in sections["valuation_context"]["items"]}
     assert sections["top_risks"]["items"][0]["source_document_ids"]
+    assert freshness_validation["products_services"]["displayed_freshness_state"] == "unknown"
+    assert freshness_validation["products_services"]["validation_outcome"] == "validated_with_limitations"
+    assert freshness_validation["business_overview"]["validation_outcome"] == "validated"
 
 
 def test_details_sources_and_recent_routes_exist():
@@ -764,9 +785,11 @@ def test_unknown_and_unsupported_assets_return_clear_states():
     assert unknown["asset"]["supported"] is False
     assert unknown["beginner_summary"] is None
     assert unknown["sections"] == []
+    assert unknown["section_freshness_validation"] == []
     assert unsupported_overview["state"]["status"] == "unsupported"
     assert unsupported_overview["asset"]["supported"] is False
     assert unsupported_overview["sections"] == []
+    assert unsupported_overview["section_freshness_validation"] == []
     assert unsupported["state"]["status"] == "unsupported"
     assert unsupported["state"]["support_classification"] == "recognized_unsupported"
     assert unsupported["results"][0]["supported"] is False
