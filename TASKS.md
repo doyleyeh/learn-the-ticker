@@ -2,53 +2,50 @@
 
 ## Current task
 
-### T-048: Replace compare-page fixture logic with backend-aligned deterministic comparison contracts
+### T-049: Reduce frontend fixture drift by introducing shared deterministic view adapters
 
 Goal:
-Align the deterministic compare page with the existing backend comparison contract so supported and unavailable comparison states render from backend-aligned response shapes instead of compare-page-only fixture logic, without introducing live calls, new comparison packs, or advice-like copy.
+Reduce frontend fixture drift by introducing a shared deterministic view-adapter layer for already-existing local search and comparison contracts, so common support-state, source-metadata, and freshness-display logic is derived from one frontend adapter path instead of duplicated per-page fixture shaping, without adding live calls, new assets, new comparison packs, or advice-like copy.
 
 Task scope:
-Refactor only the frontend compare-page data path and rendering gates to mirror the deterministic backend comparison response semantics that already exist in local code and tests. Keep the task limited to compare-page contract parity, supported-vs-unavailable state handling, citation/source rendering gates, and smoke/static coverage for the compare route. Reuse deterministic local data or serialized backend-aligned contract shapes already present in the repo. Do not broaden the work into asset-page source drawer cleanup, shared cross-page adapter extraction, new comparison facts, backend schema changes, or live API fetching.
+Extract a small shared frontend adapter module from the existing deterministic compare, search, and fixture-backed source/freshness helpers, then rewire the current compare/search rendering paths to consume that adapter layer instead of maintaining parallel shape logic. Keep the task limited to adapter extraction, common typed helpers, and parity-preserving frontend wiring for already-supported deterministic states. Do not broaden the work into backend schema changes, asset-page content rewrites, source-drawer contract expansion, new comparison facts, new search coverage, or live API fetching.
 
 Allowed files:
 
-- `apps/web/app/compare/page.tsx`
+- `apps/web/components/FreshnessLabel.tsx`
 - `apps/web/components/ComparisonSourceDetails.tsx`
-- `apps/web/components/ComparisonSuggestions.tsx`
+- `apps/web/components/SearchBox.tsx`
+- `apps/web/components/SourceDrawer.tsx`
 - `apps/web/lib/compare.ts`
-- `apps/web/lib/compareSuggestions.ts`
-- `apps/web/lib/exportControls.ts`
+- `apps/web/lib/fixtures.ts`
+- `apps/web/lib/search.ts`
+- `apps/web/lib/viewAdapters.ts`
 - `tests/frontend/**`
-- narrowly related frontend compare view-helper files only if required by the contract alignment
+- narrowly related deterministic frontend view-helper files only if required by the adapter extraction
 
 Do not change:
 
-- backend comparison route contracts, response schemas, availability-state meanings, or fixture semantics
-- search-page behavior
-- asset-page behavior outside compare links already consumed by the current compare flow
-- supported asset scope, on-demand ingestion policy, source-use rights, or freshness rules
+- backend search, comparison, source drawer, overview, or export contracts, response schemas, or fixture semantics
+- supported asset scope, comparison-pack coverage, on-demand ingestion policy, source-use rights, or freshness meanings
+- asset-page Beginner/Deep-Dive content, Weekly News Focus, AI Comprehensive Analysis, chat, or export behavior beyond mechanical adapter wiring if required
+- visible behavior for unsupported, out-of-scope, eligible-not-cached, unknown, stale, unavailable, partial, or insufficient-evidence states except where needed to preserve backend-aligned parity
 - live-provider, database, cache, ingestion-worker, or deployment wiring
 
 Acceptance criteria:
 
-- the compare page consumes a backend-aligned deterministic comparison shape that preserves the existing backend response fields for `left_asset`, `right_asset`, `state`, `comparison_type`, `key_differences`, `bottom_line_for_beginners`, `citations`, `source_documents`, and `evidence_availability`
-- the supported `VOO`/`QQQ` and reverse-order `QQQ`/`VOO` flows render beginner-readable key differences, an educational bottom line, citation chips, and comparison source metadata from the backend-aligned deterministic contract rather than compare-page-only ad hoc fields
-- unavailable comparison flows render backend-aligned state handling for at least:
-  unsupported comparisons
-  out-of-scope comparisons
-  eligible-not-cached comparisons
-  `no_local_pack` comparisons
-  unknown comparisons
-- when comparison availability is not `available`, the page does not render generated comparison claims, factual citation chips, source-document drawers/details, or export controls that imply supported comparison output exists
-- blocked or unavailable compare states keep educational framing, explicitly avoid invented facts, and do not introduce buy/sell/hold, allocation, price-target, tax, or brokerage language
-- compare-page copy and routing preserve deterministic local-only behavior with no `/api/compare` fetches, no external calls, and no expansion of supported comparison pairs beyond the current local pack coverage
-- frontend smoke coverage asserts the backend-aligned compare-state markers and the supported-vs-unavailable rendering gates
+- a shared deterministic frontend adapter module exists for common view-model shaping used by the current local search and comparison flows, instead of duplicating overlapping support-state, source-metadata, or freshness-display derivation in multiple files
+- `apps/web/lib/compare.ts` and `apps/web/lib/search.ts` import shared adapter helpers or types for the overlapping deterministic state/capability logic they both use, rather than maintaining separate ad hoc derivations for the same frontend meanings
+- compare-source metadata rendering and any shared freshness/source helper touched in scope consume adapter-produced shapes while preserving the current backend-aligned deterministic fields, source-use labels, freshness labels, and blocked-state gating
+- supported local flows such as `VOO`/`QQQ`, `QQQ`/`VOO`, and cached-supported search results keep their current beginner-readable rendering, citation/source visibility, and educational framing after the adapter extraction
+- unavailable or blocked flows such as `SPY`, `GME`, `TQQQ`, `ZZZZ`, and `AAPL`/`VOO` continue to suppress generated claims where required, preserve `unknown`/`out_of_scope`/`eligible_not_cached`/`unsupported` semantics, and avoid invented facts or advice-like copy
+- the task does not add `/api/search` or `/api/compare` fetches, live external calls, new assets, new comparison packs, backend schema changes, or broader source-drawer behavior than the existing deterministic local scaffold
+- frontend smoke coverage asserts the shared-adapter-driven compare/search markers and required deterministic rendering gates
 - required tests, evals, and the quality gate pass deterministically
 
 Required commands:
 
 - `git status --short`
-- `python3 -m pytest tests/unit/test_comparison_generation.py tests/integration/test_backend_api.py -q`
+- `python3 -m pytest tests -q`
 - `npm test`
 - `npm run typecheck`
 - `npm run build`
@@ -60,6 +57,32 @@ Iteration budget:
 - Max 3 attempts
 
 ## Completed
+
+### T-048: Replace compare-page fixture logic with backend-aligned deterministic comparison contracts
+
+Goal:
+Align the deterministic compare page with the existing backend comparison contract so supported and unavailable comparison states render from backend-aligned response shapes instead of compare-page-only fixture logic, without introducing live calls, new comparison packs, or advice-like copy.
+
+Completed:
+
+- Refactored the compare-page data path around backend-aligned deterministic comparison shaping in `apps/web/lib/compare.ts`, then updated `apps/web/app/compare/page.tsx` and `apps/web/components/ComparisonSourceDetails.tsx` to consume that local contract instead of compare-page-only fixture fields.
+- Updated compare UI gating so unsupported or unavailable comparison states do not imply supported generated output, while `apps/web/components/ComparisonSuggestions.tsx` and `apps/web/lib/compareSuggestions.ts` stay aligned with the current deterministic comparison availability flow.
+- Extended `tests/frontend/smoke.mjs` for compare-route rendering markers and state gating, and recorded the run in `docs/agent-journal/20260423T194410Z.md`.
+- The T-048 agent journal records that these commands passed:
+  - `python3 -m pytest tests/unit/test_comparison_generation.py tests/integration/test_backend_api.py -q`
+  - `npm test`
+  - `npm run typecheck`
+  - `npm run build`
+  - `python3 evals/run_static_evals.py`
+  - `bash scripts/run_quality_gate.sh`
+- Merged local branch: `agent/T-048-20260423T194410Z`.
+- Remaining documented risk: the compare page now mirrors the backend comparison contract shape and availability taxonomy locally, but it is still deterministic fixture-backed only and does not fetch `/api/compare`.
+- Remaining documented risk: available comparison evidence details remain implemented only for the current local `VOO`/`QQQ` pack and its reverse order; future local packs will need matching contract data to preserve parity.
+
+Completion commits:
+
+- `402fddd feat(T-048): replace compare-page fixture logic with backend-aligned deterministic comparison contracts`
+- `c6e5740 chore(T-048): merge replace compare-page fixture logic with backend-aligned deterministic comparison contracts`
 
 ### T-047: Align home search UI with backend support-classification states
 
@@ -1357,7 +1380,5 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-049: Reduce frontend fixture drift by introducing shared deterministic view adapters
 
 ### T-050: Align asset-page source drawer and freshness labels with backend contracts
