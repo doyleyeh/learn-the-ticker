@@ -55,6 +55,7 @@ class FreshnessState(str, Enum):
 class EvidenceState(str, Enum):
     supported = "supported"
     no_major_recent_development = "no_major_recent_development"
+    no_high_signal = "no_high_signal"
     unavailable = "unavailable"
     unknown = "unknown"
     stale = "stale"
@@ -67,6 +68,8 @@ class OverviewSectionType(str, Enum):
     stable_facts = "stable_facts"
     risk = "risk"
     recent_developments = "recent_developments"
+    weekly_news_focus = "weekly_news_focus"
+    ai_comprehensive_analysis = "ai_comprehensive_analysis"
     educational_suitability = "educational_suitability"
     evidence_gap = "evidence_gap"
 
@@ -1194,6 +1197,169 @@ class RecentDevelopment(BaseModel):
     freshness_state: FreshnessState
 
 
+class WeeklyNewsPeriodBucket(str, Enum):
+    previous_market_week = "previous_market_week"
+    current_week_to_date = "current_week_to_date"
+
+
+class WeeklyNewsEventType(str, Enum):
+    earnings = "earnings"
+    guidance = "guidance"
+    product_announcement = "product_announcement"
+    merger_acquisition = "merger_acquisition"
+    leadership_change = "leadership_change"
+    regulatory_event = "regulatory_event"
+    legal_event = "legal_event"
+    capital_allocation = "capital_allocation"
+    fee_change = "fee_change"
+    methodology_change = "methodology_change"
+    index_change = "index_change"
+    fund_merger = "fund_merger"
+    fund_liquidation = "fund_liquidation"
+    sponsor_update = "sponsor_update"
+    large_flow_event = "large_flow_event"
+    no_major_recent_development = "no_major_recent_development"
+    other = "other"
+
+
+class WeeklyNewsContractState(str, Enum):
+    available = "available"
+    no_high_signal = "no_high_signal"
+    insufficient_evidence = "insufficient_evidence"
+    unavailable = "unavailable"
+    suppressed = "suppressed"
+
+
+class MarketWeekPeriod(BaseModel):
+    start: str | None = None
+    end: str | None = None
+
+
+class WeeklyNewsWindow(BaseModel):
+    as_of_date: str
+    timezone: Literal["America/New_York"] = "America/New_York"
+    previous_market_week: MarketWeekPeriod
+    current_week_to_date: MarketWeekPeriod
+    news_window_start: str
+    news_window_end: str
+    includes_current_week_to_date: bool
+
+
+class WeeklyNewsDeduplicationMetadata(BaseModel):
+    canonical_event_key: str
+    duplicate_group_id: str | None = None
+    duplicate_of_event_id: str | None = None
+    is_duplicate: bool = False
+
+
+class WeeklyNewsSelectionRationale(BaseModel):
+    source_priority: int
+    source_quality_weight: int
+    event_type_weight: int
+    recency_weight: int
+    asset_relevance_weight: int
+    duplicate_penalty: int
+    total_score: int
+    minimum_display_score: int
+    selected: bool
+    exclusion_reasons: list[str] = Field(default_factory=list)
+
+
+class WeeklyNewsSourceMetadata(BaseModel):
+    source_document_id: str
+    source_type: str
+    title: str
+    publisher: str
+    url: str
+    published_at: str | None = None
+    as_of_date: str | None = None
+    retrieved_at: str
+    freshness_state: FreshnessState
+    is_official: bool
+    source_quality: SourceQuality
+    allowlist_status: SourceAllowlistStatus
+    source_use_policy: SourceUsePolicy
+
+
+class WeeklyNewsItem(BaseModel):
+    event_id: str
+    asset_ticker: str
+    event_type: WeeklyNewsEventType
+    title: str
+    summary: str
+    event_date: str | None = None
+    published_at: str | None = None
+    period_bucket: WeeklyNewsPeriodBucket
+    citation_ids: list[str]
+    source: WeeklyNewsSourceMetadata
+    freshness_state: FreshnessState
+    importance_score: int
+    deduplication: WeeklyNewsDeduplicationMetadata
+    selection_rationale: WeeklyNewsSelectionRationale
+
+
+class WeeklyNewsEmptyState(BaseModel):
+    state: WeeklyNewsContractState
+    message: str
+    evidence_state: EvidenceState
+    selected_item_count: int = 0
+    suppressed_candidate_count: int = 0
+
+
+class WeeklyNewsFocusResponse(BaseModel):
+    schema_version: Literal["weekly-news-focus-v1"] = "weekly-news-focus-v1"
+    asset: AssetIdentity
+    state: WeeklyNewsContractState
+    window: WeeklyNewsWindow
+    items: list[WeeklyNewsItem] = Field(default_factory=list)
+    empty_state: WeeklyNewsEmptyState | None = None
+    citations: list[Citation] = Field(default_factory=list)
+    source_documents: list[SourceDocument] = Field(default_factory=list)
+    no_live_external_calls: bool = True
+    stable_facts_are_separate: bool = True
+
+
+class AIComprehensiveAnalysisSection(BaseModel):
+    section_id: Literal[
+        "what_changed_this_week",
+        "market_context",
+        "business_or_fund_context",
+        "risk_context",
+    ]
+    label: Literal[
+        "What Changed This Week",
+        "Market Context",
+        "Business/Fund Context",
+        "Risk Context",
+    ]
+    analysis: str
+    bullets: list[str] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+    uncertainty: list[str] = Field(default_factory=list)
+
+
+class AIComprehensiveAnalysisResponse(BaseModel):
+    schema_version: Literal["ai-comprehensive-analysis-v1"] = "ai-comprehensive-analysis-v1"
+    asset: AssetIdentity
+    state: WeeklyNewsContractState
+    analysis_available: bool
+    suppression_reason: str | None = None
+    sections: list[AIComprehensiveAnalysisSection] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    weekly_news_event_ids: list[str] = Field(default_factory=list)
+    canonical_fact_citation_ids: list[str] = Field(default_factory=list)
+    no_live_external_calls: bool = True
+    stable_facts_are_separate: bool = True
+
+
+class WeeklyNewsResponse(BaseModel):
+    asset: AssetIdentity
+    state: StateMessage
+    weekly_news_focus: WeeklyNewsFocusResponse
+    ai_comprehensive_analysis: AIComprehensiveAnalysisResponse
+
+
 class SuitabilitySummary(BaseModel):
     may_fit: str
     may_not_fit: str
@@ -1259,6 +1425,8 @@ class OverviewResponse(BaseModel):
     beginner_summary: BeginnerSummary | None = None
     top_risks: list[RiskItem] = Field(default_factory=list)
     recent_developments: list[RecentDevelopment] = Field(default_factory=list)
+    weekly_news_focus: WeeklyNewsFocusResponse | None = None
+    ai_comprehensive_analysis: AIComprehensiveAnalysisResponse | None = None
     suitability_summary: SuitabilitySummary | None = None
     claims: list[Claim] = Field(default_factory=list)
     citations: list[Citation] = Field(default_factory=list)

@@ -154,6 +154,7 @@ def test_knowledge_pack_build_result_is_deterministic_and_metadata_only_for_cach
         assert first.cache_revalidation is not None
         assert first.cache_revalidation.reusable is False
         assert first.cache_revalidation.state.value == "miss"
+        assert {"weekly_news_focus", "ai_comprehensive_analysis"} <= {label.section_id for label in first.section_freshness}
         assert first.no_live_external_calls is True
         assert first.exports_full_source_documents is False
 

@@ -50,6 +50,7 @@ from backend.models import (
     TrustMetricCatalogResponse,
     TrustMetricValidationRequest,
     TrustMetricValidationResponse,
+    WeeklyNewsResponse,
 )
 from backend.overview import generate_asset_overview
 from backend.retrieval import build_asset_knowledge_pack_result
@@ -163,6 +164,17 @@ def asset_recent(ticker: str) -> RecentResponse:
         state=overview.state,
         recent_developments=overview.recent_developments,
         citations=overview.citations,
+    )
+
+
+@app.get("/api/assets/{ticker}/weekly-news", response_model=WeeklyNewsResponse, tags=["assets"])
+def asset_weekly_news(ticker: str) -> WeeklyNewsResponse:
+    overview = generate_asset_overview(ticker)
+    return WeeklyNewsResponse(
+        asset=overview.asset,
+        state=overview.state,
+        weekly_news_focus=overview.weekly_news_focus,
+        ai_comprehensive_analysis=overview.ai_comprehensive_analysis,
     )
 
 

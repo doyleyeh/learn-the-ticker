@@ -278,6 +278,14 @@ def test_overview_has_beginner_sections_and_citations():
     assert body["claims"][0]["citation_ids"][0] in citation_ids
     assert body["top_risks"][0]["citation_ids"][0] in citation_ids
     assert body["recent_developments"][0]["citation_ids"][0] in citation_ids
+    assert body["weekly_news_focus"]["schema_version"] == "weekly-news-focus-v1"
+    assert body["weekly_news_focus"]["window"]["news_window_start"] == "2026-04-13"
+    assert body["weekly_news_focus"]["window"]["news_window_end"] == "2026-04-22"
+    assert body["weekly_news_focus"]["items"] == []
+    assert body["weekly_news_focus"]["empty_state"]["evidence_state"] == "no_high_signal"
+    assert body["ai_comprehensive_analysis"]["schema_version"] == "ai-comprehensive-analysis-v1"
+    assert body["ai_comprehensive_analysis"]["analysis_available"] is False
+    assert body["ai_comprehensive_analysis"]["sections"] == []
     assert "src_voo_fact_sheet_fixture" in source_ids
     assert "src_voo_recent_review" in source_ids
     sections = {section["section_id"]: section for section in body["sections"]}
@@ -329,16 +337,20 @@ def test_details_sources_and_recent_routes_exist():
     details = client.get("/api/assets/AAPL/details")
     sources = client.get("/api/assets/AAPL/sources")
     recent = client.get("/api/assets/AAPL/recent")
+    weekly = client.get("/api/assets/AAPL/weekly-news")
 
     assert details.status_code == 200
     assert sources.status_code == 200
     assert recent.status_code == 200
+    assert weekly.status_code == 200
     assert details.json()["facts"]["business_model"]
     assert sources.json()["sources"][0]["source_document_id"] == "src_aapl_10k_fixture"
     assert sources.json()["sources"][0]["publisher"] == "U.S. SEC"
     assert sources.json()["sources"][0]["allowlist_status"] == "allowed"
     assert sources.json()["sources"][0]["source_use_policy"] == "full_text_allowed"
     assert recent.json()["recent_developments"][0]["freshness_state"] == "fresh"
+    assert weekly.json()["weekly_news_focus"]["state"] == "no_high_signal"
+    assert weekly.json()["ai_comprehensive_analysis"]["state"] == "suppressed"
 
 
 def test_knowledge_pack_route_serializes_cached_and_non_generated_states():
@@ -425,6 +437,8 @@ def test_asset_page_and_source_list_export_routes_return_contract_payloads():
     assert asset_body["licensing_note"]["note_id"] == "export_licensing_scope"
     assert "Educational Disclaimer" in asset_body["rendered_markdown"]
     assert "top_risks" in {section["section_id"] for section in asset_body["sections"]}
+    assert "weekly_news_focus" in {section["section_id"] for section in asset_body["sections"]}
+    assert "ai_comprehensive_analysis" in {section["section_id"] for section in asset_body["sections"]}
     assert len(next(section for section in asset_body["sections"] if section["section_id"] == "top_risks")["items"]) == 3
     assert asset_body["citations"]
     assert asset_body["source_documents"]

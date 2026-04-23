@@ -528,6 +528,20 @@ def _section_freshness_labels(pack: AssetKnowledgePack) -> list[SectionFreshness
             as_of_date=pack.freshness.recent_events_as_of,
             retrieved_at=pack.freshness.page_last_updated_at,
         ),
+        SectionFreshnessInput(
+            section_id="weekly_news_focus",
+            freshness_state=_combined_freshness([item.recent_development.freshness_state for item in pack.recent_developments]),
+            evidence_state="no_high_signal" if _recent_evidence_state(pack) == "no_major_recent_development" else _recent_evidence_state(pack),
+            as_of_date=pack.freshness.recent_events_as_of,
+            retrieved_at=pack.freshness.page_last_updated_at,
+        ),
+        SectionFreshnessInput(
+            section_id="ai_comprehensive_analysis",
+            freshness_state=pack.freshness.freshness_state,
+            evidence_state="insufficient_evidence",
+            as_of_date=pack.freshness.recent_events_as_of,
+            retrieved_at=pack.freshness.page_last_updated_at,
+        ),
     ]
     if pack.asset.asset_type is AssetType.etf:
         labels.append(
