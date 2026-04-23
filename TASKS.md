@@ -2,22 +2,25 @@
 
 ## Current task
 
-### T-044: Add export source-use and freshness validation contract
+### T-045: Add grounded chat comparison-redirect contract
 
 Goal:
-Add a deterministic export source-use and freshness validation contract so backend and UI clients can tell whether each available export payload's freshness labels, as-of dates, allowed excerpts, and source-use permissions are supported by the existing same-asset or same-comparison-pack evidence already present in the export, without adding frontend UI, live calls, new facts, new assets, or weakening citation, source-use, unknown/stale/unavailable/partial, and safety rules.
+Add a deterministic grounded chat comparison-redirect contract so single-asset chat can detect second-ticker comparison questions and return a compare-workflow suggestion backed by existing local comparison availability states instead of generating a multi-asset answer inside the single-asset endpoint, without adding frontend UI, live calls, new facts, new comparison pairs, or weakening citation, source-use, freshness, unknown/stale/unavailable/partial, and safety rules.
 
 Task scope:
-This is a backend schema, export response-shaping, source-binding, freshness-binding, eval, and test task over the existing deterministic export payloads in `backend/export.py` and the current asset-page, source-list, comparison, and single-turn chat export routes. Add additive export validation metadata so an available export can explain which included citations and source documents are actually exportable under the current source-use policy, which freshness or as-of labels are supported by existing overview/comparison/chat evidence, whether any exportable content is limited to metadata or short allowed excerpts, and whether the export stays fully validated or limited by stale, unknown, unavailable, mixed, partial, or insufficient evidence. The contract must stay deterministic and evidence-bound: it can validate and explain existing export metadata, but it must not invent dates, permit restricted content, add new asset facts, add new export formats or routes, change rendered section order or copy, or widen MVP coverage. Preserve existing export payloads, disclaimer/licensing-note behavior, Weekly News Focus separation, AI Comprehensive Analysis suppression, supported-vs-blocked routing, and no-live-call operation. This is not a task to add frontend rendering, PDF generation, file persistence, analytics, new assets, live providers, or recommendation-like copy.
+This is a backend chat-contract, response-shaping, session/export propagation, eval, and test task over the existing deterministic grounded chat pipeline in `backend/chat.py`, the accountless chat-session layer, and the current chat/export API routes. Add additive comparison-redirect metadata so a single-asset chat response can explain when the user's question should move to `/compare`, which ticker pair the redirect refers to, whether the existing deterministic comparison workflow is available or unavailable for that pair, and why the single-asset chat did not produce a multi-asset factual answer. The contract must stay bounded to existing local evidence and existing comparison availability rules: it may reuse current comparison-pack and support-classification metadata, but it must not invent second-ticker facts, mix other-asset evidence into single-asset chat, add new generated comparison content, change frontend rendering, widen MVP asset coverage, or bypass advice and unsupported-asset guardrails. Preserve PRD/TDS-first authority after safety, educational framing, visible uncertainty, source-use rights, Weekly News Focus separation, and no-live-call operation.
 
 Allowed files:
 
 - `TASKS.md`
 - `backend/models.py`
+- `backend/chat.py`
+- `backend/chat_sessions.py`
 - `backend/export.py`
 - `backend/main.py`
-- `evals/export_eval_cases.yaml`
 - `evals/run_static_evals.py`
+- `tests/unit/test_chat_generation.py`
+- `tests/unit/test_chat_sessions.py`
 - `tests/unit/test_exports.py`
 - `tests/unit/test_safety_guardrails.py`
 - `tests/integration/test_backend_api.py`
@@ -28,47 +31,35 @@ Do not change:
 - Do not add user accounts, authentication, cookies, personal identifiers, analytics SDKs, database migrations, Redis dependencies, HTTP clients, browser storage, frontend components, or production dependencies.
 - Do not read, echo, log, serialize, return, commit, or copy actual secret values from the local environment.
 - Do not expose OpenRouter or other provider keys through browser code, `NEXT_PUBLIC_*`, docs, logs, `/health`, API responses, exports, or committed env files.
-- Do not change frontend UI, browser local storage, home search interactions, search UI, comparison UI, source drawer UI, glossary UI, chat UI, export UI, or frontend API helpers.
-- Do not change deterministic asset classification rules, top-500 manifest policy, ingestion job behavior, search behavior, comparison behavior, chat behavior, export routing, source-use policy, source allowlist behavior, or trust-metrics rules except for the additive export validation contract.
-- Do not add new generated asset pages, generated chat answers, generated comparisons, generated risk summaries, new ingestion flows, new supported assets, new manifest entries, new provider fixtures, or broader MVP asset coverage.
-- Do not let the validation contract decide whether an asset is supported, unsupported, out of scope, eligible for ingestion, or allowed to export. Existing deterministic asset-state routing remains authoritative.
-- Do not invent as-of dates, retrieved timestamps, freshness states, stale reasons, source-use permissions, export permissions, omitted-content reasons, partial evidence, or uncertainty labels that are not derivable from the selected export payload's existing citations, source documents, sections, disclaimer/licensing note, or underlying overview/comparison/chat contract inputs.
-- Do not let export validation introduce wrong-asset or wrong-comparison-pack source bindings, uncited asset-specific facts, raw source text, unrestricted supporting passages, hidden prompts, raw model reasoning, or new Weekly News Focus claims.
+- Do not change frontend UI, browser local storage, comparison page UI, search UI, source drawer UI, glossary UI, export UI, or frontend API helpers.
+- Do not change deterministic asset classification rules, top-500 manifest policy, ingestion job behavior, search behavior, comparison generation behavior, comparison evidence availability behavior, source-use policy, source allowlist behavior, or trust-metrics rules except where existing comparison availability state is reused by the chat redirect contract.
+- Do not add new generated asset pages, generated comparisons, generated source lists, generated risk summaries, new comparison packs, new provider fixtures, or broader MVP asset coverage.
+- Do not let single-asset chat answer second-ticker questions with multi-asset factual comparisons, mixed-asset citations, or comparison claims sourced from outside the selected asset chat contract and the existing comparison availability metadata.
+- Do not invent comparison availability, compare routes, ticker extraction, unsupported reasons, or blocked-state explanations that are not derivable from the submitted question plus current deterministic search/comparison behavior.
+- Do not fabricate citations, source documents, freshness labels, Weekly News Focus items, AI Comprehensive Analysis claims, or second-asset facts for comparison redirects; redirect responses may be citation-free when they are workflow guidance rather than factual asset analysis.
+- Do not weaken advice-boundary behavior: buy/sell/hold, allocation, price-target, tax, brokerage, and trading questions must still redirect into educational framing even when a second ticker appears.
 - Do not change Weekly News Focus date-window logic, high-signal selection, AI Comprehensive Analysis availability threshold, or the visual/structural separation between stable facts and timely context.
-- Do not enable new exportable content for blocked states that are currently unsupported, out of scope, eligible-not-cached, or unknown.
-- Do not use the validation contract to export full paid-news articles, full filings, full issuer documents, restricted provider payloads, or any content disallowed by `metadata_only`, `link_only`, `summary_allowed`, or `rejected` source-use rules.
-- Do not add recommendation language, buy/sell/hold language, allocation guidance, price targets, tax advice, or brokerage/trading instructions to export validation summaries or diagnostics.
-- Do not store or return hidden prompts, raw model reasoning, `reasoning_details`, failed raw responses, unrestricted provider payloads, personal data, or browser/device identifiers.
-- Do not add buy/sell/hold recommendations, price targets, predictions, personalized allocation advice, exact position sizing, tax advice, or brokerage/trading behavior.
-- Do not expand MVP scope beyond U.S.-listed common stocks and supported non-leveraged equity ETFs.
+- Do not add recommendation language, predictions, personalized allocation advice, exact position sizing, tax advice, or brokerage/trading instructions to comparison redirect copy, metadata, exports, or diagnostics.
 - Do not move the Python backend or frontend workspace.
 
 Acceptance criteria:
 
-- Export validation contract models cover schema version, export content type, export state, same-asset or same-comparison-pack citation and source bindings, freshness/as-of or retrieved-date provenance, source-use policy and permitted-operations validation, restricted-content omission messaging, validation outcome, limitation or mismatch messaging, and deterministic diagnostics showing the metadata is derived from existing local evidence only.
-- Existing export routes remain the route surface and return additive export validation metadata without changing export formats, rendered Markdown, section order, disclaimer/licensing-note copy, citation IDs, source metadata, Weekly News Focus separation, or generated/non-generated asset routing:
-  - `GET /api/assets/{ticker}/export`
-  - `GET /api/assets/{ticker}/sources/export`
-  - `POST /api/compare/export`
-  - `GET /api/compare/export`
-  - `POST /api/assets/{ticker}/chat/export`
-- Supported stock `AAPL` and supported ETFs `VOO` and `QQQ` serialize export validation metadata for asset-page and source-list exports using only same-asset citations and source documents already present in the selected export payload or its underlying overview contract.
-- `VOO` export validation must preserve the existing stale/limited `cost_trading_context` freshness evidence in the underlying asset-page export; the contract must not promote stale, unknown, unavailable, mixed, partial, or insufficient-evidence sections to cleaner states just because the export is available.
-- Comparison export validation for `VOO` vs `QQQ` in both directions must bind only to comparison-pack citations and sources already present in the comparison export and must not silently mix asset-page-only evidence into comparison freshness or source-use validation.
-- Single-turn advice-redirect chat exports must preserve the existing educational redirect, citation-free answer shape, and empty source-document set; validation metadata must reflect that there is no factual source-backed export payload instead of fabricating exportable citations or freshness support.
-- Source-list and asset-page export validation must preserve rights-tiered source-use handling: `full_text_allowed`, `summary_allowed`, `metadata_only`, `link_only`, and `rejected` inputs must not be flattened into a broader export permission, and allowed excerpts must stay bounded to already permitted excerpt text only.
-- Sections, items, citations, or sources lacking evidence dates or export rights keep explicit `unknown`, `unavailable`, `partial`, `stale`, `insufficient_evidence`, metadata-only, or omitted-content handling as appropriate; the contract must not fabricate fresher dates, broader rights, or stronger evidence states to make an export appear more complete.
-- Blocked or unavailable states such as `BTC`, `ZZZZ`, `SPY`, unsupported comparisons, and unsupported chat exports preserve current `unsupported` or `unavailable` export behavior and do not gain fabricated validation records, generated sections, citations, or new source bindings.
-- Static evals verify required models/helpers/route behavior, same-asset and same-comparison-pack binding, freshness/source-use preservation, blocked-state handling, no live-call imports, no secret exposure, and no forbidden advice language.
-- Tests verify schema serialization, deterministic export validation propagation, mismatch-prevention behavior, supported stock and ETF coverage, comparison and chat export coverage, blocked-state behavior, API serialization, and safety guardrails.
+- Chat contract models cover a deterministic comparison-redirect response shape with schema version, redirect state, selected asset ticker, referenced comparison ticker, compare route metadata, existing comparison availability state, workflow guidance copy, and diagnostics showing the redirect was derived from the submitted question and current local comparison/search rules only.
+- `POST /api/assets/{ticker}/chat` preserves the existing single-asset grounded answer flow for ordinary supported questions, but when a supported single-asset question asks how the selected asset compares with a second ticker, the response returns comparison-redirect metadata and does not generate a multi-asset factual answer inside the single-asset endpoint.
+- Supported local `VOO` and `QQQ` chat questions that mention the other ticker in either direction return a compare-route suggestion for the same ordered pair the user asked about, reuse the existing deterministic comparison availability for that pair, and return no fabricated multi-asset citations or source documents from the chat answer itself.
+- Comparison-style chat questions for unavailable pairs such as `AAPL` vs `VOO`, `VOO` vs `SPY`, `VOO` vs `BTC`, `VOO` vs `GME`, and `VOO` vs `ZZZZ` return the comparison redirect contract with the correct existing comparison availability or blocked state (`no_local_pack`, `eligible_not_cached`, `unsupported`, `out_of_scope`, or `unknown`) instead of generating unsupported comparison prose inside single-asset chat.
+- Advice-like prompts with a second ticker, such as buy/sell or allocation questions, still return the existing educational safety redirect rather than a factual comparison answer; safety rules remain authoritative over redirect convenience.
+- Comparison redirects preserve the selected-asset grounding boundary by returning no wrong-asset citations, no mixed-asset source documents, no new Weekly News Focus claims, and no cross-asset factual claims presented as source-backed chat output.
+- Accountless session behavior remains deterministic: redirect turns can be stored and exported with safe session metadata, but transcript export must preserve the redirect as workflow guidance, keep citations/source documents empty unless the underlying chat answer already had valid same-asset evidence, and must not fabricate comparison evidence for redirect-only turns.
+- Static evals verify required models/helpers/route behavior, second-ticker detection, supported and unavailable comparison redirect states, advice-redirect precedence, no mixed-asset citation binding, no live-call imports, no secret exposure, and no forbidden advice language.
+- Tests verify schema serialization, deterministic redirect propagation through direct chat, session-backed chat, transcript export, supported and unavailable pair coverage, blocked-state behavior, API serialization, and safety guardrails.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_exports.py tests/unit/test_safety_guardrails.py -q
+python3 -m pytest tests/unit/test_chat_generation.py tests/unit/test_chat_sessions.py tests/unit/test_exports.py tests/unit/test_safety_guardrails.py -q
 python3 -m pytest tests/integration/test_backend_api.py -q
 python3 -m pytest tests -q
-npm test
 python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
 ```
@@ -78,9 +69,39 @@ Max 3 attempts.
 
 ## Backlog
 
-### T-045: Add grounded chat comparison-redirect contract
+No additional backlog tasks are currently prepared.
 
 ## Completed
+
+### T-044: Add export source-use and freshness validation contract
+
+Goal:
+Add a deterministic export source-use and freshness validation contract so backend and UI clients can tell whether each available export payload's freshness labels, as-of dates, allowed excerpts, and source-use permissions are supported by the existing same-asset or same-comparison-pack evidence already present in the export, without adding frontend UI, live calls, new facts, new assets, or weakening citation, source-use, unknown/stale/unavailable/partial, and safety rules.
+
+Completed:
+
+- Added export validation contract models in `backend/models.py`, including `ExportValidationOutcome`, `ExportValidationBindingScope`, `ExportValidationCitationBinding`, `ExportValidationSourceBinding`, `ExportValidationDiagnostics`, `ExportValidation`, and additive `export_validation` support on `ExportResponse`.
+- Extended `backend/export.py` so asset-page, source-list, comparison, and chat transcript exports serialize deterministic `export-validation-v1` metadata with section validations, same-asset and same-comparison-pack binding checks, no-factual-evidence handling for advice redirects, limitation messaging, and diagnostics derived from existing overview/comparison/chat contracts only.
+- Preserved existing export payload behavior while validating current evidence boundaries, including the stale-with-limitations `VOO` `cost_trading_context` export path instead of promoting it to a cleaner freshness state.
+- Added `evals/export_eval_cases.yaml` and extended `evals/run_static_evals.py` for supported `AAPL`, `VOO`, and `QQQ` export cases, `VOO` freshness-limitation preservation, comparison-pack-only bindings for `VOO`/`QQQ` in both directions, advice-redirect chat exports with `no_factual_evidence`, blocked-state handling, and no live-call or secret-exposure regressions.
+- Extended `tests/unit/test_exports.py` and `tests/integration/test_backend_api.py` for asset-page, source-list, comparison, grounded-chat, advice-redirect chat, and blocked export serialization, binding-scope coverage, and deterministic diagnostics.
+- Added `docs/agent-journal/20260423T155943Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- The agent journal records that these commands passed:
+  - `python3 -m pytest tests/unit/test_exports.py tests/unit/test_safety_guardrails.py -q`
+  - `python3 -m pytest tests/integration/test_backend_api.py -q`
+  - `python3 -m pytest tests -q`
+  - `npm test`
+  - `python3 evals/run_static_evals.py`
+  - `bash scripts/run_quality_gate.sh`
+- Merged local branch: `agent/T-044-20260423T155943Z`.
+- Remaining documented risk: the export validation contract is deterministic and fixture-backed only; it validates existing export citations, freshness labels, source-use rights, and blocked states without adding live evidence, new facts, or new export routes.
+- Remaining documented risk: asset-page freshness preservation relies on the current overview freshness-validation contract for matched overview sections and export-local metadata for export-only sections, so future fixture changes need to preserve the same same-asset binding assumptions.
+- Remaining documented risk: comparison export validation stays limited to the current local comparison packs and prevents non-pack bindings by diagnostics and tests; future comparison fixtures will need to preserve the same comparison-pack-only guarantees.
+
+Completion commits:
+
+- `4866c0a feat(T-044): add export source-use and freshness validation contract`
+- `ec7f295 chore(T-044): merge export source-use and freshness validation contract`
 
 ### T-043: Add section-level freshness validation contract
 
