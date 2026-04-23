@@ -44,6 +44,9 @@ def test_forbidden_output_phrase_detector_rejects_advice_like_copy():
 def test_backend_responses_do_not_leak_advice_phrases():
     response_payloads = []
 
+    for query in ["VOO", "BTC", "GME", "SPY", "ZZZZ"]:
+        response_payloads.append(client.get("/api/search", params={"q": query}).json())
+
     for ticker in ["VOO", "QQQ", "AAPL"]:
         response_payloads.append(client.get(f"/api/assets/{ticker}/overview").json())
         response_payloads.append(client.get(f"/api/assets/{ticker}/details").json())
@@ -276,3 +279,24 @@ def test_glossary_asset_context_contract_copy_is_advice_safe():
         assert_no_forbidden_phrases(marker, marker)
 
     assert_no_forbidden_phrases("glossary asset context contract", combined)
+
+
+def test_search_blocked_explanation_contract_copy_is_advice_safe():
+    combined = "\n".join(
+        [
+            (ROOT / "backend" / "search.py").read_text(encoding="utf-8"),
+            (ROOT / "backend" / "models.py").read_text(encoding="utf-8"),
+        ]
+    )
+    markers = [
+        "search-blocked-explanation-v1",
+        "scope_blocked_search_result",
+        "top500_manifest_scope",
+        "Supported MVP coverage is limited to U.S.-listed common stocks",
+    ]
+
+    for marker in markers:
+        assert marker in combined
+        assert_no_forbidden_phrases(marker, marker)
+
+    assert_no_forbidden_phrases("search blocked explanation contract", combined)
