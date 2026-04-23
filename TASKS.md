@@ -2,23 +2,23 @@
 
 ## Current task
 
-### T-039: Add asset source drawer response contract
+### T-040: Add comparison evidence availability contract
 
 Goal:
-Add a deterministic backend asset source drawer response contract so UI clients can open a source drawer for an asset or citation and receive source metadata, related claim context, freshness, source-use rights, and allowed excerpts without exposing restricted raw text, adding frontend UI, making live calls, or weakening citation, source-use, freshness, unknown/unavailable/partial, and safety rules.
+Add a deterministic backend comparison evidence availability contract so comparison UI clients can tell which comparison dimensions are source-backed, partial, stale, unavailable, or suppressed for each side of a comparison without adding frontend UI, making live calls, generating unsupported comparisons, or weakening citation, source-use, freshness, unknown/unavailable/partial, and safety rules.
 
 Task scope:
-This is a backend schema, deterministic response-shaping, API, eval, and test task. Add an asset source drawer contract over the existing fixture-backed overview/knowledge-pack evidence so supported cached assets can return source documents grouped with the citation IDs, related claims or section references, source-use policy metadata, freshness labels, official-source status, and permitted excerpt behavior needed by the source drawer. The response must be additive to existing source metadata behavior and must explicitly return non-generated empty/unavailable states for unsupported, out-of-scope, unknown, eligible-not-cached, deleted, stale, partial, or unavailable evidence where applicable. This is not a task to add frontend rendering, new asset facts, ingestion, scraping, persistence, analytics, live provider calls, live LLM calls, or broader source allowlist changes.
+This is a backend schema, deterministic response-shaping, eval, and test task over the existing fixture-backed comparison pipeline. Add additive comparison evidence availability metadata to `CompareResponse` so supported local comparison packs can describe required dimensions, per-side evidence coverage, citation/source bindings, freshness/source-use status, and unavailable or partial evidence reasons. Preserve the existing generated comparison output and route behavior, including `key_differences`, beginner bottom line, citations, and source documents. Explicitly return non-generated availability states for unsupported, out-of-scope, unknown, eligible-not-cached, no-local-pack, stale, partial, unavailable, or insufficient-evidence comparisons. This is not a task to add frontend rendering, new comparison pairs, new asset facts, ingestion, scraping, persistence, analytics, live provider calls, live LLM calls, export changes, source drawer UI, or source allowlist changes.
 
 Allowed files:
 
 - `TASKS.md`
 - `backend/models.py`
-- `backend/sources.py`
+- `backend/comparison.py`
 - `backend/main.py`
-- `evals/source_drawer_eval_cases.yaml`
+- `evals/comparison_evidence_eval_cases.yaml`
 - `evals/run_static_evals.py`
-- `tests/unit/test_source_drawer.py`
+- `tests/unit/test_comparison_generation.py`
 - `tests/unit/test_citation_validation.py`
 - `tests/unit/test_safety_guardrails.py`
 - `tests/integration/test_backend_api.py`
@@ -29,12 +29,13 @@ Do not change:
 - Do not add user accounts, authentication, cookies, personal identifiers, analytics SDKs, database migrations, Redis dependencies, HTTP clients, browser storage, frontend components, or production dependencies.
 - Do not read, echo, log, serialize, return, commit, or copy actual secret values from the local environment.
 - Do not expose OpenRouter or other provider keys through browser code, `NEXT_PUBLIC_*`, docs, logs, `/health`, API responses, exports, or committed env files.
-- Do not change frontend UI, browser local storage, asset-page layout, source drawer rendering, chat panel behavior, or frontend API helpers.
-- Do not change existing generated overview, Weekly News Focus, AI Comprehensive Analysis, comparison, search, ingestion, chat-session, export, source-use, or source allowlist behavior except for additive source drawer API contract fields.
-- Do not change source allowlist records or approve a new domain/source. If a source lacks an allowed policy, the drawer contract must show unavailable/insufficient evidence or omit restricted material rather than relaxing policy.
-- Do not let the source drawer contract decide asset support classification, source-use policy, freshness state, citation validity, or whether generated evidence exists.
-- Do not create generated pages, generated chat answers, generated comparisons, generated risk summaries, or generated source claims for unsupported, out-of-scope, unknown, eligible-not-cached, unavailable, stale, or partial assets.
-- Do not store or return hidden prompts, raw model reasoning, `reasoning_details`, failed raw responses, unrestricted source text, raw chunks, raw user transcripts, unrestricted provider payloads, personal data, source passages beyond allowed excerpt behavior, or browser/device identifiers.
+- Do not change frontend UI, browser local storage, asset-page layout, comparison page rendering, source drawer rendering, chat panel behavior, export controls, or frontend API helpers.
+- Do not change existing generated overview, Weekly News Focus, AI Comprehensive Analysis, search, ingestion, chat-session, export, source-use, source drawer, or source allowlist behavior except for additive comparison response contract fields.
+- Do not add new generated comparison pairs, new comparison facts, new normalized facts, new source documents, new retrieval fixtures, new source chunks, new provider fixtures, or broader MVP asset coverage.
+- Do not change source allowlist records or approve a new domain/source. If comparison evidence lacks an allowed policy, the availability contract must show unavailable/insufficient evidence or suppress support rather than relaxing policy.
+- Do not let the comparison evidence availability contract decide asset support classification, source-use policy, freshness state, citation validity, or whether generated evidence exists.
+- Do not create generated pages, generated chat answers, generated comparisons, generated risk summaries, or generated comparison claims for unsupported, out-of-scope, unknown, eligible-not-cached, no-local-pack, unavailable, stale, partial, or insufficient-evidence assets.
+- Do not store or return hidden prompts, raw model reasoning, `reasoning_details`, failed raw responses, unrestricted source text, raw chunks, raw user transcripts, unrestricted provider payloads, personal data, source passages beyond existing allowed comparison/source behavior, or browser/device identifiers.
 - Do not use rejected, non-allowlisted, metadata-only, link-only, or license-disallowed sources as support for generated claims.
 - Do not add buy/sell/hold recommendations, price targets, predictions, personalized allocation advice, exact position sizing, tax advice, or brokerage/trading behavior.
 - Do not expand MVP scope beyond U.S.-listed common stocks and supported non-leveraged equity ETFs.
@@ -42,24 +43,24 @@ Do not change:
 
 Acceptance criteria:
 
-- Source drawer contract models cover response schema version, selected asset, state, source documents, source groups, citation bindings, related claims, section references, allowed excerpts or excerpt-suppression reasons, freshness/as-of/retrieved dates, official-source status, source quality, allowlist status, source-use policy, permitted operations, and diagnostics for unavailable/empty states.
-- `GET /api/assets/{ticker}/sources` remains backward-compatible by continuing to return `asset`, `state`, and `sources`, while adding deterministic source drawer fields needed by UI clients.
-- Supported cached assets `AAPL`, `VOO`, and `QQQ` return drawer entries for the source documents already present in the deterministic asset overview/knowledge pack, with no new factual source claims invented.
-- Every drawer citation binding references an existing citation ID from the selected asset overview and an existing source document belonging to the same selected asset.
-- Drawer related-claim context is derived from existing overview claims, top risks, snapshot metrics, Weekly News Focus/AI Comprehensive Analysis where present, and PRD overview sections; no raw hidden prompts, raw chunks, unrestricted source text, or unrestricted provider payloads are returned.
-- Source groups include stable identifiers and enough metadata for a drawer UI: source document ID, source type, title, publisher, URL, published date when available, as-of date when available, retrieved timestamp, freshness state, official-source flag, source quality, allowlist status, source-use policy, and permitted operation flags.
-- Allowed excerpts follow source-use policy: `full_text_allowed` and allowed fixture/official excerpt behavior may expose short supporting passages, `summary_allowed` may expose only permitted excerpts/metadata, `metadata_only` and `link_only` expose metadata without source text, and `rejected` sources cannot appear as supporting evidence for generated claims.
-- Stale, unknown, unavailable, partial, insufficient-evidence, and mixed evidence states are preserved and visible in source drawer metadata instead of being normalized away.
-- Weekly News Focus and AI Comprehensive Analysis source contexts, when present, remain labeled as timely context and do not overwrite or merge into stable canonical fact source groups.
-- Unsupported, out-of-scope, unknown, and eligible-not-cached assets return explicit non-generated source drawer states with no citations, no source documents, no generated claims, no risk summaries, no allowed excerpts, and no live calls.
-- The contract does not expose source documents for wrong assets, comparison packs, chat sessions, or unrelated fixtures in a single-asset source drawer response.
-- Static evals verify required models/helpers/routes, same-asset citation/source binding, source-use policy handling, freshness/evidence labels, no restricted text exposure, no live-call imports, no source allowlist mutation, and no forbidden advice language.
-- Tests verify supported cached source drawer serialization, citation filtering by citation ID when supported by the contract, source-document filtering when supported by the contract, related-claim mapping, source-use excerpt handling, stale/unknown/unavailable labels, non-generated states for unsupported/out-of-scope/unknown/eligible-not-cached assets, API route serialization, and safety guardrails.
+- Comparison evidence availability contract models cover schema version, comparison identity, left/right selected assets, availability state, required evidence dimensions, per-side evidence items, citation bindings, source document references, freshness/as-of/retrieved dates, official-source status, source quality, allowlist status, source-use policy, permitted operation flags, and diagnostics for unavailable/empty states.
+- `POST /api/compare` remains backward-compatible by continuing to return `left_asset`, `right_asset`, `state`, `comparison_type`, `key_differences`, `bottom_line_for_beginners`, `citations`, and `source_documents`, while adding deterministic availability fields needed by UI clients.
+- Supported local comparison pairs `VOO` vs `QQQ` and `QQQ` vs `VOO` return `available` evidence availability metadata for the existing deterministic comparison output without inventing new comparison claims, facts, sources, or dimensions.
+- Availability metadata covers the existing generated dimensions `Benchmark`, `Expense ratio`, `Holdings count`, `Breadth`, and `Educational role`, and maps each generated key difference and beginner bottom line to the citation IDs and source document IDs already present in the response.
+- Comparison-side evidence roles distinguish left-side support, right-side support, and shared comparison support where applicable, preserving requested ticker order for both `VOO`/`QQQ` and `QQQ`/`VOO`.
+- Every availability citation binding references an existing citation ID in the same `CompareResponse` and an existing source document belonging to either the left or right asset in the selected comparison pack.
+- Evidence availability does not expose source documents for wrong assets, unrelated asset packs, single-asset source drawers, chat sessions, exports, or unrelated fixtures.
+- Source-use policy is preserved: rejected, non-allowlisted, metadata-only, link-only, or license-disallowed sources cannot be marked as supporting generated comparison claims, and restricted text is not newly exposed.
+- Fresh, stale, unknown, unavailable, partial, insufficient-evidence, and mixed evidence states are preserved in comparison availability metadata instead of being normalized away.
+- Unsupported, out-of-scope, unknown, eligible-not-cached, no-local-pack, stale, partial, unavailable, and insufficient-evidence comparisons return explicit non-generated availability states with no generated key differences, no beginner bottom line, no citations, no source documents, no source-backed claim support, and no live calls.
+- Comparison availability diagnostics include deterministic no-live-call and no-new-generated-output markers so clients can distinguish a response contract from live ingestion or LLM generation.
+- Static evals verify required models/helpers, additive compare route serialization, same-comparison-pack citation/source binding, side-role preservation, source-use policy handling, freshness/evidence labels, no restricted text exposure, no live-call imports, no source allowlist mutation, no new fixture/domain approval, and no forbidden advice language.
+- Tests verify supported comparison availability serialization, reverse-order behavior, dimension-to-citation/source mapping, per-side evidence roles, unavailable/no-local-pack behavior, unsupported/out-of-scope/unknown/eligible-not-cached non-generated states, source-use/freshness preservation, API route serialization, citation validation, and safety guardrails.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_source_drawer.py tests/unit/test_citation_validation.py tests/unit/test_safety_guardrails.py -q
+python3 -m pytest tests/unit/test_comparison_generation.py tests/unit/test_citation_validation.py tests/unit/test_safety_guardrails.py -q
 python3 -m pytest tests/integration/test_backend_api.py -q
 python3 -m pytest tests -q
 python3 evals/run_static_evals.py
@@ -70,8 +71,6 @@ Iteration budget:
 Max 3 attempts.
 
 ## Backlog
-
-### T-040: Add comparison evidence availability contract
 
 ### T-041: Add glossary asset-context evidence contract
 
@@ -84,6 +83,36 @@ Max 3 attempts.
 ### T-045: Add grounded chat comparison-redirect contract
 
 ## Completed
+
+### T-039: Add asset source drawer response contract
+
+Goal:
+Add a deterministic backend asset source drawer response contract so UI clients can open a source drawer for an asset or citation and receive source metadata, related claim context, freshness, source-use rights, and allowed excerpts without exposing restricted raw text, adding frontend UI, making live calls, or weakening citation, source-use, freshness, unknown/unavailable/partial, and safety rules.
+
+Completed:
+
+- Added source drawer contract models in `backend/models.py`, including `SourceDrawerState`, `SourceDrawerExcerpt`, `SourceDrawerRelatedClaim`, `SourceDrawerSectionReference`, `SourceDrawerCitationBinding`, `SourceDrawerSourceGroup`, and `SourceDrawerDiagnostics`.
+- Extended `SourcesResponse` with additive source drawer fields while preserving the legacy `asset`, `state`, and `sources` response shape.
+- Added `backend/sources.py` with `build_asset_source_drawer_response`, deterministic `asset-source-drawer-v1` shaping, and explicit non-generated responses for unavailable asset states.
+- Built source drawer related-claim and section-reference context from existing overview claims, snapshot metrics, top risks, PRD overview sections, Weekly News Focus items, and AI Comprehensive Analysis sections when present.
+- Built citation bindings from existing overview citations and asset knowledge-pack facts, chunks, and recent-development evidence, with same-asset source document checks and evidence-layer labels for canonical facts, source chunks, and timely context.
+- Built source groups from existing overview and knowledge-pack source documents with source type, title, publisher, URL, published/as-of/retrieved dates, freshness, official-source flag, source quality, allowlist status, source-use policy, permitted operations, citation IDs, related claim IDs, section IDs, allowed excerpts, and excerpt-suppression reasons.
+- Added deterministic filtering for `citation_id` and `source_document_id`, including diagnostics for applied filters and omitted citation/source IDs.
+- Gated source drawer excerpts through the existing source-use policy resolver so `full_text_allowed` and `summary_allowed` sources can expose short allowed fixture passages while restricted policies suppress source text with explicit suppression reasons.
+- Wired `GET /api/assets/{ticker}/sources` in `backend/main.py` to return the new source drawer contract and accept optional `citation_id` and `source_document_id` query filters.
+- Added `evals/source_drawer_eval_cases.yaml` and extended `evals/run_static_evals.py` to verify required models/helpers/routes, supported cached assets, non-generated cases, same-asset source/citation binding, source-use/freshness handling, no restricted markers, no live-call imports, and no forbidden advice language.
+- Added `tests/unit/test_source_drawer.py` plus API coverage in `tests/integration/test_backend_api.py` for supported `AAPL`, `VOO`, and `QQQ` source drawer serialization, citation/source filtering, related-claim mapping, source-use excerpt behavior, and non-generated `SPY`, `TQQQ`, `GME`, and `ZZZZ` states.
+- Added `docs/agent-journal/20260423T133237Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- T-039 agent journal records that focused source-drawer pytest passed with 4 tests, focused source-drawer/citation/safety pytest passed with 21 tests, backend API pytest passed with 29 tests, full Python pytest passed with 178 tests, static evals passed, and the full quality gate passed including Python tests, static evals, frontend smoke checks, TypeScript typecheck, production build, and backend checks.
+- Merged local branch: `agent/T-039-20260423T133237Z`.
+- Remaining documented risk: the source drawer contract is deterministic and fixture-backed only; it does not add live ingestion, persistence, scraping, source allowlist changes, or frontend rendering.
+- Remaining documented risk: the contract groups and filters source drawer metadata from existing asset overviews and knowledge packs only, so future persisted claim/source tables may need an adapter to preserve the same response shape.
+- Remaining documented risk: non-generated states return explicit empty drawer payloads, but richer deleted/stale/partial production states will still depend on future storage and ingestion lifecycle work.
+
+Completion commits:
+
+- `f84ddcc feat(T-039): add asset source drawer response contract`
+- `94943ba chore(T-039): merge asset source drawer response contract`
 
 ### T-038: Add accountless chat session lifecycle contract
 
