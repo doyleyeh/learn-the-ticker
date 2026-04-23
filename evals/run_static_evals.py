@@ -43,6 +43,7 @@ from backend.data import (
     top500_stock_universe_entry,
 )
 from backend.export import export_asset_page, export_asset_source_list, export_chat_transcript, export_comparison
+from backend.glossary import TERM_CATALOG, build_glossary_response
 from backend.ingestion import get_ingestion_job_status, request_ingestion
 from backend.ingestion import get_pre_cache_job_status, request_launch_universe_pre_cache, request_pre_cache_for_asset
 from backend.llm import (
@@ -74,6 +75,7 @@ from backend.models import (
     EvidenceState,
     ExportResponse,
     FreshnessState,
+    GlossaryResponse,
     IngestionJobResponse,
     KnowledgePackBuildResponse,
     KnowledgePackFreshnessInput,
@@ -1670,6 +1672,116 @@ def test_comparison_evidence_availability_contract():
         assert marker not in comparison_source
 
 
+def test_glossary_context_contract():
+    data = load_yaml("glossary_context_eval_cases.yaml")
+    assert data.get("schema_version") == "glossary-context-evals-v1"
+
+    missing_models = {name for name in data["required_models"] if not hasattr(models, name)}
+    assert not missing_models, f"Missing glossary context models: {missing_models}"
+
+    helper_globals = {"build_glossary_response": build_glossary_response, "TERM_CATALOG": TERM_CATALOG}
+    assert set(data["required_helpers"]) <= set(helper_globals)
+    assert TERM_CATALOG
+
+    main_source = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
+    glossary_source = (ROOT / "backend" / "glossary.py").read_text(encoding="utf-8")
+    models_source = (ROOT / "backend" / "models.py").read_text(encoding="utf-8")
+    frontend_glossary_source = (ROOT / "apps" / "web" / "lib" / "glossary.ts").read_text(encoding="utf-8")
+    for route in data["required_routes"]:
+        assert route in main_source
+    assert "build_glossary_response" in main_source
+
+    for marker in data["forbidden_static_markers"]:
+        if marker == "apps/web/lib/glossary.ts":
+            assert "glossary-asset-context-v1" not in frontend_glossary_source
+            continue
+        assert marker not in glossary_source
+        if marker not in {"OPENROUTER_API_KEY"}:
+            assert marker not in main_source
+
+    for state in data["required_context_states"]:
+        assert f'{state} = "{state}"' in models_source
+
+    catalog_terms = {entry.term for entry in TERM_CATALOG}
+    assert set(data["required_stock_terms"]) <= catalog_terms
+    assert set(data["required_etf_terms"]) <= catalog_terms
+
+    for ticker in data["supported_cached_assets"]:
+        pack = build_asset_knowledge_pack(ticker)
+        response = build_glossary_response(ticker)
+        validated = GlossaryResponse.model_validate(response.model_dump(mode="json"))
+        source_ids = {source.source_document_id for source in pack.source_documents}
+        citation_ids = {binding.citation_id for binding in validated.citation_bindings}
+        expected_terms = set(data["required_stock_terms"] if ticker == "AAPL" else data["required_etf_terms"])
+
+        assert validated.schema_version == "glossary-asset-context-v1"
+        assert validated.selected_asset.ticker == ticker
+        assert validated.glossary_state.value == "available"
+        assert expected_terms <= {term.term_identity.term for term in validated.terms}
+        assert all(term.generic_definition.simple_definition for term in validated.terms)
+        assert all(term.generic_definition.why_it_matters for term in validated.terms)
+        assert all(term.generic_definition.common_beginner_mistake for term in validated.terms)
+        assert all(term.generic_definition.generic_definition_requires_citation is False for term in validated.terms)
+        assert {reference.asset_ticker for reference in validated.evidence_references} <= {ticker}
+        assert {binding.asset_ticker for binding in validated.citation_bindings} <= {ticker}
+        assert {binding.source_document_id for binding in validated.citation_bindings} <= source_ids
+        assert {reference.source_document_id for reference in validated.source_references} <= source_ids
+        assert all(reference.allowlist_status.value == "allowed" for reference in validated.source_references)
+        assert all(
+            reference.source_use_policy in {SourceUsePolicy.full_text_allowed, SourceUsePolicy.summary_allowed}
+            for reference in validated.source_references
+        )
+        assert all(
+            binding.source_use_policy in {SourceUsePolicy.full_text_allowed, SourceUsePolicy.summary_allowed}
+            for binding in validated.citation_bindings
+        )
+        assert all(binding.permitted_operations.can_support_citations for binding in validated.citation_bindings)
+        used_citations = {
+            citation_id
+            for term in validated.terms
+            for citation_id in term.asset_context.citation_ids
+        }
+        assert used_citations <= citation_ids
+        assert validated.diagnostics.no_live_external_calls is True
+        assert validated.diagnostics.live_provider_calls_attempted is False
+        assert validated.diagnostics.live_llm_calls_attempted is False
+        assert validated.diagnostics.no_new_generated_output is True
+        assert validated.diagnostics.no_frontend_change_required is True
+        assert validated.diagnostics.generic_definitions_are_not_evidence is True
+        serialized = str(validated.model_dump(mode="json")).lower()
+        for marker in data["forbidden_serialized_markers"]:
+            assert marker not in serialized
+        for phrase in data["forbidden_advice_phrases"]:
+            assert phrase not in serialized
+
+    for case in data["supported_term_cases"]:
+        response = build_glossary_response(case["ticker"], term=case["term"])
+        assert len(response.terms) == 1
+        assert response.terms[0].asset_context.availability_state.value == case["expected_state"]
+        assert response.terms[0].asset_context.citation_ids
+        assert response.citation_bindings
+        assert response.source_references
+
+    for case in data["generic_only_cases"]:
+        response = build_glossary_response(case["ticker"], term=case["term"])
+        assert len(response.terms) == 1
+        assert response.terms[0].asset_context.availability_state.value == case["expected_state"]
+        assert response.terms[0].asset_context.citation_ids == []
+        assert response.citation_bindings == []
+        assert response.source_references == []
+
+    for case in data["non_generated_cases"]:
+        response = build_glossary_response(case["ticker"], term="expense ratio")
+        assert response.glossary_state.value == case["expected_response_state"]
+        assert response.evidence_references == []
+        assert response.citation_bindings == []
+        assert response.source_references == []
+        assert response.diagnostics.unavailable_reasons
+        assert response.diagnostics.no_live_external_calls is True
+        assert response.diagnostics.no_new_generated_output is True
+        assert all(term.asset_context.citation_ids == [] for term in response.terms)
+
+
 def test_generated_chat_contract():
     supported_cases = [
         ("AAPL", "What does Apple do?", "primary business"),
@@ -2184,6 +2296,7 @@ if __name__ == "__main__":
     test_source_drawer_cases()
     test_generated_comparison_contract()
     test_comparison_evidence_availability_contract()
+    test_glossary_context_contract()
     test_generated_chat_contract()
     test_export_cases()
     test_weekly_news_cases()

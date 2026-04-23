@@ -17,6 +17,7 @@ from backend.citations import (
     validate_claims,
 )
 from backend.data import supported_asset
+from backend.glossary import build_glossary_response
 from backend.models import FreshnessState, SourceAllowlistStatus, SourceUsePolicy
 
 
@@ -337,6 +338,37 @@ def test_comparison_claims_must_stay_inside_comparison_pack():
     assert accepted.status is CitationValidationStatus.valid
     assert missing_qqq.status is CitationValidationStatus.insufficient_evidence
     assert wrong_asset.status is CitationValidationStatus.wrong_asset
+
+
+def test_glossary_context_citations_bind_to_selected_asset_and_allowed_sources():
+    glossary = build_glossary_response("VOO", term="expense ratio")
+    evidence = [
+        CitationEvidence(
+            citation_id=binding.citation_id,
+            asset_ticker=binding.asset_ticker,
+            source_document_id=binding.source_document_id,
+            source_type="normalized_fact",
+            freshness_state=binding.freshness_state,
+            supporting_text="Deterministic metadata-only test support for the existing normalized fact.",
+            allowlist_status=binding.allowlist_status,
+            source_use_policy=binding.source_use_policy,
+        )
+        for binding in glossary.citation_bindings
+    ]
+    claim = {
+        "claim_id": "claim_glossary_context",
+        "claim_text": "Glossary asset context must cite same-asset evidence.",
+        "claim_type": "factual",
+        "citation_ids": glossary.terms[0].asset_context.citation_ids,
+    }
+    accepted = validate_claims(claims=[claim], evidence=evidence, context={"allowed_asset_tickers": ["VOO"]})
+    wrong_asset = validate_claims(claims=[claim], evidence=evidence, context={"allowed_asset_tickers": ["QQQ"]})
+    generic_only = build_glossary_response("AAPL", term="market cap")
+
+    assert accepted.status is CitationValidationStatus.valid
+    assert wrong_asset.status is CitationValidationStatus.wrong_asset
+    assert generic_only.terms[0].asset_context.citation_ids == []
+    assert generic_only.citation_bindings == []
 
 
 def test_citation_eval_yaml_cases_match_expected_statuses():

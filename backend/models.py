@@ -54,6 +54,7 @@ class FreshnessState(str, Enum):
 
 class EvidenceState(str, Enum):
     supported = "supported"
+    partial = "partial"
     no_major_recent_development = "no_major_recent_development"
     no_high_signal = "no_high_signal"
     unavailable = "unavailable"
@@ -1475,6 +1476,151 @@ class SourceDrawerDiagnostics(BaseModel):
     unavailable_reasons: list[str] = Field(default_factory=list)
     omitted_source_document_ids: list[str] = Field(default_factory=list)
     omitted_citation_ids: list[str] = Field(default_factory=list)
+
+
+class GlossaryResponseState(str, Enum):
+    available = "available"
+    unsupported = "unsupported"
+    out_of_scope = "out_of_scope"
+    unknown = "unknown"
+    eligible_not_cached = "eligible_not_cached"
+    stale = "stale"
+    partial = "partial"
+    unavailable = "unavailable"
+    insufficient_evidence = "insufficient_evidence"
+
+
+class GlossaryAssetContextState(str, Enum):
+    available = "available"
+    generic_only = "generic_only"
+    unavailable = "unavailable"
+    stale = "stale"
+    partial = "partial"
+    unknown = "unknown"
+    suppressed = "suppressed"
+    insufficient_evidence = "insufficient_evidence"
+
+
+class GlossaryEvidenceReferenceType(str, Enum):
+    normalized_fact = "normalized_fact"
+    source_chunk = "source_chunk"
+    recent_development = "recent_development"
+    evidence_gap = "evidence_gap"
+    section = "section"
+
+
+class GlossaryTermIdentity(BaseModel):
+    term: str
+    slug: str
+    aliases: list[str] = Field(default_factory=list)
+    applies_to: list[AssetType] = Field(default_factory=list)
+
+
+class GlossaryGenericDefinition(BaseModel):
+    simple_definition: str
+    why_it_matters: str
+    common_beginner_mistake: str
+    beginner_category: str
+    generic_definition_requires_citation: bool = False
+
+
+class GlossaryEvidenceReference(BaseModel):
+    reference_id: str
+    reference_type: GlossaryEvidenceReferenceType
+    term_slug: str
+    asset_ticker: str
+    section_id: str | None = None
+    field_name: str | None = None
+    fact_id: str | None = None
+    source_chunk_id: str | None = None
+    recent_event_id: str | None = None
+    evidence_gap_id: str | None = None
+    source_document_id: str | None = None
+    citation_ids: list[str] = Field(default_factory=list)
+    evidence_state: EvidenceState
+    freshness_state: FreshnessState
+    as_of_date: str | None = None
+    retrieved_at: str | None = None
+    unavailable_reason: str | None = None
+
+
+class GlossaryCitationBinding(BaseModel):
+    binding_id: str
+    term_slug: str
+    citation_id: str
+    source_document_id: str
+    asset_ticker: str
+    evidence_reference_id: str
+    evidence_reference_type: GlossaryEvidenceReferenceType
+    freshness_state: FreshnessState
+    source_quality: SourceQuality
+    allowlist_status: SourceAllowlistStatus
+    source_use_policy: SourceUsePolicy
+    permitted_operations: SourceOperationPermissions
+    supports_asset_specific_context: bool
+
+
+class GlossarySourceReference(BaseModel):
+    source_document_id: str
+    asset_ticker: str
+    source_type: str
+    title: str
+    publisher: str
+    url: str
+    published_at: str | None = None
+    as_of_date: str | None = None
+    retrieved_at: str
+    freshness_state: FreshnessState
+    is_official: bool
+    source_quality: SourceQuality
+    allowlist_status: SourceAllowlistStatus
+    source_use_policy: SourceUsePolicy
+    permitted_operations: SourceOperationPermissions
+
+
+class GlossaryAssetContext(BaseModel):
+    availability_state: GlossaryAssetContextState
+    evidence_state: EvidenceState
+    freshness_state: FreshnessState
+    context_note: str | None = None
+    evidence_reference_ids: list[str] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    uncertainty_labels: list[str] = Field(default_factory=list)
+    suppression_reasons: list[str] = Field(default_factory=list)
+
+
+class GlossaryTermResponse(BaseModel):
+    term_identity: GlossaryTermIdentity
+    generic_definition: GlossaryGenericDefinition
+    asset_context: GlossaryAssetContext
+
+
+class GlossaryDiagnostics(BaseModel):
+    no_live_external_calls: bool = True
+    live_provider_calls_attempted: bool = False
+    live_llm_calls_attempted: bool = False
+    no_new_generated_output: bool = True
+    no_frontend_change_required: bool = True
+    generic_definitions_are_not_evidence: bool = True
+    source_policy_enforced: bool = True
+    same_asset_evidence_only: bool = True
+    restricted_text_exposed: bool = False
+    filters_applied: dict[str, str] = Field(default_factory=dict)
+    unavailable_reasons: list[str] = Field(default_factory=list)
+    omitted_term_slugs: list[str] = Field(default_factory=list)
+
+
+class GlossaryResponse(BaseModel):
+    schema_version: Literal["glossary-asset-context-v1"] = "glossary-asset-context-v1"
+    selected_asset: AssetIdentity
+    state: StateMessage
+    glossary_state: GlossaryResponseState
+    terms: list[GlossaryTermResponse] = Field(default_factory=list)
+    evidence_references: list[GlossaryEvidenceReference] = Field(default_factory=list)
+    citation_bindings: list[GlossaryCitationBinding] = Field(default_factory=list)
+    source_references: list[GlossarySourceReference] = Field(default_factory=list)
+    diagnostics: GlossaryDiagnostics = Field(default_factory=GlossaryDiagnostics)
 
 
 class MetricValue(BaseModel):
