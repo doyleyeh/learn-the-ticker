@@ -17,6 +17,7 @@ export function ComparisonSuggestions({ model }: ComparisonSuggestionsProps) {
       data-comparison-suggestion-state={model.state}
       data-comparison-requested-left={model.requestedLeftTicker ?? ""}
       data-comparison-requested-right={model.requestedRightTicker ?? ""}
+      data-comparison-requested-availability-state={model.requestedAvailabilityState ?? ""}
     >
       <div className="section-heading">
         <p className="eyebrow">Compare locally</p>
