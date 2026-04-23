@@ -2,59 +2,48 @@
 
 ## Current task
 
-### T-050: Align asset-page source drawer and freshness labels with backend contracts
+### T-051: Render Weekly News Focus and AI Comprehensive Analysis on supported asset pages
 
 Goal:
-Align all asset-page source-drawer and freshness-label rendering with existing backend contract shapes so source metadata, freshness states, and uncertainty labels remain consistent across supported, blocked, and unavailable asset flows, while staying deterministic and education-first.
+Render Weekly News Focus and AI Comprehensive Analysis for supported assets using the existing deterministic contract shape on asset pages, while keeping both modules visually and semantically separate from stable canonical facts and preserving unknown/stale/partial evidence handling.
 
 Task-scope paragraph:
-Update the existing asset-page frontend path to consume canonical source and freshness fields from the current deterministic contracts, and ensure the source drawer and freshness chips render the same support-state, source-use, and uncertainty language used in backend-aligned contracts. Keep scope limited to asset pages, drawer/label components, and fixture-backed helper functions only; do not change backend contracts, add new coverage, add live-provider flows, or alter core comparison/search semantics.
-
-Task scope:
-Use existing frontend contracts and fixtures to:
-
-- normalize source drawer inputs so `SourceDrawer` uses the same source-id/citation-source-freshness fields already expected by backend contracts,
-- update freshness labels to render backend-mapped `fresh`, `stale`, `unknown`, `unavailable`, `partial`, and `insufficient_evidence` with consistent labels, and
-- preserve all currently visible advisory framing and blocked-state behavior for unsupported assets without generating new claims.
+Keep this task narrow to the existing supported-asset page pipeline and contract-consumption path. Update frontend rendering and UI checks only so Weekly News Focus and AI Comprehensive Analysis consume deterministic backend-facing contract fields already produced by the current fixtures/contracts, with no backend contract, source policy, or live-provider changes.
 
 Allowed files:
 
 - `apps/web/app/assets/[ticker]/page.tsx`
-- `apps/web/app/assets/[ticker]/sources/page.tsx` (if present)
-- `apps/web/components/SourceDrawer.tsx`
+- `apps/web/components/AIComprehensiveAnalysisPanel.tsx`
+- `apps/web/components/WeeklyNewsPanel.tsx`
 - `apps/web/components/FreshnessLabel.tsx`
-- `apps/web/components/SourcePreview*` (targeted source-pane components if present)
+- `apps/web/components/SourceDrawer.tsx`
 - `apps/web/lib/fixtures.ts`
 - `apps/web/lib/overview.ts`
-- `apps/web/lib/viewAdapters.ts`
+- `apps/web/lib/weeklyNews.ts`
 - `tests/frontend/smoke.mjs`
 
 Do not change:
 
-- backend contracts, schemas, persistence, or API integration
-- source-use policy, unsupported-asset policies, or Top-500/coverage rules
-- live external calls, secret usage, or provider/LLM runtime wiring
-- advice-like phrasing (buy/sell/hold/allocation/price targets/tax recommendations)
-- unsupported asset scope, asset taxonomy, weekly-news analysis flow, or chat/export behavior
-- any behavior unrelated to source drawer + freshness rendering
+- backend contracts, schemas, persistence, providers, or ingestion behavior
+- source-use policy definitions and source allowlist updates
+- advice-like/financial-advice framing (buy/sell/hold/allocation/price targets/tax)
+- unsupported or out-of-scope asset flow, chat flow, comparison logic, or search semantics
+- live external calls, provider keys, or non-deterministic CI behavior
 
 Acceptance criteria:
 
-- Asset-page route rendering uses backend-contract-shaped source/freshness inputs without adding local duplicate transformations for source identity, labels, or freshness state.
-- `SourceDrawer` shows the same source metadata fields, source-use labels, and freshness context as the contract it renders against, and does not render unsupported source fields for `unsupported`, `eligible_not_cached`, `out_of_scope`, `unknown`, `unavailable`, or partially/insufficient evidence states.
-- `FreshnessLabel` behavior matches contract semantics (`fresh`, `stale`, `unknown`, `unavailable`, `partial`, `insufficient_evidence`) with consistent user-facing copy and no invented or advisory claims.
-- Supported and blocked assets retain existing educational framing and citation visibility (`SPY`, `GME`, `TQQQ`, `ZZZZ`, etc.) while showing deterministic evidence-bound labels.
-- No live API calls, no provider/LLM runtime calls, and no new scopes/assets are introduced.
-- Coverage of this task remains frontend-deterministic and fixture-backed; no backend schema changes are required.
-- Safety and source-use invariants remain intact: no buy/sell/hold/allocate/tax/price-target/ brokerage copy; no facts when evidence is missing; citations remain required for important claims.
-- required tests, evals, and `bash scripts/run_quality_gate.sh` pass in a deterministic environment.
+- Supported asset pages render Weekly News Focus using contract fields already present in deterministic fixtures/contracts, with event order and metadata consistent with existing contract behavior.
+- AI Comprehensive Analysis renders with the required ordered sections when sufficient high-signal timely-evidence exists and is clearly separated from stable facts.
+- Source metadata, freshness state labels (`fresh`, `stale`, `unknown`, `unavailable`, `partial`, `insufficient_evidence`), and uncertainty states are contract-consistent for both Weekly News Focus and AI Comprehensive Analysis sections.
+- Unsupported, unsupported-recognized, unsupported out-of-scope, unknown, pending, and empty states do not introduce unsupported claims or new advice-like copy.
+- Mobile and desktop renders preserve citation visibility, source drawer access, and freshness visibility.
+- Required frontend smoke and quality checks pass in deterministic mode with no external calls.
 
 Required commands:
 
 - `npm test`
 - `npm run typecheck`
 - `npm run build`
-- `python3 -m pytest tests -q`
 - `python3 evals/run_static_evals.py`
 - `bash scripts/run_quality_gate.sh`
 
@@ -63,6 +52,47 @@ Iteration budget:
 - Max 2 attempts
 
 ## Completed
+
+### T-050: Align asset-page source drawer and freshness labels with backend contracts
+
+Goal:
+Align all asset-page source-drawer and freshness-label rendering with existing backend contract shapes so source metadata, freshness states, and uncertainty labels remain consistent across supported, blocked, and unavailable asset flows, while staying deterministic and education-first.
+
+Completed:
+
+- Updated `apps/web/app/assets/[ticker]/page.tsx`, `apps/web/components/FreshnessLabel.tsx`, and `apps/web/components/SourceDrawer.tsx` to consume deterministic contract-shaped fields for source metadata and freshness rendering.
+- Fixed an initial typecheck issue by switching `SourceDrawer` to normalized contract fields (`supportingPassage`, `isOfficial`) instead of non-existent snake_case aliases.
+- Kept existing blocked/unsupported/unknown/unavailable support-state behavior intact while preserving citation and uncertainty boundaries.
+- No backend or live-provider changes were introduced in this frontend-contract alignment task.
+
+Acceptance criteria:
+
+- `SourceDrawer` and freshness chips render backend-contracted state labels (`fresh`, `stale`, `unknown`, `unavailable`, `partial`, `insufficient_evidence`) consistently for available/blocked/unavailable rows.
+- `SourceDrawer` uses normalized contract fields for source metadata and freshness, preserving existing blocked-state semantics and citation access behavior.
+- The updated asset-page path contains deterministic, contract-backed source/freshness behavior with no additional scope changes.
+- Required checks passed, and the task was marked as pass after one revision (initial typecheck failure was corrected and re-ran).
+
+Verification:
+
+- `npm test`
+- `npm run typecheck`
+- `npm run build`
+- `python3 -m pytest tests -q`
+- `python3 evals/run_static_evals.py`
+- `bash scripts/run_quality_gate.sh`
+
+Remaining risks:
+
+- `SourceDrawer` currently supports blocked-state rendering via `drawerState`, but the local fixture route continues to pass `available` for rendered source rows.
+- Freshness label copy is tested through smoke-path checks without dedicated unit assertions for exact copy variants.
+
+Completion commits:
+
+- `8b81fae924b105182e0c515fa6f425d460eae8ea` feat(T-050): align asset-page source drawer and freshness labels with backend contracts
+- `1fb6af6b8f25784f174f452c5242436d53acf8f0` chore(T-050): merge align asset-page source drawer and freshness labels with backend contracts
+
+### T-049: Reduce frontend fixture drift by introducing shared deterministic view adapters
+
 
 ### T-049: Reduce frontend fixture drift by introducing shared deterministic view adapters
 
