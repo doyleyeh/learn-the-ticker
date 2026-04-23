@@ -2,24 +2,27 @@
 
 ## Current task
 
-### T-042: Add unsupported asset search explanation contract
+### T-043: Add section-level freshness validation contract
 
 Goal:
-Add a deterministic unsupported-asset search explanation contract so search clients can show a clear structured explanation for recognized unsupported and out-of-scope search matches, including why the asset is blocked, which capabilities stay disabled, and what the supported MVP scope is, without adding frontend UI, live calls, new asset coverage, or weakening classification, citation, source-use, freshness, unknown/unavailable/partial, and safety rules.
+Add a deterministic section-level freshness validation contract so backend and UI clients can tell whether each generated overview section's displayed freshness label is supported by the selected asset's existing same-asset evidence, dates, and knowledge-pack freshness inputs, without adding frontend UI, live calls, new facts, new assets, or weakening citation, source-use, unknown/stale/unavailable/partial, and safety rules.
 
 Task scope:
-This is a backend schema, deterministic search response-shaping, eval, and test task over the existing local search dataset, top-500 manifest support rules, unsupported asset metadata, and current `/api/search` contract. Add additive search explanation metadata for blocked search outcomes so recognized unsupported assets such as crypto, leveraged ETFs, and inverse ETFs, plus recognized out-of-scope common stocks outside the current Top-500 manifest, return a structured explanation object rather than only a flat message string. The explanation layer must stay educational and scope-bound: it can explain why the result is blocked, which generated experiences remain disabled, whether ingestion is allowed, and what the supported v1 universe is, but it must not recommend what to buy, invent asset facts, alter deterministic classification, or widen coverage. Preserve existing search ranking, supported search behavior, ambiguous disambiguation behavior, eligible-not-cached ingestion-needed behavior, overview/chat/comparison/export blocking, frontend local fixture search, and no-live-call operation. This is not a task to add frontend rendering, search UX redesign, new routes, new assets, manifest changes, ingestion execution changes, new provider calls, new source documents, or recommendation-like copy.
+This is a backend schema, overview response-shaping, freshness-binding, eval, and test task over the existing local retrieval fixtures, knowledge-pack freshness inputs, overview sections, and current `/api/assets/{ticker}/overview` plus `/api/assets/{ticker}/knowledge-pack` contracts. Add additive section-level freshness validation metadata so a cached supported asset overview can explain why a section is labeled `fresh`, `stale`, `unknown`, or `unavailable`, which same-asset sources or citations support that label, and whether the label is fully validated or limited by mixed or partial evidence. The contract must stay deterministic and evidence-bound: it can validate and explain existing section freshness labels, but it must not invent dates, promote stale or unavailable evidence to fresh, add new asset facts, change section order or copy, or widen coverage. Preserve existing overview content, Weekly News Focus separation, AI Comprehensive Analysis suppression thresholds, knowledge-pack freshness hashing behavior, supported vs blocked asset handling, and no-live-call operation. This is not a task to add frontend rendering, export changes, new routes, new assets, fixture ingestion, live providers, or recommendation-like copy.
 
 Allowed files:
 
 - `TASKS.md`
-- `backend/data.py`
-- `backend/search.py`
+- `backend/cache.py`
 - `backend/models.py`
+- `backend/overview.py`
 - `backend/main.py`
-- `evals/search_eval_cases.yaml`
+- `backend/retrieval.py`
+- `evals/cache_eval_cases.yaml`
+- `evals/knowledge_pack_eval_cases.yaml`
 - `evals/run_static_evals.py`
-- `tests/unit/test_search_classification.py`
+- `tests/unit/test_cache_contracts.py`
+- `tests/unit/test_overview_generation.py`
 - `tests/unit/test_safety_guardrails.py`
 - `tests/integration/test_backend_api.py`
 
@@ -29,14 +32,15 @@ Do not change:
 - Do not add user accounts, authentication, cookies, personal identifiers, analytics SDKs, database migrations, Redis dependencies, HTTP clients, browser storage, frontend components, or production dependencies.
 - Do not read, echo, log, serialize, return, commit, or copy actual secret values from the local environment.
 - Do not expose OpenRouter or other provider keys through browser code, `NEXT_PUBLIC_*`, docs, logs, `/health`, API responses, exports, or committed env files.
-- Do not change frontend UI, browser local storage, home search interactions, `apps/web/components/SearchBox.tsx`, comparison UI, source drawer UI, glossary UI, chat UI, export UI, or frontend API helpers.
-- Do not change deterministic asset classification rules, top-500 manifest policy, eligible-not-cached routing, ingestion job behavior, generated overview/chat/comparison/export behavior, source-use policy, source allowlist behavior, or trust-metrics rules except for the additive unsupported-search explanation contract.
+- Do not change frontend UI, browser local storage, home search interactions, search UI, comparison UI, source drawer UI, glossary UI, chat UI, export UI, or frontend API helpers.
+- Do not change deterministic asset classification rules, top-500 manifest policy, ingestion job behavior, search behavior, comparison behavior, chat behavior, export behavior, source-use policy, source allowlist behavior, or trust-metrics rules except for the additive section-level freshness validation contract.
 - Do not add new generated asset pages, generated chat answers, generated comparisons, generated risk summaries, new ingestion flows, new supported assets, new manifest entries, new provider fixtures, or broader MVP asset coverage.
-- Do not let the explanation contract decide whether an asset is supported, unsupported, out of scope, eligible for ingestion, fresh, stale, partial, unknown, or unavailable. Existing deterministic classification remains authoritative.
-- Do not introduce citations, source documents, raw source text, source passages, freshness claims, normalized facts, or Weekly News Focus claims into search explanations. Important factual claims still need citations elsewhere; search explanation copy must stay scope and product-state oriented only.
-- Do not invent recognized unsupported or out-of-scope explanations for unknown tickers.
-- Do not enable generated routes, chat, comparison, or ingestion requests for blocked states that are currently disabled.
-- Do not add recommendation language, buy/sell/hold language, allocation guidance, price targets, tax advice, or brokerage/trading instructions to search explanations.
+- Do not let the validation contract decide whether an asset is supported, unsupported, out of scope, eligible for ingestion, or allowed to generate output. Existing deterministic asset-state routing remains authoritative.
+- Do not invent as-of dates, retrieved timestamps, freshness states, stale reasons, partial evidence, or section limitations that are not derivable from the selected asset's existing overview sections, source documents, citations, recent developments, or knowledge-pack freshness inputs.
+- Do not let section freshness validation introduce wrong-asset source bindings, uncited asset-specific facts, raw source text, unrestricted supporting passages, hidden prompts, raw model reasoning, or new Weekly News Focus claims.
+- Do not change Weekly News Focus date-window logic, high-signal selection, AI Comprehensive Analysis availability threshold, or the visual/structural separation between stable facts and timely context.
+- Do not enable generated overview data for blocked states that are currently unsupported, out of scope, eligible-not-cached, or unknown.
+- Do not add recommendation language, buy/sell/hold language, allocation guidance, price targets, tax advice, or brokerage/trading instructions to freshness validation summaries or diagnostics.
 - Do not store or return hidden prompts, raw model reasoning, `reasoning_details`, failed raw responses, unrestricted provider payloads, personal data, or browser/device identifiers.
 - Do not add buy/sell/hold recommendations, price targets, predictions, personalized allocation advice, exact position sizing, tax advice, or brokerage/trading behavior.
 - Do not expand MVP scope beyond U.S.-listed common stocks and supported non-leveraged equity ETFs.
@@ -44,25 +48,23 @@ Do not change:
 
 Acceptance criteria:
 
-- Search explanation contract models cover schema version, result or state status, explanation kind/category, beginner-readable summary, deterministic scope rationale, blocked capability flags, ingestion eligibility, supported-v1 scope reminder, and diagnostics showing that the explanation is deterministic product-state metadata rather than generated asset analysis.
-- `GET /api/search` remains the route surface and returns the additive explanation contract for single-result blocked outcomes without changing current supported, ambiguous, eligible-not-cached, or unknown route behavior.
-- Recognized unsupported searches `BTC`, `TQQQ`, and `SQQQ` return `unsupported` with structured explanation metadata derived from existing deterministic unsupported categories and reasons, keep `generated_route` as `null`, keep chat/compare/open-page flags false, and keep ingestion request fields unset.
-- Recognized out-of-scope search `GME` returns `out_of_scope` with structured explanation metadata that makes clear it is a recognized U.S.-listed common stock outside the current Top-500 manifest-backed MVP scope, with no generated route and no ingestion request.
-- Unknown search `ZZZZ` remains `unknown`, does not gain a fabricated recognized-unsupported or out-of-scope explanation, and keeps the existing no-invented-facts behavior.
-- Eligible-not-cached searches such as `SPY`, `SOXX`, and `BRK.B` preserve `ingestion_needed`, `eligible_not_cached`, and ingestion request routing exactly; the new blocked explanation contract must not mislabel them as unsupported or remove their deterministic ingestion-needed messaging.
-- Supported searches such as `VOO` and `AAPL`, plus ambiguous search such as `S&P 500 ETF`, preserve current ranking, disambiguation, and generated-route behavior.
-- Structured explanation copy stays educational and scope-focused, explicitly states the supported MVP universe as U.S.-listed common stocks and non-leveraged U.S.-listed equity ETFs, and does not tell the user what to buy, sell, hold, or compare.
-- Search explanation metadata does not introduce citations, source documents, Weekly News Focus claims, freshness claims, raw source text, or unsupported asset facts.
-- Static evals verify required models/helpers/route behavior, blocked explanation coverage for unsupported and out-of-scope results, preservation of unknown and eligible-not-cached behavior, no live-call imports, no frontend mutation requirement, no manifest mutation requirement, and no forbidden advice language.
-- Tests verify schema serialization for unsupported and out-of-scope explanation payloads, preservation of supported/ambiguous/eligible-not-cached/unknown behavior, API serialization, and safety guardrails.
+- Section freshness validation contract models cover schema version, section identity, section type, displayed freshness state, evidence state, same-asset citation and source bindings, as-of or retrieved-date provenance, validation outcome, limitation or mismatch messaging, and deterministic diagnostics showing that the metadata is derived from existing local evidence only.
+- `GET /api/assets/{ticker}/overview` remains the route surface and returns additive section-level freshness validation metadata for cached supported assets without changing existing overview section order, beginner copy, citations, source documents, Weekly News Focus separation, or generated/non-generated asset routing.
+- `GET /api/assets/{ticker}/knowledge-pack` preserves existing `section_freshness` and `knowledge_pack_freshness_hash` behavior; if the overview validation contract reuses those inputs, the task must not change supported hashes unless a documented deterministic freshness-input correction is required and test-covered.
+- Supported stock `AAPL` and supported ETFs `VOO` and `QQQ` serialize freshness validation metadata for their overview sections using only same-asset sources and citations already present in the selected asset overview or knowledge pack.
+- `VOO` section freshness validation must not promote the existing stale fee-gap input in `cost_trading_context` to `fresh`; sections with stale, unknown, unavailable, mixed, partial, or insufficient evidence must preserve those limitations in the validation metadata instead of inventing cleaner states.
+- `recent_developments`, `weekly_news_focus`, and `ai_comprehensive_analysis` keep timely-context freshness separate from stable canonical sections, and validation metadata must not let recent-context dates overwrite stable-fact dates or section identity.
+- Sections or items lacking evidence dates keep explicit `unknown`, `unavailable`, `partial`, `stale`, or `insufficient_evidence` style handling as appropriate; the contract must not fabricate `as_of_date`, `retrieved_at`, or freshness reasons to make a section appear more complete.
+- Non-generated states such as `SPY`, `TQQQ`, `GME`, and `ZZZZ` preserve current blocked or unavailable overview behavior and do not gain fabricated validated section freshness records, generated sections, or new source bindings.
+- Static evals verify required models/helpers/route behavior, same-asset source and citation binding, stale/unknown/unavailable handling, preservation of knowledge-pack freshness hash expectations, no live-call imports, and no forbidden advice language.
+- Tests verify schema serialization, deterministic section freshness propagation, mismatch-prevention behavior, supported stock and ETF coverage, blocked-state behavior, API serialization, and safety guardrails.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_safety_guardrails.py -q
+python3 -m pytest tests/unit/test_cache_contracts.py tests/unit/test_overview_generation.py tests/unit/test_safety_guardrails.py -q
 python3 -m pytest tests/integration/test_backend_api.py -q
 python3 -m pytest tests -q
-npm test
 python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
 ```
@@ -72,13 +74,34 @@ Max 3 attempts.
 
 ## Backlog
 
-### T-043: Add section-level freshness validation contract
-
 ### T-044: Add export source-use and freshness validation contract
 
 ### T-045: Add grounded chat comparison-redirect contract
 
 ## Completed
+
+### T-042: Add unsupported asset search explanation contract
+
+Goal:
+Add a deterministic unsupported-asset search explanation contract so search clients can show a clear structured explanation for recognized unsupported and out-of-scope search matches, including why the asset is blocked, which capabilities stay disabled, and what the supported MVP scope is, without adding frontend UI, live calls, new asset coverage, or weakening classification, citation, source-use, freshness, unknown/unavailable/partial, and safety rules.
+
+Completed:
+
+- Added additive blocked-search explanation contract models in `backend/models.py`, including `SearchBlockedCapabilityFlags`, `SearchBlockedExplanationDiagnostics`, and `SearchBlockedExplanation`, plus `blocked_explanation` fields on `SearchResult` and `SearchState`.
+- Updated `backend/search.py` so single-result recognized unsupported and out-of-scope matches attach deterministic `search-blocked-explanation-v1` metadata with explanation category, scope rationale, supported-v1 scope reminder, blocked capability flags, and no-ingestion diagnostics while preserving existing supported, ambiguous, eligible-not-cached, and unknown behavior.
+- Kept blocked explanations scope-bound and non-analytical by deriving them from existing deterministic unsupported-category metadata and Top-500 manifest-backed out-of-scope stock handling rather than adding citations, source text, freshness claims, or new asset facts.
+- Added `evals/search_eval_cases.yaml` and extended `evals/run_static_evals.py` to verify required models/helpers, blocked explanation coverage for unsupported and out-of-scope results, preservation of unknown and eligible-not-cached behavior, no live-call imports, and no forbidden advice language.
+- Extended `tests/unit/test_search_classification.py`, `tests/unit/test_safety_guardrails.py`, and `tests/integration/test_backend_api.py` for blocked explanation serialization, API coverage, supported/ambiguous/eligible-not-cached preservation, and safety checks.
+- Added `docs/agent-journal/20260423T150352Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- T-042 agent journal records that focused search/safety pytest passed with 19 tests, backend API pytest passed with 30 tests, full Python pytest passed with 190 tests, `npm test` passed with frontend smoke checks, static evals passed, and the full quality gate passed.
+- Merged local branch: `agent/T-042-20260423T150352Z`.
+- Remaining documented risk: the blocked search explanation is deterministic product-state metadata only; it does not add citations, freshness, source text, live calls, or any new asset coverage.
+- Remaining documented risk: the contract currently covers recognized unsupported assets and manifest-backed out-of-scope stocks in local fixtures; future broader search datasets will need to preserve the same blocked-capability and no-advice guarantees.
+
+Completion commits:
+
+- `bcef2b4 feat(T-042): add unsupported asset search explanation contract`
+- `bc75dce chore(T-042): merge unsupported asset search explanation contract`
 
 ### T-041: Add glossary asset-context evidence contract
 
