@@ -2,53 +2,53 @@
 
 ## Current task
 
-### T-047: Align home search UI with backend support-classification states
+### T-048: Replace compare-page fixture logic with backend-aligned deterministic comparison contracts
 
 Goal:
-Align the deterministic home search UI with the existing backend search support-classification contract so beginners see clear, state-correct results for supported, ambiguous, eligible-not-cached, recognized-unsupported, out-of-scope, and unknown searches without introducing live calls, new asset coverage, or advice-like copy.
+Align the deterministic compare page with the existing backend comparison contract so supported and unavailable comparison states render from backend-aligned response shapes instead of compare-page-only fixture logic, without introducing live calls, new comparison packs, or advice-like copy.
 
 Task scope:
-Update the homepage search workflow to reflect the backend search contract semantics already defined for deterministic local use. Keep the task limited to search-state rendering, result actions, and smoke/static coverage for the home page. Reuse existing deterministic local data or backend-aligned serialized contract shapes only. Do not broaden the work into compare-page refactors, shared cross-app adapter cleanup, backend schema changes, or live API fetching.
+Refactor only the frontend compare-page data path and rendering gates to mirror the deterministic backend comparison response semantics that already exist in local code and tests. Keep the task limited to compare-page contract parity, supported-vs-unavailable state handling, citation/source rendering gates, and smoke/static coverage for the compare route. Reuse deterministic local data or serialized backend-aligned contract shapes already present in the repo. Do not broaden the work into asset-page source drawer cleanup, shared cross-page adapter extraction, new comparison facts, backend schema changes, or live API fetching.
 
 Allowed files:
 
-- `apps/web/app/page.tsx`
-- `apps/web/components/SearchBox.tsx`
-- `apps/web/components/**`
-- `apps/web/lib/**`
+- `apps/web/app/compare/page.tsx`
+- `apps/web/components/ComparisonSourceDetails.tsx`
+- `apps/web/components/ComparisonSuggestions.tsx`
+- `apps/web/lib/compare.ts`
+- `apps/web/lib/compareSuggestions.ts`
+- `apps/web/lib/exportControls.ts`
 - `tests/frontend/**`
-- narrowly related frontend fixture or view-helper files only if required by the search-state alignment
+- narrowly related frontend compare view-helper files only if required by the contract alignment
 
 Do not change:
 
-- backend route contracts, schemas, support-classification meanings, or fixture semantics
-- asset-page behavior
-- compare-page behavior
-- live-provider, database, cache, or deployment wiring
-- supported asset scope, ingestion policy, source-use policy, or safety guardrails
+- backend comparison route contracts, response schemas, availability-state meanings, or fixture semantics
+- search-page behavior
+- asset-page behavior outside compare links already consumed by the current compare flow
+- supported asset scope, on-demand ingestion policy, source-use rights, or freshness rules
+- live-provider, database, cache, ingestion-worker, or deployment wiring
 
 Acceptance criteria:
 
-- the home search UI renders deterministic states that match backend search classifications for:
-  cached supported results
-  ambiguous multi-result searches
-  eligible-not-cached assets
-  recognized unsupported assets
-  out-of-scope assets
-  unknown searches
-- supported results only expose generated asset-page navigation when the deterministic state allows `can_open_generated_page`
-- eligible-not-cached results render clear beginner-readable ingestion-needed messaging and do not imply a generated page, grounded chat, or comparison is available today
-- recognized unsupported and out-of-scope results render clear blocked-scope explanations aligned with MVP coverage and do not imply future generated-page access when the contract blocks it
-- ambiguous searches require the user to choose among deterministic candidates instead of silently selecting one
-- unknown searches explicitly say no facts are invented
-- no new buy/sell/hold, allocation, price-target, tax, or brokerage language is introduced
-- frontend smoke coverage checks the aligned search-state markers and blocked/ingestion/disambiguation messaging
-- static evals, tests, and the quality gate remain deterministic with no live external calls
+- the compare page consumes a backend-aligned deterministic comparison shape that preserves the existing backend response fields for `left_asset`, `right_asset`, `state`, `comparison_type`, `key_differences`, `bottom_line_for_beginners`, `citations`, `source_documents`, and `evidence_availability`
+- the supported `VOO`/`QQQ` and reverse-order `QQQ`/`VOO` flows render beginner-readable key differences, an educational bottom line, citation chips, and comparison source metadata from the backend-aligned deterministic contract rather than compare-page-only ad hoc fields
+- unavailable comparison flows render backend-aligned state handling for at least:
+  unsupported comparisons
+  out-of-scope comparisons
+  eligible-not-cached comparisons
+  `no_local_pack` comparisons
+  unknown comparisons
+- when comparison availability is not `available`, the page does not render generated comparison claims, factual citation chips, source-document drawers/details, or export controls that imply supported comparison output exists
+- blocked or unavailable compare states keep educational framing, explicitly avoid invented facts, and do not introduce buy/sell/hold, allocation, price-target, tax, or brokerage language
+- compare-page copy and routing preserve deterministic local-only behavior with no `/api/compare` fetches, no external calls, and no expansion of supported comparison pairs beyond the current local pack coverage
+- frontend smoke coverage asserts the backend-aligned compare-state markers and the supported-vs-unavailable rendering gates
+- required tests, evals, and the quality gate pass deterministically
 
 Required commands:
 
 - `git status --short`
-- `python3 -m pytest tests -q`
+- `python3 -m pytest tests/unit/test_comparison_generation.py tests/integration/test_backend_api.py -q`
 - `npm test`
 - `npm run typecheck`
 - `npm run build`
@@ -60,6 +60,34 @@ Iteration budget:
 - Max 3 attempts
 
 ## Completed
+
+### T-047: Align home search UI with backend support-classification states
+
+Goal:
+Align the deterministic home search UI with the existing backend search support-classification contract so beginners see clear, state-correct results for supported, ambiguous, eligible-not-cached, recognized-unsupported, out-of-scope, and unknown searches without introducing live calls, new asset coverage, or advice-like copy.
+
+Completed:
+
+- Added `apps/web/lib/search.ts` as a compare-independent local search contract module with backend-aligned support-classification types, blocked-explanation metadata, deterministic candidate sets, and resolution helpers for `cached_supported`, `eligible_not_cached`, `recognized_unsupported`, `out_of_scope`, and `unknown` search states.
+- Updated `apps/web/components/SearchBox.tsx` to render state-specific result panels for supported, ambiguous, ingestion-needed, unsupported, out-of-scope, and unknown searches, including generated-page gating via `can_open_generated_page`, disambiguation requirements for multi-result searches, and explicit no-invented-facts handling for unknown queries.
+- Updated `apps/web/app/page.tsx` home-page copy and example cards so the visible search examples match the backend-aligned state taxonomy, including ambiguous, ingestion-needed, unsupported, out-of-scope, and unknown examples.
+- Extended `tests/frontend/smoke.mjs` to assert the new home-search state markers, result gating markers, blocked-state messaging, ingestion-needed messaging, and unknown-search no-invented-facts copy.
+- Added `docs/agent-journal/20260423T191509Z.md` documenting the changed files, commands run, pass/fail status, and remaining risks.
+- The agent journal records that these commands passed:
+  - `npm run typecheck`
+  - `npm test`
+  - `npm run build`
+  - `python3 -m pytest tests -q`
+  - `python3 evals/run_static_evals.py`
+  - `bash scripts/run_quality_gate.sh`
+- Merged local branch: `agent/T-047-20260423T191509Z`.
+- Remaining documented risk: the home search contract is still duplicated in frontend-local deterministic fixtures, so future backend search-candidate or copy changes will need a matching frontend update to keep parity.
+- Remaining documented risk: search disambiguation now reflects backend support states and routing gates, but it remains fixture-backed only and does not add live API fetching or broader entity-resolution coverage beyond the local contract examples.
+
+Completion commits:
+
+- `0b2a651 feat(T-047): align home search UI with backend support-classification states`
+- `de95739 chore(T-047): merge align home search UI with backend support-classification states`
 
 ### T-046: Render Weekly News Focus and AI analysis on asset pages
 
@@ -1329,8 +1357,6 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-048: Replace compare-page fixture logic with backend-aligned deterministic comparison contracts
 
 ### T-049: Reduce frontend fixture drift by introducing shared deterministic view adapters
 
