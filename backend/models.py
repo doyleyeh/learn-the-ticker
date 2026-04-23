@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from datetime import date, datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class AssetType(str, Enum):
@@ -165,6 +166,171 @@ class ProviderSourceUsage(str, Enum):
     canonical = "canonical"
     structured_reference = "structured_reference"
     recent_context = "recent_context"
+
+
+class SourceUsePolicy(str, Enum):
+    metadata_only = "metadata_only"
+    link_only = "link_only"
+    summary_allowed = "summary_allowed"
+    full_text_allowed = "full_text_allowed"
+    rejected = "rejected"
+
+
+class SourceAllowlistStatus(str, Enum):
+    allowed = "allowed"
+    rejected = "rejected"
+    pending_review = "pending_review"
+    not_allowlisted = "not_allowlisted"
+
+
+class SourceQuality(str, Enum):
+    official = "official"
+    issuer = "issuer"
+    provider = "provider"
+    fixture = "fixture"
+    allowlisted = "allowlisted"
+    rejected = "rejected"
+    unknown = "unknown"
+
+
+class SourcePolicyDecisionState(str, Enum):
+    allowed = "allowed"
+    rejected = "rejected"
+    pending_review = "pending_review"
+    not_allowlisted = "not_allowlisted"
+
+
+class SourceOperationPermissions(BaseModel):
+    can_store_metadata: bool
+    can_store_raw_text: bool = False
+    can_display_metadata: bool
+    can_display_excerpt: bool = False
+    can_summarize: bool = False
+    can_cache: bool = False
+    can_export_metadata: bool = False
+    can_export_excerpt: bool = False
+    can_export_full_text: bool = False
+    can_support_generated_output: bool = False
+    can_support_citations: bool = False
+    can_support_canonical_facts: bool = False
+    can_support_recent_developments: bool = False
+
+
+class SourceAllowedExcerptBehavior(BaseModel):
+    allowed: bool
+    max_words: int = 0
+    requires_attribution: bool = True
+    note: str
+
+
+class SourceAllowlistReviewMetadata(BaseModel):
+    reviewed_by: str
+    reviewed_at: str
+    approval_reference: str
+    rationale: str
+
+    @field_validator("reviewed_at", mode="before")
+    @classmethod
+    def _coerce_review_date(cls, value: Any) -> str:
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if isinstance(value, date):
+            return value.isoformat()
+        return value
+
+
+class SourceAllowlistRecord(BaseModel):
+    source_id: str
+    display_name: str
+    match_kind: Literal["domain", "local_fixture", "provider"]
+    domain: str | None = None
+    fixture_identifier: str | None = None
+    provider_name: str | None = None
+    source_type: str
+    source_quality: SourceQuality
+    allowlist_status: SourceAllowlistStatus
+    source_use_policy: SourceUsePolicy
+    permitted_operations: SourceOperationPermissions
+    allowed_excerpt: SourceAllowedExcerptBehavior
+    recent_context_only: bool = False
+    canonical_facts_allowed: bool = False
+    review: SourceAllowlistReviewMetadata
+
+
+class SourceAllowlistManifest(BaseModel):
+    schema_version: Literal["source-allowlist-v1"]
+    policy_version: str
+    generated_at: str
+    no_live_external_calls: bool = True
+    source_records: list[SourceAllowlistRecord]
+
+    @field_validator("generated_at", mode="before")
+    @classmethod
+    def _coerce_generated_at(cls, value: Any) -> str:
+        if isinstance(value, (datetime, date)):
+            return value.isoformat()
+        return value
+
+
+class SourcePolicyDecision(BaseModel):
+    decision: SourcePolicyDecisionState
+    source_id: str | None = None
+    matched_by: Literal["domain", "local_fixture", "provider", "none"] = "none"
+    source_quality: SourceQuality = SourceQuality.unknown
+    allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.not_allowlisted
+    source_use_policy: SourceUsePolicy = SourceUsePolicy.rejected
+    permitted_operations: SourceOperationPermissions
+    allowed_excerpt: SourceAllowedExcerptBehavior
+    recent_context_only: bool = False
+    canonical_facts_allowed: bool = False
+    reason: str
+
+
+DEFAULT_ALLOWED_SOURCE_OPERATIONS = SourceOperationPermissions(
+    can_store_metadata=True,
+    can_store_raw_text=True,
+    can_display_metadata=True,
+    can_display_excerpt=True,
+    can_summarize=True,
+    can_cache=True,
+    can_export_metadata=True,
+    can_export_excerpt=True,
+    can_export_full_text=False,
+    can_support_generated_output=True,
+    can_support_citations=True,
+    can_support_canonical_facts=True,
+    can_support_recent_developments=False,
+)
+
+DEFAULT_ALLOWED_EXCERPT_BEHAVIOR = SourceAllowedExcerptBehavior(
+    allowed=True,
+    max_words=80,
+    requires_attribution=True,
+    note="Short supporting passages may be displayed or exported with source attribution; full source text is not exported.",
+)
+
+DEFAULT_BLOCKED_SOURCE_OPERATIONS = SourceOperationPermissions(
+    can_store_metadata=False,
+    can_store_raw_text=False,
+    can_display_metadata=False,
+    can_display_excerpt=False,
+    can_summarize=False,
+    can_cache=False,
+    can_export_metadata=False,
+    can_export_excerpt=False,
+    can_export_full_text=False,
+    can_support_generated_output=False,
+    can_support_citations=False,
+    can_support_canonical_facts=False,
+    can_support_recent_developments=False,
+)
+
+DEFAULT_BLOCKED_EXCERPT_BEHAVIOR = SourceAllowedExcerptBehavior(
+    allowed=False,
+    max_words=0,
+    requires_attribution=True,
+    note="No excerpt is permitted because the source is rejected, unrecognized, or not licensed for this use.",
+)
 
 
 class AssetIdentity(BaseModel):
@@ -368,6 +534,9 @@ class ProviderLicensing(BaseModel):
     redistribution_allowed: bool
     allowed_export_fields: list[str] = Field(default_factory=list)
     permission_note: str
+    source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
+    allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
+    permitted_operations: SourceOperationPermissions = Field(default_factory=lambda: DEFAULT_ALLOWED_SOURCE_OPERATIONS.model_copy())
 
 
 class ProviderSourceAttribution(BaseModel):
@@ -390,6 +559,10 @@ class ProviderSourceAttribution(BaseModel):
     can_support_canonical_facts: bool
     can_support_recent_developments: bool
     licensing: ProviderLicensing
+    source_quality: SourceQuality = SourceQuality.provider
+    allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
+    source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
+    permitted_operations: SourceOperationPermissions = Field(default_factory=lambda: DEFAULT_ALLOWED_SOURCE_OPERATIONS.model_copy())
 
 
 class ProviderFact(BaseModel):
@@ -557,7 +730,10 @@ class SourceChecksumInput(BaseModel):
     citation_ids: list[str] = Field(default_factory=list)
     local_chunk_text_fingerprints: list[str] = Field(default_factory=list)
     cache_allowed: bool = True
+    export_allowed: bool = False
     redistribution_allowed: bool = False
+    allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
+    source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
 
 
 class SourceChecksumRecord(BaseModel):
@@ -566,6 +742,9 @@ class SourceChecksumRecord(BaseModel):
     checksum: str
     freshness_state: FreshnessState
     cache_allowed: bool
+    export_allowed: bool = False
+    allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
+    source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
     source_type: str
     source_rank: int | None = None
     citation_ids: list[str] = Field(default_factory=list)
@@ -710,6 +889,10 @@ class KnowledgePackSourceMetadata(BaseModel):
     retrieved_at: str
     freshness_state: FreshnessState
     is_official: bool
+    source_quality: SourceQuality = SourceQuality.fixture
+    allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
+    source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
+    permitted_operations: SourceOperationPermissions = Field(default_factory=lambda: DEFAULT_ALLOWED_SOURCE_OPERATIONS.model_copy())
     citation_ids: list[str] = Field(default_factory=list)
     fact_ids: list[str] = Field(default_factory=list)
     recent_event_ids: list[str] = Field(default_factory=list)
@@ -979,6 +1162,10 @@ class SourceDocument(BaseModel):
     freshness_state: FreshnessState
     is_official: bool
     supporting_passage: str
+    source_quality: SourceQuality = SourceQuality.fixture
+    allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
+    source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
+    permitted_operations: SourceOperationPermissions = Field(default_factory=lambda: DEFAULT_ALLOWED_SOURCE_OPERATIONS.model_copy())
 
 
 class MetricValue(BaseModel):
@@ -1158,6 +1345,10 @@ class ChatSourceDocument(BaseModel):
     freshness_state: FreshnessState
     is_official: bool
     supporting_passage: str
+    source_quality: SourceQuality = SourceQuality.fixture
+    allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
+    source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
+    permitted_operations: SourceOperationPermissions = Field(default_factory=lambda: DEFAULT_ALLOWED_SOURCE_OPERATIONS.model_copy())
 
 
 class ChatResponse(BaseModel):
@@ -1177,6 +1368,8 @@ class ExportExcerpt(BaseModel):
     citation_id: str | None = None
     chunk_id: str | None = None
     redistribution_allowed: bool = True
+    source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
+    allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
     note: str
 
 
@@ -1191,6 +1384,10 @@ class ExportSourceMetadata(BaseModel):
     retrieved_at: str
     freshness_state: FreshnessState
     is_official: bool
+    source_quality: SourceQuality = SourceQuality.fixture
+    allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
+    source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
+    permitted_operations: SourceOperationPermissions = Field(default_factory=lambda: DEFAULT_ALLOWED_SOURCE_OPERATIONS.model_copy())
     allowed_excerpt: ExportExcerpt | None = None
 
 

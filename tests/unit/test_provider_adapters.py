@@ -82,6 +82,9 @@ def test_sec_stock_adapter_returns_canonical_aapl_facts_with_official_attributio
     assert response.licensing.redistribution_allowed is False
     assert {fact.field_name for fact in response.facts} >= {"primary_business", "net_sales_trend_available"}
     assert all(source.is_official is True for source in response.source_attributions)
+    assert all(source.allowlist_status.value == "allowed" for source in response.source_attributions)
+    assert all(source.source_use_policy.value == "full_text_allowed" for source in response.source_attributions)
+    assert all(source.permitted_operations.can_store_raw_text is True for source in response.source_attributions)
     assert all(source.source_rank == 1 for source in response.source_attributions)
     assert all(source.usage is ProviderSourceUsage.canonical for source in response.source_attributions)
     assert all(source.can_support_canonical_facts is True for source in response.source_attributions)
@@ -101,8 +104,11 @@ def test_etf_issuer_adapter_returns_voo_and_qqq_official_facts_and_holdings_meta
         assert response.asset is not None
         assert response.asset.ticker == ticker
         assert response.licensing.export_allowed is True
+        assert response.licensing.source_use_policy.value == "full_text_allowed"
         assert response.source_attributions
         assert all(source.is_official is True for source in response.source_attributions)
+        assert all(source.source_quality.value == "issuer" for source in response.source_attributions)
+        assert all(source.source_use_policy.value == "full_text_allowed" for source in response.source_attributions)
         assert all(source.source_rank == 1 for source in response.source_attributions)
         fields = {fact.field_name: fact for fact in response.facts}
         assert fields["benchmark"].value == benchmark
@@ -125,6 +131,10 @@ def test_market_reference_adapter_covers_supported_and_eligible_not_cached_with_
         assert response.source_attributions[0].is_official is False
         assert response.licensing.export_allowed is False
         assert response.licensing.redistribution_allowed is False
+        assert response.licensing.source_use_policy.value == "metadata_only"
+        assert response.source_attributions[0].source_use_policy.value == "metadata_only"
+        assert response.source_attributions[0].permitted_operations.can_export_excerpt is False
+        assert response.source_attributions[0].permitted_operations.can_support_citations is False
         assert "restricted provider data" in response.licensing.permission_note
         assert response.facts[0].fact_layer == "structured_reference"
         _assert_same_asset_binding(response, ticker)
@@ -207,6 +217,9 @@ def test_recent_development_adapter_separates_recent_context_from_canonical_fact
     assert event.is_high_signal is True
     assert event.can_overwrite_canonical_facts is False
     assert aapl.source_attributions[0].usage is ProviderSourceUsage.recent_context
+    assert aapl.licensing.source_use_policy.value == "summary_allowed"
+    assert aapl.source_attributions[0].source_use_policy.value == "summary_allowed"
+    assert aapl.source_attributions[0].permitted_operations.can_support_canonical_facts is False
     assert aapl.source_attributions[0].can_support_canonical_facts is False
     assert aapl.source_attributions[0].can_support_recent_developments is True
     _assert_same_asset_binding(aapl, "AAPL")

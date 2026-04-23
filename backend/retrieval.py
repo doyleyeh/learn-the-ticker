@@ -34,8 +34,12 @@ from backend.models import (
     KnowledgePackRecentDevelopmentMetadata,
     KnowledgePackSourceMetadata,
     SectionFreshnessInput,
+    SourceAllowlistStatus,
+    SourceQuality,
+    SourceUsePolicy,
     StateMessage,
 )
+from backend.source_policy import resolve_source_policy, source_can_support_generated_output
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -65,6 +69,9 @@ class SourceDocumentFixture(StrictModel):
     is_official: bool
     freshness_state: FreshnessState
     as_of_date: str | None = None
+    source_quality: SourceQuality
+    allowlist_status: SourceAllowlistStatus
+    source_use_policy: SourceUsePolicy
 
 
 class SourceChunkFixture(StrictModel):
@@ -577,6 +584,10 @@ def _source_metadata(pack: AssetKnowledgePack) -> list[KnowledgePackSourceMetada
             retrieved_at=source.retrieved_at,
             freshness_state=source.freshness_state,
             is_official=source.is_official,
+            source_quality=source.source_quality,
+            allowlist_status=source.allowlist_status,
+            source_use_policy=source.source_use_policy,
+            permitted_operations=_policy_decision_for_source(source).permitted_operations,
             citation_ids=sorted(set(citation_ids_by_source.get(source.source_document_id, []))),
             fact_ids=sorted(set(fact_ids_by_source.get(source.source_document_id, []))),
             recent_event_ids=sorted(set(recent_ids_by_source.get(source.source_document_id, []))),
@@ -763,6 +774,15 @@ def _validate_dataset(dataset: RetrievalFixtureDataset) -> None:
                 raise RetrievalFixtureError(f"Source {source.source_document_id} belongs to the wrong asset.")
             if source.source_document_id in source_by_id:
                 raise RetrievalFixtureError(f"Duplicate source document ID {source.source_document_id}.")
+            decision = _policy_decision_for_source(source)
+            if source.source_quality is not decision.source_quality:
+                raise RetrievalFixtureError(f"Source {source.source_document_id} quality disagrees with source policy.")
+            if source.allowlist_status is not decision.allowlist_status:
+                raise RetrievalFixtureError(f"Source {source.source_document_id} allowlist status disagrees with source policy.")
+            if source.source_use_policy is not decision.source_use_policy:
+                raise RetrievalFixtureError(f"Source {source.source_document_id} source-use policy disagrees with source policy.")
+            if not source_can_support_generated_output(decision):
+                raise RetrievalFixtureError(f"Source {source.source_document_id} cannot support generated output or citations.")
             source_by_id[source.source_document_id] = source
 
         asset_source_ids = {source.source_document_id for source in asset_fixture.source_documents}
@@ -846,6 +866,13 @@ def _validate_evidence_reference(
         raise RetrievalFixtureError(f"{item_id} references evidence from the wrong asset.")
     if chunk.source_document_id != source.source_document_id:
         raise RetrievalFixtureError(f"{item_id} source document and source chunk do not match.")
+
+
+def _policy_decision_for_source(source: SourceDocumentFixture):
+    return resolve_source_policy(
+        url=source.url,
+        source_identifier=source.url if source.url.startswith("local://") else None,
+    )
 
 
 def _asset_fixture(dataset: RetrievalFixtureDataset, ticker: str) -> AssetFixture | None:

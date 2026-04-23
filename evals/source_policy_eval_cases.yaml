@@ -1,0 +1,63 @@
+schema_version: source-policy-evals-v1
+allowlist_path: config/source_allowlist.yaml
+required_policy_tiers:
+  - metadata_only
+  - link_only
+  - summary_allowed
+  - full_text_allowed
+  - rejected
+required_records:
+  - sec_official_public
+  - vanguard_official_issuer
+  - invesco_official_issuer
+  - ltt_controlled_limitation_fixtures
+  - ltt_recent_review_fixtures
+  - mock_market_reference_restricted
+  - mock_recent_development_provider_summary
+  - rejected_unlicensed_news_example
+resolution_cases:
+  - id: resolve_sec_official_domain
+    url: https://www.sec.gov/Archives/example
+    expected_decision: allowed
+    expected_policy: full_text_allowed
+    expected_generated_support: true
+  - id: resolve_issuer_domain
+    url: https://www.invesco.com/qqq-etf/en/home.html
+    expected_decision: allowed
+    expected_policy: full_text_allowed
+    expected_generated_support: true
+  - id: resolve_recent_local_fixture
+    source_identifier: local://fixtures/qqq/recent-review
+    expected_decision: allowed
+    expected_policy: summary_allowed
+    expected_generated_support: true
+    expected_recent_context_only: true
+  - id: resolve_market_reference_provider
+    provider_name: Mock Market Reference
+    expected_decision: allowed
+    expected_policy: metadata_only
+    expected_generated_support: false
+  - id: resolve_rejected_domain
+    url: https://unlicensed.example/story
+    expected_decision: rejected
+    expected_policy: rejected
+    expected_generated_support: false
+  - id: resolve_unrecognized_domain
+    url: https://not-allowlisted.example/story
+    expected_decision: not_allowlisted
+    expected_policy: rejected
+    expected_generated_support: false
+forbidden_imports:
+  - import requests
+  - import httpx
+  - urllib
+  - socket
+  - boto3
+  - os.environ
+  - api_key
+forbidden_advice_language:
+  - should buy
+  - should sell
+  - should hold
+  - price target
+  - personalized allocation

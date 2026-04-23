@@ -52,6 +52,9 @@ def test_each_supported_fixture_has_source_chunks_facts_freshness_and_recent_lay
         assert all(fact.fact.asset_ticker == ticker for fact in pack.normalized_facts)
         assert all(recent.recent_development.asset_ticker == ticker for recent in pack.recent_developments)
         assert richer_fields_by_ticker[ticker] <= fact_fields
+        assert all(source.allowlist_status.value == "allowed" for source in pack.source_documents)
+        assert all(source.source_use_policy.value in {"full_text_allowed", "summary_allowed"} for source in pack.source_documents)
+        assert all(source.source_quality.value in {"official", "issuer", "fixture"} for source in pack.source_documents)
 
 
 def test_retrieval_items_attach_source_metadata_to_facts_chunks_and_recent_developments():
@@ -156,6 +159,11 @@ def test_knowledge_pack_build_result_is_deterministic_and_metadata_only_for_cach
 
         assert set(first.source_document_ids) == {source.source_document_id for source in pack.source_documents}
         assert {source.asset_ticker for source in first.source_documents} == {ticker}
+        assert all(source.allowlist_status.value == "allowed" for source in first.source_documents)
+        assert all(source.source_use_policy.value in {"full_text_allowed", "summary_allowed"} for source in first.source_documents)
+        assert all(source.permitted_operations.can_support_citations for source in first.source_documents)
+        assert all(checksum.allowlist_status.value == "allowed" for checksum in first.source_checksums)
+        assert all(checksum.source_use_policy.value in {"full_text_allowed", "summary_allowed"} for checksum in first.source_checksums)
         assert {fact.asset_ticker for fact in first.normalized_facts} == {ticker}
         assert {chunk.asset_ticker for chunk in first.source_chunks} == {ticker}
         assert {recent.asset_ticker for recent in first.recent_developments} == {ticker}

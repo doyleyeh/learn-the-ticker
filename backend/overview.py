@@ -40,6 +40,7 @@ from backend.retrieval import (
     build_asset_knowledge_pack,
 )
 from backend.safety import find_forbidden_output_phrases
+from backend.source_policy import resolve_source_policy
 
 
 class OverviewGenerationError(ValueError):
@@ -182,6 +183,8 @@ class _CitationRegistry:
             supporting_text=retrieved_fact.source_chunk.text,
             supports_claim=retrieved_fact.fact.evidence_state == "supported",
             is_recent=False,
+            allowlist_status=retrieved_fact.source_document.allowlist_status,
+            source_use_policy=retrieved_fact.source_document.source_use_policy,
         )
         return self._add_binding(citation_id, retrieved_fact.source_document, source_document, evidence)
 
@@ -199,6 +202,8 @@ class _CitationRegistry:
             supporting_text=retrieved_chunk.chunk.text,
             supports_claim=True,
             is_recent=retrieved_chunk.source_document.source_type == "recent_development",
+            allowlist_status=retrieved_chunk.source_document.allowlist_status,
+            source_use_policy=retrieved_chunk.source_document.source_use_policy,
         )
         return self._add_binding(citation_id, retrieved_chunk.source_document, source_document, evidence)
 
@@ -216,6 +221,8 @@ class _CitationRegistry:
             supporting_text=retrieved_recent.source_chunk.text,
             supports_claim=retrieved_recent.recent_development.evidence_state == "no_major_recent_development",
             is_recent=True,
+            allowlist_status=retrieved_recent.source_document.allowlist_status,
+            source_use_policy=retrieved_recent.source_document.source_use_policy,
         )
         return self._add_binding(citation_id, retrieved_recent.source_document, source_document, evidence)
 
@@ -1330,6 +1337,10 @@ def _format_metric(value: Any, unit: str | None) -> str:
 
 
 def _source_document_from_fixture(source: SourceDocumentFixture, supporting_passage: str) -> SourceDocument:
+    decision = resolve_source_policy(
+        url=source.url,
+        source_identifier=source.url if source.url.startswith("local://") else None,
+    )
     return SourceDocument(
         source_document_id=source.source_document_id,
         source_type=source.source_type,
@@ -1342,6 +1353,10 @@ def _source_document_from_fixture(source: SourceDocumentFixture, supporting_pass
         freshness_state=source.freshness_state,
         is_official=source.is_official,
         supporting_passage=supporting_passage,
+        source_quality=source.source_quality,
+        allowlist_status=source.allowlist_status,
+        source_use_policy=source.source_use_policy,
+        permitted_operations=decision.permitted_operations,
     )
 
 
@@ -1365,6 +1380,8 @@ def _evidence_from_overview(pack: AssetKnowledgePack, overview: OverviewResponse
                 supporting_text=item.source_chunk.text,
                 supports_claim=item.fact.evidence_state == "supported",
                 is_recent=False,
+                allowlist_status=item.source_document.allowlist_status,
+                source_use_policy=item.source_document.source_use_policy,
             )
         elif citation.citation_id in chunks_by_citation_id:
             item = chunks_by_citation_id[citation.citation_id]
@@ -1379,6 +1396,8 @@ def _evidence_from_overview(pack: AssetKnowledgePack, overview: OverviewResponse
                 supporting_text=item.chunk.text,
                 supports_claim=True,
                 is_recent=item.source_document.source_type == "recent_development",
+                allowlist_status=item.source_document.allowlist_status,
+                source_use_policy=item.source_document.source_use_policy,
             )
         elif citation.citation_id in recent_by_citation_id:
             item = recent_by_citation_id[citation.citation_id]
@@ -1393,6 +1412,8 @@ def _evidence_from_overview(pack: AssetKnowledgePack, overview: OverviewResponse
                 supporting_text=item.source_chunk.text,
                 supports_claim=item.recent_development.evidence_state == "no_major_recent_development",
                 is_recent=True,
+                allowlist_status=item.source_document.allowlist_status,
+                source_use_policy=item.source_document.source_use_policy,
             )
 
     return list(evidence_by_id.values())

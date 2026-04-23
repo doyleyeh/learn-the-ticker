@@ -1,0 +1,424 @@
+schema_version: source-allowlist-v1
+policy_version: source-policy-2026-04-23
+generated_at: 2026-04-23T00:00:00Z
+no_live_external_calls: true
+source_records:
+  - source_id: sec_official_public
+    display_name: SEC official public filings and XBRL
+    match_kind: domain
+    domain: sec.gov
+    source_type: official_filing
+    source_quality: official
+    allowlist_status: allowed
+    source_use_policy: full_text_allowed
+    permitted_operations:
+      can_store_metadata: true
+      can_store_raw_text: true
+      can_display_metadata: true
+      can_display_excerpt: true
+      can_summarize: true
+      can_cache: true
+      can_export_metadata: true
+      can_export_excerpt: true
+      can_export_full_text: false
+      can_support_generated_output: true
+      can_support_citations: true
+      can_support_canonical_facts: true
+      can_support_recent_developments: true
+    allowed_excerpt:
+      allowed: true
+      max_words: 90
+      requires_attribution: true
+      note: Short attributed filing excerpts may support citations; full source documents are not exported.
+    recent_context_only: false
+    canonical_facts_allowed: true
+    review:
+      reviewed_by: local-contract
+      reviewed_at: 2026-04-23
+      approval_reference: PRD-v0.2-source-hierarchy
+      rationale: Official SEC materials are the stock trust backbone for fixture-backed canonical and recent context.
+
+  - source_id: sec_data_official_public
+    display_name: SEC official structured company facts
+    match_kind: domain
+    domain: data.sec.gov
+    source_type: official_structured_filing
+    source_quality: official
+    allowlist_status: allowed
+    source_use_policy: full_text_allowed
+    permitted_operations:
+      can_store_metadata: true
+      can_store_raw_text: true
+      can_display_metadata: true
+      can_display_excerpt: true
+      can_summarize: true
+      can_cache: true
+      can_export_metadata: true
+      can_export_excerpt: true
+      can_export_full_text: false
+      can_support_generated_output: true
+      can_support_citations: true
+      can_support_canonical_facts: true
+      can_support_recent_developments: false
+    allowed_excerpt:
+      allowed: true
+      max_words: 90
+      requires_attribution: true
+      note: Short attributed structured SEC excerpts may support citations; full payloads are not exported.
+    recent_context_only: false
+    canonical_facts_allowed: true
+    review:
+      reviewed_by: local-contract
+      reviewed_at: 2026-04-23
+      approval_reference: PRD-v0.2-source-hierarchy
+      rationale: SEC structured data is official source-backed evidence for deterministic stock facts.
+
+  - source_id: vanguard_official_issuer
+    display_name: Vanguard official issuer materials
+    match_kind: domain
+    domain: investor.vanguard.com
+    source_type: official_issuer_material
+    source_quality: issuer
+    allowlist_status: allowed
+    source_use_policy: full_text_allowed
+    permitted_operations:
+      can_store_metadata: true
+      can_store_raw_text: true
+      can_display_metadata: true
+      can_display_excerpt: true
+      can_summarize: true
+      can_cache: true
+      can_export_metadata: true
+      can_export_excerpt: true
+      can_export_full_text: false
+      can_support_generated_output: true
+      can_support_citations: true
+      can_support_canonical_facts: true
+      can_support_recent_developments: true
+    allowed_excerpt:
+      allowed: true
+      max_words: 90
+      requires_attribution: true
+      note: Short attributed issuer excerpts may support citations; full issuer documents are not exported.
+    recent_context_only: false
+    canonical_facts_allowed: true
+    review:
+      reviewed_by: local-contract
+      reviewed_at: 2026-04-23
+      approval_reference: PRD-v0.2-source-hierarchy
+      rationale: Official ETF issuer materials are the ETF trust backbone for fixture-backed fund facts.
+
+  - source_id: invesco_official_issuer
+    display_name: Invesco official issuer materials
+    match_kind: domain
+    domain: invesco.com
+    source_type: official_issuer_material
+    source_quality: issuer
+    allowlist_status: allowed
+    source_use_policy: full_text_allowed
+    permitted_operations:
+      can_store_metadata: true
+      can_store_raw_text: true
+      can_display_metadata: true
+      can_display_excerpt: true
+      can_summarize: true
+      can_cache: true
+      can_export_metadata: true
+      can_export_excerpt: true
+      can_export_full_text: false
+      can_support_generated_output: true
+      can_support_citations: true
+      can_support_canonical_facts: true
+      can_support_recent_developments: true
+    allowed_excerpt:
+      allowed: true
+      max_words: 90
+      requires_attribution: true
+      note: Short attributed issuer excerpts may support citations; full issuer documents are not exported.
+    recent_context_only: false
+    canonical_facts_allowed: true
+    review:
+      reviewed_by: local-contract
+      reviewed_at: 2026-04-23
+      approval_reference: PRD-v0.2-source-hierarchy
+      rationale: Official ETF issuer materials are the ETF trust backbone for fixture-backed fund facts.
+
+  - source_id: ltt_controlled_limitation_fixtures
+    display_name: Learn the Ticker controlled limitation fixtures
+    match_kind: local_fixture
+    fixture_identifier: local://fixtures/
+    source_type: controlled_local_fixture
+    source_quality: fixture
+    allowlist_status: allowed
+    source_use_policy: full_text_allowed
+    permitted_operations:
+      can_store_metadata: true
+      can_store_raw_text: true
+      can_display_metadata: true
+      can_display_excerpt: true
+      can_summarize: true
+      can_cache: true
+      can_export_metadata: true
+      can_export_excerpt: true
+      can_export_full_text: false
+      can_support_generated_output: true
+      can_support_citations: true
+      can_support_canonical_facts: true
+      can_support_recent_developments: false
+    allowed_excerpt:
+      allowed: true
+      max_words: 90
+      requires_attribution: true
+      note: Short controlled fixture excerpts may support missing-evidence labels; full fixture text is not exported.
+    recent_context_only: false
+    canonical_facts_allowed: true
+    review:
+      reviewed_by: local-contract
+      reviewed_at: 2026-04-23
+      approval_reference: T-035-local-fixtures
+      rationale: Local deterministic limitation fixtures are project-owned test evidence, not live provider data.
+
+  - source_id: ltt_recent_review_fixtures
+    display_name: Learn the Ticker recent review fixtures
+    match_kind: local_fixture
+    fixture_identifier: local://fixtures/aapl/recent-review
+    source_type: recent_context_fixture
+    source_quality: fixture
+    allowlist_status: allowed
+    source_use_policy: summary_allowed
+    permitted_operations:
+      can_store_metadata: true
+      can_store_raw_text: false
+      can_display_metadata: true
+      can_display_excerpt: true
+      can_summarize: true
+      can_cache: true
+      can_export_metadata: true
+      can_export_excerpt: true
+      can_export_full_text: false
+      can_support_generated_output: true
+      can_support_citations: true
+      can_support_canonical_facts: false
+      can_support_recent_developments: true
+    allowed_excerpt:
+      allowed: true
+      max_words: 60
+      requires_attribution: true
+      note: Short recent-context fixture excerpts may support Weekly News Focus style empty states only.
+    recent_context_only: true
+    canonical_facts_allowed: false
+    review:
+      reviewed_by: local-contract
+      reviewed_at: 2026-04-23
+      approval_reference: T-035-recent-fixtures
+      rationale: Recent review fixtures are context-only and cannot overwrite canonical asset facts.
+
+  - source_id: ltt_voo_recent_review_fixtures
+    display_name: Learn the Ticker VOO recent review fixtures
+    match_kind: local_fixture
+    fixture_identifier: local://fixtures/voo/recent-review
+    source_type: recent_context_fixture
+    source_quality: fixture
+    allowlist_status: allowed
+    source_use_policy: summary_allowed
+    permitted_operations:
+      can_store_metadata: true
+      can_store_raw_text: false
+      can_display_metadata: true
+      can_display_excerpt: true
+      can_summarize: true
+      can_cache: true
+      can_export_metadata: true
+      can_export_excerpt: true
+      can_export_full_text: false
+      can_support_generated_output: true
+      can_support_citations: true
+      can_support_canonical_facts: false
+      can_support_recent_developments: true
+    allowed_excerpt:
+      allowed: true
+      max_words: 60
+      requires_attribution: true
+      note: Short recent-context fixture excerpts may support Weekly News Focus style empty states only.
+    recent_context_only: true
+    canonical_facts_allowed: false
+    review:
+      reviewed_by: local-contract
+      reviewed_at: 2026-04-23
+      approval_reference: T-035-recent-fixtures
+      rationale: Recent review fixtures are context-only and cannot overwrite canonical asset facts.
+
+  - source_id: ltt_qqq_recent_review_fixtures
+    display_name: Learn the Ticker QQQ recent review fixtures
+    match_kind: local_fixture
+    fixture_identifier: local://fixtures/qqq/recent-review
+    source_type: recent_context_fixture
+    source_quality: fixture
+    allowlist_status: allowed
+    source_use_policy: summary_allowed
+    permitted_operations:
+      can_store_metadata: true
+      can_store_raw_text: false
+      can_display_metadata: true
+      can_display_excerpt: true
+      can_summarize: true
+      can_cache: true
+      can_export_metadata: true
+      can_export_excerpt: true
+      can_export_full_text: false
+      can_support_generated_output: true
+      can_support_citations: true
+      can_support_canonical_facts: false
+      can_support_recent_developments: true
+    allowed_excerpt:
+      allowed: true
+      max_words: 60
+      requires_attribution: true
+      note: Short recent-context fixture excerpts may support Weekly News Focus style empty states only.
+    recent_context_only: true
+    canonical_facts_allowed: false
+    review:
+      reviewed_by: local-contract
+      reviewed_at: 2026-04-23
+      approval_reference: T-035-recent-fixtures
+      rationale: Recent review fixtures are context-only and cannot overwrite canonical asset facts.
+
+  - source_id: mock_market_reference_restricted
+    display_name: Mock market reference restricted provider fixtures
+    match_kind: provider
+    provider_name: Mock Market Reference
+    source_type: structured_market_reference
+    source_quality: provider
+    allowlist_status: allowed
+    source_use_policy: metadata_only
+    permitted_operations:
+      can_store_metadata: true
+      can_store_raw_text: false
+      can_display_metadata: true
+      can_display_excerpt: false
+      can_summarize: false
+      can_cache: true
+      can_export_metadata: false
+      can_export_excerpt: false
+      can_export_full_text: false
+      can_support_generated_output: false
+      can_support_citations: false
+      can_support_canonical_facts: false
+      can_support_recent_developments: false
+    allowed_excerpt:
+      allowed: false
+      max_words: 0
+      requires_attribution: true
+      note: Restricted market/reference fixtures expose metadata only and are not exportable as provider payloads.
+    recent_context_only: false
+    canonical_facts_allowed: false
+    review:
+      reviewed_by: local-contract
+      reviewed_at: 2026-04-23
+      approval_reference: PRD-v0.2-provider-constraints
+      rationale: Restricted market/reference provider fixtures are display and cache limited pending licensing review.
+
+  - source_id: mock_recent_development_provider_summary
+    display_name: Mock recent development provider fixtures
+    match_kind: provider
+    provider_name: Mock Recent Development Provider
+    source_type: recent_context_provider
+    source_quality: provider
+    allowlist_status: allowed
+    source_use_policy: summary_allowed
+    permitted_operations:
+      can_store_metadata: true
+      can_store_raw_text: false
+      can_display_metadata: true
+      can_display_excerpt: true
+      can_summarize: true
+      can_cache: true
+      can_export_metadata: false
+      can_export_excerpt: false
+      can_export_full_text: false
+      can_support_generated_output: true
+      can_support_citations: true
+      can_support_canonical_facts: false
+      can_support_recent_developments: true
+    allowed_excerpt:
+      allowed: true
+      max_words: 40
+      requires_attribution: true
+      note: Recent-development provider summaries are context-only and are not source-list export payloads.
+    recent_context_only: true
+    canonical_facts_allowed: false
+    review:
+      reviewed_by: local-contract
+      reviewed_at: 2026-04-23
+      approval_reference: PRD-v0.2-weekly-news-source-use
+      rationale: Recent context fixtures can inform high-signal context only and cannot overwrite canonical facts.
+
+  - source_id: example_link_only_press_source
+    display_name: Example link-only reviewed source
+    match_kind: domain
+    domain: link-only.example
+    source_type: link_only_news
+    source_quality: allowlisted
+    allowlist_status: allowed
+    source_use_policy: link_only
+    permitted_operations:
+      can_store_metadata: true
+      can_store_raw_text: false
+      can_display_metadata: true
+      can_display_excerpt: false
+      can_summarize: false
+      can_cache: true
+      can_export_metadata: true
+      can_export_excerpt: false
+      can_export_full_text: false
+      can_support_generated_output: false
+      can_support_citations: false
+      can_support_canonical_facts: false
+      can_support_recent_developments: false
+    allowed_excerpt:
+      allowed: false
+      max_words: 0
+      requires_attribution: true
+      note: Link-only sources may expose links and metadata but cannot feed generated output.
+    recent_context_only: false
+    canonical_facts_allowed: false
+    review:
+      reviewed_by: local-contract
+      reviewed_at: 2026-04-23
+      approval_reference: T-035-policy-tier-coverage
+      rationale: This deterministic record proves link-only source handling without using live news.
+
+  - source_id: rejected_unlicensed_news_example
+    display_name: Rejected unlicensed news example
+    match_kind: domain
+    domain: unlicensed.example
+    source_type: rejected_news
+    source_quality: rejected
+    allowlist_status: rejected
+    source_use_policy: rejected
+    permitted_operations:
+      can_store_metadata: false
+      can_store_raw_text: false
+      can_display_metadata: false
+      can_display_excerpt: false
+      can_summarize: false
+      can_cache: false
+      can_export_metadata: false
+      can_export_excerpt: false
+      can_export_full_text: false
+      can_support_generated_output: false
+      can_support_citations: false
+      can_support_canonical_facts: false
+      can_support_recent_developments: false
+    allowed_excerpt:
+      allowed: false
+      max_words: 0
+      requires_attribution: true
+      note: Rejected sources cannot feed generated output, citations, caches, rendering, summaries, or exports.
+    recent_context_only: false
+    canonical_facts_allowed: false
+    review:
+      reviewed_by: local-contract
+      reviewed_at: 2026-04-23
+      approval_reference: T-035-rejected-source-test
+      rationale: This deterministic rejected record proves blocking behavior for disallowed sources.

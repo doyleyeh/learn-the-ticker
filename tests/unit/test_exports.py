@@ -81,8 +81,16 @@ def test_supported_asset_page_exports_preserve_sections_citations_sources_and_di
         assert all(source.url for source in export.source_documents)
         assert all(source.retrieved_at for source in export.source_documents)
         assert all(source.freshness_state for source in export.source_documents)
+        assert all(source.allowlist_status.value == "allowed" for source in export.source_documents)
+        assert all(source.source_use_policy.value in {"full_text_allowed", "summary_allowed"} for source in export.source_documents)
+        assert all(source.permitted_operations.can_export_full_text is False for source in export.source_documents)
         assert all(source.allowed_excerpt is not None for source in export.source_documents)
         assert all(source.allowed_excerpt.note for source in export.source_documents if source.allowed_excerpt)
+        assert all(
+            source.allowed_excerpt.source_use_policy == source.source_use_policy
+            for source in export.source_documents
+            if source.allowed_excerpt
+        )
         assert not any("glossary" in citation.citation_id.lower() for citation in export.citations)
         assert not find_forbidden_output_phrases(_flatten_text(export.model_dump(mode="json")))
 
@@ -111,6 +119,9 @@ def test_asset_source_list_export_contains_source_metadata_and_allowed_excerpts(
     assert source.allowed_excerpt.redistribution_allowed is True
     assert source.allowed_excerpt.kind == "supporting_passage"
     assert source.allowed_excerpt.note
+    assert source.allowlist_status.value == "allowed"
+    assert source.source_use_policy.value == "full_text_allowed"
+    assert "source-use policy" in export.rendered_markdown
     assert "full paid-news articles" in export.licensing_note.text
 
 
@@ -136,6 +147,8 @@ def test_comparison_exports_preserve_pack_citations_sources_and_reverse_order():
             source.source_document_id for source in export.source_documents
         }
         assert all(source.allowed_excerpt is not None for source in export.source_documents)
+        assert all(source.allowlist_status.value == "allowed" for source in export.source_documents)
+        assert all(source.source_use_policy.value in {"full_text_allowed", "summary_allowed"} for source in export.source_documents)
         assert not find_forbidden_output_phrases(_flatten_text(export.model_dump(mode="json")))
 
 
