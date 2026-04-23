@@ -1,137 +1,75 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import type { AssetFixture } from "../lib/fixtures";
+import { assetFixtures } from "../lib/fixtures";
+import { formatSearchAssetType, resolveLocalSearchResponse, searchQueryExampleText, type LocalSearchResult } from "../lib/search";
 
-type SearchBoxProps = {
-  assets: Record<string, AssetFixture>;
-  unsupportedAssets: Record<string, string>;
-};
+type SearchState = "empty" | "loading" | "supported" | "ambiguous" | "ingestion_needed" | "unsupported" | "out_of_scope" | "unknown";
+const UNKNOWN_SEARCH_MESSAGE = "Unknown in the local skeleton data. No facts are invented for this ticker or name.";
 
-type SearchState = "empty" | "loading" | "supported" | "multi" | "unsupported" | "unknown";
-
-type SearchResolution = {
-  state: Exclude<SearchState, "loading">;
-  matches: AssetFixture[];
-  unsupportedMessage?: string;
-};
-
-function normalizeSearchText(value: string) {
-  return value.trim().toLowerCase();
+function resultStateLabel(result: LocalSearchResult) {
+  if (result.support_classification === "cached_supported") {
+    return "Generated page ready";
+  }
+  if (result.support_classification === "eligible_not_cached") {
+    return "Ingestion needed";
+  }
+  if (result.support_classification === "recognized_unsupported") {
+    return "Unsupported in v1";
+  }
+  if (result.support_classification === "out_of_scope") {
+    return "Outside current stock scope";
+  }
+  return "Unknown";
 }
 
-function formatAssetType(asset: AssetFixture) {
-  return asset.assetType === "etf" ? "ETF" : "Stock";
+function ResultIdentity({ result }: { result: LocalSearchResult }) {
+  return (
+    <>
+      <strong data-search-result-ticker>{result.ticker}</strong>
+      <span data-search-result-name>{result.name}</span>
+      <span data-search-result-type>{formatSearchAssetType(result)}</span>
+      {result.exchange ? <span data-search-result-exchange>{result.exchange}</span> : null}
+      {result.issuer ? <span data-search-result-issuer>{result.issuer}</span> : null}
+      <span data-search-result-state-label>{resultStateLabel(result)}</span>
+    </>
+  );
 }
 
-function searchableFields(asset: AssetFixture) {
-  return [
-    asset.ticker,
-    asset.name,
-    asset.assetType,
-    asset.exchange,
-    asset.issuer ?? "",
-    asset.beginnerSummary.whatItIs,
-    asset.beginnerSummary.whyPeopleConsiderIt,
-    ...asset.claims.map((claim) => claim.claimText),
-    ...asset.facts.flatMap((fact) => [fact.label, fact.value]),
-    ...asset.sourceDocuments.flatMap((source) => [source.title, source.publisher, source.supportingPassage])
-  ];
-}
-
-function matchScore(asset: AssetFixture, normalizedQuery: string, normalizedTicker: string) {
-  const normalizedName = normalizeSearchText(asset.name);
-  if (asset.ticker === normalizedTicker) {
-    return 100;
-  }
-  if (normalizedName === normalizedQuery) {
-    return 90;
-  }
-  if (normalizedName.startsWith(normalizedQuery)) {
-    return 80;
-  }
-  if (normalizeSearchText(asset.issuer ?? "") === normalizedQuery) {
-    return 70;
-  }
-  return 10;
-}
-
-function resolveLocalFixtureSearch(
-  query: string,
-  assets: Record<string, AssetFixture>,
-  unsupportedAssets: Record<string, string>
-): SearchResolution {
-  const trimmed = query.trim();
-  const normalizedQuery = normalizeSearchText(query);
-  const normalizedTicker = trimmed.toUpperCase();
-
-  if (!trimmed) {
-    return { state: "empty", matches: [] };
-  }
-
-  const unsupportedMessage = unsupportedAssets[normalizedTicker];
-  if (unsupportedMessage) {
-    return { state: "unsupported", matches: [], unsupportedMessage };
-  }
-
-  const matches = Object.values(assets)
-    .filter((asset) => searchableFields(asset).some((field) => normalizeSearchText(field).includes(normalizedQuery)))
-    .sort((left, right) => {
-      const scoreDifference =
-        matchScore(right, normalizedQuery, normalizedTicker) - matchScore(left, normalizedQuery, normalizedTicker);
-      return scoreDifference || left.ticker.localeCompare(right.ticker);
-    });
-
-  if (matches.length === 1) {
-    return { state: "supported", matches };
-  }
-
-  if (matches.length > 1) {
-    return { state: "multi", matches };
-  }
-
-  return { state: "unknown", matches: [] };
-}
-
-export function SearchBox({ assets, unsupportedAssets }: SearchBoxProps) {
+export function SearchBox() {
   const [query, setQuery] = useState("");
   const [state, setState] = useState<SearchState>("empty");
   const searchRequestId = useRef(0);
-  const resolution = useMemo(
-    () => resolveLocalFixtureSearch(query, assets, unsupportedAssets),
-    [assets, query, unsupportedAssets]
-  );
-  const supportedAsset = resolution.state === "supported" ? resolution.matches[0] : undefined;
-  const canOpenSupportedAsset = state === "supported" && Boolean(supportedAsset);
+  const resolution = useMemo(() => resolveLocalSearchResponse(query), [query]);
+  const singleResult = state !== "ambiguous" && state !== "empty" && state !== "loading" ? resolution.results[0] : null;
+  const canOpenSupportedAsset = state === "supported" && Boolean(singleResult?.can_open_generated_page && singleResult.generated_route);
 
   const helperText = useMemo(() => {
     if (state === "empty") {
-      return "Try VOO, QQQ, AAPL, Apple, Vanguard S&P 500 ETF, Invesco QQQ Trust, BTC, or ZZZZ.";
+      return searchQueryExampleText();
     }
     if (state === "loading") {
-      return "Checking local fixtures only.";
+      return "Checking deterministic local search fixtures only.";
     }
-    if (state === "unsupported") {
-      return resolution.unsupportedMessage ?? "This asset is outside the current local fixture scope.";
+    if (state === "supported" && singleResult) {
+      return `${singleResult.ticker} has a cached local generated page available today.`;
     }
-    if (state === "unknown") {
-      return "Unknown in the local skeleton data. No facts are invented for this ticker or name.";
+    if (state === "ingestion_needed" || state === "ambiguous") {
+      return resolution.state.message;
     }
-    if (state === "multi") {
-      return "More than one supported local fixture matched. Choose a result instead of guessing.";
+    if (state === "unsupported" || state === "out_of_scope") {
+      return resolution.state.blocked_explanation?.summary ?? resolution.state.message;
     }
-    return supportedAsset
-      ? `${supportedAsset.ticker} is the canonical ticker for ${supportedAsset.name} in local fixture data.`
-      : "";
-  }, [resolution.unsupportedMessage, state, supportedAsset]);
+    return UNKNOWN_SEARCH_MESSAGE;
+  }, [resolution.state.blocked_explanation, resolution.state.message, singleResult, state]);
 
   function handleChange(value: string) {
     setQuery(value);
-    const nextResolution = resolveLocalFixtureSearch(value, assets, unsupportedAssets);
+    const nextResolution = resolveLocalSearchResponse(value);
     searchRequestId.current += 1;
     const requestId = searchRequestId.current;
 
-    if (nextResolution.state === "empty") {
+    if (!value.trim()) {
       setState("empty");
       return;
     }
@@ -139,7 +77,7 @@ export function SearchBox({ assets, unsupportedAssets }: SearchBoxProps) {
     setState("loading");
     window.setTimeout(() => {
       if (requestId === searchRequestId.current) {
-        setState(nextResolution.state);
+        setState(nextResolution.state.status);
       }
     }, 120);
   }
@@ -152,45 +90,134 @@ export function SearchBox({ assets, unsupportedAssets }: SearchBoxProps) {
           id="ticker-search"
           name="q"
           value={query}
-          placeholder="VOO, Apple, or Nasdaq-100"
+          placeholder="VOO, Apple, SPY, BTC, or GME"
           onChange={(event) => handleChange(event.target.value)}
         />
         <a
           className={`search-button ${canOpenSupportedAsset ? "" : "disabled-link"}`}
           aria-disabled={!canOpenSupportedAsset}
-          href={canOpenSupportedAsset && supportedAsset ? `/assets/${supportedAsset.ticker}` : "#search-status"}
+          href={canOpenSupportedAsset && singleResult?.generated_route ? singleResult.generated_route : "#search-status"}
+          data-search-open-generated-page={canOpenSupportedAsset}
         >
           Open
         </a>
       </div>
-      <p id="search-status" className={`search-status status-${state}`} data-search-state={state}>
+      <p
+        id="search-status"
+        className={`search-status status-${state}`}
+        data-search-state={state}
+        data-search-support-classification={resolution.state.support_classification ?? "none"}
+      >
         {helperText}
       </p>
-      {state === "supported" && supportedAsset ? (
-        <div className="search-result-panel" data-search-supported-result>
-          <a href={`/assets/${supportedAsset.ticker}`} data-search-result-link>
-            {supportedAsset.ticker}
+      {state === "supported" && singleResult ? (
+        <div
+          className="search-result-panel"
+          data-search-supported-result
+          data-search-result-status={singleResult.status}
+          data-search-support-classification={singleResult.support_classification}
+          data-search-can-open-generated-page={singleResult.can_open_generated_page}
+        >
+          <a href={singleResult.generated_route ?? "#search-status"} data-search-result-link>
+            <ResultIdentity result={singleResult} />
           </a>
-          <span data-search-result-name>{supportedAsset.name}</span>
-          <span data-search-result-type>{formatAssetType(supportedAsset)}</span>
-          <span data-search-result-exchange>{supportedAsset.exchange}</span>
-          {supportedAsset.issuer ? <span data-search-result-issuer>{supportedAsset.issuer}</span> : null}
+          <span data-search-result-message>{singleResult.message}</span>
         </div>
       ) : null}
-      {state === "multi" ? (
-        <div className="search-result-panel" data-search-multi-result>
-          {resolution.matches.map((match) => (
-            <a key={match.ticker} href={`/assets/${match.ticker}`} data-search-result-link>
-              <strong>{match.ticker}</strong>
-              <span>{match.name}</span>
-            </a>
-          ))}
+      {state === "ambiguous" ? (
+        <div
+          className="search-result-panel"
+          data-search-ambiguous-result
+          data-search-multi-result
+          data-search-disambiguation-required
+        >
+          {resolution.results.map((result) =>
+            result.can_open_generated_page && result.generated_route ? (
+              <a
+                key={result.ticker}
+                href={result.generated_route}
+                data-search-result-link
+                data-search-support-classification={result.support_classification}
+                data-search-can-open-generated-page={result.can_open_generated_page}
+              >
+                <ResultIdentity result={result} />
+              </a>
+            ) : (
+              <span
+                key={result.ticker}
+                data-search-ambiguous-candidate
+                data-search-support-classification={result.support_classification}
+                data-search-can-open-generated-page={result.can_open_generated_page}
+              >
+                <ResultIdentity result={result} />
+                <span data-search-ambiguous-candidate-note>
+                  {result.support_classification === "eligible_not_cached"
+                    ? "Choose the ticker first. This candidate still needs ingestion before any generated page can open."
+                    : "Choose the ticker first before opening any generated asset experience."}
+                </span>
+              </span>
+            )
+          )}
         </div>
       ) : null}
-      {state === "unsupported" ? <div className="search-state-note" data-search-unsupported-result /> : null}
-      {state === "unknown" ? <div className="search-state-note" data-search-unknown-result /> : null}
+      {state === "ingestion_needed" && singleResult ? (
+        <div
+          className="search-result-panel"
+          data-search-ingestion-needed-result
+          data-search-eligible-not-cached-result
+          data-search-result-status={singleResult.status}
+          data-search-support-classification={singleResult.support_classification}
+          data-search-can-open-generated-page={singleResult.can_open_generated_page}
+        >
+          <span>
+            <ResultIdentity result={singleResult} />
+          </span>
+          <span data-search-result-message>{singleResult.message}</span>
+          <span data-search-ingestion-needed-message>
+            No generated asset page, grounded chat, or comparison is available today. A future ingestion step would be
+            required first.
+          </span>
+        </div>
+      ) : null}
+      {state === "unsupported" && singleResult ? (
+        <div
+          className="search-result-panel"
+          data-search-unsupported-result
+          data-search-blocked-result
+          data-search-result-status={singleResult.status}
+          data-search-support-classification={singleResult.support_classification}
+        >
+          <span>
+            <ResultIdentity result={singleResult} />
+          </span>
+          <span data-search-blocked-summary>{singleResult.blocked_explanation?.summary ?? singleResult.message}</span>
+          <span data-search-blocked-rationale>{singleResult.blocked_explanation?.scope_rationale}</span>
+          <span data-search-blocked-scope>{singleResult.blocked_explanation?.supported_v1_scope}</span>
+        </div>
+      ) : null}
+      {state === "out_of_scope" && singleResult ? (
+        <div
+          className="search-result-panel"
+          data-search-out-of-scope-result
+          data-search-blocked-result
+          data-search-result-status={singleResult.status}
+          data-search-support-classification={singleResult.support_classification}
+        >
+          <span>
+            <ResultIdentity result={singleResult} />
+          </span>
+          <span data-search-blocked-summary>{singleResult.blocked_explanation?.summary ?? singleResult.message}</span>
+          <span data-search-blocked-rationale>{singleResult.blocked_explanation?.scope_rationale}</span>
+          <span data-search-blocked-scope>{singleResult.blocked_explanation?.supported_v1_scope}</span>
+        </div>
+      ) : null}
+      {state === "unknown" ? (
+        <div className="search-result-panel unknown-state" data-search-unknown-result data-search-no-invented-facts>
+          <span data-search-unknown-message>{UNKNOWN_SEARCH_MESSAGE}</span>
+        </div>
+      ) : null}
       <div className="quick-links" aria-label="Supported examples">
-        {Object.values(assets).map((example) => (
+        {Object.values(assetFixtures).map((example) => (
           <a key={example.ticker} href={`/assets/${example.ticker}`}>
             {example.ticker}
           </a>
