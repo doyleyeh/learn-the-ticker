@@ -2,74 +2,70 @@
 
 ## Current task
 
-### T-036: Add Weekly News Focus and AI Comprehensive Analysis contracts
+### T-037: Add LLM provider orchestration and live-generation gating contract
 
 Goal:
-Add deterministic Weekly News Focus and AI Comprehensive Analysis contracts so timely context is modeled, validated, cited, and kept separate from stable canonical facts, without adding live news/provider/market/LLM calls, new generated asset pages, or prediction/recommendation language.
+Add a deterministic LLM provider orchestration and live-generation gating contract so generated-output attempts, validation, model fallback metadata, cache eligibility, and public reasoning summaries are modeled without making live LLM calls, exposing secrets, changing generated asset/chat/comparison output, or weakening citation, source-use, freshness, and safety rules.
 
 Task scope:
-This is a backend schema, deterministic-fixture, validation, eval, and test task. Add typed Weekly News Focus window/event/output contracts, deterministic market-week window helpers, and an AI Comprehensive Analysis contract that is suppressed unless at least two high-signal Weekly News Focus items exist. Use existing local fixtures and source-policy metadata only; this is not a live news ingestion task and should not add external fetchers or new unsupported source facts.
+This is a backend schema, pure orchestration, deterministic mock, eval, and test task. Add typed LLM runtime configuration, model-chain, generation-attempt, validation, fallback, and cache-decision contracts. The implementation should keep `mock` as the default provider, require `LLM_LIVE_GENERATION_ENABLED=true` plus server-side OpenRouter configuration before a live provider can be considered enabled, and represent the OpenRouter free-model chain plus DeepSeek fallback as metadata only. This is not a task to call OpenRouter or any model API, replace existing deterministic generated outputs, persist summaries, or add frontend UI.
 
 Allowed files:
 
 - `TASKS.md`
-- `data/retrieval_fixtures.json`
 - `backend/models.py`
-- `backend/weekly_news.py`
-- `backend/data.py`
-- `backend/retrieval.py`
-- `backend/overview.py`
-- `backend/chat.py`
-- `backend/export.py`
+- `backend/llm.py`
 - `backend/cache.py`
-- `backend/source_policy.py`
 - `backend/citations.py`
-- `evals/weekly_news_eval_cases.yaml`
+- `backend/safety.py`
+- `backend/main.py`
+- `evals/llm_provider_eval_cases.yaml`
 - `evals/provider_eval_cases.yaml`
 - `evals/run_static_evals.py`
-- `tests/unit/test_weekly_news.py`
-- `tests/unit/test_retrieval_fixtures.py`
-- `tests/unit/test_overview_generation.py`
-- `tests/unit/test_chat_generation.py`
-- `tests/unit/test_exports.py`
+- `tests/unit/test_llm_provider.py`
+- `tests/unit/test_cache_contracts.py`
 - `tests/unit/test_citation_validation.py`
 - `tests/unit/test_safety_guardrails.py`
 - `tests/integration/test_backend_api.py`
 
 Do not change:
 
-- Do not add live provider, market-data, news, SEC, issuer-site, RSS, or LLM calls.
-- Do not add real provider keys, copied local secret values, or new `NEXT_PUBLIC_*` secrets.
-- Do not add live or scraped news content; any Weekly News Focus examples must be deterministic local fixtures.
-- Do not let Weekly News Focus or AI Comprehensive Analysis overwrite, redefine, or merge into stable canonical facts.
-- Do not generate AI Comprehensive Analysis when fewer than two high-signal Weekly News Focus items are available.
-- Do not use rejected, non-allowlisted, metadata-only, link-only, or license-disallowed sources as support for Weekly News Focus or generated analysis.
-- Do not add buy/sell/hold recommendations, price targets, predictions, personalized allocation advice, tax advice, or brokerage/trading behavior.
-- Do not add generated pages, generated chat answers, generated comparisons, or generated risk summaries for assets that do not already have local generated packs.
+- Do not make live OpenRouter, LLM, provider, market-data, news, SEC, issuer-site, RSS, or external network calls.
+- Do not add HTTP client dependencies or production dependencies.
+- Do not read, echo, log, serialize, return, commit, or copy actual secret values from the local environment.
+- Do not expose OpenRouter or other provider keys through browser code, `NEXT_PUBLIC_*`, docs, logs, `/health`, API responses, exports, or committed env files.
+- Do not change `.env.example`, `deploy/env/*.example.env`, or frontend env examples unless strictly required by tests; if changed, keep placeholder-only values.
+- Do not change existing generated overview, Weekly News Focus, AI Comprehensive Analysis, comparison, chat, export, search, or ingestion behavior.
+- Do not let LLM output decide asset support classification, source-use policy, freshness state, citation validity, or whether evidence is sufficient.
+- Do not cache unvalidated, uncited, advice-like, failed, raw, or repair-attempt output.
+- Do not store or return hidden prompts, raw model reasoning, `reasoning_details`, failed raw responses, unrestricted source text, raw chunks, or source passages beyond existing allowed excerpt behavior.
+- Do not use rejected, non-allowlisted, metadata-only, link-only, or license-disallowed sources as generated-output support.
+- Do not add buy/sell/hold recommendations, price targets, predictions, personalized allocation advice, exact position sizing, tax advice, or brokerage/trading behavior.
 - Do not expand MVP scope beyond U.S.-listed common stocks and supported non-leveraged equity ETFs.
 - Do not change frontend UI.
 - Do not move the Python backend or frontend workspace.
 
 Acceptance criteria:
 
-- Weekly News Focus has typed models for market-week window metadata, selected event items, source/date/retrieved metadata, source quality, source-use policy, freshness state, high-signal scoring or selection rationale, deduplication metadata, and empty/thin-evidence states.
-- Market-week helpers compute the last completed Monday-Sunday market week plus current week-to-date through yesterday using U.S. Eastern dates from an explicit deterministic `as_of` date, not the wall clock in tests.
-- Weekly News Focus prefers official filings, investor-relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes before allowlisted news-style context.
-- Weekly News Focus excludes rejected, non-allowlisted, duplicate, promotional, irrelevant, license-disallowed, and wrong-asset items before they can feed generated output, caches, exports, citations, or analysis.
-- Weekly News Focus renders fewer than five items, or a clear empty/no-high-signal state, when fixture evidence is thin; it never pads weak items.
-- Stable overview/canonical facts remain structurally separate from Weekly News Focus and still use canonical source evidence.
-- AI Comprehensive Analysis has typed sections in this order: What Changed This Week, Market Context, Business/Fund Context, and Risk Context.
-- AI Comprehensive Analysis is available only when at least two high-signal Weekly News Focus items exist; otherwise the contract returns a suppressed/insufficient-evidence state with no generated analysis text.
-- AI Comprehensive Analysis cites underlying Weekly News Focus items and canonical facts only, and rejects uncited claims, predictions, recommendations, or advice-like language.
-- Existing local assets with no high-signal Weekly News Focus items continue to show deterministic empty or no-major-recent-development states without adding new facts.
-- Chat/export/cache contracts preserve the separation of stable facts, Weekly News Focus, and AI Comprehensive Analysis, and do not export restricted raw text or hidden prompts.
-- Static evals verify window logic, source-priority behavior, source-policy enforcement, suppression threshold, section order, citation binding, no live-call imports, no advice-like analysis language, and stable/recent separation.
-- Tests verify weekly window calculation, event selection/suppression, analysis availability, citation validation, source-policy rejection, overview/chat/export/cache serialization, and safety guardrails.
+- LLM provider contract models cover provider kind, runtime mode, model tier, configured model chain, live-generation gate state, generation request metadata, generation attempt metadata, validation result, fallback decision, public response metadata, and cache eligibility.
+- The default deterministic runtime is `mock`, with live generation disabled, no credentials required, no network capability enabled, and no dependency on wall-clock time or local secret values.
+- OpenRouter live mode is represented only as a gated runtime option; it is unavailable unless explicit configuration includes `LLM_PROVIDER=openrouter`, `LLM_LIVE_GENERATION_ENABLED=true`, a server-side key presence flag, and required OpenRouter endpoint/model settings.
+- The OpenRouter free-model chain is represented in the PRD/TDS order: `openai/gpt-oss-120b:free`, `google/gemma-4-31b-it:free`, `qwen/qwen3-next-80b-a3b-instruct:free`, and `meta-llama/llama-3.3-70b-instruct:free`.
+- The paid fallback is represented as `deepseek/deepseek-v3.2`, and fallback metadata records that paid fallback is considered only after free-chain errors, rate limits, structured-output failures, or validation failure after one repair retry.
+- Configuration helpers accept explicit test mappings or sanitized key-presence flags; tests must not inspect real environment secret values.
+- Public API or diagnostics responses may expose sanitized provider name, live-enabled boolean, model names, model tier, validation status, attempt count, latency/usage/cost fields when available, and cited `reasoning_summary`, but never secret values, hidden prompts, raw model reasoning, raw source text, unrestricted passages, or failed raw responses.
+- Orchestration returns deterministic mock responses for tests and records attempt metadata without calling a model API.
+- Validation rejects schema-invalid output, missing or wrong-asset citations, uncited important factual claims, source-use disallowed citations, advice-like language, predictions, unsupported price-target language, hidden prompt leakage, raw reasoning leakage, and unrestricted source-text leakage before cache eligibility can become true.
+- Cache metadata marks only validated, citation-safe, source-policy-safe, advice-safe outputs as cacheable and includes prompt version, schema version, model name, model tier, validation status, freshness hash or input hash, and attempt count.
+- Failed, suppressed, unavailable, repair-attempt, raw, advice-like, uncited, stale-without-label, or source-policy-disallowed outputs are explicitly non-cacheable.
+- Existing overview, chat, comparison, export, Weekly News Focus, and AI Comprehensive Analysis responses remain deterministic and unchanged except for any additional validation-only diagnostics route or model fields explicitly added for this contract.
+- Static evals verify model-chain order, live-gate behavior, sanitized public metadata, no secret exposure, no live-call imports, validation-before-cache behavior, no raw reasoning/prompt/source-text exposure, and no advice-like generated language.
+- Tests verify mock default behavior, OpenRouter disabled/enabled gate metadata from sanitized config, fallback decision metadata, validation rejection cases, cache eligibility, citation/source-policy enforcement, API serialization, and safety guardrails.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_retrieval_fixtures.py tests/unit/test_overview_generation.py tests/unit/test_chat_generation.py tests/unit/test_exports.py tests/unit/test_citation_validation.py tests/unit/test_safety_guardrails.py -q
+python3 -m pytest tests/unit/test_llm_provider.py tests/unit/test_cache_contracts.py tests/unit/test_citation_validation.py tests/unit/test_safety_guardrails.py -q
 python3 -m pytest tests/integration/test_backend_api.py -q
 python3 -m pytest tests -q
 python3 evals/run_static_evals.py
@@ -80,8 +76,6 @@ Iteration budget:
 Max 3 attempts.
 
 ## Backlog
-
-### T-037: Add LLM provider orchestration and live-generation gating contract
 
 ### T-038: Add accountless chat session lifecycle contract
 
@@ -100,6 +94,33 @@ Max 3 attempts.
 ### T-045: Add grounded chat comparison-redirect contract
 
 ## Completed
+
+### T-036: Add Weekly News Focus and AI Comprehensive Analysis contracts
+
+Goal:
+Add deterministic Weekly News Focus and AI Comprehensive Analysis contracts so timely context is modeled, validated, cited, and kept separate from stable canonical facts, without adding live news/provider/market/LLM calls, new generated asset pages, or prediction/recommendation language.
+
+Completed:
+
+- Added `backend/weekly_news.py` with deterministic Weekly News Focus window calculation, candidate selection, source-priority scoring, exclusion rationale, deduplication metadata, empty/no-high-signal states, and AI Comprehensive Analysis construction/validation.
+- Added Weekly News Focus and AI Comprehensive Analysis contract models in `backend/models.py`, including market-week periods, event types, contract states, source metadata, selected items, selection rationale, empty states, analysis sections, and the combined weekly-news response.
+- Wired deterministic Weekly News Focus and AI Comprehensive Analysis into overview generation and the asset knowledge-pack section metadata while preserving stable canonical facts as separate overview sections.
+- Added `GET /api/assets/{ticker}/weekly-news` in `backend/main.py` to return the selected asset's Weekly News Focus and AI Comprehensive Analysis contract data from the existing deterministic overview path.
+- Updated exports so asset-page exports include separate Weekly News Focus and AI Comprehensive Analysis sections with citation IDs, source document IDs, freshness/as-of metadata, suppression messaging, and no hidden prompts or restricted raw text.
+- Added `evals/weekly_news_eval_cases.yaml` and extended `evals/run_static_evals.py` to verify market-week window logic, contract models, fixture empty states, AI analysis suppression, stable/recent separation, no live-call imports, and no advice-like analysis language.
+- Added `tests/unit/test_weekly_news.py` for explicit Eastern as-of window behavior, fixture empty states without padding, official-source priority, disallowed/duplicate/promotional/irrelevant/wrong-asset exclusion, AI analysis threshold, required section order, and no live network imports.
+- Extended retrieval, overview, export, and backend API tests for weekly-news section metadata, overview serialization, export serialization, and API response coverage.
+- Added `docs/agent-journal/20260423T120556Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- T-036 agent journal records that focused weekly-news pytest passed with 5 tests, focused retrieval/overview/export/API pytest passed with 52 tests, the required focused task pytest passed with 53 tests, backend API pytest passed with 27 tests, full Python pytest passed with 152 tests, static evals passed, and the full quality gate passed including Python tests, static evals, frontend smoke checks, TypeScript typecheck, production build, and backend checks.
+- Merged local branch: `agent/T-036-20260423T120556Z`.
+- Remaining documented risk: this is a deterministic contract and fixture-selection layer only; it does not add live news, SEC, issuer-site, market-data, or LLM calls.
+- Remaining documented risk: existing cached local packs still produce empty/no-high-signal Weekly News Focus states, so the available AI Comprehensive Analysis path is covered by contract tests with deterministic candidates rather than by a persisted asset fixture.
+- Remaining documented risk: Weekly News Focus candidate examples remain local and synthetic; future live or scraped sources still require allowlist, source-use, licensing, caching, and export review before use.
+
+Completion commits:
+
+- `9be562d feat(T-036): add Weekly News Focus and AI Comprehensive Analysis contracts`
+- `dbf9865 chore(T-036): merge Weekly News Focus and AI Comprehensive Analysis contracts`
 
 ### T-035: Add source allowlist and rights-tiered raw text policy contract
 
