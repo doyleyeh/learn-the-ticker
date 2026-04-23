@@ -74,6 +74,11 @@ from backend.models import (
     EDUCATIONAL_DISCLAIMER,
     EvidenceState,
     ExportResponse,
+    ExportValidation,
+    ExportValidationCitationBinding,
+    ExportValidationDiagnostics,
+    ExportValidationSourceBinding,
+    ExportSectionValidation,
     FreshnessState,
     GlossaryResponse,
     IngestionJobResponse,
@@ -2036,6 +2041,51 @@ def test_export_cases():
     data = load_yaml("export_eval_cases.yaml")
     cases = data.get("cases", [])
     assert cases, "export_eval_cases.yaml must define cases"
+    assert {"export_validation"} <= set(ExportResponse.model_fields)
+    assert {
+        "content_type",
+        "export_state",
+        "binding_scope",
+        "validation_outcome",
+        "validated_evidence_state",
+        "citation_bindings",
+        "source_bindings",
+        "section_validations",
+        "diagnostics",
+    } <= set(ExportValidation.model_fields)
+    assert {
+        "binding_id",
+        "citation_id",
+        "source_document_id",
+        "section_ids",
+        "source_use_policy",
+        "allowlist_status",
+        "permitted_operations",
+        "scope",
+    } <= set(ExportValidationCitationBinding.model_fields)
+    assert {
+        "binding_id",
+        "source_document_id",
+        "section_ids",
+        "source_use_policy",
+        "allowlist_status",
+        "permitted_operations",
+        "allowed_excerpt_id",
+        "allowed_excerpt_kind",
+        "excerpt_exported",
+        "excerpt_metadata_only",
+    } <= set(ExportValidationSourceBinding.model_fields)
+    assert {
+        "section_id",
+        "validation_outcome",
+        "citation_binding_ids",
+        "source_binding_ids",
+    } <= set(ExportSectionValidation.model_fields)
+    assert {
+        "derived_from_existing_local_evidence_only",
+        "no_live_external_calls",
+        "empty_factual_evidence_export",
+    } <= set(ExportValidationDiagnostics.model_fields)
 
     required_kinds = {"asset_page", "asset_source_list", "comparison", "chat_transcript"}
     found_kinds = {case.get("export_kind") for case in cases}
@@ -2080,10 +2130,21 @@ def test_export_cases():
         assert bool(validated.licensing_note.text) is case["expected_licensing_note"]
         assert "full paid-news articles" in validated.licensing_note.text
         assert "Educational Disclaimer" in validated.rendered_markdown
+        assert validated.export_validation is not None
+        assert validated.export_validation.content_type is validated.content_type
+        assert validated.export_validation.export_state is validated.export_state
+        assert validated.export_validation.binding_scope.value == case["expected_validation_scope"]
+        assert validated.export_validation.diagnostics.derived_from_existing_local_evidence_only is True
+        assert validated.export_validation.diagnostics.no_live_external_calls is True
 
         section_ids = {section.section_id for section in validated.sections}
         expected_sections = set(case["expected_sections"])
         assert expected_sections <= section_ids, f"{case['id']} missing sections: {expected_sections - section_ids}"
+        validation_section_ids = {item.section_id for item in validated.export_validation.section_validations}
+        expected_validation_sections = set(case.get("expected_validation_sections", []))
+        assert expected_validation_sections <= validation_section_ids, (
+            f"{case['id']} missing export validation sections: {expected_validation_sections - validation_section_ids}"
+        )
 
         if case["expected_citations"]:
             assert validated.citations, f"{case['id']} expected citations"
@@ -2111,6 +2172,22 @@ def test_export_cases():
         else:
             assert validated.source_documents == [], f"{case['id']} should not export source documents"
 
+        if validated.export_state.value == "available" and case["expected_validation_scope"] != "no_factual_evidence":
+            assert validated.export_validation.citation_bindings or validated.export_validation.source_bindings
+
+        if case["expected_validation_scope"] == "same_asset":
+            assert validated.export_validation.diagnostics.same_asset_citation_bindings_only or not validated.citations
+            assert validated.export_validation.diagnostics.same_asset_source_bindings_only or not validated.source_documents
+
+        if case["expected_validation_scope"] == "same_comparison_pack":
+            assert validated.export_validation.diagnostics.same_comparison_pack_citation_bindings_only is True
+            assert validated.export_validation.diagnostics.same_comparison_pack_source_bindings_only is True
+
+        if case["expected_validation_scope"] == "no_factual_evidence":
+            assert validated.export_validation.citation_bindings == []
+            assert validated.export_validation.source_bindings == []
+            assert validated.export_validation.diagnostics.empty_factual_evidence_export is True
+
         expected_classification = case.get("expected_safety_classification")
         if expected_classification:
             assert validated.metadata["safety_classification"] == expected_classification
@@ -2127,6 +2204,9 @@ def test_export_cases():
             assert validated.sections == []
             assert validated.citations == []
             assert validated.source_documents == []
+            assert validated.export_validation.section_validations == []
+            assert validated.export_validation.citation_bindings == []
+            assert validated.export_validation.source_bindings == []
 
         assert not find_forbidden_output_phrases(_flatten_static_text(validated.model_dump(mode="json")))
 

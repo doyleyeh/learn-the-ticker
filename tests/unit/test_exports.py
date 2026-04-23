@@ -14,6 +14,8 @@ from backend.models import (
     ExportContentType,
     ExportResponse,
     ExportState,
+    ExportValidationBindingScope,
+    ExportValidationOutcome,
 )
 from backend.safety import find_forbidden_output_phrases
 
@@ -37,6 +39,14 @@ def test_supported_asset_page_exports_preserve_sections_citations_sources_and_di
         assert export.disclaimer == EDUCATIONAL_DISCLAIMER
         assert export.licensing_note.note_id == "export_licensing_scope"
         assert "full paid-news articles" in export.licensing_note.text
+        assert export.export_validation is not None
+        assert export.export_validation.schema_version == "export-validation-v1"
+        assert export.export_validation.binding_scope is ExportValidationBindingScope.same_asset
+        assert export.export_validation.citation_bindings
+        assert export.export_validation.source_bindings
+        assert export.export_validation.diagnostics.same_asset_citation_bindings_only is True
+        assert export.export_validation.diagnostics.same_asset_source_bindings_only is True
+        assert export.export_validation.diagnostics.used_existing_overview_contract is True
         assert "Educational Disclaimer" in export.rendered_markdown
         assert "Licensing Note" in export.rendered_markdown
         assert "beginner_summary" in section_ids
@@ -100,6 +110,21 @@ def test_supported_asset_page_exports_preserve_sections_citations_sources_and_di
             for source in export.source_documents
             if source.allowed_excerpt
         )
+        assert {binding.citation_id for binding in export.export_validation.citation_bindings} <= citation_ids
+        assert {
+            binding.source_document_id for binding in export.export_validation.source_bindings
+        } <= source_ids
+        assert all(
+            binding.asset_ticker == ticker for binding in export.export_validation.citation_bindings if binding.asset_ticker
+        )
+        assert all(
+            binding.asset_ticker == ticker for binding in export.export_validation.source_bindings if binding.asset_ticker
+        )
+        if ticker == "VOO":
+            cost_validation = _validation_section(export, "cost_trading_context")
+            assert cost_validation.displayed_freshness_state.value == "stale"
+            assert cost_validation.validated_freshness_state.value == "stale"
+            assert cost_validation.validation_outcome is ExportValidationOutcome.validated_with_limitations
         assert not any("glossary" in citation.citation_id.lower() for citation in export.citations)
         assert not find_forbidden_output_phrases(_flatten_text(export.model_dump(mode="json")))
 
@@ -113,6 +138,11 @@ def test_asset_source_list_export_contains_source_metadata_and_allowed_excerpts(
     assert export.asset.ticker == "VOO"
     assert _section(export, "asset_source_list").items
     assert export.source_documents
+    assert export.export_validation is not None
+    assert export.export_validation.binding_scope is ExportValidationBindingScope.same_asset
+    assert export.export_validation.diagnostics.same_asset_source_bindings_only is True
+    assert export.export_validation.source_bindings
+    assert _validation_section(export, "asset_source_list").source_binding_ids
 
     source = export.source_documents[0]
     assert source.source_document_id
@@ -146,6 +176,15 @@ def test_comparison_exports_preserve_pack_citations_sources_and_reverse_order():
         assert export.left_asset.ticker == left
         assert export.right_asset.ticker == right
         assert export.metadata["comparison_type"] == "etf_vs_etf"
+        assert export.export_validation is not None
+        assert export.export_validation.binding_scope is ExportValidationBindingScope.same_comparison_pack
+        assert export.export_validation.diagnostics.same_comparison_pack_citation_bindings_only is True
+        assert export.export_validation.diagnostics.same_comparison_pack_source_bindings_only is True
+        assert export.export_validation.diagnostics.used_existing_comparison_contract is True
+        assert export.export_validation.citation_bindings
+        assert export.export_validation.source_bindings
+        assert _validation_section(export, "key_differences").validation_outcome is ExportValidationOutcome.validated
+        assert _validation_section(export, "beginner_bottom_line").validation_outcome is ExportValidationOutcome.validated
         assert {"comparison_identity", "key_differences", "beginner_bottom_line"} <= set(section_ids)
         assert _section(export, "key_differences").items
         assert _section(export, "beginner_bottom_line").citation_ids
@@ -175,6 +214,11 @@ def test_chat_transcript_exports_preserve_answer_safety_uncertainty_and_sources(
     assert _section(grounded, "uncertainty_notes").items
     assert grounded.citations
     assert grounded.source_documents
+    assert grounded.export_validation is not None
+    assert grounded.export_validation.binding_scope is ExportValidationBindingScope.same_asset
+    assert grounded.export_validation.citation_bindings
+    assert grounded.export_validation.source_bindings
+    assert grounded.export_validation.diagnostics.used_existing_chat_contract is True
 
     assert advice.export_state is ExportState.available
     assert advice.metadata["safety_classification"] == "personalized_advice_redirect"
@@ -182,6 +226,12 @@ def test_chat_transcript_exports_preserve_answer_safety_uncertainty_and_sources(
     assert advice.citations == []
     assert advice.source_documents == []
     assert _section(advice, "chat_answer").citation_ids == []
+    assert advice.export_validation is not None
+    assert advice.export_validation.binding_scope is ExportValidationBindingScope.no_factual_evidence
+    assert advice.export_validation.citation_bindings == []
+    assert advice.export_validation.source_bindings == []
+    assert advice.export_validation.diagnostics.empty_factual_evidence_export is True
+    assert _validation_section(advice, "chat_answer").validated_evidence_state.value == "unsupported"
     assert not find_forbidden_output_phrases(_flatten_text(advice.model_dump(mode="json")))
 
 
@@ -202,6 +252,11 @@ def test_unsupported_unknown_unavailable_and_eligible_not_cached_exports_do_not_
         assert export.sections == []
         assert export.citations == []
         assert export.source_documents == []
+        assert export.export_validation is not None
+        assert export.export_validation.citation_bindings == []
+        assert export.export_validation.source_bindings == []
+        assert export.export_validation.section_validations == []
+        assert export.export_validation.diagnostics.empty_factual_evidence_export is True
         assert "Export unavailable" in export.rendered_markdown
         assert "Educational Disclaimer" in export.rendered_markdown
         assert export.disclaimer == EDUCATIONAL_DISCLAIMER
@@ -222,6 +277,11 @@ def test_export_module_does_not_import_network_clients_or_frontend_packages():
 
 def _section(export: ExportResponse, section_id: str):
     return next(section for section in export.sections if section.section_id == section_id)
+
+
+def _validation_section(export: ExportResponse, section_id: str):
+    assert export.export_validation is not None
+    return next(item for item in export.export_validation.section_validations if item.section_id == section_id)
 
 
 def _used_citation_ids(export: ExportResponse) -> set[str]:
