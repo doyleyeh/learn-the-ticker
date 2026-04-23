@@ -2,71 +2,74 @@
 
 ## Current task
 
-### T-035: Add source allowlist and rights-tiered raw text policy contract
+### T-036: Add Weekly News Focus and AI Comprehensive Analysis contracts
 
 Goal:
-Add a deterministic source allowlist and rights-tiered raw text policy contract so source ingestion, retrieval metadata, citation resolution, exports, provider fixtures, and future Weekly News Focus work can validate source-use rights before storage, summarization, rendering, caching, or export, without adding live provider/news/market/LLM calls or changing generated learning output.
+Add deterministic Weekly News Focus and AI Comprehensive Analysis contracts so timely context is modeled, validated, cited, and kept separate from stable canonical facts, without adding live news/provider/market/LLM calls, new generated asset pages, or prediction/recommendation language.
 
 Task scope:
-This is a backend policy-contract, config, fixture-metadata, eval, and test task. Add a versioned local source allowlist at `config/source_allowlist.yaml`, add typed source-use policy models and pure validation helpers, and thread the policy into existing deterministic source metadata surfaces only where needed to prove the contract. Existing local fixture sources should receive explicit policy metadata; official SEC/issuer/local fixtures should remain allowed under the rights tier that fits them, restricted market/reference provider fixtures should remain permission-limited, and rejected/unrecognized sources must be blocked from generated output and export. Keep the task narrow: this is not the full Weekly News Focus implementation and should not add live fetchers or new source facts.
+This is a backend schema, deterministic-fixture, validation, eval, and test task. Add typed Weekly News Focus window/event/output contracts, deterministic market-week window helpers, and an AI Comprehensive Analysis contract that is suppressed unless at least two high-signal Weekly News Focus items exist. Use existing local fixtures and source-policy metadata only; this is not a live news ingestion task and should not add external fetchers or new unsupported source facts.
 
 Allowed files:
 
 - `TASKS.md`
-- `config/source_allowlist.yaml`
 - `data/retrieval_fixtures.json`
 - `backend/models.py`
-- `backend/source_policy.py`
+- `backend/weekly_news.py`
+- `backend/data.py`
 - `backend/retrieval.py`
-- `backend/providers.py`
-- `backend/citations.py`
 - `backend/overview.py`
-- `backend/comparison.py`
 - `backend/chat.py`
 - `backend/export.py`
 - `backend/cache.py`
-- `evals/source_policy_eval_cases.yaml`
+- `backend/source_policy.py`
+- `backend/citations.py`
+- `evals/weekly_news_eval_cases.yaml`
 - `evals/provider_eval_cases.yaml`
 - `evals/run_static_evals.py`
-- `tests/unit/test_source_policy.py`
+- `tests/unit/test_weekly_news.py`
 - `tests/unit/test_retrieval_fixtures.py`
-- `tests/unit/test_citation_validation.py`
+- `tests/unit/test_overview_generation.py`
+- `tests/unit/test_chat_generation.py`
 - `tests/unit/test_exports.py`
-- `tests/unit/test_provider_adapters.py`
+- `tests/unit/test_citation_validation.py`
+- `tests/unit/test_safety_guardrails.py`
 - `tests/integration/test_backend_api.py`
 
 Do not change:
 
 - Do not add live provider, market-data, news, SEC, issuer-site, RSS, or LLM calls.
 - Do not add real provider keys, copied local secret values, or new `NEXT_PUBLIC_*` secrets.
-- Do not add new source facts, generated pages, generated chat answers, generated comparisons, Weekly News Focus items, AI Comprehensive Analysis, or generated risk summaries.
-- Do not use rejected, non-allowlisted, metadata-only, link-only, or license-disallowed sources as support for generated factual claims.
-- Do not store, render, summarize, cache, or export raw full article text for `summary_allowed`, `metadata_only`, `link_only`, or `rejected` sources.
+- Do not add live or scraped news content; any Weekly News Focus examples must be deterministic local fixtures.
+- Do not let Weekly News Focus or AI Comprehensive Analysis overwrite, redefine, or merge into stable canonical facts.
+- Do not generate AI Comprehensive Analysis when fewer than two high-signal Weekly News Focus items are available.
+- Do not use rejected, non-allowlisted, metadata-only, link-only, or license-disallowed sources as support for Weekly News Focus or generated analysis.
+- Do not add buy/sell/hold recommendations, price targets, predictions, personalized allocation advice, tax advice, or brokerage/trading behavior.
+- Do not add generated pages, generated chat answers, generated comparisons, or generated risk summaries for assets that do not already have local generated packs.
 - Do not expand MVP scope beyond U.S.-listed common stocks and supported non-leveraged equity ETFs.
 - Do not change frontend UI.
 - Do not move the Python backend or frontend workspace.
-- Do not change the Top-500 manifest contract except through source-policy metadata that is directly required by this task.
 
 Acceptance criteria:
 
-- `config/source_allowlist.yaml` exists and validates deterministically as the local source-use policy registry for fixture and mock-provider sources.
-- The allowlist schema includes schema version, policy version or generated timestamp, source records, domain or controlled local-fixture identifier, source type, source quality, allowlist status, source-use policy, permitted storage/display/summary/cache/export operations, allowed excerpt behavior, rationale, and review/approval metadata.
-- Source-use policy values cover exactly the PRD/TDS-required tiers: `metadata_only`, `link_only`, `summary_allowed`, `full_text_allowed`, and `rejected`.
-- Policy helpers can load the allowlist, validate records, resolve a source by URL/domain or controlled fixture identifier, and return explicit `allowed`, `rejected`, `pending_review`, or `not_allowlisted` decisions without network calls.
-- Official SEC, official ETF issuer, and existing deterministic local fixture sources are allowlisted with a rights tier that permits the current local citation/export behavior; full raw text is permitted only for official/issuer or `full_text_allowed` records.
-- Restricted market/reference provider fixtures remain display/cache-limited and not exportable as full provider payloads; their source-use policy and licensing metadata agree.
-- Recent-development/news-style fixture sources are treated as recent context only and cannot overwrite canonical facts.
-- Unrecognized domains and `rejected` records are rejected before they can feed generated output, rendered summaries, caches, exports, citation evidence, or Weekly News Focus items.
-- `summary_allowed` sources may expose only metadata, checksums/links, and allowed excerpts; `metadata_only` and `link_only` sources expose only permitted metadata/link fields and never supporting passages or raw article text.
-- Source metadata returned through overview, comparison, chat, source-list, citation-validation, knowledge-pack, provider, cache, and export contracts carries source-use policy and allowlist status where those contracts expose source metadata.
-- Export source metadata and citation/source helpers never expose unrestricted provider payloads, hidden prompts, secrets, raw model reasoning, private raw source text, or full restricted article text.
-- Static evals verify allowlist path/schema, required policy tiers, required official and fixture records, rejected/unrecognized source blocking, rights-tier operation flags, no live-call imports, provider licensing consistency, and no advice-like policy language.
-- Tests verify source-policy loading/validation, provider fixture policy metadata, retrieval fixture policy metadata, citation evidence rejection for disallowed sources, export allowed-excerpt behavior, and backend API serialization of source-use fields where source metadata is returned.
+- Weekly News Focus has typed models for market-week window metadata, selected event items, source/date/retrieved metadata, source quality, source-use policy, freshness state, high-signal scoring or selection rationale, deduplication metadata, and empty/thin-evidence states.
+- Market-week helpers compute the last completed Monday-Sunday market week plus current week-to-date through yesterday using U.S. Eastern dates from an explicit deterministic `as_of` date, not the wall clock in tests.
+- Weekly News Focus prefers official filings, investor-relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes before allowlisted news-style context.
+- Weekly News Focus excludes rejected, non-allowlisted, duplicate, promotional, irrelevant, license-disallowed, and wrong-asset items before they can feed generated output, caches, exports, citations, or analysis.
+- Weekly News Focus renders fewer than five items, or a clear empty/no-high-signal state, when fixture evidence is thin; it never pads weak items.
+- Stable overview/canonical facts remain structurally separate from Weekly News Focus and still use canonical source evidence.
+- AI Comprehensive Analysis has typed sections in this order: What Changed This Week, Market Context, Business/Fund Context, and Risk Context.
+- AI Comprehensive Analysis is available only when at least two high-signal Weekly News Focus items exist; otherwise the contract returns a suppressed/insufficient-evidence state with no generated analysis text.
+- AI Comprehensive Analysis cites underlying Weekly News Focus items and canonical facts only, and rejects uncited claims, predictions, recommendations, or advice-like language.
+- Existing local assets with no high-signal Weekly News Focus items continue to show deterministic empty or no-major-recent-development states without adding new facts.
+- Chat/export/cache contracts preserve the separation of stable facts, Weekly News Focus, and AI Comprehensive Analysis, and do not export restricted raw text or hidden prompts.
+- Static evals verify window logic, source-priority behavior, source-policy enforcement, suppression threshold, section order, citation binding, no live-call imports, no advice-like analysis language, and stable/recent separation.
+- Tests verify weekly window calculation, event selection/suppression, analysis availability, citation validation, source-policy rejection, overview/chat/export/cache serialization, and safety guardrails.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_source_policy.py tests/unit/test_retrieval_fixtures.py tests/unit/test_citation_validation.py tests/unit/test_exports.py tests/unit/test_provider_adapters.py -q
+python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_retrieval_fixtures.py tests/unit/test_overview_generation.py tests/unit/test_chat_generation.py tests/unit/test_exports.py tests/unit/test_citation_validation.py tests/unit/test_safety_guardrails.py -q
 python3 -m pytest tests/integration/test_backend_api.py -q
 python3 -m pytest tests -q
 python3 evals/run_static_evals.py
@@ -77,8 +80,6 @@ Iteration budget:
 Max 3 attempts.
 
 ## Backlog
-
-### T-036: Add Weekly News Focus and AI Comprehensive Analysis contracts
 
 ### T-037: Add LLM provider orchestration and live-generation gating contract
 
@@ -95,6 +96,37 @@ Max 3 attempts.
 ### T-043: Add section-level freshness validation contract
 
 ## Completed
+
+### T-035: Add source allowlist and rights-tiered raw text policy contract
+
+Goal:
+Add a deterministic source allowlist and rights-tiered raw text policy contract so source ingestion, retrieval metadata, citation resolution, exports, provider fixtures, and future Weekly News Focus work can validate source-use rights before storage, summarization, rendering, caching, or export, without adding live provider/news/market/LLM calls or changing generated learning output.
+
+Completed:
+
+- Added `config/source_allowlist.yaml` with a versioned local source-use policy registry for fixture and mock-provider sources, including required policy tiers, source type, source quality, allowlist status, operation permissions, allowed excerpt behavior, rationale, and review metadata.
+- Added `backend/source_policy.py` with deterministic allowlist loading, validation, fixture/domain resolution, and explicit allowed/rejected/pending-review/not-allowlisted decisions without network calls.
+- Added source-policy and allowlist models in `backend/models.py`, including `SourceUsePolicy`, `SourceAllowlistStatus`, `SourceQuality`, `SourceOperationPermissions`, `SourceAllowedExcerptBehavior`, allowlist record/config models, and source-policy decision models.
+- Threaded source-use policy and allowlist status through deterministic retrieval, provider, citation, overview, comparison, chat, export, and cache metadata surfaces where source metadata is exposed.
+- Updated `data/retrieval_fixtures.json` so existing SEC, ETF issuer, local fixture, provider, and recent-context sources carry explicit policy metadata while preserving current generated learning output.
+- Updated citation validation so disallowed source-policy states cannot support generated claims.
+- Updated export behavior so source-list and generated-output exports respect metadata, excerpt, and full-text operation permissions and do not expose restricted raw payloads.
+- Added `evals/source_policy_eval_cases.yaml` and extended `evals/run_static_evals.py` to verify allowlist path/schema, required tiers, official and fixture records, rejected/unrecognized source blocking, rights-tier operation flags, provider licensing consistency, no live-call imports, and no advice-like policy language.
+- Extended provider eval cases for source-use and licensing consistency.
+- Added `tests/unit/test_source_policy.py` for policy loading, validation, resolution, operation permissions, rejected/unrecognized sources, and no-network behavior.
+- Extended retrieval, citation, export, provider, and backend API tests for source-policy metadata, disallowed evidence rejection, allowed-excerpt behavior, provider fixture policy consistency, and API serialization.
+- Added `docs/agent-journal/20260423T064752Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- T-035 agent journal records that the first focused test run failed because PyYAML parsed unquoted allowlist dates into date/datetime values while the Pydantic contract expected strings; a focused `backend/models.py` revision normalized those YAML scalar types before validation.
+- T-035 agent journal records that focused source-policy/retrieval/citation/export/provider pytest passed with 34 tests, backend API pytest passed with 27 tests, full Python pytest passed with 147 tests, static evals passed, and the full quality gate passed including Python tests, static evals, frontend smoke checks, TypeScript typecheck, production build, and backend checks.
+- Merged local branch: `agent/T-035-20260423T064752Z`.
+- Remaining documented risk: this is a deterministic policy contract and fixture metadata layer only; it does not implement live ingestion, Weekly News Focus fetching, or provider licensing review.
+- Remaining documented risk: restricted provider and recent-context handling are validated against local fixtures and mocks only.
+- Remaining documented risk: future allowlist updates still need coordinated config, validation tests, and development-log rationale to preserve source-use governance.
+
+Completion commits:
+
+- `d73b51a feat(T-035): add source allowlist and rights-tiered raw text policy contract`
+- `a65feae chore(T-035): merge source allowlist and rights-tiered raw text policy contract`
 
 ### T-034: Add Top-500 stock universe manifest contract
 
