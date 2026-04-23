@@ -21,8 +21,9 @@ import {
   citationLabel,
   getCitationById,
   getCitationContextsForSource,
-  getAssetFixture,
   getPrimarySource,
+  getAssetFixture,
+  toSourceDrawerDocument,
   getWeeklyNewsFocusFixture
 } from "../../../lib/fixtures";
 
@@ -78,7 +79,9 @@ export default async function AssetPage({ params }: AssetPageProps) {
     ...aiComprehensiveAnalysis.sourceDocumentIds
   ]);
   const drawerSourceDocumentIds = new Set([...sectionSourceDocumentIds, ...timelyContextSourceDocumentIds]);
-  const drawerSources = mergedSources.filter((source) => drawerSourceDocumentIds.has(source.sourceDocumentId));
+  const drawerSources = mergedSources
+    .filter((source) => drawerSourceDocumentIds.has(source.sourceDocumentId))
+    .map(toSourceDrawerDocument);
   const timelyContextClaimsBySourceDocumentId = new Map(
     weeklyNewsFocus.items.map((item) => [
       item.source.sourceDocumentId,
@@ -278,18 +281,18 @@ export default async function AssetPage({ params }: AssetPageProps) {
             {hasPrdSections ? (
               drawerSources.map((source) => (
                 <SourceDrawer
-                  key={source.sourceDocumentId}
+                  key={source.source_document_id}
                   source={source}
                   claim={
-                    getCitationContextsForSource(asset, source.sourceDocumentId)[0]?.claimContext ??
-                    timelyContextClaimsBySourceDocumentId.get(source.sourceDocumentId) ??
+                    getCitationContextsForSource(asset, source.source_document_id)[0]?.claimContext ??
+                    timelyContextClaimsBySourceDocumentId.get(source.source_document_id) ??
                     firstClaim.claimText
                   }
-                  contexts={getCitationContextsForSource(asset, source.sourceDocumentId)}
+                  contexts={getCitationContextsForSource(asset, source.source_document_id)}
                 />
               ))
             ) : (
-              <SourceDrawer source={primarySource} claim={firstClaim.claimText} />
+              <SourceDrawer source={toSourceDrawerDocument(primarySource)} claim={firstClaim.claimText} />
             )}
           </>
         }

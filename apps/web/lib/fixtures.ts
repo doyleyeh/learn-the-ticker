@@ -1,4 +1,10 @@
-export type FreshnessState = "fresh" | "stale" | "unknown" | "unavailable";
+export type FreshnessState =
+  | "fresh"
+  | "stale"
+  | "unknown"
+  | "unavailable"
+  | "partial"
+  | "insufficient_evidence";
 export type AssetType = "stock" | "etf";
 export type EvidenceState =
   | "supported"
@@ -36,6 +42,48 @@ export type SourceDocument = {
   freshnessState: FreshnessState;
   isOfficial: boolean;
   supportingPassage: string;
+  sourceQuality?: SourceQuality;
+  source_quality?: SourceQuality;
+  allowlistStatus?: SourceAllowlistStatus;
+  allowlist_status?: SourceAllowlistStatus;
+  sourceUsePolicy?: SourceUsePolicy;
+  source_use_policy?: SourceUsePolicy;
+  permitted_operations?: {
+    can_export_full_text?: boolean;
+  };
+};
+
+export type SourceQuality =
+  | "official"
+  | "issuer"
+  | "provider"
+  | "fixture"
+  | "allowlisted"
+  | "rejected"
+  | "unknown";
+
+export type SourceAllowlistStatus = "allowed" | "rejected" | "pending_review" | "not_allowlisted";
+
+export type SourceUsePolicy =
+  | "metadata_only"
+  | "link_only"
+  | "summary_allowed"
+  | "full_text_allowed"
+  | "rejected";
+
+export type SourceDrawerSourceDocument = SourceDocument & {
+  source_document_id: string;
+  source_type: string;
+  published_at: string | null;
+  as_of_date: string | null;
+  retrieved_at: string;
+  freshness_state: FreshnessState;
+  source_quality: SourceQuality;
+  allowlist_status: SourceAllowlistStatus;
+  source_use_policy: SourceUsePolicy;
+  sourceQuality: SourceQuality;
+  allowlistStatus: SourceAllowlistStatus;
+  sourceUsePolicy: SourceUsePolicy;
 };
 
 export type StockSectionItem = {
@@ -2636,6 +2684,38 @@ export function getCitationById(asset: AssetFixture, citationId: string) {
 
 export function getCitationContextsForSource(asset: AssetFixture, sourceDocumentId: string) {
   return (asset.citationContexts ?? []).filter((context) => context.sourceDocumentId === sourceDocumentId);
+}
+
+export function toSourceDrawerDocument(source: SourceDocument): SourceDrawerSourceDocument {
+  const sourceQuality =
+    source.sourceQuality ??
+    source.source_quality ??
+    (source.isOfficial ? "official" : source.sourceType.startsWith("sec") ? "official" : "fixture");
+  const allowlistStatus = source.allowlistStatus ?? source.allowlist_status ?? "allowed";
+  const sourceUsePolicy =
+    source.sourceUsePolicy ??
+    source.source_use_policy ??
+    (source.sourceType === "structured_market_data"
+      ? "metadata_only"
+      : source.isOfficial || source.sourceType.includes("sec")
+        ? "full_text_allowed"
+        : "summary_allowed");
+
+  return {
+    ...source,
+    source_document_id: source.sourceDocumentId,
+    source_type: source.sourceType,
+    published_at: source.publishedAt,
+    as_of_date: source.asOfDate ?? null,
+    retrieved_at: source.retrievedAt,
+    freshness_state: source.freshnessState,
+    source_quality: sourceQuality,
+    allowlist_status: allowlistStatus,
+    source_use_policy: sourceUsePolicy,
+    sourceQuality: sourceQuality,
+    allowlistStatus: allowlistStatus,
+    sourceUsePolicy: sourceUsePolicy
+  };
 }
 
 export function getWeeklyNewsFocusFixture(ticker: string) {
