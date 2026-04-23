@@ -2,25 +2,24 @@
 
 ## Current task
 
-### T-041: Add glossary asset-context evidence contract
+### T-042: Add unsupported asset search explanation contract
 
 Goal:
-Add a deterministic backend glossary asset-context evidence contract so UI clients can request beginner glossary terms for a selected asset and see which optional asset-specific glossary context is source-backed, generic-only, unavailable, stale, partial, or suppressed without adding frontend UI, live calls, new facts, generated unsupported content, or weakening citation, source-use, freshness, unknown/unavailable/partial, and safety rules.
+Add a deterministic unsupported-asset search explanation contract so search clients can show a clear structured explanation for recognized unsupported and out-of-scope search matches, including why the asset is blocked, which capabilities stay disabled, and what the supported MVP scope is, without adding frontend UI, live calls, new asset coverage, or weakening classification, citation, source-use, freshness, unknown/unavailable/partial, and safety rules.
 
 Task scope:
-This is a backend schema, deterministic response-shaping, eval, and test task over the existing fixture-backed asset knowledge packs and curated beginner glossary concept set. Add a read-only glossary asset-context response that exposes generic beginner definitions plus optional same-asset evidence bindings when an existing normalized fact, source chunk, recent-development record, or explicit evidence gap supports asset-specific context for a term. Generic glossary definitions are educational copy only and must not become citation evidence for asset-specific claims. Preserve the existing frontend glossary UI, generated overview, source drawer, comparison, chat, export, retrieval fixtures, source-use policy, and search behavior. Explicitly return non-generated glossary states for unsupported, out-of-scope, unknown, eligible-not-cached, stale, partial, unavailable, or insufficient-evidence asset contexts. This is not a task to add frontend rendering, glossary detail pages, new glossary prose in the web app, new asset facts, new source documents, ingestion, scraping, persistence, analytics, live provider calls, live LLM calls, exports, source allowlist changes, or broader MVP coverage.
+This is a backend schema, deterministic search response-shaping, eval, and test task over the existing local search dataset, top-500 manifest support rules, unsupported asset metadata, and current `/api/search` contract. Add additive search explanation metadata for blocked search outcomes so recognized unsupported assets such as crypto, leveraged ETFs, and inverse ETFs, plus recognized out-of-scope common stocks outside the current Top-500 manifest, return a structured explanation object rather than only a flat message string. The explanation layer must stay educational and scope-bound: it can explain why the result is blocked, which generated experiences remain disabled, whether ingestion is allowed, and what the supported v1 universe is, but it must not recommend what to buy, invent asset facts, alter deterministic classification, or widen coverage. Preserve existing search ranking, supported search behavior, ambiguous disambiguation behavior, eligible-not-cached ingestion-needed behavior, overview/chat/comparison/export blocking, frontend local fixture search, and no-live-call operation. This is not a task to add frontend rendering, search UX redesign, new routes, new assets, manifest changes, ingestion execution changes, new provider calls, new source documents, or recommendation-like copy.
 
 Allowed files:
 
 - `TASKS.md`
-- `backend/glossary.py`
+- `backend/data.py`
+- `backend/search.py`
 - `backend/models.py`
 - `backend/main.py`
-- `evals/glossary_context_eval_cases.yaml`
+- `evals/search_eval_cases.yaml`
 - `evals/run_static_evals.py`
-- `tests/unit/test_glossary_context.py`
-- `tests/unit/test_retrieval_fixtures.py`
-- `tests/unit/test_citation_validation.py`
+- `tests/unit/test_search_classification.py`
 - `tests/unit/test_safety_guardrails.py`
 - `tests/integration/test_backend_api.py`
 
@@ -30,44 +29,40 @@ Do not change:
 - Do not add user accounts, authentication, cookies, personal identifiers, analytics SDKs, database migrations, Redis dependencies, HTTP clients, browser storage, frontend components, or production dependencies.
 - Do not read, echo, log, serialize, return, commit, or copy actual secret values from the local environment.
 - Do not expose OpenRouter or other provider keys through browser code, `NEXT_PUBLIC_*`, docs, logs, `/health`, API responses, exports, or committed env files.
-- Do not change frontend UI, browser local storage, asset-page layout, glossary popover rendering, comparison page rendering, source drawer rendering, chat panel behavior, export controls, frontend API helpers, or `apps/web/lib/glossary.ts`.
-- Do not change existing generated overview, Weekly News Focus, AI Comprehensive Analysis, search, ingestion, chat-session, export, source-use, source drawer, comparison, or source allowlist behavior except for the additive glossary asset-context API contract.
-- Do not add new generated glossary prose to the frontend, new generated comparison pairs, new asset facts, new normalized facts, new source documents, new retrieval fixtures, new source chunks, new provider fixtures, or broader MVP asset coverage.
-- Do not change source allowlist records or approve a new domain/source. If asset-context evidence lacks an allowed policy, the glossary contract must show generic-only, unavailable, insufficient evidence, or suppressed context rather than relaxing policy.
-- Do not let the glossary asset-context contract decide asset support classification, source-use policy, freshness state, citation validity, or whether generated evidence exists.
-- Do not create generated pages, generated chat answers, generated comparisons, generated risk summaries, generated asset-specific glossary context, or generated asset-specific glossary claims for unsupported, out-of-scope, unknown, eligible-not-cached, unavailable, stale, partial, or insufficient-evidence assets.
-- Do not treat generic glossary definitions as citations, source documents, normalized facts, or support for asset-specific claims.
-- Do not store or return hidden prompts, raw model reasoning, `reasoning_details`, failed raw responses, unrestricted source text, raw chunks, raw user transcripts, unrestricted provider payloads, personal data, source passages beyond existing allowed citation/source behavior, or browser/device identifiers.
-- Do not use rejected, non-allowlisted, metadata-only, link-only, or license-disallowed sources as support for asset-specific glossary context.
+- Do not change frontend UI, browser local storage, home search interactions, `apps/web/components/SearchBox.tsx`, comparison UI, source drawer UI, glossary UI, chat UI, export UI, or frontend API helpers.
+- Do not change deterministic asset classification rules, top-500 manifest policy, eligible-not-cached routing, ingestion job behavior, generated overview/chat/comparison/export behavior, source-use policy, source allowlist behavior, or trust-metrics rules except for the additive unsupported-search explanation contract.
+- Do not add new generated asset pages, generated chat answers, generated comparisons, generated risk summaries, new ingestion flows, new supported assets, new manifest entries, new provider fixtures, or broader MVP asset coverage.
+- Do not let the explanation contract decide whether an asset is supported, unsupported, out of scope, eligible for ingestion, fresh, stale, partial, unknown, or unavailable. Existing deterministic classification remains authoritative.
+- Do not introduce citations, source documents, raw source text, source passages, freshness claims, normalized facts, or Weekly News Focus claims into search explanations. Important factual claims still need citations elsewhere; search explanation copy must stay scope and product-state oriented only.
+- Do not invent recognized unsupported or out-of-scope explanations for unknown tickers.
+- Do not enable generated routes, chat, comparison, or ingestion requests for blocked states that are currently disabled.
+- Do not add recommendation language, buy/sell/hold language, allocation guidance, price targets, tax advice, or brokerage/trading instructions to search explanations.
+- Do not store or return hidden prompts, raw model reasoning, `reasoning_details`, failed raw responses, unrestricted provider payloads, personal data, or browser/device identifiers.
 - Do not add buy/sell/hold recommendations, price targets, predictions, personalized allocation advice, exact position sizing, tax advice, or brokerage/trading behavior.
 - Do not expand MVP scope beyond U.S.-listed common stocks and supported non-leveraged equity ETFs.
 - Do not move the Python backend or frontend workspace.
 
 Acceptance criteria:
 
-- Glossary asset-context contract models cover schema version, selected asset, glossary response state, term identity, generic definition fields, beginner category, asset-context availability state, evidence state, freshness state, related section/fact/chunk/recent/evidence-gap references, citation bindings, source document references, source-use policy, permitted operation flags, uncertainty or suppression reasons, and diagnostics for unavailable/empty states.
-- Add a deterministic read-only route such as `GET /api/assets/{ticker}/glossary` with optional term filtering; it returns the same response model for supported cached, unsupported, out-of-scope, unknown, and eligible-not-cached assets.
-- Supported local assets `AAPL`, `VOO`, and `QQQ` return available glossary responses using existing local knowledge packs and a backend-owned curated term catalog that mirrors the current PRD-required beginner term categories without changing the frontend glossary module.
-- The supported response includes stock-relevant terms for `AAPL` such as `market cap`, `revenue`, `operating margin`, `EPS`, `free cash flow`, `debt`, `P/E ratio`, `forward P/E`, `market risk`, and `concentration risk`, and ETF-relevant terms for `VOO` and `QQQ` such as `expense ratio`, `AUM`, `benchmark`, `index`, `holdings`, `top 10 concentration`, `sector exposure`, `country exposure`, `bid-ask spread`, `premium/discount`, `NAV`, `liquidity`, `tracking error`, `tracking difference`, `market risk`, and `concentration risk`.
-- Generic glossary definitions include simple definition, why it matters, and common beginner mistake fields, and they do not require citations unless the response adds asset-specific factual context.
-- Asset-specific glossary context is emitted only when existing same-asset evidence supports it; unsupported context is labeled generic-only, unavailable, stale, partial, unknown, suppressed, or insufficient-evidence rather than inferred or invented.
-- Every asset-specific glossary context citation references an existing citation-style ID and an existing source document from the selected asset knowledge pack, with same-asset binding and source-use policy preserved.
-- Glossary evidence bindings do not expose wrong-asset source documents, comparison packs, chat sessions, exports, unrelated fixtures, raw chunks, unrestricted source text, hidden prompts, or restricted provider payloads.
-- Source-use policy is preserved: rejected, non-allowlisted, metadata-only, link-only, or license-disallowed sources cannot be marked as supporting asset-specific glossary context, and restricted text is not newly exposed.
-- Fresh, stale, unknown, unavailable, partial, insufficient-evidence, generic-only, and mixed evidence states are preserved in glossary context metadata instead of being normalized away.
-- Unsupported, out-of-scope, unknown, eligible-not-cached, stale, partial, unavailable, and insufficient-evidence assets return explicit non-generated glossary states with generic education only where safe, no asset-specific citations, no source documents, no source-backed asset claims, no generated pages, no chat answers, and no live calls.
-- Glossary diagnostics include deterministic no-live-call, no-new-generated-output, no-frontend-change, and generic-definitions-not-evidence markers so clients can distinguish the response contract from live ingestion or LLM generation.
-- Static evals verify required models/helpers/routes, term catalog coverage, same-asset citation/source binding, source-use policy handling, freshness/evidence labels, generic-only behavior, non-generated states, no restricted text exposure, no live-call imports, no source allowlist mutation, no frontend glossary mutation requirement, no new fixture/domain approval, and no forbidden advice language.
-- Tests verify supported glossary serialization for `AAPL`, `VOO`, and `QQQ`, optional term filtering, asset-specific context citation/source binding, generic-only terms with no citations, unsupported/out-of-scope/unknown/eligible-not-cached non-generated states, source-use/freshness preservation, API route serialization, citation validation, retrieval fixture same-asset behavior, and safety guardrails.
+- Search explanation contract models cover schema version, result or state status, explanation kind/category, beginner-readable summary, deterministic scope rationale, blocked capability flags, ingestion eligibility, supported-v1 scope reminder, and diagnostics showing that the explanation is deterministic product-state metadata rather than generated asset analysis.
+- `GET /api/search` remains the route surface and returns the additive explanation contract for single-result blocked outcomes without changing current supported, ambiguous, eligible-not-cached, or unknown route behavior.
+- Recognized unsupported searches `BTC`, `TQQQ`, and `SQQQ` return `unsupported` with structured explanation metadata derived from existing deterministic unsupported categories and reasons, keep `generated_route` as `null`, keep chat/compare/open-page flags false, and keep ingestion request fields unset.
+- Recognized out-of-scope search `GME` returns `out_of_scope` with structured explanation metadata that makes clear it is a recognized U.S.-listed common stock outside the current Top-500 manifest-backed MVP scope, with no generated route and no ingestion request.
+- Unknown search `ZZZZ` remains `unknown`, does not gain a fabricated recognized-unsupported or out-of-scope explanation, and keeps the existing no-invented-facts behavior.
+- Eligible-not-cached searches such as `SPY`, `SOXX`, and `BRK.B` preserve `ingestion_needed`, `eligible_not_cached`, and ingestion request routing exactly; the new blocked explanation contract must not mislabel them as unsupported or remove their deterministic ingestion-needed messaging.
+- Supported searches such as `VOO` and `AAPL`, plus ambiguous search such as `S&P 500 ETF`, preserve current ranking, disambiguation, and generated-route behavior.
+- Structured explanation copy stays educational and scope-focused, explicitly states the supported MVP universe as U.S.-listed common stocks and non-leveraged U.S.-listed equity ETFs, and does not tell the user what to buy, sell, hold, or compare.
+- Search explanation metadata does not introduce citations, source documents, Weekly News Focus claims, freshness claims, raw source text, or unsupported asset facts.
+- Static evals verify required models/helpers/route behavior, blocked explanation coverage for unsupported and out-of-scope results, preservation of unknown and eligible-not-cached behavior, no live-call imports, no frontend mutation requirement, no manifest mutation requirement, and no forbidden advice language.
+- Tests verify schema serialization for unsupported and out-of-scope explanation payloads, preservation of supported/ambiguous/eligible-not-cached/unknown behavior, API serialization, and safety guardrails.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_glossary_context.py tests/unit/test_retrieval_fixtures.py tests/unit/test_citation_validation.py tests/unit/test_safety_guardrails.py -q
+python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_safety_guardrails.py -q
 python3 -m pytest tests/integration/test_backend_api.py -q
 python3 -m pytest tests -q
 npm test
-npm run typecheck
 python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
 ```
@@ -77,8 +72,6 @@ Max 3 attempts.
 
 ## Backlog
 
-### T-042: Add unsupported asset search explanation contract
-
 ### T-043: Add section-level freshness validation contract
 
 ### T-044: Add export source-use and freshness validation contract
@@ -86,6 +79,31 @@ Max 3 attempts.
 ### T-045: Add grounded chat comparison-redirect contract
 
 ## Completed
+
+### T-041: Add glossary asset-context evidence contract
+
+Goal:
+Add a deterministic backend glossary asset-context evidence contract so UI clients can request beginner glossary terms for a selected asset and see which optional asset-specific glossary context is source-backed, generic-only, unavailable, stale, partial, or suppressed without adding frontend UI, live calls, new facts, generated unsupported content, or weakening citation, source-use, freshness, unknown/unavailable/partial, and safety rules.
+
+Completed:
+
+- Added `backend/glossary.py` with a deterministic `glossary-asset-context-v1` response builder, a backend-owned curated term catalog, and asset-aware term coverage for stock terms such as `market cap`, `revenue`, `operating margin`, `EPS`, `free cash flow`, `debt`, `P/E ratio`, and `forward P/E`, plus ETF terms such as `expense ratio`, `AUM`, `benchmark`, `holdings`, `tracking error`, and `tracking difference`.
+- Added glossary response and asset-context contract models in `backend/models.py` so term identity, generic definition fields, asset-context availability state, evidence metadata, and diagnostics serialize through a stable backend schema.
+- Wired `GET /api/assets/{ticker}/glossary` in `backend/main.py` with optional `term` filtering.
+- Implemented deterministic generic-only and source-backed glossary behavior in `backend/glossary.py`, including same-asset citation/source binding, preserved unavailable or insufficient-evidence states, and non-generated states for `eligible_not_cached`, `unsupported`, `out_of_scope`, and `unknown` assets.
+- Added `evals/glossary_context_eval_cases.yaml` and extended `evals/run_static_evals.py` to verify required glossary models/helpers, curated term coverage, same-asset citation/source binding, generic-only behavior, non-generated blocked states, no restricted text exposure, no live-call imports, and no forbidden advice language.
+- Added `tests/unit/test_glossary_context.py` and updated retrieval, citation, safety, and backend API coverage in `tests/unit/test_retrieval_fixtures.py`, `tests/unit/test_citation_validation.py`, `tests/unit/test_safety_guardrails.py`, and `tests/integration/test_backend_api.py` for supported `AAPL`, `VOO`, and `QQQ` glossary serialization, optional term filtering, generic-only terms, and blocked states for `SPY`, `TQQQ`, `GME`, and `ZZZZ`.
+- Added `docs/agent-journal/20260423T143641Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- T-041 agent journal records that focused glossary/retrieval/citation/safety pytest passed with 36 tests, backend API pytest passed with 30 tests, full Python pytest passed with 189 tests, static evals passed, `npm test` and `npm run typecheck` passed, and the full quality gate passed.
+- Merged local branch: `agent/T-041-20260423T143641Z`.
+- Remaining documented risk: glossary asset-context is deterministic and fixture-backed only; it does not add live ingestion, scraping, persistence, frontend rendering, or new asset facts.
+- Remaining documented risk: asset-specific glossary context exposes evidence metadata and bindings, not new explanatory prose or raw source passages.
+- Remaining documented risk: future persisted glossary context will need to preserve the same same-asset citation/source binding and source-use policy checks.
+
+Completion commits:
+
+- `b61747e feat(T-041): add glossary asset-context evidence contract`
+- `046b05f chore(T-041): merge glossary asset-context evidence contract`
 
 ### T-040: Add comparison evidence availability contract
 
