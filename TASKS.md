@@ -76,6 +76,16 @@ Max 3 attempts.
 
 ### T-038: Add accountless chat session lifecycle contract
 
+### T-039: Add asset source drawer response contract
+
+### T-040: Add comparison evidence availability contract
+
+### T-041: Add glossary asset-context evidence contract
+
+### T-042: Add unsupported asset search explanation contract
+
+### T-043: Add section-level freshness validation contract
+
 ## Completed
 
 ### T-033: Rebase agent instructions and local environment to updated PRD/TDS
