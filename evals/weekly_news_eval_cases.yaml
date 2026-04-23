@@ -1,0 +1,56 @@
+schema_version: weekly-news-evals-v1
+window_cases:
+  - id: thursday_eastern_window
+    as_of: "2026-04-23"
+    expected_previous_market_week:
+      start: "2026-04-13"
+      end: "2026-04-19"
+    expected_current_week_to_date:
+      start: "2026-04-20"
+      end: "2026-04-22"
+    expected_news_window_start: "2026-04-13"
+    expected_news_window_end: "2026-04-22"
+  - id: monday_empty_current_week
+    as_of: "2026-04-20"
+    expected_previous_market_week:
+      start: "2026-04-13"
+      end: "2026-04-19"
+    expected_current_week_to_date:
+      start: null
+      end: null
+    expected_news_window_start: "2026-04-13"
+    expected_news_window_end: "2026-04-19"
+fixture_cases:
+  - id: voo_empty_weekly_news
+    ticker: VOO
+    expected_state: no_high_signal
+    expected_item_count: 0
+    expected_ai_state: suppressed
+    expected_ai_available: false
+  - id: qqq_empty_weekly_news
+    ticker: QQQ
+    expected_state: no_high_signal
+    expected_item_count: 0
+    expected_ai_state: suppressed
+    expected_ai_available: false
+source_policy_required_exclusions:
+  - rejected_source
+  - non_allowlisted_source
+  - metadata_only
+  - link_only
+  - duplicate
+  - promotional
+  - irrelevant
+  - wrong_asset
+analysis_required_section_order:
+  - What Changed This Week
+  - Market Context
+  - Business/Fund Context
+  - Risk Context
+forbidden_analysis_language:
+  - should buy
+  - should sell
+  - should hold
+  - price target
+  - guaranteed
+  - will outperform

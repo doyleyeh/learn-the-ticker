@@ -514,6 +514,89 @@ def _asset_page_sections(overview: OverviewResponse) -> list[ExportedSection]:
 
     sections.append(
         ExportedSection(
+            section_id="weekly_news_focus",
+            title="Weekly News Focus",
+            section_type=OverviewSectionType.weekly_news_focus,
+            text=(
+                "Weekly News Focus is exported as timely context separate from stable facts. "
+                f"Window: {overview.weekly_news_focus.window.news_window_start} through "
+                f"{overview.weekly_news_focus.window.news_window_end}."
+                if overview.weekly_news_focus
+                else "Weekly News Focus is unavailable in this deterministic export."
+            ),
+            items=[
+                ExportedItem(
+                    item_id=item.event_id,
+                    title=item.title,
+                    text=_with_citations(item.summary, item.citation_ids),
+                    citation_ids=item.citation_ids,
+                    source_document_ids=[item.source.source_document_id],
+                    freshness_state=item.freshness_state,
+                    evidence_state=EvidenceState.supported,
+                    event_date=item.event_date,
+                    retrieved_at=item.source.retrieved_at,
+                    metadata={
+                        "period_bucket": item.period_bucket.value,
+                        "source_quality": item.source.source_quality.value,
+                        "source_use_policy": item.source.source_use_policy.value,
+                        "allowlist_status": item.source.allowlist_status.value,
+                        "importance_score": item.importance_score,
+                    },
+                )
+                for item in (overview.weekly_news_focus.items if overview.weekly_news_focus else [])
+            ],
+            citation_ids=sorted(
+                {citation_id for item in (overview.weekly_news_focus.items if overview.weekly_news_focus else []) for citation_id in item.citation_ids}
+            ),
+            source_document_ids=sorted(
+                {item.source.source_document_id for item in (overview.weekly_news_focus.items if overview.weekly_news_focus else [])}
+            ),
+            freshness_state=overview.freshness.freshness_state,
+            evidence_state=EvidenceState.supported
+            if overview.weekly_news_focus and overview.weekly_news_focus.items
+            else EvidenceState.no_high_signal,
+            as_of_date=overview.weekly_news_focus.window.news_window_end if overview.weekly_news_focus else None,
+        )
+    )
+
+    sections.append(
+        ExportedSection(
+            section_id="ai_comprehensive_analysis",
+            title="AI Comprehensive Analysis",
+            section_type=OverviewSectionType.ai_comprehensive_analysis,
+            text=(
+                "AI Comprehensive Analysis is suppressed unless at least two high-signal Weekly News Focus items exist."
+                if overview.ai_comprehensive_analysis and not overview.ai_comprehensive_analysis.analysis_available
+                else "AI Comprehensive Analysis is exported as cited timely context separate from stable facts."
+            ),
+            items=[
+                ExportedItem(
+                    item_id=section.section_id,
+                    title=section.label,
+                    text=_with_citations(
+                        " ".join([section.analysis, *section.bullets, *section.uncertainty]),
+                        section.citation_ids,
+                    ),
+                    citation_ids=section.citation_ids,
+                    source_document_ids=overview.ai_comprehensive_analysis.source_document_ids,
+                    freshness_state=overview.freshness.freshness_state,
+                    evidence_state=EvidenceState.supported,
+                    metadata={"analysis_section_label": section.label},
+                )
+                for section in (overview.ai_comprehensive_analysis.sections if overview.ai_comprehensive_analysis else [])
+            ],
+            citation_ids=overview.ai_comprehensive_analysis.citation_ids if overview.ai_comprehensive_analysis else [],
+            source_document_ids=overview.ai_comprehensive_analysis.source_document_ids if overview.ai_comprehensive_analysis else [],
+            freshness_state=overview.freshness.freshness_state,
+            evidence_state=EvidenceState.supported
+            if overview.ai_comprehensive_analysis and overview.ai_comprehensive_analysis.analysis_available
+            else EvidenceState.insufficient_evidence,
+            limitations=overview.ai_comprehensive_analysis.suppression_reason if overview.ai_comprehensive_analysis else None,
+        )
+    )
+
+    sections.append(
+        ExportedSection(
             section_id="recent_developments",
             title="Recent Developments",
             section_type=OverviewSectionType.recent_developments,

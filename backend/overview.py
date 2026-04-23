@@ -41,6 +41,11 @@ from backend.retrieval import (
 )
 from backend.safety import find_forbidden_output_phrases
 from backend.source_policy import resolve_source_policy
+from backend.weekly_news import (
+    DEFAULT_WEEKLY_NEWS_AS_OF,
+    build_ai_comprehensive_analysis,
+    build_weekly_news_focus_from_pack,
+)
 
 
 class OverviewGenerationError(ValueError):
@@ -83,6 +88,7 @@ def generate_overview_from_pack(pack: AssetKnowledgePack) -> OverviewResponse:
     risk_citation_id = bindings.for_chunk(risk_chunk).citation.citation_id
     top_risks = _build_top_risks(pack, risk_citation_id)
     recent_developments = _build_recent_developments(pack, bindings)
+    weekly_news_focus = build_weekly_news_focus_from_pack(pack, as_of=DEFAULT_WEEKLY_NEWS_AS_OF)
     suitability_summary = _build_suitability_summary(pack, facts_by_field)
     sections = _build_overview_sections(
         pack=pack,
@@ -113,6 +119,14 @@ def generate_overview_from_pack(pack: AssetKnowledgePack) -> OverviewResponse:
             f"{first_issue.status.value} on {first_issue.claim_id}"
         )
 
+    canonical_citation_ids = [identity_citation_id]
+    ai_comprehensive_analysis = build_ai_comprehensive_analysis(
+        pack.asset,
+        weekly_news_focus,
+        canonical_fact_citation_ids=canonical_citation_ids,
+        canonical_source_document_ids=[identity_fact.source_document.source_document_id],
+    )
+
     response = OverviewResponse(
         asset=pack.asset,
         state=_state_for_pack(pack),
@@ -121,6 +135,8 @@ def generate_overview_from_pack(pack: AssetKnowledgePack) -> OverviewResponse:
         beginner_summary=beginner_summary,
         top_risks=top_risks,
         recent_developments=recent_developments,
+        weekly_news_focus=weekly_news_focus,
+        ai_comprehensive_analysis=ai_comprehensive_analysis,
         suitability_summary=suitability_summary,
         claims=[planned.claim for planned in planned_claims],
         citations=bindings.citations(),
@@ -266,6 +282,8 @@ class _CitationRegistry:
 
 
 def _unsupported_overview(pack: AssetKnowledgePack) -> OverviewResponse:
+    weekly_news_focus = build_weekly_news_focus_from_pack(pack, as_of=DEFAULT_WEEKLY_NEWS_AS_OF)
+    ai_comprehensive_analysis = build_ai_comprehensive_analysis(pack.asset, weekly_news_focus)
     return OverviewResponse(
         asset=pack.asset,
         state=_state_for_pack(pack),
@@ -274,6 +292,8 @@ def _unsupported_overview(pack: AssetKnowledgePack) -> OverviewResponse:
         beginner_summary=None,
         top_risks=[],
         recent_developments=[],
+        weekly_news_focus=weekly_news_focus,
+        ai_comprehensive_analysis=ai_comprehensive_analysis,
         suitability_summary=None,
         claims=[],
         citations=[],

@@ -41,6 +41,8 @@ def test_supported_asset_page_exports_preserve_sections_citations_sources_and_di
         assert "Licensing Note" in export.rendered_markdown
         assert "beginner_summary" in section_ids
         assert "top_risks" in section_ids
+        assert "weekly_news_focus" in section_ids
+        assert "ai_comprehensive_analysis" in section_ids
         assert "recent_developments" in section_ids
         assert "educational_suitability" in section_ids
         assert "prd_sections" in section_ids
@@ -66,6 +68,13 @@ def test_supported_asset_page_exports_preserve_sections_citations_sources_and_di
         assert recent.items
         assert "recent" in recent.text.lower()
         assert all(item.citation_ids for item in recent.items)
+
+        weekly = _section(export, "weekly_news_focus")
+        analysis = _section(export, "ai_comprehensive_analysis")
+        assert "Weekly News Focus" in weekly.title
+        assert weekly.evidence_state.value == "no_high_signal"
+        assert analysis.evidence_state.value == "insufficient_evidence"
+        assert "suppressed" in analysis.text.lower()
 
         prd = _section(export, "prd_sections")
         assert prd.items

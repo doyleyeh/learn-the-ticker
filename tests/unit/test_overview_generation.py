@@ -28,6 +28,14 @@ def test_supported_asset_overviews_are_schema_valid_and_source_backed():
         assert validated.beginner_summary.main_catch
         assert len(validated.top_risks) == 3
         assert validated.recent_developments
+        assert validated.weekly_news_focus is not None
+        assert validated.weekly_news_focus.window.news_window_start == "2026-04-13"
+        assert validated.weekly_news_focus.window.news_window_end == "2026-04-22"
+        assert validated.weekly_news_focus.items == []
+        assert validated.weekly_news_focus.empty_state is not None
+        assert validated.ai_comprehensive_analysis is not None
+        assert validated.ai_comprehensive_analysis.analysis_available is False
+        assert validated.ai_comprehensive_analysis.sections == []
         assert validated.suitability_summary is not None
         assert validated.sections
         assert validated.claims
@@ -153,6 +161,10 @@ def test_generated_overviews_keep_recent_context_separate_and_explicit():
         assert recent.citation_ids[0].startswith("c_recent_")
         assert recent_section.citation_ids == recent.citation_ids
         assert recent_section.items[0].event_date == recent.event_date
+        assert overview.weekly_news_focus is not None
+        assert overview.weekly_news_focus.stable_facts_are_separate is True
+        assert overview.ai_comprehensive_analysis is not None
+        assert overview.ai_comprehensive_analysis.stable_facts_are_separate is True
 
 
 def test_unknown_and_unsupported_overviews_do_not_generate_facts_or_citations():

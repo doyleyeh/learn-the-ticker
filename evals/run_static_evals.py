@@ -67,6 +67,7 @@ from backend.models import (
     TrustMetricCatalogResponse,
     TrustMetricEvent,
     TrustMetricSummary,
+    WeeklyNewsContractState,
 )
 from backend.overview import generate_asset_overview, validate_overview_response
 from backend.providers import fetch_mock_provider_response, get_mock_provider_adapters
@@ -83,6 +84,11 @@ from backend.trust_metrics import (
     summarize_trust_metric_events,
     validate_trust_metric_event,
     validate_trust_metric_events,
+)
+from backend.weekly_news import (
+    build_ai_comprehensive_analysis,
+    build_weekly_news_focus_from_pack,
+    compute_weekly_news_window,
 )
 
 
@@ -1612,6 +1618,8 @@ def test_export_cases():
             top_risks = next(section for section in validated.sections if section.section_id == "top_risks")
             assert len(top_risks.items) == 3
             assert any(section.section_id == "recent_developments" for section in validated.sections)
+            assert any(section.section_id == "weekly_news_focus" for section in validated.sections)
+            assert any(section.section_id == "ai_comprehensive_analysis" for section in validated.sections)
             assert validated.metadata["recent_developments_separate"] is True
 
         if validated.export_state.value in {"unsupported", "unavailable"}:
@@ -1626,6 +1634,62 @@ def test_export_cases():
     for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import", "reportlab", "weasyprint"]:
         assert forbidden not in export_source
         assert forbidden not in main_source
+
+
+def test_weekly_news_cases():
+    data = load_yaml("weekly_news_eval_cases.yaml")
+    assert data.get("schema_version") == "weekly-news-evals-v1"
+
+    for case in data["window_cases"]:
+        window = compute_weekly_news_window(case["as_of"])
+        assert window.previous_market_week.model_dump(mode="json") == case["expected_previous_market_week"]
+        assert window.current_week_to_date.model_dump(mode="json") == case["expected_current_week_to_date"]
+        assert window.news_window_start == case["expected_news_window_start"]
+        assert window.news_window_end == case["expected_news_window_end"]
+
+    for case in data["fixture_cases"]:
+        pack = build_asset_knowledge_pack(case["ticker"])
+        focus = build_weekly_news_focus_from_pack(pack, as_of="2026-04-23")
+        analysis = build_ai_comprehensive_analysis(pack.asset, focus)
+
+        assert focus.state.value == case["expected_state"]
+        assert len(focus.items) == case["expected_item_count"]
+        assert focus.stable_facts_are_separate is True
+        assert analysis.state.value == case["expected_ai_state"]
+        assert analysis.analysis_available is case["expected_ai_available"]
+        assert analysis.stable_facts_are_separate is True
+        if focus.items == []:
+            assert focus.empty_state is not None
+            assert focus.empty_state.message
+
+    required_models = {
+        "WeeklyNewsWindow",
+        "WeeklyNewsItem",
+        "WeeklyNewsSelectionRationale",
+        "WeeklyNewsDeduplicationMetadata",
+        "WeeklyNewsSourceMetadata",
+        "WeeklyNewsFocusResponse",
+        "AIComprehensiveAnalysisSection",
+        "AIComprehensiveAnalysisResponse",
+    }
+    assert required_models <= set(dir(models))
+
+    overview = generate_asset_overview("VOO")
+    assert overview.weekly_news_focus is not None
+    assert overview.ai_comprehensive_analysis is not None
+    assert overview.weekly_news_focus.state is WeeklyNewsContractState.no_high_signal
+    assert overview.ai_comprehensive_analysis.state is WeeklyNewsContractState.suppressed
+    assert not overview.ai_comprehensive_analysis.analysis_available
+    assert "weekly_news_focus" not in {section.section_id for section in overview.sections if section.section_type.value == "stable_facts"}
+
+    weekly_source = (ROOT / "backend" / "weekly_news.py").read_text(encoding="utf-8")
+    for required in data["source_policy_required_exclusions"]:
+        assert required in weekly_source
+    for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import", "os.environ", "api_key"]:
+        assert forbidden not in weekly_source
+    analysis_text = _flatten_static_text(overview.ai_comprehensive_analysis.model_dump(mode="json"))
+    for phrase in data["forbidden_analysis_language"]:
+        assert phrase not in analysis_text.lower()
 
 
 def _flatten_static_text(value):
@@ -1664,4 +1728,5 @@ if __name__ == "__main__":
     test_generated_comparison_contract()
     test_generated_chat_contract()
     test_export_cases()
+    test_weekly_news_cases()
     print("Static evals passed.")
