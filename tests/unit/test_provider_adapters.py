@@ -171,6 +171,16 @@ def test_provider_failure_states_are_explicit_without_invented_facts():
     assert unknown.errors[0].code == "unknown_asset"
     _assert_no_generated_outputs(unknown)
 
+    out_of_scope = market.fetch(market.request("GME"))
+    assert out_of_scope.state is ProviderResponseState.out_of_scope
+    assert out_of_scope.asset is not None
+    assert out_of_scope.asset.ticker == "GME"
+    assert out_of_scope.asset.supported is False
+    assert out_of_scope.facts == []
+    assert out_of_scope.source_attributions == []
+    assert out_of_scope.errors[0].code == "recognized_common_stock_outside_top500_manifest"
+    _assert_no_generated_outputs(out_of_scope)
+
     unavailable = recent.fetch(recent.request("ZZZZ"))
     assert unavailable.state is ProviderResponseState.unavailable
     assert unavailable.asset is None

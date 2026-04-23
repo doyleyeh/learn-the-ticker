@@ -6,6 +6,7 @@ from typing import Protocol
 from backend.data import (
     ASSETS,
     ELIGIBLE_NOT_CACHED_ASSETS,
+    OUT_OF_SCOPE_COMMON_STOCKS,
     STUB_TIMESTAMP,
     UNSUPPORTED_ASSETS,
     normalize_ticker,
@@ -264,6 +265,8 @@ def _build_sec_response(adapter: MockProviderAdapter, request: ProviderRequestMe
         return _eligible_not_cached_response(adapter, request, licensing)
     if ticker in UNSUPPORTED_ASSETS:
         return _unsupported_response(adapter, request, licensing)
+    if ticker in OUT_OF_SCOPE_COMMON_STOCKS:
+        return _out_of_scope_response(adapter, request, licensing)
     return _unknown_response(adapter, request, licensing)
 
 
@@ -382,6 +385,8 @@ def _build_etf_issuer_response(adapter: MockProviderAdapter, request: ProviderRe
         return _eligible_not_cached_response(adapter, request, licensing)
     if ticker in UNSUPPORTED_ASSETS:
         return _unsupported_response(adapter, request, licensing)
+    if ticker in OUT_OF_SCOPE_COMMON_STOCKS:
+        return _out_of_scope_response(adapter, request, licensing)
     return _unknown_response(adapter, request, licensing)
 
 
@@ -448,6 +453,8 @@ def _build_market_reference_response(adapter: MockProviderAdapter, request: Prov
 
     if ticker in UNSUPPORTED_ASSETS:
         return _unsupported_response(adapter, request, licensing)
+    if ticker in OUT_OF_SCOPE_COMMON_STOCKS:
+        return _out_of_scope_response(adapter, request, licensing)
     return _unknown_response(adapter, request, licensing)
 
 
@@ -539,6 +546,8 @@ def _build_recent_development_response(adapter: MockProviderAdapter, request: Pr
         return _eligible_not_cached_response(adapter, request, licensing)
     if ticker in UNSUPPORTED_ASSETS:
         return _unsupported_response(adapter, request, licensing)
+    if ticker in OUT_OF_SCOPE_COMMON_STOCKS:
+        return _out_of_scope_response(adapter, request, licensing)
     return _unavailable_response(adapter, request, licensing)
 
 
@@ -562,6 +571,16 @@ def _known_asset_identity(ticker: str) -> AssetIdentity | None:
             name=ticker,
             asset_type=AssetType.unsupported,
             status=AssetStatus.unsupported,
+            supported=False,
+        )
+    out_of_scope = OUT_OF_SCOPE_COMMON_STOCKS.get(ticker)
+    if out_of_scope:
+        return AssetIdentity(
+            ticker=ticker,
+            name=str(out_of_scope["name"]),
+            asset_type=AssetType.stock,
+            exchange=str(out_of_scope["exchange"]) if out_of_scope.get("exchange") else None,
+            status=AssetStatus.unknown,
             supported=False,
         )
     return None
@@ -720,6 +739,34 @@ def _unsupported_response(
             )
         ],
         message=f"{ticker} is recognized but unsupported; no provider facts or generated outputs were created.",
+    )
+
+
+def _out_of_scope_response(
+    adapter: MockProviderAdapter,
+    request: ProviderRequestMetadata,
+    licensing: ProviderLicensing,
+) -> ProviderResponse:
+    ticker = request.normalized_ticker
+    return _response(
+        adapter=adapter,
+        request=request,
+        state=ProviderResponseState.out_of_scope,
+        licensing=licensing,
+        asset=_known_asset_identity(ticker),
+        freshness_state=FreshnessState.unavailable,
+        errors=[
+            ProviderError(
+                code="recognized_common_stock_outside_top500_manifest",
+                message=str(OUT_OF_SCOPE_COMMON_STOCKS[ticker]["reason"]),
+                retryable=False,
+                response_state=ProviderResponseState.out_of_scope,
+            )
+        ],
+        message=(
+            f"{ticker} is a recognized common stock outside the local Top-500 manifest; "
+            "no provider facts or generated outputs were created."
+        ),
     )
 
 

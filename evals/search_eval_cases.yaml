@@ -58,6 +58,14 @@ cases:
     expected_can_open_generated_page: false
     expected_can_request_ingestion: false
 
+  - id: search_out_of_scope_common_stock
+    query: GME
+    expected_state: out_of_scope
+    expected_result_tickers: [GME]
+    expected_support_classifications: [out_of_scope]
+    expected_can_open_generated_page: false
+    expected_can_request_ingestion: false
+
   - id: search_eligible_not_cached_spy
     query: SPY
     expected_state: ingestion_needed

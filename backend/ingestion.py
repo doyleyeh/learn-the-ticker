@@ -3,6 +3,7 @@ from __future__ import annotations
 from backend.data import (
     ASSETS,
     ELIGIBLE_NOT_CACHED_ASSETS,
+    OUT_OF_SCOPE_COMMON_STOCKS,
     STUB_TIMESTAMP,
     UNSUPPORTED_ASSETS,
     normalize_ticker,
@@ -68,6 +69,17 @@ def request_ingestion(ticker: str) -> IngestionJobResponse:
             message=f"{UNSUPPORTED_ASSETS[normalized]} No ingestion job was created.",
         )
 
+    out_of_scope = OUT_OF_SCOPE_COMMON_STOCKS.get(normalized)
+    if out_of_scope:
+        return IngestionJobResponse(
+            ticker=normalized,
+            asset_type=AssetType.stock,
+            job_state=IngestionJobState.out_of_scope,
+            retryable=False,
+            capabilities=_capabilities(),
+            message=f"{out_of_scope['reason']} No ingestion job was created.",
+        )
+
     return IngestionJobResponse(
         ticker=normalized,
         asset_type=AssetType.unknown,
@@ -101,6 +113,8 @@ def request_pre_cache_for_asset(ticker: str) -> PreCacheJobResponse:
         return _pre_cache_job_for_launch_ticker(normalized)
     if normalized in UNSUPPORTED_ASSETS:
         return _pre_cache_unsupported_job(normalized)
+    if normalized in OUT_OF_SCOPE_COMMON_STOCKS:
+        return _pre_cache_out_of_scope_job(normalized)
     return _pre_cache_unknown_job(normalized)
 
 
@@ -114,6 +128,11 @@ def get_pre_cache_job_status(job_id: str) -> PreCacheJobResponse:
         ticker = job_id.removeprefix("pre-cache-unsupported-").upper()
         if ticker in UNSUPPORTED_ASSETS:
             return _pre_cache_unsupported_job(ticker)
+
+    if job_id.startswith("pre-cache-out-of-scope-"):
+        ticker = job_id.removeprefix("pre-cache-out-of-scope-").upper()
+        if ticker in OUT_OF_SCOPE_COMMON_STOCKS:
+            return _pre_cache_out_of_scope_job(ticker)
 
     if job_id.startswith("pre-cache-unknown-"):
         ticker = job_id.removeprefix("pre-cache-unknown-").upper()
@@ -254,6 +273,22 @@ def _pre_cache_unsupported_job(ticker: str) -> PreCacheJobResponse:
         retryable=False,
         capabilities=_capabilities(),
         message=f"{UNSUPPORTED_ASSETS[ticker]} No pre-cache job can create generated output for this asset.",
+    )
+
+
+def _pre_cache_out_of_scope_job(ticker: str) -> PreCacheJobResponse:
+    metadata = OUT_OF_SCOPE_COMMON_STOCKS[ticker]
+    return _pre_cache_job_response(
+        ticker=ticker,
+        name=str(metadata["name"]),
+        asset_type=AssetType.stock,
+        launch_group="out_of_scope_common_stock",
+        job_id=f"pre-cache-out-of-scope-{ticker.lower()}",
+        job_state=IngestionJobState.out_of_scope,
+        worker_status=None,
+        retryable=False,
+        capabilities=_capabilities(),
+        message=f"{metadata['reason']} No pre-cache job can create generated output for this asset.",
     )
 
 

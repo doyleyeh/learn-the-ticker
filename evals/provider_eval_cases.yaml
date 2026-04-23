@@ -113,6 +113,12 @@ failure_cases:
     expected_state: unsupported
     expected_error_code: recognized_unsupported_asset
 
+  - id: provider_market_gme_out_of_scope
+    provider_kind: market_reference
+    ticker: GME
+    expected_state: out_of_scope
+    expected_error_code: recognized_common_stock_outside_top500_manifest
+
   - id: provider_market_zzzz_unknown
     provider_kind: market_reference
     ticker: ZZZZ
