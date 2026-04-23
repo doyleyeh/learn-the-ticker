@@ -28,6 +28,7 @@ from backend.ingestion import (
     request_launch_universe_pre_cache,
     request_pre_cache_for_asset,
 )
+from backend.llm import runtime_diagnostics
 from backend.models import (
     AssetIdentity,
     ChatRequest,
@@ -41,6 +42,7 @@ from backend.models import (
     ExportResponse,
     IngestionJobResponse,
     KnowledgePackBuildResponse,
+    LlmRuntimeDiagnosticsResponse,
     OverviewResponse,
     PreCacheBatchResponse,
     PreCacheJobResponse,
@@ -217,3 +219,8 @@ def trust_metrics_catalog() -> TrustMetricCatalogResponse:
 @app.post("/api/trust-metrics/validate", response_model=TrustMetricValidationResponse, tags=["trust-metrics"])
 def trust_metrics_validate(request: TrustMetricValidationRequest) -> TrustMetricValidationResponse:
     return validate_trust_metric_events(request.events)
+
+
+@app.get("/api/llm/runtime", response_model=LlmRuntimeDiagnosticsResponse, tags=["llm"])
+def llm_runtime() -> LlmRuntimeDiagnosticsResponse:
+    return runtime_diagnostics()

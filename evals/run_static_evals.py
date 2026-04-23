@@ -36,6 +36,17 @@ from backend.data import (
 from backend.export import export_asset_page, export_asset_source_list, export_chat_transcript, export_comparison
 from backend.ingestion import get_ingestion_job_status, request_ingestion
 from backend.ingestion import get_pre_cache_job_status, request_launch_universe_pre_cache, request_pre_cache_for_asset
+from backend.llm import (
+    DEFAULT_OPENROUTER_FREE_MODEL_ORDER,
+    DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL,
+    build_llm_runtime_config,
+    decide_cache_eligibility,
+    decide_paid_fallback,
+    default_openrouter_settings,
+    run_deterministic_mock_generation,
+    runtime_diagnostics,
+    validate_llm_generated_output,
+)
 from backend.main import app
 from backend.models import (
     CacheEntryKind,
@@ -55,6 +66,15 @@ from backend.models import (
     IngestionJobResponse,
     KnowledgePackBuildResponse,
     KnowledgePackFreshnessInput,
+    LlmFallbackTrigger,
+    LlmGenerationAttemptMetadata,
+    LlmGenerationAttemptStatus,
+    LlmGenerationRequestMetadata,
+    LlmLiveGateState,
+    LlmModelTier,
+    LlmProviderKind,
+    LlmRuntimeDiagnosticsResponse,
+    LlmValidationStatus,
     MetricValue,
     PreCacheBatchResponse,
     PreCacheJobResponse,
@@ -978,6 +998,14 @@ def test_provider_cases():
     adapters = get_mock_provider_adapters()
     required_provider_kinds = {ProviderKind(kind) for kind in data.get("required_provider_kinds", [])}
     assert required_provider_kinds <= set(adapters), f"Missing provider adapters: {required_provider_kinds - set(adapters)}"
+    llm_contract = data.get("llm_runtime_provider_contract", {})
+    assert llm_contract["default_provider_kind"] == "mock"
+    assert llm_contract["live_provider_kind"] == "openrouter"
+    assert llm_contract["requires_sanitized_key_presence_flag"] is True
+    assert llm_contract["no_secret_values_allowed"] is True
+    assert llm_contract["default_live_network_calls_allowed"] is False
+    assert llm_contract["free_model_order"] == list(DEFAULT_OPENROUTER_FREE_MODEL_ORDER)
+    assert llm_contract["paid_fallback_model"] == DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL
 
     for adapter in adapters.values():
         assert adapter.capability.requires_credentials is False
@@ -1692,6 +1720,173 @@ def test_weekly_news_cases():
         assert phrase not in analysis_text.lower()
 
 
+def test_llm_provider_cases():
+    data = load_yaml("llm_provider_eval_cases.yaml")
+    assert data.get("schema_version") == "llm-provider-evals-v1"
+
+    missing_models = {name for name in data.get("required_models", []) if not hasattr(models, name)}
+    assert not missing_models, f"Missing LLM provider contract models: {missing_models}"
+
+    required_helpers = set(data.get("required_helpers", []))
+    helper_globals = {
+        "build_llm_runtime_config",
+        "default_openrouter_settings",
+        "validate_llm_generated_output",
+        "decide_paid_fallback",
+        "decide_cache_eligibility",
+        "run_deterministic_mock_generation",
+        "runtime_diagnostics",
+    }
+    assert required_helpers <= helper_globals, f"Missing LLM provider helpers: {required_helpers - helper_globals}"
+
+    default_config = build_llm_runtime_config()
+    assert default_config.provider_kind.value == data["default_runtime"]["provider_kind"]
+    assert default_config.live_generation_enabled is data["default_runtime"]["live_generation_enabled"]
+    assert default_config.live_gate_state.value == data["default_runtime"]["live_gate_state"]
+    assert default_config.live_network_calls_allowed is data["default_runtime"]["live_network_calls_allowed"]
+
+    disabled_openrouter = build_llm_runtime_config({"LLM_PROVIDER": "openrouter"})
+    enabled_openrouter = build_llm_runtime_config(default_openrouter_settings(), server_side_key_present=True)
+    assert disabled_openrouter.live_gate_state is LlmLiveGateState.unavailable
+    assert enabled_openrouter.live_gate_state is LlmLiveGateState.enabled
+    assert [model.model_name for model in enabled_openrouter.configured_model_chain] == data["openrouter_free_model_order"]
+    assert tuple(data["openrouter_free_model_order"]) == DEFAULT_OPENROUTER_FREE_MODEL_ORDER
+    assert enabled_openrouter.paid_fallback_model is not None
+    assert enabled_openrouter.paid_fallback_model.model_name == data["paid_fallback_model"]
+    assert DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL == data["paid_fallback_model"]
+    assert enabled_openrouter.live_network_calls_allowed is False
+
+    fallback = decide_paid_fallback(
+        runtime=enabled_openrouter,
+        trigger=LlmFallbackTrigger.validation_failed_after_repair,
+        current_tier=LlmModelTier.free,
+        repair_attempt_count=1,
+    )
+    assert fallback.should_fallback is True
+    assert fallback.to_model is not None
+    assert fallback.to_model.model_name == data["paid_fallback_model"]
+    assert set(data["fallback_triggers"]) <= {trigger.value for trigger in LlmFallbackTrigger}
+
+    request = LlmGenerationRequestMetadata(
+        task_name="asset_summary",
+        output_kind="asset_page",
+        prompt_version="asset-page-prompt-v1",
+        schema_version="asset-page-v1",
+        safety_policy_version="safety-v1",
+        asset_ticker="VOO",
+        knowledge_pack_hash="knowledge-hash",
+        source_freshness_hash="freshness-hash",
+    )
+    valid_evidence = [
+        {
+            "citation_id": "c_voo_profile",
+            "asset_ticker": "VOO",
+            "source_document_id": "src_voo_fact_sheet",
+            "source_type": "issuer_fact_sheet",
+            "supporting_text": "VOO issuer fact sheet fixture.",
+        }
+    ]
+    valid_claim = {
+        "claim_id": "claim_voo",
+        "claim_text": "VOO has a local cited issuer fact sheet fixture.",
+        "claim_type": "factual",
+        "citation_ids": ["c_voo_profile"],
+    }
+    result = run_deterministic_mock_generation(
+        request,
+        claims=[valid_claim],
+        evidence=valid_evidence,
+        citation_context={"allowed_asset_tickers": ["VOO"]},
+    )
+    assert result.no_live_external_calls is True
+    assert result.runtime.provider_kind is LlmProviderKind.mock
+    assert result.validation.status is LlmValidationStatus.valid
+    assert result.public_metadata.model_tier.value == "mock"
+    assert result.cache_decision.cacheable is True
+
+    invalid_schema = validate_llm_generated_output(output_text="Educational output.", schema_valid=False)
+    missing_citation = validate_llm_generated_output(
+        output_text="Educational output.",
+        schema_valid=True,
+        claims=[{**valid_claim, "citation_ids": ["c_missing"]}],
+        evidence=valid_evidence,
+        citation_context={"allowed_asset_tickers": ["VOO"]},
+    )
+    disallowed_source = validate_llm_generated_output(
+        output_text="Educational output.",
+        schema_valid=True,
+        claims=[valid_claim],
+        evidence=[
+            {
+                **valid_evidence[0],
+                "allowlist_status": "rejected",
+                "source_use_policy": "rejected",
+            }
+        ],
+        citation_context={"allowed_asset_tickers": ["VOO"]},
+    )
+    rejection_statuses = {
+        "schema_invalid": invalid_schema.status.value,
+        "missing_citation": missing_citation.status.value,
+        "disallowed_source_policy": disallowed_source.status.value,
+        "advice_like_language": validate_llm_generated_output(
+            output_text="This text includes a price target.",
+            schema_valid=True,
+        ).status.value,
+        "hidden_prompt_leakage": validate_llm_generated_output(
+            output_text="hidden prompt should not appear",
+            schema_valid=True,
+        ).status.value,
+        "raw_reasoning_leakage": validate_llm_generated_output(
+            output_text="reasoning_details should not appear",
+            schema_valid=True,
+        ).status.value,
+        "unrestricted_source_text_leakage": validate_llm_generated_output(
+            output_text="raw source text: full article",
+            schema_valid=True,
+        ).status.value,
+    }
+    for case in data["validation_rejection_cases"]:
+        assert rejection_statuses[case["id"]] == case["expected_status"], case["id"]
+
+    attempt = LlmGenerationAttemptMetadata(
+        attempt_index=1,
+        provider_kind=LlmProviderKind.mock,
+        model_name="deterministic-mock-llm",
+        model_tier=LlmModelTier.mock,
+        status=LlmGenerationAttemptStatus.mock_succeeded,
+        validation_status=LlmValidationStatus.valid,
+    )
+    cache_decision = decide_cache_eligibility(
+        request=request,
+        validation=result.validation,
+        attempt=attempt,
+        freshness_hash="freshness-hash",
+    )
+    assert cache_decision.cacheable is True
+    repair_decision = decide_cache_eligibility(
+        request=request,
+        validation=result.validation,
+        attempt=attempt.model_copy(update={"repair_attempt": True}),
+        freshness_hash="freshness-hash",
+    )
+    assert repair_decision.cacheable is False
+
+    diagnostics = runtime_diagnostics(default_openrouter_settings(), server_side_key_present=True)
+    validated_diagnostics = LlmRuntimeDiagnosticsResponse.model_validate(diagnostics.model_dump(mode="json"))
+    assert set(data["public_metadata_allowed_fields"]) == set(validated_diagnostics.public_metadata_fields)
+    serialized = str(validated_diagnostics.model_dump(mode="json")).lower()
+    for marker in data["forbidden_public_markers"]:
+        assert marker not in serialized
+
+    llm_source = (ROOT / "backend" / "llm.py").read_text(encoding="utf-8")
+    main_source = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
+    for forbidden in data["forbidden_imports"]:
+        assert forbidden not in llm_source
+        if forbidden != "os.environ":
+            assert forbidden not in main_source
+
+
 def _flatten_static_text(value):
     if isinstance(value, str):
         return value
@@ -1729,4 +1924,5 @@ if __name__ == "__main__":
     test_generated_chat_contract()
     test_export_cases()
     test_weekly_news_cases()
+    test_llm_provider_cases()
     print("Static evals passed.")

@@ -644,6 +644,191 @@ class ProviderResponse(BaseModel):
     message: str
 
 
+class LlmProviderKind(str, Enum):
+    mock = "mock"
+    openrouter = "openrouter"
+
+
+class LlmRuntimeMode(str, Enum):
+    deterministic_mock = "deterministic_mock"
+    gated_live = "gated_live"
+
+
+class LlmModelTier(str, Enum):
+    mock = "mock"
+    free = "free"
+    paid = "paid"
+    unavailable = "unavailable"
+
+
+class LlmLiveGateState(str, Enum):
+    disabled = "disabled"
+    unavailable = "unavailable"
+    enabled = "enabled"
+
+
+class LlmGenerationAttemptStatus(str, Enum):
+    not_attempted = "not_attempted"
+    mock_succeeded = "mock_succeeded"
+    provider_error = "provider_error"
+    rate_limited = "rate_limited"
+    structured_output_failed = "structured_output_failed"
+    validation_failed = "validation_failed"
+    validation_succeeded = "validation_succeeded"
+
+
+class LlmValidationStatus(str, Enum):
+    valid = "valid"
+    invalid_schema = "invalid_schema"
+    invalid_citation = "invalid_citation"
+    invalid_source_policy = "invalid_source_policy"
+    invalid_safety = "invalid_safety"
+    invalid_hidden_prompt = "invalid_hidden_prompt"
+    invalid_raw_reasoning = "invalid_raw_reasoning"
+    invalid_unrestricted_source_text = "invalid_unrestricted_source_text"
+
+
+class LlmFallbackTrigger(str, Enum):
+    none = "none"
+    free_chain_error = "free_chain_error"
+    rate_limit = "rate_limit"
+    structured_output_failure = "structured_output_failure"
+    validation_failed_after_repair = "validation_failed_after_repair"
+
+
+class LlmAnswerState(str, Enum):
+    complete = "complete"
+    partial = "partial"
+    unavailable = "unavailable"
+
+
+class LlmModelDescriptor(BaseModel):
+    provider_kind: LlmProviderKind
+    model_name: str
+    tier: LlmModelTier
+    order: int
+
+
+class LlmRuntimeConfig(BaseModel):
+    provider_kind: LlmProviderKind = LlmProviderKind.mock
+    runtime_mode: LlmRuntimeMode = LlmRuntimeMode.deterministic_mock
+    live_generation_enabled: bool = False
+    live_gate_state: LlmLiveGateState = LlmLiveGateState.disabled
+    server_side_key_present: bool = False
+    endpoint_configured: bool = False
+    configured_model_chain: list[LlmModelDescriptor] = Field(default_factory=list)
+    paid_fallback_model: LlmModelDescriptor | None = None
+    paid_fallback_enabled: bool = False
+    validation_retry_count: int = 1
+    reasoning_summary_only: bool = True
+    live_network_calls_allowed: bool = False
+    unavailable_reasons: list[str] = Field(default_factory=list)
+
+
+class LlmGenerationRequestMetadata(BaseModel):
+    task_name: str
+    output_kind: Literal["asset_page", "comparison", "chat_answer", "export_payload", "weekly_news_analysis"]
+    prompt_version: str
+    schema_version: str
+    safety_policy_version: str
+    asset_ticker: str | None = None
+    comparison_left_ticker: str | None = None
+    comparison_right_ticker: str | None = None
+    knowledge_pack_hash: str | None = None
+    source_freshness_hash: str | None = None
+    request_id: str = "deterministic-llm-request"
+
+
+class LlmValidationResult(BaseModel):
+    status: LlmValidationStatus
+    schema_valid: bool
+    citations_valid: bool
+    source_policy_valid: bool
+    safety_valid: bool
+    hidden_prompt_absent: bool
+    raw_reasoning_absent: bool
+    unrestricted_source_text_absent: bool
+    validation_errors: list[str] = Field(default_factory=list)
+
+    @property
+    def valid(self) -> bool:
+        return self.status is LlmValidationStatus.valid
+
+
+class LlmGenerationAttemptMetadata(BaseModel):
+    attempt_index: int
+    provider_kind: LlmProviderKind
+    model_name: str
+    model_tier: LlmModelTier
+    status: LlmGenerationAttemptStatus
+    validation_status: LlmValidationStatus
+    repair_attempt: bool = False
+    latency_ms: int | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    cost_usd: float | None = None
+
+
+class LlmFallbackDecision(BaseModel):
+    should_fallback: bool
+    trigger: LlmFallbackTrigger
+    from_model_tier: LlmModelTier | None = None
+    to_model: LlmModelDescriptor | None = None
+    after_repair_retry: bool = False
+    reason: str
+
+
+class LlmPublicResponseMetadata(BaseModel):
+    provider_kind: LlmProviderKind
+    live_enabled: bool
+    model_name: str
+    model_tier: LlmModelTier
+    validation_status: LlmValidationStatus
+    attempt_count: int
+    answer_state: LlmAnswerState
+    cached: bool = False
+    latency_ms: int | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    cost_usd: float | None = None
+    reasoning_summary: str | None = None
+
+
+class LlmCacheEligibilityDecision(BaseModel):
+    cacheable: bool
+    validation_status: LlmValidationStatus
+    model_name: str
+    model_tier: LlmModelTier
+    prompt_version: str
+    schema_version: str
+    freshness_hash: str | None = None
+    input_hash: str | None = None
+    attempt_count: int
+    rejection_reasons: list[str] = Field(default_factory=list)
+
+
+class LlmOrchestrationResult(BaseModel):
+    request: LlmGenerationRequestMetadata
+    runtime: LlmRuntimeConfig
+    attempts: list[LlmGenerationAttemptMetadata]
+    validation: LlmValidationResult
+    fallback_decision: LlmFallbackDecision
+    public_metadata: LlmPublicResponseMetadata
+    cache_decision: LlmCacheEligibilityDecision
+    no_live_external_calls: bool = True
+
+
+class LlmRuntimeDiagnosticsResponse(BaseModel):
+    schema_version: Literal["llm-runtime-contract-v1"] = "llm-runtime-contract-v1"
+    runtime: LlmRuntimeConfig
+    public_metadata_fields: list[str]
+    credential_values_exposed: bool = False
+    private_prompt_fields_exposed: bool = False
+    model_reasoning_payload_exposed: bool = False
+    restricted_source_payload_exposed: bool = False
+    no_live_external_calls: bool = True
+
+
 class CacheEntryKind(str, Enum):
     asset_page = "asset_page"
     comparison = "comparison"
@@ -846,6 +1031,9 @@ class CacheEntryMetadata(BaseModel):
     expires_at: str | None = None
     prompt_version: str | None = None
     model_name: str | None = None
+    model_tier: LlmModelTier | None = None
+    validation_status: LlmValidationStatus | None = None
+    generation_attempt_count: int | None = None
 
 
 class CacheRevalidationResult(BaseModel):
