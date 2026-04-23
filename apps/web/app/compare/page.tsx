@@ -4,10 +4,11 @@ import { ComparisonSourceDetails } from "../../components/ComparisonSourceDetail
 import { ExportControls } from "../../components/ExportControls";
 import { FreshnessLabel } from "../../components/FreshnessLabel";
 import {
-  getComparePageFixture,
   getComparisonAvailabilityState,
   getComparisonCitationMetadata,
+  getComparePageFixture,
   isComparisonAvailable,
+  fetchComparisonResponse,
   type CompareAssetIdentity,
   type ComparisonCitation
 } from "../../lib/compare";
@@ -26,7 +27,13 @@ export default async function ComparePage({ searchParams }: ComparePageProps) {
   const query = await searchParams;
   const leftTicker = query?.left?.toUpperCase() ?? "VOO";
   const rightTicker = query?.right?.toUpperCase() ?? "QQQ";
-  const comparison = getComparePageFixture(leftTicker, rightTicker);
+  const comparison = await (async () => {
+    try {
+      return await fetchComparisonResponse(leftTicker, rightTicker);
+    } catch {
+      return getComparePageFixture(leftTicker, rightTicker);
+    }
+  })();
   const availabilityState = getComparisonAvailabilityState(comparison);
   const leftFixture = getAssetFixture(comparison.left_asset.ticker);
   const rightFixture = getAssetFixture(comparison.right_asset.ticker);

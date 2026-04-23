@@ -587,8 +587,8 @@ const compareSource = [
   read("lib/compareSuggestions.ts")
 ].join("\n");
 
-assert.equal(compareSource.includes("fetch("), false, "Compare page should not make live external calls");
-assert.equal(compareSource.includes("/api/compare"), false, "Compare page should stay fixture-backed");
+assert.equal(compareSource.includes("fetcher("), true, "Compare page should call the deterministic comparison adapter route");
+assert.equal(compareSource.includes("/api/compare"), true, "Compare page should align with the backend comparison contract");
 assert.equal(read("app/compare/page.tsx").includes("getPrimarySource"), false, "Compare chips must not use a primary asset source fallback");
 assert.equal(compareSource.includes("src_aapl"), false, "Compare source metadata must not include AAPL sources");
 assert.match(compareSource, /No factual citation chips or source drawers/, "Unavailable compare states must avoid factual citation UI");

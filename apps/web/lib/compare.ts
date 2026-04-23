@@ -1,6 +1,8 @@
 import { getAssetFixture, normalizeTicker, type FreshnessState } from "./fixtures";
 import { resolveLocalSearchResponse } from "./search";
 
+type Fetcher = typeof fetch;
+
 type CompareAssetType = "stock" | "etf" | "unsupported" | "unknown";
 type CompareStateStatus = "supported" | "unsupported" | "unknown";
 type ComparisonFactKind = "benchmark" | "expense_ratio" | "holdings_count" | "beginner_role";
@@ -37,6 +39,73 @@ type SearchSupportClassification =
   | "recognized_unsupported"
   | "out_of_scope"
   | "unknown";
+
+export type CompareRequest = {
+  left_ticker: string;
+  right_ticker: string;
+};
+
+export async function fetchComparisonResponse(
+  leftTicker: string,
+  rightTicker: string,
+  fetcher: Fetcher = fetch
+): Promise<ComparePageFixture> {
+  const endpoint = "/api/compare";
+  const response = await fetcher(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      left_ticker: normalizeTicker(leftTicker),
+      right_ticker: normalizeTicker(rightTicker)
+    } satisfies CompareRequest)
+  });
+
+  if (!response.ok) {
+    throw new Error(`Compare request failed with status ${response.status}`);
+  }
+
+  const payload: unknown = await response.json();
+  if (!isCompareResponsePayload(payload)) {
+    throw new Error("Compare response did not match the expected backend response contract.");
+  }
+
+  return payload;
+}
+
+function isCompareResponsePayload(value: unknown): value is ComparePageFixture {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<ComparePageFixture>;
+  return (
+    typeof candidate.left_asset === "object" &&
+    candidate.left_asset !== null &&
+    typeof candidate.left_asset.ticker === "string" &&
+    typeof candidate.left_asset.name === "string" &&
+    typeof candidate.left_asset.asset_type === "string" &&
+    typeof candidate.left_asset.status === "string" &&
+    typeof candidate.left_asset.supported === "boolean" &&
+    typeof candidate.right_asset === "object" &&
+    candidate.right_asset !== null &&
+    typeof candidate.right_asset.ticker === "string" &&
+    typeof candidate.right_asset.name === "string" &&
+    typeof candidate.right_asset.asset_type === "string" &&
+    typeof candidate.right_asset.status === "string" &&
+    typeof candidate.right_asset.supported === "boolean" &&
+    typeof candidate.state === "object" &&
+    candidate.state !== null &&
+    typeof candidate.state.status === "string" &&
+    typeof candidate.state.message === "string" &&
+    typeof candidate.comparison_type === "string" &&
+    Array.isArray(candidate.key_differences) &&
+    Array.isArray(candidate.citations) &&
+    Array.isArray(candidate.source_documents) &&
+    (candidate.evidence_availability == null || typeof candidate.evidence_availability === "object")
+  );
+}
 
 export type CompareAssetIdentity = {
   ticker: string;
