@@ -2,27 +2,23 @@
 
 ## Current task
 
-### T-043: Add section-level freshness validation contract
+### T-044: Add export source-use and freshness validation contract
 
 Goal:
-Add a deterministic section-level freshness validation contract so backend and UI clients can tell whether each generated overview section's displayed freshness label is supported by the selected asset's existing same-asset evidence, dates, and knowledge-pack freshness inputs, without adding frontend UI, live calls, new facts, new assets, or weakening citation, source-use, unknown/stale/unavailable/partial, and safety rules.
+Add a deterministic export source-use and freshness validation contract so backend and UI clients can tell whether each available export payload's freshness labels, as-of dates, allowed excerpts, and source-use permissions are supported by the existing same-asset or same-comparison-pack evidence already present in the export, without adding frontend UI, live calls, new facts, new assets, or weakening citation, source-use, unknown/stale/unavailable/partial, and safety rules.
 
 Task scope:
-This is a backend schema, overview response-shaping, freshness-binding, eval, and test task over the existing local retrieval fixtures, knowledge-pack freshness inputs, overview sections, and current `/api/assets/{ticker}/overview` plus `/api/assets/{ticker}/knowledge-pack` contracts. Add additive section-level freshness validation metadata so a cached supported asset overview can explain why a section is labeled `fresh`, `stale`, `unknown`, or `unavailable`, which same-asset sources or citations support that label, and whether the label is fully validated or limited by mixed or partial evidence. The contract must stay deterministic and evidence-bound: it can validate and explain existing section freshness labels, but it must not invent dates, promote stale or unavailable evidence to fresh, add new asset facts, change section order or copy, or widen coverage. Preserve existing overview content, Weekly News Focus separation, AI Comprehensive Analysis suppression thresholds, knowledge-pack freshness hashing behavior, supported vs blocked asset handling, and no-live-call operation. This is not a task to add frontend rendering, export changes, new routes, new assets, fixture ingestion, live providers, or recommendation-like copy.
+This is a backend schema, export response-shaping, source-binding, freshness-binding, eval, and test task over the existing deterministic export payloads in `backend/export.py` and the current asset-page, source-list, comparison, and single-turn chat export routes. Add additive export validation metadata so an available export can explain which included citations and source documents are actually exportable under the current source-use policy, which freshness or as-of labels are supported by existing overview/comparison/chat evidence, whether any exportable content is limited to metadata or short allowed excerpts, and whether the export stays fully validated or limited by stale, unknown, unavailable, mixed, partial, or insufficient evidence. The contract must stay deterministic and evidence-bound: it can validate and explain existing export metadata, but it must not invent dates, permit restricted content, add new asset facts, add new export formats or routes, change rendered section order or copy, or widen MVP coverage. Preserve existing export payloads, disclaimer/licensing-note behavior, Weekly News Focus separation, AI Comprehensive Analysis suppression, supported-vs-blocked routing, and no-live-call operation. This is not a task to add frontend rendering, PDF generation, file persistence, analytics, new assets, live providers, or recommendation-like copy.
 
 Allowed files:
 
 - `TASKS.md`
-- `backend/cache.py`
 - `backend/models.py`
-- `backend/overview.py`
+- `backend/export.py`
 - `backend/main.py`
-- `backend/retrieval.py`
-- `evals/cache_eval_cases.yaml`
-- `evals/knowledge_pack_eval_cases.yaml`
+- `evals/export_eval_cases.yaml`
 - `evals/run_static_evals.py`
-- `tests/unit/test_cache_contracts.py`
-- `tests/unit/test_overview_generation.py`
+- `tests/unit/test_exports.py`
 - `tests/unit/test_safety_guardrails.py`
 - `tests/integration/test_backend_api.py`
 
@@ -33,14 +29,15 @@ Do not change:
 - Do not read, echo, log, serialize, return, commit, or copy actual secret values from the local environment.
 - Do not expose OpenRouter or other provider keys through browser code, `NEXT_PUBLIC_*`, docs, logs, `/health`, API responses, exports, or committed env files.
 - Do not change frontend UI, browser local storage, home search interactions, search UI, comparison UI, source drawer UI, glossary UI, chat UI, export UI, or frontend API helpers.
-- Do not change deterministic asset classification rules, top-500 manifest policy, ingestion job behavior, search behavior, comparison behavior, chat behavior, export behavior, source-use policy, source allowlist behavior, or trust-metrics rules except for the additive section-level freshness validation contract.
+- Do not change deterministic asset classification rules, top-500 manifest policy, ingestion job behavior, search behavior, comparison behavior, chat behavior, export routing, source-use policy, source allowlist behavior, or trust-metrics rules except for the additive export validation contract.
 - Do not add new generated asset pages, generated chat answers, generated comparisons, generated risk summaries, new ingestion flows, new supported assets, new manifest entries, new provider fixtures, or broader MVP asset coverage.
-- Do not let the validation contract decide whether an asset is supported, unsupported, out of scope, eligible for ingestion, or allowed to generate output. Existing deterministic asset-state routing remains authoritative.
-- Do not invent as-of dates, retrieved timestamps, freshness states, stale reasons, partial evidence, or section limitations that are not derivable from the selected asset's existing overview sections, source documents, citations, recent developments, or knowledge-pack freshness inputs.
-- Do not let section freshness validation introduce wrong-asset source bindings, uncited asset-specific facts, raw source text, unrestricted supporting passages, hidden prompts, raw model reasoning, or new Weekly News Focus claims.
+- Do not let the validation contract decide whether an asset is supported, unsupported, out of scope, eligible for ingestion, or allowed to export. Existing deterministic asset-state routing remains authoritative.
+- Do not invent as-of dates, retrieved timestamps, freshness states, stale reasons, source-use permissions, export permissions, omitted-content reasons, partial evidence, or uncertainty labels that are not derivable from the selected export payload's existing citations, source documents, sections, disclaimer/licensing note, or underlying overview/comparison/chat contract inputs.
+- Do not let export validation introduce wrong-asset or wrong-comparison-pack source bindings, uncited asset-specific facts, raw source text, unrestricted supporting passages, hidden prompts, raw model reasoning, or new Weekly News Focus claims.
 - Do not change Weekly News Focus date-window logic, high-signal selection, AI Comprehensive Analysis availability threshold, or the visual/structural separation between stable facts and timely context.
-- Do not enable generated overview data for blocked states that are currently unsupported, out of scope, eligible-not-cached, or unknown.
-- Do not add recommendation language, buy/sell/hold language, allocation guidance, price targets, tax advice, or brokerage/trading instructions to freshness validation summaries or diagnostics.
+- Do not enable new exportable content for blocked states that are currently unsupported, out of scope, eligible-not-cached, or unknown.
+- Do not use the validation contract to export full paid-news articles, full filings, full issuer documents, restricted provider payloads, or any content disallowed by `metadata_only`, `link_only`, `summary_allowed`, or `rejected` source-use rules.
+- Do not add recommendation language, buy/sell/hold language, allocation guidance, price targets, tax advice, or brokerage/trading instructions to export validation summaries or diagnostics.
 - Do not store or return hidden prompts, raw model reasoning, `reasoning_details`, failed raw responses, unrestricted provider payloads, personal data, or browser/device identifiers.
 - Do not add buy/sell/hold recommendations, price targets, predictions, personalized allocation advice, exact position sizing, tax advice, or brokerage/trading behavior.
 - Do not expand MVP scope beyond U.S.-listed common stocks and supported non-leveraged equity ETFs.
@@ -48,23 +45,30 @@ Do not change:
 
 Acceptance criteria:
 
-- Section freshness validation contract models cover schema version, section identity, section type, displayed freshness state, evidence state, same-asset citation and source bindings, as-of or retrieved-date provenance, validation outcome, limitation or mismatch messaging, and deterministic diagnostics showing that the metadata is derived from existing local evidence only.
-- `GET /api/assets/{ticker}/overview` remains the route surface and returns additive section-level freshness validation metadata for cached supported assets without changing existing overview section order, beginner copy, citations, source documents, Weekly News Focus separation, or generated/non-generated asset routing.
-- `GET /api/assets/{ticker}/knowledge-pack` preserves existing `section_freshness` and `knowledge_pack_freshness_hash` behavior; if the overview validation contract reuses those inputs, the task must not change supported hashes unless a documented deterministic freshness-input correction is required and test-covered.
-- Supported stock `AAPL` and supported ETFs `VOO` and `QQQ` serialize freshness validation metadata for their overview sections using only same-asset sources and citations already present in the selected asset overview or knowledge pack.
-- `VOO` section freshness validation must not promote the existing stale fee-gap input in `cost_trading_context` to `fresh`; sections with stale, unknown, unavailable, mixed, partial, or insufficient evidence must preserve those limitations in the validation metadata instead of inventing cleaner states.
-- `recent_developments`, `weekly_news_focus`, and `ai_comprehensive_analysis` keep timely-context freshness separate from stable canonical sections, and validation metadata must not let recent-context dates overwrite stable-fact dates or section identity.
-- Sections or items lacking evidence dates keep explicit `unknown`, `unavailable`, `partial`, `stale`, or `insufficient_evidence` style handling as appropriate; the contract must not fabricate `as_of_date`, `retrieved_at`, or freshness reasons to make a section appear more complete.
-- Non-generated states such as `SPY`, `TQQQ`, `GME`, and `ZZZZ` preserve current blocked or unavailable overview behavior and do not gain fabricated validated section freshness records, generated sections, or new source bindings.
-- Static evals verify required models/helpers/route behavior, same-asset source and citation binding, stale/unknown/unavailable handling, preservation of knowledge-pack freshness hash expectations, no live-call imports, and no forbidden advice language.
-- Tests verify schema serialization, deterministic section freshness propagation, mismatch-prevention behavior, supported stock and ETF coverage, blocked-state behavior, API serialization, and safety guardrails.
+- Export validation contract models cover schema version, export content type, export state, same-asset or same-comparison-pack citation and source bindings, freshness/as-of or retrieved-date provenance, source-use policy and permitted-operations validation, restricted-content omission messaging, validation outcome, limitation or mismatch messaging, and deterministic diagnostics showing the metadata is derived from existing local evidence only.
+- Existing export routes remain the route surface and return additive export validation metadata without changing export formats, rendered Markdown, section order, disclaimer/licensing-note copy, citation IDs, source metadata, Weekly News Focus separation, or generated/non-generated asset routing:
+  - `GET /api/assets/{ticker}/export`
+  - `GET /api/assets/{ticker}/sources/export`
+  - `POST /api/compare/export`
+  - `GET /api/compare/export`
+  - `POST /api/assets/{ticker}/chat/export`
+- Supported stock `AAPL` and supported ETFs `VOO` and `QQQ` serialize export validation metadata for asset-page and source-list exports using only same-asset citations and source documents already present in the selected export payload or its underlying overview contract.
+- `VOO` export validation must preserve the existing stale/limited `cost_trading_context` freshness evidence in the underlying asset-page export; the contract must not promote stale, unknown, unavailable, mixed, partial, or insufficient-evidence sections to cleaner states just because the export is available.
+- Comparison export validation for `VOO` vs `QQQ` in both directions must bind only to comparison-pack citations and sources already present in the comparison export and must not silently mix asset-page-only evidence into comparison freshness or source-use validation.
+- Single-turn advice-redirect chat exports must preserve the existing educational redirect, citation-free answer shape, and empty source-document set; validation metadata must reflect that there is no factual source-backed export payload instead of fabricating exportable citations or freshness support.
+- Source-list and asset-page export validation must preserve rights-tiered source-use handling: `full_text_allowed`, `summary_allowed`, `metadata_only`, `link_only`, and `rejected` inputs must not be flattened into a broader export permission, and allowed excerpts must stay bounded to already permitted excerpt text only.
+- Sections, items, citations, or sources lacking evidence dates or export rights keep explicit `unknown`, `unavailable`, `partial`, `stale`, `insufficient_evidence`, metadata-only, or omitted-content handling as appropriate; the contract must not fabricate fresher dates, broader rights, or stronger evidence states to make an export appear more complete.
+- Blocked or unavailable states such as `BTC`, `ZZZZ`, `SPY`, unsupported comparisons, and unsupported chat exports preserve current `unsupported` or `unavailable` export behavior and do not gain fabricated validation records, generated sections, citations, or new source bindings.
+- Static evals verify required models/helpers/route behavior, same-asset and same-comparison-pack binding, freshness/source-use preservation, blocked-state handling, no live-call imports, no secret exposure, and no forbidden advice language.
+- Tests verify schema serialization, deterministic export validation propagation, mismatch-prevention behavior, supported stock and ETF coverage, comparison and chat export coverage, blocked-state behavior, API serialization, and safety guardrails.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_cache_contracts.py tests/unit/test_overview_generation.py tests/unit/test_safety_guardrails.py -q
+python3 -m pytest tests/unit/test_exports.py tests/unit/test_safety_guardrails.py -q
 python3 -m pytest tests/integration/test_backend_api.py -q
 python3 -m pytest tests -q
+npm test
 python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
 ```
@@ -74,11 +78,38 @@ Max 3 attempts.
 
 ## Backlog
 
-### T-044: Add export source-use and freshness validation contract
-
 ### T-045: Add grounded chat comparison-redirect contract
 
 ## Completed
+
+### T-043: Add section-level freshness validation contract
+
+Goal:
+Add a deterministic section-level freshness validation contract so backend and UI clients can tell whether each generated overview section's displayed freshness label is supported by the selected asset's existing same-asset evidence, dates, and knowledge-pack freshness inputs, without adding frontend UI, live calls, new facts, new assets, or weakening citation, source-use, unknown/stale/unavailable/partial, and safety rules.
+
+Completed:
+
+- Added additive overview freshness-validation models in `backend/models.py`, including `OverviewSectionFreshnessValidationOutcome`, `OverviewSectionFreshnessCitationBinding`, `OverviewSectionFreshnessSourceBinding`, `OverviewSectionFreshnessDiagnostics`, and `OverviewSectionFreshnessValidation`, plus `section_freshness_validation` on `OverviewResponse`.
+- Extended `backend/overview.py` so generated supported overviews now build deterministic section freshness validation records for overview sections, `weekly_news_focus`, and `ai_comprehensive_analysis` by reusing existing same-asset citations, source documents, and knowledge-pack section freshness inputs.
+- Kept validation evidence-bound by recording displayed vs validated freshness/as-of metadata, same-asset citation/source bindings, matched knowledge-pack section IDs, missing-binding diagnostics, and mismatch reasons when a displayed label is not supported by the existing local evidence.
+- Preserved non-generated routing by returning no section freshness validation records for unsupported or unknown assets, and preserved existing stale/limited states such as `VOO` `cost_trading_context` instead of promoting them to `fresh`.
+- Extended `evals/run_static_evals.py` for required freshness-validation models/helpers, route behavior, same-asset binding, stale/unknown/unavailable handling, no live-call imports, and advice-boundary checks.
+- Extended `tests/unit/test_overview_generation.py` and `tests/integration/test_backend_api.py` for supported stock and ETF serialization, same-asset binding coverage, recent-context separation, stale `VOO` cost/trading validation, mismatch detection, and blocked-state behavior.
+- Added `docs/agent-journal/20260423T152949Z.md` documenting the changed files, commands run, pass/fail status, and remaining risks.
+- The agent journal records that these commands passed:
+  - `python3 -m pytest tests/unit/test_cache_contracts.py tests/unit/test_overview_generation.py tests/unit/test_safety_guardrails.py -q`
+  - `python3 -m pytest tests/integration/test_backend_api.py -q`
+  - `python3 -m pytest tests -q`
+  - `python3 evals/run_static_evals.py`
+  - `bash scripts/run_quality_gate.sh`
+- Merged local branch: `agent/T-043-20260423T152949Z`.
+- Remaining documented risk: the section freshness validation contract is deterministic and fixture-backed only; it validates existing overview freshness labels and bindings but does not add live freshness sources, new facts, or new assets.
+- Remaining documented risk: Weekly News Focus and AI Comprehensive Analysis validation currently reflects the existing local no-high-signal and insufficient-evidence fixture states; future timely-context fixtures must preserve the same same-asset binding and mismatch checks.
+
+Completion commits:
+
+- `a55fe1f feat(T-043): add section-level freshness validation contract`
+- `bdcc9c8 chore(T-043): merge section-level freshness validation contract`
 
 ### T-042: Add unsupported asset search explanation contract
 
