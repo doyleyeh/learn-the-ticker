@@ -2,23 +2,24 @@
 
 ## Current task
 
-### T-040: Add comparison evidence availability contract
+### T-041: Add glossary asset-context evidence contract
 
 Goal:
-Add a deterministic backend comparison evidence availability contract so comparison UI clients can tell which comparison dimensions are source-backed, partial, stale, unavailable, or suppressed for each side of a comparison without adding frontend UI, making live calls, generating unsupported comparisons, or weakening citation, source-use, freshness, unknown/unavailable/partial, and safety rules.
+Add a deterministic backend glossary asset-context evidence contract so UI clients can request beginner glossary terms for a selected asset and see which optional asset-specific glossary context is source-backed, generic-only, unavailable, stale, partial, or suppressed without adding frontend UI, live calls, new facts, generated unsupported content, or weakening citation, source-use, freshness, unknown/unavailable/partial, and safety rules.
 
 Task scope:
-This is a backend schema, deterministic response-shaping, eval, and test task over the existing fixture-backed comparison pipeline. Add additive comparison evidence availability metadata to `CompareResponse` so supported local comparison packs can describe required dimensions, per-side evidence coverage, citation/source bindings, freshness/source-use status, and unavailable or partial evidence reasons. Preserve the existing generated comparison output and route behavior, including `key_differences`, beginner bottom line, citations, and source documents. Explicitly return non-generated availability states for unsupported, out-of-scope, unknown, eligible-not-cached, no-local-pack, stale, partial, unavailable, or insufficient-evidence comparisons. This is not a task to add frontend rendering, new comparison pairs, new asset facts, ingestion, scraping, persistence, analytics, live provider calls, live LLM calls, export changes, source drawer UI, or source allowlist changes.
+This is a backend schema, deterministic response-shaping, eval, and test task over the existing fixture-backed asset knowledge packs and curated beginner glossary concept set. Add a read-only glossary asset-context response that exposes generic beginner definitions plus optional same-asset evidence bindings when an existing normalized fact, source chunk, recent-development record, or explicit evidence gap supports asset-specific context for a term. Generic glossary definitions are educational copy only and must not become citation evidence for asset-specific claims. Preserve the existing frontend glossary UI, generated overview, source drawer, comparison, chat, export, retrieval fixtures, source-use policy, and search behavior. Explicitly return non-generated glossary states for unsupported, out-of-scope, unknown, eligible-not-cached, stale, partial, unavailable, or insufficient-evidence asset contexts. This is not a task to add frontend rendering, glossary detail pages, new glossary prose in the web app, new asset facts, new source documents, ingestion, scraping, persistence, analytics, live provider calls, live LLM calls, exports, source allowlist changes, or broader MVP coverage.
 
 Allowed files:
 
 - `TASKS.md`
+- `backend/glossary.py`
 - `backend/models.py`
-- `backend/comparison.py`
 - `backend/main.py`
-- `evals/comparison_evidence_eval_cases.yaml`
+- `evals/glossary_context_eval_cases.yaml`
 - `evals/run_static_evals.py`
-- `tests/unit/test_comparison_generation.py`
+- `tests/unit/test_glossary_context.py`
+- `tests/unit/test_retrieval_fixtures.py`
 - `tests/unit/test_citation_validation.py`
 - `tests/unit/test_safety_guardrails.py`
 - `tests/integration/test_backend_api.py`
@@ -29,40 +30,44 @@ Do not change:
 - Do not add user accounts, authentication, cookies, personal identifiers, analytics SDKs, database migrations, Redis dependencies, HTTP clients, browser storage, frontend components, or production dependencies.
 - Do not read, echo, log, serialize, return, commit, or copy actual secret values from the local environment.
 - Do not expose OpenRouter or other provider keys through browser code, `NEXT_PUBLIC_*`, docs, logs, `/health`, API responses, exports, or committed env files.
-- Do not change frontend UI, browser local storage, asset-page layout, comparison page rendering, source drawer rendering, chat panel behavior, export controls, or frontend API helpers.
-- Do not change existing generated overview, Weekly News Focus, AI Comprehensive Analysis, search, ingestion, chat-session, export, source-use, source drawer, or source allowlist behavior except for additive comparison response contract fields.
-- Do not add new generated comparison pairs, new comparison facts, new normalized facts, new source documents, new retrieval fixtures, new source chunks, new provider fixtures, or broader MVP asset coverage.
-- Do not change source allowlist records or approve a new domain/source. If comparison evidence lacks an allowed policy, the availability contract must show unavailable/insufficient evidence or suppress support rather than relaxing policy.
-- Do not let the comparison evidence availability contract decide asset support classification, source-use policy, freshness state, citation validity, or whether generated evidence exists.
-- Do not create generated pages, generated chat answers, generated comparisons, generated risk summaries, or generated comparison claims for unsupported, out-of-scope, unknown, eligible-not-cached, no-local-pack, unavailable, stale, partial, or insufficient-evidence assets.
-- Do not store or return hidden prompts, raw model reasoning, `reasoning_details`, failed raw responses, unrestricted source text, raw chunks, raw user transcripts, unrestricted provider payloads, personal data, source passages beyond existing allowed comparison/source behavior, or browser/device identifiers.
-- Do not use rejected, non-allowlisted, metadata-only, link-only, or license-disallowed sources as support for generated claims.
+- Do not change frontend UI, browser local storage, asset-page layout, glossary popover rendering, comparison page rendering, source drawer rendering, chat panel behavior, export controls, frontend API helpers, or `apps/web/lib/glossary.ts`.
+- Do not change existing generated overview, Weekly News Focus, AI Comprehensive Analysis, search, ingestion, chat-session, export, source-use, source drawer, comparison, or source allowlist behavior except for the additive glossary asset-context API contract.
+- Do not add new generated glossary prose to the frontend, new generated comparison pairs, new asset facts, new normalized facts, new source documents, new retrieval fixtures, new source chunks, new provider fixtures, or broader MVP asset coverage.
+- Do not change source allowlist records or approve a new domain/source. If asset-context evidence lacks an allowed policy, the glossary contract must show generic-only, unavailable, insufficient evidence, or suppressed context rather than relaxing policy.
+- Do not let the glossary asset-context contract decide asset support classification, source-use policy, freshness state, citation validity, or whether generated evidence exists.
+- Do not create generated pages, generated chat answers, generated comparisons, generated risk summaries, generated asset-specific glossary context, or generated asset-specific glossary claims for unsupported, out-of-scope, unknown, eligible-not-cached, unavailable, stale, partial, or insufficient-evidence assets.
+- Do not treat generic glossary definitions as citations, source documents, normalized facts, or support for asset-specific claims.
+- Do not store or return hidden prompts, raw model reasoning, `reasoning_details`, failed raw responses, unrestricted source text, raw chunks, raw user transcripts, unrestricted provider payloads, personal data, source passages beyond existing allowed citation/source behavior, or browser/device identifiers.
+- Do not use rejected, non-allowlisted, metadata-only, link-only, or license-disallowed sources as support for asset-specific glossary context.
 - Do not add buy/sell/hold recommendations, price targets, predictions, personalized allocation advice, exact position sizing, tax advice, or brokerage/trading behavior.
 - Do not expand MVP scope beyond U.S.-listed common stocks and supported non-leveraged equity ETFs.
 - Do not move the Python backend or frontend workspace.
 
 Acceptance criteria:
 
-- Comparison evidence availability contract models cover schema version, comparison identity, left/right selected assets, availability state, required evidence dimensions, per-side evidence items, citation bindings, source document references, freshness/as-of/retrieved dates, official-source status, source quality, allowlist status, source-use policy, permitted operation flags, and diagnostics for unavailable/empty states.
-- `POST /api/compare` remains backward-compatible by continuing to return `left_asset`, `right_asset`, `state`, `comparison_type`, `key_differences`, `bottom_line_for_beginners`, `citations`, and `source_documents`, while adding deterministic availability fields needed by UI clients.
-- Supported local comparison pairs `VOO` vs `QQQ` and `QQQ` vs `VOO` return `available` evidence availability metadata for the existing deterministic comparison output without inventing new comparison claims, facts, sources, or dimensions.
-- Availability metadata covers the existing generated dimensions `Benchmark`, `Expense ratio`, `Holdings count`, `Breadth`, and `Educational role`, and maps each generated key difference and beginner bottom line to the citation IDs and source document IDs already present in the response.
-- Comparison-side evidence roles distinguish left-side support, right-side support, and shared comparison support where applicable, preserving requested ticker order for both `VOO`/`QQQ` and `QQQ`/`VOO`.
-- Every availability citation binding references an existing citation ID in the same `CompareResponse` and an existing source document belonging to either the left or right asset in the selected comparison pack.
-- Evidence availability does not expose source documents for wrong assets, unrelated asset packs, single-asset source drawers, chat sessions, exports, or unrelated fixtures.
-- Source-use policy is preserved: rejected, non-allowlisted, metadata-only, link-only, or license-disallowed sources cannot be marked as supporting generated comparison claims, and restricted text is not newly exposed.
-- Fresh, stale, unknown, unavailable, partial, insufficient-evidence, and mixed evidence states are preserved in comparison availability metadata instead of being normalized away.
-- Unsupported, out-of-scope, unknown, eligible-not-cached, no-local-pack, stale, partial, unavailable, and insufficient-evidence comparisons return explicit non-generated availability states with no generated key differences, no beginner bottom line, no citations, no source documents, no source-backed claim support, and no live calls.
-- Comparison availability diagnostics include deterministic no-live-call and no-new-generated-output markers so clients can distinguish a response contract from live ingestion or LLM generation.
-- Static evals verify required models/helpers, additive compare route serialization, same-comparison-pack citation/source binding, side-role preservation, source-use policy handling, freshness/evidence labels, no restricted text exposure, no live-call imports, no source allowlist mutation, no new fixture/domain approval, and no forbidden advice language.
-- Tests verify supported comparison availability serialization, reverse-order behavior, dimension-to-citation/source mapping, per-side evidence roles, unavailable/no-local-pack behavior, unsupported/out-of-scope/unknown/eligible-not-cached non-generated states, source-use/freshness preservation, API route serialization, citation validation, and safety guardrails.
+- Glossary asset-context contract models cover schema version, selected asset, glossary response state, term identity, generic definition fields, beginner category, asset-context availability state, evidence state, freshness state, related section/fact/chunk/recent/evidence-gap references, citation bindings, source document references, source-use policy, permitted operation flags, uncertainty or suppression reasons, and diagnostics for unavailable/empty states.
+- Add a deterministic read-only route such as `GET /api/assets/{ticker}/glossary` with optional term filtering; it returns the same response model for supported cached, unsupported, out-of-scope, unknown, and eligible-not-cached assets.
+- Supported local assets `AAPL`, `VOO`, and `QQQ` return available glossary responses using existing local knowledge packs and a backend-owned curated term catalog that mirrors the current PRD-required beginner term categories without changing the frontend glossary module.
+- The supported response includes stock-relevant terms for `AAPL` such as `market cap`, `revenue`, `operating margin`, `EPS`, `free cash flow`, `debt`, `P/E ratio`, `forward P/E`, `market risk`, and `concentration risk`, and ETF-relevant terms for `VOO` and `QQQ` such as `expense ratio`, `AUM`, `benchmark`, `index`, `holdings`, `top 10 concentration`, `sector exposure`, `country exposure`, `bid-ask spread`, `premium/discount`, `NAV`, `liquidity`, `tracking error`, `tracking difference`, `market risk`, and `concentration risk`.
+- Generic glossary definitions include simple definition, why it matters, and common beginner mistake fields, and they do not require citations unless the response adds asset-specific factual context.
+- Asset-specific glossary context is emitted only when existing same-asset evidence supports it; unsupported context is labeled generic-only, unavailable, stale, partial, unknown, suppressed, or insufficient-evidence rather than inferred or invented.
+- Every asset-specific glossary context citation references an existing citation-style ID and an existing source document from the selected asset knowledge pack, with same-asset binding and source-use policy preserved.
+- Glossary evidence bindings do not expose wrong-asset source documents, comparison packs, chat sessions, exports, unrelated fixtures, raw chunks, unrestricted source text, hidden prompts, or restricted provider payloads.
+- Source-use policy is preserved: rejected, non-allowlisted, metadata-only, link-only, or license-disallowed sources cannot be marked as supporting asset-specific glossary context, and restricted text is not newly exposed.
+- Fresh, stale, unknown, unavailable, partial, insufficient-evidence, generic-only, and mixed evidence states are preserved in glossary context metadata instead of being normalized away.
+- Unsupported, out-of-scope, unknown, eligible-not-cached, stale, partial, unavailable, and insufficient-evidence assets return explicit non-generated glossary states with generic education only where safe, no asset-specific citations, no source documents, no source-backed asset claims, no generated pages, no chat answers, and no live calls.
+- Glossary diagnostics include deterministic no-live-call, no-new-generated-output, no-frontend-change, and generic-definitions-not-evidence markers so clients can distinguish the response contract from live ingestion or LLM generation.
+- Static evals verify required models/helpers/routes, term catalog coverage, same-asset citation/source binding, source-use policy handling, freshness/evidence labels, generic-only behavior, non-generated states, no restricted text exposure, no live-call imports, no source allowlist mutation, no frontend glossary mutation requirement, no new fixture/domain approval, and no forbidden advice language.
+- Tests verify supported glossary serialization for `AAPL`, `VOO`, and `QQQ`, optional term filtering, asset-specific context citation/source binding, generic-only terms with no citations, unsupported/out-of-scope/unknown/eligible-not-cached non-generated states, source-use/freshness preservation, API route serialization, citation validation, retrieval fixture same-asset behavior, and safety guardrails.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_comparison_generation.py tests/unit/test_citation_validation.py tests/unit/test_safety_guardrails.py -q
+python3 -m pytest tests/unit/test_glossary_context.py tests/unit/test_retrieval_fixtures.py tests/unit/test_citation_validation.py tests/unit/test_safety_guardrails.py -q
 python3 -m pytest tests/integration/test_backend_api.py -q
 python3 -m pytest tests -q
+npm test
+npm run typecheck
 python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
 ```
@@ -71,8 +76,6 @@ Iteration budget:
 Max 3 attempts.
 
 ## Backlog
-
-### T-041: Add glossary asset-context evidence contract
 
 ### T-042: Add unsupported asset search explanation contract
 
@@ -83,6 +86,34 @@ Max 3 attempts.
 ### T-045: Add grounded chat comparison-redirect contract
 
 ## Completed
+
+### T-040: Add comparison evidence availability contract
+
+Goal:
+Add a deterministic backend comparison evidence availability contract so comparison UI clients can tell which comparison dimensions are source-backed, partial, stale, unavailable, or suppressed for each side of a comparison without adding frontend UI, making live calls, generating unsupported comparisons, or weakening citation, source-use, freshness, unknown/unavailable/partial, and safety rules.
+
+Completed:
+
+- Added comparison evidence availability contract models in `backend/models.py`, including availability states, side roles, diagnostics, source references, evidence items, dimensions, citation bindings, claim bindings, and the top-level `ComparisonEvidenceAvailability`.
+- Extended `CompareResponse` with additive `evidence_availability` metadata while preserving the existing `left_asset`, `right_asset`, `state`, `comparison_type`, `key_differences`, `bottom_line_for_beginners`, `citations`, and `source_documents` response shape.
+- Added deterministic availability helpers in `backend/comparison.py`, including required comparison dimensions for `Benchmark`, `Expense ratio`, `Holdings count`, `Breadth`, and `Educational role`.
+- Supported existing local `VOO` vs `QQQ` and `QQQ` vs `VOO` comparison packs with `available` metadata, per-side evidence roles, dimension-to-citation/source mappings, claim bindings, source references, freshness/source-use metadata, and no-live-call/no-new-generated-output diagnostics.
+- Added explicit non-generated evidence availability states for unsupported, out-of-scope, unknown, eligible-not-cached, no-local-pack, unavailable-style comparisons, with no generated key differences, beginner bottom line, citations, source documents, claim support, or live calls.
+- Preserved same-comparison-pack citation/source binding by requiring availability citation bindings to reference citations and source documents already present in the selected `CompareResponse`.
+- Preserved source-use policy by resolving source permissions and only marking allowed, citation-supporting, generated-output-supporting sources as supporting generated comparison claims; restricted text is not newly exposed.
+- Added `evals/comparison_evidence_eval_cases.yaml` and extended `evals/run_static_evals.py` for required models/helpers, supported and non-generated states, required dimensions, citation/source binding, source-use/freshness handling, no restricted markers, no live-call imports, and no forbidden advice language.
+- Extended `tests/unit/test_comparison_generation.py` and `tests/integration/test_backend_api.py` for supported availability serialization, reverse ticker order, per-side roles, dimension and claim bindings, non-generated states for `BTC`, `TQQQ`, `GME`, `SPY`, `ZZZZ`, and `AAPL`/`VOO`, and API serialization.
+- Added `docs/agent-journal/20260423T140420Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- T-040 agent journal records that focused comparison/citation/safety pytest passed with 26 tests, backend API pytest passed with 29 tests, full Python pytest passed with 178 tests, static evals passed, and the full quality gate passed.
+- Merged local branch: `agent/T-040-20260423T140420Z`.
+- Remaining documented risk: the comparison evidence availability contract is deterministic and fixture-backed only; it does not add live ingestion, scraping, provider calls, persistence, frontend rendering, or new comparison pairs.
+- Remaining documented risk: stale, partial, unavailable, and insufficient-evidence states are modeled in the contract for deterministic response shaping, but current local comparison fixtures only exercise available and non-generated unavailable-style routes.
+- Remaining documented risk: future persisted comparison packs will need to preserve the same same-pack citation/source binding rules and source-use policy fields.
+
+Completion commits:
+
+- `7b305ea feat(T-040): add comparison evidence availability contract`
+- `58c5f63 chore(T-040): merge comparison evidence availability contract`
 
 ### T-039: Add asset source drawer response contract
 
