@@ -109,6 +109,21 @@ class SafetyClassification(str, Enum):
     insufficient_evidence = "insufficient_evidence"
 
 
+class ChatSessionLifecycleState(str, Enum):
+    active = "active"
+    expired = "expired"
+    deleted = "deleted"
+    ticker_mismatch = "ticker_mismatch"
+    unavailable = "unavailable"
+
+
+class ChatSessionDeletionStatus(str, Enum):
+    active = "active"
+    user_deleted = "user_deleted"
+    expired = "expired"
+    unavailable = "unavailable"
+
+
 EDUCATIONAL_DISCLAIMER = (
     "This page is for educational and research purposes only. It is not investment, financial, legal, "
     "or tax advice and is not a recommendation to buy, sell, or hold any security. Content is generated "
@@ -1707,6 +1722,64 @@ class ChatSourceDocument(BaseModel):
     permitted_operations: SourceOperationPermissions = Field(default_factory=lambda: DEFAULT_ALLOWED_SOURCE_OPERATIONS.model_copy())
 
 
+class ChatTurnRecord(BaseModel):
+    turn_id: str
+    submitted_at: str
+    selected_ticker: str
+    safety_classification: SafetyClassification
+    evidence_state: EvidenceState
+    freshness_state: FreshnessState
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    uncertainty_labels: list[str] = Field(default_factory=list)
+    direct_answer: str
+    why_it_matters: str
+    citations: list[ChatCitation] = Field(default_factory=list)
+    source_documents: list[ChatSourceDocument] = Field(default_factory=list)
+
+
+class ChatSessionTurnSummary(BaseModel):
+    turn_id: str
+    submitted_at: str
+    selected_ticker: str
+    safety_classification: SafetyClassification
+    evidence_state: EvidenceState
+    freshness_state: FreshnessState
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    uncertainty_labels: list[str] = Field(default_factory=list)
+
+
+class ChatSessionPublicMetadata(BaseModel):
+    schema_version: str = "chat-session-contract-v1"
+    session_id: str | None = None
+    conversation_id: str | None = None
+    lifecycle_state: ChatSessionLifecycleState
+    selected_asset: AssetIdentity | None = None
+    created_at: str | None = None
+    last_activity_at: str | None = None
+    expires_at: str | None = None
+    deleted_at: str | None = None
+    turn_count: int = 0
+    latest_safety_classification: SafetyClassification | None = None
+    latest_evidence_state: EvidenceState | None = None
+    latest_freshness_state: FreshnessState | None = None
+    export_available: bool = False
+    deletion_status: ChatSessionDeletionStatus = ChatSessionDeletionStatus.unavailable
+
+
+class ChatSessionStatusResponse(BaseModel):
+    session: ChatSessionPublicMetadata
+    turn_summaries: list[ChatSessionTurnSummary] = Field(default_factory=list)
+    message: str
+
+
+class ChatSessionDeleteResponse(BaseModel):
+    session: ChatSessionPublicMetadata
+    deleted: bool
+    message: str
+
+
 class ChatResponse(BaseModel):
     asset: AssetIdentity
     direct_answer: str
@@ -1715,6 +1788,7 @@ class ChatResponse(BaseModel):
     source_documents: list[ChatSourceDocument] = Field(default_factory=list)
     uncertainty: list[str] = Field(default_factory=list)
     safety_classification: SafetyClassification
+    session: ChatSessionPublicMetadata | None = None
 
 
 class ExportExcerpt(BaseModel):

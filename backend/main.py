@@ -18,9 +18,15 @@ from backend.data import (
     state_for_asset,
     supported_asset,
 )
-from backend.chat import generate_asset_chat
+from backend.chat_sessions import answer_chat_with_session, delete_chat_session, get_chat_session_status
 from backend.comparison import generate_comparison
-from backend.export import export_asset_page, export_asset_source_list, export_chat_transcript, export_comparison
+from backend.export import (
+    export_asset_page,
+    export_asset_source_list,
+    export_chat_session_transcript,
+    export_chat_transcript,
+    export_comparison,
+)
 from backend.ingestion import (
     get_ingestion_job_status,
     get_pre_cache_job_status,
@@ -33,6 +39,8 @@ from backend.models import (
     AssetIdentity,
     ChatRequest,
     ChatResponse,
+    ChatSessionDeleteResponse,
+    ChatSessionStatusResponse,
     ChatTranscriptExportRequest,
     ComparisonExportRequest,
     CompareRequest,
@@ -203,7 +211,25 @@ def compare_assets_export_query(
 
 @app.post("/api/assets/{ticker}/chat", response_model=ChatResponse, tags=["chat"])
 def asset_chat(ticker: str, request: ChatRequest) -> ChatResponse:
-    return generate_asset_chat(ticker, request.question)
+    return answer_chat_with_session(ticker, request)
+
+
+@app.get("/api/chat-sessions/{conversation_id}", response_model=ChatSessionStatusResponse, tags=["chat"])
+def chat_session_status(conversation_id: str) -> ChatSessionStatusResponse:
+    return get_chat_session_status(conversation_id)
+
+
+@app.post("/api/chat-sessions/{conversation_id}/delete", response_model=ChatSessionDeleteResponse, tags=["chat"])
+def chat_session_delete(conversation_id: str) -> ChatSessionDeleteResponse:
+    return delete_chat_session(conversation_id)
+
+
+@app.get("/api/chat-sessions/{conversation_id}/export", response_model=ExportResponse, tags=["exports"])
+def chat_session_export(
+    conversation_id: str,
+    export_format: ExportFormat = ExportFormat.markdown,
+) -> ExportResponse:
+    return export_chat_session_transcript(conversation_id, export_format)
 
 
 @app.post("/api/assets/{ticker}/chat/export", response_model=ExportResponse, tags=["exports"])

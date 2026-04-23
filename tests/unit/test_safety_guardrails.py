@@ -231,3 +231,26 @@ def test_llm_contract_copy_is_advice_safe():
         assert_no_forbidden_phrases(marker, marker)
 
     assert_no_forbidden_phrases("llm contract", combined)
+
+
+def test_chat_session_contract_copy_is_advice_safe():
+    combined = "\n".join(
+        [
+            (ROOT / "backend" / "chat_sessions.py").read_text(encoding="utf-8"),
+            (ROOT / "backend" / "models.py").read_text(encoding="utf-8"),
+            (ROOT / "backend" / "export.py").read_text(encoding="utf-8"),
+        ]
+    )
+    markers = [
+        "chat-session-contract-v1",
+        "CHAT_SESSION_TTL_SECONDS",
+        "ticker_mismatch",
+        "deleted",
+        "local_accountless_chat_session",
+    ]
+
+    for marker in markers:
+        assert marker in combined
+        assert_no_forbidden_phrases(marker, marker)
+
+    assert_no_forbidden_phrases("chat session contract", combined)

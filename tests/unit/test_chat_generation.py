@@ -66,6 +66,12 @@ def test_knowledge_pack_builder_does_not_change_chat_output():
     assert after == before
 
 
+def test_stateless_chat_generation_does_not_create_session_metadata():
+    response = generate_asset_chat("QQQ", "What is this fund?")
+
+    assert response.session is None
+
+
 def test_chat_advice_and_unsupported_redirects_have_no_citations():
     advice = generate_asset_chat("VOO", "Should I buy VOO today?")
     unsupported = generate_asset_chat("BTC", "Should I buy BTC?")

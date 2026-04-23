@@ -1,0 +1,70 @@
+schema_version: chat-session-evals-v1
+ttl:
+  days: 7
+  seconds: 604800
+required_models:
+  - ChatSessionLifecycleState
+  - ChatSessionDeletionStatus
+  - ChatSessionPublicMetadata
+  - ChatTurnRecord
+  - ChatSessionTurnSummary
+  - ChatSessionStatusResponse
+  - ChatSessionDeleteResponse
+required_helpers:
+  - ChatSessionStore
+  - answer_chat_with_session
+  - get_chat_session_status
+  - delete_chat_session
+  - chat_session_export_payload
+required_lifecycle_states:
+  - active
+  - expired
+  - deleted
+  - ticker_mismatch
+  - unavailable
+required_routes:
+  - /api/chat-sessions/{conversation_id}
+  - /api/chat-sessions/{conversation_id}/delete
+  - /api/chat-sessions/{conversation_id}/export
+forbidden_imports:
+  - import requests
+  - import httpx
+  - urllib.request
+  - from socket import
+  - os.environ
+  - openai
+  - analytics
+forbidden_storage_markers:
+  - hidden_prompt
+  - reasoning_details
+  - raw_source_text
+  - raw_chunks
+  - provider_payload
+  - account_id
+  - ip_address
+  - user_agent
+  - cookie
+  - training
+  - model_evaluation
+cases:
+  - id: supported_session_create
+    ticker: QQQ
+    question: What is this fund?
+    expected_state: active
+    expected_turn_count: 1
+    expected_export_available: true
+    expected_safety_classification: educational
+  - id: advice_redirect_session
+    ticker: VOO
+    question: Should I buy VOO today?
+    expected_state: active
+    expected_turn_count: 1
+    expected_export_available: true
+    expected_safety_classification: personalized_advice_redirect
+  - id: unsupported_session_blocked
+    ticker: BTC
+    question: What is this?
+    expected_state: unavailable
+    expected_turn_count: 0
+    expected_export_available: false
+    expected_safety_classification: unsupported_asset_redirect
