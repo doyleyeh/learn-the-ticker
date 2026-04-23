@@ -79,6 +79,22 @@ request_cases:
       can_compare: false
       can_request_ingestion: false
 
+  - id: request_out_of_scope_common_stock
+    ticker: GME
+    expected_asset_type: stock
+    expected_job_type: null
+    expected_job_id: null
+    expected_job_state: out_of_scope
+    expected_worker_status: null
+    expected_status_url: null
+    expected_generated_route: null
+    expected_retryable: false
+    expected_capabilities:
+      can_open_generated_page: false
+      can_answer_chat: false
+      can_compare: false
+      can_request_ingestion: false
+
   - id: request_unknown
     ticker: ZZZZ
     expected_asset_type: unknown

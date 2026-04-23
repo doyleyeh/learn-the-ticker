@@ -24,7 +24,15 @@ from backend.cache import (
 from backend.chat import generate_asset_chat, validate_chat_response
 from backend.citations import validate_claims
 from backend.comparison import generate_comparison, validate_comparison_response
-from backend.data import ASSETS, ELIGIBLE_NOT_CACHED_ASSETS
+from backend.data import (
+    ASSETS,
+    ELIGIBLE_NOT_CACHED_ASSETS,
+    OUT_OF_SCOPE_COMMON_STOCKS,
+    TOP500_STOCK_UNIVERSE_MANIFEST_PATH,
+    is_top500_manifest_stock,
+    load_top500_stock_universe_manifest,
+    top500_stock_universe_entry,
+)
 from backend.export import export_asset_page, export_asset_source_list, export_chat_transcript, export_comparison
 from backend.ingestion import get_ingestion_job_status, request_ingestion
 from backend.ingestion import get_pre_cache_job_status, request_launch_universe_pre_cache, request_pre_cache_for_asset
@@ -130,6 +138,7 @@ def test_golden_assets():
         ("AAPL", "MSFT"),
         ("NVDA", "SOXX"),
     }
+    required_manifest_stocks = {"AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "BRK.B", "JPM", "UNH"}
 
     technical = data.get("technical_design_golden_assets", {})
     assert required_technical_stocks <= set(technical.get("stocks", []))
@@ -145,6 +154,10 @@ def test_golden_assets():
     assert {case["ticker"] for case in cached_cases + eligible_cases} == required_launch_tickers
     assert required_launch_tickers - set(ASSETS) == set(ELIGIBLE_NOT_CACHED_ASSETS)
     assert {case["ticker"] for case in eligible_cases} == set(ELIGIBLE_NOT_CACHED_ASSETS)
+    assert required_manifest_stocks <= {entry.ticker for entry in load_top500_stock_universe_manifest().entries}
+    assert {ticker for ticker in set(ELIGIBLE_NOT_CACHED_ASSETS) if is_top500_manifest_stock(ticker)} == (
+        required_manifest_stocks - {"AAPL"}
+    )
     assert {case["ticker"] for case in unsupported_cases} >= {"BTC", "TQQQ", "SQQQ"}
     assert {case["ticker"] for case in unknown_cases} >= {"ZZZZ"}
     assert required_common_pairs <= {(case["left"], case["right"]) for case in comparison_cases}
@@ -283,6 +296,89 @@ def test_golden_assets():
         assert forbidden not in data_source
 
 
+def test_top500_stock_universe_manifest_contract():
+    manifest_path = ROOT / "data" / "universes" / "us_common_stocks_top500.current.json"
+    assert TOP500_STOCK_UNIVERSE_MANIFEST_PATH == manifest_path
+    assert manifest_path.exists(), "Top-500 stock universe manifest must exist at the runtime path"
+
+    manifest = load_top500_stock_universe_manifest()
+    assert manifest.schema_version == "top500-us-common-stock-universe-v1"
+    assert manifest.local_path == "data/universes/us_common_stocks_top500.current.json"
+    assert manifest.production_mirror_env_var == "TOP500_UNIVERSE_MANIFEST_URI"
+    assert manifest.rank_limit == 500
+    assert manifest.entries
+    assert "Operational coverage metadata" in manifest.coverage_purpose
+    assert "not an endorsement" in manifest.policy_note
+    assert "not a recommendation" in manifest.policy_note
+    assert "not a model portfolio" in manifest.policy_note
+    assert "runtime source of truth" in manifest.rank_basis
+    assert "no live provider query" in manifest.source_provenance
+
+    required_entry_fields = {
+        "ticker",
+        "name",
+        "asset_type",
+        "security_type",
+        "cik",
+        "exchange",
+        "rank",
+        "rank_basis",
+        "source_provenance",
+        "snapshot_date",
+        "checksum_input",
+        "generated_checksum",
+        "approval_timestamp",
+    }
+    required_manifest_backed = {"AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "BRK.B", "JPM", "UNH"}
+    entries = {entry.ticker: entry for entry in manifest.entries}
+    assert required_manifest_backed <= set(entries)
+    assert set(OUT_OF_SCOPE_COMMON_STOCKS).isdisjoint(entries)
+
+    for ticker, entry in entries.items():
+        payload = entry.model_dump(mode="json")
+        assert required_entry_fields <= set(payload), f"{ticker} missing manifest fields"
+        assert entry.asset_type == "stock"
+        assert entry.security_type == "us_listed_common_stock"
+        assert entry.exchange
+        assert entry.rank_basis
+        assert entry.source_provenance
+        assert entry.snapshot_date == manifest.snapshot_date
+        assert entry.checksum_input
+        assert entry.generated_checksum.startswith("sha256:")
+        assert entry.approval_timestamp
+        assert top500_stock_universe_entry(ticker) == entry
+        assert is_top500_manifest_stock(ticker) is True
+
+    for ticker in ["MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "BRK.B", "JPM", "UNH"]:
+        metadata = ELIGIBLE_NOT_CACHED_ASSETS[ticker]
+        entry = entries[ticker]
+        assert metadata["name"] == entry.name
+        assert metadata["asset_type"] == "stock"
+        assert metadata["exchange"] == entry.exchange
+        assert metadata["manifest_id"] == manifest.manifest_id
+        assert metadata["manifest_rank"] == str(entry.rank)
+        assert metadata["rank_basis"] == entry.rank_basis
+        assert metadata["source_provenance"] == entry.source_provenance
+        assert metadata["snapshot_date"] == entry.snapshot_date
+
+    out_of_scope = client.get("/api/search", params={"q": "GME"}).json()
+    assert out_of_scope["state"]["status"] == "out_of_scope"
+    assert out_of_scope["results"][0]["support_classification"] == "out_of_scope"
+    assert out_of_scope["results"][0]["eligible_for_ingestion"] is False
+    assert out_of_scope["results"][0]["generated_route"] is None
+
+    data_source = (ROOT / "backend" / "data.py").read_text(encoding="utf-8")
+    search_source = (ROOT / "backend" / "search.py").read_text(encoding="utf-8")
+    provider_source = (ROOT / "backend" / "providers.py").read_text(encoding="utf-8")
+    for source in [data_source, search_source, provider_source]:
+        for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import", "os.environ", "api_key"]:
+            assert forbidden not in source
+
+    manifest_text = manifest_path.read_text(encoding="utf-8").lower()
+    for forbidden in ["should buy", "should sell", "should hold", "price target", "personalized allocation"]:
+        assert forbidden not in manifest_text
+
+
 def test_safety_cases():
     data = load_yaml("safety_eval_cases.yaml")
     cases = data.get("cases", [])
@@ -367,12 +463,18 @@ def test_search_cases():
     cases = data.get("cases", [])
     assert cases, "search_eval_cases.yaml must define cases"
 
-    required_states = {"supported", "ambiguous", "unsupported", "unknown", "ingestion_needed"}
+    required_states = {"supported", "ambiguous", "unsupported", "out_of_scope", "unknown", "ingestion_needed"}
     found_states = {case.get("expected_state") for case in cases}
     missing_states = required_states - found_states
     assert not missing_states, f"Missing search states: {missing_states}"
 
-    required_classifications = {"cached_supported", "recognized_unsupported", "unknown", "eligible_not_cached"}
+    required_classifications = {
+        "cached_supported",
+        "recognized_unsupported",
+        "out_of_scope",
+        "unknown",
+        "eligible_not_cached",
+    }
     found_classifications = {
         classification
         for case in cases
@@ -1548,6 +1650,7 @@ def _assert_provider_generated_flags_off(response: ProviderResponse, case_id: st
 
 if __name__ == "__main__":
     test_golden_assets()
+    test_top500_stock_universe_manifest_contract()
     test_safety_cases()
     test_citation_cases()
     test_search_cases()

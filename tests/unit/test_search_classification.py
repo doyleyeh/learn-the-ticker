@@ -1,4 +1,8 @@
-from backend.data import ELIGIBLE_NOT_CACHED_ASSETS
+from backend.data import (
+    ELIGIBLE_NOT_CACHED_ASSETS,
+    load_top500_stock_universe_manifest,
+    top500_stock_universe_entry,
+)
 from backend.models import SearchResponse
 from backend.search import search_assets
 
@@ -156,3 +160,42 @@ def test_launch_universe_assets_without_local_packs_are_eligible_not_cached_not_
         assert result.generated_route is None
         assert result.can_request_ingestion is True
         assert result.ingestion_request_route == f"/api/admin/ingest/{ticker}"
+
+
+def test_top500_manifest_backs_cached_and_eligible_not_cached_stocks_only():
+    manifest = load_top500_stock_universe_manifest()
+    manifest_tickers = {entry.ticker for entry in manifest.entries}
+
+    assert manifest.local_path == "data/universes/us_common_stocks_top500.current.json"
+    assert manifest.rank_limit == 500
+    assert "not a recommendation" in manifest.policy_note
+    assert {"AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "BRK.B", "JPM", "UNH"} <= manifest_tickers
+    assert "GME" not in manifest_tickers
+
+    assert top500_stock_universe_entry("aapl") is not None
+    assert top500_stock_universe_entry("gme") is None
+    for ticker in ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "BRK.B", "JPM", "UNH"]:
+        response = search_assets(ticker)
+        assert response.results[0].asset_type.value == "stock"
+        assert response.results[0].support_classification.value in {"cached_supported", "eligible_not_cached"}
+
+
+def test_recognized_common_stock_outside_manifest_is_out_of_scope_not_eligible():
+    response = search_assets("GME")
+    result = response.results[0]
+
+    assert response.state.status.value == "out_of_scope"
+    assert response.state.support_classification.value == "out_of_scope"
+    assert result.ticker == "GME"
+    assert result.asset_type.value == "stock"
+    assert result.supported is False
+    assert result.status.value == "out_of_scope"
+    assert result.support_classification.value == "out_of_scope"
+    assert result.eligible_for_ingestion is False
+    assert result.requires_ingestion is False
+    assert result.can_open_generated_page is False
+    assert result.can_answer_chat is False
+    assert result.can_compare is False
+    assert result.generated_route is None
+    assert result.can_request_ingestion is False
+    assert result.ingestion_request_route is None

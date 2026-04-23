@@ -22,6 +22,7 @@ class AssetStatus(str, Enum):
 class SearchResultStatus(str, Enum):
     supported = "supported"
     unsupported = "unsupported"
+    out_of_scope = "out_of_scope"
     unknown = "unknown"
     ingestion_needed = "ingestion_needed"
 
@@ -30,6 +31,7 @@ class SearchResponseStatus(str, Enum):
     supported = "supported"
     ambiguous = "ambiguous"
     unsupported = "unsupported"
+    out_of_scope = "out_of_scope"
     unknown = "unknown"
     ingestion_needed = "ingestion_needed"
 
@@ -37,6 +39,7 @@ class SearchResponseStatus(str, Enum):
 class SearchSupportClassification(str, Enum):
     cached_supported = "cached_supported"
     recognized_unsupported = "recognized_unsupported"
+    out_of_scope = "out_of_scope"
     unknown = "unknown"
     eligible_not_cached = "eligible_not_cached"
 
@@ -82,6 +85,7 @@ class IngestionJobState(str, Enum):
     refresh_needed = "refresh_needed"
     no_ingestion_needed = "no_ingestion_needed"
     unsupported = "unsupported"
+    out_of_scope = "out_of_scope"
     unknown = "unknown"
     unavailable = "unavailable"
 
@@ -148,6 +152,7 @@ class ProviderResponseState(str, Enum):
     supported = "supported"
     eligible_not_cached = "eligible_not_cached"
     unsupported = "unsupported"
+    out_of_scope = "out_of_scope"
     unknown = "unknown"
     unavailable = "unavailable"
     stale = "stale"
@@ -170,6 +175,44 @@ class AssetIdentity(BaseModel):
     issuer: str | None = None
     status: AssetStatus
     supported: bool
+
+
+class Top500StockUniverseEntry(BaseModel):
+    ticker: str
+    name: str
+    asset_type: Literal["stock"]
+    security_type: str
+    cik: str | None = None
+    exchange: str
+    rank: int
+    rank_basis: str
+    source_provenance: str
+    snapshot_date: str
+    checksum_input: str
+    generated_checksum: str
+    approval_timestamp: str
+    launch_group: str = "large_stock"
+    aliases: list[str] = Field(default_factory=list)
+
+
+class Top500StockUniverseManifest(BaseModel):
+    schema_version: str
+    manifest_id: str
+    universe_name: str
+    local_path: str
+    production_mirror_env_var: str
+    coverage_purpose: str
+    policy_note: str
+    refresh_cadence: str
+    snapshot_date: str
+    generated_at: str
+    approved_at: str
+    rank_limit: int
+    rank_basis: str
+    source_provenance: str
+    manifest_checksum_input: str
+    generated_checksum: str
+    entries: list[Top500StockUniverseEntry]
 
 
 class StateMessage(BaseModel):

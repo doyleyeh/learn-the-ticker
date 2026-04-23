@@ -5,9 +5,11 @@ from dataclasses import dataclass
 from backend.data import (
     ASSETS,
     ELIGIBLE_NOT_CACHED_ASSETS,
+    OUT_OF_SCOPE_COMMON_STOCKS,
     UNSUPPORTED_ASSET_SEARCH_METADATA,
     UNSUPPORTED_ASSETS,
     normalize_ticker,
+    top500_stock_universe_entry,
 )
 from backend.models import (
     AssetIdentity,
@@ -161,6 +163,20 @@ def _all_candidates() -> list[SearchCandidate]:
             )
         )
 
+    for ticker, metadata in OUT_OF_SCOPE_COMMON_STOCKS.items():
+        candidates.append(
+            SearchCandidate(
+                ticker=ticker,
+                name=str(metadata["name"]),
+                asset_type=AssetType.stock,
+                exchange=str(metadata["exchange"]) if metadata.get("exchange") else None,
+                issuer=None,
+                support_classification=SearchSupportClassification.out_of_scope,
+                message=str(metadata["reason"]),
+                aliases=tuple(str(alias) for alias in metadata.get("aliases") or ()),
+            )
+        )
+
     return candidates
 
 
@@ -174,6 +190,8 @@ def _supported_aliases(identity: AssetIdentity) -> tuple[str, ...]:
         aliases.extend(["nasdaq-100", "nasdaq 100", "invesco qqq"])
     elif identity.ticker == "AAPL":
         aliases.extend(["apple", "apple stock", "common stock"])
+        if top500_stock_universe_entry(identity.ticker):
+            aliases.append("top-500 manifest common stock")
     return tuple(aliases)
 
 
@@ -201,6 +219,7 @@ def _candidate_to_result(candidate: SearchCandidate) -> SearchResult:
     cached_supported = candidate.support_classification is SearchSupportClassification.cached_supported
     eligible_not_cached = candidate.support_classification is SearchSupportClassification.eligible_not_cached
     recognized_unsupported = candidate.support_classification is SearchSupportClassification.recognized_unsupported
+    out_of_scope = candidate.support_classification is SearchSupportClassification.out_of_scope
 
     if cached_supported:
         status = SearchResultStatus.supported
@@ -208,6 +227,8 @@ def _candidate_to_result(candidate: SearchCandidate) -> SearchResult:
         status = SearchResultStatus.ingestion_needed
     elif recognized_unsupported:
         status = SearchResultStatus.unsupported
+    elif out_of_scope:
+        status = SearchResultStatus.out_of_scope
     else:
         status = SearchResultStatus.unknown
 
@@ -260,6 +281,16 @@ def _state_for_single_result(result: SearchResult) -> SearchState:
         return SearchState(
             status=SearchResponseStatus.unsupported,
             message=result.message or "Recognized asset type is outside the current product scope.",
+            result_count=1,
+            support_classification=result.support_classification,
+        )
+    if result.support_classification is SearchSupportClassification.out_of_scope:
+        return SearchState(
+            status=SearchResponseStatus.out_of_scope,
+            message=(
+                result.message
+                or "Recognized common stock is outside the current Top-500 manifest-backed support scope."
+            ),
             result_count=1,
             support_classification=result.support_classification,
         )

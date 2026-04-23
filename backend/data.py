@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 from copy import deepcopy
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from backend.models import (
@@ -18,10 +21,98 @@ from backend.models import (
     SourceDocument,
     StateMessage,
     SuitabilitySummary,
+    Top500StockUniverseEntry,
+    Top500StockUniverseManifest,
 )
 
 
 STUB_TIMESTAMP = "2026-04-20T00:00:00Z"
+TOP500_STOCK_UNIVERSE_MANIFEST_PATH = (
+    Path(__file__).resolve().parents[1] / "data" / "universes" / "us_common_stocks_top500.current.json"
+)
+TOP500_STOCK_UNIVERSE_SCHEMA_VERSION = "top500-us-common-stock-universe-v1"
+
+
+def normalize_ticker(ticker: str) -> str:
+    return ticker.strip().upper()
+
+
+def _assert_no_manifest_advice_language(manifest: Top500StockUniverseManifest) -> None:
+    text = " ".join(
+        [
+            manifest.coverage_purpose,
+            manifest.policy_note,
+            manifest.rank_basis,
+            manifest.source_provenance,
+            *(entry.rank_basis for entry in manifest.entries),
+            *(entry.source_provenance for entry in manifest.entries),
+        ]
+    ).lower()
+    forbidden_phrases = [
+        "should buy",
+        "should sell",
+        "should hold",
+        "price target",
+        "target price",
+        "model portfolio inclusion",
+        "personalized allocation",
+    ]
+    hits = [phrase for phrase in forbidden_phrases if phrase in text]
+    if hits:
+        raise ValueError(f"Top-500 manifest contains advice-like language: {hits}")
+
+
+def validate_top500_stock_universe_manifest(manifest: Top500StockUniverseManifest) -> Top500StockUniverseManifest:
+    if manifest.schema_version != TOP500_STOCK_UNIVERSE_SCHEMA_VERSION:
+        raise ValueError(f"Unsupported Top-500 manifest schema version: {manifest.schema_version}")
+    if manifest.local_path != "data/universes/us_common_stocks_top500.current.json":
+        raise ValueError("Top-500 manifest local_path must point to the runtime local manifest path.")
+    if manifest.production_mirror_env_var != "TOP500_UNIVERSE_MANIFEST_URI":
+        raise ValueError("Top-500 manifest must declare the private production mirror env var.")
+    if manifest.rank_limit != 500:
+        raise ValueError("Top-500 manifest rank_limit must remain 500.")
+    if not manifest.entries:
+        raise ValueError("Top-500 manifest must contain at least one stock entry.")
+
+    tickers = [entry.ticker for entry in manifest.entries]
+    ranks = [entry.rank for entry in manifest.entries]
+    if len(tickers) != len(set(tickers)):
+        raise ValueError("Top-500 manifest entries must have unique tickers.")
+    if len(ranks) != len(set(ranks)):
+        raise ValueError("Top-500 manifest entries must have unique ranks.")
+    if any(entry.ticker != normalize_ticker(entry.ticker) for entry in manifest.entries):
+        raise ValueError("Top-500 manifest tickers must be normalized uppercase symbols.")
+    if any(entry.asset_type != "stock" for entry in manifest.entries):
+        raise ValueError("Top-500 manifest must contain stock entries only.")
+    if any(entry.security_type != "us_listed_common_stock" for entry in manifest.entries):
+        raise ValueError("Top-500 manifest entries must be U.S.-listed common stocks only.")
+    if any(entry.rank < 1 or entry.rank > manifest.rank_limit for entry in manifest.entries):
+        raise ValueError("Top-500 manifest ranks must be within the declared rank_limit.")
+    if any(not entry.checksum_input or not entry.generated_checksum for entry in manifest.entries):
+        raise ValueError("Top-500 manifest entries must include checksum inputs and generated checksums.")
+    if any(entry.snapshot_date != manifest.snapshot_date for entry in manifest.entries):
+        raise ValueError("Top-500 manifest entry snapshot dates must match the manifest snapshot date.")
+    _assert_no_manifest_advice_language(manifest)
+    return manifest
+
+
+@lru_cache(maxsize=1)
+def load_top500_stock_universe_manifest() -> Top500StockUniverseManifest:
+    with TOP500_STOCK_UNIVERSE_MANIFEST_PATH.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    return validate_top500_stock_universe_manifest(Top500StockUniverseManifest.model_validate(payload))
+
+
+def top500_stock_universe_entries_by_ticker() -> dict[str, Top500StockUniverseEntry]:
+    return {entry.ticker: entry for entry in load_top500_stock_universe_manifest().entries}
+
+
+def top500_stock_universe_entry(ticker: str) -> Top500StockUniverseEntry | None:
+    return top500_stock_universe_entries_by_ticker().get(normalize_ticker(ticker))
+
+
+def is_top500_manifest_stock(ticker: str) -> bool:
+    return top500_stock_universe_entry(ticker) is not None
 
 
 def _source(
@@ -338,7 +429,7 @@ UNSUPPORTED_ASSET_SEARCH_METADATA: dict[str, dict[str, str | list[str] | None]] 
 }
 
 
-ELIGIBLE_NOT_CACHED_ASSETS: dict[str, dict[str, str | list[str] | None]] = {
+_ELIGIBLE_NOT_CACHED_ETF_ASSETS: dict[str, dict[str, str | list[str] | None]] = {
     "SPY": {
         "name": "SPDR S&P 500 ETF Trust",
         "asset_type": "etf",
@@ -427,83 +518,50 @@ ELIGIBLE_NOT_CACHED_ASSETS: dict[str, dict[str, str | list[str] | None]] = {
         "aliases": ["health care sector etf", "select sector health care", "plain vanilla etf"],
         "launch_group": "sector_theme_etf",
     },
-    "MSFT": {
-        "name": "Microsoft Corporation",
-        "asset_type": "stock",
-        "exchange": "NASDAQ",
-        "issuer": None,
-        "aliases": ["microsoft", "microsoft corp", "common stock"],
-        "launch_group": "large_stock",
-    },
-    "NVDA": {
-        "name": "NVIDIA Corporation",
-        "asset_type": "stock",
-        "exchange": "NASDAQ",
-        "issuer": None,
-        "aliases": ["nvidia", "nvidia corp", "common stock"],
-        "launch_group": "large_stock",
-    },
-    "AMZN": {
-        "name": "Amazon.com, Inc.",
-        "asset_type": "stock",
-        "exchange": "NASDAQ",
-        "issuer": None,
-        "aliases": ["amazon", "amazon.com", "common stock"],
-        "launch_group": "large_stock",
-    },
-    "GOOGL": {
-        "name": "Alphabet Inc. Class A",
-        "asset_type": "stock",
-        "exchange": "NASDAQ",
-        "issuer": None,
-        "aliases": ["alphabet", "google", "common stock"],
-        "launch_group": "large_stock",
-    },
-    "META": {
-        "name": "Meta Platforms, Inc.",
-        "asset_type": "stock",
-        "exchange": "NASDAQ",
-        "issuer": None,
-        "aliases": ["meta", "facebook", "common stock"],
-        "launch_group": "large_stock",
-    },
-    "TSLA": {
-        "name": "Tesla, Inc.",
-        "asset_type": "stock",
-        "exchange": "NASDAQ",
-        "issuer": None,
-        "aliases": ["tesla", "tesla inc", "common stock"],
-        "launch_group": "large_stock",
-    },
-    "BRK.B": {
-        "name": "Berkshire Hathaway Inc. Class B",
-        "asset_type": "stock",
-        "exchange": "NYSE",
-        "issuer": None,
-        "aliases": ["berkshire hathaway", "berkshire class b", "common stock"],
-        "launch_group": "large_stock",
-    },
-    "JPM": {
-        "name": "JPMorgan Chase & Co.",
-        "asset_type": "stock",
-        "exchange": "NYSE",
-        "issuer": None,
-        "aliases": ["jpmorgan", "jpmorgan chase", "common stock"],
-        "launch_group": "large_stock",
-    },
-    "UNH": {
-        "name": "UnitedHealth Group Incorporated",
-        "asset_type": "stock",
-        "exchange": "NYSE",
-        "issuer": None,
-        "aliases": ["unitedhealth", "unitedhealth group", "common stock"],
-        "launch_group": "large_stock",
-    },
 }
 
 
-def normalize_ticker(ticker: str) -> str:
-    return ticker.strip().upper()
+def _eligible_not_cached_stock_assets_from_manifest() -> dict[str, dict[str, str | list[str] | None]]:
+    stocks: dict[str, dict[str, str | list[str] | None]] = {}
+    for entry in load_top500_stock_universe_manifest().entries:
+        if entry.ticker in ASSETS:
+            continue
+        stocks[entry.ticker] = {
+            "name": entry.name,
+            "asset_type": entry.asset_type,
+            "exchange": entry.exchange,
+            "issuer": None,
+            "aliases": entry.aliases,
+            "launch_group": entry.launch_group,
+            "manifest_id": load_top500_stock_universe_manifest().manifest_id,
+            "manifest_rank": str(entry.rank),
+            "rank_basis": entry.rank_basis,
+            "source_provenance": entry.source_provenance,
+            "snapshot_date": entry.snapshot_date,
+            "approval_timestamp": entry.approval_timestamp,
+        }
+    return stocks
+
+
+ELIGIBLE_NOT_CACHED_ASSETS: dict[str, dict[str, str | list[str] | None]] = {
+    **_ELIGIBLE_NOT_CACHED_ETF_ASSETS,
+    **_eligible_not_cached_stock_assets_from_manifest(),
+}
+
+
+OUT_OF_SCOPE_COMMON_STOCKS: dict[str, dict[str, str | list[str] | None]] = {
+    "GME": {
+        "name": "GameStop Corp.",
+        "asset_type": "stock",
+        "exchange": "NYSE",
+        "issuer": None,
+        "aliases": ["gamestop", "gamestop corp", "common stock"],
+        "reason": (
+            "Recognized U.S.-listed common stock outside the local Top-500 manifest; out of scope for "
+            "generated outputs unless explicitly approved for on-demand ingestion later."
+        ),
+    }
+}
 
 
 def supported_asset(ticker: str) -> dict[str, Any] | None:

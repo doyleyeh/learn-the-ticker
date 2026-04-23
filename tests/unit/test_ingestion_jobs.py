@@ -100,6 +100,37 @@ def test_unknown_asset_returns_unknown_without_invented_facts_or_job():
     assert "no asset facts are invented" in response.message.lower()
 
 
+def test_common_stock_outside_manifest_does_not_create_ingestion_or_pre_cache_output():
+    ingestion = request_ingestion("GME")
+    pre_cache = request_pre_cache_for_asset("GME")
+    pre_cache_status = get_pre_cache_job_status("pre-cache-out-of-scope-gme")
+
+    assert ingestion.ticker == "GME"
+    assert ingestion.asset_type.value == "stock"
+    assert ingestion.job_id is None
+    assert ingestion.job_type is None
+    assert ingestion.job_state.value == "out_of_scope"
+    assert ingestion.generated_route is None
+    assert ingestion.capabilities.can_open_generated_page is False
+    assert ingestion.capabilities.can_answer_chat is False
+    assert ingestion.capabilities.can_compare is False
+    assert ingestion.capabilities.can_request_ingestion is False
+    assert "outside the local Top-500 manifest" in ingestion.message
+
+    assert pre_cache == pre_cache_status
+    assert pre_cache.ticker == "GME"
+    assert pre_cache.asset_type.value == "stock"
+    assert pre_cache.job_state.value == "out_of_scope"
+    assert pre_cache.generated_route is None
+    assert pre_cache.generated_output_available is False
+    assert pre_cache.citation_ids == []
+    assert pre_cache.source_document_ids == []
+    assert pre_cache.capabilities.can_open_generated_page is False
+    assert pre_cache.capabilities.can_answer_chat is False
+    assert pre_cache.capabilities.can_compare is False
+    assert pre_cache.capabilities.can_request_ingestion is False
+
+
 def test_status_lookup_covers_running_succeeded_refresh_needed_failed_and_unavailable_states():
     cases = {
         "ingest-on-demand-msft": ("MSFT", "running", "running", None),
