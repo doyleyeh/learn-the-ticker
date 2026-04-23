@@ -86,6 +86,44 @@ def test_chat_advice_and_unsupported_redirects_have_no_citations():
     assert "outside" in unsupported.direct_answer
 
 
+def test_chat_comparison_questions_redirect_to_compare_workflow_without_multi_asset_citations():
+    cases = [
+        ("VOO", "How is VOO different from QQQ?", "VOO", "QQQ", "available"),
+        ("VOO", "How is QQQ different from VOO?", "QQQ", "VOO", "available"),
+        ("QQQ", "Why is this more concentrated than VOO?", "QQQ", "VOO", "available"),
+        ("VOO", "AAPL vs VOO", "AAPL", "VOO", "no_local_pack"),
+        ("VOO", "VOO vs SPY", "VOO", "SPY", "eligible_not_cached"),
+        ("VOO", "VOO vs BTC", "VOO", "BTC", "unsupported"),
+        ("VOO", "VOO vs GME", "VOO", "GME", "out_of_scope"),
+        ("VOO", "VOO vs ZZZZ", "VOO", "ZZZZ", "unknown"),
+    ]
+
+    for ticker, question, expected_left, expected_right, expected_state in cases:
+        response = generate_asset_chat(ticker, question)
+
+        assert response.safety_classification is SafetyClassification.compare_route_redirect
+        assert response.citations == []
+        assert response.source_documents == []
+        assert response.compare_route_suggestion is not None
+        assert response.compare_route_suggestion.left_ticker == expected_left
+        assert response.compare_route_suggestion.right_ticker == expected_right
+        assert response.compare_route_suggestion.route == f"/compare?left={expected_left}&right={expected_right}"
+        assert response.compare_route_suggestion.comparison_availability_state.value == expected_state
+        assert response.compare_route_suggestion.diagnostics.generated_multi_asset_chat_answer is False
+        assert response.compare_route_suggestion.diagnostics.mixed_asset_citations_included is False
+        assert response.compare_route_suggestion.diagnostics.mixed_asset_source_documents_included is False
+        assert "comparison workflow" in response.direct_answer.lower()
+
+
+def test_advice_redirect_keeps_precedence_when_second_ticker_is_present():
+    response = generate_asset_chat("VOO", "Should I buy VOO or QQQ today?")
+
+    assert response.safety_classification is SafetyClassification.personalized_advice_redirect
+    assert response.compare_route_suggestion is None
+    assert response.citations == []
+    assert response.source_documents == []
+
+
 def test_chat_response_validation_surfaces_missing_and_unknown_citations():
     pack = build_asset_knowledge_pack("QQQ")
     response = generate_asset_chat("QQQ", "What is this fund?")

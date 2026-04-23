@@ -1888,6 +1888,19 @@ def test_glossary_context_contract():
 
 
 def test_generated_chat_contract():
+    assert {"compare_route_suggestion"} <= set(ChatResponse.model_fields)
+    assert {"schema_version", "route", "comparison_availability_state", "diagnostics"} <= set(
+        models.ChatCompareRouteSuggestion.model_fields
+    )
+    assert {
+        "derived_from_submitted_question",
+        "used_current_local_search_rules_only",
+        "used_existing_local_comparison_availability_only",
+        "generated_multi_asset_chat_answer",
+        "mixed_asset_citations_included",
+        "mixed_asset_source_documents_included",
+    } <= set(models.ChatCompareRouteDiagnostics.model_fields)
+
     supported_cases = [
         ("AAPL", "What does Apple do?", "primary business"),
         ("VOO", "What is VOO and what risks should a beginner understand?", "market risk"),
@@ -1948,6 +1961,38 @@ def test_generated_chat_contract():
         assert unavailable.safety_classification.value == "unsupported_asset_redirect"
         assert unavailable.citations == []
         assert unavailable.source_documents == []
+
+    compare_redirect_cases = [
+        ("VOO", "How is VOO different from QQQ?", "VOO", "QQQ", "available"),
+        ("VOO", "How is QQQ different from VOO?", "QQQ", "VOO", "available"),
+        ("QQQ", "Why is this more concentrated than VOO?", "QQQ", "VOO", "available"),
+        ("VOO", "AAPL vs VOO", "AAPL", "VOO", "no_local_pack"),
+        ("VOO", "VOO vs SPY", "VOO", "SPY", "eligible_not_cached"),
+        ("VOO", "VOO vs BTC", "VOO", "BTC", "unsupported"),
+        ("VOO", "VOO vs GME", "VOO", "GME", "out_of_scope"),
+        ("VOO", "VOO vs ZZZZ", "VOO", "ZZZZ", "unknown"),
+    ]
+
+    for ticker, question, expected_left, expected_right, expected_state in compare_redirect_cases:
+        redirect = generate_asset_chat(ticker, question)
+        validated = ChatResponse.model_validate(redirect.model_dump(mode="json"))
+
+        assert validated.safety_classification.value == "compare_route_redirect"
+        assert validated.compare_route_suggestion is not None
+        assert validated.compare_route_suggestion.left_ticker == expected_left
+        assert validated.compare_route_suggestion.right_ticker == expected_right
+        assert validated.compare_route_suggestion.route == f"/compare?left={expected_left}&right={expected_right}"
+        assert validated.compare_route_suggestion.comparison_availability_state.value == expected_state
+        assert validated.compare_route_suggestion.diagnostics.derived_from_submitted_question is True
+        assert validated.compare_route_suggestion.diagnostics.used_current_local_search_rules_only is True
+        assert validated.compare_route_suggestion.diagnostics.used_existing_local_comparison_availability_only is True
+        assert validated.compare_route_suggestion.diagnostics.generated_multi_asset_chat_answer is False
+        assert validated.citations == []
+        assert validated.source_documents == []
+
+    advice_with_second_ticker = generate_asset_chat("VOO", "Should I buy VOO or QQQ today?")
+    assert advice_with_second_ticker.safety_classification.value == "personalized_advice_redirect"
+    assert advice_with_second_ticker.compare_route_suggestion is None
 
     chat_source = (ROOT / "backend" / "chat.py").read_text(encoding="utf-8")
     for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import"]:
@@ -2035,6 +2080,20 @@ def test_chat_session_cases():
     assert deleted_status.session.lifecycle_state is ChatSessionLifecycleState.deleted
     assert deleted_status.turn_summaries == []
     assert "chat_session_export_payload" in export_source
+
+    redirect_store = ChatSessionStore(id_generator=lambda: "redirect-session-4444444444444444", clock=Clock())
+    redirect = answer_chat_with_session(
+        "VOO",
+        ChatRequest(question="How is QQQ different from VOO?"),
+        store=redirect_store,
+    )
+    redirect_status = get_chat_session_status(redirect.session.conversation_id, store=redirect_store)
+    redirect_metadata, redirect_turns = chat_session_export_payload(redirect.session.conversation_id, store=redirect_store)
+    assert redirect.safety_classification.value == "compare_route_redirect"
+    assert redirect.compare_route_suggestion is not None
+    assert redirect_status.turn_summaries[0].compare_route_suggestion is not None
+    assert redirect_turns[0].compare_route_suggestion is not None
+    assert redirect_metadata.export_available is True
 
 
 def test_export_cases():
@@ -2209,6 +2268,18 @@ def test_export_cases():
             assert validated.export_validation.source_bindings == []
 
         assert not find_forbidden_output_phrases(_flatten_static_text(validated.model_dump(mode="json")))
+
+    compare_redirect_export = export_chat_transcript(
+        "VOO",
+        ChatTranscriptExportRequest(question="How is QQQ different from VOO?"),
+    )
+    validated_compare_redirect_export = ExportResponse.model_validate(compare_redirect_export.model_dump(mode="json"))
+    assert validated_compare_redirect_export.metadata["safety_classification"] == "compare_route_redirect"
+    assert validated_compare_redirect_export.metadata["compare_route_suggestion"]["route"] == "/compare?left=QQQ&right=VOO"
+    assert validated_compare_redirect_export.export_validation is not None
+    assert validated_compare_redirect_export.export_validation.binding_scope.value == "no_factual_evidence"
+    assert validated_compare_redirect_export.citations == []
+    assert validated_compare_redirect_export.source_documents == []
 
     export_source = (ROOT / "backend" / "export.py").read_text(encoding="utf-8")
     main_source = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")

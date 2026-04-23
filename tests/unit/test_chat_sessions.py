@@ -187,6 +187,25 @@ def test_advice_redirect_turn_records_no_factual_sources():
     assert status.session.latest_safety_classification is SafetyClassification.personalized_advice_redirect
 
 
+def test_compare_redirect_turn_records_preserve_route_metadata_without_sources():
+    store = ChatSessionStore(id_generator=lambda: "67676767676746768767676767676767", clock=MutableClock())
+
+    response = answer_chat_with_session("VOO", ChatRequest(question="How is QQQ different from VOO?"), store=store)
+    status = get_chat_session_status(response.session.conversation_id, store=store)
+    metadata, turns = chat_session_export_payload(response.session.conversation_id, store=store)
+
+    assert response.safety_classification is SafetyClassification.compare_route_redirect
+    assert response.compare_route_suggestion is not None
+    assert response.citations == []
+    assert response.source_documents == []
+    assert status.session.latest_safety_classification is SafetyClassification.compare_route_redirect
+    assert status.turn_summaries[0].compare_route_suggestion is not None
+    assert status.turn_summaries[0].compare_route_suggestion.route == "/compare?left=QQQ&right=VOO"
+    assert metadata.export_available is True
+    assert turns[0].compare_route_suggestion is not None
+    assert turns[0].compare_route_suggestion.comparison_availability_state.value == "available"
+
+
 def test_session_transcript_export_uses_safe_turn_records_without_question_text():
     clock = MutableClock()
     store = ChatSessionStore(id_generator=lambda: "77777777777747778777777777777777", clock=clock)

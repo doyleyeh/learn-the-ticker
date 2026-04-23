@@ -276,6 +276,7 @@ def _turn_record_from_response(response: ChatResponse, turn_number: int, submitt
         why_it_matters=response.why_it_matters,
         citations=list(response.citations),
         source_documents=list(response.source_documents),
+        compare_route_suggestion=response.compare_route_suggestion,
     )
 
 
@@ -290,6 +291,7 @@ def _turn_summary(turn: ChatTurnRecord) -> ChatSessionTurnSummary:
         citation_ids=turn.citation_ids,
         source_document_ids=turn.source_document_ids,
         uncertainty_labels=turn.uncertainty_labels,
+        compare_route_suggestion=turn.compare_route_suggestion,
     )
 
 
