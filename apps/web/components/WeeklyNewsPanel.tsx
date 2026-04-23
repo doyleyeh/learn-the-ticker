@@ -2,6 +2,48 @@ import type { Citation, WeeklyNewsFocusFixture } from "../lib/fixtures";
 import { CitationChip } from "./CitationChip";
 import { FreshnessLabel } from "./FreshnessLabel";
 
+type FreshnessState = "fresh" | "stale" | "unknown" | "unavailable" | "partial" | "insufficient_evidence";
+
+function stateToFreshness(state: WeeklyNewsFocusFixture["state"]): FreshnessState {
+  if (state === "available") {
+    return "fresh";
+  }
+  if (state === "suppressed" || state === "no_high_signal") {
+    return "insufficient_evidence";
+  }
+  if (state === "insufficient_evidence") {
+    return "insufficient_evidence";
+  }
+  if (state === "unavailable") {
+    return "unavailable";
+  }
+  return "unknown";
+}
+
+function evidenceStateToFreshnessFromFocus(
+  emptyState: WeeklyNewsFocusFixture["emptyState"]
+): FreshnessState {
+  if (!emptyState) {
+    return "unknown";
+  }
+  if (emptyState.evidenceState === "supported" || emptyState.evidenceState === "mixed") {
+    return "fresh";
+  }
+  if (emptyState.evidenceState === "stale") {
+    return "stale";
+  }
+  if (emptyState.evidenceState === "no_high_signal" || emptyState.evidenceState === "no_major_recent_development") {
+    return "insufficient_evidence";
+  }
+  if (emptyState.evidenceState === "insufficient_evidence") {
+    return "insufficient_evidence";
+  }
+  if (emptyState.evidenceState === "unavailable") {
+    return "unavailable";
+  }
+  return "unknown";
+}
+
 type WeeklyNewsPanelProps = {
   focus: WeeklyNewsFocusFixture;
   citations: Citation[];
@@ -10,6 +52,8 @@ type WeeklyNewsPanelProps = {
 export function WeeklyNewsPanel({ focus, citations }: WeeklyNewsPanelProps) {
   const windowLabel = `${focus.window.newsWindowStart} to ${focus.window.newsWindowEnd}`;
   const emptyMessage = focus.emptyState?.message ?? "No major Weekly News Focus items found in the deterministic local fixture window.";
+  const emptyEvidenceState = evidenceStateToFreshnessFromFocus(focus.emptyState);
+  const windowFreshness = stateToFreshness(focus.state);
 
   return (
     <section
@@ -27,8 +71,8 @@ export function WeeklyNewsPanel({ focus, citations }: WeeklyNewsPanelProps) {
       </div>
 
       <div className="state-row">
-        <FreshnessLabel label="News window" value={windowLabel} state="fresh" />
-        <FreshnessLabel label="Checked as of" value={focus.window.asOfDate} state="fresh" />
+        <FreshnessLabel label="News window" value={windowLabel} state={windowFreshness} />
+        <FreshnessLabel label="Checked as of" value={focus.window.asOfDate} state={windowFreshness} />
       </div>
 
       <p className="notice-text">
@@ -81,6 +125,18 @@ export function WeeklyNewsPanel({ focus, citations }: WeeklyNewsPanelProps) {
       ) : (
         <div className="unknown-state" data-weekly-news-empty-state={focus.emptyState?.state ?? focus.state}>
           <p>{emptyMessage}</p>
+          <div className="state-row">
+            <FreshnessLabel
+              label="Empty-state evidence"
+              value={focus.emptyState ? focus.emptyState.state : focus.state}
+              state={emptyEvidenceState}
+            />
+            {focus.emptyState ? (
+              <span className="state-pill compact-state" data-evidence-state={focus.emptyState.state}>
+                selected items: {focus.emptyState.selectedItemCount}
+              </span>
+            ) : null}
+          </div>
           <p className="source-gap-note">
             An empty Weekly News Focus state is normal when no major high-signal items pass the local evidence rules.
           </p>

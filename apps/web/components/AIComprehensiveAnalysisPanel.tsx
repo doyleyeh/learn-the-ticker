@@ -2,10 +2,25 @@ import type { Citation, AIComprehensiveAnalysisFixture } from "../lib/fixtures";
 import { CitationChip } from "./CitationChip";
 import { FreshnessLabel } from "./FreshnessLabel";
 
+type FreshnessState = "fresh" | "stale" | "unknown" | "unavailable" | "partial" | "insufficient_evidence";
+
 type AIComprehensiveAnalysisPanelProps = {
   analysis: AIComprehensiveAnalysisFixture;
   citations: Citation[];
 };
+
+function stateToFreshness(state: AIComprehensiveAnalysisFixture["state"]): FreshnessState {
+  if (state === "available") {
+    return "fresh";
+  }
+  if (state === "suppressed" || state === "no_high_signal") {
+    return "insufficient_evidence";
+  }
+  if (state === "unavailable") {
+    return "unavailable";
+  }
+  return "unknown";
+}
 
 export function AIComprehensiveAnalysisPanel({ analysis, citations }: AIComprehensiveAnalysisPanelProps) {
   const requiredSectionOrder = [
@@ -14,8 +29,19 @@ export function AIComprehensiveAnalysisPanel({ analysis, citations }: AIComprehe
     "Business/Fund Context",
     "Risk Context"
   ] as const;
-  const freshnessState = analysis.analysisAvailable ? "fresh" : "unknown";
-  const usesRequiredSectionOrder = analysis.sections.every((section, index) => section.label === requiredSectionOrder[index]);
+  const orderedSections = requiredSectionOrder
+    .map((label) => analysis.sections.find((section) => section.label === label))
+    .filter((section): section is (typeof analysis.sections)[number] => Boolean(section));
+  const usesRequiredSectionOrder = orderedSections.length
+    ? orderedSections.every((section, index) => section.label === requiredSectionOrder[index])
+    : false;
+  const sectionOrderState = usesRequiredSectionOrder
+    ? "matched"
+    : analysis.sections.length
+      ? "mismatch"
+      : "suppressed";
+  const freshnessState = stateToFreshness(analysis.state);
+  const shouldRenderSections = analysis.analysisAvailable && analysis.sections.length > 0;
 
   return (
     <section
@@ -38,18 +64,23 @@ export function AIComprehensiveAnalysisPanel({ analysis, citations }: AIComprehe
           value={analysis.analysisAvailable ? "Available in deterministic fixture" : "Suppressed in deterministic fixture"}
           state={freshnessState}
         />
+        <FreshnessLabel
+          label="Evidence state"
+          value={analysis.state}
+          state={freshnessState}
+        />
         <span className="state-pill" data-evidence-state={analysis.analysisAvailable ? "supported" : "insufficient_evidence"}>
           State: {analysis.state.replaceAll("_", " ")}
         </span>
       </div>
 
-      {analysis.analysisAvailable ? (
+      {shouldRenderSections ? (
         <div
           className="section-stack"
           data-ai-analysis-section-count={analysis.sections.length}
-          data-ai-analysis-required-order={usesRequiredSectionOrder ? "matched" : "mismatch"}
+          data-ai-analysis-required-order={sectionOrderState}
         >
-          {analysis.sections.map((section, index) => (
+          {orderedSections.map((section, index) => (
             <article
               className="timeline-item"
               key={section.sectionId}
@@ -88,6 +119,7 @@ export function AIComprehensiveAnalysisPanel({ analysis, citations }: AIComprehe
           <p className="source-gap-note">
             Beginner-readable state handling is shown here instead of generating unsupported analysis.
           </p>
+          <FreshnessLabel label="Canonical evidence" value={analysis.canonicalFactCitationIds.join(", ")} state={freshnessState} />
         </div>
       )}
     </section>

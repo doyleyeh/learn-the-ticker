@@ -33,6 +33,40 @@ type AssetPageProps = {
   }>;
 };
 
+type SourceDrawerState =
+  | "available"
+  | "unsupported"
+  | "out_of_scope"
+  | "unknown"
+  | "eligible_not_cached"
+  | "deleted"
+  | "stale"
+  | "partial"
+  | "unavailable"
+  | "insufficient_evidence";
+
+function sourceDrawerStateFromFreshness(freshnessState: string): SourceDrawerState {
+  if (freshnessState === "fresh") {
+    return "available";
+  }
+  if (freshnessState === "stale") {
+    return "stale";
+  }
+  if (freshnessState === "unknown") {
+    return "unknown";
+  }
+  if (freshnessState === "unavailable") {
+    return "unavailable";
+  }
+  if (freshnessState === "partial") {
+    return "partial";
+  }
+  if (freshnessState === "insufficient_evidence") {
+    return "insufficient_evidence";
+  }
+  return "unknown";
+}
+
 export function generateStaticParams() {
   return Object.keys(assetFixtures).map((ticker) => ({ ticker }));
 }
@@ -289,10 +323,15 @@ export default async function AssetPage({ params }: AssetPageProps) {
                     firstClaim.claimText
                   }
                   contexts={getCitationContextsForSource(asset, source.source_document_id)}
+                  drawerState={sourceDrawerStateFromFreshness(source.freshness_state)}
                 />
               ))
             ) : (
-              <SourceDrawer source={toSourceDrawerDocument(primarySource)} claim={firstClaim.claimText} />
+              <SourceDrawer
+                source={toSourceDrawerDocument(primarySource)}
+                claim={firstClaim.claimText}
+                drawerState={sourceDrawerStateFromFreshness(primarySource.freshnessState)}
+              />
             )}
           </>
         }
