@@ -1,23 +1,24 @@
-# Technical Design Spec: Learn the Ticker — Citation-First Beginner U.S. Stock & ETF Research Assistant
+# Technical Design Spec: Learn the Ticker - Citation-First Beginner U.S. Stock & ETF Research Assistant
 
 **Document version:** v0.2 control-doc alignment
 **Product stage:** MVP / v1 planning  
 **Related doc:** PRD v0.2 refined
-**Source basis:** Current project proposal, PRD v0.2, and completed fixture-backed MVP slices.
+**Source basis:** Current project proposal, PRD v0.2, and resolved implementation-readiness decisions.
+**Documentation role:** Engineering source of truth for implementation. The PRD remains the product source of truth, and this repo is currently planning-only.
 
 ---
 
 ## 1. Executive summary
 
-This system is an accountless web app that lets a beginner search a U.S.-listed common stock or plain-vanilla U.S.-listed ETF, then returns a source-grounded educational page with beginner explanations, cited facts, recent developments, comparisons, glossary help, limited asset-specific grounded chat, and exportable learning outputs.
+This system is an accountless web app that lets a beginner search a U.S.-listed common stock or non-leveraged U.S.-listed equity index, sector, or thematic ETF, then returns a source-grounded educational page with beginner explanations, cited facts, Weekly News Focus, AI Comprehensive Analysis, comparisons, glossary help, limited asset-specific grounded chat, and exportable learning outputs.
 
 The core technical challenge is not simply generating good prose. The system must reliably separate:
 
-1. **Canonical facts** — stable source-backed asset facts.
-2. **Timely context** — recent news, filings, fee changes, earnings, or methodology updates.
-3. **Teaching layer** — AI-written plain-English explanation and chat answers.
+1. **Canonical facts** - stable source-backed asset facts.
+2. **Timely context** - Weekly News Focus, filings, fee changes, earnings, or methodology updates.
+3. **Teaching layer** - AI-written plain-English explanation and chat answers.
 
-That three-layer knowledge architecture comes directly from the proposal and remains the backbone of this design. PRD v0.2 adds functional-MVP direction: pre-cache a high-demand launch universe, support on-demand ingestion for eligible assets, keep v1 accountless, expose export/download flows, and use caching plus freshness hashes to control API and LLM cost.
+That three-layer knowledge architecture comes directly from the proposal and remains the backbone of this design. PRD v0.2 adds functional-MVP direction: pre-cache the high-demand launch universe, support the top 500 U.S.-listed common stocks first, expose explicit ingestion states for approved on-demand assets, keep v1 accountless, expose Markdown/JSON export flows, and use caching plus freshness hashes to control API and LLM cost.
 
 ---
 
@@ -28,9 +29,9 @@ That three-layer knowledge architecture comes directly from the proposal and rem
 | Goal | Design implication |
 |---|---|
 | Source-first explanations | Store raw source documents, normalized facts, chunks, and citation mappings before generating summaries. |
-| Beginner-friendly language | Generate structured summaries using beginner-mode schemas and glossary terms. |
+| Beginner-friendly language | Generate structured summaries using schemas for the Beginner section and glossary terms. |
 | Visible citations | Every important claim should map to a `source_document`, `document_chunk`, or normalized `fact`. |
-| Stable facts separated from recent developments | Maintain separate data tables and UI sections for canonical facts and recent events. |
+| Stable facts separated from Weekly News Focus and analysis | Maintain separate data tables and UI sections for canonical facts, Weekly News Focus, and AI Comprehensive Analysis. |
 | Grounded asset-specific chat | Build an `asset_knowledge_pack` per asset and restrict chat retrieval to that pack. |
 | Compare-first learning | Support side-by-side comparison using normalized facts and generated beginner summaries. |
 | Education over advice | Add query classification, output validation, and safety filters to avoid buy/sell or allocation instructions. |
@@ -39,7 +40,7 @@ That three-layer knowledge architecture comes directly from the proposal and rem
 
 ### 2.2 Non-goals for v1
 
-The system will not support brokerage trading, tax advice, options, crypto, international equities, portfolio optimization, leveraged ETFs, inverse ETFs, ETNs, complex exchange-traded products, user accounts, saved watchlists, saved assets, or personalized position sizing.
+The system will not support brokerage trading, tax advice, options, crypto, international equities, portfolio optimization, leveraged ETFs, inverse ETFs, ETNs, fixed income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, preferred stocks, warrants, rights, complex exchange-traded products, user accounts, saved watchlists, saved assets, PDF exports, or personalized position sizing.
 
 ---
 
@@ -49,55 +50,57 @@ The system will not support brokerage trading, tax advice, options, crypto, inte
 |---|---|---|
 | Frontend | Next.js, TypeScript, Tailwind CSS, shadcn/ui | Fits interactive asset pages, source drawers, glossary popovers, and chat panel. |
 | Backend | Python + FastAPI | Strong ecosystem for SEC ingestion, parsing, financial data processing, and LLM orchestration. |
+| Local infrastructure | Docker Compose for Next.js, FastAPI, PostgreSQL with pgvector, Redis, and S3-compatible object storage | Gives implementation a reproducible local stack before managed deployment choices are made. |
+| Production deployment | Vercel Hobby, Cloud Run, Cloud Run Jobs, Neon Free Postgres, private Google Cloud Storage | Keeps the first personal side-project deployment low fixed-cost while leaving room to scale later. |
 | Database | PostgreSQL | Good fit for normalized facts, source metadata, audit logs, freshness state, and relational asset data. |
-| Vector search | pgvector as primary retrieval layer | Keeps citations, freshness, asset filters, and chunk metadata under application control. |
-| Cache / queues | Redis | Caching, job coordination, rate-limit counters, and short-lived API responses. |
-| Object storage | S3-compatible bucket | Stores raw filings, PDF snapshots, HTML snapshots, parsed text, and generated artifacts. |
-| LLM access | Provider abstraction | Allows OpenRouter, OpenAI, or another model provider without rewriting the product. |
+| Vector search | pgvector extension may be installed, but vector indexes and embedding jobs stay disabled by default | Keeps semantic retrieval available later without making embeddings a blocker for the first deterministic implementation. |
+| Cache / queues | Local Redis; production Postgres `ingestion_jobs` first | Avoids always-on queue cost for the first deployment. Redis can return later when scale requires it. |
+| Object storage | Local MinIO; production private Google Cloud Storage | Stores raw filings, PDF snapshots, HTML snapshots, parsed text, and generated artifacts. |
+| LLM access | Adapter-first provider abstraction with deterministic mocks and feature-flagged OpenRouter fallback chain | Allows first deployment to use explicit free models plus automatic DeepSeek fallback server-side while CI/local tests stay mock-safe. |
 | Structured generation | JSON-schema outputs where provider supports it | Produces predictable UI-renderable output and supports server-side validation. |
-| Retrieval | Self-managed hybrid retrieval first; hosted file search optional | Self-managed retrieval gives stricter control over citation binding and freshness metadata. |
-| Source freshness | Section-level freshness hashes | Summaries are invalidated when underlying facts, chunks, or recent events change. |
-| Coverage model | Pre-cached high-demand universe plus on-demand ingestion | Improves launch latency while keeping the architecture open to all eligible supported assets. |
+| Retrieval | Keyword and metadata retrieval first; embeddings later | Self-managed keyword-first retrieval gives stricter control over citation binding and freshness metadata before adding model cost. |
+| Source freshness | Section-level freshness hashes | Summaries are invalidated when underlying facts, chunks, or Weekly News Focus event records change. |
+| Coverage model | Top-500-first U.S. common stock manifest plus supported ETFs and explicit ingestion states | Improves launch reliability while keeping future expansion queue-backed and source-aware. |
 | User model | Accountless MVP | Defers identity, saved assets, and watchlists while preserving export/download workflows. |
-| Export model | Server-shaped summaries and source lists | Lets users save learning outputs while respecting citation, freshness, and licensing constraints. |
+| Export model | Server-shaped Markdown and JSON summaries and source lists | Lets users save learning outputs while respecting citation, freshness, uncertainty labels, and licensing constraints. |
 
 ---
 
 ## 4. High-level architecture
 
 ```text
-                   ┌──────────────────────────┐
-                   │        Next.js Web        │
-                   │ Search, asset pages, chat │
-                   └────────────┬─────────────┘
-                                │
-                                ▼
-                   ┌──────────────────────────┐
-                   │       FastAPI API         │
-                   │ Auth, routing, responses  │
-                   └────────────┬─────────────┘
-                                │
-        ┌───────────────────────┼────────────────────────┐
-        ▼                       ▼                        ▼
-┌───────────────┐       ┌─────────────────┐       ┌─────────────────┐
-│ Asset Service │       │ Compare Service │       │  Chat Service    │
-│ overview/data │       │ normalized diff │       │ grounded Q&A     │
-└───────┬───────┘       └────────┬────────┘       └────────┬────────┘
-        │                        │                         │
-        ▼                        ▼                         ▼
-┌───────────────────────────────────────────────────────────────────┐
-│                         Data Layer                                │
-│ PostgreSQL + pgvector | Redis | Object Storage                    │
-│ assets, facts, chunks, sources, events, summaries, jobs, metrics  │
-└───────────────────────────────────────────────────────────────────┘
-        ▲                        ▲                         ▲
-        │                        │                         │
-┌───────┴────────┐      ┌────────┴─────────┐      ┌────────┴─────────┐
-│ Ingestion Jobs │      │ Retrieval Service│      │ LLM Orchestrator │
-│ SEC, ETF docs, │      │ hybrid search,   │      │ extraction, page │
-│ market data,   │      │ reranking, packs │      │ generation, chat │
-│ news            │      └──────────────────┘      └──────────────────┘
-└────────────────┘
++-------------------------+
+| Next.js Web             |
+| Search, asset pages,    |
+| compare, chat, exports  |
++------------+------------+
+             |
++------------v------------+
+| FastAPI API             |
+| routing, response       |
+| shaping, validation     |
++------------+------------+
+             |
++------------+------------+----------------+
+|            |                             |
++------------v--+   +-----v---------+   +---v-------------+
+| Asset Service |   | Compare       |   | Chat Service    |
+| overview/data |   | normalized    |   | grounded Q&A    |
+| Weekly News Focus | | differences   |   | compare redirect|
++-------+-------+   +-------+-------+   +--------+--------+
+        |                   |                    |
++-------v-------------------v--------------------v--------+
+| Data Layer                                             |
+| PostgreSQL + pgvector | Redis | Object Storage         |
+| assets, facts, chunks, sources, events, summaries, jobs|
++-------+-------------------+--------------------+--------+
+        |                   |                    |
++-------v-------+   +-------v---------+   +------v--------+
+| Ingestion Jobs|   | Retrieval       |   | LLM           |
+| SEC, ETF docs,|   | hybrid search,  |   | Orchestrator  |
+| market data,  |   | reranking,      |   | extraction,   |
+| Weekly News Focus | | evidence packs  |   | page/chat     |
++---------------+   +-----------------+   +---------------+
 ```
 
 ---
@@ -110,7 +113,7 @@ The system will not support brokerage trading, tax advice, options, crypto, inte
 
 - Search UI.
 - Asset page rendering.
-- Beginner Mode / Deep-Dive Mode toggle.
+- Beginner section and Deep-Dive section navigation.
 - Citation chips.
 - Source drawer.
 - Glossary popovers.
@@ -151,7 +154,8 @@ GET  /api/search?q=VOO
 GET  /api/assets/{ticker}/overview
 GET  /api/assets/{ticker}/details
 GET  /api/assets/{ticker}/sources
-GET  /api/assets/{ticker}/recent
+GET  /api/citations/{citation_id}
+GET  /api/assets/{ticker}/weekly-news
 POST /api/compare
 POST /api/assets/{ticker}/chat
 GET  /api/assets/{ticker}/export
@@ -162,25 +166,44 @@ GET  /api/jobs/{job_id}
 
 The proposal already suggests this API surface; this spec formalizes the response contracts, source binding, and pipeline behavior.
 
+**Default public rate limits**
+
+| Surface | Default |
+|---|---:|
+| Search | `60/min/IP` |
+| Chat | `20/hour/conversation` |
+| Ingestion | `5/hour/IP` |
+
+Rate limits must be environment-configurable and enforced before expensive provider, retrieval, ingestion, or LLM work begins.
+
+Runtime feature defaults:
+
+- `RETRIEVAL_MODE=keyword`
+- `EMBEDDINGS_ENABLED=false`
+- `RAW_SOURCE_TEXT_POLICY=rights_tiered`
+- `LLM_LIVE_GENERATION_ENABLED=false` for local and CI; first deployment may set it to `true` with the explicit OpenRouter free-model chain and automatic DeepSeek fallback.
+- `LLM_VALIDATION_RETRY_COUNT=1`
+- `LLM_REASONING_SUMMARY_ONLY=true`
+
 ### 5.3 Ingestion worker
 
 **Responsibilities**
 
 - Resolve assets.
-- Classify supported, unsupported, unknown, and pending states.
+- Classify supported, unsupported, out-of-scope, `pending_ingestion`, partial, stale, unknown, and unavailable states.
 - Fetch source documents.
 - Store raw source snapshots.
 - Parse filings, fact sheets, issuer pages, and holdings files.
 - Extract normalized facts.
 - Chunk source text.
-- Generate embeddings.
+- Generate embeddings when the embedding adapter is enabled.
 - Refresh stale assets.
-- Support pre-cache jobs for the launch universe and on-demand jobs for eligible assets outside it.
+- Support pre-cache jobs for the top-500-first launch universe and explicit `pending_ingestion` states for approved on-demand assets outside it.
 - Track ingestion job status.
 
 **Recommended queue model**
 
-Use Redis Queue, Celery, Dramatiq, or Arq. For a side-project MVP, Arq or RQ is simpler; for larger scale, Celery gives more mature retry and scheduling behavior.
+Use the Postgres `ingestion_jobs` table as the first production queue to avoid always-on queue cost. Local Redis can support development experiments, and Redis Queue, Dramatiq, Arq, or Celery can be added later only when scale justifies another moving part.
 
 ### 5.4 Retrieval service
 
@@ -189,10 +212,10 @@ Use Redis Queue, Celery, Dramatiq, or Arq. For a side-project MVP, Arq or RQ is 
 - Build asset-specific evidence sets.
 - Run hybrid retrieval:
   - keyword search
-  - semantic vector search
   - metadata filters
   - source-type boosts
-  - recency boosts for recent-development questions
+  - recency boosts for Weekly News Focus questions
+  - optional semantic vector search when embeddings are available
 - Return chunks with source metadata.
 - Return normalized facts with source IDs.
 - Return glossary entries.
@@ -211,11 +234,13 @@ Use Redis Queue, Celery, Dramatiq, or Arq. For a side-project MVP, Arq or RQ is 
 - Output validation.
 - Retry / repair logic.
 
-The LLM orchestration service should hide provider-specific details behind a small adapter interface. For strict UI-ready outputs, use structured responses where possible; otherwise use JSON-mode prompting plus Pydantic validation and repair.
+The LLM orchestration service should hide provider-specific details behind a small adapter interface. Tests should use deterministic mocks. Runtime providers should be configured by environment and may use OpenAI-compatible, OpenRouter-compatible, or other hosted APIs. For strict UI-ready outputs, use structured responses where possible; otherwise use JSON-mode prompting plus Pydantic validation and repair.
 
 ---
 
 ## 6. Data sources
+
+Priority labels in engineering tables follow the PRD: `P0` is a launch blocker for MVP/v1, `P1` is MVP-desired or beta-quality work that can ship after launch unless promoted, and `P2` is post-MVP. If an acceptance checklist item depends on a `P1` row, the row should be corrected to `P0`.
 
 ### 6.1 Stock sources
 
@@ -225,10 +250,10 @@ The LLM orchestration service should hide provider-specific details behind a sma
 | SEC XBRL company facts | Financial metrics and multi-year trends | P0 |
 | SEC filings: 10-K, 10-Q, 8-K | Business overview, risks, MD&A, recent events | P0 |
 | Company investor relations | Earnings releases, presentations, segment explanations | P1 |
-| Structured market/reference provider | ticker reference, price, market cap, sector, industry, valuation fields, volume | P0 |
-| Reputable ticker-tagged news provider | recent developments only, after official filings and investor-relations sources | P1 |
+| Free/reference metadata or configured provider adapter | ticker reference, delayed or best-effort price, market cap, sector, industry, valuation fields, volume where available | P0 |
+| Allowlisted free/RSS/news source | Weekly News Focus only, after official filings and investor-relations sources | P1 |
 
-SEC EDGAR APIs should be used server-side, cached aggressively, and rate-limited. Stock ingestion should never depend on live user-page calls to SEC. PRD v0.2 names Massive, formerly Polygon.io, as the preferred structured market/reference provider direction, with lower-cost alternatives allowed only behind validation and licensing review.
+SEC EDGAR APIs should be used server-side, cached aggressively, and rate-limited. Stock ingestion should never depend on live user-page calls to SEC. V1 is free-first and assumes no paid provider keys; provider integrations must be optional adapters with fixtures and mocks for tests.
 
 ### 6.2 ETF sources
 
@@ -239,24 +264,60 @@ SEC EDGAR APIs should be used server-side, cached aggressively, and rate-limited
 | Summary prospectus / full prospectus | risks, methodology, objective, fees | P0 |
 | Shareholder reports | official fund reporting context | P1 |
 | Holdings CSV / JSON / Excel | top holdings, concentration, country/sector exposure | P0 |
-| Structured market/reference provider | quote, AUM, average volume, spread data, ETF reference metadata | P0 |
-| Sponsor press releases / reputable news | fee cuts, methodology changes, mergers, liquidations | P1 |
+| Free/reference metadata or configured provider adapter | delayed or best-effort quote, AUM, average volume, spread data, ETF reference metadata where available | P0 |
+| Sponsor press releases / allowlisted free/RSS/news sources | fee cuts, methodology changes, mergers, liquidations | P1 |
 
-ETF issuer websites are especially important because ETF disclosure includes investor-facing items such as holdings, premium/discount information, and bid-ask spread disclosures. PRD v0.2 prefers official issuer data plus Massive and ETF Global where budget allows; lower-cost ETF data fallbacks must be validated against issuer sources.
+ETF issuer websites are especially important because ETF disclosure includes investor-facing items such as holdings, premium/discount information, and bid-ask spread disclosures. V1 should support non-leveraged U.S.-listed equity index, sector, and thematic ETFs first. Paid ETF data providers are optional future adapters and must be validated against issuer sources before production use.
+
+News and RSS sources use a tiered allowlist. Official sources have the highest rank. Reuters/AP-style and similar publishers are license-gated: the source registry must record whether each source is `metadata_only`, `link_only`, `summary_allowed`, `full_text_allowed`, or `rejected` before ingestion output can be displayed, summarized, stored, or exported.
+
+### 6.3 Top-500 stock universe manifest
+
+The top-500 U.S. common stock universe is resolved from a versioned manifest.
+
+- Local path: `data/universes/us_common_stocks_top500.current.json`.
+- Production URI: `TOP500_UNIVERSE_MANIFEST_URI`, mirrored to private GCS.
+- Required entry fields: ticker, name, CIK when available, exchange, rank, rank basis, provider/source provenance, snapshot date, generated checksum, and approval timestamp.
+- Monthly refresh is the default. Ad hoc refresh requires a development-log entry.
+- The manifest is operational coverage metadata, not advice or a recommendation list.
+- Resolver behavior: a U.S. common stock outside the manifest returns `out_of_scope` unless it is explicitly added to an approved on-demand ingestion queue.
+
+### 6.4 Source allowlist governance and raw text policy
+
+The source allowlist lives in configuration, e.g. `config/source_allowlist.yaml`. Config-only review means future agents may update it when source-use policy, source type, domain, rationale, validation tests, and development-log rationale are updated together. Automated scoring can rank only already-allowed sources; it cannot approve new sources.
+
+The raw source text policy is rights-tiered:
+
+- Official filings, issuer materials, and `full_text_allowed` sources may store full raw text, parsed text, chunks, checksums, and snapshots.
+- `summary_allowed` sources may store metadata, checksums, links, and excerpts needed to support summaries.
+- `metadata_only` and `link_only` sources may store metadata, hashes, canonical URLs, timestamps, and diagnostics, but not full article text.
+- `rejected` sources must not feed generated output and should retain only rejection diagnostics when needed.
+
+### 6.5 Provider roles and constraints
+
+- SEC EDGAR is the stock trust backbone for identity, filing history, XBRL company facts, filing-derived business descriptions, and risk extraction. It is free, keyless, and updated throughout the day.
+- ETF issuer materials are the ETF trust backbone for identity, holdings, fees, methodology, exposures, and fund risks.
+- Financial Modeling Prep can enrich quotes, volume, aftermarket bid/ask, statement convenience data, AUM/net-assets-style ETF reference fields, and ETF/fund holdings, but public display or redistribution requires a specific FMP data display and licensing agreement.
+- Alpha Vantage is acceptable for low-volume experiments and selected enrichment; the standard free limit of 25 API requests per day is not enough for broad ingestion.
+- Finnhub can enrich quotes, fundamentals, and news-style context, but listed plans are personal-use unless explicitly approved and redistribution requires written approval.
+- Tiingo can enrich end-of-day data, corporate actions, selected news/fundamentals endpoints, and ETF/mutual-fund fee metadata. Prefer it for stable non-tick workflows.
+- EODHD can support light testing, EOD-style history, delayed live data, and basic fundamentals, but free access is small and public usage requires personal-use/commercial-use review.
+- yfinance may be used only for local development or fallback diagnostics. It must not be production truth.
+- UI and API contracts must expose `fresh`, `stale`, `partial`, and `unavailable` states for quote/reference data; do not imply real-time coverage.
 
 ---
 
 ## 7. Source hierarchy
 
-The system should rank evidence using the hierarchy from the proposal. Stable facts should come from official or structured sources first; news should add recent context but should not redefine the asset.
+The system should rank evidence using the hierarchy from the proposal. Stable facts should come from official or structured sources first; Weekly News Focus and AI Comprehensive Analysis should add context but should not redefine the asset.
 
 ### 7.1 Stock source ranking
 
 1. SEC filings and XBRL data.
 2. Company investor relations pages.
 3. Earnings releases and presentations.
-4. Structured market/reference data provider.
-5. Reputable ticker-tagged news, used only for recent-development context.
+4. Free/reference metadata or configured provider adapter.
+5. Official and allowlisted free-news sources, used only for Weekly News Focus context.
 
 ### 7.2 ETF source ranking
 
@@ -264,8 +325,8 @@ The system should rank evidence using the hierarchy from the proposal. Stable fa
 2. ETF fact sheet.
 3. Summary prospectus and full prospectus.
 4. Shareholder reports.
-5. Structured market/reference data provider.
-6. Reputable ticker-tagged news, used only for recent-development context.
+5. Free/reference metadata or configured provider adapter.
+6. Official and allowlisted free-news sources, used only for Weekly News Focus context.
 
 ---
 
@@ -287,7 +348,7 @@ assets (
   cik TEXT,
   provider TEXT,
   issuer TEXT,
-  status TEXT NOT NULL, -- supported | unsupported | unknown | pending | stale
+  status TEXT NOT NULL, -- supported | unsupported | out_of_scope | pending_ingestion | partial | stale | unknown | unavailable
   created_at TIMESTAMPTZ,
   updated_at TIMESTAMPTZ
 )
@@ -328,6 +389,9 @@ source_documents (
   checksum TEXT,
   parser_version TEXT,
   is_official BOOLEAN DEFAULT FALSE,
+  source_quality TEXT, -- official | allowlisted | provider | fixture | rejected | unknown
+  allowlist_status TEXT, -- allowed | rejected | not_applicable | pending_review
+  source_use_policy TEXT, -- metadata_only | link_only | summary_allowed | full_text_allowed | rejected
   freshness_state TEXT, -- fresh | stale | unknown | unavailable
   created_at TIMESTAMPTZ
 )
@@ -369,12 +433,21 @@ facts (
   as_of_date DATE,
   source_document_id UUID REFERENCES source_documents(id),
   source_chunk_id UUID REFERENCES document_chunks(id),
+  valid_from TIMESTAMPTZ,
+  valid_to TIMESTAMPTZ,
+  source_version TEXT,
+  source_accession_number TEXT,
+  schema_version TEXT NOT NULL,
+  is_current BOOLEAN DEFAULT TRUE,
+  superseded_by_fact_id UUID REFERENCES facts(id),
   extraction_method TEXT, -- api | parser | llm | manual
   confidence NUMERIC,
   created_at TIMESTAMPTZ,
   updated_at TIMESTAMPTZ
 )
 ```
+
+Fact updates should create new rows and supersede old rows rather than silently overwriting history. Current page reads should filter to `is_current = TRUE`; audit and comparison/debug views may read superseded facts by validity window.
 
 #### `holdings`
 
@@ -434,7 +507,7 @@ financial_metrics (
 
 #### `recent_events`
 
-Stores recent developments separately from canonical facts.
+Stores Weekly News Focus events separately from canonical facts.
 
 ```sql
 recent_events (
@@ -444,9 +517,18 @@ recent_events (
   title TEXT,
   summary TEXT,
   event_date DATE,
+  published_at TIMESTAMPTZ,
+  news_window_start DATE,
+  news_window_end DATE,
+  period_bucket TEXT, -- previous_market_week | current_week_to_date
   source_document_id UUID REFERENCES source_documents(id),
   importance_score NUMERIC,
+  focus_rank INT,
+  source_quality TEXT,
+  allowlist_status TEXT,
+  source_use_policy TEXT,
   freshness_state TEXT,
+  citation_ids TEXT[],
   created_at TIMESTAMPTZ
 )
 ```
@@ -459,20 +541,29 @@ Stores generated page sections.
 summaries (
   id UUID PRIMARY KEY,
   asset_id UUID REFERENCES assets(id),
-  summary_type TEXT NOT NULL, -- beginner | deep_dive | risks | recent | suitability
+  summary_type TEXT NOT NULL, -- beginner | deep_dive | risks | weekly_news_focus | news_analysis | suitability
   output_json JSONB NOT NULL,
   model_provider TEXT,
   model_name TEXT,
   prompt_version TEXT,
+  schema_version TEXT NOT NULL,
+  language TEXT NOT NULL DEFAULT 'en',
+  section_key TEXT NOT NULL,
   freshness_hash TEXT NOT NULL,
+  evidence_state TEXT, -- complete | partial | stale | unavailable | unknown
+  generation_status TEXT, -- pending | succeeded | failed | suppressed
   validation_status TEXT,
+  validation_error_json JSONB,
+  superseded_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ
 )
 ```
 
+Summary regeneration should create a new summary row and mark prior rows with `superseded_at` when their inputs, schema, language, prompt, or validation state changes.
+
 #### `claims`
 
-Stores generated claims and citation mappings.
+Stores generated claim text and validation state. Supporting evidence is stored in `claim_citations` because many claims require multiple citations.
 
 ```sql
 claims (
@@ -480,12 +571,59 @@ claims (
   summary_id UUID REFERENCES summaries(id),
   asset_id UUID REFERENCES assets(id),
   claim_text TEXT NOT NULL,
-  claim_type TEXT, -- fact | interpretation | risk | recent | comparison
+  claim_type TEXT, -- fact | interpretation | risk | weekly_news | news_analysis | comparison
+  citation_required BOOLEAN DEFAULT TRUE,
+  citation_status TEXT, -- valid | missing | weak | unsupported
+  created_at TIMESTAMPTZ
+)
+```
+
+#### `claim_citations`
+
+Stores all supporting evidence for generated claims.
+
+```sql
+claim_citations (
+  id UUID PRIMARY KEY,
+  claim_id UUID REFERENCES claims(id),
   source_document_id UUID REFERENCES source_documents(id),
   source_chunk_id UUID REFERENCES document_chunks(id),
   fact_id UUID REFERENCES facts(id),
-  citation_required BOOLEAN DEFAULT TRUE,
-  citation_status TEXT, -- valid | missing | weak | unsupported
+  citation_role TEXT, -- primary | supporting | comparison_left | comparison_right
+  created_at TIMESTAMPTZ
+)
+```
+
+#### `chat_sessions`
+
+Stores anonymous accountless chat session state for grounded follow-ups and user-requested export.
+
+```sql
+chat_sessions (
+  id UUID PRIMARY KEY,
+  conversation_id TEXT UNIQUE NOT NULL,
+  asset_id UUID REFERENCES assets(id),
+  created_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ,
+  deleted_at TIMESTAMPTZ,
+  deletion_status TEXT -- active | user_deleted | expired
+)
+```
+
+#### `chat_messages`
+
+Stores accountless chat transcript messages for the session TTL.
+
+```sql
+chat_messages (
+  id UUID PRIMARY KEY,
+  chat_session_id UUID REFERENCES chat_sessions(id),
+  role TEXT NOT NULL, -- user | assistant
+  message_text TEXT NOT NULL,
+  safety_classification TEXT,
+  citation_ids TEXT[],
+  uncertainty_json JSONB,
   created_at TIMESTAMPTZ
 )
 ```
@@ -521,6 +659,41 @@ ingestion_jobs (
 )
 ```
 
+### 8.1 Database constraints and indexes
+
+The PostgreSQL schema should include explicit constraints and indexes so data quality is not left only to application code.
+
+Check constraints for enum-like fields:
+
+- `assets.asset_type`: `stock`, `etf`, `unknown`
+- `assets.support_status`: `supported`, `unsupported`, `out_of_scope`, `pending_ingestion`, `partial`, `stale`, `unknown`, `unavailable`
+- `source_documents.use_policy`: `metadata_only`, `link_only`, `summary_allowed`, `full_text_allowed`, `rejected`
+- `claim_citations.role`: `canonical_fact`, `recent_event`, `comparison_left`, `comparison_right`, `glossary_context`
+- `claims.state`: `cited`, `uncertain`, `unavailable`, `stale`, `partial`
+- `ingestion_jobs.status`: `queued`, `running`, `succeeded`, `failed`, `cancelled`
+- `recent_events.event_type`: stock and ETF event types listed in the Weekly News Focus section
+
+Unique constraints:
+
+- `assets.ticker`
+- `(asset_identifiers.asset_id, identifier_type, identifier_value)`
+- `source_documents.provider_document_id`
+- `document_chunks.chunk_key`
+- `(claim_citations.claim_id, source_document_id, role)`
+- `chat_sessions.conversation_id`
+- `glossary_terms.term`
+
+Indexes:
+
+- `facts(asset_id, fact_key) WHERE is_current = true`
+- `recent_events(asset_id, event_date DESC, importance_score DESC)`
+- `source_documents(asset_id, source_type, retrieved_at DESC)`
+- `ingestion_jobs(status, created_at)`
+- `chat_sessions(expires_at) WHERE deleted_at IS NULL`
+- PostgreSQL full-text GIN index on `document_chunks.text` or a generated `tsvector` column for keyword-first retrieval
+
+pgvector can remain installed for future migration compatibility, but vector indexes and embedding jobs stay disabled until retrieval moves beyond keyword-first.
+
 ---
 
 ## 9. Ingestion pipeline
@@ -528,23 +701,41 @@ ingestion_jobs (
 ### 9.1 Universal ingestion flow
 
 ```text
-1. Resolve asset
-2. Classify asset as supported, unsupported, unknown, pending, or stale
+1. Resolve asset using SEC/issuer metadata and the top-500 manifest.
+2. Classify asset as supported, unsupported, out-of-scope, `pending_ingestion`, partial, stale, unknown, or unavailable.
 3. Fetch source documents for supported assets
 4. Save raw snapshots
 5. Parse source documents
 6. Chunk parsed text
-7. Generate embeddings
+7. Run keyword/metadata indexing; generate embeddings only when `EMBEDDINGS_ENABLED=true`.
 8. Extract normalized facts
-9. Retrieve high-signal recent developments
-10. Build or refresh asset knowledge pack
-11. Generate or invalidate summaries
-12. Validate citations
-13. Mark freshness state
-14. Update shared cache entries and freshness hashes
+9. Retrieve high-signal Weekly News Focus events
+10. Mark section-level evidence states for partial pages
+11. Build or refresh asset knowledge pack
+12. Generate or invalidate summaries
+13. Validate citations
+14. Mark freshness state
+15. Update shared cache entries and freshness hashes
 ```
 
-MVP should support both pre-cache ingestion for the launch universe and on-demand ingestion for eligible assets outside that universe. Unsupported assets should return a recognized-but-unsupported state from search and must not trigger generated pages, generated chat, or generated comparisons.
+MVP should support pre-cache ingestion for the top-500-first launch universe and explicit `pending_ingestion` states for approved on-demand assets outside that universe. Unsupported and out-of-scope assets should return a recognized-but-unsupported or recognized-but-out-of-scope state from search and must not trigger generated pages, generated chat, or generated comparisons. Supported assets with incomplete evidence should return partial pages instead of invented content.
+
+### 9.1.1 Deterministic asset classification
+
+Asset classification is deterministic application logic. The LLM must never decide whether an asset is supported, and LLM output must never override classification fields produced by resolver/provider data.
+
+Rules:
+
+- If `fund_leverage > 1`, return `unsupported`.
+- If `inverse_flag == true`, return `unsupported`.
+- If `asset_class != equity`, return `unsupported`.
+- If `strategy == active`, return `unsupported`.
+- If the asset is outside U.S. common stock or non-leveraged U.S.-listed passive equity ETF scope, return `unsupported` or `out_of_scope`.
+- If a stock is outside the top-500 MVP universe, return `out_of_scope` unless it has been explicitly added to the approved on-demand ingestion queue.
+- If an asset passes deterministic classification but lacks an asset pack, return `pending_ingestion`.
+- If an asset has verified facts but missing sections, return `partial`, `stale`, or `unavailable` section states rather than generating unsupported claims.
+
+Classification inputs should come from SEC metadata, the top-500 manifest, issuer/provider metadata, and normalized fund fields. If a required field is missing, classify conservatively and record parser diagnostics.
 
 ### 9.2 Stock ingestion flow
 
@@ -570,7 +761,7 @@ Output:
 }
 ```
 
-Resolution should use a market/reference provider plus SEC metadata where available.
+Resolution should use SEC metadata and free/reference metadata where available. Configured provider adapters may add fields, but missing provider data must not block SEC-backed stock ingestion.
 
 #### Step 2: Fetch SEC data
 
@@ -622,7 +813,8 @@ Generate:
 - strengths summary
 - financial quality summary
 - valuation context
-- recent developments
+- Weekly News Focus
+- AI Comprehensive Analysis
 - suitability summary
 
 All generated sections must include citation mappings or uncertainty notes.
@@ -647,9 +839,12 @@ Output:
   "name": "Vanguard S&P 500 ETF",
   "asset_type": "etf",
   "issuer": "Vanguard",
-  "category": "Large Blend"
+  "category": "Large Blend",
+  "supported_scope": "non_leveraged_equity_etf"
 }
 ```
+
+ETF resolution must reject or mark out of scope fixed income, commodity, active, multi-asset, leveraged, inverse, ETN, and other complex products before generated pages, chat, or comparison run.
 
 #### Step 2: Fetch official ETF sources
 
@@ -681,6 +876,8 @@ Normalize into `facts`, `holdings`, and `exposures`:
 - bid-ask spread
 - premium / discount information
 
+If a free-first source cannot verify a field, mark that section `partial`, `stale`, `unknown`, or `unavailable` and keep generating only from verified facts.
+
 #### Step 4: ETF risk extraction
 
 Extract and classify:
@@ -705,12 +902,30 @@ Generate:
 - broad vs narrow exposure
 - top 3 risks
 - simpler alternatives
-- recent developments
+- Weekly News Focus
+- AI Comprehensive Analysis
 - suitability summary
 
-### 9.4 Recent developments ingestion
+### 9.4 Weekly News Focus and AI Comprehensive Analysis ingestion
 
-Recent developments should never overwrite canonical facts. They are stored in `recent_events`.
+Weekly News Focus and AI Comprehensive Analysis should never overwrite canonical facts. Raw events are stored in `recent_events`; generated Weekly News Focus and AI Comprehensive Analysis outputs are stored in `summaries`.
+
+The Weekly News Focus pipeline should prefer official sources, then curated allowlisted free/RSS/news sources. Reuters/AP-style and similar publishers are license-gated and should not be treated as free full-content sources by default. Unrecognized sources are rejected until added to the allowlist with a source-use policy of `metadata_only`, `link_only`, `summary_allowed`, `full_text_allowed`, or `rejected`. Events must store source-quality metadata, source-use policy, allowlist status, event type, freshness state, and citation links.
+
+#### Weekly News Focus flow
+
+```text
+1. Collect official and allowlisted news for the selected asset.
+2. Deduplicate by canonical URL, headline similarity, source, and event date.
+3. Score relevance, source quality, event importance, and recency.
+4. Assign each event to `previous_market_week` or `current_week_to_date`.
+5. Select 5-8 focus items only when enough high-quality evidence exists.
+6. Generate one-sentence beginner-friendly summaries for selected items.
+7. Generate AI Comprehensive Analysis only when at least two high-signal Weekly News Focus items exist.
+8. Validate citations, safety, source allowlist status, source-use policy, and freshness labels.
+```
+
+The default UI copy should say **Weekly News Focus**. The implementation uses the last completed Monday-Sunday market week plus current week-to-date through yesterday for `news_window_start` and `news_window_end`, using U.S. Eastern dates. For example, if today is Wednesday, include last Monday-Sunday plus this Monday and Tuesday.
 
 #### Stock event types
 
@@ -752,7 +967,33 @@ importance_score =
 - duplicate_penalty
 ```
 
-Only events above a configured threshold should appear on the asset page.
+Default weights:
+
+| Scoring field | Defaults |
+| --- | --- |
+| `source_quality_weight` | official `5`; allowlisted_reputable `3`; provider_metadata_only `1` |
+| `event_type_weight` | earnings `5`; guidance `5`; fee_change `5`; methodology_change `5`; routine_press_release `1` |
+| `recency_weight` | current_week_to_date `3`; previous_market_week `2`; older_but_relevant `1` |
+| `asset_relevance_weight` | exact ticker/CIK/issuer match `3`; strong fund/company match `2`; sector/theme context only `1` |
+| `duplicate_penalty` | exact duplicate `5`; near duplicate `3`; same story cluster after first item `2` |
+
+Thresholds:
+
+- `minimum_display_score = 7`
+- `minimum_ai_analysis_items = 2`
+- Source-use policy wins over score: rejected or license-disallowed sources never display.
+
+Only events above a configured threshold should appear on the asset page. If fewer than 5 valid items exist, return the smaller verified set with an evidence note. Do not pad with weak news to reach 5-8 items. If no valid items exist, show a "No major Weekly News Focus items found" empty state. Suppress AI Comprehensive Analysis unless at least two high-signal Weekly News Focus items exist.
+
+#### AI Comprehensive Analysis sections
+
+The generated analysis should include **What Changed This Week** followed by three educational context sections:
+
+- `Market Context`
+- `Business/Fund Context`
+- `Risk Context`
+
+Section labels are UI labels only. They are not real advisors, model identities, or independent sources. Each section must include a compact plain-English paragraph, bullets, citation IDs, and uncertainty notes when evidence is thin. Analysis must not include buy/sell/hold, allocation, tax, guaranteed-return, or price-target advice.
 
 ---
 
@@ -789,9 +1030,11 @@ The retrieval service must:
 - boost official sources
 - boost exact ticker/name matches
 - retrieve from both `facts` and `document_chunks`
+- start with keyword and metadata filtering
+- use embeddings only after `EMBEDDINGS_ENABLED=true`, the embedding adapter is configured, and a pgvector index exists
 - include source metadata with every retrieved item
 - avoid stale sources unless clearly labeled
-- include recent events only when the question asks about recent context or the page section is “Recent developments”
+- include Weekly News Focus events only when the question asks about Weekly News Focus or the page section is Weekly News Focus and AI Comprehensive Analysis
 
 ### 10.3 Comparison knowledge pack
 
@@ -806,6 +1049,8 @@ For comparison pages, build a merged pack:
   "comparison_sources": []
 }
 ```
+
+Single-asset chat must not silently build this merged pack. If a user asks about a second ticker inside `POST /api/assets/{ticker}/chat`, return a compare-route suggestion instead.
 
 For ETF-to-ETF comparisons, compute:
 
@@ -824,7 +1069,17 @@ For stock-to-stock comparisons, compute:
 - financial trend difference
 - valuation context difference
 - risk overlap
-- recent-development difference
+- Weekly News Focus difference
+
+For stock-to-ETF comparisons, use a dedicated cross-type template and compute:
+
+- single-company risk vs basket risk
+- business model vs holdings exposure
+- company financials vs fund methodology
+- valuation metrics vs expense ratio and concentration
+- idiosyncratic risk vs diversified sector exposure
+
+`NVDA` vs `SOXX` should be a golden stock-vs-ETF comparison scenario.
 
 ---
 
@@ -836,9 +1091,10 @@ For stock-to-stock comparisons, compute:
 Stage A: Fact extraction
 Stage B: Fact validation
 Stage C: Page section generation
-Stage D: Claim-to-citation binding
-Stage E: Safety validation
-Stage F: Persist summary
+Stage D: Section evidence-state labeling
+Stage E: Claim-to-citation binding
+Stage F: Safety validation
+Stage G: Persist summary
 ```
 
 ### 11.2 LLM provider abstraction
@@ -862,12 +1118,59 @@ The provider adapter should support:
 
 - OpenAI Responses API.
 - OpenRouter-compatible chat-completion APIs.
+- Deterministic mock responses for CI and local tests.
 - Local or open-source models later.
 - Retry and validation.
 - Prompt versioning.
 - Model fallback.
 
 When a provider supports strict JSON-schema output, use it. When it does not, prompt for JSON and validate with Pydantic server-side.
+
+OpenRouter runtime configuration:
+
+- `LLM_PROVIDER=openrouter`
+- `LLM_LIVE_GENERATION_ENABLED=true` for first deployment live generation
+- `LLM_VALIDATION_RETRY_COUNT=1`
+- `LLM_REASONING_SUMMARY_ONLY=true`
+- `LLM_CHAT_CACHE_TTL_SECONDS=86400`
+- `OPENROUTER_API_KEY`
+- `OPENROUTER_BASE_URL=https://openrouter.ai/api/v1`
+- `OPENROUTER_MODEL` optional single-model override, blank by default
+- `OPENROUTER_FREE_MODEL_ORDER=openai/gpt-oss-120b:free,google/gemma-4-31b-it:free,qwen/qwen3-next-80b-a3b-instruct:free,meta-llama/llama-3.3-70b-instruct:free`
+- `OPENROUTER_PAID_FALLBACK_MODEL=deepseek/deepseek-v3.2`
+- `OPENROUTER_PAID_FALLBACK_ENABLED=true`
+- `OPENROUTER_SITE_URL`
+- `OPENROUTER_APP_TITLE=Learn the Ticker`
+
+The OpenRouter API key must stay server-side. The web app should call the FastAPI backend, not OpenRouter. Local live testing may read `OPENROUTER_API_KEY` from the developer's WSL Bash environment when the API or worker is launched from WSL. The key value must not be committed, copied into `.env.example`, exposed through `NEXT_PUBLIC_*`, returned from `/health`, or printed in logs. `/health` may report `llm_provider=openrouter` but must not expose secret values.
+
+Default live flow:
+
+```text
+Free model chain
+  -> schema/citation/safety validation
+  -> one repair retry
+  -> DeepSeek V3.2 paid fallback
+  -> validation again
+  -> cache only validated output
+```
+
+OpenRouter requests should use the `models` array for the free chain in this order:
+
+1. `openai/gpt-oss-120b:free`
+2. `google/gemma-4-31b-it:free`
+3. `qwen/qwen3-next-80b-a3b-instruct:free`
+4. `meta-llama/llama-3.3-70b-instruct:free`
+
+If the free chain errors, rate-limits, cannot satisfy strict structured output, or fails validation after one repair retry, the API automatically falls back to `deepseek/deepseek-v3.2`. Persist selected model, tier `free|paid|mock`, usage, cost, latency, validation result, and attempt count when available. Raw model reasoning, `reasoning_details`, hidden prompts, unrestricted source text, and failed raw responses must not be stored or shown. Public responses may expose only a short cited `reasoning_summary`.
+
+`openrouter/free` remains an optional manual override for experiments, not the default production strategy.
+
+### 11.2.1 LLM orchestration and cache
+
+The `LlmOrchestrator` sits above provider adapters and performs validation-aware fallback. It builds a cache key from task, ticker or conversation scope, knowledge-pack hash, prompt version, schema version, safety-policy version, source freshness hash, and model-chain version. Chat cache TTL defaults to 24 hours. Asset analysis cache invalidates when freshness hash, prompt version, schema version, or source pack changes.
+
+The orchestrator caches only validated outputs. It returns `answer_state=complete` for validated generations and `answer_state=partial` or `answer_state=unavailable` when all attempts fail validation. Advice-like prompts are blocked before LLM calls, and advice-like generated content fails validation even when schema and citations appear valid.
 
 ### 11.3 Page summary schema
 
@@ -879,8 +1182,10 @@ Example simplified schema:
   "required": [
     "beginner_summary",
     "top_risks",
-    "recent_developments",
+    "weekly_news_focus",
+    "ai_comprehensive_analysis",
     "suitability_summary",
+    "section_states",
     "claims"
   ],
   "properties": {
@@ -892,6 +1197,10 @@ Example simplified schema:
         "why_people_consider_it": {"type": "string"},
         "main_catch": {"type": "string"}
       }
+    },
+    "section_states": {
+      "type": "object",
+      "description": "Per-section evidence and freshness state for complete or partial pages."
     },
     "top_risks": {
       "type": "array",
@@ -907,16 +1216,72 @@ Example simplified schema:
         }
       }
     },
-    "recent_developments": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["title", "summary", "event_date", "citation_ids"],
-        "properties": {
-          "title": {"type": "string"},
-          "summary": {"type": "string"},
-          "event_date": {"type": "string"},
-          "citation_ids": {"type": "array", "items": {"type": "string"}}
+    "weekly_news_focus": {
+      "type": "object",
+      "required": ["news_window_start", "news_window_end", "window", "items", "freshness"],
+      "properties": {
+        "news_window_start": {"type": "string"},
+        "news_window_end": {"type": "string"},
+        "window": {
+          "type": "object",
+          "required": ["previous_market_week", "current_week_to_date", "timezone"],
+          "properties": {
+            "previous_market_week": {"type": "object"},
+            "current_week_to_date": {"type": "object"},
+            "timezone": {"type": "string"}
+          }
+        },
+        "freshness": {"type": "object"},
+        "items": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "required": ["source", "title", "published_at", "summary", "event_type", "period_bucket", "citation_ids", "source_quality", "allowlist_status", "source_use_policy"],
+            "properties": {
+              "source": {"type": "string"},
+              "title": {"type": "string"},
+              "published_at": {"type": "string"},
+              "summary": {"type": "string"},
+              "event_type": {"type": "string"},
+              "period_bucket": {"type": "string"},
+              "citation_ids": {"type": "array", "items": {"type": "string"}},
+              "source_quality": {"type": "string"},
+              "allowlist_status": {"type": "string"},
+              "source_use_policy": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+    "ai_comprehensive_analysis": {
+      "type": "object",
+      "required": ["what_changed_this_week", "sections"],
+      "properties": {
+        "what_changed_this_week": {
+          "type": "object",
+          "required": ["analysis", "bullets", "citation_ids", "uncertainty"],
+          "properties": {
+            "analysis": {"type": "string"},
+            "bullets": {"type": "array", "items": {"type": "string"}},
+            "citation_ids": {"type": "array", "items": {"type": "string"}},
+            "uncertainty": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["label", "analysis", "bullets", "citation_ids", "uncertainty"],
+            "properties": {
+              "label": {"type": "string"},
+              "analysis": {"type": "string"},
+              "bullets": {"type": "array", "items": {"type": "string"}},
+              "citation_ids": {"type": "array", "items": {"type": "string"}},
+              "uncertainty": {"type": "array", "items": {"type": "string"}}
+            }
+          }
         }
       }
     },
@@ -982,8 +1347,17 @@ Example simplified schema:
         "educational",
         "personalized_advice_redirect",
         "unsupported_asset_redirect",
+        "compare_route_redirect",
         "insufficient_evidence"
       ]
+    },
+    "compare_route_suggestion": {
+      "type": ["object", "null"],
+      "properties": {
+        "left_ticker": {"type": "string"},
+        "right_ticker": {"type": "string"},
+        "route": {"type": "string"}
+      }
     }
   }
 }
@@ -1004,9 +1378,10 @@ Citation binding is the most important trust mechanism.
 4. Normalized facts are linked to source document and chunk IDs.
 5. LLM receives facts/chunks with stable IDs.
 6. LLM generates claims with citation IDs.
-7. Validator checks every citation ID.
-8. UI renders citation chips.
-9. Source drawer opens exact source metadata and supporting passage.
+7. `claim_citations` stores one or more supporting citations for each claim.
+8. Validator checks every citation ID.
+9. UI renders citation chips.
+10. Source drawer opens exact source metadata and supporting passage.
 ```
 
 ### 12.2 Citation validation rules
@@ -1014,12 +1389,14 @@ Citation binding is the most important trust mechanism.
 A generated output is valid only if:
 
 - every important factual claim has at least one citation
+- or, if evidence is missing, the claim is suppressed and the section carries an explicit uncertainty, unavailable, stale, or partial label
 - every citation ID exists
 - cited source belongs to the same asset or comparison pack
 - cited source is not stale unless labeled stale
 - numeric claims match the cited fact value
 - quoted or paraphrased claims are supported by cited chunks
-- recent-development claims cite a recent-event source
+- Weekly News Focus and AI-analysis claims cite recent-event sources or canonical facts
+- comparison claims can cite both sides through `comparison_left` and `comparison_right` citation roles
 - suitability statements are framed as educational tradeoffs, not advice
 
 ### 12.3 Failed citation behavior
@@ -1047,12 +1424,15 @@ business_model
 holdings
 risk
 comparison
-recent_development
+compare_route_redirect
+weekly_news_focus
+news_analysis
 glossary
 valuation_context
 suitability_education
 personalized_advice
 unsupported_asset
+out_of_scope_asset
 unknown
 ```
 
@@ -1060,17 +1440,17 @@ unknown
 
 Blocked or redirected user intents:
 
-- “Should I buy this?”
-- “How much should I put in this?”
-- “Is this guaranteed to go up?”
-- “Give me a price target.”
-- “Build my portfolio.”
-- “Is this right for my taxes?”
+- "Should I buy this?"
+- "How much should I put in this?"
+- "Is this guaranteed to go up?"
+- "Give me a price target."
+- "Build my portfolio."
+- "Is this right for my taxes?"
 
 Safe replacement behavior:
 
 ```text
-I can’t tell you whether to buy it or how much to allocate.
+I can't tell you whether to buy it or how much to allocate.
 I can explain what it is, what it holds or does, the main risks,
 how it compares with similar assets, and what factors beginners
 usually consider before making their own decision.
@@ -1086,6 +1466,20 @@ Before returning a generated answer:
 - scan for unsupported price targets
 - require citations for factual claims
 - require uncertainty when evidence is incomplete
+- redirect second-ticker comparison questions from single-asset chat to the comparison workflow
+
+### 13.4 Prompt-injection and source defenses
+
+Retrieved source text is untrusted evidence. Prompt templates must instruct the model to ignore instructions inside retrieved documents, and retrieved chunks must never override system prompts, developer prompts, source policy, citation policy, output schemas, or safety guardrails.
+
+The generation pipeline must:
+
+- wrap retrieved evidence in an explicit untrusted-evidence boundary
+- pass only source IDs, metadata, and sanitized text excerpts to the model
+- run citation validation after generation
+- block advice-like output even if source text contains promotional language
+- sanitize external HTML and PDF content before rendering
+- reject unsafe redirects, localhost targets, private IP ranges, suspicious protocols, and non-allowlisted domains in ingestion fetchers
 
 ---
 
@@ -1117,12 +1511,44 @@ GET /api/search?q=VOO
 }
 ```
 
-### 14.2 Asset overview
+Allowed `status` values are `supported`, `unsupported`, `out_of_scope`, `pending_ingestion`, `partial`, `stale`, and `unavailable`.
+
+### 14.2 Citation resolution
 
 #### Request
 
 ```http
-GET /api/assets/VOO/overview?mode=beginner
+GET /api/citations/cit_abc123
+```
+
+#### Response
+
+```json
+{
+  "citation_id": "cit_abc123",
+  "source_document_id": "src_sec_0000320193_10k_2025",
+  "source_title": "Apple Inc. 2025 Form 10-K",
+  "publisher": "SEC EDGAR",
+  "url": "https://www.sec.gov/...",
+  "source_type": "10-k",
+  "source_use_policy": "full_text_allowed",
+  "published_at": "2025-10-31",
+  "as_of_date": "2025-09-27",
+  "retrieved_at": "2026-04-22T13:00:00Z",
+  "freshness_state": "fresh",
+  "claim_role": "canonical_fact",
+  "allowed_supporting_excerpt": "Short excerpt allowed by source-use policy."
+}
+```
+
+`citation_id` is public and opaque. It must not expose raw database row IDs. Citation resolution must never return unrestricted provider payloads, full restricted article text, private raw PDF text, secrets, hidden prompts, or unrestricted raw source text.
+
+### 14.3 Asset overview
+
+#### Request
+
+```http
+GET /api/assets/VOO/overview?section=beginner
 ```
 
 #### Response
@@ -1132,13 +1558,19 @@ GET /api/assets/VOO/overview?mode=beginner
   "asset": {
     "ticker": "VOO",
     "name": "Vanguard S&P 500 ETF",
-    "asset_type": "etf"
+    "asset_type": "etf",
+    "status": "partial"
+  },
+  "section_states": {
+    "snapshot": {"evidence_state": "complete", "freshness_state": "fresh"},
+    "holdings": {"evidence_state": "partial", "freshness_state": "stale"},
+    "weekly_news_focus": {"evidence_state": "complete", "freshness_state": "fresh"}
   },
   "freshness": {
     "page_last_updated_at": "2026-04-19T14:30:00Z",
     "facts_as_of": "2026-04-18",
     "holdings_as_of": "2026-04-17",
-    "recent_events_as_of": "2026-04-19"
+    "weekly_news_as_of": "2026-04-22"
   },
   "snapshot": {
     "issuer": "Vanguard",
@@ -1155,13 +1587,67 @@ GET /api/assets/VOO/overview?mode=beginner
     "main_catch": "..."
   },
   "top_risks": [],
-  "recent_developments": [],
+  "weekly_news_focus": {
+    "news_window_start": "2026-04-13",
+    "news_window_end": "2026-04-21",
+    "window": {
+      "previous_market_week": {"start": "2026-04-13", "end": "2026-04-19"},
+      "current_week_to_date": {"start": "2026-04-20", "end": "2026-04-21"},
+      "timezone": "America/New_York"
+    },
+    "freshness": {"checked_at": "2026-04-22T14:30:00Z"},
+    "items": [
+      {
+        "source": "Issuer press release",
+        "title": "Example weekly item title",
+        "published_at": "2026-04-17T12:00:00Z",
+        "summary": "One-sentence beginner-friendly explanation of why this item matters.",
+        "event_type": "sponsor_update",
+        "period_bucket": "previous_market_week",
+        "citation_ids": ["c_news_1"],
+        "source_quality": "official",
+        "allowlist_status": "allowed",
+        "source_use_policy": "summary_allowed"
+      }
+    ]
+  },
+  "ai_comprehensive_analysis": {
+    "what_changed_this_week": {
+      "analysis": "Compact cited summary of the main changes in the Weekly News Focus pack.",
+      "bullets": ["One concise cited change."],
+      "citation_ids": ["c_news_1"],
+      "uncertainty": []
+    },
+    "sections": [
+      {
+        "label": "Market Context",
+        "analysis": "Compact cited synthesis of market-relevant Weekly News Focus.",
+        "bullets": ["One concise implication for understanding the asset."],
+        "citation_ids": ["c_news_1"],
+        "uncertainty": []
+      },
+      {
+        "label": "Business/Fund Context",
+        "analysis": "Compact cited synthesis of asset fundamentals or ETF exposure context.",
+        "bullets": ["One concise implication for the business or fund structure."],
+        "citation_ids": ["c_news_1"],
+        "uncertainty": []
+      },
+      {
+        "label": "Risk Context",
+        "analysis": "Compact cited synthesis of risk signals in the Weekly News Focus pack.",
+        "bullets": ["One concise risk consideration."],
+        "citation_ids": ["c_news_1"],
+        "uncertainty": []
+      }
+    ]
+  },
   "citations": [],
   "source_documents": []
 }
 ```
 
-### 14.3 Compare
+### 14.4 Compare
 
 #### Request
 
@@ -1173,7 +1659,7 @@ POST /api/compare
 {
   "left_ticker": "VOO",
   "right_ticker": "QQQ",
-  "mode": "beginner"
+  "section": "beginner"
 }
 ```
 
@@ -1199,7 +1685,7 @@ POST /api/compare
 }
 ```
 
-### 14.4 Asset chat
+### 14.5 Asset chat
 
 #### Request
 
@@ -1218,27 +1704,52 @@ POST /api/assets/QQQ/chat
 
 ```json
 {
-  "direct_answer": "QQQ is more concentrated because it tracks a narrower index and has more weight in its largest holdings.",
-  "why_it_matters": "Concentration can help when those large holdings perform well, but it can also make the fund less diversified.",
-  "citations": [
-    {
-      "claim": "QQQ has more weight in its largest holdings.",
-      "source_document_id": "src_123",
-      "chunk_id": "chk_456"
-    }
-  ],
+  "conversation_id": "generated-random-id",
+  "expires_at": "2026-04-29T14:30:00Z",
+  "direct_answer": "This question compares QQQ with VOO, so use the comparison workflow to keep both assets grounded in their own evidence packs.",
+  "why_it_matters": "Single-asset chat only answers from the selected asset pack. A comparison page can load both assets, compute differences, and cite both source sets.",
+  "answer_state": "complete",
+  "reasoning_summary": "The answer is grounded in the selected asset pack and routed to comparison because a second ticker was detected.",
+  "generation": {
+    "tier": "mock",
+    "cached": false,
+    "attempt_count": 0
+  },
+  "citations": [],
   "uncertainty": [],
-  "safety_classification": "educational"
+  "safety_classification": "compare_route_redirect",
+  "compare_route_suggestion": {
+    "left_ticker": "QQQ",
+    "right_ticker": "VOO",
+    "route": "/compare?left=QQQ&right=VOO"
+  }
 }
 ```
 
-### 14.5 Export
+Accountless chat session behavior:
+
+- If `conversation_id` is omitted, create a random anonymous session ID.
+- Browser local storage keeps only `conversation_id`, ticker, `updated_at`, and `expires_at`.
+- Server stores transcript state for grounded follow-up and client-requested export.
+- Session TTL is 7 days from last activity.
+- Deleting a transcript clears browser state and deletes or invalidates the server session.
+- Rate limits apply per conversation. The MVP default is 20 chat requests per hour per conversation; IP-level chat and burst limits may be added later, but must remain environment-configurable.
+
+### 14.6 Export
 
 Export endpoints should return server-shaped educational outputs, not raw unrestricted provider payloads.
+
+Supported MVP formats:
+
+- `format=markdown`
+- `format=json`
+
+PDF export is post-MVP.
 
 Supported MVP export shapes:
 
 - asset page summary with citation IDs and freshness metadata
+- Weekly News Focus and AI Comprehensive Analysis with citations, freshness metadata, and uncertainty labels
 - comparison output with source list
 - source list with URLs, publisher, source type, dates, retrieved timestamp, and allowed excerpts
 - chat transcript with safety classification, citations, uncertainty notes, and source metadata
@@ -1262,7 +1773,7 @@ Exported outputs should include the persistent educational disclaimer and should
 | `HoldingsTable` | ETF top holdings. |
 | `ExposureChart` | ETF sector/country exposure. |
 | `FinancialTrendsTable` | Stock financial trend view. |
-| `RecentDevelopmentsPanel` | Recent context separated from basics. |
+| `WeeklyNewsPanel` | Weekly News Focus after stable facts and before AI Comprehensive Analysis, separated from basics. |
 | `CompareTable` | Side-by-side comparison. |
 | `CitationChip` | Inline source reference. |
 | `SourceDrawer` | Source metadata and supporting text. |
@@ -1283,6 +1794,7 @@ When a user clicks a citation chip, open a drawer showing:
 - related claim
 - supporting excerpt
 - source URL
+- whether the citation supports a Weekly News Focus item or an AI Comprehensive Analysis claim
 
 ### 15.3 Freshness display
 
@@ -1291,10 +1803,12 @@ Every page should show:
 ```text
 Page last updated: Apr 19, 2026
 Holdings as of: Apr 17, 2026
-Recent developments checked: Apr 19, 2026
+Weekly News Focus checked: Apr 19, 2026
 ```
 
 Freshness should be section-specific, not just page-level.
+
+Quote/reference display must include source and freshness metadata. MVP quote data is delayed or best-effort; if a quote or quote timestamp is unavailable, the API should return `unavailable` and the UI should say so rather than implying real-time coverage.
 
 ---
 
@@ -1311,7 +1825,7 @@ freshness_hash = hash(
   asset_id
   + canonical_fact_versions
   + source_document_checksums
-  + recent_event_ids
+  + weekly_news_event_ids
   + prompt_version
   + model_name
 )
@@ -1319,7 +1833,7 @@ freshness_hash = hash(
 
 If any input changes, regenerate the affected summary.
 
-Cache keys should include the asset or comparison pack, mode, source freshness state, prompt version where generation is involved, and schema version. Cached outputs must preserve citation IDs, source metadata, section-level freshness, and stale/unknown/unavailable labels.
+Cache keys should include the asset or comparison pack, section, source freshness state, prompt version where generation is involved, and schema version. Cached outputs must preserve citation IDs, source metadata, section-level freshness, and stale/unknown/unavailable labels.
 
 ### 16.2 Suggested refresh rules
 
@@ -1327,12 +1841,16 @@ Cache keys should include the asset or comparison pack, mode, source freshness s
 |---|---:|---|
 | SEC submissions | daily + on-demand | new filing detected |
 | SEC XBRL facts | daily + on-demand | new 10-K / 10-Q / 8-K |
-| Stock price/reference data | vendor-dependent | TTL expiration |
+| Stock price/reference data | delayed or best-effort free-source/configured-adapter TTL | TTL expiration or unavailable quote state |
 | ETF holdings | daily on market days | holdings date changes |
 | ETF fact sheet | daily or weekly | checksum change |
 | ETF prospectus | weekly or monthly | checksum change |
-| Recent news/events | 1–6 hours | new high-signal event |
+| Weekly News Focus events | 1-6 hours where sources permit | new high-signal event or source checksum change |
 | LLM summaries | on input hash change | freshness hash mismatch |
+
+For v1, the Weekly News Focus cadence applies only to official sources and curated allowlisted free/RSS/news sources. Unrecognized free-news sources are rejected by default.
+
+Weekly News Focus and AI Comprehensive Analysis should use the same freshness rules. The UI should expose `news_window_start`, `news_window_end`, and the checked timestamp for the Weekly News Focus pack.
 
 SEC data should be fetched server-side with caching and fair-access rate limiting rather than on every user page view.
 
@@ -1347,7 +1865,7 @@ SEC data should be fetched server-side with caching and fair-access rate limitin
 | Cached comparison page | p95 < 2.0 s |
 | Chat first token / initial response | p95 < 5.0 s |
 | Full grounded chat answer | p95 < 12.0 s |
-| On-demand asset ingestion | async job; page should show pending state |
+| On-demand asset ingestion | async job; page should show `pending_ingestion` state |
 | Source drawer open | p95 < 500 ms |
 
 For MVP, pre-ingest a curated universe of common assets so users do not frequently wait for full ingestion.
@@ -1380,8 +1898,10 @@ Track:
 - safety redirect rate
 - freshness accuracy
 - source retrieval failure rate
+- Weekly News Focus render rate
+- AI news analysis validation failure rate
 
-These trust and comprehension metrics are directly aligned with the proposal’s recommendation to measure citation coverage, unsupported claim rate, comparison usage, glossary usage, freshness accuracy, and user understanding.
+These trust and comprehension metrics are directly aligned with the proposal's recommendation to measure citation coverage, unsupported claim rate, comparison usage, glossary usage, freshness accuracy, and user understanding.
 
 ### 18.3 Technical logs
 
@@ -1396,6 +1916,9 @@ For each generated output, log:
   "prompt_version": "...",
   "retrieved_chunk_ids": [],
   "source_document_ids": [],
+  "weekly_news_event_ids": [],
+  "news_window_start": "2026-04-13",
+  "news_window_end": "2026-04-21",
   "freshness_hash": "...",
   "schema_valid": true,
   "citation_coverage_rate": 0.96,
@@ -1419,6 +1942,15 @@ For each generated output, log:
 - freshness hash generation
 - citation ID validation
 - safety phrase detection
+- deterministic asset classification for leverage, inverse funds, non-equity funds, active strategy, and top-500 stock scope
+- status mapping for `supported`, `unsupported`, `out_of_scope`, `pending_ingestion`, `partial`, `stale`, and `unavailable`
+- export format validation for Markdown and JSON
+- Weekly News Focus market-week window calculation
+- rate-limit defaults for search, chat, and ingestion
+- delayed, best-effort, stale, partial, and unavailable quote/reference states
+- `claim_citations` role validation
+- fact and summary versioning state transitions
+- chat session TTL and deletion state
 
 ### 19.2 Integration tests
 
@@ -1426,18 +1958,29 @@ For each generated output, log:
 - SEC XBRL ingestion
 - issuer fact sheet parsing
 - ETF holdings parsing
-- vector retrieval
+- hybrid-light retrieval
 - asset overview endpoint
 - comparison endpoint
 - chat endpoint
+- chat compare-route redirect
+- allowlisted Weekly News Focus event ingestion and rejection of unrecognized news sources
+- Weekly News Focus selection with 5-8 items when enough high-quality evidence exists
+- AI Comprehensive Analysis generation from the selected asset's Weekly News Focus pack
+- Markdown and JSON export endpoints
+- source-use policy enforcement for metadata-only, link-only, summary-allowed, full-text-allowed, and rejected sources
+- prompt-injection rejection from retrieved source text
+- HTML/PDF sanitization and SSRF-defense checks
+- accountless chat continuation, expiry, deletion, and rate limiting
 
 ### 19.3 Golden asset tests
 
-Use a small stable set:
+Use the launch pre-cache universe as the golden asset set:
 
 ```text
-Stocks: AAPL, MSFT, NVDA, TSLA
-ETFs: VOO, SPY, VTI, QQQ, VGT, SOXX
+Broad ETFs: VOO, SPY, VTI, IVV, QQQ, IWM, DIA
+Sector/theme ETFs: VGT, XLK, SOXX, SMH, XLF, XLV, XLE
+Large stocks: AAPL, MSFT, NVDA, AMZN, GOOGL, META, TSLA, BRK.B, JPM, UNH
+Comparison pairs: VOO/SPY, VTI/VOO, QQQ/VOO, QQQ/VGT, VGT/SOXX, AAPL/MSFT, NVDA/SOXX
 ```
 
 For each golden asset, maintain expected checks:
@@ -1449,7 +1992,22 @@ For each golden asset, maintain expected checks:
 - stock financial trend table exists
 - citations exist for key claims
 - no buy/sell language appears
-- recent developments are separate from asset basics
+- Weekly News Focus and AI Comprehensive Analysis are separate from asset basics
+- Weekly News Focus renders for `AAPL`, `VOO`, and `QQQ` when allowlisted evidence exists
+- Weekly News Focus shows 5-8 items when enough high-quality items exist, fewer when evidence is limited, and zero when no major Weekly News Focus items exist
+- Weekly News Focus uses last Monday-Sunday plus current week-to-date through yesterday
+- AI Comprehensive Analysis includes What Changed This Week, Market Context, Business/Fund Context, and Risk Context sections when at least two high-signal items exist
+- every AI-analysis factual claim has citations or an uncertainty label
+- duplicate, promotional, irrelevant, non-allowlisted, and license-disallowed news is excluded
+- QQQ vs VOO opens comparison, while the same question inside single-asset chat returns a compare redirect
+- NVDA vs SOXX uses the stock-vs-ETF template and explains structural differences
+- missing ETF holdings or stale sources produce partial-page states
+- leveraged ETF, inverse ETF, ETN, fixed income ETF, and crypto searches return unsupported or out-of-scope states
+- free-news sources outside the allowlist are rejected
+- anonymous chat sessions continue via `conversation_id`, expire after TTL, delete correctly, and never put raw transcript text in analytics
+- claims can resolve multiple citations through `claim_citations`
+- current fact queries use `is_current`, while superseded facts and summaries remain audit-readable
+- Markdown and JSON exports include disclaimer, citations, freshness, and uncertainty metadata
 
 ### 19.4 LLM evaluation tests
 
@@ -1460,8 +2018,21 @@ Evaluate generated outputs for:
 - citation support
 - beginner readability
 - no personalized advice
+- no buy/sell/hold language
+- no allocation, tax, guaranteed-return, or unsupported price-target language
 - no unsupported price targets
-- correct separation of stable facts and recent developments
+- correct separation of stable facts from Weekly News Focus and AI Comprehensive Analysis
+- AI Comprehensive Analysis uses only selected Weekly News Focus items and cited canonical facts
+- OpenRouter free-stage requests use `models` in the configured order, paid fallback requests use `model=deepseek/deepseek-v3.2`, and only validated outputs are cached
+- raw `reasoning_details`, hidden prompts, failed raw responses, and unrestricted source text are never persisted or returned; only cited `reasoning_summary` may appear in public responses
+- section labels remain UI labels and are not framed as real people, advisors, or independent sources
+- retrieved source text is treated as untrusted evidence and cannot alter instructions or safety policy
+
+Strict MVP gates:
+
+- 100% of important factual claims in golden-path generated outputs have valid citations or explicit uncertainty/unavailable labels.
+- Zero known advice-boundary violations in golden tests.
+- CI includes unit, integration, schema, citation validation, safety, export, and golden asset tests.
 
 ---
 
@@ -1471,6 +2042,8 @@ Evaluate generated outputs for:
 
 Store API keys in a secret manager or environment-managed deployment secret store.
 
+For the planned free-tier deployment, use Google Secret Manager for Cloud Run and Cloud Run Jobs secrets. For local live provider testing, the developer's WSL Bash environment may provide `OPENROUTER_API_KEY`, `FMP_API_KEY`, `ALPHA_VANTAGE_API_KEY`, `FINNHUB_API_KEY`, `TIINGO_API_KEY`, and `EODHD_API_KEY`; processes that need them should be launched from that WSL environment. Do not inspect, echo, log, or copy actual values.
+
 Do not expose:
 
 - market data provider keys
@@ -1479,13 +2052,23 @@ Do not expose:
 - object storage credentials
 - admin ingestion endpoints
 
+Do not commit filled production env files. `deploy/env/*.example.env`, `apps/web/.env.production.example`, and `.env.example` may contain placeholders only.
+
+FMP, Alpha Vantage, Finnhub, Tiingo, and EODHD keys are configuration readiness only. Live adapters and public display/export use require provider-specific licensing and rate-limit review.
+
 ### 20.2 Source sanitization
 
-External HTML and PDF content should be sanitized before display. Never render arbitrary source HTML directly in the app.
+External HTML and PDF content should be sanitized before display. Never render arbitrary source HTML directly in the app. Sanitization should remove scripts, event handlers, unsafe links, embedded active content, and hidden prompt-like instructions from rendered views.
+
+Ingestion fetchers must use allowlisted domains or controlled URL resolution. They should reject unsafe redirects, localhost targets, private IP ranges, non-HTTP(S) protocols, and suspicious content types to reduce SSRF risk.
 
 ### 20.3 User data
 
-MVP should be accountless. Users can download asset summaries, comparison output, source lists, and chat transcripts without creating accounts. These exports should include citations and freshness metadata, and should omit or summarize restricted provider content unless redistribution rights are confirmed.
+MVP should be accountless. Users can download asset summaries, comparison output, source lists, and chat transcripts without creating accounts. These exports should be Markdown or JSON and include citations, freshness metadata, uncertainty labels, and the educational disclaimer. They should omit or summarize restricted provider content unless redistribution rights are confirmed.
+
+Accountless chat uses anonymous random conversation IDs, not user accounts. The browser stores only `conversation_id`, asset ticker, `updated_at`, and `expires_at`; the server stores transcript state for follow-up grounding and client-requested export. Chat sessions expire 7 days after last activity. A user delete action must clear the local browser reference and delete or invalidate the server-side session.
+
+Chat transcripts are not included in product analytics, not used for model training, and not used for model evaluation in MVP. Product analytics may log only aggregate events such as chat started, follow-up count, safety redirect, compare redirect, export requested, latency, and error state. IP address and user-agent logs may be retained only in short-lived abuse/security logs with a 7-day default retention.
 
 If accounts are added later, store only minimal user data:
 
@@ -1504,20 +2087,61 @@ Admin ingestion endpoints should require authentication and rate limiting.
 
 ## 21. Deployment design
 
-### 21.1 Recommended MVP deployment
+### 21.1 Local MVP stack
+
+Local development should use Docker Compose with:
+
+- Next.js web app
+- FastAPI API
+- ingestion worker
+- PostgreSQL with pgvector enabled
+- Redis
+- S3-compatible object storage such as MinIO
+
+### 21.2 Recommended MVP deployment
 
 | Component | Suggested deployment |
 |---|---|
-| Frontend | Vercel, Netlify, or containerized Next.js |
-| API | Containerized FastAPI service |
-| Worker | Separate containerized worker process |
-| Database | Managed PostgreSQL with pgvector |
-| Cache / queue | Managed Redis |
-| Object storage | S3-compatible storage |
-| Monitoring | Sentry + OpenTelemetry + provider logs |
-| CI/CD | GitHub Actions |
+| Frontend | Vercel Hobby project rooted at `apps/web` |
+| API | Google Cloud Run in `us-central1`, request-based billing, `min-instances=0`, conservative max instances |
+| Worker | Cloud Run Jobs, manually triggered first |
+| Database | Neon Free Postgres with pooled SSL connection URL and pgvector enabled when needed |
+| Cache / queue | No production Redis or Pub/Sub at first; use Postgres `ingestion_jobs` |
+| Object storage | Private Google Cloud Storage regional bucket in `us-central1` |
+| Monitoring | Google Cloud Logging and Error Reporting; optional Sentry Developer plan later |
+| LLM runtime | Feature-flagged explicit OpenRouter free-model chain with automatic DeepSeek V3.2 paid fallback for first deployment; deterministic mock for CI/local tests |
+| CI/CD | GitHub Actions quality gates first; manual deploy commands before deploy automation |
 
-### 21.2 Environments
+Cloud Run API requirements:
+
+- Container must listen on Cloud Run's `PORT` environment variable, with local fallback to `8000`.
+- `CORS_ALLOWED_ORIGINS` must list the Vercel production URL and any allowed preview URLs.
+- Secrets such as `DATABASE_URL`, `OPENROUTER_API_KEY`, and storage credentials must come from Secret Manager or deployment-managed secrets.
+- Billing guardrails should include a budget alert, `min-instances=0`, and a conservative max-instance limit.
+
+Cloud Run Jobs requirements:
+
+- Use the same API/worker image family and production env settings where possible.
+- Use the Postgres `ingestion_jobs` table as the job ledger and queue for v1.
+- Add Cloud Scheduler later only after manual job execution is reliable and recurring ingestion is needed.
+
+Storage requirements:
+
+- Production source snapshots and generated artifacts should use private GCS object URIs.
+- Suggested object key families: `raw/`, `parsed/`, `generated/`, and `diagnostics/`.
+- Do not make source snapshots public.
+
+OpenRouter requirements:
+
+- Keep the key server-side in `OPENROUTER_API_KEY`.
+- First deployment uses `OPENROUTER_FREE_MODEL_ORDER` plus `OPENROUTER_PAID_FALLBACK_MODEL=deepseek/deepseek-v3.2`; use env configuration rather than hard-coding it in application code.
+- Require `LLM_LIVE_GENERATION_ENABLED=true` before making live model calls.
+- Capture selected model, tier, usage/cost metadata, latency, validation result, and attempt count where available without logging raw chat transcripts.
+- Keep deterministic mocks for CI and tests.
+- Run one repair retry after free-model validation failure, then use DeepSeek fallback automatically. Fall back to partial/unavailable generated sections when all attempts fail schema/citation/safety validation.
+- Never store or show raw model reasoning; expose only cited `reasoning_summary`.
+
+### 21.3 Environments
 
 ```text
 local
@@ -1525,7 +2149,7 @@ staging
 production
 ```
 
-### 21.3 CI/CD checks
+### 21.4 CI/CD checks
 
 Before deploy:
 
@@ -1535,6 +2159,13 @@ Before deploy:
 - DB migration tests
 - parser tests
 - sample LLM schema validation
+- Weekly News Focus schema validation
+- AI Comprehensive Analysis schema validation
+- citation validation tests
+- safety guardrail tests
+- Markdown/JSON export tests
+- golden asset tests
+- documentation hygiene scan for double-question-mark mojibake, private-use corruption, stale AI labels, duplicate PRD requirement IDs, and stale weekly-window wording
 - linting
 - security scan
 
@@ -1549,24 +2180,26 @@ Before deploy:
 | PDF parse failure | Missing prospectus/fact sheet detail | Try alternate parser, show partial-data state. |
 | LLM returns invalid JSON | UI cannot render | Structured outputs when available, Pydantic validation, retry. |
 | LLM creates unsupported claim | Trust issue | Citation validator, regenerate, drop unsupported claim. |
-| News provider returns noisy results | Bad recent developments | Importance scoring, source whitelist, deduplication. |
+| News provider returns noisy results | Bad Weekly News Focus items | Importance scoring, source allowlist, source-use policy, deduplication. |
 | Stale holdings | Misleading ETF page | Holdings freshness label and stale warning. |
-| Market data outage | Missing prices/valuation | Show unavailable state; do not block educational page. |
+| Market data outage | Missing prices/valuation | Show delayed, best-effort, stale, partial, or unavailable state; do not block educational page. |
 | User asks for advice | Compliance/trust issue | Safety classifier and educational redirect. |
 
 ---
 
 ## 23. Phased implementation plan
 
+These phases describe implementation order only. Full MVP remains the v1 target and is not ready until the complete acceptance checklist and strict quality gates pass.
+
 ### Phase 0: Foundation
 
 - Create repo structure.
+- Set up Docker Compose for Next.js, FastAPI, PostgreSQL with pgvector, Redis, and S3-compatible object storage.
 - Set up Next.js app.
 - Set up FastAPI service.
-- Set up PostgreSQL, pgvector, Redis, object storage.
 - Define Pydantic schemas.
 - Add migrations.
-- Build LLM provider abstraction.
+- Build LLM provider abstraction with deterministic test mocks.
 - Build source-document storage.
 
 ### Phase 1: Stock and ETF asset pages
@@ -1574,10 +2207,11 @@ Before deploy:
 - Implement search.
 - Implement asset resolution.
 - Implement stock ingestion from SEC.
-- Implement ETF ingestion from issuer/provider sources.
+- Implement equity ETF ingestion from issuer and free-first sources.
 - Implement source documents and chunks.
 - Implement normalized facts.
 - Implement beginner asset overview.
+- Implement Weekly News Focus and AI Comprehensive Analysis.
 - Implement citation chips and source drawer.
 - Add freshness labels.
 
@@ -1602,7 +2236,7 @@ Before deploy:
 
 ### Phase 4: MVP reliability and accountless learning features
 
-- Add export/download flows for asset pages, comparisons, source lists, and chat transcripts.
+- Add Markdown/JSON export/download flows for asset pages, comparisons, source lists, and chat transcripts.
 - Add cache and freshness-hash invalidation.
 - Add pre-cache orchestration for the high-demand launch universe.
 - Add on-demand ingestion job states for eligible supported assets outside the pre-cache set.
@@ -1618,36 +2252,55 @@ Saved assets, saved comparisons, watchlists, learning paths, and user accounts a
 MVP is technically ready when:
 
 - Search resolves supported stocks and ETFs.
-- Unsupported assets return a clear unsupported state.
+- Unsupported and out-of-scope assets return clear blocked states.
 - Stock pages render from normalized SEC and reference data.
-- ETF pages render from official issuer/provider data.
+- Equity ETF pages render from official issuer and free-first evidence where available.
+- Partial pages render verified sections only and label missing evidence as unavailable, stale, unknown, or partial.
 - Every page shows freshness labels.
 - Every important claim has a citation or uncertainty note.
 - Source drawer displays source metadata and supporting passages.
 - Top risks show exactly three items first.
-- Recent developments are stored and rendered separately from canonical facts.
-- Comparison works for at least ETF-vs-ETF and stock-vs-stock.
+- Weekly News Focus and AI Comprehensive Analysis are stored and rendered separately from canonical facts.
+- Weekly News Focus returns 5-8 items when enough high-quality allowlisted evidence exists, fewer when evidence is limited, and zero with a clear empty state when no major Weekly News Focus items exist.
+- Weekly News Focus uses the last completed Monday-Sunday market week plus current week-to-date through yesterday.
+- AI Comprehensive Analysis includes What Changed This Week, Market Context, Business/Fund Context, and Risk Context when at least two high-signal weekly items exist.
+- Comparison works for ETF-vs-ETF, stock-vs-stock, and stock-vs-ETF.
 - Chat answers only from the selected asset knowledge pack.
+- Single-asset chat redirects second-ticker comparison questions to the comparison workflow.
 - Safety guardrails prevent buy/sell, price-target, and allocation advice.
-- Users can export asset pages, comparison output, source lists, and chat transcripts with citations, freshness metadata, and the educational disclaimer.
+- Prompt-injection defenses treat retrieved text as untrusted evidence and ignore instructions inside retrieved documents.
+- Source sanitization and SSRF defenses are covered for HTML/PDF rendering and ingestion fetchers.
+- Accountless chat uses anonymous conversation IDs, 7-day TTL, deletion, minimal local storage, and no raw transcript analytics/training/evaluation use in MVP.
+- Users can export asset pages, comparison output, source lists, and chat transcripts as Markdown or JSON with citations, freshness metadata, uncertainty labels, and the educational disclaimer.
 - Hybrid glossary support covers core beginner terms and does not introduce uncited asset-specific facts.
 - Shared server-side caching, source checksums, and freshness hashes avoid repeated provider and LLM work while preserving freshness labels.
 - Citation coverage, unsupported claim rate, latency, glossary usage, export usage, safety redirects, and freshness accuracy are logged.
+- 100% of important factual claims in golden-path generated outputs have valid citations or explicit uncertainty/unavailable labels.
+- Zero known advice-boundary violations remain in golden tests.
+- CI includes unit, integration, schema, citation validation, safety, export, and golden asset tests.
+- CI covers many-citation claims, fact/summary versioning, chat privacy, rate limits, and `NVDA` vs `SOXX` stock-vs-ETF comparison.
+- Cached search, asset pages, comparison pages, source drawer, and chat meet the performance targets in this spec.
 
 ---
 
 ## 25. Resolved MVP planning assumptions
 
-1. Market/reference data should use official and structured sources first. PRD v0.2 prefers Massive for market/reference data and Massive plus ETF Global for ETF data where budget allows, with lower-cost fallbacks only after validation and licensing review.
-2. MVP should pre-cache a high-demand launch universe and support on-demand ingestion for eligible supported assets outside it.
-3. Retrieval should remain self-managed first so citation binding, source freshness, and asset filters stay under application control.
+1. Market/reference data should use free-first official and public sources first. No paid provider keys are assumed for v1; paid market, ETF, or news providers are optional future adapters after validation and licensing review.
+2. MVP should pre-cache a top-500-first high-demand launch universe from `data/universes/us_common_stocks_top500.current.json`, mirror it through `TOP500_UNIVERSE_MANIFEST_URI`, and support explicit `pending_ingestion` states only for approved eligible supported assets outside it.
+3. Retrieval should remain keyword/metadata first so citation binding, source freshness, and asset filters stay under application control. Embeddings and pgvector retrieval are optional behind adapters until stable.
 4. Citation strictness is per important factual claim, not per sentence.
-5. Recent developments should prefer official filings, company investor-relations releases, ETF issuer announcements, and prospectus updates before reputable ticker-tagged news.
-6. V1 should be accountless.
-7. Export/download is the v1 save-for-later workflow; exported output must include citations, freshness metadata, and the educational disclaimer while respecting provider licensing.
+5. Weekly News Focus should prefer official filings, company investor-relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes before curated allowlisted free/RSS/news sources; Reuters/AP-style sources require source-use rights review.
+6. V1 should be accountless, with anonymous chat sessions, 7-day TTL, user deletion, minimal browser storage, and no raw chat transcript analytics/training/evaluation use in MVP.
+7. Markdown/JSON export/download is the v1 save-for-later workflow; exported output must include citations, freshness metadata, uncertainty labels, and the educational disclaimer while respecting provider licensing.
 8. Server-side caching, source-document checksums, generated-summary freshness hashes, and pre-cached knowledge packs should reduce provider and LLM calls.
 9. ETF issuer parser maintenance remains an implementation risk; parsers should store raw snapshots, checksums, and parser diagnostics.
-10. Leveraged ETFs, inverse ETFs, ETNs, crypto, options, international equities, preferred stocks, warrants, rights, and complex products are unsupported for generated pages, chat, and comparisons unless explicitly added later.
+10. Leveraged ETFs, inverse ETFs, ETNs, fixed income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, crypto, options, international equities, preferred stocks, warrants, rights, and complex products are unsupported or out of scope for generated pages, chat, and comparisons unless explicitly added later.
+11. Local implementation should start with Docker Compose for Next.js, FastAPI, PostgreSQL with pgvector, Redis, and S3-compatible object storage.
+12. LLM integration should be adapter-first with deterministic mocks for tests and a feature-flagged explicit OpenRouter free-model chain plus automatic DeepSeek V3.2 paid fallback for the first live deployment.
+13. Weekly News Focus is an asset-page feature with a fixed Monday-Sunday market-week window plus current week-to-date through yesterday; it is not a separate market brief page.
+14. Source allowlist changes use config-only review with validation and a development-log rationale; scoring never auto-approves a new source.
+15. Raw source text storage is rights-tiered across official, full-text-allowed, summary-allowed, metadata-only, link-only, and rejected sources.
+16. V1 is English-first. Traditional Chinese localization and read-aloud/TTS are post-MVP.
 
 ---
 
@@ -1662,8 +2315,8 @@ The system should:
 - preserve source documents and chunks
 - generate beginner explanations from bounded evidence
 - validate citations before display
-- separate recent context from stable facts
+- separate Weekly News Focus context and AI analysis from stable facts
 - avoid personalized investment advice
 - expose freshness and uncertainty directly in the UI
 
-That design matches the proposal’s central idea: a financial learning product with beginner language, visible citations, comparison-first workflows, recent-context separation, and asset-specific grounded chat.
+That design matches the proposal's central idea: a financial learning product with beginner language, visible citations, comparison-first workflows, Weekly News Focus context separation, and asset-specific grounded chat.

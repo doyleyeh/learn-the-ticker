@@ -1,9 +1,10 @@
 # Learn the Ticker: Citation-First Beginner U.S. Stock & ETF Research Assistant
 
 **Document type:** Detailed product proposal  
-**Version:** v0.2  
-**Last updated:** 2026-04-20  
+**Version:** v0.3 implementation-aligned
+**Last updated:** 2026-04-22
 **Project stage:** Side-project MVP / v1 planning
+**Documentation role:** Narrative product vision. The PRD is the product source of truth, and the technical design spec is the implementation source of truth.
 
 ---
 
@@ -172,7 +173,7 @@ The product is:
 - a plain-English stock and ETF explainer;
 - a comparison-first learning tool;
 - a source-grounded financial learning product;
-- a guided way to understand risks, holdings, company basics, valuation context, and recent developments.
+- a guided way to understand risks, holdings, company basics, valuation context, Weekly News Focus, and AI Comprehensive Analysis.
 
 ### 5.3 What the product is not
 
@@ -196,9 +197,9 @@ This framing is better for trust, easier for scope control, and more consistent 
 
 Important facts must come from official or structured sources before the model writes explanations.
 
-For stocks, that means sources such as SEC filings, XBRL data, company investor relations materials, earnings materials, structured market/reference data, and reputable news for recent context.
+For stocks, that means sources such as SEC filings, XBRL data, company investor relations materials, earnings materials, structured market/reference data, and official or allowlisted news for weekly context.
 
-For ETFs, that means sources such as issuer pages, fact sheets, prospectuses, shareholder reports, holdings files, market/reference data, and reputable news for recent context.
+For ETFs, that means sources such as issuer pages, fact sheets, prospectuses, shareholder reports, holdings files, market/reference data, and official or allowlisted news for weekly context.
 
 ### 6.2 Plain English first
 
@@ -208,15 +209,15 @@ Every asset page should begin with a beginner summary. The first view should hel
 
 Beginners often learn faster by comparing similar assets than by reading one asset page in isolation. Comparison should be a main workflow, not a secondary feature.
 
-### 6.4 Stable facts and recent developments must stay separate
+### 6.4 Stable facts, Weekly News Focus, and AI analysis must stay separate
 
 The product must clearly distinguish between:
 
 - what the asset is;
 - what the company does or what the ETF holds;
-- what changed recently.
+- what happened in the current Weekly News Focus window.
 
-Recent news should add context. It should not redefine the asset.
+Weekly News Focus and AI synthesis should add context. They should not redefine the asset.
 
 ### 6.5 Citations are part of the product
 
@@ -270,7 +271,7 @@ This user needs to understand:
 - how the company makes money;
 - what the main revenue drivers are;
 - what the major risks are;
-- how recent events may matter;
+- how Weekly News Focus may matter;
 - how the stock compares with a peer or an ETF alternative.
 
 ### 7.3 Self-directed learner
@@ -292,26 +293,39 @@ This user needs:
 
 ## 8. Scope for v1
 
-The first version should stay narrow and credible.
+The first version should stay narrow and credible while still targeting the full MVP experience. Implementation may happen in phases, but v1 is not considered ready until the MVP acceptance checklist in the PRD and technical design spec passes.
 
 ### 8.1 In scope
 
 The v1 product should support:
 
-- U.S.-listed common stocks;
-- plain-vanilla U.S.-listed ETFs;
+- the top 500 U.S.-listed common stocks first;
+- non-leveraged U.S.-listed equity index, sector, and thematic ETFs;
 - ticker and name search;
 - search and entity resolution;
 - stock asset pages;
 - ETF asset pages;
-- beginner mode;
-- deep-dive mode;
+- beginner section;
+- deep-dive section;
 - comparison of two assets;
-- recent developments section;
+- Weekly News Focus and AI Comprehensive Analysis section;
 - asset-specific grounded chat;
 - beginner glossary;
 - source drawer with citations and freshness;
 - basic educational suitability summaries.
+
+Stocks outside the top-500 MVP universe should not be promised as ready in v1. If a recognized stock is not in the launch universe, the product should show `pending_ingestion`, `unsupported`, `partial`, or `unavailable` based on deterministic classification and source availability.
+
+### 8.1.1 Top-500 Universe Definition
+
+The exact top-500 stock universe should come from a versioned manifest, not from a live provider query on each user request.
+
+- Local source of truth: `data/universes/us_common_stocks_top500.current.json`.
+- Production mirror: private GCS object configured through `TOP500_UNIVERSE_MANIFEST_URI`.
+- Manifest entries should include ticker, name, CIK when available, exchange, rank, rank basis, provider/source provenance, snapshot date, generated checksum, and approval timestamp.
+- External providers can supply ranking inputs, but the manifest is what the app trusts at runtime.
+- Refresh monthly by default. Ad hoc refreshes require a development-log entry.
+- This universe is for operational coverage and testing only. It is not a recommendation list.
 
 ### 8.2 Out of scope for v1
 
@@ -320,18 +334,26 @@ The v1 product should not support:
 - options;
 - leveraged ETFs;
 - inverse ETFs;
+- ETNs;
+- fixed income ETFs;
+- commodity ETFs;
+- active ETFs;
+- multi-asset ETFs;
 - tax guidance;
 - personalized allocation advice;
 - brokerage trading;
 - international equities;
 - crypto;
+- preferred stocks;
+- warrants;
+- rights;
 - portfolio optimization;
 - automated buy/sell signals;
 - unsupported price targets.
 
 ### 8.3 Scope rationale
 
-The scope should be narrow because the product’s value depends on trust. It is better to explain a smaller set of assets well than to support many complex asset types with weak sourcing or unclear guardrails.
+The scope should be narrow because the product's value depends on trust. It is better to explain a smaller set of assets well than to support many complex asset types with weak sourcing or unclear guardrails.
 
 ---
 
@@ -363,14 +385,14 @@ The system should clearly distinguish between stocks and ETFs because the explan
 
 ## 9.2 Asset page structure
 
-Each asset page should have two modes:
+Each asset page should have two primary content sections:
 
-1. **Beginner Mode**;
-2. **Deep-Dive Mode**.
+1. **Beginner section**;
+2. **Deep-Dive section**.
 
-### 9.2.1 Beginner Mode
+### 9.2.1 Beginner section
 
-Beginner Mode is the default view.
+The Beginner section appears first on the asset page.
 
 It should show:
 
@@ -378,16 +400,16 @@ It should show:
 - why people consider it;
 - top three risks;
 - whether the exposure is broad or narrow;
-- recent developments;
+- Weekly News Focus and AI Comprehensive Analysis;
 - simpler alternatives;
 - key sources;
 - glossary support for important terms.
 
 The goal is to help the user understand the asset quickly without overwhelming them.
 
-### 9.2.2 Deep-Dive Mode
+### 9.2.2 Deep-Dive section
 
-Deep-Dive Mode expands the asset page for users who want more detail.
+The Deep-Dive section expands the asset page for users who want more detail.
 
 It should include:
 
@@ -397,9 +419,10 @@ It should include:
 - prospectus or filing-based nuance;
 - peer comparison;
 - methodology details;
+- Weekly News Focus evidence and educational AI context;
 - full source list and source dates.
 
-Deep-Dive Mode should add depth without changing the core beginner explanation.
+The Deep-Dive section should add depth without changing the core beginner explanation.
 
 ## 9.3 Concept learning
 
@@ -447,7 +470,9 @@ The comparison page should explain:
 - cost differences where relevant;
 - exposure differences where relevant;
 - valuation or financial quality differences where relevant;
-- recent developments where relevant.
+- Weekly News Focus and AI Comprehensive Analysis where relevant.
+
+Stock-vs-ETF comparison should be part of MVP with a dedicated template. The template should explicitly explain single-company risk vs basket risk, business model vs holdings exposure, company financials vs fund methodology, valuation metrics vs expense ratio and concentration, and idiosyncratic risk vs diversified sector exposure. `NVDA` vs `SOXX` should remain a golden-path cross-type example.
 
 Each comparison should end with:
 
@@ -455,17 +480,36 @@ Each comparison should end with:
 
 That section should explain the real difference in plain language without telling the user which one to buy.
 
-## 9.5 Recent developments section
+## 9.5 Weekly News Focus and AI Comprehensive Analysis
 
-Every asset page should include a clearly labeled recent developments section.
+Every asset page should include a clearly labeled Weekly News Focus module. This module should replace a generic recent-news feed with two source-grounded parts:
 
-Possible section titles:
+1. **Weekly News Focus**;
+2. **AI Comprehensive Analysis**.
 
-- Recent developments;
-- What changed recently;
-- Why this asset is in the news.
+The Weekly News Focus should show a source-grounded weekly list of high-signal items for the selected asset. The default window should use the last completed Monday-Sunday market week plus the current week-to-date through yesterday, using U.S. Eastern dates. For example, if today is Wednesday, the module should include last Monday through Sunday plus this Monday and Tuesday.
 
-For stocks, recent developments may include:
+It should target 5-8 items only when enough high-quality evidence exists. Fewer items are acceptable when the evidence set is limited, and many broad ETFs may legitimately show "No major Weekly News Focus items found." The product should never pad the list with weak, duplicative, promotional, irrelevant, non-allowlisted, or license-disallowed items just to reach a target count.
+
+Each Weekly News Focus item should include:
+
+- source or publisher;
+- headline or title;
+- published date;
+- one-sentence beginner-friendly summary;
+- citation or source drawer link;
+- freshness and source-quality metadata.
+
+The AI Comprehensive Analysis should synthesize the Weekly News Focus into educational context. It should appear only when at least two high-signal Weekly News Focus items exist. The module should begin with **What Changed This Week**, then use three safer context sections:
+
+- **Market Context**;
+- **Business/Fund Context**;
+- **Risk Context**.
+
+These section names are product UI labels, not real people, advisors, or independent model identities. Each context section should be short, plain-English, and cited to the underlying Weekly News Focus items or canonical facts. It should explain what the news may mean for understanding the asset, without making predictions or recommendations.
+Each analysis section should use a compact paragraph plus bullets, cite the underlying Weekly News Focus items and any canonical facts it uses, and include uncertainty notes when evidence is thin.
+
+For stocks, Weekly News Focus items may include:
 
 - earnings;
 - guidance changes;
@@ -476,7 +520,7 @@ For stocks, recent developments may include:
 - major legal events;
 - capital allocation changes.
 
-For ETFs, recent developments may include:
+For ETFs, Weekly News Focus items may include:
 
 - fee cuts;
 - methodology changes;
@@ -485,7 +529,9 @@ For ETFs, recent developments may include:
 - fund liquidations;
 - meaningful sponsor updates.
 
-This section should include high-signal events only. It should be treated as context, not the core definition of the asset.
+This section should include high-signal events only. It should be treated as context, not the core definition of the asset. If no high-signal Weekly News Focus items exist, the UI should show a clear empty state and suppress AI Comprehensive Analysis. If only one high-signal item exists, the UI should show the item but mark AI Comprehensive Analysis as insufficient evidence.
+
+V1 should be English-first. Traditional Chinese localization can be added later. Read-aloud or text-to-speech controls are not part of the v1 requirement.
 
 ## 9.6 Asset-specific grounded chat
 
@@ -604,11 +650,11 @@ The valuation context section may include:
 - peer context;
 - own-history context.
 
-This section should not claim that a stock is “cheap” or “expensive” without context. It should explain valuation as a way to understand expectations and tradeoffs.
+This section should not claim that a stock is "cheap" or "expensive" without context. It should explain valuation as a way to understand expectations and tradeoffs.
 
 ### 10.1.8 Suitability summary
 
-The suitability summary should replace “buy now” or “avoid” language with educational framing.
+The suitability summary should replace "buy now" or "avoid" language with educational framing.
 
 It should explain:
 
@@ -716,7 +762,7 @@ The ETF page should explain:
 
 ### 10.2.9 Suitability summary
 
-The ETF suitability summary should avoid “buy” or “avoid” language.
+The ETF suitability summary should avoid "buy" or "avoid" language.
 
 It should explain:
 
@@ -760,7 +806,7 @@ These facts should come from official or structured sources first.
 
 ## 11.2 Layer 2: Timely context
 
-Timely context captures recent developments.
+Timely context captures Weekly News Focus and source-grounded events.
 
 This layer includes:
 
@@ -772,10 +818,9 @@ This layer includes:
 - fee changes;
 - fund mergers;
 - fund closures;
-- other meaningful recent developments.
+- other meaningful Weekly News Focus items.
 
-This layer should never overwrite Layer 1. It should sit beside Layer 1 as “recent developments” or “what changed recently.”
-
+This layer should never overwrite Layer 1. It should sit beside Layer 1 as Weekly News Focus and, when evidence is sufficient, AI Comprehensive Analysis.
 ## 11.3 Layer 3: Teaching and explanation
 
 This is where the model adds value.
@@ -794,7 +839,33 @@ The model should not become the source of truth.
 
 ## 12. Source Hierarchy
 
-The source hierarchy is part of the product’s trust model. Stable understanding should come from official and structured sources first. News should add recent context, not define the asset.
+The MVP should assume a free-first evidence strategy: SEC data, official issuer materials, curated free or RSS news sources, provider adapters, deterministic mocks, and fixtures for tests. Paid data providers may be added later behind adapters after licensing, pricing, and export rights are reviewed.
+
+The source hierarchy is part of the product's trust model. Stable understanding should come from official and structured sources first. Weekly News Focus should add context, not define the asset.
+
+Weekly News Focus should use a tiered allowlist. Official sources come first, including SEC filings, company investor relations releases, ETF issuer announcements, prospectus updates, fact-sheet updates, exchange notices, and issuer newsrooms. Reuters/AP-style and other reputable news publishers should be treated as license-gated, not as free full-content sources by default. Before content is stored, summarized, rendered, or exported, the app should know whether the source is `metadata_only`, `link_only`, `summary_allowed`, `full_text_allowed`, or `rejected`.
+
+Allowlist governance should be config-only review. The allowlist lives in configuration, for example `config/source_allowlist.yaml`. A future agent may update it only when the domain, source type, source-use policy, rationale, and validation tests move together, and the development log records why the source changed. Automated scoring can rank already-allowed sources but cannot approve a new source.
+
+Provider hierarchy for v1:
+
+- Use SEC EDGAR and ETF issuer materials as the trust backbone for stable facts, source documents, and risk extraction.
+- Use Financial Modeling Prep, Finnhub, Tiingo, Alpha Vantage, and EODHD only as optional structured enrichment where licensing, rate limits, caching, display, and export rights allow.
+- Use official-first event sources for Weekly News Focus before any general news API.
+- Treat yfinance as local-development and fallback-only, not production truth.
+- Design the UI around `fresh`, `stale`, `partial`, and `unavailable` states instead of assuming every quote or reference field is present.
+
+Provider roles:
+
+- SEC EDGAR is best for stock identity, filings history, XBRL company facts, filing-derived business descriptions, and risk extraction. It is free, keyless, and updated throughout the day.
+- Financial Modeling Prep is useful for reference enrichment such as quotes, volume, some aftermarket bid/ask data, statement convenience endpoints, AUM/net-assets-style ETF fields, ETF/fund holdings, and a broad endpoint surface. Public display or redistribution requires a specific FMP data display and licensing agreement, so product output must distinguish internal ingestion convenience from externally displayed/exported content.
+- Alpha Vantage is useful for low-volume experiments and selected market/reference enrichment, but the standard free limit of 25 API requests per day is too restrictive for broad pre-caching or aggressive ingestion.
+- Finnhub is useful for quote, fundamentals, and news-style enrichment in side-project prototypes, but its listed plans are personal-use unless explicitly approved and redistribution requires written approval.
+- Tiingo is useful for end-of-day data, corporate actions, selected news/fundamentals endpoints, and ETF/mutual-fund fee metadata. It fits stable, non-tick-level historical series better than a product that implies guaranteed real-time quotes.
+- EODHD is useful for light testing and selective enrichment where EOD-style history, delayed live data, and basic fundamentals are enough, but free access is small and public usage requires personal-use/commercial-use review.
+- yfinance is useful for local development and fallback diagnostics only. It should not be used as production truth or as a redistributable public product data source.
+
+Raw source text should use a rights-tiered policy. Official filings, issuer materials, and `full_text_allowed` sources may store full raw text and chunks. `summary_allowed` sources may store metadata, links, checksums, and allowed excerpts. `metadata_only` and `link_only` sources may store metadata, hashes, canonical URLs, timestamps, and diagnostics, but not full article text. `rejected` sources should not feed generated output.
 
 ## 12.1 Stocks
 
@@ -803,8 +874,8 @@ For stocks, the source priority should be:
 1. SEC filings and XBRL data;
 2. company investor relations pages;
 3. earnings presentations and transcripts;
-4. structured market/reference data provider;
-5. reputable news sources.
+4. free or official reference metadata where available;
+5. allowlisted reputable free news sources for Weekly News Focus context.
 
 ## 12.2 ETFs
 
@@ -814,8 +885,8 @@ For ETFs, the source priority should be:
 2. ETF fact sheet;
 3. summary prospectus and full prospectus;
 4. shareholder reports;
-5. structured market/reference data provider;
-6. reputable news sources.
+5. issuer holdings files and official ETF website disclosures;
+6. allowlisted reputable free news sources for Weekly News Focus context.
 
 ## 12.3 Source use by content type
 
@@ -823,16 +894,16 @@ Different content sections should use different source types.
 
 | Content area              | Preferred sources                                     |
 | ------------------------- | ----------------------------------------------------- |
-| Stock identity            | SEC metadata, structured reference data               |
+| Stock identity            | SEC metadata, free/reference metadata                  |
 | Stock business overview   | 10-K, 10-Q, company investor relations                |
 | Stock financial trends    | SEC XBRL, structured financial data                   |
 | Stock risks               | 10-K and 10-Q risk factors                            |
-| Stock recent developments | 8-Ks, earnings releases, reputable news               |
-| ETF identity              | issuer page, structured reference data                |
+| Stock Weekly News Focus events | 8-Ks, earnings releases, allowlisted news             |
+| ETF identity              | issuer page, free/reference metadata                  |
 | ETF holdings              | issuer holdings file, fact sheet                      |
 | ETF methodology           | prospectus, index methodology, issuer page            |
 | ETF risks                 | prospectus, summary prospectus                        |
-| ETF recent developments   | issuer announcements, sponsor updates, reputable news |
+| ETF Weekly News Focus events | issuer announcements, sponsor updates, allowlisted news |
 
 ---
 
@@ -847,9 +918,9 @@ The system pipeline should follow these steps:
 3. ingest source documents;
 4. chunk and index those documents;
 5. extract normalized facts;
-6. retrieve recent-context news or events;
+6. retrieve official Weekly News Focus events and allowlisted source context;
 7. assemble an asset knowledge pack;
-8. generate page summaries;
+8. generate page summaries, Weekly News Focus, and AI Comprehensive Analysis;
 9. bind citations;
 10. cache and refresh.
 
@@ -895,7 +966,7 @@ Extract:
 
 ### Step 5: Reference data
 
-Add quote and reference fields from the selected market-data provider.
+Add quote and reference fields from free or official sources where available, or from adapter-backed providers if configured. Free-first v1 must treat missing quote, valuation, or trading fields as partial data rather than inventing or inferring them.
 
 Potential fields include:
 
@@ -906,11 +977,23 @@ Potential fields include:
 - valuation metrics;
 - peer data.
 
-### Step 6: Recent developments
+### Step 6: Weekly News Focus and AI Comprehensive Analysis
 
-Retrieve high-signal news and event summaries.
+Retrieve high-signal official events first, then licensed or allowlisted free-news or RSS event summaries. Deduplicate, score, and select a Weekly News Focus set of 5-8 items only when enough evidence exists.
 
-The system should avoid noisy or low-quality news. Recent developments should be relevant, cited, and separated from the core business definition.
+The system should avoid noisy, promotional, duplicated, or unrecognized news sources. Weekly News Focus items and AI Comprehensive Analysis claims should be relevant, cited, and separated from the core business definition.
+
+Weekly News Focus scoring defaults:
+
+| Field | Defaults |
+| --- | --- |
+| `source_quality_weight` | official `5`; allowlisted_reputable `3`; provider_metadata_only `1` |
+| `event_type_weight` | earnings `5`; guidance `5`; fee_change `5`; methodology_change `5`; routine_press_release `1` |
+| `recency_weight` | current_week_to_date `3`; previous_market_week `2`; older_but_relevant `1` |
+| `asset_relevance_weight` | exact ticker/CIK/issuer match `3`; strong fund/company match `2`; sector/theme context only `1` |
+| `duplicate_penalty` | exact duplicate `5`; near duplicate `3`; same story cluster after first item `2` |
+
+Use `importance_score = source_quality_weight + event_type_weight + recency_weight + asset_relevance_weight - duplicate_penalty`, with `minimum_display_score = 7` and `minimum_ai_analysis_items = 2`. Source-use policy overrides score: rejected or license-disallowed sources never display.
 
 ### Step 7: Summary generation
 
@@ -920,7 +1003,8 @@ Generate:
 - top three risks;
 - strengths summary;
 - financial quality summary;
-- recent developments summary;
+- Weekly News Focus;
+- AI Comprehensive Analysis with What Changed This Week, Market Context, Business/Fund Context, and Risk Context sections;
 - beginner Q&A context.
 
 ## 13.3 ETF pipeline
@@ -931,7 +1015,7 @@ Map ticker to:
 
 - issuer;
 - fund name;
-- category;
+- equity ETF category;
 - exchange;
 - asset class;
 - supported asset status.
@@ -959,7 +1043,9 @@ Retrieve:
 - expense ratio;
 - spread or trading metrics.
 
-### Step 4: Recent developments
+If free-first sources cannot verify one of these fields, the page should render verified sections only, label the missing section unavailable or stale, and suppress unsupported generated claims.
+
+### Step 4: Weekly News Focus and AI Comprehensive Analysis
 
 Add:
 
@@ -968,7 +1054,9 @@ Add:
 - methodology changes;
 - index changes;
 - fund merger or closure news;
-- other meaningful ETF updates.
+- other meaningful ETF updates from official or allowlisted sources.
+
+The ETF Weekly News Focus workflow should follow the same two-part structure as stock pages: Weekly News Focus plus AI Comprehensive Analysis.
 
 ### Step 5: Summary generation
 
@@ -979,7 +1067,8 @@ Generate:
 - why beginners use it;
 - what people often misunderstand;
 - simpler alternatives;
-- recent developments summary.
+- Weekly News Focus;
+- AI Comprehensive Analysis.
 
 ---
 
@@ -994,7 +1083,7 @@ For every selected asset, the backend should build an asset knowledge pack conta
 - normalized fact table;
 - key source documents;
 - chunked evidence passages;
-- recent developments snippets;
+- Weekly News Focus snippets;
 - glossary entries relevant to that asset;
 - optional comparison data.
 
@@ -1011,6 +1100,10 @@ For each user question, the system should:
 3. generate a structured answer in plain English with citations;
 4. store conversational state so follow-up questions remain grounded.
 
+Because v1 is accountless, chat state should use anonymous sessions with random conversation IDs. The browser should store only `conversation_id`, ticker, `updated_at`, and `expires_at` in local storage. The server may store transcript state for grounded follow-up and user-requested export, with a 7-day TTL from last activity. Users should be able to delete a transcript, which clears local browser state and deletes or invalidates the server session.
+
+Chat transcripts should not be included in product analytics, used for model training, or used for model evaluation in MVP. Product analytics should use aggregate events only, such as chat started, follow-up count, safety redirect, compare redirect, export requested, latency, and error state. IP address and user-agent logs may be retained only in short-lived abuse/security logs with a 7-day default retention.
+
 ## 14.3 Chat question classes
 
 Supported classes include:
@@ -1020,7 +1113,8 @@ Supported classes include:
 - holdings;
 - risk;
 - comparison;
-- recent event;
+- Weekly News Focus;
+- AI Comprehensive Analysis;
 - glossary;
 - valuation context;
 - suitability education;
@@ -1084,8 +1178,8 @@ Recommended frontend stack:
 The frontend should support:
 
 - search;
-- beginner mode;
-- deep-dive mode;
+- beginner section;
+- deep-dive section;
 - source drawer;
 - citation chips;
 - glossary cards;
@@ -1118,9 +1212,9 @@ The backend should handle:
 Recommended data layer:
 
 - PostgreSQL for normalized data;
-- pgvector for semantic retrieval;
-- Redis for cache and job coordination;
-- object storage for saved PDFs, HTML snapshots, parsed files, and source artifacts.
+- pgvector for optional semantic retrieval behind an adapter;
+- Redis for local cache and job coordination only while the first production deployment remains Postgres-queue based;
+- object storage for source snapshots, parsed files, generated artifacts, and Markdown/JSON exports, using local MinIO in Docker Compose and private Google Cloud Storage in production.
 
 ## 15.4 Services
 
@@ -1128,14 +1222,14 @@ The system should include:
 
 - web app;
 - API layer;
-- LLM provider integration, such as OpenRouter Free LLM model API for MVP;
+- LLM provider adapter with deterministic test mocks and environment-configured OpenAI-compatible or OpenRouter-compatible providers;
 - ingestion worker;
 - retrieval and LLM orchestration service;
 - data store.
 
 ## 15.5 Provider flexibility
 
-The LLM provider should be abstracted so the product is not locked into one model provider.
+The LLM provider should be abstracted so the product is not locked into one model provider. The implementation should be adapter-first: tests should run with deterministic mocks, while runtime configuration chooses an OpenAI-compatible, OpenRouter-compatible, or other hosted provider.
 
 The system should be able to use:
 
@@ -1143,6 +1237,41 @@ The system should be able to use:
 - OpenAI-compatible APIs;
 - other hosted models;
 - future local or open-source models if needed.
+
+OpenRouter should be a runtime option, not a hard dependency. CI and local tests should keep using deterministic mocks. First deployment may use an explicit OpenRouter fallback chain only when server-side environment variables are present and `LLM_LIVE_GENERATION_ENABLED=true`.
+
+Default live chain:
+
+| Tier | Order | Model |
+| --- | ---: | --- |
+| Free primary | 1 | `openai/gpt-oss-120b:free` |
+| Free fallback | 2 | `google/gemma-4-31b-it:free` |
+| Free fallback | 3 | `qwen/qwen3-next-80b-a3b-instruct:free` |
+| Free fallback | 4 | `meta-llama/llama-3.3-70b-instruct:free` |
+| Paid safety net | 5 | `deepseek/deepseek-v3.2` |
+
+The orchestration flow is free model chain, schema/citation/safety validation, one repair retry, paid DeepSeek fallback, validation again, then cache only validated output. Paid fallback is automatic when live generation is enabled. Raw model reasoning is never stored or shown; the UI may show only a short cited `reasoning_summary`. The system should store selected model, tier, usage, cost, latency, validation result, and attempt count when available.
+
+For the current developer environment, local live-provider keys are expected to live in WSL Bash as `OPENROUTER_API_KEY`, `FMP_API_KEY`, `ALPHA_VANTAGE_API_KEY`, `FINNHUB_API_KEY`, `TIINGO_API_KEY`, and `EODHD_API_KEY`. The application should consume those variables only in server-side API or worker processes launched from that WSL shell. Key values should never be committed, copied into docs, exposed through `NEXT_PUBLIC_*` variables, returned to the browser, or printed in logs.
+
+Market/reference provider keys are configuration readiness only. FMP, Alpha Vantage, Finnhub, Tiingo, and EODHD remain optional enrichment providers subject to licensing, rate-limit, display, and export-rights review before their data can appear in public product output.
+
+## 15.6 Free-tier deployment target
+
+The first deployment should be optimized for a personal side project with a small number of users and minimal fixed cost.
+
+Recommended deployment target:
+
+- frontend: Vercel Hobby, rooted at `apps/web`;
+- API: Google Cloud Run in `us-central1`, request-based billing, `min-instances=0`, and conservative max instances;
+- jobs: Cloud Run Jobs, triggered manually first, with Cloud Scheduler added later only if recurring ingestion is needed;
+- database: Neon Free Postgres, using the pooled connection URL with SSL;
+- storage: private Google Cloud Storage bucket in `us-central1`;
+- queue: no production Redis, Pub/Sub, or paid queue at first; use the Postgres `ingestion_jobs` table;
+- monitoring: Google Cloud Logging and Error Reporting, with optional Sentry Developer plan later;
+- LLM: OpenRouter is server-side and environment-configured only; first deployment may use the explicit free-model chain plus automatic `deepseek/deepseek-v3.2` paid fallback behind `LLM_LIVE_GENERATION_ENABLED=true`, while mock remains the default for CI and local tests.
+
+This deployment target is an operational constraint, not a product downgrade. The app must still keep stable facts, Weekly News Focus, and AI Comprehensive Analysis separate; preserve citations and uncertainty states; and avoid investment advice.
 
 ---
 
@@ -1153,9 +1282,11 @@ GET  /search?q=VOO
 GET  /assets/{ticker}/overview
 GET  /assets/{ticker}/details
 GET  /assets/{ticker}/sources
-GET  /assets/{ticker}/recent
+GET  /assets/{ticker}/weekly-news
 POST /compare
 POST /assets/{ticker}/chat
+GET  /assets/{ticker}/export?format=markdown|json
+GET  /compare/export?left=VOO&right=QQQ&format=markdown|json
 POST /ingest/{ticker}
 GET  /jobs/{job_id}
 ```
@@ -1169,7 +1300,7 @@ GET /search?q=VOO
 Purpose:
 
 - resolve ticker or name;
-- return supported asset matches;
+- return supported, unsupported, out-of-scope, pending, partial, stale, or unavailable asset states;
 - identify asset type;
 - route user to correct page.
 
@@ -1181,11 +1312,11 @@ GET /assets/{ticker}/overview
 
 Purpose:
 
-- return beginner-mode asset summary;
+- return Beginner section asset summary;
 - show snapshot;
 - show top risks;
-- show recent developments;
-- include citations and freshness.
+- show Weekly News Focus and AI Comprehensive Analysis;
+- include citations, section freshness, and per-section evidence state for partial pages.
 
 ## 16.3 Asset details
 
@@ -1195,7 +1326,7 @@ GET /assets/{ticker}/details
 
 Purpose:
 
-- return deep-dive mode content;
+- return Deep-Dive section content;
 - include financial metrics or ETF exposure details;
 - include source-backed nuance.
 
@@ -1210,16 +1341,17 @@ Purpose:
 - return source list;
 - include source type, title, URL, date, retrieved timestamp, and citation mapping.
 
-## 16.5 Recent developments
+## 16.5 Weekly News Focus and AI Comprehensive Analysis
 
 ```text
-GET /assets/{ticker}/recent
+GET /assets/{ticker}/weekly-news
 ```
 
 Purpose:
 
-- return recent developments only;
-- keep recent context separate from canonical facts.
+- return Weekly News Focus and AI Comprehensive Analysis;
+- include the market-week window, current week-to-date bucket, source-use rights, citations, freshness, and uncertainty labels;
+- keep Weekly News Focus and AI Comprehensive Analysis separate from canonical facts.
 
 ## 16.6 Compare
 
@@ -1244,7 +1376,8 @@ Purpose:
 
 - answer asset-specific user questions;
 - retrieve from the asset knowledge pack;
-- return cited plain-English responses.
+- return cited plain-English responses;
+- redirect comparison-style questions with a second ticker to the compare workflow instead of generating a multi-asset answer inside single-asset chat.
 
 ## 16.8 Ingestion job
 
@@ -1257,6 +1390,8 @@ Purpose:
 
 - start asset ingestion or refresh;
 - track job status.
+
+Export endpoints should support Markdown and JSON only for v1. PDF export should remain post-MVP until licensing, rendering, and attribution behavior are reviewed.
 
 ---
 
@@ -1291,7 +1426,8 @@ Fields:
 - `url`;
 - `published_at`;
 - `retrieved_at`;
-- `checksum`.
+- `checksum`;
+- `source_use_policy`.
 
 ## 17.3 `document_chunks`
 
@@ -1321,7 +1457,14 @@ Fields:
 - `as_of_date`;
 - `source_document_id`;
 - `extraction_method`;
-- `confidence`.
+- `confidence`;
+- `valid_from`;
+- `valid_to`;
+- `source_version`;
+- `source_accession_number`;
+- `schema_version`;
+- `is_current`;
+- `superseded_by_fact_id`.
 
 ## 17.5 `recent_events`
 
@@ -1334,8 +1477,12 @@ Fields:
 - `event_type`;
 - `summary`;
 - `event_date`;
+- `news_window_start`;
+- `news_window_end`;
+- `period_bucket`;
 - `source_document_id`;
-- `importance_score`.
+- `importance_score`;
+- `source_use_policy`.
 
 ## 17.6 `summaries`
 
@@ -1348,7 +1495,13 @@ Fields:
 - `summary_type`;
 - `output_json`;
 - `model_name`;
-- `freshness_hash`.
+- `freshness_hash`;
+- `schema_version`;
+- `language`;
+- `section_key`;
+- `generation_status`;
+- `validation_error_json`;
+- `superseded_at`.
 
 ## 17.7 Additional useful tables
 
@@ -1357,7 +1510,9 @@ As the product matures, it may also need:
 - `holdings` for ETF holdings;
 - `exposures` for sector, country, industry, or asset-class exposure;
 - `financial_metrics` for normalized stock metrics;
-- `claims` for claim-to-citation mapping;
+- `claims` for generated claim text;
+- `claim_citations` for many-to-many claim-to-evidence mapping;
+- `chat_sessions` and `chat_messages` for anonymous accountless chat state with 7-day TTL;
 - `glossary_terms` for concept learning;
 - `ingestion_jobs` for background job tracking.
 
@@ -1380,8 +1535,8 @@ The system should show:
 | -------------------------- | ------------------------------------------------- |
 | SEC filings and XBRL facts | Scheduled refresh plus on-demand refresh          |
 | ETF holdings and exposure  | Daily refresh or refresh when source dates change |
-| Price and reference data   | Vendor-dependent TTL                              |
-| Recent news and events     | Shorter TTL                                       |
+| Price and reference data   | Free-source or configured-adapter TTL             |
+| Weekly News Focus events   | Official-source checks plus allowlisted-source TTL |
 | LLM summaries              | Invalidate when underlying fact hashes change     |
 
 ## 18.2 SEC data handling
@@ -1395,7 +1550,7 @@ Generated summaries should be invalidated when:
 - source document checksum changes;
 - facts change;
 - holdings change;
-- recent events change;
+- Weekly News Focus events change;
 - prompt version changes;
 - model version changes;
 - citation validation fails.
@@ -1405,10 +1560,14 @@ Generated summaries should be invalidated when:
 The UI should show states such as:
 
 - fresh;
+- partial;
 - stale;
 - unknown;
-- mixed evidence;
-- unavailable.
+- unavailable;
+- out of scope;
+- mixed evidence.
+
+Quote and reference fields should be labeled as delayed, best-effort, stale, partial, or unavailable. The MVP should not imply real-time quote coverage, and missing quote data should not block the educational page when stable source-backed facts are available.
 
 The product should never hide missing or stale data when that information matters to user understanding.
 
@@ -1433,6 +1592,7 @@ They should be:
 
 The source drawer should show:
 
+- public `citation_id`;
 - source title;
 - source type;
 - official-source badge where applicable;
@@ -1442,6 +1602,8 @@ The source drawer should show:
 - URL;
 - related claims;
 - supporting excerpt or evidence passage where available.
+
+The public `citation_id` should be opaque, such as `cit_...`, and should never expose raw database row IDs. Resolving a citation should return only allowed source metadata and allowed excerpts: title, publisher, URL, source type, source-use policy, published/as-of/retrieved dates, freshness state, and claim role. It should never expose unrestricted provider payloads, full restricted article text, private raw PDF text, secrets, hidden prompts, or unrestricted raw source text.
 
 ## 19.3 Official source badges
 
@@ -1462,14 +1624,14 @@ The UI should show:
 - page last updated;
 - facts as of date;
 - holdings as of date;
-- recent developments checked date;
+- Weekly News Focus checked date;
 - source retrieval timestamp.
 
-## 19.5 Separate recent developments label
+## 19.5 Separate Weekly News Focus label
 
-Recent developments should be visually separate from asset basics.
+Weekly News Focus and AI Comprehensive Analysis should be visually separate from asset basics.
 
-This prevents the user from confusing short-term news with the asset’s core structure or business model.
+This prevents the user from confusing short-term news or AI synthesis with the asset's core structure or business model.
 
 ## 19.6 Glossary hover cards
 
@@ -1488,11 +1650,10 @@ Where evidence is missing, stale, conflicting, or incomplete, the product should
 
 Examples:
 
-- “We could not verify this from an official source.”
-- “Holdings data may be stale.”
-- “Recent developments are mixed.”
-- “No high-signal recent developments found.”
-
+- "We could not verify this from an official source."
+- "Holdings data may be stale."
+- "Weekly News Focus evidence is mixed."
+- "No high-signal Weekly News Focus items found."
 ---
 
 ## 20. Safety and Product Guardrails
@@ -1524,11 +1685,18 @@ The product should:
 - avoid direct buy/sell language;
 - avoid personalized position sizing;
 - avoid unsupported price targets;
-- distinguish stable facts from recent developments;
+- distinguish stable facts from Weekly News Focus and AI Comprehensive Analysis;
 - cite important claims;
-- say “unknown” when evidence is missing;
+- say "unknown" when evidence is missing;
 - warn clearly when an ETF is unusually narrow or complex;
-- redirect personalized advice questions into educational explanations.
+- redirect personalized advice questions into educational explanations;
+- include prompt-injection defenses that treat retrieved source text as untrusted evidence;
+- ignore instructions found inside retrieved documents;
+- never let retrieved chunks override system or developer prompts;
+- run citation validation after generation;
+- block advice-like output even if a source contains promotional language;
+- sanitize HTML and PDF content before rendering;
+- use allowlisted domains or controlled URL resolution for ingestion fetchers to reduce SSRF risk.
 
 ## 20.3 Example safety pattern
 
@@ -1542,7 +1710,7 @@ The product should not answer:
 
 A safer answer would be:
 
-> I can’t tell you whether to buy it. I can help you understand what QQQ is, what it holds, how concentrated it is, how it differs from a broader ETF like VOO, and what risks a beginner should understand before making their own decision.
+> I can't tell you whether to buy it. I can help you understand what QQQ is, what it holds, how concentrated it is, how it differs from a broader ETF like VOO, and what risks a beginner should understand before making their own decision.
 
 ---
 
@@ -1567,9 +1735,9 @@ The product should measure trust and comprehension, not just clicks.
 
 | Metric                                 | Meaning                                       |
 | -------------------------------------- | --------------------------------------------- |
-| Understanding of “what this is”        | Whether the user understands the asset basics |
-| Understanding of top risks             | Whether the user can identify major risks     |
-| Understanding of how two assets differ | Whether comparison helped the user learn      |
+| Understanding of "what this is"       | Whether the user understands the asset basics |
+| Understanding of "why people use it"  | Whether the user understands common use cases without treating them as recommendations |
+| Understanding of "main risks"         | Whether the user can name the main source-backed risks |
 | Trust in citations and source display  | Whether citations increased confidence        |
 
 ## 21.3 Trust-oriented product goal
@@ -1580,6 +1748,10 @@ A good session is not necessarily one where a user trades. A good session is one
 
 ## 22. Phased Roadmap
 
+These phases describe internal implementation order. They do not redefine MVP readiness: v1 requires search, asset pages, comparison, limited grounded chat beta, exports, freshness, citations, glossary, and on-demand ingestion states.
+
+The PRD priority semantics govern readiness: `P0` is a launch blocker for MVP/v1, `P1` is MVP-desired or beta-quality work that can ship after launch unless promoted, and `P2` is post-MVP. Any item required by the MVP acceptance checklist should be treated as `P0`.
+
 ## 22.1 Phase 1: Core asset pages
 
 Phase 1 should include:
@@ -1589,8 +1761,8 @@ Phase 1 should include:
 - ETF page;
 - source drawer;
 - glossary;
-- basic recent developments block;
-- beginner mode;
+- basic Weekly News Focus and AI Comprehensive Analysis block;
+- beginner section;
 - initial citation support.
 
 ## 22.2 Phase 2: Comparison and risk improvements
@@ -1609,13 +1781,15 @@ Phase 3 should include:
 
 - asset-specific grounded chat;
 - starter prompts for beginners;
-- richer recent-context retrieval;
-- saved assets and saved comparisons.
+- richer Weekly News Focus retrieval.
 
 ## 22.4 Phase 4: Learning and retention workflows
 
 Phase 4 should include:
 
+- export/download flows for Markdown and JSON;
+- cache and freshness-hash invalidation;
+- pre-cache orchestration for the launch universe;
 - watchlist;
 - learning paths;
 - beginner lessons tied to asset pages;
@@ -1625,11 +1799,10 @@ Phase 4 should include:
 
 ## 23. Final Thesis
 
-The strongest version of this side project is not “AI for stock picking.”
-
+The strongest version of this side project is not "AI for stock picking."
 It is:
 
-> **A source-first financial learning product for beginners, with stable facts, recent context, and grounded chat in one place.**
+> **A source-first financial learning product for beginners, with stable facts, Weekly News Focus context, and grounded chat in one place.**
 
 Its real differentiation is the combination of:
 
@@ -1637,7 +1810,7 @@ Its real differentiation is the combination of:
 - official-source grounding;
 - visible citations;
 - comparison-first design;
-- separate recent-developments layer;
+- separate Weekly News Focus and AI Comprehensive Analysis layer;
 - asset-specific tutor-style chat.
 
 That combination makes the project more useful, more trustworthy, and more realistic to build.
@@ -1649,5 +1822,5 @@ The product should help users understand what they are looking at before they ma
 ## 24. References
 
 [1]: https://www.sec.gov/investor/pubs/sec-guide-to-mutual-funds.pdf "Mutual Funds and ETFs"
-[2]: https://www.sec.gov/about/divisions-offices/division-investment-management/accounting-disclosure-information/adi-2025-15-website-posting-requirements "SEC.gov | ADI 2025-15 – Website posting requirements"
+[2]: https://www.sec.gov/about/divisions-offices/division-investment-management/accounting-disclosure-information/adi-2025-15-website-posting-requirements "SEC.gov | ADI 2025-15 - Website posting requirements"
 [3]: https://www.sec.gov/search-filings/edgar-application-programming-interfaces "SEC.gov | EDGAR Application Programming Interfaces (APIs)"

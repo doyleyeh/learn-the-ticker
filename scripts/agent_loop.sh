@@ -176,15 +176,17 @@ This is attempt ${ATTEMPT} of ${ITERATION_BUDGET}.
 
 First read:
 - AGENTS.md
+- docs/learn_the_ticker_PRD.md
+- docs/learn_the_ticker_technical_design_spec.md
+- docs/learn-the-ticker_proposal.md
 - SPEC.md
 - TASKS.md
 - EVALS.md
-- docs/learn_the_ticker_PRD.md if present
-- docs/learn_the_ticker_technical_design_spec.md if present
 
 Work only on the current task in TASKS.md.
 
 Rules:
+- Follow safety and advice-boundary rules first, then the updated PRD, technical design spec, proposal, SPEC, TASKS, and EVALS in that order.
 - Leave changes uncommitted for the harness commit step after the quality gate.
 - Stay on the current agent branch; do not run git switch or git checkout.
 - Do not push from inside a Codex attempt.

@@ -10,6 +10,7 @@ from backend.testing import TestClient
 
 
 ROOT = Path(__file__).resolve().parents[2]
+WEB_ROOT = ROOT / "apps" / "web"
 client = TestClient(app)
 
 
@@ -112,12 +113,12 @@ def test_frontend_copy_fixtures_and_comparison_do_not_leak_advice_phrases():
     ]
 
     for path in paths:
-        text = (ROOT / path).read_text(encoding="utf-8")
+        text = (WEB_ROOT / path).read_text(encoding="utf-8")
         assert_no_forbidden_phrases(path, text)
 
 
 def test_chat_starter_prompt_copy_is_advice_safe():
-    text = (ROOT / "components/AssetChatPanel.tsx").read_text(encoding="utf-8")
+    text = (WEB_ROOT / "components/AssetChatPanel.tsx").read_text(encoding="utf-8")
     prompt_copy_markers = [
         "What is ${normalizedTicker} in plain English?",
         "business model work?",
@@ -135,11 +136,11 @@ def test_chat_starter_prompt_copy_is_advice_safe():
 def test_frontend_export_control_copy_is_advice_safe():
     combined = "\n".join(
         [
-            (ROOT / "components/ExportControls.tsx").read_text(encoding="utf-8"),
-            (ROOT / "lib/exportControls.ts").read_text(encoding="utf-8"),
-            (ROOT / "app/assets/[ticker]/page.tsx").read_text(encoding="utf-8"),
-            (ROOT / "app/compare/page.tsx").read_text(encoding="utf-8"),
-            (ROOT / "components/AssetChatPanel.tsx").read_text(encoding="utf-8"),
+            (WEB_ROOT / "components/ExportControls.tsx").read_text(encoding="utf-8"),
+            (WEB_ROOT / "lib/exportControls.ts").read_text(encoding="utf-8"),
+            (WEB_ROOT / "app/assets/[ticker]/page.tsx").read_text(encoding="utf-8"),
+            (WEB_ROOT / "app/compare/page.tsx").read_text(encoding="utf-8"),
+            (WEB_ROOT / "components/AssetChatPanel.tsx").read_text(encoding="utf-8"),
         ]
     )
     export_copy_markers = [
@@ -165,10 +166,10 @@ def test_frontend_export_control_copy_is_advice_safe():
 def test_frontend_comparison_suggestion_copy_is_advice_safe():
     combined = "\n".join(
         [
-            (ROOT / "components/ComparisonSuggestions.tsx").read_text(encoding="utf-8"),
-            (ROOT / "lib/compareSuggestions.ts").read_text(encoding="utf-8"),
-            (ROOT / "app/assets/[ticker]/page.tsx").read_text(encoding="utf-8"),
-            (ROOT / "app/compare/page.tsx").read_text(encoding="utf-8"),
+            (WEB_ROOT / "components/ComparisonSuggestions.tsx").read_text(encoding="utf-8"),
+            (WEB_ROOT / "lib/compareSuggestions.ts").read_text(encoding="utf-8"),
+            (WEB_ROOT / "app/assets/[ticker]/page.tsx").read_text(encoding="utf-8"),
+            (WEB_ROOT / "app/compare/page.tsx").read_text(encoding="utf-8"),
         ]
     )
     suggestion_copy_markers = [

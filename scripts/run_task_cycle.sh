@@ -209,11 +209,12 @@ You are preparing lightweight Backlog headings for a local repeat-mode agent loo
 
 Read:
 - AGENTS.md
+- docs/learn_the_ticker_PRD.md
+- docs/learn_the_ticker_technical_design_spec.md
+- docs/learn-the-ticker_proposal.md
 - SPEC.md
 - TASKS.md
 - EVALS.md
-- docs/learn_the_ticker_PRD.md
-- docs/learn_the_ticker_technical_design_spec.md
 
 Only edit TASKS.md. Do not edit any other file. Do not run git commit or git push.
 
@@ -229,7 +230,7 @@ Update TASKS.md as follows:
 4. Do not expand new Backlog tasks into full contracts; the cycle wrapper expands a task when it is promoted.
 5. Do not modify the Current task or Completed tasks.
 6. Choose small, high-confidence next tasks that advance the MVP in SPEC.md and the PRD.
-7. Preserve product guardrails: no investment advice, no live external calls, citations for important claims, freshness/unknown/stale handling.
+7. Preserve product guardrails: no investment advice, no live external calls, citations for important claims, source-use rights, PRD/TDS-first authority after safety, and freshness/unknown/stale/unavailable/partial handling.
 8. If the current project stage appears to require human review, manual browser testing, API keys, product decisions, deployment credentials, or other human action before more autonomous work is safe, do not add backlog tasks. Instead, leave TASKS.md unchanged.
 EOF
 
@@ -306,11 +307,12 @@ You are preparing TASKS.md for the next local agent-loop cycle.
 
 Read:
 - AGENTS.md
+- docs/learn_the_ticker_PRD.md
+- docs/learn_the_ticker_technical_design_spec.md
+- docs/learn-the-ticker_proposal.md
 - SPEC.md
 - TASKS.md
 - EVALS.md
-- docs/learn_the_ticker_PRD.md
-- docs/learn_the_ticker_technical_design_spec.md
 
 Only edit TASKS.md. Do not edit any other file. Do not run git commit or git push.
 
@@ -334,7 +336,7 @@ Update TASKS.md as follows:
    - detailed Acceptance criteria
    - Required commands
    - Iteration budget
-7. Preserve product guardrails: no investment advice, no live external calls, citations for important claims, freshness/unknown/stale handling.
+7. Preserve product guardrails: no investment advice, no live external calls, citations for important claims, source-use rights, PRD/TDS-first authority after safety, and freshness/unknown/stale/unavailable/partial handling.
 8. Keep any promoted next task narrow enough for one agent loop.
 EOF
 

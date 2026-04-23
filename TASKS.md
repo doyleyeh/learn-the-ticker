@@ -2,7 +2,91 @@
 
 ## Current task
 
-No current task is prepared. The backlog is empty.
+### T-033: Rebase agent instructions and local environment to updated PRD/TDS
+
+Goal:
+Rebaseline the project control plane, local agent-loop environment, and frontend workspace layout around the updated proposal, PRD, and technical design spec without rolling back the user's documentation changes, changing product behavior, adding live provider calls, or exposing secrets.
+
+Task scope:
+This is a documentation, workflow, workspace-layout, and local-environment scaffold task. Update `AGENTS.md`, `SPEC.md`, `EVALS.md`, `TASKS.md`, agent-loop scripts, quality-gate scripts, frontend workspace files, frontend path-sensitive tests, review prompt, and placeholder-only environment/Docker scaffolds so future agent cycles follow the new PRD/TDS baseline.
+
+Allowed files:
+
+- `AGENTS.md`
+- `SPEC.md`
+- `TASKS.md`
+- `EVALS.md`
+- `package.json`
+- `package-lock.json`
+- `apps/web/**`
+- `tests/frontend/smoke.mjs`
+- `tests/unit/test_repo_contract.py`
+- `tests/unit/test_safety_guardrails.py`
+- `scripts/agent_loop.sh`
+- `scripts/agent_loop.ps1`
+- `scripts/run_task_cycle.sh`
+- `scripts/run_quality_gate.sh`
+- `scripts/run_quality_gate.ps1`
+- `.github/codex/prompts/review.md`
+- `.gitignore`
+- `.env.example`
+- `apps/web/.env.example`
+- `deploy/env/*.example.env`
+- `docker-compose.yml`
+- `docker/**`
+
+Do not change:
+
+- Do not roll back or overwrite the user's updated proposal, PRD, or technical design spec.
+- Do not move the Python backend out of `backend`.
+- Do not add functional live provider, market-data, news, or LLM integrations.
+- Do not add real API keys, copied local secret values, or `NEXT_PUBLIC_*` secrets.
+- Do not change public backend API behavior.
+- Do not make Docker Compose required for CI.
+
+Acceptance criteria:
+
+- `AGENTS.md` required reading includes `docs/learn-the-ticker_proposal.md`, and conflict order is safety, PRD, TDS, proposal, SPEC, TASKS, EVALS.
+- `AGENTS.md`, `SPEC.md`, and `EVALS.md` describe Top-500 manifest scope, `unsupported` / `out_of_scope` / `pending_ingestion`, Weekly News Focus, AI Comprehensive Analysis, source-use rights, OpenRouter/live-provider gating, secret handling, and the `apps/web` frontend root.
+- The advice-boundary example in `AGENTS.md` has no mojibake.
+- Bash and PowerShell agent prompts read proposal, PRD, TDS, SPEC, TASKS, and EVALS and preserve PRD/TDS-first authority after safety.
+- Frontend files are rooted at `apps/web`, and root npm scripts still expose `npm test`, `npm run typecheck`, `npm run build`, `npm run dev`, and `npm run start`.
+- `apps/web` has its own package scripts for Next.js dev/build/start/typecheck.
+- Frontend smoke and safety tests read frontend files from `apps/web`.
+- Placeholder env examples include only safe placeholder names and no real secrets.
+- Docker Compose scaffolding validates with `docker compose config` when Docker is installed and remains local-only.
+- `.github/codex/prompts/review.md` covers source-order drift, Weekly News Focus/source-rights violations, live-call leakage, secret exposure, and monorepo/environment regressions.
+- `TASKS.md` contains this current task and a small sequential backlog aligned with the updated PRD/TDS.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_repo_contract.py -q
+npm test
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+npm run typecheck
+npm run build
+bash scripts/run_quality_gate.sh
+docker compose config
+```
+
+If Docker is unavailable, record that `docker compose config` was not run and why.
+
+Iteration budget:
+Max 3 attempts.
+
+## Backlog
+
+### T-034: Add Top-500 stock universe manifest contract
+
+### T-035: Add source allowlist and rights-tiered raw text policy contract
+
+### T-036: Add Weekly News Focus and AI Comprehensive Analysis contracts
+
+### T-037: Add LLM provider orchestration and live-generation gating contract
+
+### T-038: Add accountless chat session lifecycle contract
 
 ## Completed
 

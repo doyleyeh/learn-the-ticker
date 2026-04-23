@@ -47,6 +47,9 @@ fi
 if [ -f package.json ]; then
   echo "== Frontend checks =="
   ltt_require_frontend_toolchain
+  if [ -f apps/web/package.json ]; then
+    echo "== Frontend workspace: apps/web =="
+  fi
   npm run lint --if-present
   npm run test --if-present
   npm run typecheck --if-present

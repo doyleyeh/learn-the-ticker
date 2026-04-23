@@ -58,6 +58,9 @@ Invoke-Step -Name "Static evals" -Command {
 
 if (Test-Path -LiteralPath "package.json") {
   Require-Command npm
+  if (Test-Path -LiteralPath "apps/web/package.json") {
+    Write-Host "== Frontend workspace: apps/web =="
+  }
 
   if (($env:OS -eq "Windows_NT") -and (Test-Path -LiteralPath "package-lock.json") -and -not (Test-Path -LiteralPath "node_modules/.bin/tsc.cmd")) {
     Write-Host "== Refreshing Windows npm command shims =="

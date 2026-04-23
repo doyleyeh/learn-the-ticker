@@ -3,13 +3,22 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 const root = process.cwd();
+const webRoot = join(root, "apps/web");
 
 function read(path) {
+  const webPath = join(webRoot, path);
+  if (existsSync(webPath)) {
+    return readFileSync(webPath, "utf8");
+  }
   return readFileSync(join(root, path), "utf8");
 }
 
 function exists(path) {
-  assert.equal(existsSync(join(root, path)), true, `${path} should exist`);
+  assert.equal(
+    existsSync(join(webRoot, path)) || existsSync(join(root, path)),
+    true,
+    `${path} should exist in apps/web or the repo root`
+  );
 }
 
 function includes(path, marker) {
@@ -456,6 +465,12 @@ assert.deepEqual(
   Object.keys(packageJson.devDependencies).sort(),
   ["@types/node", "@types/react", "@types/react-dom", "typescript"]
 );
+
+const rootPackageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+assert.deepEqual(rootPackageJson.workspaces, ["apps/web"]);
+for (const scriptName of ["dev", "build", "start", "typecheck"]) {
+  assert.match(rootPackageJson.scripts[scriptName], /--workspace apps\/web/);
+}
 
 assert.equal(read("components/SearchBox.tsx").includes("fetch("), false, "Home search should stay local");
 assert.equal(read("components/SearchBox.tsx").includes("/api/search"), false, "Home search should not call /api/search");

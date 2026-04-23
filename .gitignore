@@ -1,9 +1,13 @@
 .env
 .env.*
+!.env.example
+!*.example.env
+!**/.env.example
 __pycache__/
 .pytest_cache/
 node_modules/
 .next/
+**/.next/
 dist/
 build/
 .agent-runs/
