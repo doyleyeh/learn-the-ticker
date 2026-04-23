@@ -2,48 +2,57 @@
 
 ## Current task
 
-### T-046: Render Weekly News Focus and AI analysis on asset pages
+### T-047: Align home search UI with backend support-classification states
 
 Goal:
-Render the existing deterministic Weekly News Focus and AI Comprehensive Analysis contract on supported frontend asset pages so the UI matches the PRD/TDS separation between stable facts and timely context without introducing live calls, new assets, or advice-like copy.
+Align the deterministic home search UI with the existing backend search support-classification contract so beginners see clear, state-correct results for supported, ambiguous, eligible-not-cached, recognized-unsupported, out-of-scope, and unknown searches without introducing live calls, new asset coverage, or advice-like copy.
 
 Task scope:
-Use the current deterministic frontend scaffold to add explicit Weekly News Focus and AI Comprehensive Analysis rendering for supported asset pages. Reuse existing local fixture-backed evidence only. Keep the work narrowly focused on asset-page rendering, states, and smoke coverage rather than broader frontend data fetching, backend rewrites, or live provider integration.
+Update the homepage search workflow to reflect the backend search contract semantics already defined for deterministic local use. Keep the task limited to search-state rendering, result actions, and smoke/static coverage for the home page. Reuse existing deterministic local data or backend-aligned serialized contract shapes only. Do not broaden the work into compare-page refactors, shared cross-app adapter cleanup, backend schema changes, or live API fetching.
 
 Allowed files:
 
-- `apps/web/app/assets/[ticker]/page.tsx`
+- `apps/web/app/page.tsx`
+- `apps/web/components/SearchBox.tsx`
 - `apps/web/components/**`
 - `apps/web/lib/**`
 - `tests/frontend/**`
-- narrowly related docs or fixture helpers only if required by the rendering change
+- narrowly related frontend fixture or view-helper files only if required by the search-state alignment
 
 Do not change:
 
-- backend route contracts, schemas, or fixture semantics
+- backend route contracts, schemas, support-classification meanings, or fixture semantics
+- asset-page behavior
 - compare-page behavior
-- search-page behavior
 - live-provider, database, cache, or deployment wiring
-- supported asset scope, source-use policy, or safety guardrails
+- supported asset scope, ingestion policy, source-use policy, or safety guardrails
 
 Acceptance criteria:
 
-- supported asset pages show a visually separate Weekly News Focus module distinct from stable canonical facts
-- supported asset pages show AI Comprehensive Analysis state handling that matches the deterministic contract:
-  available analysis renders in the required section order
-  suppressed or insufficient-evidence states render clear beginner-readable copy instead of fabricated analysis
-- citation, freshness, and uncertainty treatment remains visible and educational
+- the home search UI renders deterministic states that match backend search classifications for:
+  cached supported results
+  ambiguous multi-result searches
+  eligible-not-cached assets
+  recognized unsupported assets
+  out-of-scope assets
+  unknown searches
+- supported results only expose generated asset-page navigation when the deterministic state allows `can_open_generated_page`
+- eligible-not-cached results render clear beginner-readable ingestion-needed messaging and do not imply a generated page, grounded chat, or comparison is available today
+- recognized unsupported and out-of-scope results render clear blocked-scope explanations aligned with MVP coverage and do not imply future generated-page access when the contract blocks it
+- ambiguous searches require the user to choose among deterministic candidates instead of silently selecting one
+- unknown searches explicitly say no facts are invented
 - no new buy/sell/hold, allocation, price-target, tax, or brokerage language is introduced
-- frontend smoke coverage checks the new timely-context rendering and separation markers
-- normal local and CI checks remain deterministic with no live external calls
+- frontend smoke coverage checks the aligned search-state markers and blocked/ingestion/disambiguation messaging
+- static evals, tests, and the quality gate remain deterministic with no live external calls
 
 Required commands:
 
 - `git status --short`
+- `python3 -m pytest tests -q`
 - `npm test`
 - `npm run typecheck`
 - `npm run build`
-- `python3 -m pytest tests/unit/test_repo_contract.py -q`
+- `python3 evals/run_static_evals.py`
 - `bash scripts/run_quality_gate.sh`
 
 Iteration budget:
@@ -51,6 +60,33 @@ Iteration budget:
 - Max 3 attempts
 
 ## Completed
+
+### T-046: Render Weekly News Focus and AI analysis on asset pages
+
+Goal:
+Render the existing deterministic Weekly News Focus and AI Comprehensive Analysis contract on supported frontend asset pages so the UI matches the PRD/TDS separation between stable facts and timely context without introducing live calls, new assets, or advice-like copy.
+
+Completed:
+
+- Added dedicated frontend timely-context components in `apps/web/components/WeeklyNewsPanel.tsx` and `apps/web/components/AIComprehensiveAnalysisPanel.tsx`, with explicit Weekly News Focus state markers, source quality and source-use metadata, and AI Comprehensive Analysis section ordering for `What Changed This Week`, `Market Context`, `Business/Fund Context`, and `Risk Context`.
+- Updated `apps/web/app/assets/[ticker]/page.tsx` to render those modules separately from stable facts and to wire the deterministic timely-context fixture helpers already referenced by the asset-page scaffold.
+- Expanded `apps/web/lib/fixtures.ts` with deterministic Weekly News Focus and AI Comprehensive Analysis fixture data and state handling used by supported asset pages, while keeping the implementation fixture-backed and local only.
+- Extended `tests/frontend/smoke.mjs` to assert the new timely-context rendering markers, including Weekly News Focus visibility, AI analysis state handling, and the required separation from stable facts.
+- Added `docs/agent-journal/20260423T183709Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- The agent journal records that these commands passed:
+  - `npm test`
+  - `npm run typecheck`
+  - `npm run build`
+  - `python3 -m pytest tests/unit/test_repo_contract.py -q`
+  - `bash scripts/run_quality_gate.sh`
+- Remaining documented risk: Weekly News Focus and AI Comprehensive Analysis remain deterministic fixture-backed frontend rendering only; no live provider or backend-fetch integration was added.
+- Remaining documented risk: the available-analysis path is exercised by local `QQQ` fixture context, while `VOO` and `AAPL` intentionally remain in empty or suppressed analysis states.
+- Remaining documented risk: weekly-context source drawers reuse asset citation contexts when available and otherwise fall back to timely-context claim labels instead of richer per-citation weekly context records.
+
+Completion commits:
+
+- `d42cc82 feat(T-046): render Weekly News Focus and AI analysis on asset pages`
+- `4dd683c chore(T-046): merge render Weekly News Focus and AI analysis on asset pages`
 
 ### T-045: Add grounded chat comparison-redirect contract
 
@@ -1293,8 +1329,6 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-047: Align home search UI with backend support-classification states
 
 ### T-048: Replace compare-page fixture logic with backend-aligned deterministic comparison contracts
 
