@@ -106,6 +106,7 @@ class IngestionWorkerStatus(str, Enum):
 class SafetyClassification(str, Enum):
     educational = "educational"
     personalized_advice_redirect = "personalized_advice_redirect"
+    compare_route_redirect = "compare_route_redirect"
     unsupported_asset_redirect = "unsupported_asset_redirect"
     insufficient_evidence = "insufficient_evidence"
 
@@ -2206,6 +2207,32 @@ class ChatSourceDocument(BaseModel):
     permitted_operations: SourceOperationPermissions = Field(default_factory=lambda: DEFAULT_ALLOWED_SOURCE_OPERATIONS.model_copy())
 
 
+class ChatCompareRouteDiagnostics(BaseModel):
+    derived_from_submitted_question: bool = True
+    used_current_local_search_rules_only: bool = True
+    used_existing_local_comparison_availability_only: bool = True
+    no_live_external_calls: bool = True
+    generated_multi_asset_chat_answer: bool = False
+    mixed_asset_citations_included: bool = False
+    mixed_asset_source_documents_included: bool = False
+    ordered_pair_matches_question: bool = True
+
+
+class ChatCompareRouteSuggestion(BaseModel):
+    schema_version: Literal["chat-compare-route-v1"] = "chat-compare-route-v1"
+    redirect_state: Literal["compare_route_redirect"] = "compare_route_redirect"
+    selected_ticker: str
+    comparison_ticker: str
+    left_ticker: str
+    right_ticker: str
+    route: str
+    comparison_availability_state: ComparisonEvidenceAvailabilityState
+    comparison_state_message: str
+    workflow_guidance: str
+    grounding_explanation: str
+    diagnostics: ChatCompareRouteDiagnostics = Field(default_factory=ChatCompareRouteDiagnostics)
+
+
 class ChatTurnRecord(BaseModel):
     turn_id: str
     submitted_at: str
@@ -2220,6 +2247,7 @@ class ChatTurnRecord(BaseModel):
     why_it_matters: str
     citations: list[ChatCitation] = Field(default_factory=list)
     source_documents: list[ChatSourceDocument] = Field(default_factory=list)
+    compare_route_suggestion: ChatCompareRouteSuggestion | None = None
 
 
 class ChatSessionTurnSummary(BaseModel):
@@ -2232,6 +2260,7 @@ class ChatSessionTurnSummary(BaseModel):
     citation_ids: list[str] = Field(default_factory=list)
     source_document_ids: list[str] = Field(default_factory=list)
     uncertainty_labels: list[str] = Field(default_factory=list)
+    compare_route_suggestion: ChatCompareRouteSuggestion | None = None
 
 
 class ChatSessionPublicMetadata(BaseModel):
@@ -2272,6 +2301,7 @@ class ChatResponse(BaseModel):
     source_documents: list[ChatSourceDocument] = Field(default_factory=list)
     uncertainty: list[str] = Field(default_factory=list)
     safety_classification: SafetyClassification
+    compare_route_suggestion: ChatCompareRouteSuggestion | None = None
     session: ChatSessionPublicMetadata | None = None
 
 

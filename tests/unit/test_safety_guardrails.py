@@ -80,6 +80,7 @@ def test_backend_responses_do_not_leak_advice_phrases():
     chat_cases = [
         ("VOO", "What is VOO?"),
         ("VOO", "Should I buy VOO?"),
+        ("VOO", "Should I buy VOO or QQQ?"),
         ("AAPL", "Give me a price target for AAPL."),
         ("BTC", "Should I buy BTC?"),
     ]

@@ -203,6 +203,7 @@ def test_comparison_exports_preserve_pack_citations_sources_and_reverse_order():
 def test_chat_transcript_exports_preserve_answer_safety_uncertainty_and_sources():
     grounded = export_chat_transcript("QQQ", ChatTranscriptExportRequest(question="What is this fund?"))
     advice = export_chat_transcript("VOO", ChatTranscriptExportRequest(question="Should I buy VOO today?"))
+    compare_redirect = export_chat_transcript("VOO", ChatTranscriptExportRequest(question="How is QQQ different from VOO?"))
 
     assert grounded.content_type is ExportContentType.chat_transcript
     assert grounded.export_state is ExportState.available
@@ -233,6 +234,19 @@ def test_chat_transcript_exports_preserve_answer_safety_uncertainty_and_sources(
     assert advice.export_validation.diagnostics.empty_factual_evidence_export is True
     assert _validation_section(advice, "chat_answer").validated_evidence_state.value == "unsupported"
     assert not find_forbidden_output_phrases(_flatten_text(advice.model_dump(mode="json")))
+
+    assert compare_redirect.export_state is ExportState.available
+    assert compare_redirect.metadata["safety_classification"] == "compare_route_redirect"
+    assert compare_redirect.metadata["compare_route_suggestion"]["route"] == "/compare?left=QQQ&right=VOO"
+    assert _section(compare_redirect, "comparison_redirect").items[0].text == "/compare?left=QQQ&right=VOO"
+    assert compare_redirect.citations == []
+    assert compare_redirect.source_documents == []
+    assert compare_redirect.export_validation is not None
+    assert compare_redirect.export_validation.binding_scope is ExportValidationBindingScope.no_factual_evidence
+    assert compare_redirect.export_validation.citation_bindings == []
+    assert compare_redirect.export_validation.source_bindings == []
+    assert compare_redirect.export_validation.diagnostics.empty_factual_evidence_export is True
+    assert _validation_section(compare_redirect, "chat_answer").validated_evidence_state.value == "unsupported"
 
 
 def test_unsupported_unknown_unavailable_and_eligible_not_cached_exports_do_not_generate_facts():

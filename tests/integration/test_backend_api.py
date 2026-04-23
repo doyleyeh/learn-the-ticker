@@ -777,6 +777,23 @@ def test_advice_chat_export_redirects_without_factual_sources():
     assert body["source_documents"] == []
 
 
+def test_compare_redirect_chat_export_preserves_workflow_guidance_without_factual_sources():
+    response = client.post("/api/assets/VOO/chat/export", json={"question": "How is QQQ different from VOO?"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["content_type"] == "chat_transcript"
+    assert body["export_state"] == "available"
+    assert body["metadata"]["safety_classification"] == "compare_route_redirect"
+    assert body["metadata"]["compare_route_suggestion"]["route"] == "/compare?left=QQQ&right=VOO"
+    assert body["export_validation"]["binding_scope"] == "no_factual_evidence"
+    assert body["export_validation"]["citation_bindings"] == []
+    assert body["export_validation"]["source_bindings"] == []
+    assert "comparison_redirect" in {section["section_id"] for section in body["sections"]}
+    assert body["citations"] == []
+    assert body["source_documents"] == []
+
+
 def test_export_routes_block_unsupported_unknown_and_eligible_not_cached_outputs():
     unsupported = client.get("/api/assets/BTC/export").json()
     unknown = client.get("/api/assets/ZZZZ/export").json()
@@ -960,6 +977,7 @@ def test_chat_advice_like_question_redirects_to_education():
 def test_chat_advice_like_questions_redirect_without_citations():
     cases = [
         ("VOO", "How much of my portfolio should I put in VOO?"),
+        ("VOO", "Should I buy VOO or QQQ today?"),
         ("AAPL", "Give me a price target for AAPL."),
         ("VOO", "Is VOO right for my taxes this year?"),
         ("QQQ", "Which brokerage should I use and how do I place a trade for QQQ?"),
@@ -978,6 +996,33 @@ def test_chat_advice_like_questions_redirect_without_citations():
         assert body["citations"] == []
         assert body["source_documents"] == []
         assert find_forbidden_output_phrases(combined) == []
+
+
+def test_chat_comparison_questions_redirect_to_compare_workflow_with_local_availability_states():
+    cases = [
+        ("VOO", "How is VOO different from QQQ?", "VOO", "QQQ", "available"),
+        ("VOO", "How is QQQ different from VOO?", "QQQ", "VOO", "available"),
+        ("QQQ", "Why is this more concentrated than VOO?", "QQQ", "VOO", "available"),
+        ("VOO", "AAPL vs VOO", "AAPL", "VOO", "no_local_pack"),
+        ("VOO", "VOO vs SPY", "VOO", "SPY", "eligible_not_cached"),
+        ("VOO", "VOO vs BTC", "VOO", "BTC", "unsupported"),
+        ("VOO", "VOO vs GME", "VOO", "GME", "out_of_scope"),
+        ("VOO", "VOO vs ZZZZ", "VOO", "ZZZZ", "unknown"),
+    ]
+
+    for ticker, question, expected_left, expected_right, expected_state in cases:
+        response = client.post(f"/api/assets/{ticker}/chat", json={"question": question})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["safety_classification"] == "compare_route_redirect"
+        assert body["compare_route_suggestion"]["left_ticker"] == expected_left
+        assert body["compare_route_suggestion"]["right_ticker"] == expected_right
+        assert body["compare_route_suggestion"]["route"] == f"/compare?left={expected_left}&right={expected_right}"
+        assert body["compare_route_suggestion"]["comparison_availability_state"] == expected_state
+        assert body["citations"] == []
+        assert body["source_documents"] == []
+        assert body["session"]["export_available"] is True
 
 
 def test_chat_supported_question_is_grounded_with_citation():
@@ -1063,6 +1108,23 @@ def test_chat_session_status_continue_mismatch_delete_and_export_routes():
     assert deleted_body["session"]["lifecycle_state"] == "deleted"
     assert deleted_export_body["export_state"] == "unavailable"
     assert deleted_export_body["sections"] == []
+
+
+def test_chat_session_export_preserves_compare_redirect_turn_metadata():
+    first = client.post("/api/assets/VOO/chat", json={"question": "How is QQQ different from VOO?"})
+    assert first.status_code == 200
+    conversation_id = first.json()["session"]["conversation_id"]
+
+    export = client.get(f"/api/chat-sessions/{conversation_id}/export")
+    assert export.status_code == 200
+    body = export.json()
+
+    assert body["metadata"]["compare_route_suggestions"][0]["route"] == "/compare?left=QQQ&right=VOO"
+    assert "comparison_redirects" in {section["section_id"] for section in body["sections"]}
+    turn_item = next(section for section in body["sections"] if section["section_id"] == "chat_turns")["items"][0]
+    assert turn_item["metadata"]["compare_route_suggestion"]["comparison_availability_state"] == "available"
+    assert body["citations"] == []
+    assert body["source_documents"] == []
 
 
 def test_chat_supported_beginner_intents_use_selected_asset_pack():

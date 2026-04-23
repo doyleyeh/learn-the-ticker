@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Any, Iterable
 
 from backend.citations import (
@@ -14,10 +15,12 @@ from backend.citations import (
     EvidenceKind,
     validate_claims,
 )
+from backend.comparison import generate_comparison
 from backend.models import (
     AssetStatus,
     AssetType,
     ChatCitation,
+    ChatCompareRouteSuggestion,
     ChatResponse,
     ChatSourceDocument,
     FreshnessState,
@@ -31,6 +34,7 @@ from backend.retrieval import (
     build_asset_knowledge_pack,
 )
 from backend.safety import classify_question, educational_redirect, find_forbidden_output_phrases
+from backend.search import search_assets
 from backend.source_policy import resolve_source_policy
 
 
@@ -62,6 +66,20 @@ class _ChatPlan:
     uncertainty: list[str]
 
 
+COMPARISON_INTENT_PATTERNS = (
+    r"\bcompare\b",
+    r"\bcompared\b",
+    r"\bcomparison\b",
+    r"\bvs\.?\b",
+    r"\bversus\b",
+    r"\bdifferent\b",
+    r"\bdifference\b",
+    r"\binstead of\b",
+    r"\bthan\b",
+)
+TICKER_TOKEN_PATTERN = re.compile(r"\b[A-Za-z]{1,5}(?:\.[A-Za-z])?\b")
+
+
 def generate_asset_chat(ticker: str, question: str) -> ChatResponse:
     """Build a ChatResponse-compatible payload from a selected asset knowledge pack."""
 
@@ -76,6 +94,10 @@ def generate_chat_from_pack(pack: AssetKnowledgePack, question: str) -> ChatResp
 
     if safety_classification is SafetyClassification.personalized_advice_redirect:
         return _advice_redirect_chat(pack, safety_classification)
+
+    compare_route_redirect = _compare_route_redirect(pack, question)
+    if compare_route_redirect is not None:
+        return compare_route_redirect
 
     plan, bindings = _plan_supported_chat(pack, question)
     evidence = bindings.evidence()
@@ -254,6 +276,58 @@ def _advice_redirect_chat(pack: AssetKnowledgePack, safety_classification: Safet
         citations=[],
         uncertainty=["This response does not use personal circumstances, live prices, tax details, or trading instructions."],
         safety_classification=safety_classification,
+    )
+    _assert_safe_copy(response)
+    return response
+
+
+def _compare_route_redirect(pack: AssetKnowledgePack, question: str) -> ChatResponse | None:
+    detected_pair = _detected_comparison_pair(question, pack.asset.ticker)
+    if detected_pair is None:
+        return None
+
+    left_ticker, right_ticker, comparison_ticker = detected_pair
+    comparison = generate_comparison(left_ticker, right_ticker)
+    availability = (
+        comparison.evidence_availability.availability_state
+        if comparison.evidence_availability is not None
+        else None
+    )
+    if availability is None:
+        return None
+
+    direct_answer = (
+        f"This question compares {left_ticker} with {right_ticker}, so use the comparison workflow "
+        "instead of a multi-asset answer inside single-asset chat."
+    )
+    why_it_matters = (
+        "Single-asset chat stays grounded in the selected asset pack only. The comparison workflow can "
+        "use the current local comparison availability state for both tickers without mixing cross-asset "
+        "facts or citations into this chat turn."
+    )
+    response = ChatResponse(
+        asset=pack.asset,
+        direct_answer=direct_answer,
+        why_it_matters=why_it_matters,
+        citations=[],
+        source_documents=[],
+        uncertainty=[
+            "This redirect is workflow guidance only and does not provide a multi-asset factual comparison inside single-asset chat.",
+            comparison.state.message,
+            *_fixture_limits(pack),
+        ],
+        safety_classification=SafetyClassification.compare_route_redirect,
+        compare_route_suggestion=ChatCompareRouteSuggestion(
+            selected_ticker=pack.asset.ticker,
+            comparison_ticker=comparison_ticker,
+            left_ticker=left_ticker,
+            right_ticker=right_ticker,
+            route=f"/compare?left={left_ticker}&right={right_ticker}",
+            comparison_availability_state=availability,
+            comparison_state_message=comparison.state.message,
+            workflow_guidance=direct_answer,
+            grounding_explanation=why_it_matters,
+        ),
     )
     _assert_safe_copy(response)
     return response
@@ -602,6 +676,68 @@ def _classify_intent(question: str) -> str:
     if any(term in text for term in ["valuation", "valued", "p/e", "pe ratio", "multiple", "expensive", "cheap"]):
         return "valuation"
     return "identity"
+
+
+def _detected_comparison_pair(question: str, selected_ticker: str) -> tuple[str, str, str] | None:
+    if not _looks_like_comparison_question(question):
+        return None
+
+    mentions = _mentioned_tickers(question)
+    distinct_mentions: list[str] = []
+    for ticker in mentions:
+        if ticker not in distinct_mentions:
+            distinct_mentions.append(ticker)
+
+    selected_ticker = selected_ticker.upper()
+    if len(distinct_mentions) > 2:
+        return None
+
+    if len(distinct_mentions) == 2:
+        left_ticker, right_ticker = distinct_mentions
+        if selected_ticker not in {left_ticker, right_ticker}:
+            return None
+        comparison_ticker = right_ticker if left_ticker == selected_ticker else left_ticker
+        return left_ticker, right_ticker, comparison_ticker
+
+    if len(distinct_mentions) == 1:
+        comparison_ticker = distinct_mentions[0]
+        if comparison_ticker == selected_ticker:
+            return None
+        return selected_ticker, comparison_ticker, comparison_ticker
+
+    return None
+
+
+def _looks_like_comparison_question(question: str) -> bool:
+    normalized = " ".join(question.lower().split())
+    return any(re.search(pattern, normalized) for pattern in COMPARISON_INTENT_PATTERNS)
+
+
+def _mentioned_tickers(question: str) -> list[str]:
+    mentions: list[str] = []
+    for match in TICKER_TOKEN_PATTERN.finditer(question):
+        token = match.group(0)
+        resolved_ticker = _resolved_ticker_token(token)
+        if resolved_ticker is None:
+            continue
+        mentions.append(resolved_ticker)
+    return mentions
+
+
+def _resolved_ticker_token(token: str) -> str | None:
+    response = search_assets(token)
+    if len(response.results) != 1 or response.state.status.value == "ambiguous":
+        return None
+
+    result = response.results[0]
+    normalized_token = token.upper()
+    if result.support_classification.value != "unknown" and result.ticker == normalized_token:
+        return result.ticker
+
+    if result.support_classification.value == "unknown" and token == normalized_token:
+        return normalized_token
+
+    return None
 
 
 def _chunks_by_claim_type(pack: AssetKnowledgePack) -> dict[str, list[RetrievedSourceChunk]]:

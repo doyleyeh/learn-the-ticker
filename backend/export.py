@@ -339,6 +339,36 @@ def export_chat_transcript(ticker: str, request: ChatTranscriptExportRequest) ->
             ],
             evidence_state=EvidenceState.supported,
         ),
+        *(
+            [
+                ExportedSection(
+                    section_id="comparison_redirect",
+                    title="Comparison Workflow Redirect",
+                    section_type=ExportContentType.chat_transcript,
+                    text=chat.compare_route_suggestion.workflow_guidance,
+                    items=[
+                        ExportedItem(
+                            item_id="compare_route",
+                            title="Compare Route",
+                            text=chat.compare_route_suggestion.route,
+                            evidence_state=EvidenceState.supported,
+                            metadata={
+                                "left_ticker": chat.compare_route_suggestion.left_ticker,
+                                "right_ticker": chat.compare_route_suggestion.right_ticker,
+                                "comparison_ticker": chat.compare_route_suggestion.comparison_ticker,
+                                "comparison_availability_state": (
+                                    chat.compare_route_suggestion.comparison_availability_state.value
+                                ),
+                                "comparison_state_message": chat.compare_route_suggestion.comparison_state_message,
+                            },
+                        )
+                    ],
+                    evidence_state=EvidenceState.unsupported,
+                )
+            ]
+            if chat.compare_route_suggestion is not None
+            else []
+        ),
         ExportedSection(
             section_id="chat_answer",
             title="Direct Answer",
@@ -397,6 +427,11 @@ def export_chat_transcript(ticker: str, request: ChatTranscriptExportRequest) ->
             "submitted_question": request.question,
             "conversation_id": request.conversation_id,
             "safety_classification": chat.safety_classification.value,
+            "compare_route_suggestion": (
+                chat.compare_route_suggestion.model_dump(mode="json")
+                if chat.compare_route_suggestion is not None
+                else None
+            ),
             "generated_chat_answer": True,
             "source": "local_fixture_chat",
         },
@@ -513,13 +548,52 @@ def _export_chat_session_payload(
                     source_document_ids=turn.source_document_ids,
                     freshness_state=turn.freshness_state,
                     evidence_state=turn.evidence_state,
-                    metadata={"safety_classification": turn.safety_classification.value},
+                    metadata={
+                        "safety_classification": turn.safety_classification.value,
+                        "compare_route_suggestion": (
+                            turn.compare_route_suggestion.model_dump(mode="json")
+                            if turn.compare_route_suggestion is not None
+                            else None
+                        ),
+                    },
                 )
                 for index, turn in enumerate(turns)
             ],
             citation_ids=sorted({citation_id for turn in turns for citation_id in turn.citation_ids}),
             source_document_ids=sorted({source_id for turn in turns for source_id in turn.source_document_ids}),
             evidence_state=EvidenceState.supported,
+        ),
+        *(
+            [
+                ExportedSection(
+                    section_id="comparison_redirects",
+                    title="Comparison Workflow Redirects",
+                    section_type=ExportContentType.chat_transcript,
+                    text="Comparison redirects are preserved as workflow guidance only and do not export multi-asset factual evidence.",
+                    items=[
+                        ExportedItem(
+                            item_id=f"{turn.turn_id}_compare_route",
+                            title=f"{turn.turn_id} compare route",
+                            text=turn.compare_route_suggestion.route,
+                            evidence_state=EvidenceState.supported,
+                            metadata={
+                                "left_ticker": turn.compare_route_suggestion.left_ticker,
+                                "right_ticker": turn.compare_route_suggestion.right_ticker,
+                                "comparison_ticker": turn.compare_route_suggestion.comparison_ticker,
+                                "comparison_availability_state": (
+                                    turn.compare_route_suggestion.comparison_availability_state.value
+                                ),
+                                "comparison_state_message": turn.compare_route_suggestion.comparison_state_message,
+                            },
+                        )
+                        for turn in turns
+                        if turn.compare_route_suggestion is not None
+                    ],
+                    evidence_state=EvidenceState.unsupported,
+                )
+            ]
+            if any(turn.compare_route_suggestion is not None for turn in turns)
+            else []
         ),
         ExportedSection(
             section_id="uncertainty_notes",
@@ -555,7 +629,14 @@ def _export_chat_session_payload(
         disclaimer=EDUCATIONAL_DISCLAIMER,
         licensing_note=EXPORT_LICENSING_NOTE,
         rendered_markdown=markdown,
-        metadata=_chat_session_export_metadata(metadata, generated_chat_answer=True),
+        metadata={
+            **_chat_session_export_metadata(metadata, generated_chat_answer=True),
+            "compare_route_suggestions": [
+                turn.compare_route_suggestion.model_dump(mode="json")
+                for turn in turns
+                if turn.compare_route_suggestion is not None
+            ],
+        },
     )
     return response.model_copy(
         update={
@@ -1442,20 +1523,32 @@ def _build_chat_export_validation(
         )
 
     safety_classification = export.metadata.get("safety_classification")
-    limitation = (
-        "Safety redirect export does not include same-asset factual citations, source documents, or freshness support."
-        if safety_classification == SafetyClassification.personalized_advice_redirect.value
-        else "This available chat export does not include source-backed factual content."
-    )
+    compare_route_suggestion = export.metadata.get("compare_route_suggestion") or export.metadata.get("compare_route_suggestions")
+    limitation = "This available chat export does not include source-backed factual content."
+    if safety_classification == SafetyClassification.personalized_advice_redirect.value:
+        limitation = "Safety redirect export does not include same-asset factual citations, source documents, or freshness support."
+    if safety_classification == SafetyClassification.compare_route_redirect.value or compare_route_suggestion:
+        limitation = (
+            "Comparison redirect export preserves workflow guidance and compare-route metadata only; "
+            "it does not export cross-asset factual citations, source documents, or generated comparison content."
+        )
     section_validations = [
         ExportSectionValidation(
             section_id="chat_answer",
             section_type=ExportContentType.chat_transcript,
             displayed_evidence_state=EvidenceState.unsupported
-            if safety_classification == SafetyClassification.personalized_advice_redirect.value
+            if safety_classification
+            in {
+                SafetyClassification.personalized_advice_redirect.value,
+                SafetyClassification.compare_route_redirect.value,
+            }
             else EvidenceState.insufficient_evidence,
             validated_evidence_state=EvidenceState.unsupported
-            if safety_classification == SafetyClassification.personalized_advice_redirect.value
+            if safety_classification
+            in {
+                SafetyClassification.personalized_advice_redirect.value,
+                SafetyClassification.compare_route_redirect.value,
+            }
             else EvidenceState.insufficient_evidence,
             validated_freshness_state=FreshnessState.unknown,
             validation_outcome=ExportValidationOutcome.validated_with_limitations,
@@ -1475,7 +1568,11 @@ def _build_chat_export_validation(
         ),
         default_evidence_state=(
             EvidenceState.unsupported
-            if safety_classification == SafetyClassification.personalized_advice_redirect.value
+            if safety_classification
+            in {
+                SafetyClassification.personalized_advice_redirect.value,
+                SafetyClassification.compare_route_redirect.value,
+            }
             else EvidenceState.insufficient_evidence
         ),
     )
