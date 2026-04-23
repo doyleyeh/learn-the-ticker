@@ -30,6 +30,10 @@ from backend.models import (
     ProviderResponseState,
     ProviderSourceAttribution,
     ProviderSourceUsage,
+    SourceAllowlistStatus,
+    SourceOperationPermissions,
+    SourceQuality,
+    SourceUsePolicy,
 )
 
 
@@ -657,6 +661,16 @@ def _source(
         can_support_canonical_facts=can_support_canonical_facts,
         can_support_recent_developments=can_support_recent_developments,
         licensing=licensing,
+        source_quality=(
+            SourceQuality.issuer
+            if adapter.provider_kind is ProviderKind.etf_issuer
+            else SourceQuality.official
+            if is_official
+            else SourceQuality.provider
+        ),
+        allowlist_status=licensing.allowlist_status,
+        source_use_policy=licensing.source_use_policy,
+        permitted_operations=licensing.permitted_operations,
     )
 
 
@@ -831,6 +845,23 @@ def _official_public_licensing(provider_name: str) -> ProviderLicensing:
             "Official public-source metadata and short supporting excerpts may be exported in local fixtures; "
             "full source documents are not redistributed by this provider contract."
         ),
+        source_use_policy=SourceUsePolicy.full_text_allowed,
+        allowlist_status=SourceAllowlistStatus.allowed,
+        permitted_operations=SourceOperationPermissions(
+            can_store_metadata=True,
+            can_store_raw_text=True,
+            can_display_metadata=True,
+            can_display_excerpt=True,
+            can_summarize=True,
+            can_cache=True,
+            can_export_metadata=True,
+            can_export_excerpt=True,
+            can_export_full_text=False,
+            can_support_generated_output=True,
+            can_support_citations=True,
+            can_support_canonical_facts=True,
+            can_support_recent_developments=True,
+        ),
     )
 
 
@@ -847,6 +878,23 @@ def _restricted_market_licensing(provider_name: str) -> ProviderLicensing:
             "Structured market/reference provider payloads are permission-limited; this mock contract does not "
             "grant redistribution or export rights for restricted provider data."
         ),
+        source_use_policy=SourceUsePolicy.metadata_only,
+        allowlist_status=SourceAllowlistStatus.allowed,
+        permitted_operations=SourceOperationPermissions(
+            can_store_metadata=True,
+            can_store_raw_text=False,
+            can_display_metadata=True,
+            can_display_excerpt=False,
+            can_summarize=False,
+            can_cache=True,
+            can_export_metadata=False,
+            can_export_excerpt=False,
+            can_export_full_text=False,
+            can_support_generated_output=False,
+            can_support_citations=False,
+            can_support_canonical_facts=False,
+            can_support_recent_developments=False,
+        ),
     )
 
 
@@ -862,5 +910,22 @@ def _recent_context_licensing(provider_name: str) -> ProviderLicensing:
         permission_note=(
             "Recent-development provider outputs are context signals only; full articles or restricted payloads "
             "are not exportable unless rights are confirmed."
+        ),
+        source_use_policy=SourceUsePolicy.summary_allowed,
+        allowlist_status=SourceAllowlistStatus.allowed,
+        permitted_operations=SourceOperationPermissions(
+            can_store_metadata=True,
+            can_store_raw_text=False,
+            can_display_metadata=True,
+            can_display_excerpt=True,
+            can_summarize=True,
+            can_cache=True,
+            can_export_metadata=False,
+            can_export_excerpt=False,
+            can_export_full_text=False,
+            can_support_generated_output=True,
+            can_support_citations=True,
+            can_support_canonical_facts=False,
+            can_support_recent_developments=True,
         ),
     )

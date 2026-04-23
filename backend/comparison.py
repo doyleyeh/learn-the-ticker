@@ -35,6 +35,7 @@ from backend.retrieval import (
     build_comparison_knowledge_pack,
 )
 from backend.safety import find_forbidden_output_phrases
+from backend.source_policy import resolve_source_policy
 
 
 class ComparisonGenerationError(ValueError):
@@ -224,6 +225,8 @@ class _ComparisonCitationRegistry:
             supporting_text=retrieved_fact.source_chunk.text,
             supports_claim=retrieved_fact.fact.evidence_state == "supported",
             is_recent=False,
+            allowlist_status=retrieved_fact.source_document.allowlist_status,
+            source_use_policy=retrieved_fact.source_document.source_use_policy,
         )
         return self._add_binding(citation_id, retrieved_fact.source_document, evidence)
 
@@ -240,6 +243,8 @@ class _ComparisonCitationRegistry:
             supporting_text=retrieved_chunk.chunk.text,
             supports_claim=True,
             is_recent=False,
+            allowlist_status=retrieved_chunk.source_document.allowlist_status,
+            source_use_policy=retrieved_chunk.source_document.source_use_policy,
         )
         return self._add_binding(citation_id, retrieved_chunk.source_document, evidence)
 
@@ -538,6 +543,10 @@ def _role_phrase(value: Any) -> str:
 
 
 def _source_document_from_fixture(source: SourceDocumentFixture, supporting_passage: str) -> SourceDocument:
+    decision = resolve_source_policy(
+        url=source.url,
+        source_identifier=source.url if source.url.startswith("local://") else None,
+    )
     return SourceDocument(
         source_document_id=source.source_document_id,
         source_type=source.source_type,
@@ -550,6 +559,10 @@ def _source_document_from_fixture(source: SourceDocumentFixture, supporting_pass
         freshness_state=source.freshness_state,
         is_official=source.is_official,
         supporting_passage=supporting_passage,
+        source_quality=source.source_quality,
+        allowlist_status=source.allowlist_status,
+        source_use_policy=source.source_use_policy,
+        permitted_operations=decision.permitted_operations,
     )
 
 

@@ -336,6 +336,8 @@ def test_details_sources_and_recent_routes_exist():
     assert details.json()["facts"]["business_model"]
     assert sources.json()["sources"][0]["source_document_id"] == "src_aapl_10k_fixture"
     assert sources.json()["sources"][0]["publisher"] == "U.S. SEC"
+    assert sources.json()["sources"][0]["allowlist_status"] == "allowed"
+    assert sources.json()["sources"][0]["source_use_policy"] == "full_text_allowed"
     assert recent.json()["recent_developments"][0]["freshness_state"] == "fresh"
 
 
@@ -374,6 +376,8 @@ def test_knowledge_pack_route_serializes_cached_and_non_generated_states():
     assert body["counts"]["recent_development_count"] == len(body["recent_developments"])
     assert "canonical_facts" in {label["section_id"] for label in body["section_freshness"]}
     assert {source["asset_ticker"] for source in body["source_documents"]} == {"VOO"}
+    assert {source["allowlist_status"] for source in body["source_documents"]} == {"allowed"}
+    assert {source["source_use_policy"] for source in body["source_documents"]} <= {"full_text_allowed", "summary_allowed"}
     assert {fact["asset_ticker"] for fact in body["normalized_facts"]} == {"VOO"}
     assert {chunk["asset_ticker"] for chunk in body["source_chunks"]} == {"VOO"}
     assert {recent["asset_ticker"] for recent in body["recent_developments"]} == {"VOO"}
@@ -430,6 +434,9 @@ def test_asset_page_and_source_list_export_routes_return_contract_payloads():
     assert source_body["sections"][0]["section_id"] == "asset_source_list"
     assert source_body["source_documents"][0]["source_document_id"]
     assert source_body["source_documents"][0]["allowed_excerpt"]["note"]
+    assert source_body["source_documents"][0]["allowlist_status"] == "allowed"
+    assert source_body["source_documents"][0]["source_use_policy"] in {"full_text_allowed", "summary_allowed"}
+    assert source_body["source_documents"][0]["permitted_operations"]["can_export_full_text"] is False
 
 
 def test_trust_metrics_catalog_route_is_validation_only_contract():

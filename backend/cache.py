@@ -66,6 +66,9 @@ def compute_source_document_checksum(source_input: SourceChecksumInput) -> Sourc
         checksum=checksum,
         freshness_state=normalized_input.freshness_state,
         cache_allowed=normalized_input.cache_allowed,
+        export_allowed=normalized_input.export_allowed,
+        allowlist_status=normalized_input.allowlist_status,
+        source_use_policy=normalized_input.source_use_policy,
         source_type=normalized_input.source_type,
         source_rank=normalized_input.source_rank,
         citation_ids=normalized_input.citation_ids,
@@ -244,7 +247,10 @@ def source_checksum_from_retrieval_source(
         recent_event_bindings=_recent_event_bindings(recent_events or [], source_id),
         citation_ids=_citation_bindings(facts or [], recent_events or []),
         local_chunk_text_fingerprints=_chunk_text_fingerprints(chunks or [], source_id),
-        cache_allowed=True,
+        cache_allowed=bool(_optional_attr(_optional_attr(source, "permitted_operations"), "can_cache", True)),
+        export_allowed=bool(_optional_attr(_optional_attr(source, "permitted_operations"), "can_export_metadata", False)),
+        allowlist_status=_optional_attr(source, "allowlist_status"),
+        source_use_policy=_optional_attr(source, "source_use_policy"),
         redistribution_allowed=False,
     )
     return compute_source_document_checksum(source_input)
@@ -275,6 +281,9 @@ def source_checksum_from_provider_attribution(
         recent_event_bindings=_recent_event_bindings(recent_events or [], source_id),
         citation_ids=_citation_bindings(facts or [], recent_events or []),
         cache_allowed=bool(_optional_attr(licensing, "cache_allowed", True)),
+        export_allowed=bool(_optional_attr(licensing, "export_allowed", False)),
+        allowlist_status=_optional_attr(source, "allowlist_status"),
+        source_use_policy=_optional_attr(source, "source_use_policy"),
         redistribution_allowed=bool(_optional_attr(licensing, "redistribution_allowed", False)),
     )
     return compute_source_document_checksum(source_input)

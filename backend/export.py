@@ -34,6 +34,7 @@ from backend.models import (
 )
 from backend.overview import generate_asset_overview
 from backend.search import search_assets
+from backend.source_policy import excerpt_text_for_policy, resolve_source_policy, source_can_export_excerpt
 
 
 EXPORT_LICENSING_NOTE = ExportNote(
@@ -109,14 +110,21 @@ def export_asset_source_list(ticker: str, export_format: ExportFormat | str = Ex
             text=(
                 f"{source.source_type} from {source.publisher}; freshness: {source.freshness_state.value}; "
                 f"published: {source.published_at or 'unknown'}; as of: {source.as_of_date or 'unknown'}; "
-                f"retrieved: {source.retrieved_at}; official source: {source.is_official}."
+                f"retrieved: {source.retrieved_at}; official source: {source.is_official}; "
+                f"source-use policy: {source.source_use_policy.value}; allowlist status: {source.allowlist_status.value}."
             ),
             source_document_ids=[source.source_document_id],
             freshness_state=source.freshness_state,
             evidence_state=EvidenceState.supported,
             as_of_date=source.as_of_date,
             retrieved_at=source.retrieved_at,
-            metadata={"url": source.url, "publisher": source.publisher, "source_type": source.source_type},
+            metadata={
+                "url": source.url,
+                "publisher": source.publisher,
+                "source_type": source.source_type,
+                "source_use_policy": source.source_use_policy.value,
+                "allowlist_status": source.allowlist_status.value,
+            },
         )
         for source in overview.source_documents
     ]
@@ -791,6 +799,11 @@ def _export_sources(sources: list[Any]) -> list[ExportSourceMetadata]:
         seen.add(key)
         chunk_id = getattr(source, "chunk_id", None)
         supporting_passage = getattr(source, "supporting_passage", "")
+        decision = resolve_source_policy(
+            url=source.url,
+            source_identifier=source.url if str(source.url).startswith("local://") else None,
+        )
+        excerpt_text = excerpt_text_for_policy(supporting_passage, decision)
         exported.append(
             ExportSourceMetadata(
                 source_document_id=source.source_document_id,
@@ -803,12 +816,20 @@ def _export_sources(sources: list[Any]) -> list[ExportSourceMetadata]:
                 retrieved_at=source.retrieved_at,
                 freshness_state=source.freshness_state,
                 is_official=source.is_official,
+                source_quality=getattr(source, "source_quality", decision.source_quality),
+                allowlist_status=getattr(source, "allowlist_status", decision.allowlist_status),
+                source_use_policy=getattr(source, "source_use_policy", decision.source_use_policy),
+                permitted_operations=decision.permitted_operations,
                 allowed_excerpt=ExportExcerpt(
                     excerpt_id=f"excerpt_{citation_id or source.source_document_id}",
-                    text=supporting_passage or None,
+                    kind="supporting_passage" if source_can_export_excerpt(decision) else "excerpt_metadata",
+                    text=excerpt_text,
                     citation_id=citation_id,
                     chunk_id=chunk_id,
-                    note="Short supporting passage from the deterministic local fixture; full source content is not exported.",
+                    redistribution_allowed=decision.permitted_operations.can_export_excerpt,
+                    source_use_policy=decision.source_use_policy,
+                    allowlist_status=decision.allowlist_status,
+                    note=decision.allowed_excerpt.note,
                 ),
             )
         )
@@ -859,7 +880,10 @@ def _render_markdown(
             lines.append(
                 f"- {source.source_document_id}: {source.title} ({source.publisher}); "
                 f"type: {source.source_type}; retrieved: {source.retrieved_at}; "
-                f"freshness: {source.freshness_state.value}; URL: {source.url}"
+                f"freshness: {source.freshness_state.value}; "
+                f"source-use policy: {getattr(source, 'source_use_policy', None).value if getattr(source, 'source_use_policy', None) else 'unknown'}; "
+                f"allowlist status: {getattr(source, 'allowlist_status', None).value if getattr(source, 'allowlist_status', None) else 'unknown'}; "
+                f"URL: {source.url}"
             )
         lines.append("")
     lines.extend(["## Licensing Note", EXPORT_LICENSING_NOTE.text, "", "## Educational Disclaimer", EDUCATIONAL_DISCLAIMER])

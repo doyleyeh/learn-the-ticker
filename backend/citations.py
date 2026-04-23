@@ -5,7 +5,7 @@ from typing import Any, Sequence
 
 from pydantic import BaseModel, Field
 
-from backend.models import FreshnessState
+from backend.models import SourceAllowlistStatus, SourceUsePolicy, FreshnessState
 
 
 class CitationValidationStatus(str, Enum):
@@ -16,6 +16,7 @@ class CitationValidationStatus(str, Enum):
     stale_source = "stale_source"
     non_recent_source = "non_recent_source"
     unsupported_source = "unsupported_source"
+    disallowed_source_policy = "disallowed_source_policy"
     insufficient_evidence = "insufficient_evidence"
 
 
@@ -47,6 +48,8 @@ class CitationEvidence(BaseModel):
     supporting_text: str | None = None
     supports_claim: bool = True
     is_recent: bool | None = None
+    allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
+    source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
 
 
 class CitationValidationContext(BaseModel):
@@ -194,6 +197,8 @@ def evidence_from_sources(
                 supported_claim_types=supported_claim_types_by_citation.get(citation.citation_id, []),
                 supporting_text=source.supporting_passage,
                 is_recent=source.source_type in RECENT_SOURCE_TYPES,
+                allowlist_status=getattr(source, "allowlist_status", SourceAllowlistStatus.allowed),
+                source_use_policy=getattr(source, "source_use_policy", SourceUsePolicy.full_text_allowed),
             )
         )
     return evidence
@@ -267,6 +272,28 @@ def _validate_evidence(
                 citation_id=evidence.citation_id,
                 source_document_id=evidence.source_document_id,
                 message="Citation belongs to an asset outside the current asset or comparison pack.",
+            )
+        )
+
+    if evidence.allowlist_status is not SourceAllowlistStatus.allowed:
+        issues.append(
+            CitationValidationIssue(
+                status=CitationValidationStatus.disallowed_source_policy,
+                claim_id=claim.claim_id,
+                citation_id=evidence.citation_id,
+                source_document_id=evidence.source_document_id,
+                message="Citation evidence must come from an allowed source-use policy record.",
+            )
+        )
+
+    if evidence.source_use_policy in {SourceUsePolicy.metadata_only, SourceUsePolicy.link_only, SourceUsePolicy.rejected}:
+        issues.append(
+            CitationValidationIssue(
+                status=CitationValidationStatus.disallowed_source_policy,
+                claim_id=claim.claim_id,
+                citation_id=evidence.citation_id,
+                source_document_id=evidence.source_document_id,
+                message=f"Source-use policy '{evidence.source_use_policy.value}' cannot support generated factual claims.",
             )
         )
 

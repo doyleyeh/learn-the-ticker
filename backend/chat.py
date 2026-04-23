@@ -31,6 +31,7 @@ from backend.retrieval import (
     build_asset_knowledge_pack,
 )
 from backend.safety import classify_question, educational_redirect, find_forbidden_output_phrases
+from backend.source_policy import resolve_source_policy
 
 
 class ChatGenerationError(ValueError):
@@ -162,6 +163,8 @@ class _ChatCitationRegistry:
             is_recent=is_recent
             if is_recent is not None
             else retrieved_chunk.source_document.source_type == "recent_development",
+            allowlist_status=retrieved_chunk.source_document.allowlist_status,
+            source_use_policy=retrieved_chunk.source_document.source_use_policy,
         )
         return self._add_binding(citation_id, claim_text, retrieved_chunk, evidence)
 
@@ -658,6 +661,10 @@ def _format_metric(value: Any, unit: str | None) -> str:
 
 def _chat_source_document_from_chunk(citation_id: str, retrieved_chunk: RetrievedSourceChunk) -> ChatSourceDocument:
     source = retrieved_chunk.source_document
+    decision = resolve_source_policy(
+        url=source.url,
+        source_identifier=source.url if source.url.startswith("local://") else None,
+    )
     return ChatSourceDocument(
         citation_id=citation_id,
         source_document_id=source.source_document_id,
@@ -672,6 +679,10 @@ def _chat_source_document_from_chunk(citation_id: str, retrieved_chunk: Retrieve
         freshness_state=source.freshness_state,
         is_official=source.is_official,
         supporting_passage=retrieved_chunk.chunk.text,
+        source_quality=source.source_quality,
+        allowlist_status=source.allowlist_status,
+        source_use_policy=source.source_use_policy,
+        permitted_operations=decision.permitted_operations,
     )
 
 
@@ -816,6 +827,8 @@ def _evidence_from_chat_response(pack: AssetKnowledgePack, response: ChatRespons
             supporting_text=item.chunk.text,
             supports_claim=True,
             is_recent=item.source_document.source_type == "recent_development",
+            allowlist_status=item.source_document.allowlist_status,
+            source_use_policy=item.source_document.source_use_policy,
         )
     return list(evidence_by_id.values())
 

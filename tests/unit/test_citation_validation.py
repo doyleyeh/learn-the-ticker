@@ -17,7 +17,7 @@ from backend.citations import (
     validate_claims,
 )
 from backend.data import supported_asset
-from backend.models import FreshnessState
+from backend.models import FreshnessState, SourceAllowlistStatus, SourceUsePolicy
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -243,6 +243,49 @@ def test_unsupported_source_type_and_insufficient_evidence_are_rejected():
 
     assert unsupported.status is CitationValidationStatus.unsupported_source
     assert insufficient.status is CitationValidationStatus.insufficient_evidence
+
+
+def test_rejected_metadata_only_and_link_only_sources_cannot_support_generated_claims():
+    rejected_evidence = CitationEvidence(
+        citation_id="c_rejected",
+        asset_ticker="VOO",
+        source_document_id="src_rejected",
+        source_type="issuer_fact_sheet",
+        supporting_text="Rejected evidence should not be used.",
+        allowlist_status=SourceAllowlistStatus.rejected,
+        source_use_policy=SourceUsePolicy.rejected,
+    )
+    metadata_only = CitationEvidence(
+        citation_id="c_metadata_only",
+        asset_ticker="VOO",
+        source_document_id="src_metadata",
+        source_type="structured_market_data",
+        supporting_text="Provider payload text is not allowed.",
+        source_use_policy=SourceUsePolicy.metadata_only,
+    )
+    link_only = CitationEvidence(
+        citation_id="c_link_only",
+        asset_ticker="VOO",
+        source_document_id="src_link",
+        source_type="news_article",
+        supporting_text="Article text is not allowed.",
+        source_use_policy=SourceUsePolicy.link_only,
+    )
+
+    for evidence in [rejected_evidence, metadata_only, link_only]:
+        report = validate_claims(
+            claims=[
+                {
+                    "claim_id": f"claim_{evidence.citation_id}",
+                    "claim_text": "Disallowed policy tiers cannot support generated factual claims.",
+                    "claim_type": "factual",
+                    "citation_ids": [evidence.citation_id],
+                }
+            ],
+            evidence=[evidence],
+            context={"allowed_asset_tickers": ["VOO"]},
+        )
+        assert report.status is CitationValidationStatus.disallowed_source_policy
 
 
 def test_comparison_claims_must_stay_inside_comparison_pack():

@@ -39,7 +39,10 @@
           "content_type": "text",
           "is_official": true,
           "freshness_state": "fresh",
-          "as_of_date": "2026-04-01"
+          "as_of_date": "2026-04-01",
+          "source_quality": "official",
+          "allowlist_status": "allowed",
+          "source_use_policy": "full_text_allowed"
         },
         {
           "source_document_id": "src_aapl_xbrl_fixture",
@@ -54,7 +57,10 @@
           "content_type": "text",
           "is_official": true,
           "freshness_state": "fresh",
-          "as_of_date": "2026-04-01"
+          "as_of_date": "2026-04-01",
+          "source_quality": "official",
+          "allowlist_status": "allowed",
+          "source_use_policy": "full_text_allowed"
         },
         {
           "source_document_id": "src_aapl_valuation_limitation",
@@ -69,7 +75,10 @@
           "content_type": "text",
           "is_official": false,
           "freshness_state": "unavailable",
-          "as_of_date": "2026-04-20"
+          "as_of_date": "2026-04-20",
+          "source_quality": "fixture",
+          "allowlist_status": "allowed",
+          "source_use_policy": "full_text_allowed"
         },
         {
           "source_document_id": "src_aapl_recent_review",
@@ -84,7 +93,10 @@
           "content_type": "text",
           "is_official": false,
           "freshness_state": "fresh",
-          "as_of_date": "2026-04-20"
+          "as_of_date": "2026-04-20",
+          "source_quality": "fixture",
+          "allowlist_status": "allowed",
+          "source_use_policy": "summary_allowed"
         }
       ],
       "source_chunks": [
@@ -352,7 +364,10 @@
           "content_type": "text",
           "is_official": true,
           "freshness_state": "fresh",
-          "as_of_date": "2026-04-01"
+          "as_of_date": "2026-04-01",
+          "source_quality": "issuer",
+          "allowlist_status": "allowed",
+          "source_use_policy": "full_text_allowed"
         },
         {
           "source_document_id": "src_voo_prospectus_fixture",
@@ -367,7 +382,10 @@
           "content_type": "text",
           "is_official": true,
           "freshness_state": "fresh",
-          "as_of_date": "2026-04-01"
+          "as_of_date": "2026-04-01",
+          "source_quality": "issuer",
+          "allowlist_status": "allowed",
+          "source_use_policy": "full_text_allowed"
         },
         {
           "source_document_id": "src_voo_holdings_fixture",
@@ -382,7 +400,10 @@
           "content_type": "text",
           "is_official": true,
           "freshness_state": "fresh",
-          "as_of_date": "2026-04-01"
+          "as_of_date": "2026-04-01",
+          "source_quality": "issuer",
+          "allowlist_status": "allowed",
+          "source_use_policy": "full_text_allowed"
         },
         {
           "source_document_id": "src_voo_trading_limitation",
@@ -397,7 +418,10 @@
           "content_type": "text",
           "is_official": false,
           "freshness_state": "unavailable",
-          "as_of_date": "2026-04-20"
+          "as_of_date": "2026-04-20",
+          "source_quality": "fixture",
+          "allowlist_status": "allowed",
+          "source_use_policy": "full_text_allowed"
         },
         {
           "source_document_id": "src_voo_recent_review",
@@ -412,7 +436,10 @@
           "content_type": "text",
           "is_official": false,
           "freshness_state": "fresh",
-          "as_of_date": "2026-04-20"
+          "as_of_date": "2026-04-20",
+          "source_quality": "fixture",
+          "allowlist_status": "allowed",
+          "source_use_policy": "summary_allowed"
         }
       ],
       "source_chunks": [
@@ -706,7 +733,10 @@
           "content_type": "text",
           "is_official": true,
           "freshness_state": "fresh",
-          "as_of_date": "2026-04-01"
+          "as_of_date": "2026-04-01",
+          "source_quality": "issuer",
+          "allowlist_status": "allowed",
+          "source_use_policy": "full_text_allowed"
         },
         {
           "source_document_id": "src_qqq_prospectus_fixture",
@@ -721,7 +751,10 @@
           "content_type": "text",
           "is_official": true,
           "freshness_state": "fresh",
-          "as_of_date": "2026-04-01"
+          "as_of_date": "2026-04-01",
+          "source_quality": "issuer",
+          "allowlist_status": "allowed",
+          "source_use_policy": "full_text_allowed"
         },
         {
           "source_document_id": "src_qqq_holdings_fixture",
@@ -736,7 +769,10 @@
           "content_type": "text",
           "is_official": true,
           "freshness_state": "fresh",
-          "as_of_date": "2026-04-01"
+          "as_of_date": "2026-04-01",
+          "source_quality": "issuer",
+          "allowlist_status": "allowed",
+          "source_use_policy": "full_text_allowed"
         },
         {
           "source_document_id": "src_qqq_trading_limitation",
@@ -751,7 +787,10 @@
           "content_type": "text",
           "is_official": false,
           "freshness_state": "unavailable",
-          "as_of_date": "2026-04-20"
+          "as_of_date": "2026-04-20",
+          "source_quality": "fixture",
+          "allowlist_status": "allowed",
+          "source_use_policy": "full_text_allowed"
         },
         {
           "source_document_id": "src_qqq_recent_review",
@@ -766,7 +805,10 @@
           "content_type": "text",
           "is_official": false,
           "freshness_state": "fresh",
-          "as_of_date": "2026-04-20"
+          "as_of_date": "2026-04-20",
+          "source_quality": "fixture",
+          "allowlist_status": "allowed",
+          "source_use_policy": "summary_allowed"
         }
       ],
       "source_chunks": [
