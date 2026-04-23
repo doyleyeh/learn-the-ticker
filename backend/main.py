@@ -65,6 +65,7 @@ from backend.models import (
 from backend.overview import generate_asset_overview
 from backend.retrieval import build_asset_knowledge_pack_result
 from backend.search import search_assets
+from backend.sources import build_asset_source_drawer_response
 from backend.trust_metrics import get_trust_metric_event_catalog, validate_trust_metric_events
 
 
@@ -151,9 +152,16 @@ def asset_details(ticker: str) -> DetailsResponse:
 
 
 @app.get("/api/assets/{ticker}/sources", response_model=SourcesResponse, tags=["assets"])
-def asset_sources(ticker: str) -> SourcesResponse:
-    overview = generate_asset_overview(ticker)
-    return SourcesResponse(asset=overview.asset, state=overview.state, sources=overview.source_documents)
+def asset_sources(
+    ticker: str,
+    citation_id: str | None = None,
+    source_document_id: str | None = None,
+) -> SourcesResponse:
+    return build_asset_source_drawer_response(
+        ticker,
+        citation_id=citation_id,
+        source_document_id=source_document_id,
+    )
 
 
 @app.get("/api/assets/{ticker}/export", response_model=ExportResponse, tags=["exports"])

@@ -1,0 +1,44 @@
+schema_version: source-drawer-evals-v1
+required_models:
+  - SourceDrawerState
+  - SourceDrawerExcerpt
+  - SourceDrawerRelatedClaim
+  - SourceDrawerSectionReference
+  - SourceDrawerCitationBinding
+  - SourceDrawerSourceGroup
+  - SourceDrawerDiagnostics
+  - SourcesResponse
+required_helpers:
+  - build_asset_source_drawer_response
+required_routes:
+  - /api/assets/{ticker}/sources
+supported_cached_assets:
+  - AAPL
+  - VOO
+  - QQQ
+non_generated_cases:
+  - ticker: SPY
+    expected_drawer_state: eligible_not_cached
+  - ticker: TQQQ
+    expected_drawer_state: unsupported
+  - ticker: GME
+    expected_drawer_state: out_of_scope
+  - ticker: ZZZZ
+    expected_drawer_state: unknown
+forbidden_static_markers:
+  - import requests
+  - import httpx
+  - urllib.request
+  - from socket import
+  - OPENROUTER_API_KEY
+  - reasoning_details
+  - unrestricted_source_text
+  - raw_provider_payload
+forbidden_advice_phrases:
+  - should buy
+  - should sell
+  - should hold
+  - price target
+  - target price
+  - exact allocation
+  - use a broker

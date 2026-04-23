@@ -95,6 +95,7 @@ from backend.models import (
     ProviderResponseState,
     ProviderSourceUsage,
     SourceChecksumInput,
+    SourceUsePolicy,
     TrustMetricCatalogResponse,
     TrustMetricEvent,
     TrustMetricSummary,
@@ -109,6 +110,7 @@ from backend.retrieval import (
     load_retrieval_fixture_dataset,
 )
 from backend.safety import find_forbidden_output_phrases
+from backend.sources import build_asset_source_drawer_response
 from backend.testing import TestClient
 from backend.trust_metrics import (
     get_trust_metric_event_catalog,
@@ -1443,6 +1445,82 @@ def test_generated_overview_contract():
         assert forbidden not in overview_source
 
 
+def test_source_drawer_cases():
+    data = load_yaml("source_drawer_eval_cases.yaml")
+    assert data.get("schema_version") == "source-drawer-evals-v1"
+
+    missing_models = {name for name in data["required_models"] if not hasattr(models, name)}
+    assert not missing_models, f"Missing source drawer contract models: {missing_models}"
+    assert "build_asset_source_drawer_response" in data["required_helpers"]
+    assert callable(build_asset_source_drawer_response)
+
+    main_source = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
+    sources_source = (ROOT / "backend" / "sources.py").read_text(encoding="utf-8")
+    assert "build_asset_source_drawer_response" in main_source
+    assert "@app.get(\"/api/assets/{ticker}/sources\"" in main_source
+    for forbidden in data["forbidden_static_markers"]:
+        assert forbidden not in sources_source
+        if forbidden not in {"OPENROUTER_API_KEY"}:
+            assert forbidden not in main_source
+
+    for ticker in data["supported_cached_assets"]:
+        overview = generate_asset_overview(ticker)
+        pack = build_asset_knowledge_pack(ticker)
+        response = build_asset_source_drawer_response(ticker)
+        validated = models.SourcesResponse.model_validate(response.model_dump(mode="json"))
+        citation_ids = {citation.citation_id for citation in overview.citations}
+        source_ids = {source.source_document_id for source in overview.source_documents}
+        pack_source_ids = {source.source_document_id for source in pack.source_documents}
+        binding_citation_ids = {binding.citation_id for binding in validated.citation_bindings}
+        binding_source_ids = {binding.source_document_id for binding in validated.citation_bindings}
+
+        assert validated.schema_version == "asset-source-drawer-v1"
+        assert validated.asset.ticker == ticker
+        assert validated.selected_asset and validated.selected_asset.ticker == ticker
+        assert validated.drawer_state.value == "available"
+        assert validated.sources
+        assert validated.source_groups
+        assert validated.citation_bindings
+        assert validated.related_claims
+        assert validated.section_references
+        assert binding_citation_ids <= citation_ids
+        assert binding_source_ids <= source_ids
+        assert binding_source_ids <= pack_source_ids
+        assert all(binding.asset_ticker == ticker for binding in validated.citation_bindings)
+        assert all(group.title and group.publisher and group.source_type and group.url for group in validated.source_groups)
+        assert all(group.published_at or group.as_of_date for group in validated.source_groups)
+        assert all(group.retrieved_at for group in validated.source_groups)
+        assert all(group.allowlist_status.value == "allowed" for group in validated.source_groups)
+        assert all(
+            group.source_use_policy in {SourceUsePolicy.full_text_allowed, SourceUsePolicy.summary_allowed}
+            for group in validated.source_groups
+        )
+        assert all(group.permitted_operations.can_export_full_text is False for group in validated.source_groups)
+        assert all(group.allowed_excerpts for group in validated.source_groups if group.citation_ids)
+        assert any(reference.evidence_state in {EvidenceState.mixed, EvidenceState.unavailable, EvidenceState.no_major_recent_development, EvidenceState.insufficient_evidence} for reference in validated.section_references)
+        assert any(reference.timely_context for reference in validated.section_references)
+        assert validated.diagnostics.no_live_external_calls is True
+        assert validated.diagnostics.generated_output_created is False
+        serialized = str(validated.model_dump(mode="json")).lower()
+        for phrase in data["forbidden_advice_phrases"]:
+            assert phrase not in serialized
+
+        filtered = build_asset_source_drawer_response(ticker, citation_id=validated.citation_bindings[0].citation_id)
+        assert {binding.citation_id for binding in filtered.citation_bindings} == {validated.citation_bindings[0].citation_id}
+        assert filtered.source_groups
+
+    for case in data["non_generated_cases"]:
+        response = build_asset_source_drawer_response(case["ticker"])
+        assert response.drawer_state.value == case["expected_drawer_state"]
+        assert response.sources == []
+        assert response.source_groups == []
+        assert response.citation_bindings == []
+        assert response.related_claims == []
+        assert response.section_references == []
+        assert response.diagnostics.unavailable_reasons
+        assert response.diagnostics.unsupported_generated_output_suppressed is True
+
+
 def test_generated_comparison_contract():
     pack = build_comparison_knowledge_pack("VOO", "QQQ")
     comparison = generate_comparison("VOO", "QQQ")
@@ -2014,6 +2092,7 @@ if __name__ == "__main__":
     test_cache_cases()
     test_retrieval_fixture_contract()
     test_generated_overview_contract()
+    test_source_drawer_cases()
     test_generated_comparison_contract()
     test_generated_chat_contract()
     test_export_cases()

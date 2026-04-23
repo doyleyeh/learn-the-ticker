@@ -1374,6 +1374,109 @@ class SourceDocument(BaseModel):
     permitted_operations: SourceOperationPermissions = Field(default_factory=lambda: DEFAULT_ALLOWED_SOURCE_OPERATIONS.model_copy())
 
 
+class SourceDrawerState(str, Enum):
+    available = "available"
+    unsupported = "unsupported"
+    out_of_scope = "out_of_scope"
+    unknown = "unknown"
+    eligible_not_cached = "eligible_not_cached"
+    deleted = "deleted"
+    stale = "stale"
+    partial = "partial"
+    unavailable = "unavailable"
+
+
+class SourceDrawerExcerpt(BaseModel):
+    excerpt_id: str
+    source_document_id: str
+    citation_id: str | None = None
+    chunk_id: str | None = None
+    text: str | None = None
+    source_use_policy: SourceUsePolicy
+    allowlist_status: SourceAllowlistStatus
+    freshness_state: FreshnessState
+    excerpt_allowed: bool
+    suppression_reason: str | None = None
+    note: str
+
+
+class SourceDrawerRelatedClaim(BaseModel):
+    claim_id: str
+    claim_text: str
+    claim_type: str
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    section_id: str | None = None
+    section_title: str | None = None
+    section_type: OverviewSectionType | None = None
+    freshness_state: FreshnessState
+    evidence_state: EvidenceState
+    timely_context: bool = False
+
+
+class SourceDrawerSectionReference(BaseModel):
+    section_id: str
+    section_title: str
+    section_type: OverviewSectionType
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    freshness_state: FreshnessState
+    evidence_state: EvidenceState
+    as_of_date: str | None = None
+    retrieved_at: str | None = None
+    timely_context: bool = False
+
+
+class SourceDrawerCitationBinding(BaseModel):
+    citation_id: str
+    source_document_id: str
+    asset_ticker: str
+    source_type: str
+    claim_ids: list[str] = Field(default_factory=list)
+    section_ids: list[str] = Field(default_factory=list)
+    chunk_id: str | None = None
+    freshness_state: FreshnessState
+    source_use_policy: SourceUsePolicy
+    allowlist_status: SourceAllowlistStatus
+    excerpt_id: str | None = None
+    evidence_layer: Literal["canonical_fact", "source_chunk", "timely_context", "unknown"]
+    supports_generated_claim: bool = True
+
+
+class SourceDrawerSourceGroup(BaseModel):
+    group_id: str
+    source_document_id: str
+    source_type: str
+    title: str
+    publisher: str
+    url: str
+    published_at: str | None = None
+    as_of_date: str | None = None
+    retrieved_at: str
+    freshness_state: FreshnessState
+    is_official: bool
+    source_quality: SourceQuality
+    allowlist_status: SourceAllowlistStatus
+    source_use_policy: SourceUsePolicy
+    permitted_operations: SourceOperationPermissions
+    citation_ids: list[str] = Field(default_factory=list)
+    related_claim_ids: list[str] = Field(default_factory=list)
+    section_ids: list[str] = Field(default_factory=list)
+    allowed_excerpts: list[SourceDrawerExcerpt] = Field(default_factory=list)
+    excerpt_suppression_reasons: list[str] = Field(default_factory=list)
+
+
+class SourceDrawerDiagnostics(BaseModel):
+    no_live_external_calls: bool = True
+    generated_output_created: bool = False
+    unsupported_generated_output_suppressed: bool = True
+    wrong_asset_sources_suppressed: bool = True
+    filters_applied: dict[str, str] = Field(default_factory=dict)
+    unavailable_reasons: list[str] = Field(default_factory=list)
+    omitted_source_document_ids: list[str] = Field(default_factory=list)
+    omitted_citation_ids: list[str] = Field(default_factory=list)
+
+
 class MetricValue(BaseModel):
     value: str | float | int | None
     unit: str | None = None
@@ -1646,9 +1749,17 @@ class DetailsResponse(BaseModel):
 
 
 class SourcesResponse(BaseModel):
+    schema_version: str = "asset-source-drawer-v1"
     asset: AssetIdentity
     state: StateMessage
     sources: list[SourceDocument] = Field(default_factory=list)
+    selected_asset: AssetIdentity | None = None
+    drawer_state: SourceDrawerState = SourceDrawerState.unavailable
+    source_groups: list[SourceDrawerSourceGroup] = Field(default_factory=list)
+    citation_bindings: list[SourceDrawerCitationBinding] = Field(default_factory=list)
+    related_claims: list[SourceDrawerRelatedClaim] = Field(default_factory=list)
+    section_references: list[SourceDrawerSectionReference] = Field(default_factory=list)
+    diagnostics: SourceDrawerDiagnostics = Field(default_factory=SourceDrawerDiagnostics)
 
 
 class RecentResponse(BaseModel):
