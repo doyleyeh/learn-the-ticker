@@ -1,4 +1,4 @@
-import { getComparePageFixture } from "./compare";
+import { getComparePageFixture, getComparisonAvailabilityState, isComparisonAvailable } from "./compare";
 import { getAssetFixture, normalizeTicker } from "./fixtures";
 
 export type ComparisonSuggestionState =
@@ -25,6 +25,7 @@ export type ComparisonSuggestionsModel = {
   suggestions: ComparisonSuggestion[];
   requestedLeftTicker?: string;
   requestedRightTicker?: string;
+  requestedAvailabilityState?: string;
 };
 
 const localComparisonPairs = [["VOO", "QQQ"] as const];
@@ -66,8 +67,9 @@ export function getComparePageSuggestions(leftTicker: string, rightTicker: strin
   const requestedLeftTicker = normalizeTicker(leftTicker);
   const requestedRightTicker = normalizeTicker(rightTicker);
   const requestedComparison = getComparePageFixture(requestedLeftTicker, requestedRightTicker);
+  const requestedAvailabilityState = getComparisonAvailabilityState(requestedComparison);
 
-  if (requestedComparison.state.status === "supported") {
+  if (isComparisonAvailable(requestedComparison)) {
     return {
       scope: "compare",
       selectedTicker: `${requestedLeftTicker}-${requestedRightTicker}`,
@@ -77,6 +79,7 @@ export function getComparePageSuggestions(leftTicker: string, rightTicker: strin
         "This requested pair has a local source-backed comparison pack. The suggestion links use the same relative in-app comparison route.",
       requestedLeftTicker,
       requestedRightTicker,
+      requestedAvailabilityState,
       suggestions: [buildSuggestion(requestedLeftTicker, requestedRightTicker)]
     };
   }
@@ -86,9 +89,10 @@ export function getComparePageSuggestions(leftTicker: string, rightTicker: strin
     selectedTicker: `${requestedLeftTicker}-${requestedRightTicker}`,
     state: "unavailable_with_fixture_examples",
     heading: "Available fixture example",
-    body: `The requested ${requestedLeftTicker} and ${requestedRightTicker} comparison has no local source-backed comparison pack. The link below is only an existing local fixture example, not facts about the requested pair.`,
+    body: `The requested ${requestedLeftTicker} and ${requestedRightTicker} comparison is ${formatAvailabilityState(requestedAvailabilityState)} in local deterministic data. The link below is only an existing local fixture example, not facts about the requested pair.`,
     requestedLeftTicker,
     requestedRightTicker,
+    requestedAvailabilityState,
     suggestions: availableFixtureExamples()
   };
 }
@@ -115,13 +119,7 @@ function availableFixtureExamples() {
 
 function isLocalComparisonAvailable(leftTicker: string, rightTicker: string) {
   const comparison = getComparePageFixture(leftTicker, rightTicker);
-  return (
-    comparison.state.status === "supported" &&
-    comparison.keyDifferences.length > 0 &&
-    comparison.bottomLineForBeginners !== null &&
-    comparison.citations.length > 0 &&
-    comparison.sourceDocuments.length > 0
-  );
+  return isComparisonAvailable(comparison);
 }
 
 function buildSuggestion(leftTicker: string, rightTicker: string): ComparisonSuggestion {
@@ -139,4 +137,8 @@ function buildSuggestion(leftTicker: string, rightTicker: string): ComparisonSug
       "Open the local source-backed comparison for benchmark, cost, holdings breadth, and beginner role.",
     accessibleName: `Open educational source-backed comparison for ${normalizedLeft} and ${normalizedRight}; this is not personal advice.`
   };
+}
+
+function formatAvailabilityState(availabilityState: string) {
+  return availabilityState.replace(/_/g, " ");
 }
