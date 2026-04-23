@@ -1421,3 +1421,5 @@ Completion commits:
 ### T-052: Align home search UI with backend support-classification and blocked-state contracts
 
 ### T-053: Replace compare-page fixture-only routing with backend-aligned deterministic comparison adapters
+
+### T-054: Align unsupported and unavailable source-list empty states with backend support-state contracts
