@@ -2,61 +2,71 @@
 
 ## Current task
 
-### T-034: Add Top-500 stock universe manifest contract
+### T-035: Add source allowlist and rights-tiered raw text policy contract
 
 Goal:
-Add a deterministic Top-500 U.S.-listed common stock universe manifest contract so stock support scope is driven by a versioned local manifest instead of live provider queries, without adding live market/reference calls, changing generated asset pages, or treating the manifest as an endorsement, recommendation, portfolio, or ranking surface.
+Add a deterministic source allowlist and rights-tiered raw text policy contract so source ingestion, retrieval metadata, citation resolution, exports, provider fixtures, and future Weekly News Focus work can validate source-use rights before storage, summarization, rendering, caching, or export, without adding live provider/news/market/LLM calls or changing generated learning output.
 
 Task scope:
-This is a backend data-contract, fixture, eval, and test task. Add the versioned manifest at `data/universes/us_common_stocks_top500.current.json`, add deterministic manifest loading/validation helpers, connect existing supported cached and eligible-not-cached stock classification to the manifest contract where appropriate, and extend tests/evals so future changes cannot silently replace the manifest with live provider scope.
+This is a backend policy-contract, config, fixture-metadata, eval, and test task. Add a versioned local source allowlist at `config/source_allowlist.yaml`, add typed source-use policy models and pure validation helpers, and thread the policy into existing deterministic source metadata surfaces only where needed to prove the contract. Existing local fixture sources should receive explicit policy metadata; official SEC/issuer/local fixtures should remain allowed under the rights tier that fits them, restricted market/reference provider fixtures should remain permission-limited, and rejected/unrecognized sources must be blocked from generated output and export. Keep the task narrow: this is not the full Weekly News Focus implementation and should not add live fetchers or new source facts.
 
 Allowed files:
 
 - `TASKS.md`
-- `data/universes/**`
-- `backend/data.py`
-- `backend/search.py`
-- `backend/ingestion.py`
-- `backend/providers.py`
+- `config/source_allowlist.yaml`
+- `data/retrieval_fixtures.json`
 - `backend/models.py`
-- `evals/golden_assets.yaml`
-- `evals/search_eval_cases.yaml`
-- `evals/ingestion_eval_cases.yaml`
+- `backend/source_policy.py`
+- `backend/retrieval.py`
+- `backend/providers.py`
+- `backend/citations.py`
+- `backend/overview.py`
+- `backend/comparison.py`
+- `backend/chat.py`
+- `backend/export.py`
+- `backend/cache.py`
+- `evals/source_policy_eval_cases.yaml`
 - `evals/provider_eval_cases.yaml`
 - `evals/run_static_evals.py`
-- `tests/unit/test_search_classification.py`
-- `tests/unit/test_ingestion_jobs.py`
+- `tests/unit/test_source_policy.py`
+- `tests/unit/test_retrieval_fixtures.py`
+- `tests/unit/test_citation_validation.py`
+- `tests/unit/test_exports.py`
 - `tests/unit/test_provider_adapters.py`
 - `tests/integration/test_backend_api.py`
-- `tests/unit/test_repo_contract.py`
 
 Do not change:
 
-- Do not add live provider, market-data, news, or LLM calls.
+- Do not add live provider, market-data, news, SEC, issuer-site, RSS, or LLM calls.
 - Do not add real provider keys, copied local secret values, or new `NEXT_PUBLIC_*` secrets.
-- Do not add generated pages, generated chat answers, generated comparisons, or generated risk summaries for assets that do not already have local generated packs.
-- Do not treat manifest rank or membership as investment merit, recommendation, portfolio inclusion, or personalized suitability.
+- Do not add new source facts, generated pages, generated chat answers, generated comparisons, Weekly News Focus items, AI Comprehensive Analysis, or generated risk summaries.
+- Do not use rejected, non-allowlisted, metadata-only, link-only, or license-disallowed sources as support for generated factual claims.
+- Do not store, render, summarize, cache, or export raw full article text for `summary_allowed`, `metadata_only`, `link_only`, or `rejected` sources.
 - Do not expand MVP scope beyond U.S.-listed common stocks and supported non-leveraged equity ETFs.
-- Do not change frontend UI unless a path-sensitive test fixture requires a minimal marker update.
+- Do not change frontend UI.
 - Do not move the Python backend or frontend workspace.
+- Do not change the Top-500 manifest contract except through source-policy metadata that is directly required by this task.
 
 Acceptance criteria:
 
-- `data/universes/us_common_stocks_top500.current.json` exists and validates as the runtime source of truth for top-500-first stock scope.
-- Each manifest entry includes ticker, name, asset type or security type, CIK when available, exchange, rank, rank basis, source/provider provenance, snapshot date, generated checksum or manifest checksum input, and approval timestamp.
-- The manifest is explicitly documented or encoded as operational coverage metadata only, not an endorsement, recommendation, portfolio, or buy/sell signal.
-- Existing cached generated stock fixtures such as `AAPL` remain supported because they are present in the manifest and have local generated packs.
-- Eligible-not-cached launch stocks such as `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `META`, `TSLA`, `BRK.B`, `JPM`, and `UNH` are manifest-backed eligible assets, but still receive no generated page, chat answer, comparison, source evidence, citations, or risk summary until a local pack exists.
-- A recognizable U.S. common stock outside the manifest returns `out_of_scope` or an equivalent non-generated state rather than `eligible_not_cached`, unless it is explicitly added to the approved on-demand ingestion queue.
-- Unknown symbols still return `unknown` / `unavailable` without invented facts.
-- Unsupported assets such as crypto, leveraged ETFs, inverse ETFs, and non-MVP products remain blocked from generated outputs.
-- Static evals verify the manifest path, required fields, supported cached and eligible-not-cached stock membership, non-generation boundaries, no live provider imports, and no advice-like manifest language.
-- Tests verify search/support classification, ingestion routing, provider mock state, and backend API serialization against the manifest contract.
+- `config/source_allowlist.yaml` exists and validates deterministically as the local source-use policy registry for fixture and mock-provider sources.
+- The allowlist schema includes schema version, policy version or generated timestamp, source records, domain or controlled local-fixture identifier, source type, source quality, allowlist status, source-use policy, permitted storage/display/summary/cache/export operations, allowed excerpt behavior, rationale, and review/approval metadata.
+- Source-use policy values cover exactly the PRD/TDS-required tiers: `metadata_only`, `link_only`, `summary_allowed`, `full_text_allowed`, and `rejected`.
+- Policy helpers can load the allowlist, validate records, resolve a source by URL/domain or controlled fixture identifier, and return explicit `allowed`, `rejected`, `pending_review`, or `not_allowlisted` decisions without network calls.
+- Official SEC, official ETF issuer, and existing deterministic local fixture sources are allowlisted with a rights tier that permits the current local citation/export behavior; full raw text is permitted only for official/issuer or `full_text_allowed` records.
+- Restricted market/reference provider fixtures remain display/cache-limited and not exportable as full provider payloads; their source-use policy and licensing metadata agree.
+- Recent-development/news-style fixture sources are treated as recent context only and cannot overwrite canonical facts.
+- Unrecognized domains and `rejected` records are rejected before they can feed generated output, rendered summaries, caches, exports, citation evidence, or Weekly News Focus items.
+- `summary_allowed` sources may expose only metadata, checksums/links, and allowed excerpts; `metadata_only` and `link_only` sources expose only permitted metadata/link fields and never supporting passages or raw article text.
+- Source metadata returned through overview, comparison, chat, source-list, citation-validation, knowledge-pack, provider, cache, and export contracts carries source-use policy and allowlist status where those contracts expose source metadata.
+- Export source metadata and citation/source helpers never expose unrestricted provider payloads, hidden prompts, secrets, raw model reasoning, private raw source text, or full restricted article text.
+- Static evals verify allowlist path/schema, required policy tiers, required official and fixture records, rejected/unrecognized source blocking, rights-tier operation flags, no live-call imports, provider licensing consistency, and no advice-like policy language.
+- Tests verify source-policy loading/validation, provider fixture policy metadata, retrieval fixture policy metadata, citation evidence rejection for disallowed sources, export allowed-excerpt behavior, and backend API serialization of source-use fields where source metadata is returned.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_ingestion_jobs.py tests/unit/test_provider_adapters.py -q
+python3 -m pytest tests/unit/test_source_policy.py tests/unit/test_retrieval_fixtures.py tests/unit/test_citation_validation.py tests/unit/test_exports.py tests/unit/test_provider_adapters.py -q
 python3 -m pytest tests/integration/test_backend_api.py -q
 python3 -m pytest tests -q
 python3 evals/run_static_evals.py
@@ -67,8 +77,6 @@ Iteration budget:
 Max 3 attempts.
 
 ## Backlog
-
-### T-035: Add source allowlist and rights-tiered raw text policy contract
 
 ### T-036: Add Weekly News Focus and AI Comprehensive Analysis contracts
 
@@ -87,6 +95,33 @@ Max 3 attempts.
 ### T-043: Add section-level freshness validation contract
 
 ## Completed
+
+### T-034: Add Top-500 stock universe manifest contract
+
+Goal:
+Add a deterministic Top-500 U.S.-listed common stock universe manifest contract so stock support scope is driven by a versioned local manifest instead of live provider queries, without adding live market/reference calls, changing generated asset pages, or treating the manifest as an endorsement, recommendation, portfolio, or ranking surface.
+
+Completed:
+
+- Added `data/universes/us_common_stocks_top500.current.json` with schema version `top500-us-common-stock-universe-v1`, runtime path metadata, production mirror env-var metadata, monthly refresh cadence, snapshot/provenance/checksum fields, non-advice policy language, and deterministic launch stock entries for `AAPL`, `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `META`, `TSLA`, `BRK.B`, `JPM`, and `UNH`.
+- Added Top-500 manifest models in `backend/models.py`, including entry and manifest fields for ticker, name, stock/security type, CIK, exchange, rank, rank basis, source provenance, snapshot date, checksum input/checksum, approval timestamp, launch group, and aliases.
+- Added deterministic manifest loading and validation helpers in `backend/data.py`, including runtime path validation, `TOP500_UNIVERSE_MANIFEST_URI` metadata validation, stock-only/security-type checks, rank and ticker uniqueness checks, checksum-field checks, snapshot-date consistency, no-advice-language checks, and lookup helpers.
+- Rebuilt eligible-not-cached stock metadata from the manifest so cached `AAPL` remains generated from its local pack while `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `META`, `TSLA`, `BRK.B`, `JPM`, and `UNH` become manifest-backed eligible-not-cached stocks.
+- Added `OUT_OF_SCOPE_COMMON_STOCKS` handling for a recognized common stock outside the manifest, including `GME`, so search, ingestion, pre-cache, and provider fixtures return out-of-scope non-generated states rather than treating it as eligible-not-cached.
+- Updated `backend/search.py`, `backend/ingestion.py`, and `backend/providers.py` so manifest-backed eligible-not-cached stocks expose ingestion/pre-cache/provider fixture states without generated pages, chat answers, comparisons, citations, source documents, or risk summaries.
+- Extended `evals/search_eval_cases.yaml`, `evals/ingestion_eval_cases.yaml`, `evals/provider_eval_cases.yaml`, and `evals/run_static_evals.py` to verify the manifest path/schema/fields, required stock membership, cached versus eligible-not-cached boundaries, out-of-scope stock behavior, no generated output for non-cached stocks, no live provider imports, and no advice-like manifest language.
+- Extended `tests/unit/test_search_classification.py`, `tests/unit/test_ingestion_jobs.py`, `tests/unit/test_provider_adapters.py`, and `tests/integration/test_backend_api.py` for manifest-backed classification, ingestion/pre-cache routing, provider mock states, API serialization, and out-of-scope common-stock behavior.
+- Added `docs/agent-journal/20260423T061610Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- T-034 agent journal records that focused search/ingestion/provider pytest passed with 28 tests, backend API pytest passed with 27 tests, full Python pytest passed with 143 tests, static evals passed, and the full quality gate passed including Python tests, static evals, frontend smoke checks, TypeScript typecheck, production build, and backend checks.
+- Merged local branch: `agent/T-034-20260423T061610Z`.
+- Remaining documented risk: the manifest is a deterministic contract fixture for the current launch stock set, not a live refreshed 500-entry universe.
+- Remaining documented risk: manifest rank is operational coverage metadata only; future refreshes must preserve the non-advice framing and checksum/provenance fields.
+- Remaining documented risk: no generated pages, source evidence, citations, chat answers, comparisons, or risk summaries were added for manifest-backed eligible-not-cached stocks.
+
+Completion commits:
+
+- `cb1bda5 feat(T-034): add Top-500 stock universe manifest contract`
+- `73c0153 chore(T-034): merge Top-500 stock universe manifest contract`
 
 ### T-033: Rebase agent instructions and local environment to updated PRD/TDS
 
