@@ -2,48 +2,48 @@
 
 ## Current task
 
-### T-051: Render Weekly News Focus and AI Comprehensive Analysis on supported asset pages
+### T-052: Align home search UI with backend support-classification and blocked-state contracts
 
 Goal:
-Render Weekly News Focus and AI Comprehensive Analysis for supported assets using the existing deterministic contract shape on asset pages, while keeping both modules visually and semantically separate from stable canonical facts and preserving unknown/stale/partial evidence handling.
+Align the home search UX with existing backend support-classification contract states so supported, ambiguous, eligible-not-cached, recognized-unsupported, out-of-scope, and unknown search outcomes render deterministically and clearly, while preserving blocked-copy messaging, no-generated-page behavior, and educational framing.
 
 Task-scope paragraph:
-Keep this task narrow to the existing supported-asset page pipeline and contract-consumption path. Update frontend rendering and UI checks only so Weekly News Focus and AI Comprehensive Analysis consume deterministic backend-facing contract fields already produced by the current fixtures/contracts, with no backend contract, source policy, or live-provider changes.
+Keep this task narrowly focused on deterministic, fixture-backed home search rendering (`apps/web/app/page.tsx` and `apps/web/components/SearchBox.tsx`) plus local search contract adapters used by the home flow. Update UI state labels and routing gates only; do not add new asset coverage, backend contract/schema changes, source-allowlist edits, provider integrations, or advice-like copy.
 
 Allowed files:
 
-- `apps/web/app/assets/[ticker]/page.tsx`
-- `apps/web/components/AIComprehensiveAnalysisPanel.tsx`
-- `apps/web/components/WeeklyNewsPanel.tsx`
-- `apps/web/components/FreshnessLabel.tsx`
-- `apps/web/components/SourceDrawer.tsx`
-- `apps/web/lib/fixtures.ts`
-- `apps/web/lib/overview.ts`
-- `apps/web/lib/weeklyNews.ts`
+- `apps/web/app/page.tsx`
+- `apps/web/components/SearchBox.tsx`
+- `apps/web/lib/search.ts`
+- `apps/web/lib/viewAdapters.ts`
 - `tests/frontend/smoke.mjs`
+- `tests/unit/test_search_classification.py`
+- `tests/integration/test_backend_api.py`
 
 Do not change:
 
-- backend contracts, schemas, persistence, providers, or ingestion behavior
-- source-use policy definitions and source allowlist updates
-- advice-like/financial-advice framing (buy/sell/hold/allocation/price targets/tax)
-- unsupported or out-of-scope asset flow, chat flow, comparison logic, or search semantics
-- live external calls, provider keys, or non-deterministic CI behavior
+- source-use policy, source allowlist, or citation source-storage behavior
+- live external calls, provider adapters, ingestion jobs, or deterministic offline testing model
+- unsupported and out-of-scope asset handling beyond existing blocked-state messaging
+- advice-like output language (buy/sell/hold/allocation/price targets/tax)
+- comparison or chat contracts
 
 Acceptance criteria:
 
-- Supported asset pages render Weekly News Focus using contract fields already present in deterministic fixtures/contracts, with event order and metadata consistent with existing contract behavior.
-- AI Comprehensive Analysis renders with the required ordered sections when sufficient high-signal timely-evidence exists and is clearly separated from stable facts.
-- Source metadata, freshness state labels (`fresh`, `stale`, `unknown`, `unavailable`, `partial`, `insufficient_evidence`), and uncertainty states are contract-consistent for both Weekly News Focus and AI Comprehensive Analysis sections.
-- Unsupported, unsupported-recognized, unsupported out-of-scope, unknown, pending, and empty states do not introduce unsupported claims or new advice-like copy.
-- Mobile and desktop renders preserve citation visibility, source drawer access, and freshness visibility.
-- Required frontend smoke and quality checks pass in deterministic mode with no external calls.
+- Search result cards render state buckets that match backend contract semantics for supported, eligible-not-cached, recognized-unsupported, out-of-scope, unknown, and ambiguous cases.
+- Ambiguous matches keep disambiguation behavior and do not auto-route to a generated page.
+- `eligible_not_cached` and unsupported/out-of-scope states keep generation blocked and display explicit, educational blocked-state messaging.
+- `cached_supported` results continue to route to supported generated pages only when `can_open_generated_page` is true in contract data.
+- Search examples on the home page remain consistent with supported/blockedscope UX and do not promise unsupported capabilities.
+- No new live-provider code, API fetch changes, or source-use policy modifications are introduced.
+- Beginner copy and mobile/desktop search usability remain intact, with no recommendation-style phrasing.
 
 Required commands:
 
 - `npm test`
 - `npm run typecheck`
 - `npm run build`
+- `python3 -m pytest tests/unit/test_search_classification.py tests/integration/test_backend_api.py -q`
 - `python3 evals/run_static_evals.py`
 - `bash scripts/run_quality_gate.sh`
 
@@ -52,6 +52,37 @@ Iteration budget:
 - Max 2 attempts
 
 ## Completed
+
+### T-051: Render Weekly News Focus and AI Comprehensive Analysis on supported asset pages
+
+Goal:
+Render Weekly News Focus and AI Comprehensive Analysis for supported assets using the existing deterministic contract shape on asset pages, while keeping both modules visually and semantically separate from stable canonical facts and preserving unknown/stale/partial evidence handling.
+
+Completed:
+
+- Updated `apps/web/app/assets/[ticker]/page.tsx`, `apps/web/components/WeeklyNewsPanel.tsx`, and `apps/web/components/AIComprehensiveAnalysisPanel.tsx` to render deterministic timely-context contract fields for supported assets only.
+- Kept timely context separation from stable facts in the page flow and preserved no-advice educational framing and uncertainty labels in fallback states.
+- Left backend contracts, provider wiring, and live data paths unchanged; implementation remained deterministic and fixture-backed.
+- Task completed after one focused iteration following an initial typecheck pass.
+
+Verification:
+
+- `npm test` — pass
+- `npm run typecheck` — fail then pass after focused typefix
+- `npm run build` — pass
+- `python3 evals/run_static_evals.py` — pass
+- `bash scripts/run_quality_gate.sh` — pass
+
+Remaining risks:
+
+- `SourceDrawer` state mapping still treats unrecognized freshness states as `unknown`.
+- AI Comprehensive Analysis renders only when `analysisAvailable` and section data exist; suppressed/empty states are textual by design.
+
+Completion commits:
+
+- `07f3729` chore(T-051): prepare render Weekly News Focus and AI Comprehensive Analysis on supported asset pages
+- `328d08c` feat(T-051): render Weekly News Focus and AI Comprehensive Analysis on supported asset pages
+- `81993ca` chore(T-051): merge render Weekly News Focus and AI Comprehensive Analysis on supported asset pages
 
 ### T-050: Align asset-page source drawer and freshness labels with backend contracts
 
@@ -1445,10 +1476,6 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-051: Render Weekly News Focus and AI Comprehensive Analysis on supported asset pages
-
-### T-052: Align home search UI with backend support-classification and blocked-state contracts
 
 ### T-053: Replace compare-page fixture-only routing with backend-aligned deterministic comparison adapters
 
