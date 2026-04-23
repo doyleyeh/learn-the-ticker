@@ -1,23 +1,124 @@
-import type { CitationContext, SourceDocument } from "../lib/fixtures";
+import type { CitationContext, SourceDrawerSourceDocument } from "../lib/fixtures";
+
+type SourceDrawerState =
+  | "available"
+  | "unsupported"
+  | "out_of_scope"
+  | "unknown"
+  | "eligible_not_cached"
+  | "deleted"
+  | "stale"
+  | "partial"
+  | "unavailable"
+  | "insufficient_evidence";
 
 type SourceDrawerProps = {
-  source: SourceDocument;
+  source: SourceDrawerSourceDocument;
   claim: string;
   contexts?: CitationContext[];
+  drawerState?: SourceDrawerState;
 };
 
-export function SourceDrawer({ source, claim, contexts = [] }: SourceDrawerProps) {
-  const publishedOrAsOf = source.publishedAt ?? source.asOfDate ?? "Unknown";
+const HIDE_DETAILS_FOR_STATES = new Set<SourceDrawerState>([
+  "unsupported",
+  "out_of_scope",
+  "unknown",
+  "eligible_not_cached",
+  "deleted",
+  "unavailable",
+  "partial",
+  "insufficient_evidence"
+]);
+const FRESHNESS_DETAILS_BY_STATE: Record<
+  SourceDrawerState,
+  { label: string; canExposeSupportingPassage: boolean; canExposeSourceFields: boolean; allowlistStatusLabel: string }
+> = {
+  available: {
+    label: "Source available in local evidence pack",
+    canExposeSupportingPassage: true,
+    canExposeSourceFields: true,
+    allowlistStatusLabel: "Use metadata and supported excerpts only."
+  },
+  stale: {
+    label: "Source freshness is stale",
+    canExposeSupportingPassage: true,
+    canExposeSourceFields: true,
+    allowlistStatusLabel: "Use this source with a stale label."
+  },
+  unsupported: {
+    label: "Source is unavailable for this asset state",
+    canExposeSupportingPassage: false,
+    canExposeSourceFields: false,
+    allowlistStatusLabel: "Source metadata is suppressed in unsupported flows."
+  },
+  out_of_scope: {
+    label: "Source suppressed for out-of-scope contract",
+    canExposeSupportingPassage: false,
+    canExposeSourceFields: false,
+    allowlistStatusLabel: "Source metadata is suppressed for scope safety."
+  },
+  unknown: {
+    label: "Source state is unknown",
+    canExposeSupportingPassage: false,
+    canExposeSourceFields: false,
+    allowlistStatusLabel: "Source metadata is suppressed until a source state is available."
+  },
+  eligible_not_cached: {
+    label: "Source not cached yet for eligible asset",
+    canExposeSupportingPassage: false,
+    canExposeSourceFields: false,
+    allowlistStatusLabel: "Source metadata is suppressed until cached sources are available."
+  },
+  deleted: {
+    label: "Source removed from this local state",
+    canExposeSupportingPassage: false,
+    canExposeSourceFields: false,
+    allowlistStatusLabel: "Source metadata is no longer available."
+  },
+  partial: {
+    label: "Source is partially available",
+    canExposeSupportingPassage: false,
+    canExposeSourceFields: false,
+    allowlistStatusLabel: "Source fields are limited while evidence remains partial."
+  },
+  unavailable: {
+    label: "Source is unavailable",
+    canExposeSupportingPassage: false,
+    canExposeSourceFields: false,
+    allowlistStatusLabel: "Source metadata is suppressed while unavailable."
+  },
+  insufficient_evidence: {
+    label: "Source has insufficient local evidence",
+    canExposeSupportingPassage: false,
+    canExposeSourceFields: false,
+    allowlistStatusLabel: "Source metadata is limited due insufficient evidence."
+  }
+};
+
+export function SourceDrawer({
+  source,
+  claim,
+  contexts = [],
+  drawerState = "available"
+}: SourceDrawerProps) {
+  const publishedOrAsOf = source.published_at ?? source.as_of_date ?? "Unknown";
   const supportingPassages = contexts.length
     ? [...new Set(contexts.map((context) => context.supportingPassage))]
     : [source.supportingPassage];
+  const stateInfo = FRESHNESS_DETAILS_BY_STATE[drawerState];
+  const canExposeSourceFields = stateInfo.canExposeSourceFields;
+  const canExposeSupportingPassage = stateInfo.canExposeSupportingPassage;
+  const isUnavailableFreshness = HIDE_DETAILS_FOR_STATES.has(drawerState);
 
   return (
     <details
       className="source-drawer"
-      id={`source-${source.sourceDocumentId}`}
-      data-source-document-id={source.sourceDocumentId}
-      data-source-freshness-state={source.freshnessState}
+      id={`source-${source.source_document_id}`}
+      data-source-document-id={source.source_document_id}
+      data-source-freshness-state={source.freshness_state}
+      data-source-drawer-state={drawerState}
+      data-source-use-policy={source.source_use_policy}
+      data-source-allowlist-status={source.allowlist_status}
       open
     >
       <summary>Source drawer</summary>
@@ -26,10 +127,11 @@ export function SourceDrawer({ source, claim, contexts = [] }: SourceDrawerProps
           <h2>{source.title}</h2>
           {source.isOfficial ? <span className="source-badge">Official source</span> : null}
         </div>
+        <p className="source-gap-note">{stateInfo.label}</p>
         <dl className="source-meta">
           <div>
             <dt>Source document ID</dt>
-            <dd>{source.sourceDocumentId}</dd>
+            <dd>{source.source_document_id}</dd>
           </div>
           <div>
             <dt>Title</dt>
@@ -37,7 +139,7 @@ export function SourceDrawer({ source, claim, contexts = [] }: SourceDrawerProps
           </div>
           <div>
             <dt>Type</dt>
-            <dd>{source.sourceType}</dd>
+            <dd>{source.source_type}</dd>
           </div>
           <div>
             <dt>Publisher</dt>
@@ -53,18 +155,45 @@ export function SourceDrawer({ source, claim, contexts = [] }: SourceDrawerProps
           </div>
           <div>
             <dt>Retrieved</dt>
-            <dd>{source.retrievedAt}</dd>
+            <dd>{source.retrieved_at}</dd>
           </div>
           <div>
             <dt>Freshness</dt>
-            <dd>{source.freshnessState}</dd>
+            <dd>{source.freshness_state}</dd>
           </div>
-          <div>
-            <dt>Official source</dt>
-            <dd>{source.isOfficial ? "Yes" : "No"}</dd>
-          </div>
+          {canExposeSourceFields ? (
+            <>
+              <div>
+                <dt>Source quality</dt>
+                <dd>{source.source_quality}</dd>
+              </div>
+              <div>
+                <dt>Allowlist status</dt>
+                <dd>{source.allowlist_status}</dd>
+              </div>
+              <div>
+                <dt>Source-use policy</dt>
+                <dd>{source.source_use_policy}</dd>
+              </div>
+              <div>
+                <dt>Full-text export allowed</dt>
+                <dd>{String(source.permitted_operations?.can_export_full_text)}</dd>
+              </div>
+            </>
+          ) : (
+            <div>
+              <dt>Source metadata</dt>
+              <dd>{stateInfo.allowlistStatusLabel}</dd>
+            </div>
+          )}
         </dl>
-
+        <div>
+          <h3>Source state</h3>
+          <p>{source.freshness_state}</p>
+        </div>
+        {isUnavailableFreshness ? (
+          <p className="source-gap-note">{stateInfo.allowlistStatusLabel}</p>
+        ) : null}
         <div>
           <h3>Related claim context</h3>
           {contexts.length ? (
@@ -82,9 +211,17 @@ export function SourceDrawer({ source, claim, contexts = [] }: SourceDrawerProps
 
         <div>
           <h3>Supporting passage</h3>
-          {supportingPassages.map((passage) => (
-            <blockquote key={passage}>{passage}</blockquote>
-          ))}
+          {canExposeSupportingPassage && !contexts.length ? (
+            supportingPassages.map((passage) => <blockquote key={passage}>{passage}</blockquote>)
+          ) : null}
+          {canExposeSupportingPassage && contexts.length ? (
+            <p className="source-gap-note">
+              Supporting passages are bound to related claims and hidden to avoid duplicate display.
+            </p>
+          ) : null}
+          {!canExposeSupportingPassage ? (
+            <p className="source-gap-note">{stateInfo.allowlistStatusLabel}</p>
+          ) : null}
         </div>
         <a href={source.url}>Open source URL</a>
       </div>

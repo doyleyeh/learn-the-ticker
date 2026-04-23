@@ -7,11 +7,20 @@ type FreshnessLabelProps = {
 };
 
 export function FreshnessLabel({ label, value, state }: FreshnessLabelProps) {
+  const freshnessLabel = {
+    fresh: "Current evidence",
+    stale: "Stale evidence",
+    unknown: "Unknown",
+    unavailable: "Unavailable",
+    partial: "Partially available",
+    insufficient_evidence: "Insufficient evidence"
+  }[state];
+
   return (
     <span className={`freshness-label freshness-${state}`} data-freshness-state={state}>
       <span>{label}</span>
       <strong>{value ?? "Unknown"}</strong>
-      <em>{state}</em>
+      <em>{freshnessLabel ?? state}</em>
     </span>
   );
 }
