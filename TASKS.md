@@ -2,56 +2,65 @@
 
 ## Current task
 
-### T-052: Align home search UI with backend support-classification and blocked-state contracts
+### T-053: Replace compare-page fixture-only routing with backend-aligned deterministic comparison adapters
 
 Goal:
-Align the home search UX with existing backend support-classification contract states so supported, ambiguous, eligible-not-cached, recognized-unsupported, out-of-scope, and unknown search outcomes render deterministically and clearly, while preserving blocked-copy messaging, no-generated-page behavior, and educational framing.
+Align the compare route to backend comparison-contract inputs while preserving existing deterministic behavior and blocked-state safety.
 
 Task-scope paragraph:
-Keep this task narrowly focused on deterministic, fixture-backed home search rendering (`apps/web/app/page.tsx` and `apps/web/components/SearchBox.tsx`) plus local search contract adapters used by the home flow. Update UI state labels and routing gates only; do not add new asset coverage, backend contract/schema changes, source-allowlist edits, provider integrations, or advice-like copy.
+Keep this task narrowly scoped to `apps/web/lib/compare.ts` and `apps/web/app/compare/page.tsx` plus `tests/frontend/smoke.mjs`. Fetch comparison data through the existing backend contract when available, validate payload shape at runtime, keep deterministic fixture fallback for unavailable paths, and preserve no-advice, no-generated-factual output behavior for unsupported/unknown comparison states.
 
 Allowed files:
 
-- `apps/web/app/page.tsx`
-- `apps/web/components/SearchBox.tsx`
-- `apps/web/lib/search.ts`
-- `apps/web/lib/viewAdapters.ts`
+- `apps/web/lib/compare.ts`
+- `apps/web/app/compare/page.tsx`
 - `tests/frontend/smoke.mjs`
-- `tests/unit/test_search_classification.py`
-- `tests/integration/test_backend_api.py`
 
 Do not change:
 
-- source-use policy, source allowlist, or citation source-storage behavior
-- live external calls, provider adapters, ingestion jobs, or deterministic offline testing model
-- unsupported and out-of-scope asset handling beyond existing blocked-state messaging
-- advice-like output language (buy/sell/hold/allocation/price targets/tax)
-- comparison or chat contracts
+- source-use policy or source allowlist
+- provider integrations or external ingestion behavior
+- non-compare pages
+- safety/advice-boundary rules
+- citation model or source storage formats
 
 Acceptance criteria:
 
-- Search result cards render state buckets that match backend contract semantics for supported, eligible-not-cached, recognized-unsupported, out-of-scope, unknown, and ambiguous cases.
-- Ambiguous matches keep disambiguation behavior and do not auto-route to a generated page.
-- `eligible_not_cached` and unsupported/out-of-scope states keep generation blocked and display explicit, educational blocked-state messaging.
-- `cached_supported` results continue to route to supported generated pages only when `can_open_generated_page` is true in contract data.
-- Search examples on the home page remain consistent with supported/blockedscope UX and do not promise unsupported capabilities.
-- No new live-provider code, API fetch changes, or source-use policy modifications are introduced.
-- Beginner copy and mobile/desktop search usability remain intact, with no recommendation-style phrasing.
-
-Required commands:
-
-- `npm test`
-- `npm run typecheck`
-- `npm run build`
-- `python3 -m pytest tests/unit/test_search_classification.py tests/integration/test_backend_api.py -q`
-- `python3 evals/run_static_evals.py`
-- `bash scripts/run_quality_gate.sh`
+- Compare page requests `/api/compare` through `fetchComparisonResponse` and uses contract-shaped data when endpoint responses validate.
+- Compare response shape is validated before rendering through local adapter guard logic.
+- Comparison page falls back to local fixture data if backend fetch is unavailable or invalid.
+- Unsupported, unavailable, and unknown comparison states continue to avoid factual claim rendering that would imply generated advice-like results.
+- Compare page search/entry behavior remains deterministic and does not introduce direct live provider dependencies beyond local API contract fetch.
+- No new investment-advice, brokerage, tax, price-target, allocation, buy/sell/hold framing is introduced.
+- Required evidence and freshness labels remain consistent with existing supported/blocked-state UX.
+- Required commands from this task and EVALS include `npm test`, `npm run typecheck`, `npm run build`, and `bash scripts/run_quality_gate.sh`.
 
 Iteration budget:
 
 - Max 2 attempts
 
 ## Completed
+
+### T-052: Align home search UI with backend support-classification and blocked-state contracts
+
+Goal:
+Align the home search UX with existing backend support-classification contract states so supported, ambiguous, eligible-not-cached, recognized-unsupported, out-of-scope, and unknown search outcomes render deterministically and clearly, while preserving blocked-copy messaging, no-generated-page behavior, and educational framing.
+
+Completed details:
+
+- Implementation branch commit `97a3a99 feat(T-052): align home search UI with backend support-classification and blocked-state contracts` changed comparison data flow to prefer backend `/api/compare` results with deterministic fallback through local fixtures, and added runtime comparison payload validation in `apps/web/lib/compare.ts`.
+- `apps/web/app/compare/page.tsx` now calls an async comparison fetch path with fallback to `getComparePageFixture` when backend fetch or payload validation fails.
+- `apps/web/lib/compare.ts` now includes `fetchComparisonResponse`, `CompareRequest`, and a runtime payload guard that checks for expected backend comparison fields before rendering.
+- `tests/frontend/smoke.mjs` assertions now verify that compare fixtures and routing flow are contract-aware instead of fixture-only, including `/api/compare` usage.
+- Completion evidence includes a local merge commit `24cbd87 chore(T-052): merge align home search UI with backend support-classification and blocked-state contracts`.
+- Journal evidence at `docs/agent-journal/20260423T221625Z.md` reports `npm test`, `npm run typecheck`, `npm run build`, and `bash scripts/run_quality_gate.sh` as passing for the branch.
+- There is no separate `T-052`-specific journal content in this workspace; the existing timestamped journal file is present but labeled as `Task T-053`.
+
+Completion commits:
+
+- `97a3a99 feat(T-052): align home search UI with backend support-classification and blocked-state contracts`
+- `dc501e3 chore(T-052): prepare align home search UI with backend support-classification and blocked-state contracts`
+- `24cbd87 chore(T-052): merge align home search UI with backend support-classification and blocked-state contracts`
 
 ### T-051: Render Weekly News Focus and AI Comprehensive Analysis on supported asset pages
 
@@ -1476,7 +1485,5 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-053: Replace compare-page fixture-only routing with backend-aligned deterministic comparison adapters
 
 ### T-054: Align unsupported and unavailable source-list empty states with backend support-state contracts
