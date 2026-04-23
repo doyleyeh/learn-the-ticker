@@ -354,6 +354,13 @@ def test_details_sources_and_recent_routes_exist():
     assert sources.json()["sources"][0]["publisher"] == "U.S. SEC"
     assert sources.json()["sources"][0]["allowlist_status"] == "allowed"
     assert sources.json()["sources"][0]["source_use_policy"] == "full_text_allowed"
+    assert sources.json()["schema_version"] == "asset-source-drawer-v1"
+    assert sources.json()["drawer_state"] == "available"
+    assert sources.json()["source_groups"][0]["source_document_id"] == "src_aapl_10k_fixture"
+    assert sources.json()["source_groups"][0]["allowed_excerpts"][0]["text"]
+    assert sources.json()["citation_bindings"][0]["citation_id"]
+    assert sources.json()["related_claims"][0]["citation_ids"]
+    assert sources.json()["section_references"][0]["freshness_state"]
     assert recent.json()["recent_developments"][0]["freshness_state"] == "fresh"
     assert weekly.json()["weekly_news_focus"]["state"] == "no_high_signal"
     assert weekly.json()["ai_comprehensive_analysis"]["state"] == "suppressed"
