@@ -33,6 +33,10 @@ cases:
     expected_support_classifications: [recognized_unsupported]
     expected_can_open_generated_page: false
     expected_can_request_ingestion: false
+    expected_blocked_explanation:
+      status: unsupported
+      support_classification: recognized_unsupported
+      explanation_category: crypto_assets
 
   - id: search_unsupported_leveraged_etf
     query: TQQQ
@@ -41,6 +45,10 @@ cases:
     expected_support_classifications: [recognized_unsupported]
     expected_can_open_generated_page: false
     expected_can_request_ingestion: false
+    expected_blocked_explanation:
+      status: unsupported
+      support_classification: recognized_unsupported
+      explanation_category: leveraged_etf
 
   - id: search_unsupported_inverse_etf
     query: SQQQ
@@ -49,6 +57,10 @@ cases:
     expected_support_classifications: [recognized_unsupported]
     expected_can_open_generated_page: false
     expected_can_request_ingestion: false
+    expected_blocked_explanation:
+      status: unsupported
+      support_classification: recognized_unsupported
+      explanation_category: inverse_etf
 
   - id: search_unknown
     query: ZZZZ
@@ -65,6 +77,10 @@ cases:
     expected_support_classifications: [out_of_scope]
     expected_can_open_generated_page: false
     expected_can_request_ingestion: false
+    expected_blocked_explanation:
+      status: out_of_scope
+      support_classification: out_of_scope
+      explanation_category: top500_manifest_scope
 
   - id: search_eligible_not_cached_spy
     query: SPY

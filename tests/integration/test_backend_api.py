@@ -44,6 +44,8 @@ def test_search_supported_asset_schema():
     assert body["results"][0]["generated_route"] == "/assets/VOO"
     assert body["results"][0]["can_request_ingestion"] is False
     assert body["results"][0]["ingestion_request_route"] is None
+    assert body["state"]["blocked_explanation"] is None
+    assert body["results"][0]["blocked_explanation"] is None
 
 
 def test_search_classification_states_cover_ambiguous_unknown_and_ingestion_needed():
@@ -70,15 +72,20 @@ def test_search_classification_states_cover_ambiguous_unknown_and_ingestion_need
     assert unknown["results"][0]["generated_route"] is None
     assert unknown["results"][0]["can_open_generated_page"] is False
     assert unknown["results"][0]["can_request_ingestion"] is False
+    assert unknown["state"]["blocked_explanation"] is None
+    assert unknown["results"][0]["blocked_explanation"] is None
 
     assert out_of_scope["state"]["status"] == "out_of_scope"
     assert out_of_scope["state"]["support_classification"] == "out_of_scope"
+    assert out_of_scope["state"]["blocked_explanation"]["schema_version"] == "search-blocked-explanation-v1"
+    assert out_of_scope["state"]["blocked_explanation"]["explanation_category"] == "top500_manifest_scope"
     assert out_of_scope["results"][0]["ticker"] == "GME"
     assert out_of_scope["results"][0]["asset_type"] == "stock"
     assert out_of_scope["results"][0]["generated_route"] is None
     assert out_of_scope["results"][0]["eligible_for_ingestion"] is False
     assert out_of_scope["results"][0]["can_open_generated_page"] is False
     assert out_of_scope["results"][0]["can_request_ingestion"] is False
+    assert out_of_scope["results"][0]["blocked_explanation"] == out_of_scope["state"]["blocked_explanation"]
 
     assert ingestion_needed["state"]["status"] == "ingestion_needed"
     assert ingestion_needed["state"]["support_classification"] == "eligible_not_cached"
@@ -93,6 +100,8 @@ def test_search_classification_states_cover_ambiguous_unknown_and_ingestion_need
     assert ingestion_needed["results"][0]["can_compare"] is False
     assert ingestion_needed["results"][0]["can_request_ingestion"] is True
     assert ingestion_needed["results"][0]["ingestion_request_route"] == "/api/admin/ingest/SPY"
+    assert ingestion_needed["state"]["blocked_explanation"] is None
+    assert ingestion_needed["results"][0]["blocked_explanation"] is None
 
     for body, expected_ticker, expected_type in [(launch_stock, "BRK.B", "stock"), (launch_etf, "SOXX", "etf")]:
         assert body["state"]["status"] == "ingestion_needed"
@@ -767,6 +776,23 @@ def test_unknown_and_unsupported_assets_return_clear_states():
     assert unsupported["results"][0]["can_compare"] is False
     assert unsupported["results"][0]["generated_route"] is None
     assert "outside" in unsupported["state"]["message"]
+    assert unsupported["state"]["blocked_explanation"]["schema_version"] == "search-blocked-explanation-v1"
+    assert unsupported["state"]["blocked_explanation"]["support_classification"] == "recognized_unsupported"
+    assert unsupported["state"]["blocked_explanation"]["explanation_kind"] == "scope_blocked_search_result"
+    assert unsupported["state"]["blocked_explanation"]["explanation_category"] == "crypto_assets"
+    assert unsupported["state"]["blocked_explanation"]["blocked_capabilities"]["can_open_generated_page"] is False
+    assert unsupported["state"]["blocked_explanation"]["blocked_capabilities"]["can_answer_chat"] is False
+    assert unsupported["state"]["blocked_explanation"]["blocked_capabilities"]["can_compare"] is False
+    assert unsupported["state"]["blocked_explanation"]["blocked_capabilities"]["can_request_ingestion"] is False
+    assert unsupported["state"]["blocked_explanation"]["ingestion_eligible"] is False
+    assert unsupported["state"]["blocked_explanation"]["ingestion_request_route"] is None
+    assert unsupported["state"]["blocked_explanation"]["diagnostics"]["deterministic_contract"] is True
+    assert unsupported["state"]["blocked_explanation"]["diagnostics"]["generated_asset_analysis"] is False
+    assert unsupported["state"]["blocked_explanation"]["diagnostics"]["includes_citations"] is False
+    assert unsupported["state"]["blocked_explanation"]["diagnostics"]["includes_source_documents"] is False
+    assert unsupported["state"]["blocked_explanation"]["diagnostics"]["includes_freshness"] is False
+    assert unsupported["state"]["blocked_explanation"]["diagnostics"]["uses_live_calls"] is False
+    assert unsupported["results"][0]["blocked_explanation"] == unsupported["state"]["blocked_explanation"]
 
 
 def test_compare_route_returns_educational_shape():

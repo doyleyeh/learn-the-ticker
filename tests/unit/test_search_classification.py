@@ -50,12 +50,12 @@ def test_ambiguous_search_requires_disambiguation_without_selecting_one_result()
 
 def test_recognized_unsupported_assets_are_blocked_from_generated_outputs():
     cases = [
-        ("BTC", "Crypto assets"),
-        ("TQQQ", "Leveraged ETFs"),
-        ("SQQQ", "Inverse ETFs"),
+        ("BTC", "Crypto assets", "crypto_assets"),
+        ("TQQQ", "Leveraged ETFs", "leveraged_etf"),
+        ("SQQQ", "Inverse ETFs", "inverse_etf"),
     ]
 
-    for query, expected_reason in cases:
+    for query, expected_reason, expected_category in cases:
         response = search_assets(query)
         result = response.results[0]
         assert response.state.status.value == "unsupported"
@@ -70,6 +70,31 @@ def test_recognized_unsupported_assets_are_blocked_from_generated_outputs():
         assert result.can_request_ingestion is False
         assert result.ingestion_request_route is None
         assert expected_reason in (result.message or "")
+        assert response.state.blocked_explanation is not None
+        assert result.blocked_explanation is not None
+        assert response.state.blocked_explanation.model_dump(mode="json") == result.blocked_explanation.model_dump(
+            mode="json"
+        )
+        assert result.blocked_explanation.schema_version == "search-blocked-explanation-v1"
+        assert result.blocked_explanation.status.value == "unsupported"
+        assert result.blocked_explanation.support_classification.value == "recognized_unsupported"
+        assert result.blocked_explanation.explanation_kind == "scope_blocked_search_result"
+        assert result.blocked_explanation.explanation_category == expected_category
+        assert "supported MVP coverage" in result.blocked_explanation.summary
+        assert result.blocked_explanation.scope_rationale == result.message
+        assert "U.S.-listed common stocks" in result.blocked_explanation.supported_v1_scope
+        assert result.blocked_explanation.blocked_capabilities.can_open_generated_page is False
+        assert result.blocked_explanation.blocked_capabilities.can_answer_chat is False
+        assert result.blocked_explanation.blocked_capabilities.can_compare is False
+        assert result.blocked_explanation.blocked_capabilities.can_request_ingestion is False
+        assert result.blocked_explanation.ingestion_eligible is False
+        assert result.blocked_explanation.ingestion_request_route is None
+        assert result.blocked_explanation.diagnostics.deterministic_contract is True
+        assert result.blocked_explanation.diagnostics.generated_asset_analysis is False
+        assert result.blocked_explanation.diagnostics.includes_citations is False
+        assert result.blocked_explanation.diagnostics.includes_source_documents is False
+        assert result.blocked_explanation.diagnostics.includes_freshness is False
+        assert result.blocked_explanation.diagnostics.uses_live_calls is False
 
 
 def test_unknown_search_returns_no_generated_route_or_invented_asset_facts():
@@ -88,6 +113,8 @@ def test_unknown_search_returns_no_generated_route_or_invented_asset_facts():
     assert result.generated_route is None
     assert result.can_request_ingestion is False
     assert result.ingestion_request_route is None
+    assert response.state.blocked_explanation is None
+    assert result.blocked_explanation is None
 
 
 def test_eligible_not_cached_assets_require_future_ingestion_only():
@@ -110,6 +137,8 @@ def test_eligible_not_cached_assets_require_future_ingestion_only():
     assert result.generated_route is None
     assert result.can_request_ingestion is True
     assert result.ingestion_request_route == "/api/admin/ingest/SPY"
+    assert response.state.blocked_explanation is None
+    assert result.blocked_explanation is None
 
 
 def test_launch_universe_assets_without_local_packs_are_eligible_not_cached_not_unknown():
@@ -199,3 +228,22 @@ def test_recognized_common_stock_outside_manifest_is_out_of_scope_not_eligible()
     assert result.generated_route is None
     assert result.can_request_ingestion is False
     assert result.ingestion_request_route is None
+    assert response.state.blocked_explanation is not None
+    assert result.blocked_explanation is not None
+    assert response.state.blocked_explanation.model_dump(mode="json") == result.blocked_explanation.model_dump(
+        mode="json"
+    )
+    assert result.blocked_explanation.schema_version == "search-blocked-explanation-v1"
+    assert result.blocked_explanation.status.value == "out_of_scope"
+    assert result.blocked_explanation.support_classification.value == "out_of_scope"
+    assert result.blocked_explanation.explanation_category == "top500_manifest_scope"
+    assert "Top-500 manifest-backed" in result.blocked_explanation.summary
+    assert "supported MVP" in result.blocked_explanation.summary
+    assert result.blocked_explanation.scope_rationale == result.message
+    assert "non-leveraged U.S.-listed equity ETFs" in result.blocked_explanation.supported_v1_scope
+    assert result.blocked_explanation.blocked_capabilities.can_open_generated_page is False
+    assert result.blocked_explanation.blocked_capabilities.can_answer_chat is False
+    assert result.blocked_explanation.blocked_capabilities.can_compare is False
+    assert result.blocked_explanation.blocked_capabilities.can_request_ingestion is False
+    assert result.blocked_explanation.ingestion_eligible is False
+    assert result.blocked_explanation.ingestion_request_route is None

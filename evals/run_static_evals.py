@@ -96,6 +96,7 @@ from backend.models import (
     ProviderResponse,
     ProviderResponseState,
     ProviderSourceUsage,
+    SearchResponse,
     SourceChecksumInput,
     SourceUsePolicy,
     TrustMetricCatalogResponse,
@@ -528,8 +529,12 @@ def test_search_cases():
         response = client.get("/api/search", params={"q": case["query"]})
         assert response.status_code == 200, f"{case['id']} search request failed"
         body = response.json()
+        validated = SearchResponse.model_validate(body)
         state = body["state"]
         results = body["results"]
+
+        assert validated.query == case["query"]
+        assert len(validated.results) == len(results)
 
         assert state["status"] == case["expected_state"], (
             f"{case['id']} expected {case['expected_state']}, got {state['status']}"
@@ -543,6 +548,31 @@ def test_search_cases():
             assert state["ingestion_request_route"] == expected_ingestion_route
         else:
             assert state["ingestion_request_route"] is None
+
+        expected_blocked_explanation = case.get("expected_blocked_explanation")
+        if expected_blocked_explanation:
+            explanation = state["blocked_explanation"]
+            assert explanation is not None, f"{case['id']} should expose blocked explanation metadata"
+            assert explanation["schema_version"] == "search-blocked-explanation-v1"
+            assert explanation["status"] == expected_blocked_explanation["status"]
+            assert explanation["support_classification"] == expected_blocked_explanation["support_classification"]
+            assert explanation["explanation_kind"] == "scope_blocked_search_result"
+            assert explanation["explanation_category"] == expected_blocked_explanation["explanation_category"]
+            assert "Supported MVP coverage" in explanation["supported_v1_scope"]
+            assert explanation["blocked_capabilities"]["can_open_generated_page"] is False
+            assert explanation["blocked_capabilities"]["can_answer_chat"] is False
+            assert explanation["blocked_capabilities"]["can_compare"] is False
+            assert explanation["blocked_capabilities"]["can_request_ingestion"] is False
+            assert explanation["ingestion_eligible"] is False
+            assert explanation["ingestion_request_route"] is None
+            assert explanation["diagnostics"]["deterministic_contract"] is True
+            assert explanation["diagnostics"]["generated_asset_analysis"] is False
+            assert explanation["diagnostics"]["includes_citations"] is False
+            assert explanation["diagnostics"]["includes_source_documents"] is False
+            assert explanation["diagnostics"]["includes_freshness"] is False
+            assert explanation["diagnostics"]["uses_live_calls"] is False
+        else:
+            assert state["blocked_explanation"] is None
 
         result_tickers = {result["ticker"] for result in results}
         expected_tickers = set(case["expected_result_tickers"])
@@ -562,6 +592,7 @@ def test_search_cases():
                 assert result["can_compare"] is True
                 assert result["can_request_ingestion"] is False
                 assert result["ingestion_request_route"] is None
+                assert result["blocked_explanation"] is None
             elif result["support_classification"] == "eligible_not_cached":
                 assert result["generated_route"] is None
                 assert result["can_open_generated_page"] is False
@@ -569,6 +600,7 @@ def test_search_cases():
                 assert result["can_compare"] is False
                 assert result["can_request_ingestion"] is True
                 assert result["ingestion_request_route"] == f"/api/admin/ingest/{result['ticker']}"
+                assert result["blocked_explanation"] is None
             else:
                 assert result["generated_route"] is None
                 assert result["can_open_generated_page"] is False
@@ -576,12 +608,25 @@ def test_search_cases():
                 assert result["can_compare"] is False
                 assert result["can_request_ingestion"] is False
                 assert result["ingestion_request_route"] is None
+                if expected_blocked_explanation and len(results) == 1:
+                    assert result["blocked_explanation"] == state["blocked_explanation"]
+                else:
+                    assert result["blocked_explanation"] is None
 
     search_source = (ROOT / "backend" / "search.py").read_text(encoding="utf-8")
     main_source = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
+    models_source = (ROOT / "backend" / "models.py").read_text(encoding="utf-8")
     for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import"]:
         assert forbidden not in search_source
         assert forbidden not in main_source
+    for marker in [
+        "search-blocked-explanation-v1",
+        "scope_blocked_search_result",
+        "top500_manifest_scope",
+        "Supported MVP coverage is limited to U.S.-listed common stocks",
+    ]:
+        assert marker in search_source or marker in models_source
+        assert not find_forbidden_output_phrases(marker)
 
 
 def test_ingestion_cases():

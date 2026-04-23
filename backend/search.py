@@ -14,6 +14,9 @@ from backend.data import (
 from backend.models import (
     AssetIdentity,
     AssetType,
+    SearchBlockedCapabilityFlags,
+    SearchBlockedExplanation,
+    SearchBlockedExplanationDiagnostics,
     SearchResponse,
     SearchResponseStatus,
     SearchResult,
@@ -33,6 +36,18 @@ class SearchCandidate:
     support_classification: SearchSupportClassification
     message: str
     aliases: tuple[str, ...] = ()
+
+
+SUPPORTED_V1_SCOPE_REMINDER = (
+    "Supported MVP coverage is limited to U.S.-listed common stocks in the current Top-500 manifest "
+    "and non-leveraged U.S.-listed equity ETFs."
+)
+
+UNSUPPORTED_EXPLANATION_CATEGORY_LABELS = {
+    "crypto": "crypto_assets",
+    "leveraged_etf": "leveraged_etf",
+    "inverse_etf": "inverse_etf",
+}
 
 
 def search_assets(q: str) -> SearchResponse:
@@ -58,10 +73,14 @@ def search_assets(q: str) -> SearchResponse:
             )
 
         result = results[0]
+        blocked_explanation = _blocked_explanation_for_result(result)
+        if blocked_explanation is not None:
+            result = result.model_copy(update={"blocked_explanation": blocked_explanation})
+            results = [result]
         return SearchResponse(
             query=q,
             results=results,
-            state=_state_for_single_result(result),
+            state=_state_for_single_result(result, blocked_explanation=blocked_explanation),
         )
 
     unknown = SearchResult(
@@ -254,7 +273,11 @@ def _candidate_to_result(candidate: SearchCandidate) -> SearchResult:
     )
 
 
-def _state_for_single_result(result: SearchResult) -> SearchState:
+def _state_for_single_result(
+    result: SearchResult,
+    *,
+    blocked_explanation: SearchBlockedExplanation | None = None,
+) -> SearchState:
     if result.support_classification is SearchSupportClassification.cached_supported:
         return SearchState(
             status=SearchResponseStatus.supported,
@@ -283,6 +306,7 @@ def _state_for_single_result(result: SearchResult) -> SearchState:
             message=result.message or "Recognized asset type is outside the current product scope.",
             result_count=1,
             support_classification=result.support_classification,
+            blocked_explanation=blocked_explanation,
         )
     if result.support_classification is SearchSupportClassification.out_of_scope:
         return SearchState(
@@ -293,6 +317,7 @@ def _state_for_single_result(result: SearchResult) -> SearchState:
             ),
             result_count=1,
             support_classification=result.support_classification,
+            blocked_explanation=blocked_explanation,
         )
     return SearchState(
         status=SearchResponseStatus.unknown,
@@ -300,3 +325,43 @@ def _state_for_single_result(result: SearchResult) -> SearchState:
         result_count=1,
         support_classification=SearchSupportClassification.unknown,
     )
+
+
+def _blocked_explanation_for_result(result: SearchResult) -> SearchBlockedExplanation | None:
+    if result.support_classification is SearchSupportClassification.recognized_unsupported:
+        metadata = UNSUPPORTED_ASSET_SEARCH_METADATA.get(result.ticker, {})
+        category = str(metadata.get("category") or "unsupported_asset")
+        return SearchBlockedExplanation(
+            status=SearchResponseStatus.unsupported,
+            support_classification=result.support_classification,
+            explanation_category=UNSUPPORTED_EXPLANATION_CATEGORY_LABELS.get(category, "unsupported_asset"),
+            summary=(
+                f"{result.ticker} is recognized, but this asset category is outside the current supported MVP coverage."
+            ),
+            scope_rationale=result.message or "This asset category is outside the current supported MVP scope.",
+            supported_v1_scope=SUPPORTED_V1_SCOPE_REMINDER,
+            blocked_capabilities=SearchBlockedCapabilityFlags(),
+            ingestion_eligible=False,
+            ingestion_request_route=None,
+            diagnostics=SearchBlockedExplanationDiagnostics(),
+        )
+
+    if result.support_classification is SearchSupportClassification.out_of_scope:
+        return SearchBlockedExplanation(
+            status=SearchResponseStatus.out_of_scope,
+            support_classification=result.support_classification,
+            explanation_category="top500_manifest_scope",
+            summary=(
+                f"{result.ticker} is recognized, but it is outside the current Top-500 manifest-backed supported MVP stock coverage."
+            ),
+            scope_rationale=result.message or (
+                "Recognized U.S.-listed common stock outside the current Top-500 manifest-backed MVP scope."
+            ),
+            supported_v1_scope=SUPPORTED_V1_SCOPE_REMINDER,
+            blocked_capabilities=SearchBlockedCapabilityFlags(),
+            ingestion_eligible=False,
+            ingestion_request_route=None,
+            diagnostics=SearchBlockedExplanationDiagnostics(),
+        )
+
+    return None

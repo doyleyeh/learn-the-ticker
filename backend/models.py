@@ -405,6 +405,37 @@ class StateMessage(BaseModel):
     message: str
 
 
+class SearchBlockedCapabilityFlags(BaseModel):
+    can_open_generated_page: bool = False
+    can_answer_chat: bool = False
+    can_compare: bool = False
+    can_request_ingestion: bool = False
+
+
+class SearchBlockedExplanationDiagnostics(BaseModel):
+    deterministic_contract: bool = True
+    generated_asset_analysis: bool = False
+    includes_citations: bool = False
+    includes_source_documents: bool = False
+    includes_freshness: bool = False
+    uses_live_calls: bool = False
+
+
+class SearchBlockedExplanation(BaseModel):
+    schema_version: Literal["search-blocked-explanation-v1"] = "search-blocked-explanation-v1"
+    status: SearchResponseStatus | SearchResultStatus
+    support_classification: SearchSupportClassification
+    explanation_kind: Literal["scope_blocked_search_result"] = "scope_blocked_search_result"
+    explanation_category: str
+    summary: str
+    scope_rationale: str
+    supported_v1_scope: str
+    blocked_capabilities: SearchBlockedCapabilityFlags = Field(default_factory=SearchBlockedCapabilityFlags)
+    ingestion_eligible: bool = False
+    ingestion_request_route: str | None = None
+    diagnostics: SearchBlockedExplanationDiagnostics = Field(default_factory=SearchBlockedExplanationDiagnostics)
+
+
 class SearchState(BaseModel):
     status: SearchResponseStatus
     message: str
@@ -416,6 +447,7 @@ class SearchState(BaseModel):
     generated_route: str | None = None
     can_request_ingestion: bool = False
     ingestion_request_route: str | None = None
+    blocked_explanation: SearchBlockedExplanation | None = None
 
 
 class SearchResult(BaseModel):
@@ -436,6 +468,7 @@ class SearchResult(BaseModel):
     can_request_ingestion: bool = False
     ingestion_request_route: str | None = None
     message: str | None = None
+    blocked_explanation: SearchBlockedExplanation | None = None
 
 
 class SearchResponse(BaseModel):
