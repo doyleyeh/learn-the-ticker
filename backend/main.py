@@ -34,6 +34,7 @@ from backend.ingestion import (
     request_launch_universe_pre_cache,
     request_pre_cache_for_asset,
 )
+from backend.glossary import build_glossary_response
 from backend.llm import runtime_diagnostics
 from backend.models import (
     AssetIdentity,
@@ -48,6 +49,7 @@ from backend.models import (
     DetailsResponse,
     ExportFormat,
     ExportResponse,
+    GlossaryResponse,
     IngestionJobResponse,
     KnowledgePackBuildResponse,
     LlmRuntimeDiagnosticsResponse,
@@ -162,6 +164,11 @@ def asset_sources(
         citation_id=citation_id,
         source_document_id=source_document_id,
     )
+
+
+@app.get("/api/assets/{ticker}/glossary", response_model=GlossaryResponse, tags=["assets"])
+def asset_glossary(ticker: str, term: str | None = None) -> GlossaryResponse:
+    return build_glossary_response(ticker, term=term)
 
 
 @app.get("/api/assets/{ticker}/export", response_model=ExportResponse, tags=["exports"])

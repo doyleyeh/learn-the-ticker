@@ -1,0 +1,111 @@
+schema_version: glossary-context-evals-v1
+required_models:
+  - GlossaryResponseState
+  - GlossaryAssetContextState
+  - GlossaryEvidenceReferenceType
+  - GlossaryTermIdentity
+  - GlossaryGenericDefinition
+  - GlossaryEvidenceReference
+  - GlossaryCitationBinding
+  - GlossarySourceReference
+  - GlossaryAssetContext
+  - GlossaryTermResponse
+  - GlossaryDiagnostics
+  - GlossaryResponse
+required_helpers:
+  - build_glossary_response
+  - TERM_CATALOG
+required_routes:
+  - /api/assets/{ticker}/glossary
+supported_cached_assets:
+  - AAPL
+  - VOO
+  - QQQ
+required_stock_terms:
+  - market cap
+  - revenue
+  - operating margin
+  - EPS
+  - free cash flow
+  - debt
+  - P/E ratio
+  - forward P/E
+  - market risk
+  - concentration risk
+required_etf_terms:
+  - expense ratio
+  - AUM
+  - benchmark
+  - index
+  - holdings
+  - top 10 concentration
+  - sector exposure
+  - country exposure
+  - bid-ask spread
+  - premium/discount
+  - NAV
+  - liquidity
+  - tracking error
+  - tracking difference
+  - market risk
+  - concentration risk
+supported_term_cases:
+  - ticker: AAPL
+    term: revenue
+    expected_state: available
+  - ticker: VOO
+    term: expense ratio
+    expected_state: available
+  - ticker: QQQ
+    term: benchmark
+    expected_state: available
+generic_only_cases:
+  - ticker: AAPL
+    term: market cap
+    expected_state: generic_only
+  - ticker: VOO
+    term: AUM
+    expected_state: generic_only
+non_generated_cases:
+  - ticker: SPY
+    expected_response_state: eligible_not_cached
+  - ticker: TQQQ
+    expected_response_state: unsupported
+  - ticker: GME
+    expected_response_state: out_of_scope
+  - ticker: ZZZZ
+    expected_response_state: unknown
+required_context_states:
+  - available
+  - generic_only
+  - unavailable
+  - stale
+  - partial
+  - unknown
+  - suppressed
+  - insufficient_evidence
+forbidden_static_markers:
+  - import requests
+  - import httpx
+  - urllib.request
+  - from socket import
+  - OPENROUTER_API_KEY
+  - reasoning_details
+  - unrestricted_source_text
+  - raw_provider_payload
+  - apps/web/lib/glossary.ts
+forbidden_serialized_markers:
+  - supporting_passage
+  - supporting_text
+  - raw_source_text
+  - unrestricted_source_text
+  - reasoning_details
+  - raw_provider_payload
+forbidden_advice_phrases:
+  - should buy
+  - should sell
+  - should hold
+  - price target
+  - target price
+  - exact allocation
+  - use a broker

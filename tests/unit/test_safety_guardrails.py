@@ -50,6 +50,7 @@ def test_backend_responses_do_not_leak_advice_phrases():
         response_payloads.append(client.get(f"/api/assets/{ticker}/recent").json())
         response_payloads.append(client.get(f"/api/assets/{ticker}/export").json())
         response_payloads.append(client.get(f"/api/assets/{ticker}/sources/export").json())
+        response_payloads.append(client.get(f"/api/assets/{ticker}/glossary").json())
 
     response_payloads.append(client.post("/api/compare", json={"left_ticker": "VOO", "right_ticker": "QQQ"}).json())
     response_payloads.append(
@@ -254,3 +255,24 @@ def test_chat_session_contract_copy_is_advice_safe():
         assert_no_forbidden_phrases(marker, marker)
 
     assert_no_forbidden_phrases("chat session contract", combined)
+
+
+def test_glossary_asset_context_contract_copy_is_advice_safe():
+    combined = "\n".join(
+        [
+            (ROOT / "backend" / "glossary.py").read_text(encoding="utf-8"),
+            (ROOT / "backend" / "models.py").read_text(encoding="utf-8"),
+        ]
+    )
+    markers = [
+        "glossary-asset-context-v1",
+        "generic_definitions_are_not_evidence",
+        "no_new_generated_output",
+        "same_asset_evidence_only",
+    ]
+
+    for marker in markers:
+        assert marker in combined
+        assert_no_forbidden_phrases(marker, marker)
+
+    assert_no_forbidden_phrases("glossary asset context contract", combined)

@@ -344,11 +344,13 @@ def test_details_sources_and_recent_routes_exist():
     sources = client.get("/api/assets/AAPL/sources")
     recent = client.get("/api/assets/AAPL/recent")
     weekly = client.get("/api/assets/AAPL/weekly-news")
+    glossary = client.get("/api/assets/AAPL/glossary")
 
     assert details.status_code == 200
     assert sources.status_code == 200
     assert recent.status_code == 200
     assert weekly.status_code == 200
+    assert glossary.status_code == 200
     assert details.json()["facts"]["business_model"]
     assert sources.json()["sources"][0]["source_document_id"] == "src_aapl_10k_fixture"
     assert sources.json()["sources"][0]["publisher"] == "U.S. SEC"
@@ -364,6 +366,49 @@ def test_details_sources_and_recent_routes_exist():
     assert recent.json()["recent_developments"][0]["freshness_state"] == "fresh"
     assert weekly.json()["weekly_news_focus"]["state"] == "no_high_signal"
     assert weekly.json()["ai_comprehensive_analysis"]["state"] == "suppressed"
+    assert glossary.json()["schema_version"] == "glossary-asset-context-v1"
+    assert glossary.json()["glossary_state"] == "available"
+    assert {term["term_identity"]["term"] for term in glossary.json()["terms"]} >= {"revenue", "P/E ratio"}
+    assert glossary.json()["diagnostics"]["no_live_external_calls"] is True
+
+
+def test_glossary_route_serializes_supported_filtered_and_non_generated_states():
+    supported = client.get("/api/assets/VOO/glossary", params={"term": "expense ratio"})
+    generic_only = client.get("/api/assets/AAPL/glossary", params={"term": "market cap"})
+    eligible = client.get("/api/assets/SPY/glossary", params={"term": "expense ratio"})
+    unsupported = client.get("/api/assets/TQQQ/glossary", params={"term": "expense ratio"})
+    out_of_scope = client.get("/api/assets/GME/glossary", params={"term": "revenue"})
+    unknown = client.get("/api/assets/ZZZZ/glossary", params={"term": "expense ratio"})
+
+    assert supported.status_code == 200
+    body = supported.json()
+    assert body["schema_version"] == "glossary-asset-context-v1"
+    assert body["selected_asset"]["ticker"] == "VOO"
+    assert body["glossary_state"] == "available"
+    assert [term["term_identity"]["slug"] for term in body["terms"]] == ["expense-ratio"]
+    assert body["terms"][0]["asset_context"]["availability_state"] == "available"
+    assert body["terms"][0]["asset_context"]["citation_ids"]
+    assert body["citation_bindings"]
+    assert body["source_references"]
+    assert body["diagnostics"]["generic_definitions_are_not_evidence"] is True
+    assert "supporting_passage" not in str(body)
+
+    assert generic_only.json()["terms"][0]["asset_context"]["availability_state"] == "generic_only"
+    assert generic_only.json()["citation_bindings"] == []
+    assert generic_only.json()["source_references"] == []
+
+    for response, expected_state in [
+        (eligible, "eligible_not_cached"),
+        (unsupported, "unsupported"),
+        (out_of_scope, "out_of_scope"),
+        (unknown, "unknown"),
+    ]:
+        non_generated = response.json()
+        assert non_generated["glossary_state"] == expected_state
+        assert non_generated["citation_bindings"] == []
+        assert non_generated["source_references"] == []
+        assert non_generated["evidence_references"] == []
+        assert non_generated["diagnostics"]["unavailable_reasons"]
 
 
 def test_knowledge_pack_route_serializes_cached_and_non_generated_states():

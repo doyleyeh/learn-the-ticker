@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from backend.models import AssetStatus, FreshnessState
+from backend.glossary import build_glossary_response
 from backend.retrieval import (
     build_asset_knowledge_pack,
     build_asset_knowledge_pack_result,
@@ -78,6 +79,7 @@ def test_retrieval_items_attach_source_metadata_to_facts_chunks_and_recent_devel
 def test_single_asset_retrieval_never_returns_wrong_asset_evidence():
     for ticker in ["AAPL", "VOO", "QQQ"]:
         pack = build_asset_knowledge_pack(ticker)
+        glossary = build_glossary_response(ticker)
         returned_assets = {
             *{source.asset_ticker for source in pack.source_documents},
             *{chunk.chunk.asset_ticker for chunk in pack.source_chunks},
@@ -88,6 +90,9 @@ def test_single_asset_retrieval_never_returns_wrong_asset_evidence():
             *{recent.recent_development.asset_ticker for recent in pack.recent_developments},
             *{recent.source_document.asset_ticker for recent in pack.recent_developments},
             *{recent.source_chunk.asset_ticker for recent in pack.recent_developments},
+            *{binding.asset_ticker for binding in glossary.citation_bindings},
+            *{source.asset_ticker for source in glossary.source_references},
+            *{reference.asset_ticker for reference in glossary.evidence_references},
         }
 
         assert returned_assets == {ticker}
