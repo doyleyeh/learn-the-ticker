@@ -523,6 +523,11 @@ def test_asset_page_and_source_list_export_routes_return_contract_payloads():
     assert asset_body["asset"]["ticker"] == "VOO"
     assert asset_body["disclaimer"]
     assert asset_body["licensing_note"]["note_id"] == "export_licensing_scope"
+    assert asset_body["export_validation"]["schema_version"] == "export-validation-v1"
+    assert asset_body["export_validation"]["binding_scope"] == "same_asset"
+    assert asset_body["export_validation"]["diagnostics"]["same_asset_citation_bindings_only"] is True
+    assert asset_body["export_validation"]["diagnostics"]["same_asset_source_bindings_only"] is True
+    assert asset_body["export_validation"]["diagnostics"]["used_existing_overview_contract"] is True
     assert "Educational Disclaimer" in asset_body["rendered_markdown"]
     assert "top_risks" in {section["section_id"] for section in asset_body["sections"]}
     assert "weekly_news_focus" in {section["section_id"] for section in asset_body["sections"]}
@@ -530,9 +535,18 @@ def test_asset_page_and_source_list_export_routes_return_contract_payloads():
     assert len(next(section for section in asset_body["sections"] if section["section_id"] == "top_risks")["items"]) == 3
     assert asset_body["citations"]
     assert asset_body["source_documents"]
+    validation_by_section = {
+        item["section_id"]: item
+        for item in asset_body["export_validation"]["section_validations"]
+    }
+    assert validation_by_section["cost_trading_context"]["displayed_freshness_state"] == "stale"
+    assert validation_by_section["cost_trading_context"]["validated_freshness_state"] == "stale"
+    assert validation_by_section["cost_trading_context"]["validation_outcome"] == "validated_with_limitations"
 
     assert source_body["content_type"] == "asset_source_list"
     assert source_body["export_state"] == "available"
+    assert source_body["export_validation"]["binding_scope"] == "same_asset"
+    assert source_body["export_validation"]["diagnostics"]["same_asset_source_bindings_only"] is True
     assert source_body["sections"][0]["section_id"] == "asset_source_list"
     assert source_body["source_documents"][0]["source_document_id"]
     assert source_body["source_documents"][0]["allowed_excerpt"]["note"]
@@ -725,6 +739,10 @@ def test_comparison_and_chat_export_routes_return_explicit_shapes():
     assert comparison_body["left_asset"]["ticker"] == "VOO"
     assert comparison_body["right_asset"]["ticker"] == "QQQ"
     assert comparison_body["metadata"]["comparison_type"] == "etf_vs_etf"
+    assert comparison_body["export_validation"]["binding_scope"] == "same_comparison_pack"
+    assert comparison_body["export_validation"]["diagnostics"]["same_comparison_pack_citation_bindings_only"] is True
+    assert comparison_body["export_validation"]["diagnostics"]["same_comparison_pack_source_bindings_only"] is True
+    assert comparison_body["export_validation"]["diagnostics"]["used_existing_comparison_contract"] is True
     assert "key_differences" in {section["section_id"] for section in comparison_body["sections"]}
     assert comparison_body["citations"]
     assert comparison_body["source_documents"]
@@ -735,6 +753,8 @@ def test_comparison_and_chat_export_routes_return_explicit_shapes():
     assert chat_body["asset"]["ticker"] == "QQQ"
     assert chat_body["metadata"]["submitted_question"] == "What is this fund?"
     assert chat_body["metadata"]["safety_classification"] == "educational"
+    assert chat_body["export_validation"]["binding_scope"] == "same_asset"
+    assert chat_body["export_validation"]["diagnostics"]["used_existing_chat_contract"] is True
     assert "chat_answer" in {section["section_id"] for section in chat_body["sections"]}
     assert chat_body["citations"]
     assert chat_body["source_documents"]
@@ -748,6 +768,10 @@ def test_advice_chat_export_redirects_without_factual_sources():
     assert body["content_type"] == "chat_transcript"
     assert body["export_state"] == "available"
     assert body["metadata"]["safety_classification"] == "personalized_advice_redirect"
+    assert body["export_validation"]["binding_scope"] == "no_factual_evidence"
+    assert body["export_validation"]["citation_bindings"] == []
+    assert body["export_validation"]["source_bindings"] == []
+    assert body["export_validation"]["diagnostics"]["empty_factual_evidence_export"] is True
     assert "educational" in body["rendered_markdown"].lower()
     assert body["citations"] == []
     assert body["source_documents"] == []
@@ -768,6 +792,9 @@ def test_export_routes_block_unsupported_unknown_and_eligible_not_cached_outputs
         assert body["sections"] == []
         assert body["citations"] == []
         assert body["source_documents"] == []
+        assert body["export_validation"]["citation_bindings"] == []
+        assert body["export_validation"]["source_bindings"] == []
+        assert body["export_validation"]["section_validations"] == []
         assert "Export unavailable" in body["rendered_markdown"]
 
     assert unsupported["export_state"] == "unsupported"

@@ -3,6 +3,7 @@ cases:
     export_kind: asset_page
     ticker: AAPL
     expected_state: available
+    expected_validation_scope: same_asset
     expected_sections:
       - beginner_summary
       - top_risks
@@ -18,6 +19,9 @@ cases:
     export_kind: asset_page
     ticker: VOO
     expected_state: available
+    expected_validation_scope: same_asset
+    expected_validation_sections:
+      - cost_trading_context
     expected_sections:
       - beginner_summary
       - top_risks
@@ -33,6 +37,9 @@ cases:
     export_kind: asset_source_list
     ticker: QQQ
     expected_state: available
+    expected_validation_scope: same_asset
+    expected_validation_sections:
+      - asset_source_list
     expected_sections:
       - asset_source_list
     expected_disclaimer: true
@@ -45,6 +52,10 @@ cases:
     left_ticker: VOO
     right_ticker: QQQ
     expected_state: available
+    expected_validation_scope: same_comparison_pack
+    expected_validation_sections:
+      - key_differences
+      - beginner_bottom_line
     expected_sections:
       - comparison_identity
       - key_differences
@@ -59,6 +70,10 @@ cases:
     left_ticker: QQQ
     right_ticker: VOO
     expected_state: available
+    expected_validation_scope: same_comparison_pack
+    expected_validation_sections:
+      - key_differences
+      - beginner_bottom_line
     expected_sections:
       - comparison_identity
       - key_differences
@@ -73,6 +88,9 @@ cases:
     ticker: QQQ
     question: What is this fund?
     expected_state: available
+    expected_validation_scope: same_asset
+    expected_validation_sections:
+      - chat_answer
     expected_safety_classification: educational
     expected_sections:
       - chat_context
@@ -89,6 +107,9 @@ cases:
     ticker: VOO
     question: Should I buy VOO today?
     expected_state: available
+    expected_validation_scope: no_factual_evidence
+    expected_validation_sections:
+      - chat_answer
     expected_safety_classification: personalized_advice_redirect
     expected_sections:
       - chat_context
@@ -104,6 +125,7 @@ cases:
     export_kind: asset_page
     ticker: BTC
     expected_state: unsupported
+    expected_validation_scope: unavailable
     expected_sections: []
     expected_disclaimer: true
     expected_licensing_note: true
@@ -114,6 +136,7 @@ cases:
     export_kind: asset_page
     ticker: ZZZZ
     expected_state: unavailable
+    expected_validation_scope: unavailable
     expected_sections: []
     expected_disclaimer: true
     expected_licensing_note: true
@@ -124,6 +147,7 @@ cases:
     export_kind: asset_page
     ticker: SPY
     expected_state: unavailable
+    expected_validation_scope: unavailable
     expected_sections: []
     expected_disclaimer: true
     expected_licensing_note: true
@@ -135,6 +159,7 @@ cases:
     left_ticker: AAPL
     right_ticker: VOO
     expected_state: unavailable
+    expected_validation_scope: unavailable
     expected_sections: []
     expected_disclaimer: true
     expected_licensing_note: true

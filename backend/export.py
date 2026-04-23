@@ -23,13 +23,21 @@ from backend.models import (
     ExportFormat,
     ExportNote,
     ExportResponse,
+    ExportSectionValidation,
     ExportSourceMetadata,
     ExportState,
+    ExportValidation,
+    ExportValidationBindingScope,
+    ExportValidationCitationBinding,
+    ExportValidationDiagnostics,
+    ExportValidationOutcome,
+    ExportValidationSourceBinding,
     ExportedItem,
     ExportedSection,
     Freshness,
     FreshnessState,
     OverviewResponse,
+    OverviewSectionFreshnessValidation,
     OverviewSectionType,
     SafetyClassification,
     SearchSupportClassification,
@@ -69,7 +77,7 @@ def export_asset_page(ticker: str, export_format: ExportFormat | str = ExportFor
     title = f"{overview.asset.ticker} asset page export"
     markdown = _render_markdown(title, sections, overview.source_documents, overview.freshness)
 
-    return ExportResponse(
+    response = ExportResponse(
         content_type=ExportContentType.asset_page,
         export_format=_coerce_format(export_format),
         export_state=ExportState.available,
@@ -89,6 +97,7 @@ def export_asset_page(ticker: str, export_format: ExportFormat | str = ExportFor
             "source": "local_fixture_overview",
         },
     )
+    return response.model_copy(update={"export_validation": _build_asset_export_validation(response, overview)})
 
 
 def export_asset_source_list(ticker: str, export_format: ExportFormat | str = ExportFormat.markdown) -> ExportResponse:
@@ -146,7 +155,7 @@ def export_asset_source_list(ticker: str, export_format: ExportFormat | str = Ex
     title = f"{overview.asset.ticker} source-list export"
     markdown = _render_markdown(title, sections, overview.source_documents, overview.freshness)
 
-    return ExportResponse(
+    response = ExportResponse(
         content_type=ExportContentType.asset_source_list,
         export_format=_coerce_format(export_format),
         export_state=ExportState.available,
@@ -162,6 +171,7 @@ def export_asset_source_list(ticker: str, export_format: ExportFormat | str = Ex
         rendered_markdown=markdown,
         metadata={"source_count": len(overview.source_documents), "source": "local_fixture_overview"},
     )
+    return response.model_copy(update={"export_validation": _build_asset_export_validation(response, overview)})
 
 
 def export_comparison(request: ComparisonExportRequest) -> ExportResponse:
@@ -172,7 +182,7 @@ def export_comparison(request: ComparisonExportRequest) -> ExportResponse:
     title = f"{comparison.left_asset.ticker} vs {comparison.right_asset.ticker} comparison export"
 
     if comparison.comparison_type == "unavailable" or comparison.state.status is not AssetStatus.supported:
-        return ExportResponse(
+        response = ExportResponse(
             content_type=ExportContentType.comparison,
             export_format=export_format,
             export_state=_export_state_from_asset_status(comparison.state.status),
@@ -191,6 +201,14 @@ def export_comparison(request: ComparisonExportRequest) -> ExportResponse:
                 "source": "local_fixture_comparison",
                 "generated_comparison_output": False,
             },
+        )
+        return response.model_copy(
+            update={
+                "export_validation": _build_unavailable_export_validation(
+                    response,
+                    binding_scope=ExportValidationBindingScope.unavailable,
+                )
+            }
         )
 
     sections = [
@@ -257,7 +275,7 @@ def export_comparison(request: ComparisonExportRequest) -> ExportResponse:
     ]
     markdown = _render_markdown(title, sections, comparison.source_documents, None)
 
-    return ExportResponse(
+    response = ExportResponse(
         content_type=ExportContentType.comparison,
         export_format=export_format,
         export_state=ExportState.available,
@@ -273,6 +291,7 @@ def export_comparison(request: ComparisonExportRequest) -> ExportResponse:
         rendered_markdown=markdown,
         metadata={"comparison_type": comparison.comparison_type, "source": "local_fixture_comparison"},
     )
+    return response.model_copy(update={"export_validation": _build_comparison_export_validation(response, comparison)})
 
 
 def export_chat_transcript(ticker: str, request: ChatTranscriptExportRequest) -> ExportResponse:
@@ -360,7 +379,7 @@ def export_chat_transcript(ticker: str, request: ChatTranscriptExportRequest) ->
     ]
     markdown = _render_markdown(title, sections, chat.source_documents, None)
 
-    return ExportResponse(
+    response = ExportResponse(
         content_type=ExportContentType.chat_transcript,
         export_format=export_format,
         export_state=ExportState.available,
@@ -381,6 +400,9 @@ def export_chat_transcript(ticker: str, request: ChatTranscriptExportRequest) ->
             "generated_chat_answer": True,
             "source": "local_fixture_chat",
         },
+    )
+    return response.model_copy(
+        update={"export_validation": _build_chat_export_validation(response, asset_ticker=chat.asset.ticker)}
     )
 
 
@@ -413,7 +435,7 @@ def _export_chat_session_payload(
 
     if metadata.lifecycle_state is not ChatSessionLifecycleState.active or not turns:
         message = f"Chat transcript export is unavailable because the session state is {metadata.lifecycle_state.value}."
-        return ExportResponse(
+        response = ExportResponse(
             content_type=ExportContentType.chat_transcript,
             export_format=resolved_format,
             export_state=ExportState.unavailable,
@@ -430,6 +452,14 @@ def _export_chat_session_payload(
             licensing_note=EXPORT_LICENSING_NOTE,
             rendered_markdown=_unavailable_markdown(title, message),
             metadata=_chat_session_export_metadata(metadata, generated_chat_answer=False),
+        )
+        return response.model_copy(
+            update={
+                "export_validation": _build_unavailable_export_validation(
+                    response,
+                    binding_scope=ExportValidationBindingScope.unavailable,
+                )
+            }
         )
 
     all_citations = _dedupe_by_id([citation for turn in turns for citation in turn.citations], "citation_id")
@@ -509,7 +539,7 @@ def _export_chat_session_payload(
         ),
     ]
     markdown = _render_markdown(title, sections, all_sources, None)
-    return ExportResponse(
+    response = ExportResponse(
         content_type=ExportContentType.chat_transcript,
         export_format=resolved_format,
         export_state=ExportState.available,
@@ -526,6 +556,14 @@ def _export_chat_session_payload(
         licensing_note=EXPORT_LICENSING_NOTE,
         rendered_markdown=markdown,
         metadata=_chat_session_export_metadata(metadata, generated_chat_answer=True),
+    )
+    return response.model_copy(
+        update={
+            "export_validation": _build_chat_export_validation(
+                response,
+                asset_ticker=metadata.selected_asset.ticker if metadata.selected_asset else None,
+            )
+        }
     )
 
 
@@ -981,7 +1019,7 @@ def _unavailable_asset_response(
     export_format: ExportFormat | str,
 ) -> ExportResponse:
     title = f"{asset.ticker} {content_type.value.replace('_', ' ')} export"
-    return ExportResponse(
+    response = ExportResponse(
         content_type=content_type,
         export_format=_coerce_format(export_format),
         export_state=_export_state_from_asset_status(state.status),
@@ -995,6 +1033,14 @@ def _unavailable_asset_response(
         licensing_note=EXPORT_LICENSING_NOTE,
         rendered_markdown=_unavailable_markdown(title, state.message),
         metadata={"generated_asset_output": False, "source": "local_fixture_export_block"},
+    )
+    return response.model_copy(
+        update={
+            "export_validation": _build_unavailable_export_validation(
+                response,
+                binding_scope=ExportValidationBindingScope.unavailable,
+            )
+        }
     )
 
 
@@ -1224,6 +1270,612 @@ def _with_citations(text: str, citation_ids: list[str]) -> str:
     if not citation_ids:
         return text
     return f"{text} [{', '.join(citation_ids)}]"
+
+
+def _build_asset_export_validation(
+    export: ExportResponse,
+    overview: OverviewResponse,
+) -> ExportValidation:
+    citation_sections, source_sections = _collect_export_section_maps(export.sections)
+    source_bindings, source_binding_ids_by_source = _build_export_source_bindings(
+        export.source_documents,
+        source_sections,
+        binding_scope=ExportValidationBindingScope.same_asset,
+        asset_ticker=overview.asset.ticker,
+    )
+    citation_bindings, citation_binding_ids_by_citation = _build_export_citation_bindings(
+        export.citations,
+        export.source_documents,
+        citation_sections,
+        binding_scope=ExportValidationBindingScope.same_asset,
+        asset_ticker=overview.asset.ticker,
+    )
+    overview_validations = {
+        validation.section_id: validation
+        for validation in overview.section_freshness_validation
+    }
+    section_validations = [
+        _build_export_section_validation(
+            section,
+            citation_binding_ids_by_citation=citation_binding_ids_by_citation,
+            source_binding_ids_by_source=source_binding_ids_by_source,
+            overview_validation=overview_validations.get(section.section_id),
+        )
+        for section in export.sections
+        if _section_requires_export_validation(section)
+    ]
+    return _finalize_export_validation(
+        export,
+        binding_scope=ExportValidationBindingScope.same_asset,
+        citation_bindings=citation_bindings,
+        source_bindings=source_bindings,
+        section_validations=section_validations,
+        diagnostics=ExportValidationDiagnostics(
+            same_asset_citation_bindings_only=True,
+            same_asset_source_bindings_only=True,
+            used_existing_overview_contract=True,
+        ),
+    )
+
+
+def _build_comparison_export_validation(
+    export: ExportResponse,
+    comparison: Any,
+) -> ExportValidation:
+    comparison_id = (
+        comparison.evidence_availability.comparison_id
+        if getattr(comparison, "evidence_availability", None) is not None
+        else f"{comparison.left_asset.ticker}_vs_{comparison.right_asset.ticker}"
+    )
+    citation_sections, source_sections = _collect_export_section_maps(export.sections)
+    evidence = getattr(comparison, "evidence_availability", None)
+    source_asset_tickers = {
+        source.source_document_id: source.asset_ticker
+        for source in (evidence.source_references if evidence is not None else [])
+    }
+    supported_citation_ids = {
+        binding.citation_id
+        for binding in (evidence.citation_bindings if evidence is not None else [])
+    }
+    supported_source_ids = {
+        source.source_document_id
+        for source in (evidence.source_references if evidence is not None else [])
+    }
+    source_bindings, source_binding_ids_by_source = _build_export_source_bindings(
+        export.source_documents,
+        source_sections,
+        binding_scope=ExportValidationBindingScope.same_comparison_pack,
+        comparison_id=comparison_id,
+        source_asset_tickers_by_id=source_asset_tickers,
+    )
+    citation_bindings, citation_binding_ids_by_citation = _build_export_citation_bindings(
+        export.citations,
+        export.source_documents,
+        citation_sections,
+        binding_scope=ExportValidationBindingScope.same_comparison_pack,
+        comparison_id=comparison_id,
+        source_asset_tickers_by_id=source_asset_tickers,
+    )
+    missing_citations = sorted(
+        citation.citation_id for citation in export.citations if citation.citation_id not in supported_citation_ids
+    )
+    missing_sources = sorted(
+        source.source_document_id for source in export.source_documents if source.source_document_id not in supported_source_ids
+    )
+    section_validations = [
+        _build_export_section_validation(
+            section,
+            citation_binding_ids_by_citation=citation_binding_ids_by_citation,
+            source_binding_ids_by_source=source_binding_ids_by_source,
+        )
+        for section in export.sections
+        if _section_requires_export_validation(section)
+    ]
+    diagnostics = ExportValidationDiagnostics(
+        same_comparison_pack_citation_bindings_only=not missing_citations,
+        same_comparison_pack_source_bindings_only=not missing_sources,
+        used_existing_comparison_contract=evidence is not None,
+        mismatch_reasons=[
+            *(
+                [f"Comparison export citations missing from local comparison-pack evidence: {', '.join(missing_citations)}"]
+                if missing_citations
+                else []
+            ),
+            *(
+                [f"Comparison export sources missing from local comparison-pack evidence: {', '.join(missing_sources)}"]
+                if missing_sources
+                else []
+            ),
+        ],
+    )
+    return _finalize_export_validation(
+        export,
+        binding_scope=ExportValidationBindingScope.same_comparison_pack,
+        citation_bindings=citation_bindings,
+        source_bindings=source_bindings,
+        section_validations=section_validations,
+        diagnostics=diagnostics,
+    )
+
+
+def _build_chat_export_validation(
+    export: ExportResponse,
+    *,
+    asset_ticker: str | None,
+) -> ExportValidation:
+    citation_sections, source_sections = _collect_export_section_maps(export.sections)
+    if export.citations or export.source_documents:
+        source_bindings, source_binding_ids_by_source = _build_export_source_bindings(
+            export.source_documents,
+            source_sections,
+            binding_scope=ExportValidationBindingScope.same_asset,
+            asset_ticker=asset_ticker,
+        )
+        citation_bindings, citation_binding_ids_by_citation = _build_export_citation_bindings(
+            export.citations,
+            export.source_documents,
+            citation_sections,
+            binding_scope=ExportValidationBindingScope.same_asset,
+            asset_ticker=asset_ticker,
+        )
+        section_validations = [
+            _build_export_section_validation(
+                section,
+                citation_binding_ids_by_citation=citation_binding_ids_by_citation,
+                source_binding_ids_by_source=source_binding_ids_by_source,
+            )
+            for section in export.sections
+            if _section_requires_export_validation(section)
+        ]
+        diagnostics = ExportValidationDiagnostics(
+            same_asset_citation_bindings_only=True,
+            same_asset_source_bindings_only=True,
+            used_existing_chat_contract=True,
+        )
+        return _finalize_export_validation(
+            export,
+            binding_scope=ExportValidationBindingScope.same_asset,
+            citation_bindings=citation_bindings,
+            source_bindings=source_bindings,
+            section_validations=section_validations,
+            diagnostics=diagnostics,
+        )
+
+    safety_classification = export.metadata.get("safety_classification")
+    limitation = (
+        "Safety redirect export does not include same-asset factual citations, source documents, or freshness support."
+        if safety_classification == SafetyClassification.personalized_advice_redirect.value
+        else "This available chat export does not include source-backed factual content."
+    )
+    section_validations = [
+        ExportSectionValidation(
+            section_id="chat_answer",
+            section_type=ExportContentType.chat_transcript,
+            displayed_evidence_state=EvidenceState.unsupported
+            if safety_classification == SafetyClassification.personalized_advice_redirect.value
+            else EvidenceState.insufficient_evidence,
+            validated_evidence_state=EvidenceState.unsupported
+            if safety_classification == SafetyClassification.personalized_advice_redirect.value
+            else EvidenceState.insufficient_evidence,
+            validated_freshness_state=FreshnessState.unknown,
+            validation_outcome=ExportValidationOutcome.validated_with_limitations,
+            limitation_message=limitation,
+        )
+    ]
+    return _finalize_export_validation(
+        export,
+        binding_scope=ExportValidationBindingScope.no_factual_evidence,
+        citation_bindings=[],
+        source_bindings=[],
+        section_validations=section_validations,
+        diagnostics=ExportValidationDiagnostics(
+            used_existing_chat_contract=True,
+            empty_factual_evidence_export=True,
+            limitation_reasons=[limitation],
+        ),
+        default_evidence_state=(
+            EvidenceState.unsupported
+            if safety_classification == SafetyClassification.personalized_advice_redirect.value
+            else EvidenceState.insufficient_evidence
+        ),
+    )
+
+
+def _build_unavailable_export_validation(
+    export: ExportResponse,
+    *,
+    binding_scope: ExportValidationBindingScope,
+) -> ExportValidation:
+    evidence_state = (
+        EvidenceState.unsupported
+        if export.export_state is ExportState.unsupported
+        else EvidenceState.unavailable
+    )
+    limitation = f"Export state {export.export_state.value} has no exportable local evidence payload."
+    return _finalize_export_validation(
+        export,
+        binding_scope=binding_scope,
+        citation_bindings=[],
+        source_bindings=[],
+        section_validations=[],
+        diagnostics=ExportValidationDiagnostics(
+            empty_factual_evidence_export=True,
+            limitation_reasons=[limitation],
+        ),
+        default_evidence_state=evidence_state,
+        limitation_message=limitation,
+    )
+
+
+def _finalize_export_validation(
+    export: ExportResponse,
+    *,
+    binding_scope: ExportValidationBindingScope,
+    citation_bindings: list[ExportValidationCitationBinding],
+    source_bindings: list[ExportValidationSourceBinding],
+    section_validations: list[ExportSectionValidation],
+    diagnostics: ExportValidationDiagnostics,
+    default_evidence_state: EvidenceState | None = None,
+    limitation_message: str | None = None,
+) -> ExportValidation:
+    restriction_messages = sorted(
+        {
+            message
+            for binding in source_bindings
+            for message in [binding.restricted_content_message, binding.omitted_content_message]
+            if message
+        }
+    )
+    section_limitations = [item.limitation_message for item in section_validations if item.limitation_message]
+    diagnostics = diagnostics.model_copy(
+        update={
+            "restricted_content_messages": restriction_messages,
+            "limitation_reasons": sorted({*diagnostics.limitation_reasons, *section_limitations, *restriction_messages}),
+            "mismatch_reasons": sorted(
+                {
+                    *diagnostics.mismatch_reasons,
+                    *[item.mismatch_message for item in section_validations if item.mismatch_message],
+                }
+            ),
+        }
+    )
+    mismatch_message = "; ".join(diagnostics.mismatch_reasons) or None
+    combined_limitation = limitation_message or "; ".join(diagnostics.limitation_reasons) or None
+    overall_outcome = _overall_export_validation_outcome(section_validations, diagnostics)
+    validated_evidence_state = _overall_validated_evidence_state(section_validations, default_evidence_state)
+    return ExportValidation(
+        content_type=export.content_type,
+        export_state=export.export_state,
+        binding_scope=binding_scope,
+        validation_outcome=overall_outcome,
+        validated_evidence_state=validated_evidence_state,
+        citation_bindings=citation_bindings,
+        source_bindings=source_bindings,
+        section_validations=section_validations,
+        limitation_message=combined_limitation,
+        mismatch_message=mismatch_message,
+        diagnostics=diagnostics,
+    )
+
+
+def _collect_export_section_maps(
+    sections: list[ExportedSection],
+) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+    citation_sections: dict[str, set[str]] = {}
+    source_sections: dict[str, set[str]] = {}
+    for section in sections:
+        citation_ids = set(section.citation_ids)
+        source_ids = set(section.source_document_ids)
+        for item in section.items:
+            citation_ids.update(item.citation_ids)
+            source_ids.update(item.source_document_ids)
+        for citation_id in citation_ids:
+            citation_sections.setdefault(citation_id, set()).add(section.section_id)
+        for source_id in source_ids:
+            source_sections.setdefault(source_id, set()).add(section.section_id)
+    return citation_sections, source_sections
+
+
+def _build_export_source_bindings(
+    sources: list[ExportSourceMetadata],
+    source_sections: dict[str, set[str]],
+    *,
+    binding_scope: ExportValidationBindingScope,
+    asset_ticker: str | None = None,
+    comparison_id: str | None = None,
+    source_asset_tickers_by_id: dict[str, str] | None = None,
+) -> tuple[list[ExportValidationSourceBinding], dict[str, list[str]]]:
+    bindings: list[ExportValidationSourceBinding] = []
+    binding_ids_by_source: dict[str, list[str]] = {}
+    for index, source in enumerate(sources):
+        excerpt = source.allowed_excerpt
+        binding_id = f"source_binding_{index + 1}_{source.source_document_id}"
+        restricted_message = (
+            "Full source text remains unavailable for export under the current source-use policy."
+            if source.permitted_operations.can_export_full_text is False
+            else None
+        )
+        omitted_message = None
+        if excerpt is not None and excerpt.kind == "excerpt_metadata":
+            omitted_message = "Only metadata or bounded excerpt metadata is exportable for this source."
+        bindings.append(
+            ExportValidationSourceBinding(
+                binding_id=binding_id,
+                source_document_id=source.source_document_id,
+                asset_ticker=(
+                    asset_ticker
+                    if asset_ticker is not None
+                    else (source_asset_tickers_by_id or {}).get(source.source_document_id)
+                ),
+                comparison_id=comparison_id,
+                section_ids=sorted(source_sections.get(source.source_document_id, set())),
+                source_type=source.source_type,
+                freshness_state=source.freshness_state,
+                published_at=source.published_at,
+                as_of_date=source.as_of_date,
+                retrieved_at=source.retrieved_at,
+                source_use_policy=source.source_use_policy,
+                allowlist_status=source.allowlist_status,
+                permitted_operations=source.permitted_operations,
+                allowed_excerpt_id=excerpt.excerpt_id if excerpt is not None else None,
+                allowed_excerpt_kind=excerpt.kind if excerpt is not None else None,
+                excerpt_exported=bool(excerpt and excerpt.text),
+                excerpt_metadata_only=bool(excerpt and excerpt.kind == "excerpt_metadata"),
+                restricted_content_message=restricted_message,
+                omitted_content_message=omitted_message or (excerpt.note if excerpt and excerpt.kind == "excerpt_metadata" else None),
+            )
+        )
+        binding_ids_by_source.setdefault(source.source_document_id, []).append(binding_id)
+    return bindings, binding_ids_by_source
+
+
+def _build_export_citation_bindings(
+    citations: list[ExportCitation],
+    sources: list[ExportSourceMetadata],
+    citation_sections: dict[str, set[str]],
+    *,
+    binding_scope: ExportValidationBindingScope,
+    asset_ticker: str | None = None,
+    comparison_id: str | None = None,
+    source_asset_tickers_by_id: dict[str, str] | None = None,
+) -> tuple[list[ExportValidationCitationBinding], dict[str, list[str]]]:
+    source_lookup = _source_lookup_for_citations(sources)
+    fallback_decision = resolve_source_policy()
+    bindings: list[ExportValidationCitationBinding] = []
+    binding_ids_by_citation: dict[str, list[str]] = {}
+    for citation in citations:
+        source = source_lookup.get(citation.citation_id) or source_lookup.get(citation.source_document_id)
+        binding_id = f"citation_binding_{citation.citation_id}"
+        bindings.append(
+            ExportValidationCitationBinding(
+                binding_id=binding_id,
+                citation_id=citation.citation_id,
+                source_document_id=citation.source_document_id,
+                asset_ticker=(
+                    asset_ticker
+                    if asset_ticker is not None
+                    else (source_asset_tickers_by_id or {}).get(citation.source_document_id)
+                ),
+                comparison_id=comparison_id,
+                section_ids=sorted(citation_sections.get(citation.citation_id, set())),
+                freshness_state=citation.freshness_state,
+                source_use_policy=source.source_use_policy if source is not None else fallback_decision.source_use_policy,
+                allowlist_status=source.allowlist_status if source is not None else fallback_decision.allowlist_status,
+                permitted_operations=source.permitted_operations if source is not None else fallback_decision.permitted_operations,
+                scope=binding_scope,
+                supports_exported_content=bool(
+                    source is not None
+                    and source.permitted_operations.can_support_citations
+                    and source.permitted_operations.can_export_metadata
+                ),
+            )
+        )
+        binding_ids_by_citation.setdefault(citation.citation_id, []).append(binding_id)
+    return bindings, binding_ids_by_citation
+
+
+def _source_lookup_for_citations(sources: list[ExportSourceMetadata]) -> dict[str, ExportSourceMetadata]:
+    lookup: dict[str, ExportSourceMetadata] = {}
+    for source in sources:
+        lookup.setdefault(source.source_document_id, source)
+        if source.allowed_excerpt and source.allowed_excerpt.citation_id:
+            lookup[source.allowed_excerpt.citation_id] = source
+    return lookup
+
+
+def _build_export_section_validation(
+    section: ExportedSection,
+    *,
+    citation_binding_ids_by_citation: dict[str, list[str]],
+    source_binding_ids_by_source: dict[str, list[str]],
+    overview_validation: OverviewSectionFreshnessValidation | None = None,
+) -> ExportSectionValidation:
+    citation_binding_ids = _binding_ids_for_section_citations(section, citation_binding_ids_by_citation)
+    source_binding_ids = _binding_ids_for_section_sources(section, source_binding_ids_by_source)
+    if overview_validation is not None:
+        return ExportSectionValidation(
+            section_id=section.section_id,
+            section_type=section.section_type,
+            displayed_freshness_state=overview_validation.displayed_freshness_state,
+            displayed_evidence_state=overview_validation.displayed_evidence_state,
+            displayed_as_of_date=overview_validation.displayed_as_of_date,
+            displayed_retrieved_at=overview_validation.displayed_retrieved_at,
+            validated_freshness_state=overview_validation.validated_freshness_state,
+            validated_evidence_state=overview_validation.displayed_evidence_state,
+            validated_as_of_date=overview_validation.validated_as_of_date,
+            validated_retrieved_at=overview_validation.validated_retrieved_at,
+            validation_outcome=_map_overview_validation_outcome(overview_validation),
+            citation_binding_ids=citation_binding_ids,
+            source_binding_ids=source_binding_ids,
+            limitation_message=overview_validation.limitation_message or section.limitations,
+            mismatch_message=overview_validation.mismatch_message,
+        )
+
+    validated_freshness = _derived_section_freshness(section)
+    validated_evidence = _derived_section_evidence(section)
+    validated_as_of = _derived_section_as_of(section)
+    validated_retrieved = _derived_section_retrieved_at(section)
+    limitation_message = _section_limitation_message(
+        section,
+        has_bindings=bool(citation_binding_ids or source_binding_ids),
+        validated_freshness=validated_freshness,
+        validated_evidence=validated_evidence,
+    )
+    validation_outcome = (
+        ExportValidationOutcome.validated_with_limitations
+        if limitation_message
+        else ExportValidationOutcome.validated
+    )
+    return ExportSectionValidation(
+        section_id=section.section_id,
+        section_type=section.section_type,
+        displayed_freshness_state=section.freshness_state,
+        displayed_evidence_state=section.evidence_state,
+        displayed_as_of_date=section.as_of_date,
+        displayed_retrieved_at=section.retrieved_at,
+        validated_freshness_state=validated_freshness,
+        validated_evidence_state=validated_evidence,
+        validated_as_of_date=validated_as_of,
+        validated_retrieved_at=validated_retrieved,
+        validation_outcome=validation_outcome,
+        citation_binding_ids=citation_binding_ids,
+        source_binding_ids=source_binding_ids,
+        limitation_message=limitation_message,
+    )
+
+
+def _binding_ids_for_section_citations(
+    section: ExportedSection,
+    binding_ids_by_citation: dict[str, list[str]],
+) -> list[str]:
+    citation_ids = set(section.citation_ids)
+    for item in section.items:
+        citation_ids.update(item.citation_ids)
+    return sorted({binding_id for citation_id in citation_ids for binding_id in binding_ids_by_citation.get(citation_id, [])})
+
+
+def _binding_ids_for_section_sources(
+    section: ExportedSection,
+    binding_ids_by_source: dict[str, list[str]],
+) -> list[str]:
+    source_ids = set(section.source_document_ids)
+    for item in section.items:
+        source_ids.update(item.source_document_ids)
+    return sorted({binding_id for source_id in source_ids for binding_id in binding_ids_by_source.get(source_id, [])})
+
+
+def _map_overview_validation_outcome(
+    validation: OverviewSectionFreshnessValidation,
+) -> ExportValidationOutcome:
+    if validation.validation_outcome.value == ExportValidationOutcome.mismatch.value:
+        return ExportValidationOutcome.mismatch
+    if validation.validation_outcome.value == ExportValidationOutcome.validated_with_limitations.value:
+        return ExportValidationOutcome.validated_with_limitations
+    return ExportValidationOutcome.validated
+
+
+def _section_requires_export_validation(section: ExportedSection) -> bool:
+    if section.section_id == "page_freshness":
+        return True
+    if section.citation_ids or section.source_document_ids:
+        return True
+    if section.freshness_state is not None or section.as_of_date is not None or section.retrieved_at is not None:
+        return True
+    return any(
+        item.citation_ids
+        or item.source_document_ids
+        or item.freshness_state is not None
+        or item.as_of_date is not None
+        or item.retrieved_at is not None
+        for item in section.items
+    )
+
+
+def _derived_section_freshness(section: ExportedSection) -> FreshnessState | None:
+    states = [section.freshness_state] if section.freshness_state is not None else []
+    states.extend(item.freshness_state for item in section.items if item.freshness_state is not None)
+    if not states:
+        return None
+    if FreshnessState.stale in states:
+        return FreshnessState.stale
+    if FreshnessState.unavailable in states:
+        return FreshnessState.unavailable
+    if FreshnessState.unknown in states:
+        return FreshnessState.unknown
+    return FreshnessState.fresh
+
+
+def _derived_section_evidence(section: ExportedSection) -> EvidenceState | None:
+    if section.evidence_state is not None:
+        return section.evidence_state
+    item_states = [item.evidence_state for item in section.items if item.evidence_state is not None]
+    if not item_states:
+        return None
+    unique_states = set(item_states)
+    if len(unique_states) == 1:
+        return item_states[0]
+    return EvidenceState.mixed
+
+
+def _derived_section_as_of(section: ExportedSection) -> str | None:
+    if section.as_of_date is not None:
+        return section.as_of_date
+    item_dates = {item.as_of_date for item in section.items if item.as_of_date}
+    return sorted(item_dates)[0] if len(item_dates) == 1 else None
+
+
+def _derived_section_retrieved_at(section: ExportedSection) -> str | None:
+    if section.retrieved_at is not None:
+        return section.retrieved_at
+    item_dates = {item.retrieved_at for item in section.items if item.retrieved_at}
+    return sorted(item_dates)[0] if len(item_dates) == 1 else None
+
+
+def _section_limitation_message(
+    section: ExportedSection,
+    *,
+    has_bindings: bool,
+    validated_freshness: FreshnessState | None,
+    validated_evidence: EvidenceState | None,
+) -> str | None:
+    reasons: list[str] = []
+    if section.limitations:
+        reasons.append(section.limitations)
+    if validated_freshness in {FreshnessState.stale, FreshnessState.unknown, FreshnessState.unavailable}:
+        reasons.append(f"Section freshness remains {validated_freshness.value}.")
+    if validated_evidence is not None and validated_evidence is not EvidenceState.supported:
+        reasons.append(f"Section evidence remains {validated_evidence.value}.")
+    if not has_bindings and section.section_id not in {"page_freshness"}:
+        reasons.append("No exportable citation or source bindings are attached to this section.")
+    return "; ".join(dict.fromkeys(reasons)) or None
+
+
+def _overall_export_validation_outcome(
+    section_validations: list[ExportSectionValidation],
+    diagnostics: ExportValidationDiagnostics,
+) -> ExportValidationOutcome:
+    if diagnostics.mismatch_reasons or any(
+        item.validation_outcome is ExportValidationOutcome.mismatch for item in section_validations
+    ):
+        return ExportValidationOutcome.mismatch
+    if diagnostics.limitation_reasons or any(
+        item.validation_outcome is ExportValidationOutcome.validated_with_limitations for item in section_validations
+    ):
+        return ExportValidationOutcome.validated_with_limitations
+    return ExportValidationOutcome.validated
+
+
+def _overall_validated_evidence_state(
+    section_validations: list[ExportSectionValidation],
+    default: EvidenceState | None,
+) -> EvidenceState:
+    states = [item.validated_evidence_state for item in section_validations if item.validated_evidence_state is not None]
+    if not states:
+        return default or EvidenceState.unavailable
+    unique_states = set(states)
+    if len(unique_states) == 1:
+        return states[0]
+    return EvidenceState.mixed
 
 
 def _metric_value(value: Any, unit: str | None) -> str:

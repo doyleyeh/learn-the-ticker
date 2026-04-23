@@ -2366,6 +2366,110 @@ class ChatTranscriptExportRequest(BaseModel):
     export_format: ExportFormat = ExportFormat.markdown
 
 
+class ExportValidationOutcome(str, Enum):
+    validated = "validated"
+    validated_with_limitations = "validated_with_limitations"
+    mismatch = "mismatch"
+
+
+class ExportValidationBindingScope(str, Enum):
+    same_asset = "same_asset"
+    same_comparison_pack = "same_comparison_pack"
+    no_factual_evidence = "no_factual_evidence"
+    unavailable = "unavailable"
+
+
+class ExportValidationCitationBinding(BaseModel):
+    binding_id: str
+    citation_id: str
+    source_document_id: str
+    asset_ticker: str | None = None
+    comparison_id: str | None = None
+    section_ids: list[str] = Field(default_factory=list)
+    freshness_state: FreshnessState | None = None
+    source_use_policy: SourceUsePolicy = SourceUsePolicy.rejected
+    allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.not_allowlisted
+    permitted_operations: SourceOperationPermissions = Field(
+        default_factory=lambda: DEFAULT_BLOCKED_SOURCE_OPERATIONS.model_copy()
+    )
+    scope: ExportValidationBindingScope
+    supports_exported_content: bool = False
+
+
+class ExportValidationSourceBinding(BaseModel):
+    binding_id: str
+    source_document_id: str
+    asset_ticker: str | None = None
+    comparison_id: str | None = None
+    section_ids: list[str] = Field(default_factory=list)
+    source_type: str
+    freshness_state: FreshnessState
+    published_at: str | None = None
+    as_of_date: str | None = None
+    retrieved_at: str | None = None
+    source_use_policy: SourceUsePolicy
+    allowlist_status: SourceAllowlistStatus
+    permitted_operations: SourceOperationPermissions = Field(
+        default_factory=lambda: DEFAULT_BLOCKED_SOURCE_OPERATIONS.model_copy()
+    )
+    allowed_excerpt_id: str | None = None
+    allowed_excerpt_kind: Literal["supporting_passage", "excerpt_metadata"] | None = None
+    excerpt_exported: bool = False
+    excerpt_metadata_only: bool = False
+    restricted_content_message: str | None = None
+    omitted_content_message: str | None = None
+
+
+class ExportSectionValidation(BaseModel):
+    section_id: str
+    section_type: ExportContentType | OverviewSectionType | None = None
+    displayed_freshness_state: FreshnessState | None = None
+    displayed_evidence_state: EvidenceState | None = None
+    displayed_as_of_date: str | None = None
+    displayed_retrieved_at: str | None = None
+    validated_freshness_state: FreshnessState | None = None
+    validated_evidence_state: EvidenceState | None = None
+    validated_as_of_date: str | None = None
+    validated_retrieved_at: str | None = None
+    validation_outcome: ExportValidationOutcome
+    citation_binding_ids: list[str] = Field(default_factory=list)
+    source_binding_ids: list[str] = Field(default_factory=list)
+    limitation_message: str | None = None
+    mismatch_message: str | None = None
+
+
+class ExportValidationDiagnostics(BaseModel):
+    derived_from_existing_local_evidence_only: bool = True
+    no_live_external_calls: bool = True
+    same_asset_citation_bindings_only: bool = False
+    same_asset_source_bindings_only: bool = False
+    same_comparison_pack_citation_bindings_only: bool = False
+    same_comparison_pack_source_bindings_only: bool = False
+    used_existing_overview_contract: bool = False
+    used_existing_comparison_contract: bool = False
+    used_existing_chat_contract: bool = False
+    no_new_facts_or_dates: bool = True
+    empty_factual_evidence_export: bool = False
+    restricted_content_messages: list[str] = Field(default_factory=list)
+    limitation_reasons: list[str] = Field(default_factory=list)
+    mismatch_reasons: list[str] = Field(default_factory=list)
+
+
+class ExportValidation(BaseModel):
+    schema_version: Literal["export-validation-v1"] = "export-validation-v1"
+    content_type: ExportContentType
+    export_state: ExportState
+    binding_scope: ExportValidationBindingScope
+    validation_outcome: ExportValidationOutcome
+    validated_evidence_state: EvidenceState
+    citation_bindings: list[ExportValidationCitationBinding] = Field(default_factory=list)
+    source_bindings: list[ExportValidationSourceBinding] = Field(default_factory=list)
+    section_validations: list[ExportSectionValidation] = Field(default_factory=list)
+    limitation_message: str | None = None
+    mismatch_message: str | None = None
+    diagnostics: ExportValidationDiagnostics = Field(default_factory=ExportValidationDiagnostics)
+
+
 class ExportResponse(BaseModel):
     content_type: ExportContentType
     export_format: ExportFormat
@@ -2383,3 +2487,4 @@ class ExportResponse(BaseModel):
     licensing_note: ExportNote
     rendered_markdown: str
     metadata: dict[str, Any] = Field(default_factory=dict)
+    export_validation: ExportValidation | None = None
