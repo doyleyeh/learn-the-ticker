@@ -28,6 +28,7 @@ function includes(path, marker) {
 [
   "app/page.tsx",
   "app/assets/[ticker]/page.tsx",
+  "app/assets/[ticker]/sources/page.tsx",
   "app/compare/page.tsx",
   "components/AIComprehensiveAnalysisPanel.tsx",
   "components/AssetChatPanel.tsx",
@@ -84,6 +85,13 @@ includes("app/assets/[ticker]/page.tsx", "AssetEtfSections");
 includes("app/assets/[ticker]/page.tsx", "AssetStockSections");
 includes("app/assets/[ticker]/page.tsx", "hasEtfPrdSections");
 includes("app/assets/[ticker]/page.tsx", "hasStockPrdSections");
+includes("app/assets/[ticker]/sources/page.tsx", "SourceDrawer");
+includes("app/assets/[ticker]/sources/page.tsx", "data-source-list-state");
+includes("app/assets/[ticker]/sources/page.tsx", "sourceListUnavailableMessage");
+includes("app/assets/[ticker]/sources/page.tsx", "No source metadata is rendered because this ticker is recognized as unsupported");
+includes("app/assets/[ticker]/sources/page.tsx", "No source metadata is rendered because this ticker is outside the Top-500 manifest-backed support scope");
+includes("app/assets/[ticker]/sources/page.tsx", "source-list view");
+includes("components/SourceDrawer.tsx", "sourceDrawerStateFromSupportState");
 includes("app/compare/page.tsx", "Bottom line for beginners");
 includes("app/compare/page.tsx", "ComparisonSourceDetails");
 includes("app/compare/page.tsx", "comparisonExportUrl");
