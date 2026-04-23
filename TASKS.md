@@ -95,6 +95,10 @@ Max 3 attempts.
 
 ### T-043: Add section-level freshness validation contract
 
+### T-044: Add export source-use and freshness validation contract
+
+### T-045: Add grounded chat comparison-redirect contract
+
 ## Completed
 
 ### T-035: Add source allowlist and rights-tiered raw text policy contract
