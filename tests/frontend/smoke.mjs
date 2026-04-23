@@ -29,6 +29,7 @@ function includes(path, marker) {
   "app/page.tsx",
   "app/assets/[ticker]/page.tsx",
   "app/compare/page.tsx",
+  "components/AIComprehensiveAnalysisPanel.tsx",
   "components/AssetChatPanel.tsx",
   "components/AssetEtfSections.tsx",
   "components/AssetStockSections.tsx",
@@ -40,6 +41,7 @@ function includes(path, marker) {
   "components/SourceDrawer.tsx",
   "components/FreshnessLabel.tsx",
   "components/GlossaryPopover.tsx",
+  "components/WeeklyNewsPanel.tsx",
   "lib/assetChat.ts",
   "lib/compare.ts",
   "lib/compareSuggestions.ts",
@@ -52,13 +54,13 @@ function includes(path, marker) {
 includes("app/page.tsx", "SearchBox");
 includes("app/page.tsx", "unsupported");
 includes("app/assets/[ticker]/page.tsx", "Stable facts");
-includes("app/assets/[ticker]/page.tsx", "Recent developments");
 includes("app/assets/[ticker]/page.tsx", "Stale and unknown treatment");
 includes("app/assets/[ticker]/page.tsx", "AssetModeLayout");
+includes("app/assets/[ticker]/page.tsx", "WeeklyNewsPanel");
+includes("app/assets/[ticker]/page.tsx", "AIComprehensiveAnalysisPanel");
 includes("app/assets/[ticker]/page.tsx", "data-beginner-primary-claim");
 includes("app/assets/[ticker]/page.tsx", "data-beginner-top-risk-count");
 includes("app/assets/[ticker]/page.tsx", "data-beginner-stable-recent-separation");
-includes("app/assets/[ticker]/page.tsx", "data-beginner-recent-developments");
 includes("app/assets/[ticker]/page.tsx", "data-beginner-educational-framing");
 includes("app/assets/[ticker]/page.tsx", "SourceDrawer");
 includes("app/assets/[ticker]/page.tsx", "GlossaryPopover");
@@ -69,6 +71,8 @@ includes("app/assets/[ticker]/page.tsx", "data-glossary-no-generated-context");
 includes("app/assets/[ticker]/page.tsx", "data-glossary-generic-education");
 includes("app/assets/[ticker]/page.tsx", "beginnerGlossaryGroupsByAssetType");
 includes("app/assets/[ticker]/page.tsx", "AssetChatPanel");
+includes("app/assets/[ticker]/page.tsx", "getWeeklyNewsFocusFixture");
+includes("app/assets/[ticker]/page.tsx", "getAIComprehensiveAnalysisFixture");
 includes("app/assets/[ticker]/page.tsx", "assetPageExportUrl");
 includes("app/assets/[ticker]/page.tsx", "assetSourceListExportUrl");
 includes("app/assets/[ticker]/page.tsx", "getAssetComparisonSuggestions");
@@ -109,6 +113,23 @@ includes("components/AssetModeLayout.tsx", "data-beginner-mode-region");
 includes("components/AssetModeLayout.tsx", "data-deep-dive-mode-region");
 includes("components/AssetModeLayout.tsx", "Beginner Mode");
 includes("components/AssetModeLayout.tsx", "Deep-Dive Mode");
+includes("components/WeeklyNewsPanel.tsx", "Weekly News Focus");
+includes("components/WeeklyNewsPanel.tsx", "data-weekly-news-state");
+includes("components/WeeklyNewsPanel.tsx", "data-weekly-news-item-count");
+includes("components/WeeklyNewsPanel.tsx", "data-beginner-weekly-news-focus");
+includes("components/WeeklyNewsPanel.tsx", "data-beginner-recent-developments");
+includes("components/WeeklyNewsPanel.tsx", "Source quality:");
+includes("components/WeeklyNewsPanel.tsx", "Source-use policy:");
+includes("components/WeeklyNewsPanel.tsx", "No major Weekly News Focus items found");
+includes("components/AIComprehensiveAnalysisPanel.tsx", "AI Comprehensive Analysis");
+includes("components/AIComprehensiveAnalysisPanel.tsx", "data-ai-analysis-state");
+includes("components/AIComprehensiveAnalysisPanel.tsx", "data-ai-analysis-available");
+includes("components/AIComprehensiveAnalysisPanel.tsx", "What Changed This Week");
+includes("components/AIComprehensiveAnalysisPanel.tsx", "Market Context");
+includes("components/AIComprehensiveAnalysisPanel.tsx", "Business/Fund Context");
+includes("components/AIComprehensiveAnalysisPanel.tsx", "Risk Context");
+includes("components/AIComprehensiveAnalysisPanel.tsx", "data-ai-analysis-section-order");
+includes("components/AIComprehensiveAnalysisPanel.tsx", "fabricated analysis");
 includes("components/ExportControls.tsx", "data-export-controls");
 includes("components/ExportControls.tsx", "data-export-relative-api");
 includes("components/ExportControls.tsx", "data-export-no-live-external");
@@ -253,13 +274,21 @@ assert.ok(
   "Asset page should pass Beginner Mode before Deep-Dive Mode"
 );
 assert.ok(
-  assetPage.indexOf("data-beginner-top-risks") < assetPage.indexOf("data-beginner-recent-developments"),
-  "Beginner Mode should show top risks before recent developments"
+  assetPage.indexOf("data-beginner-top-risks") < assetPage.indexOf("<WeeklyNewsPanel"),
+  "Beginner Mode should show top risks before Weekly News Focus"
+);
+assert.ok(
+  assetPage.indexOf("<WeeklyNewsPanel") < assetPage.indexOf("<AIComprehensiveAnalysisPanel"),
+  "Weekly News Focus should render before AI Comprehensive Analysis"
+);
+assert.ok(
+  assetPage.indexOf("<AIComprehensiveAnalysisPanel") < assetPage.indexOf("data-beginner-educational-framing"),
+  "Timely context should render before educational suitability"
 );
 assert.ok(
   assetPage.indexOf("data-beginner-stable-recent-separation=\"stable\"") <
-    assetPage.indexOf("data-beginner-stable-recent-separation=\"recent\""),
-  "Beginner Mode should keep stable facts before recent developments"
+    assetPage.indexOf("<WeeklyNewsPanel"),
+  "Beginner Mode should keep stable facts before timely-context modules"
 );
 assert.ok(
   assetPage.lastIndexOf("AssetChatPanel") > assetPage.indexOf("data-beginner-educational-framing"),
@@ -271,7 +300,14 @@ for (const ticker of ["VOO", "QQQ", "AAPL"]) {
   assert.match(fixtures, new RegExp(`${ticker}: \\{`), `${ticker} fixture should exist`);
 }
 
-const aaplFixture = fixtures.slice(fixtures.indexOf("AAPL: {"), fixtures.indexOf("}\n};", fixtures.indexOf("AAPL: {")));
+const assetFixturesBlock = fixtures.slice(
+  fixtures.indexOf("export const assetFixtures"),
+  fixtures.indexOf("export const unsupportedAssets")
+);
+const aaplFixture = assetFixturesBlock.slice(
+  assetFixturesBlock.indexOf("AAPL: {"),
+  assetFixturesBlock.indexOf("}\n};", assetFixturesBlock.indexOf("AAPL: {"))
+);
 for (const sectionId of [
   "business_overview",
   "products_services",
@@ -300,8 +336,14 @@ for (const marker of [
 ]) {
   assert.match(aaplFixture, new RegExp(marker), `AAPL stock fixture should include ${marker}`);
 }
-const vooFixture = fixtures.slice(fixtures.indexOf("VOO: {"), fixtures.indexOf("  QQQ:", fixtures.indexOf("VOO: {")));
-const qqqFixture = fixtures.slice(fixtures.indexOf("QQQ: {"), fixtures.indexOf("  AAPL:", fixtures.indexOf("QQQ: {")));
+const vooFixture = assetFixturesBlock.slice(
+  assetFixturesBlock.indexOf("VOO: {"),
+  assetFixturesBlock.indexOf("  QQQ:", assetFixturesBlock.indexOf("VOO: {"))
+);
+const qqqFixture = assetFixturesBlock.slice(
+  assetFixturesBlock.indexOf("QQQ: {"),
+  assetFixturesBlock.indexOf("  AAPL:", assetFixturesBlock.indexOf("QQQ: {"))
+);
 assert.equal(vooFixture.includes("stockSections"), false, "VOO should not receive stock PRD section rendering");
 assert.equal(qqqFixture.includes("stockSections"), false, "QQQ should not receive stock PRD section rendering");
 assert.equal(aaplFixture.includes("etfSections"), false, "AAPL should not receive ETF PRD section rendering");
@@ -369,6 +411,21 @@ for (const marker of [
   "c_voo_profile",
   "c_qqq_profile",
   "c_aapl_profile",
+  "weeklyNewsFocusFixtures",
+  "aiComprehensiveAnalysisFixtures",
+  "weekly-news-focus-v1",
+  "ai-comprehensive-analysis-v1",
+  "c_weekly_qqq_methodology",
+  "c_weekly_qqq_sponsor_update",
+  "src_qqq_weekly_methodology",
+  "src_qqq_weekly_sponsor_update",
+  "What Changed This Week",
+  "Market Context",
+  "Business/Fund Context",
+  "Risk Context",
+  "no_high_signal",
+  "suppressed",
+  "available",
   "freshnessState",
   "Unknown in the local skeleton data",
   "No facts are invented",
@@ -387,6 +444,7 @@ const frontendSource = [
   read("app/page.tsx"),
   read("app/assets/[ticker]/page.tsx"),
   read("app/compare/page.tsx"),
+  read("components/AIComprehensiveAnalysisPanel.tsx"),
   read("components/AssetChatPanel.tsx"),
   read("components/AssetEtfSections.tsx"),
   read("components/AssetStockSections.tsx"),
@@ -397,6 +455,7 @@ const frontendSource = [
   read("components/GlossaryPopover.tsx"),
   read("components/SearchBox.tsx"),
   read("components/SourceDrawer.tsx"),
+  read("components/WeeklyNewsPanel.tsx"),
   read("lib/assetChat.ts"),
   read("lib/compare.ts"),
   read("lib/compareSuggestions.ts"),

@@ -7,6 +7,7 @@ export type EvidenceState =
   | "unavailable"
   | "stale"
   | "insufficient_evidence"
+  | "no_high_signal"
   | "no_major_recent_development";
 export type StockSectionType =
   | "stable_facts"
@@ -95,6 +96,122 @@ export type CitationContext = {
   supportingPassage: string;
 };
 
+export type WeeklyNewsContractState =
+  | "available"
+  | "no_high_signal"
+  | "insufficient_evidence"
+  | "unavailable"
+  | "suppressed";
+
+export type WeeklyNewsWindow = {
+  asOfDate: string;
+  timezone: "America/New_York";
+  previousMarketWeek: {
+    start: string | null;
+    end: string | null;
+  };
+  currentWeekToDate: {
+    start: string | null;
+    end: string | null;
+  };
+  newsWindowStart: string;
+  newsWindowEnd: string;
+  includesCurrentWeekToDate: boolean;
+};
+
+export type WeeklyNewsSourceMetadata = {
+  sourceDocumentId: string;
+  sourceType: string;
+  title: string;
+  publisher: string;
+  url: string;
+  publishedAt?: string | null;
+  asOfDate?: string | null;
+  retrievedAt: string;
+  freshnessState: FreshnessState;
+  isOfficial: boolean;
+  sourceQuality: "official" | "issuer" | "provider" | "fixture" | "allowlisted" | "rejected" | "unknown";
+  allowlistStatus: "allowed" | "rejected" | "pending_review" | "not_allowlisted";
+  sourceUsePolicy: "metadata_only" | "link_only" | "summary_allowed" | "full_text_allowed" | "rejected";
+};
+
+export type WeeklyNewsItem = {
+  eventId: string;
+  assetTicker: string;
+  eventType:
+    | "earnings"
+    | "guidance"
+    | "product_announcement"
+    | "merger_acquisition"
+    | "leadership_change"
+    | "regulatory_event"
+    | "legal_event"
+    | "capital_allocation"
+    | "fee_change"
+    | "methodology_change"
+    | "index_change"
+    | "fund_merger"
+    | "fund_liquidation"
+    | "sponsor_update"
+    | "large_flow_event"
+    | "no_major_recent_development"
+    | "other";
+  title: string;
+  summary: string;
+  eventDate?: string | null;
+  publishedAt?: string | null;
+  periodBucket: "previous_market_week" | "current_week_to_date";
+  citationIds: string[];
+  source: WeeklyNewsSourceMetadata;
+  freshnessState: FreshnessState;
+  importanceScore: number;
+};
+
+export type WeeklyNewsEmptyState = {
+  state: WeeklyNewsContractState;
+  message: string;
+  evidenceState: EvidenceState;
+  selectedItemCount: number;
+  suppressedCandidateCount: number;
+};
+
+export type WeeklyNewsFocusFixture = {
+  schemaVersion: "weekly-news-focus-v1";
+  state: WeeklyNewsContractState;
+  window: WeeklyNewsWindow;
+  items: WeeklyNewsItem[];
+  emptyState: WeeklyNewsEmptyState | null;
+  citations: Citation[];
+  sourceDocuments: SourceDocument[];
+  noLiveExternalCalls: true;
+  stableFactsAreSeparate: true;
+};
+
+export type AIComprehensiveAnalysisSection = {
+  sectionId: "what_changed_this_week" | "market_context" | "business_or_fund_context" | "risk_context";
+  label: "What Changed This Week" | "Market Context" | "Business/Fund Context" | "Risk Context";
+  analysis: string;
+  bullets: string[];
+  citationIds: string[];
+  uncertainty: string[];
+};
+
+export type AIComprehensiveAnalysisFixture = {
+  schemaVersion: "ai-comprehensive-analysis-v1";
+  state: WeeklyNewsContractState;
+  analysisAvailable: boolean;
+  suppressionReason: string | null;
+  sections: AIComprehensiveAnalysisSection[];
+  citationIds: string[];
+  sourceDocumentIds: string[];
+  weeklyNewsEventIds: string[];
+  canonicalFactCitationIds: string[];
+  citations: Citation[];
+  sourceDocuments: SourceDocument[];
+  noLiveExternalCalls: true;
+  stableFactsAreSeparate: true;
+};
+
 export type AssetFixture = {
   ticker: string;
   name: string;
@@ -147,6 +264,241 @@ export type AssetFixture = {
 };
 
 const stubTimestamp = "2026-04-20T00:00:00Z";
+const weeklyNewsWindow: WeeklyNewsWindow = {
+  asOfDate: "2026-04-23",
+  timezone: "America/New_York",
+  previousMarketWeek: {
+    start: "2026-04-13",
+    end: "2026-04-19"
+  },
+  currentWeekToDate: {
+    start: "2026-04-20",
+    end: "2026-04-22"
+  },
+  newsWindowStart: "2026-04-13",
+  newsWindowEnd: "2026-04-22",
+  includesCurrentWeekToDate: true
+};
+
+function buildEmptyWeeklyNewsFocus(): WeeklyNewsFocusFixture {
+  return {
+    schemaVersion: "weekly-news-focus-v1",
+    state: "no_high_signal",
+    window: weeklyNewsWindow,
+    items: [],
+    emptyState: {
+      state: "no_high_signal",
+      message: "No major Weekly News Focus items found in the deterministic local fixture window.",
+      evidenceState: "no_high_signal",
+      selectedItemCount: 0,
+      suppressedCandidateCount: 0
+    },
+    citations: [],
+    sourceDocuments: [],
+    noLiveExternalCalls: true,
+    stableFactsAreSeparate: true
+  };
+}
+
+function buildSuppressedAIComprehensiveAnalysis(
+  canonicalFactCitationIds: string[]
+): AIComprehensiveAnalysisFixture {
+  return {
+    schemaVersion: "ai-comprehensive-analysis-v1",
+    state: "suppressed",
+    analysisAvailable: false,
+    suppressionReason:
+      "AI Comprehensive Analysis is suppressed because fewer than two high-signal Weekly News Focus items are available.",
+    sections: [],
+    citationIds: [],
+    sourceDocumentIds: [],
+    weeklyNewsEventIds: [],
+    canonicalFactCitationIds,
+    citations: [],
+    sourceDocuments: [],
+    noLiveExternalCalls: true,
+    stableFactsAreSeparate: true
+  };
+}
+
+export const weeklyNewsFocusFixtures: Record<string, WeeklyNewsFocusFixture> = {
+  VOO: buildEmptyWeeklyNewsFocus(),
+  AAPL: buildEmptyWeeklyNewsFocus(),
+  QQQ: {
+    schemaVersion: "weekly-news-focus-v1",
+    state: "available",
+    window: weeklyNewsWindow,
+    items: [
+      {
+        eventId: "qqq_methodology_notice",
+        assetTicker: "QQQ",
+        eventType: "methodology_change",
+        title: "Nasdaq-100 methodology notice in local fixture",
+        summary:
+          "The local weekly fixture highlights an index-methodology notice so beginners can separate short-term rule updates from the fund's stable role.",
+        eventDate: "2026-04-21",
+        publishedAt: "2026-04-21T12:00:00Z",
+        periodBucket: "current_week_to_date",
+        citationIds: ["c_weekly_qqq_methodology"],
+        source: {
+          sourceDocumentId: "src_qqq_weekly_methodology",
+          sourceType: "issuer_announcement",
+          title: "Nasdaq-100 methodology local fixture notice",
+          publisher: "Nasdaq fixture",
+          url: "local://fixtures/qqq/weekly-news/methodology",
+          publishedAt: "2026-04-21",
+          asOfDate: "2026-04-21",
+          retrievedAt: "2026-04-23T12:00:00Z",
+          freshnessState: "fresh",
+          isOfficial: true,
+          sourceQuality: "issuer",
+          allowlistStatus: "allowed",
+          sourceUsePolicy: "summary_allowed"
+        },
+        freshnessState: "fresh",
+        importanceScore: 92
+      },
+      {
+        eventId: "qqq_sponsor_update",
+        assetTicker: "QQQ",
+        eventType: "sponsor_update",
+        title: "Invesco sponsor update in local fixture",
+        summary:
+          "The deterministic weekly fixture keeps a sponsor communication as timely context, without letting it rewrite the fund's core benchmark and holdings facts.",
+        eventDate: "2026-04-18",
+        publishedAt: "2026-04-18T12:00:00Z",
+        periodBucket: "previous_market_week",
+        citationIds: ["c_weekly_qqq_sponsor_update"],
+        source: {
+          sourceDocumentId: "src_qqq_weekly_sponsor_update",
+          sourceType: "issuer_press_release",
+          title: "Invesco QQQ sponsor-update local fixture notice",
+          publisher: "Invesco fixture",
+          url: "local://fixtures/qqq/weekly-news/sponsor-update",
+          publishedAt: "2026-04-18",
+          asOfDate: "2026-04-18",
+          retrievedAt: "2026-04-23T12:00:00Z",
+          freshnessState: "fresh",
+          isOfficial: true,
+          sourceQuality: "official",
+          allowlistStatus: "allowed",
+          sourceUsePolicy: "summary_allowed"
+        },
+        freshnessState: "fresh",
+        importanceScore: 81
+      }
+    ],
+    emptyState: null,
+    citations: [
+      {
+        citationId: "c_weekly_qqq_methodology",
+        sourceDocumentId: "src_qqq_weekly_methodology",
+        title: "Nasdaq-100 methodology local fixture notice",
+        publisher: "Nasdaq fixture",
+        freshnessState: "fresh"
+      },
+      {
+        citationId: "c_weekly_qqq_sponsor_update",
+        sourceDocumentId: "src_qqq_weekly_sponsor_update",
+        title: "Invesco QQQ sponsor-update local fixture notice",
+        publisher: "Invesco fixture",
+        freshnessState: "fresh"
+      }
+    ],
+    sourceDocuments: [
+      {
+        sourceDocumentId: "src_qqq_weekly_methodology",
+        sourceType: "issuer_announcement",
+        title: "Nasdaq-100 methodology local fixture notice",
+        publisher: "Nasdaq fixture",
+        url: "local://fixtures/qqq/weekly-news/methodology",
+        publishedAt: "2026-04-21",
+        asOfDate: "2026-04-21",
+        retrievedAt: "2026-04-23T12:00:00Z",
+        freshnessState: "fresh",
+        isOfficial: true,
+        supportingPassage:
+          "The local fixture notice flags a methodology update for Nasdaq-100 coverage during the Weekly News Focus window."
+      },
+      {
+        sourceDocumentId: "src_qqq_weekly_sponsor_update",
+        sourceType: "issuer_press_release",
+        title: "Invesco QQQ sponsor-update local fixture notice",
+        publisher: "Invesco fixture",
+        url: "local://fixtures/qqq/weekly-news/sponsor-update",
+        publishedAt: "2026-04-18",
+        asOfDate: "2026-04-18",
+        retrievedAt: "2026-04-23T12:00:00Z",
+        freshnessState: "fresh",
+        isOfficial: true,
+        supportingPassage:
+          "The local fixture sponsor update is kept as timely context and does not replace stable benchmark or holdings facts."
+      }
+    ],
+    noLiveExternalCalls: true,
+    stableFactsAreSeparate: true
+  }
+};
+
+export const aiComprehensiveAnalysisFixtures: Record<string, AIComprehensiveAnalysisFixture> = {
+  VOO: buildSuppressedAIComprehensiveAnalysis(["c_voo_profile"]),
+  AAPL: buildSuppressedAIComprehensiveAnalysis(["c_aapl_profile"]),
+  QQQ: {
+    schemaVersion: "ai-comprehensive-analysis-v1",
+    state: "available",
+    analysisAvailable: true,
+    suppressionReason: null,
+    sections: [
+      {
+        sectionId: "what_changed_this_week",
+        label: "What Changed This Week",
+        analysis:
+          "The local Weekly News Focus pack selected a methodology notice and a sponsor update for QQQ, so this analysis stays tied to those two cited developments.",
+        bullets: [
+          "A methodology notice can matter for how beginners interpret an index ETF's short-term context.",
+          "A sponsor update is timely context, not a redefinition of what QQQ is."
+        ],
+        citationIds: ["c_weekly_qqq_methodology", "c_weekly_qqq_sponsor_update"],
+        uncertainty: []
+      },
+      {
+        sectionId: "market_context",
+        label: "Market Context",
+        analysis:
+          "Because QQQ is a narrower growth-oriented ETF than a broad-market fund, index-level context can be more noticeable, even when the local fixture does not include live market-move estimates.",
+        bullets: ["The deterministic fixture does not estimate market impact or future performance."],
+        citationIds: ["c_weekly_qqq_methodology", "c_qqq_profile"],
+        uncertainty: ["No live market quote or performance-impact estimate is included in the local fixture."]
+      },
+      {
+        sectionId: "business_or_fund_context",
+        label: "Business/Fund Context",
+        analysis:
+          "The cited weekly items sit on top of a stable fact base: QQQ still tracks the Nasdaq-100 Index, and the timely context is shown separately so beginners do not confuse short-term updates with the fund's core identity.",
+        bullets: ["Canonical facts stay anchored to the fund profile while weekly items explain what changed in the recent window."],
+        citationIds: ["c_weekly_qqq_methodology", "c_weekly_qqq_sponsor_update", "c_qqq_profile"],
+        uncertainty: []
+      },
+      {
+        sectionId: "risk_context",
+        label: "Risk Context",
+        analysis:
+          "For a more concentrated ETF, methodology or sponsor changes can deserve attention, but the local fixture does not claim that any single weekly item changes the beginner risk profile by itself.",
+        bullets: ["Concentration and sector tilt remain stable risks that should be learned separately from weekly updates."],
+        citationIds: ["c_weekly_qqq_methodology", "c_qqq_profile"],
+        uncertainty: ["The local fixture does not quantify any downstream effect from these weekly items."]
+      }
+    ],
+    citationIds: ["c_weekly_qqq_methodology", "c_weekly_qqq_sponsor_update", "c_qqq_profile"],
+    sourceDocumentIds: ["src_qqq_weekly_methodology", "src_qqq_weekly_sponsor_update", "src_qqq_fact_sheet_fixture"],
+    weeklyNewsEventIds: ["qqq_methodology_notice", "qqq_sponsor_update"],
+    canonicalFactCitationIds: ["c_qqq_profile"],
+    citations: weeklyNewsFocusFixtures.QQQ.citations,
+    sourceDocuments: weeklyNewsFocusFixtures.QQQ.sourceDocuments,
+    noLiveExternalCalls: true,
+    stableFactsAreSeparate: true
+  }
+};
 
 export const assetFixtures: Record<string, AssetFixture> = {
   VOO: {
@@ -2284,6 +2636,14 @@ export function getCitationById(asset: AssetFixture, citationId: string) {
 
 export function getCitationContextsForSource(asset: AssetFixture, sourceDocumentId: string) {
   return (asset.citationContexts ?? []).filter((context) => context.sourceDocumentId === sourceDocumentId);
+}
+
+export function getWeeklyNewsFocusFixture(ticker: string) {
+  return weeklyNewsFocusFixtures[normalizeTicker(ticker)];
+}
+
+export function getAIComprehensiveAnalysisFixture(ticker: string) {
+  return aiComprehensiveAnalysisFixtures[normalizeTicker(ticker)];
 }
 
 export function citationLabel(citationId: string) {
