@@ -2,49 +2,85 @@
 
 ## Current task
 
-### T-049: Reduce frontend fixture drift by introducing shared deterministic view adapters
+### T-050: Align asset-page source drawer and freshness labels with backend contracts
 
 Goal:
-Reduce frontend fixture drift by introducing a shared deterministic view-adapter layer for already-existing local search and comparison contracts, so common support-state, source-metadata, and freshness-display logic is derived from one frontend adapter path instead of duplicated per-page fixture shaping, without adding live calls, new assets, new comparison packs, or advice-like copy.
+Align all asset-page source-drawer and freshness-label rendering with existing backend contract shapes so source metadata, freshness states, and uncertainty labels remain consistent across supported, blocked, and unavailable asset flows, while staying deterministic and education-first.
+
+Task-scope paragraph:
+Update the existing asset-page frontend path to consume canonical source and freshness fields from the current deterministic contracts, and ensure the source drawer and freshness chips render the same support-state, source-use, and uncertainty language used in backend-aligned contracts. Keep scope limited to asset pages, drawer/label components, and fixture-backed helper functions only; do not change backend contracts, add new coverage, add live-provider flows, or alter core comparison/search semantics.
 
 Task scope:
-Extract a small shared frontend adapter module from the existing deterministic compare, search, and fixture-backed source/freshness helpers, then rewire the current compare/search rendering paths to consume that adapter layer instead of maintaining parallel shape logic. Keep the task limited to adapter extraction, common typed helpers, and parity-preserving frontend wiring for already-supported deterministic states. Do not broaden the work into backend schema changes, asset-page content rewrites, source-drawer contract expansion, new comparison facts, new search coverage, or live API fetching.
+Use existing frontend contracts and fixtures to:
+
+- normalize source drawer inputs so `SourceDrawer` uses the same source-id/citation-source-freshness fields already expected by backend contracts,
+- update freshness labels to render backend-mapped `fresh`, `stale`, `unknown`, `unavailable`, `partial`, and `insufficient_evidence` with consistent labels, and
+- preserve all currently visible advisory framing and blocked-state behavior for unsupported assets without generating new claims.
 
 Allowed files:
 
-- `apps/web/components/FreshnessLabel.tsx`
-- `apps/web/components/ComparisonSourceDetails.tsx`
-- `apps/web/components/SearchBox.tsx`
+- `apps/web/app/assets/[ticker]/page.tsx`
+- `apps/web/app/assets/[ticker]/sources/page.tsx` (if present)
 - `apps/web/components/SourceDrawer.tsx`
-- `apps/web/lib/compare.ts`
+- `apps/web/components/FreshnessLabel.tsx`
+- `apps/web/components/SourcePreview*` (targeted source-pane components if present)
 - `apps/web/lib/fixtures.ts`
-- `apps/web/lib/search.ts`
+- `apps/web/lib/overview.ts`
 - `apps/web/lib/viewAdapters.ts`
-- `tests/frontend/**`
-- narrowly related deterministic frontend view-helper files only if required by the adapter extraction
+- `tests/frontend/smoke.mjs`
 
 Do not change:
 
-- backend search, comparison, source drawer, overview, or export contracts, response schemas, or fixture semantics
-- supported asset scope, comparison-pack coverage, on-demand ingestion policy, source-use rights, or freshness meanings
-- asset-page Beginner/Deep-Dive content, Weekly News Focus, AI Comprehensive Analysis, chat, or export behavior beyond mechanical adapter wiring if required
-- visible behavior for unsupported, out-of-scope, eligible-not-cached, unknown, stale, unavailable, partial, or insufficient-evidence states except where needed to preserve backend-aligned parity
-- live-provider, database, cache, ingestion-worker, or deployment wiring
+- backend contracts, schemas, persistence, or API integration
+- source-use policy, unsupported-asset policies, or Top-500/coverage rules
+- live external calls, secret usage, or provider/LLM runtime wiring
+- advice-like phrasing (buy/sell/hold/allocation/price targets/tax recommendations)
+- unsupported asset scope, asset taxonomy, weekly-news analysis flow, or chat/export behavior
+- any behavior unrelated to source drawer + freshness rendering
 
 Acceptance criteria:
 
-- a shared deterministic frontend adapter module exists for common view-model shaping used by the current local search and comparison flows, instead of duplicating overlapping support-state, source-metadata, or freshness-display derivation in multiple files
-- `apps/web/lib/compare.ts` and `apps/web/lib/search.ts` import shared adapter helpers or types for the overlapping deterministic state/capability logic they both use, rather than maintaining separate ad hoc derivations for the same frontend meanings
-- compare-source metadata rendering and any shared freshness/source helper touched in scope consume adapter-produced shapes while preserving the current backend-aligned deterministic fields, source-use labels, freshness labels, and blocked-state gating
-- supported local flows such as `VOO`/`QQQ`, `QQQ`/`VOO`, and cached-supported search results keep their current beginner-readable rendering, citation/source visibility, and educational framing after the adapter extraction
-- unavailable or blocked flows such as `SPY`, `GME`, `TQQQ`, `ZZZZ`, and `AAPL`/`VOO` continue to suppress generated claims where required, preserve `unknown`/`out_of_scope`/`eligible_not_cached`/`unsupported` semantics, and avoid invented facts or advice-like copy
-- the task does not add `/api/search` or `/api/compare` fetches, live external calls, new assets, new comparison packs, backend schema changes, or broader source-drawer behavior than the existing deterministic local scaffold
-- frontend smoke coverage asserts the shared-adapter-driven compare/search markers and required deterministic rendering gates
-- required tests, evals, and the quality gate pass deterministically
+- Asset-page route rendering uses backend-contract-shaped source/freshness inputs without adding local duplicate transformations for source identity, labels, or freshness state.
+- `SourceDrawer` shows the same source metadata fields, source-use labels, and freshness context as the contract it renders against, and does not render unsupported source fields for `unsupported`, `eligible_not_cached`, `out_of_scope`, `unknown`, `unavailable`, or partially/insufficient evidence states.
+- `FreshnessLabel` behavior matches contract semantics (`fresh`, `stale`, `unknown`, `unavailable`, `partial`, `insufficient_evidence`) with consistent user-facing copy and no invented or advisory claims.
+- Supported and blocked assets retain existing educational framing and citation visibility (`SPY`, `GME`, `TQQQ`, `ZZZZ`, etc.) while showing deterministic evidence-bound labels.
+- No live API calls, no provider/LLM runtime calls, and no new scopes/assets are introduced.
+- Coverage of this task remains frontend-deterministic and fixture-backed; no backend schema changes are required.
+- Safety and source-use invariants remain intact: no buy/sell/hold/allocate/tax/price-target/ brokerage copy; no facts when evidence is missing; citations remain required for important claims.
+- required tests, evals, and `bash scripts/run_quality_gate.sh` pass in a deterministic environment.
 
 Required commands:
 
-- `git status --short`
+- `npm test`
+- `npm run typecheck`
+- `npm run build`
+- `python3 -m pytest tests -q`
+- `python3 evals/run_static_evals.py`
+- `bash scripts/run_quality_gate.sh`
+
+Iteration budget:
+
+- Max 2 attempts
+
+## Completed
+
+### T-049: Reduce frontend fixture drift by introducing shared deterministic view adapters
+
+Goal:
+Reduce frontend fixture drift by using one shared deterministic adapter path for local search, comparison, and source/freshness rendering, replacing duplicated fixture-only derivation in page components.
+
+Completed:
+
+- Added a shared frontend adapter module and rewired the local search/compare path to consume adapter-shaped outputs for support-state, source metadata, and freshness labels.
+- Updated `apps/web/components/SearchBox.tsx`, `apps/web/components/ComparisonSourceDetails.tsx`, `apps/web/components/SourceDrawer.tsx`, and `apps/web/components/FreshnessLabel.tsx` rendering to use adapter-shaped labels/metadata instead of local ad hoc derivation.
+- Updated `tests/frontend/smoke.mjs` to assert shared-adapter marker behavior and deterministic render paths.
+- Added `apps/web/lib/viewAdapters.ts` as the adapter entrypoint used by `apps/web/lib/search.ts` and `apps/web/lib/compare.ts`.
+- No unsupported or advisory-style outputs were added; blocked/unsupported/unknown states preserve existing deterministic guardrails.
+- Remaining documented risk: compare-page availability copy in `app/compare/page.tsx` remains page-local, while support-state and source-metadata shaping is now centralized.
+- A required journal entry was referenced as [docs/agent-journal/20260423T201841Z.md], but that file is not present in this workspace.
+
+Verification:
+
 - `python3 -m pytest tests -q`
 - `npm test`
 - `npm run typecheck`
@@ -52,11 +88,10 @@ Required commands:
 - `python3 evals/run_static_evals.py`
 - `bash scripts/run_quality_gate.sh`
 
-Iteration budget:
+Completion commits:
 
-- Max 3 attempts
-
-## Completed
+- `4a1091360017e16a421fa71f7a5e6affb88dcd16 feat(T-049): reduce frontend fixture drift by introducing shared deterministic view adapters`
+- `9c602cc4fae2f4e1bf759e0cd95dea021e726d51 chore(T-049): merge reduce frontend fixture drift by introducing shared deterministic view adapters task`
 
 ### T-048: Replace compare-page fixture logic with backend-aligned deterministic comparison contracts
 
@@ -1381,4 +1416,8 @@ Completion commits:
 
 ## Backlog
 
-### T-050: Align asset-page source drawer and freshness labels with backend contracts
+### T-051: Render Weekly News Focus and AI Comprehensive Analysis on supported asset pages
+
+### T-052: Align home search UI with backend support-classification and blocked-state contracts
+
+### T-053: Replace compare-page fixture-only routing with backend-aligned deterministic comparison adapters

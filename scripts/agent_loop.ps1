@@ -9,6 +9,9 @@ if (Get-Variable PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyCo
   $PSNativeCommandUseErrorActionPreference = $false
 }
 
+$CodexModel = if ($env:LTT_CODEX_MODEL) { $env:LTT_CODEX_MODEL } else { "gpt-5.3-codex-spark" }
+$CodexReasoningEffort = if ($env:LTT_CODEX_REASONING_EFFORT) { $env:LTT_CODEX_REASONING_EFFORT } else { "high" }
+
 function Require-Command {
   param([string]$Name)
 
@@ -66,6 +69,13 @@ function Get-CommitSubject {
   return $Title.Substring(0, 1).ToLowerInvariant() + $Title.Substring(1)
 }
 
+function Get-CodexExecArgs {
+  return @(
+    "-m", $CodexModel,
+    "-c", "reasoning.effort=""$CodexReasoningEffort"""
+  )
+}
+
 $Root = (git rev-parse --show-toplevel).Trim()
 Set-Location $Root
 
@@ -107,6 +117,8 @@ Write-Host "== Agent run: $RunId =="
 Write-Host "== Task: $TaskId =="
 Write-Host "== Task title: $TaskTitle =="
 Write-Host "== Branch: $Branch =="
+Write-Host "== Codex model: $CodexModel =="
+Write-Host "== Codex reasoning effort: $CodexReasoningEffort =="
 Write-Host "== Commit subject: ${CommitType}(${TaskId}): $TaskCommitSubject =="
 Write-Host "== Iteration budget: $IterationBudget =="
 
@@ -188,7 +200,8 @@ The summary must include:
 
   Write-Host "== Running Codex attempt $Attempt/$IterationBudget =="
   $CodexOutputPath = "$AttemptDir/codex-final.md"
-  & codex -a never exec --sandbox workspace-write $Prompt |
+  $CodexExecArgs = Get-CodexExecArgs
+  & codex @CodexExecArgs -a never exec --sandbox workspace-write $Prompt |
     Tee-Object -FilePath $CodexOutputPath
   $CodexStatus = $LASTEXITCODE
 

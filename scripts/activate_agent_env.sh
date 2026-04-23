@@ -4,6 +4,8 @@
 # environment used by the solo agent loop and provides focused preflight checks.
 
 LTT_CONDA_ENV="${LTT_CONDA_ENV:-learn-the-ticker}"
+LTT_CODEX_MODEL="${LTT_CODEX_MODEL:-gpt-5.3-codex-spark}"
+LTT_CODEX_REASONING_EFFORT="${LTT_CODEX_REASONING_EFFORT:-high}"
 
 ltt_is_wsl() {
   grep -qiE "(microsoft|wsl)" /proc/version 2>/dev/null
@@ -131,5 +133,11 @@ ltt_require_codex_toolchain() {
   fi
 }
 
-ltt_activate_agent_env
+ltt_codex_exec() {
+  codex \
+    -m "$LTT_CODEX_MODEL" \
+    -c "reasoning.effort=\"$LTT_CODEX_REASONING_EFFORT\"" \
+    "$@"
+}
 
+ltt_activate_agent_env

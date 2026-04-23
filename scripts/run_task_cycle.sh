@@ -236,7 +236,7 @@ EOF
 
   echo "== Repeat backlog preflight: preparing ${missing_count} backlog task(s) for ${requested_cycles} requested cycles =="
   set +e
-  codex -a never exec --sandbox workspace-write "$(cat "$prompt_path")"
+  ltt_codex_exec -a never exec --sandbox workspace-write "$(cat "$prompt_path")"
   local codex_status=$?
   set -e
   rm -f "$prompt_path"
@@ -342,7 +342,7 @@ EOF
 
   echo "== Preparing next task in TASKS.md =="
   set +e
-  codex -a never exec --sandbox workspace-write "$(cat "$prompt_path")"
+  ltt_codex_exec -a never exec --sandbox workspace-write "$(cat "$prompt_path")"
   local codex_status=$?
   set -e
   rm -f "$prompt_path"

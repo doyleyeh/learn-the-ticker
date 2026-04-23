@@ -104,6 +104,7 @@ def test_agent_loop_uses_retry_budget_and_clean_commit_policy():
     bash_loop = read_file("scripts/agent_loop.sh")
     task_cycle = read_file("scripts/run_task_cycle.sh")
     powershell_loop = read_file("scripts/agent_loop.ps1")
+    activate_env = read_file("scripts/activate_agent_env.sh")
 
     assert "ITERATION_BUDGET" in bash_loop
     assert "for ATTEMPT in" in bash_loop
@@ -111,7 +112,7 @@ def test_agent_loop_uses_retry_budget_and_clean_commit_policy():
     assert "Leaving changes uncommitted and unstaged for review." in bash_loop
     assert "ensure_agent_branch" in bash_loop
     assert "agent_loop blocks 'git" in bash_loop
-    assert 'PATH="$ROOT/$AGENT_GIT_WRAPPER_DIR:$PATH" codex' in bash_loop
+    assert 'PATH="$ROOT/$AGENT_GIT_WRAPPER_DIR:$PATH" ltt_codex_exec' in bash_loop
     assert "ensure_repeat_backlog_capacity" in task_cycle
     assert "Repeat backlog preflight" in task_cycle
     assert "human_action_marker_present" in task_cycle
@@ -120,6 +121,12 @@ def test_agent_loop_uses_retry_budget_and_clean_commit_policy():
     assert "for ($Attempt = 1" in powershell_loop
     assert "CommitFailures" in powershell_loop
     assert "Leaving changes uncommitted and unstaged for review." in powershell_loop
+    assert 'LTT_CODEX_MODEL="${LTT_CODEX_MODEL:-gpt-5.3-codex-spark}"' in activate_env
+    assert 'LTT_CODEX_REASONING_EFFORT="${LTT_CODEX_REASONING_EFFORT:-high}"' in activate_env
+    assert 'reasoning.effort=\\"$LTT_CODEX_REASONING_EFFORT\\"' in activate_env
+    assert "Get-CodexExecArgs" in powershell_loop
+    assert 'gpt-5.3-codex-spark' in powershell_loop
+    assert 'reasoning.effort=""$CodexReasoningEffort""' in powershell_loop
 
     for source in [bash_loop, task_cycle, powershell_loop]:
         assert "docs/learn-the-ticker_proposal.md" in source

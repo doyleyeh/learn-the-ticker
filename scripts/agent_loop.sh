@@ -123,6 +123,8 @@ echo "== Agent run: $RUN_ID =="
 echo "== Task: $TASK_ID =="
 echo "== Task title: $TASK_TITLE =="
 echo "== Branch: $BRANCH =="
+echo "== Codex model: ${LTT_CODEX_MODEL} =="
+echo "== Codex reasoning effort: ${LTT_CODEX_REASONING_EFFORT} =="
 echo "== Commit subject: ${COMMIT_TYPE}(${TASK_ID}): ${TASK_COMMIT_SUBJECT} =="
 echo "== Iteration budget: $ITERATION_BUDGET =="
 
@@ -214,7 +216,7 @@ EOF
 
   echo "== Running Codex attempt $ATTEMPT/$ITERATION_BUDGET =="
   set +e
-  PATH="$ROOT/$AGENT_GIT_WRAPPER_DIR:$PATH" codex -a never exec \
+  PATH="$ROOT/$AGENT_GIT_WRAPPER_DIR:$PATH" ltt_codex_exec -a never exec \
     --sandbox workspace-write \
     "$(cat "$ATTEMPT_DIR/prompt.txt")" \
     | tee "$ATTEMPT_DIR/codex-final.md"
