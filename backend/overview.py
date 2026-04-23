@@ -23,10 +23,16 @@ from backend.models import (
     OverviewMetric,
     OverviewResponse,
     OverviewSection,
+    OverviewSectionFreshnessCitationBinding,
+    OverviewSectionFreshnessDiagnostics,
+    OverviewSectionFreshnessSourceBinding,
+    OverviewSectionFreshnessValidation,
+    OverviewSectionFreshnessValidationOutcome,
     OverviewSectionItem,
     OverviewSectionType,
     RecentDevelopment,
     RiskItem,
+    SectionFreshnessInput,
     SourceDocument,
     StateMessage,
     SuitabilitySummary,
@@ -37,6 +43,7 @@ from backend.retrieval import (
     RetrievedRecentDevelopment,
     RetrievedSourceChunk,
     SourceDocumentFixture,
+    _section_freshness_labels,
     build_asset_knowledge_pack,
 )
 from backend.safety import find_forbidden_output_phrases
@@ -64,6 +71,23 @@ class PlannedClaim:
     claim: Claim
     claim_type: str
     freshness_label: FreshnessState | None = None
+
+
+@dataclass(frozen=True)
+class FreshnessValidationSubject:
+    section_id: str
+    section_type: OverviewSectionType
+    displayed_freshness_state: FreshnessState
+    displayed_evidence_state: EvidenceState
+    displayed_as_of_date: str | None
+    displayed_retrieved_at: str | None
+    citation_ids: tuple[str, ...]
+    source_document_ids: tuple[str, ...]
+    supporting_freshness_states: tuple[FreshnessState, ...]
+    supporting_as_of_dates: tuple[str, ...]
+    supporting_retrieved_ats: tuple[str, ...]
+    has_gap_evidence: bool = False
+    limitations: str | None = None
 
 
 def generate_asset_overview(ticker: str) -> OverviewResponse:
@@ -126,6 +150,8 @@ def generate_overview_from_pack(pack: AssetKnowledgePack) -> OverviewResponse:
         canonical_fact_citation_ids=canonical_citation_ids,
         canonical_source_document_ids=[identity_fact.source_document.source_document_id],
     )
+    citations = bindings.citations()
+    source_documents = bindings.source_documents()
 
     response = OverviewResponse(
         asset=pack.asset,
@@ -139,9 +165,18 @@ def generate_overview_from_pack(pack: AssetKnowledgePack) -> OverviewResponse:
         ai_comprehensive_analysis=ai_comprehensive_analysis,
         suitability_summary=suitability_summary,
         claims=[planned.claim for planned in planned_claims],
-        citations=bindings.citations(),
-        source_documents=bindings.source_documents(),
+        citations=citations,
+        source_documents=source_documents,
         sections=sections,
+        section_freshness_validation=[],
+    )
+    response = response.model_copy(
+        update={
+            "section_freshness_validation": build_overview_section_freshness_validation(
+                overview=response,
+                pack=pack,
+            )
+        }
     )
     _assert_safe_copy(response)
     return response
@@ -178,6 +213,132 @@ def validate_generated_overview_claims(
         for planned in planned_claims
     ]
     return validate_claims(claims, evidence, CitationValidationContext(allowed_asset_tickers=[pack.asset.ticker]))
+
+
+def build_overview_section_freshness_validation(
+    *,
+    overview: OverviewResponse,
+    pack: AssetKnowledgePack,
+) -> list[OverviewSectionFreshnessValidation]:
+    if not pack.asset.supported or overview.asset.ticker != pack.asset.ticker:
+        return []
+
+    pack_sources_by_id = {source.source_document_id: source for source in pack.source_documents}
+    overview_citations = {
+        citation.citation_id: citation
+        for citation in [
+            *overview.citations,
+            *(overview.weekly_news_focus.citations if overview.weekly_news_focus else []),
+        ]
+    }
+    overview_sources = {
+        source.source_document_id: source
+        for source in [
+            *overview.source_documents,
+            *(overview.weekly_news_focus.source_documents if overview.weekly_news_focus else []),
+        ]
+    }
+    knowledge_inputs_by_id = {label.section_id: label for label in _section_freshness_labels(pack)}
+    subjects = [
+        *[_subject_from_section(section) for section in overview.sections],
+        *(
+            [_subject_from_weekly_news(overview, knowledge_inputs_by_id.get("weekly_news_focus"))]
+            if overview.weekly_news_focus is not None
+            else []
+        ),
+        *(
+            [_subject_from_ai_analysis(overview, knowledge_inputs_by_id.get("ai_comprehensive_analysis"))]
+            if overview.ai_comprehensive_analysis is not None
+            else []
+        ),
+    ]
+
+    validations: list[OverviewSectionFreshnessValidation] = []
+    for subject in subjects:
+        matched_inputs = [
+            knowledge_inputs_by_id[section_id]
+            for section_id in _matched_knowledge_pack_section_ids(subject, pack.asset.asset_type)
+            if section_id in knowledge_inputs_by_id
+        ]
+        source_bindings, missing_source_ids, same_asset_sources = _source_bindings_for_subject(
+            subject,
+            pack_asset_ticker=pack.asset.ticker,
+            pack_sources_by_id=pack_sources_by_id,
+            overview_sources=overview_sources,
+        )
+        citation_bindings, missing_citation_ids, same_asset_citations = _citation_bindings_for_subject(
+            subject,
+            pack_asset_ticker=pack.asset.ticker,
+            pack_sources_by_id=pack_sources_by_id,
+            overview_citations=overview_citations,
+        )
+        validated_freshness = _validated_subject_freshness(subject, matched_inputs)
+        validated_as_of_date = _validated_subject_as_of_date(subject, matched_inputs)
+        validated_retrieved_at = _validated_subject_retrieved_at(subject, matched_inputs)
+
+        mismatch_reasons: list[str] = []
+        if subject.displayed_freshness_state is not validated_freshness:
+            mismatch_reasons.append("displayed_freshness_state_not_supported")
+        if (
+            subject.displayed_as_of_date
+            and validated_as_of_date
+            and subject.displayed_as_of_date != validated_as_of_date
+        ):
+            mismatch_reasons.append("displayed_as_of_date_not_supported")
+        if (
+            subject.displayed_retrieved_at
+            and validated_retrieved_at
+            and subject.displayed_retrieved_at != validated_retrieved_at
+        ):
+            mismatch_reasons.append("displayed_retrieved_at_not_supported")
+        if missing_source_ids:
+            mismatch_reasons.append("missing_source_document_bindings")
+        if missing_citation_ids:
+            mismatch_reasons.append("missing_citation_bindings")
+        if not same_asset_sources:
+            mismatch_reasons.append("wrong_asset_source_binding")
+        if not same_asset_citations:
+            mismatch_reasons.append("wrong_asset_citation_binding")
+
+        if mismatch_reasons:
+            outcome = OverviewSectionFreshnessValidationOutcome.mismatch
+        elif _subject_has_validation_limitations(subject):
+            outcome = OverviewSectionFreshnessValidationOutcome.validated_with_limitations
+        else:
+            outcome = OverviewSectionFreshnessValidationOutcome.validated
+
+        validations.append(
+            OverviewSectionFreshnessValidation(
+                section_id=subject.section_id,
+                section_type=subject.section_type,
+                displayed_freshness_state=subject.displayed_freshness_state,
+                displayed_evidence_state=subject.displayed_evidence_state,
+                displayed_as_of_date=subject.displayed_as_of_date,
+                displayed_retrieved_at=subject.displayed_retrieved_at,
+                validated_freshness_state=validated_freshness,
+                validated_as_of_date=validated_as_of_date,
+                validated_retrieved_at=validated_retrieved_at,
+                validation_outcome=outcome,
+                limitation_message=_validation_limitation_message(subject, outcome),
+                mismatch_message=(
+                    "Displayed freshness metadata does not match the deterministic same-asset evidence inputs."
+                    if mismatch_reasons
+                    else None
+                ),
+                citation_bindings=citation_bindings,
+                source_bindings=source_bindings,
+                knowledge_pack_freshness_inputs=matched_inputs,
+                diagnostics=OverviewSectionFreshnessDiagnostics(
+                    matched_knowledge_pack_section_ids=[item.section_id for item in matched_inputs],
+                    missing_citation_ids=missing_citation_ids,
+                    missing_source_document_ids=missing_source_ids,
+                    mismatch_reasons=mismatch_reasons,
+                    same_asset_citation_bindings_only=same_asset_citations,
+                    same_asset_source_bindings_only=same_asset_sources,
+                ),
+            )
+        )
+    return validations
 
 
 class _CitationRegistry:
@@ -299,7 +460,263 @@ def _unsupported_overview(pack: AssetKnowledgePack) -> OverviewResponse:
         citations=[],
         source_documents=[],
         sections=[],
+        section_freshness_validation=[],
     )
+
+
+def _subject_from_section(section: OverviewSection) -> FreshnessValidationSubject:
+    supporting_freshness_states = tuple(
+        [item.freshness_state for item in section.items] + [metric.freshness_state for metric in section.metrics]
+    )
+    supporting_as_of_dates = tuple(
+        [
+            *[item.as_of_date for item in section.items if item.as_of_date],
+            *[metric.as_of_date for metric in section.metrics if metric.as_of_date],
+        ]
+    )
+    supporting_retrieved_ats = tuple(
+        [
+            *[item.retrieved_at for item in section.items if item.retrieved_at],
+            *[metric.retrieved_at for metric in section.metrics if metric.retrieved_at],
+        ]
+    )
+    has_gap_evidence = any(
+        item.evidence_state is not EvidenceState.supported or not item.source_document_ids
+        for item in section.items
+    ) or any(
+        metric.evidence_state is not EvidenceState.supported or not metric.source_document_ids
+        for metric in section.metrics
+    )
+    return FreshnessValidationSubject(
+        section_id=section.section_id,
+        section_type=section.section_type,
+        displayed_freshness_state=section.freshness_state,
+        displayed_evidence_state=section.evidence_state,
+        displayed_as_of_date=section.as_of_date,
+        displayed_retrieved_at=section.retrieved_at,
+        citation_ids=tuple(section.citation_ids),
+        source_document_ids=tuple(section.source_document_ids),
+        supporting_freshness_states=supporting_freshness_states,
+        supporting_as_of_dates=supporting_as_of_dates,
+        supporting_retrieved_ats=supporting_retrieved_ats,
+        has_gap_evidence=has_gap_evidence,
+        limitations=section.limitations,
+    )
+
+
+def _subject_from_weekly_news(
+    overview: OverviewResponse,
+    matched_input: SectionFreshnessInput | None,
+) -> FreshnessValidationSubject:
+    if overview.weekly_news_focus is None:
+        raise OverviewGenerationError("Weekly News Focus metadata is required for freshness validation.")
+
+    weekly = overview.weekly_news_focus
+    evidence_state = (
+        weekly.empty_state.evidence_state
+        if weekly.empty_state is not None
+        else EvidenceState.supported if weekly.items else EvidenceState.unavailable
+    )
+    supporting_freshness_states = tuple(item.freshness_state for item in weekly.items)
+    supporting_as_of_dates = tuple(
+        [
+            *[item.source.as_of_date for item in weekly.items if item.source.as_of_date],
+            weekly.window.as_of_date,
+        ]
+    )
+    supporting_retrieved_ats = tuple(item.source.retrieved_at for item in weekly.items if item.source.retrieved_at)
+    return FreshnessValidationSubject(
+        section_id="weekly_news_focus",
+        section_type=OverviewSectionType.weekly_news_focus,
+        displayed_freshness_state=(
+            supporting_freshness_states[0]
+            if supporting_freshness_states
+            else matched_input.freshness_state if matched_input is not None else FreshnessState.fresh
+        ),
+        displayed_evidence_state=evidence_state,
+        displayed_as_of_date=weekly.window.as_of_date,
+        displayed_retrieved_at=next(iter(supporting_retrieved_ats), None)
+        or (matched_input.retrieved_at if matched_input is not None else None),
+        citation_ids=tuple(citation.citation_id for citation in weekly.citations),
+        source_document_ids=tuple(source.source_document_id for source in weekly.source_documents),
+        supporting_freshness_states=supporting_freshness_states,
+        supporting_as_of_dates=supporting_as_of_dates,
+        supporting_retrieved_ats=supporting_retrieved_ats,
+        has_gap_evidence=evidence_state is not EvidenceState.supported,
+        limitations=weekly.empty_state.message if weekly.empty_state is not None else None,
+    )
+
+
+def _subject_from_ai_analysis(
+    overview: OverviewResponse,
+    matched_input: SectionFreshnessInput | None,
+) -> FreshnessValidationSubject:
+    if overview.ai_comprehensive_analysis is None:
+        raise OverviewGenerationError("AI Comprehensive Analysis metadata is required for freshness validation.")
+
+    analysis = overview.ai_comprehensive_analysis
+    displayed_freshness = matched_input.freshness_state if matched_input is not None else FreshnessState.unavailable
+    evidence_state = EvidenceState.supported if analysis.analysis_available else EvidenceState.insufficient_evidence
+    supporting_freshness_states = (
+        (matched_input.freshness_state,) if matched_input is not None else ()
+    )
+    supporting_as_of_dates = (
+        (matched_input.as_of_date,) if matched_input is not None and matched_input.as_of_date else ()
+    )
+    supporting_retrieved_ats = (
+        (matched_input.retrieved_at,) if matched_input is not None and matched_input.retrieved_at else ()
+    )
+    return FreshnessValidationSubject(
+        section_id="ai_comprehensive_analysis",
+        section_type=OverviewSectionType.ai_comprehensive_analysis,
+        displayed_freshness_state=displayed_freshness,
+        displayed_evidence_state=evidence_state,
+        displayed_as_of_date=matched_input.as_of_date if matched_input is not None else None,
+        displayed_retrieved_at=matched_input.retrieved_at if matched_input is not None else None,
+        citation_ids=tuple(analysis.citation_ids),
+        source_document_ids=tuple(analysis.source_document_ids),
+        supporting_freshness_states=supporting_freshness_states,
+        supporting_as_of_dates=supporting_as_of_dates,
+        supporting_retrieved_ats=supporting_retrieved_ats,
+        has_gap_evidence=evidence_state is not EvidenceState.supported,
+        limitations=analysis.suppression_reason,
+    )
+
+
+def _matched_knowledge_pack_section_ids(
+    subject: FreshnessValidationSubject,
+    asset_type: AssetType,
+) -> list[str]:
+    if subject.section_type is OverviewSectionType.recent_developments:
+        return ["recent_developments"]
+    if subject.section_type is OverviewSectionType.weekly_news_focus:
+        return ["weekly_news_focus", "recent_developments"]
+    if subject.section_type is OverviewSectionType.ai_comprehensive_analysis:
+        return ["ai_comprehensive_analysis", "weekly_news_focus"]
+
+    matched: list[str] = []
+    if subject.section_type in {
+        OverviewSectionType.stable_facts,
+        OverviewSectionType.risk,
+        OverviewSectionType.educational_suitability,
+    }:
+        matched.append("canonical_facts")
+    if asset_type is AssetType.etf and subject.section_id == "holdings_exposure":
+        matched.append("holdings")
+    if subject.has_gap_evidence or subject.section_type is OverviewSectionType.evidence_gap:
+        matched.append("evidence_gaps")
+    return matched
+
+
+def _source_bindings_for_subject(
+    subject: FreshnessValidationSubject,
+    *,
+    pack_asset_ticker: str,
+    pack_sources_by_id: dict[str, SourceDocumentFixture],
+    overview_sources: dict[str, SourceDocument],
+) -> tuple[list[OverviewSectionFreshnessSourceBinding], list[str], bool]:
+    bindings: list[OverviewSectionFreshnessSourceBinding] = []
+    missing_source_ids: list[str] = []
+    same_asset_sources = True
+    for source_id in sorted(set(subject.source_document_ids)):
+        source = overview_sources.get(source_id)
+        pack_source = pack_sources_by_id.get(source_id)
+        if source is None or pack_source is None:
+            missing_source_ids.append(source_id)
+            continue
+        same_asset_sources = same_asset_sources and pack_source.asset_ticker == pack_asset_ticker
+        bindings.append(
+            OverviewSectionFreshnessSourceBinding(
+                source_document_id=source.source_document_id,
+                asset_ticker=pack_source.asset_ticker,
+                source_type=source.source_type,
+                freshness_state=source.freshness_state,
+                as_of_date=source.as_of_date or source.published_at,
+                retrieved_at=source.retrieved_at,
+            )
+        )
+    return bindings, missing_source_ids, same_asset_sources
+
+
+def _citation_bindings_for_subject(
+    subject: FreshnessValidationSubject,
+    *,
+    pack_asset_ticker: str,
+    pack_sources_by_id: dict[str, SourceDocumentFixture],
+    overview_citations: dict[str, Citation],
+) -> tuple[list[OverviewSectionFreshnessCitationBinding], list[str], bool]:
+    bindings: list[OverviewSectionFreshnessCitationBinding] = []
+    missing_citation_ids: list[str] = []
+    same_asset_citations = True
+    for citation_id in sorted(set(subject.citation_ids)):
+        citation = overview_citations.get(citation_id)
+        pack_source = pack_sources_by_id.get(citation.source_document_id) if citation is not None else None
+        if citation is None or pack_source is None:
+            missing_citation_ids.append(citation_id)
+            continue
+        same_asset_citations = same_asset_citations and pack_source.asset_ticker == pack_asset_ticker
+        bindings.append(
+            OverviewSectionFreshnessCitationBinding(
+                citation_id=citation.citation_id,
+                source_document_id=citation.source_document_id,
+                asset_ticker=pack_source.asset_ticker,
+                freshness_state=citation.freshness_state,
+                evidence_state=subject.displayed_evidence_state,
+            )
+        )
+    return bindings, missing_citation_ids, same_asset_citations
+
+
+def _validated_subject_freshness(
+    subject: FreshnessValidationSubject,
+    matched_inputs: list[SectionFreshnessInput],
+) -> FreshnessState:
+    states = [
+        *subject.supporting_freshness_states,
+        *[item.freshness_state for item in matched_inputs if item.section_id in {"weekly_news_focus", "ai_comprehensive_analysis"}],
+    ]
+    if not states:
+        return subject.displayed_freshness_state
+    return _combined_freshness(states)
+
+
+def _validated_subject_as_of_date(
+    subject: FreshnessValidationSubject,
+    matched_inputs: list[SectionFreshnessInput],
+) -> str | None:
+    return next(iter(subject.supporting_as_of_dates), None) or next(
+        (item.as_of_date for item in matched_inputs if item.as_of_date),
+        None,
+    )
+
+
+def _validated_subject_retrieved_at(
+    subject: FreshnessValidationSubject,
+    matched_inputs: list[SectionFreshnessInput],
+) -> str | None:
+    return next(iter(subject.supporting_retrieved_ats), None) or next(
+        (item.retrieved_at for item in matched_inputs if item.retrieved_at),
+        None,
+    )
+
+
+def _subject_has_validation_limitations(subject: FreshnessValidationSubject) -> bool:
+    return subject.has_gap_evidence or subject.displayed_evidence_state is not EvidenceState.supported
+
+
+def _validation_limitation_message(
+    subject: FreshnessValidationSubject,
+    outcome: OverviewSectionFreshnessValidationOutcome,
+) -> str | None:
+    if outcome is OverviewSectionFreshnessValidationOutcome.mismatch:
+        return None
+    if subject.limitations:
+        return subject.limitations
+    if outcome is OverviewSectionFreshnessValidationOutcome.validated_with_limitations:
+        return (
+            f"This section remains limited by {subject.displayed_evidence_state.value.replace('_', ' ')} same-asset evidence."
+        )
+    return None
 
 
 def _state_for_pack(pack: AssetKnowledgePack) -> StateMessage:
@@ -1318,6 +1735,10 @@ def _section_freshness(items: list[OverviewSectionItem], metrics: list[OverviewM
     states = [item.freshness_state for item in items] + [metric.freshness_state for metric in metrics]
     if not states:
         return FreshnessState.unknown
+    return _combined_freshness(states)
+
+
+def _combined_freshness(states: list[FreshnessState] | tuple[FreshnessState, ...]) -> FreshnessState:
     if FreshnessState.stale in states:
         return FreshnessState.stale
     if FreshnessState.unavailable in states:

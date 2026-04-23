@@ -1857,6 +1857,61 @@ class Claim(BaseModel):
     citation_ids: list[str]
 
 
+class OverviewSectionFreshnessValidationOutcome(str, Enum):
+    validated = "validated"
+    validated_with_limitations = "validated_with_limitations"
+    mismatch = "mismatch"
+
+
+class OverviewSectionFreshnessCitationBinding(BaseModel):
+    citation_id: str
+    source_document_id: str
+    asset_ticker: str
+    freshness_state: FreshnessState
+    evidence_state: EvidenceState | None = None
+
+
+class OverviewSectionFreshnessSourceBinding(BaseModel):
+    source_document_id: str
+    asset_ticker: str
+    source_type: str
+    freshness_state: FreshnessState
+    as_of_date: str | None = None
+    retrieved_at: str | None = None
+
+
+class OverviewSectionFreshnessDiagnostics(BaseModel):
+    derived_from_existing_local_evidence_only: bool = True
+    used_knowledge_pack_freshness_inputs: bool = True
+    no_live_external_calls: bool = True
+    same_asset_citation_bindings_only: bool = True
+    same_asset_source_bindings_only: bool = True
+    matched_knowledge_pack_section_ids: list[str] = Field(default_factory=list)
+    missing_citation_ids: list[str] = Field(default_factory=list)
+    missing_source_document_ids: list[str] = Field(default_factory=list)
+    mismatch_reasons: list[str] = Field(default_factory=list)
+
+
+class OverviewSectionFreshnessValidation(BaseModel):
+    schema_version: Literal["overview-section-freshness-validation-v1"] = "overview-section-freshness-validation-v1"
+    section_id: str
+    section_type: OverviewSectionType
+    displayed_freshness_state: FreshnessState
+    displayed_evidence_state: EvidenceState
+    displayed_as_of_date: str | None = None
+    displayed_retrieved_at: str | None = None
+    validated_freshness_state: FreshnessState
+    validated_as_of_date: str | None = None
+    validated_retrieved_at: str | None = None
+    validation_outcome: OverviewSectionFreshnessValidationOutcome
+    limitation_message: str | None = None
+    mismatch_message: str | None = None
+    citation_bindings: list[OverviewSectionFreshnessCitationBinding] = Field(default_factory=list)
+    source_bindings: list[OverviewSectionFreshnessSourceBinding] = Field(default_factory=list)
+    knowledge_pack_freshness_inputs: list[SectionFreshnessInput] = Field(default_factory=list)
+    diagnostics: OverviewSectionFreshnessDiagnostics = Field(default_factory=OverviewSectionFreshnessDiagnostics)
+
+
 class OverviewMetric(BaseModel):
     metric_id: str
     label: str
@@ -1917,6 +1972,7 @@ class OverviewResponse(BaseModel):
     citations: list[Citation] = Field(default_factory=list)
     source_documents: list[SourceDocument] = Field(default_factory=list)
     sections: list[OverviewSection] = Field(default_factory=list)
+    section_freshness_validation: list[OverviewSectionFreshnessValidation] = Field(default_factory=list)
 
 
 class DetailsResponse(BaseModel):
