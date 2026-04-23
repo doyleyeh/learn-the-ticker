@@ -2,76 +2,37 @@
 
 ## Current task
 
+No current task is prepared. The backlog is empty.
+
+## Completed
+
 ### T-045: Add grounded chat comparison-redirect contract
 
 Goal:
 Add a deterministic grounded chat comparison-redirect contract so single-asset chat can detect second-ticker comparison questions and return a compare-workflow suggestion backed by existing local comparison availability states instead of generating a multi-asset answer inside the single-asset endpoint, without adding frontend UI, live calls, new facts, new comparison pairs, or weakening citation, source-use, freshness, unknown/stale/unavailable/partial, and safety rules.
 
-Task scope:
-This is a backend chat-contract, response-shaping, session/export propagation, eval, and test task over the existing deterministic grounded chat pipeline in `backend/chat.py`, the accountless chat-session layer, and the current chat/export API routes. Add additive comparison-redirect metadata so a single-asset chat response can explain when the user's question should move to `/compare`, which ticker pair the redirect refers to, whether the existing deterministic comparison workflow is available or unavailable for that pair, and why the single-asset chat did not produce a multi-asset factual answer. The contract must stay bounded to existing local evidence and existing comparison availability rules: it may reuse current comparison-pack and support-classification metadata, but it must not invent second-ticker facts, mix other-asset evidence into single-asset chat, add new generated comparison content, change frontend rendering, widen MVP asset coverage, or bypass advice and unsupported-asset guardrails. Preserve PRD/TDS-first authority after safety, educational framing, visible uncertainty, source-use rights, Weekly News Focus separation, and no-live-call operation.
+Completed:
 
-Allowed files:
+- Added additive grounded-chat redirect models in `backend/models.py`, including `ChatCompareRouteDiagnostics` and `ChatCompareRouteSuggestion`, plus `compare_route_suggestion` support on `ChatResponse`, `ChatTurnRecord`, and `ChatSessionTurnSummary`.
+- Updated `backend/chat.py` so second-ticker questions in single-asset chat detect the ordered comparison pair from the submitted question, call the existing deterministic comparison pipeline, reuse `comparison.evidence_availability.availability_state`, and return `compare_route_redirect` workflow guidance with ordered `/compare?left=...&right=...` metadata instead of a multi-asset factual answer.
+- Preserved grounding and safety boundaries by returning empty chat citations and source documents for redirect-only turns, keeping advice redirects higher priority than comparison convenience, and reusing existing local availability states for `available`, `no_local_pack`, `eligible_not_cached`, `unsupported`, `out_of_scope`, and `unknown` comparison cases covered by local fixtures.
+- Updated `backend/chat_sessions.py` and `backend/export.py` so compare redirects persist through session turn records, session status, and transcript export, including `comparison_redirect` and `comparison_redirects` export sections plus `no_factual_evidence` validation without fabricated comparison evidence.
+- Extended `evals/run_static_evals.py`, `tests/unit/test_chat_generation.py`, `tests/unit/test_chat_sessions.py`, `tests/unit/test_exports.py`, `tests/unit/test_safety_guardrails.py`, and `tests/integration/test_backend_api.py` for redirect schema coverage, second-ticker detection, ordered route metadata, supported and unavailable comparison states, advice-precedence behavior, session/export propagation, and no mixed-asset citation or source-document leakage.
+- Added `docs/agent-journal/20260423T163224Z.md` documenting changed files, commands run, pass/fail status, and remaining risks.
+- The agent journal records that these commands passed:
+  - `python3 -m pytest tests/unit/test_chat_generation.py tests/unit/test_chat_sessions.py tests/unit/test_exports.py tests/unit/test_safety_guardrails.py -q`
+  - `python3 -m pytest tests/integration/test_backend_api.py -q`
+  - `python3 -m pytest tests -q`
+  - `python3 evals/run_static_evals.py`
+  - `bash scripts/run_quality_gate.sh`
+- Merged local branch: `agent/T-045-20260423T163224Z`.
+- Remaining documented risk: second-ticker detection is intentionally narrow and ticker-token-based; it handles the deterministic comparison question patterns covered by local fixtures without expanding into broader name/entity resolution.
+- Remaining documented risk: comparison redirects reuse current local comparison availability only and do not expose comparison facts, so future fixture changes need to preserve the same availability-state meanings and route-order expectations.
 
-- `TASKS.md`
-- `backend/models.py`
-- `backend/chat.py`
-- `backend/chat_sessions.py`
-- `backend/export.py`
-- `backend/main.py`
-- `evals/run_static_evals.py`
-- `tests/unit/test_chat_generation.py`
-- `tests/unit/test_chat_sessions.py`
-- `tests/unit/test_exports.py`
-- `tests/unit/test_safety_guardrails.py`
-- `tests/integration/test_backend_api.py`
+Completion commits:
 
-Do not change:
-
-- Do not make live OpenRouter, LLM, provider, market-data, news, SEC, issuer-site, RSS, analytics, persistence-service, or external network calls.
-- Do not add user accounts, authentication, cookies, personal identifiers, analytics SDKs, database migrations, Redis dependencies, HTTP clients, browser storage, frontend components, or production dependencies.
-- Do not read, echo, log, serialize, return, commit, or copy actual secret values from the local environment.
-- Do not expose OpenRouter or other provider keys through browser code, `NEXT_PUBLIC_*`, docs, logs, `/health`, API responses, exports, or committed env files.
-- Do not change frontend UI, browser local storage, comparison page UI, search UI, source drawer UI, glossary UI, export UI, or frontend API helpers.
-- Do not change deterministic asset classification rules, top-500 manifest policy, ingestion job behavior, search behavior, comparison generation behavior, comparison evidence availability behavior, source-use policy, source allowlist behavior, or trust-metrics rules except where existing comparison availability state is reused by the chat redirect contract.
-- Do not add new generated asset pages, generated comparisons, generated source lists, generated risk summaries, new comparison packs, new provider fixtures, or broader MVP asset coverage.
-- Do not let single-asset chat answer second-ticker questions with multi-asset factual comparisons, mixed-asset citations, or comparison claims sourced from outside the selected asset chat contract and the existing comparison availability metadata.
-- Do not invent comparison availability, compare routes, ticker extraction, unsupported reasons, or blocked-state explanations that are not derivable from the submitted question plus current deterministic search/comparison behavior.
-- Do not fabricate citations, source documents, freshness labels, Weekly News Focus items, AI Comprehensive Analysis claims, or second-asset facts for comparison redirects; redirect responses may be citation-free when they are workflow guidance rather than factual asset analysis.
-- Do not weaken advice-boundary behavior: buy/sell/hold, allocation, price-target, tax, brokerage, and trading questions must still redirect into educational framing even when a second ticker appears.
-- Do not change Weekly News Focus date-window logic, high-signal selection, AI Comprehensive Analysis availability threshold, or the visual/structural separation between stable facts and timely context.
-- Do not add recommendation language, predictions, personalized allocation advice, exact position sizing, tax advice, or brokerage/trading instructions to comparison redirect copy, metadata, exports, or diagnostics.
-- Do not move the Python backend or frontend workspace.
-
-Acceptance criteria:
-
-- Chat contract models cover a deterministic comparison-redirect response shape with schema version, redirect state, selected asset ticker, referenced comparison ticker, compare route metadata, existing comparison availability state, workflow guidance copy, and diagnostics showing the redirect was derived from the submitted question and current local comparison/search rules only.
-- `POST /api/assets/{ticker}/chat` preserves the existing single-asset grounded answer flow for ordinary supported questions, but when a supported single-asset question asks how the selected asset compares with a second ticker, the response returns comparison-redirect metadata and does not generate a multi-asset factual answer inside the single-asset endpoint.
-- Supported local `VOO` and `QQQ` chat questions that mention the other ticker in either direction return a compare-route suggestion for the same ordered pair the user asked about, reuse the existing deterministic comparison availability for that pair, and return no fabricated multi-asset citations or source documents from the chat answer itself.
-- Comparison-style chat questions for unavailable pairs such as `AAPL` vs `VOO`, `VOO` vs `SPY`, `VOO` vs `BTC`, `VOO` vs `GME`, and `VOO` vs `ZZZZ` return the comparison redirect contract with the correct existing comparison availability or blocked state (`no_local_pack`, `eligible_not_cached`, `unsupported`, `out_of_scope`, or `unknown`) instead of generating unsupported comparison prose inside single-asset chat.
-- Advice-like prompts with a second ticker, such as buy/sell or allocation questions, still return the existing educational safety redirect rather than a factual comparison answer; safety rules remain authoritative over redirect convenience.
-- Comparison redirects preserve the selected-asset grounding boundary by returning no wrong-asset citations, no mixed-asset source documents, no new Weekly News Focus claims, and no cross-asset factual claims presented as source-backed chat output.
-- Accountless session behavior remains deterministic: redirect turns can be stored and exported with safe session metadata, but transcript export must preserve the redirect as workflow guidance, keep citations/source documents empty unless the underlying chat answer already had valid same-asset evidence, and must not fabricate comparison evidence for redirect-only turns.
-- Static evals verify required models/helpers/route behavior, second-ticker detection, supported and unavailable comparison redirect states, advice-redirect precedence, no mixed-asset citation binding, no live-call imports, no secret exposure, and no forbidden advice language.
-- Tests verify schema serialization, deterministic redirect propagation through direct chat, session-backed chat, transcript export, supported and unavailable pair coverage, blocked-state behavior, API serialization, and safety guardrails.
-
-Required commands:
-
-```bash
-python3 -m pytest tests/unit/test_chat_generation.py tests/unit/test_chat_sessions.py tests/unit/test_exports.py tests/unit/test_safety_guardrails.py -q
-python3 -m pytest tests/integration/test_backend_api.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-```
-
-Iteration budget:
-Max 3 attempts.
-
-## Backlog
-
-No additional backlog tasks are currently prepared.
-
-## Completed
+- `09b0c7d feat(T-045): add grounded chat comparison-redirect contract`
+- `5551f0e chore(T-045): merge grounded chat comparison-redirect contract`
 
 ### T-044: Add export source-use and freshness validation contract
 
@@ -1284,3 +1245,7 @@ Completion commits:
 
 - `4be1fa3 chore: add agentic development scaffold`
 - `c7e2004 chore: add agent loop retries`
+
+## Backlog
+
+No additional backlog tasks are currently prepared.
