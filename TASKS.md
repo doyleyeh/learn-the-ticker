@@ -1,45 +1,69 @@
-# TASKS.md
-
 ## Current task
 
-### T-053: Replace compare-page fixture-only routing with backend-aligned deterministic comparison adapters
+### T-054: Align unsupported and unavailable source-list empty states with backend support-state contracts
 
 Goal:
-Align the compare route to backend comparison-contract inputs while preserving existing deterministic behavior and blocked-state safety.
+Align source-list rendering for unsupported, unavailable, and unknown asset support states so source-list and source-empty states match backend support-state contracts while preserving blocked-state safety and educational framing.
 
 Task-scope paragraph:
-Keep this task narrowly scoped to `apps/web/lib/compare.ts` and `apps/web/app/compare/page.tsx` plus `tests/frontend/smoke.mjs`. Fetch comparison data through the existing backend contract when available, validate payload shape at runtime, keep deterministic fixture fallback for unavailable paths, and preserve no-advice, no-generated-factual output behavior for unsupported/unknown comparison states.
+This cycle is limited to frontend source-list rendering paths for asset support-state visibility. Update source-list state handling and any narrow source-list helpers used by those views so unsupported, unavailable, out-of-scope, unknown, partial, stale, and unknown/insufficient evidence states map consistently to backend-aligned copy and UI behavior. Keep the task within `apps/web/app/assets/[ticker]/sources/page.tsx`, `apps/web/components/SourceDrawer.tsx`, and focused smoke checks in `tests/frontend/smoke.mjs`; do not introduce backend, provider, ingestion, chat, or comparison-contract changes.
 
 Allowed files:
 
-- `apps/web/lib/compare.ts`
-- `apps/web/app/compare/page.tsx`
+- `apps/web/app/assets/[ticker]/sources/page.tsx`
+- `apps/web/components/SourceDrawer.tsx`
 - `tests/frontend/smoke.mjs`
 
 Do not change:
 
-- source-use policy or source allowlist
-- provider integrations or external ingestion behavior
-- non-compare pages
-- safety/advice-boundary rules
+- source-use policy, source rankings, or provider allowlist
+- backend APIs or source ingestion behavior
+- safety/advice-boundary logic and wording
 - citation model or source storage formats
+- live data provider/runtime settings
 
 Acceptance criteria:
 
-- Compare page requests `/api/compare` through `fetchComparisonResponse` and uses contract-shaped data when endpoint responses validate.
-- Compare response shape is validated before rendering through local adapter guard logic.
-- Comparison page falls back to local fixture data if backend fetch is unavailable or invalid.
-- Unsupported, unavailable, and unknown comparison states continue to avoid factual claim rendering that would imply generated advice-like results.
-- Compare page search/entry behavior remains deterministic and does not introduce direct live provider dependencies beyond local API contract fetch.
-- No new investment-advice, brokerage, tax, price-target, allocation, buy/sell/hold framing is introduced.
-- Required evidence and freshness labels remain consistent with existing supported/blocked-state UX.
-- Required commands from this task and EVALS include `npm test`, `npm run typecheck`, `npm run build`, and `bash scripts/run_quality_gate.sh`.
+- Unsupported, out-of-scope, unknown, unavailable, stale, partial, and insufficient-evidence support states render deterministic, non-factual empty-state behavior for the source-list page.
+- Supported assets preserve existing source-list rendering and citation/metadata visibility.
+- No generated source claims or advice-like copy appears on blocked asset/source-list states.
+- Source-list behavior remains deterministic when source data is missing and does not add any new live external dependency.
+- Empty-state labels and copy stay consistent with existing product guardrails for unknown/stale/unavailable handling.
+- Required guardrails (no advice, no unsupported claims, no live calls in normal CI) remain unchanged.
+- Required commands from this cycle pass.
+
+Required commands:
+
+- `npm test`
+- `npm run typecheck`
+- `npm run build`
+- `python3 evals/run_static_evals.py`
+- `bash scripts/run_quality_gate.sh`
 
 Iteration budget:
 
 - Max 2 attempts
 
 ## Completed
+
+### T-053: Replace compare-page fixture-only routing with backend-aligned deterministic comparison adapters
+
+Goal:
+Align the compare route to backend comparison-contract inputs while preserving existing deterministic behavior and blocked-state safety.
+
+Completed details:
+
+- `apps/web/lib/compare.ts` and `apps/web/app/compare/page.tsx` use backend-aligned comparison contract inputs when available and keep deterministic fixture fallback behavior.
+- `fetchComparisonResponse` and response shape validation were already in use in the compare flow, with fallback to local comparison fixtures when backend responses are unavailable or invalid.
+- Contract-aware smoke assertions in `tests/frontend/smoke.mjs` cover compare-route behavior.
+- Journal evidence at `docs/agent-journal/20260423T223353Z.md` confirms `npm test`, `npm run typecheck`, `npm run build`, and `bash scripts/run_quality_gate.sh` passed.
+- Journal evidence at `docs/agent-journal/20260423T221625Z.md` confirms the same command set and documents remaining risks around backend contract fallback.
+- This task was completed through branch `agent/T-053-20260423T223353Z` and merged with commit `ea385d4`.
+
+Completion commits:
+
+- `ea385d4` (local merge commit on branch `agent/T-053-20260423T223353Z`)
+
 
 ### T-052: Align home search UI with backend support-classification and blocked-state contracts
 
