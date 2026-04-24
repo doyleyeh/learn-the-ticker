@@ -5,6 +5,8 @@ import {
   EXPORT_LICENSING_CONTEXT,
   EXPORT_TRUST_CONTEXT,
   postChatTranscriptExport,
+  type AssetExportContractRendering,
+  type AssetExportContractValidation,
   type ExportResponsePreview
 } from "../lib/exportControls";
 
@@ -14,6 +16,7 @@ type LinkExportControl = {
   label: string;
   href: string;
   helper: string;
+  contract?: AssetExportContractValidation | null;
 };
 
 type ChatTranscriptExportControl = {
@@ -63,10 +66,14 @@ export function ExportControls({ title, controls, marker, helper = EXPORT_TRUST_
               key={control.controlId}
               data-export-control={control.controlId}
               data-export-href={control.href}
+              data-export-contract-rendering={control.contract?.rendering ?? "local_fallback"}
+              data-export-contract-source={control.contract?.rendering ?? "local_fallback"}
+              data-export-contract-content-type={control.contract?.contentType ?? control.controlId}
               aria-label={`${control.label}. ${control.helper}`}
             >
               <span>{control.label}</span>
               <small>{control.helper}</small>
+              <ExportContractMarker rendering={control.contract?.rendering ?? "local_fallback"} contract={control.contract} />
             </a>
           ) : (
             <ChatTranscriptExportButton control={control} key={control.controlId} />
@@ -74,6 +81,32 @@ export function ExportControls({ title, controls, marker, helper = EXPORT_TRUST_
         )}
       </div>
     </section>
+  );
+}
+
+function ExportContractMarker({
+  rendering,
+  contract
+}: {
+  rendering: AssetExportContractRendering;
+  contract?: AssetExportContractValidation | null;
+}) {
+  return (
+    <small
+      className="export-contract-marker"
+      data-export-contract-marker={rendering}
+      data-export-contract-schema={contract?.validationSchemaVersion ?? "local_fallback"}
+      data-export-contract-binding-scope={contract?.bindingScope ?? "local_fallback"}
+      data-export-contract-state={contract?.exportState ?? "local_fallback"}
+      data-export-contract-freshness={contract?.freshnessState ?? "local_fallback"}
+      data-export-contract-as-of={contract?.asOfDate ?? "local_fallback"}
+      data-export-contract-citation-count={contract?.citationCount ?? 0}
+      data-export-contract-source-count={contract?.sourceCount ?? 0}
+    >
+      {rendering === "backend_contract"
+        ? "Backend export contract validated; relative Markdown link remains the baseline."
+        : "Local fallback rendering; relative Markdown link remains available."}
+    </small>
   );
 }
 

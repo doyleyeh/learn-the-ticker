@@ -19,7 +19,12 @@ import { fetchSupportedSourceDrawerResponse, sourceDrawerEntriesByDocumentId } f
 import { fetchSupportedAssetWeeklyNews } from "../../../lib/assetWeeklyNews";
 import { beginnerGlossaryGroupsByAssetType } from "../../../lib/glossary";
 import { getAssetComparisonSuggestions } from "../../../lib/compareSuggestions";
-import { assetPageExportUrl, assetSourceListExportUrl } from "../../../lib/exportControls";
+import {
+  assetPageExportUrl,
+  assetSourceListExportUrl,
+  fetchSupportedAssetExportContract,
+  type AssetExportContractValidation
+} from "../../../lib/exportControls";
 import {
   getAIComprehensiveAnalysisFixture,
   assetFixtures,
@@ -90,6 +95,8 @@ export default async function AssetPage({ params }: AssetPageProps) {
   let weeklyNewsRendering: "backend_contract" | "local_fixture" = "local_fixture";
   let sourceDrawerRendering: "backend_contract" | "mixed_fallback" | "local_fixture" = "local_fixture";
   let glossaryRendering: "backend_contract" | "local_fixture" = "local_fixture";
+  let assetPageExportContract: AssetExportContractValidation | null = null;
+  let assetSourceListExportContract: AssetExportContractValidation | null = null;
 
   try {
     asset = await fetchSupportedAssetOverview(fallbackAsset.ticker, fallbackAsset);
@@ -190,6 +197,16 @@ export default async function AssetPage({ params }: AssetPageProps) {
     glossaryRendering = "backend_contract";
   }
   const comparisonSuggestions = getAssetComparisonSuggestions(asset.ticker);
+  try {
+    assetPageExportContract = await fetchSupportedAssetExportContract(asset.ticker, "asset_page");
+  } catch {
+    assetPageExportContract = null;
+  }
+  try {
+    assetSourceListExportContract = await fetchSupportedAssetExportContract(asset.ticker, "asset_source_list");
+  } catch {
+    assetSourceListExportContract = null;
+  }
   const inlineGlossaryTerms =
     asset.assetType === "etf" ? (["expense ratio", "index tracking"] as const) : (["market risk", "P/E ratio"] as const);
   const localDrawerEntries = drawerSources.map((source) => {
@@ -230,6 +247,8 @@ export default async function AssetPage({ params }: AssetPageProps) {
       data-asset-weekly-news-rendering={weeklyNewsRendering}
       data-asset-source-drawer-rendering={sourceDrawerRendering}
       data-asset-glossary-rendering={glossaryRendering}
+      data-asset-page-export-contract={assetPageExportContract?.rendering ?? "local_fallback"}
+      data-asset-source-list-export-contract={assetSourceListExportContract?.rendering ?? "local_fallback"}
     >
       <AssetHeader asset={asset} />
       <AssetModeLayout
@@ -397,14 +416,16 @@ export default async function AssetPage({ params }: AssetPageProps) {
                   controlId: "asset-page",
                   label: "Open asset-page Markdown export",
                   href: assetPageExportUrl(asset.ticker),
-                  helper: "Includes page sections, citation IDs, freshness labels, disclaimer, and licensing scope."
+                  helper: "Includes page sections, citation IDs, freshness labels, disclaimer, and licensing scope.",
+                  contract: assetPageExportContract
                 },
                 {
                   kind: "link",
                   controlId: "asset-source-list",
                   label: "Open source-list Markdown export",
                   href: assetSourceListExportUrl(asset.ticker),
-                  helper: "Includes source titles, publishers, URLs, dates, retrieved timestamps, and allowed excerpts."
+                  helper: "Includes source titles, publishers, URLs, dates, retrieved timestamps, and allowed excerpts.",
+                  contract: assetSourceListExportContract
                 }
               ]}
             />
