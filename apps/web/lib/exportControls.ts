@@ -11,7 +11,7 @@ export type ExportResponsePreview = {
 
 export type AssetExportContractValidation = {
   rendering: AssetExportContractRendering;
-  contentType: "asset_page" | "asset_source_list";
+  contentType: "asset_page" | "asset_source_list" | "comparison";
   exportState: "available";
   title: string;
   citationCount: number;
@@ -20,7 +20,10 @@ export type AssetExportContractValidation = {
   freshnessState: string;
   asOfDate: string;
   validationSchemaVersion: "export-validation-v1";
-  bindingScope: "same_asset";
+  bindingScope: "same_asset" | "same_comparison_pack";
+  leftTicker?: string;
+  rightTicker?: string;
+  comparisonId?: string;
 };
 
 export const EXPORT_FORMAT: ExportFormat = "markdown";
@@ -97,6 +100,53 @@ export function comparisonExportUrl(
   return `/api/compare/export?${params.toString()}`;
 }
 
+export async function fetchSupportedComparisonExportContract(
+  leftTicker: string,
+  rightTicker: string,
+  fetcher: Fetcher = fetch
+): Promise<AssetExportContractValidation> {
+  const normalizedLeftTicker = normalizeTicker(leftTicker);
+  const normalizedRightTicker = normalizeTicker(rightTicker);
+  const relativeUrl = comparisonExportUrl(normalizedLeftTicker, normalizedRightTicker);
+  const response = await fetcher(
+    exportEndpoint(relativeUrl, "No API base URL is configured for supported comparison export contract fetches.")
+  );
+
+  if (!response.ok) {
+    throw new Error(`Comparison export request failed with status ${response.status}`);
+  }
+
+  const payload: unknown = await response.json();
+  if (!isSupportedSameComparisonPackMarkdownExport(payload, normalizedLeftTicker, normalizedRightTicker)) {
+    throw new Error("Comparison export response did not match the supported same-comparison-pack Markdown export contract.");
+  }
+
+  const freshness = comparisonExportFreshness(payload);
+  const leftAsset = payload.left_asset!;
+  const rightAsset = payload.right_asset!;
+  const exportValidation = payload.export_validation!;
+
+  return {
+    rendering: "backend_contract",
+    contentType: "comparison",
+    exportState: "available",
+    title: payload.title,
+    citationCount: payload.citations.length,
+    sourceCount: payload.source_documents.length,
+    sectionCount: payload.sections.length,
+    freshnessState: freshness.freshnessState,
+    asOfDate: freshness.asOfDate,
+    validationSchemaVersion: "export-validation-v1",
+    bindingScope: "same_comparison_pack",
+    leftTicker: leftAsset.ticker,
+    rightTicker: rightAsset.ticker,
+    comparisonId:
+      exportValidation.citation_bindings[0]?.comparison_id ??
+      exportValidation.source_bindings[0]?.comparison_id ??
+      undefined
+  };
+}
+
 export function chatTranscriptExportUrl(ticker: string): string {
   return `/api/assets/${encodeTicker(ticker)}/chat/export`;
 }
@@ -135,9 +185,16 @@ function normalizeTicker(ticker: string): string {
 }
 
 function assetExportEndpoint(_ticker: string, relativeUrl: string) {
+  return exportEndpoint(relativeUrl, "No API base URL is configured for supported asset export contract fetches.");
+}
+
+function exportEndpoint(
+  relativeUrl: string,
+  missingApiBaseMessage = "No API base URL is configured for supported export contract fetches."
+) {
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || process.env.API_BASE_URL?.trim();
   if (!apiBaseUrl) {
-    throw new Error("No API base URL is configured for supported asset export contract fetches.");
+    throw new Error(missingApiBaseMessage);
   }
   return new URL(relativeUrl, apiBaseUrl).toString();
 }
@@ -253,6 +310,82 @@ type BackendExportContract = {
   } | null;
 };
 
+type ExportValidationSection = NonNullable<BackendExportContract["export_validation"]>["section_validations"][number];
+
+type BackendComparisonExportContract = {
+  content_type: "comparison";
+  export_format: string;
+  export_state: string;
+  title: string;
+  state: {
+    status: string;
+    message: string;
+  };
+  left_asset: {
+    ticker: string;
+    status: string;
+    supported: boolean;
+  } | null;
+  right_asset: {
+    ticker: string;
+    status: string;
+    supported: boolean;
+  } | null;
+  sections: Array<{
+    section_id: string;
+    freshness_state?: string | null;
+    evidence_state?: string | null;
+    as_of_date?: string | null;
+    retrieved_at?: string | null;
+  }>;
+  citations: Array<{
+    citation_id: string;
+    source_document_id: string;
+    freshness_state?: string | null;
+  }>;
+  source_documents: BackendExportContract["source_documents"];
+  disclaimer: string;
+  licensing_note: {
+    note_id: string;
+    text: string;
+  };
+  rendered_markdown: string;
+  metadata?: {
+    comparison_type?: string;
+    source?: string;
+    generated_comparison_output?: boolean;
+  };
+  export_validation: {
+    schema_version: string;
+    content_type: string;
+    export_state: string;
+    binding_scope: string;
+    citation_bindings: Array<{
+      citation_id: string;
+      source_document_id: string;
+      asset_ticker?: string | null;
+      comparison_id?: string | null;
+      supports_exported_content?: boolean;
+    }>;
+    source_bindings: Array<{
+      source_document_id: string;
+      asset_ticker?: string | null;
+      comparison_id?: string | null;
+      source_use_policy: string;
+      allowlist_status: string;
+    }>;
+    section_validations: ExportValidationSection[];
+    diagnostics: {
+      no_live_external_calls?: boolean;
+      same_comparison_pack_citation_bindings_only?: boolean;
+      same_comparison_pack_source_bindings_only?: boolean;
+      used_existing_comparison_contract?: boolean;
+      no_new_facts_or_dates?: boolean;
+      empty_factual_evidence_export?: boolean;
+    };
+  } | null;
+};
+
 function isSupportedSameAssetMarkdownExport(
   value: unknown,
   requestedTicker: string,
@@ -339,6 +472,132 @@ function isSupportedSameAssetMarkdownExport(
         typeof section.validated_retrieved_at === "string"
     )
   );
+}
+
+function isSupportedSameComparisonPackMarkdownExport(
+  value: unknown,
+  requestedLeftTicker: string,
+  requestedRightTicker: string
+): value is BackendComparisonExportContract {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<BackendComparisonExportContract>;
+  if (
+    candidate.content_type !== "comparison" ||
+    candidate.export_format !== EXPORT_FORMAT ||
+    candidate.export_state !== "available" ||
+    typeof candidate.title !== "string" ||
+    !candidate.left_asset ||
+    candidate.left_asset.ticker !== requestedLeftTicker ||
+    candidate.left_asset.status !== "supported" ||
+    candidate.left_asset.supported !== true ||
+    !candidate.right_asset ||
+    candidate.right_asset.ticker !== requestedRightTicker ||
+    candidate.right_asset.status !== "supported" ||
+    candidate.right_asset.supported !== true ||
+    !Array.isArray(candidate.sections) ||
+    candidate.sections.length === 0 ||
+    !Array.isArray(candidate.citations) ||
+    candidate.citations.length === 0 ||
+    !candidate.citations.every(isExportCitation) ||
+    !Array.isArray(candidate.source_documents) ||
+    candidate.source_documents.length === 0 ||
+    !candidate.source_documents.every(isExportSourceMetadata) ||
+    typeof candidate.disclaimer !== "string" ||
+    !candidate.disclaimer.toLowerCase().includes("educational") ||
+    !candidate.licensing_note ||
+    candidate.licensing_note.note_id !== "export_licensing_scope" ||
+    typeof candidate.licensing_note.text !== "string" ||
+    !candidate.licensing_note.text.toLowerCase().includes("source attribution") ||
+    typeof candidate.rendered_markdown !== "string" ||
+    !candidate.rendered_markdown.includes("Educational Disclaimer") ||
+    !candidate.export_validation ||
+    candidate.export_validation.schema_version !== "export-validation-v1" ||
+    candidate.export_validation.content_type !== "comparison" ||
+    candidate.export_validation.export_state !== "available" ||
+    candidate.export_validation.binding_scope !== "same_comparison_pack" ||
+    !Array.isArray(candidate.export_validation.citation_bindings) ||
+    candidate.export_validation.citation_bindings.length === 0 ||
+    !Array.isArray(candidate.export_validation.source_bindings) ||
+    candidate.export_validation.source_bindings.length === 0 ||
+    !Array.isArray(candidate.export_validation.section_validations) ||
+    candidate.export_validation.section_validations.length === 0 ||
+    !candidate.export_validation.diagnostics.no_live_external_calls ||
+    !candidate.export_validation.diagnostics.same_comparison_pack_citation_bindings_only ||
+    !candidate.export_validation.diagnostics.same_comparison_pack_source_bindings_only ||
+    !candidate.export_validation.diagnostics.used_existing_comparison_contract ||
+    !candidate.export_validation.diagnostics.no_new_facts_or_dates ||
+    candidate.export_validation.diagnostics.empty_factual_evidence_export === true
+  ) {
+    return false;
+  }
+
+  const requestedTickers = new Set([requestedLeftTicker, requestedRightTicker]);
+  const citationIds = new Set(candidate.citations.map((citation) => citation.citation_id));
+  const sourceIds = new Set(candidate.source_documents.map((source) => source.source_document_id));
+  return (
+    candidate.citations.every((citation) => sourceIds.has(citation.source_document_id)) &&
+    candidate.export_validation.citation_bindings.every(
+      (binding) =>
+        citationIds.has(binding.citation_id) &&
+        sourceIds.has(binding.source_document_id) &&
+        typeof binding.comparison_id === "string" &&
+        binding.comparison_id.length > 0 &&
+        (binding.asset_ticker === undefined || binding.asset_ticker === null || requestedTickers.has(binding.asset_ticker))
+    ) &&
+    candidate.export_validation.source_bindings.every(
+      (binding) =>
+        sourceIds.has(binding.source_document_id) &&
+        typeof binding.comparison_id === "string" &&
+        binding.comparison_id.length > 0 &&
+        (binding.asset_ticker === undefined || binding.asset_ticker === null || requestedTickers.has(binding.asset_ticker)) &&
+        isExportableSourceUsePolicy(binding.source_use_policy) &&
+        binding.allowlist_status === "allowed"
+    ) &&
+    candidate.export_validation.section_validations.some(
+      (section) =>
+        typeof section.displayed_freshness_state === "string" ||
+        typeof section.validated_freshness_state === "string" ||
+        typeof section.displayed_as_of_date === "string" ||
+        typeof section.validated_as_of_date === "string" ||
+        typeof section.displayed_retrieved_at === "string" ||
+        typeof section.validated_retrieved_at === "string"
+    ) &&
+    candidate.source_documents.some(
+      (source) => typeof source.as_of_date === "string" || typeof source.retrieved_at === "string"
+    )
+  );
+}
+
+function comparisonExportFreshness(contract: BackendComparisonExportContract) {
+  const exportValidation = contract.export_validation!;
+  const sectionWithFreshness = exportValidation.section_validations.find(
+    (section) => section.validated_freshness_state ?? section.displayed_freshness_state
+  );
+  const sectionWithAsOf = exportValidation.section_validations.find(
+    (section) =>
+      section.validated_as_of_date ??
+      section.displayed_as_of_date ??
+      section.validated_retrieved_at ??
+      section.displayed_retrieved_at
+  );
+  const sourceWithAsOf = contract.source_documents.find(
+    (source) => typeof source.as_of_date === "string" || typeof source.retrieved_at === "string"
+  );
+
+  return {
+    freshnessState: sectionWithFreshness?.validated_freshness_state ?? sectionWithFreshness?.displayed_freshness_state ?? "unknown",
+    asOfDate:
+      sectionWithAsOf?.validated_as_of_date ??
+      sectionWithAsOf?.displayed_as_of_date ??
+      sectionWithAsOf?.validated_retrieved_at ??
+      sectionWithAsOf?.displayed_retrieved_at ??
+      sourceWithAsOf?.as_of_date ??
+      sourceWithAsOf?.retrieved_at ??
+      "unknown"
+  };
 }
 
 function isExportCitation(value: BackendExportContract["citations"][number]) {
