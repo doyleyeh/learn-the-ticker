@@ -1,40 +1,36 @@
 ## Current task
 
-### T-057: Fetch supported asset detail and recent-context sections from backend contracts
+### T-058: Align asset-page source drawer contexts with backend source metadata contracts
 
 Goal:
-Reduce remaining frontend fixture drift on supported asset pages by consuming the existing backend detail and weekly-news contracts for Deep-Dive sections and timely-context rendering when they are available, while preserving deterministic fallback rendering, stable-vs-timely separation, and current blocked/no-live-call guardrails.
+Reduce remaining supported asset-page source drawer drift by preferring the existing backend source-drawer contract for related claim context, section references, and allowed excerpts when it is available, while preserving deterministic fallback rendering, same-asset citation boundaries, and current blocked/no-live-call guardrails.
 
 Task-scope paragraph:
-This cycle is limited to the supported asset-page detail and timely-context path in `apps/web`. Update the supported asset page and any narrow frontend adapters it needs so supported tickers prefer `/api/assets/{ticker}/details` for stock and ETF Deep-Dive section content and prefer `/api/assets/{ticker}/weekly-news` for Weekly News Focus and AI Comprehensive Analysis inputs already rendered on the asset page, while keeping deterministic local fixture fallback behavior when either backend response is unavailable or invalid. Leave overview-contract rendering, glossary content, grounded chat, comparison suggestions, export routing, blocked/out-of-scope search behavior, and source-list route behavior unchanged for this cycle.
+This cycle is limited to source drawer entries rendered on the supported asset page in `apps/web`. Update the asset page and any narrow frontend adapter logic it needs so source drawers for source documents already shown on the asset page prefer `/api/assets/{ticker}/sources` metadata and related-claim context from the existing deterministic backend source-drawer contract, while keeping local fixture-based source drawer rendering when the backend response is unavailable, invalid, missing the needed source document IDs, or no API base URL is configured. Leave the dedicated source-list route, overview/details/weekly-news fetch adapters, glossary, chat, compare, export routing, blocked/out-of-scope search behavior, and backend source-drawer schema unchanged for this cycle.
 
 Allowed files:
 
 - `apps/web/app/assets/[ticker]/page.tsx`
-- `apps/web/components/AIComprehensiveAnalysisPanel.tsx`
-- `apps/web/components/AssetEtfSections.tsx`
-- `apps/web/components/AssetStockSections.tsx`
-- `apps/web/components/WeeklyNewsPanel.tsx`
-- `apps/web/lib/*`
+- `apps/web/components/SourceDrawer.tsx`
+- `apps/web/lib/sourceDrawer.ts`
 - `tests/frontend/smoke.mjs`
 
 Do not change:
 
 - backend FastAPI routes, response schemas, fixtures, or provider adapters
+- `apps/web/app/assets/[ticker]/sources/page.tsx` and source-list route behavior
+- overview/details/weekly-news backend fetch behavior added in `T-055`, `T-056`, and `T-057`, except for the minimal asset-page source-drawer integration needed to use their results together
 - source allowlist, source-use policy, freshness semantics, or advice-boundary rules
-- `apps/web/app/assets/[ticker]/sources/page.tsx` and source-list routing behavior
 - compare, search, glossary, chat, export, ingestion, caching, and deployment settings
 - unsupported or out-of-scope generated-page behavior
-- the existing backend overview-fetch path added in `T-056`, except for the minimal page integration needed to combine it with detail and weekly-news fetch results
 
 Acceptance criteria:
 
-- Supported asset pages prefer the backend `/api/assets/{ticker}/details` response when it matches the existing deterministic contract for stock or ETF detail sections already rendered in Deep-Dive mode.
-- Supported asset pages prefer the backend `/api/assets/{ticker}/weekly-news` response when it matches the existing deterministic contract for Weekly News Focus items, AI Comprehensive Analysis state, citations, and same-asset source metadata already rendered on the page.
-- Supported asset pages fall back independently to the local deterministic fixture path when the detail response, the weekly-news response, or both are unavailable, invalid, or no API base URL is configured.
-- Stable beginner overview content continues to use the existing `T-056` backend-overview integration, while stock and ETF detail sections, Weekly News Focus, and AI Comprehensive Analysis use backend-aligned data without changing their current UI ordering.
-- Weekly News Focus and AI Comprehensive Analysis remain visually and structurally separate from stable facts, keep current empty and suppressed handling, and do not redefine canonical asset identity.
-- Important factual claims shown in the fetched detail and timely-context sections keep visible same-asset citations or explicit uncertainty labels; stale, unknown, unavailable, partial, and insufficient-evidence states continue to render honestly.
+- Supported asset-page source drawers prefer backend `/api/assets/{ticker}/sources` entries when the response matches the existing `asset-source-drawer-v1` contract for the source document IDs already rendered on the page.
+- Asset-page source drawers use backend related claims, section references, and allowed excerpts for both stable Deep-Dive sections and timely-context sources when those records are available, instead of falling back to generic local claim labels.
+- Asset-page source drawers fall back independently to the existing local deterministic source metadata and citation-context path when the backend source-drawer response is unavailable, invalid, missing the needed source document IDs, or no API base URL is configured.
+- Weekly News Focus and AI Comprehensive Analysis source drawers remain visually and structurally separate from stable canonical facts, and backend source-drawer context does not redefine asset identity.
+- Important factual claims keep visible same-asset citations or explicit uncertainty labels, and restricted or disallowed raw text remains suppressed according to source-use policy.
 - No new live external dependency is introduced, unsupported/out-of-scope assets do not gain generated-page behavior, and no advice-like copy is added.
 - Required commands from this cycle pass.
 
@@ -52,6 +48,29 @@ Iteration budget:
 - Max 2 attempts
 
 ## Completed
+
+### T-057: Fetch supported asset detail and recent-context sections from backend contracts
+
+Goal:
+Reduce remaining frontend fixture drift on supported asset pages by consuming the existing backend detail and weekly-news contracts for Deep-Dive sections and timely-context rendering when they are available, while preserving deterministic fallback rendering, stable-vs-timely separation, and current blocked/no-live-call guardrails.
+
+Completed details:
+
+- Implementation commit `66adeec feat(T-057): fetch supported asset detail and recent-context sections from backend contracts` added `apps/web/lib/assetDetails.ts` to validate supported `/api/assets/{ticker}/details` payloads and merge backend stock `business_model` and `diversification_context` plus ETF `role`, `holdings`, and `cost_context` fields, refreshed citations, and updated freshness dates into the existing deterministic asset fixture shape.
+- The same commit added `apps/web/lib/assetWeeklyNews.ts` to validate `weekly-news-focus-v1` and `ai-comprehensive-analysis-v1` responses from `/api/assets/{ticker}/weekly-news`, then map backend weekly-news windows, items, citations, source documents, analysis sections, suppression state, and source-document bindings into the existing Weekly News Focus and AI Comprehensive Analysis fixture shape while preserving no-live-call and stable-facts-separate behavior.
+- `apps/web/app/assets/[ticker]/page.tsx` now prefers backend overview, details, and weekly-news fetches independently for supported assets, records `data-asset-overview-rendering`, `data-asset-details-rendering`, and `data-asset-weekly-news-rendering`, and preserves deterministic local fallback whenever any response is unavailable or invalid.
+- `tests/frontend/smoke.mjs` now checks the asset detail and weekly-news adapter markers, including required `/details` and `/weekly-news` route strings and the page-level rendering markers.
+- `docs/agent-journal/20260424T022200Z.md` records these checks: `npm test` pass; `npm run typecheck` fail on first run, then pass after one focused type fix; `npm run build` pass; `python3 evals/run_static_evals.py` pass; `python3 -m pytest tests/integration/test_backend_api.py -q` pass; `bash scripts/run_quality_gate.sh` pass.
+- Remaining risks from the journal:
+  - Supported asset pages only attempt backend detail and weekly-news fetches when `NEXT_PUBLIC_API_BASE_URL` or `API_BASE_URL` is configured; otherwise they intentionally stay on the deterministic local fixture path.
+  - The `/api/assets/{ticker}/details` contract is narrower than the existing deep-dive fixture sections, so this cycle overlays backend-backed stock and ETF detail fields onto the current section structure instead of replacing every section with a fully backend-native shape.
+  - Weekly News Focus and AI Comprehensive Analysis now prefer the backend wrapper contract, but the deep-dive `recent_developments` fixture section remains unchanged in this cycle.
+
+Completion commits:
+
+- `ceb9c3a chore(T-057): prepare fetch supported asset detail and recent-context sections from backend contracts task`
+- `66adeec feat(T-057): fetch supported asset detail and recent-context sections from backend contracts`
+- `3ba8925 chore(T-057): merge fetch supported asset detail and recent-context sections from backend contracts`
 
 ### T-056: Fetch supported asset overview pages from backend overview contracts
 
@@ -1590,5 +1609,4 @@ Completion commits:
 
 ## Backlog
 
-### T-058: Align asset-page source drawer contexts with backend source metadata contracts
 ### T-059: Fetch supported glossary context from backend glossary contracts
