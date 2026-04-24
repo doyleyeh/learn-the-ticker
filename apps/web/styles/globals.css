@@ -705,10 +705,25 @@ button {
 }
 
 .source-drawer summary {
+  display: grid;
+  gap: 4px;
   cursor: pointer;
   padding: 18px 20px;
   color: var(--accent-strong);
   font-weight: 850;
+}
+
+.source-summary-kicker {
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.source-summary-title {
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.35;
 }
 
 .source-body {
@@ -837,6 +852,28 @@ blockquote {
   .source-title-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .source-drawer {
+    max-height: min(76vh, 640px);
+    border-radius: 16px 16px 8px 8px;
+    box-shadow: 0 -16px 36px rgba(20, 32, 38, 0.14);
+    scroll-margin-top: 16px;
+  }
+
+  .source-drawer[open] .source-body {
+    max-height: calc(min(76vh, 640px) - 82px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: 24px;
+  }
+
+  .source-drawer summary {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    border-bottom: 1px solid var(--line);
+    background: #ffffff;
   }
 
   .stock-item-heading,
