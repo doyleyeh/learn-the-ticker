@@ -408,6 +408,24 @@ includes("components/GlossaryPopover.tsx", "Generic-only definition");
 includes("components/GlossaryPopover.tsx", "Definition unavailable for this glossary term");
 includes("components/GlossaryPopover.tsx", "aria-expanded");
 includes("components/GlossaryPopover.tsx", "role=\"dialog\"");
+includes("components/GlossaryPopover.tsx", "data-glossary-desktop-interaction=\"hover-click-focus-escape\"");
+includes("components/GlossaryPopover.tsx", "data-glossary-mobile-presentation=\"bottom-sheet\"");
+includes("components/GlossaryPopover.tsx", "data-glossary-close-control=\"button\"");
+includes("components/GlossaryPopover.tsx", "data-glossary-trigger-mode=\"hover-click-focus\"");
+includes("components/GlossaryPopover.tsx", "onMouseEnter");
+includes("components/GlossaryPopover.tsx", "onMouseLeave");
+includes("components/GlossaryPopover.tsx", "onFocus");
+includes("components/GlossaryPopover.tsx", "onBlur");
+includes("components/GlossaryPopover.tsx", "event.key === \"Escape\"");
+includes("components/GlossaryPopover.tsx", "data-glossary-visible-term-context");
+includes("components/GlossaryPopover.tsx", "data-glossary-bottom-sheet-height");
+includes("components/GlossaryPopover.tsx", "data-glossary-internal-scroll=\"true\"");
+includes("styles/globals.css", ".glossary-popover");
+includes("styles/globals.css", "max-height: min\\(74vh, 620px\\)");
+includes("styles/globals.css", "position: fixed");
+includes("styles/globals.css", "bottom: 0");
+includes("styles/globals.css", ".glossary-card-header");
+includes("styles/globals.css", ".glossary-close-button");
 
 const glossarySource = read("lib/glossary.ts");
 const requiredGlossaryTerms = [
