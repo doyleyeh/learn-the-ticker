@@ -1,16 +1,20 @@
 ## Current task
 
-### T-056: Fetch supported asset overview pages from backend overview contracts
+### T-057: Fetch supported asset detail and recent-context sections from backend contracts
 
 Goal:
-Reduce frontend fixture drift on supported asset pages by consuming the existing backend overview contract for stable beginner-overview content when it is available, while preserving deterministic fallback rendering and current blocked/no-live-call guardrails.
+Reduce remaining frontend fixture drift on supported asset pages by consuming the existing backend detail and weekly-news contracts for Deep-Dive sections and timely-context rendering when they are available, while preserving deterministic fallback rendering, stable-vs-timely separation, and current blocked/no-live-call guardrails.
 
 Task-scope paragraph:
-This cycle is limited to the supported asset-page overview path in `apps/web`. Update the supported asset page and any narrow frontend adapter it needs so supported tickers prefer `/api/assets/{ticker}/overview` for stable overview identity, freshness, beginner-summary, top-risk, suitability, citation, and source-document inputs already rendered on the asset page, while keeping deterministic local fixture fallback behavior when the backend response is unavailable or invalid. Leave detailed PRD section rendering, Weekly News Focus, AI Comprehensive Analysis, glossary content, grounded chat, comparison suggestions, and blocked/out-of-scope search behavior unchanged for this cycle.
+This cycle is limited to the supported asset-page detail and timely-context path in `apps/web`. Update the supported asset page and any narrow frontend adapters it needs so supported tickers prefer `/api/assets/{ticker}/details` for stock and ETF Deep-Dive section content and prefer `/api/assets/{ticker}/weekly-news` for Weekly News Focus and AI Comprehensive Analysis inputs already rendered on the asset page, while keeping deterministic local fixture fallback behavior when either backend response is unavailable or invalid. Leave overview-contract rendering, glossary content, grounded chat, comparison suggestions, export routing, blocked/out-of-scope search behavior, and source-list route behavior unchanged for this cycle.
 
 Allowed files:
 
 - `apps/web/app/assets/[ticker]/page.tsx`
+- `apps/web/components/AIComprehensiveAnalysisPanel.tsx`
+- `apps/web/components/AssetEtfSections.tsx`
+- `apps/web/components/AssetStockSections.tsx`
+- `apps/web/components/WeeklyNewsPanel.tsx`
 - `apps/web/lib/*`
 - `tests/frontend/smoke.mjs`
 
@@ -20,15 +24,17 @@ Do not change:
 - source allowlist, source-use policy, freshness semantics, or advice-boundary rules
 - `apps/web/app/assets/[ticker]/sources/page.tsx` and source-list routing behavior
 - compare, search, glossary, chat, export, ingestion, caching, and deployment settings
-- Weekly News Focus and AI Comprehensive Analysis contract behavior beyond reading existing overview inputs
+- unsupported or out-of-scope generated-page behavior
+- the existing backend overview-fetch path added in `T-056`, except for the minimal page integration needed to combine it with detail and weekly-news fetch results
 
 Acceptance criteria:
 
-- Supported asset pages prefer the backend `/api/assets/{ticker}/overview` response when it matches the existing deterministic contract.
-- Supported asset pages fall back to the local deterministic fixture path when the backend response is unavailable, invalid, or no API base URL is configured.
-- Stable beginner-overview rendering uses backend-aligned asset identity, page/facts freshness, beginner summary, exactly three top risks first, suitability framing, citations, and same-asset source metadata on supported pages.
-- Weekly News Focus and AI Comprehensive Analysis remain visually and structurally separate from stable facts, and this task does not expand recent-context behavior beyond what the current page already renders.
-- Deep-dive detail sections remain deterministic and unchanged in this cycle; follow-up detail/recent-context contract work stays in later tasks.
+- Supported asset pages prefer the backend `/api/assets/{ticker}/details` response when it matches the existing deterministic contract for stock or ETF detail sections already rendered in Deep-Dive mode.
+- Supported asset pages prefer the backend `/api/assets/{ticker}/weekly-news` response when it matches the existing deterministic contract for Weekly News Focus items, AI Comprehensive Analysis state, citations, and same-asset source metadata already rendered on the page.
+- Supported asset pages fall back independently to the local deterministic fixture path when the detail response, the weekly-news response, or both are unavailable, invalid, or no API base URL is configured.
+- Stable beginner overview content continues to use the existing `T-056` backend-overview integration, while stock and ETF detail sections, Weekly News Focus, and AI Comprehensive Analysis use backend-aligned data without changing their current UI ordering.
+- Weekly News Focus and AI Comprehensive Analysis remain visually and structurally separate from stable facts, keep current empty and suppressed handling, and do not redefine canonical asset identity.
+- Important factual claims shown in the fetched detail and timely-context sections keep visible same-asset citations or explicit uncertainty labels; stale, unknown, unavailable, partial, and insufficient-evidence states continue to render honestly.
 - No new live external dependency is introduced, unsupported/out-of-scope assets do not gain generated-page behavior, and no advice-like copy is added.
 - Required commands from this cycle pass.
 
@@ -37,6 +43,7 @@ Required commands:
 - `npm test`
 - `npm run typecheck`
 - `npm run build`
+- `python3 evals/run_static_evals.py`
 - `python3 -m pytest tests/integration/test_backend_api.py -q`
 - `bash scripts/run_quality_gate.sh`
 
@@ -45,6 +52,27 @@ Iteration budget:
 - Max 2 attempts
 
 ## Completed
+
+### T-056: Fetch supported asset overview pages from backend overview contracts
+
+Goal:
+Reduce frontend fixture drift on supported asset pages by consuming the existing backend overview contract for stable beginner-overview content when it is available, while preserving deterministic fallback rendering and current blocked/no-live-call guardrails.
+
+Completed details:
+
+- Implementation commit `c5fab18 feat(T-056): fetch supported asset overview pages from backend overview contracts` added `apps/web/lib/assetOverview.ts` as a deterministic frontend adapter for `/api/assets/{ticker}/overview`, validating supported stock and ETF overview payloads and merging backend asset identity, freshness, beginner summary, top risks, suitability summary, claims, citations, and source documents into the existing asset fixture shape.
+- `apps/web/app/assets/[ticker]/page.tsx` now attempts the backend overview fetch for supported assets, records whether overview rendering came from `backend_contract` or `local_fixture`, and preserves the existing local deterministic fallback when the response is unavailable, invalid, or the API base URL is not configured.
+- `tests/frontend/smoke.mjs` now checks the overview adapter markers, including the overview fetch helper, backend-rendering marker, and required overview route strings.
+- `docs/agent-journal/20260424T015016Z.md` records these passing checks: `npm test`, `npm run typecheck`, `npm run build`, `python3 -m pytest tests/integration/test_backend_api.py -q`, and `bash scripts/run_quality_gate.sh`.
+- Remaining risks from the journal:
+  - Supported asset pages only attempt the backend overview fetch when `NEXT_PUBLIC_API_BASE_URL` or `API_BASE_URL` is configured; otherwise they intentionally fall back to the deterministic local fixture path.
+  - This cycle only backend-aligns stable overview identity, freshness, beginner summary, top risks, suitability, citations, and source metadata; the stable fact list, citation contexts, and deep-dive sections remain on the deterministic local adapter path until later tasks expand the contract usage.
+
+Completion commits:
+
+- `cf9d665 chore(T-056): prepare fetch supported asset overview pages from backend overview contracts task`
+- `c5fab18 feat(T-056): fetch supported asset overview pages from backend overview contracts`
+- `bca802b chore(T-056): merge fetch supported asset overview pages from backend overview contracts`
 
 ### T-055: Fetch supported source-list pages from backend source-drawer contracts
 
@@ -1562,6 +1590,5 @@ Completion commits:
 
 ## Backlog
 
-### T-057: Fetch supported asset detail and recent-context sections from backend contracts
 ### T-058: Align asset-page source drawer contexts with backend source metadata contracts
 ### T-059: Fetch supported glossary context from backend glossary contracts
