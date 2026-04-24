@@ -25,14 +25,22 @@ fixture_cases:
     ticker: VOO
     expected_state: no_high_signal
     expected_item_count: 0
+    expected_configured_max_item_count: 8
+    expected_evidence_state: no_high_signal
+    expected_evidence_limited_state: empty
     expected_ai_state: suppressed
     expected_ai_available: false
+    expected_ai_minimum_item_count: 2
   - id: qqq_empty_weekly_news
     ticker: QQQ
     expected_state: no_high_signal
     expected_item_count: 0
+    expected_configured_max_item_count: 8
+    expected_evidence_state: no_high_signal
+    expected_evidence_limited_state: empty
     expected_ai_state: suppressed
     expected_ai_available: false
+    expected_ai_minimum_item_count: 2
 source_policy_required_exclusions:
   - rejected_source
   - non_allowlisted_source

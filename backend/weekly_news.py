@@ -19,6 +19,7 @@ from backend.models import (
     SourceUsePolicy,
     WeeklyNewsContractState,
     WeeklyNewsDeduplicationMetadata,
+    WeeklyNewsEvidenceLimitedState,
     WeeklyNewsEmptyState,
     WeeklyNewsEventType,
     WeeklyNewsFocusResponse,
@@ -123,25 +124,38 @@ def select_weekly_news_focus(
     minimum_display_score: int = MINIMUM_DISPLAY_SCORE,
 ) -> WeeklyNewsFocusResponse:
     window = compute_weekly_news_window(as_of)
-    items: list[WeeklyNewsItem] = []
-    suppressed_count = 0
+    selected_candidates: list[WeeklyNewsItem] = []
+    rejected_candidate_count = 0
 
     for candidate in candidates:
         rationale = _selection_rationale(asset, candidate, window, minimum_display_score)
         if not rationale.selected:
-            suppressed_count += 1
+            rejected_candidate_count += 1
             continue
-        items.append(_item_from_candidate(candidate, window, rationale))
+        selected_candidates.append(_item_from_candidate(candidate, window, rationale))
 
-    selected = sorted(
-        items,
+    ranked_selected_candidates = sorted(
+        selected_candidates,
         key=lambda item: (
             item.selection_rationale.source_priority,
             -item.importance_score,
             item.event_date or "",
             item.event_id,
         ),
-    )[:MAX_WEEKLY_ITEMS]
+    )
+    selected = ranked_selected_candidates[:MAX_WEEKLY_ITEMS]
+    suppressed_count = rejected_candidate_count + max(0, len(ranked_selected_candidates) - len(selected))
+    selected_count = len(selected)
+
+    if selected_count == 0:
+        evidence_state = EvidenceState.no_high_signal
+        evidence_limited_state = WeeklyNewsEvidenceLimitedState.empty
+    elif selected_count < MAX_WEEKLY_ITEMS:
+        evidence_state = EvidenceState.partial
+        evidence_limited_state = WeeklyNewsEvidenceLimitedState.limited_verified_set
+    else:
+        evidence_state = EvidenceState.supported
+        evidence_limited_state = WeeklyNewsEvidenceLimitedState.full
 
     citations = [
         Citation(
@@ -163,7 +177,7 @@ def select_weekly_news_focus(
         empty_state = WeeklyNewsEmptyState(
             state=state,
             message="No major Weekly News Focus items found in the deterministic local fixture window.",
-            evidence_state=EvidenceState.no_high_signal,
+            evidence_state=evidence_state,
             selected_item_count=0,
             suppressed_candidate_count=suppressed_count,
         )
@@ -172,6 +186,11 @@ def select_weekly_news_focus(
         asset=asset,
         state=state,
         window=window,
+        configured_max_item_count=MAX_WEEKLY_ITEMS,
+        selected_item_count=selected_count,
+        suppressed_candidate_count=suppressed_count,
+        evidence_state=evidence_state,
+        evidence_limited_state=evidence_limited_state,
         items=selected,
         empty_state=empty_state,
         citations=citations,
@@ -194,6 +213,8 @@ def build_ai_comprehensive_analysis(
             asset=asset,
             state=WeeklyNewsContractState.suppressed,
             analysis_available=False,
+            minimum_weekly_news_item_count=MINIMUM_AI_ANALYSIS_ITEMS,
+            weekly_news_selected_item_count=weekly_news_focus.selected_item_count,
             suppression_reason="AI Comprehensive Analysis is suppressed because fewer than two high-signal Weekly News Focus items are available.",
             canonical_fact_citation_ids=canonical_fact_citation_ids,
         )
@@ -248,6 +269,8 @@ def build_ai_comprehensive_analysis(
         asset=asset,
         state=WeeklyNewsContractState.available,
         analysis_available=True,
+        minimum_weekly_news_item_count=MINIMUM_AI_ANALYSIS_ITEMS,
+        weekly_news_selected_item_count=weekly_news_focus.selected_item_count,
         sections=sections,
         citation_ids=all_citations,
         source_document_ids=source_ids,

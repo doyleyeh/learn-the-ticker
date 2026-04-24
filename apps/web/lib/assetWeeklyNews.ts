@@ -7,6 +7,7 @@ import {
   type SourceDocument,
   type WeeklyNewsContractState,
   type WeeklyNewsEmptyState,
+  type WeeklyNewsEvidenceLimitedState,
   type WeeklyNewsFocusFixture
 } from "./fixtures";
 
@@ -67,6 +68,11 @@ type BackendWeeklyNewsFocus = {
     news_window_end: string;
     includes_current_week_to_date: boolean;
   };
+  configured_max_item_count: number;
+  selected_item_count: number;
+  suppressed_candidate_count: number;
+  evidence_state: string;
+  evidence_limited_state: WeeklyNewsEvidenceLimitedState;
   items: Array<{
     event_id: string;
     asset_ticker: string;
@@ -98,6 +104,8 @@ type BackendAIComprehensiveAnalysis = {
   schema_version: "ai-comprehensive-analysis-v1";
   state: WeeklyNewsContractState;
   analysis_available: boolean;
+  minimum_weekly_news_item_count: number;
+  weekly_news_selected_item_count: number;
   suppression_reason: string | null;
   sections: Array<{
     section_id: "what_changed_this_week" | "market_context" | "business_or_fund_context" | "risk_context";
@@ -190,9 +198,16 @@ function isSupportedWeeklyNewsResponse(
     !!candidate.weekly_news_focus &&
     typeof candidate.weekly_news_focus === "object" &&
     candidate.weekly_news_focus.schema_version === "weekly-news-focus-v1" &&
+    typeof candidate.weekly_news_focus.configured_max_item_count === "number" &&
+    typeof candidate.weekly_news_focus.selected_item_count === "number" &&
+    typeof candidate.weekly_news_focus.suppressed_candidate_count === "number" &&
+    typeof candidate.weekly_news_focus.evidence_state === "string" &&
+    typeof candidate.weekly_news_focus.evidence_limited_state === "string" &&
     !!candidate.ai_comprehensive_analysis &&
     typeof candidate.ai_comprehensive_analysis === "object" &&
     candidate.ai_comprehensive_analysis.schema_version === "ai-comprehensive-analysis-v1" &&
+    typeof candidate.ai_comprehensive_analysis.minimum_weekly_news_item_count === "number" &&
+    typeof candidate.ai_comprehensive_analysis.weekly_news_selected_item_count === "number" &&
     Array.isArray(candidate.weekly_news_focus.items) &&
     Array.isArray(candidate.weekly_news_focus.citations) &&
     Array.isArray(candidate.weekly_news_focus.source_documents) &&
@@ -218,6 +233,11 @@ function toWeeklyNewsFocus(
       newsWindowEnd: focus.window.news_window_end,
       includesCurrentWeekToDate: focus.window.includes_current_week_to_date
     },
+    configuredMaxItemCount: focus.configured_max_item_count,
+    selectedItemCount: focus.selected_item_count,
+    suppressedCandidateCount: focus.suppressed_candidate_count,
+    evidenceState: toEvidenceState(focus.evidence_state),
+    evidenceLimitedState: toEvidenceLimitedState(focus.evidence_limited_state),
     items: focus.items.map((item) => ({
       eventId: item.event_id,
       assetTicker: item.asset_ticker,
@@ -257,6 +277,8 @@ function toAIComprehensiveAnalysis(
     schemaVersion: "ai-comprehensive-analysis-v1",
     state: analysis.state,
     analysisAvailable: analysis.analysis_available,
+    minimumWeeklyNewsItemCount: analysis.minimum_weekly_news_item_count,
+    weeklyNewsSelectedItemCount: analysis.weekly_news_selected_item_count,
     suppressionReason: analysis.suppression_reason,
     sections: analysis.sections.map((section) => ({
       sectionId: section.section_id,
@@ -390,17 +412,32 @@ function toFreshnessState(value: string): FreshnessState {
 function toEvidenceState(value: string): WeeklyNewsEmptyState["evidenceState"] {
   if (
     value === "supported" ||
+    value === "partial" ||
     value === "mixed" ||
     value === "unknown" ||
     value === "unavailable" ||
     value === "stale" ||
     value === "insufficient_evidence" ||
     value === "no_high_signal" ||
-    value === "no_major_recent_development"
+    value === "no_major_recent_development" ||
+    value === "unsupported"
   ) {
     return value;
   }
   return "unknown";
+}
+
+function toEvidenceLimitedState(value: string): WeeklyNewsEvidenceLimitedState {
+  if (
+    value === "full" ||
+    value === "limited_verified_set" ||
+    value === "empty" ||
+    value === "unavailable" ||
+    value === "insufficient_evidence"
+  ) {
+    return value;
+  }
+  return "unavailable";
 }
 
 function toSourceQuality(value: string): WeeklyNewsFocusFixture["items"][number]["source"]["sourceQuality"] {
