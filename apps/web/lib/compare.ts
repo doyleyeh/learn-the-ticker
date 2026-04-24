@@ -33,6 +33,8 @@ type ComparisonEvidenceSide = "left" | "right" | "shared";
 type ComparisonEvidenceSideRole = "left_side_support" | "right_side_support" | "shared_comparison_support";
 type ComparisonClaimKind = "key_difference" | "beginner_bottom_line";
 type ComparisonRequiredDimension = "Benchmark" | "Expense ratio" | "Holdings count" | "Breadth" | "Educational role";
+type StockEtfRequiredDimension = "Structure" | "Basket membership" | "Breadth" | "Cost model" | "Educational role";
+type StockEtfRelationshipState = "holding_verified" | "unknown" | "insufficient_evidence";
 type SearchSupportClassification =
   | "cached_supported"
   | "eligible_not_cached"
@@ -177,6 +179,38 @@ export type ComparisonBeginnerBottomLine = {
   citation_ids: string[];
 };
 
+export type StockEtfRelationshipBadge = {
+  label: string;
+  value: string;
+  marker: "comparison_type" | "stock_ticker" | "etf_ticker" | "relationship_state" | "evidence_boundary";
+  relationship_state: StockEtfRelationshipState;
+  evidence_state: ComparisonEvidenceState;
+  citation_ids: string[];
+};
+
+export type StockEtfBasketStructure = {
+  stock_ticker: string;
+  etf_ticker: string;
+  stock_role_summary: string;
+  etf_basket_summary: string;
+  relationship_summary: string;
+  overlap_or_membership_state: StockEtfRelationshipState;
+  evidence_state: ComparisonEvidenceState;
+  unavailable_detail: string | null;
+  citation_ids: string[];
+};
+
+export type StockEtfRelationshipModel = {
+  schema_version: "stock-etf-relationship-v1";
+  comparison_type: "stock_vs_etf";
+  stock_ticker: string;
+  etf_ticker: string;
+  relationship_state: StockEtfRelationshipState;
+  evidence_state: ComparisonEvidenceState;
+  badges: StockEtfRelationshipBadge[];
+  basket_structure: StockEtfBasketStructure;
+};
+
 type ComparisonEvidenceItem = {
   evidence_item_id: string;
   dimension: string;
@@ -302,6 +336,7 @@ export type ComparePageFixture = {
   citations: ComparisonCitation[];
   source_documents: ComparisonSourceDocument[];
   evidence_availability: ComparisonEvidenceAvailability | null;
+  stock_etf_relationship?: StockEtfRelationshipModel | null;
 };
 
 const retrieved_at = "2026-04-20T00:00:00Z";
@@ -311,6 +346,13 @@ const REQUIRED_COMPARISON_DIMENSIONS: ComparisonRequiredDimension[] = [
   "Expense ratio",
   "Holdings count",
   "Breadth",
+  "Educational role"
+];
+const STOCK_ETF_COMPARISON_DIMENSIONS: StockEtfRequiredDimension[] = [
+  "Structure",
+  "Basket membership",
+  "Breadth",
+  "Cost model",
   "Educational role"
 ];
 const DEFAULT_ALLOWED_SOURCE_OPERATIONS: ComparisonSourceOperationPermissions = {
@@ -394,6 +436,10 @@ export function getComparePageFixture(leftTicker: string, rightTicker: string): 
 
   if ((left === "VOO" && right === "QQQ") || (left === "QQQ" && right === "VOO")) {
     return buildSupportedComparison(left, right);
+  }
+
+  if ((left === "AAPL" && right === "VOO") || (left === "VOO" && right === "AAPL")) {
+    return buildSupportedStockEtfComparison(left as "AAPL" | "VOO", right as "AAPL" | "VOO");
   }
 
   const left_asset = assetIdentityForTicker(left);
@@ -527,10 +573,174 @@ function buildSupportedComparison(left: "VOO" | "QQQ", right: "VOO" | "QQQ"): Co
       citationFor("VOO", "beginner_role")
     ],
     source_documents: [sourceDocumentFor("QQQ"), sourceDocumentFor("VOO")],
-    evidence_availability: null
+    evidence_availability: null,
+    stock_etf_relationship: null
   };
 
   response.evidence_availability = buildAvailableEvidenceAvailability(response);
+  return response;
+}
+
+function buildSupportedStockEtfComparison(left: "AAPL" | "VOO", right: "AAPL" | "VOO"): ComparePageFixture {
+  const stockTicker = left === "AAPL" ? left : right;
+  const etfTicker = stockTicker === left ? right : left;
+  const stockCitation = "c_compare_aapl_company_profile";
+  const etfProfileCitation = "c_compare_voo_basket_profile";
+  const etfHoldingsCitation = "c_compare_voo_aapl_top_holding";
+  const etfHoldingsCountCitation = "c_compare_voo_holdings_count";
+  const etfExpenseCitation = "c_compare_voo_expense_ratio";
+
+  const key_differences: ComparisonKeyDifference[] = [
+    {
+      dimension: "Structure",
+      plain_english_summary: `${stockTicker} is represented by the local filing fixture as one operating company, while ${etfTicker} is represented by issuer fixtures as an ETF basket that tracks the S&P 500 Index.`,
+      citation_ids: [stockCitation, etfProfileCitation]
+    },
+    {
+      dimension: "Basket membership",
+      plain_english_summary: `${etfTicker}'s local holdings fixture lists Apple among top holdings, but the deterministic pack does not include a verified holding weight or full overlap calculation.`,
+      citation_ids: [etfHoldingsCitation]
+    },
+    {
+      dimension: "Breadth",
+      plain_english_summary: `${stockTicker} is one company in this comparison, while the local facts list ${etfTicker} with about 500 holdings.`,
+      citation_ids: [stockCitation, etfHoldingsCountCitation]
+    },
+    {
+      dimension: "Cost model",
+      plain_english_summary: `${etfTicker} has an ETF expense-ratio fact in the local issuer fixture; ${stockTicker} is a common stock in this pack, so an ETF expense ratio is not the matching comparison field.`,
+      citation_ids: [stockCitation, etfExpenseCitation]
+    },
+    {
+      dimension: "Educational role",
+      plain_english_summary: `This stock-vs-ETF view separates learning about ${stockTicker}'s single business from learning about ${etfTicker}'s basket exposure.`,
+      citation_ids: [stockCitation, etfProfileCitation, etfHoldingsCitation]
+    }
+  ];
+
+  const bottom_line_for_beginners: ComparisonBeginnerBottomLine = {
+    summary: `${stockTicker} and ${etfTicker} are different structures: one is a single company, and the other is an ETF basket. The local evidence verifies that Apple appears in the VOO holdings fixture, but it does not verify a precise holding weight or full overlap calculation, so this page treats the relationship as partial educational context rather than a decision rule.`,
+    citation_ids: [stockCitation, etfProfileCitation, etfHoldingsCitation, etfHoldingsCountCitation]
+  };
+
+  const response: ComparePageFixture = {
+    left_asset: assetIdentityForTicker(left),
+    right_asset: assetIdentityForTicker(right),
+    state: {
+      status: "supported",
+      message: "Stock-vs-ETF comparison is supported by deterministic local retrieval fixtures."
+    },
+    comparison_type: "stock_vs_etf",
+    key_differences,
+    bottom_line_for_beginners,
+    citations: [
+      {
+        citation_id: stockCitation,
+        source_document_id: "src_aapl_10k_fixture",
+        title: "Apple Inc. Form 10-K fixture excerpt",
+        publisher: "Apple",
+        freshness_state: "fresh"
+      },
+      {
+        citation_id: etfProfileCitation,
+        source_document_id: "src_voo_fact_sheet_fixture",
+        title: "Vanguard S&P 500 ETF fact sheet fixture excerpt",
+        publisher: "Vanguard",
+        freshness_state: "fresh"
+      },
+      {
+        citation_id: etfHoldingsCitation,
+        source_document_id: "src_voo_holdings_fixture",
+        title: "Vanguard S&P 500 ETF holdings fixture excerpt",
+        publisher: "Vanguard",
+        freshness_state: "fresh"
+      },
+      {
+        citation_id: etfHoldingsCountCitation,
+        source_document_id: "src_voo_fact_sheet_fixture",
+        title: "Vanguard S&P 500 ETF fact sheet fixture excerpt",
+        publisher: "Vanguard",
+        freshness_state: "fresh"
+      },
+      {
+        citation_id: etfExpenseCitation,
+        source_document_id: "src_voo_fact_sheet_fixture",
+        title: "Vanguard S&P 500 ETF fact sheet fixture excerpt",
+        publisher: "Vanguard",
+        freshness_state: "fresh"
+      }
+    ],
+    source_documents: [
+      stockEtfSourceDocumentFor("src_aapl_10k_fixture"),
+      stockEtfSourceDocumentFor("src_voo_fact_sheet_fixture"),
+      stockEtfSourceDocumentFor("src_voo_holdings_fixture")
+    ],
+    evidence_availability: null,
+    stock_etf_relationship: {
+      schema_version: "stock-etf-relationship-v1",
+      comparison_type: "stock_vs_etf",
+      stock_ticker: stockTicker,
+      etf_ticker: etfTicker,
+      relationship_state: "holding_verified",
+      evidence_state: "partial",
+      badges: [
+        {
+          label: "Comparison type",
+          value: "Stock vs ETF",
+          marker: "comparison_type",
+          relationship_state: "holding_verified",
+          evidence_state: "supported",
+          citation_ids: [stockCitation, etfProfileCitation]
+        },
+        {
+          label: "Stock ticker",
+          value: stockTicker,
+          marker: "stock_ticker",
+          relationship_state: "holding_verified",
+          evidence_state: "supported",
+          citation_ids: [stockCitation]
+        },
+        {
+          label: "ETF ticker",
+          value: etfTicker,
+          marker: "etf_ticker",
+          relationship_state: "holding_verified",
+          evidence_state: "supported",
+          citation_ids: [etfProfileCitation]
+        },
+        {
+          label: "Relationship state",
+          value: "Top-holding membership verified; exact overlap weight unavailable",
+          marker: "relationship_state",
+          relationship_state: "holding_verified",
+          evidence_state: "partial",
+          citation_ids: [etfHoldingsCitation]
+        },
+        {
+          label: "Evidence boundary",
+          value: "Same comparison pack only",
+          marker: "evidence_boundary",
+          relationship_state: "holding_verified",
+          evidence_state: "supported",
+          citation_ids: [stockCitation, etfProfileCitation, etfHoldingsCitation]
+        }
+      ],
+      basket_structure: {
+        stock_ticker: stockTicker,
+        etf_ticker: etfTicker,
+        stock_role_summary: `${stockTicker} is shown as a single company with products, services, and company-specific risks.`,
+        etf_basket_summary: `${etfTicker} is shown as an ETF basket with about 500 holdings in the local fixture.`,
+        relationship_summary:
+          "The local VOO holdings fixture lists Apple among top holdings. The pack does not include exact holding weight or full overlap evidence, so the relationship is labeled partial.",
+        overlap_or_membership_state: "holding_verified",
+        evidence_state: "partial",
+        unavailable_detail: "Exact holding weight, top-10 concentration, sector exposure, and full overlap are unavailable in this deterministic pack.",
+        citation_ids: [stockCitation, etfProfileCitation, etfHoldingsCitation, etfHoldingsCountCitation]
+      }
+    }
+  };
+
+  response.evidence_availability = buildStockEtfEvidenceAvailability(response);
   return response;
 }
 
@@ -746,6 +956,177 @@ function buildAvailableEvidenceAvailability(comparison: ComparePageFixture): Com
   };
 }
 
+function buildStockEtfEvidenceAvailability(comparison: ComparePageFixture): ComparisonEvidenceAvailability {
+  const source_documents_by_id = new Map(
+    comparison.source_documents.map((source_document) => [source_document.source_document_id, source_document])
+  );
+  const citation_by_id = new Map(comparison.citations.map((citation) => [citation.citation_id, citation]));
+  const evidence_items: ComparisonEvidenceItem[] = [];
+  const required_evidence_dimensions: ComparisonEvidenceDimension[] = [];
+  const claim_bindings: ComparisonEvidenceClaimBinding[] = [];
+  const citation_bindings: ComparisonEvidenceCitationBinding[] = [];
+  const evidence_item_ids_by_dimension = new Map<string, string[]>();
+
+  for (const difference of comparison.key_differences) {
+    const dimension_items = difference.citation_ids.flatMap((citation_id, index) => {
+      const citation = citation_by_id.get(citation_id);
+      if (!citation) {
+        return [];
+      }
+      const source_document = source_documents_by_id.get(citation.source_document_id);
+      if (!source_document) {
+        return [];
+      }
+      const asset_ticker = assetTickerForStockEtfCitationId(citation_id);
+      const item: ComparisonEvidenceItem = {
+        evidence_item_id: `evidence_${claimSlug(difference.dimension)}_${asset_ticker.toLowerCase()}_${index + 1}`,
+        dimension: difference.dimension,
+        side: comparison.left_asset.ticker === asset_ticker ? "left" : "right",
+        side_role: sideRoleForAsset(asset_ticker, comparison.left_asset.ticker, comparison.right_asset.ticker),
+        asset_ticker,
+        field_name: claimSlug(difference.dimension),
+        fact_id: `fact_compare_${asset_ticker.toLowerCase()}_${claimSlug(difference.dimension)}_${index + 1}`,
+        source_chunk_id: `chunk_compare_${asset_ticker.toLowerCase()}_${claimSlug(difference.dimension)}_${index + 1}`,
+        source_document_id: source_document.source_document_id,
+        citation_ids: [citation_id],
+        evidence_state: difference.dimension === "Basket membership" ? "partial" : "supported",
+        freshness_state: source_document.freshness_state,
+        as_of_date: source_document.as_of_date,
+        retrieved_at: source_document.retrieved_at,
+        is_official: source_document.is_official,
+        source_quality: source_document.source_quality,
+        allowlist_status: source_document.allowlist_status,
+        source_use_policy: source_document.source_use_policy,
+        permitted_operations: source_document.permitted_operations,
+        unavailable_reason:
+          difference.dimension === "Basket membership"
+            ? "Exact holding weight and full overlap calculation are unavailable in this deterministic comparison pack."
+            : null
+      };
+      return [item];
+    });
+
+    evidence_items.push(...dimension_items);
+    evidence_item_ids_by_dimension.set(
+      difference.dimension,
+      dimension_items.map((item) => item.evidence_item_id)
+    );
+
+    required_evidence_dimensions.push({
+      dimension: difference.dimension,
+      required: true,
+      availability_state: "available",
+      evidence_state: difference.dimension === "Basket membership" ? "partial" : "supported",
+      freshness_state: "fresh",
+      left_evidence_item_ids: dimension_items
+        .filter((item) => item.side === "left")
+        .map((item) => item.evidence_item_id),
+      right_evidence_item_ids: dimension_items
+        .filter((item) => item.side === "right")
+        .map((item) => item.evidence_item_id),
+      shared_evidence_item_ids: [],
+      citation_ids: difference.citation_ids,
+      source_document_ids: sourceDocumentIdsForCitations(difference.citation_ids, citation_by_id),
+      generated_claim_ids: [claimIdForDimension(difference.dimension as ComparisonRequiredDimension)],
+      unavailable_reason:
+        difference.dimension === "Basket membership"
+          ? "Exact holding weight and full overlap calculation are unavailable in this deterministic comparison pack."
+          : null
+    });
+
+    const claim_id = claimIdForDimension(difference.dimension as ComparisonRequiredDimension);
+    claim_bindings.push({
+      claim_id,
+      claim_kind: "key_difference",
+      dimension: difference.dimension,
+      side_role: "shared_comparison_support",
+      citation_ids: difference.citation_ids,
+      source_document_ids: sourceDocumentIdsForCitations(difference.citation_ids, citation_by_id),
+      evidence_item_ids: evidence_item_ids_by_dimension.get(difference.dimension) ?? [],
+      availability_state: "available"
+    });
+
+    citation_bindings.push(
+      ...buildCitationBindings(
+        claim_id,
+        difference.dimension,
+        difference.citation_ids,
+        source_documents_by_id,
+        comparison.left_asset.ticker,
+        comparison.right_asset.ticker
+      )
+    );
+  }
+
+  if (comparison.bottom_line_for_beginners) {
+    claim_bindings.push({
+      claim_id: "claim_stock_etf_bottom_line",
+      claim_kind: "beginner_bottom_line",
+      dimension: "Beginner bottom line",
+      side_role: "shared_comparison_support",
+      citation_ids: comparison.bottom_line_for_beginners.citation_ids,
+      source_document_ids: sourceDocumentIdsForCitations(comparison.bottom_line_for_beginners.citation_ids, citation_by_id),
+      evidence_item_ids: Array.from(evidence_item_ids_by_dimension.values()).flat(),
+      availability_state: "available"
+    });
+    citation_bindings.push(
+      ...buildCitationBindings(
+        "claim_stock_etf_bottom_line",
+        "Beginner bottom line",
+        comparison.bottom_line_for_beginners.citation_ids,
+        source_documents_by_id,
+        comparison.left_asset.ticker,
+        comparison.right_asset.ticker
+      )
+    );
+  }
+
+  return {
+    schema_version: "comparison-evidence-availability-v1",
+    comparison_id: comparisonId(comparison.left_asset.ticker, comparison.right_asset.ticker),
+    comparison_type: comparison.comparison_type,
+    left_asset: comparison.left_asset,
+    right_asset: comparison.right_asset,
+    availability_state: "available",
+    required_dimensions: STOCK_ETF_COMPARISON_DIMENSIONS,
+    required_evidence_dimensions,
+    evidence_items,
+    claim_bindings,
+    citation_bindings,
+    source_references: comparison.source_documents.map((source_document) => ({
+      source_document_id: source_document.source_document_id,
+      asset_ticker: assetTickerForStockEtfSourceDocumentId(source_document.source_document_id),
+      source_type: source_document.source_type,
+      title: source_document.title,
+      publisher: source_document.publisher,
+      url: source_document.url,
+      published_at: source_document.published_at,
+      as_of_date: source_document.as_of_date,
+      retrieved_at: source_document.retrieved_at,
+      freshness_state: source_document.freshness_state,
+      is_official: source_document.is_official,
+      source_quality: source_document.source_quality,
+      allowlist_status: source_document.allowlist_status,
+      source_use_policy: source_document.source_use_policy,
+      permitted_operations: source_document.permitted_operations
+    })),
+    diagnostics: {
+      no_live_external_calls: true,
+      live_provider_calls_attempted: false,
+      live_llm_calls_attempted: false,
+      availability_contract_created_generated_output: false,
+      no_new_generated_output: true,
+      generated_comparison_available: true,
+      source_policy_enforced: true,
+      same_comparison_pack_sources_only: true,
+      unavailable_reasons: [
+        "Exact holding weight and full overlap calculation are unavailable in this deterministic comparison pack."
+      ],
+      empty_state_reason: null
+    }
+  };
+}
+
 function buildUnavailableEvidenceAvailability(
   left_asset: CompareAssetIdentity,
   right_asset: CompareAssetIdentity,
@@ -839,7 +1220,7 @@ function buildCitationBindings(
 ) {
   return citation_ids.flatMap((citation_id) => {
     const asset_ticker = assetTickerForCitationId(citation_id);
-    const source_document = source_documents_by_id.get(sourceDocumentIdForAssetTicker(asset_ticker));
+    const source_document = source_documents_by_id.get(sourceDocumentIdForCitationId(citation_id));
     if (!source_document) {
       return [];
     }
@@ -964,6 +1345,52 @@ function sourceDocumentFor(ticker: "VOO" | "QQQ"): ComparisonSourceDocument {
   };
 }
 
+function stockEtfSourceDocumentFor(sourceDocumentId: "src_aapl_10k_fixture" | "src_voo_fact_sheet_fixture" | "src_voo_holdings_fixture"): ComparisonSourceDocument {
+  if (sourceDocumentId === "src_aapl_10k_fixture") {
+    return {
+      source_document_id: "src_aapl_10k_fixture",
+      source_type: "sec_filing",
+      title: "Apple Inc. Form 10-K fixture excerpt",
+      publisher: "Apple",
+      url: "https://www.sec.gov/",
+      published_at: as_of_date,
+      as_of_date,
+      retrieved_at,
+      freshness_state: "fresh",
+      is_official: true,
+      supporting_passage:
+        "Apple designs, manufactures, and markets smartphones, personal computers, tablets, wearables, accessories, and related services.",
+      source_quality: "official",
+      allowlist_status: "allowed",
+      source_use_policy: "full_text_allowed",
+      permitted_operations: DEFAULT_ALLOWED_SOURCE_OPERATIONS
+    };
+  }
+
+  if (sourceDocumentId === "src_voo_holdings_fixture") {
+    return {
+      source_document_id: "src_voo_holdings_fixture",
+      source_type: "holdings_file",
+      title: "Vanguard S&P 500 ETF holdings fixture excerpt",
+      publisher: "Vanguard",
+      url: "https://investor.vanguard.com/",
+      published_at: as_of_date,
+      as_of_date,
+      retrieved_at,
+      freshness_state: "fresh",
+      is_official: true,
+      supporting_passage:
+        "The local holdings fixture records VOO as holding large U.S. companies across sectors; top holdings include Apple, Microsoft, Nvidia, Amazon.com, and Meta Platforms.",
+      source_quality: "issuer",
+      allowlist_status: "allowed",
+      source_use_policy: "full_text_allowed",
+      permitted_operations: DEFAULT_ALLOWED_SOURCE_OPERATIONS
+    };
+  }
+
+  return sourceDocumentFor("VOO");
+}
+
 function fieldNameForDimension(dimension: ComparisonRequiredDimension): ComparisonFactKind {
   if (dimension === "Benchmark") {
     return "benchmark";
@@ -993,12 +1420,36 @@ function assetTickerForSourceDocumentId(sourceDocumentId: string): "VOO" | "QQQ"
   return sourceDocumentId.includes("_qqq_") ? "QQQ" : "VOO";
 }
 
-function assetTickerForCitationId(citationId: string): "VOO" | "QQQ" {
+function assetTickerForCitationId(citationId: string): "AAPL" | "VOO" | "QQQ" {
+  if (citationId.includes("_aapl_")) {
+    return "AAPL";
+  }
   return citationId.includes("_qqq_") ? "QQQ" : "VOO";
+}
+
+function assetTickerForStockEtfCitationId(citationId: string): "AAPL" | "VOO" {
+  return citationId.includes("_aapl_") ? "AAPL" : "VOO";
+}
+
+function assetTickerForStockEtfSourceDocumentId(sourceDocumentId: string): "AAPL" | "VOO" {
+  return sourceDocumentId.includes("_aapl_") ? "AAPL" : "VOO";
 }
 
 function sourceDocumentIdForAssetTicker(assetTicker: "VOO" | "QQQ") {
   return supportedComparisonFacts[assetTicker].source_document_id;
+}
+
+function sourceDocumentIdForCitationId(citationId: string) {
+  if (citationId === "c_compare_aapl_company_profile") {
+    return "src_aapl_10k_fixture";
+  }
+  if (citationId === "c_compare_voo_aapl_top_holding") {
+    return "src_voo_holdings_fixture";
+  }
+  if (citationId.startsWith("c_compare_voo_")) {
+    return "src_voo_fact_sheet_fixture";
+  }
+  return sourceDocumentIdForAssetTicker(assetTickerForCitationId(citationId) as "VOO" | "QQQ");
 }
 
 function sideRoleForAsset(assetTicker: string, leftTicker: string, rightTicker: string): ComparisonEvidenceSideRole {

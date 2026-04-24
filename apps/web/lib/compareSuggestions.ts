@@ -28,7 +28,10 @@ export type ComparisonSuggestionsModel = {
   requestedAvailabilityState?: string;
 };
 
-const localComparisonPairs = [["VOO", "QQQ"] as const];
+const localComparisonPairs = [
+  ["VOO", "QQQ"] as const,
+  ["AAPL", "VOO"] as const
+];
 
 export function comparePageUrl(leftTicker: string, rightTicker: string) {
   return `/compare?left=${encodeURIComponent(normalizeTicker(leftTicker))}&right=${encodeURIComponent(
@@ -126,6 +129,8 @@ function buildSuggestion(leftTicker: string, rightTicker: string): ComparisonSug
   const targetTicker = normalizeTicker(rightTicker);
   const normalizedLeft = normalizeTicker(leftTicker);
   const normalizedRight = normalizeTicker(rightTicker);
+  const comparison = getComparePageFixture(normalizedLeft, normalizedRight);
+  const isStockEtf = comparison.comparison_type === "stock_vs_etf";
 
   return {
     leftTicker: normalizedLeft,
@@ -133,9 +138,12 @@ function buildSuggestion(leftTicker: string, rightTicker: string): ComparisonSug
     targetTicker,
     compareUrl: comparePageUrl(normalizedLeft, normalizedRight),
     title: `${normalizedLeft} vs ${normalizedRight}`,
-    description:
-      "Open the local source-backed comparison for benchmark, cost, holdings breadth, and beginner role.",
-    accessibleName: `Open educational source-backed comparison for ${normalizedLeft} and ${normalizedRight}; this is not personal advice.`
+    description: isStockEtf
+      ? "Open the local source-backed stock-vs-ETF relationship view for single-company and ETF-basket context."
+      : "Open the local source-backed comparison for benchmark, cost, holdings breadth, and beginner role.",
+    accessibleName: isStockEtf
+      ? `Open educational source-backed stock-vs-ETF relationship comparison for ${normalizedLeft} and ${normalizedRight}; this is not personal advice.`
+      : `Open educational source-backed comparison for ${normalizedLeft} and ${normalizedRight}; this is not personal advice.`
   };
 }
 

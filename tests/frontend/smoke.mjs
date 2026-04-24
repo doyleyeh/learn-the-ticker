@@ -807,8 +807,32 @@ const compareSource = [
 assert.equal(compareSource.includes("fetcher("), true, "Compare page should call the deterministic comparison adapter route");
 assert.equal(compareSource.includes("/api/compare"), true, "Compare page should align with the backend comparison contract");
 assert.equal(read("app/compare/page.tsx").includes("getPrimarySource"), false, "Compare chips must not use a primary asset source fallback");
-assert.equal(compareSource.includes("src_aapl"), false, "Compare source metadata must not include AAPL sources");
+assert.equal(compareSource.includes("src_aapl_10k_fixture"), true, "Stock-vs-ETF compare source metadata should include same-pack AAPL evidence");
+assert.equal(compareSource.includes("src_aapl_xbrl_fixture"), false, "Stock-vs-ETF compare source metadata should stay limited to the verified AAPL comparison source");
 assert.match(compareSource, /No factual citation chips or source drawers/, "Unavailable compare states must avoid factual citation UI");
+
+for (const marker of [
+  "stock-etf-relationship-v1",
+  "data-stock-etf-comparison-type",
+  "data-stock-etf-stock-ticker",
+  "data-stock-etf-etf-ticker",
+  "data-stock-etf-relationship-state",
+  "data-stock-etf-evidence-state",
+  "data-relationship-badge",
+  "comparison_type",
+  "stock_ticker",
+  "etf_ticker",
+  "relationship_state",
+  "evidence_boundary",
+  "data-stock-etf-basket-structure",
+  "single-company-vs-etf-basket",
+  "Verified holding membership, partial overlap evidence",
+  "Exact holding weight, top-10 concentration, sector exposure, and full overlap are unavailable",
+  "c_compare_aapl_company_profile",
+  "c_compare_voo_aapl_top_holding"
+]) {
+  assert.ok(compareSource.includes(marker), `Stock-vs-ETF comparison should include ${marker}`);
+}
 
 const comparisonSuggestionSource = read("components/ComparisonSuggestions.tsx") + read("lib/compareSuggestions.ts");
 for (const marker of [
@@ -829,8 +853,8 @@ for (const marker of [
 }
 assert.match(
   comparisonSuggestionSource,
-  /localComparisonPairs = \[\["VOO", "QQQ"\] as const\]/,
-  "Only the VOO/QQQ local comparison pair should be suggested"
+  /localComparisonPairs = \[\s*\["VOO", "QQQ"\] as const,\s*\["AAPL", "VOO"\] as const\s*\]/,
+  "Only the VOO/QQQ and AAPL/VOO local comparison pairs should be suggested"
 );
 assert.match(
   comparisonSuggestionSource,
@@ -841,6 +865,10 @@ assert.match(
   comparisonSuggestionSource,
   /buildSuggestion\(rightTicker, leftTicker\)/,
   "QQQ should keep the QQQ to VOO relative comparison direction"
+);
+assert.ok(
+  comparisonSuggestionSource.includes("stock-vs-ETF relationship view"),
+  "Comparison suggestions should describe the stock-vs-ETF route only when a local pack exists"
 );
 assert.equal(comparisonSuggestionSource.includes("fetch("), false, "Comparison suggestions should stay local");
 assert.equal(comparisonSuggestionSource.includes("/api/compare"), false, "Comparison suggestions should not call compare APIs");
