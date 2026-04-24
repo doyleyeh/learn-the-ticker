@@ -121,7 +121,7 @@ def test_agent_loop_uses_retry_budget_and_clean_commit_policy():
     assert "for ($Attempt = 1" in powershell_loop
     assert "CommitFailures" in powershell_loop
     assert "Leaving changes uncommitted and unstaged for review." in powershell_loop
-    assert 'LTT_DEFAULT_CODEX_MODEL="${LTT_DEFAULT_CODEX_MODEL:-gpt-5.4}"' in activate_env
+    assert 'LTT_DEFAULT_CODEX_MODEL="${LTT_DEFAULT_CODEX_MODEL:-gpt-5.5}"' in activate_env
     assert 'LTT_DEFAULT_CODEX_REASONING_EFFORT="${LTT_DEFAULT_CODEX_REASONING_EFFORT:-high}"' in activate_env
     assert 'LTT_CODEX_MODEL="${LTT_CODEX_MODEL:-$LTT_DEFAULT_CODEX_MODEL}"' in activate_env
     assert 'LTT_CODEX_REASONING_EFFORT="${LTT_CODEX_REASONING_EFFORT:-$LTT_DEFAULT_CODEX_REASONING_EFFORT}"' in activate_env
@@ -132,7 +132,7 @@ def test_agent_loop_uses_retry_budget_and_clean_commit_policy():
     assert "--model <model>" in task_cycle
     assert "--reasoning-effort <effort>" in task_cycle
     assert "Get-CodexExecArgs" in powershell_loop
-    assert '[string]$CodexModel = "gpt-5.4"' in powershell_loop
+    assert '[string]$CodexModel = "gpt-5.5"' in powershell_loop
     assert '[string]$CodexReasoningEffort = "high"' in powershell_loop
     assert 'reasoning.effort=""$CodexReasoningEffort""' in powershell_loop
 

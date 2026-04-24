@@ -15,7 +15,7 @@ are left uncommitted by default for review.
 
 Options:
   --commit-failures              Commit the final failing attempt as a WIP audit commit.
-  --model <model>               Override the Codex model for this run. Default: gpt-5.4.
+  --model <model>               Override the Codex model for this run. Default: gpt-5.5.
   --reasoning-effort <effort>   Override the Codex reasoning effort for this run. Default: high.
   -h, --help                    Show this help.
 EOF

@@ -1,6 +1,6 @@
 ---
 name: learn-the-ticker-automation-agent-loop
-description: Review and operate the Learn the Ticker repo's local agent-loop workflow. Use when Codex needs to inspect repo status, read the repo control docs, decide whether the current worktree can be cleaned up with a safe Conventional Commit, prepare up to five narrow TASKS.md items when the current task or backlog is missing, choose between gpt-5.3-codex-spark and gpt-5.4 based on a reliable usage signal, and run scripts/run_task_cycle.sh from the learn-the-ticker WSL conda environment.
+description: Review and operate the Learn the Ticker repo's local agent-loop workflow. Use when Codex needs to inspect repo status, read the repo control docs, decide whether the current worktree can be cleaned up with a safe Conventional Commit, prepare up to five narrow TASKS.md items when the current task or backlog is missing, choose between gpt-5.3-codex-spark and gpt-5.5 based on a reliable usage signal, and run scripts/run_task_cycle.sh from the learn-the-ticker WSL conda environment.
 ---
 
 # Learn the Ticker Automation Agent Loop
@@ -45,10 +45,10 @@ Read [references/repo-workflow.md](references/repo-workflow.md) first. Read [ref
 
 ### Choose the Model
 
-- The repo defaults to `gpt-5.4` with `high` reasoning effort.
+- The repo defaults to `gpt-5.5` with `high` reasoning effort.
 - Prefer `gpt-5.3-codex-spark` only when a reliable remaining-capacity signal says at least 30% remains.
 - If only a used-percent signal exists, use Spark only when used percentage is 70 or lower.
-- If no reliable Spark usage signal is available, fall back to `gpt-5.4`.
+- If no reliable Spark usage signal is available, fall back to `gpt-5.5`.
 - Run `python codex-skills/learn-the-ticker-automation-agent-loop/scripts/task_cycle_preflight.py --repo-root . --max-cycles 5` to apply the rule consistently.
 
 ### Run from WSL

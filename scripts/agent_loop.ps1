@@ -1,7 +1,7 @@
 param(
   [switch]$PreflightOnly,
   [switch]$CommitFailures,
-  [string]$CodexModel = "gpt-5.4",
+  [string]$CodexModel = "gpt-5.5",
   [string]$CodexReasoningEffort = "high"
 )
 

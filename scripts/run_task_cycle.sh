@@ -26,7 +26,7 @@ Options:
   --main <branch>       Main branch to merge into. Default: main.
   --no-prepare-next     Stop after local merge; do not update TASKS.md.
   --commit-failures     Pass --commit-failures through to agent_loop.sh.
-  --model <model>       Override the Codex model for this task-cycle run. Default: gpt-5.4.
+  --model <model>       Override the Codex model for this task-cycle run. Default: gpt-5.5.
   --reasoning-effort <effort>
                         Override the Codex reasoning effort for this task-cycle run. Default: high.
   --repeat              Continue running prepared next tasks until stopped.

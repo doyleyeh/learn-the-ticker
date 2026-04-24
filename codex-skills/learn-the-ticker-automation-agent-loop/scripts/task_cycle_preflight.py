@@ -33,7 +33,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--fallback-model",
-        default="gpt-5.4",
+        default="gpt-5.5",
         help="Model to use when Spark should not be selected.",
     )
     return parser.parse_args()
