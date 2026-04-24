@@ -1,38 +1,38 @@
 ## Current task
 
-### T-073: Align global responsive spacing and no-overlap frontend layout
+### T-074: Add route-level frontend docs-alignment smoke coverage
 
 Goal:
-Tighten shared responsive spacing and no-overlap layout rules across the existing frontend learning surfaces so the v0.4 home, asset, comparison, source drawer, glossary, chat, and export workflows remain usable on small and desktop viewports without changing routes, backend contracts, generated content, or source-backed evidence.
+Add deterministic route-level smoke coverage that checks the existing frontend routes still expose the documented Frontend Design and Workflow v0.4 structure, without changing route behavior, React component logic, backend contracts, source-backed content, or generated copy.
 
 Task-scope paragraph:
-This cycle is limited to global frontend CSS and deterministic smoke coverage for already-rendered layouts in `apps/web`. Audit the current responsive CSS for shared page bands, grids, helper rails, mobile sticky actions, source drawers, glossary sheets, asset chat, export controls, comparison builder/results, suggestion cards, citation chips, and source metadata blocks, then make the smallest CSS-only adjustments needed to prevent text overflow, button overlap, clipped controls, and competing sticky or bottom-sheet surfaces. Preserve the current v0.4 workflow: home remains single stock/ETF search first, comparison remains a separate connected workflow, glossary remains contextual, source/glossary/chat mobile surfaces remain bottom-sheet or full-screen-style where already implemented, and stock-vs-ETF comparison relationship structure remains intact.
+This cycle is limited to strengthening `tests/frontend/smoke.mjs` so it verifies route-level alignment with the PRD/TDS v0.4 workflow across the existing home, asset, source-list, comparison, contextual glossary, source drawer, asset chat, export, and Weekly News Focus surfaces. The task should inspect the current route/component files before editing the smoke test, add focused static assertions for already-present deterministic markers and ordering, and avoid changing application files unless an existing marker is genuinely missing and the task is explicitly narrowed again. The expected change is test coverage only.
 
 Allowed files:
 
-- `apps/web/styles/globals.css`
 - `tests/frontend/smoke.mjs`
 
 Do not change:
 
 - backend FastAPI routes, response schemas, deterministic fixtures, provider adapters, source-use policy, eval data, or generated content
-- frontend backend-contract adapters in `apps/web/lib/*`, including search, comparison, source drawer, glossary, chat, export, trust-metric, and fixture helpers
-- React component logic, route behavior, navigation targets, form submission behavior, `A vs B` detection, compare query params, chat redirects, export validation, citation bindings, source drawers, or glossary interaction state
-- home page primary workflow, comparison page workflow, asset-page section order, stock-vs-ETF relationship badges/structure, Weekly News Focus evidence-limited behavior, AI Comprehensive Analysis thresholds, or source/freshness/unknown/stale/unavailable/partial labels
-- advice-boundary copy, citation validation rules, source-use rights, export scope, chat answer generation, accountless chat semantics, trust-metric readiness markers, live-provider gating, or no-live-call guardrails
+- frontend route files, React components, CSS, backend-contract adapters in `apps/web/lib/*`, deterministic fixtures, navigation targets, form submission behavior, `A vs B` detection, compare query params, chat redirects, export validation, citation bindings, source drawers, glossary interaction state, or source metadata rendering
+- home page primary workflow, comparison page workflow, asset-page section order, source-list behavior, stock-vs-ETF relationship badges/structure, Weekly News Focus evidence-limited behavior, AI Comprehensive Analysis thresholds, or source/freshness/unknown/stale/unavailable/partial labels
+- advice-boundary copy, citation validation rules, source-use rights, export scope, chat answer generation, accountless chat semantics, trust-metric readiness markers, live-provider gating, no-live-call guardrails, or production dependencies
 - production dependencies
 
 Acceptance criteria:
 
-- Shared responsive CSS keeps major page panels, helper rails, sticky mobile actions, search rows, compare builder grids, comparison result sections, source metadata blocks, glossary cards, chat panels, export controls, and suggestion cards from overflowing their containers at narrow widths.
-- Text-bearing buttons, chips, source titles, glossary terms, export labels, comparison tickers, freshness labels, and support-state labels wrap or constrain cleanly without changing their product copy.
-- Mobile bottom-sheet-style source, glossary, and chat surfaces keep constrained heights and internal scrolling where already implemented, and their CSS does not cause source drawers, glossary cards, chat, export controls, or asset sticky actions to obscure one another incoherently.
-- Desktop helper rail, comparison result layouts, source-list summaries, and asset-page sections retain scan-friendly spacing without turning page sections into nested cards or changing content order.
-- Home search remains the single primary home-page action; comparison remains reachable through `/compare`, asset CTAs/suggestions, chat redirects, and `A vs B` search redirects; glossary remains contextual rather than a home-page workflow.
-- Stock-vs-ETF comparison relationship badges and the single-company-vs-ETF-basket structure remain present and visually compatible with the responsive spacing rules.
-- Weekly News Focus and AI Comprehensive Analysis remain visually separate from stable canonical facts, and evidence-limited, empty, stale, unknown, unavailable, partial, and insufficient-evidence states remain visible.
-- Existing deterministic markers for citation chips, source drawers, glossary sheets, asset chat helper behavior, export scope, no-live-call behavior, no raw transcript analytics, no unrestricted raw text export, and no advice behavior remain present.
-- Smoke coverage verifies the responsive/no-overlap CSS selectors and preservation markers for the v0.4 home, asset, comparison, source drawer, glossary, chat, export, and stock-vs-ETF comparison surfaces.
+- Smoke coverage checks the home route keeps one primary single-stock-or-ETF search workflow and does not promote comparison or glossary into a primary home-page workflow.
+- Smoke coverage checks clear `A vs B` search handling remains a comparison-route redirect to `/compare` and does not become a multi-input home-page builder.
+- Smoke coverage checks supported, unsupported, out-of-scope, unknown/no-result, pending/partial/stale/unavailable, stock/ETF identity, and support-state markers remain present in the search/autocomplete path where existing files expose them.
+- Smoke coverage checks supported asset pages preserve the documented route-level section order: Beginner Summary, Top 3 Risks, Key Facts, What It Does/What It Holds, Weekly News Focus, AI Comprehensive Analysis, Deep Dive, Ask, Sources, and educational framing.
+- Smoke coverage checks Weekly News Focus and AI Comprehensive Analysis remain separate from stable canonical facts, include evidence-limited or empty-state markers, and do not require the configured maximum item count when evidence is thin.
+- Smoke coverage checks source drawer and source-list route markers preserve same-asset source boundaries, citation/source metadata, freshness labels, source-use policy visibility, allowed excerpt handling, and mobile bottom-sheet-style behavior markers.
+- Smoke coverage checks contextual glossary markers preserve desktop hover/click/focus behavior, mobile bottom-sheet behavior, generic-only fallback labeling, and asset-context evidence boundaries.
+- Smoke coverage checks asset chat markers preserve selected-asset knowledge-pack scope, helper-surface behavior, advice redirect ordering, comparison redirects, no raw transcript analytics, accountless session markers, and no-live-call markers.
+- Smoke coverage checks comparison route markers preserve empty builder, one-side-selected builder, two-asset result flow, `/compare` query params, suggested comparison links, and stock-vs-ETF relationship badges plus single-company-vs-ETF-basket structure.
+- Smoke coverage checks export controls preserve Markdown/JSON scope, citations, source metadata, freshness/as-of labels, educational disclaimer, no unrestricted raw text, no restricted provider payload, no hidden prompts, no raw model reasoning, and no secret exposure.
+- Smoke coverage keeps the assertions deterministic and static; it does not require live provider, news, market-data, LLM, browser screenshot, or network calls.
 - No new live external calls, provider dependencies, generated facts, recommendation language, buy/sell/hold language, price targets, allocation advice, tax advice, brokerage/trading behavior, export scope expansion, or source-use-rights changes are introduced.
 - Required commands from this cycle pass.
 
@@ -50,6 +50,28 @@ Iteration budget:
 
 
 ## Completed
+
+### T-073: Align global responsive spacing and no-overlap frontend layout
+
+Goal:
+Tighten shared responsive spacing and no-overlap layout rules across the existing frontend learning surfaces so the v0.4 home, asset, comparison, source drawer, glossary, chat, and export workflows remain usable on small and desktop viewports without changing routes, backend contracts, generated content, or source-backed evidence.
+
+Completed details:
+
+- Implementation commit `339095f feat(T-073): align global responsive spacing and no-overlap frontend layout` updated `apps/web/styles/globals.css`, `tests/frontend/smoke.mjs`, and `docs/agent-journal/20260424T221303Z.md`.
+- `apps/web/styles/globals.css` tightened shared responsive rules for text wrapping, min-width containment, and max-width constraints across buttons, chips, source metadata, glossary controls, export controls, helper rails, source drawers, and comparison surfaces.
+- The CSS added desktop helper-rail viewport-height containment with internal scrolling, while restoring normal in-flow behavior below the tablet breakpoint.
+- The CSS added mobile scroll margins for asset regions, chat, export, source drawer, and glossary surfaces so sticky actions are less likely to obscure anchored content.
+- `tests/frontend/smoke.mjs` expanded deterministic frontend smoke coverage for responsive/no-overlap CSS selectors and preservation of v0.4 surface markers.
+- `docs/agent-journal/20260424T221303Z.md` records these checks: `npm test` passed; `npm run typecheck` passed; `npm run build` passed; `python3 -m pytest tests/unit/test_safety_guardrails.py -q` passed with 11 tests; `bash scripts/run_quality_gate.sh` passed, including 197 Python tests, static evals, frontend smoke, typecheck, build, and backend checks.
+- Remaining risks from the journal:
+  - Responsive/no-overlap behavior is covered by deterministic CSS selectors, smoke checks, typecheck, and build rather than browser screenshots or device interaction testing.
+  - The changes are CSS-only and do not add JavaScript-managed modal coordination between simultaneously open mobile source, glossary, chat, and export surfaces.
+
+Completion commits:
+
+- `339095f feat(T-073): align global responsive spacing and no-overlap frontend layout`
+- `ab9bfb3 chore(T-073): merge align global responsive spacing and no-overlap frontend layout`
 
 ### T-072: Align mobile chat and export surfaces with documented helper behavior
 
@@ -1946,7 +1968,5 @@ Completion commits:
 
 ## Backlog
 
-
-### T-074: Add route-level frontend docs-alignment smoke coverage
 
 ### T-075: Re-audit home page and navigation against frontend workflow docs
