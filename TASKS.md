@@ -1,41 +1,40 @@
 ## Current task
 
-### T-071: Align comparison builder and result layouts with PRD workflow
+### T-072: Align mobile chat and export surfaces with documented helper behavior
 
 Goal:
-Align `/compare` with the PRD/TDS comparison workflow so it behaves as a separate but connected comparison surface: an empty builder when no assets are selected, a one-side-selected builder when only one asset is present, and a scan-friendly result layout when a source-backed deterministic comparison pack is available.
+Align asset chat and export controls with Frontend Design and Workflow v0.4 so chat remains a helper surface in the asset learning flow and mobile users get bottom-sheet or full-screen-style behavior for chat/export interactions without changing backend contracts or generated content.
 
 Task-scope paragraph:
-This cycle is limited to frontend layout, copy, responsive styling, and deterministic smoke markers for the existing comparison route in `apps/web`. Rework `/compare` so the comparison workflow is clearly separate from the home page, supports empty and one-side-selected builder states, keeps clear `A vs B` search redirects compatible with `/compare?left=...&right=...`, and presents available comparison results in the PRD order: header, selected assets, beginner bottom line, relationship context for stock-vs-ETF pairs, key differences, export controls, suggested next comparisons, and source metadata. Preserve existing backend comparison adapters, deterministic local fallback, comparison export validation, same-comparison-pack citation boundaries, stock-vs-ETF relationship badges, blocked states, and no-live-call behavior.
+This cycle is limited to frontend component markup, copy, responsive CSS, and deterministic smoke markers for the existing asset chat and export surfaces in `apps/web`. Make `AssetChatPanel` read as a bounded asset-specific helper rather than a general chatbot, add documented mobile bottom-sheet or full-screen-style presentation markers and CSS for chat, and make `ExportControls` compact and usable on mobile without overlapping source, glossary, citation, chat, or asset-page content. Preserve the existing chat session/export adapters, advice redirects, comparison redirects, citation/source-use/freshness metadata, Markdown/JSON export scope, and no-live-call behavior.
 
 Allowed files:
 
-- `apps/web/app/compare/page.tsx`
-- `apps/web/components/ComparisonSuggestions.tsx`
-- `apps/web/components/ComparisonSourceDetails.tsx`
+- `apps/web/components/AssetChatPanel.tsx`
+- `apps/web/components/ExportControls.tsx`
 - `apps/web/styles/globals.css`
 - `tests/frontend/smoke.mjs`
 
 Do not change:
 
-- backend FastAPI routes, response schemas, fixtures, provider adapters, source-use policy, or eval data
-- frontend backend-contract adapters in `apps/web/lib/*`, including comparison, search, export, source-drawer, fixture, and trust-metric helpers
-- home page search behavior, `A vs B` detection logic, asset-page CTAs, chat redirect logic, glossary behavior, or generated summary content
-- comparison evidence availability semantics for unsupported, out-of-scope, unknown, eligible-not-cached, unavailable, stale, partial, no-local-pack, or insufficient-evidence states
-- stock-vs-ETF relationship model data, citation IDs, source documents, export validation logic, source-use rights, or same-comparison-pack boundaries
-- advice-boundary copy, citation validation rules, Weekly News Focus selection rules, AI Comprehensive Analysis thresholds, source allowlist, source-use rights, or no-live-call guardrails
+- backend FastAPI routes, response schemas, chat/session/export fixtures, provider adapters, source-use policy, or eval data
+- frontend backend-contract adapters in `apps/web/lib/*`, including asset chat, export, fixture, trust-metric, comparison, search, glossary, and source-drawer helpers
+- home page search behavior, `A vs B` detection logic, asset-page section ordering, comparison route behavior, source drawer behavior, glossary behavior, or generated summary content
+- chat answer generation, safety classification, advice redirect behavior, comparison redirect behavior, accountless conversation ID semantics, 7-day TTL/deleted-session states, or transcript export validation logic
+- export routes, export validation schema, same-asset or same-comparison-pack citation boundaries, source-use rights, freshness labels, allowed excerpt behavior, or Markdown/JSON scope
+- advice-boundary rules, citation validation rules, Weekly News Focus selection rules, AI Comprehensive Analysis thresholds, source allowlist, source-use rights, live-provider gating, or no-live-call guardrails
 
 Acceptance criteria:
 
-- `/compare` with no query params renders an empty comparison builder state instead of silently defaulting to a completed `VOO` vs `QQQ` result.
-- `/compare?left=AAPL` and equivalent one-side-selected states render a builder state that clearly shows the selected asset, asks for the second asset, and may show deterministic comparison suggestions without generating a two-asset comparison.
-- `/compare?left=VOO&right=QQQ` and supported reverse-order/local-pack results still render source-backed comparison output using the existing backend-aligned comparison adapter and local fallback behavior.
-- Available comparison results expose deterministic PRD comparison markers and a documented section order for: header, selected assets, beginner bottom line, stock-vs-ETF relationship context when applicable, key differences, export controls, suggested comparisons, and source metadata.
-- Stock-vs-ETF comparisons keep relationship badges and the single-company-vs-ETF-basket structure visible, source-backed, and separate from generic key-difference sections.
-- Unsupported, out-of-scope, unknown, eligible-not-cached, no-local-pack, stale, partial, unavailable, and insufficient-evidence comparison states render blocked or limited comparison copy without citation chips, source drawers, generated comparison claims, or export controls for unsupported output.
-- Comparison suggestions remain a connected workflow aid, not a home-page replacement, and do not imply recommendations or personalized suitability.
-- Citation chips, same-comparison-pack source boundaries, source-use rights labels, freshness labels, export validation markers, trust-metric readiness markers, and deterministic comparison markers remain visible or are extended where appropriate.
-- Comparison builder and result layouts are usable on mobile and desktop with no overlapping selected-asset cards, relationship badges, source metadata, export controls, or suggestion links.
+- Asset chat exposes deterministic markers for the documented helper role, including asset-scoped chat, mobile bottom-sheet or full-screen-style presentation, no general finance chatbot behavior, and no raw transcript analytics.
+- Asset chat keeps advice-like prompts redirected into educational framing before any answer content, and keeps comparison questions redirected to `/compare` rather than answering multi-asset questions inside single-asset chat.
+- Asset chat mobile styling constrains height, supports internal scrolling, preserves visible context/close or helper affordance, and does not overlap citation chips, source drawers, glossary popovers/sheets, export controls, or the asset-page sticky actions.
+- Existing chat session markers for accountless conversation ID presence, session contract versus single-turn fallback, lifecycle state, and export availability remain visible.
+- Export controls expose deterministic markers for mobile compact behavior and supported export scope, while preserving existing backend-contract versus local-fallback markers, validation schema, binding scope, citation/source counts, freshness/as-of values, and licensing/disclaimer context.
+- Export controls remain hidden or clearly unavailable for blocked, unsupported, out-of-scope, unknown, eligible-not-cached, no-local-pack, insufficient-evidence, deleted-session, or unavailable states where existing logic already suppresses export output.
+- Export controls do not introduce PDF export, unrestricted raw text export, restricted provider payload export, hidden prompt export, raw model reasoning export, or secret exposure.
+- Chat and export layouts are usable on mobile and desktop with no overlapping buttons, helper copy, source metadata, validation labels, chat answers, or export links.
+- Smoke coverage verifies the new chat/export mobile behavior markers, responsive CSS selectors, helper-role copy, export-scope markers, and preservation of no-live-call/no-raw-transcript/no-advice markers.
 - No new live external calls, provider dependencies, generated facts, recommendation language, price targets, allocation advice, tax advice, or brokerage/trading behavior are introduced.
 - Required commands from this cycle pass.
 
@@ -53,6 +52,30 @@ Iteration budget:
 
 
 ## Completed
+
+### T-071: Align comparison builder and result layouts with PRD workflow
+
+Goal:
+Align `/compare` with the PRD/TDS comparison workflow so it behaves as a separate but connected comparison surface: an empty builder when no assets are selected, a one-side-selected builder when only one asset is present, and a scan-friendly result layout when a source-backed deterministic comparison pack is available.
+
+Completed details:
+
+- Implementation commit `78446ea feat(T-071): align comparison builder and result layouts with PRD workflow` updated `apps/web/app/compare/page.tsx`, `apps/web/styles/globals.css`, `tests/frontend/smoke.mjs`, and `docs/agent-journal/20260424T214336Z.md`.
+- `/compare` no longer silently defaults an empty request to `VOO` vs `QQQ`; query params are normalized, empty requests render an empty builder, and one-sided requests render a selected-asset builder without fetching or generating a two-asset comparison.
+- The builder state includes GET form controls, selected-asset cards, deterministic example/suggestion links, freshness labels for non-generated builder output, and explicit no-generated-output/no-live-call markers.
+- Available comparison results now expose deterministic PRD markers and section-order markers for header, selected assets, beginner bottom line, stock-vs-ETF relationship context when applicable, key differences, export controls, suggested comparisons, and source metadata.
+- The result layout keeps stock-vs-ETF relationship context separate from generic key differences, moves the beginner bottom line before the relationship/key-difference sections, keeps export controls after key differences, and keeps suggested comparisons before source metadata.
+- `apps/web/styles/globals.css` added responsive compare-builder form and selected-card styling, including mobile collapse through the existing small-screen grid rules.
+- `tests/frontend/smoke.mjs` added checks that empty and one-sided builders branch before `fetchComparisonResponse`, that `VOO`/`QQQ` are no longer defaulted for empty params, that PRD section markers exist in order, and that compare-builder CSS markers are present.
+- `docs/agent-journal/20260424T214336Z.md` records these checks: `npm test` passed; `npm run typecheck` passed; `npm run build` passed; `python3 -m pytest tests/unit/test_safety_guardrails.py -q` passed with 11 tests; `bash scripts/run_quality_gate.sh` passed, including 197 Python tests, static evals, frontend smoke, typecheck, build, and backend checks.
+- Remaining risks from the journal:
+  - Responsive behavior is covered by deterministic markers, CSS checks, typecheck, and build rather than browser screenshot or interaction testing.
+  - The builder inputs are simple GET form controls and rely on the existing deterministic comparison route/fallback behavior after two tickers are submitted.
+
+Completion commits:
+
+- `78446ea feat(T-071): align comparison builder and result layouts with PRD workflow`
+- `c3deebd chore(T-071): merge align comparison builder and result layouts with PRD workflow`
 
 ### T-070: Align source-list page with PRD source inspection flow
 
@@ -1900,8 +1923,6 @@ Completion commits:
 
 ## Backlog
 
-
-### T-072: Align mobile chat and export surfaces with documented helper behavior
 
 ### T-073: Align global responsive spacing and no-overlap frontend layout
 
