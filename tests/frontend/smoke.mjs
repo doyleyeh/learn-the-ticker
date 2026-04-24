@@ -49,6 +49,7 @@ function includes(path, marker) {
   "lib/exportControls.ts",
   "lib/fixtures.ts",
   "lib/glossary.ts",
+  "lib/sourceDrawer.ts",
   "styles/globals.css"
 ].forEach(exists);
 
@@ -87,11 +88,17 @@ includes("app/assets/[ticker]/page.tsx", "hasEtfPrdSections");
 includes("app/assets/[ticker]/page.tsx", "hasStockPrdSections");
 includes("app/assets/[ticker]/sources/page.tsx", "SourceDrawer");
 includes("app/assets/[ticker]/sources/page.tsx", "data-source-list-state");
+includes("app/assets/[ticker]/sources/page.tsx", "data-source-list-rendering");
+includes("app/assets/[ticker]/sources/page.tsx", "fetchSupportedSourceDrawerResponse");
 includes("app/assets/[ticker]/sources/page.tsx", "sourceListUnavailableMessage");
 includes("app/assets/[ticker]/sources/page.tsx", "No source metadata is rendered because this ticker is recognized as unsupported");
 includes("app/assets/[ticker]/sources/page.tsx", "No source metadata is rendered because this ticker is outside the Top-500 manifest-backed support scope");
 includes("app/assets/[ticker]/sources/page.tsx", "source-list view");
 includes("components/SourceDrawer.tsx", "sourceDrawerStateFromSupportState");
+includes("components/SourceDrawer.tsx", "allowedExcerptNote");
+includes("lib/sourceDrawer.ts", "asset-source-drawer-v1");
+includes("lib/sourceDrawer.ts", "/api/assets/");
+includes("lib/sourceDrawer.ts", "/sources");
 includes("app/compare/page.tsx", "Bottom line for beginners");
 includes("app/compare/page.tsx", "ComparisonSourceDetails");
 includes("app/compare/page.tsx", "comparisonExportUrl");
