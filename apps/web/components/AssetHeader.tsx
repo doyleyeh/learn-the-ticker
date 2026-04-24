@@ -3,11 +3,12 @@ import { FreshnessLabel } from "./FreshnessLabel";
 
 type AssetHeaderProps = {
   asset: AssetFixture;
+  layoutMarker?: string;
 };
 
-export function AssetHeader({ asset }: AssetHeaderProps) {
+export function AssetHeader({ asset, layoutMarker = "header" }: AssetHeaderProps) {
   return (
-    <section className="asset-hero">
+    <section className="asset-hero" data-prd-section={layoutMarker} data-asset-header-layout="supported-asset-header">
       <p className="eyebrow">{asset.assetType === "etf" ? "ETF learning page" : "Stock learning page"}</p>
       <h1>
         {asset.name} <span>{asset.ticker}</span>

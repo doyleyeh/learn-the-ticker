@@ -5,16 +5,51 @@ type AssetModeLayoutProps = {
   asset: AssetFixture;
   beginnerMode: ReactNode;
   deepDiveMode: ReactNode;
+  afterDeepDive: ReactNode;
   sourceTools: ReactNode;
+  helperRail: ReactNode;
+  footerContent: ReactNode;
 };
 
-export function AssetModeLayout({ asset, beginnerMode, deepDiveMode, sourceTools }: AssetModeLayoutProps) {
+export function AssetModeLayout({
+  asset,
+  beginnerMode,
+  deepDiveMode,
+  afterDeepDive,
+  sourceTools,
+  helperRail,
+  footerContent
+}: AssetModeLayoutProps) {
   const beginnerHeadingId = `beginner-mode-${asset.ticker.toLowerCase()}`;
   const deepDiveHeadingId = `deep-dive-mode-${asset.ticker.toLowerCase()}`;
+  const sourcesHeadingId = `asset-sources-${asset.ticker.toLowerCase()}`;
 
   return (
-    <section className="content-band two-column asset-mode-layout" data-asset-mode-layout data-asset-ticker={asset.ticker}>
-      <div className="section-stack mode-stack">
+    <section
+      className="content-band two-column asset-mode-layout"
+      data-asset-mode-layout
+      data-asset-ticker={asset.ticker}
+      data-prd-learning-flow="supported-asset-page-v1"
+      data-prd-section-order="beginner_summary,top_risks,key_facts,what_it_does_or_holds,weekly_news_focus,ai_comprehensive_analysis,deep_dive,ask_about_this_asset,sources,educational_disclaimer"
+    >
+      <nav
+        className="asset-mobile-actions"
+        aria-label="Asset page quick actions"
+        data-mobile-sticky-actions="ask-compare-sources"
+        data-mobile-actions-no-overlap="in-flow-sticky"
+      >
+        <a href="#ask-about-this-asset" data-mobile-action="ask">
+          Ask
+        </a>
+        <a href="#compare-this-asset" data-mobile-action="compare">
+          Compare
+        </a>
+        <a href="#asset-sources" data-mobile-action="sources">
+          Sources
+        </a>
+      </nav>
+
+      <div className="section-stack mode-stack" data-asset-prd-content-flow>
         <section
           className="asset-mode-region beginner-mode-region"
           aria-labelledby={beginnerHeadingId}
@@ -40,10 +75,33 @@ export function AssetModeLayout({ asset, beginnerMode, deepDiveMode, sourceTools
           </div>
           {deepDiveMode}
         </section>
+
+        {afterDeepDive}
+
+        <section
+          id="asset-sources"
+          className="asset-mode-region asset-source-region"
+          aria-labelledby={sourcesHeadingId}
+          data-prd-section="sources"
+          data-asset-source-region={asset.ticker}
+        >
+          <div className="mode-heading">
+            <p className="eyebrow">Sources</p>
+            <h2 id={sourcesHeadingId}>Sources</h2>
+          </div>
+          {sourceTools}
+        </section>
+
+        {footerContent}
       </div>
 
-      <aside className="sidebar" aria-label="Source and learning tools">
-        {sourceTools}
+      <aside
+        className="sidebar asset-helper-rail"
+        aria-label="Asset helper rail"
+        data-asset-helper-rail
+        data-helper-rail-tools="ask,compare,freshness,sources"
+      >
+        {helperRail}
       </aside>
     </section>
   );

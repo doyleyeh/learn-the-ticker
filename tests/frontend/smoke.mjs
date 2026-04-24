@@ -70,10 +70,23 @@ includes("app/assets/[ticker]/page.tsx", "Stale and unknown treatment");
 includes("app/assets/[ticker]/page.tsx", "AssetModeLayout");
 includes("app/assets/[ticker]/page.tsx", "WeeklyNewsPanel");
 includes("app/assets/[ticker]/page.tsx", "AIComprehensiveAnalysisPanel");
+includes("app/assets/[ticker]/page.tsx", "data-prd-layout-marker");
+includes("app/assets/[ticker]/page.tsx", "supported-asset-page-learning-flow-v1");
+includes("app/assets/[ticker]/page.tsx", "header,beginner_summary,top_risks,key_facts,what_it_does_or_holds,weekly_news_focus,ai_comprehensive_analysis,deep_dive,ask_about_this_asset,sources,educational_disclaimer");
+includes("app/assets/[ticker]/page.tsx", "data-prd-section=\"beginner_summary\"");
+includes("app/assets/[ticker]/page.tsx", "data-prd-section=\"top_risks\"");
+includes("app/assets/[ticker]/page.tsx", "data-prd-section=\"key_facts\"");
+includes("app/assets/[ticker]/page.tsx", "data-prd-section=\"what_it_does_or_holds\"");
+includes("app/assets/[ticker]/page.tsx", "data-prd-section=\"ask_about_this_asset\"");
+includes("app/assets/[ticker]/page.tsx", "data-prd-section=\"educational_disclaimer\"");
+includes("app/assets/[ticker]/page.tsx", "data-asset-what-section-id");
+includes("app/assets/[ticker]/page.tsx", "data-helper-rail-source-access");
 includes("app/assets/[ticker]/page.tsx", "data-beginner-primary-claim");
 includes("app/assets/[ticker]/page.tsx", "data-beginner-top-risk-count");
 includes("app/assets/[ticker]/page.tsx", "data-beginner-stable-recent-separation");
 includes("app/assets/[ticker]/page.tsx", "data-beginner-educational-framing");
+includes("components/AssetHeader.tsx", "data-asset-header-layout");
+includes("components/AssetHeader.tsx", "data-prd-section");
 includes("app/assets/[ticker]/page.tsx", "SourceDrawer");
 includes("app/assets/[ticker]/page.tsx", "GlossaryPopover");
 includes("app/assets/[ticker]/page.tsx", "data-beginner-glossary-area");
@@ -221,6 +234,13 @@ includes("components/AssetModeLayout.tsx", "data-asset-mode-layout");
 includes("components/AssetModeLayout.tsx", "data-asset-mode-region");
 includes("components/AssetModeLayout.tsx", "data-beginner-mode-region");
 includes("components/AssetModeLayout.tsx", "data-deep-dive-mode-region");
+includes("components/AssetModeLayout.tsx", "data-prd-learning-flow");
+includes("components/AssetModeLayout.tsx", "data-prd-section-order");
+includes("components/AssetModeLayout.tsx", "data-mobile-sticky-actions=\"ask-compare-sources\"");
+includes("components/AssetModeLayout.tsx", "data-mobile-actions-no-overlap=\"in-flow-sticky\"");
+includes("components/AssetModeLayout.tsx", "data-asset-helper-rail");
+includes("components/AssetModeLayout.tsx", "data-helper-rail-tools=\"ask,compare,freshness,sources\"");
+includes("components/AssetModeLayout.tsx", "data-prd-section=\"sources\"");
 includes("components/AssetModeLayout.tsx", "Beginner Mode");
 includes("components/AssetModeLayout.tsx", "Deep-Dive Mode");
 includes("components/WeeklyNewsPanel.tsx", "Weekly News Focus");
@@ -371,6 +391,10 @@ includes("styles/globals.css", "@media \\(max-width: 620px\\)");
 includes("styles/globals.css", "max-height: min\\(76vh, 640px\\)");
 includes("styles/globals.css", "overscroll-behavior: contain");
 includes("styles/globals.css", "source-summary-title");
+includes("styles/globals.css", ".asset-mobile-actions");
+includes("styles/globals.css", "position: sticky");
+includes("styles/globals.css", "grid-template-columns: repeat\\(3, minmax\\(0, 1fr\\)\\)");
+includes("styles/globals.css", ".asset-helper-rail");
 includes("components/SearchBox.tsx", "data-search-state");
 includes("components/SearchBox.tsx", "resolveLocalSearchResponse");
 includes("components/SearchBox.tsx", "data-search-supported-result");
@@ -506,6 +530,22 @@ assert.ok(
   "Asset page should pass Beginner Mode before Deep-Dive Mode"
 );
 assert.ok(
+  assetPage.indexOf("data-prd-section=\"beginner_summary\"") < assetPage.indexOf("data-prd-section=\"top_risks\""),
+  "Supported asset page should render Beginner Summary before Top 3 Risks"
+);
+assert.ok(
+  assetPage.indexOf("data-prd-section=\"top_risks\"") < assetPage.indexOf("data-prd-section=\"key_facts\""),
+  "Supported asset page should render Top 3 Risks before Key Facts"
+);
+assert.ok(
+  assetPage.indexOf("data-prd-section=\"key_facts\"") < assetPage.indexOf("data-prd-section=\"what_it_does_or_holds\""),
+  "Supported asset page should render Key Facts before What It Does or What It Holds"
+);
+assert.ok(
+  assetPage.indexOf("data-prd-section=\"what_it_does_or_holds\"") < assetPage.indexOf("<WeeklyNewsPanel"),
+  "Supported asset page should render What It Does or What It Holds before Weekly News Focus"
+);
+assert.ok(
   assetPage.indexOf("data-beginner-top-risks") < assetPage.indexOf("<WeeklyNewsPanel"),
   "Beginner Mode should show top risks before Weekly News Focus"
 );
@@ -514,8 +554,24 @@ assert.ok(
   "Weekly News Focus should render before AI Comprehensive Analysis"
 );
 assert.ok(
+  assetPage.indexOf("<AIComprehensiveAnalysisPanel") < assetPage.indexOf("deepDiveMode="),
+  "AI Comprehensive Analysis should render before Deep-Dive Mode"
+);
+assert.ok(
+  assetPage.indexOf("deepDiveMode=") < assetPage.indexOf("afterDeepDive="),
+  "Deep-Dive Mode should render before Ask about this asset"
+);
+assert.ok(
+  assetPage.indexOf("afterDeepDive=") < assetPage.indexOf("sourceTools="),
+  "Ask about this asset should render before Sources"
+);
+assert.ok(
+  assetPage.indexOf("sourceTools=") < assetPage.indexOf("footerContent="),
+  "Sources should render before the educational disclaimer"
+);
+assert.ok(
   assetPage.indexOf("<AIComprehensiveAnalysisPanel") < assetPage.indexOf("data-beginner-educational-framing"),
-  "Timely context should render before educational suitability"
+  "Timely context should render before educational disclaimer"
 );
 assert.ok(
   assetPage.indexOf("data-beginner-stable-recent-separation=\"stable\"") <
@@ -523,8 +579,9 @@ assert.ok(
   "Beginner Mode should keep stable facts before timely-context modules"
 );
 assert.ok(
-  assetPage.lastIndexOf("AssetChatPanel") > assetPage.indexOf("data-beginner-educational-framing"),
-  "Beginner Mode should keep chat access in the beginner flow"
+  assetPage.lastIndexOf("AssetChatPanel") > assetPage.indexOf("afterDeepDive=") &&
+    assetPage.lastIndexOf("AssetChatPanel") < assetPage.indexOf("sourceTools="),
+  "Asset page should keep chat access after Deep Dive and before Sources"
 );
 
 const fixtures = read("lib/fixtures.ts");
