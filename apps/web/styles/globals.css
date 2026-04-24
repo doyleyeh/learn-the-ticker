@@ -454,6 +454,72 @@ button {
   font-weight: 700;
 }
 
+main[data-prd-source-list-marker] > .plain-panel {
+  max-width: 1180px;
+  width: calc(100% - 64px);
+  margin: 24px auto 0;
+}
+
+main[data-prd-source-list-marker] > .plain-panel:last-child {
+  margin-bottom: 54px;
+}
+
+.source-list-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 12px 0 0;
+}
+
+.source-list-nav a {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 12px;
+  border: 1px solid #b7d7d0;
+  border-radius: 8px;
+  background: #ecfaf7;
+  color: var(--accent-strong);
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.source-list-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 18px 0 0;
+}
+
+.source-list-summary-grid div {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f9fbfb;
+}
+
+.source-list-summary-grid dt {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.source-list-summary-grid dd {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+.source-list-entry-section {
+  display: grid;
+  gap: 16px;
+}
+
 .citation-chip {
   display: inline-flex;
   align-items: center;
@@ -974,9 +1040,15 @@ blockquote {
   .search-row,
   .fact-list div,
   .source-meta div,
+  .source-list-summary-grid,
   .glossary-group-grid,
   .comparison-suggestion-list {
     grid-template-columns: 1fr;
+  }
+
+  main[data-prd-source-list-marker] > .plain-panel {
+    width: calc(100% - 36px);
+    margin-top: 18px;
   }
 
   .relationship-badge-grid,
