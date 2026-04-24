@@ -216,6 +216,23 @@ includes("app/compare/page.tsx", "data-compare-unavailable-state");
 includes("app/compare/page.tsx", "fetchSupportedComparisonExportContract");
 includes("app/compare/page.tsx", "comparisonExportContract");
 includes("app/compare/page.tsx", "Backend comparison export contract validated");
+includes("app/compare/page.tsx", "separate-comparison-workflow-v1");
+includes("app/compare/page.tsx", "data-prd-compare-builder-state");
+includes("app/compare/page.tsx", "data-compare-builder-generates-output=\"false\"");
+includes("app/compare/page.tsx", "Compare two supported assets");
+includes("app/compare/page.tsx", "One asset is selected");
+includes("app/compare/page.tsx", "data-compare-builder-no-generated-output");
+includes("app/compare/page.tsx", "data-compare-builder-selected-ticker");
+includes("app/compare/page.tsx", "data-compare-builder-suggestions=\"examples-not-recommendations\"");
+includes("app/compare/page.tsx", "data-prd-compare-result-layout=\"source-backed-deterministic-pack\"");
+includes("app/compare/page.tsx", "header,selected_assets,beginner_bottom_line,stock_vs_etf_relationship_context,key_differences,export_controls,suggested_comparisons,source_metadata");
+includes("app/compare/page.tsx", "data-prd-section=\"selected_assets\"");
+includes("app/compare/page.tsx", "data-prd-section=\"beginner_bottom_line\"");
+includes("app/compare/page.tsx", "data-prd-section=\"stock_vs_etf_relationship_context\"");
+includes("app/compare/page.tsx", "data-prd-section=\"key_differences\"");
+includes("app/compare/page.tsx", "data-prd-section=\"export_controls\"");
+includes("app/compare/page.tsx", "data-prd-section=\"suggested_comparisons\"");
+includes("app/compare/page.tsx", "data-prd-section=\"source_metadata\"");
 includes("app/compare/page.tsx", "bottom_line_for_beginners");
 includes("app/compare/page.tsx", "key_differences");
 includes("app/compare/page.tsx", "source_documents");
@@ -411,6 +428,8 @@ includes("styles/globals.css", ".asset-mobile-actions");
 includes("styles/globals.css", "position: sticky");
 includes("styles/globals.css", "grid-template-columns: repeat\\(3, minmax\\(0, 1fr\\)\\)");
 includes("styles/globals.css", ".asset-helper-rail");
+includes("styles/globals.css", ".compare-builder-form");
+includes("styles/globals.css", ".selected-builder-card");
 includes("components/SearchBox.tsx", "data-search-state");
 includes("components/SearchBox.tsx", "resolveLocalSearchResponse");
 includes("components/SearchBox.tsx", "data-search-supported-result");
@@ -541,6 +560,55 @@ for (const tickerSpecificMarker of ["AAPL", "VOO", "QQQ", "Apple Inc.", "Vanguar
 }
 
 const assetPage = read("app/assets/[ticker]/page.tsx");
+const comparePage = read("app/compare/page.tsx");
+assert.equal(
+  comparePage.includes('query?.left?.toUpperCase() ?? "VOO"'),
+  false,
+  "Compare page should not silently default an empty builder to VOO"
+);
+assert.equal(
+  comparePage.includes('query?.right?.toUpperCase() ?? "QQQ"'),
+  false,
+  "Compare page should not silently default an empty builder to QQQ"
+);
+assert.ok(
+  comparePage.indexOf("if (!leftTicker && !rightTicker)") < comparePage.indexOf("fetchComparisonResponse(leftTicker, rightTicker)"),
+  "Compare page should branch to the empty builder before fetching a comparison"
+);
+assert.ok(
+  comparePage.indexOf("if (!leftTicker || !rightTicker)") < comparePage.indexOf("fetchComparisonResponse(leftTicker, rightTicker)"),
+  "Compare page should branch to one-side-selected builder states before fetching a comparison"
+);
+assert.ok(
+  comparePage.indexOf('data-prd-section="selected_assets"') <
+    comparePage.indexOf('data-prd-section="beginner_bottom_line"'),
+  "Comparison results should show selected assets before the beginner bottom line"
+);
+assert.ok(
+  comparePage.indexOf('data-prd-section="beginner_bottom_line"') <
+    comparePage.indexOf("<StockEtfRelationshipSection"),
+  "Stock-vs-ETF results should place relationship context after the beginner bottom line"
+);
+assert.ok(
+  comparePage.indexOf("<StockEtfRelationshipSection") <
+    comparePage.indexOf('data-prd-section="key_differences"'),
+  "Stock-vs-ETF relationship context should stay separate before generic key differences"
+);
+assert.ok(
+  comparePage.indexOf('data-prd-section="key_differences"') <
+    comparePage.indexOf('data-prd-section="export_controls"'),
+  "Comparison results should render key differences before export controls"
+);
+assert.ok(
+  comparePage.indexOf('data-prd-section="export_controls"') <
+    comparePage.indexOf('data-prd-section="suggested_comparisons"'),
+  "Comparison results should render export controls before suggested comparisons"
+);
+assert.ok(
+  comparePage.indexOf('data-prd-section="suggested_comparisons"') <
+    comparePage.indexOf('data-prd-section="source_metadata"'),
+  "Comparison results should render source metadata after suggested comparisons"
+);
 assert.ok(
   assetPage.indexOf("beginnerMode=") < assetPage.indexOf("deepDiveMode="),
   "Asset page should pass Beginner Mode before Deep-Dive Mode"
