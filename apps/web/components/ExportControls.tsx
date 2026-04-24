@@ -61,6 +61,14 @@ export function ExportControls({ title, controls, marker, helper = EXPORT_TRUST_
       aria-labelledby={`${marker}-heading`}
       data-export-controls={marker}
       data-export-format="markdown"
+      data-export-supported-scope="markdown-json-citations-sources-freshness-disclaimer"
+      data-export-mobile-behavior="compact-stacked-controls"
+      data-export-mobile-no-overlap="in-flow-compact-panel"
+      data-export-unrestricted-raw-text="false"
+      data-export-restricted-provider-payloads="false"
+      data-export-hidden-prompts="false"
+      data-export-raw-model-reasoning="false"
+      data-export-secret-exposure="false"
       data-export-relative-api
       data-export-no-live-external
       data-trust-metric-schema-version={trustMetricDescriptor.schemaVersion}
@@ -78,11 +86,11 @@ export function ExportControls({ title, controls, marker, helper = EXPORT_TRUST_
       data-trust-metric-citation-coverage-event="citation_coverage"
       data-trust-metric-freshness-accuracy-event="freshness_accuracy"
     >
-      <div className="section-heading">
+      <div className="section-heading export-controls-header">
         <p className="eyebrow">Save output</p>
         <h2 id={`${marker}-heading`}>{title}</h2>
       </div>
-      <p>{helper}</p>
+      <p className="export-helper-copy">{helper}</p>
       <p className="source-gap-note" data-export-licensing-context>
         {EXPORT_LICENSING_CONTEXT}
       </p>
@@ -113,6 +121,9 @@ export function ExportControls({ title, controls, marker, helper = EXPORT_TRUST_
               data-export-contract-rendering={control.contract?.rendering ?? "local_fallback"}
               data-export-contract-source={control.contract?.rendering ?? "local_fallback"}
               data-export-contract-content-type={control.contract?.contentType ?? control.controlId}
+              data-export-control-mobile-behavior="compact-full-width"
+              data-export-control-supported-formats="markdown-json"
+              data-export-control-scope="citations-sources-freshness-disclaimer"
               data-trust-metric-event={controlTrustMetricDescriptor.eventType}
               data-trust-metric-workflow-area={controlTrustMetricDescriptor.workflowArea}
               data-trust-metric-export-content-type={controlTrustMetricDescriptor.exportContentType}
@@ -230,7 +241,13 @@ function ChatTranscriptExportButton({ control }: { control: ChatTranscriptExport
   }
 
   return (
-    <div className="chat-export-control" data-export-control={control.controlId}>
+    <div
+      className="chat-export-control"
+      data-export-control={control.controlId}
+      data-export-control-mobile-behavior="compact-full-width"
+      data-export-control-supported-formats="markdown"
+      data-export-control-scope="chat-transcript-citations-session-metadata-disclaimer"
+    >
       <button
         className="export-button"
         type="button"
@@ -241,6 +258,9 @@ function ChatTranscriptExportButton({ control }: { control: ChatTranscriptExport
         data-chat-export-session-lifecycle={control.sessionLifecycleState ?? "unavailable"}
         data-chat-export-session-export-available={control.sessionExportAvailable === true ? "true" : "false"}
         data-chat-export-session-expires-at={control.sessionExpiresAt ?? "unknown"}
+        data-chat-export-no-raw-transcript-analytics="true"
+        data-chat-export-no-hidden-prompts="true"
+        data-chat-export-no-raw-model-reasoning="true"
         data-trust-metric-event={buttonTrustMetricDescriptor.eventType}
         data-trust-metric-workflow-area={buttonTrustMetricDescriptor.workflowArea}
         data-trust-metric-asset-ticker={buttonTrustMetricDescriptor.assetTicker}
@@ -275,6 +295,10 @@ function ChatTranscriptExportButton({ control }: { control: ChatTranscriptExport
           data-chat-export-safe-session-records={exportResponse.sourceFromSafeSessionRecords ? "true" : "false"}
           data-chat-export-used-existing-chat-contract={exportResponse.usedExistingChatContract ? "true" : "false"}
           data-chat-export-no-live-external={exportResponse.noLiveExternalCalls ? "true" : "false"}
+          data-chat-export-mobile-result="internal-scroll"
+          data-chat-export-no-raw-transcript-analytics="true"
+          data-chat-export-no-hidden-prompts="true"
+          data-chat-export-no-raw-model-reasoning="true"
           data-trust-metric-event={resultTrustMetricDescriptor?.eventType}
           data-trust-metric-workflow-area={resultTrustMetricDescriptor?.workflowArea}
           data-trust-metric-asset-ticker={resultTrustMetricDescriptor?.assetTicker}
