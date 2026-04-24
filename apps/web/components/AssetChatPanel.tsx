@@ -2,7 +2,7 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import { ExportControls } from "./ExportControls";
-import { postAssetChat, type AssetChatResponse, type ChatSourceDocument } from "../lib/assetChat";
+import { postAssetChat, type AssetChatResponse, type ChatSessionMetadata, type ChatSourceDocument } from "../lib/assetChat";
 
 type AssetChatPanelProps = {
   ticker: string;
@@ -79,7 +79,11 @@ export function AssetChatPanel({ ticker, assetName }: AssetChatPanelProps) {
     setError("");
 
     try {
-      const nextResponse = await postAssetChat(ticker, trimmed);
+      const conversationId =
+        response?.session?.lifecycle_state === "active" && response.session.conversation_id
+          ? response.session.conversation_id
+          : null;
+      const nextResponse = await postAssetChat(ticker, trimmed, conversationId);
       setResponse(nextResponse);
       setSubmittedQuestion(trimmed);
       setRequestState("answered");
@@ -96,6 +100,7 @@ export function AssetChatPanel({ ticker, assetName }: AssetChatPanelProps) {
   }
 
   const isAdviceRedirect = response?.safety_classification === "personalized_advice_redirect";
+  const isCompareRedirect = response?.safety_classification === "compare_route_redirect";
   const isUnsupported = response?.safety_classification === "unsupported_asset_redirect" || response?.asset.supported === false;
   const isInsufficientEvidence =
     response?.safety_classification === "insufficient_evidence" ||
@@ -103,6 +108,7 @@ export function AssetChatPanel({ ticker, assetName }: AssetChatPanelProps) {
   const sourceDocumentsByCitationId = new Map(
     response?.source_documents.map((sourceDocument) => [sourceDocument.citation_id, sourceDocument]) ?? []
   );
+  const sessionMetadata = response?.session ?? null;
 
   return (
     <section className="plain-panel asset-chat-panel" aria-labelledby="asset-chat-heading">
@@ -177,6 +183,7 @@ export function AssetChatPanel({ ticker, assetName }: AssetChatPanelProps) {
           aria-busy={requestState === "loading"}
         >
           {isAdviceRedirect ? <p className="eyebrow">Educational redirect</p> : null}
+          {isCompareRedirect ? <p className="eyebrow">Comparison workflow redirect</p> : null}
           {isUnsupported ? <p className="eyebrow">Unsupported or unknown asset</p> : null}
           {isInsufficientEvidence ? <p className="eyebrow">Insufficient evidence</p> : null}
           <h3>Direct answer</h3>
@@ -231,6 +238,8 @@ export function AssetChatPanel({ ticker, assetName }: AssetChatPanelProps) {
             </div>
           ) : null}
 
+          {sessionMetadata ? <ChatSessionContractMarker session={sessionMetadata} selectedTicker={ticker} /> : null}
+
           {submittedQuestion ? (
             <ExportControls
               title="Save chat transcript"
@@ -243,8 +252,15 @@ export function AssetChatPanel({ ticker, assetName }: AssetChatPanelProps) {
                   label: "Prepare transcript Markdown",
                   ticker,
                   question: submittedQuestion,
+                  conversationId:
+                    sessionMetadata?.lifecycle_state === "active" && sessionMetadata.export_available
+                      ? sessionMetadata.conversation_id
+                      : null,
+                  sessionLifecycleState: sessionMetadata?.lifecycle_state ?? "unavailable",
+                  sessionExportAvailable: sessionMetadata?.export_available === true,
+                  sessionExpiresAt: sessionMetadata?.expires_at ?? null,
                   helper:
-                    "Uses POST /api/assets/{ticker}/chat/export with this submitted question and the local Markdown format."
+                    "Uses POST /api/assets/{ticker}/chat/export with an active conversation ID when available, then falls back to the single-turn Markdown export."
                 }
               ]}
             />
@@ -252,6 +268,26 @@ export function AssetChatPanel({ ticker, assetName }: AssetChatPanelProps) {
         </article>
       ) : null}
     </section>
+  );
+}
+
+function ChatSessionContractMarker({ session, selectedTicker }: { session: ChatSessionMetadata; selectedTicker: string }) {
+  const sessionTicker = session.selected_asset?.ticker ?? selectedTicker.toUpperCase();
+  return (
+    <p
+      className="source-gap-note"
+      data-chat-session-contract="chat-session-contract-v1"
+      data-chat-session-conversation-id={session.conversation_id ? "present" : "absent"}
+      data-chat-session-selected-ticker={sessionTicker}
+      data-chat-session-lifecycle={session.lifecycle_state}
+      data-chat-session-export-available={session.export_available ? "true" : "false"}
+      data-chat-session-expires-at={session.expires_at ?? "unknown"}
+      data-chat-session-turn-count={session.turn_count}
+      data-chat-session-browser-persistence="none"
+    >
+      Accountless session metadata is held only for this chat interaction. Export uses the session transcript contract when the
+      conversation is active and exportable; otherwise it uses the single-turn fallback.
+    </p>
   );
 }
 

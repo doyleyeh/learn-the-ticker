@@ -25,6 +25,10 @@ type ChatTranscriptExportControl = {
   label: string;
   ticker: string;
   question: string;
+  conversationId?: string | null;
+  sessionLifecycleState?: string;
+  sessionExportAvailable?: boolean;
+  sessionExpiresAt?: string | null;
   helper: string;
 };
 
@@ -127,7 +131,7 @@ function ChatTranscriptExportButton({ control }: { control: ChatTranscriptExport
     setError("");
 
     try {
-      const nextResponse = await postChatTranscriptExport(control.ticker, control.question);
+      const nextResponse = await postChatTranscriptExport(control.ticker, control.question, control.conversationId);
       setExportResponse(nextResponse);
       setState("ready");
     } catch (caught) {
@@ -158,6 +162,10 @@ function ChatTranscriptExportButton({ control }: { control: ChatTranscriptExport
         onClick={() => void prepareTranscript()}
         disabled={state === "loading"}
         data-export-post-url={`/api/assets/${encodeURIComponent(control.ticker.toUpperCase())}/chat/export`}
+        data-chat-export-conversation-id={control.conversationId ? "present" : "absent"}
+        data-chat-export-session-lifecycle={control.sessionLifecycleState ?? "unavailable"}
+        data-chat-export-session-export-available={control.sessionExportAvailable === true ? "true" : "false"}
+        data-chat-export-session-expires-at={control.sessionExpiresAt ?? "unknown"}
         aria-label={`${control.label}. ${control.helper}`}
       >
         <span>{state === "loading" ? "Preparing transcript" : control.label}</span>
@@ -169,9 +177,26 @@ function ChatTranscriptExportButton({ control }: { control: ChatTranscriptExport
         </p>
       ) : null}
       {exportResponse ? (
-        <div className="export-result" data-export-state={exportResponse.export_state}>
+        <div
+          className="export-result"
+          data-export-state={exportResponse.export_state}
+          data-chat-export-contract-source={exportResponse.contractSource}
+          data-chat-export-conversation-id={exportResponse.conversationIdPresent ? "present" : "absent"}
+          data-chat-export-session-lifecycle={exportResponse.sessionLifecycleState}
+          data-chat-export-session-export-available={exportResponse.sessionExportAvailable ? "true" : "false"}
+          data-chat-export-session-expires-at={exportResponse.sessionExpiresAt}
+          data-chat-export-validation-schema={exportResponse.validationSchemaVersion}
+          data-chat-export-binding-scope={exportResponse.bindingScope}
+          data-chat-export-citation-count={exportResponse.citationCount}
+          data-chat-export-source-count={exportResponse.sourceCount}
+          data-chat-export-safe-session-records={exportResponse.sourceFromSafeSessionRecords ? "true" : "false"}
+          data-chat-export-used-existing-chat-contract={exportResponse.usedExistingChatContract ? "true" : "false"}
+          data-chat-export-no-live-external={exportResponse.noLiveExternalCalls ? "true" : "false"}
+        >
           <p className="search-status" aria-live="polite">
-            Transcript export is {exportResponse.export_state}. Markdown is ready to copy from the local API response.
+            Transcript export is {exportResponse.export_state} from{" "}
+            {exportResponse.contractSource === "session_contract" ? "the session contract" : "the single-turn fallback"}.
+            Markdown is ready to copy from the local API response.
           </p>
           <button className="citation-chip" type="button" onClick={() => void copyMarkdown()} data-export-copy-markdown>
             {state === "copied" ? "Copied Markdown" : "Copy Markdown"}

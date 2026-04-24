@@ -162,8 +162,15 @@ includes("components/AssetChatPanel.tsx", "Chat source metadata");
 includes("components/AssetChatPanel.tsx", "Save chat transcript");
 includes("components/AssetChatPanel.tsx", "chat-transcript");
 includes("components/AssetChatPanel.tsx", "Educational redirect");
+includes("components/AssetChatPanel.tsx", "Comparison workflow redirect");
 includes("components/AssetChatPanel.tsx", "Unsupported or unknown asset");
 includes("components/AssetChatPanel.tsx", "Insufficient evidence");
+includes("components/AssetChatPanel.tsx", "data-chat-session-contract");
+includes("components/AssetChatPanel.tsx", "data-chat-session-conversation-id");
+includes("components/AssetChatPanel.tsx", "data-chat-session-lifecycle");
+includes("components/AssetChatPanel.tsx", "data-chat-session-export-available");
+includes("components/AssetChatPanel.tsx", "data-chat-session-expires-at");
+includes("components/AssetChatPanel.tsx", "data-chat-session-browser-persistence=\"none\"");
 includes("components/AssetChatPanel.tsx", "data-chat-starter-group");
 includes("components/AssetChatPanel.tsx", "data-chat-starter-intent");
 includes("components/AssetChatPanel.tsx", "business-model");
@@ -211,6 +218,16 @@ includes("components/ExportControls.tsx", "data-export-contract-comparison-id");
 includes("components/ExportControls.tsx", "Backend export contract validated");
 includes("components/ExportControls.tsx", "Local fallback rendering");
 includes("components/ExportControls.tsx", "data-export-post-url");
+includes("components/ExportControls.tsx", "data-chat-export-contract-source");
+includes("components/ExportControls.tsx", "data-chat-export-conversation-id");
+includes("components/ExportControls.tsx", "data-chat-export-session-lifecycle");
+includes("components/ExportControls.tsx", "data-chat-export-session-export-available");
+includes("components/ExportControls.tsx", "data-chat-export-validation-schema");
+includes("components/ExportControls.tsx", "data-chat-export-binding-scope");
+includes("components/ExportControls.tsx", "data-chat-export-citation-count");
+includes("components/ExportControls.tsx", "data-chat-export-source-count");
+includes("components/ExportControls.tsx", "data-chat-export-safe-session-records");
+includes("components/ExportControls.tsx", "data-chat-export-used-existing-chat-contract");
 includes("components/ExportControls.tsx", "data-export-copy-markdown");
 includes("components/ExportControls.tsx", "data-export-rendered-markdown");
 includes("components/ComparisonSuggestions.tsx", "data-comparison-suggestions");
@@ -239,6 +256,9 @@ includes("components/AssetEtfSections.tsx", "data-etf-top-risk-count");
 includes("components/AssetEtfSections.tsx", "No citation chip is shown because this ETF item is an explicit evidence gap");
 includes("lib/assetChat.ts", "/api/assets/");
 includes("lib/assetChat.ts", "/chat");
+includes("lib/assetChat.ts", "conversation_id");
+includes("lib/assetChat.ts", "chat-session-contract-v1");
+includes("lib/assetChat.ts", "export_available");
 includes("lib/exportControls.ts", "/api/assets/");
 includes("lib/exportControls.ts", "/export\\?export_format=");
 includes("lib/exportControls.ts", "/sources/export\\?export_format=");
@@ -262,6 +282,14 @@ includes("lib/exportControls.ts", "no_live_external_calls");
 includes("lib/exportControls.ts", "/api/compare/export\\?");
 includes("lib/exportControls.ts", "/chat/export");
 includes("lib/exportControls.ts", "postChatTranscriptExport");
+includes("lib/exportControls.ts", "isSupportedChatSessionMarkdownExport");
+includes("lib/exportControls.ts", "chat_transcript");
+includes("lib/exportControls.ts", "session_contract");
+includes("lib/exportControls.ts", "single_turn_fallback");
+includes("lib/exportControls.ts", "local_accountless_chat_session");
+includes("lib/exportControls.ts", "used_existing_chat_contract");
+includes("lib/exportControls.ts", "no_factual_evidence");
+includes("lib/exportControls.ts", "safe session turn records");
 includes("lib/compare.ts", "source_documents");
 includes("lib/compare.ts", "c_fact_voo_benchmark");
 includes("lib/compare.ts", "c_fact_qqq_benchmark");
@@ -597,7 +625,7 @@ for (const forbidden of [
 
 assert.match(
   read("lib/assetChat.ts"),
-  /fetcher\(endpoint/,
+  /resolvedFetcher\(endpoint/,
   "Chat helper should call the local relative chat endpoint through an injectable fetcher"
 );
 assert.match(
@@ -627,6 +655,13 @@ for (const marker of [
   "/api/compare/export?${params.toString()}",
   "/api/assets/${encodeTicker(ticker)}/chat/export",
   "export_format: EXPORT_FORMAT",
+  "conversation_id",
+  "session_contract",
+  "single_turn_fallback",
+  "export-validation-v1",
+  "used_existing_chat_contract",
+  "no_factual_evidence",
+  "safe session turn records",
   "citation IDs",
   "source metadata",
   "freshness/as-of dates",

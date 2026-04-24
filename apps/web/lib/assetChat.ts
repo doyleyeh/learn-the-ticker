@@ -2,6 +2,7 @@ export type ChatSafetyClassification =
   | "educational"
   | "personalized_advice_redirect"
   | "unsupported_asset_redirect"
+  | "compare_route_redirect"
   | "insufficient_evidence";
 
 export type ChatAsset = {
@@ -10,7 +11,15 @@ export type ChatAsset = {
   asset_type: "stock" | "etf" | "unsupported" | "unknown";
   exchange: string | null;
   issuer: string | null;
-  status: "supported" | "unsupported" | "unknown";
+  status:
+    | "supported"
+    | "unsupported"
+    | "out_of_scope"
+    | "pending_ingestion"
+    | "partial"
+    | "stale"
+    | "unknown"
+    | "unavailable";
   supported: boolean;
 };
 
@@ -37,6 +46,24 @@ export type ChatSourceDocument = {
   supporting_passage: string;
 };
 
+export type ChatSessionMetadata = {
+  schema_version: "chat-session-contract-v1";
+  session_id: string | null;
+  conversation_id: string | null;
+  lifecycle_state: "active" | "expired" | "deleted" | "ticker_mismatch" | "unavailable";
+  selected_asset: ChatAsset | null;
+  created_at: string | null;
+  last_activity_at: string | null;
+  expires_at: string | null;
+  deleted_at: string | null;
+  turn_count: number;
+  latest_safety_classification: ChatSafetyClassification | null;
+  latest_evidence_state: string | null;
+  latest_freshness_state: string | null;
+  export_available: boolean;
+  deletion_status: "active" | "user_deleted" | "expired" | "unavailable";
+};
+
 export type AssetChatResponse = {
   asset: ChatAsset;
   direct_answer: string;
@@ -45,6 +72,7 @@ export type AssetChatResponse = {
   source_documents: ChatSourceDocument[];
   uncertainty: string[];
   safety_classification: ChatSafetyClassification;
+  session?: ChatSessionMetadata | null;
 };
 
 type Fetcher = typeof fetch;
@@ -52,15 +80,22 @@ type Fetcher = typeof fetch;
 export async function postAssetChat(
   ticker: string,
   question: string,
+  conversationIdOrFetcher?: string | null | Fetcher,
   fetcher: Fetcher = fetch
 ): Promise<AssetChatResponse> {
+  const conversationId =
+    typeof conversationIdOrFetcher === "function" ? null : conversationIdOrFetcher ?? null;
+  const resolvedFetcher = typeof conversationIdOrFetcher === "function" ? conversationIdOrFetcher : fetcher;
   const endpoint = `/api/assets/${encodeURIComponent(ticker.trim().toUpperCase())}/chat`;
-  const response = await fetcher(endpoint, {
+  const response = await resolvedFetcher(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ question })
+    body: JSON.stringify({
+      question,
+      ...(conversationId ? { conversation_id: conversationId } : {})
+    })
   });
 
   if (!response.ok) {
@@ -89,6 +124,24 @@ function isAssetChatResponse(value: unknown): value is AssetChatResponse {
     Array.isArray(candidate.uncertainty) &&
     typeof candidate.safety_classification === "string" &&
     !!candidate.asset &&
-    typeof candidate.asset === "object"
+    typeof candidate.asset === "object" &&
+    (candidate.session === undefined || candidate.session === null || isChatSessionMetadata(candidate.session))
+  );
+}
+
+function isChatSessionMetadata(value: unknown): value is ChatSessionMetadata {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<ChatSessionMetadata>;
+  return (
+    candidate.schema_version === "chat-session-contract-v1" &&
+    (candidate.conversation_id === null || typeof candidate.conversation_id === "string") &&
+    typeof candidate.lifecycle_state === "string" &&
+    (candidate.selected_asset === null || (!!candidate.selected_asset && typeof candidate.selected_asset === "object")) &&
+    typeof candidate.turn_count === "number" &&
+    typeof candidate.export_available === "boolean" &&
+    typeof candidate.deletion_status === "string"
   );
 }
