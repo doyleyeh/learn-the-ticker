@@ -643,6 +643,66 @@ main[data-prd-source-list-marker] > .plain-panel:last-child {
   line-height: 1.4;
 }
 
+.compare-builder-flow {
+  gap: 20px;
+}
+
+.compare-builder-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.compare-builder-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 180px;
+  gap: 12px;
+  align-items: end;
+}
+
+.compare-builder-form label,
+.selected-builder-card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.compare-builder-form label span,
+.selected-builder-card span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.compare-builder-form input {
+  min-width: 0;
+  height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+}
+
+.selected-builder-card {
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid #b7d7d0;
+  border-radius: 8px;
+  background: #f8fdfb;
+}
+
+.selected-builder-card strong,
+.selected-builder-card small {
+  overflow-wrap: anywhere;
+}
+
+.selected-builder-card small {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .stock-etf-relationship {
   display: grid;
   gap: 18px;
@@ -1038,6 +1098,7 @@ blockquote {
   }
 
   .search-row,
+  .compare-builder-form,
   .fact-list div,
   .source-meta div,
   .source-list-summary-grid,
