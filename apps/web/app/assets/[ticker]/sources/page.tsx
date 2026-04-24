@@ -20,6 +20,20 @@ type AssetSourcesPageProps = {
   }>;
 };
 
+const SOURCE_LIST_SECTION_ORDER =
+  "header,source_inspection_summary,freshness_source_use_overview,source_entries,educational_source_use_note";
+
+type SourceListSource = ReturnType<typeof toSourceDrawerDocument> & {
+  allowedExcerptNote?: string | null;
+};
+
+type SourceListEntry = {
+  source: SourceListSource;
+  claim: string;
+  contexts: ReturnType<typeof getCitationContextsForSource>;
+  drawerState: SourceDrawerState;
+};
+
 function sourceListStateFromSearch(status: string) {
   if (status === "supported") {
     return "available";
@@ -64,6 +78,30 @@ function sourceListUnavailableMessage(state: SourceDrawerState) {
   return "No source metadata is rendered for this source-list state.";
 }
 
+function displayValue(value?: string | null) {
+  return value && value.trim().length ? value : "Unknown";
+}
+
+function humanizePolicy(value?: string | null) {
+  return displayValue(value).replaceAll("_", " ");
+}
+
+function isOfficialOrStructuredSource(source: SourceListSource) {
+  const sourceType = source.source_type.toLowerCase();
+  const sourceQuality = source.source_quality.toLowerCase();
+  return (
+    source.isOfficial ||
+    sourceQuality === "official" ||
+    sourceQuality === "issuer" ||
+    sourceType.includes("sec") ||
+    sourceType.includes("issuer") ||
+    sourceType.includes("prospectus") ||
+    sourceType.includes("fact") ||
+    sourceType.includes("holdings") ||
+    sourceType.includes("structured")
+  );
+}
+
 export function generateStaticParams() {
   return Object.keys(assetFixtures).map((ticker) => ({ ticker }));
 }
@@ -93,13 +131,23 @@ export default async function AssetSourcesPage({ params }: AssetSourcesPageProps
 
   if (listState !== "available" || !asset) {
     return (
-      <main>
+      <main
+        data-prd-source-list-marker="source-list-blocked-or-limited-flow-v1"
+        data-source-list-section-order={SOURCE_LIST_SECTION_ORDER}
+      >
         <section className="plain-panel" data-source-list-state={listState} data-source-list-asset={ticker}>
           <div className="section-heading">
             <p className="eyebrow">Source list</p>
             <h1>{ticker.toUpperCase()} source-list view</h1>
           </div>
           <p className="source-gap-note" data-source-list-unsupported>{sourceListUnavailableMessage(listState)}</p>
+          <p className="source-gap-note" data-source-list-blocked-copy>
+            Source access is limited to supported, same-asset evidence packs. This page does not create generated
+            summaries, chat answers, comparisons, or risk explanations for blocked or unavailable asset states.
+          </p>
+          <nav className="source-list-nav" aria-label="Source-list navigation">
+            <a href="/">Back to search</a>
+          </nav>
         </section>
       </main>
     );
@@ -124,28 +172,120 @@ export default async function AssetSourcesPage({ params }: AssetSourcesPageProps
       drawerState: sourceDrawerStateFromFreshnessState(drawerSource.freshness_state)
     };
   });
-  const drawerEntries = backendSourceDrawer ? backendSourceDrawer.entries : localDrawerSources;
+  const drawerEntries: SourceListEntry[] = backendSourceDrawer ? backendSourceDrawer.entries : localDrawerSources;
   const renderedListState = backendSourceDrawer?.drawerState ?? listState;
   const renderingMode = backendSourceDrawer ? "backend_contract" : "local_fixture";
+  const sourceCount = drawerEntries.length;
+  const officialOrStructuredSourceCount = drawerEntries.filter((entry) => isOfficialOrStructuredSource(entry.source)).length;
+  const citationContextCount = drawerEntries.reduce((total, entry) => total + entry.contexts.length, 0);
+  const firstRetrievedAt = drawerEntries[0]?.source.retrieved_at;
+  const freshnessStates = [...new Set(drawerEntries.map((entry) => entry.source.freshness_state))];
+  const sourceUsePolicies = [...new Set(drawerEntries.map((entry) => entry.source.source_use_policy))];
+  const allowlistStatuses = [...new Set(drawerEntries.map((entry) => entry.source.allowlist_status))];
+  const canExportFullTextCount = drawerEntries.filter((entry) => entry.source.permitted_operations?.can_export_full_text).length;
 
   return (
-    <main>
-      <AssetHeader asset={asset} />
+    <main
+      data-prd-source-list-marker="supported-source-list-inspection-flow-v1"
+      data-source-list-section-order={SOURCE_LIST_SECTION_ORDER}
+      data-source-list-rendering={renderingMode}
+      data-source-list-no-api-base-fallback={backendSourceDrawer ? "not_used" : "deterministic_local_fixture"}
+      data-source-list-trust-metric-readiness="source_drawer_usage,citation_coverage,freshness_accuracy"
+    >
+      <AssetHeader asset={asset} layoutMarker="source_list_header" />
       <section
         className="plain-panel"
+        aria-labelledby="source-inspection-summary"
+        data-prd-section="source_inspection_summary"
         data-source-list-state={renderedListState}
         data-source-list-asset={asset.ticker}
         data-source-list-rendering={renderingMode}
+        data-source-list-source-count={sourceCount}
+        data-source-list-official-structured-count={officialOrStructuredSourceCount}
+        data-source-list-citation-context-count={citationContextCount}
       >
         <div className="section-heading">
-          <p className="eyebrow">Source list</p>
-          <h1>Source list for {asset.ticker}</h1>
+          <p className="eyebrow">Source inspection</p>
+          <h2 id="source-inspection-summary">Source review for {asset.ticker}</h2>
         </div>
+        <nav className="source-list-nav" aria-label="Source-list navigation">
+          <a href={`/assets/${asset.ticker}`}>Back to {asset.ticker} learning page</a>
+        </nav>
         <p className="source-gap-note">
-          Source list entries prefer backend source metadata and allowed excerpts when the deterministic source-drawer contract is available.
+          Source entries are evidence for learning. They explain where cited claims came from, how fresh each source is,
+          and what source-use rights allow; they are not buy, sell, hold, allocation, tax, or trading guidance.
+        </p>
+        <dl className="source-list-summary-grid">
+          <div>
+            <dt>Rendering mode</dt>
+            <dd>{renderingMode === "backend_contract" ? "Backend source-drawer contract" : "Local fixture fallback"}</dd>
+          </div>
+          <div>
+            <dt>Source count</dt>
+            <dd>{sourceCount}</dd>
+          </div>
+          <div>
+            <dt>Official or structured</dt>
+            <dd>{officialOrStructuredSourceCount}</dd>
+          </div>
+          <div>
+            <dt>Citation contexts</dt>
+            <dd>{citationContextCount}</dd>
+          </div>
+        </dl>
+      </section>
+      <section
+        className="plain-panel"
+        aria-labelledby="source-freshness-source-use-overview"
+        data-prd-section="freshness_source_use_overview"
+        data-source-list-freshness-overview
+        data-source-list-freshness-states={freshnessStates.join(",") || "unknown"}
+        data-source-list-source-use-policies={sourceUsePolicies.join(",") || "unknown"}
+        data-source-list-allowlist-statuses={allowlistStatuses.join(",") || "unknown"}
+        data-source-list-full-text-export-count={canExportFullTextCount}
+      >
+        <div className="section-heading">
+          <p className="eyebrow">Freshness and source use</p>
+          <h2 id="source-freshness-source-use-overview">Inspection overview</h2>
+        </div>
+        <dl className="source-list-summary-grid">
+          <div>
+            <dt>Freshness states</dt>
+            <dd>{freshnessStates.map(humanizePolicy).join(", ") || "Unknown"}</dd>
+          </div>
+          <div>
+            <dt>First retrieved timestamp</dt>
+            <dd>{displayValue(firstRetrievedAt)}</dd>
+          </div>
+          <div>
+            <dt>Source-use policies</dt>
+            <dd>{sourceUsePolicies.map(humanizePolicy).join(", ") || "Unknown"}</dd>
+          </div>
+          <div>
+            <dt>Allowlist statuses</dt>
+            <dd>{allowlistStatuses.map(humanizePolicy).join(", ") || "Unknown"}</dd>
+          </div>
+          <div>
+            <dt>Full-text export allowed</dt>
+            <dd>{canExportFullTextCount} sources where the drawer contract permits it</dd>
+          </div>
+        </dl>
+        <p className="source-gap-note" data-source-list-rendering-note>
+          {renderingMode === "backend_contract"
+            ? "This page is rendering the existing backend source-drawer contract for same-asset sources."
+            : "No API-base source-drawer contract is available, so this page uses the deterministic local fixture fallback."}
         </p>
       </section>
-      <section className="plain-panel" aria-label="Source list entries">
+      <section
+        className="plain-panel source-list-entry-section"
+        aria-labelledby="source-list-entries"
+        data-prd-section="source_entries"
+        data-source-list-entry-count={sourceCount}
+      >
+        <div className="section-heading">
+          <p className="eyebrow">Citation and claim context</p>
+          <h2 id="source-list-entries">Source drawers</h2>
+        </div>
         {drawerEntries.length === 0 ? (
           <p className="source-gap-note" data-source-list-empty-state>
             No source documents are available for this supported source-list state.
@@ -161,6 +301,21 @@ export default async function AssetSourcesPage({ params }: AssetSourcesPageProps
             />
           ))
         )}
+      </section>
+      <section
+        className="plain-panel"
+        aria-labelledby="source-use-note"
+        data-prd-section="educational_source_use_note"
+        data-source-list-educational-note
+      >
+        <div className="section-heading">
+          <p className="eyebrow">How to read sources</p>
+          <h2 id="source-use-note">Educational source-use note</h2>
+        </div>
+        <p>
+          Official and structured sources are preferred for stable facts. Stale, unknown, unavailable, partial, and
+          insufficient-evidence states should be read as limits on what the product can verify, not as signals to trade.
+        </p>
       </section>
     </main>
   );
