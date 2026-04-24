@@ -1,43 +1,40 @@
 ## Current task
 
-### T-065: Add mobile source drawer bottom-sheet behavior
+### T-066: Align contextual glossary popovers and mobile sheets with v0.4
 
 Goal:
-Align source inspection with Frontend Design and Workflow v0.4 so source drawers remain usable on desktop and open as mobile bottom-sheet-style panels for citation/source access.
+Align contextual glossary help with Frontend Design and Workflow v0.4 so glossary terms remain inline reading aids on desktop and open as mobile bottom-sheet-style cards where appropriate.
 
 Task-scope paragraph:
-Update the shared frontend source-drawer presentation path so asset-page and source-list source details keep the existing deterministic source metadata, citation context, freshness labels, source-use policy labels, allowed excerpt behavior, trust-metric readiness markers, and blocked-state suppression while adding clear mobile bottom-sheet behavior. Keep the task focused on source drawer responsive behavior and smoke coverage; do not change backend source contracts, source fixtures, citation binding, export behavior, search, comparison, glossary, chat, Weekly News Focus, or generated content.
+Update the shared frontend glossary presentation path so existing contextual glossary triggers support desktop hover, click-to-pin, keyboard focus, Escape close behavior, and mobile bottom-sheet-style presentation while preserving curated generic definitions, optional backend asset-context overlays, trust-metric readiness markers, citation/source metadata, freshness/evidence states, and generic-only fallback behavior. Keep this task focused on glossary UI behavior and smoke coverage; do not change glossary term content, backend glossary contracts, asset knowledge-pack generation, search, comparison generation, chat answers, source drawers, exports, Weekly News Focus, or generated content.
 
 Allowed files:
 
-- `apps/web/components/SourceDrawer.tsx`
-- `apps/web/components/CitationChip.tsx`
+- `apps/web/components/GlossaryPopover.tsx`
 - `apps/web/app/assets/[ticker]/page.tsx`
-- `apps/web/app/assets/[ticker]/sources/page.tsx`
 - `apps/web/styles/globals.css`
 - `tests/frontend/smoke.mjs`
 - `docs/agent-journal/*`
 
 Do not change:
 
-- backend routes, models, source-drawer adapters, retrieval, comparison generation, chat, export contracts, or source-use policy
-- asset coverage, source fixtures, provider adapters, live-call gating, search behavior, or secret handling
+- backend routes, models, glossary adapters/contracts, retrieval, comparison generation, chat, export contracts, source drawers, or source-use policy
+- glossary term definitions or categories, asset coverage, fixtures, provider adapters, live-call gating, search behavior, or secret handling
 - PRD, technical design spec, proposal, SPEC, EVALS, or AGENTS.md during the implementation task
-- home-page workflow, comparison workflow, glossary behavior, asset chat behavior, Weekly News Focus, or AI Comprehensive Analysis content
-- citation IDs, same-asset citation boundaries, allowed excerpts, freshness labels, unknown/stale/unavailable/partial handling, or unsupported/out-of-scope blocking rules
+- home-page workflow, comparison workflow, asset chat behavior, Weekly News Focus, or AI Comprehensive Analysis content
+- citation IDs, same-asset glossary evidence boundaries, source references, freshness/evidence labels, unknown/stale/unavailable/partial handling, or unsupported/out-of-scope blocking rules
 
 Acceptance criteria:
 
-- Desktop source drawers continue to render as the existing source-inspection surface and preserve current open/close keyboard behavior.
-- Mobile source drawers use a bottom-sheet-style presentation through responsive CSS or small component state, with a constrained height, internal scrolling, visible source title context, and no overlap that makes surrounding content unusable.
-- Mobile users can close or collapse a source drawer without navigating away, and returning to the page preserves the source context.
-- Citation chips still point to the matching same-page source drawer by source document ID and remain keyboard-accessible.
-- Source drawers retain source title, type, publisher, URL, published/as-of date, retrieved date, freshness state, source-use policy where available, official-source badge, related claim context, and allowed excerpt behavior.
-- Unsupported, out-of-scope, unknown, eligible-not-cached, stale, partial, unavailable, and insufficient-evidence drawer states keep their existing metadata/excerpt suppression behavior and explicit state labels.
-- Same-asset citation boundaries and source-use rights are not weakened; restricted or unavailable source text remains suppressed.
-- Trust-metric readiness markers for source drawer usage, citation coverage, freshness accuracy, persistence, external analytics, and live external calls remain deterministic and do not add analytics emission, browser storage, cookies, or network calls.
-- Asset pages and `/assets/[ticker]/sources` both use the updated source drawer behavior.
-- Home page remains single-stock/ETF search first; comparison stays a separate connected workflow; glossary remains contextual.
+- Desktop glossary triggers support hover-to-open, click-to-pin or toggle, keyboard focus, and Escape close behavior without requiring navigation away from the reading flow.
+- Mobile glossary cards use a bottom-sheet-style presentation through responsive CSS or small component state, with constrained height, internal scrolling, visible term context, and an obvious close control.
+- Mobile glossary behavior preserves page position and does not obscure citations, source access, chat, or primary page content in an incoherent way.
+- Glossary cards retain curated generic term, category, definition, why-it-matters, beginner-mistake, unavailable-definition fallback, and generic-only labels.
+- Optional backend asset glossary context remains bounded to the selected asset and retains availability state, evidence state, freshness state, citation IDs, uncertainty labels, source-reference metadata, suppression reasons, and source-use policy markers.
+- Generic glossary definitions remain educational and do not introduce uncited asset-specific claims.
+- Trust-metric readiness markers for glossary usage, persistence, external analytics, and live external calls remain deterministic and do not add analytics emission, browser storage, cookies, or network calls.
+- The home page remains single-stock/ETF search first; comparison stays a separate connected workflow; glossary remains contextual inside reading flows and is not promoted into a primary home-page workflow.
+- Existing source drawer mobile bottom-sheet behavior, citation chips, asset chat, comparison flow, Weekly News Focus, and AI Comprehensive Analysis rendering are not regressed.
 - The implementation does not add production dependencies or live external calls.
 
 Required commands:
@@ -47,6 +44,7 @@ git status --short
 npm test
 npm run typecheck
 npm run build
+python3 -m pytest tests/unit/test_safety_guardrails.py -q
 bash scripts/run_quality_gate.sh
 ```
 
@@ -55,6 +53,27 @@ Iteration budget:
 Max 3 attempts.
 
 ## Completed
+
+### T-065: Add mobile source drawer bottom-sheet behavior
+
+Goal:
+Align source inspection with Frontend Design and Workflow v0.4 so source drawers remain usable on desktop and open as mobile bottom-sheet-style panels for citation/source access.
+
+Completed details:
+
+- Implementation commit `b2be252 feat(T-065): add mobile source drawer bottom-sheet behavior` updated `apps/web/components/SourceDrawer.tsx` with deterministic `data-source-drawer-mobile-presentation="bottom-sheet"`, `data-source-drawer-close-control="native-details-summary"`, and `data-source-title` markers while leaving citation chip anchors unchanged.
+- The same component update changed the native `<summary>` label from a generic source-drawer label to a two-line summary with `source-summary-kicker` and `source-summary-title`, so the source title remains visible when users collapse or reopen the drawer.
+- `apps/web/styles/globals.css` added mobile-only source drawer rules under `@media (max-width: 620px)`, including `max-height: min(76vh, 640px)`, rounded top corners, upward sheet-style shadow, sticky summary context, internal source-body scrolling, and `overscroll-behavior: contain`.
+- `tests/frontend/smoke.mjs` added smoke coverage for the bottom-sheet marker, native details-summary close marker, source title summary class, mobile media query, constrained height, internal scroll behavior, and source-title styling.
+- `docs/agent-journal/20260424T193152Z.md` records these checks: `git status --short` passed with a clean initial worktree and only intended task files changed; `npm test` passed; `npm run typecheck` failed once because `.next/types` were not present while build was running, then passed after `npm run build`; `npm run build` passed; `bash scripts/run_quality_gate.sh` passed, including 197 Python tests, static evals, frontend smoke, typecheck, build, and backend checks.
+- Remaining risks from the journal:
+  - The mobile source drawer uses responsive CSS and native `<details>` behavior rather than a JavaScript-managed modal sheet; this preserves keyboard behavior and same-page citation anchors but does not add gesture-based drag controls.
+  - The drawer remains rendered in page flow on mobile to avoid overlapping page content; it is bottom-sheet-style through constrained height, rounded top corners, shadow, sticky summary context, and internal scrolling.
+
+Completion commits:
+
+- `b2be252 feat(T-065): add mobile source drawer bottom-sheet behavior`
+- `74f80a8 chore(T-065): merge mobile source drawer bottom-sheet behavior`
 
 ### T-064: Align home search with frontend workflow v0.4
 
@@ -1771,8 +1790,6 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-066: Align contextual glossary popovers and mobile sheets with v0.4
 
 ### T-067: Add stock-vs-ETF comparison relationship badges
 
