@@ -43,8 +43,10 @@ function includes(path, marker) {
   "components/FreshnessLabel.tsx",
   "components/GlossaryPopover.tsx",
   "components/WeeklyNewsPanel.tsx",
+  "lib/assetDetails.ts",
   "lib/assetChat.ts",
   "lib/assetOverview.ts",
+  "lib/assetWeeklyNews.ts",
   "lib/compare.ts",
   "lib/compareSuggestions.ts",
   "lib/exportControls.ts",
@@ -77,8 +79,12 @@ includes("app/assets/[ticker]/page.tsx", "data-glossary-no-generated-context");
 includes("app/assets/[ticker]/page.tsx", "data-glossary-generic-education");
 includes("app/assets/[ticker]/page.tsx", "beginnerGlossaryGroupsByAssetType");
 includes("app/assets/[ticker]/page.tsx", "AssetChatPanel");
+includes("app/assets/[ticker]/page.tsx", "fetchSupportedAssetDetails");
 includes("app/assets/[ticker]/page.tsx", "fetchSupportedAssetOverview");
+includes("app/assets/[ticker]/page.tsx", "fetchSupportedAssetWeeklyNews");
+includes("app/assets/[ticker]/page.tsx", "data-asset-details-rendering");
 includes("app/assets/[ticker]/page.tsx", "data-asset-overview-rendering");
+includes("app/assets/[ticker]/page.tsx", "data-asset-weekly-news-rendering");
 includes("app/assets/[ticker]/page.tsx", "getWeeklyNewsFocusFixture");
 includes("app/assets/[ticker]/page.tsx", "getAIComprehensiveAnalysisFixture");
 includes("app/assets/[ticker]/page.tsx", "assetPageExportUrl");
@@ -102,6 +108,12 @@ includes("components/SourceDrawer.tsx", "allowedExcerptNote");
 includes("lib/assetOverview.ts", "/api/assets/");
 includes("lib/assetOverview.ts", "/overview");
 includes("lib/assetOverview.ts", "No API base URL is configured for supported asset overview fetches.");
+includes("lib/assetDetails.ts", "/api/assets/");
+includes("lib/assetDetails.ts", "/details");
+includes("lib/assetDetails.ts", "No API base URL is configured for supported asset detail fetches.");
+includes("lib/assetWeeklyNews.ts", "/api/assets/");
+includes("lib/assetWeeklyNews.ts", "/weekly-news");
+includes("lib/assetWeeklyNews.ts", "No API base URL is configured for supported asset weekly-news fetches.");
 includes("lib/sourceDrawer.ts", "asset-source-drawer-v1");
 includes("lib/sourceDrawer.ts", "/api/assets/");
 includes("lib/sourceDrawer.ts", "/sources");

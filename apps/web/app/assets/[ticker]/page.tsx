@@ -12,7 +12,9 @@ import { FreshnessLabel } from "../../../components/FreshnessLabel";
 import { GlossaryPopover } from "../../../components/GlossaryPopover";
 import { SourceDrawer } from "../../../components/SourceDrawer";
 import { WeeklyNewsPanel } from "../../../components/WeeklyNewsPanel";
+import { fetchSupportedAssetDetails } from "../../../lib/assetDetails";
 import { fetchSupportedAssetOverview } from "../../../lib/assetOverview";
+import { fetchSupportedAssetWeeklyNews } from "../../../lib/assetWeeklyNews";
 import { beginnerGlossaryGroupsByAssetType } from "../../../lib/glossary";
 import { getAssetComparisonSuggestions } from "../../../lib/compareSuggestions";
 import { assetPageExportUrl, assetSourceListExportUrl } from "../../../lib/exportControls";
@@ -82,6 +84,8 @@ export default async function AssetPage({ params }: AssetPageProps) {
 
   let asset = fallbackAsset;
   let overviewRendering: "backend_contract" | "local_fixture" = "local_fixture";
+  let detailsRendering: "backend_contract" | "local_fixture" = "local_fixture";
+  let weeklyNewsRendering: "backend_contract" | "local_fixture" = "local_fixture";
 
   try {
     asset = await fetchSupportedAssetOverview(fallbackAsset.ticker, fallbackAsset);
@@ -90,11 +94,32 @@ export default async function AssetPage({ params }: AssetPageProps) {
     asset = fallbackAsset;
   }
 
-  const weeklyNewsFocus = getWeeklyNewsFocusFixture(asset.ticker);
-  const aiComprehensiveAnalysis = getAIComprehensiveAnalysisFixture(asset.ticker);
+  try {
+    asset = await fetchSupportedAssetDetails(asset.ticker, asset);
+    detailsRendering = "backend_contract";
+  } catch {
+    detailsRendering = "local_fixture";
+  }
+
+  let weeklyNewsFocus = getWeeklyNewsFocusFixture(asset.ticker);
+  let aiComprehensiveAnalysis = getAIComprehensiveAnalysisFixture(asset.ticker);
 
   if (!weeklyNewsFocus || !aiComprehensiveAnalysis) {
     notFound();
+  }
+
+  try {
+    const backendWeeklyNews = await fetchSupportedAssetWeeklyNews(
+      asset.ticker,
+      weeklyNewsFocus,
+      aiComprehensiveAnalysis,
+      asset.assetType
+    );
+    weeklyNewsFocus = backendWeeklyNews.weeklyNewsFocus;
+    aiComprehensiveAnalysis = backendWeeklyNews.aiComprehensiveAnalysis;
+    weeklyNewsRendering = "backend_contract";
+  } catch {
+    weeklyNewsRendering = "local_fixture";
   }
 
   const primarySource = getPrimarySource(asset);
@@ -147,7 +172,11 @@ export default async function AssetPage({ params }: AssetPageProps) {
     asset.assetType === "etf" ? (["expense ratio", "index tracking"] as const) : (["market risk", "P/E ratio"] as const);
 
   return (
-    <main data-asset-overview-rendering={overviewRendering}>
+    <main
+      data-asset-overview-rendering={overviewRendering}
+      data-asset-details-rendering={detailsRendering}
+      data-asset-weekly-news-rendering={weeklyNewsRendering}
+    >
       <AssetHeader asset={asset} />
       <AssetModeLayout
         asset={asset}
