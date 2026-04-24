@@ -1,34 +1,35 @@
 ## Current task
 
-### T-060: Align asset-page export controls with backend export contracts
+### T-061: Align comparison export controls with backend comparison export contracts
 
 Goal:
-Reduce remaining asset-page export drift by validating backend asset-page and source-list export payload availability from existing deterministic export routes while preserving safe Markdown-only links, licensing notes, citation/freshness metadata expectations, and fallback behavior when no API base URL is configured.
+Reduce comparison-page export drift by making comparison export controls prefer the existing backend comparison export contract when available, while preserving deterministic `VOO` vs `QQQ` fixture fallback, same-comparison-pack citation boundaries, blocked-state behavior, and no-live-call guardrails.
 
 Task-scope paragraph:
-This cycle is limited to the supported asset-page export controls in `apps/web`. Add a narrow frontend export adapter, or extend the existing export-controls helper, so the asset page can validate the existing backend `/api/assets/{ticker}/export` and `/api/assets/{ticker}/sources/export` Markdown export contracts when an API base URL is configured. Use validated contract state only to annotate or strengthen the existing export controls and keep the current relative Markdown links usable as the deterministic baseline. Preserve citation IDs, source metadata, freshness/as-of date, educational disclaimer, licensing-scope, and source-use-rights expectations in the UI markers and smoke coverage. Fall back independently to the current static export-control rendering when either backend response is unavailable, invalid, blocked, unsupported, or no API base URL is configured.
+This cycle is limited to comparison export controls in `apps/web`. Extend the existing export-controls adapter path so the comparison page can validate the existing backend `/api/compare/export` Markdown export contract for available comparison packs when an API base URL is configured. Use validated contract state only to annotate or strengthen the existing comparison export control and keep the current relative Markdown link usable as the deterministic baseline. Preserve same-comparison-pack citation/source boundaries, freshness/as-of metadata, educational disclaimer, licensing-scope, source-use-rights expectations, and deterministic fallback behavior for `VOO`/`QQQ`, `QQQ`/`VOO`, unsupported, out-of-scope, eligible-not-cached, no-local-pack, unknown, unavailable, blocked, and missing-API-base states.
 
 Allowed files:
 
-- `apps/web/app/assets/[ticker]/page.tsx`
+- `apps/web/app/compare/page.tsx`
 - `apps/web/components/ExportControls.tsx`
 - `apps/web/lib/exportControls.ts`
 - `tests/frontend/smoke.mjs`
 
 Do not change:
 
-- backend FastAPI routes, export schemas, export validation logic, fixtures, source-use policy, or provider adapters
-- comparison export controls, chat export controls, chat session lifecycle, compare generation, search, glossary, source drawer, or Weekly News Focus behavior
-- source allowlist, source-use rights, freshness semantics, advice-boundary rules, or educational disclaimer text outside this narrow export-control surface
-- unsupported or out-of-scope generated-page behavior
+- backend FastAPI routes, comparison generation, export schemas, export validation logic, fixtures, source-use policy, or provider adapters
+- asset-page export controls, chat export controls, chat session lifecycle, search, glossary, source drawer, asset pages, or Weekly News Focus behavior
+- source allowlist, source-use rights, freshness semantics, advice-boundary rules, or educational disclaimer text outside this narrow comparison export-control surface
+- unsupported, out-of-scope, eligible-not-cached, no-local-pack, unknown, unavailable, or blocked comparison behavior
 - deployment settings, env files, live-provider flags, or any secret-handling behavior
 
 Acceptance criteria:
 
-- Supported asset-page export controls can validate the existing backend asset-page export route `/api/assets/{ticker}/export?export_format=markdown` and source-list export route `/api/assets/{ticker}/sources/export?export_format=markdown` when `NEXT_PUBLIC_API_BASE_URL` or `API_BASE_URL` is configured.
-- Backend export payloads are accepted only when they match the existing export response expectations for supported same-asset Markdown exports, including available export state, asset identity, educational disclaimer, licensing note, citation/source metadata, freshness or as-of metadata, and export validation diagnostics.
-- The UI keeps current safe relative Markdown links as the baseline and adds deterministic markers or copy showing whether asset-page and source-list export contract validation came from `backend_contract` or `local_fallback`.
-- Invalid, unavailable, unsupported, out-of-scope, blocked, non-Markdown, or missing-API-base export responses fall back independently to the existing local export-control rendering without creating generated facts, citation chips, source drawers, chat answers, or comparison output.
+- Supported available comparison export controls can validate the existing backend comparison export route `/api/compare/export?left_ticker={LEFT}&right_ticker={RIGHT}&export_format=markdown` when `NEXT_PUBLIC_API_BASE_URL` or `API_BASE_URL` is configured.
+- Backend comparison export payloads are accepted only when they match the existing export response expectations for available same-comparison-pack Markdown exports, including requested left/right asset identity, available export state, educational disclaimer, licensing note, citation/source metadata, freshness or as-of metadata, `export-validation-v1`, `same_comparison_pack` binding scope, and comparison export validation diagnostics.
+- The UI keeps the current safe relative Markdown link as the baseline and adds deterministic markers or copy showing whether comparison export contract validation came from `backend_contract` or `local_fallback`.
+- Invalid, unavailable, unsupported, out-of-scope, eligible-not-cached, no-local-pack, unknown, blocked, non-Markdown, wrong-pair, wrong-binding-scope, missing-diagnostics, or missing-API-base export responses fall back to the existing local comparison export-control rendering for available local packs without creating generated facts, citation chips, source drawers, chat answers, or new comparison output.
+- Unavailable comparison states continue to hide export controls and show blocked/unavailable copy instead of implying a generated export exists.
 - Export controls continue to state that saved output includes citation IDs, source metadata, freshness/as-of dates, educational disclaimer, and licensing scope, and that full source documents, restricted provider payloads, raw model reasoning, hidden prompts, credentials, and live external download URLs are not exported.
 - No live external dependency is introduced, no new production dependency is added, no advice-like copy is added, and normal CI remains deterministic.
 - Required commands from this cycle pass.
@@ -47,6 +48,28 @@ Iteration budget:
 - Max 2 attempts
 
 ## Completed
+
+### T-060: Align asset-page export controls with backend export contracts
+
+Goal:
+Reduce remaining asset-page export drift by validating backend asset-page and source-list export payload availability from existing deterministic export routes while preserving safe Markdown-only links, licensing notes, citation/freshness metadata expectations, and fallback behavior when no API base URL is configured.
+
+Completed details:
+
+- Implementation commit `c677892 feat(T-060): align asset-page export controls with backend export contracts` extended `apps/web/lib/exportControls.ts` with `fetchSupportedAssetExportContract`, `AssetExportContractValidation`, and same-asset Markdown export validation for `/api/assets/{ticker}/export?export_format=markdown` and `/api/assets/{ticker}/sources/export?export_format=markdown`.
+- The adapter accepts only supported available Markdown exports with same-asset identity, educational disclaimer text, `export_licensing_scope`, citation/source metadata, freshness or as-of metadata, `export-validation-v1`, `same_asset` binding scope, allowed exportable source-use policy, no-live-call diagnostics, and existing-overview/no-new-facts diagnostics.
+- `apps/web/app/assets/[ticker]/page.tsx` now fetches the asset-page and source-list export contracts independently for supported asset pages, records `data-asset-page-export-contract` and `data-asset-source-list-export-contract`, and preserves local fallback rendering when a backend response is unavailable, invalid, blocked, unsupported, non-Markdown, or no API base URL is configured.
+- `apps/web/components/ExportControls.tsx` now renders export contract markers for link controls, including `backend_contract` or `local_fallback`, schema, binding scope, export state, freshness, as-of date, citation count, and source count, while keeping relative Markdown links as the baseline.
+- `tests/frontend/smoke.mjs` now checks the asset export adapter routes, contract markers, validation diagnostics, licensing/disclaimer context, and no new live external URL usage.
+- `docs/agent-journal/20260424T165234Z.md` records these checks: `npm test` pass; `npm run typecheck` pass after a focused type-narrowing fix; `npm run build` pass; `python3 -m pytest tests -q` pass with 197 tests; `python3 evals/run_static_evals.py` pass; `bash scripts/run_quality_gate.sh` pass.
+- Remaining risks from the journal:
+  - Backend export contract validation only runs when `NEXT_PUBLIC_API_BASE_URL` or `API_BASE_URL` is configured; otherwise asset-page controls intentionally show `local_fallback` while keeping the relative Markdown links.
+  - Asset-page and source-list export validations fall back independently if either backend response is unavailable, blocked, unsupported, non-Markdown, or contract-invalid.
+
+Completion commits:
+
+- `c677892 feat(T-060): align asset-page export controls with backend export contracts`
+- `2bfe273 chore(T-060): merge align asset-page export controls with backend export contracts`
 
 ### T-059: Fetch supported glossary context from backend glossary contracts
 
@@ -1651,14 +1674,6 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-061: Align comparison export controls with backend comparison export contracts
-
-Goal:
-Reduce comparison-page export drift by making comparison export controls prefer the existing backend comparison export contract when available, while preserving deterministic `VOO` vs `QQQ` fixture fallback, same-comparison-pack citation boundaries, blocked-state behavior, and no-live-call guardrails.
-
-Scope note:
-Keep the change limited to `apps/web` comparison/export adapter surfaces and frontend smoke coverage. Do not change backend comparison generation, export validation schemas, asset-page export controls, chat export, or source-use policy.
 
 ### T-062: Align accountless chat export controls with session export contracts
 
