@@ -1,40 +1,45 @@
 ## Current task
 
-### T-062: Align accountless chat export controls with session export contracts
+### T-063: Surface backend trust-metric validation readiness in frontend control surfaces
 
 Goal:
-Improve the chat export path so supported accountless chat exports can use the existing session export contract when a conversation ID exists, while preserving the current single-turn transcript export fallback, advice redirects, compare redirects, 7-day TTL/deleted-session states, source-use rights, and no raw transcript analytics assumptions.
+Expose deterministic frontend markers and lightweight adapter validation for the existing backend trust-metric catalog/validation contracts so citation, source drawer, glossary, comparison, export, and safety redirect surfaces remain ready for aggregate metrics without logging raw chat transcript content, adding real analytics, or weakening citation, source-use, freshness, uncertainty, and advice-boundary rules.
 
 Task-scope paragraph:
-This cycle is limited to frontend chat/export controls and smoke coverage. Extend the existing asset chat response adapter so the frontend can keep the opaque accountless `conversation_id` returned by the backend chat session contract, pass it through the existing `/api/assets/{ticker}/chat/export` export route, and validate/display session-backed export contract markers when the backend returns an available `chat_transcript` export. Preserve the current single-turn question-based fallback when no conversation ID exists or when the session export response is unavailable/invalid. Keep advice-like answers, comparison redirects, unsupported/out-of-scope/eligible-not-cached/unknown states, expired/deleted sessions, citation/source-use rights, educational disclaimer, and no-live-call behavior deterministic.
+This cycle is limited to frontend validation-readiness only. Add a small `apps/web` trust-metrics helper that mirrors the existing backend `trust-metrics-event-v1` catalog expectations, validates an optional backend catalog response when available, and provides compact metadata descriptors for existing frontend control surfaces. Surface those descriptors through deterministic `data-*` markers on citation/source drawer, glossary, comparison, export, and chat safety redirect UI without emitting events, posting validation payloads, installing analytics, persisting identifiers, or adding live calls. Preserve all existing rendered learning content, export behavior, source drawers, glossary context, comparison behavior, chat behavior, support-state handling, source-use rights, freshness/unknown/stale/unavailable/partial labels, educational disclaimers, and no-investment-advice copy.
 
 Allowed files:
 
 - `apps/web/components/AssetChatPanel.tsx`
 - `apps/web/components/ExportControls.tsx`
-- `apps/web/lib/assetChat.ts`
-- `apps/web/lib/exportControls.ts`
+- `apps/web/components/SourceDrawer.tsx`
+- `apps/web/components/GlossaryPopover.tsx`
+- `apps/web/components/ComparisonSuggestions.tsx`
+- `apps/web/app/compare/page.tsx`
+- `apps/web/lib/trustMetrics.ts`
 - `tests/frontend/smoke.mjs`
 
 Do not change:
 
-- backend FastAPI routes, chat-session storage, chat-session TTL/deletion logic, export schemas, export validation logic, fixtures, source-use policy, or provider adapters
-- asset-page export controls, comparison export controls, source-list export controls, search, glossary, source drawer, asset pages outside the chat panel, or Weekly News Focus behavior
-- source allowlist, source-use rights, freshness semantics, advice-boundary rules, comparison redirect copy, or educational disclaimer text outside this narrow chat export-control surface
-- unsupported, out-of-scope, eligible-not-cached, unknown, unavailable, expired, deleted, or ticker-mismatch chat-session behavior
-- deployment settings, env files, live-provider flags, or any secret-handling behavior
+- backend trust-metrics models, validation helpers, FastAPI routes, integration tests, eval cases, schemas, fixtures, provider adapters, source-use policy, or generated-output contracts
+- existing asset, comparison, source-list, glossary, export, or chat response semantics beyond adding validation-readiness markers and compact frontend helper metadata
+- source allowlists, source-use rights, freshness semantics, advice-boundary rules, comparison redirect behavior, educational disclaimer text, Weekly News Focus behavior, or AI Comprehensive Analysis behavior
+- unsupported, out-of-scope, eligible-not-cached, unknown, unavailable, partial, stale, expired, deleted, or ticker-mismatch behavior
+- deployment settings, env files, live-provider flags, analytics SDKs, browser persistence, cookies, account identifiers, local/session storage, or secret-handling behavior
 
 Acceptance criteria:
 
-- Supported asset chat responses preserve backend session metadata needed for accountless chat continuity, including opaque `conversation_id`, selected ticker, lifecycle state, export availability, and 7-day expiration metadata, without exposing raw prompt internals or adding browser persistence.
-- When a chat answer has an active exportable conversation ID, the chat export control submits the existing relative `/api/assets/{ticker}/chat/export` request with that `conversation_id` and `export_format=markdown` so the backend can return the existing session-backed transcript export contract.
-- Session-backed chat export payloads are accepted as ready only when they match the existing `chat_transcript` export expectations: available export state, selected same-asset identity, educational disclaimer, `export_licensing_scope`, rendered Markdown, `export-validation-v1`, `used_existing_chat_contract`, no-live-call diagnostics, and either same-asset citation/source bindings for grounded answers or no-factual-evidence binding for advice redirects and comparison redirects.
-- The chat export UI shows deterministic markers or copy that distinguish `session_contract` from `single_turn_fallback`, including conversation ID presence, session lifecycle state, export state, validation schema, binding scope, citation count, source count, and whether the export came from safe session turn records.
-- If no conversation ID exists, or if the session-backed export is unavailable, expired, deleted, ticker-mismatched, unsupported, non-Markdown, missing diagnostics, wrong asset, contract-invalid, or otherwise unavailable, the control preserves the existing single-turn transcript export fallback without creating new generated facts, citation chips, source drawers, chat answers, or comparison output.
-- Advice redirects and comparison redirects remain educational/workflow-only: they must not add factual source bindings when the backend export marks the evidence as no factual evidence, and compare-route metadata remains workflow guidance rather than multi-asset chat evidence.
-- Unsupported, out-of-scope, eligible-not-cached, unknown, unavailable, expired, deleted, and ticker-mismatch states do not imply that a generated chat transcript exists; unavailable export responses stay visibly unavailable and do not expose raw transcript text beyond the backend's safe export payload.
-- Export controls continue to state that saved output includes citation IDs, source metadata, freshness/as-of dates, uncertainty notes, educational disclaimer, and licensing scope where present, and that full source documents, restricted provider payloads, raw model reasoning, hidden prompts, credentials, raw transcript analytics payloads, and live external download URLs are not exported.
-- No live external dependency is introduced, no new production dependency is added, no advice-like copy is added, and normal CI remains deterministic.
+- Add a frontend trust-metrics helper that names `trust-metrics-event-v1`, validation-only mode, deterministic timestamp default, no persistence, no external analytics, and no live external calls, matching the backend catalog contract shape from T-032 without duplicating backend validation logic.
+- The helper validates an optional `/api/trust-metrics/catalog`-shaped response only when it includes the required schema version, validation-only flags, no-persistence/no-external-analytics/no-live-call flags, the required product event types `source_drawer_usage`, `glossary_usage`, `comparison_usage`, `export_usage`, `chat_answer_outcome`, and `chat_safety_redirect`, and the required trust event types `citation_coverage`, `freshness_accuracy`, and `safety_redirect_rate`.
+- The helper exposes compact surface descriptors for existing UI only; descriptors may include event type, workflow area, asset ticker, asset support state, comparison state, export content type/format, citation count, source document count, selected section, freshness state, evidence state, safety classification, and chat outcome.
+- The helper must not include or derive forbidden metric fields such as raw query text, user question text, generated answer text, source passages, source URLs, prompts, hidden instructions, raw model reasoning, user identifiers, account identifiers, cookies, IP address, user agent, portfolio details, allocation details, credentials, or external analytics IDs.
+- Source drawer and citation-detail surfaces expose deterministic trust-metric readiness markers for `source_drawer_usage` and citation/source counts without changing citation chips, related claims, allowed excerpts, source-use policy labels, freshness labels, or source drawer behavior.
+- Glossary surfaces expose deterministic trust-metric readiness markers for `glossary_usage` using compact term/section metadata only, while preserving curated generic definitions, grounded asset context, citation boundaries, uncertainty labels, and mobile usability.
+- Comparison surfaces expose deterministic trust-metric readiness markers for `comparison_usage` using left/right ticker and comparison availability metadata only, while preserving blocked states, same-comparison-pack boundaries, comparison redirects, and no generated output for unsupported or out-of-scope assets.
+- Export controls expose deterministic trust-metric readiness markers for `export_usage` and related citation/freshness readiness using export content type, format, state, citation count, source count, schema markers, and licensing scope only, while preserving current asset, comparison, source-list, and chat export behavior.
+- Chat answer and safety redirect surfaces expose deterministic trust-metric readiness markers for `chat_answer_outcome`, `chat_safety_redirect`, and `safety_redirect_rate` without storing or exposing raw questions, raw answers, transcript analytics payloads, conversation contents, or browser-persistent identifiers.
+- Unsupported, out-of-scope, eligible-not-cached, unknown, unavailable, stale, partial, expired, deleted, and ticker-mismatch states remain explicit and must not imply generated output availability, source/citation bindings, or exportable transcript availability when evidence is absent.
+- No third-party analytics package, backend persistence, local/session storage, cookies, account system, live provider call, live news/market-data call, or production dependency is introduced.
 - Required commands from this cycle pass.
 
 Required commands:
@@ -42,7 +47,7 @@ Required commands:
 - `npm test`
 - `npm run typecheck`
 - `npm run build`
-- `python3 -m pytest tests -q`
+- `python3 -m pytest tests/unit/test_trust_metrics.py tests/integration/test_backend_api.py tests/unit/test_safety_guardrails.py -q`
 - `python3 evals/run_static_evals.py`
 - `bash scripts/run_quality_gate.sh`
 
@@ -51,6 +56,29 @@ Iteration budget:
 - Max 2 attempts
 
 ## Completed
+
+### T-062: Align accountless chat export controls with session export contracts
+
+Goal:
+Improve the chat export path so supported accountless chat exports can use the existing session export contract when a conversation ID exists, while preserving the current single-turn transcript export fallback, advice redirects, compare redirects, 7-day TTL/deleted-session states, source-use rights, and no raw transcript analytics assumptions.
+
+Completed details:
+
+- Implementation commit `1cb064d feat(T-062): align accountless chat export controls with session export contracts` extended `apps/web/lib/assetChat.ts` with `ChatSessionMetadata`, the `chat-session-contract-v1` session shape, broader support-state typing, `compare_route_redirect` classification, and optional `conversation_id` submission through the existing relative `/api/assets/{ticker}/chat` helper.
+- `apps/web/lib/exportControls.ts` now attempts a session-backed `POST /api/assets/{ticker}/chat/export` request when an active conversation ID exists, validates available Markdown `chat_transcript` exports against same-asset or no-factual-evidence bindings, `export-validation-v1`, `export_licensing_scope`, `local_accountless_chat_session`, safe session turn records, `used_existing_chat_contract`, no-new-facts, and no-live-call diagnostics, then falls back to the existing single-turn transcript export path when the session contract is unavailable or invalid.
+- `apps/web/components/AssetChatPanel.tsx` now keeps active accountless session metadata in component state for the current interaction, reuses the active conversation ID on follow-up chat calls, renders deterministic chat-session contract markers, passes exportable session metadata to `ExportControls`, and labels comparison workflow redirects separately from advice redirects.
+- `apps/web/components/ExportControls.tsx` now renders deterministic chat export markers for `session_contract` versus `single_turn_fallback`, conversation ID presence, lifecycle state, export availability, expiration, validation schema, binding scope, citation/source counts, safe session records, existing chat contract use, and no-live-call diagnostics.
+- `tests/frontend/smoke.mjs` now checks chat session markers, session export markers, conversation ID handling, `chat_transcript`, `session_contract`, `single_turn_fallback`, `local_accountless_chat_session`, `used_existing_chat_contract`, `no_factual_evidence`, and safe session turn record markers.
+- `docs/agent-journal/20260424T171652Z.md` records these checks: `npm test` failed once on an outdated smoke marker and then passed after a focused marker update; `npm run typecheck` passed; `npm run build` passed; `python3 -m pytest tests -q` passed with 197 tests; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed.
+- Remaining risks from the journal:
+  - Chat session continuity is held only in component state for the current interaction; no browser persistence was added.
+  - Session-backed export validation is frontend-side contract validation over the existing backend response, so backend chat export schema expansion may require a matching frontend adapter update.
+  - When a session export is unavailable or invalid, the control intentionally falls back to the existing single-turn transcript export path and labels it as `single_turn_fallback`.
+
+Completion commits:
+
+- `1cb064d feat(T-062): align accountless chat export controls with session export contracts`
+- `c67e379 chore(T-062): merge align accountless chat export controls with session export contracts`
 
 ### T-061: Align comparison export controls with backend comparison export contracts
 
@@ -1700,10 +1728,4 @@ Completion commits:
 
 ## Backlog
 
-### T-063: Surface backend trust-metric validation readiness in frontend control surfaces
-
-Goal:
-Expose deterministic frontend markers and lightweight adapter validation for the existing backend trust-metric catalog/validation contracts so citation, source drawer, glossary, comparison, export, and safety redirect events remain ready for aggregate metrics without logging raw chat transcript content or adding live analytics.
-
-Scope note:
-Keep this as a validation-readiness task, not a real analytics integration. Do not introduce third-party analytics, user accounts, persistent client identifiers, live provider calls, or any raw user question/content logging.
+No backlog tasks are prepared.
