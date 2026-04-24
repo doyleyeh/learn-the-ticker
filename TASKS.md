@@ -1,36 +1,39 @@
 ## Current task
 
-### T-061: Align comparison export controls with backend comparison export contracts
+### T-062: Align accountless chat export controls with session export contracts
 
 Goal:
-Reduce comparison-page export drift by making comparison export controls prefer the existing backend comparison export contract when available, while preserving deterministic `VOO` vs `QQQ` fixture fallback, same-comparison-pack citation boundaries, blocked-state behavior, and no-live-call guardrails.
+Improve the chat export path so supported accountless chat exports can use the existing session export contract when a conversation ID exists, while preserving the current single-turn transcript export fallback, advice redirects, compare redirects, 7-day TTL/deleted-session states, source-use rights, and no raw transcript analytics assumptions.
 
 Task-scope paragraph:
-This cycle is limited to comparison export controls in `apps/web`. Extend the existing export-controls adapter path so the comparison page can validate the existing backend `/api/compare/export` Markdown export contract for available comparison packs when an API base URL is configured. Use validated contract state only to annotate or strengthen the existing comparison export control and keep the current relative Markdown link usable as the deterministic baseline. Preserve same-comparison-pack citation/source boundaries, freshness/as-of metadata, educational disclaimer, licensing-scope, source-use-rights expectations, and deterministic fallback behavior for `VOO`/`QQQ`, `QQQ`/`VOO`, unsupported, out-of-scope, eligible-not-cached, no-local-pack, unknown, unavailable, blocked, and missing-API-base states.
+This cycle is limited to frontend chat/export controls and smoke coverage. Extend the existing asset chat response adapter so the frontend can keep the opaque accountless `conversation_id` returned by the backend chat session contract, pass it through the existing `/api/assets/{ticker}/chat/export` export route, and validate/display session-backed export contract markers when the backend returns an available `chat_transcript` export. Preserve the current single-turn question-based fallback when no conversation ID exists or when the session export response is unavailable/invalid. Keep advice-like answers, comparison redirects, unsupported/out-of-scope/eligible-not-cached/unknown states, expired/deleted sessions, citation/source-use rights, educational disclaimer, and no-live-call behavior deterministic.
 
 Allowed files:
 
-- `apps/web/app/compare/page.tsx`
+- `apps/web/components/AssetChatPanel.tsx`
 - `apps/web/components/ExportControls.tsx`
+- `apps/web/lib/assetChat.ts`
 - `apps/web/lib/exportControls.ts`
 - `tests/frontend/smoke.mjs`
 
 Do not change:
 
-- backend FastAPI routes, comparison generation, export schemas, export validation logic, fixtures, source-use policy, or provider adapters
-- asset-page export controls, chat export controls, chat session lifecycle, search, glossary, source drawer, asset pages, or Weekly News Focus behavior
-- source allowlist, source-use rights, freshness semantics, advice-boundary rules, or educational disclaimer text outside this narrow comparison export-control surface
-- unsupported, out-of-scope, eligible-not-cached, no-local-pack, unknown, unavailable, or blocked comparison behavior
+- backend FastAPI routes, chat-session storage, chat-session TTL/deletion logic, export schemas, export validation logic, fixtures, source-use policy, or provider adapters
+- asset-page export controls, comparison export controls, source-list export controls, search, glossary, source drawer, asset pages outside the chat panel, or Weekly News Focus behavior
+- source allowlist, source-use rights, freshness semantics, advice-boundary rules, comparison redirect copy, or educational disclaimer text outside this narrow chat export-control surface
+- unsupported, out-of-scope, eligible-not-cached, unknown, unavailable, expired, deleted, or ticker-mismatch chat-session behavior
 - deployment settings, env files, live-provider flags, or any secret-handling behavior
 
 Acceptance criteria:
 
-- Supported available comparison export controls can validate the existing backend comparison export route `/api/compare/export?left_ticker={LEFT}&right_ticker={RIGHT}&export_format=markdown` when `NEXT_PUBLIC_API_BASE_URL` or `API_BASE_URL` is configured.
-- Backend comparison export payloads are accepted only when they match the existing export response expectations for available same-comparison-pack Markdown exports, including requested left/right asset identity, available export state, educational disclaimer, licensing note, citation/source metadata, freshness or as-of metadata, `export-validation-v1`, `same_comparison_pack` binding scope, and comparison export validation diagnostics.
-- The UI keeps the current safe relative Markdown link as the baseline and adds deterministic markers or copy showing whether comparison export contract validation came from `backend_contract` or `local_fallback`.
-- Invalid, unavailable, unsupported, out-of-scope, eligible-not-cached, no-local-pack, unknown, blocked, non-Markdown, wrong-pair, wrong-binding-scope, missing-diagnostics, or missing-API-base export responses fall back to the existing local comparison export-control rendering for available local packs without creating generated facts, citation chips, source drawers, chat answers, or new comparison output.
-- Unavailable comparison states continue to hide export controls and show blocked/unavailable copy instead of implying a generated export exists.
-- Export controls continue to state that saved output includes citation IDs, source metadata, freshness/as-of dates, educational disclaimer, and licensing scope, and that full source documents, restricted provider payloads, raw model reasoning, hidden prompts, credentials, and live external download URLs are not exported.
+- Supported asset chat responses preserve backend session metadata needed for accountless chat continuity, including opaque `conversation_id`, selected ticker, lifecycle state, export availability, and 7-day expiration metadata, without exposing raw prompt internals or adding browser persistence.
+- When a chat answer has an active exportable conversation ID, the chat export control submits the existing relative `/api/assets/{ticker}/chat/export` request with that `conversation_id` and `export_format=markdown` so the backend can return the existing session-backed transcript export contract.
+- Session-backed chat export payloads are accepted as ready only when they match the existing `chat_transcript` export expectations: available export state, selected same-asset identity, educational disclaimer, `export_licensing_scope`, rendered Markdown, `export-validation-v1`, `used_existing_chat_contract`, no-live-call diagnostics, and either same-asset citation/source bindings for grounded answers or no-factual-evidence binding for advice redirects and comparison redirects.
+- The chat export UI shows deterministic markers or copy that distinguish `session_contract` from `single_turn_fallback`, including conversation ID presence, session lifecycle state, export state, validation schema, binding scope, citation count, source count, and whether the export came from safe session turn records.
+- If no conversation ID exists, or if the session-backed export is unavailable, expired, deleted, ticker-mismatched, unsupported, non-Markdown, missing diagnostics, wrong asset, contract-invalid, or otherwise unavailable, the control preserves the existing single-turn transcript export fallback without creating new generated facts, citation chips, source drawers, chat answers, or comparison output.
+- Advice redirects and comparison redirects remain educational/workflow-only: they must not add factual source bindings when the backend export marks the evidence as no factual evidence, and compare-route metadata remains workflow guidance rather than multi-asset chat evidence.
+- Unsupported, out-of-scope, eligible-not-cached, unknown, unavailable, expired, deleted, and ticker-mismatch states do not imply that a generated chat transcript exists; unavailable export responses stay visibly unavailable and do not expose raw transcript text beyond the backend's safe export payload.
+- Export controls continue to state that saved output includes citation IDs, source metadata, freshness/as-of dates, uncertainty notes, educational disclaimer, and licensing scope where present, and that full source documents, restricted provider payloads, raw model reasoning, hidden prompts, credentials, raw transcript analytics payloads, and live external download URLs are not exported.
 - No live external dependency is introduced, no new production dependency is added, no advice-like copy is added, and normal CI remains deterministic.
 - Required commands from this cycle pass.
 
@@ -48,6 +51,28 @@ Iteration budget:
 - Max 2 attempts
 
 ## Completed
+
+### T-061: Align comparison export controls with backend comparison export contracts
+
+Goal:
+Reduce comparison-page export drift by making comparison export controls prefer the existing backend comparison export contract when available, while preserving deterministic `VOO` vs `QQQ` fixture fallback, same-comparison-pack citation boundaries, blocked-state behavior, and no-live-call guardrails.
+
+Completed details:
+
+- Implementation commit `83e30db feat(T-061): align comparison export controls with backend comparison export contracts` extended `apps/web/lib/exportControls.ts` with `fetchSupportedComparisonExportContract`, a shared API-base export endpoint helper, same-comparison-pack Markdown export validation for `/api/compare/export?left_ticker={LEFT}&right_ticker={RIGHT}&export_format=markdown`, and comparison freshness/as-of extraction from export validation sections or source metadata.
+- The adapter accepts comparison export payloads only when they are available Markdown comparison exports for the requested left/right supported tickers with educational disclaimer text, `export_licensing_scope`, rendered Markdown, `export-validation-v1`, `same_comparison_pack` binding scope, citation/source/section validation metadata, `same_comparison_pack_*` diagnostics, `used_existing_comparison_contract`, no-live-call diagnostics, no-new-facts diagnostics, allowed exportable source-use policy, and allowed source metadata.
+- `apps/web/app/compare/page.tsx` now attempts backend comparison export validation only for already available source-backed local comparison packs, passes the validated contract into `ExportControls`, and preserves the existing relative Markdown export link and local fallback helper copy when validation is unavailable or invalid.
+- `apps/web/components/ExportControls.tsx` now exposes comparison contract markers for link exports, including backend/local rendering, validation schema, binding scope, export state, freshness/as-of values, citation/source counts, left/right ticker, and comparison ID while keeping relative Markdown links as the baseline.
+- `tests/frontend/smoke.mjs` now checks comparison export adapter markers, same-comparison-pack diagnostics, comparison export route usage, and UI contract markers.
+- `docs/agent-journal/20260424T170401Z.md` records these checks: `npm test` pass; `npm run typecheck` failed once on nullable backend comparison export fields, then passed after explicit narrowing; `npm run build` pass; `python3 -m pytest tests -q` pass with 197 tests; `python3 evals/run_static_evals.py` pass; `bash scripts/run_quality_gate.sh` pass.
+- Remaining risks from the journal:
+  - Comparison export contract validation only runs when `NEXT_PUBLIC_API_BASE_URL` or `API_BASE_URL` is configured; otherwise comparison export controls intentionally show `local_fallback` while preserving the relative Markdown export link.
+  - The comparison page only attempts backend export validation for already available local comparison packs, so unavailable, unsupported, out-of-scope, eligible-not-cached, no-local-pack, unknown, and blocked states continue to hide export controls.
+
+Completion commits:
+
+- `83e30db feat(T-061): align comparison export controls with backend comparison export contracts`
+- `6a5b96c chore(T-061): merge align comparison export controls with backend comparison export contracts`
 
 ### T-060: Align asset-page export controls with backend export contracts
 
@@ -1674,14 +1699,6 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-062: Align accountless chat export controls with session export contracts
-
-Goal:
-Improve the chat export path so supported accountless chat exports can use the existing session export contract when a conversation ID exists, while preserving the current single-turn transcript export fallback, advice redirects, compare redirects, 7-day TTL/deleted-session states, and no raw transcript analytics assumptions.
-
-Scope note:
-Keep the change limited to frontend chat/export controls and smoke coverage unless a narrow existing type needs to be consumed. Do not change backend chat-session storage, export schemas, safety classification, or generated chat behavior.
 
 ### T-063: Surface backend trust-metric validation readiness in frontend control surfaces
 
