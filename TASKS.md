@@ -1,38 +1,40 @@
 ## Current task
 
-### T-069: Align supported asset-page layout with PRD learning flow
+### T-070: Align source-list page with PRD source inspection flow
 
 Goal:
-Align the supported stock and ETF asset-page layout with the PRD/proposal learning-page flow so the page order, desktop helper rail, and mobile action surfaces match the documented user experience without changing backend contracts or source-backed content behavior.
+Align the dedicated supported asset source-list page with the PRD/TDS source inspection flow so `/assets/[ticker]/sources` is a clear, citation-first source review surface that complements the asset page without changing backend contracts, source-use policy, or generated content behavior.
 
 Task-scope paragraph:
-This cycle is limited to frontend layout and deterministic UI markers for supported asset pages in `apps/web`. Rework the supported `/assets/[ticker]` page composition so it follows the documented order: Asset Header, Beginner Summary, Top 3 Risks, Key Facts, What it does / What it holds, Weekly News Focus, AI Comprehensive Analysis, Deep Dive, Ask about this asset, Sources, and Educational disclaimer. Keep all existing backend-contract adapters, citations, source drawers, glossary backend context, export controls, Weekly News Focus evidence-limited states, AI Comprehensive Analysis suppression, comparison suggestions, chat safety redirects, and deterministic local fallback behavior intact. Add or adjust responsive layout styling and smoke coverage only as needed to make the PRD section order, desktop helper rail, mobile sticky actions, and no-overlap layout constraints explicit.
+This cycle is limited to frontend layout, copy, responsive styling, and deterministic smoke markers for the existing source-list route in `apps/web`. Rework `/assets/[ticker]/sources` so supported assets show a source inspection header, freshness/source-use summary, source count, citation/claim context, and source drawers in a scan-friendly order that matches the PRD emphasis on visible citations, source freshness, source-use rights, and unknown/stale/unavailable/partial states. Preserve the existing backend source-drawer adapter, local fixture fallback, same-asset source boundaries, bottom-sheet source drawer behavior, unsupported/out-of-scope blocked states, and no-live-call behavior.
 
 Allowed files:
 
-- `apps/web/app/assets/[ticker]/page.tsx`
-- `apps/web/components/AssetModeLayout.tsx`
+- `apps/web/app/assets/[ticker]/sources/page.tsx`
 - `apps/web/components/AssetHeader.tsx`
+- `apps/web/components/SourceDrawer.tsx`
 - `apps/web/styles/globals.css`
 - `tests/frontend/smoke.mjs`
 
 Do not change:
 
 - backend FastAPI routes, response schemas, fixtures, provider adapters, source-use policy, or eval data
-- frontend backend-contract adapters in `apps/web/lib/*`
-- `apps/web/app/assets/[ticker]/sources/page.tsx`
-- comparison page behavior, search behavior, export validation logic, chat API logic, glossary catalog content, or source drawer contract mapping
-- unsupported, out-of-scope, unavailable, unknown, pending-ingestion, stale, partial, or insufficient-evidence generated-page behavior
-- advice-boundary copy, citation validation rules, Weekly News Focus selection rules, AI Comprehensive Analysis thresholds, source allowlist, or no-live-call guardrails
+- frontend backend-contract adapters in `apps/web/lib/*`, including `apps/web/lib/sourceDrawer.ts`
+- supported asset-page section ordering in `apps/web/app/assets/[ticker]/page.tsx`
+- comparison page behavior, search behavior, export validation logic, chat API logic, glossary catalog content, or generated summary content
+- unsupported, out-of-scope, unavailable, unknown, pending-ingestion, stale, partial, or insufficient-evidence blocking semantics
+- advice-boundary copy, citation validation rules, Weekly News Focus selection rules, AI Comprehensive Analysis thresholds, source allowlist, source-use rights, or no-live-call guardrails
 
 Acceptance criteria:
 
-- Supported asset pages expose a deterministic PRD layout marker and render sections in the documented order: header, beginner summary, top risks, key facts, what-it-does/what-it-holds, Weekly News Focus, AI Comprehensive Analysis, Deep Dive, Ask about this asset, Sources, and educational disclaimer.
-- Beginner Summary, Top 3 Risks, and Key Facts remain ahead of Deep Dive and do not get pushed behind glossary, chat, source, or export tooling.
-- Weekly News Focus and AI Comprehensive Analysis remain visually and structurally separate from stable asset basics; AI Comprehensive Analysis still appears only through the existing evidence-threshold/suppression behavior.
-- Desktop layout includes a right helper rail for Ask about this asset, Compare this asset, Freshness summary, and Key sources/source access without duplicating factual claims or hiding citation chips.
-- Mobile layout exposes sticky or otherwise immediately reachable actions for Ask, Compare, and Sources while source drawer, glossary, and chat surfaces remain usable without overlapping or obscuring primary page content.
-- Citation chips, source drawers, freshness labels, stale/unknown/unavailable/partial/insufficient-evidence labels, glossary cards, export controls, comparison suggestions, and chat safety redirects remain visible and keep their existing deterministic markers.
+- Supported `/assets/[ticker]/sources` pages expose a deterministic PRD source-list marker and a documented section order for: header, source inspection summary, freshness/source-use overview, source entries, and educational source-use note.
+- The page clearly distinguishes `backend_contract` rendering from `local_fixture` fallback and keeps the existing no-API-base fallback deterministic.
+- Supported source-list pages show source count, official/structured source emphasis where available, freshness/as-of or retrieved metadata, source-use policy, allowlist status, and full-text export permission where the existing source drawer state permits those fields.
+- Source drawers remain the source-inspection unit, keep citation/claim context, preserve allowed excerpt handling, and continue to use desktop drawer plus mobile bottom-sheet behavior.
+- Unsupported, out-of-scope, unknown, eligible-not-cached, unavailable, stale, partial, and insufficient-evidence states render clear blocked or limited source-list copy without linking to generated unsupported pages or inventing source facts.
+- The source-list route includes navigation back to the asset page and source-access copy that frames sources as evidence for learning, not investment advice.
+- Source-list layout is usable on mobile and desktop with no overlapping source drawers, headers, navigation, or metadata blocks.
+- Citation chips, same-asset source boundaries, source-use rights labels, freshness labels, trust-metric readiness markers, and deterministic source-list markers remain visible or are extended where appropriate.
 - No new live external calls, provider dependencies, generated facts, recommendation language, price targets, allocation advice, tax advice, or brokerage/trading behavior are introduced.
 - Required commands from this cycle pass.
 
@@ -50,6 +52,28 @@ Iteration budget:
 
 
 ## Completed
+
+### T-069: Align supported asset-page layout with PRD learning flow
+
+Goal:
+Align the supported stock and ETF asset-page layout with the PRD/proposal learning-page flow so the page order, desktop helper rail, and mobile action surfaces match the documented user experience without changing backend contracts or source-backed content behavior.
+
+Completed details:
+
+- Implementation commit `0ace5fd feat(T-069): align supported asset-page layout with PRD learning flow` updated `apps/web/app/assets/[ticker]/page.tsx`, `apps/web/components/AssetHeader.tsx`, `apps/web/components/AssetModeLayout.tsx`, and `apps/web/styles/globals.css` to add deterministic PRD layout markers and make the supported asset-page learning flow explicit.
+- Supported asset pages now render the documented sequence for Beginner Summary, Top 3 Risks, Key Facts, What It Does/What It Holds, Weekly News Focus, AI Comprehensive Analysis, Deep Dive, Ask, Sources, and the educational framing section.
+- Source drawers were moved into a Sources section after chat; the page now includes a desktop helper rail for ask/compare/freshness/source access and mobile in-flow sticky actions for Ask, Compare, and Sources.
+- Existing backend adapters, deterministic fixtures, citations, source drawers, glossary context, export controls, Weekly News Focus evidence-limited states, AI Comprehensive Analysis suppression, comparison suggestions, and chat behavior were kept intact.
+- `tests/frontend/smoke.mjs` added coverage for the PRD layout marker, section-order marker, section-specific markers, helper rail source access, beginner stable/recent separation, and mobile action/layout markers.
+- `docs/agent-journal/20260424T211700Z.md` records these checks: `npm test` passed; `npm run typecheck` passed; `npm run build` passed; `python3 -m pytest tests/unit/test_safety_guardrails.py -q` passed with 11 tests; `bash scripts/run_quality_gate.sh` passed, including 197 Python tests, static evals, frontend smoke, typecheck, build, and backend checks.
+- Remaining risks from the journal:
+  - Responsive behavior is covered by deterministic markers and CSS smoke checks, not browser screenshot or interaction testing.
+  - The helper rail uses anchor links and source titles for access context; it does not duplicate full source drawer content outside the Sources section.
+
+Completion commits:
+
+- `0ace5fd feat(T-069): align supported asset-page layout with PRD learning flow`
+- `380ef31 chore(T-069): merge align supported asset-page layout with PRD learning flow`
 
 ### T-068: Tighten Weekly News Focus evidence-limited states
 
@@ -1854,8 +1878,6 @@ Completion commits:
 
 ## Backlog
 
-
-### T-070: Align source-list page with PRD source inspection flow
 
 ### T-071: Align comparison builder and result layouts with PRD workflow
 
