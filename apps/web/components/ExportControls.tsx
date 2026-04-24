@@ -102,6 +102,9 @@ function ExportContractMarker({
       data-export-contract-as-of={contract?.asOfDate ?? "local_fallback"}
       data-export-contract-citation-count={contract?.citationCount ?? 0}
       data-export-contract-source-count={contract?.sourceCount ?? 0}
+      data-export-contract-left-ticker={contract?.leftTicker ?? "local_fallback"}
+      data-export-contract-right-ticker={contract?.rightTicker ?? "local_fallback"}
+      data-export-contract-comparison-id={contract?.comparisonId ?? "local_fallback"}
     >
       {rendering === "backend_contract"
         ? "Backend export contract validated; relative Markdown link remains the baseline."

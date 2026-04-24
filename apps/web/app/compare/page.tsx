@@ -13,7 +13,7 @@ import {
   type ComparisonCitation
 } from "../../lib/compare";
 import { getComparePageSuggestions } from "../../lib/compareSuggestions";
-import { comparisonExportUrl } from "../../lib/exportControls";
+import { comparisonExportUrl, fetchSupportedComparisonExportContract } from "../../lib/exportControls";
 import { getAssetFixture, type AssetFixture } from "../../lib/fixtures";
 
 type ComparePageProps = {
@@ -51,6 +51,15 @@ export default async function ComparePage({ searchParams }: ComparePageProps) {
       sourceReference
     ])
   );
+  const comparisonExportContract = hasSourceBackedComparison
+    ? await (async () => {
+        try {
+          return await fetchSupportedComparisonExportContract(comparison.left_asset.ticker, comparison.right_asset.ticker);
+        } catch {
+          return null;
+        }
+      })()
+    : null;
 
   return (
     <main data-compare-availability-state={availabilityState} data-compare-comparison-type={comparison.comparison_type}>
@@ -103,7 +112,11 @@ export default async function ComparePage({ searchParams }: ComparePageProps) {
                   controlId: "comparison",
                   label: "Open comparison Markdown export",
                   href: comparisonExportUrl(comparison.left_asset.ticker, comparison.right_asset.ticker),
-                  helper: "Uses the local comparison export route for this supported fixture-backed pair."
+                  helper:
+                    comparisonExportContract?.rendering === "backend_contract"
+                      ? "Backend comparison export contract validated for this same-pack Markdown export."
+                      : "Uses the local comparison export route for this supported fixture-backed pair.",
+                  contract: comparisonExportContract
                 }
               ]}
             />
