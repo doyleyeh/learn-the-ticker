@@ -3,6 +3,7 @@
 import { FormEvent, useMemo, useState } from "react";
 import { ExportControls } from "./ExportControls";
 import { postAssetChat, type AssetChatResponse, type ChatSessionMetadata, type ChatSourceDocument } from "../lib/assetChat";
+import { buildTrustMetricSurfaceDescriptor } from "../lib/trustMetrics";
 
 type AssetChatPanelProps = {
   ticker: string;
@@ -109,6 +110,51 @@ export function AssetChatPanel({ ticker, assetName }: AssetChatPanelProps) {
     response?.source_documents.map((sourceDocument) => [sourceDocument.citation_id, sourceDocument]) ?? []
   );
   const sessionMetadata = response?.session ?? null;
+  const chatAnswerTrustMetricDescriptor = response
+    ? buildTrustMetricSurfaceDescriptor({
+        eventType: "chat_answer_outcome",
+        workflowArea: "chat",
+        assetTicker: response.asset.ticker,
+        assetSupportState: response.asset.status,
+        citationCount: response.citations.length,
+        sourceDocumentCount: response.source_documents.length,
+        evidenceState: sessionMetadata?.latest_evidence_state ?? response.safety_classification,
+        freshnessState: sessionMetadata?.latest_freshness_state ?? "unknown",
+        safetyClassification: response.safety_classification,
+        chatOutcome: isAdviceRedirect
+          ? "safety_redirect"
+          : isCompareRedirect
+            ? "compare_route_redirect"
+            : isUnsupported
+              ? "unsupported_asset_redirect"
+              : isInsufficientEvidence
+                ? "insufficient_evidence"
+                : "answered"
+      })
+    : null;
+  const chatSafetyRedirectTrustMetricDescriptor =
+    response && isAdviceRedirect
+      ? buildTrustMetricSurfaceDescriptor({
+          eventType: "chat_safety_redirect",
+          workflowArea: "chat",
+          assetTicker: response.asset.ticker,
+          assetSupportState: response.asset.status,
+          safetyClassification: response.safety_classification,
+          chatOutcome: "safety_redirect",
+          evidenceState: sessionMetadata?.latest_evidence_state ?? "educational_redirect"
+        })
+      : null;
+  const safetyRedirectRateTrustMetricDescriptor =
+    response && isAdviceRedirect
+      ? buildTrustMetricSurfaceDescriptor({
+          eventType: "safety_redirect_rate",
+          workflowArea: "safety",
+          assetTicker: response.asset.ticker,
+          assetSupportState: response.asset.status,
+          safetyClassification: response.safety_classification,
+          chatOutcome: "safety_redirect"
+        })
+      : null;
 
   return (
     <section className="plain-panel asset-chat-panel" aria-labelledby="asset-chat-heading">
@@ -180,6 +226,24 @@ export function AssetChatPanel({ ticker, assetName }: AssetChatPanelProps) {
             isUnsupported || isInsufficientEvidence ? "unknown-state" : ""
           }`}
           data-chat-state={response.safety_classification}
+          data-trust-metric-chat-answer-event={chatAnswerTrustMetricDescriptor?.eventType}
+          data-trust-metric-schema-version={chatAnswerTrustMetricDescriptor?.schemaVersion}
+          data-trust-metric-mode={chatAnswerTrustMetricDescriptor?.mode}
+          data-trust-metric-workflow-area={chatAnswerTrustMetricDescriptor?.workflowArea}
+          data-trust-metric-occurred-at={chatAnswerTrustMetricDescriptor?.occurredAt}
+          data-trust-metric-persistence={chatAnswerTrustMetricDescriptor?.persistence}
+          data-trust-metric-external-analytics={chatAnswerTrustMetricDescriptor?.externalAnalytics}
+          data-trust-metric-live-external-calls={chatAnswerTrustMetricDescriptor?.liveExternalCalls}
+          data-trust-metric-asset-ticker={chatAnswerTrustMetricDescriptor?.assetTicker}
+          data-trust-metric-asset-support-state={chatAnswerTrustMetricDescriptor?.assetSupportState}
+          data-trust-metric-citation-count={chatAnswerTrustMetricDescriptor?.citationCount}
+          data-trust-metric-source-document-count={chatAnswerTrustMetricDescriptor?.sourceDocumentCount}
+          data-trust-metric-evidence-state={chatAnswerTrustMetricDescriptor?.evidenceState}
+          data-trust-metric-freshness-state={chatAnswerTrustMetricDescriptor?.freshnessState}
+          data-trust-metric-safety-classification={chatAnswerTrustMetricDescriptor?.safetyClassification}
+          data-trust-metric-chat-outcome={chatAnswerTrustMetricDescriptor?.chatOutcome}
+          data-trust-metric-chat-safety-redirect-event={chatSafetyRedirectTrustMetricDescriptor?.eventType ?? "not_applicable"}
+          data-trust-metric-safety-redirect-rate-event={safetyRedirectRateTrustMetricDescriptor?.eventType ?? "not_applicable"}
           aria-busy={requestState === "loading"}
         >
           {isAdviceRedirect ? <p className="eyebrow">Educational redirect</p> : null}
@@ -292,8 +356,35 @@ function ChatSessionContractMarker({ session, selectedTicker }: { session: ChatS
 }
 
 function ChatSourceDetails({ sourceDocument }: { sourceDocument: ChatSourceDocument }) {
+  const trustMetricDescriptor = buildTrustMetricSurfaceDescriptor({
+    eventType: "source_drawer_usage",
+    workflowArea: "source_drawer",
+    selectedSection: "chat_source_metadata",
+    citationCount: 1,
+    sourceDocumentCount: 1,
+    freshnessState: sourceDocument.freshness_state,
+    evidenceState: "available"
+  });
+
   return (
-    <details className="source-drawer" id={`chat-source-${sourceDocument.citation_id}`} open>
+    <details
+      className="source-drawer"
+      id={`chat-source-${sourceDocument.citation_id}`}
+      data-trust-metric-schema-version={trustMetricDescriptor.schemaVersion}
+      data-trust-metric-mode={trustMetricDescriptor.mode}
+      data-trust-metric-event={trustMetricDescriptor.eventType}
+      data-trust-metric-workflow-area={trustMetricDescriptor.workflowArea}
+      data-trust-metric-occurred-at={trustMetricDescriptor.occurredAt}
+      data-trust-metric-persistence={trustMetricDescriptor.persistence}
+      data-trust-metric-external-analytics={trustMetricDescriptor.externalAnalytics}
+      data-trust-metric-live-external-calls={trustMetricDescriptor.liveExternalCalls}
+      data-trust-metric-selected-section={trustMetricDescriptor.selectedSection}
+      data-trust-metric-citation-count={trustMetricDescriptor.citationCount}
+      data-trust-metric-source-document-count={trustMetricDescriptor.sourceDocumentCount}
+      data-trust-metric-freshness-state={trustMetricDescriptor.freshnessState}
+      data-trust-metric-evidence-state={trustMetricDescriptor.evidenceState}
+      open
+    >
       <summary>Chat source metadata</summary>
       <div className="source-body">
         <div className="source-title-row">

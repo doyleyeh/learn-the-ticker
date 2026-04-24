@@ -1,4 +1,5 @@
 import type { CitationContext, SourceDrawerSourceDocument } from "../lib/fixtures";
+import { buildTrustMetricSurfaceDescriptor } from "../lib/trustMetrics";
 
 type SourceDrawerRenderableDocument = SourceDrawerSourceDocument & {
   allowedExcerptNote?: string | null;
@@ -169,6 +170,15 @@ export function SourceDrawer({
   const canExposeSourceFields = stateInfo.canExposeSourceFields;
   const canExposeSupportingPassage = stateInfo.canExposeSupportingPassage;
   const isUnavailableFreshness = HIDE_DETAILS_FOR_STATES.has(drawerState);
+  const trustMetricDescriptor = buildTrustMetricSurfaceDescriptor({
+    eventType: "source_drawer_usage",
+    workflowArea: "source_drawer",
+    selectedSection: contexts[0]?.sectionId ?? "source_drawer",
+    citationCount: contexts.length || (claim ? 1 : 0),
+    sourceDocumentCount: 1,
+    freshnessState: source.freshness_state,
+    evidenceState: drawerState
+  });
 
   return (
     <details
@@ -179,6 +189,21 @@ export function SourceDrawer({
       data-source-drawer-state={drawerState}
       data-source-use-policy={source.source_use_policy}
       data-source-allowlist-status={source.allowlist_status}
+      data-trust-metric-schema-version={trustMetricDescriptor.schemaVersion}
+      data-trust-metric-mode={trustMetricDescriptor.mode}
+      data-trust-metric-event={trustMetricDescriptor.eventType}
+      data-trust-metric-workflow-area={trustMetricDescriptor.workflowArea}
+      data-trust-metric-occurred-at={trustMetricDescriptor.occurredAt}
+      data-trust-metric-persistence={trustMetricDescriptor.persistence}
+      data-trust-metric-external-analytics={trustMetricDescriptor.externalAnalytics}
+      data-trust-metric-live-external-calls={trustMetricDescriptor.liveExternalCalls}
+      data-trust-metric-citation-count={trustMetricDescriptor.citationCount}
+      data-trust-metric-source-document-count={trustMetricDescriptor.sourceDocumentCount}
+      data-trust-metric-selected-section={trustMetricDescriptor.selectedSection}
+      data-trust-metric-freshness-state={trustMetricDescriptor.freshnessState}
+      data-trust-metric-evidence-state={trustMetricDescriptor.evidenceState}
+      data-trust-metric-citation-coverage-event="citation_coverage"
+      data-trust-metric-freshness-accuracy-event="freshness_accuracy"
       open
     >
       <summary>Source drawer</summary>

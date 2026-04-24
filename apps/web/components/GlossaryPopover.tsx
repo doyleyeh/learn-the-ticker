@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 import { type AssetGlossaryContext } from "../lib/assetGlossary";
 import { getGlossaryTerm } from "../lib/glossary";
+import { buildTrustMetricSurfaceDescriptor } from "../lib/trustMetrics";
 
 type GlossaryPopoverProps = {
   term: string;
@@ -15,6 +16,15 @@ export function GlossaryPopover({ term, assetContext }: GlossaryPopoverProps) {
   const componentId = useId().replace(/[^a-z0-9]+/gi, "-");
   const termId = term.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "unavailable";
   const safeId = `glossary-${termId}-${componentId}`;
+  const trustMetricDescriptor = buildTrustMetricSurfaceDescriptor({
+    eventType: "glossary_usage",
+    workflowArea: "glossary",
+    selectedSection: termId,
+    citationCount: assetContext?.citationIds.length ?? 0,
+    sourceDocumentCount: assetContext?.sourceReferences.length ?? 0,
+    freshnessState: assetContext?.freshnessState ?? "unknown",
+    evidenceState: assetContext?.evidenceState ?? "insufficient_evidence"
+  });
 
   return (
     <span
@@ -22,6 +32,19 @@ export function GlossaryPopover({ term, assetContext }: GlossaryPopoverProps) {
       data-glossary-term={term}
       data-glossary-available={entry ? "true" : "false"}
       data-glossary-asset-context={assetContext ? assetContext.availabilityState : "generic_only"}
+      data-trust-metric-schema-version={trustMetricDescriptor.schemaVersion}
+      data-trust-metric-mode={trustMetricDescriptor.mode}
+      data-trust-metric-event={trustMetricDescriptor.eventType}
+      data-trust-metric-workflow-area={trustMetricDescriptor.workflowArea}
+      data-trust-metric-occurred-at={trustMetricDescriptor.occurredAt}
+      data-trust-metric-persistence={trustMetricDescriptor.persistence}
+      data-trust-metric-external-analytics={trustMetricDescriptor.externalAnalytics}
+      data-trust-metric-live-external-calls={trustMetricDescriptor.liveExternalCalls}
+      data-trust-metric-selected-section={trustMetricDescriptor.selectedSection}
+      data-trust-metric-citation-count={trustMetricDescriptor.citationCount}
+      data-trust-metric-source-document-count={trustMetricDescriptor.sourceDocumentCount}
+      data-trust-metric-freshness-state={trustMetricDescriptor.freshnessState}
+      data-trust-metric-evidence-state={trustMetricDescriptor.evidenceState}
     >
       <button
         className="glossary-trigger"

@@ -53,6 +53,7 @@ function includes(path, marker) {
   "lib/exportControls.ts",
   "lib/fixtures.ts",
   "lib/glossary.ts",
+  "lib/trustMetrics.ts",
   "lib/sourceDrawer.ts",
   "styles/globals.css"
 ].forEach(exists);
@@ -115,6 +116,39 @@ includes("app/assets/[ticker]/sources/page.tsx", "No source metadata is rendered
 includes("app/assets/[ticker]/sources/page.tsx", "source-list view");
 includes("components/SourceDrawer.tsx", "sourceDrawerStateFromSupportState");
 includes("components/SourceDrawer.tsx", "allowedExcerptNote");
+includes("components/SourceDrawer.tsx", "data-trust-metric-event");
+includes("components/SourceDrawer.tsx", "source_drawer_usage");
+includes("components/SourceDrawer.tsx", "citation_coverage");
+includes("components/SourceDrawer.tsx", "freshness_accuracy");
+includes("components/GlossaryPopover.tsx", "data-trust-metric-event");
+includes("components/GlossaryPopover.tsx", "glossary_usage");
+includes("components/ExportControls.tsx", "data-trust-metric-event");
+includes("components/ExportControls.tsx", "export_usage");
+includes("components/ExportControls.tsx", "data-trust-metric-citation-coverage-event");
+includes("components/AssetChatPanel.tsx", "chat_answer_outcome");
+includes("components/AssetChatPanel.tsx", "chat_safety_redirect");
+includes("components/AssetChatPanel.tsx", "safety_redirect_rate");
+includes("components/ComparisonSuggestions.tsx", "comparison_usage");
+includes("app/compare/page.tsx", "data-trust-metric-left-ticker");
+includes("app/compare/page.tsx", "data-trust-metric-right-ticker");
+includes("lib/trustMetrics.ts", "trust-metrics-event-v1");
+includes("lib/trustMetrics.ts", "/api/trust-metrics/catalog");
+includes("lib/trustMetrics.ts", "validateTrustMetricsCatalogResponse");
+includes("lib/trustMetrics.ts", "source_drawer_usage");
+includes("lib/trustMetrics.ts", "glossary_usage");
+includes("lib/trustMetrics.ts", "comparison_usage");
+includes("lib/trustMetrics.ts", "export_usage");
+includes("lib/trustMetrics.ts", "chat_answer_outcome");
+includes("lib/trustMetrics.ts", "chat_safety_redirect");
+includes("lib/trustMetrics.ts", "citation_coverage");
+includes("lib/trustMetrics.ts", "freshness_accuracy");
+includes("lib/trustMetrics.ts", "safety_redirect_rate");
+includes("lib/trustMetrics.ts", "1970-01-01T00:00:00Z");
+includes("lib/trustMetrics.ts", "validation_only");
+includes("lib/trustMetrics.ts", "persistence_enabled");
+includes("lib/trustMetrics.ts", "external_analytics_enabled");
+includes("lib/trustMetrics.ts", "no_live_external_calls");
+includes("lib/trustMetrics.ts", "buildTrustMetricSurfaceDescriptor");
 includes("lib/assetOverview.ts", "/api/assets/");
 includes("lib/assetOverview.ts", "/overview");
 includes("lib/assetOverview.ts", "No API base URL is configured for supported asset overview fetches.");
@@ -608,7 +642,8 @@ const frontendSource = [
   read("lib/compareSuggestions.ts"),
   read("lib/exportControls.ts"),
   read("lib/fixtures.ts"),
-  read("lib/glossary.ts")
+  read("lib/glossary.ts"),
+  read("lib/trustMetrics.ts")
 ].join("\n");
 
 for (const forbidden of [
@@ -642,6 +677,8 @@ assert.equal(
     read("components/AssetChatPanel.tsx").includes("http://") ||
     read("lib/exportControls.ts").includes("https://") ||
     read("lib/exportControls.ts").includes("http://") ||
+    read("lib/trustMetrics.ts").includes("https://") ||
+    read("lib/trustMetrics.ts").includes("http://") ||
     read("components/ExportControls.tsx").includes("https://") ||
     read("components/ExportControls.tsx").includes("http://"),
   false,
@@ -710,6 +747,7 @@ assert.equal(read("components/AssetEtfSections.tsx").includes("fetch("), false, 
 assert.equal(read("components/AssetStockSections.tsx").includes("fetch("), false, "Stock sections should stay fixture-backed");
 assert.equal(read("components/GlossaryPopover.tsx").includes("fetch("), false, "Glossary popover should stay static");
 assert.equal(read("lib/glossary.ts").includes("fetch("), false, "Glossary catalog should stay static");
+assert.equal(read("lib/trustMetrics.ts").includes("fetch("), false, "Trust-metrics helper should not call catalog APIs");
 assert.match(
   read("lib/assetGlossary.ts"),
   /fetcher\(endpoint/,
