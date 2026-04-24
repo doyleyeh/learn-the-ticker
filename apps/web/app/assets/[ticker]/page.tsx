@@ -12,6 +12,7 @@ import { FreshnessLabel } from "../../../components/FreshnessLabel";
 import { GlossaryPopover } from "../../../components/GlossaryPopover";
 import { SourceDrawer } from "../../../components/SourceDrawer";
 import { WeeklyNewsPanel } from "../../../components/WeeklyNewsPanel";
+import { fetchSupportedAssetOverview } from "../../../lib/assetOverview";
 import { beginnerGlossaryGroupsByAssetType } from "../../../lib/glossary";
 import { getAssetComparisonSuggestions } from "../../../lib/compareSuggestions";
 import { assetPageExportUrl, assetSourceListExportUrl } from "../../../lib/exportControls";
@@ -73,10 +74,20 @@ export function generateStaticParams() {
 
 export default async function AssetPage({ params }: AssetPageProps) {
   const { ticker } = await params;
-  const asset = getAssetFixture(ticker);
+  const fallbackAsset = getAssetFixture(ticker);
 
-  if (!asset) {
+  if (!fallbackAsset) {
     notFound();
+  }
+
+  let asset = fallbackAsset;
+  let overviewRendering: "backend_contract" | "local_fixture" = "local_fixture";
+
+  try {
+    asset = await fetchSupportedAssetOverview(fallbackAsset.ticker, fallbackAsset);
+    overviewRendering = "backend_contract";
+  } catch {
+    asset = fallbackAsset;
   }
 
   const weeklyNewsFocus = getWeeklyNewsFocusFixture(asset.ticker);
@@ -136,7 +147,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
     asset.assetType === "etf" ? (["expense ratio", "index tracking"] as const) : (["market risk", "P/E ratio"] as const);
 
   return (
-    <main>
+    <main data-asset-overview-rendering={overviewRendering}>
       <AssetHeader asset={asset} />
       <AssetModeLayout
         asset={asset}

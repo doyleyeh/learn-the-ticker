@@ -44,6 +44,7 @@ function includes(path, marker) {
   "components/GlossaryPopover.tsx",
   "components/WeeklyNewsPanel.tsx",
   "lib/assetChat.ts",
+  "lib/assetOverview.ts",
   "lib/compare.ts",
   "lib/compareSuggestions.ts",
   "lib/exportControls.ts",
@@ -76,6 +77,8 @@ includes("app/assets/[ticker]/page.tsx", "data-glossary-no-generated-context");
 includes("app/assets/[ticker]/page.tsx", "data-glossary-generic-education");
 includes("app/assets/[ticker]/page.tsx", "beginnerGlossaryGroupsByAssetType");
 includes("app/assets/[ticker]/page.tsx", "AssetChatPanel");
+includes("app/assets/[ticker]/page.tsx", "fetchSupportedAssetOverview");
+includes("app/assets/[ticker]/page.tsx", "data-asset-overview-rendering");
 includes("app/assets/[ticker]/page.tsx", "getWeeklyNewsFocusFixture");
 includes("app/assets/[ticker]/page.tsx", "getAIComprehensiveAnalysisFixture");
 includes("app/assets/[ticker]/page.tsx", "assetPageExportUrl");
@@ -96,6 +99,9 @@ includes("app/assets/[ticker]/sources/page.tsx", "No source metadata is rendered
 includes("app/assets/[ticker]/sources/page.tsx", "source-list view");
 includes("components/SourceDrawer.tsx", "sourceDrawerStateFromSupportState");
 includes("components/SourceDrawer.tsx", "allowedExcerptNote");
+includes("lib/assetOverview.ts", "/api/assets/");
+includes("lib/assetOverview.ts", "/overview");
+includes("lib/assetOverview.ts", "No API base URL is configured for supported asset overview fetches.");
 includes("lib/sourceDrawer.ts", "asset-source-drawer-v1");
 includes("lib/sourceDrawer.ts", "/api/assets/");
 includes("lib/sourceDrawer.ts", "/sources");
@@ -586,8 +592,17 @@ assert.equal(
   false,
   "Home search should not add live external calls"
 );
-assert.equal(read("app/assets/[ticker]/page.tsx").includes("fetch("), false, "Asset page should stay fixture-backed");
-assert.equal(read("app/assets/[ticker]/page.tsx").includes("/api/assets/"), false, "Asset page should not call backend overview APIs");
+assert.equal(
+  read("app/assets/[ticker]/page.tsx").includes("fetch("),
+  false,
+  "Asset page should delegate backend overview fetches through a narrow adapter"
+);
+assert.equal(read("app/assets/[ticker]/page.tsx").includes("/api/assets/"), false, "Asset page should not inline backend overview APIs");
+assert.equal(
+  read("lib/assetOverview.ts").includes("/api/assets/"),
+  true,
+  "Overview adapter should align with the backend overview contract"
+);
 assert.equal(read("components/AssetModeLayout.tsx").includes("fetch("), false, "Mode layout should stay fixture-backed");
 assert.equal(read("components/AssetEtfSections.tsx").includes("fetch("), false, "ETF sections should stay fixture-backed");
 assert.equal(read("components/AssetStockSections.tsx").includes("fetch("), false, "Stock sections should stay fixture-backed");
