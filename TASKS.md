@@ -1,40 +1,44 @@
 ## Current task
 
-### T-066: Align contextual glossary popovers and mobile sheets with v0.4
+### T-067: Add stock-vs-ETF comparison relationship badges
 
 Goal:
-Align contextual glossary help with Frontend Design and Workflow v0.4 so glossary terms remain inline reading aids on desktop and open as mobile bottom-sheet-style cards where appropriate.
+Align the comparison page with Frontend Design and Workflow v0.4 for stock-vs-ETF pairs by adding deterministic relationship badges and a special single-company-vs-ETF-basket comparison structure.
 
 Task-scope paragraph:
-Update the shared frontend glossary presentation path so existing contextual glossary triggers support desktop hover, click-to-pin, keyboard focus, Escape close behavior, and mobile bottom-sheet-style presentation while preserving curated generic definitions, optional backend asset-context overlays, trust-metric readiness markers, citation/source metadata, freshness/evidence states, and generic-only fallback behavior. Keep this task focused on glossary UI behavior and smoke coverage; do not change glossary term content, backend glossary contracts, asset knowledge-pack generation, search, comparison generation, chat answers, source drawers, exports, Weekly News Focus, or generated content.
+Update the deterministic frontend comparison path so supported stock-vs-ETF comparisons render explicit relationship badges and a special single-company-vs-ETF-basket structure when the comparison contract identifies one side as a common stock and the other side as an equity ETF. Keep this task focused on comparison UI/adapter shape and smoke coverage. Preserve the dedicated `/compare` workflow, same-comparison-pack citation boundaries, educational framing, blocked-state behavior, export controls, source metadata, freshness/evidence states, and deterministic no-live-call behavior. Do not turn the home page into a comparison builder or add broad new asset coverage beyond the minimal deterministic fixture data needed to exercise the stock-vs-ETF path.
 
 Allowed files:
 
-- `apps/web/components/GlossaryPopover.tsx`
-- `apps/web/app/assets/[ticker]/page.tsx`
+- `apps/web/app/compare/page.tsx`
+- `apps/web/lib/compare.ts`
+- `apps/web/lib/compareSuggestions.ts`
 - `apps/web/styles/globals.css`
 - `tests/frontend/smoke.mjs`
 - `docs/agent-journal/*`
 
 Do not change:
 
-- backend routes, models, glossary adapters/contracts, retrieval, comparison generation, chat, export contracts, source drawers, or source-use policy
-- glossary term definitions or categories, asset coverage, fixtures, provider adapters, live-call gating, search behavior, or secret handling
+- backend routes, models, retrieval, comparison generation, chat, export contracts, source drawers, glossary contracts, or source-use policy
+- home-page search behavior, search support classification, asset coverage rules, provider adapters, live-call gating, or secret handling
 - PRD, technical design spec, proposal, SPEC, EVALS, or AGENTS.md during the implementation task
-- home-page workflow, comparison workflow, asset chat behavior, Weekly News Focus, or AI Comprehensive Analysis content
-- citation IDs, same-asset glossary evidence boundaries, source references, freshness/evidence labels, unknown/stale/unavailable/partial handling, or unsupported/out-of-scope blocking rules
+- asset pages, source-list pages, asset chat behavior, glossary behavior, Weekly News Focus, or AI Comprehensive Analysis content
+- citation IDs, same-comparison-pack evidence boundaries, source references, freshness/evidence labels, unknown/stale/unavailable/partial handling, unsupported/out-of-scope blocking rules, or export licensing behavior
 
 Acceptance criteria:
 
-- Desktop glossary triggers support hover-to-open, click-to-pin or toggle, keyboard focus, and Escape close behavior without requiring navigation away from the reading flow.
-- Mobile glossary cards use a bottom-sheet-style presentation through responsive CSS or small component state, with constrained height, internal scrolling, visible term context, and an obvious close control.
-- Mobile glossary behavior preserves page position and does not obscure citations, source access, chat, or primary page content in an incoherent way.
-- Glossary cards retain curated generic term, category, definition, why-it-matters, beginner-mistake, unavailable-definition fallback, and generic-only labels.
-- Optional backend asset glossary context remains bounded to the selected asset and retains availability state, evidence state, freshness state, citation IDs, uncertainty labels, source-reference metadata, suppression reasons, and source-use policy markers.
-- Generic glossary definitions remain educational and do not introduce uncited asset-specific claims.
-- Trust-metric readiness markers for glossary usage, persistence, external analytics, and live external calls remain deterministic and do not add analytics emission, browser storage, cookies, or network calls.
-- The home page remains single-stock/ETF search first; comparison stays a separate connected workflow; glossary remains contextual inside reading flows and is not promoted into a primary home-page workflow.
-- Existing source drawer mobile bottom-sheet behavior, citation chips, asset chat, comparison flow, Weekly News Focus, and AI Comprehensive Analysis rendering are not regressed.
+- Stock-vs-ETF comparison requests that have deterministic source-backed evidence render a clear relationship badge area, with markers such as comparison type, stock ticker, ETF ticker, and relationship state.
+- The stock-vs-ETF view uses a special single-company-vs-ETF-basket structure that distinguishes the single company from the ETF basket instead of reusing only generic ETF-vs-ETF copy.
+- Relationship badges are educational and structural, for example distinguishing single company, ETF basket, overlap/holding relationship when evidence exists, and insufficient-evidence or unknown relationship when it does not.
+- Any stock-vs-ETF relationship or basket claim is cited to same-comparison-pack evidence or labeled unknown, unavailable, partial, or insufficient evidence.
+- If deterministic evidence is insufficient for holdings overlap or basket membership, the UI renders a smaller verified set or an explicit unknown/insufficient-evidence state instead of inventing relationship facts.
+- Existing ETF-vs-ETF comparison behavior for `VOO` vs `QQQ` remains available with citation chips, source drawers, freshness labels, export controls, and comparison suggestions unchanged except for non-breaking shared style reuse.
+- Unsupported, out-of-scope, eligible-not-cached, unknown, and no-local-pack comparison states remain blocked from generated comparison claims, citation chips, source drawers, and export controls.
+- Comparison suggestions may expose a stock-vs-ETF route only when a deterministic local source-backed comparison pack exists; otherwise they must keep the no-local-pack explanation.
+- The home page remains single-stock/ETF search first; clear `A vs B` search patterns may redirect to `/compare`, but the home page must not become a two-input comparison workflow.
+- Source-use policy, same-comparison-pack citation binding, freshness/as-of metadata, trust-metric readiness markers, and export contract markers remain deterministic and no-live-call.
+- Beginner copy avoids buy/sell/hold, allocation, price-target, tax, brokerage, or personalized recommendation language.
+- Mobile and desktop comparison layouts keep relationship badges, source access, export controls, suggestions, and unavailable states readable without overlapping content.
 - The implementation does not add production dependencies or live external calls.
 
 Required commands:
@@ -53,6 +57,28 @@ Iteration budget:
 Max 3 attempts.
 
 ## Completed
+
+### T-066: Align contextual glossary popovers and mobile sheets with v0.4
+
+Goal:
+Align contextual glossary help with Frontend Design and Workflow v0.4 so glossary terms remain inline reading aids on desktop and open as mobile bottom-sheet-style cards where appropriate.
+
+Completed details:
+
+- Implementation commit `ce91962 feat(T-066): align contextual glossary popovers and mobile sheets with v0.4` updated `apps/web/components/GlossaryPopover.tsx` with shared interaction behavior for hover preview, click-to-pin/toggle, keyboard focus, Escape close, and an explicit close control.
+- The same component update added deterministic `data-*` markers for desktop interaction mode, mobile bottom-sheet presentation, close control, visible term context, and internal scroll readiness.
+- `apps/web/styles/globals.css` added responsive mobile glossary rules so glossary cards render as fixed bottom-sheet-style panels with constrained height, sticky term/close header, and internal scrolling.
+- Existing curated generic definitions, backend asset-context overlays, citation/source metadata, evidence/freshness states, generic-only fallback labels, and trust-metric readiness markers were preserved.
+- `tests/frontend/smoke.mjs` added smoke coverage for glossary desktop behavior markers and mobile bottom-sheet CSS markers.
+- `docs/agent-journal/20260424T193948Z.md` records these checks: `git status --short` passed; `npm test` passed; `npm run typecheck` passed; `npm run build` passed; `python3 -m pytest tests/unit/test_safety_guardrails.py -q` passed with 11 tests; `bash scripts/run_quality_gate.sh` passed, including 197 Python tests, static evals, frontend smoke, typecheck, build, and backend checks.
+- Remaining risks from the journal:
+  - The mobile glossary sheet is CSS/state based and does not add drag gestures or a backdrop.
+  - Smoke coverage verifies deterministic markers and CSS rules; it does not browser-test hover, focus, tap, and Escape interaction sequences.
+
+Completion commits:
+
+- `ce91962 feat(T-066): align contextual glossary popovers and mobile sheets with v0.4`
+- `05d4090 chore(T-066): merge align contextual glossary popovers and mobile sheets with v0.4`
 
 ### T-065: Add mobile source drawer bottom-sheet behavior
 
@@ -1790,7 +1816,5 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-067: Add stock-vs-ETF comparison relationship badges
 
 ### T-068: Tighten Weekly News Focus evidence-limited states
