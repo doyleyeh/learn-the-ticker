@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { type AssetGlossaryContext } from "../lib/assetGlossary";
 import { getGlossaryTerm } from "../lib/glossary";
 import { buildTrustMetricSurfaceDescriptor } from "../lib/trustMetrics";
@@ -12,10 +12,13 @@ type GlossaryPopoverProps = {
 
 export function GlossaryPopover({ term, assetContext }: GlossaryPopoverProps) {
   const [open, setOpen] = useState(false);
+  const [pinned, setPinned] = useState(false);
   const entry = getGlossaryTerm(term);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const componentId = useId().replace(/[^a-z0-9]+/gi, "-");
   const termId = term.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "unavailable";
   const safeId = `glossary-${termId}-${componentId}`;
+  const displayTerm = entry?.term ?? term;
   const trustMetricDescriptor = buildTrustMetricSurfaceDescriptor({
     eventType: "glossary_usage",
     workflowArea: "glossary",
@@ -25,6 +28,15 @@ export function GlossaryPopover({ term, assetContext }: GlossaryPopoverProps) {
     freshnessState: assetContext?.freshnessState ?? "unknown",
     evidenceState: assetContext?.evidenceState ?? "insufficient_evidence"
   });
+  const closeGlossary = () => {
+    setOpen(false);
+    setPinned(false);
+  };
+  const togglePinnedGlossary = () => {
+    const nextPinned = !pinned;
+    setPinned(nextPinned);
+    setOpen(nextPinned);
+  };
 
   return (
     <span
@@ -45,34 +57,76 @@ export function GlossaryPopover({ term, assetContext }: GlossaryPopoverProps) {
       data-trust-metric-source-document-count={trustMetricDescriptor.sourceDocumentCount}
       data-trust-metric-freshness-state={trustMetricDescriptor.freshnessState}
       data-trust-metric-evidence-state={trustMetricDescriptor.evidenceState}
+      data-glossary-desktop-interaction="hover-click-focus-escape"
+      data-glossary-mobile-presentation="bottom-sheet"
+      data-glossary-close-control="button"
+      data-glossary-pinned={pinned ? "true" : "false"}
+      onMouseEnter={() => {
+        if (!pinned) {
+          setOpen(true);
+        }
+      }}
+      onMouseLeave={() => {
+        if (!pinned) {
+          setOpen(false);
+        }
+      }}
+      onFocus={() => setOpen(true)}
+      onBlur={(event) => {
+        if (!pinned && !event.currentTarget.contains(event.relatedTarget)) {
+          setOpen(false);
+        }
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          closeGlossary();
+          triggerRef.current?.focus();
+        }
+      }}
     >
       <button
+        ref={triggerRef}
         className="glossary-trigger"
         type="button"
         aria-expanded={open}
         aria-controls={safeId}
-        aria-label={`Open glossary definition for ${entry?.term ?? term}`}
-        onClick={() => setOpen((current) => !current)}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            setOpen(false);
-          }
-        }}
+        aria-label={`Open glossary definition for ${displayTerm}`}
+        data-glossary-trigger-mode="hover-click-focus"
+        onClick={togglePinnedGlossary}
       >
-        {entry?.term ?? term}
+        {displayTerm}
       </button>
       {open ? (
         <span
           className="glossary-popover"
           id={safeId}
           role="dialog"
-          aria-label={`Glossary card for ${entry?.term ?? term}`}
-          data-glossary-term={entry?.term ?? term}
+          aria-label={`Glossary card for ${displayTerm}`}
+          data-glossary-term={displayTerm}
           data-glossary-category={entry?.category ?? "unavailable"}
           data-glossary-asset-context={assetContext ? assetContext.availabilityState : "generic_only"}
           data-glossary-evidence-state={assetContext?.evidenceState ?? "insufficient_evidence"}
           data-glossary-freshness-state={assetContext?.freshnessState ?? "unknown"}
+          data-glossary-bottom-sheet-height="min(74vh, 620px)"
+          data-glossary-internal-scroll="true"
         >
+          <span className="glossary-card-header">
+            <span className="glossary-card-title" data-glossary-visible-term-context>
+              {displayTerm}
+            </span>
+            <button
+              className="glossary-close-button"
+              type="button"
+              aria-label={`Close glossary card for ${displayTerm}`}
+              onClick={() => {
+                closeGlossary();
+                triggerRef.current?.focus();
+              }}
+            >
+              Close
+            </button>
+          </span>
           {entry ? (
             <>
               <span className="glossary-category" data-glossary-category={entry.category}>

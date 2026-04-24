@@ -645,6 +645,9 @@ button {
   display: grid;
   gap: 8px;
   width: min(320px, calc(100vw - 48px));
+  max-height: min(68vh, 560px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -654,6 +657,33 @@ button {
 
 .glossary-popover small {
   color: var(--muted);
+}
+
+.glossary-card-header {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.glossary-card-title {
+  min-width: 0;
+  color: var(--ink);
+  font-weight: 850;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.glossary-close-button {
+  flex: none;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
 }
 
 .glossary-category {
@@ -874,6 +904,41 @@ blockquote {
     z-index: 1;
     border-bottom: 1px solid var(--line);
     background: #ffffff;
+  }
+
+  .glossary-wrap {
+    position: static;
+  }
+
+  .glossary-popover {
+    position: fixed;
+    right: 12px;
+    bottom: 0;
+    left: 12px;
+    top: auto;
+    z-index: 30;
+    width: auto;
+    max-height: min(74vh, 620px);
+    padding: 16px;
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -18px 42px rgba(20, 32, 38, 0.18);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .glossary-card-header {
+    position: sticky;
+    top: -16px;
+    z-index: 1;
+    align-items: center;
+    margin: -16px -16px 0;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--line);
+    background: #ffffff;
+  }
+
+  .glossary-close-button {
+    min-height: 34px;
   }
 
   .stock-item-heading,
