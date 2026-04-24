@@ -1,40 +1,41 @@
 ## Current task
 
-### T-070: Align source-list page with PRD source inspection flow
+### T-071: Align comparison builder and result layouts with PRD workflow
 
 Goal:
-Align the dedicated supported asset source-list page with the PRD/TDS source inspection flow so `/assets/[ticker]/sources` is a clear, citation-first source review surface that complements the asset page without changing backend contracts, source-use policy, or generated content behavior.
+Align `/compare` with the PRD/TDS comparison workflow so it behaves as a separate but connected comparison surface: an empty builder when no assets are selected, a one-side-selected builder when only one asset is present, and a scan-friendly result layout when a source-backed deterministic comparison pack is available.
 
 Task-scope paragraph:
-This cycle is limited to frontend layout, copy, responsive styling, and deterministic smoke markers for the existing source-list route in `apps/web`. Rework `/assets/[ticker]/sources` so supported assets show a source inspection header, freshness/source-use summary, source count, citation/claim context, and source drawers in a scan-friendly order that matches the PRD emphasis on visible citations, source freshness, source-use rights, and unknown/stale/unavailable/partial states. Preserve the existing backend source-drawer adapter, local fixture fallback, same-asset source boundaries, bottom-sheet source drawer behavior, unsupported/out-of-scope blocked states, and no-live-call behavior.
+This cycle is limited to frontend layout, copy, responsive styling, and deterministic smoke markers for the existing comparison route in `apps/web`. Rework `/compare` so the comparison workflow is clearly separate from the home page, supports empty and one-side-selected builder states, keeps clear `A vs B` search redirects compatible with `/compare?left=...&right=...`, and presents available comparison results in the PRD order: header, selected assets, beginner bottom line, relationship context for stock-vs-ETF pairs, key differences, export controls, suggested next comparisons, and source metadata. Preserve existing backend comparison adapters, deterministic local fallback, comparison export validation, same-comparison-pack citation boundaries, stock-vs-ETF relationship badges, blocked states, and no-live-call behavior.
 
 Allowed files:
 
-- `apps/web/app/assets/[ticker]/sources/page.tsx`
-- `apps/web/components/AssetHeader.tsx`
-- `apps/web/components/SourceDrawer.tsx`
+- `apps/web/app/compare/page.tsx`
+- `apps/web/components/ComparisonSuggestions.tsx`
+- `apps/web/components/ComparisonSourceDetails.tsx`
 - `apps/web/styles/globals.css`
 - `tests/frontend/smoke.mjs`
 
 Do not change:
 
 - backend FastAPI routes, response schemas, fixtures, provider adapters, source-use policy, or eval data
-- frontend backend-contract adapters in `apps/web/lib/*`, including `apps/web/lib/sourceDrawer.ts`
-- supported asset-page section ordering in `apps/web/app/assets/[ticker]/page.tsx`
-- comparison page behavior, search behavior, export validation logic, chat API logic, glossary catalog content, or generated summary content
-- unsupported, out-of-scope, unavailable, unknown, pending-ingestion, stale, partial, or insufficient-evidence blocking semantics
+- frontend backend-contract adapters in `apps/web/lib/*`, including comparison, search, export, source-drawer, fixture, and trust-metric helpers
+- home page search behavior, `A vs B` detection logic, asset-page CTAs, chat redirect logic, glossary behavior, or generated summary content
+- comparison evidence availability semantics for unsupported, out-of-scope, unknown, eligible-not-cached, unavailable, stale, partial, no-local-pack, or insufficient-evidence states
+- stock-vs-ETF relationship model data, citation IDs, source documents, export validation logic, source-use rights, or same-comparison-pack boundaries
 - advice-boundary copy, citation validation rules, Weekly News Focus selection rules, AI Comprehensive Analysis thresholds, source allowlist, source-use rights, or no-live-call guardrails
 
 Acceptance criteria:
 
-- Supported `/assets/[ticker]/sources` pages expose a deterministic PRD source-list marker and a documented section order for: header, source inspection summary, freshness/source-use overview, source entries, and educational source-use note.
-- The page clearly distinguishes `backend_contract` rendering from `local_fixture` fallback and keeps the existing no-API-base fallback deterministic.
-- Supported source-list pages show source count, official/structured source emphasis where available, freshness/as-of or retrieved metadata, source-use policy, allowlist status, and full-text export permission where the existing source drawer state permits those fields.
-- Source drawers remain the source-inspection unit, keep citation/claim context, preserve allowed excerpt handling, and continue to use desktop drawer plus mobile bottom-sheet behavior.
-- Unsupported, out-of-scope, unknown, eligible-not-cached, unavailable, stale, partial, and insufficient-evidence states render clear blocked or limited source-list copy without linking to generated unsupported pages or inventing source facts.
-- The source-list route includes navigation back to the asset page and source-access copy that frames sources as evidence for learning, not investment advice.
-- Source-list layout is usable on mobile and desktop with no overlapping source drawers, headers, navigation, or metadata blocks.
-- Citation chips, same-asset source boundaries, source-use rights labels, freshness labels, trust-metric readiness markers, and deterministic source-list markers remain visible or are extended where appropriate.
+- `/compare` with no query params renders an empty comparison builder state instead of silently defaulting to a completed `VOO` vs `QQQ` result.
+- `/compare?left=AAPL` and equivalent one-side-selected states render a builder state that clearly shows the selected asset, asks for the second asset, and may show deterministic comparison suggestions without generating a two-asset comparison.
+- `/compare?left=VOO&right=QQQ` and supported reverse-order/local-pack results still render source-backed comparison output using the existing backend-aligned comparison adapter and local fallback behavior.
+- Available comparison results expose deterministic PRD comparison markers and a documented section order for: header, selected assets, beginner bottom line, stock-vs-ETF relationship context when applicable, key differences, export controls, suggested comparisons, and source metadata.
+- Stock-vs-ETF comparisons keep relationship badges and the single-company-vs-ETF-basket structure visible, source-backed, and separate from generic key-difference sections.
+- Unsupported, out-of-scope, unknown, eligible-not-cached, no-local-pack, stale, partial, unavailable, and insufficient-evidence comparison states render blocked or limited comparison copy without citation chips, source drawers, generated comparison claims, or export controls for unsupported output.
+- Comparison suggestions remain a connected workflow aid, not a home-page replacement, and do not imply recommendations or personalized suitability.
+- Citation chips, same-comparison-pack source boundaries, source-use rights labels, freshness labels, export validation markers, trust-metric readiness markers, and deterministic comparison markers remain visible or are extended where appropriate.
+- Comparison builder and result layouts are usable on mobile and desktop with no overlapping selected-asset cards, relationship badges, source metadata, export controls, or suggestion links.
 - No new live external calls, provider dependencies, generated facts, recommendation language, price targets, allocation advice, tax advice, or brokerage/trading behavior are introduced.
 - Required commands from this cycle pass.
 
@@ -52,6 +53,27 @@ Iteration budget:
 
 
 ## Completed
+
+### T-070: Align source-list page with PRD source inspection flow
+
+Goal:
+Align the dedicated supported asset source-list page with the PRD/TDS source inspection flow so `/assets/[ticker]/sources` is a clear, citation-first source review surface that complements the asset page without changing backend contracts, source-use policy, or generated content behavior.
+
+Completed details:
+
+- Implementation commit `6314b79 feat(T-070): align source-list page with PRD source inspection flow` updated `apps/web/app/assets/[ticker]/sources/page.tsx`, `apps/web/styles/globals.css`, and `tests/frontend/smoke.mjs` to align supported `/assets/[ticker]/sources` pages with the PRD source inspection flow.
+- Supported source-list pages now include deterministic source-list markers, documented section order, backend-contract versus local-fixture fallback labels, source count, official/structured source count, freshness/source-use/allowlist overview, full-text export permission count, source drawer entry markers, back navigation, blocked-state copy, and an educational source-use note.
+- The implementation preserved the existing source drawer adapter, same-asset source boundaries, local no-API-base fallback, citation/claim context, allowed excerpt handling, and mobile bottom-sheet source drawer behavior.
+- `tests/frontend/smoke.mjs` added coverage for the supported source-list inspection flow marker, blocked or limited source-list marker, section-order marker, rendering/fallback labels, summary counts, source-use/freshness overview markers, back navigation, blocked-state copy, and CSS source-list summary rules.
+- `docs/agent-journal/20260424T213305Z.md` records these checks: `npm test` passed; `npm run typecheck` passed; `npm run build` passed; `python3 -m pytest tests/unit/test_safety_guardrails.py -q` passed with 11 tests; `bash scripts/run_quality_gate.sh` passed, including 197 Python tests, static evals, frontend smoke, typecheck, build, and backend checks.
+- Remaining risks from the journal:
+  - Responsive source-list behavior is covered by deterministic markers and CSS checks, not browser screenshot or interaction testing.
+  - The full-text export summary depends on the existing source drawer contract or fixture fields; local fixtures without explicit permission fields report zero permitted full-text exports.
+
+Completion commits:
+
+- `6314b79 feat(T-070): align source-list page with PRD source inspection flow`
+- `5e6f797 chore(T-070): merge align source-list page with PRD source inspection flow`
 
 ### T-069: Align supported asset-page layout with PRD learning flow
 
@@ -1878,8 +1900,6 @@ Completion commits:
 
 ## Backlog
 
-
-### T-071: Align comparison builder and result layouts with PRD workflow
 
 ### T-072: Align mobile chat and export surfaces with documented helper behavior
 
