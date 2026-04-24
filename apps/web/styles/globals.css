@@ -572,6 +572,47 @@ button {
   line-height: 1.4;
 }
 
+.stock-etf-relationship {
+  display: grid;
+  gap: 18px;
+}
+
+.relationship-badge-grid,
+.stock-etf-basket-structure {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.relationship-badge,
+.stock-etf-basket-structure article {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #b7d7d0;
+  border-radius: 8px;
+  background: #f8fdfb;
+}
+
+.relationship-badge span,
+.stock-etf-basket-structure article > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.relationship-badge strong,
+.stock-etf-basket-structure h3,
+.stock-etf-basket-structure p {
+  overflow-wrap: anywhere;
+}
+
+.stock-etf-basket-structure .relationship-summary {
+  grid-column: span 1;
+}
+
 .freshness-label {
   display: inline-grid;
   gap: 2px;
@@ -869,6 +910,15 @@ blockquote {
   .glossary-group-grid,
   .comparison-suggestion-list {
     grid-template-columns: 1fr;
+  }
+
+  .relationship-badge-grid,
+  .stock-etf-basket-structure {
+    grid-template-columns: 1fr;
+  }
+
+  .stock-etf-basket-structure .relationship-summary {
+    grid-column: auto;
   }
 
   .search-button {

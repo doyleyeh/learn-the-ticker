@@ -10,7 +10,8 @@ import {
   isComparisonAvailable,
   fetchComparisonResponse,
   type CompareAssetIdentity,
-  type ComparisonCitation
+  type ComparisonCitation,
+  type StockEtfRelationshipModel
 } from "../../lib/compare";
 import { getComparePageSuggestions } from "../../lib/compareSuggestions";
 import { comparisonExportUrl, fetchSupportedComparisonExportContract } from "../../lib/exportControls";
@@ -41,6 +42,10 @@ export default async function ComparePage({ searchParams }: ComparePageProps) {
   const comparisonSuggestions = getComparePageSuggestions(comparison.left_asset.ticker, comparison.right_asset.ticker);
   const { citations_by_id, contexts_by_source_document_id } = getComparisonCitationMetadata(comparison);
   const bottomLine = comparison.bottom_line_for_beginners;
+  const stockEtfRelationship =
+    comparison.comparison_type === "stock_vs_etf" && comparison.stock_etf_relationship
+      ? comparison.stock_etf_relationship
+      : null;
   const hasSourceBackedComparison =
     isComparisonAvailable(comparison) &&
     comparison.key_differences.length > 0 &&
@@ -131,6 +136,10 @@ export default async function ComparePage({ searchParams }: ComparePageProps) {
 
         {hasSourceBackedComparison && bottomLine ? (
           <>
+            {stockEtfRelationship ? (
+              <StockEtfRelationshipSection model={stockEtfRelationship} citationsById={citations_by_id} />
+            ) : null}
+
             <ExportControls
               title={`Save ${comparison.left_asset.ticker} vs ${comparison.right_asset.ticker} comparison`}
               marker={`comparison-export-${comparison.left_asset.ticker.toLowerCase()}-${comparison.right_asset.ticker.toLowerCase()}`}
@@ -262,6 +271,91 @@ function CompareColumn({ asset, fixture }: { asset: CompareAssetIdentity; fixtur
         <FreshnessLabel label="Evidence state" value={asset.status} state="unknown" />
       )}
     </article>
+  );
+}
+
+function StockEtfRelationshipSection({
+  model,
+  citationsById
+}: {
+  model: StockEtfRelationshipModel;
+  citationsById: Map<string, ComparisonCitation>;
+}) {
+  return (
+    <section
+      className="plain-panel stock-etf-relationship"
+      aria-labelledby="stock-etf-relationship"
+      data-stock-etf-relationship-schema={model.schema_version}
+      data-stock-etf-comparison-type={model.comparison_type}
+      data-stock-etf-stock-ticker={model.stock_ticker}
+      data-stock-etf-etf-ticker={model.etf_ticker}
+      data-stock-etf-relationship-state={model.relationship_state}
+      data-stock-etf-evidence-state={model.evidence_state}
+    >
+      <div className="section-heading">
+        <p className="eyebrow">Stock-vs-ETF relationship</p>
+        <h2 id="stock-etf-relationship">Single company vs ETF basket</h2>
+      </div>
+
+      <div className="relationship-badge-grid" aria-label="Relationship badges">
+        {model.badges.map((badge) => (
+          <article
+            className="relationship-badge"
+            key={badge.marker}
+            data-relationship-badge={badge.marker}
+            data-relationship-state={badge.relationship_state}
+            data-relationship-evidence-state={badge.evidence_state}
+          >
+            <span>{badge.label}</span>
+            <strong>{badge.value}</strong>
+            {badge.citation_ids.length > 0 ? (
+              <span className="chip-row">
+                {badge.citation_ids.map((citationId) => {
+                  const citation = citationsById.get(citationId);
+                  return citation ? (
+                    <CitationChip key={citationId} citation={comparisonCitationToChip(citation)} label={citationId} />
+                  ) : null;
+                })}
+              </span>
+            ) : null}
+          </article>
+        ))}
+      </div>
+
+      <div
+        className="stock-etf-basket-structure"
+        data-stock-etf-basket-structure="single-company-vs-etf-basket"
+        data-stock-etf-overlap-state={model.basket_structure.overlap_or_membership_state}
+        data-stock-etf-basket-evidence-state={model.basket_structure.evidence_state}
+      >
+        <article>
+          <span>{model.basket_structure.stock_ticker}</span>
+          <h3>Single company</h3>
+          <p>{model.basket_structure.stock_role_summary}</p>
+        </article>
+        <article>
+          <span>{model.basket_structure.etf_ticker}</span>
+          <h3>ETF basket</h3>
+          <p>{model.basket_structure.etf_basket_summary}</p>
+        </article>
+        <article className="relationship-summary">
+          <span>Relationship</span>
+          <h3>Verified holding membership, partial overlap evidence</h3>
+          <p>{model.basket_structure.relationship_summary}</p>
+          {model.basket_structure.unavailable_detail ? (
+            <p className="source-gap-note">{model.basket_structure.unavailable_detail}</p>
+          ) : null}
+          <span className="chip-row">
+            {model.basket_structure.citation_ids.map((citationId) => {
+              const citation = citationsById.get(citationId);
+              return citation ? (
+                <CitationChip key={citationId} citation={comparisonCitationToChip(citation)} label={citationId} />
+              ) : null;
+            })}
+          </span>
+        </article>
+      </div>
+    </section>
   );
 }
 
