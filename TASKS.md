@@ -1,8 +1,47 @@
 ## Current task
 
-### No current task prepared — backlog is empty
+### T-055: Fetch supported source-list pages from backend source-drawer contracts
 
-No current task is prepared in this cycle, and backlog is empty.
+Goal:
+Reduce frontend fixture drift on supported source-list pages by consuming the existing backend source-drawer contract when it is available, while preserving deterministic blocked-state behavior and safe fallback rendering.
+
+Task-scope paragraph:
+This cycle is limited to the supported source-list page data path for `apps/web`. Update the source-list route and any narrow frontend helper it needs so supported assets prefer the existing `/api/assets/{ticker}/sources` contract for source metadata, citation contexts, drawer state, and allowed excerpts, while keeping deterministic local fixture fallback behavior and the current blocked/out-of-scope/unknown/eligible-not-cached states unchanged. Do not change backend route behavior, provider wiring, source-use policy, or advice-boundary logic.
+
+Allowed files:
+
+- `apps/web/app/assets/[ticker]/sources/page.tsx`
+- `apps/web/components/SourceDrawer.tsx`
+- `apps/web/lib/*`
+- `tests/frontend/smoke.mjs`
+
+Do not change:
+
+- backend FastAPI routes, response schemas, fixtures, or provider adapters
+- source allowlist, source-use policy, or freshness semantics
+- chat, compare, or search workflow behavior outside source-list route needs
+- live-provider, caching, ingestion, or deployment settings
+
+Acceptance criteria:
+
+- Supported source-list pages prefer the backend `/api/assets/{ticker}/sources` response when it matches the existing deterministic contract.
+- Supported source-list pages fall back to the local deterministic source-list path when the backend response is unavailable or invalid.
+- Unsupported, out-of-scope, unknown, unavailable, stale, partial, eligible-not-cached, and insufficient-evidence source-list states remain deterministic, blocked, and non-factual.
+- Source metadata, related-claim context, freshness labels, and allowed excerpts stay aligned with the backend source-drawer contract on supported pages.
+- No new live external dependency is introduced, and no advice-like or unsupported generated copy appears.
+- Required commands from this cycle pass.
+
+Required commands:
+
+- `npm test`
+- `npm run typecheck`
+- `npm run build`
+- `python3 -m pytest tests/integration/test_backend_api.py -q`
+- `bash scripts/run_quality_gate.sh`
+
+Iteration budget:
+
+- Max 2 attempts
 
 ## Completed
 
@@ -1500,4 +1539,7 @@ Completion commits:
 
 ## Backlog
 
-No prepared backlog tasks.
+### T-056: Fetch supported asset overview pages from backend overview contracts
+### T-057: Fetch supported asset detail and recent-context sections from backend contracts
+### T-058: Align asset-page source drawer contexts with backend source metadata contracts
+### T-059: Fetch supported glossary context from backend glossary contracts
