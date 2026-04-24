@@ -1,74 +1,30 @@
 ## Current task
 
+No current task is prepared. The backlog is empty.
+
+## Completed
+
 ### T-068: Tighten Weekly News Focus evidence-limited states
 
 Goal:
 Make Weekly News Focus contract and UI behavior explicit when the selected evidence set is smaller than the configured maximum or empty, so the product never pads timely context with weak items and AI Comprehensive Analysis stays suppressed unless enough high-signal evidence exists.
 
-Task-scope paragraph:
-Tighten the deterministic Weekly News Focus path around evidence-limited states. The task should make the backend selection contract, frontend adapter/rendering markers, tests, and evals clearly distinguish available-but-limited, no-high-signal, unavailable, stale, partial, and insufficient-evidence states. Preserve the PRD/TDS rule that Weekly News Focus uses the last completed Monday-Sunday market week plus current week-to-date through yesterday in U.S. Eastern dates, prefers official/issuer evidence before allowlisted news, shows the configured maximum only when enough evidence supports it, and allows fewer items or an empty state when evidence is thin. Keep stable canonical facts visually and structurally separate from Weekly News Focus and AI Comprehensive Analysis. Do not add live news/provider calls, new source domains, broad fixture coverage, recommendations, or deployment work.
+Completed details:
 
-Allowed files:
+- Implementation commit `6a37299 feat(T-068): tighten Weekly News Focus evidence-limited states` added deterministic Weekly News Focus metadata for configured maximum item count, selected item count, suppressed candidate count, evidence state, and evidence-limited state across `backend/models.py`, `backend/weekly_news.py`, and `backend/overview.py`.
+- `apps/web/lib/assetWeeklyNews.ts`, `apps/web/lib/fixtures.ts`, `apps/web/components/WeeklyNewsPanel.tsx`, and `apps/web/components/AIComprehensiveAnalysisPanel.tsx` now carry/render frontend markers for limited verified sets, empty `no_high_signal` states, selected-vs-configured counts, suppressed candidate counts, and AI Comprehensive Analysis threshold availability or suppression.
+- The backend and frontend changes preserve the evidence-limited Weekly News Focus rule: show fewer items when only a smaller verified set passes selection, show explicit empty states when no high-signal evidence exists, and keep AI Comprehensive Analysis suppressed unless at least two high-signal Weekly News Focus items exist.
+- `tests/unit/test_weekly_news.py`, `tests/unit/test_overview_generation.py`, `tests/integration/test_backend_api.py`, `tests/frontend/smoke.mjs`, `evals/weekly_news_eval_cases.yaml`, and `evals/run_static_evals.py` added coverage for configured-vs-selected counts, limited/empty states, AI analysis threshold metadata, and deterministic UI/eval markers.
+- `docs/agent-journal/20260424T200434Z.md` records these checks: `git status --short` passed; `python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_overview_generation.py tests/unit/test_safety_guardrails.py -q` passed with 27 tests; `python3 -m pytest tests/integration/test_backend_api.py -q` passed with 33 tests; `python3 evals/run_static_evals.py` passed; `npm test` passed; `npm run typecheck` initially failed because `.next/types` had not been generated while `npm run build` was running in parallel, then passed after build completed; `npm run build` passed; `bash scripts/run_quality_gate.sh` passed, including 197 Python tests, static evals, frontend smoke, typecheck, build, and backend checks.
+- Remaining risks from the journal:
+  - Frontend coverage remains deterministic marker/smoke based; no browser screenshot or interaction run was added.
+  - Local frontend fixtures still provide a QQQ available-but-limited example, while backend deterministic pack fixtures currently evaluate QQQ as no-high-signal.
+  - Suppressed candidate count is aggregate metadata and does not expose per-candidate rejection details in the public response.
 
-- `backend/weekly_news.py`
-- `backend/models.py`
-- `backend/overview.py`
-- `backend/main.py`
-- `apps/web/components/WeeklyNewsPanel.tsx`
-- `apps/web/components/AIComprehensiveAnalysisPanel.tsx`
-- `apps/web/lib/assetWeeklyNews.ts`
-- `apps/web/lib/fixtures.ts`
-- `tests/unit/test_weekly_news.py`
-- `tests/unit/test_overview_generation.py`
-- `tests/integration/test_backend_api.py`
-- `tests/frontend/smoke.mjs`
-- `evals/weekly_news_eval_cases.yaml`
-- `evals/run_static_evals.py`
-- `docs/agent-journal/*`
+Completion commits:
 
-Do not change:
-
-- home-page search behavior, comparison routing, comparison suggestions, stock-vs-ETF relationship badges, glossary behavior, source drawer behavior, asset chat behavior, export contracts, provider adapters, deployment scaffolding, or secret handling
-- PRD, technical design spec, proposal, SPEC, EVALS, AGENTS.md, package manifests, production dependencies, source-use allowlist policy, or raw source rights policy during this implementation task
-- supported/unsupported asset coverage rules, Top-500 manifest behavior, live-provider gating, OpenRouter configuration, market/reference provider keys, or browser access to external providers
-- stable canonical fact summaries, source drawer citation bindings, export licensing behavior, same-asset evidence boundaries, or unsupported/out-of-scope blocking rules except where a Weekly News Focus contract field must preserve existing state labels
-- any buy/sell/hold, allocation, price-target, tax, brokerage, predictive, or personalized recommendation language
-
-Acceptance criteria:
-
-- Weekly News Focus responses expose deterministic metadata that lets clients tell the configured maximum item count from the actual selected item count.
-- When fewer than the configured maximum items pass selection, the response and UI clearly render a limited verified set without implying missing items were omitted for space and without padding with weak, duplicate, promotional, rejected, non-allowlisted, wrong-asset, license-disallowed, or metadata/link-only items.
-- Empty Weekly News Focus states remain explicit `no_high_signal` or another appropriate evidence-limited state, include selected item count `0`, suppressed candidate count when available, and do not include generated weekly citations, source documents, source drawer rows, or AI Comprehensive Analysis sections.
-- AI Comprehensive Analysis remains suppressed unless at least two high-signal Weekly News Focus items exist; suppression copy and state markers must cite the evidence threshold without creating uncited factual claims.
-- Available AI Comprehensive Analysis keeps the required section order: What Changed This Week, Market Context, Business/Fund Context, and Risk Context.
-- Weekly News Focus keeps stable facts separate from timely context in backend response metadata and frontend data markers.
-- Weekly News Focus window logic continues to use U.S. Eastern dates, the last completed Monday-Sunday market week, and current week-to-date through yesterday.
-- Source selection continues to prefer official filings, investor-relations releases, ETF issuer announcements, prospectus/fact-sheet changes, and other official/issuer evidence before allowlisted news where deterministic candidates exist.
-- Citation and source metadata for selected Weekly News Focus items remain same-asset, source-backed, freshness-labeled, and source-use-policy aware.
-- Stale, unknown, unavailable, partial, no-high-signal, and insufficient-evidence labels are preserved or rendered explicitly instead of being normalized into unsupported positive claims.
-- Frontend Weekly News Focus UI exposes deterministic markers for configured maximum, selected item count, suppressed candidate count, evidence-limited state, empty-state behavior, and AI analysis suppression/availability.
-- Existing supported asset pages still render Beginner Summary, Top 3 Risks, Key Facts, citation chips, source drawers, freshness labels, glossary, chat, export controls, and separate Weekly News Focus/AI Comprehensive Analysis sections without layout overlap on mobile or desktop.
-- Existing v0.4 frontend workflow remains intact: home is single stock/ETF search first; comparison stays a separate connected workflow; glossary stays contextual; source/glossary/chat mobile bottom-sheet behavior remains unchanged; stock-vs-ETF comparison badges remain unchanged.
-- Normal CI remains deterministic, with no live news, market-data, provider, or LLM calls.
-
-Required commands:
-
-```bash
-git status --short
-python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_overview_generation.py tests/unit/test_safety_guardrails.py -q
-python3 -m pytest tests/integration/test_backend_api.py -q
-python3 evals/run_static_evals.py
-npm test
-npm run typecheck
-npm run build
-bash scripts/run_quality_gate.sh
-```
-
-Iteration budget:
-
-Max 3 attempts.
-
-## Completed
+- `6a37299 feat(T-068): tighten Weekly News Focus evidence-limited states`
+- `3b73c80 chore(T-068): merge tighten Weekly News Focus evidence-limited states`
 
 ### T-067: Add stock-vs-ETF comparison relationship badges
 
