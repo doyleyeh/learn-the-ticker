@@ -1,0 +1,4 @@
+interface:
+  display_name: "Learn the Ticker Automation"
+  short_description: "Run the repo status review and WSL agent loop safely."
+  default_prompt: "Use $learn-the-ticker-automation-agent-loop to inspect repo status, prepare TASKS.md only if needed, and run the WSL task cycle with the right model."

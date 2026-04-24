@@ -1,50 +1,40 @@
 ## Current task
 
+### No current task prepared — backlog is empty
+
+No current task is prepared in this cycle, and backlog is empty.
+
+## Completed
+
 ### T-054: Align unsupported and unavailable source-list empty states with backend support-state contracts
 
 Goal:
-Align source-list rendering for unsupported, unavailable, and unknown asset support states so source-list and source-empty states match backend support-state contracts while preserving blocked-state safety and educational framing.
+Align unsupported and unavailable source-list rendering and empty states with backend support-state contracts so blocked and non-blocked source routes behave deterministically and safely.
 
 Task-scope paragraph:
-This cycle is limited to frontend source-list rendering paths for asset support-state visibility. Update source-list state handling and any narrow source-list helpers used by those views so unsupported, unavailable, out-of-scope, unknown, partial, stale, and unknown/insufficient evidence states map consistently to backend-aligned copy and UI behavior. Keep the task within `apps/web/app/assets/[ticker]/sources/page.tsx`, `apps/web/components/SourceDrawer.tsx`, and focused smoke checks in `tests/frontend/smoke.mjs`; do not introduce backend, provider, ingestion, chat, or comparison-contract changes.
+Updated the source-list route and shared source-list helpers to map backend-aligned support-state classes onto source-list and source-empty UI behavior for unsupported, out-of-scope, unknown, unavailable, stale, partial, eligible-not-cached, and insufficient-evidence cases while preserving existing supported-asset metadata behavior and non-advice educational framing.
 
-Allowed files:
+Completed details:
 
-- `apps/web/app/assets/[ticker]/sources/page.tsx`
-- `apps/web/components/SourceDrawer.tsx`
-- `tests/frontend/smoke.mjs`
+- Branch commit `6436893 feat(T-054): align unsupported and unavailable source-list empty states with backend support-state contracts` added/updated:
+  - `apps/web/app/assets/[ticker]/sources/page.tsx` with deterministic support-state handling for source-list and source-empty behavior.
+  - `apps/web/components/SourceDrawer.tsx` to export a shared support-state mapping helper.
+  - `tests/frontend/smoke.mjs` with source-list presence and state-marker coverage.
+- Local commit/merge evidence `18a8dc1 chore(T-054): merge align unsupported and unavailable source-list empty states with backend support-state contracts` includes the completed branch merge and a quality-gate pass note.
+- `docs/agent-journal/20260423T224910Z.md` records:
+  - `npm test` pass
+  - `npm run typecheck` pass
+  - `npm run build` pass
+  - `python3 evals/run_static_evals.py` pass
+  - `bash scripts/run_quality_gate.sh` pass
+- Remaining risks:
+  - Source-list supported-state rendering remains fixture-only.
+  - Support-state derivation uses local search contracts and must be updated when those contracts change.
 
-Do not change:
+Completion commits:
 
-- source-use policy, source rankings, or provider allowlist
-- backend APIs or source ingestion behavior
-- safety/advice-boundary logic and wording
-- citation model or source storage formats
-- live data provider/runtime settings
-
-Acceptance criteria:
-
-- Unsupported, out-of-scope, unknown, unavailable, stale, partial, and insufficient-evidence support states render deterministic, non-factual empty-state behavior for the source-list page.
-- Supported assets preserve existing source-list rendering and citation/metadata visibility.
-- No generated source claims or advice-like copy appears on blocked asset/source-list states.
-- Source-list behavior remains deterministic when source data is missing and does not add any new live external dependency.
-- Empty-state labels and copy stay consistent with existing product guardrails for unknown/stale/unavailable handling.
-- Required guardrails (no advice, no unsupported claims, no live calls in normal CI) remain unchanged.
-- Required commands from this cycle pass.
-
-Required commands:
-
-- `npm test`
-- `npm run typecheck`
-- `npm run build`
-- `python3 evals/run_static_evals.py`
-- `bash scripts/run_quality_gate.sh`
-
-Iteration budget:
-
-- Max 2 attempts
-
-## Completed
+- `6436893 feat(T-054): align unsupported and unavailable source-list empty states with backend support-state contracts`
+- `18a8dc1 chore(T-054): merge align unsupported and unavailable source-list empty states with backend support-state contracts`
 
 ### T-053: Replace compare-page fixture-only routing with backend-aligned deterministic comparison adapters
 
@@ -1510,4 +1500,4 @@ Completion commits:
 
 ## Backlog
 
-### T-054: Align unsupported and unavailable source-list empty states with backend support-state contracts
+No prepared backlog tasks.

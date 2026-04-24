@@ -4,8 +4,10 @@
 # environment used by the solo agent loop and provides focused preflight checks.
 
 LTT_CONDA_ENV="${LTT_CONDA_ENV:-learn-the-ticker}"
-LTT_CODEX_MODEL="${LTT_CODEX_MODEL:-gpt-5.3-codex-spark}"
-LTT_CODEX_REASONING_EFFORT="${LTT_CODEX_REASONING_EFFORT:-high}"
+LTT_DEFAULT_CODEX_MODEL="${LTT_DEFAULT_CODEX_MODEL:-gpt-5.4}"
+LTT_DEFAULT_CODEX_REASONING_EFFORT="${LTT_DEFAULT_CODEX_REASONING_EFFORT:-high}"
+LTT_CODEX_MODEL="${LTT_CODEX_MODEL:-$LTT_DEFAULT_CODEX_MODEL}"
+LTT_CODEX_REASONING_EFFORT="${LTT_CODEX_REASONING_EFFORT:-$LTT_DEFAULT_CODEX_REASONING_EFFORT}"
 
 ltt_is_wsl() {
   grep -qiE "(microsoft|wsl)" /proc/version 2>/dev/null
@@ -138,6 +140,19 @@ ltt_codex_exec() {
     -m "$LTT_CODEX_MODEL" \
     -c "reasoning.effort=\"$LTT_CODEX_REASONING_EFFORT\"" \
     "$@"
+}
+
+ltt_set_codex_preferences() {
+  local model="${1:-}"
+  local reasoning_effort="${2:-}"
+
+  if [ -n "$model" ]; then
+    LTT_CODEX_MODEL="$model"
+  fi
+
+  if [ -n "$reasoning_effort" ]; then
+    LTT_CODEX_REASONING_EFFORT="$reasoning_effort"
+  fi
 }
 
 ltt_activate_agent_env

@@ -1,6 +1,8 @@
 param(
   [switch]$PreflightOnly,
-  [switch]$CommitFailures
+  [switch]$CommitFailures,
+  [string]$CodexModel = "gpt-5.4",
+  [string]$CodexReasoningEffort = "high"
 )
 
 $ErrorActionPreference = "Stop"
@@ -9,8 +11,12 @@ if (Get-Variable PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyCo
   $PSNativeCommandUseErrorActionPreference = $false
 }
 
-$CodexModel = if ($env:LTT_CODEX_MODEL) { $env:LTT_CODEX_MODEL } else { "gpt-5.3-codex-spark" }
-$CodexReasoningEffort = if ($env:LTT_CODEX_REASONING_EFFORT) { $env:LTT_CODEX_REASONING_EFFORT } else { "high" }
+if ($env:LTT_CODEX_MODEL -and -not $PSBoundParameters.ContainsKey("CodexModel")) {
+  $CodexModel = $env:LTT_CODEX_MODEL
+}
+if ($env:LTT_CODEX_REASONING_EFFORT -and -not $PSBoundParameters.ContainsKey("CodexReasoningEffort")) {
+  $CodexReasoningEffort = $env:LTT_CODEX_REASONING_EFFORT
+}
 
 function Require-Command {
   param([string]$Name)

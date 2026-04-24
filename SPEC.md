@@ -66,7 +66,7 @@ Near-term implementation priority order:
 3. defer live-provider, persistence, deployment-hardening, and broader ingestion work until deterministic contract parity and quality gates are stable
 
 When choosing the next task, prefer improving PRD/TDS alignment of the current deterministic scaffold over adding new domains or speculative infrastructure.
-The local agent-loop harness should default to `gpt-5.3-codex-spark` with `high` reasoning effort unless a human intentionally overrides those settings.
+The local agent-loop harness should default to `gpt-5.4` with `high` reasoning effort, while allowing explicit per-run overrides such as `gpt-5.3-codex-spark` when the operator requests it.
 
 ## Source And Freshness Rules
 

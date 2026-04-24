@@ -2,18 +2,22 @@
 set -euo pipefail
 
 COMMIT_FAILURES=0
+CODEX_MODEL_OVERRIDE=""
+CODEX_REASONING_EFFORT_OVERRIDE=""
 
 usage() {
   cat <<'EOF'
-Usage: bash scripts/agent_loop.sh [--commit-failures]
+Usage: bash scripts/agent_loop.sh [--commit-failures] [--model <model>] [--reasoning-effort <effort>]
 
 Runs the current TASKS.md task through Codex, the quality gate, and retry
 attempts up to the iteration budget. Passing runs are committed. Failing runs
 are left uncommitted by default for review.
 
 Options:
-  --commit-failures  Commit the final failing attempt as a WIP audit commit.
-  -h, --help         Show this help.
+  --commit-failures              Commit the final failing attempt as a WIP audit commit.
+  --model <model>               Override the Codex model for this run. Default: gpt-5.4.
+  --reasoning-effort <effort>   Override the Codex reasoning effort for this run. Default: high.
+  -h, --help                    Show this help.
 EOF
 }
 
@@ -58,6 +62,22 @@ while [ "$#" -gt 0 ]; do
     --commit-failures)
       COMMIT_FAILURES=1
       ;;
+    --model)
+      CODEX_MODEL_OVERRIDE="${2:-}"
+      if [ -z "$CODEX_MODEL_OVERRIDE" ]; then
+        echo "--model requires a value."
+        exit 2
+      fi
+      shift
+      ;;
+    --reasoning-effort)
+      CODEX_REASONING_EFFORT_OVERRIDE="${2:-}"
+      if [ -z "$CODEX_REASONING_EFFORT_OVERRIDE" ]; then
+        echo "--reasoning-effort requires a value."
+        exit 2
+      fi
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -76,6 +96,7 @@ cd "$ROOT"
 
 # shellcheck source=scripts/activate_agent_env.sh
 source "$ROOT/scripts/activate_agent_env.sh"
+ltt_set_codex_preferences "$CODEX_MODEL_OVERRIDE" "$CODEX_REASONING_EFFORT_OVERRIDE"
 ltt_require_codex_toolchain
 
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"

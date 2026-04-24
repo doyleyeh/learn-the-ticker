@@ -8,6 +8,8 @@ COMMIT_FAILURES=0
 REPEAT=0
 MAX_CYCLES=""
 NEXT_TASK_PREPARED=0
+CODEX_MODEL_OVERRIDE=""
+CODEX_REASONING_EFFORT_OVERRIDE=""
 
 usage() {
   cat <<'EOF'
@@ -24,6 +26,9 @@ Options:
   --main <branch>       Main branch to merge into. Default: main.
   --no-prepare-next     Stop after local merge; do not update TASKS.md.
   --commit-failures     Pass --commit-failures through to agent_loop.sh.
+  --model <model>       Override the Codex model for this task-cycle run. Default: gpt-5.4.
+  --reasoning-effort <effort>
+                        Override the Codex reasoning effort for this task-cycle run. Default: high.
   --repeat              Continue running prepared next tasks until stopped.
   --max-cycles <n>      Maximum task cycles to run. Implies --repeat when n > 1.
                         Default with --repeat: 3. Default without --repeat: 1.
@@ -47,6 +52,22 @@ while [ "$#" -gt 0 ]; do
       ;;
     --commit-failures)
       COMMIT_FAILURES=1
+      ;;
+    --model)
+      CODEX_MODEL_OVERRIDE="${2:-}"
+      if [ -z "$CODEX_MODEL_OVERRIDE" ]; then
+        echo "--model requires a value."
+        exit 2
+      fi
+      shift
+      ;;
+    --reasoning-effort)
+      CODEX_REASONING_EFFORT_OVERRIDE="${2:-}"
+      if [ -z "$CODEX_REASONING_EFFORT_OVERRIDE" ]; then
+        echo "--reasoning-effort requires a value."
+        exit 2
+      fi
+      shift
       ;;
     --repeat)
       REPEAT=1
@@ -433,6 +454,12 @@ run_one_cycle() {
   if [ "$COMMIT_FAILURES" -eq 1 ]; then
     agent_args+=(--commit-failures)
   fi
+  if [ -n "$CODEX_MODEL_OVERRIDE" ]; then
+    agent_args+=(--model "$CODEX_MODEL_OVERRIDE")
+  fi
+  if [ -n "$CODEX_REASONING_EFFORT_OVERRIDE" ]; then
+    agent_args+=(--reasoning-effort "$CODEX_REASONING_EFFORT_OVERRIDE")
+  fi
 
   echo "== Running agent loop =="
   bash scripts/agent_loop.sh "${agent_args[@]}"
@@ -475,6 +502,7 @@ cd "$ROOT"
 
 # shellcheck source=scripts/activate_agent_env.sh
 source "$ROOT/scripts/activate_agent_env.sh"
+ltt_set_codex_preferences "$CODEX_MODEL_OVERRIDE" "$CODEX_REASONING_EFFORT_OVERRIDE"
 ltt_require_codex_toolchain
 
 ensure_repeat_backlog_capacity "$MAX_CYCLES"
