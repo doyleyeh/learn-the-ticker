@@ -1,47 +1,44 @@
 ## Current task
 
-### T-064: Align home search with frontend workflow v0.4
+### T-065: Add mobile source drawer bottom-sheet behavior
 
 Goal:
-Align the home page and search/autocomplete experience with Frontend Design and Workflow v0.4 so the first screen has one primary action: search for a single supported stock or ETF.
+Align source inspection with Frontend Design and Workflow v0.4 so source drawers remain usable on desktop and open as mobile bottom-sheet-style panels for citation/source access.
 
 Task-scope paragraph:
-Update the fixture-backed home/search frontend path to use the v0.4 headline, supporting copy, placeholder, example chips, educational secondary cards, support-state chips, exact unsupported and no-result copy, and natural `A vs B` comparison redirect behavior. Keep comparison as a separate connected workflow and keep glossary out of the home-page primary workflow.
+Update the shared frontend source-drawer presentation path so asset-page and source-list source details keep the existing deterministic source metadata, citation context, freshness labels, source-use policy labels, allowed excerpt behavior, trust-metric readiness markers, and blocked-state suppression while adding clear mobile bottom-sheet behavior. Keep the task focused on source drawer responsive behavior and smoke coverage; do not change backend source contracts, source fixtures, citation binding, export behavior, search, comparison, glossary, chat, Weekly News Focus, or generated content.
 
 Allowed files:
 
-- `apps/web/app/page.tsx`
-- `apps/web/components/SearchBox.tsx`
-- `apps/web/lib/search.ts`
+- `apps/web/components/SourceDrawer.tsx`
+- `apps/web/components/CitationChip.tsx`
+- `apps/web/app/assets/[ticker]/page.tsx`
+- `apps/web/app/assets/[ticker]/sources/page.tsx`
 - `apps/web/styles/globals.css`
 - `tests/frontend/smoke.mjs`
-- focused safety or smoke tests only when needed
 - `docs/agent-journal/*`
 
 Do not change:
 
-- backend routes, models, retrieval, comparison generation, chat, or export contracts
-- asset coverage, source fixtures, provider adapters, live-call gating, or secret handling
+- backend routes, models, source-drawer adapters, retrieval, comparison generation, chat, export contracts, or source-use policy
+- asset coverage, source fixtures, provider adapters, live-call gating, search behavior, or secret handling
 - PRD, technical design spec, proposal, SPEC, EVALS, or AGENTS.md during the implementation task
-- generated comparison content beyond the search-result CTA and route handoff
-- unsupported/out-of-scope blocking rules
+- home-page workflow, comparison workflow, glossary behavior, asset chat behavior, Weekly News Focus, or AI Comprehensive Analysis content
+- citation IDs, same-asset citation boundaries, allowed excerpts, freshness labels, unknown/stale/unavailable/partial handling, or unsupported/out-of-scope blocking rules
 
 Acceptance criteria:
 
-- Home page headline is `Understand a stock or ETF in plain English`.
-- Home page supporting copy is `Search a U.S. stock or non-leveraged U.S. equity ETF to see beginner-friendly explanations, source citations, top risks, recent context, and grounded follow-up answers.`
-- Primary search placeholder is `Search a ticker or name, like VOO, QQQ, or Apple`.
-- Example chips include `VOO`, `QQQ`, `AAPL`, `NVDA`, and `SOXX`, and are clearly examples only, not recommendations.
-- Home page has one primary action: search for a single supported stock or ETF.
-- Home page does not show a comparison builder or Glossary as a primary workflow; a small comparison educational card may link to `/compare`.
-- Clear comparison patterns such as `VOO vs QQQ`, `AAPL vs MSFT`, and `NVDA vs SOXX` show a special autocomplete result that routes to `/compare?left=...&right=...`.
-- Search/autocomplete supports partial ticker/name/provider matches and grouped stock/ETF results where supported by the existing frontend data.
-- Search rows show ticker, name, asset type, exchange or issuer, and one of the v0.4 support-state chips.
-- Exact recognized unsupported tickers show the v0.4 recognized-but-unsupported copy and do not link to generated asset pages, chat, comparisons, Weekly News Focus, or AI Comprehensive Analysis.
-- No-match searches show `No supported stock or ETF found for "{query}".` and remain distinct from recognized-but-unsupported states.
-- Supported results still navigate to `/assets/[ticker]`.
-- Partial, stale, pending, unavailable, unsupported, out-of-scope, and unknown states are labeled instead of silently hidden.
-- The frontend continues to call only the FastAPI/backend-relative paths and does not add browser-side provider, market-data, ingestion, OpenRouter, or LLM calls.
+- Desktop source drawers continue to render as the existing source-inspection surface and preserve current open/close keyboard behavior.
+- Mobile source drawers use a bottom-sheet-style presentation through responsive CSS or small component state, with a constrained height, internal scrolling, visible source title context, and no overlap that makes surrounding content unusable.
+- Mobile users can close or collapse a source drawer without navigating away, and returning to the page preserves the source context.
+- Citation chips still point to the matching same-page source drawer by source document ID and remain keyboard-accessible.
+- Source drawers retain source title, type, publisher, URL, published/as-of date, retrieved date, freshness state, source-use policy where available, official-source badge, related claim context, and allowed excerpt behavior.
+- Unsupported, out-of-scope, unknown, eligible-not-cached, stale, partial, unavailable, and insufficient-evidence drawer states keep their existing metadata/excerpt suppression behavior and explicit state labels.
+- Same-asset citation boundaries and source-use rights are not weakened; restricted or unavailable source text remains suppressed.
+- Trust-metric readiness markers for source drawer usage, citation coverage, freshness accuracy, persistence, external analytics, and live external calls remain deterministic and do not add analytics emission, browser storage, cookies, or network calls.
+- Asset pages and `/assets/[ticker]/sources` both use the updated source drawer behavior.
+- Home page remains single-stock/ETF search first; comparison stays a separate connected workflow; glossary remains contextual.
+- The implementation does not add production dependencies or live external calls.
 
 Required commands:
 
@@ -50,7 +47,6 @@ git status --short
 npm test
 npm run typecheck
 npm run build
-python3 -m pytest tests/unit/test_safety_guardrails.py -q
 bash scripts/run_quality_gate.sh
 ```
 
@@ -59,6 +55,28 @@ Iteration budget:
 Max 3 attempts.
 
 ## Completed
+
+### T-064: Align home search with frontend workflow v0.4
+
+Goal:
+Align the home page and search/autocomplete experience with Frontend Design and Workflow v0.4 so the first screen has one primary action: search for a single supported stock or ETF.
+
+Completed details:
+
+- Implementation commit `5e5464a feat(T-064): align home search with frontend workflow v0.4` updated `apps/web/app/page.tsx` with the v0.4 headline `Understand a stock or ETF in plain English`, the required supporting copy, and secondary workflow cards that keep single-asset search primary while linking comparison separately.
+- `apps/web/components/SearchBox.tsx` now uses the required placeholder `Search a ticker or name, like VOO, QQQ, or Apple`, labels example chips `VOO`, `QQQ`, `AAPL`, `NVDA`, and `SOXX` as examples only and not recommendations, shows v0.4 support-state chips, and keeps supported results routed to `/assets/[ticker]`.
+- `apps/web/lib/search.ts` added deterministic clear `A vs B` / `A versus B` ticker-pattern detection that returns a `comparison_route` search result for `/compare?left=...&right=...` without turning the home page into a comparison builder.
+- Recognized unsupported copy now uses `We found this ticker, but it is not supported in v1.`, the supported-scope reminder names U.S.-listed common stocks and non-leveraged U.S.-listed equity ETFs, and unknown/no-match searches show `No supported stock or ETF found for "{query}".` plus a no-invented-facts note.
+- `apps/web/styles/globals.css` added styling for the updated home workflow cards, support-state legend, and example chip row; `tests/frontend/smoke.mjs` added smoke coverage for the v0.4 home copy, primary-action marker, separate comparison markers, comparison-route search result, support-state labels, unsupported copy, and no-result copy.
+- `docs/agent-journal/20260424T191708Z.md` records these checks: `npm test` failed once on a smoke regex for the literal `/compare?left=` route marker, then passed; `npm run typecheck` failed once because a temporary `comparison` search asset type widened the compare contract type, then passed after keeping comparison as a search state/route only; `npm run build` passed; `python3 -m pytest tests/unit/test_safety_guardrails.py -q` passed with 11 tests; `bash scripts/run_quality_gate.sh` passed, including 197 Python tests, static evals, frontend smoke, typecheck, build, and backend checks.
+- Remaining risks from the journal:
+  - The comparison-query detector is intentionally simple and deterministic; it handles clear ticker-style `A vs B` and `A versus B` patterns, while broader natural-language comparison phrasing remains out of scope for this task.
+  - Search remains fixture-backed and local; partial, stale, and unavailable states are exposed as labels, but this task did not add new data fixtures for those states.
+
+Completion commits:
+
+- `5e5464a feat(T-064): align home search with frontend workflow v0.4`
+- `40fc840 chore(T-064): merge align home search with frontend workflow v0.4`
 
 ### T-063: Surface backend trust-metric validation readiness in frontend control surfaces
 
@@ -1753,8 +1771,6 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-065: Add mobile source drawer bottom-sheet behavior
 
 ### T-066: Align contextual glossary popovers and mobile sheets with v0.4
 
