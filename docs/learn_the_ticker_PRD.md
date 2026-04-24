@@ -1,7 +1,7 @@
 # PRD: Learn the Ticker - Citation-First Beginner U.S. Stock & ETF Research Assistant
 
-**Document version:** v0.2 refined
-**Date:** 2026-04-22
+**Document version:** v0.4 frontend/workflow update
+**Date:** 2026-04-24
 **Product stage:** Side-project MVP / v1 planning  
 **Primary audience:** Product, design, engineering, data/LLM, and compliance reviewers
 **Source basis:** Original proposal, PRD v0.1, technical design spec v0.1, and resolved product decisions from current review.
@@ -13,7 +13,7 @@
 
 Learn the Ticker is a web-based educational research assistant that helps beginner investors understand U.S.-listed common stocks and non-leveraged U.S.-listed equity index, sector, and thematic ETFs in plain English.
 
-A user can search a ticker such as `VOO`, `QQQ`, or `AAPL` and receive a source-grounded explanation of:
+A user can search one ticker or asset name such as `VOO`, `QQQ`, `Apple`, or `AAPL` and receive a source-grounded explanation of:
 
 - what the asset is
 - what the company does or what the ETF holds
@@ -32,7 +32,20 @@ The product should not promise:
 
 > Tell users exactly what to buy, sell, hold, or how much to invest.
 
-The strongest version of this product is not an AI stock picker. It is a source-first financial learning product that combines beginner explanations, visible citations, comparison-first learning, Weekly News Focus context separation, and limited asset-specific grounded chat.
+The strongest version of this product is not an AI stock picker. It is a calm, source-first financial learning product that combines beginner explanations, visible citations, comparison-capable learning, Weekly News Focus context separation, and limited asset-specific grounded chat.
+
+The primary v1 journey is:
+
+```text
+Search one stock or ETF
+-> Understand the asset in plain English
+-> Inspect citations and freshness
+-> Compare with another asset when useful
+-> Ask grounded follow-up questions
+-> Export learning output
+```
+
+The home page has one primary action: search for a single supported stock or ETF. Comparison is a separate but connected workflow, not the home page's main input pattern.
 
 ---
 
@@ -48,10 +61,11 @@ This version resolves the previous open questions and makes the MVP direction ex
 | Weekly News Focus and analysis | Use a fixed Monday-Sunday market-week model plus current week-to-date through yesterday, based on U.S. Eastern dates. Use official filings, company investor relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes first. Use tiered allowlisted sources only when source-use rights allow the intended display, storage, summary, and export behavior. AI Comprehensive Analysis starts with What Changed This Week and then Market Context, Business/Fund Context, and Risk Context. |
 | Grounded chat timing     | Include limited asset-specific grounded chat in MVP as a beta feature. Do not ship a general finance chatbot.                                                                                                                                                                                                                                                                                                 |
 | Citation strictness      | Require citations for important factual claims, not every sentence. Generic educational explanations do not require citations unless they include asset-specific facts.                                                                                                                                                                                                                                       |
-| Glossary depth           | Use a hybrid glossary: curated static definitions for core terms, plus optional AI-generated asset-specific context grounded in the selected asset's data.                                                                                                                                                                                                                                                    |
+| Frontend workflow        | The home page is single-asset search first. Comparison lives on `/compare` and is reachable from global navigation, asset pages, suggested comparisons, chat compare redirects, and natural `A vs B` search patterns. Glossary is contextual help in reading flows, not a primary home-page workflow for MVP. |
+| Glossary depth           | Use a hybrid glossary: curated static definitions for core terms, plus optional asset-specific context grounded in the selected asset's data. In MVP, glossary appears primarily through contextual term cards on asset pages, comparison pages, and chat answers. |
 | User accounts            | Keep v1 accountless. Store anonymous chat sessions with random IDs for grounded follow-ups and user-requested export. Browser local storage keeps only conversation metadata. Server-side chat TTL is 7 days from last activity, with user-delete support.                                                                                                                                  |
 | Compliance stance        | Add persistent educational disclaimers and inline redirects for advice-like questions. Avoid buy/sell/hold, allocation, price-target, tax, and personalized recommendation language.                                                                                                                                                                                                                          |
-| Mobile priority          | Build responsive web from v1. Mobile should prioritize the Beginner section, chat, glossary, and source access. Desktop should enhance the Deep-Dive section, deep research, and comparisons.                                                                                                                                                                                                                 |
+| Mobile priority          | Build responsive web from v1. Mobile should prioritize Beginner Summary, Top 3 Risks, Key Facts, Weekly News Focus, AI Comprehensive Analysis, contextual glossary cards, chat, and source access. Source, glossary, and chat surfaces open as bottom sheets or full-screen panels where appropriate. |
 | Deployment target        | Use a free-tier-oriented personal side-project deployment path: Vercel Hobby for the frontend, Google Cloud Run in `us-central1` for the API with request-based billing and `min-instances=0`, Cloud Run Jobs for manual ingestion first, Neon Free Postgres, private Google Cloud Storage, no production queue service beyond Postgres `ingestion_jobs`, and Google Cloud Logging/Error Reporting. |
 | LLM runtime provider     | Keep deterministic mocks as the default for local tests and CI. First deployment may enable live OpenRouter behind `LLM_LIVE_GENERATION_ENABLED=true` with an explicit free-model chain and automatic DeepSeek V3.2 paid fallback; the browser must never call OpenRouter directly or receive the key. |
 | Local provider secrets  | For local live-provider runs, `OPENROUTER_API_KEY`, `FMP_API_KEY`, `ALPHA_VANTAGE_API_KEY`, `FINNHUB_API_KEY`, `TIINGO_API_KEY`, and `EODHD_API_KEY` are expected to exist in the developer's WSL Bash environment. Key values must not be committed, copied into docs, exposed in frontend env vars, returned from APIs, or printed in logs. |
@@ -183,9 +197,9 @@ Important factual claims should be backed by visible citations. Citations should
 
 The product must clearly distinguish "what this asset is" from "what happened this week." Weekly News Focus and AI Comprehensive Analysis should add cited context, not redefine the asset.
 
-#### G4. Make comparison a flagship workflow
+#### G4. Make comparison a flagship connected workflow
 
-Users should be able to compare two assets and understand the real difference in simple language.
+Users should be able to compare two assets on a dedicated comparison page and understand the real difference in simple language. Comparison should be easy to enter from search, asset pages, chat redirects, and global navigation, but it should not replace the home page's single-asset search.
 
 #### G5. Provide limited asset-specific grounded chat in MVP
 
@@ -193,7 +207,7 @@ Users should be able to ask questions about the selected asset. Chat answers mus
 
 #### G6. Teach financial vocabulary in context
 
-Users should be able to click terms such as "expense ratio," "AUM," "P/E," "operating margin," "concentration," or "tracking error" and get short beginner explanations.
+Users should be able to hover, click, tap, or keyboard-focus terms such as "expense ratio," "AUM," "P/E," "operating margin," "concentration," or "tracking error" and get short beginner explanations in context. Glossary is not a major home-page workflow for MVP.
 
 #### G7. Avoid investment advice
 
@@ -330,7 +344,7 @@ Any requirement needed by the MVP acceptance checklist is `P0`. Acceptance crite
 
 1. **Source first.** Important facts come from official or structured sources before AI writes explanations.
 2. **Plain English first.** Every asset page begins with a beginner summary.
-3. **Comparison is core.** Beginners learn faster by comparing similar assets.
+3. **Comparison is connected.** Beginners learn faster by comparing assets when useful, but the home page stays focused on one supported stock or ETF at a time.
 4. **Stable facts, Weekly News Focus, and AI Comprehensive Analysis stay separate.** Users should not confuse asset basics with short-term news or AI synthesis.
 5. **Citations are product UX.** Source visibility is part of the reading flow, not an appendix.
 6. **Grounded chat only.** Chat answers should come from a bounded asset-specific knowledge pack.
@@ -343,38 +357,38 @@ Any requirement needed by the MVP acceptance checklist is `P0`. Acceptance crite
 
 ## 10. Core user journeys
 
-### 10.1 Search and understand an ETF
+### 10.1 Search one asset and understand it
 
-1. User searches `VOO`.
-2. System resolves the ticker to a supported non-leveraged U.S.-listed equity ETF.
-3. User lands on the VOO asset page with the Beginner section visible first.
-4. User sees what VOO is, what index it tracks, expense ratio, AUM, top holdings, top risks, whether it is broad or narrow, Weekly News Focus, AI Comprehensive Analysis, simpler alternatives, and key sources.
-5. User clicks a citation chip to open the source drawer.
-6. User clicks "expense ratio" and sees a glossary card.
-7. User asks the chat: "Why do beginners use this?"
-8. Chat answers using only the VOO asset knowledge pack.
-9. User downloads the page summary and source list.
+1. User lands on the home page.
+2. The home page shows one primary action: search for a single supported stock or ETF.
+3. User searches `VOO`, `Apple`, or another ticker/name.
+4. System resolves exact and partial ticker/name matches and shows stock/ETF type plus support status before routing.
+5. User selects a supported result and lands on `/assets/[ticker]` with the Beginner Summary visible first.
+6. User sees what the asset is, why people may look at it, the main thing to be careful about, exactly three top risks, key facts, freshness, Weekly News Focus, AI Comprehensive Analysis when available, and key sources.
+7. User clicks a citation chip to open the source drawer, or taps it on mobile to open a bottom sheet.
+8. User clicks or taps a contextual glossary term such as "expense ratio" or "operating margin" and sees a beginner-friendly card.
+9. User asks the asset chat a grounded follow-up question.
+10. User downloads the page summary and source list as Markdown or JSON.
 
-Success outcome: the user can explain what VOO is, why people use it, and what its main limitations are.
+Success outcome: the user can explain what the asset is, why people may study it, what its main limitations are, and where the important claims came from.
 
 ### 10.2 Compare two ETFs
 
-1. User searches `QQQ vs VOO`.
-2. System resolves both assets.
-3. User lands on the comparison page.
-4. User sees benchmark, provider, expense ratio, AUM, holdings count, top holdings, sector concentration, overlap, and broad/narrow role.
-5. User sees a "Bottom line for beginners" section.
-6. User opens the source drawer for supporting citations.
-7. User downloads the comparison as Markdown or JSON.
+1. User opens Compare from global navigation, an asset-page "Compare this asset" CTA, a suggested comparison, chat compare redirect, or a natural search pattern such as `QQQ vs VOO`.
+2. System resolves both assets and routes to `/compare?left=QQQ&right=VOO`.
+3. User sees a completed comparison page with "Bottom line for beginners" first.
+4. User sees side-by-side snapshots, benchmark, provider, expense ratio, AUM, holdings count, top holdings, sector concentration, overlap when available, and broad/narrow role.
+5. User opens the source drawer for supporting citations.
+6. User downloads the comparison and source list as Markdown or JSON.
 
 Success outcome: the user understands that two popular ETFs may serve very different roles even if both hold large U.S. companies.
 
 ### 10.3 Understand a stock
 
-1. User searches `AAPL`.
+1. User searches `AAPL` or `Apple`.
 2. System resolves ticker to company identity and CIK.
 3. User lands on the stock asset page.
-4. User sees what the company sells, how it makes money, business segments, financial quality trends, top 3 risks, valuation context, Weekly News Focus, AI Comprehensive Analysis, and key sources.
+4. User sees what the company sells, how it makes money, financial quality trends, top 3 risks, valuation context, Weekly News Focus, AI Comprehensive Analysis when evidence is sufficient, and key sources.
 5. User asks: "What is the biggest risk for a beginner?"
 6. Chat responds with a direct answer, why it matters, citations, and uncertainty or missing context.
 
@@ -395,9 +409,9 @@ Success outcome: the product avoids explaining complex products in a way that co
 
 ### 10.5 Learn a finance concept in context
 
-1. User sees "operating margin" on a stock page.
-2. User clicks the term.
-3. Glossary card opens.
+1. User sees "operating margin" on a stock page, comparison page, or chat answer.
+2. User hovers, clicks, taps, or keyboard-focuses the term.
+3. A glossary popover opens on desktop, or a glossary bottom sheet opens on mobile.
 4. User sees a simple definition, why it matters, common beginner mistake, and optional deeper explanation.
 
 Success outcome: the user learns the concept at the moment they need it.
@@ -420,7 +434,29 @@ Success outcome: the user gets useful education without the product crossing int
 
 ### 11.1 Search and entity resolution
 
-Users can search by ticker or asset name.
+The home page search box is single-asset-first. It searches for one stock or ETF by exact ticker, partial ticker, asset name, and issuer/provider name where useful.
+
+Primary home copy:
+
+```text
+Understand a stock or ETF in plain English
+```
+
+Supporting copy:
+
+```text
+Search a U.S. stock or non-leveraged U.S. equity ETF to see beginner-friendly explanations, source citations, top risks, recent context, and grounded follow-up answers.
+```
+
+Primary search placeholder:
+
+```text
+Search a ticker or name, like VOO, QQQ, or Apple
+```
+
+Example chips may include `VOO`, `QQQ`, `AAPL`, `NVDA`, and `SOXX`, but they are examples only and must not be presented as recommendations.
+
+The home page should not show two comparison inputs as the primary experience. If a user types a clear comparison pattern such as `VOO vs QQQ`, `AAPL vs MSFT`, or `NVDA vs SOXX`, autocomplete should show a special result such as "Compare VOO and QQQ" and route to `/compare?left=VOO&right=QQQ` when selected.
 
 | ID   | Requirement                                                                                                                       | Priority |
 | ---- | --------------------------------------------------------------------------------------------------------------------------------- | -------- |
@@ -431,6 +467,10 @@ Users can search by ticker or asset name.
 | SR-5 | System handles ambiguous names with a disambiguation state.                                                                       | P1       |
 | SR-6 | System supports the top 500 U.S.-listed common stocks first and non-leveraged U.S.-listed equity ETFs through search and ingestion.    | P0       |
 | SR-7 | System pre-caches a high-demand universe and labels out-of-cache supported assets as pending ingestion instead of pretending content is ready.                                                       | P0       |
+| SR-8 | Autocomplete supports partial ticker, partial name, and issuer/provider matching where useful.                                    | P0       |
+| SR-9 | Search result rows show ticker, name, asset type, exchange or issuer/provider, and support status.                               | P0       |
+| SR-10 | Search status chips use a consistent set: `Supported`, `Pending ingestion`, `Partial data`, `Stale data`, `Unsupported`, `Out of scope`, `Unavailable`, and `Unknown`. | P0       |
+| SR-11 | Natural comparison patterns route users to the comparison workflow without turning the home page into a comparison builder.       | P0       |
 
 Acceptance criteria:
 
@@ -438,6 +478,9 @@ Acceptance criteria:
 - Searching `VOO` opens Vanguard S&P 500 ETF's ETF page.
 - Searching an unsupported crypto ticker, option, leveraged ETF, inverse ETF, ETN, fixed income ETF, commodity ETF, active ETF, multi-asset ETF, or international equity shows an unsupported or out-of-scope state.
 - Ambiguous name searches show likely matches instead of guessing silently.
+- Exact recognized-but-unsupported ticker searches show "We found this ticker, but it is not supported in v1" and do not show generated summary, top risks, chat, comparison CTA, Weekly News Focus, or AI Comprehensive Analysis.
+- No-result searches show "No supported stock or ETF found for `{query}`" and do not treat unknown searches as recognized unsupported assets.
+- Supported, partial, stale, and pending-ingestion states route only to the state-appropriate page or job/status experience; unsupported, out-of-scope, unavailable, and unknown states do not generate asset content.
 
 ### 11.2 Supported and unsupported asset handling
 
@@ -447,7 +490,7 @@ Acceptance criteria:
 | UA-2 | Unsupported and out-of-scope assets are blocked from generated pages, chat, and comparison.                    | P0       |
 | UA-3 | Search may show a recognized-but-unsupported or recognized-but-out-of-scope result with a short explanation.   | P0       |
 | UA-4 | Partial pages render verified sections only and label missing sections unavailable, stale, or unknown.         | P0       |
-| UA-5 | Unsupported result pages should not include generated asset summaries, buy/sell commentary, or risk summaries. | P0       |
+| UA-5 | Unsupported result pages should not include generated asset summaries, top risks, chat, comparison CTAs, Weekly News Focus, AI Comprehensive Analysis, or generated risk summaries. | P0       |
 | UA-6 | System logs unsupported and out-of-scope asset searches for future product planning.                           | P2       |
 
 Blocked asset types for v1 include:
@@ -475,25 +518,78 @@ Deterministic classification rules:
 - If a supported asset passes classification but has not been ingested yet, return `pending_ingestion` and create or reuse a queued ingestion job.
 - other complex or unsupported exchange-traded products
 
+Required blocked-state copy:
+
+```text
+We found this ticker, but it is not supported in v1.
+
+Learn the Ticker currently supports U.S.-listed common stocks and non-leveraged U.S.-listed equity ETFs.
+```
+
+For out-of-scope stocks:
+
+```text
+This stock is outside the current v1 coverage universe.
+
+Learn the Ticker currently supports a top-500-first U.S. common stock universe and supported non-leveraged U.S. equity ETFs.
+```
+
+For pending ingestion:
+
+```text
+This asset is supported but still being prepared.
+
+We need to collect and validate sources before generating an educational page.
+```
+
+The pending state may include "Check again" but must not promise a completion time.
+
 ### 11.3 Asset page: shared requirements
 
-Every supported asset page includes two primary content sections: the Beginner section and the Deep-Dive section.
+Every supported asset page is a learning page, not a data dump. The first screen should answer: what is this, why do people look at it, what should a beginner be careful about, and where did this information come from?
+
+Recommended public routes:
+
+```text
+/assets/[ticker]
+/assets/[ticker]/sources
+```
+
+Recommended high-level section order:
+
+```text
+1. Asset Header
+2. Beginner Summary
+3. Top 3 Risks
+4. Key Facts
+5. What it does / What it holds
+6. Weekly News Focus
+7. AI Comprehensive Analysis
+8. Deep Dive
+9. Ask about this asset
+10. Sources
+11. Educational disclaimer
+```
 
 Asset pages must support partial evidence states. If free-first sources cannot verify a section, the page should render verified sections only, label the missing section as unavailable, stale, unknown, or partial, and suppress generated claims that lack source support.
 
 | ID    | Requirement                                                                                      | Priority |
 | ----- | ------------------------------------------------------------------------------------------------ | -------- |
-| AP-1  | Asset page places the Beginner section first.                                                     | P0       |
-| AP-2  | Asset page includes canonical name, ticker, asset type, exchange, and last updated timestamp.    | P0       |
-| AP-3  | Asset page starts with a plain-English beginner summary.                                         | P0       |
+| AP-1  | Asset page places Beginner Summary, Top 3 Risks, and Key Facts before deep data.                  | P0       |
+| AP-2  | Asset header includes ticker, canonical name, asset type, exchange, ETF issuer/provider or stock sector/industry when available, overall status, and page last updated. | P0       |
+| AP-3  | Asset page starts with `BeginnerSummaryCard` using three short cards: what it is, why people look at it, and the main thing to be careful about. | P0       |
 | AP-4  | Asset page includes exactly three top risks before expandable risk detail.                       | P0       |
 | AP-5  | Asset page includes Weekly News Focus and AI Comprehensive Analysis separate from asset basics. | P0       |
 | AP-6  | Asset page includes source citations for important factual claims.                               | P0       |
-| AP-7  | Asset page includes a source drawer with source title, type, date, retrieved timestamp, and URL. | P0       |
-| AP-8  | Asset page includes glossary cards for important beginner terms.                                 | P0       |
+| AP-7  | Asset page includes a source drawer or mobile bottom sheet with source title, type, policy, freshness, dates, related claim, allowed excerpt, and URL. | P0       |
+| AP-8  | Asset page includes contextual glossary terms for important beginner terms.                      | P0       |
 | AP-9  | Asset page includes a Deep-Dive section for more detailed metrics and source context.             | P0       |
 | AP-10 | Asset page allows users to export/download page content and source list.                         | P0       |
 | AP-11 | Asset page includes a persistent educational disclaimer at the bottom.                           | P0       |
+| AP-12 | Header actions include Compare this asset, Export, and View sources.                             | P0       |
+| AP-13 | Desktop may use a right helper rail for Ask about this asset, Compare this asset, Freshness summary, and Key sources. | P1       |
+| AP-14 | Mobile uses sticky actions for Ask, Compare, and Sources, with source, chat, and glossary surfaces as bottom sheets or full-screen panels. | P0       |
+| AP-15 | Freshness near the top stays compact and includes page last updated, facts as of, Weekly News Focus checked, holdings as of for ETFs, and delayed/unavailable quote/reference copy when relevant. | P0       |
 
 Acceptance criteria:
 
@@ -502,10 +598,12 @@ Acceptance criteria:
 - Weekly News Focus and AI Comprehensive Analysis are clearly labeled as timely context, separate from asset basics.
 - Source drawer exposes where claims came from.
 - Missing, stale, unavailable, or mixed evidence is displayed honestly.
+- Quote/reference data never implies real-time coverage unless the backend can verify it.
+- Partial pages show verified sections only and label missing sections as unavailable, stale, insufficient evidence, or could not verify from allowed sources.
 
 ### 11.4 Stock page
 
-The stock page explains what a company does, how it makes money, its financial quality, risks, valuation context, Weekly News Focus, AI Comprehensive Analysis, and educational suitability.
+The stock page explains what a company does, how it makes money, its financial quality, risks, valuation context, Weekly News Focus, and AI Comprehensive Analysis. It should not turn valuation or risk context into advice.
 
 | ID    | Requirement                                                                                                                              | Priority |
 | ----- | ---------------------------------------------------------------------------------------------------------------------------------------- | -------- |
@@ -521,18 +619,21 @@ The stock page explains what a company does, how it makes money, its financial q
 | ST-10 | Show valuation context such as P/E, forward P/E when sourced, price/sales, price/free cash flow, peer context, and own-history context.  | P1       |
 | ST-11 | Provide a suitability summary using educational language, not buy/sell language.                                                         | P0       |
 | ST-12 | Show Weekly News Focus items such as earnings, guidance, product announcements, M&A, leadership changes, legal events, or regulatory events. | P0       |
+| ST-13 | Use `BusinessOverview` with the beginner-facing label "How this company makes money."                                                       | P0       |
+| ST-14 | Use `FinancialTrendsTable` for multi-year trends rather than one-quarter-only metrics.                                                     | P0       |
+| ST-15 | Use `ValuationContextCard` for P/E, forward P/E when sourced, price/sales, price/free cash flow, peer context, and own-history context when available. | P1       |
 
 Acceptance criteria:
 
 - Stock page answers "what does this company actually sell?"
 - Top risks are understandable to a beginner.
 - Financial metrics are explained, not merely displayed.
-- Suitability summary avoids buy/sell/hold and position-sizing instructions.
+- Valuation context avoids saying a stock is cheap, expensive, undervalued, or overvalued as advice.
 - Weekly News Focus and AI Comprehensive Analysis do not override stable company basics.
 
 ### 11.5 ETF page
 
-The ETF page explains what the fund is trying to do, what it holds, how it is constructed, its costs, trading context, risks, comparable funds, and educational suitability.
+The ETF page explains what the fund is trying to do, what it holds, how it is constructed, its costs, trading context, risks, and comparison context. ETF role language is educational classification, not personalized portfolio advice.
 
 | ID     | Requirement                                                                                                                                 | Priority |
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
@@ -540,7 +641,7 @@ The ETF page explains what the fund is trying to do, what it holds, how it is co
 | ETF-2  | Explain what the ETF is trying to do in beginner language.                                                                                  | P0       |
 | ETF-3  | Explain why beginners may consider it.                                                                                                      | P0       |
 | ETF-4  | Explain the main catch or beginner misunderstanding.                                                                                        | P0       |
-| ETF-5  | Classify ETF role as likely core, satellite, or specialized/narrow, with caveats.                                                           | P1       |
+| ETF-5  | Classify ETF role as broad/core-like exposure, satellite exposure, or specialized/narrow exposure, with caveats.                            | P1       |
 | ETF-6  | Show number of holdings.                                                                                                                    | P0       |
 | ETF-7  | Show top 10 holdings.                                                                                                                       | P0       |
 | ETF-8  | Show top 10 concentration.                                                                                                                  | P0       |
@@ -552,6 +653,10 @@ The ETF page explains what the fund is trying to do, what it holds, how it is co
 | ETF-14 | Show similar ETFs and simpler alternatives.                                                                                                 | P0       |
 | ETF-15 | Show whether the ETF adds diversification or overlaps heavily with a broad-market ETF.                                                      | P1       |
 | ETF-16 | Show Weekly News Focus items such as fee changes, methodology changes, fund merger/liquidation news, or sponsor updates.                    | P0       |
+| ETF-17 | Use `HoldingsTable` for holdings count, top 10 holdings, concentration, largest holding, holdings as-of date, and source.                   | P0       |
+| ETF-18 | Use `ExposureChart` for sector, country, or asset-class exposure when supported, without letting charts dominate the beginner summary.       | P1       |
+| ETF-19 | Use `CostAndTradingCard` for expense ratio, AUM, bid-ask spread, average volume, and premium/discount where available.                      | P1       |
+| ETF-20 | Use `ETFRoleCard` to explain broad/core-like, satellite, specialized, or narrow exposure without telling the user what role it should play in their portfolio. | P1       |
 
 Acceptance criteria:
 
@@ -559,18 +664,34 @@ Acceptance criteria:
 - User can tell whether the ETF is broad or narrow.
 - User can see cost, concentration, and trading-context tradeoffs.
 - User can compare the ETF with simpler alternatives.
-- ETF suitability summary avoids personalized allocation advice.
+- ETF role copy avoids personalized allocation advice. Safe language says a fund is broader or narrower because of what it tracks or holds; unsafe language assigns a personalized portfolio role to the user.
 
 ### 11.6 Comparison page
 
-Comparison is a flagship feature. Users should be able to compare two supported stocks, two supported ETFs, or one stock and one ETF in MVP.
+Comparison is a flagship workflow, but it is separate from the home page's single-asset search. Users should be able to compare two supported stocks, two supported ETFs, or one stock and one ETF in MVP.
+
+Recommended public routes:
+
+```text
+/compare
+/compare?left=AAPL
+/compare?left=VOO&right=QQQ
+```
+
+Entry points:
+
+- Global navigation: Compare
+- Asset page: Compare this asset
+- Asset page: suggested comparisons
+- Chat: compare-route redirect
+- Home search: detected `A vs B` query
 
 | ID    | Requirement                                                                                                                      | Priority |
 | ----- | -------------------------------------------------------------------------------------------------------------------------------- | -------- |
 | CP-1  | User can compare two tickers from search or asset pages.                                                                         | P0       |
 | CP-2  | Comparison page shows side-by-side snapshots.                                                                                    | P0       |
 | CP-3  | Comparison page explains the most important differences in plain English.                                                        | P0       |
-| CP-4  | Comparison page ends with "Bottom line for beginners."                                                                          | P0       |
+| CP-4  | Comparison page shows "Bottom line for beginners" first.                                                                        | P0       |
 | CP-5  | ETF comparison includes benchmark, expense ratio, AUM, holdings count, concentration, sector exposure, and role.                 | P0       |
 | CP-6  | Stock comparison includes business model, sector/industry, financial quality, valuation context, risks, and Weekly News Focus where relevant. | P0       |
 | CP-7  | Cross-type comparison explains that a single stock and an ETF are structurally different.                                        | P0       |
@@ -578,6 +699,11 @@ Comparison is a flagship feature. Users should be able to compare two supported 
 | CP-9  | System suggests common comparisons such as `VOO vs SPY`, `VTI vs VOO`, `QQQ vs VGT`, `AAPL vs MSFT`, `NVDA vs SOXX`.             | P1       |
 | CP-10 | User can export/download comparison output and source list.                                                                      | P0       |
 | CP-11 | Stock-vs-ETF comparison includes a dedicated template for company risk vs basket risk, business model vs holdings exposure, financials vs methodology, valuation vs cost/concentration, and idiosyncratic vs diversified risk. | P0       |
+| CP-12 | `/compare` shows an empty builder with two search inputs and common beginner comparisons labeled as learning examples, not recommendations. | P0       |
+| CP-13 | `/compare?left=AAPL` shows a one-sided builder with suggested second assets and short labels explaining why each suggestion appears. | P0       |
+| CP-14 | Invalid comparisons block generated output when one or both assets are unsupported, out of scope, pending ingestion, or missing minimum verified data. | P0       |
+| CP-15 | Partial comparisons render verified sections only and label unavailable, stale, could-not-verify, or insufficient-evidence sections. | P0       |
+| CP-16 | Comparison claims may cite left-asset sources, right-asset sources, and computed comparison sources; source drawer labels which side each citation supports. | P0       |
 
 Acceptance criteria:
 
@@ -586,6 +712,12 @@ Acceptance criteria:
 - A user comparing `NVDA` and `SOXX` can understand single-company exposure versus a semiconductor ETF basket.
 - The bottom-line section is educational, not prescriptive.
 - Important comparison claims have citations.
+- ETF-vs-ETF, stock-vs-stock, and stock-vs-ETF each use a tailored template.
+- Stock-vs-ETF uses a relationship badge: direct holding comparison, related exposure, broad-market context, or weak relationship.
+- Weak stock-vs-ETF relationships may be available as structural education when both assets are supported, but they are not suggested prominently.
+- Unsupported or out-of-scope assets cannot generate comparison output.
+
+Stock-vs-ETF comparison must not look like a normal peer comparison. It must clearly explain that a stock is one company while an ETF is a basket, and it should answer: "Am I looking at one company or a basket, and how does that change the kind of risk and exposure I am learning about?"
 
 ### 11.7 Weekly News Focus and AI Comprehensive Analysis
 
@@ -600,7 +732,7 @@ This section provides timely context but remains separate from stable asset fact
 | ---- | -------------------------------------------------------------------------------------------------------------------------------------- | -------- |
 | RD-1  | Asset page includes a clearly labeled Weekly News Focus and AI Comprehensive Analysis section.                                       | P0       |
 | RD-2  | Weekly News Focus uses the last completed Monday-Sunday market week plus current week-to-date through yesterday, using U.S. Eastern dates. | P0       |
-| RD-3  | Weekly News Focus targets 5-8 high-signal items only when enough high-quality evidence exists; the product must not pad weak news.  | P0       |
+| RD-3  | Weekly News Focus shows the configured maximum only when enough high-quality evidence exists; fewer than 5 items or an empty state is valid when evidence is thin. | P0       |
 | RD-4  | Stock events may include earnings, guidance, major product announcements, M&A, leadership changes, legal events, or regulatory events. | P0       |
 | RD-5  | ETF events may include fee changes, methodology changes, index changes, fund mergers, liquidations, or sponsor updates.             | P0       |
 | RD-6  | Each focus item shows source, headline/title, published date, one-sentence summary, citation/source link, freshness, and source-quality metadata. | P0       |
@@ -613,6 +745,8 @@ This section provides timely context but remains separate from stable asset fact
 | RD-13 | "No major Weekly News Focus items found" is a normal empty state for slow-moving assets, especially broad ETFs.                                  | P0       |
 | RD-14 | V1 news and analysis content is English-first; Traditional Chinese localization, read-aloud, TTS, and generated audio are post-MVP. | P0       |
 | RD-15 | Asset pages place Weekly News Focus after stable facts and before AI Comprehensive Analysis. Stable facts remain canonical.        | P0       |
+| RD-16 | Each Weekly News Focus item shows event title/headline, source or publisher, published date, one-sentence beginner summary, event type, period bucket, freshness, source quality/source-use metadata where useful, and citation/source link. | P0       |
+| RD-17 | AI Comprehensive Analysis appears directly after Weekly News Focus and is suppressed unless the backend returns sufficient evidence. | P0       |
 
 Acceptance criteria:
 
@@ -622,7 +756,7 @@ Acceptance criteria:
 - The AI analysis labels are educational UI labels, not claims that the system is a real advisor or person.
 - Weekly News Focus items come only from official sources or license-compatible allowlisted sources; unrecognized sources are rejected by default.
 - Low-quality, duplicate, promotional, irrelevant, non-allowlisted, and license-disallowed news is excluded.
-- The section can say "No major Weekly News Focus items found" when appropriate, and this is normal for many broad ETFs.
+- The section can say "No major Weekly News Focus items found for this window" when appropriate, and this is normal for many broad ETFs.
 - Weekly News Focus appears as timely context after stable facts, not above or inside the canonical asset basics.
 
 ### 11.8 Asset-specific grounded chat beta
@@ -630,6 +764,8 @@ Acceptance criteria:
 Each asset page includes a chat module titled **Ask about this asset**. The chat answers questions using a bounded asset-specific knowledge pack, not general model memory.
 
 MVP chat is intentionally limited. It is not a general finance chatbot.
+
+Chat is a helper feature, not the main page. On desktop it may appear in the right helper rail or a collapsible side panel. On mobile, a sticky "Ask" action opens a bottom sheet or full-screen panel.
 
 Supported MVP chat intents:
 
@@ -656,6 +792,8 @@ Supported MVP chat intents:
 | GC-9  | Chat provides starter prompts for beginner questions.                                                           | P1       |
 | GC-10 | Single-asset chat returns a compare-route suggestion when the user asks about another ticker.                    | P0       |
 | GC-11 | Chat does not generate multi-asset answers inside a single-asset endpoint.                                       | P0       |
+| GC-12 | Starter prompts are asset-aware: stock prompts cover company/business/financial/risk/recent context, while ETF prompts cover holdings, breadth/concentration, expense ratio, and recent context. | P1       |
+| GC-13 | Chat answers visibly use Direct answer, Why it matters, Sources, and Uncertainty or limits.                     | P0       |
 
 Acceptance criteria:
 
@@ -665,6 +803,7 @@ Acceptance criteria:
 - Asking "What happened recently?" answers from the Weekly News Focus layer when sufficient allowlisted evidence exists.
 - Asking `Why is QQQ different from VOO?` inside single-asset chat returns a compare redirect instead of a multi-asset answer.
 - Chat responses do not invent facts when sources are missing.
+- Compare redirects show copy such as "This is a comparison question. Open the comparison page so both assets can be grounded in their own source packs" plus a CTA to `/compare?left=...&right=...`.
 
 #### Accountless chat privacy
 
@@ -684,22 +823,26 @@ MVP chat should support grounded follow-ups without creating accounts.
 
 ### 11.9 Hybrid glossary and concept learning
 
-Users can click finance terms and see short beginner-friendly explanations.
+Users can learn finance terms in context on asset pages, comparison pages, and chat answers. Glossary is not a major home-page workflow for MVP.
 
 Glossary approach:
 
 - Curated static definitions for core finance terms.
 - Optional AI-generated contextual explanation for the selected asset.
 - No uncited asset-specific facts in generated glossary context.
+- Desktop terms support hover previews, click-to-pin behavior, and keyboard focus.
+- Mobile terms support tap to open a glossary bottom sheet; long tap may also open it, but long tap must not be the only gesture.
 
 | ID   | Requirement                                                             | Priority |
 | ---- | ----------------------------------------------------------------------- | -------- |
-| GL-1 | Important terms appear as clickable glossary terms.                     | P0       |
+| GL-1 | Important terms render with `GlossaryTerm` as subtle contextual help, not aggressive highlighting. | P0       |
 | GL-2 | Glossary card includes simple definition.                               | P0       |
 | GL-3 | Glossary card explains why the concept matters.                         | P0       |
 | GL-4 | Glossary card includes common beginner mistake.                         | P0       |
-| GL-5 | Glossary card links to deeper explanation when available.               | P2       |
+| GL-5 | Glossary card shows related terms and may link to a deeper explanation when available. | P2       |
 | GL-6 | Glossary cards can include grounded asset-specific context when useful. | P2       |
+| GL-7 | Desktop supports `GlossaryPopover`; mobile supports `GlossaryBottomSheet`. | P0       |
+| GL-8 | Asset-specific glossary context uses citations for values, comparisons, holdings, metrics, or claims about the selected asset. | P0       |
 
 Initial curated glossary should include 50-100 core terms, including:
 
@@ -739,6 +882,7 @@ Acceptance criteria:
 - User can click "operating margin" and understand why it matters.
 - Glossary explanations do not overwhelm the main workflow.
 - Generated context does not add unsupported asset-specific facts.
+- Mobile glossary bottom sheets are readable, dismissible, and return the user to the same page position after closing.
 
 ### 11.10 Sources, citations, and freshness
 
@@ -758,6 +902,9 @@ Trust features are part of the core product experience.
 | SC-10 | Source drawer supports citations from Weekly News Focus items and AI Comprehensive Analysis claims.       | P0       |
 | SC-11 | Public `citation_id` values are opaque IDs such as `cit_...`; they do not expose raw database IDs.        | P0       |
 | SC-12 | Citation resolution returns only allowed source metadata and permitted excerpts based on source-use policy. | P0       |
+| SC-13 | Desktop source drawer opens as a right-side drawer; mobile source drawer opens as a bottom sheet.         | P0       |
+| SC-14 | Source drawer shows whether a citation supports canonical facts, Weekly News Focus, AI analysis, left comparison asset, right comparison asset, or computed comparison output. | P0       |
+| SC-15 | Source list appears near the bottom of asset and comparison pages with source title, type, publisher, official/third-party badge, dates, freshness, URL, and supported claims. | P0       |
 
 Acceptance criteria:
 
@@ -767,6 +914,7 @@ Acceptance criteria:
 - Unsupported claims are removed, regenerated, or marked as uncertain.
 - A public `citation_id` resolves to source title, publisher, URL, source type, source-use policy, published/as-of/retrieved dates, freshness state, claim role, and an allowed supporting excerpt.
 - A public `citation_id` never resolves to unrestricted provider payloads, full restricted article text, private raw PDF text, secrets, hidden prompts, or unrestricted raw source text.
+- Citation chips should be near the supported claim and compact enough not to clutter beginner reading.
 
 ### 11.11 Export and download
 
@@ -786,7 +934,14 @@ Supported export formats for MVP:
 - Markdown
 - JSON
 
-PDF and copy-to-clipboard export templates are post-MVP enhancements unless licensing and rendering requirements are resolved earlier.
+PDF is post-MVP unless licensing and rendering requirements are resolved. Copy-to-clipboard templates may be added later, but they are not required for MVP.
+
+Export controls appear through `ExportMenu` on asset pages, comparison pages, chat transcripts, and source lists. Dropdown labels may include:
+
+- Download page summary
+- Download source list
+- Download comparison
+- Download chat transcript
 
 Acceptance criteria:
 
@@ -794,6 +949,7 @@ Acceptance criteria:
 - Export includes citations, freshness dates, uncertainty labels, and the educational disclaimer.
 - Export includes Weekly News Focus and AI Comprehensive Analysis when they are present on the page.
 - Export does not include content prohibited by data-provider licenses.
+- Export never includes restricted source text, unrestricted provider payloads, hidden prompts, raw model reasoning, or secrets.
 
 ### 11.12 Responsive web UX
 
@@ -802,16 +958,22 @@ The product should support both desktop web and mobile web from v1.
 | ID   | Requirement                                                                                                    | Priority |
 | ---- | -------------------------------------------------------------------------------------------------------------- | -------- |
 | UX-1 | Layout is responsive across desktop, tablet, and mobile web.                                                   | P0       |
-| UX-2 | Mobile layout for the Beginner section uses stacked cards, concise summaries, glossary popovers, and bottom-sheet source drawer. | P0       |
-| UX-3 | Desktop layout for the Deep-Dive section supports side-by-side tables, source drawer, comparison views, and richer data tables.  | P0       |
-| UX-4 | Chat is usable on mobile without covering core content permanently.                                            | P1       |
-| UX-5 | Tables collapse or scroll horizontally only where unavoidable.                                                 | P1       |
+| UX-2 | Mobile layout prioritizes Beginner Summary, Top 3 Risks, Key Facts, Weekly News Focus, AI Comprehensive Analysis, contextual glossary, chat, and sources. | P0       |
+| UX-3 | Desktop layout supports a main reading column plus optional helper rail, side-by-side comparison, source drawer, and richer data tables. | P0       |
+| UX-4 | Chat is usable on mobile as a bottom sheet or full-screen panel without covering core content permanently.     | P1       |
+| UX-5 | Tables collapse, stack, or simplify on mobile; horizontal scrolling is avoided except for dense tables that cannot be simplified. | P1       |
+| UX-6 | Mobile comparison uses stacked sections: bottom line, Asset A card, Asset B card, key differences, expandable details, and sources. | P0       |
+| UX-7 | Loading states use skeletons for asset header, beginner cards, risk cards, and key facts; loading copy must not imply model memory. | P0       |
+| UX-8 | Error states avoid exposing internal provider, model, API-key, infrastructure, or queue details.              | P0       |
 
 Acceptance criteria:
 
 - Beginner section is comfortable on a phone.
 - Comparison is usable on desktop and acceptable on mobile through stacked sections.
 - Source inspection works on both desktop and mobile.
+- Home search loading says "Searching supported stocks and ETFs..."
+- Chat loading says "Checking this asset's sources..."
+- Source drawer loading says "Loading source details..."
 
 ### 11.13 Rate limits and abuse controls
 
@@ -838,7 +1000,7 @@ Acceptance criteria:
 
 Each stock page should include:
 
-1. **Snapshot**
+1. **Asset header and key facts**
    - name
    - ticker
    - sector
@@ -895,17 +1057,22 @@ Each stock page should include:
    - leadership changes
    - regulatory or legal events
 
-9. **Educational suitability summary**
-   - who may want to learn more about this
-   - who may prefer a diversified ETF instead
-   - what would change the view
-   - what the user should learn next
+9. **Ask about this asset**
+   - stock-specific starter prompts
+   - direct answer / why it matters / sources / uncertainty answer shape
+   - compare-route redirect for second-ticker questions
+
+10. **Sources and export**
+   - source list
+   - source drawer metadata
+   - Markdown/JSON export controls
+   - educational disclaimer
 
 ### 12.2 ETF page content model
 
 Each ETF page should include:
 
-1. **Snapshot**
+1. **Asset header and key facts**
    - name
    - ticker
    - issuer/provider
@@ -923,7 +1090,7 @@ Each ETF page should include:
    - main catch or beginner misunderstanding
 
 3. **ETF role**
-   - core, satellite, or specialized/narrow
+   - broad/core-like, satellite, or specialized/narrow exposure
    - intended purpose
    - simpler alternatives
 
@@ -969,12 +1136,18 @@ Each ETF page should include:
    - fund merger or liquidation news
    - sponsor updates
 
-10. **Educational suitability summary**
+10. **Ask about this asset**
 
-- who may want to learn more about this
-- when it may be too narrow
-- when broader or cheaper ETFs may be worth comparing
-- what would make it a poor fit
+- ETF-specific starter prompts
+- holdings, breadth, expense ratio, concentration, and recent-context questions
+- compare-route redirect for second-ticker questions
+
+11. **Sources and export**
+
+- source list
+- source drawer metadata
+- Markdown/JSON export controls
+- educational disclaimer
 
 ---
 
@@ -1089,7 +1262,7 @@ Recommended MVP stack:
 
 1. **Official first:** SEC filings, company IR releases, ETF issuer announcements, prospectus updates, fact-sheet updates, and sponsor notices.
 2. **Tiered allowlisted free/RSS/news sources:** curated reputable sources with source metadata, dates, categories, ticker/entity matching, published timestamps, and source-use rights.
-3. **Weekly News Focus selection:** deduplicate, score, and select 5-8 high-signal items for the selected asset's Weekly News Focus pack.
+3. **Weekly News Focus selection:** deduplicate, score, and select up to the configured maximum for the selected asset's Weekly News Focus pack; show fewer items or an empty state when evidence is thin.
 4. **License-gated general news:** Reuters/AP-style and similar publishers are not assumed to be free full-content sources; they require licensing review before storage, summarization, rendering, or export beyond permitted metadata/link use.
 5. **Rejected by default:** unrecognized free-news sources should not be used for Weekly News Focus until added to the allowlist.
 6. **Paid future option:** ticker-tagged news APIs or premium news providers may be added later when budget and licensing justify them.
@@ -1210,17 +1383,59 @@ If a generic explanation includes a specific value or asset-specific comparison,
 
 ## 15. UX requirements
 
+The frontend should feel like a calm learning product, not a trading dashboard. It should feel closer to source-grounded notes plus simple explanations and clean stock/ETF fact sheets than to a chart-first trading screen.
+
+Recommended top-level routes:
+
+```text
+/                                  Home page: single stock/ETF search
+/assets/[ticker]                   Stock or ETF asset page
+/assets/[ticker]/sources           Optional source-list deep link
+/compare                           Empty comparison builder
+/compare?left=AAPL                 Comparison builder with first asset selected
+/compare?left=VOO&right=QQQ        Completed comparison page
+```
+
+Optional post-MVP route:
+
+```text
+/glossary/[term]
+```
+
+Recommended desktop navigation:
+
+```text
+Learn the Ticker        Search     Compare
+```
+
+Recommended mobile navigation:
+
+```text
+Learn the Ticker                         Menu
+```
+
+Mobile menu:
+
+```text
+Search
+Compare
+```
+
+Do not make Glossary a primary top-nav item for MVP unless the project already has a glossary page. Glossary should primarily appear contextually when users interact with finance terms inside content.
+
 ### 15.1 Beginner section
 
 The Beginner section is the first section on the asset page.
 
 It should prioritize:
 
+- `BeginnerSummaryCard`
 - simple explanations
-- short sections
-- top risks
+- three short summary cards
+- `RiskCards` with exactly three top risks first
+- `KeyFactsGrid`
 - plain-language summaries
-- glossary support
+- contextual glossary terms
 - visible citations
 - minimal jargon
 - clear next steps for learning
@@ -1243,6 +1458,7 @@ It should include:
 - methodology details
 - full source list
 - source dates and freshness
+- export controls
 
 Acceptance criteria:
 
@@ -1251,24 +1467,28 @@ Acceptance criteria:
 
 ### 15.3 Source drawer
 
-The source drawer should show:
+`SourceDrawer` opens as a right-side drawer on desktop and a bottom sheet on mobile. It should show:
 
+- citation ID
 - source title
 - source type
 - official/third-party badge
 - publisher
 - published date
+- as-of date where applicable
 - retrieved timestamp
 - source URL
 - freshness state
+- source-use policy
 - related claims
-- whether the citation supports a Weekly News Focus item or AI Comprehensive Analysis claim
+- whether the citation supports canonical facts, Weekly News Focus, AI Comprehensive Analysis, left comparison asset, right comparison asset, or computed comparison output
 - relevant excerpt or chunk where allowed
 
 Acceptance criteria:
 
 - User can trace important claims to sources.
 - Official sources are visually distinguished from news or third-party data.
+- Source drawer never shows unrestricted restricted article text, private raw PDF text, provider secrets, hidden prompts, raw model reasoning, or unrestricted provider payloads.
 
 ### 15.4 Citation chips
 
@@ -1286,7 +1506,7 @@ Acceptance criteria:
 
 ### 15.5 Glossary cards
 
-Glossary cards should open inline, as popovers, or as mobile bottom sheets.
+Glossary cards should open as `GlossaryPopover` on desktop and `GlossaryBottomSheet` on mobile. `GlossaryTerm` rendering should use a subtle dotted underline, accessible focus style, and no aggressive highlighting.
 
 Each glossary card should include:
 
@@ -1294,28 +1514,48 @@ Each glossary card should include:
 - why it matters
 - common beginner mistake
 - optional deeper link
+- related terms
 - optional grounded asset-specific context
 
 Acceptance criteria:
 
 - Glossary explanations are short and practical.
 - Glossary cards help users continue the main task.
+- Desktop supports hover preview, click-to-pin, and keyboard focus.
+- Mobile supports tap to open the bottom sheet; long tap may also open it, but it is not the only gesture.
 
 ### 15.6 Mobile and desktop behavior
 
 Mobile should emphasize:
 
-- Beginner section
-- summary cards
-- top 3 risks
+- Beginner Summary
+- Top 3 Risks
+- Key Facts
 - Weekly News Focus and AI Comprehensive Analysis
-- glossary popovers/bottom sheets
+- contextual glossary cards
 - chat
-- source drawer as bottom sheet
+- sources
+
+Mobile sticky actions on asset pages:
+
+```text
+Ask
+Compare
+Sources
+```
+
+Mobile sticky actions on comparison pages:
+
+```text
+Swap
+Change
+Sources
+```
 
 Desktop should emphasize:
 
-- Deep-Dive section
+- main reading column plus optional helper rail
+- Deep Dive
 - side-by-side comparison
 - source drawer as right panel
 - tables and charts
@@ -1325,6 +1565,102 @@ Acceptance criteria:
 
 - The same product works on mobile and desktop.
 - Desktop gets more layout depth; mobile stays readable and practical.
+
+### 15.7 Loading, skeleton, and error states
+
+Required loading copy:
+
+```text
+Searching supported stocks and ETFs...
+Checking Weekly News Focus...
+Loading source details...
+Checking this asset's sources...
+```
+
+Asset pages should use skeletons for Asset Header, Beginner Summary cards, RiskCards, and KeyFactsGrid. The UI must not show fake data. Error states should say:
+
+```text
+Something went wrong loading this section.
+
+Try again, or review the available sources below.
+```
+
+Error states must not expose internal provider, model, API-key, infrastructure, queue, or secret details.
+
+### 15.8 Frontend component inventory
+
+Recommended components:
+
+```text
+SearchBox
+AutocompleteResults
+SearchResultRow
+StatusChip
+FreshnessBadge
+AssetHeader
+BeginnerSummaryCard
+RiskCards
+KeyFactsGrid
+BusinessOverview
+FinancialTrendsTable
+ValuationContextCard
+HoldingsTable
+ExposureChart
+CostAndTradingCard
+ETFRoleCard
+WeeklyNewsPanel
+AIComprehensiveAnalysisPanel
+CitationChip
+SourceDrawer
+SourceList
+GlossaryTerm
+GlossaryPopover
+GlossaryBottomSheet
+AssetChatPanel
+CompareBuilder
+CompareAssetInput
+CompareSuggestionList
+CompareHeader
+CompareSnapshotCards
+CompareKeyDifferences
+ComparisonRelationshipBadge
+StockVsStockComparison
+EtfVsEtfComparison
+StockVsEtfComparison
+ExportMenu
+UnsupportedAssetNotice
+PendingIngestionNotice
+PartialDataNotice
+EducationalDisclaimer
+```
+
+### 15.9 Frontend analytics events
+
+Track aggregate product events only, such as:
+
+```text
+search_started
+search_result_selected
+unsupported_asset_viewed
+asset_page_viewed
+beginner_section_viewed
+deep_dive_opened
+citation_chip_clicked
+source_drawer_opened
+glossary_term_hovered
+glossary_term_opened
+compare_started
+compare_completed
+compare_suggestion_clicked
+chat_started
+chat_message_sent
+chat_safety_redirect
+chat_compare_redirect
+export_requested
+partial_data_notice_viewed
+```
+
+Do not log raw chat transcript content, unrestricted source text, hidden prompts, raw model reasoning, restricted provider payloads, provider secrets, personal portfolio details, or allocation information.
 
 ---
 
@@ -1486,22 +1822,25 @@ Weekly News Focus checked: Apr 22, 2026
 
 Objective: Ship a credible, source-grounded, accountless beginner explainer for the top 500 U.S.-listed common stocks first and non-leveraged U.S.-listed equity ETFs.
 
-The repo is currently planning-only. The phases below are delivery milestones, not evidence that any implementation already exists.
+The phases below describe MVP scope and delivery milestones. They do not relax the acceptance checklist or safety, citation, source-use, freshness, and no-advice requirements.
 
 Included:
 
 - Search and entity resolution
+- Home page with one primary action: search one stock or ETF
 - Supported/unsupported asset classification
 - Stock page
 - ETF page
 - Beginner section
 - Deep-Dive section baseline
 - Compare two assets
+- Dedicated comparison builder and comparison pages
 - Basic ETF overlap/concentration indicators
 - Weekly News Focus and AI Comprehensive Analysis block
 - Source drawer
 - Citation chips
 - Hybrid glossary baseline
+- Contextual glossary cards in asset pages, comparison pages, and chat answers
 - Limited asset-specific grounded chat beta
 - Markdown/JSON export/download for page, comparison, sources, and chat transcript
 - Educational disclaimer and safety redirects
@@ -1567,24 +1906,37 @@ Potential additions:
 The MVP is ready when:
 
 - User can search a supported top-500 U.S.-listed common stock or non-leveraged U.S.-listed equity ETF.
+- Home page has one primary action: search one stock or ETF.
+- Home page does not present comparison or Glossary as a primary workflow.
+- Search autocomplete supports partial ticker/name/issuer matches and support-state chips.
+- Natural `A vs B` search patterns route to comparison.
 - System resolves the asset correctly.
 - Unsupported assets are blocked clearly.
+- Exact recognized-but-unsupported ticker searches show a blocked state rather than generated content.
 - User lands on the correct stock or ETF page.
-- Beginner section explains the asset in simple language.
-- Top 3 risks are shown.
+- Asset pages show the Beginner Summary first.
+- Exactly three top risks are shown first.
 - Weekly News Focus and AI Comprehensive Analysis are separated from stable facts.
 - Important factual claims have visible citations.
-- Source drawer shows source metadata and freshness.
+- Citation chips open a source drawer or mobile bottom sheet.
+- Source drawer shows source metadata, freshness, source-use policy, related claim, and allowed excerpt.
+- Glossary terms appear contextually inside asset, comparison, and chat content.
+- Desktop glossary supports hover, click, and keyboard focus; mobile glossary supports tap and opens as a bottom sheet.
 - Page and sections show freshness/as-of dates.
 - Product avoids buy/sell/hold and allocation advice.
 - User can compare stock-vs-stock, ETF-vs-ETF, and stock-vs-ETF supported assets.
-- Comparison includes a beginner bottom line.
+- Comparison includes a non-prescriptive beginner bottom line.
+- Stock-vs-ETF uses a special single-company-vs-ETF-basket template with relationship badges.
+- Weak stock-vs-ETF comparisons are allowed only as structural education and are not suggested prominently.
 - Limited asset-specific chat answers from the selected asset knowledge pack.
 - Advice-like chat questions are redirected safely.
+- Single-asset chat redirects second-ticker questions to the comparison page.
 - User can export page, comparison, source list, and chat transcript.
 - Product analytics track aggregate citation coverage, unsupported claims, glossary usage, comparison usage, source drawer usage, export usage, safety redirects, and freshness accuracy without raw chat transcript content.
-- Weekly News Focus renders 5-8 items when enough high-quality allowlisted evidence exists, fewer when evidence is limited, and zero when no major Weekly News Focus items exist.
+- Weekly News Focus renders the configured maximum only when enough high-quality allowlisted evidence exists, fewer when evidence is limited, and zero when no major Weekly News Focus items exist.
 - AI Comprehensive Analysis includes What Changed This Week, Market Context, Business/Fund Context, and Risk Context with citations or uncertainty labels when at least two high-signal weekly items exist.
+- Mobile layouts are readable and use bottom sheets for sources, glossary, and chat where appropriate.
+- Exports support Markdown and JSON and include disclaimer, citations, freshness metadata, uncertainty labels, source list, Weekly News Focus, and AI Comprehensive Analysis when present.
 - Accountless chat sessions use random IDs, 7-day TTL, user deletion, and no chat-message analytics, training, or model-evaluation use in MVP.
 
 Strict MVP quality gates:
@@ -1769,4 +2121,4 @@ This list is not a recommendation list. It is an operational pre-cache list for 
 
 ## 24. One-sentence product thesis
 
-**Learn the Ticker helps beginner investors understand U.S. stocks and ETFs through plain-English explanations, visible citations, comparison-first learning, separated Weekly News Focus context, educational AI analysis, and limited grounded asset-specific education without becoming a stock picker or financial advisor.**
+**Learn the Ticker helps beginner investors understand U.S. stocks and ETFs through plain-English explanations, visible citations, comparison-capable learning, separated Weekly News Focus context, educational AI analysis, and limited grounded asset-specific education without becoming a stock picker or financial advisor.**

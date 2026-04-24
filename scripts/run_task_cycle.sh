@@ -237,6 +237,14 @@ Read:
 - TASKS.md
 - EVALS.md
 
+Current Frontend Design and Workflow v0.4 baseline for task planning:
+- Home page is single stock/ETF search first.
+- Comparison is separate but connected through /compare, asset CTAs, suggestions, chat redirects, and A vs B search redirects.
+- Glossary is contextual help with desktop popovers and mobile bottom sheets, not a primary home-page workflow.
+- Source drawer, glossary, and asset chat need mobile bottom-sheet or full-screen behavior.
+- Stock-vs-ETF comparison uses relationship badges and a special single-company-vs-ETF-basket structure.
+- Weekly News Focus should show the configured maximum only when evidence supports it, with smaller or empty states allowed.
+
 Only edit TASKS.md. Do not edit any other file. Do not run git commit or git push.
 
 Repeat-mode request:
@@ -250,7 +258,7 @@ Update TASKS.md as follows:
 3. Add only headings in this format: "### T-012: Short concrete task title".
 4. Do not expand new Backlog tasks into full contracts; the cycle wrapper expands a task when it is promoted.
 5. Do not modify the Current task or Completed tasks.
-6. Choose small, high-confidence next tasks that advance the MVP in SPEC.md and the PRD.
+6. Choose small, high-confidence next tasks that advance the MVP in SPEC.md, the PRD, and the v0.4 frontend workflow before live-provider or deployment expansion.
 7. Preserve product guardrails: no investment advice, no live external calls, citations for important claims, source-use rights, PRD/TDS-first authority after safety, and freshness/unknown/stale/unavailable/partial handling.
 8. If the current project stage appears to require human review, manual browser testing, API keys, product decisions, deployment credentials, or other human action before more autonomous work is safe, do not add backlog tasks. Instead, leave TASKS.md unchanged.
 EOF
@@ -335,6 +343,14 @@ Read:
 - TASKS.md
 - EVALS.md
 
+Current Frontend Design and Workflow v0.4 baseline for task planning:
+- Home page is single stock/ETF search first.
+- Comparison is separate but connected through /compare, asset CTAs, suggestions, chat redirects, and A vs B search redirects.
+- Glossary is contextual help with desktop popovers and mobile bottom sheets, not a primary home-page workflow.
+- Source drawer, glossary, and asset chat need mobile bottom-sheet or full-screen behavior.
+- Stock-vs-ETF comparison uses relationship badges and a special single-company-vs-ETF-basket structure.
+- Weekly News Focus should show the configured maximum only when evidence supports it, with smaller or empty states allowed.
+
 Only edit TASKS.md. Do not edit any other file. Do not run git commit or git push.
 
 Current completed task:
@@ -358,7 +374,7 @@ Update TASKS.md as follows:
    - Required commands
    - Iteration budget
 7. Preserve product guardrails: no investment advice, no live external calls, citations for important claims, source-use rights, PRD/TDS-first authority after safety, and freshness/unknown/stale/unavailable/partial handling.
-8. Keep any promoted next task narrow enough for one agent loop.
+8. Keep any promoted next task narrow enough for one agent loop and aligned with the v0.4 frontend workflow before live-provider or deployment expansion.
 EOF
 
   echo "== Preparing next task in TASKS.md =="

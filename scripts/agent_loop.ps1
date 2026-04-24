@@ -180,6 +180,7 @@ Work only on the current task in TASKS.md.
 
 Rules:
 - Follow safety and advice-boundary rules first, then the updated PRD, technical design spec, proposal, SPEC, TASKS, and EVALS in that order.
+- Treat Frontend Design and Workflow v0.4 as the current UX baseline: home page single stock/ETF search first; comparison is a separate connected workflow; glossary is contextual help; source drawer, glossary, and chat need mobile bottom-sheet or full-screen behavior; stock-vs-ETF comparison uses relationship badges and a special structure; Weekly News Focus shows only the evidence-backed set.
 - Leave changes uncommitted for the harness commit step after the quality gate.
 - Do not push from inside a Codex attempt.
 - Do not run git reset --hard.

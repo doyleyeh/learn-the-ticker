@@ -10,7 +10,7 @@ A successful answer or asset page helps the user understand:
 - what the company does or what the ETF holds
 - why people may study it
 - the top risks
-- how it compares with similar choices
+- how it compares with another supported asset when the user enters the separate comparison workflow
 - what changed in Weekly News Focus
 - which sources support important claims
 - which beginner terms are worth learning next
@@ -39,11 +39,13 @@ MVP product scope:
 - non-leveraged U.S.-listed equity index, sector, and thematic ETFs
 - pre-cached high-demand launch universe for reliability and latency
 - explicit `pending_ingestion` states only for approved eligible supported assets outside the pre-cache set
+- home page single-asset search first, with natural `A vs B` queries redirecting to comparison instead of turning home into a comparison builder
 - stock and ETF asset pages with Beginner section first and Deep-Dive section available
-- comparison workflow for supported stock-vs-stock, ETF-vs-ETF, and stock-vs-ETF pairs
+- separate connected comparison workflow for supported stock-vs-stock, ETF-vs-ETF, and stock-vs-ETF pairs
+- stock-vs-ETF comparison relationship badges and a special single-company-vs-ETF-basket structure
 - Weekly News Focus and AI Comprehensive Analysis as separated timely context
 - limited asset-specific grounded chat beta
-- hybrid glossary with curated core terms and grounded asset-specific context where supported
+- contextual glossary with curated core terms, desktop popovers, mobile bottom sheets, and grounded asset-specific context where supported
 - Markdown/JSON export/download for asset pages, comparison output, source lists, and chat transcripts
 - caching, source checksums, generated-summary freshness hashes, and section-level freshness labels
 
@@ -61,9 +63,10 @@ Current implementation stage:
 
 Near-term implementation priority order:
 
-1. converge frontend rendering onto the richer deterministic backend contracts instead of expanding duplicate frontend-only fixture logic
-2. close MVP-visible UX gaps first, especially Weekly News Focus and AI Comprehensive Analysis rendering, support-state parity, comparison-state parity, and source/freshness parity
-3. defer live-provider, persistence, deployment-hardening, and broader ingestion work until deterministic contract parity and quality gates are stable
+1. close Frontend Design and Workflow v0.4 UX gaps first, especially single-asset home search, search/autocomplete support states, natural comparison redirects, contextual glossary behavior, mobile source/glossary/chat bottom sheets, and stock-vs-ETF relationship badges
+2. converge frontend rendering onto the richer deterministic backend contracts instead of expanding duplicate frontend-only fixture logic
+3. close remaining MVP-visible contract gaps, especially Weekly News Focus and AI Comprehensive Analysis rendering, support-state parity, comparison-state parity, and source/freshness parity
+4. defer live-provider, persistence, deployment-hardening, and broader ingestion work until deterministic contract parity and quality gates are stable
 
 When choosing the next task, prefer improving PRD/TDS alignment of the current deterministic scaffold over adding new domains or speculative infrastructure.
 The local agent-loop harness should default to `gpt-5.5` with `high` reasoning effort, while allowing explicit per-run overrides such as `gpt-5.3-codex-spark` when the operator requests it.
@@ -79,7 +82,7 @@ Provider hierarchy for MVP planning:
 - structured enrichment: free-first reference data and optional provider adapters only where licensing, rate limits, caching, display, and export rights allow
 - Weekly News Focus: official filings, investor-relations releases, issuer announcements, prospectus changes, fact-sheet changes, then license-compatible allowlisted news
 
-Weekly News Focus must use the last completed Monday-Sunday market week plus current week-to-date through yesterday, using U.S. Eastern dates. It should show 5-8 high-signal items only when enough quality evidence exists, fewer when evidence is limited, and a clear empty state when no major Weekly News Focus items exist.
+Weekly News Focus must use the last completed Monday-Sunday market week plus current week-to-date through yesterday, using U.S. Eastern dates. It should show the configured maximum only when enough quality evidence exists, fewer items when evidence is limited, and a clear empty state when no major Weekly News Focus items exist.
 
 AI Comprehensive Analysis must be suppressed unless at least two high-signal Weekly News Focus items exist. When present, it starts with What Changed This Week, then Market Context, Business/Fund Context, and Risk Context. It must cite underlying Weekly News Focus items and canonical facts.
 
@@ -142,7 +145,10 @@ A task is complete only when:
 
 MVP is ready when:
 
-- search resolves supported stocks and ETFs by ticker and name
+- the home page has one primary action: search for a single supported stock or ETF
+- the home page routes clear `A vs B` queries to `/compare?left=...&right=...` without becoming a comparison builder
+- search resolves supported stocks and ETFs by ticker, partial ticker, name, and issuer/provider where useful
+- search rows show ticker, name, stock/ETF identity, exchange or issuer, and support-state chips
 - unsupported and out-of-scope assets show clear blocked states
 - top-500 stock scope is driven by the versioned manifest, not live runtime provider queries
 - stock and ETF pages render beginner summaries from source-backed evidence
@@ -154,11 +160,13 @@ MVP is ready when:
 - Weekly News Focus includes source date or as-of date, event date where available, retrieved date, citation/source link, source quality, source-use policy, and freshness state
 - key factual claims have visible citations or explicit uncertainty/unavailable labels
 - source drawer shows source metadata, freshness, source-use policy, related claims, and allowed supporting excerpts
-- comparison works for ETF-vs-ETF, stock-vs-stock, and stock-vs-ETF pairs, with an educational beginner bottom line
+- comparison works as a separate connected workflow for ETF-vs-ETF, stock-vs-stock, and stock-vs-ETF pairs, with an educational beginner bottom line
+- stock-vs-ETF comparison uses relationship badges and the single-company-vs-ETF-basket structure
 - limited asset-specific chat answers only from the selected asset knowledge pack
 - single-asset chat redirects second-ticker comparison questions to the comparison workflow
 - accountless chat uses anonymous conversation IDs, 7-day TTL, deletion, minimal browser storage, and no raw transcript analytics/training/evaluation use
-- glossary explains core beginner terms and avoids uncited asset-specific facts
+- glossary explains core beginner terms contextually through desktop popovers and mobile bottom sheets, and avoids uncited asset-specific facts
+- source drawer, glossary, and asset chat remain usable on mobile through bottom sheets or full-screen panels
 - safety guardrails block buy/sell/hold, price-target, tax, brokerage, and allocation advice
 - users can export/download asset page content, comparison output, source lists, and chat transcripts as Markdown or JSON where licensing permits
 - caching and freshness hashes prevent unnecessary repeated API and LLM work

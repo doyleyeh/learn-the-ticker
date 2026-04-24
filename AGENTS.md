@@ -23,6 +23,15 @@ This product is not:
 - a general finance chatbot
 - a market-news feed that lets recent news redefine an asset
 
+Current frontend workflow baseline is Frontend Design and Workflow v0.4:
+
+- the home page has one primary action: search for a single supported stock or ETF
+- comparison is a separate connected workflow through `/compare`, global navigation, asset-page CTAs, suggested comparisons, chat compare redirects, and clear `A vs B` search patterns
+- glossary is contextual help inside asset pages, comparison pages, and chat answers, not a major home-page workflow for MVP
+- desktop glossary cards support hover, click, and keyboard focus; mobile glossary opens from tap or long-tap into a bottom sheet
+- source drawer, glossary, and asset chat must be designed for mobile bottom-sheet or full-screen behavior where appropriate
+- stock-vs-ETF comparison uses a special single-company-vs-ETF-basket template with relationship badges
+
 ## Required reading before work
 
 Before changing code, read:
@@ -131,7 +140,7 @@ Weekly News Focus must:
 - use the last completed Monday-Sunday market week plus current week-to-date through yesterday, based on U.S. Eastern dates
 - prefer official filings, investor-relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes before allowlisted news
 - include only high-signal, deduplicated, license-compatible items
-- show fewer than 5 items or an empty state when evidence is thin
+- show the configured maximum only when enough evidence supports it, and show fewer items or an empty state when evidence is thin
 - never pad with weak, promotional, duplicate, non-allowlisted, or license-disallowed items
 
 AI Comprehensive Analysis must:
@@ -198,10 +207,17 @@ When touching retrieval, summaries, chat, citations, Weekly News Focus, source-u
 
 When touching frontend UI, verify:
 
+- home search remains the primary home-page action for one supported stock or ETF
+- comparison remains a separate connected workflow, not a two-input home-page primary experience
+- glossary remains contextual in reading flows, not a primary home-page workflow
+- search results show stock vs ETF identity, support-state chips, exact unsupported behavior, and clear no-result copy
 - citation chips
-- source drawer
+- source drawer, including desktop drawer and mobile bottom-sheet behavior
 - freshness labels
 - stale/unknown/unavailable/partial states
+- stock-vs-ETF comparison relationship badges and special structure when comparison UI is touched
+- contextual glossary desktop hover/click/focus and mobile tap bottom-sheet behavior
+- asset chat desktop helper placement and mobile bottom-sheet or full-screen behavior
 - beginner readability
 - mobile and desktop usability
 

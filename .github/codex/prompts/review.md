@@ -19,13 +19,20 @@ Focus on P0/P1 issues only:
 - buy/sell/hold recommendation leakage
 - personalized allocation advice
 - unsupported price targets
+- home page regressions that make comparison inputs the primary action instead of single stock/ETF search
+- home page regressions that make Glossary a primary MVP workflow instead of contextual help
+- search/autocomplete regressions that omit support-state chips, exact unsupported blocking, or distinct no-result handling
+- comparison regressions that omit the stock-vs-ETF relationship badge or special single-company-vs-ETF-basket structure
+- mobile UX regressions that remove source drawer, glossary, or asset-chat bottom-sheet/full-screen behavior
 - Weekly News Focus or AI Comprehensive Analysis mixed into stable canonical facts
 - Weekly News Focus using non-allowlisted, duplicate, promotional, irrelevant, or license-disallowed sources
 - AI Comprehensive Analysis generated without enough high-signal Weekly News Focus evidence
+- Weekly News Focus padded to the configured maximum when evidence supports only a smaller or empty set
 - stale, unknown, unavailable, partial, or insufficient-evidence states missing where evidence is incomplete
 - source-use policy or raw-text-rights violations
 - unsupported, out-of-scope, or pending-ingestion assets receiving generated pages, chat, comparisons, or risk summaries
 - live provider, market-data, news, or LLM calls required in normal CI
+- browser-side calls to LLM providers, OpenRouter, market-data providers, news providers, or source-ingestion services
 - OpenRouter or provider secrets exposed in browser code, `NEXT_PUBLIC_*`, docs, logs, health responses, or env examples
 - root npm scripts no longer delegating to `apps/web`
 - Docker Compose/local-stack scaffolding becoming required for CI

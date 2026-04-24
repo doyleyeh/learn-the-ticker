@@ -1,6 +1,62 @@
 ## Current task
 
-No current task is prepared. The backlog is empty.
+### T-064: Align home search with frontend workflow v0.4
+
+Goal:
+Align the home page and search/autocomplete experience with Frontend Design and Workflow v0.4 so the first screen has one primary action: search for a single supported stock or ETF.
+
+Task-scope paragraph:
+Update the fixture-backed home/search frontend path to use the v0.4 headline, supporting copy, placeholder, example chips, educational secondary cards, support-state chips, exact unsupported and no-result copy, and natural `A vs B` comparison redirect behavior. Keep comparison as a separate connected workflow and keep glossary out of the home-page primary workflow.
+
+Allowed files:
+
+- `apps/web/app/page.tsx`
+- `apps/web/components/SearchBox.tsx`
+- `apps/web/lib/search.ts`
+- `apps/web/styles/globals.css`
+- `tests/frontend/smoke.mjs`
+- focused safety or smoke tests only when needed
+- `docs/agent-journal/*`
+
+Do not change:
+
+- backend routes, models, retrieval, comparison generation, chat, or export contracts
+- asset coverage, source fixtures, provider adapters, live-call gating, or secret handling
+- PRD, technical design spec, proposal, SPEC, EVALS, or AGENTS.md during the implementation task
+- generated comparison content beyond the search-result CTA and route handoff
+- unsupported/out-of-scope blocking rules
+
+Acceptance criteria:
+
+- Home page headline is `Understand a stock or ETF in plain English`.
+- Home page supporting copy is `Search a U.S. stock or non-leveraged U.S. equity ETF to see beginner-friendly explanations, source citations, top risks, recent context, and grounded follow-up answers.`
+- Primary search placeholder is `Search a ticker or name, like VOO, QQQ, or Apple`.
+- Example chips include `VOO`, `QQQ`, `AAPL`, `NVDA`, and `SOXX`, and are clearly examples only, not recommendations.
+- Home page has one primary action: search for a single supported stock or ETF.
+- Home page does not show a comparison builder or Glossary as a primary workflow; a small comparison educational card may link to `/compare`.
+- Clear comparison patterns such as `VOO vs QQQ`, `AAPL vs MSFT`, and `NVDA vs SOXX` show a special autocomplete result that routes to `/compare?left=...&right=...`.
+- Search/autocomplete supports partial ticker/name/provider matches and grouped stock/ETF results where supported by the existing frontend data.
+- Search rows show ticker, name, asset type, exchange or issuer, and one of the v0.4 support-state chips.
+- Exact recognized unsupported tickers show the v0.4 recognized-but-unsupported copy and do not link to generated asset pages, chat, comparisons, Weekly News Focus, or AI Comprehensive Analysis.
+- No-match searches show `No supported stock or ETF found for "{query}".` and remain distinct from recognized-but-unsupported states.
+- Supported results still navigate to `/assets/[ticker]`.
+- Partial, stale, pending, unavailable, unsupported, out-of-scope, and unknown states are labeled instead of silently hidden.
+- The frontend continues to call only the FastAPI/backend-relative paths and does not add browser-side provider, market-data, ingestion, OpenRouter, or LLM calls.
+
+Required commands:
+
+```bash
+git status --short
+npm test
+npm run typecheck
+npm run build
+python3 -m pytest tests/unit/test_safety_guardrails.py -q
+bash scripts/run_quality_gate.sh
+```
+
+Iteration budget:
+
+Max 3 attempts.
 
 ## Completed
 
