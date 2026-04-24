@@ -13,6 +13,29 @@ ltt_is_wsl() {
   grep -qiE "(microsoft|wsl)" /proc/version 2>/dev/null
 }
 
+ltt_normalize_wsl_tempdir() {
+  if ! ltt_is_wsl; then
+    return 0
+  fi
+
+  local tmp_root="${TMPDIR:-}"
+  case "$tmp_root" in
+    ""|/mnt/[A-Za-z]/*)
+      tmp_root="${LTT_WSL_TMPDIR:-/tmp}"
+      ;;
+  esac
+
+  mkdir -p "$tmp_root"
+  export TMPDIR="$tmp_root"
+  export TMP="$tmp_root"
+  export TEMP="$tmp_root"
+  case "${PATHEXT:-}" in
+    ""|.CPL)
+      export PATHEXT=".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC"
+      ;;
+  esac
+}
+
 ltt_find_conda_sh() {
   local candidate
 
@@ -155,4 +178,5 @@ ltt_set_codex_preferences() {
   fi
 }
 
+ltt_normalize_wsl_tempdir
 ltt_activate_agent_env

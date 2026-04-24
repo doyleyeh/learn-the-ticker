@@ -1,22 +1,23 @@
 ---
 name: learn-the-ticker-automation-agent-loop
-description: Review and operate the Learn the Ticker repo's local agent-loop workflow. Use when Codex needs to inspect repo status, read the repo control docs, decide whether the current worktree can be cleaned up with a safe Conventional Commit, prepare up to five narrow TASKS.md items when the current task or backlog is missing, choose between gpt-5.3-codex-spark and gpt-5.5 based on a reliable usage signal, and run scripts/run_task_cycle.sh from the learn-the-ticker WSL conda environment.
+description: Review and operate the Learn the Ticker repo's local agent-loop workflow at /home/ubuntu/Side Project/learn-the-ticker. Use when Codex needs to check for active agent-loop work, inspect repo status, read the repo control docs, decide whether the current worktree can be cleaned up with a safe Conventional Commit, prepare up to five narrow TASKS.md items when the current task or backlog is missing, choose between gpt-5.3-codex-spark and gpt-5.5 based on a reliable usage signal, and run scripts/run_task_cycle.sh from the learn-the-ticker WSL conda environment.
 ---
 
 # Learn the Ticker Automation Agent Loop
 
-Use this skill for repo-maintenance turns whose goal is to get the Learn the Ticker harness back into a runnable state and then launch the repeat-mode task cycle safely.
+Use this skill for repo-maintenance turns whose goal is to get the Learn the Ticker harness back into a runnable state and then launch the repeat-mode task cycle safely. Before starting another loop, check whether another Codex agent or task-cycle process already appears active.
 
 Read [references/repo-workflow.md](references/repo-workflow.md) first. Read [references/model-selection.md](references/model-selection.md) before choosing a model.
 
 ## Quick Start
 
 1. Read `AGENTS.md`, `docs/learn_the_ticker_PRD.md`, `docs/learn_the_ticker_technical_design_spec.md`, `docs/learn-the-ticker_proposal.md`, `SPEC.md`, `TASKS.md`, and `EVALS.md`.
-2. Run `git status --short` before making decisions.
-3. Review the current task, backlog count, and worktree state.
-4. Run `python codex-skills/learn-the-ticker-automation-agent-loop/scripts/task_cycle_preflight.py --repo-root . --max-cycles 5`.
-5. If the repo is safe to continue autonomously and `TASKS.md` needs more planning, add or promote only the minimum needed, up to five total planned cycles.
-6. Run the printed WSL command or the equivalent `bash scripts/run_task_cycle.sh --model <selected-model> --repeat --max-cycles 5 --push`.
+2. Check for active agent-loop work before modifying files or starting another loop.
+3. Run `git status --short` before making decisions.
+4. Review the current task, backlog count, and worktree state.
+5. Run `python codex-skills/learn-the-ticker-automation-agent-loop/scripts/task_cycle_preflight.py --repo-root . --max-cycles 5`.
+6. If the repo is safe to continue autonomously and `TASKS.md` needs more planning, add or promote only the minimum needed, up to five total planned cycles.
+7. Run the printed WSL command or the equivalent `bash scripts/run_task_cycle.sh --model <selected-model> --repeat --max-cycles 5 --push`.
 
 ## Workflow
 

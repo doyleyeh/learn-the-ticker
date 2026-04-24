@@ -16,6 +16,8 @@ Follow the repo order: safety and advice-boundary rules first, then PRD, technic
 
 ## Status Review
 
+- Before starting another loop, check for active Codex/task-cycle/agent-loop work. Inspect running processes when available, current terminal output when available, `git status --short --branch`, recent branch/task-cycle state, and obvious in-progress artifacts under `.agent-runs/`.
+- If another Codex agent or task-cycle process appears active, stop immediately and report that the automation skipped the run because active work was detected. Do not modify files, commit, push, or start another loop.
 - Run `git status --short`.
 - Review the current task and backlog state in `TASKS.md`.
 - Count planned cycles as `1` for an existing current task plus the number of backlog task headings.
@@ -48,6 +50,17 @@ Do not create a cleanup commit when:
 
 Use the repo's WSL path and activate the `learn-the-ticker` conda environment with `scripts/activate_agent_env.sh` before running the cycle.
 
+The activation script is part of the environment contract. It should resolve Node, npm, Python, and Codex from the WSL conda environment, normalize WSL temp variables to a Linux temp directory so pytest does not inherit Windows `/mnt/c/.../Temp` paths, and provide a standard Windows `PATHEXT` for Windows tools launched from WSL.
+
+Recommended local Git settings for the WSL worktree:
+
+```bash
+git config --local core.autocrlf input
+git config --local core.eol lf
+git config --local core.ignorecase false
+git config --local core.filemode true
+```
+
 Preferred cycle command:
 
 ```bash
@@ -59,3 +72,7 @@ Launch from Windows PowerShell with:
 ```powershell
 wsl.exe bash -lc 'cd <repo-wsl-path> && source scripts/activate_agent_env.sh && bash scripts/run_task_cycle.sh --model <selected-model> --repeat --max-cycles 5 --push'
 ```
+
+## Docker Compose Check
+
+`docker compose config` is an optional scaffold validation check when Docker is available. If it fails in WSL with Docker Desktop's WSL integration message, the normal deterministic quality gate can still pass; enable Docker Desktop WSL integration for the distro or install Docker Engine inside WSL before rerunning the Docker-specific check.
