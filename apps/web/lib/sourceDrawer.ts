@@ -30,6 +30,10 @@ export type SourceDrawerContractData = {
   entries: SourceDrawerListEntry[];
 };
 
+export function sourceDrawerEntriesByDocumentId(data: SourceDrawerContractData) {
+  return new Map(data.entries.map((entry) => [entry.source.source_document_id, entry]));
+}
+
 type BackendAssetIdentity = {
   ticker: string;
   name: string;
