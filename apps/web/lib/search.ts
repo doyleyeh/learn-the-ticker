@@ -1,14 +1,28 @@
 import { assetFixtures } from "./fixtures";
 
 type SearchAssetType = "stock" | "etf" | "unsupported" | "unknown";
-type SearchResponseStatus = "supported" | "ambiguous" | "ingestion_needed" | "unsupported" | "out_of_scope" | "unknown";
-type SearchResultStatus = "supported" | "ingestion_needed" | "unsupported" | "out_of_scope" | "unknown";
+type SearchResponseStatus =
+  | "supported"
+  | "ambiguous"
+  | "ingestion_needed"
+  | "unsupported"
+  | "out_of_scope"
+  | "unknown"
+  | "comparison";
+type SearchResultStatus =
+  | "supported"
+  | "ingestion_needed"
+  | "unsupported"
+  | "out_of_scope"
+  | "unknown"
+  | "comparison";
 type SearchSupportClassification =
   | "cached_supported"
   | "eligible_not_cached"
   | "recognized_unsupported"
   | "out_of_scope"
-  | "unknown";
+  | "unknown"
+  | "comparison_route";
 
 type SearchCandidate = {
   ticker: string;
@@ -67,6 +81,9 @@ export type LocalSearchResult = {
   can_answer_chat: boolean;
   can_compare: boolean;
   generated_route: string | null;
+  comparison_route: string | null;
+  comparison_left_ticker: string | null;
+  comparison_right_ticker: string | null;
   can_request_ingestion: boolean;
   ingestion_request_route: string | null;
   message: string | null;
@@ -82,6 +99,9 @@ export type LocalSearchState = {
   requires_ingestion: boolean;
   can_open_generated_page: boolean;
   generated_route: string | null;
+  comparison_route: string | null;
+  comparison_left_ticker: string | null;
+  comparison_right_ticker: string | null;
   can_request_ingestion: boolean;
   ingestion_request_route: string | null;
   blocked_explanation: LocalSearchBlockedExplanation | null;
@@ -94,7 +114,7 @@ export type LocalSearchResponse = {
 };
 
 const SUPPORTED_V1_SCOPE_REMINDER =
-  "Supported MVP coverage is limited to U.S.-listed common stocks in the current Top-500 manifest and non-leveraged U.S.-listed equity ETFs.";
+  "Learn the Ticker currently supports U.S.-listed common stocks and non-leveraged U.S.-listed equity ETFs.";
 
 const EMPTY_BLOCKED_CAPABILITIES: SearchBlockedCapabilityFlags = {
   can_open_generated_page: false,
@@ -389,6 +409,10 @@ function normalizeTicker(value: string) {
   return value.trim().toUpperCase();
 }
 
+function comparisonTickerFromToken(value: string) {
+  return value.trim().replace(/\.$/, "").toUpperCase();
+}
+
 function supportedCandidates(): SearchCandidate[] {
   return Object.values(assetFixtures).map((asset) => ({
     ticker: asset.ticker,
@@ -449,6 +473,66 @@ function rankedCandidates(raw_query: string, normalized_ticker: string) {
     .sort((left, right) => right[0] - left[0] || left[1].ticker.localeCompare(right[1].ticker));
 }
 
+function comparisonRouteResult(query: string): LocalSearchResponse | null {
+  const match = query.trim().match(/^([A-Za-z][A-Za-z0-9.]{0,9})\s+(?:vs\.?|versus)\s+([A-Za-z][A-Za-z0-9.]{0,9})$/i);
+  if (!match) {
+    return null;
+  }
+
+  const left = comparisonTickerFromToken(match[1]);
+  const right = comparisonTickerFromToken(match[2]);
+  if (!left || !right || left === right) {
+    return null;
+  }
+
+  const route = `/compare?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`;
+  const result: LocalSearchResult = {
+    ticker: `${left} vs ${right}`,
+    name: `Compare ${left} and ${right}`,
+    asset_type: "unknown",
+    exchange: null,
+    issuer: null,
+    supported: false,
+    status: "comparison",
+    support_classification: "comparison_route",
+    eligible_for_ingestion: false,
+    requires_ingestion: false,
+    can_open_generated_page: false,
+    can_answer_chat: false,
+    can_compare: true,
+    generated_route: null,
+    comparison_route: route,
+    comparison_left_ticker: left,
+    comparison_right_ticker: right,
+    can_request_ingestion: false,
+    ingestion_request_route: null,
+    message:
+      "Comparison is a separate workflow. Open the comparison page so each asset can be handled with its own support state and evidence pack.",
+    blocked_explanation: null
+  };
+
+  return {
+    query,
+    results: [result],
+    state: {
+      status: "comparison",
+      message: `Compare ${left} and ${right} in the separate comparison workflow.`,
+      result_count: 1,
+      support_classification: "comparison_route",
+      requires_disambiguation: false,
+      requires_ingestion: false,
+      can_open_generated_page: false,
+      generated_route: null,
+      comparison_route: route,
+      comparison_left_ticker: left,
+      comparison_right_ticker: right,
+      can_request_ingestion: false,
+      ingestion_request_route: null,
+      blocked_explanation: null
+    }
+  };
+}
+
 function blockedExplanationForResult(result: LocalSearchResult): LocalSearchBlockedExplanation | null {
   if (result.support_classification === "recognized_unsupported") {
     const explanation_category =
@@ -464,7 +548,7 @@ function blockedExplanationForResult(result: LocalSearchResult): LocalSearchBloc
       support_classification: "recognized_unsupported",
       explanation_kind: "scope_blocked_search_result",
       explanation_category,
-      summary: `${result.ticker} is recognized, but this asset category is outside the current supported MVP coverage.`,
+      summary: "We found this ticker, but it is not supported in v1.",
       scope_rationale: result.message ?? "This asset category is outside the current supported MVP scope.",
       supported_v1_scope: SUPPORTED_V1_SCOPE_REMINDER,
       blocked_capabilities: EMPTY_BLOCKED_CAPABILITIES,
@@ -523,6 +607,9 @@ function candidateToResult(candidate: SearchCandidate): LocalSearchResult {
     can_answer_chat: cached_supported,
     can_compare: cached_supported,
     generated_route: cached_supported ? `/assets/${candidate.ticker}` : null,
+    comparison_route: null,
+    comparison_left_ticker: null,
+    comparison_right_ticker: null,
     can_request_ingestion: eligible_not_cached,
     ingestion_request_route: eligible_not_cached ? `/api/admin/ingest/${candidate.ticker}` : null,
     message: candidate.message,
@@ -546,6 +633,9 @@ function stateForSingleResult(result: LocalSearchResult): LocalSearchState {
       requires_ingestion: false,
       can_open_generated_page: true,
       generated_route: result.generated_route,
+      comparison_route: null,
+      comparison_left_ticker: null,
+      comparison_right_ticker: null,
       can_request_ingestion: false,
       ingestion_request_route: null,
       blocked_explanation: null
@@ -563,6 +653,9 @@ function stateForSingleResult(result: LocalSearchResult): LocalSearchState {
       requires_ingestion: true,
       can_open_generated_page: false,
       generated_route: null,
+      comparison_route: null,
+      comparison_left_ticker: null,
+      comparison_right_ticker: null,
       can_request_ingestion: true,
       ingestion_request_route: `/api/admin/ingest/${result.ticker}`,
       blocked_explanation: null
@@ -579,6 +672,9 @@ function stateForSingleResult(result: LocalSearchResult): LocalSearchState {
       requires_ingestion: false,
       can_open_generated_page: false,
       generated_route: null,
+      comparison_route: null,
+      comparison_left_ticker: null,
+      comparison_right_ticker: null,
       can_request_ingestion: false,
       ingestion_request_route: null,
       blocked_explanation: result.blocked_explanation
@@ -597,6 +693,9 @@ function stateForSingleResult(result: LocalSearchResult): LocalSearchState {
       requires_ingestion: false,
       can_open_generated_page: false,
       generated_route: null,
+      comparison_route: null,
+      comparison_left_ticker: null,
+      comparison_right_ticker: null,
       can_request_ingestion: false,
       ingestion_request_route: null,
       blocked_explanation: result.blocked_explanation
@@ -612,6 +711,9 @@ function stateForSingleResult(result: LocalSearchResult): LocalSearchState {
     requires_ingestion: false,
     can_open_generated_page: false,
     generated_route: null,
+    comparison_route: null,
+    comparison_left_ticker: null,
+    comparison_right_ticker: null,
     can_request_ingestion: false,
     ingestion_request_route: null,
     blocked_explanation: null
@@ -620,6 +722,11 @@ function stateForSingleResult(result: LocalSearchResult): LocalSearchState {
 
 export function resolveLocalSearchResponse(query: string): LocalSearchResponse {
   const raw_query = query.trim();
+  const comparison = comparisonRouteResult(raw_query);
+  if (comparison) {
+    return comparison;
+  }
+
   const normalized_ticker = normalizeTicker(query);
   const candidates = rankedCandidates(raw_query, normalized_ticker);
 
@@ -639,6 +746,9 @@ export function resolveLocalSearchResponse(query: string): LocalSearchResponse {
           requires_ingestion: false,
           can_open_generated_page: false,
           generated_route: null,
+          comparison_route: null,
+          comparison_left_ticker: null,
+          comparison_right_ticker: null,
           can_request_ingestion: false,
           ingestion_request_route: null,
           blocked_explanation: null
@@ -669,6 +779,9 @@ export function resolveLocalSearchResponse(query: string): LocalSearchResponse {
     can_answer_chat: false,
     can_compare: false,
     generated_route: null,
+    comparison_route: null,
+    comparison_left_ticker: null,
+    comparison_right_ticker: null,
     can_request_ingestion: false,
     ingestion_request_route: null,
     message: "No deterministic local fixture or recognized eligible asset matched this query.",
@@ -687,6 +800,9 @@ export function resolveLocalSearchResponse(query: string): LocalSearchResponse {
       requires_ingestion: false,
       can_open_generated_page: false,
       generated_route: null,
+      comparison_route: null,
+      comparison_left_ticker: null,
+      comparison_right_ticker: null,
       can_request_ingestion: false,
       ingestion_request_route: null,
       blocked_explanation: null
@@ -708,7 +824,7 @@ export function formatSearchAssetType(result: Pick<LocalSearchResult, "asset_typ
 }
 
 export function searchQueryExampleText() {
-  return "Try VOO, Apple, S&P 500 ETF, SPY, BTC, GME, or ZZZZ.";
+  return "Examples only, not recommendations: VOO, QQQ, AAPL, NVDA, and SOXX.";
 }
 
 export function searchUnknownMessage() {

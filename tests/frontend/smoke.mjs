@@ -59,10 +59,12 @@ function includes(path, marker) {
 ].forEach(exists);
 
 includes("app/page.tsx", "SearchBox");
-includes("app/page.tsx", "unsupported");
-includes("app/page.tsx", "ambiguous");
-includes("app/page.tsx", "ingestion-needed");
-includes("app/page.tsx", "Top-500 manifest-backed MVP scope");
+includes("app/page.tsx", "Understand a stock or ETF in plain English");
+includes("app/page.tsx", "Search a U.S. stock or non-leveraged U.S. equity ETF");
+includes("app/page.tsx", "single-asset-search");
+includes("app/page.tsx", "separate-comparison");
+includes("app/page.tsx", "VOO vs QQQ");
+includes("app/page.tsx", "/compare");
 includes("app/assets/[ticker]/page.tsx", "Stable facts");
 includes("app/assets/[ticker]/page.tsx", "Stale and unknown treatment");
 includes("app/assets/[ticker]/page.tsx", "AssetModeLayout");
@@ -367,8 +369,23 @@ includes("components/SearchBox.tsx", "data-search-result-link");
 includes("components/SearchBox.tsx", "data-search-support-classification");
 includes("components/SearchBox.tsx", "data-search-open-generated-page");
 includes("components/SearchBox.tsx", "data-search-can-open-generated-page");
+includes("components/SearchBox.tsx", "Search a ticker or name, like VOO, QQQ, or Apple");
+includes("components/SearchBox.tsx", "Examples only, not recommendations");
+includes("components/SearchBox.tsx", "data-home-primary-action=\"single-asset-search\"");
+includes("components/SearchBox.tsx", "data-search-comparison-result");
+includes("components/SearchBox.tsx", "data-search-special-autocomplete-result");
+includes("components/SearchBox.tsx", "data-search-comparison-route");
+includes("components/SearchBox.tsx", "data-search-open-comparison-route");
+includes("components/SearchBox.tsx", "Pending ingestion");
+includes("components/SearchBox.tsx", "Out of scope");
+includes("components/SearchBox.tsx", "No supported stock or ETF found for");
 includes("components/SearchBox.tsx", "No generated asset page, grounded chat, or comparison is available today");
 includes("components/SearchBox.tsx", "No facts are invented for this ticker or name");
+includes("lib/search.ts", "comparison_route");
+includes("lib/search.ts", "/compare\\?left=");
+includes("lib/search.ts", "VOO, QQQ, AAPL, NVDA, and SOXX");
+includes("lib/search.ts", "We found this ticker, but it is not supported in v1.");
+includes("lib/search.ts", "Learn the Ticker currently supports U.S.-listed common stocks and non-leveraged U.S.-listed equity ETFs.");
 includes("components/FreshnessLabel.tsx", "data-freshness-state");
 includes("components/GlossaryPopover.tsx", "data-glossary-term");
 includes("components/GlossaryPopover.tsx", "data-glossary-category");
@@ -607,7 +624,7 @@ for (const marker of [
   "suppressed",
   "available",
   "freshnessState",
-  "Unknown in the local skeleton data",
+  "No supported stock or ETF found",
   "No facts are invented",
   "Apple Inc.",
   "Vanguard S&P 500 ETF",

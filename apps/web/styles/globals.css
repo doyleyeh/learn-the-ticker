@@ -40,6 +40,10 @@ input {
   letter-spacing: 0;
 }
 
+button {
+  cursor: pointer;
+}
+
 .app-shell {
   min-height: 100vh;
 }
@@ -179,6 +183,25 @@ input {
   color: var(--muted);
 }
 
+.support-state-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.support-state-legend span {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f7f9fa;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
 .search-result-panel {
   display: flex;
   flex-wrap: wrap;
@@ -230,6 +253,7 @@ input {
 }
 
 .quick-links a,
+.quick-links button,
 .metadata-row span {
   display: inline-flex;
   min-height: 34px;
@@ -242,6 +266,19 @@ input {
   font-size: 14px;
   font-weight: 750;
   text-decoration: none;
+}
+
+.quick-links button {
+  border: 1px solid var(--line);
+}
+
+.example-chip-note {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
 }
 
 .content-band {
@@ -311,6 +348,10 @@ input {
 
 .example-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.home-workflow-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .example-card {
