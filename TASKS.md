@@ -1,36 +1,37 @@
 ## Current task
 
-### T-058: Align asset-page source drawer contexts with backend source metadata contracts
+### T-059: Fetch supported glossary context from backend glossary contracts
 
 Goal:
-Reduce remaining supported asset-page source drawer drift by preferring the existing backend source-drawer contract for related claim context, section references, and allowed excerpts when it is available, while preserving deterministic fallback rendering, same-asset citation boundaries, and current blocked/no-live-call guardrails.
+Reduce remaining supported asset-page glossary drift by consuming the existing backend glossary asset-context contract when it is available, while preserving curated generic glossary definitions, deterministic fallback rendering, same-asset citation boundaries, and current blocked/no-live-call guardrails.
 
 Task-scope paragraph:
-This cycle is limited to source drawer entries rendered on the supported asset page in `apps/web`. Update the asset page and any narrow frontend adapter logic it needs so source drawers for source documents already shown on the asset page prefer `/api/assets/{ticker}/sources` metadata and related-claim context from the existing deterministic backend source-drawer contract, while keeping local fixture-based source drawer rendering when the backend response is unavailable, invalid, missing the needed source document IDs, or no API base URL is configured. Leave the dedicated source-list route, overview/details/weekly-news fetch adapters, glossary, chat, compare, export routing, blocked/out-of-scope search behavior, and backend source-drawer schema unchanged for this cycle.
+This cycle is limited to glossary context rendered on the supported asset page in `apps/web`. Add a narrow frontend adapter for `/api/assets/{ticker}/glossary` that validates the existing `glossary-asset-context-v1` backend response and overlays supported same-asset context, citation IDs, source references, freshness, and uncertainty labels onto the existing glossary area when available. Keep curated generic definitions as the baseline and fall back independently to the current static glossary path when the backend response is unavailable, invalid, filtered to no usable terms, or no API base URL is configured. Leave backend glossary schemas, glossary catalog content, source-use policy, chat, compare, export routing, and blocked/out-of-scope generated-page behavior unchanged for this cycle.
 
 Allowed files:
 
 - `apps/web/app/assets/[ticker]/page.tsx`
-- `apps/web/components/SourceDrawer.tsx`
-- `apps/web/lib/sourceDrawer.ts`
+- `apps/web/components/GlossaryPopover.tsx`
+- `apps/web/lib/glossary.ts`
+- `apps/web/lib/assetGlossary.ts`
 - `tests/frontend/smoke.mjs`
 
 Do not change:
 
-- backend FastAPI routes, response schemas, fixtures, or provider adapters
+- backend FastAPI routes, response schemas, fixtures, glossary catalog, or provider adapters
 - `apps/web/app/assets/[ticker]/sources/page.tsx` and source-list route behavior
-- overview/details/weekly-news backend fetch behavior added in `T-055`, `T-056`, and `T-057`, except for the minimal asset-page source-drawer integration needed to use their results together
+- overview/details/weekly-news/source-drawer backend fetch behavior added in `T-055`, `T-056`, `T-057`, and `T-058`
 - source allowlist, source-use policy, freshness semantics, or advice-boundary rules
 - compare, search, glossary, chat, export, ingestion, caching, and deployment settings
 - unsupported or out-of-scope generated-page behavior
 
 Acceptance criteria:
 
-- Supported asset-page source drawers prefer backend `/api/assets/{ticker}/sources` entries when the response matches the existing `asset-source-drawer-v1` contract for the source document IDs already rendered on the page.
-- Asset-page source drawers use backend related claims, section references, and allowed excerpts for both stable Deep-Dive sections and timely-context sources when those records are available, instead of falling back to generic local claim labels.
-- Asset-page source drawers fall back independently to the existing local deterministic source metadata and citation-context path when the backend source-drawer response is unavailable, invalid, missing the needed source document IDs, or no API base URL is configured.
-- Weekly News Focus and AI Comprehensive Analysis source drawers remain visually and structurally separate from stable canonical facts, and backend source-drawer context does not redefine asset identity.
-- Important factual claims keep visible same-asset citations or explicit uncertainty labels, and restricted or disallowed raw text remains suppressed according to source-use policy.
+- Supported asset-page glossary rendering prefers backend `/api/assets/{ticker}/glossary` entries when the response matches the existing `glossary-asset-context-v1` contract for terms already shown in the page glossary groups.
+- The glossary UI keeps curated generic definitions visible while adding backend asset-context availability, evidence/freshness state, same-asset citation IDs, source-reference metadata, and uncertainty labels when those records are available.
+- Glossary rendering falls back independently to the existing static deterministic glossary path when the backend glossary response is unavailable, invalid, missing the needed terms, generic-only, or no API base URL is configured.
+- Asset-specific glossary context never becomes independent factual support for claims outside the glossary area and does not redefine stable asset identity or Weekly News Focus context.
+- Important asset-specific glossary context keeps visible same-asset citations or explicit uncertainty/generic-only labels, and restricted or disallowed raw text remains suppressed according to source-use policy.
 - No new live external dependency is introduced, unsupported/out-of-scope assets do not gain generated-page behavior, and no advice-like copy is added.
 - Required commands from this cycle pass.
 
@@ -39,8 +40,8 @@ Required commands:
 - `npm test`
 - `npm run typecheck`
 - `npm run build`
-- `python3 evals/run_static_evals.py`
 - `python3 -m pytest tests/integration/test_backend_api.py -q`
+- `python3 evals/run_static_evals.py`
 - `bash scripts/run_quality_gate.sh`
 
 Iteration budget:
@@ -48,6 +49,28 @@ Iteration budget:
 - Max 2 attempts
 
 ## Completed
+
+### T-058: Align asset-page source drawer contexts with backend source metadata contracts
+
+Goal:
+Reduce remaining supported asset-page source drawer drift by preferring the existing backend source-drawer contract for related claim context, section references, and allowed excerpts when it is available, while preserving deterministic fallback rendering, same-asset citation boundaries, and current blocked/no-live-call guardrails.
+
+Completed details:
+
+- Implementation commit `be3527b feat(T-058): align asset-page source drawer contexts with backend source metadata contracts` updated the supported asset page to overlay backend `/api/assets/{ticker}/sources` entries onto already-rendered source drawers by `source_document_id` when the response matches the existing deterministic `asset-source-drawer-v1` contract.
+- `apps/web/lib/sourceDrawer.ts` now exposes a small source-record mapping helper that lets the asset page reuse backend related claims, section references, and allowed excerpts without changing backend routes or source-use policy.
+- `apps/web/app/assets/[ticker]/page.tsx` preserves independent deterministic fallback rendering when the backend source-drawer response is unavailable, invalid, missing a rendered source document ID, or no API base URL is configured.
+- `tests/frontend/smoke.mjs` now checks the supported asset-page source-drawer backend overlay markers.
+- `docs/agent-journal/20260424T025701Z.md` records these passing checks: `npm test`; `npm run typecheck`; `npm run build`; `python3 evals/run_static_evals.py`; `python3 -m pytest tests/integration/test_backend_api.py -q`; `bash scripts/run_quality_gate.sh`.
+- Remaining risks from the journal:
+  - Supported asset pages still intentionally stay on deterministic local fixture drawer rendering when `NEXT_PUBLIC_API_BASE_URL` or `API_BASE_URL` is not configured.
+  - The asset page now overlays backend source-drawer entries per rendered `source_document_id`, but any supported page source not present in the backend `/sources` response still falls back to the existing local claim-context path for this cycle.
+
+Completion commits:
+
+- `6d29283 chore(T-058): prepare align asset-page source drawer contexts with backend source metadata contracts task`
+- `be3527b feat(T-058): align asset-page source drawer contexts with backend source metadata contracts`
+- `1f978dc chore(T-058): merge align asset-page source drawer contexts with backend source metadata contracts`
 
 ### T-057: Fetch supported asset detail and recent-context sections from backend contracts
 
@@ -1609,4 +1632,34 @@ Completion commits:
 
 ## Backlog
 
-### T-059: Fetch supported glossary context from backend glossary contracts
+### T-060: Align asset-page export controls with backend export contracts
+
+Goal:
+Reduce remaining asset-page export drift by validating backend asset-page and source-list export payload availability from existing deterministic export routes while preserving safe Markdown-only links, licensing notes, citation/freshness metadata expectations, and fallback behavior when no API base URL is configured.
+
+Scope note:
+Keep this cycle frontend-only unless a smoke-test-only helper is needed. Do not change backend export schemas, source-use policy, chat export behavior, compare export behavior, or unsupported/out-of-scope generated-page behavior.
+
+### T-061: Align comparison export controls with backend comparison export contracts
+
+Goal:
+Reduce comparison-page export drift by making comparison export controls prefer the existing backend comparison export contract when available, while preserving deterministic `VOO` vs `QQQ` fixture fallback, same-comparison-pack citation boundaries, blocked-state behavior, and no-live-call guardrails.
+
+Scope note:
+Keep the change limited to `apps/web` comparison/export adapter surfaces and frontend smoke coverage. Do not change backend comparison generation, export validation schemas, asset-page export controls, chat export, or source-use policy.
+
+### T-062: Align accountless chat export controls with session export contracts
+
+Goal:
+Improve the chat export path so supported accountless chat exports can use the existing session export contract when a conversation ID exists, while preserving the current single-turn transcript export fallback, advice redirects, compare redirects, 7-day TTL/deleted-session states, and no raw transcript analytics assumptions.
+
+Scope note:
+Keep the change limited to frontend chat/export controls and smoke coverage unless a narrow existing type needs to be consumed. Do not change backend chat-session storage, export schemas, safety classification, or generated chat behavior.
+
+### T-063: Surface backend trust-metric validation readiness in frontend control surfaces
+
+Goal:
+Expose deterministic frontend markers and lightweight adapter validation for the existing backend trust-metric catalog/validation contracts so citation, source drawer, glossary, comparison, export, and safety redirect events remain ready for aggregate metrics without logging raw chat transcript content or adding live analytics.
+
+Scope note:
+Keep this as a validation-readiness task, not a real analytics integration. Do not introduce third-party analytics, user accounts, persistent client identifiers, live provider calls, or any raw user question/content logging.
