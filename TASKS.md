@@ -1,61 +1,31 @@
 ## Current task
 
+No current task is prepared. The backlog is empty.
+
+## Completed
+
 ### T-063: Surface backend trust-metric validation readiness in frontend control surfaces
 
 Goal:
 Expose deterministic frontend markers and lightweight adapter validation for the existing backend trust-metric catalog/validation contracts so citation, source drawer, glossary, comparison, export, and safety redirect surfaces remain ready for aggregate metrics without logging raw chat transcript content, adding real analytics, or weakening citation, source-use, freshness, uncertainty, and advice-boundary rules.
 
-Task-scope paragraph:
-This cycle is limited to frontend validation-readiness only. Add a small `apps/web` trust-metrics helper that mirrors the existing backend `trust-metrics-event-v1` catalog expectations, validates an optional backend catalog response when available, and provides compact metadata descriptors for existing frontend control surfaces. Surface those descriptors through deterministic `data-*` markers on citation/source drawer, glossary, comparison, export, and chat safety redirect UI without emitting events, posting validation payloads, installing analytics, persisting identifiers, or adding live calls. Preserve all existing rendered learning content, export behavior, source drawers, glossary context, comparison behavior, chat behavior, support-state handling, source-use rights, freshness/unknown/stale/unavailable/partial labels, educational disclaimers, and no-investment-advice copy.
+Completed details:
 
-Allowed files:
+- Implementation commit `49e7caa feat(T-063): surface backend trust-metric validation readiness in frontend control surfaces` added `apps/web/lib/trustMetrics.ts` with `trust-metrics-event-v1`, validation-only mode, deterministic timestamp default `1970-01-01T00:00:00Z`, no persistence, no external analytics, no live external calls, required product events, required trust events, compact surface descriptor construction, and lightweight catalog-response validation.
+- `apps/web/components/SourceDrawer.tsx`, `apps/web/components/GlossaryPopover.tsx`, `apps/web/components/ComparisonSuggestions.tsx`, `apps/web/app/compare/page.tsx`, `apps/web/components/ExportControls.tsx`, and `apps/web/components/AssetChatPanel.tsx` now expose deterministic `data-*` trust-metric readiness markers for source drawer usage, glossary usage, comparison usage, export usage, chat answer outcomes, chat safety redirects, citation coverage, freshness accuracy, and safety redirect rate.
+- The frontend markers use compact metadata such as workflow area, selected section, asset ticker/support state, comparison tickers/state, export content type/format, citation count, source document count, freshness state, evidence state, safety classification, and chat outcome; they do not add analytics emission, backend persistence, browser storage, cookies, live provider calls, or raw transcript/content fields.
+- Chat and safety redirect surfaces now label trust-metric readiness for `chat_answer_outcome`, `chat_safety_redirect`, and `safety_redirect_rate` while preserving advice redirects, comparison redirects, unsupported/insufficient-evidence behavior, accountless session handling, and no raw question/answer analytics.
+- `tests/frontend/smoke.mjs` now checks the trust-metrics helper constants/catalog validation shape and the frontend marker coverage for source drawer, glossary, comparison, export, citation/freshness, chat answer, and safety redirect surfaces.
+- `docs/agent-journal/20260424T173249Z.md` records these checks: `npm test` pass; `npm run typecheck` pass; `npm run build` pass; `python3 -m pytest tests/unit/test_trust_metrics.py tests/integration/test_backend_api.py tests/unit/test_safety_guardrails.py -q` pass with 52 tests; `python3 evals/run_static_evals.py` pass; `bash scripts/run_quality_gate.sh` pass, including 197 Python tests, static evals, frontend smoke, typecheck, build, and backend checks.
+- Remaining risks from the journal:
+  - Frontend trust-metric readiness remains marker-only and pure-helper validation only; it does not fetch the backend catalog or emit validation events.
+  - The helper validates the required T-032 catalog shape at a lightweight frontend level, so future backend catalog expansion may need a matching descriptor update.
+  - Markers intentionally expose only compact counts and state labels; they are not a substitute for backend trust-metric validation or storage if real analytics are added later.
 
-- `apps/web/components/AssetChatPanel.tsx`
-- `apps/web/components/ExportControls.tsx`
-- `apps/web/components/SourceDrawer.tsx`
-- `apps/web/components/GlossaryPopover.tsx`
-- `apps/web/components/ComparisonSuggestions.tsx`
-- `apps/web/app/compare/page.tsx`
-- `apps/web/lib/trustMetrics.ts`
-- `tests/frontend/smoke.mjs`
+Completion commits:
 
-Do not change:
-
-- backend trust-metrics models, validation helpers, FastAPI routes, integration tests, eval cases, schemas, fixtures, provider adapters, source-use policy, or generated-output contracts
-- existing asset, comparison, source-list, glossary, export, or chat response semantics beyond adding validation-readiness markers and compact frontend helper metadata
-- source allowlists, source-use rights, freshness semantics, advice-boundary rules, comparison redirect behavior, educational disclaimer text, Weekly News Focus behavior, or AI Comprehensive Analysis behavior
-- unsupported, out-of-scope, eligible-not-cached, unknown, unavailable, partial, stale, expired, deleted, or ticker-mismatch behavior
-- deployment settings, env files, live-provider flags, analytics SDKs, browser persistence, cookies, account identifiers, local/session storage, or secret-handling behavior
-
-Acceptance criteria:
-
-- Add a frontend trust-metrics helper that names `trust-metrics-event-v1`, validation-only mode, deterministic timestamp default, no persistence, no external analytics, and no live external calls, matching the backend catalog contract shape from T-032 without duplicating backend validation logic.
-- The helper validates an optional `/api/trust-metrics/catalog`-shaped response only when it includes the required schema version, validation-only flags, no-persistence/no-external-analytics/no-live-call flags, the required product event types `source_drawer_usage`, `glossary_usage`, `comparison_usage`, `export_usage`, `chat_answer_outcome`, and `chat_safety_redirect`, and the required trust event types `citation_coverage`, `freshness_accuracy`, and `safety_redirect_rate`.
-- The helper exposes compact surface descriptors for existing UI only; descriptors may include event type, workflow area, asset ticker, asset support state, comparison state, export content type/format, citation count, source document count, selected section, freshness state, evidence state, safety classification, and chat outcome.
-- The helper must not include or derive forbidden metric fields such as raw query text, user question text, generated answer text, source passages, source URLs, prompts, hidden instructions, raw model reasoning, user identifiers, account identifiers, cookies, IP address, user agent, portfolio details, allocation details, credentials, or external analytics IDs.
-- Source drawer and citation-detail surfaces expose deterministic trust-metric readiness markers for `source_drawer_usage` and citation/source counts without changing citation chips, related claims, allowed excerpts, source-use policy labels, freshness labels, or source drawer behavior.
-- Glossary surfaces expose deterministic trust-metric readiness markers for `glossary_usage` using compact term/section metadata only, while preserving curated generic definitions, grounded asset context, citation boundaries, uncertainty labels, and mobile usability.
-- Comparison surfaces expose deterministic trust-metric readiness markers for `comparison_usage` using left/right ticker and comparison availability metadata only, while preserving blocked states, same-comparison-pack boundaries, comparison redirects, and no generated output for unsupported or out-of-scope assets.
-- Export controls expose deterministic trust-metric readiness markers for `export_usage` and related citation/freshness readiness using export content type, format, state, citation count, source count, schema markers, and licensing scope only, while preserving current asset, comparison, source-list, and chat export behavior.
-- Chat answer and safety redirect surfaces expose deterministic trust-metric readiness markers for `chat_answer_outcome`, `chat_safety_redirect`, and `safety_redirect_rate` without storing or exposing raw questions, raw answers, transcript analytics payloads, conversation contents, or browser-persistent identifiers.
-- Unsupported, out-of-scope, eligible-not-cached, unknown, unavailable, stale, partial, expired, deleted, and ticker-mismatch states remain explicit and must not imply generated output availability, source/citation bindings, or exportable transcript availability when evidence is absent.
-- No third-party analytics package, backend persistence, local/session storage, cookies, account system, live provider call, live news/market-data call, or production dependency is introduced.
-- Required commands from this cycle pass.
-
-Required commands:
-
-- `npm test`
-- `npm run typecheck`
-- `npm run build`
-- `python3 -m pytest tests/unit/test_trust_metrics.py tests/integration/test_backend_api.py tests/unit/test_safety_guardrails.py -q`
-- `python3 evals/run_static_evals.py`
-- `bash scripts/run_quality_gate.sh`
-
-Iteration budget:
-
-- Max 2 attempts
-
-## Completed
+- `49e7caa feat(T-063): surface backend trust-metric validation readiness in frontend control surfaces`
+- `5467c4a chore(T-063): merge surface backend trust-metric validation readiness in frontend control surfaces`
 
 ### T-062: Align accountless chat export controls with session export contracts
 
