@@ -15,6 +15,7 @@ import {
 import { getComparePageSuggestions } from "../../lib/compareSuggestions";
 import { comparisonExportUrl, fetchSupportedComparisonExportContract } from "../../lib/exportControls";
 import { getAssetFixture, type AssetFixture } from "../../lib/fixtures";
+import { buildTrustMetricSurfaceDescriptor } from "../../lib/trustMetrics";
 
 type ComparePageProps = {
   searchParams?: Promise<{
@@ -60,9 +61,37 @@ export default async function ComparePage({ searchParams }: ComparePageProps) {
         }
       })()
     : null;
+  const comparisonTrustMetricDescriptor = buildTrustMetricSurfaceDescriptor({
+    eventType: "comparison_usage",
+    workflowArea: "comparison",
+    comparisonLeftTicker: comparison.left_asset.ticker,
+    comparisonRightTicker: comparison.right_asset.ticker,
+    comparisonState: availabilityState,
+    selectedSection: "compare_page",
+    citationCount: citations_by_id.size,
+    sourceDocumentCount: comparison.source_documents.length,
+    evidenceState: hasSourceBackedComparison ? "available" : availabilityState
+  });
 
   return (
-    <main data-compare-availability-state={availabilityState} data-compare-comparison-type={comparison.comparison_type}>
+    <main
+      data-compare-availability-state={availabilityState}
+      data-compare-comparison-type={comparison.comparison_type}
+      data-trust-metric-schema-version={comparisonTrustMetricDescriptor.schemaVersion}
+      data-trust-metric-mode={comparisonTrustMetricDescriptor.mode}
+      data-trust-metric-event={comparisonTrustMetricDescriptor.eventType}
+      data-trust-metric-workflow-area={comparisonTrustMetricDescriptor.workflowArea}
+      data-trust-metric-occurred-at={comparisonTrustMetricDescriptor.occurredAt}
+      data-trust-metric-persistence={comparisonTrustMetricDescriptor.persistence}
+      data-trust-metric-external-analytics={comparisonTrustMetricDescriptor.externalAnalytics}
+      data-trust-metric-live-external-calls={comparisonTrustMetricDescriptor.liveExternalCalls}
+      data-trust-metric-left-ticker={comparisonTrustMetricDescriptor.comparisonLeftTicker}
+      data-trust-metric-right-ticker={comparisonTrustMetricDescriptor.comparisonRightTicker}
+      data-trust-metric-comparison-state={comparisonTrustMetricDescriptor.comparisonState}
+      data-trust-metric-citation-count={comparisonTrustMetricDescriptor.citationCount}
+      data-trust-metric-source-document-count={comparisonTrustMetricDescriptor.sourceDocumentCount}
+      data-trust-metric-evidence-state={comparisonTrustMetricDescriptor.evidenceState}
+    >
       <section className="asset-hero" data-compare-rendered-state={hasSourceBackedComparison ? "available" : "unavailable"}>
         <p className="eyebrow">{compareEyebrowForAvailability(availabilityState)}</p>
         <h1>
