@@ -1,34 +1,35 @@
 ## Current task
 
-### T-055: Fetch supported source-list pages from backend source-drawer contracts
+### T-056: Fetch supported asset overview pages from backend overview contracts
 
 Goal:
-Reduce frontend fixture drift on supported source-list pages by consuming the existing backend source-drawer contract when it is available, while preserving deterministic blocked-state behavior and safe fallback rendering.
+Reduce frontend fixture drift on supported asset pages by consuming the existing backend overview contract for stable beginner-overview content when it is available, while preserving deterministic fallback rendering and current blocked/no-live-call guardrails.
 
 Task-scope paragraph:
-This cycle is limited to the supported source-list page data path for `apps/web`. Update the source-list route and any narrow frontend helper it needs so supported assets prefer the existing `/api/assets/{ticker}/sources` contract for source metadata, citation contexts, drawer state, and allowed excerpts, while keeping deterministic local fixture fallback behavior and the current blocked/out-of-scope/unknown/eligible-not-cached states unchanged. Do not change backend route behavior, provider wiring, source-use policy, or advice-boundary logic.
+This cycle is limited to the supported asset-page overview path in `apps/web`. Update the supported asset page and any narrow frontend adapter it needs so supported tickers prefer `/api/assets/{ticker}/overview` for stable overview identity, freshness, beginner-summary, top-risk, suitability, citation, and source-document inputs already rendered on the asset page, while keeping deterministic local fixture fallback behavior when the backend response is unavailable or invalid. Leave detailed PRD section rendering, Weekly News Focus, AI Comprehensive Analysis, glossary content, grounded chat, comparison suggestions, and blocked/out-of-scope search behavior unchanged for this cycle.
 
 Allowed files:
 
-- `apps/web/app/assets/[ticker]/sources/page.tsx`
-- `apps/web/components/SourceDrawer.tsx`
+- `apps/web/app/assets/[ticker]/page.tsx`
 - `apps/web/lib/*`
 - `tests/frontend/smoke.mjs`
 
 Do not change:
 
 - backend FastAPI routes, response schemas, fixtures, or provider adapters
-- source allowlist, source-use policy, or freshness semantics
-- chat, compare, or search workflow behavior outside source-list route needs
-- live-provider, caching, ingestion, or deployment settings
+- source allowlist, source-use policy, freshness semantics, or advice-boundary rules
+- `apps/web/app/assets/[ticker]/sources/page.tsx` and source-list routing behavior
+- compare, search, glossary, chat, export, ingestion, caching, and deployment settings
+- Weekly News Focus and AI Comprehensive Analysis contract behavior beyond reading existing overview inputs
 
 Acceptance criteria:
 
-- Supported source-list pages prefer the backend `/api/assets/{ticker}/sources` response when it matches the existing deterministic contract.
-- Supported source-list pages fall back to the local deterministic source-list path when the backend response is unavailable or invalid.
-- Unsupported, out-of-scope, unknown, unavailable, stale, partial, eligible-not-cached, and insufficient-evidence source-list states remain deterministic, blocked, and non-factual.
-- Source metadata, related-claim context, freshness labels, and allowed excerpts stay aligned with the backend source-drawer contract on supported pages.
-- No new live external dependency is introduced, and no advice-like or unsupported generated copy appears.
+- Supported asset pages prefer the backend `/api/assets/{ticker}/overview` response when it matches the existing deterministic contract.
+- Supported asset pages fall back to the local deterministic fixture path when the backend response is unavailable, invalid, or no API base URL is configured.
+- Stable beginner-overview rendering uses backend-aligned asset identity, page/facts freshness, beginner summary, exactly three top risks first, suitability framing, citations, and same-asset source metadata on supported pages.
+- Weekly News Focus and AI Comprehensive Analysis remain visually and structurally separate from stable facts, and this task does not expand recent-context behavior beyond what the current page already renders.
+- Deep-dive detail sections remain deterministic and unchanged in this cycle; follow-up detail/recent-context contract work stays in later tasks.
+- No new live external dependency is introduced, unsupported/out-of-scope assets do not gain generated-page behavior, and no advice-like copy is added.
 - Required commands from this cycle pass.
 
 Required commands:
@@ -44,6 +45,28 @@ Iteration budget:
 - Max 2 attempts
 
 ## Completed
+
+### T-055: Fetch supported source-list pages from backend source-drawer contracts
+
+Goal:
+Reduce frontend fixture drift on supported source-list pages by consuming the existing backend source-drawer contract when it is available, while preserving deterministic blocked-state behavior and safe fallback rendering.
+
+Completed details:
+
+- Implementation commit `4faa192 feat(T-055): fetch supported source-list pages from backend source-drawer contracts` added `apps/web/lib/sourceDrawer.ts` as a deterministic frontend adapter for `/api/assets/{ticker}/sources`, validating the backend `asset-source-drawer-v1` payload and mapping `source_groups`, `citation_bindings`, `related_claims`, `section_references`, and `allowed_excerpts` into the existing `SourceDrawer` render shape.
+- `apps/web/app/assets/[ticker]/sources/page.tsx` now attempts the backend source-drawer fetch for supported assets, records whether rendering came from `backend_contract` or `local_fixture`, and preserves the existing local deterministic fallback when the response is unavailable, invalid, or the API base URL is not configured.
+- `apps/web/components/SourceDrawer.tsx` was updated to accept backend-mapped excerpt notes and to render a safe empty-excerpt message when supporting passages are unavailable for the current drawer state.
+- `tests/frontend/smoke.mjs` now checks the new source-list rendering markers and confirms the source-drawer adapter route and contract markers are present.
+- `docs/agent-journal/20260424T012006Z.md` records these passing checks: `npm test`, `npm run typecheck`, `npm run build`, `python3 -m pytest tests/integration/test_backend_api.py -q`, and `bash scripts/run_quality_gate.sh`.
+- Remaining risks from the journal:
+  - Supported source-list pages only attempt the backend source-drawer fetch when `NEXT_PUBLIC_API_BASE_URL` or `API_BASE_URL` is configured; otherwise they intentionally fall back to the deterministic local fixture path.
+  - The frontend maps backend `related_claims` plus `allowed_excerpts` into the existing `SourceDrawer` context shape, so future backend contract expansion beyond the validated fields will need a matching adapter update.
+
+Completion commits:
+
+- `ab9f117 chore(T-055): prepare fetch supported source-list pages from backend source-drawer contracts task`
+- `4faa192 feat(T-055): fetch supported source-list pages from backend source-drawer contracts`
+- `c833638 chore(T-055): merge fetch supported source-list pages from backend source-drawer contracts`
 
 ### T-054: Align unsupported and unavailable source-list empty states with backend support-state contracts
 
@@ -1539,7 +1562,6 @@ Completion commits:
 
 ## Backlog
 
-### T-056: Fetch supported asset overview pages from backend overview contracts
 ### T-057: Fetch supported asset detail and recent-context sections from backend contracts
 ### T-058: Align asset-page source drawer contexts with backend source metadata contracts
 ### T-059: Fetch supported glossary context from backend glossary contracts
