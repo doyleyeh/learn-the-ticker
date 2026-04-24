@@ -157,70 +157,87 @@ export function AssetChatPanel({ ticker, assetName }: AssetChatPanelProps) {
       : null;
 
   return (
-    <section className="plain-panel asset-chat-panel" aria-labelledby="asset-chat-heading">
-      <div className="section-heading">
+    <section
+      className="plain-panel asset-chat-panel"
+      aria-labelledby="asset-chat-heading"
+      data-asset-chat-helper-role="bounded-asset-specific-helper"
+      data-asset-chat-scope="selected-asset-knowledge-pack"
+      data-asset-chat-general-finance-chatbot="false"
+      data-asset-chat-mobile-presentation="bottom-sheet-or-full-screen"
+      data-asset-chat-mobile-height="min-82vh-720px"
+      data-asset-chat-internal-scroll="true"
+      data-asset-chat-helper-affordance="sticky-asset-context-header"
+      data-asset-chat-no-raw-transcript-analytics="true"
+      data-asset-chat-advice-redirect-before-answer="true"
+      data-asset-chat-comparison-redirect="/compare"
+      data-asset-chat-no-live-external="true"
+      data-asset-chat-no-overlap="in-flow-bottom-sheet-style"
+    >
+      <div className="section-heading asset-chat-helper-header" data-asset-chat-visible-context={`${ticker.toUpperCase()} helper`}>
         <p className="eyebrow">Grounded chat</p>
         <h2 id="asset-chat-heading">Ask about this asset</h2>
       </div>
-      <p>
-        Ask a beginner question about {assetName}. Answers come from the selected local asset knowledge pack and show source
-        details when the backend returns grounded citations.
-      </p>
+      <div className="asset-chat-scroll-region" data-asset-chat-scroll-region="mobile-internal-scroll">
+        <p>
+          Ask a beginner question about {assetName}. Answers come from the selected asset knowledge pack and show source details
+          when grounded citations are available. This is not a general finance chatbot, and transcript text is not used for product
+          analytics.
+        </p>
 
-      <div
-        className="starter-prompt-group inline-tools"
-        aria-label="Beginner starter questions"
-        data-chat-starter-group="beginner-prompts"
-      >
-        {starterPrompts.map((prompt) => (
-          <button
-            className="citation-chip starter-prompt-button"
-            key={prompt.intent}
-            type="button"
-            data-chat-starter-intent={prompt.intent}
-            onClick={() => void submitQuestion(prompt.question)}
-            disabled={requestState === "loading"}
-          >
-            {prompt.question}
-          </button>
-        ))}
-      </div>
-
-      <form className="search-workflow" onSubmit={handleSubmit}>
-        <label htmlFor={`asset-chat-question-${ticker}`}>Question</label>
-        <div className="search-row">
-          <input
-            id={`asset-chat-question-${ticker}`}
-            value={question}
-            placeholder={`Ask about ${ticker}`}
-            onChange={(event) => setQuestion(event.target.value)}
-            disabled={requestState === "loading"}
-          />
-          <button className="search-button" type="submit" disabled={requestState === "loading" || !question.trim()}>
-            {requestState === "loading" ? "Asking" : "Ask"}
-          </button>
+        <div
+          className="starter-prompt-group inline-tools"
+          aria-label="Beginner starter questions"
+          data-chat-starter-group="beginner-prompts"
+        >
+          {starterPrompts.map((prompt) => (
+            <button
+              className="citation-chip starter-prompt-button"
+              key={prompt.intent}
+              type="button"
+              data-chat-starter-intent={prompt.intent}
+              onClick={() => void submitQuestion(prompt.question)}
+              disabled={requestState === "loading"}
+            >
+              {prompt.question}
+            </button>
+          ))}
         </div>
-      </form>
 
-      {requestState === "empty" ? (
-        <p className="search-status status-empty" data-chat-state="empty">
-          No chat answer yet. Try an asset identity, holdings, risk, recent-development, or beginner framing question.
-        </p>
-      ) : null}
+        <form className="search-workflow asset-chat-form" onSubmit={handleSubmit}>
+          <label htmlFor={`asset-chat-question-${ticker}`}>Question</label>
+          <div className="search-row">
+            <input
+              id={`asset-chat-question-${ticker}`}
+              value={question}
+              placeholder={`Ask about ${ticker}`}
+              onChange={(event) => setQuestion(event.target.value)}
+              disabled={requestState === "loading"}
+            />
+            <button className="search-button" type="submit" disabled={requestState === "loading" || !question.trim()}>
+              {requestState === "loading" ? "Asking" : "Ask"}
+            </button>
+          </div>
+        </form>
 
-      {requestState === "loading" ? (
-        <p className="search-status status-loading" data-chat-state="loading" aria-live="polite">
-          Checking the local grounded chat endpoint.
-        </p>
-      ) : null}
+        {requestState === "empty" ? (
+          <p className="search-status status-empty" data-chat-state="empty">
+            No chat answer yet. Try an asset identity, holdings, risk, recent-development, or beginner framing question.
+          </p>
+        ) : null}
 
-      {requestState === "error" ? (
-        <p className="search-status status-unknown" data-chat-state="error" role="alert">
-          {error}
-        </p>
-      ) : null}
+        {requestState === "loading" ? (
+          <p className="search-status status-loading" data-chat-state="loading" aria-live="polite">
+            Checking the local grounded chat endpoint.
+          </p>
+        ) : null}
 
-      {response ? (
+        {requestState === "error" ? (
+          <p className="search-status status-unknown" data-chat-state="error" role="alert">
+            {error}
+          </p>
+        ) : null}
+
+        {response ? (
         <article
           className={`timeline-item chat-answer ${
             isUnsupported || isInsufficientEvidence ? "unknown-state" : ""
@@ -244,6 +261,9 @@ export function AssetChatPanel({ ticker, assetName }: AssetChatPanelProps) {
           data-trust-metric-chat-outcome={chatAnswerTrustMetricDescriptor?.chatOutcome}
           data-trust-metric-chat-safety-redirect-event={chatSafetyRedirectTrustMetricDescriptor?.eventType ?? "not_applicable"}
           data-trust-metric-safety-redirect-rate-event={safetyRedirectRateTrustMetricDescriptor?.eventType ?? "not_applicable"}
+          data-asset-chat-answer-order="redirect-label-before-answer-content"
+          data-asset-chat-answer-scope="single-asset-only"
+          data-asset-chat-comparison-route={isCompareRedirect ? "/compare" : "not_applicable"}
           aria-busy={requestState === "loading"}
         >
           {isAdviceRedirect ? <p className="eyebrow">Educational redirect</p> : null}
@@ -330,7 +350,8 @@ export function AssetChatPanel({ ticker, assetName }: AssetChatPanelProps) {
             />
           ) : null}
         </article>
-      ) : null}
+        ) : null}
+      </div>
     </section>
   );
 }

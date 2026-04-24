@@ -551,14 +551,43 @@ main[data-prd-source-list-marker] > .plain-panel:last-child {
   overflow-wrap: anywhere;
 }
 
+.asset-chat-panel {
+  display: grid;
+  gap: 14px;
+  scroll-margin-top: 18px;
+}
+
+.asset-chat-scroll-region {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.asset-chat-form {
+  min-width: 0;
+}
+
+.asset-chat-panel .chat-answer {
+  display: grid;
+  gap: 14px;
+}
+
 .export-controls {
   display: grid;
   gap: 14px;
+  min-width: 0;
+  scroll-margin-top: 18px;
 }
 
 .export-control-list {
   display: grid;
   gap: 10px;
+  min-width: 0;
+}
+
+.export-controls-header,
+.export-helper-copy {
+  min-width: 0;
 }
 
 .export-button {
@@ -575,6 +604,7 @@ main[data-prd-source-list-marker] > .plain-panel:last-child {
   text-align: left;
   text-decoration: none;
   cursor: pointer;
+  overflow-wrap: anywhere;
 }
 
 .export-button small {
@@ -599,6 +629,7 @@ main[data-prd-source-list-marker] > .plain-panel:last-child {
 .export-result textarea {
   width: 100%;
   min-height: 128px;
+  max-height: 260px;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -1127,6 +1158,63 @@ blockquote {
 
   .starter-prompt-button {
     width: 100%;
+  }
+
+  .asset-chat-panel {
+    max-height: min(82vh, 720px);
+    border-radius: 18px 18px 8px 8px;
+    box-shadow: 0 -16px 36px rgba(20, 32, 38, 0.14);
+    overflow: hidden;
+    scroll-margin-top: 72px;
+  }
+
+  .asset-chat-helper-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    margin: -22px -22px 0;
+    padding: 18px 22px 12px;
+    border-bottom: 1px solid var(--line);
+    background: #ffffff;
+  }
+
+  .asset-chat-scroll-region {
+    max-height: calc(min(82vh, 720px) - 84px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: 18px;
+  }
+
+  .asset-chat-panel .chat-answer {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .export-controls {
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .export-control-list,
+  .chat-export-control,
+  .export-result {
+    gap: 8px;
+  }
+
+  .export-button {
+    min-height: 52px;
+    padding: 10px;
+  }
+
+  .export-result {
+    max-height: min(58vh, 520px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .export-result textarea {
+    min-height: 112px;
+    max-height: 220px;
   }
 
   .source-title-row {
