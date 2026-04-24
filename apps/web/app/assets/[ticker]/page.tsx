@@ -13,6 +13,7 @@ import { GlossaryPopover } from "../../../components/GlossaryPopover";
 import { SourceDrawer } from "../../../components/SourceDrawer";
 import { WeeklyNewsPanel } from "../../../components/WeeklyNewsPanel";
 import { fetchSupportedAssetDetails } from "../../../lib/assetDetails";
+import { fetchSupportedAssetGlossaryContexts } from "../../../lib/assetGlossary";
 import { fetchSupportedAssetOverview } from "../../../lib/assetOverview";
 import { fetchSupportedSourceDrawerResponse, sourceDrawerEntriesByDocumentId } from "../../../lib/sourceDrawer";
 import { fetchSupportedAssetWeeklyNews } from "../../../lib/assetWeeklyNews";
@@ -88,6 +89,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
   let detailsRendering: "backend_contract" | "local_fixture" = "local_fixture";
   let weeklyNewsRendering: "backend_contract" | "local_fixture" = "local_fixture";
   let sourceDrawerRendering: "backend_contract" | "mixed_fallback" | "local_fixture" = "local_fixture";
+  let glossaryRendering: "backend_contract" | "local_fixture" = "local_fixture";
 
   try {
     asset = await fetchSupportedAssetOverview(fallbackAsset.ticker, fallbackAsset);
@@ -176,6 +178,17 @@ export default async function AssetPage({ params }: AssetPageProps) {
     }
   }
   const glossaryGroups = beginnerGlossaryGroupsByAssetType[asset.assetType];
+  const glossaryTermsForBackend = glossaryGroups.flatMap((group) => group.terms);
+  const backendGlossaryContexts = await (async () => {
+    try {
+      return await fetchSupportedAssetGlossaryContexts(asset.ticker, glossaryTermsForBackend);
+    } catch {
+      return null;
+    }
+  })();
+  if (backendGlossaryContexts) {
+    glossaryRendering = "backend_contract";
+  }
   const comparisonSuggestions = getAssetComparisonSuggestions(asset.ticker);
   const inlineGlossaryTerms =
     asset.assetType === "etf" ? (["expense ratio", "index tracking"] as const) : (["market risk", "P/E ratio"] as const);
@@ -216,6 +229,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
       data-asset-details-rendering={detailsRendering}
       data-asset-weekly-news-rendering={weeklyNewsRendering}
       data-asset-source-drawer-rendering={sourceDrawerRendering}
+      data-asset-glossary-rendering={glossaryRendering}
     >
       <AssetHeader asset={asset} />
       <AssetModeLayout
@@ -243,7 +257,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
               <p className="notice-text">{asset.beginnerSummary.mainCatch}</p>
               <div className="inline-tools" aria-label="Beginner glossary terms">
                 {inlineGlossaryTerms.map((term) => (
-                  <GlossaryPopover key={term} term={term} />
+                  <GlossaryPopover key={term} term={term} assetContext={backendGlossaryContexts?.get(term)} />
                 ))}
               </div>
             </section>
@@ -256,6 +270,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
               data-glossary-asset-ticker={asset.ticker}
               data-glossary-asset-type={asset.assetType}
               data-glossary-no-generated-context
+              data-glossary-backend-context={glossaryRendering}
             >
               <div className="section-heading">
                 <p className="eyebrow">Learning terms</p>
@@ -267,14 +282,15 @@ export default async function AssetPage({ params }: AssetPageProps) {
                     <h3>{group.title}</h3>
                     <div className="inline-tools glossary-term-list" data-glossary-term-list={group.groupId}>
                       {group.terms.map((term) => (
-                        <GlossaryPopover key={term} term={term} />
+                        <GlossaryPopover key={term} term={term} assetContext={backendGlossaryContexts?.get(term)} />
                       ))}
                     </div>
                   </article>
                 ))}
               </div>
               <p className="source-gap-note" data-glossary-generic-education>
-                Generic glossary entries do not create asset facts, citation chips, or source documents.
+                Generic glossary entries stay visible as the baseline. Backend asset context, when available, is shown
+                only inside these glossary cards and does not create support for claims outside this glossary area.
               </p>
             </section>
 
