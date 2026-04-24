@@ -1754,4 +1754,10 @@ Completion commits:
 
 ## Backlog
 
-No backlog tasks are prepared.
+### T-065: Add mobile source drawer bottom-sheet behavior
+
+### T-066: Align contextual glossary popovers and mobile sheets with v0.4
+
+### T-067: Add stock-vs-ETF comparison relationship badges
+
+### T-068: Tighten Weekly News Focus evidence-limited states
