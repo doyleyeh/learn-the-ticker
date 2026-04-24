@@ -1,5 +1,9 @@
 import type { CitationContext, SourceDrawerSourceDocument } from "../lib/fixtures";
 
+type SourceDrawerRenderableDocument = SourceDrawerSourceDocument & {
+  allowedExcerptNote?: string | null;
+};
+
 export type SourceDrawerState =
   | "available"
   | "unsupported"
@@ -69,7 +73,7 @@ export function sourceDrawerStateFromFreshnessState(freshnessState: string): Sou
 }
 
 type SourceDrawerProps = {
-  source: SourceDrawerSourceDocument;
+  source: SourceDrawerRenderableDocument;
   claim: string;
   contexts?: CitationContext[];
   drawerState?: SourceDrawerState;
@@ -159,8 +163,8 @@ export function SourceDrawer({
 }: SourceDrawerProps) {
   const publishedOrAsOf = source.published_at ?? source.as_of_date ?? "Unknown";
   const supportingPassages = contexts.length
-    ? [...new Set(contexts.map((context) => context.supportingPassage))]
-    : [source.supportingPassage];
+    ? [...new Set(contexts.map((context) => context.supportingPassage).filter(Boolean))]
+    : [source.supportingPassage].filter(Boolean);
   const stateInfo = FRESHNESS_DETAILS_BY_STATE[drawerState];
   const canExposeSourceFields = stateInfo.canExposeSourceFields;
   const canExposeSupportingPassage = stateInfo.canExposeSupportingPassage;
@@ -267,8 +271,13 @@ export function SourceDrawer({
 
         <div>
           <h3>Supporting passage</h3>
+          {source.allowedExcerptNote ? <p className="source-gap-note">{source.allowedExcerptNote}</p> : null}
           {canExposeSupportingPassage && !contexts.length ? (
-            supportingPassages.map((passage) => <blockquote key={passage}>{passage}</blockquote>)
+            supportingPassages.length ? (
+              supportingPassages.map((passage) => <blockquote key={passage}>{passage}</blockquote>)
+            ) : (
+              <p className="source-gap-note">No excerpt is available for this source drawer state.</p>
+            )
           ) : null}
           {canExposeSupportingPassage && contexts.length ? (
             <p className="source-gap-note">

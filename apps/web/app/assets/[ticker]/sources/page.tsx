@@ -6,6 +6,7 @@ import {
   type SourceDrawerState
 } from "../../../../components/SourceDrawer";
 import { resolveLocalSearchResponse } from "../../../../lib/search";
+import { fetchSupportedSourceDrawerResponse } from "../../../../lib/sourceDrawer";
 import {
   assetFixtures,
   getAssetFixture,
@@ -104,39 +105,61 @@ export default async function AssetSourcesPage({ params }: AssetSourcesPageProps
     );
   }
 
-  const drawerSources = asset.sourceDocuments.map(toSourceDrawerDocument);
+  const backendSourceDrawer = await (async () => {
+    try {
+      return await fetchSupportedSourceDrawerResponse(asset.ticker);
+    } catch {
+      return null;
+    }
+  })();
+  const localDrawerSources = asset.sourceDocuments.map((source) => {
+    const drawerSource = toSourceDrawerDocument(source);
+    const sourceContexts = getCitationContextsForSource(asset, drawerSource.source_document_id);
+    return {
+      source: drawerSource,
+      claim:
+        sourceContexts[0]?.claimContext ??
+        `${drawerSource.title} is included in this supported deterministic source list.`,
+      contexts: sourceContexts,
+      drawerState: sourceDrawerStateFromFreshnessState(drawerSource.freshness_state)
+    };
+  });
+  const drawerEntries = backendSourceDrawer ? backendSourceDrawer.entries : localDrawerSources;
+  const renderedListState = backendSourceDrawer?.drawerState ?? listState;
+  const renderingMode = backendSourceDrawer ? "backend_contract" : "local_fixture";
 
   return (
     <main>
       <AssetHeader asset={asset} />
-      <section className="plain-panel" data-source-list-state={listState} data-source-list-asset={asset.ticker}>
+      <section
+        className="plain-panel"
+        data-source-list-state={renderedListState}
+        data-source-list-asset={asset.ticker}
+        data-source-list-rendering={renderingMode}
+      >
         <div className="section-heading">
           <p className="eyebrow">Source list</p>
           <h1>Source list for {asset.ticker}</h1>
         </div>
-        <p className="source-gap-note">Source list entries include source metadata and allowed excerpts from the local evidence pack.</p>
+        <p className="source-gap-note">
+          Source list entries prefer backend source metadata and allowed excerpts when the deterministic source-drawer contract is available.
+        </p>
       </section>
       <section className="plain-panel" aria-label="Source list entries">
-        {drawerSources.length === 0 ? (
+        {drawerEntries.length === 0 ? (
           <p className="source-gap-note" data-source-list-empty-state>
-            No source documents are available for this supported fixture in source-list mode.
+            No source documents are available for this supported source-list state.
           </p>
         ) : (
-          drawerSources.map((source) => {
-            const sourceContexts = getCitationContextsForSource(asset, source.source_document_id);
-            return (
-              <SourceDrawer
-                key={source.source_document_id}
-                source={source}
-                claim={
-                  sourceContexts[0]?.claimContext ??
-                  `${source.title} is included in this supported deterministic source list.`
-                }
-                contexts={sourceContexts}
-                drawerState={sourceDrawerStateFromFreshnessState(source.freshness_state)}
-              />
-            );
-          })
+          drawerEntries.map((entry) => (
+            <SourceDrawer
+              key={entry.source.source_document_id}
+              source={entry.source}
+              claim={entry.claim}
+              contexts={entry.contexts}
+              drawerState={entry.drawerState}
+            />
+          ))
         )}
       </section>
     </main>
