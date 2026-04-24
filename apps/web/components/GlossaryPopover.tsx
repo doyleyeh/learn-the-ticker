@@ -1,13 +1,15 @@
 "use client";
 
 import { useId, useState } from "react";
+import { type AssetGlossaryContext } from "../lib/assetGlossary";
 import { getGlossaryTerm } from "../lib/glossary";
 
 type GlossaryPopoverProps = {
   term: string;
+  assetContext?: AssetGlossaryContext;
 };
 
-export function GlossaryPopover({ term }: GlossaryPopoverProps) {
+export function GlossaryPopover({ term, assetContext }: GlossaryPopoverProps) {
   const [open, setOpen] = useState(false);
   const entry = getGlossaryTerm(term);
   const componentId = useId().replace(/[^a-z0-9]+/gi, "-");
@@ -15,7 +17,12 @@ export function GlossaryPopover({ term }: GlossaryPopoverProps) {
   const safeId = `glossary-${termId}-${componentId}`;
 
   return (
-    <span className="glossary-wrap" data-glossary-term={term} data-glossary-available={entry ? "true" : "false"}>
+    <span
+      className="glossary-wrap"
+      data-glossary-term={term}
+      data-glossary-available={entry ? "true" : "false"}
+      data-glossary-asset-context={assetContext ? assetContext.availabilityState : "generic_only"}
+    >
       <button
         className="glossary-trigger"
         type="button"
@@ -39,6 +46,9 @@ export function GlossaryPopover({ term }: GlossaryPopoverProps) {
           aria-label={`Glossary card for ${entry?.term ?? term}`}
           data-glossary-term={entry?.term ?? term}
           data-glossary-category={entry?.category ?? "unavailable"}
+          data-glossary-asset-context={assetContext ? assetContext.availabilityState : "generic_only"}
+          data-glossary-evidence-state={assetContext?.evidenceState ?? "insufficient_evidence"}
+          data-glossary-freshness-state={assetContext?.freshnessState ?? "unknown"}
         >
           {entry ? (
             <>
@@ -48,6 +58,52 @@ export function GlossaryPopover({ term }: GlossaryPopoverProps) {
               <strong data-glossary-definition>{entry.definition}</strong>
               <span data-glossary-why-it-matters>{entry.whyItMatters}</span>
               <small data-glossary-beginner-mistake>{entry.beginnerMistake}</small>
+              {assetContext ? (
+                <>
+                  <span data-glossary-asset-context-note>
+                    {assetContext.contextNote ??
+                      "Backend glossary context is available only inside this glossary card and does not support claims outside this area."}
+                  </span>
+                  <small data-glossary-asset-context-boundary>
+                    Asset context: {assetContext.availabilityState}; evidence: {assetContext.evidenceState}; freshness:{" "}
+                    {assetContext.freshnessState}.
+                  </small>
+                  {assetContext.citationIds.length > 0 ? (
+                    <small data-glossary-asset-citation-ids={assetContext.citationIds.join(",")}>
+                      Citations: {assetContext.citationIds.join(", ")}
+                    </small>
+                  ) : null}
+                  {assetContext.uncertaintyLabels.length > 0 ? (
+                    <small data-glossary-uncertainty-labels={assetContext.uncertaintyLabels.join(",")}>
+                      Uncertainty: {assetContext.uncertaintyLabels.join(", ")}
+                    </small>
+                  ) : null}
+                  {assetContext.sourceReferences.length > 0 ? (
+                    <span data-glossary-source-references>
+                      {assetContext.sourceReferences.map((source) => (
+                        <small
+                          key={source.sourceDocumentId}
+                          data-glossary-source-document-id={source.sourceDocumentId}
+                          data-glossary-source-use-policy={source.sourceUsePolicy}
+                          data-glossary-source-freshness={source.freshnessState}
+                        >
+                          Source: {source.title} ({source.publisher}; {source.sourceUsePolicy}; retrieved{" "}
+                          {source.retrievedAt})
+                        </small>
+                      ))}
+                    </span>
+                  ) : null}
+                  {assetContext.suppressionReasons.length > 0 ? (
+                    <small data-glossary-suppression-reasons={assetContext.suppressionReasons.join(",")}>
+                      Limits: {assetContext.suppressionReasons.join(", ")}
+                    </small>
+                  ) : null}
+                </>
+              ) : (
+                <small data-glossary-generic-only-label>
+                  Generic-only definition; no asset-specific glossary context is shown.
+                </small>
+              )}
             </>
           ) : (
             <>

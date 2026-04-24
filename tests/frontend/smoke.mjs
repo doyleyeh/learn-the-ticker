@@ -45,6 +45,7 @@ function includes(path, marker) {
   "components/WeeklyNewsPanel.tsx",
   "lib/assetDetails.ts",
   "lib/assetChat.ts",
+  "lib/assetGlossary.ts",
   "lib/assetOverview.ts",
   "lib/assetWeeklyNews.ts",
   "lib/compare.ts",
@@ -76,6 +77,9 @@ includes("app/assets/[ticker]/page.tsx", "data-beginner-glossary-area");
 includes("app/assets/[ticker]/page.tsx", "data-glossary-asset-ticker");
 includes("app/assets/[ticker]/page.tsx", "data-glossary-asset-type");
 includes("app/assets/[ticker]/page.tsx", "data-glossary-no-generated-context");
+includes("app/assets/[ticker]/page.tsx", "fetchSupportedAssetGlossaryContexts");
+includes("app/assets/[ticker]/page.tsx", "data-asset-glossary-rendering");
+includes("app/assets/[ticker]/page.tsx", "data-glossary-backend-context");
 includes("app/assets/[ticker]/page.tsx", "data-glossary-generic-education");
 includes("app/assets/[ticker]/page.tsx", "beginnerGlossaryGroupsByAssetType");
 includes("app/assets/[ticker]/page.tsx", "AssetChatPanel");
@@ -121,6 +125,14 @@ includes("lib/sourceDrawer.ts", "asset-source-drawer-v1");
 includes("lib/sourceDrawer.ts", "/api/assets/");
 includes("lib/sourceDrawer.ts", "/sources");
 includes("lib/sourceDrawer.ts", "sourceDrawerEntriesByDocumentId");
+includes("lib/assetGlossary.ts", "glossary-asset-context-v1");
+includes("lib/assetGlossary.ts", "/api/assets/");
+includes("lib/assetGlossary.ts", "/glossary");
+includes("lib/assetGlossary.ts", "No API base URL is configured for supported asset glossary fetches.");
+includes("lib/assetGlossary.ts", "generic_definitions_are_not_evidence");
+includes("lib/assetGlossary.ts", "restricted_text_exposed");
+includes("lib/assetGlossary.ts", "supports_asset_specific_context");
+includes("lib/assetGlossary.ts", "summary_allowed");
 includes("app/compare/page.tsx", "Bottom line for beginners");
 includes("app/compare/page.tsx", "ComparisonSourceDetails");
 includes("app/compare/page.tsx", "comparisonExportUrl");
@@ -271,6 +283,11 @@ includes("components/GlossaryPopover.tsx", "data-glossary-definition");
 includes("components/GlossaryPopover.tsx", "data-glossary-why-it-matters");
 includes("components/GlossaryPopover.tsx", "data-glossary-beginner-mistake");
 includes("components/GlossaryPopover.tsx", "data-glossary-available");
+includes("components/GlossaryPopover.tsx", "data-glossary-asset-context");
+includes("components/GlossaryPopover.tsx", "data-glossary-asset-citation-ids");
+includes("components/GlossaryPopover.tsx", "data-glossary-source-references");
+includes("components/GlossaryPopover.tsx", "data-glossary-uncertainty-labels");
+includes("components/GlossaryPopover.tsx", "Generic-only definition");
 includes("components/GlossaryPopover.tsx", "Definition unavailable for this glossary term");
 includes("components/GlossaryPopover.tsx", "aria-expanded");
 includes("components/GlossaryPopover.tsx", "role=\"dialog\"");
@@ -527,6 +544,7 @@ const frontendSource = [
   read("components/SourceDrawer.tsx"),
   read("components/WeeklyNewsPanel.tsx"),
   read("lib/assetChat.ts"),
+  read("lib/assetGlossary.ts"),
   read("lib/compare.ts"),
   read("lib/compareSuggestions.ts"),
   read("lib/exportControls.ts"),
@@ -559,6 +577,8 @@ assert.match(
 assert.equal(
   read("lib/assetChat.ts").includes("https://") ||
     read("lib/assetChat.ts").includes("http://") ||
+    read("lib/assetGlossary.ts").includes("https://") ||
+    read("lib/assetGlossary.ts").includes("http://") ||
     read("components/AssetChatPanel.tsx").includes("https://") ||
     read("components/AssetChatPanel.tsx").includes("http://") ||
     read("lib/exportControls.ts").includes("https://") ||
@@ -624,6 +644,11 @@ assert.equal(read("components/AssetEtfSections.tsx").includes("fetch("), false, 
 assert.equal(read("components/AssetStockSections.tsx").includes("fetch("), false, "Stock sections should stay fixture-backed");
 assert.equal(read("components/GlossaryPopover.tsx").includes("fetch("), false, "Glossary popover should stay static");
 assert.equal(read("lib/glossary.ts").includes("fetch("), false, "Glossary catalog should stay static");
+assert.match(
+  read("lib/assetGlossary.ts"),
+  /fetcher\(endpoint/,
+  "Asset glossary adapter should call the backend glossary contract through an injectable fetcher"
+);
 
 const compareSource = [
   read("app/compare/page.tsx"),
