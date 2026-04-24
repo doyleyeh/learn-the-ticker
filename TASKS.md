@@ -1,38 +1,36 @@
 ## Current task
 
-### T-059: Fetch supported glossary context from backend glossary contracts
+### T-060: Align asset-page export controls with backend export contracts
 
 Goal:
-Reduce remaining supported asset-page glossary drift by consuming the existing backend glossary asset-context contract when it is available, while preserving curated generic glossary definitions, deterministic fallback rendering, same-asset citation boundaries, and current blocked/no-live-call guardrails.
+Reduce remaining asset-page export drift by validating backend asset-page and source-list export payload availability from existing deterministic export routes while preserving safe Markdown-only links, licensing notes, citation/freshness metadata expectations, and fallback behavior when no API base URL is configured.
 
 Task-scope paragraph:
-This cycle is limited to glossary context rendered on the supported asset page in `apps/web`. Add a narrow frontend adapter for `/api/assets/{ticker}/glossary` that validates the existing `glossary-asset-context-v1` backend response and overlays supported same-asset context, citation IDs, source references, freshness, and uncertainty labels onto the existing glossary area when available. Keep curated generic definitions as the baseline and fall back independently to the current static glossary path when the backend response is unavailable, invalid, filtered to no usable terms, or no API base URL is configured. Leave backend glossary schemas, glossary catalog content, source-use policy, chat, compare, export routing, and blocked/out-of-scope generated-page behavior unchanged for this cycle.
+This cycle is limited to the supported asset-page export controls in `apps/web`. Add a narrow frontend export adapter, or extend the existing export-controls helper, so the asset page can validate the existing backend `/api/assets/{ticker}/export` and `/api/assets/{ticker}/sources/export` Markdown export contracts when an API base URL is configured. Use validated contract state only to annotate or strengthen the existing export controls and keep the current relative Markdown links usable as the deterministic baseline. Preserve citation IDs, source metadata, freshness/as-of date, educational disclaimer, licensing-scope, and source-use-rights expectations in the UI markers and smoke coverage. Fall back independently to the current static export-control rendering when either backend response is unavailable, invalid, blocked, unsupported, or no API base URL is configured.
 
 Allowed files:
 
 - `apps/web/app/assets/[ticker]/page.tsx`
-- `apps/web/components/GlossaryPopover.tsx`
-- `apps/web/lib/glossary.ts`
-- `apps/web/lib/assetGlossary.ts`
+- `apps/web/components/ExportControls.tsx`
+- `apps/web/lib/exportControls.ts`
 - `tests/frontend/smoke.mjs`
 
 Do not change:
 
-- backend FastAPI routes, response schemas, fixtures, glossary catalog, or provider adapters
-- `apps/web/app/assets/[ticker]/sources/page.tsx` and source-list route behavior
-- overview/details/weekly-news/source-drawer backend fetch behavior added in `T-055`, `T-056`, `T-057`, and `T-058`
-- source allowlist, source-use policy, freshness semantics, or advice-boundary rules
-- compare, search, glossary, chat, export, ingestion, caching, and deployment settings
+- backend FastAPI routes, export schemas, export validation logic, fixtures, source-use policy, or provider adapters
+- comparison export controls, chat export controls, chat session lifecycle, compare generation, search, glossary, source drawer, or Weekly News Focus behavior
+- source allowlist, source-use rights, freshness semantics, advice-boundary rules, or educational disclaimer text outside this narrow export-control surface
 - unsupported or out-of-scope generated-page behavior
+- deployment settings, env files, live-provider flags, or any secret-handling behavior
 
 Acceptance criteria:
 
-- Supported asset-page glossary rendering prefers backend `/api/assets/{ticker}/glossary` entries when the response matches the existing `glossary-asset-context-v1` contract for terms already shown in the page glossary groups.
-- The glossary UI keeps curated generic definitions visible while adding backend asset-context availability, evidence/freshness state, same-asset citation IDs, source-reference metadata, and uncertainty labels when those records are available.
-- Glossary rendering falls back independently to the existing static deterministic glossary path when the backend glossary response is unavailable, invalid, missing the needed terms, generic-only, or no API base URL is configured.
-- Asset-specific glossary context never becomes independent factual support for claims outside the glossary area and does not redefine stable asset identity or Weekly News Focus context.
-- Important asset-specific glossary context keeps visible same-asset citations or explicit uncertainty/generic-only labels, and restricted or disallowed raw text remains suppressed according to source-use policy.
-- No new live external dependency is introduced, unsupported/out-of-scope assets do not gain generated-page behavior, and no advice-like copy is added.
+- Supported asset-page export controls can validate the existing backend asset-page export route `/api/assets/{ticker}/export?export_format=markdown` and source-list export route `/api/assets/{ticker}/sources/export?export_format=markdown` when `NEXT_PUBLIC_API_BASE_URL` or `API_BASE_URL` is configured.
+- Backend export payloads are accepted only when they match the existing export response expectations for supported same-asset Markdown exports, including available export state, asset identity, educational disclaimer, licensing note, citation/source metadata, freshness or as-of metadata, and export validation diagnostics.
+- The UI keeps current safe relative Markdown links as the baseline and adds deterministic markers or copy showing whether asset-page and source-list export contract validation came from `backend_contract` or `local_fallback`.
+- Invalid, unavailable, unsupported, out-of-scope, blocked, non-Markdown, or missing-API-base export responses fall back independently to the existing local export-control rendering without creating generated facts, citation chips, source drawers, chat answers, or comparison output.
+- Export controls continue to state that saved output includes citation IDs, source metadata, freshness/as-of dates, educational disclaimer, and licensing scope, and that full source documents, restricted provider payloads, raw model reasoning, hidden prompts, credentials, and live external download URLs are not exported.
+- No live external dependency is introduced, no new production dependency is added, no advice-like copy is added, and normal CI remains deterministic.
 - Required commands from this cycle pass.
 
 Required commands:
@@ -40,7 +38,7 @@ Required commands:
 - `npm test`
 - `npm run typecheck`
 - `npm run build`
-- `python3 -m pytest tests/integration/test_backend_api.py -q`
+- `python3 -m pytest tests -q`
 - `python3 evals/run_static_evals.py`
 - `bash scripts/run_quality_gate.sh`
 
@@ -49,6 +47,28 @@ Iteration budget:
 - Max 2 attempts
 
 ## Completed
+
+### T-059: Fetch supported glossary context from backend glossary contracts
+
+Goal:
+Reduce remaining supported asset-page glossary drift by consuming the existing backend glossary asset-context contract when it is available, while preserving curated generic glossary definitions, deterministic fallback rendering, same-asset citation boundaries, and current blocked/no-live-call guardrails.
+
+Completed details:
+
+- Implementation commit `e2a5aa7 feat(T-059): fetch supported glossary context from backend glossary contracts` added `apps/web/lib/assetGlossary.ts`, a deterministic frontend adapter for `/api/assets/{ticker}/glossary` that validates the `glossary-asset-context-v1` schema, supported same-asset identity, no-live-call diagnostics, generic-definitions-not-evidence diagnostics, same-asset evidence boundaries, and restricted-text suppression before returning usable glossary context.
+- The adapter filters backend glossary terms to terms already rendered in the asset-page glossary groups, skips generic-only entries, requires same-asset allowed citation bindings for cited context, maps allowed `summary_allowed` or `full_text_allowed` source references, and keeps explicit uncertainty labels or suppression reasons when citations are absent.
+- `apps/web/app/assets/[ticker]/page.tsx` now fetches backend glossary context independently after the existing overview/details/weekly-news/source-drawer fetches, passes available term context into `GlossaryPopover`, records `data-asset-glossary-rendering`, and preserves deterministic static glossary fallback when the backend response is unavailable, invalid, filtered to no usable rendered terms, or no API base URL is configured.
+- `apps/web/components/GlossaryPopover.tsx` keeps curated generic definitions visible while adding optional asset-context state, evidence state, freshness state, citation IDs, uncertainty labels, source-reference metadata, suppression reasons, and generic-only labels inside glossary cards.
+- `tests/frontend/smoke.mjs` now checks glossary backend-context markers, asset citation/source/uncertainty markers, the injectable asset-glossary fetch helper, and no new live external URL usage.
+- `docs/agent-journal/20260424T164150Z.md` records these passing checks: `npm test`; `npm run typecheck`; `npm run build`; `python3 -m pytest tests/integration/test_backend_api.py -q`; `python3 evals/run_static_evals.py`; `bash scripts/run_quality_gate.sh`.
+- Remaining risks from the journal:
+  - Supported asset pages only use backend glossary context when `NEXT_PUBLIC_API_BASE_URL` or `API_BASE_URL` is configured; otherwise they intentionally keep the deterministic static glossary path.
+  - The frontend adapter overlays backend context only for terms already rendered in the asset-page glossary groups, with generic-only and unusable backend records falling back to curated definitions.
+
+Completion commits:
+
+- `e2a5aa7 feat(T-059): fetch supported glossary context from backend glossary contracts`
+- `0a3a782 chore(T-059): merge fetch supported glossary context from backend glossary contracts`
 
 ### T-058: Align asset-page source drawer contexts with backend source metadata contracts
 
@@ -1631,14 +1651,6 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-060: Align asset-page export controls with backend export contracts
-
-Goal:
-Reduce remaining asset-page export drift by validating backend asset-page and source-list export payload availability from existing deterministic export routes while preserving safe Markdown-only links, licensing notes, citation/freshness metadata expectations, and fallback behavior when no API base URL is configured.
-
-Scope note:
-Keep this cycle frontend-only unless a smoke-test-only helper is needed. Do not change backend export schemas, source-use policy, chat export behavior, compare export behavior, or unsupported/out-of-scope generated-page behavior.
 
 ### T-061: Align comparison export controls with backend comparison export contracts
 
