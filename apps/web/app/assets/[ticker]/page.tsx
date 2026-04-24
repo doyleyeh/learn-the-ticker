@@ -233,6 +233,12 @@ export default async function AssetPage({ params }: AssetPageProps) {
   const renderedDrawerEntries = hasPrdSections
     ? localDrawerEntries.map(overlaySourceDrawerEntry)
     : [overlaySourceDrawerEntry(primarySourceEntry)];
+  const whatItDoesOrHoldsSection =
+    asset.assetType === "etf"
+      ? asset.etfSections?.find((section) => section.sectionId === "holdings_exposure")
+      : asset.stockSections?.find((section) => section.sectionId === "business_overview");
+  const whatItDoesOrHoldsItems = whatItDoesOrHoldsSection?.items.slice(0, 2) ?? [];
+  const keySourceTitles = renderedDrawerEntries.slice(0, 3).map((entry) => entry.source.title);
 
   if (backendDrawerEntries) {
     sourceDrawerRendering = renderedDrawerEntries.every((entry) => backendDrawerEntries.has(entry.source.source_document_id))
@@ -249,8 +255,10 @@ export default async function AssetPage({ params }: AssetPageProps) {
       data-asset-glossary-rendering={glossaryRendering}
       data-asset-page-export-contract={assetPageExportContract?.rendering ?? "local_fallback"}
       data-asset-source-list-export-contract={assetSourceListExportContract?.rendering ?? "local_fallback"}
+      data-prd-layout-marker="supported-asset-page-learning-flow-v1"
+      data-prd-section-order="header,beginner_summary,top_risks,key_facts,what_it_does_or_holds,weekly_news_focus,ai_comprehensive_analysis,deep_dive,ask_about_this_asset,sources,educational_disclaimer"
     >
-      <AssetHeader asset={asset} />
+      <AssetHeader asset={asset} layoutMarker="header" />
       <AssetModeLayout
         asset={asset}
         beginnerMode={
@@ -260,10 +268,11 @@ export default async function AssetPage({ params }: AssetPageProps) {
               aria-labelledby="beginner-overview"
               data-beginner-stable-recent-separation="stable"
               data-beginner-primary-claim={firstClaim.claimId}
+              data-prd-section="beginner_summary"
             >
               <div className="section-heading">
                 <p className="eyebrow">Stable facts</p>
-                <h2 id="beginner-overview">Beginner overview</h2>
+                <h2 id="beginner-overview">Beginner Summary</h2>
               </div>
               <div className="state-row">
                 <FreshnessLabel label="Page last updated" value={asset.freshness.pageLastUpdatedAt} state="fresh" />
@@ -280,6 +289,145 @@ export default async function AssetPage({ params }: AssetPageProps) {
                 ))}
               </div>
             </section>
+
+            <section
+              className="plain-panel stable-section"
+              aria-labelledby="beginner-top-risks"
+              data-beginner-stable-recent-separation="stable"
+              data-beginner-top-risks
+              data-prd-section="top_risks"
+            >
+              <div className="section-heading">
+                <p className="eyebrow">Exactly three shown first</p>
+                <h2 id="beginner-top-risks">Top 3 Risks</h2>
+              </div>
+              <FreshnessLabel label="Top risks as of" value={asset.freshness.factsAsOf} state="fresh" />
+              <div className="risk-grid" data-beginner-top-risk-count={asset.topRisks.slice(0, 3).length}>
+                {asset.topRisks.slice(0, 3).map((risk) => {
+                  const citation = getCitationById(asset, risk.citationIds[0]);
+                  return (
+                    <article className="risk-card" key={risk.title}>
+                      <h3>{risk.title}</h3>
+                      <p>{risk.plainEnglishExplanation}</p>
+                      {citation ? <CitationChip citation={citation} label={citationLabel(risk.citationIds[0])} /> : null}
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section
+              className="plain-panel stable-section"
+              aria-labelledby="beginner-details"
+              data-beginner-stable-recent-separation="stable"
+              data-prd-section="key_facts"
+            >
+              <div className="section-heading">
+                <p className="eyebrow">Key facts</p>
+                <h2 id="beginner-details">Key Facts</h2>
+              </div>
+              <FreshnessLabel label="Stable facts as of" value={asset.freshness.factsAsOf} state="fresh" />
+              <dl className="fact-list">
+                {asset.facts.map((fact) => {
+                  const citation = fact.citationId ? getCitationById(asset, fact.citationId) : undefined;
+                  return (
+                    <div key={fact.label}>
+                      <dt>{fact.label}</dt>
+                      <dd>
+                        {fact.value}{" "}
+                        {citation ? <CitationChip citation={citation} label={citationLabel(fact.citationId ?? "")} /> : null}
+                      </dd>
+                    </div>
+                  );
+                })}
+              </dl>
+            </section>
+
+            <section
+              className="plain-panel stable-section"
+              aria-labelledby="beginner-what-it-does-or-holds"
+              data-beginner-stable-recent-separation="stable"
+              data-prd-section="what_it_does_or_holds"
+              data-asset-what-section-id={whatItDoesOrHoldsSection?.sectionId ?? "primary_claim_fallback"}
+            >
+              <div className="section-heading">
+                <p className="eyebrow">Stable facts</p>
+                <h2 id="beginner-what-it-does-or-holds">
+                  {asset.assetType === "etf" ? "What It Holds" : "What It Does"}
+                </h2>
+              </div>
+              <div className="state-row">
+                <FreshnessLabel
+                  label={asset.assetType === "etf" ? "Holdings as of" : "Business facts as of"}
+                  value={
+                    asset.assetType === "etf"
+                      ? asset.freshness.holdingsAsOf ?? "Unknown in local fixture"
+                      : asset.freshness.factsAsOf
+                  }
+                  state={asset.assetType === "etf" && !asset.freshness.holdingsAsOf ? "unknown" : "fresh"}
+                />
+                {whatItDoesOrHoldsSection ? (
+                  <span className="state-pill" data-evidence-state={whatItDoesOrHoldsSection.evidenceState}>
+                    Evidence: {whatItDoesOrHoldsSection.evidenceState.replaceAll("_", " ")}
+                  </span>
+                ) : null}
+              </div>
+              <p>
+                {whatItDoesOrHoldsSection?.beginnerSummary ?? firstClaim.claimText}{" "}
+                {!whatItDoesOrHoldsSection ? <CitationChip citation={firstClaimCitation} /> : null}
+              </p>
+              {whatItDoesOrHoldsItems.length ? (
+                <div className="stock-section-items" data-asset-what-it-does-or-holds-items={whatItDoesOrHoldsItems.length}>
+                  {whatItDoesOrHoldsItems.map((item) => (
+                    <article className="stock-section-item" key={item.itemId} data-asset-what-item-id={item.itemId}>
+                      <div className="stock-item-heading">
+                        <h3>{item.title}</h3>
+                        <span className="state-pill compact-state" data-evidence-state={item.evidenceState}>
+                          {item.evidenceState.replaceAll("_", " ")}
+                        </span>
+                      </div>
+                      <p>{item.summary}</p>
+                      <span className="chip-row">
+                        {item.citationIds.map((citationId) => {
+                          const citation = getCitationById(asset, citationId);
+                          return citation ? (
+                            <CitationChip key={citationId} citation={citation} label={citationLabel(citationId)} />
+                          ) : null;
+                        })}
+                      </span>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+
+            <WeeklyNewsPanel focus={weeklyNewsFocus} citations={mergedCitations} />
+
+            <AIComprehensiveAnalysisPanel analysis={aiComprehensiveAnalysis} citations={mergedCitations} />
+          </>
+        }
+        deepDiveMode={
+          <>
+            {hasStockPrdSections ? (
+              <AssetStockSections asset={asset} />
+            ) : hasEtfPrdSections ? (
+              <AssetEtfSections asset={asset} />
+            ) : (
+              <section className="plain-panel unknown-state" aria-labelledby="unknowns">
+                <div className="section-heading">
+                  <p className="eyebrow">Uncertainty</p>
+                  <h2 id="unknowns">Stale and unknown treatment</h2>
+                </div>
+                <div className="state-row">
+                  <FreshnessLabel label="Valuation context" value="Unknown in local fixture" state="unknown" />
+                  <FreshnessLabel label="Live market quote" value="Unavailable by design" state="stale" />
+                </div>
+                <p>
+                  Missing live facts are labeled instead of being filled in from model memory. This skeleton uses local fixture
+                  data only.
+                </p>
+              </section>
+            )}
 
             <section
               className="plain-panel stable-section glossary-learning-panel"
@@ -312,98 +460,12 @@ export default async function AssetPage({ params }: AssetPageProps) {
                 only inside these glossary cards and does not create support for claims outside this glossary area.
               </p>
             </section>
-
-            <section
-              className="plain-panel stable-section"
-              aria-labelledby="beginner-top-risks"
-              data-beginner-stable-recent-separation="stable"
-              data-beginner-top-risks
-            >
-              <div className="section-heading">
-                <p className="eyebrow">Exactly three shown first</p>
-                <h2 id="beginner-top-risks">Top risks</h2>
-              </div>
-              <FreshnessLabel label="Top risks as of" value={asset.freshness.factsAsOf} state="fresh" />
-              <div className="risk-grid" data-beginner-top-risk-count={asset.topRisks.slice(0, 3).length}>
-                {asset.topRisks.slice(0, 3).map((risk) => {
-                  const citation = getCitationById(asset, risk.citationIds[0]);
-                  return (
-                    <article className="risk-card" key={risk.title}>
-                      <h3>{risk.title}</h3>
-                      <p>{risk.plainEnglishExplanation}</p>
-                      {citation ? <CitationChip citation={citation} label={citationLabel(risk.citationIds[0])} /> : null}
-                    </article>
-                  );
-                })}
-              </div>
-            </section>
-
-            <section
-              className="plain-panel stable-section"
-              aria-labelledby="beginner-details"
-              data-beginner-stable-recent-separation="stable"
-            >
-              <div className="section-heading">
-                <p className="eyebrow">What this is</p>
-                <h2 id="beginner-details">{asset.assetType === "etf" ? "Fund facts" : "Business facts"}</h2>
-              </div>
-              <FreshnessLabel label="Stable facts as of" value={asset.freshness.factsAsOf} state="fresh" />
-              <dl className="fact-list">
-                {asset.facts.map((fact) => {
-                  const citation = fact.citationId ? getCitationById(asset, fact.citationId) : undefined;
-                  return (
-                    <div key={fact.label}>
-                      <dt>{fact.label}</dt>
-                      <dd>
-                        {fact.value}{" "}
-                        {citation ? <CitationChip citation={citation} label={citationLabel(fact.citationId ?? "")} /> : null}
-                      </dd>
-                    </div>
-                  );
-                })}
-              </dl>
-            </section>
-
-            <WeeklyNewsPanel focus={weeklyNewsFocus} citations={mergedCitations} />
-
-            <AIComprehensiveAnalysisPanel analysis={aiComprehensiveAnalysis} citations={mergedCitations} />
-
-            <section className="plain-panel" aria-labelledby="beginner-educational-framing" data-beginner-educational-framing>
-              <div className="section-heading">
-                <p className="eyebrow">Educational framing</p>
-                <h2 id="beginner-educational-framing">Educational suitability</h2>
-              </div>
-              <p>{asset.suitabilitySummary.mayFit}</p>
-              <p>{asset.suitabilitySummary.mayNotFit}</p>
-              <p>{asset.suitabilitySummary.learnNext}</p>
-            </section>
-
-            <ComparisonSuggestions model={comparisonSuggestions} />
-
-            <AssetChatPanel ticker={asset.ticker} assetName={asset.name} />
           </>
         }
-        deepDiveMode={
-          hasStockPrdSections ? (
-            <AssetStockSections asset={asset} />
-          ) : hasEtfPrdSections ? (
-            <AssetEtfSections asset={asset} />
-          ) : (
-            <section className="plain-panel unknown-state" aria-labelledby="unknowns">
-              <div className="section-heading">
-                <p className="eyebrow">Uncertainty</p>
-                <h2 id="unknowns">Stale and unknown treatment</h2>
-              </div>
-              <div className="state-row">
-                <FreshnessLabel label="Valuation context" value="Unknown in local fixture" state="unknown" />
-                <FreshnessLabel label="Live market quote" value="Unavailable by design" state="stale" />
-              </div>
-              <p>
-                Missing live facts are labeled instead of being filled in from model memory. This skeleton uses local fixture
-                data only.
-              </p>
-            </section>
-          )
+        afterDeepDive={
+          <section id="ask-about-this-asset" className="asset-mode-region" data-prd-section="ask_about_this_asset">
+            <AssetChatPanel ticker={asset.ticker} assetName={asset.name} />
+          </section>
         }
         sourceTools={
           <>
@@ -452,6 +514,86 @@ export default async function AssetPage({ params }: AssetPageProps) {
               />
             )}
           </>
+        }
+        helperRail={
+          <>
+            <section className="plain-panel helper-rail-panel" aria-labelledby="helper-rail-actions">
+              <div className="section-heading">
+                <p className="eyebrow">Page tools</p>
+                <h2 id="helper-rail-actions">Asset helpers</h2>
+              </div>
+              <div className="helper-action-list" data-helper-rail-action-list>
+                <a href="#ask-about-this-asset" data-helper-rail-action="ask">
+                  Ask about this asset
+                </a>
+                <a href="#compare-this-asset" data-helper-rail-action="compare">
+                  Compare this asset
+                </a>
+                <a href="#asset-sources" data-helper-rail-action="sources">
+                  View sources
+                </a>
+              </div>
+            </section>
+
+            <section className="plain-panel helper-rail-panel" aria-labelledby="helper-rail-freshness">
+              <div className="section-heading">
+                <p className="eyebrow">Freshness summary</p>
+                <h2 id="helper-rail-freshness">Freshness</h2>
+              </div>
+              <div className="section-stack">
+                <FreshnessLabel label="Page last updated" value={asset.freshness.pageLastUpdatedAt} state="fresh" />
+                <FreshnessLabel label="Facts as of" value={asset.freshness.factsAsOf} state="fresh" />
+                <FreshnessLabel
+                  label="Weekly focus as of"
+                  value={weeklyNewsFocus.window.asOfDate}
+                  state={
+                    weeklyNewsFocus.state === "available"
+                      ? "fresh"
+                      : weeklyNewsFocus.state === "no_high_signal"
+                        ? "insufficient_evidence"
+                        : weeklyNewsFocus.state === "suppressed"
+                          ? "unavailable"
+                          : "unknown"
+                  }
+                />
+              </div>
+            </section>
+
+            <div id="compare-this-asset" data-helper-rail-comparison-access>
+              <ComparisonSuggestions model={comparisonSuggestions} />
+            </div>
+
+            <section className="plain-panel helper-rail-panel" aria-labelledby="helper-rail-sources">
+              <div className="section-heading">
+                <p className="eyebrow">Key sources</p>
+                <h2 id="helper-rail-sources">Source access</h2>
+              </div>
+              <p className="source-gap-note" data-helper-rail-source-access>
+                Source drawers remain in the Sources section so citation chips stay next to the claims they support.
+              </p>
+              <ul className="helper-source-list" aria-label="Rendered source document IDs">
+                {keySourceTitles.map((title) => (
+                  <li key={title}>{title}</li>
+                ))}
+              </ul>
+            </section>
+          </>
+        }
+        footerContent={
+          <section
+            className="plain-panel"
+            aria-labelledby="beginner-educational-framing"
+            data-beginner-educational-framing
+            data-prd-section="educational_disclaimer"
+          >
+            <div className="section-heading">
+              <p className="eyebrow">Educational framing</p>
+              <h2 id="beginner-educational-framing">Educational suitability</h2>
+            </div>
+            <p>{asset.suitabilitySummary.mayFit}</p>
+            <p>{asset.suitabilitySummary.mayNotFit}</p>
+            <p>{asset.suitabilitySummary.learnNext}</p>
+          </section>
         }
       />
     </main>
