@@ -14,6 +14,7 @@ import { SourceDrawer } from "../../../components/SourceDrawer";
 import { WeeklyNewsPanel } from "../../../components/WeeklyNewsPanel";
 import { fetchSupportedAssetDetails } from "../../../lib/assetDetails";
 import { fetchSupportedAssetOverview } from "../../../lib/assetOverview";
+import { fetchSupportedSourceDrawerResponse, sourceDrawerEntriesByDocumentId } from "../../../lib/sourceDrawer";
 import { fetchSupportedAssetWeeklyNews } from "../../../lib/assetWeeklyNews";
 import { beginnerGlossaryGroupsByAssetType } from "../../../lib/glossary";
 import { getAssetComparisonSuggestions } from "../../../lib/compareSuggestions";
@@ -86,6 +87,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
   let overviewRendering: "backend_contract" | "local_fixture" = "local_fixture";
   let detailsRendering: "backend_contract" | "local_fixture" = "local_fixture";
   let weeklyNewsRendering: "backend_contract" | "local_fixture" = "local_fixture";
+  let sourceDrawerRendering: "backend_contract" | "mixed_fallback" | "local_fixture" = "local_fixture";
 
   try {
     asset = await fetchSupportedAssetOverview(fallbackAsset.ticker, fallbackAsset);
@@ -152,6 +154,13 @@ export default async function AssetPage({ params }: AssetPageProps) {
   const drawerSources = mergedSources
     .filter((source) => drawerSourceDocumentIds.has(source.sourceDocumentId))
     .map(toSourceDrawerDocument);
+  const backendSourceDrawer = await (async () => {
+    try {
+      return await fetchSupportedSourceDrawerResponse(asset.ticker);
+    } catch {
+      return null;
+    }
+  })();
   const timelyContextClaimsBySourceDocumentId = new Map(
     weeklyNewsFocus.items.map((item) => [
       item.source.sourceDocumentId,
@@ -170,12 +179,43 @@ export default async function AssetPage({ params }: AssetPageProps) {
   const comparisonSuggestions = getAssetComparisonSuggestions(asset.ticker);
   const inlineGlossaryTerms =
     asset.assetType === "etf" ? (["expense ratio", "index tracking"] as const) : (["market risk", "P/E ratio"] as const);
+  const localDrawerEntries = drawerSources.map((source) => {
+    const sourceContexts = getCitationContextsForSource(asset, source.source_document_id);
+    return {
+      source,
+      claim:
+        sourceContexts[0]?.claimContext ??
+        timelyContextClaimsBySourceDocumentId.get(source.source_document_id) ??
+        firstClaim.claimText,
+      contexts: sourceContexts,
+      drawerState: sourceDrawerStateFromFreshness(source.freshness_state)
+    };
+  });
+  const primarySourceEntry = {
+    source: toSourceDrawerDocument(primarySource),
+    claim: firstClaim.claimText,
+    contexts: getCitationContextsForSource(asset, primarySource.sourceDocumentId),
+    drawerState: sourceDrawerStateFromFreshness(primarySource.freshnessState)
+  };
+  const backendDrawerEntries = backendSourceDrawer ? sourceDrawerEntriesByDocumentId(backendSourceDrawer) : null;
+  const overlaySourceDrawerEntry = <T extends { source: { source_document_id: string } }>(entry: T) =>
+    backendDrawerEntries?.get(entry.source.source_document_id) ?? entry;
+  const renderedDrawerEntries = hasPrdSections
+    ? localDrawerEntries.map(overlaySourceDrawerEntry)
+    : [overlaySourceDrawerEntry(primarySourceEntry)];
+
+  if (backendDrawerEntries) {
+    sourceDrawerRendering = renderedDrawerEntries.every((entry) => backendDrawerEntries.has(entry.source.source_document_id))
+      ? "backend_contract"
+      : "mixed_fallback";
+  }
 
   return (
     <main
       data-asset-overview-rendering={overviewRendering}
       data-asset-details-rendering={detailsRendering}
       data-asset-weekly-news-rendering={weeklyNewsRendering}
+      data-asset-source-drawer-rendering={sourceDrawerRendering}
     >
       <AssetHeader asset={asset} />
       <AssetModeLayout
@@ -352,25 +392,26 @@ export default async function AssetPage({ params }: AssetPageProps) {
                 }
               ]}
             />
+            <p className="source-gap-note">
+              Asset-page source drawers prefer backend related claim context, section references, and allowed excerpts
+              when the deterministic source-drawer contract covers the rendered source document IDs.
+            </p>
             {hasPrdSections ? (
-              drawerSources.map((source) => (
+              renderedDrawerEntries.map((entry) => (
                 <SourceDrawer
-                  key={source.source_document_id}
-                  source={source}
-                  claim={
-                    getCitationContextsForSource(asset, source.source_document_id)[0]?.claimContext ??
-                    timelyContextClaimsBySourceDocumentId.get(source.source_document_id) ??
-                    firstClaim.claimText
-                  }
-                  contexts={getCitationContextsForSource(asset, source.source_document_id)}
-                  drawerState={sourceDrawerStateFromFreshness(source.freshness_state)}
+                  key={entry.source.source_document_id}
+                  source={entry.source}
+                  claim={entry.claim}
+                  contexts={entry.contexts}
+                  drawerState={entry.drawerState}
                 />
               ))
             ) : (
               <SourceDrawer
-                source={toSourceDrawerDocument(primarySource)}
-                claim={firstClaim.claimText}
-                drawerState={sourceDrawerStateFromFreshness(primarySource.freshnessState)}
+                source={renderedDrawerEntries[0].source}
+                claim={renderedDrawerEntries[0].claim}
+                contexts={renderedDrawerEntries[0].contexts}
+                drawerState={renderedDrawerEntries[0].drawerState}
               />
             )}
           </>
