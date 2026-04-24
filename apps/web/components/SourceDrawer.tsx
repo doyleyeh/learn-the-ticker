@@ -185,8 +185,10 @@ export function SourceDrawer({
       className="source-drawer"
       id={`source-${source.source_document_id}`}
       data-source-document-id={source.source_document_id}
+      data-source-title={source.title}
       data-source-freshness-state={source.freshness_state}
       data-source-drawer-state={drawerState}
+      data-source-drawer-mobile-presentation="bottom-sheet"
       data-source-use-policy={source.source_use_policy}
       data-source-allowlist-status={source.allowlist_status}
       data-trust-metric-schema-version={trustMetricDescriptor.schemaVersion}
@@ -206,7 +208,10 @@ export function SourceDrawer({
       data-trust-metric-freshness-accuracy-event="freshness_accuracy"
       open
     >
-      <summary>Source drawer</summary>
+      <summary data-source-drawer-close-control="native-details-summary">
+        <span className="source-summary-kicker">Source drawer</span>
+        <span className="source-summary-title">{source.title}</span>
+      </summary>
       <div className="source-body">
         <div className="source-title-row">
           <h2>{source.title}</h2>
