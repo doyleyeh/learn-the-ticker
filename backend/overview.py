@@ -512,11 +512,7 @@ def _subject_from_weekly_news(
         raise OverviewGenerationError("Weekly News Focus metadata is required for freshness validation.")
 
     weekly = overview.weekly_news_focus
-    evidence_state = (
-        weekly.empty_state.evidence_state
-        if weekly.empty_state is not None
-        else EvidenceState.supported if weekly.items else EvidenceState.unavailable
-    )
+    evidence_state = weekly.evidence_state
     supporting_freshness_states = tuple(item.freshness_state for item in weekly.items)
     supporting_as_of_dates = tuple(
         [

@@ -35,10 +35,16 @@ def test_supported_asset_overviews_are_schema_valid_and_source_backed():
         assert validated.weekly_news_focus is not None
         assert validated.weekly_news_focus.window.news_window_start == "2026-04-13"
         assert validated.weekly_news_focus.window.news_window_end == "2026-04-22"
+        assert validated.weekly_news_focus.configured_max_item_count == 8
+        assert validated.weekly_news_focus.selected_item_count == 0
+        assert validated.weekly_news_focus.evidence_state is EvidenceState.no_high_signal
+        assert validated.weekly_news_focus.evidence_limited_state.value == "empty"
         assert validated.weekly_news_focus.items == []
         assert validated.weekly_news_focus.empty_state is not None
         assert validated.ai_comprehensive_analysis is not None
         assert validated.ai_comprehensive_analysis.analysis_available is False
+        assert validated.ai_comprehensive_analysis.minimum_weekly_news_item_count == 2
+        assert validated.ai_comprehensive_analysis.weekly_news_selected_item_count == 0
         assert validated.ai_comprehensive_analysis.sections == []
         assert validated.suitability_summary is not None
         assert validated.sections

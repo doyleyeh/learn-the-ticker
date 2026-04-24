@@ -2306,9 +2306,15 @@ def test_weekly_news_cases():
 
         assert focus.state.value == case["expected_state"]
         assert len(focus.items) == case["expected_item_count"]
+        assert focus.configured_max_item_count == case["expected_configured_max_item_count"]
+        assert focus.selected_item_count == case["expected_item_count"]
+        assert focus.evidence_state.value == case["expected_evidence_state"]
+        assert focus.evidence_limited_state.value == case["expected_evidence_limited_state"]
         assert focus.stable_facts_are_separate is True
         assert analysis.state.value == case["expected_ai_state"]
         assert analysis.analysis_available is case["expected_ai_available"]
+        assert analysis.minimum_weekly_news_item_count == case["expected_ai_minimum_item_count"]
+        assert analysis.weekly_news_selected_item_count == case["expected_item_count"]
         assert analysis.stable_facts_are_separate is True
         if focus.items == []:
             assert focus.empty_state is not None

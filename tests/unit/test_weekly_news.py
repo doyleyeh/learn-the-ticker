@@ -56,6 +56,11 @@ def test_fixture_packs_render_clear_empty_weekly_news_state_without_padding():
         analysis = build_ai_comprehensive_analysis(pack.asset, focus)
 
         assert focus.state is WeeklyNewsContractState.no_high_signal
+        assert focus.configured_max_item_count == 8
+        assert focus.selected_item_count == 0
+        assert focus.suppressed_candidate_count >= 0
+        assert focus.evidence_state is EvidenceState.no_high_signal
+        assert focus.evidence_limited_state.value == "empty"
         assert focus.items == []
         assert focus.empty_state is not None
         assert focus.empty_state.evidence_state is EvidenceState.no_high_signal
@@ -63,6 +68,8 @@ def test_fixture_packs_render_clear_empty_weekly_news_state_without_padding():
         assert focus.stable_facts_are_separate is True
         assert analysis.state is WeeklyNewsContractState.suppressed
         assert analysis.analysis_available is False
+        assert analysis.minimum_weekly_news_item_count == 2
+        assert analysis.weekly_news_selected_item_count == 0
         assert analysis.sections == []
         assert "fewer than two high-signal" in analysis.suppression_reason
 
@@ -87,6 +94,11 @@ def test_weekly_news_selection_prioritizes_official_sources_and_excludes_disallo
     )
 
     assert [item.event_id for item in focus.items] == ["official_methodology", "allowlisted_context"]
+    assert focus.configured_max_item_count == 8
+    assert focus.selected_item_count == 2
+    assert focus.suppressed_candidate_count == 8
+    assert focus.evidence_state is EvidenceState.partial
+    assert focus.evidence_limited_state.value == "limited_verified_set"
     assert focus.items[0].source.source_quality is SourceQuality.issuer
     assert focus.items[0].selection_rationale.total_score > focus.items[1].selection_rationale.total_score
     assert focus.items[0].period_bucket.value == "current_week_to_date"
@@ -108,6 +120,8 @@ def test_ai_comprehensive_analysis_requires_two_high_signal_items_and_preserves_
     assert suppressed.analysis_available is False
     assert suppressed.sections == []
     assert suppressed.state is WeeklyNewsContractState.suppressed
+    assert suppressed.weekly_news_selected_item_count == 1
+    assert suppressed.minimum_weekly_news_item_count == 2
 
     focus = select_weekly_news_focus(
         asset,
@@ -125,6 +139,8 @@ def test_ai_comprehensive_analysis_requires_two_high_signal_items_and_preserves_
     )
 
     assert analysis.analysis_available is True
+    assert analysis.weekly_news_selected_item_count == 2
+    assert analysis.minimum_weekly_news_item_count == 2
     assert [section.label for section in analysis.sections] == [
         "What Changed This Week",
         "Market Context",

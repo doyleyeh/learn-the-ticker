@@ -1716,6 +1716,14 @@ class WeeklyNewsContractState(str, Enum):
     suppressed = "suppressed"
 
 
+class WeeklyNewsEvidenceLimitedState(str, Enum):
+    full = "full"
+    limited_verified_set = "limited_verified_set"
+    empty = "empty"
+    unavailable = "unavailable"
+    insufficient_evidence = "insufficient_evidence"
+
+
 class MarketWeekPeriod(BaseModel):
     start: str | None = None
     end: str | None = None
@@ -1797,6 +1805,11 @@ class WeeklyNewsFocusResponse(BaseModel):
     asset: AssetIdentity
     state: WeeklyNewsContractState
     window: WeeklyNewsWindow
+    configured_max_item_count: int = 8
+    selected_item_count: int = 0
+    suppressed_candidate_count: int = 0
+    evidence_state: EvidenceState = EvidenceState.unknown
+    evidence_limited_state: WeeklyNewsEvidenceLimitedState = WeeklyNewsEvidenceLimitedState.unavailable
     items: list[WeeklyNewsItem] = Field(default_factory=list)
     empty_state: WeeklyNewsEmptyState | None = None
     citations: list[Citation] = Field(default_factory=list)
@@ -1829,6 +1842,8 @@ class AIComprehensiveAnalysisResponse(BaseModel):
     asset: AssetIdentity
     state: WeeklyNewsContractState
     analysis_available: bool
+    minimum_weekly_news_item_count: int = 2
+    weekly_news_selected_item_count: int = 0
     suppression_reason: str | None = None
     sections: list[AIComprehensiveAnalysisSection] = Field(default_factory=list)
     citation_ids: list[str] = Field(default_factory=list)

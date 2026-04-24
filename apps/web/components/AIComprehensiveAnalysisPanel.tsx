@@ -52,6 +52,11 @@ export function AIComprehensiveAnalysisPanel({ analysis, citations }: AIComprehe
       data-timely-context-layer="ai-comprehensive-analysis"
       data-ai-analysis-state={analysis.state}
       data-ai-analysis-available={analysis.analysisAvailable ? "true" : "false"}
+      data-ai-analysis-minimum-weekly-news-items={analysis.minimumWeeklyNewsItemCount}
+      data-ai-analysis-weekly-news-selected-count={analysis.weeklyNewsSelectedItemCount}
+      data-ai-analysis-threshold-state={
+        analysis.weeklyNewsSelectedItemCount >= analysis.minimumWeeklyNewsItemCount ? "threshold_met" : "threshold_not_met"
+      }
     >
       <div className="section-heading">
         <p className="eyebrow">Timely context</p>
@@ -71,6 +76,9 @@ export function AIComprehensiveAnalysisPanel({ analysis, citations }: AIComprehe
         />
         <span className="state-pill" data-evidence-state={analysis.analysisAvailable ? "supported" : "insufficient_evidence"}>
           State: {analysis.state.replaceAll("_", " ")}
+        </span>
+        <span className="state-pill compact-state" data-ai-analysis-evidence-threshold>
+          {analysis.weeklyNewsSelectedItemCount} of {analysis.minimumWeeklyNewsItemCount} high-signal items
         </span>
       </div>
 
@@ -117,7 +125,7 @@ export function AIComprehensiveAnalysisPanel({ analysis, citations }: AIComprehe
               "Insufficient evidence is shown instead of fabricated analysis when the local Weekly News Focus layer is too thin."}
           </p>
           <p className="source-gap-note">
-            Beginner-readable state handling is shown here instead of generating unsupported analysis.
+            Analysis requires at least {analysis.minimumWeeklyNewsItemCount} high-signal Weekly News Focus items.
           </p>
           <FreshnessLabel label="Canonical evidence" value={analysis.canonicalFactCitationIds.join(", ")} state={freshnessState} />
         </div>

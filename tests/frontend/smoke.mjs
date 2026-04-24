@@ -225,6 +225,12 @@ includes("components/AssetModeLayout.tsx", "Beginner Mode");
 includes("components/AssetModeLayout.tsx", "Deep-Dive Mode");
 includes("components/WeeklyNewsPanel.tsx", "Weekly News Focus");
 includes("components/WeeklyNewsPanel.tsx", "data-weekly-news-state");
+includes("components/WeeklyNewsPanel.tsx", "data-weekly-news-configured-max");
+includes("components/WeeklyNewsPanel.tsx", "data-weekly-news-selected-count");
+includes("components/WeeklyNewsPanel.tsx", "data-weekly-news-suppressed-candidate-count");
+includes("components/WeeklyNewsPanel.tsx", "data-weekly-news-evidence-limited-state");
+includes("components/WeeklyNewsPanel.tsx", "data-weekly-news-empty-behavior");
+includes("components/WeeklyNewsPanel.tsx", "data-weekly-news-limited-verified-set");
 includes("components/WeeklyNewsPanel.tsx", "data-weekly-news-item-count");
 includes("components/WeeklyNewsPanel.tsx", "data-beginner-weekly-news-focus");
 includes("components/WeeklyNewsPanel.tsx", "data-beginner-recent-developments");
@@ -234,6 +240,10 @@ includes("components/WeeklyNewsPanel.tsx", "No major Weekly News Focus items fou
 includes("components/AIComprehensiveAnalysisPanel.tsx", "AI Comprehensive Analysis");
 includes("components/AIComprehensiveAnalysisPanel.tsx", "data-ai-analysis-state");
 includes("components/AIComprehensiveAnalysisPanel.tsx", "data-ai-analysis-available");
+includes("components/AIComprehensiveAnalysisPanel.tsx", "data-ai-analysis-minimum-weekly-news-items");
+includes("components/AIComprehensiveAnalysisPanel.tsx", "data-ai-analysis-weekly-news-selected-count");
+includes("components/AIComprehensiveAnalysisPanel.tsx", "data-ai-analysis-threshold-state");
+includes("components/AIComprehensiveAnalysisPanel.tsx", "data-ai-analysis-evidence-threshold");
 includes("components/AIComprehensiveAnalysisPanel.tsx", "What Changed This Week");
 includes("components/AIComprehensiveAnalysisPanel.tsx", "Market Context");
 includes("components/AIComprehensiveAnalysisPanel.tsx", "Business/Fund Context");
@@ -637,6 +647,12 @@ for (const marker of [
   "aiComprehensiveAnalysisFixtures",
   "weekly-news-focus-v1",
   "ai-comprehensive-analysis-v1",
+  "configuredMaxItemCount",
+  "selectedItemCount",
+  "suppressedCandidateCount",
+  "evidenceLimitedState",
+  "minimumWeeklyNewsItemCount",
+  "weeklyNewsSelectedItemCount",
   "c_weekly_qqq_methodology",
   "c_weekly_qqq_sponsor_update",
   "src_qqq_weekly_methodology",

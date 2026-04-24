@@ -64,6 +64,12 @@ export function WeeklyNewsPanel({ focus, citations }: WeeklyNewsPanelProps) {
       data-beginner-recent-developments
       data-timely-context-layer="weekly-news-focus"
       data-weekly-news-state={focus.state}
+      data-weekly-news-configured-max={focus.configuredMaxItemCount}
+      data-weekly-news-selected-count={focus.selectedItemCount}
+      data-weekly-news-suppressed-candidate-count={focus.suppressedCandidateCount}
+      data-weekly-news-evidence-state={focus.evidenceState}
+      data-weekly-news-evidence-limited-state={focus.evidenceLimitedState}
+      data-weekly-news-empty-behavior={focus.selectedItemCount === 0 ? "explicit_empty_state" : "not_empty"}
     >
       <div className="section-heading">
         <p className="eyebrow">Timely context</p>
@@ -73,6 +79,9 @@ export function WeeklyNewsPanel({ focus, citations }: WeeklyNewsPanelProps) {
       <div className="state-row">
         <FreshnessLabel label="News window" value={windowLabel} state={windowFreshness} />
         <FreshnessLabel label="Checked as of" value={focus.window.asOfDate} state={windowFreshness} />
+        <span className="state-pill compact-state" data-evidence-state={focus.evidenceState}>
+          {focus.selectedItemCount} of {focus.configuredMaxItemCount} verified
+        </span>
       </div>
 
       <p className="notice-text">
@@ -82,6 +91,12 @@ export function WeeklyNewsPanel({ focus, citations }: WeeklyNewsPanelProps) {
 
       {focus.items.length ? (
         <div className="section-stack" data-weekly-news-item-count={focus.items.length}>
+          {focus.evidenceLimitedState === "limited_verified_set" ? (
+            <p className="source-gap-note" data-weekly-news-limited-verified-set>
+              Weekly News Focus is showing a smaller verified set because only {focus.selectedItemCount} high-signal
+              item{focus.selectedItemCount === 1 ? "" : "s"} passed the evidence rules.
+            </p>
+          ) : null}
           {focus.items.map((item) => (
             <article
               className="timeline-item"
@@ -136,6 +151,9 @@ export function WeeklyNewsPanel({ focus, citations }: WeeklyNewsPanelProps) {
                 selected items: {focus.emptyState.selectedItemCount}
               </span>
             ) : null}
+            <span className="state-pill compact-state" data-weekly-news-empty-suppressed-candidate-count={focus.suppressedCandidateCount}>
+              suppressed candidates: {focus.suppressedCandidateCount}
+            </span>
           </div>
           <p className="source-gap-note">
             An empty Weekly News Focus state is normal when no major high-signal items pass the local evidence rules.

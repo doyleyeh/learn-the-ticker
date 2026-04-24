@@ -296,10 +296,17 @@ def test_overview_has_beginner_sections_and_citations():
     assert body["weekly_news_focus"]["schema_version"] == "weekly-news-focus-v1"
     assert body["weekly_news_focus"]["window"]["news_window_start"] == "2026-04-13"
     assert body["weekly_news_focus"]["window"]["news_window_end"] == "2026-04-22"
+    assert body["weekly_news_focus"]["configured_max_item_count"] == 8
+    assert body["weekly_news_focus"]["selected_item_count"] == 0
+    assert body["weekly_news_focus"]["suppressed_candidate_count"] >= 0
+    assert body["weekly_news_focus"]["evidence_state"] == "no_high_signal"
+    assert body["weekly_news_focus"]["evidence_limited_state"] == "empty"
     assert body["weekly_news_focus"]["items"] == []
     assert body["weekly_news_focus"]["empty_state"]["evidence_state"] == "no_high_signal"
     assert body["ai_comprehensive_analysis"]["schema_version"] == "ai-comprehensive-analysis-v1"
     assert body["ai_comprehensive_analysis"]["analysis_available"] is False
+    assert body["ai_comprehensive_analysis"]["minimum_weekly_news_item_count"] == 2
+    assert body["ai_comprehensive_analysis"]["weekly_news_selected_item_count"] == 0
     assert body["ai_comprehensive_analysis"]["sections"] == []
     assert "src_voo_fact_sheet_fixture" in source_ids
     assert "src_voo_recent_review" in source_ids
@@ -395,7 +402,11 @@ def test_details_sources_and_recent_routes_exist():
     assert sources.json()["section_references"][0]["freshness_state"]
     assert recent.json()["recent_developments"][0]["freshness_state"] == "fresh"
     assert weekly.json()["weekly_news_focus"]["state"] == "no_high_signal"
+    assert weekly.json()["weekly_news_focus"]["configured_max_item_count"] == 8
+    assert weekly.json()["weekly_news_focus"]["selected_item_count"] == 0
+    assert weekly.json()["weekly_news_focus"]["evidence_limited_state"] == "empty"
     assert weekly.json()["ai_comprehensive_analysis"]["state"] == "suppressed"
+    assert weekly.json()["ai_comprehensive_analysis"]["weekly_news_selected_item_count"] == 0
     assert glossary.json()["schema_version"] == "glossary-asset-context-v1"
     assert glossary.json()["glossary_state"] == "available"
     assert {term["term_identity"]["term"] for term in glossary.json()["terms"]} >= {"revenue", "P/E ratio"}

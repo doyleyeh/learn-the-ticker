@@ -8,13 +8,15 @@ export type FreshnessState =
 export type AssetType = "stock" | "etf";
 export type EvidenceState =
   | "supported"
+  | "partial"
   | "mixed"
   | "unknown"
   | "unavailable"
   | "stale"
   | "insufficient_evidence"
   | "no_high_signal"
-  | "no_major_recent_development";
+  | "no_major_recent_development"
+  | "unsupported";
 export type StockSectionType =
   | "stable_facts"
   | "evidence_gap"
@@ -151,6 +153,13 @@ export type WeeklyNewsContractState =
   | "unavailable"
   | "suppressed";
 
+export type WeeklyNewsEvidenceLimitedState =
+  | "full"
+  | "limited_verified_set"
+  | "empty"
+  | "unavailable"
+  | "insufficient_evidence";
+
 export type WeeklyNewsWindow = {
   asOfDate: string;
   timezone: "America/New_York";
@@ -227,6 +236,11 @@ export type WeeklyNewsFocusFixture = {
   schemaVersion: "weekly-news-focus-v1";
   state: WeeklyNewsContractState;
   window: WeeklyNewsWindow;
+  configuredMaxItemCount: number;
+  selectedItemCount: number;
+  suppressedCandidateCount: number;
+  evidenceState: EvidenceState;
+  evidenceLimitedState: WeeklyNewsEvidenceLimitedState;
   items: WeeklyNewsItem[];
   emptyState: WeeklyNewsEmptyState | null;
   citations: Citation[];
@@ -248,6 +262,8 @@ export type AIComprehensiveAnalysisFixture = {
   schemaVersion: "ai-comprehensive-analysis-v1";
   state: WeeklyNewsContractState;
   analysisAvailable: boolean;
+  minimumWeeklyNewsItemCount: number;
+  weeklyNewsSelectedItemCount: number;
   suppressionReason: string | null;
   sections: AIComprehensiveAnalysisSection[];
   citationIds: string[];
@@ -333,6 +349,11 @@ function buildEmptyWeeklyNewsFocus(): WeeklyNewsFocusFixture {
     schemaVersion: "weekly-news-focus-v1",
     state: "no_high_signal",
     window: weeklyNewsWindow,
+    configuredMaxItemCount: 8,
+    selectedItemCount: 0,
+    suppressedCandidateCount: 0,
+    evidenceState: "no_high_signal",
+    evidenceLimitedState: "empty",
     items: [],
     emptyState: {
       state: "no_high_signal",
@@ -355,6 +376,8 @@ function buildSuppressedAIComprehensiveAnalysis(
     schemaVersion: "ai-comprehensive-analysis-v1",
     state: "suppressed",
     analysisAvailable: false,
+    minimumWeeklyNewsItemCount: 2,
+    weeklyNewsSelectedItemCount: 0,
     suppressionReason:
       "AI Comprehensive Analysis is suppressed because fewer than two high-signal Weekly News Focus items are available.",
     sections: [],
@@ -376,6 +399,11 @@ export const weeklyNewsFocusFixtures: Record<string, WeeklyNewsFocusFixture> = {
     schemaVersion: "weekly-news-focus-v1",
     state: "available",
     window: weeklyNewsWindow,
+    configuredMaxItemCount: 8,
+    selectedItemCount: 2,
+    suppressedCandidateCount: 0,
+    evidenceState: "partial",
+    evidenceLimitedState: "limited_verified_set",
     items: [
       {
         eventId: "qqq_methodology_notice",
@@ -495,6 +523,8 @@ export const aiComprehensiveAnalysisFixtures: Record<string, AIComprehensiveAnal
     schemaVersion: "ai-comprehensive-analysis-v1",
     state: "available",
     analysisAvailable: true,
+    minimumWeeklyNewsItemCount: 2,
+    weeklyNewsSelectedItemCount: 2,
     suppressionReason: null,
     sections: [
       {
