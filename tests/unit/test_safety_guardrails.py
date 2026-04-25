@@ -324,3 +324,28 @@ def test_search_blocked_explanation_contract_copy_is_advice_safe():
         assert_no_forbidden_phrases(marker, marker)
 
     assert_no_forbidden_phrases("search blocked explanation contract", combined)
+
+
+def test_weekly_news_event_evidence_contract_copy_is_advice_safe():
+    combined = "\n".join(
+        [
+            (ROOT / "backend" / "repositories" / "weekly_news.py").read_text(encoding="utf-8"),
+            (ROOT / "backend" / "weekly_news_repository.py").read_text(encoding="utf-8"),
+            (ROOT / "alembic" / "versions" / "20260425_0008_weekly_news_event_evidence_contracts.py").read_text(
+                encoding="utf-8"
+            ),
+        ]
+    )
+    markers = [
+        "weekly-news-event-evidence-repository-contract-v1",
+        "persisted_evidence_only",
+        "threshold_metadata_only",
+        "source_policy_blocked",
+        "stable_facts_are_separate",
+    ]
+
+    for marker in markers:
+        assert marker in combined
+        assert_no_forbidden_phrases(marker, marker)
+
+    assert_no_forbidden_phrases("weekly news event evidence contract", combined)

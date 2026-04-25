@@ -235,6 +235,44 @@ def test_etf_universe_contract_files_are_local_metadata_only():
         assert forbidden not in combined
 
 
+def test_weekly_news_event_evidence_repository_contract_is_dormant_metadata_only():
+    repository = read_file("backend/repositories/weekly_news.py")
+    shim = read_file("backend/weekly_news_repository.py")
+    migration = read_file("alembic/versions/20260425_0008_weekly_news_event_evidence_contracts.py")
+
+    combined = f"{repository}\n{shim}\n{migration}"
+
+    assert "weekly-news-event-evidence-repository-contract-v1" in combined
+    assert "weekly_news_market_week_windows" in combined
+    assert "weekly_news_event_candidates" in combined
+    assert "weekly_news_selected_events" in combined
+    assert "weekly_news_ai_thresholds" in combined
+    assert "weekly_news_diagnostics" in combined
+    assert "compute_weekly_news_window" in repository
+    assert "no_live_external_calls" in repository
+    assert "provider_or_llm_call_required" in repository
+    assert "persisted_evidence_only" in repository
+    assert "threshold_metadata_only" in repository
+
+    for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import", "os.environ", "api_key"]:
+        assert forbidden not in combined
+    for forbidden in [
+        "BEGIN PRIVATE KEY",
+        "OPENROUTER_API_KEY=",
+        "FMP_API_KEY=",
+        "ALPHA_VANTAGE_API_KEY=",
+        "FINNHUB_API_KEY=",
+        "TIINGO_API_KEY=",
+        "EODHD_API_KEY=",
+        "import requests",
+        "import httpx",
+        "boto3",
+        "os.environ",
+        "api_key",
+    ]:
+        assert forbidden not in combined
+
+
 def test_control_docs_cover_new_mvp_operating_rules():
     combined = "\n".join(read_file(name) for name in ["AGENTS.md", "SPEC.md", "EVALS.md"])
 
