@@ -2417,6 +2417,166 @@ bash scripts/run_quality_gate.sh
 Iteration budget:
 One agent-loop cycle. If real analytics emission, frontend instrumentation, vendor setup, live database execution, or production observability changes are needed, record the follow-up and stop after dormant sink contracts.
 
+### T-091: Add eligible ETF universe metadata contracts
+
+Goal:
+Add deterministic eligible ETF universe metadata contracts so search and support classification can later broaden beyond the cached launch fixtures while preserving generated-output blocking for eligible-not-cached, unsupported, out-of-scope, unknown, unavailable, leveraged, inverse, ETN, fixed-income, commodity, active, and multi-asset ETF states.
+
+Roadmap alignment:
+
+- First narrow slice of "Broaden launch-universe search and support classification from the versioned manifest and eligible ETF metadata."
+- Complements the completed Top-500 stock manifest contract without changing current search behavior or generated asset coverage.
+- Prepares eligible ETF metadata before route-level search/support classification consumes it.
+
+Acceptance criteria:
+
+- Add a deterministic ETF universe metadata contract or fixture manifest for supported-scope non-leveraged U.S.-listed equity index, sector, and thematic ETF candidates.
+- Include ETF ticker, fund name, issuer, category, exchange or listing metadata where available, support state, exclusion flags, provenance, snapshot date, checksum/provenance metadata, and non-advice framing.
+- Preserve current cached generated coverage for existing fixture-backed ETFs and no-generated-output behavior for eligible-not-cached ETFs.
+- Explicitly classify leveraged, inverse, ETN, fixed-income, commodity, active, multi-asset, unknown, unavailable, and other unsupported ETF categories as blocked from generated pages, chat answers, comparisons, risk summaries, and cacheability.
+- Keep the contract deterministic and local; no live issuer/provider calls, source allowlist expansion, route wiring, frontend changes, generated output, or broader public search behavior changes.
+- Add tests for manifest/contract shape, checksum/provenance fields, supported-scope ETF eligibility, unsupported ETF blocking, no advice language, no live network imports, no secret exposure, and preservation of current search/provider behavior.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_provider_adapters.py tests/unit/test_repo_contract.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
+Iteration budget:
+One agent-loop cycle. If route-level search behavior, frontend search UI, live provider lookup, generated output, ETF universe expansion beyond deterministic metadata, or source licensing review is needed, record the follow-up and stop after the local metadata contract.
+
+### T-092: Broaden search support classification through manifests
+
+Goal:
+Route backend search/support classification through the Top-500 stock manifest and eligible ETF metadata contracts while preserving current cached asset behavior, blocked generated-output states, deterministic fixtures, frontend fallback behavior, and no-live-provider defaults.
+
+Roadmap alignment:
+
+- Second narrow slice of "Broaden launch-universe search and support classification from the versioned manifest and eligible ETF metadata."
+- Depends on completed Top-500 manifest work and T-091 eligible ETF metadata.
+- Keeps frontend search rendering changes out of scope unless backend contract tests require marker-only fixture updates.
+
+Acceptance criteria:
+
+- Search resolution uses the versioned Top-500 stock manifest and eligible ETF metadata as local deterministic support-classification inputs, not live provider queries.
+- Preserve exact cached supported states for current generated fixture assets and explicit eligible-not-cached states for approved supported-scope assets without generated pages, chat answers, comparisons, risk summaries, or cache eligibility.
+- Preserve recognized unsupported, out-of-scope, unknown, unavailable, ambiguous, and no-result behavior with clear blocked capability flags.
+- Preserve clear comparison-query handling such as `VOO vs QQQ` as comparison-route metadata rather than home-page multi-asset search results.
+- Add tests for stock manifest-backed classification, ETF metadata-backed classification, ambiguous matches, unsupported ETF class blocking, exact unknown/no-result states, comparison query routing, no generated output for non-cached assets, no live provider imports, and current API schema stability.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_ingestion_jobs.py tests/unit/test_provider_adapters.py -q
+python3 -m pytest tests/integration/test_backend_api.py -q
+python3 -m pytest tests -q
+npm test
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
+Iteration budget:
+One agent-loop cycle. If frontend search redesign, live provider lookup, on-demand ingestion execution, generated output, broader asset universe expansion, or comparison UI changes are needed, record the follow-up and stop after backend support-classification alignment.
+
+### T-093: Add persisted Weekly News Focus event evidence contracts
+
+Goal:
+Add dormant persisted recent-event evidence contracts for Weekly News Focus items, candidate scoring diagnostics, source ranking, dedupe metadata, market-week windows, empty/limited states, and AI Comprehensive Analysis threshold inputs without live news/provider acquisition or generated analysis changes.
+
+Roadmap alignment:
+
+- First narrow slice of "Add Weekly News Focus acquisition, windowing, dedupe, source ranking, empty/limited states, and AI Comprehensive Analysis thresholds from persisted recent-event evidence."
+- Establishes persisted evidence contracts before acquisition or route-level use.
+- Preserves stable canonical facts separately from timely context.
+
+Acceptance criteria:
+
+- Add pure repository/table metadata and row models for weekly event candidates, selected high-signal items, market-week window metadata, source ranking inputs, dedupe groups, evidence-limited states, AI Comprehensive Analysis threshold metadata, source/citation references, source-use policy, freshness labels, and sanitized diagnostics.
+- Enforce Monday-Sunday last-completed market week plus current week-to-date through yesterday using U.S. Eastern dates in deterministic helpers or metadata.
+- Prefer official filings, investor-relations releases, issuer announcements, prospectus updates, and fact-sheet changes ahead of allowlisted news in rank metadata.
+- Block unrecognized, rejected, duplicate, promotional, irrelevant, non-allowlisted, and license-disallowed items from selected Weekly News Focus evidence.
+- Preserve empty/limited states and AI Comprehensive Analysis suppression when fewer than two high-signal items exist.
+- Keep the contract dormant; no live source acquisition, route wiring, generated analysis changes, frontend changes, source allowlist expansion, provider calls, LLM calls, or export changes.
+- Add tests for table/metadata shape, window calculations, ranking policy metadata, dedupe metadata, source-use gating, selected-vs-configured counts, AI analysis threshold metadata, same-asset binding, sanitized diagnostics, and no-live-import behavior.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_source_policy.py tests/unit/test_repo_contract.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
+Iteration budget:
+One agent-loop cycle. If live source fetching, route rendering, generated AI analysis, source allowlist expansion, provider licensing review, frontend changes, or export rewrites are needed, record the follow-up and stop after dormant event evidence contracts.
+
+### T-094: Add deterministic Weekly News Focus acquisition worker contract
+
+Goal:
+Add a deterministic fixture-backed Weekly News Focus acquisition worker contract that can consume persisted recent-event evidence boundaries, apply windowing, dedupe, source ranking, and empty/limited-state selection without live news/provider calls or generated analysis changes.
+
+Roadmap alignment:
+
+- Second narrow slice of Weekly News Focus persisted-evidence work after T-093 contracts.
+- Keeps public route wiring, frontend rendering, and live acquisition out of scope.
+
+Acceptance criteria:
+
+- Add an injectable fixture-only acquisition/selection boundary that can transform deterministic event candidates into selected Weekly News Focus evidence records.
+- Apply U.S. Eastern market-week windowing, official/source-quality ranking, dedupe, source-use policy, evidence-state labels, selected-vs-configured counts, suppressed candidate counts, and AI Comprehensive Analysis threshold metadata.
+- Preserve the rule that Weekly News Focus shows fewer verified items or an empty state instead of padding with weak, duplicate, promotional, non-allowlisted, rejected, or license-disallowed items.
+- Preserve AI Comprehensive Analysis suppression unless at least two high-signal selected Weekly News Focus items exist.
+- Keep current overview/API/frontend behavior unchanged unless an injected test boundary is explicitly used.
+- Add tests for fixture acquisition, window filtering, ranking, dedupe, source-use blocking, empty/limited states, AI threshold suppression/availability, same-asset binding, sanitized diagnostics, and no live network/provider/LLM imports.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_overview_generation.py tests/unit/test_source_policy.py -q
+python3 -m pytest tests/integration/test_backend_api.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
+Iteration budget:
+One agent-loop cycle. If live source fetching, route integration, generated AI analysis changes, frontend changes, source allowlist expansion, or export rewrites are needed, record the follow-up and stop after deterministic acquisition-worker contracts.
+
+### T-095: Route Weekly News Focus through persisted event evidence fallback
+
+Goal:
+Route Weekly News Focus and AI Comprehensive Analysis threshold reads through injected persisted recent-event evidence boundaries first, while preserving deterministic fixture fallback, stable/timely context separation, source-use policy, empty/limited states, and current API/frontend behavior.
+
+Roadmap alignment:
+
+- Third narrow slice of Weekly News Focus persisted-evidence work after T-093 and T-094.
+- Completes route-level persisted evidence fallback before live source acquisition or LLM generation work.
+
+Acceptance criteria:
+
+- Add an injectable persisted Weekly News Focus read boundary that can prefer valid same-asset selected event evidence and threshold metadata, then fall back to existing deterministic fixture behavior on miss, invalid records, wrong-asset evidence, source-use blocks, stale-without-label states, insufficient evidence, or reader failures.
+- Preserve public overview and weekly-news response schemas, Weekly News Focus section separation, AI Comprehensive Analysis suppression unless threshold requirements are met, and current frontend behavior.
+- Reject persisted evidence with wrong-asset citations, rejected/source-policy-disallowed sources, duplicate selected items, non-allowlisted items, promotional/irrelevant items, missing freshness labels, uncited important event claims, raw article text beyond rights tier, raw prompts, raw model reasoning, secrets, or raw user text.
+- Add tests for persisted-first event reads, fixture fallback, empty/limited states, selected-vs-configured counts, AI threshold metadata, source-use gating, freshness labels, same-asset citations, rejected evidence suppression, and no live provider/LLM/database imports.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_overview_generation.py tests/unit/test_source_policy.py -q
+python3 -m pytest tests/integration/test_backend_api.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
+Iteration budget:
+One agent-loop cycle. If live news/provider calls, generated analysis rewrites, frontend changes, source allowlist expansion, or export rewrites are needed, record the follow-up and stop after persisted-read fallback behavior.
+
 ## MVP Backend Roadmap
 
 This section is intentionally non-operational for the agent loop. Keep runnable repeat-mode tasks above this roadmap as third-level task headings, and keep this longer MVP roadmap as bullets until each item is promoted into a narrow task contract. Early backend tasks may add production dependencies such as SQLAlchemy, Alembic, or psycopg only with dependency rationale, focused tests, and no live external calls in normal CI.
@@ -2438,6 +2598,8 @@ Operational defaults for backend roadmap tasks:
 - T-088 established dormant accountless chat session persistence contracts without route wiring, frontend changes, live database/cache execution, provider/LLM calls, analytics emission, or export rewrites. It is completed and must not be reintroduced as runnable backlog.
 - T-089 is the current promoted task for injected persisted chat session lifecycle and transcript export boundaries after T-088 contracts.
 - T-090 is a prepared backlog task for a dormant trust-metric event sink contract, not real analytics emission.
+- T-091 and T-092 are prepared backlog tasks that split broader launch-universe support classification into eligible ETF metadata contracts and route-level search classification alignment.
+- T-093 through T-095 are prepared backlog tasks that split Weekly News Focus persisted evidence into dormant event contracts, deterministic acquisition/selection, and route-level persisted-read fallback.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted backend task should run the relevant EVALS.md backend checks: `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, and `bash scripts/run_quality_gate.sh`.
 
@@ -2460,16 +2622,17 @@ Roadmap integration tracker:
 | Accountless chat session persistence contracts | Completed | T-088 |
 | Persisted chat session lifecycle and exports | Promoted | T-089 |
 | Trust-metric event sink | Backlog | T-090 |
-| Broaden launch-universe search and support classification | Roadmap only | Not yet promoted |
-| Weekly News Focus acquisition from persisted evidence | Roadmap only | Not yet promoted |
+| Eligible ETF universe metadata contracts | Backlog | T-091 |
+| Manifest-backed search support classification | Backlog | T-092 |
+| Weekly News Focus persisted event evidence contracts | Backlog | T-093 |
+| Weekly News Focus deterministic acquisition/selection | Backlog | T-094 |
+| Weekly News Focus persisted-read fallback | Backlog | T-095 |
 | Gated OpenRouter live generation | Roadmap only | Not yet promoted |
 | Provider source-use/export enforcement hardening | Roadmap only | Not yet promoted |
 | Production hardening and deployment documentation | Roadmap only | Not yet promoted |
 
 Remaining unpromoted backend MVP sequence:
 
-- Broaden launch-universe search and support classification from the versioned manifest and eligible ETF metadata, with blocked generated output for unsupported and out-of-scope assets.
-- Add Weekly News Focus acquisition, windowing, dedupe, source ranking, empty/limited states, and AI Comprehensive Analysis thresholds from persisted recent-event evidence.
 - Add gated OpenRouter live generation behind `LLM_LIVE_GENERATION_ENABLED=true`, with schema, citation, source-policy, safety validation, repair retry, paid fallback metadata, and no raw reasoning exposure.
 - Enforce source-use and export rules for provider content, including metadata-only, link-only, summary-allowed, full-text-allowed, and rejected tiers.
 - Harden production surfaces with admin auth, rate limits, CORS, Secret Manager, Cloud Run Jobs, private GCS object URIs, Vercel API wiring, and deployment documentation.
