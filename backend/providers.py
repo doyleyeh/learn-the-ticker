@@ -35,6 +35,10 @@ from backend.models import (
     SourceQuality,
     SourceUsePolicy,
 )
+from backend.provider_adapters.sec_stock import (
+    build_sec_stock_provider_response,
+    sec_stock_fixture_for_ticker,
+)
 
 
 NO_LIVE_EXTERNAL_CALLS = True
@@ -186,84 +190,8 @@ def _build_sec_response(adapter: MockProviderAdapter, request: ProviderRequestMe
     ticker = request.normalized_ticker
     licensing = _official_public_licensing(adapter.provider_name)
 
-    if ticker == "AAPL":
-        asset = _known_asset_identity(ticker)
-        sources = [
-            _source(
-                adapter=adapter,
-                ticker=ticker,
-                data_category=request.data_category,
-                source_document_id="provider_sec_aapl_10k_2026",
-                source_type="sec_filing",
-                title="Apple Inc. Form 10-K deterministic provider fixture",
-                publisher="U.S. SEC",
-                url="https://www.sec.gov/Archives/edgar/data/320193/provider-fixture",
-                published_at="2026-04-01",
-                as_of_date=None,
-                freshness_state=FreshnessState.fresh,
-                is_official=True,
-                usage=ProviderSourceUsage.canonical,
-                source_rank=1,
-                can_support_canonical_facts=True,
-                can_support_recent_developments=False,
-                licensing=licensing,
-            ),
-            _source(
-                adapter=adapter,
-                ticker=ticker,
-                data_category=request.data_category,
-                source_document_id="provider_sec_aapl_xbrl_2026",
-                source_type="sec_xbrl_company_facts",
-                title="Apple Inc. SEC XBRL company facts deterministic provider fixture",
-                publisher="U.S. SEC",
-                url="https://data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json",
-                published_at=None,
-                as_of_date="2026-04-01",
-                freshness_state=FreshnessState.fresh,
-                is_official=True,
-                usage=ProviderSourceUsage.canonical,
-                source_rank=1,
-                can_support_canonical_facts=True,
-                can_support_recent_developments=False,
-                licensing=licensing,
-            ),
-        ]
-        facts = [
-            _fact(
-                ticker=ticker,
-                data_category=request.data_category,
-                fact_id="provider_fact_aapl_primary_business",
-                field_name="primary_business",
-                value="Designs, manufactures, and markets consumer technology products and services.",
-                source_document_ids=[sources[0].source_document_id],
-                citation_ids=["provider_cite_aapl_primary_business"],
-                fact_layer="canonical",
-            ),
-            _fact(
-                ticker=ticker,
-                data_category=request.data_category,
-                fact_id="provider_fact_aapl_net_sales_trend",
-                field_name="net_sales_trend_available",
-                value=True,
-                unit=None,
-                as_of_date="2026-04-01",
-                source_document_ids=[sources[1].source_document_id],
-                citation_ids=["provider_cite_aapl_xbrl_sales"],
-                fact_layer="canonical",
-            ),
-        ]
-        return _response(
-            adapter=adapter,
-            request=request,
-            state=ProviderResponseState.supported,
-            licensing=licensing,
-            asset=asset,
-            source_attributions=sources,
-            facts=facts,
-            freshness_state=FreshnessState.fresh,
-            as_of_date="2026-04-01",
-            message="Deterministic SEC-like canonical stock facts for AAPL.",
-        )
+    if sec_stock_fixture_for_ticker(ticker) is not None:
+        return build_sec_stock_provider_response(adapter, request, licensing)
 
     if ticker in ELIGIBLE_NOT_CACHED_ASSETS:
         return _eligible_not_cached_response(adapter, request, licensing)

@@ -1,13 +1,32 @@
+from dataclasses import replace
 from pathlib import Path
+
+import pytest
 
 from backend.data import ELIGIBLE_NOT_CACHED_ASSETS
 from backend.models import (
+    DEFAULT_BLOCKED_EXCERPT_BEHAVIOR,
+    DEFAULT_BLOCKED_SOURCE_OPERATIONS,
+    EvidenceState,
     FreshnessState,
     ProviderDataCategory,
     ProviderKind,
     ProviderResponse,
     ProviderResponseState,
     ProviderSourceUsage,
+    SourceAllowlistStatus,
+    SourcePolicyDecision,
+    SourcePolicyDecisionState,
+    SourceQuality,
+    SourceUsePolicy,
+)
+from backend.provider_adapters import sec_stock as sec_stock_module
+from backend.provider_adapters.sec_stock import (
+    SEC_STOCK_FIXTURE_CONTRACT_VERSION,
+    SEC_STOCK_FIXTURES,
+    SecStockFixtureContractError,
+    build_sec_stock_provider_response,
+    sec_stock_fixture_for_ticker,
 )
 from backend.providers import (
     fetch_mock_provider_response,
@@ -80,7 +99,34 @@ def test_sec_stock_adapter_returns_canonical_aapl_facts_with_official_attributio
     assert response.freshness.as_of_date == "2026-04-01"
     assert response.licensing.export_allowed is True
     assert response.licensing.redistribution_allowed is False
-    assert {fact.field_name for fact in response.facts} >= {"primary_business", "net_sales_trend_available"}
+    fields = {fact.field_name: fact for fact in response.facts}
+    assert set(fields) >= {
+        "sec_stock_identity",
+        "selected_sec_filing_metadata",
+        "primary_business",
+        "net_sales_trend_available",
+        "xbrl_company_fact_net_sales_2024",
+        "xbrl_company_fact_net_sales_2023",
+        "current_valuation_metrics",
+    }
+    assert fields["sec_stock_identity"].value == {
+        "ticker": "AAPL",
+        "company_name": "Apple Inc.",
+        "cik": "0000320193",
+        "exchange": "NASDAQ",
+        "asset_type": "stock",
+        "support_state": "supported",
+        "top500_manifest_member": True,
+        "eligible_not_cached": False,
+    }
+    assert fields["selected_sec_filing_metadata"].value["form_type"] == "10-K"
+    assert fields["selected_sec_filing_metadata"].value["source_document_id"] == "provider_sec_aapl_10k_2026"
+    assert fields["selected_sec_filing_metadata"].value["official_publisher"] == "U.S. SEC"
+    assert fields["xbrl_company_fact_net_sales_2024"].value["period"] == "FY2024"
+    assert fields["xbrl_company_fact_net_sales_2024"].unit == "USD"
+    assert fields["current_valuation_metrics"].evidence_state is EvidenceState.unavailable
+    assert fields["current_valuation_metrics"].freshness_state is FreshnessState.unavailable
+    assert fields["current_valuation_metrics"].source_document_ids == []
     assert all(source.is_official is True for source in response.source_attributions)
     assert all(source.allowlist_status.value == "allowed" for source in response.source_attributions)
     assert all(source.source_use_policy.value == "full_text_allowed" for source in response.source_attributions)
@@ -91,6 +137,70 @@ def test_sec_stock_adapter_returns_canonical_aapl_facts_with_official_attributio
     assert all(fact.fact_layer == "canonical" for fact in response.facts)
     _assert_same_asset_binding(response, "AAPL")
     _assert_no_generated_outputs(response)
+
+
+def test_sec_stock_fixture_contract_normalizes_submissions_filings_xbrl_and_gaps():
+    fixture = sec_stock_fixture_for_ticker("aapl")
+
+    assert SEC_STOCK_FIXTURE_CONTRACT_VERSION == "sec-stock-fixture-adapter-v1"
+    assert fixture is SEC_STOCK_FIXTURES["AAPL"]
+    assert fixture.identity.ticker == "AAPL"
+    assert fixture.identity.cik == "0000320193"
+    assert fixture.identity.top500_manifest_member is True
+    assert fixture.identity.eligible_not_cached is False
+    assert {source.source_type for source in fixture.sources} == {
+        "sec_submissions",
+        "sec_filing",
+        "sec_xbrl_company_facts",
+    }
+    assert fixture.selected_filings[0].form_type == "10-K"
+    assert fixture.selected_filings[0].accession_or_fixture_id
+    assert fixture.xbrl_company_facts[0].field_name == "net_sales_2024"
+    assert fixture.xbrl_company_facts[0].unit == "USD"
+    assert fixture.evidence_gaps[0].evidence_state is EvidenceState.unavailable
+
+
+def test_sec_stock_fixture_contract_rejects_wrong_ticker_and_policy_blocked_sources(monkeypatch):
+    adapter = mock_sec_stock_adapter()
+    request = adapter.request("MSFT")
+    licensing = fetch_mock_provider_response(ProviderKind.sec, "AAPL").licensing
+
+    monkeypatch.setitem(SEC_STOCK_FIXTURES, "MSFT", SEC_STOCK_FIXTURES["AAPL"])
+    with pytest.raises(SecStockFixtureContractError, match="requested ticker"):
+        build_sec_stock_provider_response(adapter, request, licensing)
+
+    rejected_decision = SourcePolicyDecision(
+        decision=SourcePolicyDecisionState.rejected,
+        source_id="rejected_sec_fixture",
+        matched_by="domain",
+        source_quality=SourceQuality.rejected,
+        allowlist_status=SourceAllowlistStatus.rejected,
+        source_use_policy=SourceUsePolicy.rejected,
+        permitted_operations=DEFAULT_BLOCKED_SOURCE_OPERATIONS.model_copy(),
+        allowed_excerpt=DEFAULT_BLOCKED_EXCERPT_BEHAVIOR.model_copy(),
+        canonical_facts_allowed=False,
+        reason="Test rejected source policy.",
+    )
+    monkeypatch.setattr(sec_stock_module, "resolve_source_policy", lambda url: rejected_decision)
+    with pytest.raises(SecStockFixtureContractError, match="cannot support generated claims"):
+        build_sec_stock_provider_response(adapter, adapter.request("AAPL"), licensing)
+
+
+def test_sec_stock_fixture_contract_rejects_wrong_cik_and_wrong_source_binding(monkeypatch):
+    adapter = mock_sec_stock_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.sec, "AAPL").licensing
+    fixture = SEC_STOCK_FIXTURES["AAPL"]
+
+    wrong_cik = replace(fixture, identity=replace(fixture.identity, cik="0000000000"))
+    monkeypatch.setitem(SEC_STOCK_FIXTURES, "AAPL", wrong_cik)
+    with pytest.raises(SecStockFixtureContractError, match="CIK"):
+        build_sec_stock_provider_response(adapter, adapter.request("AAPL"), licensing)
+
+    wrong_source_fact = replace(fixture.xbrl_company_facts[0], source_document_id="provider_sec_msft_xbrl_2026")
+    wrong_source = replace(fixture, xbrl_company_facts=(wrong_source_fact, *fixture.xbrl_company_facts[1:]))
+    monkeypatch.setitem(SEC_STOCK_FIXTURES, "AAPL", wrong_source)
+    with pytest.raises(SecStockFixtureContractError, match="invalid source evidence"):
+        build_sec_stock_provider_response(adapter, adapter.request("AAPL"), licensing)
 
 
 def test_etf_issuer_adapter_returns_voo_and_qqq_official_facts_and_holdings_metadata():
@@ -254,7 +364,10 @@ def test_source_hierarchy_keeps_official_sources_ahead_of_structured_and_recent_
 
 
 def test_provider_module_has_no_live_call_or_credential_imports():
-    source = (ROOT / "backend" / "providers.py").read_text(encoding="utf-8")
+    sources = [
+        (ROOT / "backend" / "providers.py").read_text(encoding="utf-8"),
+        (ROOT / "backend" / "provider_adapters" / "sec_stock.py").read_text(encoding="utf-8"),
+    ]
     forbidden = [
         "import requests",
         "import httpx",
@@ -268,5 +381,6 @@ def test_provider_module_has_no_live_call_or_credential_imports():
         "os.environ",
         "api_key",
     ]
-    for needle in forbidden:
-        assert needle not in source
+    for source in sources:
+        for needle in forbidden:
+            assert needle not in source
