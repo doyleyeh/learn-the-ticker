@@ -4,16 +4,19 @@ from dataclasses import dataclass
 
 from backend.data import (
     ASSETS,
-    ELIGIBLE_NOT_CACHED_ASSETS,
     OUT_OF_SCOPE_COMMON_STOCKS,
     UNSUPPORTED_ASSET_SEARCH_METADATA,
     UNSUPPORTED_ASSETS,
+    load_top500_stock_universe_manifest,
     normalize_ticker,
     top500_stock_universe_entry,
 )
+from backend.etf_universe import blocked_etf_entries, eligible_not_cached_etf_entries, etf_universe_entry
 from backend.models import (
     AssetIdentity,
     AssetType,
+    ETFUniverseEntry,
+    ETFUniverseSupportState,
     SearchBlockedCapabilityFlags,
     SearchBlockedExplanation,
     SearchBlockedExplanationDiagnostics,
@@ -47,6 +50,12 @@ UNSUPPORTED_EXPLANATION_CATEGORY_LABELS = {
     "crypto": "crypto_assets",
     "leveraged_etf": "leveraged_etf",
     "inverse_etf": "inverse_etf",
+    "active_etf": "active_etf",
+    "fixed_income_etf": "fixed_income_etf",
+    "commodity_etf": "commodity_etf",
+    "multi_asset_etf": "multi_asset_etf",
+    "etn": "etn",
+    "other_unsupported": "unsupported_etf_like_product",
 }
 
 
@@ -149,7 +158,10 @@ def _all_candidates() -> list[SearchCandidate]:
             )
         )
 
+    etf_manifest_tickers = {entry.ticker for entry in blocked_etf_entries().values()}
     for ticker, reason in UNSUPPORTED_ASSETS.items():
+        if ticker in etf_manifest_tickers:
+            continue
         metadata = UNSUPPORTED_ASSET_SEARCH_METADATA.get(ticker, {})
         candidates.append(
             SearchCandidate(
@@ -164,30 +176,39 @@ def _all_candidates() -> list[SearchCandidate]:
             )
         )
 
-    for ticker, metadata in ELIGIBLE_NOT_CACHED_ASSETS.items():
-        asset_type = AssetType(str(metadata["asset_type"]))
+    for entry in load_top500_stock_universe_manifest().entries:
+        if entry.ticker in ASSETS:
+            continue
         candidates.append(
             SearchCandidate(
-                ticker=ticker,
-                name=str(metadata["name"]),
-                asset_type=asset_type,
-                exchange=str(metadata["exchange"]) if metadata.get("exchange") else None,
-                issuer=str(metadata["issuer"]) if metadata.get("issuer") else None,
+                ticker=entry.ticker,
+                name=entry.name,
+                asset_type=AssetType.stock,
+                exchange=entry.exchange,
+                issuer=None,
                 support_classification=SearchSupportClassification.eligible_not_cached,
                 message=(
-                    "Eligible U.S.-listed common stock or plain-vanilla ETF, but no local cached "
-                    "knowledge pack is available yet. On-demand ingestion would be required later."
+                    "Top-500 manifest-backed U.S.-listed common stock, but no local cached knowledge pack "
+                    "is available yet. On-demand ingestion would be required later."
                 ),
-                aliases=tuple(str(alias) for alias in metadata.get("aliases") or ()),
+                aliases=tuple(entry.aliases),
             )
         )
 
+    for entry in eligible_not_cached_etf_entries().values():
+        candidates.append(_etf_entry_to_candidate(entry))
+
+    for entry in blocked_etf_entries().values():
+        candidates.append(_etf_entry_to_candidate(entry))
+
     for ticker, metadata in OUT_OF_SCOPE_COMMON_STOCKS.items():
+        if etf_universe_entry(ticker) is not None:
+            continue
         candidates.append(
             SearchCandidate(
                 ticker=ticker,
                 name=str(metadata["name"]),
-                asset_type=AssetType.stock,
+                asset_type=AssetType(str(metadata.get("asset_type") or AssetType.stock.value)),
                 exchange=str(metadata["exchange"]) if metadata.get("exchange") else None,
                 issuer=None,
                 support_classification=SearchSupportClassification.out_of_scope,
@@ -199,17 +220,65 @@ def _all_candidates() -> list[SearchCandidate]:
     return candidates
 
 
+def _etf_entry_to_candidate(entry: ETFUniverseEntry) -> SearchCandidate:
+    asset_type = (
+        AssetType.unsupported
+        if entry.support_state is ETFUniverseSupportState.recognized_unsupported
+        else AssetType.etf
+    )
+    return SearchCandidate(
+        ticker=entry.ticker,
+        name=entry.fund_name,
+        asset_type=asset_type,
+        exchange=entry.exchange,
+        issuer=entry.issuer,
+        support_classification=_support_classification_for_etf_entry(entry),
+        message=_message_for_etf_entry(entry),
+        aliases=tuple(entry.aliases),
+    )
+
+
+def _support_classification_for_etf_entry(entry: ETFUniverseEntry) -> SearchSupportClassification:
+    if entry.support_state is ETFUniverseSupportState.eligible_not_cached:
+        return SearchSupportClassification.eligible_not_cached
+    if entry.support_state is ETFUniverseSupportState.recognized_unsupported:
+        return SearchSupportClassification.recognized_unsupported
+    if entry.support_state is ETFUniverseSupportState.out_of_scope:
+        return SearchSupportClassification.out_of_scope
+    return SearchSupportClassification.unknown
+
+
+def _message_for_etf_entry(entry: ETFUniverseEntry) -> str:
+    if entry.support_state is ETFUniverseSupportState.eligible_not_cached:
+        return (
+            "Eligible non-leveraged U.S.-listed equity ETF from the ETF universe metadata contract, "
+            "but no local cached knowledge pack is available yet. On-demand ingestion would be required later."
+        )
+    if entry.support_state is ETFUniverseSupportState.recognized_unsupported:
+        metadata = UNSUPPORTED_ASSET_SEARCH_METADATA.get(entry.ticker, {})
+        return str(metadata.get("reason") or UNSUPPORTED_ASSETS.get(entry.ticker) or entry.entry_provenance)
+    if entry.support_state is ETFUniverseSupportState.out_of_scope:
+        metadata = OUT_OF_SCOPE_COMMON_STOCKS.get(entry.ticker, {})
+        return str(metadata.get("reason") or entry.entry_provenance)
+    if entry.support_state is ETFUniverseSupportState.unavailable:
+        return entry.evidence.unavailable_reason or (
+            "Required ETF classification metadata is unavailable in the deterministic fixture."
+        )
+    return "ETF classification metadata is unknown in the deterministic fixture; no facts are invented."
+
+
 def _supported_aliases(identity: AssetIdentity) -> tuple[str, ...]:
     aliases: list[str] = []
     if identity.issuer:
         aliases.append(identity.issuer)
-    if identity.ticker == "VOO":
-        aliases.extend(["s&p 500 etf", "vanguard s&p 500", "plain vanilla etf"])
-    elif identity.ticker == "QQQ":
-        aliases.extend(["nasdaq-100", "nasdaq 100", "invesco qqq"])
-    elif identity.ticker == "AAPL":
-        aliases.extend(["apple", "apple stock", "common stock"])
-        if top500_stock_universe_entry(identity.ticker):
+    if identity.asset_type is AssetType.etf:
+        entry = etf_universe_entry(identity.ticker)
+        if entry:
+            aliases.extend(entry.aliases)
+    elif identity.asset_type is AssetType.stock:
+        entry = top500_stock_universe_entry(identity.ticker)
+        if entry:
+            aliases.extend(entry.aliases)
             aliases.append("top-500 manifest common stock")
     return tuple(aliases)
 
@@ -347,6 +416,21 @@ def _blocked_explanation_for_result(result: SearchResult) -> SearchBlockedExplan
         )
 
     if result.support_classification is SearchSupportClassification.out_of_scope:
+        if result.asset_type is AssetType.etf:
+            return SearchBlockedExplanation(
+                status=SearchResponseStatus.out_of_scope,
+                support_classification=result.support_classification,
+                explanation_category="etf_like_product_scope",
+                summary=(
+                    f"{result.ticker} is recognized, but this ETF-like product is outside the current supported MVP coverage."
+                ),
+                scope_rationale=result.message or "This ETF-like product is outside the current supported MVP scope.",
+                supported_v1_scope=SUPPORTED_V1_SCOPE_REMINDER,
+                blocked_capabilities=SearchBlockedCapabilityFlags(),
+                ingestion_eligible=False,
+                ingestion_request_route=None,
+                diagnostics=SearchBlockedExplanationDiagnostics(),
+            )
         return SearchBlockedExplanation(
             status=SearchResponseStatus.out_of_scope,
             support_classification=result.support_classification,

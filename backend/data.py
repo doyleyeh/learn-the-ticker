@@ -6,7 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from backend.etf_universe import legacy_eligible_not_cached_etf_metadata
+from backend.etf_universe import blocked_etf_entries, legacy_eligible_not_cached_etf_metadata
 from backend.models import (
     AssetIdentity,
     AssetStatus,
@@ -398,15 +398,13 @@ ASSETS: dict[str, dict[str, Any]] = {
 }
 
 
-UNSUPPORTED_ASSETS: dict[str, str] = {
+_STATIC_UNSUPPORTED_ASSETS: dict[str, str] = {
     "BTC": "Crypto assets are outside the current U.S. stock and plain-vanilla ETF scope.",
     "ETH": "Crypto assets are outside the current U.S. stock and plain-vanilla ETF scope.",
-    "TQQQ": "Leveraged ETFs are outside the current plain-vanilla ETF scope.",
-    "SQQQ": "Inverse ETFs are outside the current plain-vanilla ETF scope.",
 }
 
 
-UNSUPPORTED_ASSET_SEARCH_METADATA: dict[str, dict[str, str | list[str] | None]] = {
+_STATIC_UNSUPPORTED_ASSET_SEARCH_METADATA: dict[str, dict[str, str | list[str] | None]] = {
     "BTC": {
         "name": "Bitcoin",
         "category": "crypto",
@@ -417,16 +415,58 @@ UNSUPPORTED_ASSET_SEARCH_METADATA: dict[str, dict[str, str | list[str] | None]] 
         "category": "crypto",
         "aliases": ["ethereum", "ether", "crypto"],
     },
-    "TQQQ": {
-        "name": "ProShares UltraPro QQQ",
-        "category": "leveraged_etf",
-        "aliases": ["leveraged qqq", "ultrapro qqq", "leveraged etf"],
-    },
-    "SQQQ": {
-        "name": "ProShares UltraPro Short QQQ",
-        "category": "inverse_etf",
-        "aliases": ["inverse qqq", "short qqq", "inverse etf"],
-    },
+}
+
+
+def _blocked_etf_asset_message(category: str) -> str:
+    labels = {
+        "leveraged_etf": "Leveraged ETFs",
+        "inverse_etf": "Inverse ETFs",
+        "active_etf": "Active ETFs",
+        "fixed_income_etf": "Fixed-income ETFs",
+        "commodity_etf": "Commodity ETFs",
+        "multi_asset_etf": "Multi-asset ETFs",
+        "etn": "ETNs",
+        "other_unsupported": "Unsupported ETF-like products",
+    }
+    label = labels.get(category, "This ETF-like product")
+    return f"{label} are outside the current non-leveraged U.S. equity ETF scope."
+
+
+def _unsupported_etf_assets_from_manifest() -> dict[str, str]:
+    return {
+        ticker: _blocked_etf_asset_message(entry.etf_category.value)
+        for ticker, entry in blocked_etf_entries().items()
+        if entry.support_state.value == "recognized_unsupported"
+    }
+
+
+def _unsupported_etf_search_metadata_from_manifest() -> dict[str, dict[str, str | list[str] | None]]:
+    return {
+        ticker: {
+            "name": entry.fund_name,
+            "category": entry.etf_category.value,
+            "aliases": entry.aliases,
+            "issuer": entry.issuer,
+            "exchange": entry.exchange,
+            "support_state": entry.support_state.value,
+            "source_provenance": entry.source_provenance,
+            "snapshot_date": entry.snapshot_date,
+        }
+        for ticker, entry in blocked_etf_entries().items()
+        if entry.support_state.value == "recognized_unsupported"
+    }
+
+
+UNSUPPORTED_ASSETS: dict[str, str] = {
+    **_STATIC_UNSUPPORTED_ASSETS,
+    **_unsupported_etf_assets_from_manifest(),
+}
+
+
+UNSUPPORTED_ASSET_SEARCH_METADATA: dict[str, dict[str, str | list[str] | None]] = {
+    **_STATIC_UNSUPPORTED_ASSET_SEARCH_METADATA,
+    **_unsupported_etf_search_metadata_from_manifest(),
 }
 
 
@@ -463,6 +503,26 @@ ELIGIBLE_NOT_CACHED_ASSETS: dict[str, dict[str, str | list[str] | None]] = {
 }
 
 
+def _out_of_scope_etf_assets_from_manifest() -> dict[str, dict[str, str | list[str] | None]]:
+    out_of_scope: dict[str, dict[str, str | list[str] | None]] = {}
+    for ticker, entry in blocked_etf_entries().items():
+        if entry.support_state.value != "out_of_scope":
+            continue
+        out_of_scope[ticker] = {
+            "name": entry.fund_name,
+            "asset_type": entry.asset_type,
+            "exchange": entry.exchange,
+            "issuer": entry.issuer,
+            "aliases": entry.aliases,
+            "reason": _blocked_etf_asset_message(entry.etf_category.value),
+            "etf_category": entry.etf_category.value,
+            "support_state": entry.support_state.value,
+            "source_provenance": entry.source_provenance,
+            "snapshot_date": entry.snapshot_date,
+        }
+    return out_of_scope
+
+
 OUT_OF_SCOPE_COMMON_STOCKS: dict[str, dict[str, str | list[str] | None]] = {
     "GME": {
         "name": "GameStop Corp.",
@@ -474,7 +534,8 @@ OUT_OF_SCOPE_COMMON_STOCKS: dict[str, dict[str, str | list[str] | None]] = {
             "Recognized U.S.-listed common stock outside the local Top-500 manifest; out of scope for "
             "generated outputs unless explicitly approved for on-demand ingestion later."
         ),
-    }
+    },
+    **_out_of_scope_etf_assets_from_manifest(),
 }
 
 

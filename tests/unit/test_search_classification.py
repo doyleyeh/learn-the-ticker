@@ -2,6 +2,8 @@ import pytest
 
 from backend.data import (
     ELIGIBLE_NOT_CACHED_ASSETS,
+    OUT_OF_SCOPE_COMMON_STOCKS,
+    UNSUPPORTED_ASSETS,
     load_top500_stock_universe_manifest,
     top500_stock_universe_entry,
 )
@@ -66,6 +68,10 @@ def test_recognized_unsupported_assets_are_blocked_from_generated_outputs():
         ("BTC", "Crypto assets", "crypto_assets"),
         ("TQQQ", "Leveraged ETFs", "leveraged_etf"),
         ("SQQQ", "Inverse ETFs", "inverse_etf"),
+        ("ARKK", "Active ETFs", "active_etf"),
+        ("BND", "Fixed-income ETFs", "fixed_income_etf"),
+        ("GLD", "Commodity ETFs", "commodity_etf"),
+        ("AOR", "Multi-asset ETFs", "multi_asset_etf"),
     ]
 
     for query, expected_reason, expected_category in cases:
@@ -277,14 +283,46 @@ def test_etf_universe_lookup_normalizes_tickers_and_preserves_current_search_beh
     assert etf_universe_entry("SPY").support_state.value == "eligible_not_cached"  # type: ignore[union-attr]
     assert etf_universe_entry("VOO").support_state.value == "cached_supported"  # type: ignore[union-attr]
 
-    # T-091 exposes metadata only. Public search still uses the existing deterministic
-    # fixture behavior until T-092 routes search classification through the manifest.
     assert search_assets("VOO").state.support_classification.value == "cached_supported"
     assert search_assets("QQQ").state.support_classification.value == "cached_supported"
     assert search_assets("SPY").state.support_classification.value == "eligible_not_cached"
     assert search_assets("VTI").results[0].can_open_generated_page is False
     assert search_assets("TQQQ").state.support_classification.value == "recognized_unsupported"
-    assert search_assets("ARKK").state.support_classification.value == "unknown"
+    assert search_assets("ARKK").state.support_classification.value == "recognized_unsupported"
+    assert search_assets("VXX").state.support_classification.value == "out_of_scope"
+    assert search_assets("LTTU").state.support_classification.value == "unknown"
+    assert search_assets("LTTX").state.support_classification.value == "unknown"
+
+
+def test_search_uses_etf_manifest_for_blocked_and_gap_states_without_generated_outputs():
+    assert {"TQQQ", "SQQQ", "ARKK", "BND", "GLD", "AOR"} <= set(UNSUPPORTED_ASSETS)
+    assert "VXX" in OUT_OF_SCOPE_COMMON_STOCKS
+
+    for ticker, expected_state, expected_status, expected_type in [
+        ("TQQQ", "recognized_unsupported", "unsupported", "unsupported"),
+        ("ARKK", "recognized_unsupported", "unsupported", "unsupported"),
+        ("BND", "recognized_unsupported", "unsupported", "unsupported"),
+        ("GLD", "recognized_unsupported", "unsupported", "unsupported"),
+        ("AOR", "recognized_unsupported", "unsupported", "unsupported"),
+        ("VXX", "out_of_scope", "out_of_scope", "etf"),
+        ("LTTU", "unknown", "unknown", "etf"),
+        ("LTTX", "unknown", "unknown", "etf"),
+    ]:
+        response = search_assets(ticker)
+        result = response.results[0]
+
+        assert result.ticker == ticker
+        assert result.asset_type.value == expected_type
+        assert response.state.status.value == expected_status
+        assert response.state.support_classification.value == expected_state
+        assert result.support_classification.value == expected_state
+        assert result.supported is False
+        assert result.can_open_generated_page is False
+        assert result.can_answer_chat is False
+        assert result.can_compare is False
+        assert result.generated_route is None
+        assert result.can_request_ingestion is False
+        assert result.ingestion_request_route is None
 
 
 def test_etf_universe_contract_rejects_duplicate_conflicting_checksum_and_advice_language():

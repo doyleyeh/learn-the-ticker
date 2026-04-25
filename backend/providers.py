@@ -410,8 +410,9 @@ def _known_asset_identity(ticker: str) -> AssetIdentity | None:
         return AssetIdentity(
             ticker=ticker,
             name=str(out_of_scope["name"]),
-            asset_type=AssetType.stock,
+            asset_type=AssetType(str(out_of_scope.get("asset_type") or AssetType.stock.value)),
             exchange=str(out_of_scope["exchange"]) if out_of_scope.get("exchange") else None,
+            issuer=str(out_of_scope["issuer"]) if out_of_scope.get("issuer") else None,
             status=AssetStatus.unknown,
             supported=False,
         )
@@ -590,6 +591,19 @@ def _out_of_scope_response(
     licensing: ProviderLicensing,
 ) -> ProviderResponse:
     ticker = request.normalized_ticker
+    asset_type = str(OUT_OF_SCOPE_COMMON_STOCKS[ticker].get("asset_type") or "stock")
+    error_code = (
+        "recognized_common_stock_outside_top500_manifest"
+        if asset_type == "stock"
+        else "recognized_etf_like_product_outside_mvp_scope"
+    )
+    message = (
+        f"{ticker} is a recognized common stock outside the local Top-500 manifest; "
+        "no provider facts or generated outputs were created."
+        if asset_type == "stock"
+        else f"{ticker} is a recognized ETF-like product outside the MVP support scope; "
+        "no provider facts or generated outputs were created."
+    )
     return _response(
         adapter=adapter,
         request=request,
@@ -599,16 +613,13 @@ def _out_of_scope_response(
         freshness_state=FreshnessState.unavailable,
         errors=[
             ProviderError(
-                code="recognized_common_stock_outside_top500_manifest",
+                code=error_code,
                 message=str(OUT_OF_SCOPE_COMMON_STOCKS[ticker]["reason"]),
                 retryable=False,
                 response_state=ProviderResponseState.out_of_scope,
             )
         ],
-        message=(
-            f"{ticker} is a recognized common stock outside the local Top-500 manifest; "
-            "no provider facts or generated outputs were created."
-        ),
+        message=message,
     )
 
 

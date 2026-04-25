@@ -418,7 +418,7 @@ def test_provider_failure_states_are_explicit_without_invented_facts():
     market = mock_market_reference_adapter()
     recent = mock_recent_development_adapter()
 
-    for ticker in ["BTC", "TQQQ", "SQQQ"]:
+    for ticker in ["BTC", "TQQQ", "SQQQ", "ARKK", "BND", "GLD", "AOR"]:
         response = market.fetch(market.request(ticker))
         assert response.state is ProviderResponseState.unsupported
         assert response.asset is not None
@@ -444,6 +444,17 @@ def test_provider_failure_states_are_explicit_without_invented_facts():
     assert out_of_scope.source_attributions == []
     assert out_of_scope.errors[0].code == "recognized_common_stock_outside_top500_manifest"
     _assert_no_generated_outputs(out_of_scope)
+
+    etn = market.fetch(market.request("VXX"))
+    assert etn.state is ProviderResponseState.out_of_scope
+    assert etn.asset is not None
+    assert etn.asset.ticker == "VXX"
+    assert etn.asset.asset_type.value == "etf"
+    assert etn.asset.supported is False
+    assert etn.facts == []
+    assert etn.source_attributions == []
+    assert etn.errors[0].code == "recognized_etf_like_product_outside_mvp_scope"
+    _assert_no_generated_outputs(etn)
 
     unavailable = recent.fetch(recent.request("ZZZZ"))
     assert unavailable.state is ProviderResponseState.unavailable
