@@ -33,11 +33,12 @@ from backend.chat_sessions import (
     delete_chat_session,
     get_chat_session_status,
 )
-from backend.export import export_chat_session_transcript
+from backend.export import export_chat_session_transcript, export_chat_transcript
 from backend.models import (
     ChatRequest,
     ChatResponse,
     ChatSessionLifecycleState,
+    ChatTranscriptExportRequest,
     ExportState,
     SafetyClassification,
 )
@@ -619,3 +620,245 @@ def test_dormant_chat_session_repository_imports_do_not_open_live_paths():
 
     with pytest.raises(AccountlessChatSessionContractError, match="add_all"):
         ChatSessionRepository(session=BadSession()).persist(_repository_records())
+
+
+class PersistedSessionReader:
+    def __init__(self, records: ChatSessionRepositoryRecords | None = None, *, error: bool = False) -> None:
+        self.records = records
+        self.error = error
+
+    def read_chat_session_records(self, conversation_id: str) -> ChatSessionRepositoryRecords | None:
+        if self.error:
+            raise RuntimeError("reader failure")
+        if self.records is None:
+            return None
+        if self.records.envelopes[0].conversation_id != conversation_id:
+            return None
+        return self.records
+
+
+class PersistedSessionWriter:
+    def __init__(self) -> None:
+        self.persisted: list[ChatSessionRepositoryRecords] = []
+        self.deleted: list[ChatSessionRepositoryRecords] = []
+
+    def persist_chat_session_records(self, records: ChatSessionRepositoryRecords) -> ChatSessionRepositoryRecords:
+        self.persisted.append(validate_chat_session_records(records))
+        return records
+
+    def mark_chat_session_deleted(self, records: ChatSessionRepositoryRecords) -> ChatSessionRepositoryRecords:
+        self.deleted.append(validate_chat_session_records(records))
+        return records
+
+
+def test_persisted_session_status_export_and_delete_lookup_precede_memory_store():
+    records = _repository_records()
+    reader = PersistedSessionReader(records)
+    writer = PersistedSessionWriter()
+    missing_store = ChatSessionStore(clock=MutableClock())
+    conversation_id = records.envelopes[0].conversation_id
+
+    status = get_chat_session_status(conversation_id, store=missing_store, persisted_reader=reader)
+    metadata, turns = chat_session_export_payload(conversation_id, store=missing_store, persisted_reader=reader)
+    export = export_chat_session_transcript(conversation_id, persisted_session_reader=reader)
+    deleted = delete_chat_session(
+        conversation_id,
+        store=missing_store,
+        persisted_reader=reader,
+        persisted_writer=writer,
+    )
+
+    assert status.session.lifecycle_state is ChatSessionLifecycleState.active
+    assert status.session.selected_asset.ticker == "VOO"
+    assert status.turn_summaries[0].citation_ids == ["c_voo_profile"]
+    assert metadata.export_available is True
+    assert turns[0].direct_answer.startswith("This persisted turn is reconstructed from safe chat metadata")
+    assert turns[0].citations[0].citation_id == "c_voo_profile"
+    assert turns[0].source_documents[0].source_use_policy is SourceUsePolicy.full_text_allowed
+    assert export.export_state is ExportState.available
+    assert export.metadata["source"] == "local_accountless_chat_session"
+    assert "raw_prompt" not in str(export.model_dump(mode="json"))
+    assert "What is VOO?" not in export.rendered_markdown
+    assert deleted.session.lifecycle_state is ChatSessionLifecycleState.deleted
+    assert deleted.deleted is True
+    assert writer.deleted[0].envelopes[0].deletion_status == "user_deleted"
+
+
+def test_persisted_session_reader_failures_invalid_records_and_missing_records_fall_back_to_store():
+    clock = MutableClock()
+    store = ChatSessionStore(id_generator=lambda: "12121212121241218121212121212121", clock=clock)
+    created = answer_chat_with_session("QQQ", ChatRequest(question="What is this fund?"), store=store)
+    conversation_id = created.session.conversation_id
+
+    invalid = _repository_records(conversation_id=conversation_id)
+    leaking = invalid.turn_summaries[0].model_copy(update={"stores_raw_user_text": True})
+    invalid = invalid.model_copy(update={"turn_summaries": [leaking]})
+
+    for reader in [PersistedSessionReader(error=True), PersistedSessionReader(), PersistedSessionReader(invalid)]:
+        status = get_chat_session_status(conversation_id, store=store, persisted_reader=reader)
+        metadata, turns = chat_session_export_payload(conversation_id, store=store, persisted_reader=reader)
+
+        assert status.session.selected_asset.ticker == "QQQ"
+        assert status.session.turn_count == 1
+        assert metadata.selected_asset.ticker == "QQQ"
+        assert turns[0].direct_answer
+
+
+def test_persisted_session_lifecycle_access_preserves_ttl_ticker_mismatch_and_safe_writes():
+    records = _repository_records(conversation_id="abababababab4ab8abababababababab", ticker="QQQ")
+    reader = PersistedSessionReader(records)
+    writer = PersistedSessionWriter()
+    store = ChatSessionStore(clock=MutableClock())
+
+    mismatch = answer_chat_with_session(
+        "VOO",
+        ChatRequest(question="What is VOO?", conversation_id=records.envelopes[0].conversation_id),
+        store=store,
+        persisted_reader=reader,
+        persisted_writer=writer,
+    )
+    continued = answer_chat_with_session(
+        "QQQ",
+        ChatRequest(question="What does QQQ hold?", conversation_id=records.envelopes[0].conversation_id),
+        store=store,
+        persisted_reader=reader,
+        persisted_writer=writer,
+    )
+
+    assert mismatch.session.lifecycle_state is ChatSessionLifecycleState.ticker_mismatch
+    assert mismatch.citations == []
+    assert continued.session.lifecycle_state is ChatSessionLifecycleState.active
+    assert continued.session.turn_count == 2
+    assert writer.persisted
+    assert writer.persisted[-1].envelopes[0].selected_asset_ticker == "QQQ"
+    assert writer.persisted[-1].envelopes[0].expires_at == "2026-04-30T13:01:25Z"
+
+    expired_envelope = records.envelopes[0].model_copy(
+        update={
+            "created_at": "2026-04-14T13:01:25Z",
+            "last_activity_at": "2026-04-15T13:01:25Z",
+            "expires_at": "2026-04-22T13:01:25Z",
+        }
+    )
+    expired_records = records.model_copy(update={"envelopes": [expired_envelope]})
+    expired_status = get_chat_session_status(
+        records.envelopes[0].conversation_id,
+        store=store,
+        persisted_reader=PersistedSessionReader(expired_records),
+    )
+    expired_metadata, expired_turns = chat_session_export_payload(
+        records.envelopes[0].conversation_id,
+        store=store,
+        persisted_reader=PersistedSessionReader(expired_records),
+    )
+
+    assert expired_status.session.lifecycle_state is ChatSessionLifecycleState.expired
+    assert expired_status.turn_summaries == []
+    assert expired_metadata.export_available is False
+    assert expired_turns == []
+
+
+def test_persisted_session_export_preserves_advice_and_comparison_redirect_metadata_only():
+    base = _repository_records(conversation_id="cdcdcdcdcdcd4cd8cdcdcdcdcdcdcdcd")
+    advice_turn = base.turn_summaries[0].model_copy(
+        update={
+            "turn_kind": ChatSessionTurnKind.advice_redirect.value,
+            "safety_classification": SafetyClassification.personalized_advice_redirect.value,
+            "evidence_state": EvidenceState.unsupported.value,
+            "freshness_state": FreshnessState.unknown.value,
+            "citation_ids": [],
+            "source_document_ids": [],
+            "exportable_factual_turn": False,
+        }
+    )
+    compare_turn = advice_turn.model_copy(
+        update={
+            "turn_id": "turn_2",
+            "turn_index": 2,
+            "turn_kind": ChatSessionTurnKind.comparison_redirect.value,
+            "safety_classification": SafetyClassification.compare_route_redirect.value,
+            "comparison_route_metadata": {
+                "route": "/compare?left=QQQ&right=VOO",
+                "left_ticker": "QQQ",
+                "right_ticker": "VOO",
+                "comparison_ticker": "QQQ",
+                "comparison_availability_state": "available",
+            },
+        }
+    )
+    envelope = base.envelopes[0].model_copy(
+        update={
+            "turn_count": 2,
+            "latest_safety_classification": SafetyClassification.compare_route_redirect.value,
+            "latest_evidence_state": EvidenceState.unsupported.value,
+            "latest_freshness_state": FreshnessState.unknown.value,
+        }
+    )
+    export_metadata = base.export_metadata[0].model_copy(
+        update={
+            "turn_count": 2,
+            "includes_factual_turns": False,
+            "includes_comparison_redirects": True,
+            "citation_ids": [],
+            "source_document_ids": [],
+        }
+    )
+    records = base.model_copy(
+        update={
+            "envelopes": [envelope],
+            "turn_summaries": [advice_turn, compare_turn],
+            "source_refs": [],
+            "citation_refs": [],
+            "export_metadata": [export_metadata],
+            "diagnostics": [],
+        }
+    )
+
+    export = export_chat_session_transcript(
+        base.envelopes[0].conversation_id,
+        persisted_session_reader=PersistedSessionReader(records),
+    )
+    exported_text = str(export.model_dump(mode="json"))
+
+    assert export.export_state is ExportState.available
+    assert export.citations == []
+    assert export.source_documents == []
+    assert export.metadata["compare_route_suggestions"][0]["route"] == "/compare?left=QQQ&right=VOO"
+    assert "educational advice-boundary redirect" in exported_text
+    assert "comparison workflow" in exported_text
+    assert "buy VOO" not in exported_text
+    assert "raw_answer" not in exported_text
+
+
+def test_persisted_session_export_respects_metadata_only_source_use_policy():
+    records = _repository_records(conversation_id="34343434343443448343434343434343")
+    metadata_only_source = records.source_refs[0].model_copy(
+        update={"source_use_policy": SourceUsePolicy.metadata_only.value, "export_allowed": False}
+    )
+    records = records.model_copy(update={"source_refs": [metadata_only_source]})
+
+    export = export_chat_session_transcript(
+        records.envelopes[0].conversation_id,
+        persisted_session_reader=PersistedSessionReader(records),
+    )
+
+    assert export.export_state is ExportState.available
+    assert export.source_documents[0].source_use_policy is SourceUsePolicy.metadata_only
+    assert export.source_documents[0].allowed_excerpt.text is None
+    assert export.source_documents[0].allowed_excerpt.source_use_policy is SourceUsePolicy.rejected
+
+
+def test_chat_transcript_request_can_use_persisted_session_before_fixture_question_path():
+    records = _repository_records(conversation_id="efefefefefef4ef8efefefefefefefef")
+    export = export_chat_transcript(
+        "VOO",
+        ChatTranscriptExportRequest(
+            question="This raw question should not be exported",
+            conversation_id=records.envelopes[0].conversation_id,
+        ),
+        persisted_session_reader=PersistedSessionReader(records),
+    )
+
+    assert export.export_state is ExportState.available
+    assert export.metadata["conversation_id"] == records.envelopes[0].conversation_id
+    assert "This raw question should not be exported" not in export.rendered_markdown
