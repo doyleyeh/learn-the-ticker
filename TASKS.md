@@ -1,77 +1,104 @@
 ## Current task
 
-### T-089: Route chat session lifecycle and exports through persisted session boundaries
+### T-090: Add trust-metric event sink persistence contracts
 
 Goal:
-Route accountless chat session lifecycle and transcript export lookup through injected persisted session boundaries first, while preserving existing deterministic in-memory or fixture fallback, deletion behavior, seven-day TTL semantics, safety redirects, comparison redirects, selected-asset grounding, and export licensing rules.
+Add dormant trust-metric event sink persistence contracts for compact metadata events covering citation coverage, unsupported claims, freshness accuracy, glossary use, comparison use, source drawer use, safety redirects, export use, and latency without enabling real analytics emission, frontend instrumentation, external analytics vendors, live database execution, or raw user text storage.
 
 Task-scope paragraph:
-This task should add the second narrow accountless chat session persistence slice by adapting the existing `ChatSessionStore`, chat session status/delete/export helpers, and chat transcript export path to accept dormant injected persisted session reader/writer boundaries. The default runtime path must remain the current deterministic in-memory session store unless valid persisted boundaries are explicitly supplied. Persisted records may be used only after T-088 repository validation confirms selected-asset scope, seven-day TTL metadata, lifecycle/deletion state, safe turn summaries, comparison/advice redirect metadata, export metadata, source/citation references, freshness labels, source-use rights, and sanitized diagnostics. This task must not add frontend browser storage, user accounts, cookies, route schema changes, live database execution, ORM sessions, analytics emission, raw transcript analytics/training/evaluation storage, provider calls, LLM calls, or any behavior that weakens selected-asset grounding, advice redirects, comparison redirects, citation/source-use/freshness gates, unsupported/out-of-scope blocking, or v0.4 frontend workflow boundaries.
+This task should add the next narrow backend persistence-contract slice by creating pure repository/table metadata and row models for accepted trust/product event metadata, aggregate counters, latency summaries, validation status, freshness states, safety statuses, generated-output state consistency, and sanitized diagnostics. It should build on the existing validation-only `backend/trust_metrics.py` catalog/validator/summarizer and should keep default behavior validation-only unless a future task explicitly injects a persisted sink. The contract must not emit events, change frontend analytics helpers, mutate public API routes, create cookies or user identity, execute live database writes, add external analytics SDKs, call providers or LLMs, store raw queries/questions/answers/source passages/source URLs, or change any v0.4 frontend workflow behavior.
 
 Roadmap alignment:
 
-- Second narrow slice of "Persist accountless chat sessions, seven-day TTL metadata, deletion state, and transcript export payloads."
-- Builds on completed T-088 dormant repository contracts.
-- Keeps trust-metric event sink, production database execution, frontend storage, auth, analytics, and deployment work out of scope.
+- Promotes the next roadmap item after accountless chat session lifecycle/export persisted boundaries.
+- Builds on the existing validation-only trust-metrics contract and keeps production observability out of scope.
+- Keeps frontend instrumentation, vendor analytics, route mutation, live database execution, and deployment monitoring out of scope.
 
 Allowed files:
 
-- `backend/chat_session_repository.py`
-- `backend/chat_sessions.py`
-- `backend/repositories/chat_sessions.py`
-- `backend/export.py`
-- `tests/unit/test_chat_sessions.py`
-- `tests/unit/test_exports.py`
+- `backend/repositories/trust_metrics.py`
+- `backend/trust_metric_repository.py`
+- `backend/repositories/__init__.py`
+- `backend/trust_metrics.py`
+- `alembic/versions/*trust_metric*.py`
+- `tests/unit/test_trust_metrics.py`
+- `tests/unit/test_repo_contract.py`
 - `tests/unit/test_safety_guardrails.py`
-- `tests/integration/test_backend_api.py`
 - `docs/agent-journal/*.md`
 
 Do not change:
 
 - No frontend files under `apps/web`.
-- No public FastAPI route schema, endpoint path, HTTP status, asset overview behavior, comparison generation behavior, glossary behavior, source drawer behavior, frontend behavior, provider behavior, live retrieval behavior, generated text, default chat response shape, default chat export shape, or default deterministic in-memory session fallback.
-- No live SEC, issuer, ETF, market-data, news, storage, database, object-storage, cache, Redis, LLM, Cloud Run Job, scheduler, admin auth, rate-limiting, analytics, or deployment wiring.
-- No production dependency addition, Alembic migration change, source allowlist expansion, provider licensing change, environment/secret file change, runtime cache write behavior, cache invalidation worker, top-500 manifest change, ETF universe expansion, stock universe expansion, or broad asset-universe expansion.
-- No live ORM session execution, durable production transcript persistence, browser local-storage change, cookie behavior, user accounts, session TTL policy change, deletion-state policy change, route auth change, or transcript analytics/training/evaluation storage.
-- No raw provider payloads, unrestricted source text, hidden prompts, prompt templates, raw model reasoning, raw user text, raw questions, raw answers, raw chat transcripts for analytics/training/evaluation, real API keys, credentials, secrets, public storage URLs, signed URLs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, repository records, cache records, chat exports, or exported data.
+- No public FastAPI route schema, endpoint path, HTTP status, asset overview behavior, comparison generation behavior, glossary behavior, source drawer behavior, frontend behavior, provider behavior, live retrieval behavior, generated text, chat behavior, export behavior, or default deterministic fixture behavior.
+- No live SEC, issuer, ETF, market-data, news, storage, database, object-storage, cache, Redis, LLM, Cloud Run Job, scheduler, admin auth, rate-limiting, external analytics, telemetry vendor, or deployment wiring.
+- No production dependency addition, source allowlist expansion, provider licensing change, environment/secret file change, runtime cache write behavior, cache invalidation worker, top-500 manifest change, ETF universe expansion, stock universe expansion, or broad asset-universe expansion.
+- No frontend analytics emission, browser local-storage change, cookie behavior, user accounts, device fingerprinting, session tracking, persistent user identity, analytics SDK integration, event collection route mutation, or production observability configuration.
+- No raw provider payloads, unrestricted source text, source URLs, hidden prompts, prompt templates, raw model reasoning, raw user text, raw queries, raw questions, raw answers, raw chat transcripts, personal identifiers, portfolio/allocation details, real API keys, credentials, secrets, public storage URLs, signed URLs, external analytics IDs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, repository records, cache records, events, exports, or exported data.
 - No changes that make comparison a primary home-page workflow, make glossary a primary home-page workflow, or alter mobile source/glossary/chat behavior from the v0.4 baseline.
 
 Acceptance criteria:
 
-- Add explicit injectable persisted chat session reader/writer boundaries for session lifecycle access, status lookup, deletion marking, safe turn persistence, and transcript export metadata lookup. They must be optional and inactive by default.
-- Preserve the current `ChatSessionStore`, `answer_chat_with_session`, `get_chat_session_status`, `delete_chat_session`, `export_chat_turns`, `export_chat_session_transcript`, and `export_chat_transcript` behavior for default public API flows and existing deterministic tests.
-- When a valid persisted boundary is supplied, chat session status and transcript export lookup may use persisted T-088 records before falling back to the in-memory store. Missing readers, reader errors, invalid shapes, repository validation failures, missing records, expired sessions, deleted sessions, ticker mismatches, unavailable sessions, blocked source-use states, wrong-asset evidence, stale-without-label states, and unsupported/out-of-scope states must fall back or return the same safe unavailable/deleted/expired semantics as current session behavior.
-- Persisted session writes, if represented, must be injected and in-memory/test-only. They must validate records through the T-088 repository contract before accepting them and must not execute live database, ORM, cache, object-storage, provider, or LLM operations.
-- Preserve anonymous opaque conversation IDs and selected-asset identity. Persisted lifecycle and export lookup must not accept identifiers that embed ticker, user identity, portfolio details, allocation details, personalized financial context, public URLs, or storage paths.
-- Preserve seven-day TTL semantics. Persisted active sessions must expose expiration based on last activity plus seven days; expired sessions must not expose exportable factual transcripts and must return expired lifecycle metadata consistently.
-- Preserve idempotent user-deleted behavior. Deleted persisted sessions must expose deleted lifecycle metadata without turn summaries, factual answer reuse, citations, sources, or exportable transcript payloads.
-- Preserve safe turn summary behavior. Persisted status and export paths may use compact turn metadata, timestamps, safety classification, evidence state, freshness state, citation IDs, source IDs, comparison route metadata, and sanitized diagnostics only. They must not store or expose raw user text, raw answer text for analytics/training/evaluation, hidden prompts, raw model reasoning, secrets, unrestricted source text, unrestricted provider payloads, public storage URLs, or signed URLs.
-- Preserve advice redirect semantics. Advice-like persisted turns may appear only as safe educational redirect metadata with no factual citation/source reuse and no buy/sell/hold, allocation, price-target, tax, brokerage/trading, or personalized recommendation output.
-- Preserve comparison redirect semantics. Second-ticker comparison questions may appear only as safe `/compare` route metadata and must not be converted into single-asset factual answers, persisted generated answer artifacts, or factual transcript exports.
-- Preserve selected-asset grounding. Persisted session envelopes, turn summaries, source references, citation references, and export metadata must bind to the requested supported asset; wrong-asset citations, wrong-source references, cross-pack evidence, comparison-pack evidence for single-asset chat, and silent ticker substitution must be rejected.
-- Preserve unsupported and out-of-scope blocking. Unsupported, out-of-scope, eligible-not-cached without generated output, unknown, unavailable, source-policy-blocked, validation-failed, stale-without-label, partial-without-label, or insufficient-evidence-without-label states must not create persisted generated chat answers, risk summaries, asset pages, comparisons, exportable factual transcripts, or generated-output cache eligibility.
-- Preserve source-use rights. `metadata_only` and `link_only` sources must not persist raw chunk text, `summary_allowed` sources may use only allowed summaries or excerpts, and `rejected` or source-policy-blocked sources must not feed session export metadata, factual turn summaries, or exported transcript content.
-- Preserve citation rules. Important factual turn metadata must reference same-asset citation/source IDs or explicit uncertainty/unavailable labels; wrong-asset, missing-source, missing-citation, rejected-source, and uncited-important-claim records must be rejected or suppressed into safe unavailable output.
-- Preserve source freshness and uncertainty labels. Persisted session status and export metadata must retain freshness/as-of/retrieved labels or explicit stale/unknown/unavailable/partial/insufficient-evidence labels where relevant.
-- Transcript exports from persisted metadata must remain Markdown/JSON only, include educational disclaimer metadata, preserve citation/source/freshness/uncertainty labels when available, omit restricted source text according to source-use policy, and avoid raw prompt/reasoning/user-text/transcript/secret exposure.
-- Tests cover persisted-first status lookup, deletion lookup, transcript export metadata lookup, safe turn reconstruction, fallback for unconfigured/missing/expired/deleted/ticker-mismatch/unavailable sessions, invalid persisted records, repository validation failures, TTL enforcement, comparison redirect export metadata, advice redirect export metadata, source-use gating, citation/freshness/uncertainty gating, sanitized diagnostics, no raw prompt/reasoning/user-text/transcript/secret exposure, no live database/cache/provider/LLM imports, and preservation of existing chat session/export/safety/API behavior.
-- Current API, retrieval, generation, overview, comparison, chat answer generation, glossary, frontend, provider-secret, source-use policy, fixture, and quality-gate behavior remains unchanged outside the explicit injected persisted chat session lifecycle/export boundaries.
+- Add a dormant pure-Python trust-metric event repository contract with table metadata and row models for accepted event metadata, validation status, aggregate counters, latency summaries, freshness states, safety statuses, generated-output state, and sanitized diagnostics.
+- Add a small re-export boundary module so future tasks can import the trust-metric repository contract without reaching into `backend/repositories` internals.
+- If an Alembic-style revision is added, keep it importable and inspectable without Alembic or a live database connection, and do not execute it against a database.
+- Reuse the existing trust-metric catalog and validation rules from `backend/trust_metrics.py`; accepted repository rows must be derivable from validated compact events, not from raw user input.
+- Preserve `get_trust_metric_event_catalog`, `validate_trust_metric_event`, `validate_trust_metric_events`, and `summarize_trust_metric_events` default behavior, including `validation_only=True`, `persistence_enabled=False`, `external_analytics_enabled=False`, and no-live-call semantics.
+- Reject or suppress repository rows that contain raw query text, questions, answers, source passages, source URLs, personal identifiers, cookies, portfolio/allocation details, external analytics IDs, hidden prompts, raw model reasoning, unrestricted provider payloads, real secrets, public storage URLs, or signed URLs.
+- Preserve product guardrails: trust events must not introduce buy/sell/hold recommendations, allocation advice, tax advice, price targets, brokerage/trading behavior, unsupported factual claims, or recent-news-as-canonical framing.
+- Preserve supported/unsupported state consistency. Events for unsupported, out-of-scope, eligible-not-cached without generated output, unknown, unavailable, validation-failed, stale-without-label, partial-without-label, source-policy-blocked, or insufficient-evidence-without-label states must not imply generated page/chat/comparison/risk-summary/export availability.
+- Preserve citation and source-use boundaries. Citation/source metadata in trust events must remain IDs/counts/statuses only, must not include raw passages or URLs, and must not treat rejected or license-disallowed sources as usable evidence.
+- Preserve freshness and uncertainty labeling. Freshness-related rows must carry `fresh`, `stale`, `unknown`, `unavailable`, `partial`, or `insufficient_evidence` metadata where relevant and must reject freshness-required events that omit freshness state.
+- Preserve v0.4 workflow boundaries in event taxonomy: home search remains single stock/ETF first, comparison remains a separate connected workflow, glossary is contextual, and source drawer/glossary/chat mobile behavior is not reclassified into a primary home workflow.
+- Add aggregate summary metadata support for counts/rates and latency summaries without storing raw event payloads or raw user content.
+- Diagnostics must be compact and sanitized, limited to validation codes, event IDs, event types, workflow areas, counters, statuses, timestamps, and non-sensitive metadata.
+- Tests cover repository metadata/table shape, serialization/validation helpers, accepted and rejected event persistence boundaries, aggregate summary metadata, latency summary metadata, freshness/safety/generated-output state consistency, privacy/licensing field rejection, no raw text/URL/secret/prompt/reasoning exposure, no live network/database/provider/LLM imports, and preservation of existing trust-metric validator/summarizer/safety behavior.
+- Current API, retrieval, generation, overview, comparison, chat, glossary, export, frontend, provider-secret, source-use policy, fixture, and quality-gate behavior remains unchanged outside the dormant trust-metric event sink contract.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_chat_sessions.py tests/unit/test_exports.py tests/unit/test_safety_guardrails.py -q
-python3 -m pytest tests/integration/test_backend_api.py -q
+python3 -m pytest tests/unit/test_trust_metrics.py tests/unit/test_repo_contract.py tests/unit/test_safety_guardrails.py -q
 python3 -m pytest tests -q
 python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
 ```
 
 Iteration budget:
-One agent-loop cycle. If frontend storage, user accounts, cookies, admin tools, live database execution, ORM sessions, analytics emission, route schema changes, broader export rewrites, provider or LLM calls, source allowlist expansion, paid-provider licensing review, broader asset-universe coverage, production persistence wiring, or deployment work are needed, record the follow-up and stop after injected persisted session-boundary fallback behavior.
+One agent-loop cycle. If real analytics emission, frontend instrumentation, API route mutation, vendor setup, live database execution, persistent production writes, user identity, cookies, browser storage, raw user text collection, provider or LLM calls, source allowlist expansion, paid-provider licensing review, deployment monitoring, or production observability changes are needed, record the follow-up and stop after dormant sink contracts.
 
 
 ## Completed
+
+### T-089: Route chat session lifecycle and exports through persisted session boundaries
+
+Goal:
+Route accountless chat session lifecycle and transcript export lookup through injected persisted session boundaries first, while preserving existing deterministic in-memory or fixture fallback, deletion behavior, seven-day TTL semantics, safety redirects, comparison redirects, selected-asset grounding, and export licensing rules.
+
+Completed details:
+
+- Implementation commit `5282cfc feat(T-089): route chat session lifecycle and exports through persisted session boundaries` updated `backend/chat_sessions.py`, `backend/export.py`, `tests/unit/test_chat_sessions.py`, and `docs/agent-journal/20260425T194835Z.md`.
+- Merged branch `agent/T-089-20260425T194835Z` into `main` with local merge commit `dbfc7cf chore(T-089): merge route chat session lifecycle and exports through persisted session boundaries`.
+- `backend/chat_sessions.py` added the dormant `CHAT_SESSION_PERSISTED_BOUNDARY`, `PersistedChatSessionReader`, and `PersistedChatSessionWriter` boundaries for accountless chat session records.
+- `answer_chat_with_session`, `get_chat_session_status`, `delete_chat_session`, and `chat_session_export_payload` now accept optional persisted reader/writer boundaries while preserving the default deterministic in-memory `ChatSessionStore` path.
+- Persisted records are read through `ChatSessionRepositoryRecords.model_validate` and `validate_chat_session_records` before use, with reader failures, missing records, invalid records, validation failures, and unsupported shapes falling back to the existing store behavior.
+- Persisted status and export lookup reconstruct public session metadata, safe turn summaries, citations, source metadata, comparison redirect metadata, advice redirect metadata, freshness labels, uncertainty labels, and unavailable/expired/deleted states from validated T-088 rows.
+- Persisted lifecycle handling preserves selected-asset binding and returns ticker-mismatch semantics without converting wrong-asset persisted records into factual answers.
+- Persisted deletion handling creates validated deleted records with `user_deleted` state, clears turn summaries, disables export availability, removes citation/source references from deleted records, and calls the injected writer when available.
+- Persisted active-session continuation may append a new deterministic chat response to a validated persisted record and pass validated metadata-only records to the injected writer; no live database, ORM, cache, object storage, provider, or LLM path was added.
+- Persisted transcript exports reconstruct metadata-only safe text and preserve Markdown/JSON export behavior, educational disclaimer metadata, citation/source/freshness/uncertainty labels, comparison route suggestions, advice redirect framing, and source-use restrictions.
+- `backend/export.py` routes `export_chat_transcript`, `export_chat_session_transcript`, and the existing-session chat export helper through an optional `persisted_session_reader` before fixture question export behavior.
+- `tests/unit/test_chat_sessions.py` added in-memory persisted reader/writer fixtures and coverage for persisted-first status/export/delete lookup, fallback for reader failures/missing/invalid records, TTL expiry, ticker mismatch, safe writes, advice redirect export metadata, comparison redirect export metadata, `metadata_only` source-use export behavior, and ensuring raw questions are not exported from persisted sessions.
+- The implementation did not add frontend storage, cookies, user accounts, route schema changes, live database/cache/provider/LLM execution, analytics emission, production persistence wiring, export format changes, or public API behavior changes.
+- `docs/agent-journal/20260425T194835Z.md` records these checks: `python3 -m pytest tests/unit/test_chat_sessions.py -q` passed with 23 tests; `python3 -m pytest tests/unit/test_chat_sessions.py tests/unit/test_exports.py tests/unit/test_safety_guardrails.py -q` passed with 40 tests; `python3 -m pytest tests/integration/test_backend_api.py -q` passed with 33 tests; `python3 -m pytest tests -q` passed with 308 tests; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed.
+- Remaining risks from the journal:
+  - Persisted chat session boundaries are injectable and dormant only; no live database, ORM, cache, provider, LLM, frontend storage, route schema, cookie, analytics, or production persistence wiring was added.
+  - Persisted transcript exports reconstruct safe metadata-only turn text from validated T-088 rows; raw user questions and raw answer transcripts remain unavailable by design.
+  - Future production readers/writers still need separate wiring with the same selected-asset, TTL, deletion, source-use, citation, freshness, and no-raw-transcript gates.
+
+Completion commits:
+
+- `5282cfc feat(T-089): route chat session lifecycle and exports through persisted session boundaries`
+- `dbfc7cf chore(T-089): merge route chat session lifecycle and exports through persisted session boundaries`
 
 ### T-088: Add accountless chat session persistence contracts
 
@@ -95,7 +122,7 @@ Completed details:
 - Remaining risks from the journal:
   - The accountless chat session repository is intentionally dormant and metadata-only; no live database execution, route wiring, browser storage, analytics emission, or persisted transcript lookup was added.
   - The Alembic-style revision is importable and inspectable, but it was not executed against a database.
-  - Future T-089 wiring still needs to preserve the same selected-asset, TTL, deletion, source-use, citation, freshness, export, and no-raw-transcript gates when durable session reads/writes are introduced.
+  - The follow-up T-089 wiring later preserved the same selected-asset, TTL, deletion, source-use, citation, freshness, export, and no-raw-transcript gates through injected dormant boundaries.
 
 Completion commits:
 
@@ -2388,35 +2415,6 @@ Completion commits:
 
 ## Backlog
 
-### T-090: Add trust-metric event sink persistence contracts
-
-Goal:
-Add dormant trust-metric event sink persistence contracts for compact metadata events covering citation coverage, unsupported claims, freshness accuracy, glossary use, comparison use, source drawer use, safety redirects, export use, and latency without enabling real analytics emission or external vendors.
-
-Roadmap alignment:
-
-- Promotes the next roadmap item after accountless chat session persistence.
-- Builds on the existing validation-only trust-metrics contract and keeps production observability out of scope.
-
-Acceptance criteria:
-
-- Add pure repository/table metadata and row models for accepted trust/product event metadata, validation status, aggregate counters, latency summaries, freshness states, safety statuses, and sanitized diagnostics.
-- Reuse existing trust-metrics validation rules and continue rejecting raw query text, questions, answers, source passages, source URLs, personal identifiers, cookies, portfolio/allocation details, external analytics IDs, secrets, hidden prompts, and unrestricted provider payloads.
-- Keep the sink dormant and injectable only; no frontend analytics emission, backend event storage route mutation, external analytics SDK, vendor integration, persistent live database execution, or raw user text storage.
-- Add tests for repository metadata, accepted/rejected payload persistence boundaries, aggregate summary metadata, privacy-field rejection, generated-output state consistency, no raw text/secret exposure, and no live network/database imports.
-
-Required commands:
-
-```bash
-python3 -m pytest tests/unit/test_trust_metrics.py tests/unit/test_repo_contract.py tests/unit/test_safety_guardrails.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-```
-
-Iteration budget:
-One agent-loop cycle. If real analytics emission, frontend instrumentation, vendor setup, live database execution, or production observability changes are needed, record the follow-up and stop after dormant sink contracts.
-
 ### T-091: Add eligible ETF universe metadata contracts
 
 Goal:
@@ -2596,8 +2594,8 @@ Operational defaults for backend roadmap tasks:
 - T-086 established injected persisted-read routing for comparison generation with fixture fallback. It is completed and must not be reintroduced as runnable backlog.
 - T-087 established injected persisted-read routing for grounded chat answer artifacts with fixture fallback. It is completed and must not be reintroduced as runnable backlog.
 - T-088 established dormant accountless chat session persistence contracts without route wiring, frontend changes, live database/cache execution, provider/LLM calls, analytics emission, or export rewrites. It is completed and must not be reintroduced as runnable backlog.
-- T-089 is the current promoted task for injected persisted chat session lifecycle and transcript export boundaries after T-088 contracts.
-- T-090 is a prepared backlog task for a dormant trust-metric event sink contract, not real analytics emission.
+- T-089 established injected persisted chat session lifecycle and transcript export boundaries after T-088 contracts. It is completed and must not be reintroduced as runnable backlog.
+- T-090 is the current promoted task for a dormant trust-metric event sink contract, not real analytics emission.
 - T-091 and T-092 are prepared backlog tasks that split broader launch-universe support classification into eligible ETF metadata contracts and route-level search classification alignment.
 - T-093 through T-095 are prepared backlog tasks that split Weekly News Focus persisted evidence into dormant event contracts, deterministic acquisition/selection, and route-level persisted-read fallback.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, and recurring jobs out of normal CI until the explicit production-hardening stage.
@@ -2620,8 +2618,8 @@ Roadmap integration tracker:
 | Route comparison generation through persisted packs/cache | Completed | T-086 |
 | Route grounded chat answer artifacts through persisted packs/cache | Completed | T-087 |
 | Accountless chat session persistence contracts | Completed | T-088 |
-| Persisted chat session lifecycle and exports | Promoted | T-089 |
-| Trust-metric event sink | Backlog | T-090 |
+| Persisted chat session lifecycle and exports | Completed | T-089 |
+| Trust-metric event sink | Promoted | T-090 |
 | Eligible ETF universe metadata contracts | Backlog | T-091 |
 | Manifest-backed search support classification | Backlog | T-092 |
 | Weekly News Focus persisted event evidence contracts | Backlog | T-093 |
