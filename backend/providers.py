@@ -39,6 +39,10 @@ from backend.provider_adapters.sec_stock import (
     build_sec_stock_provider_response,
     sec_stock_fixture_for_ticker,
 )
+from backend.provider_adapters.etf_issuer import (
+    build_etf_issuer_provider_response,
+    etf_issuer_fixture_for_ticker,
+)
 
 
 NO_LIVE_EXTERNAL_CALLS = True
@@ -206,112 +210,8 @@ def _build_etf_issuer_response(adapter: MockProviderAdapter, request: ProviderRe
     ticker = request.normalized_ticker
     licensing = _official_public_licensing(adapter.provider_name)
 
-    etf_fixtures = {
-        "VOO": {
-            "issuer": "Vanguard",
-            "benchmark": "S&P 500 Index",
-            "expense_ratio": 0.03,
-            "holdings_count": 500,
-            "url": "https://investor.vanguard.com/investment-products/etfs/profile/voo",
-        },
-        "QQQ": {
-            "issuer": "Invesco",
-            "benchmark": "Nasdaq-100 Index",
-            "expense_ratio": 0.20,
-            "holdings_count": 100,
-            "url": "https://www.invesco.com/qqq-etf/en/home.html",
-        },
-    }
-    fixture = etf_fixtures.get(ticker)
-    if fixture:
-        sources = [
-            _source(
-                adapter=adapter,
-                ticker=ticker,
-                data_category=request.data_category,
-                source_document_id=f"provider_issuer_{ticker.lower()}_fact_sheet",
-                source_type="issuer_fact_sheet",
-                title=f"{ticker} issuer fact sheet deterministic provider fixture",
-                publisher=str(fixture["issuer"]),
-                url=str(fixture["url"]),
-                published_at=None,
-                as_of_date="2026-04-01",
-                freshness_state=FreshnessState.fresh,
-                is_official=True,
-                usage=ProviderSourceUsage.canonical,
-                source_rank=1,
-                can_support_canonical_facts=True,
-                can_support_recent_developments=False,
-                licensing=licensing,
-            ),
-            _source(
-                adapter=adapter,
-                ticker=ticker,
-                data_category=ProviderDataCategory.etf_holdings_metadata,
-                source_document_id=f"provider_issuer_{ticker.lower()}_holdings",
-                source_type="issuer_holdings_file",
-                title=f"{ticker} issuer holdings metadata deterministic provider fixture",
-                publisher=str(fixture["issuer"]),
-                url=str(fixture["url"]),
-                published_at=None,
-                as_of_date="2026-04-01",
-                freshness_state=FreshnessState.fresh,
-                is_official=True,
-                usage=ProviderSourceUsage.canonical,
-                source_rank=1,
-                can_support_canonical_facts=True,
-                can_support_recent_developments=False,
-                licensing=licensing,
-            ),
-        ]
-        facts = [
-            _fact(
-                ticker=ticker,
-                data_category=ProviderDataCategory.etf_issuer_facts,
-                fact_id=f"provider_fact_{ticker.lower()}_benchmark",
-                field_name="benchmark",
-                value=fixture["benchmark"],
-                source_document_ids=[sources[0].source_document_id],
-                citation_ids=[f"provider_cite_{ticker.lower()}_benchmark"],
-                fact_layer="canonical",
-            ),
-            _fact(
-                ticker=ticker,
-                data_category=ProviderDataCategory.etf_issuer_facts,
-                fact_id=f"provider_fact_{ticker.lower()}_expense_ratio",
-                field_name="expense_ratio",
-                value=fixture["expense_ratio"],
-                unit="%",
-                as_of_date="2026-04-01",
-                source_document_ids=[sources[0].source_document_id],
-                citation_ids=[f"provider_cite_{ticker.lower()}_expense_ratio"],
-                fact_layer="canonical",
-            ),
-            _fact(
-                ticker=ticker,
-                data_category=ProviderDataCategory.etf_holdings_metadata,
-                fact_id=f"provider_fact_{ticker.lower()}_holdings_count",
-                field_name="holdings_count",
-                value=fixture["holdings_count"],
-                unit="approximate holdings",
-                as_of_date="2026-04-01",
-                source_document_ids=[sources[1].source_document_id],
-                citation_ids=[f"provider_cite_{ticker.lower()}_holdings"],
-                fact_layer="canonical",
-            ),
-        ]
-        return _response(
-            adapter=adapter,
-            request=request,
-            state=ProviderResponseState.supported,
-            licensing=licensing,
-            asset=_known_asset_identity(ticker),
-            source_attributions=sources,
-            facts=facts,
-            freshness_state=FreshnessState.fresh,
-            as_of_date="2026-04-01",
-            message=f"Deterministic official ETF issuer facts and holdings metadata for {ticker}.",
-        )
+    if etf_issuer_fixture_for_ticker(ticker) is not None:
+        return build_etf_issuer_provider_response(adapter, request, licensing)
 
     if ticker in ELIGIBLE_NOT_CACHED_ASSETS:
         return _eligible_not_cached_response(adapter, request, licensing)

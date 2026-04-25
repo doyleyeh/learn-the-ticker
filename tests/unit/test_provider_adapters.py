@@ -21,6 +21,14 @@ from backend.models import (
     SourceUsePolicy,
 )
 from backend.provider_adapters import sec_stock as sec_stock_module
+from backend.provider_adapters import etf_issuer as etf_issuer_module
+from backend.provider_adapters.etf_issuer import (
+    ETF_ISSUER_FIXTURE_CONTRACT_VERSION,
+    ETF_ISSUER_FIXTURES,
+    EtfIssuerFixtureContractError,
+    build_etf_issuer_provider_response,
+    etf_issuer_fixture_for_ticker,
+)
 from backend.provider_adapters.sec_stock import (
     SEC_STOCK_FIXTURE_CONTRACT_VERSION,
     SEC_STOCK_FIXTURES,
@@ -219,13 +227,136 @@ def test_etf_issuer_adapter_returns_voo_and_qqq_official_facts_and_holdings_meta
         assert all(source.is_official is True for source in response.source_attributions)
         assert all(source.source_quality.value == "issuer" for source in response.source_attributions)
         assert all(source.source_use_policy.value == "full_text_allowed" for source in response.source_attributions)
-        assert all(source.source_rank == 1 for source in response.source_attributions)
+        assert min(source.source_rank for source in response.source_attributions) == 1
+        assert max(source.source_rank for source in response.source_attributions) < 4
         fields = {fact.field_name: fact for fact in response.facts}
         assert fields["benchmark"].value == benchmark
         assert fields["expense_ratio"].unit == "%"
         assert fields["holdings_count"].data_category is ProviderDataCategory.etf_holdings_metadata
+        assert fields["etf_identity"].value["fund_name"] == response.asset.name
+        assert fields["etf_identity"].value["issuer"] == response.asset.issuer
+        assert fields["etf_identity"].value["asset_type"] == "etf"
+        assert fields["etf_identity"].value["support_state"] == "supported"
+        assert fields["etf_identity"].value["eligible_not_cached"] is False
+        assert fields["etf_identity"].value["blocked_state_indicators"] == {
+            "leveraged": False,
+            "inverse": False,
+            "etn": False,
+            "active": False,
+            "fixed_income": False,
+            "commodity": False,
+            "multi_asset": False,
+        }
+        assert fields["etf_fact_sheet_metadata"].value["benchmark"] == benchmark
+        assert fields["etf_fact_sheet_metadata"].value["official_publisher"] == response.asset.issuer
+        assert fields["etf_fact_sheet_metadata"].value["source_document_id"] in {
+            source.source_document_id for source in response.source_attributions
+        }
+        assert fields["prospectus_reference"].value["document_type"] == "summary_prospectus"
+        assert fields["prospectus_reference"].value["source_use_policy"] == "full_text_allowed"
+        assert fields["top_holding_apple"].value["holding_ticker"] == "AAPL"
+        assert fields["top_holding_apple"].value["exposure_category"] == "holding"
+        assert fields["equity_exposure"].value["exposure_category"] == "asset_class"
+        assert fields["premium_discount_or_spread"].evidence_state is EvidenceState.unavailable
+        assert fields["premium_discount_or_spread"].freshness_state is FreshnessState.unavailable
+        assert all(source.usage is ProviderSourceUsage.canonical for source in response.source_attributions)
+        assert {source.source_type for source in response.source_attributions} == {
+            "issuer_fact_sheet",
+            "summary_prospectus",
+            "issuer_holdings_file",
+            "issuer_exposure_file",
+        }
         _assert_same_asset_binding(response, ticker)
         _assert_no_generated_outputs(response)
+
+
+def test_etf_issuer_fixture_contract_normalizes_sources_holdings_exposures_and_gaps():
+    fixture = etf_issuer_fixture_for_ticker("voo")
+
+    assert ETF_ISSUER_FIXTURE_CONTRACT_VERSION == "etf-issuer-fixture-adapter-v1"
+    assert fixture is ETF_ISSUER_FIXTURES["VOO"]
+    assert fixture.identity.ticker == "VOO"
+    assert fixture.identity.fund_name == "Vanguard S&P 500 ETF"
+    assert fixture.identity.etf_classification == "non_leveraged_us_equity_index_etf"
+    assert fixture.identity.eligible_not_cached is False
+    assert fixture.identity.leveraged is False
+    assert fixture.identity.inverse is False
+    assert fixture.identity.etn is False
+    assert fixture.identity.active is False
+    assert fixture.identity.fixed_income is False
+    assert fixture.identity.commodity is False
+    assert fixture.identity.multi_asset is False
+    assert {source.source_type for source in fixture.sources} == {
+        "issuer_fact_sheet",
+        "summary_prospectus",
+        "issuer_holdings_file",
+        "issuer_exposure_file",
+    }
+    assert max(source.source_rank for source in fixture.sources) < 4
+    assert fixture.fact_sheet.benchmark == "S&P 500 Index"
+    assert fixture.fact_sheet.expense_ratio == 0.03
+    assert fixture.fact_sheet.holdings_count == 500
+    assert fixture.prospectus.document_type == "summary_prospectus"
+    assert {item.exposure_category for item in fixture.holdings_or_exposures} == {"holding", "asset_class"}
+    assert fixture.evidence_gaps[0].evidence_state is EvidenceState.unavailable
+
+
+def test_etf_issuer_fixture_contract_rejects_wrong_ticker_issuer_blocked_classes_and_policy(monkeypatch):
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.etf_issuer, "VOO").licensing
+    fixture = ETF_ISSUER_FIXTURES["VOO"]
+
+    monkeypatch.setitem(ETF_ISSUER_FIXTURES, "SPY", fixture)
+    with pytest.raises(EtfIssuerFixtureContractError, match="requested ticker"):
+        build_etf_issuer_provider_response(adapter, adapter.request("SPY"), licensing)
+
+    wrong_issuer = replace(
+        fixture,
+        sources=(replace(fixture.sources[0], publisher="Wrong Issuer"), *fixture.sources[1:]),
+    )
+    monkeypatch.setitem(ETF_ISSUER_FIXTURES, "VOO", wrong_issuer)
+    with pytest.raises(EtfIssuerFixtureContractError, match="wrong issuer"):
+        build_etf_issuer_provider_response(adapter, adapter.request("VOO"), licensing)
+
+    blocked_class = replace(fixture, identity=replace(fixture.identity, leveraged=True))
+    monkeypatch.setitem(ETF_ISSUER_FIXTURES, "VOO", blocked_class)
+    with pytest.raises(EtfIssuerFixtureContractError, match="blocked ETF classes"):
+        build_etf_issuer_provider_response(adapter, adapter.request("VOO"), licensing)
+
+    monkeypatch.setitem(ETF_ISSUER_FIXTURES, "VOO", fixture)
+    rejected_decision = SourcePolicyDecision(
+        decision=SourcePolicyDecisionState.rejected,
+        source_id="rejected_etf_fixture",
+        matched_by="domain",
+        source_quality=SourceQuality.rejected,
+        allowlist_status=SourceAllowlistStatus.rejected,
+        source_use_policy=SourceUsePolicy.rejected,
+        permitted_operations=DEFAULT_BLOCKED_SOURCE_OPERATIONS.model_copy(),
+        allowed_excerpt=DEFAULT_BLOCKED_EXCERPT_BEHAVIOR.model_copy(),
+        canonical_facts_allowed=False,
+        reason="Test rejected source policy.",
+    )
+    monkeypatch.setattr(etf_issuer_module, "resolve_source_policy", lambda url: rejected_decision)
+    with pytest.raises(EtfIssuerFixtureContractError, match="cannot support generated claims"):
+        build_etf_issuer_provider_response(adapter, adapter.request("VOO"), licensing)
+
+
+def test_etf_issuer_fixture_contract_rejects_wrong_source_binding(monkeypatch):
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.etf_issuer, "VOO").licensing
+    fixture = ETF_ISSUER_FIXTURES["VOO"]
+
+    wrong_source = replace(
+        fixture.holdings_or_exposures[0],
+        source_document_id="provider_issuer_qqq_holdings_2026",
+    )
+    monkeypatch.setitem(
+        ETF_ISSUER_FIXTURES,
+        "VOO",
+        replace(fixture, holdings_or_exposures=(wrong_source, *fixture.holdings_or_exposures[1:])),
+    )
+    with pytest.raises(EtfIssuerFixtureContractError, match="invalid source evidence"):
+        build_etf_issuer_provider_response(adapter, adapter.request("VOO"), licensing)
 
 
 def test_market_reference_adapter_covers_supported_and_eligible_not_cached_with_restricted_licensing():
@@ -367,6 +498,7 @@ def test_provider_module_has_no_live_call_or_credential_imports():
     sources = [
         (ROOT / "backend" / "providers.py").read_text(encoding="utf-8"),
         (ROOT / "backend" / "provider_adapters" / "sec_stock.py").read_text(encoding="utf-8"),
+        (ROOT / "backend" / "provider_adapters" / "etf_issuer.py").read_text(encoding="utf-8"),
     ]
     forbidden = [
         "import requests",
