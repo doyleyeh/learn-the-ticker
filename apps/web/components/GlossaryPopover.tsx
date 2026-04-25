@@ -7,10 +7,13 @@ import { buildTrustMetricSurfaceDescriptor } from "../lib/trustMetrics";
 
 type GlossaryPopoverProps = {
   term: string;
+  label?: string;
+  placement?: "chip" | "inline";
+  sourceSection?: string;
   assetContext?: AssetGlossaryContext;
 };
 
-export function GlossaryPopover({ term, assetContext }: GlossaryPopoverProps) {
+export function GlossaryPopover({ term, label, placement = "chip", sourceSection, assetContext }: GlossaryPopoverProps) {
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState(false);
   const entry = getGlossaryTerm(term);
@@ -18,7 +21,7 @@ export function GlossaryPopover({ term, assetContext }: GlossaryPopoverProps) {
   const componentId = useId().replace(/[^a-z0-9]+/gi, "-");
   const termId = term.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "unavailable";
   const safeId = `glossary-${termId}-${componentId}`;
-  const displayTerm = entry?.term ?? term;
+  const displayTerm = label ?? entry?.term ?? term;
   const trustMetricDescriptor = buildTrustMetricSurfaceDescriptor({
     eventType: "glossary_usage",
     workflowArea: "glossary",
@@ -42,6 +45,9 @@ export function GlossaryPopover({ term, assetContext }: GlossaryPopoverProps) {
     <span
       className="glossary-wrap"
       data-glossary-term={term}
+      data-glossary-visible-label={displayTerm}
+      data-glossary-placement={placement}
+      data-glossary-inline-source-section={sourceSection}
       data-glossary-available={entry ? "true" : "false"}
       data-glossary-asset-context={assetContext ? assetContext.availabilityState : "generic_only"}
       data-trust-metric-schema-version={trustMetricDescriptor.schemaVersion}
@@ -87,7 +93,7 @@ export function GlossaryPopover({ term, assetContext }: GlossaryPopoverProps) {
     >
       <button
         ref={triggerRef}
-        className="glossary-trigger"
+        className={placement === "inline" ? "glossary-trigger glossary-trigger-inline" : "glossary-trigger"}
         type="button"
         aria-expanded={open}
         aria-controls={safeId}

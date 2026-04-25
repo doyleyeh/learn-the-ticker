@@ -9,14 +9,14 @@ import { CitationChip } from "../../../components/CitationChip";
 import { ComparisonSuggestions } from "../../../components/ComparisonSuggestions";
 import { ExportControls } from "../../../components/ExportControls";
 import { FreshnessLabel } from "../../../components/FreshnessLabel";
-import { GlossaryPopover } from "../../../components/GlossaryPopover";
+import { InlineGlossaryText, type InlineGlossaryMatch } from "../../../components/InlineGlossaryText";
 import { WeeklyNewsPanel } from "../../../components/WeeklyNewsPanel";
 import { fetchSupportedAssetDetails } from "../../../lib/assetDetails";
 import { fetchSupportedAssetGlossaryContexts } from "../../../lib/assetGlossary";
 import { fetchSupportedAssetOverview } from "../../../lib/assetOverview";
 import { fetchSupportedSourceDrawerResponse, sourceDrawerEntriesByDocumentId } from "../../../lib/sourceDrawer";
 import { fetchSupportedAssetWeeklyNews } from "../../../lib/assetWeeklyNews";
-import { beginnerGlossaryGroupsByAssetType } from "../../../lib/glossary";
+import { beginnerGlossaryGroupsByAssetType, type GlossaryTermKey } from "../../../lib/glossary";
 import { getAssetComparisonSuggestions } from "../../../lib/compareSuggestions";
 import {
   assetPageExportUrl,
@@ -184,7 +184,14 @@ export default async function AssetPage({ params }: AssetPageProps) {
     }
   }
   const glossaryGroups = beginnerGlossaryGroupsByAssetType[asset.assetType];
-  const glossaryTermsForBackend = glossaryGroups.flatMap((group) => group.terms);
+  const additionalInlineGlossaryTerms: GlossaryTermKey[] = asset.assetType === "etf" ? ["market risk"] : [];
+  const glossaryTermsForBackend = [
+    ...new Set<GlossaryTermKey>([...glossaryGroups.flatMap((group) => group.terms), ...additionalInlineGlossaryTerms])
+  ];
+  const inlineGlossaryMatches: InlineGlossaryMatch[] = [...glossaryTermsForBackend];
+  if (asset.assetType === "stock") {
+    inlineGlossaryMatches.push({ match: "P/E", term: "P/E ratio" });
+  }
   const backendGlossaryContexts = await (async () => {
     try {
       return await fetchSupportedAssetGlossaryContexts(asset.ticker, glossaryTermsForBackend);
@@ -206,8 +213,6 @@ export default async function AssetPage({ params }: AssetPageProps) {
   } catch {
     assetSourceListExportContract = null;
   }
-  const inlineGlossaryTerms =
-    asset.assetType === "etf" ? (["expense ratio", "index tracking"] as const) : (["market risk", "P/E ratio"] as const);
   const localDrawerEntries = drawerSources.map((source) => {
     const sourceContexts = getCitationContextsForSource(asset, source.source_document_id);
     return {
@@ -285,22 +290,37 @@ export default async function AssetPage({ params }: AssetPageProps) {
                 <article className="beginner-summary-card" data-beginner-summary-card="what_it_is">
                   <h3>What it is</h3>
                   <p>
-                    {asset.beginnerSummary.whatItIs} <CitationChip citation={firstClaimCitation} />
+                    <InlineGlossaryText
+                      text={asset.beginnerSummary.whatItIs}
+                      matches={inlineGlossaryMatches}
+                      contexts={backendGlossaryContexts}
+                      sourceSection="beginner_summary.what_it_is"
+                    />{" "}
+                    <CitationChip citation={firstClaimCitation} />
                   </p>
                 </article>
                 <article className="beginner-summary-card" data-beginner-summary-card="why_people_look">
                   <h3>Why people look at it</h3>
-                  <p>{asset.beginnerSummary.whyPeopleConsiderIt}</p>
+                  <p>
+                    <InlineGlossaryText
+                      text={asset.beginnerSummary.whyPeopleConsiderIt}
+                      matches={inlineGlossaryMatches}
+                      contexts={backendGlossaryContexts}
+                      sourceSection="beginner_summary.why_people_look"
+                    />
+                  </p>
                 </article>
                 <article className="beginner-summary-card caution-card" data-beginner-summary-card="main_caution">
                   <h3>Main thing to be careful about</h3>
-                  <p>{asset.beginnerSummary.mainCatch}</p>
+                  <p>
+                    <InlineGlossaryText
+                      text={asset.beginnerSummary.mainCatch}
+                      matches={inlineGlossaryMatches}
+                      contexts={backendGlossaryContexts}
+                      sourceSection="beginner_summary.main_caution"
+                    />
+                  </p>
                 </article>
-              </div>
-              <div className="inline-tools" aria-label="Beginner glossary terms">
-                {inlineGlossaryTerms.map((term) => (
-                  <GlossaryPopover key={term} term={term} assetContext={backendGlossaryContexts?.get(term)} />
-                ))}
               </div>
             </section>
 
@@ -321,8 +341,22 @@ export default async function AssetPage({ params }: AssetPageProps) {
                   const citation = getCitationById(asset, risk.citationIds[0]);
                   return (
                     <article className="risk-card" key={risk.title}>
-                      <h3>{risk.title}</h3>
-                      <p>{risk.plainEnglishExplanation}</p>
+                      <h3>
+                        <InlineGlossaryText
+                          text={risk.title}
+                          matches={inlineGlossaryMatches}
+                          contexts={backendGlossaryContexts}
+                          sourceSection="top_risks.title"
+                        />
+                      </h3>
+                      <p>
+                        <InlineGlossaryText
+                          text={risk.plainEnglishExplanation}
+                          matches={inlineGlossaryMatches}
+                          contexts={backendGlossaryContexts}
+                          sourceSection="top_risks.explanation"
+                        />
+                      </p>
                       {citation ? <CitationChip citation={citation} label={citationLabel(risk.citationIds[0])} /> : null}
                     </article>
                   );
@@ -346,9 +380,21 @@ export default async function AssetPage({ params }: AssetPageProps) {
                   const citation = fact.citationId ? getCitationById(asset, fact.citationId) : undefined;
                   return (
                     <div key={fact.label}>
-                      <dt>{fact.label}</dt>
+                      <dt>
+                        <InlineGlossaryText
+                          text={fact.label}
+                          matches={inlineGlossaryMatches}
+                          contexts={backendGlossaryContexts}
+                          sourceSection="key_facts.label"
+                        />
+                      </dt>
                       <dd>
-                        {fact.value}{" "}
+                        <InlineGlossaryText
+                          text={fact.value}
+                          matches={inlineGlossaryMatches}
+                          contexts={backendGlossaryContexts}
+                          sourceSection="key_facts.value"
+                        />{" "}
                         {citation ? <CitationChip citation={citation} label={citationLabel(fact.citationId ?? "")} /> : null}
                       </dd>
                     </div>
@@ -387,7 +433,12 @@ export default async function AssetPage({ params }: AssetPageProps) {
                 ) : null}
               </div>
               <p>
-                {whatItDoesOrHoldsSection?.beginnerSummary ?? firstClaim.claimText}{" "}
+                <InlineGlossaryText
+                  text={whatItDoesOrHoldsSection?.beginnerSummary ?? firstClaim.claimText}
+                  matches={inlineGlossaryMatches}
+                  contexts={backendGlossaryContexts}
+                  sourceSection="what_it_does_or_holds.summary"
+                />{" "}
                 {!whatItDoesOrHoldsSection ? <CitationChip citation={firstClaimCitation} /> : null}
               </p>
               {whatItDoesOrHoldsItems.length ? (
@@ -395,12 +446,26 @@ export default async function AssetPage({ params }: AssetPageProps) {
                   {whatItDoesOrHoldsItems.map((item) => (
                     <article className="stock-section-item" key={item.itemId} data-asset-what-item-id={item.itemId}>
                       <div className="stock-item-heading">
-                        <h3>{item.title}</h3>
+                        <h3>
+                          <InlineGlossaryText
+                            text={item.title}
+                            matches={inlineGlossaryMatches}
+                            contexts={backendGlossaryContexts}
+                            sourceSection="what_it_does_or_holds.item_title"
+                          />
+                        </h3>
                         <span className="state-pill compact-state" data-evidence-state={item.evidenceState}>
                           {item.evidenceState.replaceAll("_", " ")}
                         </span>
                       </div>
-                      <p>{item.summary}</p>
+                      <p>
+                        <InlineGlossaryText
+                          text={item.summary}
+                          matches={inlineGlossaryMatches}
+                          contexts={backendGlossaryContexts}
+                          sourceSection="what_it_does_or_holds.item_summary"
+                        />
+                      </p>
                       <span className="chip-row">
                         {item.citationIds.map((citationId) => {
                           const citation = getCitationById(asset, citationId);
@@ -423,9 +488,17 @@ export default async function AssetPage({ params }: AssetPageProps) {
         deepDiveSections={
           <>
             {hasStockPrdSections ? (
-              <AssetStockSections asset={asset} />
+              <AssetStockSections
+                asset={asset}
+                glossaryMatches={inlineGlossaryMatches}
+                glossaryContexts={backendGlossaryContexts}
+              />
             ) : hasEtfPrdSections ? (
-              <AssetEtfSections asset={asset} />
+              <AssetEtfSections
+                asset={asset}
+                glossaryMatches={inlineGlossaryMatches}
+                glossaryContexts={backendGlossaryContexts}
+              />
             ) : (
               <section className="plain-panel unknown-state" aria-labelledby="unknowns">
                 <div className="section-heading">
@@ -443,37 +516,6 @@ export default async function AssetPage({ params }: AssetPageProps) {
               </section>
             )}
 
-            <section
-              className="plain-panel stable-section glossary-learning-panel"
-              aria-labelledby={`beginner-glossary-${asset.ticker.toLowerCase()}`}
-              data-beginner-stable-recent-separation="stable"
-              data-beginner-glossary-area
-              data-glossary-asset-ticker={asset.ticker}
-              data-glossary-asset-type={asset.assetType}
-              data-glossary-no-generated-context
-              data-glossary-backend-context={glossaryRendering}
-            >
-              <div className="section-heading">
-                <p className="eyebrow">Learning terms</p>
-                <h2 id={`beginner-glossary-${asset.ticker.toLowerCase()}`}>Glossary for this page</h2>
-              </div>
-              <div className="glossary-group-grid">
-                {glossaryGroups.map((group) => (
-                  <article className="glossary-term-group" key={group.groupId} data-glossary-term-group={group.groupId}>
-                    <h3>{group.title}</h3>
-                    <div className="inline-tools glossary-term-list" data-glossary-term-list={group.groupId}>
-                      {group.terms.map((term) => (
-                        <GlossaryPopover key={term} term={term} assetContext={backendGlossaryContexts?.get(term)} />
-                      ))}
-                    </div>
-                  </article>
-                ))}
-              </div>
-              <p className="source-gap-note" data-glossary-generic-education>
-                Generic glossary entries stay visible as the baseline. Backend asset context, when available, is shown
-                only inside these glossary cards and does not create support for claims outside this glossary area.
-              </p>
-            </section>
           </>
         }
         afterDeepDive={

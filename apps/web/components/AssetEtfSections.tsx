@@ -7,12 +7,15 @@ import {
 } from "../lib/fixtures";
 import { CitationChip } from "./CitationChip";
 import { FreshnessLabel } from "./FreshnessLabel";
+import { InlineGlossaryText, type InlineGlossaryContextMap, type InlineGlossaryMatch } from "./InlineGlossaryText";
 
 type AssetEtfSectionsProps = {
   asset: AssetFixture;
+  glossaryMatches?: readonly InlineGlossaryMatch[];
+  glossaryContexts?: InlineGlossaryContextMap | null;
 };
 
-export function AssetEtfSections({ asset }: AssetEtfSectionsProps) {
+export function AssetEtfSections({ asset, glossaryMatches = [], glossaryContexts }: AssetEtfSectionsProps) {
   if (asset.assetType !== "etf" || !asset.etfSections?.length) {
     return null;
   }
@@ -30,13 +33,29 @@ export function AssetEtfSections({ asset }: AssetEtfSectionsProps) {
       data-deep-dive-duplicate-sections-filtered="etf_specific_risks,recent_developments,educational_suitability"
     >
       {deepDiveSections.map((section) => (
-        <EtfSection key={section.sectionId} asset={asset} section={section} />
+        <EtfSection
+          key={section.sectionId}
+          asset={asset}
+          section={section}
+          glossaryMatches={glossaryMatches}
+          glossaryContexts={glossaryContexts}
+        />
       ))}
     </div>
   );
 }
 
-function EtfSection({ asset, section }: { asset: AssetFixture; section: EtfOverviewSection }) {
+function EtfSection({
+  asset,
+  section,
+  glossaryMatches,
+  glossaryContexts
+}: {
+  asset: AssetFixture;
+  section: EtfOverviewSection;
+  glossaryMatches: readonly InlineGlossaryMatch[];
+  glossaryContexts?: InlineGlossaryContextMap | null;
+}) {
   const isRecent = section.sectionId === "recent_developments";
   const isRisk = section.sectionId === "etf_specific_risks";
   const riskItems = isRisk ? section.items.slice(0, 3) : section.items;
@@ -77,15 +96,34 @@ function EtfSection({ asset, section }: { asset: AssetFixture; section: EtfOverv
         </span>
       </div>
 
-      <p>{section.beginnerSummary}</p>
+      <p>
+        <InlineGlossaryText
+          text={section.beginnerSummary}
+          matches={glossaryMatches}
+          contexts={glossaryContexts}
+          sourceSection={`etf.${section.sectionId}.summary`}
+        />
+      </p>
 
       {section.metrics?.length ? (
         <dl className="fact-list etf-metric-list">
           {section.metrics.map((metric) => (
             <div key={metric.metricId} data-etf-section-metric-id={metric.metricId}>
-              <dt>{metric.label}</dt>
+              <dt>
+                <InlineGlossaryText
+                  text={metric.label}
+                  matches={glossaryMatches}
+                  contexts={glossaryContexts}
+                  sourceSection={`etf.${section.sectionId}.metric_label`}
+                />
+              </dt>
               <dd>
-                {formatMetricValue(metric.value, metric.unit)}{" "}
+                <InlineGlossaryText
+                  text={formatMetricValue(metric.value, metric.unit)}
+                  matches={glossaryMatches}
+                  contexts={glossaryContexts}
+                  sourceSection={`etf.${section.sectionId}.metric_value`}
+                />{" "}
                 <CitationChips asset={asset} citationIds={metric.citationIds} />
               </dd>
             </div>
@@ -98,7 +136,14 @@ function EtfSection({ asset, section }: { asset: AssetFixture; section: EtfOverv
         data-etf-top-risk-count={isRisk ? riskItems.length : undefined}
       >
         {riskItems.map((item) => (
-          <EtfSectionItemCard key={item.itemId} asset={asset} item={item} isRisk={isRisk} />
+          <EtfSectionItemCard
+            key={item.itemId}
+            asset={asset}
+            item={item}
+            isRisk={isRisk}
+            glossaryMatches={glossaryMatches}
+            glossaryContexts={glossaryContexts}
+          />
         ))}
       </div>
 
@@ -107,7 +152,19 @@ function EtfSection({ asset, section }: { asset: AssetFixture; section: EtfOverv
   );
 }
 
-function EtfSectionItemCard({ asset, item, isRisk }: { asset: AssetFixture; item: EtfSectionItem; isRisk: boolean }) {
+function EtfSectionItemCard({
+  asset,
+  item,
+  isRisk,
+  glossaryMatches,
+  glossaryContexts
+}: {
+  asset: AssetFixture;
+  item: EtfSectionItem;
+  isRisk: boolean;
+  glossaryMatches: readonly InlineGlossaryMatch[];
+  glossaryContexts?: InlineGlossaryContextMap | null;
+}) {
   const className = isRisk ? "risk-card" : "etf-section-item";
 
   return (
@@ -118,12 +175,26 @@ function EtfSectionItemCard({ asset, item, isRisk }: { asset: AssetFixture; item
       data-freshness-state={item.freshnessState}
     >
       <div className="etf-item-heading">
-        <h3>{item.title}</h3>
+        <h3>
+          <InlineGlossaryText
+            text={item.title}
+            matches={glossaryMatches}
+            contexts={glossaryContexts}
+            sourceSection="etf.item_title"
+          />
+        </h3>
         <span className="state-pill compact-state" data-evidence-state={item.evidenceState}>
           {item.evidenceState.replaceAll("_", " ")}
         </span>
       </div>
-      <p>{item.summary}</p>
+      <p>
+        <InlineGlossaryText
+          text={item.summary}
+          matches={glossaryMatches}
+          contexts={glossaryContexts}
+          sourceSection="etf.item_summary"
+        />
+      </p>
       <div className="state-row">
         <FreshnessLabel
           label={item.eventDate ? "Event date" : "As of"}

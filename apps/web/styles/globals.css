@@ -966,6 +966,15 @@ main[data-prd-source-list-marker] > .plain-panel:last-child {
   display: inline-flex;
 }
 
+.glossary-inline-text {
+  display: inline;
+}
+
+.glossary-wrap[data-glossary-placement="inline"] {
+  display: inline;
+  vertical-align: baseline;
+}
+
 .glossary-trigger {
   max-width: 100%;
   min-height: 36px;
@@ -978,6 +987,26 @@ main[data-prd-source-list-marker] > .plain-panel:last-child {
   line-height: 1.25;
   cursor: pointer;
   white-space: normal;
+}
+
+.glossary-wrap[data-glossary-placement="inline"] .glossary-trigger {
+  min-height: 0;
+  padding: 0 2px;
+  border: 0;
+  border-bottom: 1px dotted #006b5d;
+  border-radius: 0;
+  background: transparent;
+  color: #006b5d;
+  font: inherit;
+  font-weight: 850;
+  line-height: inherit;
+}
+
+.glossary-wrap[data-glossary-placement="inline"] .glossary-trigger:hover,
+.glossary-wrap[data-glossary-placement="inline"] .glossary-trigger:focus-visible {
+  background: #e8f7f3;
+  outline: 2px solid #9dd7cc;
+  outline-offset: 2px;
 }
 
 .glossary-popover {

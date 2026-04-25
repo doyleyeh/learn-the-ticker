@@ -42,6 +42,7 @@ function includes(path, marker) {
   "components/SourceDrawer.tsx",
   "components/FreshnessLabel.tsx",
   "components/GlossaryPopover.tsx",
+  "components/InlineGlossaryText.tsx",
   "components/WeeklyNewsPanel.tsx",
   "lib/assetDetails.ts",
   "lib/assetChat.ts",
@@ -109,16 +110,24 @@ includes("app/assets/[ticker]/page.tsx", "data-asset-source-drawer-repetition=\"
 includes("app/assets/[ticker]/page.tsx", "data-asset-source-index-entry");
 includes("app/assets/[ticker]/page.tsx", "data-asset-source-list-link");
 includes("app/assets/[ticker]/page.tsx", "Open full source details");
-includes("app/assets/[ticker]/page.tsx", "GlossaryPopover");
-includes("app/assets/[ticker]/page.tsx", "data-beginner-glossary-area");
-includes("app/assets/[ticker]/page.tsx", "data-glossary-asset-ticker");
-includes("app/assets/[ticker]/page.tsx", "data-glossary-asset-type");
-includes("app/assets/[ticker]/page.tsx", "data-glossary-no-generated-context");
+includes("app/assets/[ticker]/page.tsx", "InlineGlossaryText");
+includes("app/assets/[ticker]/page.tsx", "inlineGlossaryMatches");
+includes("app/assets/[ticker]/page.tsx", "sourceSection=\"beginner_summary.what_it_is\"");
+includes("app/assets/[ticker]/page.tsx", "sourceSection=\"key_facts.label\"");
+includes("app/assets/[ticker]/page.tsx", "sourceSection=\"what_it_does_or_holds.summary\"");
 includes("app/assets/[ticker]/page.tsx", "fetchSupportedAssetGlossaryContexts");
 includes("app/assets/[ticker]/page.tsx", "data-asset-glossary-rendering");
-includes("app/assets/[ticker]/page.tsx", "data-glossary-backend-context");
-includes("app/assets/[ticker]/page.tsx", "data-glossary-generic-education");
 includes("app/assets/[ticker]/page.tsx", "beginnerGlossaryGroupsByAssetType");
+assert.equal(
+  read("app/assets/[ticker]/page.tsx").includes("data-beginner-glossary-area"),
+  false,
+  "Asset pages should not collect glossary terms into one standalone glossary area"
+);
+assert.equal(
+  read("app/assets/[ticker]/page.tsx").includes("Glossary for this page"),
+  false,
+  "Asset pages should not render a standalone glossary section in the MVP reading flow"
+);
 includes("app/assets/[ticker]/page.tsx", "AssetChatPanel");
 includes("app/assets/[ticker]/page.tsx", "fetchSupportedAssetDetails");
 includes("app/assets/[ticker]/page.tsx", "fetchSupportedAssetOverview");
@@ -408,6 +417,8 @@ includes("components/AssetStockSections.tsx", "data-shared-prd-section-shell");
 includes("components/AssetStockSections.tsx", "data-deep-dive-duplicate-sections-filtered=\"top_risks,recent_developments,educational_suitability\"");
 includes("components/AssetStockSections.tsx", "data-stock-stable-recent-separation");
 includes("components/AssetStockSections.tsx", "data-stock-top-risk-count");
+includes("components/AssetStockSections.tsx", "InlineGlossaryText");
+includes("components/AssetStockSections.tsx", "glossaryMatches");
 includes("components/AssetStockSections.tsx", "No citation chip is shown because this item is an explicit evidence gap");
 includes("components/AssetEtfSections.tsx", "data-etf-prd-sections");
 includes("components/AssetEtfSections.tsx", "data-etf-section-id");
@@ -415,6 +426,8 @@ includes("components/AssetEtfSections.tsx", "data-shared-prd-section-shell");
 includes("components/AssetEtfSections.tsx", "data-deep-dive-duplicate-sections-filtered=\"etf_specific_risks,recent_developments,educational_suitability\"");
 includes("components/AssetEtfSections.tsx", "data-etf-stable-recent-separation");
 includes("components/AssetEtfSections.tsx", "data-etf-top-risk-count");
+includes("components/AssetEtfSections.tsx", "InlineGlossaryText");
+includes("components/AssetEtfSections.tsx", "glossaryMatches");
 includes("components/AssetEtfSections.tsx", "No citation chip is shown because this ETF item is an explicit evidence gap");
 includes("lib/assetChat.ts", "/api/assets/");
 includes("lib/assetChat.ts", "/chat");
@@ -556,6 +569,9 @@ includes("lib/search.ts", "We found this ticker, but it is not supported in v1."
 includes("lib/search.ts", "Learn the Ticker currently supports U.S.-listed common stocks and non-leveraged U.S.-listed equity ETFs.");
 includes("components/FreshnessLabel.tsx", "data-freshness-state");
 includes("components/GlossaryPopover.tsx", "data-glossary-term");
+includes("components/GlossaryPopover.tsx", "data-glossary-visible-label");
+includes("components/GlossaryPopover.tsx", "data-glossary-placement");
+includes("components/GlossaryPopover.tsx", "glossary-trigger-inline");
 includes("components/GlossaryPopover.tsx", "data-glossary-category");
 includes("components/GlossaryPopover.tsx", "data-glossary-definition");
 includes("components/GlossaryPopover.tsx", "data-glossary-why-it-matters");
@@ -581,7 +597,14 @@ includes("components/GlossaryPopover.tsx", "event.key === \"Escape\"");
 includes("components/GlossaryPopover.tsx", "data-glossary-visible-term-context");
 includes("components/GlossaryPopover.tsx", "data-glossary-bottom-sheet-height");
 includes("components/GlossaryPopover.tsx", "data-glossary-internal-scroll=\"true\"");
+includes("components/InlineGlossaryText.tsx", "data-glossary-inline-region");
+includes("components/InlineGlossaryText.tsx", "data-glossary-inline-source-section");
+includes("components/InlineGlossaryText.tsx", "data-glossary-inline-term-count");
+includes("components/InlineGlossaryText.tsx", "placement=\"inline\"");
+includes("components/InlineGlossaryText.tsx", "label=\\{segment\\.text\\}");
 includes("styles/globals.css", ".glossary-popover");
+includes("styles/globals.css", ".glossary-inline-text");
+includes("styles/globals.css", "\\.glossary-wrap\\[data-glossary-placement=\"inline\"\\]");
 includes("styles/globals.css", "max-height: min\\(74vh, 620px\\)");
 includes("styles/globals.css", "position: fixed");
 includes("styles/globals.css", "bottom: 0");
