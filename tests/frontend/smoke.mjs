@@ -77,12 +77,31 @@ function orderedMarkers(path, markers, label) {
   "styles/globals.css"
 ].forEach(exists);
 
+includesAll("app/layout.tsx", [
+  "data-global-navigation-workflow=\"single-search-separate-compare\"",
+  "data-nav-primary-entry=\"single-asset-search\"",
+  "data-nav-secondary-entry=\"separate-comparison-workflow\"",
+  "href=\"/compare\""
+], "global navigation search-first and neutral comparison entry");
+assert.equal(
+  read("app/layout.tsx").includes("/compare?left=") || read("app/layout.tsx").includes("/compare?right="),
+  false,
+  "Global navigation should expose the neutral comparison builder instead of a default pair"
+);
+assert.equal(
+  read("app/layout.tsx").toLowerCase().includes("glossary"),
+  false,
+  "Global navigation should not promote glossary as a top-level MVP workflow"
+);
 includesAll("app/page.tsx", [
+  "data-home-workflow-baseline=\"single-asset-search-first\"",
+  "data-home-primary-workflow=\"single-supported-stock-or-etf-search\"",
   "SearchBox",
   "Understand a stock or ETF in plain English",
   "data-home-workflow-card=\"single-asset-search\"",
   "data-home-workflow-card=\"separate-comparison\"",
   "data-home-workflow-card=\"source-backed-learning\"",
+  "contextual glossary help",
   "/compare"
 ], "home single-asset-first route workflow");
 includesAll("components/SearchBox.tsx", [
