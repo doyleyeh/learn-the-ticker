@@ -1,74 +1,106 @@
 ## Current task
 
-### T-084: Add persisted generated-output cache and freshness-hash contracts
+### T-085: Route asset overview through persisted pack and cache boundaries
 
 Goal:
-Add dormant persisted generated-output cache and freshness-hash repository contracts for overview, comparison, chat-safe answer artifacts, exports, source checksums, knowledge-pack hashes, generated-output freshness hashes, validation status, and invalidation diagnostics without routing current responses through the cache.
+Route the supported asset overview generation path through injected persisted knowledge-pack and generated-output cache read boundaries first, while preserving deterministic fixture fallback, current API response shape, current frontend behavior, and current safety/citation/source-use behavior.
 
 Task-scope paragraph:
-This task should add a persisted-cache contract layer only. It may add pure repository/table metadata, row models, serialization helpers, validation helpers, and tests that describe how generated overview, comparison, grounded-chat, and export artifacts would be cached later using existing deterministic cache-key and freshness-hash helpers. It must stay dormant, import-safe, deterministic, and fixture/test backed. It must not make routes read from or write to a live cache, create generated output, change API/frontend behavior, add live database execution, add provider or LLM calls, or weaken citation, safety, freshness, source-use, unknown/stale/unavailable/partial, unsupported, or out-of-scope handling.
+This task should add the first narrow read-through integration slice for supported asset overview generation only. It may add injectable pure-Python reader boundaries, adapter helpers, and tests that let overview generation prefer valid same-asset persisted knowledge-pack and generated-output cache records when those readers are explicitly supplied, then fall back to the existing deterministic fixture path on misses, invalid records, blocked states, reader failures, or unconfigured readers. It must not add live database/cache clients, cache writes, route schema changes, frontend changes, new generated content, provider or LLM calls, broader asset coverage, or any behavior that weakens citation, safety, source-use, freshness, unknown/stale/unavailable/partial, unsupported, out-of-scope, Weekly News Focus, or AI Comprehensive Analysis handling.
 
 Roadmap alignment:
 
-- Promotes the generated-output cache and freshness-hash roadmap area after completed ingestion ledger, worker, source snapshot, SEC adapter, and ETF adapter groundwork.
-- This task prepares persistence metadata for later overview, comparison, chat-safe answer, and export cache integration, but does not route any public behavior through a cache.
-- The next backlog tasks should split route-level integration by surface area so overview, comparison, and chat can preserve fixture fallback independently.
+- First narrow slice of "Route overview, comparison, and chat generation through persisted knowledge packs."
+- Depends on completed T-077, T-078, and T-084 repository/cache contracts.
+- Keeps comparison, chat, exports, frontend behavior, live cache writes, and production persistence execution out of scope so overview fallback behavior can be validated independently.
 
 Allowed files:
 
-- `backend/models.py`
+- `backend/overview.py`
 - `backend/cache.py`
-- `backend/repositories/generated_outputs.py`
 - `backend/generated_output_cache_repository.py`
+- `backend/retrieval.py`
+- `backend/retrieval_repository.py`
+- `backend/repositories/generated_outputs.py`
 - `backend/repositories/__init__.py`
-- `alembic/versions/*generated_output_cache*.py`
+- `tests/unit/test_overview_generation.py`
 - `tests/unit/test_cache_contracts.py`
-- `tests/unit/test_source_policy.py`
-- `tests/unit/test_safety_guardrails.py`
-- `tests/unit/test_repo_contract.py`
+- `tests/unit/test_retrieval_repository.py`
+- `tests/integration/test_backend_api.py`
 - `docs/agent-journal/*.md`
 
 Do not change:
 
 - No frontend files under `apps/web`.
-- No FastAPI route behavior, public endpoint schemas, retrieval behavior, provider behavior, export behavior, chat behavior, comparison behavior, glossary behavior, generated content, source drawer behavior, Weekly News Focus behavior, AI Comprehensive Analysis behavior, or frontend behavior.
-- No live SEC, issuer, ETF, market-data, news, storage, database, object-storage, cache, Redis, LLM, Cloud Run Job, scheduler, admin auth, rate-limiting, or deployment wiring.
-- No production dependency addition, source allowlist expansion, provider licensing change, environment/secret file change, runtime cache read/write behavior change, top-500 manifest change, ETF universe expansion, stock universe expansion, or broad asset-universe expansion.
-- No generated pages, generated chat answers, generated comparisons, generated risk summaries, exports, cache hits, cache writes, cache invalidation jobs, or cacheable generated output for eligible-not-cached, unsupported, out-of-scope, unknown, unavailable, partial, stale-without-label, validation-failed, advice-like, source-policy-blocked, uncited, wrong-asset, wrong-pack, or rejected-source states.
-- No raw provider payloads, unrestricted source text, hidden prompts, prompt templates, raw model reasoning, raw user text, chat transcripts for analytics/training/evaluation, real API keys, credentials, secrets, or signed/public storage URLs in fixtures, diagnostics, logs, docs, cache records, or exported data.
+- No public FastAPI route schema, endpoint path, HTTP status, export behavior, chat behavior, comparison behavior, glossary behavior, source drawer behavior, frontend behavior, provider behavior, live retrieval behavior, or generated text changes.
+- No live SEC, issuer, ETF, market-data, news, storage, database, object-storage, cache, Redis, LLM, Cloud Run Job, scheduler, admin auth, rate-limiting, analytics, or deployment wiring.
+- No production dependency addition, source allowlist expansion, provider licensing change, environment/secret file change, runtime cache write behavior, cache invalidation worker, top-500 manifest change, ETF universe expansion, stock universe expansion, or broad asset-universe expansion.
+- No persisted overview reuse for eligible-not-cached, unsupported, out-of-scope, unknown, unavailable, partial-without-label, stale-without-label, insufficient-evidence-without-label, validation-failed, advice-like, source-policy-blocked, uncited-important-claim, wrong-asset, wrong-source, wrong-citation, wrong-pack, rejected-source, or permission-limited states.
+- No raw provider payloads, unrestricted source text, hidden prompts, prompt templates, raw model reasoning, raw user text, chat transcripts for analytics/training/evaluation, real API keys, credentials, secrets, public storage URLs, signed URLs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, cache records, or exported data.
 - No changes that make comparison a primary home-page workflow, make glossary a primary home-page workflow, or alter mobile source/glossary/chat behavior from the v0.4 baseline.
 
 Acceptance criteria:
 
-- Add a dormant pure-Python generated-output cache repository contract with explicit metadata/table definitions and row models for cache envelopes, artifact records, source checksum inputs, knowledge-pack freshness hashes, generated-output freshness hashes, validation status, citation coverage, safety status, source-use status, freshness labels, and invalidation diagnostics.
-- Represent cacheable artifact categories for asset overview sections, comparison outputs, grounded chat-safe answer artifacts, Markdown/JSON export payload metadata, source-list export metadata, source checksum records, knowledge-pack hash inputs, generated-output hash inputs, and diagnostics. Chat records must remain answer-artifact metadata only and must not store raw user transcript text for analytics, training, or evaluation.
-- Reuse or extend existing deterministic `backend/cache.py` helper contracts without breaking T-026 cache-key, source-checksum, knowledge-pack freshness-hash, generated-output freshness-hash, and revalidation behavior.
-- Cache records must bind to exactly one supported asset or one same-comparison-pack pair, preserve left/right comparison identity where applicable, and reject wrong-asset, wrong-source, wrong-citation, wrong-comparison-pack, and cross-pack bindings.
-- Cacheability must require successful citation validation for important factual claims, same-asset or same-comparison-pack citation/source bindings, safety validation, source-use permission, allowed freshness labels, and no unsupported claims presented as facts.
-- Cacheability must be blocked for unsupported, out-of-scope, eligible-not-cached without generated output, unknown, unavailable, partial-without-label, stale-without-label, insufficient-evidence-without-label, validation-failed, advice-like, source-policy-disallowed, rejected-source, uncited-important-claim, wrong-asset, wrong-pack, and permission-limited states.
-- Generated-output cache metadata must preserve prompt version, model name or deterministic mock marker, schema version, source document IDs, citation IDs, section freshness labels, source checksum IDs, knowledge-pack hash, generated-output freshness hash, validation status, safety status, source-use status, created timestamp, expires-at or TTL metadata where applicable, and invalidation reasons.
-- Source-use policy must win over cache scoring or recency. `metadata_only` and `link_only` sources must not persist raw chunk text; `summary_allowed` sources may store only allowed summaries or excerpts; `rejected` and source-policy-blocked sources must not feed cacheable generated output.
-- Diagnostics must be compact and sanitized. They may include validation codes, invalidation reasons, source IDs, checksums, timestamps, and freshness states, but must not include unrestricted raw source text, raw provider payloads, hidden prompts, raw model reasoning, raw user text, credentials, or secrets.
-- Add an importable Alembic-style revision or equivalent migration-contract metadata limited to generated-output cache contract tables. It must be inspectable without opening a database connection and must not be executed against a database in this task.
-- Preserve current deterministic fixture fallback and current API, retrieval, generation, chat, comparison, export, glossary, provider, frontend, and quality-gate behavior. No route may read from or write to a live cache in this task.
-- Preserve Weekly News Focus and AI Comprehensive Analysis separation. Cache contracts may represent separate timely-context sections and analysis artifacts, but recent context must not overwrite canonical asset facts and AI Comprehensive Analysis remains suppressible when Weekly News Focus evidence is insufficient.
-- Tests cover repository metadata/table shape, artifact categories, hash persistence, invalidation metadata, citation/source binding, comparison left/right identity, safety gating, source-policy gating, freshness/unknown/stale/unavailable/partial blocking, unsupported/out-of-scope/eligible-not-cached blocking, sanitized diagnostics, no raw prompt/reasoning/user-text/secret exposure, import-time no-live-database/no-live-cache behavior, and preservation of existing cache helper behavior.
-- Current API, retrieval, generation, chat, comparison, export, glossary, frontend, provider-secret, source-use policy, fixture, and quality-gate behavior remains unchanged outside the dormant persisted generated-output cache contract.
+- Add an injectable overview read boundary that can prefer persisted same-asset knowledge-pack and generated-output cache records only when explicitly supplied by tests or future callers.
+- The default `generate_asset_overview(ticker)` path remains deterministic and fixture-backed with no live database, cache, provider, LLM, route, or frontend dependency.
+- Persisted-first overview reads must fall back to existing deterministic fixture behavior on unconfigured readers, misses, reader failures, invalid record shapes, invalid cache metadata, wrong-asset bindings, wrong-source bindings, wrong-citation bindings, validation failure, stale-without-label states, source-policy blocks, safety blocks, or cache freshness mismatch.
+- Valid persisted overview records must bind to exactly one supported asset and must preserve current `OverviewResponse` shape, asset identity, state, freshness, citations, source documents, claims, sections, Weekly News Focus, AI Comprehensive Analysis, suitability framing, and section-freshness validation.
+- Preserve existing public overview route behavior and schemas for supported, unsupported, out-of-scope, eligible-not-cached, unknown, unavailable, stale, partial, and insufficient-evidence states. Public API responses must not expose whether a persisted reader was supplied.
+- Preserve current frontend behavior and current deterministic supported overview output for `AAPL`, `VOO`, and `QQQ` when no injected persisted reader is supplied.
+- Preserve unsupported and out-of-scope blocking. Persisted overview records must not create generated pages, citations, risk summaries, chat answers, comparisons, exports, or cache hits for unsupported, out-of-scope, eligible-not-cached without generated output, unknown, unavailable, or source-policy-disallowed assets.
+- Preserve citation validation for important factual claims. Persisted overview records with uncited important factual claims, wrong-asset citations, wrong-source citations, missing citation/source records, or cross-pack evidence must be rejected or ignored in favor of fixture fallback.
+- Preserve source-use rights. Source-use policy must win over cache scoring, recency, and availability; `metadata_only` and `link_only` sources must not provide raw chunk text, `summary_allowed` sources may use only allowed summaries or excerpts, and `rejected` or source-policy-blocked sources must not feed overview reuse.
+- Preserve safety boundaries. Persisted overview records with buy/sell/hold recommendations, allocation advice, price targets, tax advice, brokerage/trading instructions, personalized advice, raw prompts, raw model reasoning, raw user text, or secrets must be rejected or ignored in favor of fixture fallback.
+- Preserve Weekly News Focus and AI Comprehensive Analysis separation. Persisted overview reuse must not let recent news redefine stable canonical facts, must keep Weekly News Focus evidence-limited empty/smaller states valid, and must keep AI Comprehensive Analysis suppressible when Weekly News Focus evidence is insufficient.
+- Preserve source freshness and uncertainty labels. Persisted records missing required freshness labels, as-of/retrieved metadata, stale/unknown/unavailable/partial/insufficient-evidence labels, or section-level validation diagnostics must be rejected or ignored.
+- Diagnostics for persisted-read decisions must be compact and sanitized. They may include validation codes, invalidation reasons, source IDs, checksums, timestamps, freshness states, and reader status, but must not include unrestricted raw source text, raw provider payloads, hidden prompts, raw model reasoning, raw user text, credentials, secrets, public URLs, or signed URLs.
+- Tests cover persisted-first overview reads, default fixture fallback, invalid cache records, wrong-asset source/citation rejection, source-use gating, freshness blocking, unsupported/out-of-scope/eligible-not-cached/unknown/unavailable blocking, advice/safety blocking, sanitized diagnostics, no raw prompt/reasoning/user-text/secret exposure, no live database/cache/provider/LLM imports, and preservation of existing cache helper and retrieval repository behavior.
+- Current API, retrieval, generation, chat, comparison, export, glossary, frontend, provider-secret, source-use policy, fixture, and quality-gate behavior remains unchanged outside the explicit injected overview read boundary.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_cache_contracts.py tests/unit/test_source_policy.py tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
+python3 -m pytest tests/unit/test_overview_generation.py tests/unit/test_cache_contracts.py tests/unit/test_retrieval_repository.py -q
+python3 -m pytest tests/integration/test_backend_api.py -q
 python3 -m pytest tests -q
 python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
 ```
 
 Iteration budget:
-One agent-loop cycle. If the persisted generated-output cache contract reveals a need for live database execution, Redis or object-storage clients, route/admin wiring, generated-output cache reads or writes, cache invalidation workers, source snapshot writes, provider or LLM calls, frontend changes, paid-provider licensing review, source allowlist expansion, prompt storage, raw transcript storage, or broader asset-universe coverage, stop after the dormant repository contract and record the follow-up under Backlog instead of expanding scope.
+One agent-loop cycle. If comparison, chat, export, frontend work, live cache writes, live database execution, cache invalidation workers, provider or LLM calls, route schema changes, source allowlist expansion, paid-provider licensing review, broader asset-universe coverage, or production persistence wiring are needed, record the follow-up and stop after overview persisted-read fallback behavior.
 
 
 ## Completed
+
+### T-084: Add persisted generated-output cache and freshness-hash contracts
+
+Goal:
+Add dormant persisted generated-output cache and freshness-hash repository contracts for overview, comparison, chat-safe answer artifacts, exports, source checksums, knowledge-pack hashes, generated-output freshness hashes, validation status, and invalidation diagnostics without routing current responses through the cache.
+
+Completed details:
+
+- Implementation commit `6201ddb feat(T-084): add persisted generated-output cache and freshness-hash contracts` added `alembic/versions/20260425_0005_generated_output_cache_contracts.py`, `backend/generated_output_cache_repository.py`, `backend/repositories/generated_outputs.py`, and `docs/agent-journal/20260425T180425Z.md`, and updated `backend/repositories/__init__.py` and `tests/unit/test_cache_contracts.py`.
+- Merged branch `agent/T-084-20260425T180425Z` into `main` with local merge commit `cbb4ee3 chore(T-084): merge persisted generated-output cache and freshness-hash contracts`.
+- `backend/repositories/generated_outputs.py` added a dormant pure-Python generated-output cache repository contract for cache envelopes, artifact records, source checksum inputs, knowledge-pack hash inputs, generated-output freshness hash inputs, validation statuses, citation/source binding metadata, safety/source-use/freshness statuses, and compact invalidation diagnostics.
+- `backend/generated_output_cache_repository.py` re-exports the generated-output cache repository boundary, row models, categories, validation helpers, serialization helpers, metadata helper, and contract error for future route-level cache integration.
+- The generated-output cache contract covers asset overview section artifacts, comparison outputs, grounded chat-safe answer artifacts, Markdown/JSON export payload metadata, source-list export metadata, source checksum records, knowledge-pack hash inputs, generated-output hash inputs, validation status records, and diagnostics.
+- Cache validation preserves same-asset and same-comparison-pack boundaries, left/right comparison identity, citation/source binding, supported-asset requirements, safety gating, source-use gating, allowed freshness labels, and generated-output blocking for unsupported, out-of-scope, eligible-not-cached, unknown, unavailable, partial-without-label, stale-without-label, insufficient-evidence-without-label, validation-failed, advice-like, wrong-asset, wrong-pack, source-policy-blocked, and rejected-source states.
+- The contract keeps chat cache records to answer-artifact metadata and blocks raw user transcript text for analytics, training, or evaluation.
+- Source-use policy continues to win over recency or cache scoring: `metadata_only` and `link_only` records cannot persist raw chunk text, `summary_allowed` records are limited to allowed summaries or excerpts, and `rejected` or source-policy-blocked sources cannot feed cacheable generated output.
+- Diagnostics are limited to compact sanitized metadata such as validation codes, invalidation reasons, source IDs, checksums, timestamps, and freshness states, without unrestricted raw source text, raw provider payloads, hidden prompts, raw model reasoning, raw user text, credentials, or secrets.
+- The Alembic revision `20260425_0005_generated_output_cache_contracts.py` is importable and inspectable, limited to generated-output cache contract tables, and was not executed against a database in this task.
+- The journal records that no API route, retrieval, generation, chat, comparison, export, glossary, provider, frontend, live database, live cache, Redis, object storage, or LLM behavior was changed.
+- `docs/agent-journal/20260425T180425Z.md` records these checks: `python3 -m pytest tests/unit/test_cache_contracts.py tests/unit/test_source_policy.py tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q` passed with 48 tests; `python3 -m pytest tests -q` passed with 274 tests; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed; `git diff --check` passed.
+- Remaining risks from the journal:
+  - The contract is metadata-only and intentionally dormant; no production database reader/writer, cache integration, invalidation worker, route wiring, or executed migration was added.
+  - The Alembic revision is importable and inspectable, but it was not executed against a database in this task.
+  - Future route-level cache integration still needs separate surface-specific tasks for overview, comparison, chat-safe answer artifacts, and exports so fixture fallback and safety/citation/source-use gates remain intact.
+
+Completion commits:
+
+- `6201ddb feat(T-084): add persisted generated-output cache and freshness-hash contracts`
+- `cbb4ee3 chore(T-084): merge persisted generated-output cache and freshness-hash contracts`
 
 ### T-083: Add ETF issuer and holdings source adapter fixture contracts
 
@@ -2245,37 +2277,6 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-085: Route asset overview through persisted pack and cache boundaries
-
-Goal:
-Route the supported asset overview generation path through injected persisted knowledge-pack and generated-output cache read boundaries first, while preserving deterministic fixture fallback, current API response shape, current frontend behavior, and current safety/citation/source-use behavior.
-
-Roadmap alignment:
-
-- First narrow slice of "Route overview, comparison, and chat generation through persisted knowledge packs."
-- Depends on completed T-077, T-078, and the current T-084 cache contract.
-- Keeps comparison and chat routing out of scope so overview behavior can be validated independently.
-
-Acceptance criteria:
-
-- Add an injectable overview read boundary that can prefer persisted same-asset knowledge-pack/cache records when valid, then fall back to existing deterministic fixture behavior on miss, invalid records, wrong-asset bindings, failed validation, stale-without-label states, source-policy blocks, or reader failures.
-- Preserve existing public overview route schemas, supported/unsupported/out-of-scope/unknown behavior, citation IDs, source metadata, Weekly News Focus separation, AI Comprehensive Analysis suppression behavior, and no-live-call defaults.
-- Reject persisted overview records with wrong-asset citations, rejected/source-policy-disallowed sources, uncited important factual claims, advice-like output, missing freshness labels, raw prompts, raw model reasoning, secrets, or raw user text.
-- Add focused tests for persisted-first overview reads, fixture fallback, invalid cache records, wrong-asset source/citation rejection, source-use gating, freshness blocking, unsupported/out-of-scope blocking, and no live database/cache/provider/LLM imports.
-
-Required commands:
-
-```bash
-python3 -m pytest tests/unit/test_overview_generation.py tests/unit/test_cache_contracts.py tests/unit/test_retrieval_repository.py -q
-python3 -m pytest tests/integration/test_backend_api.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-```
-
-Iteration budget:
-One agent-loop cycle. If comparison, chat, export, live cache writes, route mutation, or frontend changes are needed, record the follow-up and stop after overview persisted-read fallback behavior.
 
 ### T-086: Route comparison generation through persisted pack and cache boundaries
 
