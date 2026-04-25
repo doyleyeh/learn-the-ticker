@@ -480,7 +480,9 @@ When the user sees a term such as:
 - return on invested capital;
 - price/free cash flow.
 
-The app should allow the user to open a glossary card exactly where the term appears. Glossary is contextual help inside asset pages, comparison pages, and chat answers. It should not be a major home-page workflow for MVP.
+The app should allow the user to open a glossary card exactly where the term appears. Glossary is contextual help inside asset pages, comparison pages, and chat answers. It should not be a major home-page workflow for MVP, and asset pages should not collect all glossary terms into one large standalone glossary section that users must scan separately from the content.
+
+Important terms should be wrapped inline in their natural section: for example, P/E inside valuation context, AUM and expense ratio inside ETF snapshot or cost context, and tracking error inside fund construction or tracking context. The trigger should preserve the reading flow so users can learn the term without losing the surrounding claim, citation, or section.
 
 Each glossary card should include:
 
@@ -491,7 +493,7 @@ Each glossary card should include:
 - an optional link to a deeper explanation;
 - optional asset-specific context when grounded in the selected asset's data.
 
-The glossary should support learning in context. Desktop should support hover preview, click-to-pin, and keyboard focus. Mobile should support tap to open a bottom sheet; long tap may also open the sheet, but it should not be the only gesture.
+The glossary should support learning in context. Desktop should support hover preview, click-to-pin, and keyboard focus from the inline term. Mobile should support tap to open a bottom sheet from the inline term; long tap may also open the sheet, but it should not be the only gesture.
 
 ## 9.4 Comparison page
 
@@ -1699,7 +1701,9 @@ This prevents the user from confusing short-term news or AI synthesis with the a
 
 ## 19.6 Contextual glossary cards
 
-Glossary cards should help users understand important terms without leaving the page.
+Glossary cards should help users understand important terms without leaving the page or jumping to a separate glossary section.
+
+Cards should be attached to inline terms where they appear in the page, comparison, or chat answer. Examples include P/E in valuation context, AUM and expense ratio in ETF cost or snapshot context, and tracking error in fund-construction context. A page may fetch glossary context once, but the user-facing interaction should happen from each term's location rather than from an aggregated "glossary for this page" block.
 
 Each card should include:
 
@@ -1710,7 +1714,7 @@ Each card should include:
 - optional asset-specific context when grounded and cited;
 - optional deeper link.
 
-On desktop, glossary cards should support hover preview, click-to-pin, and keyboard focus. On mobile, tapping a term should open a bottom sheet. Glossary should not compete with search or comparison as a primary home-page workflow in MVP.
+On desktop, glossary cards should support hover preview, click-to-pin, and keyboard focus on the inline term. On mobile, tapping the inline term should open a bottom sheet. Glossary should not compete with search or comparison as a primary home-page workflow in MVP, and MVP asset pages should not rely on a single standalone glossary section as the primary way to explain terms.
 
 ## 19.7 Unknown and mixed-evidence states
 

@@ -1877,7 +1877,7 @@ Asset header fields: ticker, canonical name, asset type, exchange, ETF issuer/pr
 | `HoldingsTable` / `ExposureChart` / `CostAndTradingCard` / `ETFRoleCard` | ETF-specific sections. |
 | `WeeklyNewsPanel` / `AIComprehensiveAnalysisPanel` | Timely context after stable facts, with suppression/empty states. |
 | `CitationChip` / `SourceDrawer` / `SourceList` | Claim-level citations, source details, and page source lists. |
-| `GlossaryTerm` / `GlossaryPopover` / `GlossaryBottomSheet` | Contextual term help on desktop and mobile. |
+| `GlossaryTerm` / `GlossaryPopover` / `GlossaryBottomSheet` | Inline contextual term help on desktop and mobile. |
 | `AssetChatPanel` | Grounded selected-asset chat with starter prompts and compare redirects. |
 | `CompareBuilder` / `CompareAssetInput` / `CompareSuggestionList` | Empty and one-sided comparison states. |
 | `CompareHeader` / `CompareSnapshotCards` / `CompareKeyDifferences` | Shared comparison page structure. |
@@ -1909,9 +1909,11 @@ The drawer must never show unrestricted restricted article text, private raw PDF
 
 ### 15.8 Glossary UX
 
-`GlossaryTerm` renders important terms with subtle dotted underline and accessible focus state. Desktop hover shows a quick preview; click pins the card; keyboard focus opens the card. Mobile tap opens `GlossaryBottomSheet`; long tap may also open it but is not the only gesture.
+`GlossaryTerm` wraps the actual term text at the source location in asset sections, comparison sections, and chat answers, using a subtle dotted underline and accessible focus state. Examples include P/E inside valuation context, AUM and expense ratio inside ETF snapshot or cost context, and tracking error inside fund-construction content. Desktop hover shows a quick preview; click pins the card; keyboard focus opens the card. Mobile tap opens `GlossaryBottomSheet`; long tap may also open it but is not the only gesture.
 
 Glossary cards include term name, simple definition, why it matters, common beginner mistake, related terms, and optional asset-specific context. Generic definitions do not need citations. Asset-specific values, comparisons, holdings, metrics, or claims require citations.
+
+Backend glossary context may be fetched once per asset page for the rendered terms, but the UI should render and open cards per inline term. MVP asset pages should not use one large standalone "Glossary for this page" section as the primary glossary experience. Optional `/glossary/[term]` pages remain post-MVP deeper-reference surfaces after contextual inline behavior is stable.
 
 ### 15.9 Chat UX
 
@@ -2406,7 +2408,7 @@ These phases describe implementation order only. Full MVP remains the v1 target 
 - Add cache and freshness-hash invalidation.
 - Add pre-cache orchestration for the high-demand launch universe.
 - Add on-demand ingestion job states for eligible supported assets outside the pre-cache set.
-- Add hybrid glossary baseline and optional full glossary detail pages after contextual glossary behavior is stable.
+- Add hybrid glossary baseline with inline term triggers first; optional full glossary detail pages can follow after contextual inline glossary behavior is stable.
 - Add evaluation dashboard.
 
 Saved assets, saved comparisons, watchlists, learning paths, and user accounts are post-MVP features and should not be required for v1.
@@ -2440,7 +2442,7 @@ MVP is technically ready when:
 - Weak stock-vs-ETF comparisons are not suggested prominently.
 - Chat answers only from the selected asset knowledge pack.
 - Single-asset chat redirects second-ticker comparison questions to the comparison workflow.
-- Contextual glossary terms work in asset pages, comparison pages, and chat answers; desktop supports hover/click/focus and mobile supports tap bottom sheets.
+- Contextual glossary terms work inline in asset pages, comparison pages, and chat answers; desktop supports hover/click/focus and mobile supports tap bottom sheets.
 - Safety guardrails prevent buy/sell, price-target, and allocation advice.
 - Prompt-injection defenses treat retrieved text as untrusted evidence and ignore instructions inside retrieved documents.
 - Source sanitization and SSRF defenses are covered for HTML/PDF rendering and ingestion fetchers.

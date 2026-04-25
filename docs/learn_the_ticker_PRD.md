@@ -62,7 +62,7 @@ This version resolves the previous open questions and makes the MVP direction ex
 | Grounded chat timing     | Include limited asset-specific grounded chat in MVP as a beta feature. Do not ship a general finance chatbot.                                                                                                                                                                                                                                                                                                 |
 | Citation strictness      | Require citations for important factual claims, not every sentence. Generic educational explanations do not require citations unless they include asset-specific facts.                                                                                                                                                                                                                                       |
 | Frontend workflow        | The home page is single-asset search first. Comparison lives on `/compare` and is reachable from global navigation, asset pages, suggested comparisons, chat compare redirects, and natural `A vs B` search patterns. Glossary is contextual help in reading flows, not a primary home-page workflow for MVP. |
-| Glossary depth           | Use a hybrid glossary: curated static definitions for core terms, plus optional asset-specific context grounded in the selected asset's data. In MVP, glossary appears primarily through contextual term cards on asset pages, comparison pages, and chat answers. |
+| Glossary depth           | Use a hybrid glossary: curated static definitions for core terms, plus optional asset-specific context grounded in the selected asset's data. In MVP, glossary appears primarily through inline contextual term cards on asset pages, comparison pages, and chat answers, not through one large standalone glossary section on an asset page. |
 | User accounts            | Keep v1 accountless. Store anonymous chat sessions with random IDs for grounded follow-ups and user-requested export. Browser local storage keeps only conversation metadata. Server-side chat TTL is 7 days from last activity, with user-delete support.                                                                                                                                  |
 | Compliance stance        | Add persistent educational disclaimers and inline redirects for advice-like questions. Avoid buy/sell/hold, allocation, price-target, tax, and personalized recommendation language.                                                                                                                                                                                                                          |
 | Mobile priority          | Build responsive web from v1. Mobile should prioritize Beginner Summary, Top 3 Risks, Key Facts, Weekly News Focus, AI Comprehensive Analysis, contextual glossary cards, chat, and source access. Source, glossary, and chat surfaces open as bottom sheets or full-screen panels where appropriate. |
@@ -207,7 +207,7 @@ Users should be able to ask questions about the selected asset. Chat answers mus
 
 #### G6. Teach financial vocabulary in context
 
-Users should be able to hover, click, tap, or keyboard-focus terms such as "expense ratio," "AUM," "P/E," "operating margin," "concentration," or "tracking error" and get short beginner explanations in context. Glossary is not a major home-page workflow for MVP.
+Users should be able to hover, click, tap, or keyboard-focus terms such as "expense ratio," "AUM," "P/E," "operating margin," "concentration," or "tracking error" exactly where those terms appear and get short beginner explanations in context. Glossary is not a major home-page workflow for MVP, and asset pages should not require users to leave the section they are reading for a separate glossary block.
 
 #### G7. Avoid investment advice
 
@@ -823,13 +823,15 @@ MVP chat should support grounded follow-ups without creating accounts.
 
 ### 11.9 Hybrid glossary and concept learning
 
-Users can learn finance terms in context on asset pages, comparison pages, and chat answers. Glossary is not a major home-page workflow for MVP.
+Users can learn finance terms in context on asset pages, comparison pages, and chat answers. Glossary is not a major home-page workflow for MVP. The primary MVP interaction is inline: users open the glossary card from the term inside the section they are already reading.
 
 Glossary approach:
 
 - Curated static definitions for core finance terms.
 - Optional AI-generated contextual explanation for the selected asset.
 - No uncited asset-specific facts in generated glossary context.
+- Inline `GlossaryTerm` triggers in relevant content sections, such as P/E in valuation context, AUM and expense ratio in ETF snapshot or cost context, and tracking error in fund-construction content.
+- No large standalone "Glossary for this page" section as the primary glossary experience on MVP asset pages.
 - Desktop terms support hover previews, click-to-pin behavior, and keyboard focus.
 - Mobile terms support tap to open a glossary bottom sheet; long tap may also open it, but long tap must not be the only gesture.
 
@@ -843,6 +845,7 @@ Glossary approach:
 | GL-6 | Glossary cards can include grounded asset-specific context when useful. | P2       |
 | GL-7 | Desktop supports `GlossaryPopover`; mobile supports `GlossaryBottomSheet`. | P0       |
 | GL-8 | Asset-specific glossary context uses citations for values, comparisons, holdings, metrics, or claims about the selected asset. | P0       |
+| GL-9 | MVP asset pages do not collect every glossary term into one large standalone glossary section; term help opens from inline triggers in the relevant content. | P0       |
 
 Initial curated glossary should include 50-100 core terms, including:
 
@@ -1508,6 +1511,8 @@ Acceptance criteria:
 
 Glossary cards should open as `GlossaryPopover` on desktop and `GlossaryBottomSheet` on mobile. `GlossaryTerm` rendering should use a subtle dotted underline, accessible focus style, and no aggressive highlighting.
 
+`GlossaryTerm` should wrap the actual term text where it appears in the reading flow. Examples: P/E in valuation context, AUM and expense ratio in ETF snapshot or cost context, and tracking error in fund-construction content. MVP asset pages should not rely on a single "Glossary for this page" section as the main way to reference terms.
+
 Each glossary card should include:
 
 - simple definition
@@ -1521,6 +1526,7 @@ Acceptance criteria:
 
 - Glossary explanations are short and practical.
 - Glossary cards help users continue the main task.
+- Glossary cards open from inline term triggers inside the relevant section rather than from an aggregate glossary list.
 - Desktop supports hover preview, click-to-pin, and keyboard focus.
 - Mobile supports tap to open the bottom sheet; long tap may also open it, but it is not the only gesture.
 
