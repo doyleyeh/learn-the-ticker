@@ -1,69 +1,35 @@
 ## Current task
 
+No current task is prepared. The runnable Backlog is empty.
+
+
+## Completed
+
 ### T-078: Route retrieval through persisted packs with fixture fallback
 
 Goal:
 Route the asset knowledge-pack build-result retrieval path through an injectable persisted-pack read boundary first, with deterministic fixture fallback preserved as the default behavior and no live database dependency in normal local or CI runs.
 
-Task-scope paragraph:
-This cycle is limited to adding a small retrieval repository adapter around the T-077 persisted knowledge-pack contract so `KnowledgePackBuildResponse` lookup can prefer an injected persisted record and fall back to the existing deterministic fixture builders when no persisted pack is available. The default app/test path must remain deterministic and fixture-backed unless a fake or explicitly injected repository reader is supplied. Do not open a real database connection, execute migrations, add ingestion writes, route generation/chat/comparison/export/glossary behavior through persistence, or change frontend behavior.
+Completed details:
 
-Allowed files:
+- Implementation commit `6cfd5da feat(T-078): route retrieval through persisted packs with fixture fallback` updated `backend/retrieval_repository.py`, `backend/retrieval.py`, `backend/repositories/knowledge_packs.py`, `backend/repositories/__init__.py`, `tests/unit/test_retrieval_repository.py`, and `docs/agent-journal/20260425T042223Z.md`.
+- Merged branch `agent/T-078-20260425T042223Z` into `main` with local merge commit `19f5169 chore(T-078): merge route retrieval through persisted packs with fixture fallback`.
+- `backend/retrieval_repository.py` added a pure-Python retrieval read boundary for injected persisted `KnowledgePackRepositoryRecords`, including `KnowledgePackRecordReader`, `RetrievalRepositoryReadResult`, `RETRIEVAL_REPOSITORY_BOUNDARY`, and `read_persisted_knowledge_pack_response`.
+- `build_asset_knowledge_pack_result(ticker)` remains backward compatible and fixture-backed by default; callers may opt into the persisted-first path with an injected `persisted_reader`.
+- Persisted records are deserialized through the T-077 `AssetKnowledgePackRepository` contract before use, and repository misses, unconfigured readers, reader failures, invalid reader shapes, wrong-ticker records, wrong-asset source bindings, and source-use contract violations do not replace deterministic fixture output.
+- `backend/repositories/knowledge_packs.py` now preserves repository row order during deserialization and restores persisted `permitted_operations` into `SourceKnowledgePackMetadata` so persisted metadata reconstructs the fixture-backed response shape more closely.
+- `backend/repositories/__init__.py` re-exports the retrieval repository boundary and read helper.
+- `tests/unit/test_retrieval_repository.py` covers persisted-first retrieval for `VOO`, fixture fallback for missing/empty/failing readers, non-generated metadata-only states for `SPY`, `TQQQ`, and `ZZZZ`, rejected source-use and wrong-asset persisted records, reader ticker mismatch, lazy no-database/no-live-provider imports, invalid reader shapes, and visible deserialization contract errors.
+- The journal records that the task did not add FastAPI route wiring, a live database connection, migrations, frontend behavior, generated content, source-use policy changes, provider calls, or secret-handling changes.
+- `docs/agent-journal/20260425T042223Z.md` records these checks: `python3 -m pytest tests/unit/test_retrieval_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_retrieval_fixtures.py tests/integration/test_backend_api.py -q` passed with 59 tests; `python3 -m pytest tests -q` passed with 225 tests; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed; `docker compose config` passed.
+- Remaining risks from the journal:
+  - The persisted read path is intentionally injectable only; no production database reader, route wiring, or live persistence execution path was added.
+  - Persisted responses reconstruct metadata-only `KnowledgePackBuildResponse` records; `cache_revalidation` is still not stored by the T-077 repository contract.
 
-- `backend/knowledge_pack_repository.py`
-- `backend/retrieval.py`
-- `backend/retrieval_repository.py`
-- `backend/repositories/knowledge_packs.py`
-- `backend/repositories/__init__.py`
-- `tests/unit/test_knowledge_pack_repository.py`
-- `tests/unit/test_retrieval_repository.py`
-- `tests/unit/test_retrieval_fixtures.py`
-- `tests/integration/test_backend_api.py`
-- `docs/agent-journal/<run-id>.md`
+Completion commits:
 
-Do not change:
-
-- FastAPI routes, endpoint response schemas, route wiring, deterministic fixture data, overview generation, comparison generation, grounded chat, glossary context, exports, Weekly News Focus, AI Comprehensive Analysis, source drawer payloads, source-use policy, citation validation, eval data, or generated content
-- frontend files, frontend smoke markers, home/search/navigation behavior, `/compare` behavior, `A vs B` search redirects, source drawer UI, contextual glossary UI, asset chat UI, export controls, freshness labels, or stock-vs-ETF relationship badges
-- supported/unsupported/out-of-scope/pending/partial/stale/unknown/unavailable/insufficient-evidence semantics
-- live provider, news, market-data, LLM, OpenRouter, SEC, ETF issuer, or external source calls
-- ingestion persistence, source snapshot storage, accountless chat persistence, trust-metric persistence, generated-output cache persistence, production deployment wiring, migration execution, or any background worker execution path
-- Docker Compose service topology, CI workflow behavior, root npm scripts, apps/web workspace scripts, or agent-loop scripts
-- real secret values, committed credentials, browser-exposed provider keys, `NEXT_PUBLIC_*` secrets, `/health` secret exposure, or logs that echo sensitive values
-- source-use rights, export licensing behavior, safety/advice-boundary copy, or educational disclaimers
-
-Acceptance criteria:
-
-- A retrieval repository boundary exists for `KnowledgePackBuildResponse` lookup that can read/deserialise T-077 `KnowledgePackRepositoryRecords` from an injected fake or repository reader before falling back to deterministic fixture builders.
-- Existing `build_asset_knowledge_pack_result(ticker)` call sites remain backward compatible and deterministic when no persisted reader is injected.
-- Tests prove a supported fixture-backed pack such as `VOO` can be serialized with the T-077 repository, returned through the new retrieval read boundary, and reconstructed with the same ticker, asset identity, build state, support state, generated-output availability, source IDs, citation IDs, source documents, facts, chunks, recent developments, evidence gaps, section freshness, source-use policy, source checksum metadata, cache key, and knowledge-pack freshness hash.
-- Tests prove fixture fallback is used when the persisted reader has no matching record, fails with a controlled repository-miss result, or is not configured; fallback output remains byte-for-byte equivalent to the current deterministic fixture-backed `KnowledgePackBuildResponse` for supported cached assets and non-generated states.
-- Non-generated states such as eligible-not-cached, unsupported, out-of-scope, and unknown remain represented as non-generated metadata only; the retrieval route must not create generated pages, generated chat answers, generated comparisons, generated risk summaries, source facts, citations, or fake evidence for those states.
-- Persisted records that violate T-077 source-use rights, wrong-asset source bindings, or citation/source boundaries are rejected and do not silently replace fixture-backed safe output.
-- Repository imports and retrieval imports remain lazy and deterministic: they do not open a database connection during module import, app import, static evals, frontend tests, backend API tests, or the main quality gate.
-- Existing backend API behavior remains response-compatible and deterministic; supported asset pages, search, comparison, chat, exports, Weekly News Focus, AI Comprehensive Analysis, citations, freshness, and unsupported/out-of-scope states behave as before when no persisted reader is injected.
-- Existing frontend behavior remains untouched and aligned with Frontend Design and Workflow v0.4: home remains single-stock-or-ETF search first; comparison remains separate through `/compare`; glossary remains contextual; source drawer, glossary, and chat mobile behavior remains unchanged; stock-vs-ETF relationship badges remain unchanged.
-- Placeholder env files remain placeholder-only and no new provider or database secrets are exposed to browser code, `NEXT_PUBLIC_*`, `/health`, docs, logs, or committed files.
-- No live provider, news, market-data, LLM, OpenRouter, SEC, ETF issuer, or external source calls are introduced.
-- Citation, freshness, uncertainty, source-use, and safety rules are unchanged: important claims require citations or explicit uncertainty, stale/unknown/unavailable/partial/insufficient-evidence states remain visible where applicable, and rejected or license-disallowed sources cannot feed generated output, rendered summaries, caches, or exports.
-- Product safety remains unchanged: no buy/sell/hold recommendations, personalized allocation advice, unsupported price targets, tax advice, brokerage/trading behavior, or unsupported factual claims are introduced.
-- Tests cover persisted-first retrieval, deterministic fixture fallback, repository miss/error handling, source-use and same-asset validation, non-generated state handling, lazy no-live-connection behavior, and preservation of current fixture-backed API behavior.
-- Required commands from this cycle pass.
-
-Required commands:
-
-- `python3 -m pytest tests/unit/test_retrieval_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_retrieval_fixtures.py tests/integration/test_backend_api.py -q`
-- `python3 -m pytest tests -q`
-- `python3 evals/run_static_evals.py`
-- `bash scripts/run_quality_gate.sh`
-- `docker compose config` if Docker is available; if unavailable, record the reason in the journal
-
-Iteration budget:
-
-- Max 2 attempts
-
-
-## Completed
+- `6cfd5da feat(T-078): route retrieval through persisted packs with fixture fallback`
+- `19f5169 chore(T-078): merge route retrieval through persisted packs with fixture fallback`
 
 ### T-077: Add persisted knowledge-pack repository contracts
 
@@ -2082,7 +2048,7 @@ Completion commits:
 
 ## MVP Backend Roadmap
 
-This section is intentionally non-operational for the agent loop. Keep the runnable repeat-mode backlog above as `### T-` headings, and keep this longer MVP roadmap as bullets until each item is promoted into a narrow task contract. Early backend tasks may add production dependencies such as SQLAlchemy, Alembic, or psycopg only with dependency rationale, focused tests, and no live external calls in normal CI.
+This section is intentionally non-operational for the agent loop. Keep runnable repeat-mode tasks above this roadmap as third-level task headings, and keep this longer MVP roadmap as bullets until each item is promoted into a narrow task contract. Early backend tasks may add production dependencies such as SQLAlchemy, Alembic, or psycopg only with dependency rationale, focused tests, and no live external calls in normal CI.
 
 Operational defaults for backend roadmap tasks:
 
