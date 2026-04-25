@@ -8,6 +8,12 @@ Add dormant persisted generated-output cache and freshness-hash repository contr
 Task-scope paragraph:
 This task should add a persisted-cache contract layer only. It may add pure repository/table metadata, row models, serialization helpers, validation helpers, and tests that describe how generated overview, comparison, grounded-chat, and export artifacts would be cached later using existing deterministic cache-key and freshness-hash helpers. It must stay dormant, import-safe, deterministic, and fixture/test backed. It must not make routes read from or write to a live cache, create generated output, change API/frontend behavior, add live database execution, add provider or LLM calls, or weaken citation, safety, freshness, source-use, unknown/stale/unavailable/partial, unsupported, or out-of-scope handling.
 
+Roadmap alignment:
+
+- Promotes the generated-output cache and freshness-hash roadmap area after completed ingestion ledger, worker, source snapshot, SEC adapter, and ETF adapter groundwork.
+- This task prepares persistence metadata for later overview, comparison, chat-safe answer, and export cache integration, but does not route any public behavior through a cache.
+- The next backlog tasks should split route-level integration by surface area so overview, comparison, and chat can preserve fixture fallback independently.
+
 Allowed files:
 
 - `backend/models.py`
@@ -2240,7 +2246,187 @@ Completion commits:
 
 ## Backlog
 
-No prepared backlog tasks. The backlog is empty after promoting T-084 into Current task.
+### T-085: Route asset overview through persisted pack and cache boundaries
+
+Goal:
+Route the supported asset overview generation path through injected persisted knowledge-pack and generated-output cache read boundaries first, while preserving deterministic fixture fallback, current API response shape, current frontend behavior, and current safety/citation/source-use behavior.
+
+Roadmap alignment:
+
+- First narrow slice of "Route overview, comparison, and chat generation through persisted knowledge packs."
+- Depends on completed T-077, T-078, and the current T-084 cache contract.
+- Keeps comparison and chat routing out of scope so overview behavior can be validated independently.
+
+Acceptance criteria:
+
+- Add an injectable overview read boundary that can prefer persisted same-asset knowledge-pack/cache records when valid, then fall back to existing deterministic fixture behavior on miss, invalid records, wrong-asset bindings, failed validation, stale-without-label states, source-policy blocks, or reader failures.
+- Preserve existing public overview route schemas, supported/unsupported/out-of-scope/unknown behavior, citation IDs, source metadata, Weekly News Focus separation, AI Comprehensive Analysis suppression behavior, and no-live-call defaults.
+- Reject persisted overview records with wrong-asset citations, rejected/source-policy-disallowed sources, uncited important factual claims, advice-like output, missing freshness labels, raw prompts, raw model reasoning, secrets, or raw user text.
+- Add focused tests for persisted-first overview reads, fixture fallback, invalid cache records, wrong-asset source/citation rejection, source-use gating, freshness blocking, unsupported/out-of-scope blocking, and no live database/cache/provider/LLM imports.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_overview_generation.py tests/unit/test_cache_contracts.py tests/unit/test_retrieval_repository.py -q
+python3 -m pytest tests/integration/test_backend_api.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
+Iteration budget:
+One agent-loop cycle. If comparison, chat, export, live cache writes, route mutation, or frontend changes are needed, record the follow-up and stop after overview persisted-read fallback behavior.
+
+### T-086: Route comparison generation through persisted pack and cache boundaries
+
+Goal:
+Route supported comparison generation through injected persisted knowledge-pack and generated-output cache read boundaries first, while preserving deterministic local comparison fallback, same-comparison-pack citation boundaries, blocked states, and stock-vs-ETF relationship behavior.
+
+Roadmap alignment:
+
+- Second narrow slice of "Route overview, comparison, and chat generation through persisted knowledge packs."
+- Depends on completed comparison contracts, T-078 persisted-pack fallback, and T-084 generated-output cache contracts.
+- Keeps overview and chat routing out of scope.
+
+Acceptance criteria:
+
+- Add an injectable comparison read boundary that can prefer valid persisted same-comparison-pack records, then fall back to existing deterministic comparison fixtures on miss, invalid records, wrong-pack bindings, failed validation, source-policy blocks, or reader failures.
+- Preserve existing `/api/compare` schema, comparison export behavior, unsupported/out-of-scope/unknown pair blocking, `VOO`/`QQQ` deterministic fallback, and `AAPL`/`VOO` stock-vs-ETF relationship badges and basket structure.
+- Reject persisted comparisons with wrong left/right identity, cross-pack citations, rejected sources, uncited important claims, stale-without-label evidence, advice-like output, raw prompts, raw model reasoning, secrets, or unrestricted source text.
+- Add focused tests for persisted-first comparison reads, reverse-order handling where supported, fixture fallback, wrong-pack rejection, stock-vs-ETF relationship preservation, source-use gating, blocked pair states, and no live database/cache/provider/LLM imports.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_comparison_generation.py tests/unit/test_cache_contracts.py tests/unit/test_retrieval_repository.py -q
+python3 -m pytest tests/integration/test_backend_api.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
+Iteration budget:
+One agent-loop cycle. If overview, chat, frontend comparison UI, exports, live cache writes, or broader comparison-pair coverage are needed, record the follow-up and stop after comparison persisted-read fallback behavior.
+
+### T-087: Route grounded chat answer artifacts through persisted pack and cache boundaries
+
+Goal:
+Route grounded single-asset chat answer generation through injected persisted knowledge-pack and chat-safe generated-output cache read boundaries first, while preserving selected-asset grounding, advice redirects, comparison redirects, accountless session semantics, and deterministic fixture fallback.
+
+Roadmap alignment:
+
+- Third narrow slice of "Route overview, comparison, and chat generation through persisted knowledge packs."
+- Depends on completed grounded chat contracts, T-078 persisted-pack fallback, and T-084 chat-safe cache artifact contracts.
+- Leaves durable accountless chat session persistence to T-088 and T-089.
+
+Acceptance criteria:
+
+- Add an injectable chat answer artifact read boundary that can prefer valid same-asset persisted records for factual answers, then fall back to existing deterministic chat generation on miss, invalid records, wrong-asset bindings, failed validation, source-policy blocks, or reader failures.
+- Preserve advice-like redirect precedence before retrieval/cache reads, comparison-route redirects for second-ticker questions, unsupported/out-of-scope/unknown blocking, no raw transcript analytics, and existing chat/export response schemas.
+- Reject persisted chat artifacts with raw user questions, raw transcript text for analytics/training/evaluation, wrong-asset citations, rejected sources, uncited important claims, stale-without-label evidence, advice-like output, raw prompts, raw model reasoning, secrets, or unrestricted source text.
+- Add focused tests for persisted-first grounded answers, fixture fallback, advice precedence, compare redirect preservation, same-asset citation/source gating, source-use and freshness blocking, unsupported/out-of-scope states, and no live database/cache/provider/LLM imports.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_chat_generation.py tests/unit/test_cache_contracts.py tests/unit/test_safety_guardrails.py -q
+python3 -m pytest tests/integration/test_backend_api.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
+Iteration budget:
+One agent-loop cycle. If durable session storage, transcript export persistence, live cache writes, frontend chat changes, or broader chat memory behavior are needed, record the follow-up and stop after chat answer artifact persisted-read fallback behavior.
+
+### T-088: Add accountless chat session persistence contracts
+
+Goal:
+Add dormant accountless chat session persistence contracts for anonymous conversation IDs, seven-day TTL metadata, deletion state, turn summaries, comparison redirects, and transcript export metadata without routing current chat behavior through a live database.
+
+Roadmap alignment:
+
+- First narrow slice of "Persist accountless chat sessions, seven-day TTL metadata, deletion state, and transcript export payloads."
+- Follows chat-safe answer artifact routing but stays contract-only and dormant.
+
+Acceptance criteria:
+
+- Add pure repository/table metadata and row models for chat session envelopes, safe turn summaries, deletion state, expiration metadata, comparison redirects, export availability metadata, and source/citation references.
+- Preserve no raw transcript analytics/training/evaluation behavior: records may contain compact turn metadata, safety classifications, citation IDs, source IDs, comparison-route metadata, timestamps, and sanitized diagnostics, but not raw user text for analytics/training/evaluation, hidden prompts, raw model reasoning, secrets, or unrestricted source text.
+- Enforce selected-asset scope, same-asset citations, advice redirect semantics, comparison redirect semantics, and unsupported/out-of-scope/unknown generated-output blocking.
+- Keep current chat API, in-memory/session fallback behavior, frontend behavior, exports, and route schemas unchanged.
+- Add tests for TTL/deletion metadata, safe turn summary serialization, source/citation binding, comparison redirect preservation, export metadata, blocked states, sanitized diagnostics, and import-time no-live-database/no-live-cache behavior.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_chat_sessions.py tests/unit/test_exports.py tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
+Iteration budget:
+One agent-loop cycle. If route wiring, live database execution, frontend persistence, browser storage changes, or transcript analytics changes are needed, record the follow-up and stop after dormant repository contracts.
+
+### T-089: Route chat session lifecycle and exports through persisted session boundaries
+
+Goal:
+Route accountless chat session lifecycle and transcript export lookup through injected persisted session boundaries first, while preserving existing deterministic in-memory or fixture fallback, deletion behavior, TTL semantics, safety redirects, comparison redirects, and export licensing rules.
+
+Roadmap alignment:
+
+- Second narrow slice of accountless chat session persistence after T-088 contracts.
+- Keeps trust-metric event sink and production auth/deployment work out of scope.
+
+Acceptance criteria:
+
+- Add injectable session reader/writer boundaries that can use valid persisted session records when provided, then fall back to existing deterministic session behavior when unconfigured, missing, expired, deleted, invalid, wrong-asset, or source-policy blocked.
+- Preserve current chat API response schemas, chat transcript export schemas, seven-day TTL semantics, user-delete state behavior, no raw transcript analytics/training/evaluation behavior, and no frontend changes.
+- Reject persisted session records with raw user text stored for analytics/training/evaluation, wrong-asset citations, rejected sources, hidden prompts, raw model reasoning, secrets, public storage URLs, or unrestricted source text.
+- Add focused tests for persisted-first session lookup, fallback, TTL expiration, deletion state, transcript export metadata, comparison redirect export, advice redirect export, source-use gating, and no live database/cache/provider/LLM imports.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_chat_sessions.py tests/unit/test_exports.py tests/unit/test_safety_guardrails.py -q
+python3 -m pytest tests/integration/test_backend_api.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
+Iteration budget:
+One agent-loop cycle. If frontend storage, user accounts, admin tools, live database execution, analytics, or broader export rewrites are needed, record the follow-up and stop after persisted session-boundary fallback behavior.
+
+### T-090: Add trust-metric event sink persistence contracts
+
+Goal:
+Add dormant trust-metric event sink persistence contracts for compact metadata events covering citation coverage, unsupported claims, freshness accuracy, glossary use, comparison use, source drawer use, safety redirects, export use, and latency without enabling real analytics emission or external vendors.
+
+Roadmap alignment:
+
+- Promotes the next roadmap item after accountless chat session persistence.
+- Builds on the existing validation-only trust-metrics contract and keeps production observability out of scope.
+
+Acceptance criteria:
+
+- Add pure repository/table metadata and row models for accepted trust/product event metadata, validation status, aggregate counters, latency summaries, freshness states, safety statuses, and sanitized diagnostics.
+- Reuse existing trust-metrics validation rules and continue rejecting raw query text, questions, answers, source passages, source URLs, personal identifiers, cookies, portfolio/allocation details, external analytics IDs, secrets, hidden prompts, and unrestricted provider payloads.
+- Keep the sink dormant and injectable only; no frontend analytics emission, backend event storage route mutation, external analytics SDK, vendor integration, persistent live database execution, or raw user text storage.
+- Add tests for repository metadata, accepted/rejected payload persistence boundaries, aggregate summary metadata, privacy-field rejection, generated-output state consistency, no raw text/secret exposure, and no live network/database imports.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_trust_metrics.py tests/unit/test_repo_contract.py tests/unit/test_safety_guardrails.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
+Iteration budget:
+One agent-loop cycle. If real analytics emission, frontend instrumentation, vendor setup, live database execution, or production observability changes are needed, record the follow-up and stop after dormant sink contracts.
 
 ## MVP Backend Roadmap
 
@@ -2257,6 +2443,9 @@ Operational defaults for backend roadmap tasks:
 - T-082 established fixture-backed SEC stock source adapter/parser contracts without live SEC calls, route wiring, generated-output changes, or broader stock coverage. It is completed and must not be reintroduced as runnable backlog.
 - T-083 established fixture-backed ETF issuer/holdings source adapter contracts without live issuer/provider calls, route wiring, generated-output changes, or unsupported ETF expansion. It is completed and must not be reintroduced as runnable backlog.
 - T-084 is the current promoted task and should add only dormant persisted generated-output cache and freshness-hash contracts without route cache reads/writes, live database/cache execution, provider/LLM calls, or frontend changes.
+- T-085 through T-087 are prepared backlog tasks that split overview, comparison, and chat persisted-boundary routing into separate cycles.
+- T-088 and T-089 are prepared backlog tasks that split accountless chat session persistence into dormant contracts and then injected route-boundary fallback.
+- T-090 is a prepared backlog task for a dormant trust-metric event sink contract, not real analytics emission.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted backend task should run the relevant EVALS.md backend checks: `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, and `bash scripts/run_quality_gate.sh`.
 
@@ -2273,9 +2462,12 @@ Roadmap integration tracker:
 | SEC stock source adapter/parser | Completed | T-082 |
 | ETF issuer, holdings, prospectus, and exposure adapters | Completed | T-083 |
 | Generated-output cache and freshness hashes | Promoted | T-084 |
-| Route overview, comparison, and chat generation through persisted packs | Roadmap only | Not yet promoted |
-| Persist accountless chat sessions and transcript exports | Roadmap only | Not yet promoted |
-| Trust-metric event sink | Roadmap only | Not yet promoted |
+| Route overview generation through persisted packs/cache | Backlog | T-085 |
+| Route comparison generation through persisted packs/cache | Backlog | T-086 |
+| Route grounded chat answer artifacts through persisted packs/cache | Backlog | T-087 |
+| Accountless chat session persistence contracts | Backlog | T-088 |
+| Persisted chat session lifecycle and exports | Backlog | T-089 |
+| Trust-metric event sink | Backlog | T-090 |
 | Broaden launch-universe search and support classification | Roadmap only | Not yet promoted |
 | Weekly News Focus acquisition from persisted evidence | Roadmap only | Not yet promoted |
 | Gated OpenRouter live generation | Roadmap only | Not yet promoted |
@@ -2284,9 +2476,6 @@ Roadmap integration tracker:
 
 Remaining unpromoted backend MVP sequence:
 
-- Route overview, comparison, and chat generation through persisted knowledge packs while preserving fixture fallback and current safety/citation behavior.
-- Persist accountless chat sessions, seven-day TTL metadata, deletion state, and transcript export payloads without raw transcript analytics or training storage.
-- Add a trust-metric event sink for compact metadata events covering citation coverage, unsupported claims, freshness accuracy, glossary use, comparison use, source drawer use, safety redirects, export use, and latency.
 - Broaden launch-universe search and support classification from the versioned manifest and eligible ETF metadata, with blocked generated output for unsupported and out-of-scope assets.
 - Add Weekly News Focus acquisition, windowing, dedupe, source ranking, empty/limited states, and AI Comprehensive Analysis thresholds from persisted recent-event evidence.
 - Add gated OpenRouter live generation behind `LLM_LIVE_GENERATION_ENABLED=true`, with schema, citation, source-policy, safety validation, repair retry, paid fallback metadata, and no raw reasoning exposure.
