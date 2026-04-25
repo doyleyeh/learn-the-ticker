@@ -1970,3 +1970,36 @@ Completion commits:
 
 
 ### T-075: Re-audit home page and navigation against frontend workflow docs
+
+### T-076: Add backend persistence settings and migration scaffold
+
+### T-077: Add persisted knowledge-pack repository contracts
+
+### T-078: Route retrieval through persisted packs with fixture fallback
+
+## MVP Backend Roadmap
+
+This section is intentionally non-operational for the agent loop. Keep the runnable repeat-mode backlog above as `### T-` headings, and keep this longer MVP roadmap as bullets until each item is promoted into a narrow task contract. Early backend tasks may add production dependencies such as SQLAlchemy, Alembic, or psycopg only with dependency rationale, focused tests, and no live external calls in normal CI.
+
+Operational defaults for backend roadmap tasks:
+
+- T-076 establishes the persistence boundary and migration tooling before provider or worker work starts.
+- T-077 and T-078 preserve current API response contracts and deterministic fixture fallback while introducing persistent-pack support.
+- Later promoted tasks must keep live providers, secrets, deployment credentials, and recurring jobs out of normal CI until the explicit production-hardening stage.
+- Each promoted backend task should run the relevant EVALS.md backend checks: `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, and `bash scripts/run_quality_gate.sh`.
+
+Remaining backend MVP sequence:
+
+- Add an ingestion job ledger and worker execution path with deterministic pending, running, succeeded, failed, unsupported, out-of-scope, unknown, unavailable, and stale states.
+- Add source snapshot storage and rights-tier metadata for raw, parsed, generated, and diagnostics artifacts without making source snapshots public.
+- Add a SEC stock source adapter and parser for identity, filings, company facts, source attribution, freshness, and evidence gaps.
+- Add ETF issuer, fact-sheet, holdings, prospectus, and exposure-file adapters with source-use and freshness metadata.
+- Add persisted generated-output cache entries, source checksums, knowledge-pack hashes, generated-output freshness hashes, and invalidation rules.
+- Route overview, comparison, and chat generation through persisted knowledge packs while preserving fixture fallback and current safety/citation behavior.
+- Persist accountless chat sessions, seven-day TTL metadata, deletion state, and transcript export payloads without raw transcript analytics or training storage.
+- Add a trust-metric event sink for compact metadata events covering citation coverage, unsupported claims, freshness accuracy, glossary use, comparison use, source drawer use, safety redirects, export use, and latency.
+- Broaden launch-universe search and support classification from the versioned manifest and eligible ETF metadata, with blocked generated output for unsupported and out-of-scope assets.
+- Add Weekly News Focus acquisition, windowing, dedupe, source ranking, empty/limited states, and AI Comprehensive Analysis thresholds from persisted recent-event evidence.
+- Add gated OpenRouter live generation behind `LLM_LIVE_GENERATION_ENABLED=true`, with schema, citation, source-policy, safety validation, repair retry, paid fallback metadata, and no raw reasoning exposure.
+- Enforce source-use and export rules for provider content, including metadata-only, link-only, summary-allowed, full-text-allowed, and rejected tiers.
+- Harden production surfaces with admin auth, rate limits, CORS, Secret Manager, Cloud Run Jobs, private GCS object URIs, Vercel API wiring, and deployment documentation.
