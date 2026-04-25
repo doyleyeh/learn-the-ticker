@@ -69,7 +69,15 @@ def test_cached_supported_asset_returns_no_ingestion_needed_with_existing_capabi
 
 
 def test_unsupported_assets_do_not_create_jobs_or_generated_outputs():
-    for ticker, expected_state in [("BTC", "unsupported"), ("TQQQ", "unsupported"), ("SQQQ", "unsupported")]:
+    for ticker, expected_state in [
+        ("BTC", "unsupported"),
+        ("TQQQ", "unsupported"),
+        ("SQQQ", "unsupported"),
+        ("ARKK", "unsupported"),
+        ("BND", "unsupported"),
+        ("GLD", "unsupported"),
+        ("AOR", "unsupported"),
+    ]:
         response = request_ingestion(ticker)
 
         assert response.ticker == ticker
@@ -100,10 +108,13 @@ def test_unknown_asset_returns_unknown_without_invented_facts_or_job():
     assert "no asset facts are invented" in response.message.lower()
 
 
-def test_common_stock_outside_manifest_does_not_create_ingestion_or_pre_cache_output():
+def test_out_of_scope_assets_do_not_create_ingestion_or_pre_cache_output():
     ingestion = request_ingestion("GME")
     pre_cache = request_pre_cache_for_asset("GME")
     pre_cache_status = get_pre_cache_job_status("pre-cache-out-of-scope-gme")
+    etn_ingestion = request_ingestion("VXX")
+    etn_pre_cache = request_pre_cache_for_asset("VXX")
+    etn_pre_cache_status = get_pre_cache_job_status("pre-cache-out-of-scope-vxx")
 
     assert ingestion.ticker == "GME"
     assert ingestion.asset_type.value == "stock"
@@ -129,6 +140,30 @@ def test_common_stock_outside_manifest_does_not_create_ingestion_or_pre_cache_ou
     assert pre_cache.capabilities.can_answer_chat is False
     assert pre_cache.capabilities.can_compare is False
     assert pre_cache.capabilities.can_request_ingestion is False
+
+    assert etn_ingestion.ticker == "VXX"
+    assert etn_ingestion.asset_type.value == "etf"
+    assert etn_ingestion.job_id is None
+    assert etn_ingestion.job_type is None
+    assert etn_ingestion.job_state.value == "out_of_scope"
+    assert etn_ingestion.generated_route is None
+    assert etn_ingestion.capabilities.can_open_generated_page is False
+    assert etn_ingestion.capabilities.can_answer_chat is False
+    assert etn_ingestion.capabilities.can_compare is False
+    assert etn_ingestion.capabilities.can_request_ingestion is False
+
+    assert etn_pre_cache == etn_pre_cache_status
+    assert etn_pre_cache.ticker == "VXX"
+    assert etn_pre_cache.asset_type.value == "etf"
+    assert etn_pre_cache.job_state.value == "out_of_scope"
+    assert etn_pre_cache.generated_route is None
+    assert etn_pre_cache.generated_output_available is False
+    assert etn_pre_cache.citation_ids == []
+    assert etn_pre_cache.source_document_ids == []
+    assert etn_pre_cache.capabilities.can_open_generated_page is False
+    assert etn_pre_cache.capabilities.can_answer_chat is False
+    assert etn_pre_cache.capabilities.can_compare is False
+    assert etn_pre_cache.capabilities.can_request_ingestion is False
 
 
 def test_status_lookup_covers_running_succeeded_refresh_needed_failed_and_unavailable_states():
@@ -234,6 +269,8 @@ def test_pre_cache_status_lookup_covers_required_deterministic_states():
         "pre-cache-launch-msft": ("MSFT", "stock", "running", "running", None, False),
         "pre-cache-launch-amzn": ("AMZN", "stock", "failed", "failed", None, False),
         "pre-cache-unsupported-tqqq": ("TQQQ", "unsupported", "unsupported", None, None, False),
+        "pre-cache-unsupported-arkk": ("ARKK", "unsupported", "unsupported", None, None, False),
+        "pre-cache-out-of-scope-vxx": ("VXX", "etf", "out_of_scope", None, None, False),
         "pre-cache-unknown-zzzz": ("ZZZZ", "unknown", "unknown", None, None, False),
         "missing-pre-cache-job": ("UNKNOWN", "unknown", "unavailable", None, None, False),
     }
@@ -258,9 +295,11 @@ def test_pre_cache_status_lookup_covers_required_deterministic_states():
     assert failed.error_metadata.retryable is True
 
 
-def test_pre_cache_asset_helper_returns_unsupported_or_unknown_without_generated_output():
+def test_pre_cache_asset_helper_returns_unsupported_out_of_scope_or_unknown_without_generated_output():
     for ticker, expected_type, expected_state in [
         ("TQQQ", "unsupported", "unsupported"),
+        ("ARKK", "unsupported", "unsupported"),
+        ("VXX", "etf", "out_of_scope"),
         ("BTC", "unsupported", "unsupported"),
         ("ZZZZ", "unknown", "unknown"),
     ]:

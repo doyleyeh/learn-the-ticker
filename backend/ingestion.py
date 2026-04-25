@@ -73,7 +73,7 @@ def request_ingestion(ticker: str) -> IngestionJobResponse:
     if out_of_scope:
         return IngestionJobResponse(
             ticker=normalized,
-            asset_type=AssetType.stock,
+            asset_type=AssetType(str(out_of_scope.get("asset_type") or AssetType.stock.value)),
             job_state=IngestionJobState.out_of_scope,
             retryable=False,
             capabilities=_capabilities(),
@@ -281,8 +281,8 @@ def _pre_cache_out_of_scope_job(ticker: str) -> PreCacheJobResponse:
     return _pre_cache_job_response(
         ticker=ticker,
         name=str(metadata["name"]),
-        asset_type=AssetType.stock,
-        launch_group="out_of_scope_common_stock",
+        asset_type=AssetType(str(metadata.get("asset_type") or AssetType.stock.value)),
+        launch_group="out_of_scope_common_stock" if metadata.get("asset_type") == "stock" else "out_of_scope_etf_like_product",
         job_id=f"pre-cache-out-of-scope-{ticker.lower()}",
         job_state=IngestionJobState.out_of_scope,
         worker_status=None,

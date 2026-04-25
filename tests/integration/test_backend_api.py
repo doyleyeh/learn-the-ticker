@@ -55,6 +55,8 @@ def test_search_classification_states_cover_ambiguous_unknown_and_ingestion_need
     ingestion_needed = client.get("/api/search", params={"q": "SPY"}).json()
     launch_stock = client.get("/api/search", params={"q": "BRK.B"}).json()
     launch_etf = client.get("/api/search", params={"q": "SOXX"}).json()
+    unsupported_etf = client.get("/api/search", params={"q": "ARKK"}).json()
+    out_of_scope_etf = client.get("/api/search", params={"q": "VXX"}).json()
 
     assert ambiguous["state"]["status"] == "ambiguous"
     assert ambiguous["state"]["requires_disambiguation"] is True
@@ -112,6 +114,24 @@ def test_search_classification_states_cover_ambiguous_unknown_and_ingestion_need
         assert body["results"][0]["can_answer_chat"] is False
         assert body["results"][0]["can_compare"] is False
 
+    assert unsupported_etf["state"]["status"] == "unsupported"
+    assert unsupported_etf["state"]["support_classification"] == "recognized_unsupported"
+    assert unsupported_etf["state"]["blocked_explanation"]["explanation_category"] == "active_etf"
+    assert unsupported_etf["results"][0]["ticker"] == "ARKK"
+    assert unsupported_etf["results"][0]["asset_type"] == "unsupported"
+    assert unsupported_etf["results"][0]["generated_route"] is None
+    assert unsupported_etf["results"][0]["can_answer_chat"] is False
+    assert unsupported_etf["results"][0]["can_compare"] is False
+
+    assert out_of_scope_etf["state"]["status"] == "out_of_scope"
+    assert out_of_scope_etf["state"]["support_classification"] == "out_of_scope"
+    assert out_of_scope_etf["state"]["blocked_explanation"]["explanation_category"] == "etf_like_product_scope"
+    assert out_of_scope_etf["results"][0]["ticker"] == "VXX"
+    assert out_of_scope_etf["results"][0]["asset_type"] == "etf"
+    assert out_of_scope_etf["results"][0]["generated_route"] is None
+    assert out_of_scope_etf["results"][0]["can_answer_chat"] is False
+    assert out_of_scope_etf["results"][0]["can_compare"] is False
+
 
 def test_ingestion_request_route_returns_deterministic_job_or_non_job_states():
     eligible = client.post("/api/admin/ingest/SPY").json()
@@ -119,7 +139,9 @@ def test_ingestion_request_route_returns_deterministic_job_or_non_job_states():
     eligible_launch = client.post("/api/admin/ingest/SOXX").json()
     cached = client.post("/api/admin/ingest/VOO").json()
     unsupported = client.post("/api/admin/ingest/TQQQ").json()
+    unsupported_etf = client.post("/api/admin/ingest/ARKK").json()
     out_of_scope = client.post("/api/admin/ingest/GME").json()
+    out_of_scope_etf = client.post("/api/admin/ingest/VXX").json()
     unknown = client.post("/api/admin/ingest/ZZZZ").json()
 
     assert eligible == eligible_again
@@ -158,6 +180,14 @@ def test_ingestion_request_route_returns_deterministic_job_or_non_job_states():
     assert unsupported["capabilities"]["can_answer_chat"] is False
     assert unsupported["capabilities"]["can_compare"] is False
 
+    assert unsupported_etf["ticker"] == "ARKK"
+    assert unsupported_etf["job_id"] is None
+    assert unsupported_etf["job_state"] == "unsupported"
+    assert unsupported_etf["generated_route"] is None
+    assert unsupported_etf["capabilities"]["can_open_generated_page"] is False
+    assert unsupported_etf["capabilities"]["can_answer_chat"] is False
+    assert unsupported_etf["capabilities"]["can_compare"] is False
+
     assert out_of_scope["ticker"] == "GME"
     assert out_of_scope["asset_type"] == "stock"
     assert out_of_scope["job_id"] is None
@@ -167,6 +197,16 @@ def test_ingestion_request_route_returns_deterministic_job_or_non_job_states():
     assert out_of_scope["capabilities"]["can_answer_chat"] is False
     assert out_of_scope["capabilities"]["can_compare"] is False
     assert out_of_scope["capabilities"]["can_request_ingestion"] is False
+
+    assert out_of_scope_etf["ticker"] == "VXX"
+    assert out_of_scope_etf["asset_type"] == "etf"
+    assert out_of_scope_etf["job_id"] is None
+    assert out_of_scope_etf["job_state"] == "out_of_scope"
+    assert out_of_scope_etf["generated_route"] is None
+    assert out_of_scope_etf["capabilities"]["can_open_generated_page"] is False
+    assert out_of_scope_etf["capabilities"]["can_answer_chat"] is False
+    assert out_of_scope_etf["capabilities"]["can_compare"] is False
+    assert out_of_scope_etf["capabilities"]["can_request_ingestion"] is False
 
     assert unknown["ticker"] == "ZZZZ"
     assert unknown["asset_type"] == "unknown"
@@ -241,8 +281,12 @@ def test_pre_cache_asset_and_status_routes_cover_non_generated_states():
     failed = client.get("/api/admin/pre-cache/jobs/pre-cache-launch-amzn").json()
     unsupported = client.post("/api/admin/pre-cache/TQQQ").json()
     unsupported_status = client.get("/api/admin/pre-cache/jobs/pre-cache-unsupported-tqqq").json()
+    unsupported_etf = client.post("/api/admin/pre-cache/ARKK").json()
+    unsupported_etf_status = client.get("/api/admin/pre-cache/jobs/pre-cache-unsupported-arkk").json()
     out_of_scope = client.post("/api/admin/pre-cache/GME").json()
     out_of_scope_status = client.get("/api/admin/pre-cache/jobs/pre-cache-out-of-scope-gme").json()
+    out_of_scope_etf = client.post("/api/admin/pre-cache/VXX").json()
+    out_of_scope_etf_status = client.get("/api/admin/pre-cache/jobs/pre-cache-out-of-scope-vxx").json()
     unknown = client.post("/api/admin/pre-cache/ZZZZ").json()
     unknown_status = client.get("/api/admin/pre-cache/jobs/pre-cache-unknown-zzzz").json()
     missing = client.get("/api/admin/pre-cache/jobs/missing-pre-cache-job").json()
@@ -260,16 +304,33 @@ def test_pre_cache_asset_and_status_routes_cover_non_generated_states():
     assert unsupported == unsupported_status
     assert unsupported["asset_type"] == "unsupported"
     assert unsupported["job_state"] == "unsupported"
+    assert unsupported_etf == unsupported_etf_status
+    assert unsupported_etf["asset_type"] == "unsupported"
+    assert unsupported_etf["job_state"] == "unsupported"
     assert out_of_scope == out_of_scope_status
     assert out_of_scope["asset_type"] == "stock"
     assert out_of_scope["job_state"] == "out_of_scope"
+    assert out_of_scope_etf == out_of_scope_etf_status
+    assert out_of_scope_etf["asset_type"] == "etf"
+    assert out_of_scope_etf["job_state"] == "out_of_scope"
     assert unknown == unknown_status
     assert unknown["asset_type"] == "unknown"
     assert unknown["job_state"] == "unknown"
     assert missing["job_state"] == "unavailable"
     assert missing["generated_route"] is None
 
-    for body in [queued_etf, queued_stock, running, failed, unsupported, out_of_scope, unknown, missing]:
+    for body in [
+        queued_etf,
+        queued_stock,
+        running,
+        failed,
+        unsupported,
+        unsupported_etf,
+        out_of_scope,
+        out_of_scope_etf,
+        unknown,
+        missing,
+    ]:
         assert body["generated_route"] is None
         assert body["generated_output_available"] is False
         assert body["citation_ids"] == []
