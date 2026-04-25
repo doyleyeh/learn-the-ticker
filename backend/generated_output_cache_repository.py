@@ -1,0 +1,43 @@
+from __future__ import annotations
+
+from backend.repositories.generated_outputs import (
+    GENERATED_OUTPUT_CACHE_REPOSITORY_BOUNDARY,
+    GENERATED_OUTPUT_CACHE_TABLES,
+    GeneratedOutputArtifactCategory,
+    GeneratedOutputArtifactRecordRow,
+    GeneratedOutputCacheContractError,
+    GeneratedOutputCacheEnvelopeRow,
+    GeneratedOutputCacheRepository,
+    GeneratedOutputCacheRepositoryRecords,
+    GeneratedOutputDiagnosticCategory,
+    GeneratedOutputDiagnosticRow,
+    GeneratedOutputFreshnessHashInputRow,
+    GeneratedOutputKnowledgePackHashInputRow,
+    GeneratedOutputScopeKind,
+    GeneratedOutputSourceChecksumRow,
+    GeneratedOutputValidationStatusRow,
+    build_generated_output_cache_records,
+    generated_output_cache_repository_metadata,
+    validate_generated_output_cache_records,
+)
+
+__all__ = [
+    "GENERATED_OUTPUT_CACHE_REPOSITORY_BOUNDARY",
+    "GENERATED_OUTPUT_CACHE_TABLES",
+    "GeneratedOutputArtifactCategory",
+    "GeneratedOutputArtifactRecordRow",
+    "GeneratedOutputCacheContractError",
+    "GeneratedOutputCacheEnvelopeRow",
+    "GeneratedOutputCacheRepository",
+    "GeneratedOutputCacheRepositoryRecords",
+    "GeneratedOutputDiagnosticCategory",
+    "GeneratedOutputDiagnosticRow",
+    "GeneratedOutputFreshnessHashInputRow",
+    "GeneratedOutputKnowledgePackHashInputRow",
+    "GeneratedOutputScopeKind",
+    "GeneratedOutputSourceChecksumRow",
+    "GeneratedOutputValidationStatusRow",
+    "build_generated_output_cache_records",
+    "generated_output_cache_repository_metadata",
+    "validate_generated_output_cache_records",
+]

@@ -1,4 +1,7 @@
+import importlib.util
 from pathlib import Path
+
+import pytest
 
 from backend.cache import (
     build_cache_key,
@@ -13,6 +16,22 @@ from backend.cache import (
     source_checksum_from_provider_attribution,
     source_checksum_from_retrieval_source,
 )
+from backend.generated_output_cache_repository import (
+    GENERATED_OUTPUT_CACHE_REPOSITORY_BOUNDARY,
+    GENERATED_OUTPUT_CACHE_TABLES,
+    GeneratedOutputArtifactCategory,
+    GeneratedOutputArtifactRecordRow,
+    GeneratedOutputCacheContractError,
+    GeneratedOutputCacheEnvelopeRow,
+    GeneratedOutputCacheRepository,
+    GeneratedOutputCacheRepositoryRecords,
+    GeneratedOutputDiagnosticRow,
+    GeneratedOutputSourceChecksumRow,
+    GeneratedOutputValidationStatusRow,
+    build_generated_output_cache_records,
+    generated_output_cache_repository_metadata,
+    validate_generated_output_cache_records,
+)
 from backend.models import (
     CacheEntryKind,
     CacheEntryMetadata,
@@ -25,7 +44,9 @@ from backend.models import (
     FreshnessState,
     GeneratedOutputFreshnessInput,
     KnowledgePackFreshnessInput,
+    SectionFreshnessInput,
     SourceChecksumInput,
+    SourceUsePolicy,
 )
 from backend.providers import fetch_mock_provider_response
 from backend.retrieval import build_asset_knowledge_pack, build_comparison_knowledge_pack
@@ -34,6 +55,81 @@ from backend.models import ProviderKind, ProviderResponseState
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _generated_cache_records(ticker: str = "VOO") -> GeneratedOutputCacheRepositoryRecords:
+    source_checksum = compute_source_document_checksum(
+        SourceChecksumInput(
+            source_document_id=f"src_{ticker.lower()}_fresh_fixture",
+            asset_ticker=ticker,
+            source_type="issuer_fact_sheet",
+            source_rank=1,
+            publisher="Issuer Fixture",
+            retrieved_at="2026-04-25T18:04:25Z",
+            freshness_state=FreshnessState.fresh,
+            citation_ids=[f"c_{ticker.lower()}_overview"],
+            fact_bindings=[f"fact_{ticker.lower()}_overview"],
+            cache_allowed=True,
+            export_allowed=False,
+        )
+    )
+    knowledge_input = KnowledgePackFreshnessInput(
+        asset_ticker=ticker,
+        pack_identity=ticker,
+        source_checksums=[source_checksum],
+        canonical_facts=[
+            FreshnessFactInput(
+                fact_id=f"fact_{ticker.lower()}_overview",
+                asset_ticker=ticker,
+                field_name="overview",
+                value="Fixture overview fact",
+                freshness_state=FreshnessState.fresh,
+                evidence_state="supported",
+                source_document_ids=[source_checksum.source_document_id],
+                citation_ids=[f"c_{ticker.lower()}_overview"],
+            )
+        ],
+        recent_events=[],
+        evidence_gaps=[],
+        page_freshness_state=FreshnessState.fresh,
+        section_freshness_labels=[
+            SectionFreshnessInput(section_id="beginner_summary", freshness_state=FreshnessState.fresh, evidence_state="supported")
+        ],
+    )
+    knowledge_hash = compute_knowledge_pack_freshness_hash(knowledge_input)
+    generated_input = build_generated_output_freshness_input(
+        output_identity=f"asset:{ticker}",
+        entry_kind=CacheEntryKind.asset_page,
+        scope=CacheScope.asset,
+        schema_version="asset-page-v1",
+        prompt_version="asset-page-prompt-v1",
+        model_name="deterministic-fixture-model",
+        knowledge_input=knowledge_input,
+    )
+    generated_hash = compute_generated_output_freshness_hash(generated_input)
+    key = build_cache_key(_asset_page_key(ticker, generated_hash))
+    metadata = cache_entry_metadata_from_generated_output(
+        cache_key=key,
+        freshness_input=generated_input,
+        freshness_hash=generated_hash,
+        citation_ids=[citation for checksum in generated_input.source_checksums for citation in checksum.citation_ids],
+        created_at="2026-04-25T18:04:25Z",
+        expires_at="2026-05-02T18:04:25Z",
+        cache_allowed=True,
+        export_allowed=False,
+    )
+    return build_generated_output_cache_records(
+        cache_entry_id=f"generated-output-{ticker.lower()}-overview",
+        output_identity=f"asset:{ticker}",
+        mode_or_output_type="beginner-overview",
+        artifact_category=GeneratedOutputArtifactCategory.asset_overview_section,
+        cache_metadata=metadata,
+        generated_freshness_input=generated_input,
+        knowledge_freshness_input=knowledge_input,
+        knowledge_pack_freshness_hash=knowledge_hash,
+        created_at="2026-04-25T18:04:25Z",
+        ttl_seconds=604800,
+    )
 
 
 def _asset_page_key(ticker: str, input_hash: str = "abc123") -> CacheKeyMetadata:
@@ -448,3 +544,317 @@ def test_cache_entry_metadata_preserves_source_citation_and_freshness_fields():
     assert metadata.prompt_version == "prompt-v1"
     assert metadata.model_name == "model-v1"
     assert metadata.export_allowed is False
+
+
+def test_generated_output_cache_repository_metadata_is_dormant_and_explicit():
+    metadata = generated_output_cache_repository_metadata()
+
+    assert metadata.boundary == GENERATED_OUTPUT_CACHE_REPOSITORY_BOUNDARY
+    assert metadata.opens_connection_on_import is False
+    assert metadata.creates_runtime_tables is False
+    assert tuple(metadata.tables) == GENERATED_OUTPUT_CACHE_TABLES
+    assert set(GENERATED_OUTPUT_CACHE_TABLES) == {
+        "generated_output_cache_envelopes",
+        "generated_output_cache_artifacts",
+        "generated_output_cache_source_checksums",
+        "generated_output_cache_knowledge_pack_hash_inputs",
+        "generated_output_cache_freshness_hash_inputs",
+        "generated_output_cache_validation_statuses",
+        "generated_output_cache_diagnostics",
+    }
+    assert "generated_output_freshness_hash" in metadata.tables["generated_output_cache_envelopes"].columns
+    assert "knowledge_pack_freshness_hash" in metadata.tables["generated_output_cache_knowledge_pack_hash_inputs"].columns
+    assert "source_use_policy" in metadata.tables["generated_output_cache_source_checksums"].columns
+    assert "stores_raw_user_text" in metadata.tables["generated_output_cache_artifacts"].columns
+    assert "compact_metadata" in metadata.tables["generated_output_cache_diagnostics"].columns
+
+
+def test_generated_output_cache_categories_cover_required_artifacts():
+    assert {category.value for category in GeneratedOutputArtifactCategory} >= {
+        "asset_overview_section",
+        "comparison_output",
+        "grounded_chat_answer_artifact",
+        "export_payload_metadata",
+        "source_list_export_metadata",
+        "source_checksum_record",
+        "knowledge_pack_hash_input",
+        "generated_output_hash_input",
+        "diagnostics_metadata",
+        "weekly_news_focus_section",
+        "ai_comprehensive_analysis_artifact",
+    }
+
+
+def test_generated_output_cache_migration_is_importable_and_limited_to_contract_tables():
+    revision_path = ROOT / "alembic" / "versions" / "20260425_0005_generated_output_cache_contracts.py"
+    source = revision_path.read_text(encoding="utf-8")
+    spec = importlib.util.spec_from_file_location("generated_output_cache_revision", revision_path)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    assert module.revision == "20260425_0005"
+    assert module.down_revision == "20260425_0004"
+    assert module.GENERATED_OUTPUT_CACHE_TABLE_NAMES == GENERATED_OUTPUT_CACHE_TABLES
+    for table_name in GENERATED_OUTPUT_CACHE_TABLES:
+        assert f'"{table_name}"' in source
+
+    forbidden_table_markers = [
+        "chat_sessions",
+        "chat_messages",
+        "user_accounts",
+        "provider_secrets",
+        "source_snapshot_artifacts",
+        "asset_knowledge_pack_envelopes",
+        "public_urls",
+    ]
+    for marker in forbidden_table_markers:
+        assert marker not in module.GENERATED_OUTPUT_CACHE_TABLE_NAMES
+        assert f'op.create_table("{marker}"' not in source
+
+
+def test_generated_output_cache_records_preserve_hashes_validation_and_citation_bindings():
+    records = _generated_cache_records("VOO")
+    validated = GeneratedOutputCacheRepository().persist(records)
+    envelope = validated.envelopes[0]
+
+    assert validated.table_names == GENERATED_OUTPUT_CACHE_TABLES
+    assert envelope.asset_ticker == "VOO"
+    assert envelope.comparison_id is None
+    assert envelope.cacheable is True
+    assert envelope.generated_output_available is True
+    assert envelope.prompt_version == "asset-page-prompt-v1"
+    assert envelope.model_name == "deterministic-fixture-model"
+    assert envelope.knowledge_pack_freshness_hash
+    assert envelope.generated_output_freshness_hash
+    assert envelope.validation_status == "passed"
+    assert envelope.safety_status == "educational"
+    assert envelope.source_use_status == "allowed"
+    assert envelope.citation_coverage_status == "complete"
+    assert all(row.source_document_id in envelope.source_document_ids for row in records.source_checksums)
+    assert set(envelope.citation_ids) <= {citation for row in records.source_checksums for citation in row.citation_ids}
+    assert records.artifacts[0].stores_payload_text is False
+
+
+def test_comparison_generated_output_cache_preserves_left_right_identity_and_pack_binding():
+    comparison_pack = build_comparison_knowledge_pack("VOO", "QQQ")
+    knowledge_input = build_comparison_pack_freshness_input(comparison_pack)
+    knowledge_hash = compute_knowledge_pack_freshness_hash(knowledge_input)
+    generated_input = build_generated_output_freshness_input(
+        output_identity="comparison:VOO-to-QQQ",
+        entry_kind=CacheEntryKind.comparison,
+        scope=CacheScope.comparison,
+        schema_version="comparison-v1",
+        prompt_version="comparison-prompt-v1",
+        model_name="deterministic-fixture-model",
+        knowledge_input=knowledge_input,
+    )
+    fresh_comparison_sources = [
+        checksum for checksum in generated_input.source_checksums if checksum.freshness_state is FreshnessState.fresh
+    ]
+    knowledge_input = knowledge_input.model_copy(update={"source_checksums": fresh_comparison_sources})
+    generated_input = generated_input.model_copy(update={"source_checksums": fresh_comparison_sources})
+    knowledge_hash = compute_knowledge_pack_freshness_hash(knowledge_input)
+    generated_hash = compute_generated_output_freshness_hash(generated_input)
+    key = build_cache_key(
+        CacheKeyMetadata(
+            entry_kind=CacheEntryKind.comparison,
+            scope=CacheScope.comparison,
+            comparison_left_ticker="VOO",
+            comparison_right_ticker="QQQ",
+            pack_identity=comparison_pack.comparison_pack_id,
+            mode_or_output_type="beginner",
+            schema_version="comparison-v1",
+            source_freshness_state=FreshnessState.fresh,
+            prompt_version="comparison-prompt-v1",
+            model_name="deterministic-fixture-model",
+            input_freshness_hash=generated_hash,
+        )
+    )
+    metadata = cache_entry_metadata_from_generated_output(
+        cache_key=key,
+        freshness_input=generated_input,
+        freshness_hash=generated_hash,
+        citation_ids=[citation for checksum in generated_input.source_checksums for citation in checksum.citation_ids],
+        created_at="2026-04-25T18:04:25Z",
+    )
+
+    records = build_generated_output_cache_records(
+        cache_entry_id="generated-output-voo-qqq-comparison",
+        output_identity="comparison:VOO-to-QQQ",
+        mode_or_output_type="beginner-comparison",
+        artifact_category=GeneratedOutputArtifactCategory.comparison_output,
+        cache_metadata=metadata,
+        generated_freshness_input=generated_input,
+        knowledge_freshness_input=knowledge_input,
+        knowledge_pack_freshness_hash=knowledge_hash,
+        created_at="2026-04-25T18:04:25Z",
+    )
+
+    envelope = records.envelopes[0]
+    assert envelope.asset_ticker is None
+    assert envelope.comparison_id == comparison_pack.comparison_pack_id
+    assert envelope.comparison_left_ticker == "VOO"
+    assert envelope.comparison_right_ticker == "QQQ"
+
+    wrong_right = records.knowledge_pack_hash_inputs[0].model_copy(update={"comparison_right_ticker": "SPY"})
+    with pytest.raises(GeneratedOutputCacheContractError, match="left/right identity"):
+        validate_generated_output_cache_records(records.model_copy(update={"knowledge_pack_hash_inputs": [wrong_right]}))
+
+
+def test_generated_output_cache_blocks_wrong_asset_wrong_citation_and_source_policy_violations():
+    records = _generated_cache_records("VOO")
+
+    wrong_asset_source = records.source_checksums[0].model_copy(update={"asset_ticker": "QQQ"})
+    with pytest.raises(GeneratedOutputCacheContractError, match="same asset or comparison pack"):
+        validate_generated_output_cache_records(records.model_copy(update={"source_checksums": [wrong_asset_source, *records.source_checksums[1:]]}))
+
+    bad_citation = records.envelopes[0].model_copy(update={"citation_ids": ["wrong-pack-citation"]})
+    with pytest.raises(GeneratedOutputCacheContractError, match="citations must bind"):
+        validate_generated_output_cache_records(records.model_copy(update={"envelopes": [bad_citation]}))
+
+    metadata_only = records.source_checksums[0].model_copy(
+        update={"source_use_policy": SourceUsePolicy.metadata_only.value, "cache_allowed": True}
+    )
+    with pytest.raises(GeneratedOutputCacheContractError, match="Source-use policy"):
+        validate_generated_output_cache_records(records.model_copy(update={"source_checksums": [metadata_only, *records.source_checksums[1:]]}))
+
+    rejected = records.source_checksums[0].model_copy(update={"allowlist_status": "rejected"})
+    with pytest.raises(GeneratedOutputCacheContractError, match="allowlist status"):
+        validate_generated_output_cache_records(records.model_copy(update={"source_checksums": [rejected, *records.source_checksums[1:]]}))
+
+
+def test_generated_output_cache_blocks_unsafe_unvalidated_unknown_and_unlabeled_freshness_states():
+    records = _generated_cache_records("VOO")
+
+    validation_failed = records.validation_statuses[0].model_copy(update={"citation_validation_status": "failed"})
+    with pytest.raises(GeneratedOutputCacheContractError, match="validation"):
+        validate_generated_output_cache_records(records.model_copy(update={"validation_statuses": [validation_failed]}))
+
+    unsupported_claim = records.validation_statuses[0].model_copy(update={"unsupported_claim_count": 1})
+    with pytest.raises(GeneratedOutputCacheContractError, match="unsupported"):
+        validate_generated_output_cache_records(records.model_copy(update={"validation_statuses": [unsupported_claim]}))
+
+    advice_like = records.validation_statuses[0].model_copy(update={"advice_like_detected": True})
+    with pytest.raises(GeneratedOutputCacheContractError, match="advice-like"):
+        validate_generated_output_cache_records(records.model_copy(update={"validation_statuses": [advice_like]}))
+
+    blocked = records.envelopes[0].model_copy(update={"support_status": "unsupported"})
+    with pytest.raises(GeneratedOutputCacheContractError, match="Blocked states"):
+        validate_generated_output_cache_records(records.model_copy(update={"envelopes": [blocked]}))
+
+    unknown_source = records.envelopes[0].model_copy(
+        update={"source_freshness_states": {records.source_checksums[0].source_document_id: "unknown"}}
+    )
+    with pytest.raises(GeneratedOutputCacheContractError, match="Unknown or unavailable"):
+        validate_generated_output_cache_records(records.model_copy(update={"envelopes": [unknown_source]}))
+
+    stale_without_label = records.envelopes[0].model_copy(
+        update={"source_freshness_states": {records.source_checksums[0].source_document_id: "stale"}, "section_freshness_labels": {"page": "fresh"}}
+    )
+    with pytest.raises(GeneratedOutputCacheContractError, match="Stale inputs"):
+        validate_generated_output_cache_records(records.model_copy(update={"envelopes": [stale_without_label]}))
+
+
+def test_chat_safe_answer_artifact_metadata_does_not_store_raw_user_text_or_transcripts():
+    records = _generated_cache_records("VOO")
+    envelope = records.envelopes[0].model_copy(
+        update={
+            "entry_kind": CacheEntryKind.chat_answer.value,
+            "cache_scope": CacheScope.chat.value,
+            "artifact_category": GeneratedOutputArtifactCategory.grounded_chat_answer_artifact.value,
+            "output_identity": "asset:VOO:chat-safe-answer-metadata",
+            "mode_or_output_type": "grounded-chat-safe-answer",
+        }
+    )
+    artifact = records.artifacts[0].model_copy(
+        update={
+            "artifact_category": GeneratedOutputArtifactCategory.grounded_chat_answer_artifact.value,
+            "payload_metadata": {"conversation_ttl_days": 7, "answer_artifact_only": True},
+        }
+    )
+    generated_hash_input = records.generated_output_hash_inputs[0].model_copy(
+        update={"entry_kind": CacheEntryKind.chat_answer.value, "cache_scope": CacheScope.chat.value}
+    )
+    validate_generated_output_cache_records(
+        records.model_copy(
+            update={
+                "envelopes": [envelope],
+                "artifacts": [artifact],
+                "generated_output_hash_inputs": [generated_hash_input],
+            }
+        )
+    )
+
+    raw_text_artifact = artifact.model_copy(update={"stores_raw_user_text": True})
+    with pytest.raises(GeneratedOutputCacheContractError, match="metadata only"):
+        validate_generated_output_cache_records(
+            records.model_copy(
+                update={
+                    "envelopes": [envelope],
+                    "artifacts": [raw_text_artifact],
+                    "generated_output_hash_inputs": [generated_hash_input],
+                }
+            )
+        )
+
+    transcript_metadata = artifact.model_copy(update={"payload_metadata": {"transcript": "Should I buy VOO?"}})
+    with pytest.raises(GeneratedOutputCacheContractError, match="sanitized"):
+        validate_generated_output_cache_records(
+            records.model_copy(
+                update={
+                    "envelopes": [envelope],
+                    "artifacts": [transcript_metadata],
+                    "generated_output_hash_inputs": [generated_hash_input],
+                }
+            )
+        )
+
+
+def test_generated_output_cache_diagnostics_are_compact_and_sanitized():
+    records = _generated_cache_records("VOO")
+    diagnostic = GeneratedOutputDiagnosticRow(
+        diagnostic_id="diag-voo-hash-mismatch",
+        cache_entry_id=records.envelopes[0].cache_entry_id,
+        category="invalidation",
+        code="hash_mismatch",
+        invalidation_reason="hash_mismatch",
+        source_document_ids=records.envelopes[0].source_document_ids,
+        checksum_values=records.envelopes[0].source_checksum_ids,
+        freshness_states=records.envelopes[0].source_freshness_states,
+        created_at="2026-04-25T18:04:25Z",
+        compact_metadata={"validation_code": "hash_mismatch", "freshness_state": "fresh"},
+    )
+    validate_generated_output_cache_records(records.model_copy(update={"diagnostics": [diagnostic]}))
+
+    leaking = diagnostic.model_copy(update={"compact_metadata": {"raw_prompt": "hidden prompt text"}})
+    with pytest.raises(GeneratedOutputCacheContractError, match="sanitized"):
+        validate_generated_output_cache_records(records.model_copy(update={"diagnostics": [leaking]}))
+
+
+def test_generated_output_cache_repository_imports_do_not_open_live_database_cache_or_provider_paths():
+    repository_source = (ROOT / "backend" / "repositories" / "generated_outputs.py").read_text(encoding="utf-8")
+
+    forbidden = [
+        "create_engine",
+        "sessionmaker",
+        "DATABASE_URL",
+        "requests",
+        "httpx",
+        "redis",
+        "boto3",
+        "OPENROUTER",
+        "openai",
+        "os.environ",
+        "api_key",
+    ]
+    for marker in forbidden:
+        assert marker not in repository_source
+
+    records = _generated_cache_records("VOO")
+    class BadSession:
+        pass
+
+    with pytest.raises(GeneratedOutputCacheContractError, match="add_all"):
+        GeneratedOutputCacheRepository(session=BadSession()).persist(records)
