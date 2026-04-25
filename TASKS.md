@@ -1,53 +1,54 @@
 ## Current task
 
-### T-080: Add deterministic ingestion worker execution contract
+### T-081: Add source snapshot artifact metadata contracts
 
 Goal:
-Add a deterministic ingestion worker execution contract that consumes T-079 ingestion job ledger records through injected in-memory boundaries, runs fixture-only job transitions, and preserves existing API, retrieval, generation, chat, comparison, export, glossary, frontend, provider, and fixture behavior without live providers, live database execution, schedulers, or production worker wiring.
+Add dormant source snapshot artifact metadata contracts for raw, parsed, generated, and diagnostics artifacts so future ingestion can reference private object storage safely while preserving rights-tiered source-use policy and no-public-snapshot behavior.
 
 Task-scope paragraph:
-This task should add only the local execution contract needed between the persisted ingestion job ledger and future source snapshot/provider work. The worker may serialize existing deterministic ingestion and pre-cache responses into ledger records, transition injected jobs through fixture-backed execution states, and return compact execution results for tests. It must not execute migrations, open database sessions, fetch SEC/issuer/market/news data, write object-storage snapshots, generate summaries, change public API route behavior, or add recurring/scheduled production behavior.
+This task should add only the dormant metadata boundary needed for future ingestion workers to describe source snapshot artifacts. The contract may define pure Python repository/table metadata, record models, validation helpers, serialization helpers, and an import-only migration metadata revision if strictly needed to keep persistence contracts inspectable. It must not write to object storage, generate signed or public URLs, fetch SEC/issuer/market/news data, route current API/retrieval/generation behavior through snapshots, store unrestricted source text, or add any live database/storage execution path.
 
 Allowed files:
 
-- `backend/ingestion.py`
-- `backend/ingestion_worker.py`
-- `backend/ingestion_job_repository.py`
-- `backend/repositories/ingestion_jobs.py`
+- `backend/repositories/source_snapshots.py`
+- `backend/source_snapshot_repository.py`
 - `backend/repositories/__init__.py`
 - `backend/models.py`
-- `tests/unit/test_ingestion_worker.py`
-- `tests/unit/test_ingestion_jobs.py`
-- `tests/unit/test_ingestion_job_repository.py`
+- `alembic/versions/*source_snapshot*`
+- `tests/unit/test_source_snapshot_repository.py`
+- `tests/unit/test_source_policy.py`
+- `tests/unit/test_knowledge_pack_repository.py`
+- `tests/unit/test_repo_contract.py`
 - `docs/agent-journal/*.md`
 
 Do not change:
 
 - No frontend files under `apps/web`.
 - No FastAPI route behavior, public endpoint schemas, export behavior, chat behavior, comparison behavior, glossary behavior, generated content, or retrieval behavior.
-- No Alembic migration files or new persistence tables unless a focused import-only metadata change is strictly required for the worker contract; prefer no migration change.
-- No live database connection, ORM session execution, source snapshot write, object-storage call, SEC/issuer/market/news provider call, LLM call, Cloud Run Job wiring, scheduler, admin auth, rate limiting, or deployment configuration.
-- No source allowlist/source-use expansion, provider licensing change, production dependency addition, or environment/secret file change.
+- No live database connection, ORM session execution, migration execution, object-storage client, source snapshot write, signed URL generation, SEC/issuer/market/news provider call, LLM call, Cloud Run Job wiring, scheduler, admin auth, rate limiting, or deployment configuration.
+- No source allowlist/source-use expansion, provider licensing change, production dependency addition, environment/secret file change, or runtime cache behavior change.
+- No generated pages, generated chat answers, generated comparisons, generated risk summaries, exports, source drawer behavior, Weekly News Focus behavior, or AI Comprehensive Analysis behavior should read from or write to the new snapshot contract in this task.
 
 Acceptance criteria:
 
-- Add a pure-Python deterministic ingestion worker boundary that can execute injected `IngestionJobLedgerRecords` or equivalent T-079 ledger-backed rows without opening a database connection or calling live external services.
-- The worker supports manual pre-cache and approved on-demand ingestion categories and preserves the T-079 ledger categories and states for future refresh and source-revalidation work without implementing recurring jobs.
-- Pending approved jobs can transition through `pending` to `running` and then to deterministic terminal results such as `succeeded`, `failed`, `unsupported`, `out_of_scope`, `unknown`, `unavailable`, or `stale` using fixture-only inputs.
-- Unsupported, out-of-scope, unknown, unavailable, unapproved `pending_ingestion`, failed-validation, and source-policy-blocked jobs remain blocked from generated pages, generated chat answers, generated comparisons, generated risk summaries, and generated-output cacheability.
-- Supported cached assets and approved pending-ingestion assets preserve existing capability semantics from `backend/ingestion.py`; existing request/status functions keep their current deterministic outputs unless tests expose an import-path-only adjustment.
-- The worker contract preserves safety, citation, source-use, and freshness guardrails: no investment advice, no unsupported factual claims, no live external calls in normal CI, and explicit unknown/stale/unavailable/partial handling where evidence is missing.
-- Execution diagnostics store only compact state-transition metadata, sanitized error categories, retryability, timestamps, job IDs, source-policy references, and checksums where available.
-- Diagnostics must not store or expose secrets, raw provider payloads, raw article text, unrestricted source text, raw user text, hidden prompts, raw model reasoning, or unrestricted source excerpts.
-- The worker is idempotent for already terminal ledger records and retry-safe for retryable deterministic failures; repeated execution must not invent new facts or produce different generated-output availability.
-- Stale and unavailable states are explicit and preserve freshness/unknown/unavailable/partial language rather than converting missing evidence into success.
-- Tests cover state transitions, manual pre-cache jobs, approved on-demand jobs, unsupported/out-of-scope blocking, unknown/unavailable/stale handling, idempotent terminal execution, retryable failure behavior, sanitized diagnostics, no-generated-output blocked states, and import-time no-live-call/no-database behavior.
-- Current API, retrieval, generation, chat, comparison, export, glossary, frontend, provider, source-use policy, fixture, and quality-gate behavior remains unchanged outside the dormant worker contract.
+- Add a pure-Python dormant source snapshot artifact repository contract with explicit metadata for artifact ID, asset or comparison scope, ingestion job ID when available, source document/source reference, artifact category, private object URI or storage key, checksum, byte size, content type, retrieval timestamp, created timestamp, source-use policy, permitted operations, freshness/evidence state, and compact diagnostics.
+- Artifact categories cover at least raw source, parsed text, normalized facts input, generated artifact reference, and diagnostics metadata without storing unrestricted content in the contract itself.
+- Private object references must be private by construction: no public URLs, browser-facing storage paths, signed URLs, external fetch URLs as storage locations, or frontend-readable bucket paths.
+- Enforce rights-tier behavior for `full_text_allowed`, `summary_allowed`, `metadata_only`, `link_only`, and `rejected` before any raw or parsed text artifact can be represented.
+- `full_text_allowed` may reference private raw and parsed artifacts when permitted operations allow storage; `summary_allowed` may reference metadata and allowed-excerpt or summary artifacts but not unrestricted raw text; `metadata_only` and `link_only` may reference metadata/checksum/diagnostic artifacts only; `rejected` sources cannot create snapshot artifacts that feed generated output, citations, caches, or exports.
+- Source snapshot records must bind to the same asset, comparison pack, or source reference they claim to support; wrong-asset and wrong-pack bindings are rejected.
+- Snapshot diagnostics store only compact metadata such as sanitized error category, retryability, source-policy reference, checksum, retrieval status, and timestamps.
+- Diagnostics and records must not store or expose secrets, raw provider payloads, raw article text for restricted tiers, raw user text, hidden prompts, raw model reasoning, unrestricted source excerpts, or provider credentials.
+- Generated-output availability remains blocked for unsupported, out-of-scope, unknown, unavailable, unapproved pending-ingestion, validation-failed, source-policy-blocked, and rejected-source records.
+- The contract integrates with existing source allowlist/source-policy helpers and persisted knowledge-pack metadata only through dormant helpers or tests; no current runtime path should depend on the new contract.
+- Any Alembic addition is import-only and inspectable, and must not require executing a migration or opening a database connection during tests.
+- Tests cover metadata/table contract shape, rights-tier storage rules, private URI validation, same-asset/source binding, checksum metadata, redacted diagnostics, generated-output blocking, import-time no-live-storage/no-network/no-database behavior, and fixture/source-policy preservation.
+- Current API, retrieval, generation, chat, comparison, export, glossary, frontend, provider, source-use policy, fixture, and quality-gate behavior remains unchanged outside the dormant snapshot metadata contract.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_ingestion_worker.py tests/unit/test_ingestion_job_repository.py tests/unit/test_ingestion_jobs.py -q
+python3 -m pytest tests/unit/test_source_snapshot_repository.py tests/unit/test_source_policy.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_repo_contract.py -q
 python3 -m pytest tests -q
 python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
@@ -55,10 +56,37 @@ docker compose config
 ```
 
 Iteration budget:
-One agent-loop cycle. If the worker contract reveals a need for source snapshot persistence, SEC or ETF adapters, production database readers/writers, scheduler behavior, admin route wiring, generated-output caching, or broader public API changes, stop after the deterministic worker boundary and record the follow-up under Backlog instead of expanding scope.
+One agent-loop cycle. If the snapshot metadata contract reveals a need for live object storage clients, signed URL generation, source adapter execution, SEC or ETF parsing, generated-output cache writes, production database readers/writers, route/admin wiring, export changes, or broader public API changes, stop after the dormant metadata boundary and record the follow-up under Backlog instead of expanding scope.
 
 
 ## Completed
+
+### T-080: Add deterministic ingestion worker execution contract
+
+Goal:
+Add a deterministic ingestion worker execution contract that consumes T-079 ingestion job ledger records through injected in-memory boundaries, runs fixture-only job transitions, and preserves existing API, retrieval, generation, chat, comparison, export, glossary, frontend, provider, and fixture behavior without live providers, live database execution, schedulers, or production worker wiring.
+
+Completed details:
+
+- Implementation commit `d047924 feat(T-080): add deterministic ingestion worker execution contract` updated `backend/ingestion_worker.py`, `backend/repositories/ingestion_jobs.py`, `tests/unit/test_ingestion_worker.py`, and `docs/agent-journal/20260425T052201Z.md`.
+- Merged branch `agent/T-080-20260425T052201Z` into `main` with local merge commit `a278a7d chore(T-080): merge deterministic ingestion worker execution contract`.
+- `backend/ingestion_worker.py` added a dormant pure-Python deterministic ingestion worker boundary with an injected in-memory ledger adapter, fixture-only terminal outcomes, compact execution summaries, and no database, provider, scheduler, object-storage, route, frontend, or production worker wiring.
+- The worker transitions pending and running ledger records into deterministic terminal states including `succeeded`, `failed`, `unsupported`, `out_of_scope`, `unknown`, `unavailable`, and `stale` using fixture-only inputs.
+- Unsupported, out-of-scope, unknown, unavailable, approved pending-ingestion, validation-failed, and source-policy-blocked jobs preserve generated-output blocking for pages, chat answers, comparisons, risk summaries, and cacheability.
+- The worker preserves idempotent terminal execution and retry-safe deterministic failures while storing only sanitized diagnostics.
+- `backend/repositories/ingestion_jobs.py` tightened ledger validation so failed ledger rows cannot expose generated output.
+- `tests/unit/test_ingestion_worker.py` covers the worker execution contract, fixture-only state transitions, terminal idempotency, retryable failure behavior, blocked generated-output states, sanitized diagnostics, and no-live-call/no-database import behavior.
+- The journal records that the task did not add production database readers/writers, source snapshot persistence, provider adapter execution, scheduler behavior, Cloud Run Job wiring, admin route wiring, generated-output cache writes, generated pages, generated chat answers, comparisons, risk summaries, citations, source documents, or cacheable generated output.
+- `docs/agent-journal/20260425T052201Z.md` records these checks: `python3 -m pytest tests/unit/test_ingestion_worker.py tests/unit/test_ingestion_job_repository.py tests/unit/test_ingestion_jobs.py -q` passed with 33 tests; `python3 -m pytest tests -q` passed with 246 tests; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed; `docker compose config` passed.
+- Remaining risks from the journal:
+  - The worker contract is intentionally dormant and in-memory/unit-tested only; no production database reader/writer, source snapshot persistence, provider adapter execution, scheduler, Cloud Run Job wiring, admin route wiring, or generated-output cache write path exists yet.
+  - Fixture-success for approved pending-ingestion records only records deterministic worker completion and still does not create generated pages, chat answers, comparisons, risk summaries, citations, source documents, or cacheable generated output.
+  - Future live ingestion work still needs separate source snapshot, source-use, provider licensing, persistence, and route/admin authorization contracts before any production execution path is enabled.
+
+Completion commits:
+
+- `d047924 feat(T-080): add deterministic ingestion worker execution contract`
+- `a278a7d chore(T-080): merge deterministic ingestion worker execution contract`
 
 ### T-079: Add persisted ingestion job ledger contracts
 
@@ -2127,28 +2155,6 @@ Completion commits:
 
 ## Backlog
 
-### T-081: Add source snapshot artifact metadata contracts
-
-Goal:
-Add dormant source snapshot artifact metadata contracts for raw, parsed, generated, and diagnostics artifacts so future ingestion can reference private object storage safely while preserving rights-tiered source-use policy and no-public-snapshot behavior.
-
-Acceptance criteria:
-
-- Add repository/table metadata and pure model helpers for source snapshot artifact records, private object URIs, checksums, source-use policy, allowed operations, retrieval timestamps, and artifact categories.
-- Enforce rights-tier behavior for `full_text_allowed`, `summary_allowed`, `metadata_only`, `link_only`, and `rejected` sources before any raw or parsed text field can be represented.
-- Keep snapshots private and metadata-only by default; do not expose public URLs, browser-facing storage paths, unrestricted provider payloads, raw article text, or rejected-source content.
-- Integrate with existing source allowlist/source-policy helpers and persisted knowledge-pack metadata only through dormant contracts or tests.
-- Add tests for rights-tier storage rules, same-asset/source binding, checksum metadata, redacted diagnostics, and no live storage/network imports.
-
-Required checks:
-
-```bash
-python3 -m pytest tests/unit/test_source_policy.py tests/unit/test_repo_contract.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-```
-
 ### T-082: Add SEC stock source adapter fixture contract
 
 Goal:
@@ -2225,8 +2231,9 @@ Operational defaults for backend roadmap tasks:
 - T-077 established persisted knowledge-pack repository contracts. It is completed and must not be reintroduced as runnable backlog.
 - T-078 routed retrieval through persisted packs with deterministic fixture fallback. It is completed and must not be reintroduced as runnable backlog.
 - T-079 established the dormant persisted ingestion job ledger contract. It is completed and must not be reintroduced as runnable backlog.
-- T-080 is the current promoted task and should add only the deterministic ingestion worker execution contract on top of injected ledger records.
-- T-081 through T-084 are prepared backlog tasks promoted from the roadmap in a safe order.
+- T-080 established the deterministic ingestion worker execution contract on top of injected ledger records. It is completed and must not be reintroduced as runnable backlog.
+- T-081 is the current promoted task and should add only dormant source snapshot artifact metadata contracts without live storage, provider, route, or generated-output wiring.
+- T-082 through T-084 are prepared backlog tasks promoted from the roadmap in a safe order.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted backend task should run the relevant EVALS.md backend checks: `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, and `bash scripts/run_quality_gate.sh`.
 
@@ -2238,8 +2245,8 @@ Roadmap integration tracker:
 | Persisted knowledge-pack repository contracts | Completed | T-077 |
 | Persisted-pack-first retrieval with fixture fallback | Completed | T-078 |
 | Ingestion job ledger | Completed | T-079 |
-| Deterministic ingestion worker execution path | Promoted | T-080 |
-| Source snapshot storage metadata | Backlog | T-081 |
+| Deterministic ingestion worker execution path | Completed | T-080 |
+| Source snapshot storage metadata | Promoted | T-081 |
 | SEC stock source adapter/parser | Backlog | T-082 |
 | ETF issuer, holdings, prospectus, and exposure adapters | Backlog | T-083 |
 | Generated-output cache and freshness hashes | Backlog | T-084 |
