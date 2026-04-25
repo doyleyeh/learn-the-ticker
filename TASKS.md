@@ -1,54 +1,66 @@
 ## Current task
 
-### T-075: Re-audit home page and navigation against frontend workflow docs
+### T-076: Add backend persistence settings and migration scaffold
 
 Goal:
-Re-audit and tighten the home page plus global navigation against the PRD/TDS Frontend Design and Workflow v0.4 baseline so the first user path remains single-stock-or-ETF search, while comparison stays separate but connected and glossary remains contextual inside reading flows.
+Add the backend persistence configuration and migration scaffold needed for later persisted knowledge-pack work, without routing any current API, retrieval, generation, chat, comparison, or export behavior through a live database.
 
 Task-scope paragraph:
-This cycle is limited to the visible home-page and global-navigation entry points after the v0.4 frontend workflow updates. Inspect the current home page, primary layout navigation, search/autocomplete, and related smoke coverage before editing. Make the smallest UI/copy/marker adjustments needed so home presents one primary single-asset search action, global navigation connects to the separate comparison workflow without making comparison the home primary action, and glossary is not promoted into a top-level or home-page workflow. Keep all behavior deterministic and fixture-backed; do not add new routes, new generated content, broader entity resolution, live provider calls, or production dependencies.
+This cycle is limited to establishing a dormant persistence boundary for the existing FastAPI backend: sanitized database settings, deterministic engine/session helpers or equivalent connection factories, and an Alembic-style migration scaffold that can be validated locally without opening a network connection or requiring a running Postgres service. Inspect current backend settings patterns, Docker/env placeholders, repository contract tests, and dependency files before editing. If production dependencies such as SQLAlchemy, Alembic, or psycopg are added, document the dependency rationale in code comments or tests where appropriate and keep the change focused on migration/readiness infrastructure only. Do not persist knowledge packs yet, do not add repository read/write behavior yet, and do not connect current routes or generators to the database.
 
 Allowed files:
 
-- `apps/web/app/page.tsx`
-- `apps/web/app/layout.tsx`
-- `apps/web/components/SearchBox.tsx`
-- `apps/web/styles/globals.css`
-- `tests/frontend/smoke.mjs`
+- `requirements.txt`
+- `requirements-dev.txt`
+- `.env.example`
+- `deploy/env/api.example.env`
+- `deploy/env/worker.example.env`
+- `backend/settings.py`
+- `backend/db.py`
+- `backend/persistence.py`
+- `alembic.ini`
+- `alembic/env.py`
+- `alembic/script.py.mako`
+- `alembic/versions/<revision>_*.py`
+- `tests/unit/test_persistence_settings.py`
+- `tests/unit/test_repo_contract.py`
 - `docs/agent-journal/<run-id>.md`
 
 Do not change:
 
-- backend FastAPI routes, response schemas, deterministic fixtures, provider adapters, retrieval, source-use policy, eval data, or generated content
-- frontend backend-contract adapters in `apps/web/lib/*`, deterministic asset/comparison/search fixtures, comparison route behavior, `A vs B` detection semantics, compare query params, asset-page section order, source-list behavior, source drawers, contextual glossary popover behavior, asset chat behavior, export validation, citation bindings, source metadata rendering, or freshness labels
+- FastAPI routes, endpoint response schemas, route wiring, deterministic fixtures, retrieval, overview generation, comparison generation, grounded chat, glossary context, exports, Weekly News Focus, AI Comprehensive Analysis, source drawer payloads, source-use policy, citation validation, eval data, or generated content
+- frontend files, frontend smoke markers, home/search/navigation behavior, `/compare` behavior, `A vs B` search redirects, source drawer UI, contextual glossary UI, asset chat UI, export controls, freshness labels, or stock-vs-ETF relationship badges
 - supported/unsupported/out-of-scope/pending/partial/stale/unknown/unavailable/insufficient-evidence semantics
-- Weekly News Focus evidence-limited behavior, AI Comprehensive Analysis thresholds, stock-vs-ETF relationship badges, or single-company-vs-ETF-basket comparison structure
-- advice-boundary copy in generated/chat surfaces, citation validation rules, source-use rights, accountless chat semantics, trust-metric readiness markers, live-provider gating, no-live-call guardrails, or secret handling
-- production dependencies
+- live provider, news, market-data, LLM, OpenRouter, SEC, ETF issuer, or external source calls
+- database-backed knowledge-pack repositories, ingestion persistence, source snapshot storage, accountless chat persistence, trust-metric persistence, cache persistence, or production deployment wiring
+- Docker Compose service topology, CI workflow behavior, root npm scripts, apps/web workspace scripts, or agent-loop scripts
+- real secret values, committed credentials, browser-exposed provider keys, `NEXT_PUBLIC_*` secrets, `/health` secret exposure, or logs that echo sensitive values
+- source-use rights, export licensing behavior, safety/advice-boundary copy, or educational disclaimers
 
 Acceptance criteria:
 
-- Home page retains exactly one primary action: search for a single supported U.S.-listed common stock or non-leveraged U.S.-listed equity ETF.
-- Home page copy and visible affordances do not present comparison as a two-input primary home-page builder, and do not present glossary as a major home-page workflow.
-- Global navigation clearly exposes the separate comparison workflow through `/compare` or an equivalent comparison route, without using a default pair as the only top-level comparison entry point if a neutral `/compare` entry is feasible in the existing layout.
-- Search examples remain examples only, not recommendations, and the supported scope remains clear for beginners.
-- Clear `A vs B` and `A versus B` search patterns still route to `/compare?left=...&right=...` through the existing search path instead of generating a multi-asset home result.
-- Search/autocomplete rows still expose stock vs ETF identity, exchange or issuer context, support-state chips, and distinct supported, recognized-unsupported, out-of-scope, pending/eligible-not-cached, stale/partial/unavailable, and unknown/no-result behavior where the current deterministic contract exposes those states.
-- Any navigation or home-page wording preserves educational framing and does not include buy/sell/hold recommendations, personalized allocation advice, price targets, tax advice, brokerage/trading behavior, or unsupported claims presented as facts.
-- Important product claims introduced or changed in visible copy are either generic educational framing or remain supported by existing cited/structured product context; no new asset-specific factual claims are introduced on the home page without citations.
-- Smoke coverage is updated to verify the audited home/navigation markers and to prevent regression of the single-search-first, separate-comparison, contextual-glossary workflow.
-- Existing route-level smoke coverage for asset pages, comparison, source drawer/source list, glossary, chat, exports, Weekly News Focus, AI Comprehensive Analysis, freshness, uncertainty, source-use rights, and no-live-call markers remains intact.
-- The task remains deterministic and static; it does not require live provider, news, market-data, LLM, browser screenshot, or network calls.
-- No new live external calls, provider dependencies, generated facts, recommendation language, buy/sell/hold language, price targets, allocation advice, tax advice, brokerage/trading behavior, export scope expansion, or source-use-rights changes are introduced.
+- Backend exposes a small persistence settings module that reads database-related configuration from environment variables with deterministic defaults or explicit missing-config states suitable for local tests.
+- Settings helpers never inspect, print, log, commit, or return actual secret values; tests verify safe redaction or sanitized diagnostics for database URLs and credentials.
+- A database helper module provides a clear boundary for future SQLAlchemy/driver usage and can be imported in tests without opening a database connection.
+- Any engine/session or connection factory is lazy and does not connect during module import, app import, static evals, frontend tests, or the main quality gate.
+- Alembic or equivalent migration scaffolding exists with a deterministic configuration path, a documented metadata boundary, and an initial scaffold revision that can be inspected or rendered without a live database.
+- Migration scaffolding is dormant: it does not create knowledge-pack, source, chat, trust-metric, cache, or ingestion tables unless the task explicitly adds only a neutral migration baseline required by the tool.
+- If SQLAlchemy, Alembic, psycopg, or another production dependency is added, the dependency version is bounded and the task summary explains why it is needed, alternatives considered, and why it does not introduce live external calls in normal CI.
+- Placeholder env files remain placeholder-only and do not include real secrets; database placeholders stay server-side and are not added to frontend `NEXT_PUBLIC_*` variables.
+- Existing Docker Compose local Postgres support remains local development scaffolding only and is not required for CI or the quality gate.
+- Existing backend API behavior remains fixture-backed and deterministic; supported asset pages, search, comparison, chat, exports, Weekly News Focus, AI Comprehensive Analysis, citations, freshness, and unsupported/out-of-scope states behave as before.
+- Source-use rights and citation rules are unchanged: rejected or license-disallowed sources still cannot feed generated output, rendered summaries, caches, or exports.
+- Product safety remains unchanged: no buy/sell/hold recommendations, personalized allocation advice, unsupported price targets, tax advice, brokerage/trading behavior, or unsupported factual claims are introduced.
+- Tests cover settings parsing, secret redaction, lazy database boundary behavior, migration scaffold presence, placeholder env hygiene, and no-live-connection behavior.
 - Required commands from this cycle pass.
 
 Required commands:
 
-- `npm test`
-- `npm run typecheck`
-- `npm run build`
-- `python3 -m pytest tests/unit/test_safety_guardrails.py -q`
+- `python3 -m pytest tests/unit/test_persistence_settings.py tests/unit/test_repo_contract.py -q`
+- `python3 -m pytest tests -q`
+- `python3 evals/run_static_evals.py`
 - `bash scripts/run_quality_gate.sh`
+- `docker compose config` if Docker is available; if unavailable, record the reason in the journal
 
 Iteration budget:
 
@@ -56,6 +68,29 @@ Iteration budget:
 
 
 ## Completed
+
+### T-075: Re-audit home page and navigation against frontend workflow docs
+
+Goal:
+Re-audit and tighten the home page plus global navigation against the PRD/TDS Frontend Design and Workflow v0.4 baseline so the first user path remains single-stock-or-ETF search, while comparison stays separate but connected and glossary remains contextual inside reading flows.
+
+Completed details:
+
+- Implementation commit `09791f6 docs(T-075): re-audit home page and navigation against frontend workflow docs` updated `apps/web/app/layout.tsx`, `apps/web/app/page.tsx`, `tests/frontend/smoke.mjs`, and added `docs/agent-journal/20260425T034732Z.md`.
+- Merged branch `agent/T-075-20260425T034732Z` into `main` with local merge commit `fcde6ec chore(T-075): merge re-audit home page and navigation against frontend workflow docs`.
+- `apps/web/app/layout.tsx` changed the global Compare navigation entry from the default `VOO`/`QQQ` pair to the neutral `/compare` builder and added deterministic markers for the single-search/separate-compare navigation workflow.
+- `apps/web/app/page.tsx` added deterministic markers for the single-asset-search-first home baseline and clarified that glossary help is contextual inside the learning flow.
+- `tests/frontend/smoke.mjs` added checks for the search-first home workflow, neutral separate comparison navigation, absence of default-pair top-level navigation, and absence of a top-level glossary workflow.
+- The journal records that the task did not change search resolution behavior, comparison route behavior, glossary popover behavior, backend contracts, source-use policy, deterministic fixtures, generated content, or live-provider behavior.
+- `docs/agent-journal/20260425T034732Z.md` records these checks: `npm test` passed; `npm run typecheck` passed; `npm run build` passed; `python3 -m pytest tests/unit/test_safety_guardrails.py -q` passed with 11 tests; `bash scripts/run_quality_gate.sh` passed, including 197 Python tests, static evals, frontend smoke, typecheck, build, and backend checks.
+- Remaining risks from the journal:
+  - Coverage is deterministic static smoke coverage and build/type checks; it does not include browser screenshot or interaction testing.
+  - The home and navigation audit did not change search resolution behavior, comparison route behavior, glossary popover behavior, or backend contracts.
+
+Completion commits:
+
+- `09791f6 docs(T-075): re-audit home page and navigation against frontend workflow docs`
+- `fcde6ec chore(T-075): merge re-audit home page and navigation against frontend workflow docs`
 
 ### T-074: Add route-level frontend docs-alignment smoke coverage
 
@@ -1995,8 +2030,6 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-076: Add backend persistence settings and migration scaffold
 
 ### T-077: Add persisted knowledge-pack repository contracts
 
