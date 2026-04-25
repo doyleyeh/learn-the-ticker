@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Iterable
+from dataclasses import dataclass, field
+from typing import Any, Iterable, Protocol
 
 from backend.citations import (
     CitationEvidence,
@@ -11,9 +11,22 @@ from backend.citations import (
     EvidenceKind,
     validate_claims,
 )
+from backend.cache import (
+    build_knowledge_pack_freshness_input,
+    compute_knowledge_pack_freshness_hash,
+)
+from backend.generated_output_cache_repository import (
+    GeneratedOutputArtifactCategory,
+    GeneratedOutputCacheContractError,
+    GeneratedOutputCacheRepositoryRecords,
+    validate_generated_output_cache_records,
+)
 from backend.models import (
+    AssetIdentity,
     AssetStatus,
     AssetType,
+    CacheEntryKind,
+    CacheScope,
     BeginnerSummary,
     Citation,
     Claim,
@@ -34,17 +47,30 @@ from backend.models import (
     RiskItem,
     SectionFreshnessInput,
     SourceDocument,
+    Freshness,
     StateMessage,
     SuitabilitySummary,
 )
 from backend.retrieval import (
     AssetKnowledgePack,
+    EvidenceGap,
+    NormalizedFactFixture,
     RetrievedFact,
     RetrievedRecentDevelopment,
     RetrievedSourceChunk,
+    RecentDevelopmentFixture,
+    SourceChunkFixture,
     SourceDocumentFixture,
     _section_freshness_labels,
     build_asset_knowledge_pack,
+)
+from backend.repositories.knowledge_packs import (
+    KnowledgePackRepositoryRecords,
+    KnowledgePackRepositoryContractError,
+)
+from backend.retrieval_repository import (
+    KnowledgePackRecordReader,
+    read_persisted_knowledge_pack_response,
 )
 from backend.safety import find_forbidden_output_phrases
 from backend.source_policy import resolve_source_policy
@@ -57,6 +83,26 @@ from backend.weekly_news import (
 
 class OverviewGenerationError(ValueError):
     """Raised when deterministic overview generation violates project contracts."""
+
+
+OVERVIEW_PERSISTED_READ_BOUNDARY = "overview-persisted-read-boundary-v1"
+
+
+class GeneratedOutputCacheRecordReader(Protocol):
+    def read_generated_output_cache_records(self, ticker: str) -> GeneratedOutputCacheRepositoryRecords | None:
+        ...
+
+
+@dataclass(frozen=True)
+class PersistedOverviewReadResult:
+    status: str
+    ticker: str
+    overview: OverviewResponse | None = None
+    diagnostics: tuple[str, ...] = field(default_factory=tuple)
+
+    @property
+    def found(self) -> bool:
+        return self.status == "found" and self.overview is not None
 
 
 @dataclass(frozen=True)
@@ -90,10 +136,352 @@ class FreshnessValidationSubject:
     limitations: str | None = None
 
 
-def generate_asset_overview(ticker: str) -> OverviewResponse:
+def generate_asset_overview(
+    ticker: str,
+    *,
+    persisted_pack_reader: KnowledgePackRecordReader | Any | None = None,
+    generated_output_cache_reader: GeneratedOutputCacheRecordReader | Any | None = None,
+) -> OverviewResponse:
     """Build an OverviewResponse-compatible payload from the local retrieval pack."""
 
+    persisted = read_persisted_overview_response(
+        ticker,
+        persisted_pack_reader=persisted_pack_reader,
+        generated_output_cache_reader=generated_output_cache_reader,
+    )
+    if persisted.found and persisted.overview is not None:
+        return persisted.overview
+
     return generate_overview_from_pack(build_asset_knowledge_pack(ticker))
+
+
+def read_persisted_overview_response(
+    ticker: str,
+    *,
+    persisted_pack_reader: KnowledgePackRecordReader | Any | None = None,
+    generated_output_cache_reader: GeneratedOutputCacheRecordReader | Any | None = None,
+) -> PersistedOverviewReadResult:
+    normalized = ticker.strip().upper()
+    if persisted_pack_reader is None or generated_output_cache_reader is None:
+        return PersistedOverviewReadResult(
+            status="not_configured",
+            ticker=normalized,
+            diagnostics=("reader:not_configured",),
+        )
+
+    pack_read = read_persisted_knowledge_pack_response(normalized, reader=persisted_pack_reader)
+    if not pack_read.found or pack_read.response is None or pack_read.records is None:
+        return PersistedOverviewReadResult(
+            status=pack_read.status,
+            ticker=normalized,
+            diagnostics=(f"knowledge_pack:{pack_read.status}",),
+        )
+    if not pack_read.response.asset.supported or not pack_read.response.generated_output_available:
+        return PersistedOverviewReadResult(
+            status="blocked_state",
+            ticker=normalized,
+            diagnostics=(f"knowledge_pack:blocked:{pack_read.response.build_state.value}",),
+        )
+
+    cache_records_result = _read_generated_output_cache_records(generated_output_cache_reader, normalized)
+    if cache_records_result.status != "found" or cache_records_result.records is None:
+        return PersistedOverviewReadResult(
+            status=cache_records_result.status,
+            ticker=normalized,
+            diagnostics=cache_records_result.diagnostics,
+        )
+
+    try:
+        pack = _asset_knowledge_pack_from_repository_records(pack_read.records)
+        _validate_generated_output_cache_for_overview(
+            normalized,
+            cache_records_result.records,
+            pack=pack,
+            pack_records=pack_read.records,
+            knowledge_pack_hash=pack_read.response.knowledge_pack_freshness_hash,
+        )
+        overview = generate_overview_from_pack(pack)
+        report = validate_overview_response(overview, pack)
+        if not report.valid:
+            return PersistedOverviewReadResult(
+                status="validation_error",
+                ticker=normalized,
+                diagnostics=("overview:citation_validation_failed",),
+            )
+    except (
+        GeneratedOutputCacheContractError,
+        KnowledgePackRepositoryContractError,
+        OverviewGenerationError,
+        LookupError,
+        StopIteration,
+        ValueError,
+        TypeError,
+    ) as exc:
+        return PersistedOverviewReadResult(
+            status="contract_error",
+            ticker=normalized,
+            diagnostics=(f"overview:{exc.__class__.__name__}",),
+        )
+
+    return PersistedOverviewReadResult(
+        status="found",
+        ticker=normalized,
+        overview=overview,
+        diagnostics=("overview:persisted_hit",),
+    )
+
+
+@dataclass(frozen=True)
+class _GeneratedOutputCacheReadResult:
+    status: str
+    ticker: str
+    records: GeneratedOutputCacheRepositoryRecords | None = None
+    diagnostics: tuple[str, ...] = field(default_factory=tuple)
+
+
+def _read_generated_output_cache_records(
+    reader: GeneratedOutputCacheRecordReader | Any,
+    ticker: str,
+) -> _GeneratedOutputCacheReadResult:
+    try:
+        raw_records = _read_generated_output_cache_reader(reader, ticker)
+        if raw_records is None:
+            return _GeneratedOutputCacheReadResult(
+                status="miss",
+                ticker=ticker,
+                diagnostics=("generated_output_cache:miss",),
+            )
+        records = (
+            raw_records
+            if isinstance(raw_records, GeneratedOutputCacheRepositoryRecords)
+            else GeneratedOutputCacheRepositoryRecords.model_validate(raw_records)
+        )
+        validated = validate_generated_output_cache_records(records)
+    except GeneratedOutputCacheContractError as exc:
+        return _GeneratedOutputCacheReadResult(
+            status="contract_error",
+            ticker=ticker,
+            diagnostics=(f"generated_output_cache:{exc.__class__.__name__}",),
+        )
+    except Exception as exc:  # pragma: no cover - caller observes sanitized status only.
+        return _GeneratedOutputCacheReadResult(
+            status="reader_error",
+            ticker=ticker,
+            diagnostics=(f"generated_output_cache:{exc.__class__.__name__}",),
+        )
+    return _GeneratedOutputCacheReadResult(
+        status="found",
+        ticker=ticker,
+        records=validated,
+        diagnostics=("generated_output_cache:found",),
+    )
+
+
+def _read_generated_output_cache_reader(
+    reader: GeneratedOutputCacheRecordReader | Any,
+    ticker: str,
+) -> GeneratedOutputCacheRepositoryRecords | None:
+    if isinstance(reader, dict):
+        return reader.get(ticker)
+    if hasattr(reader, "read_generated_output_cache_records"):
+        return reader.read_generated_output_cache_records(ticker)
+    if hasattr(reader, "read_asset_overview_records"):
+        return reader.read_asset_overview_records(ticker)
+    if hasattr(reader, "read"):
+        return reader.read(ticker)
+    if hasattr(reader, "get"):
+        return reader.get(ticker)
+    raise GeneratedOutputCacheContractError(
+        "Injected generated-output cache reader must expose read_generated_output_cache_records(ticker), "
+        "read_asset_overview_records(ticker), read(ticker), or get(ticker)."
+    )
+
+
+def _asset_knowledge_pack_from_repository_records(records: KnowledgePackRepositoryRecords) -> AssetKnowledgePack:
+    source_rows = sorted(
+        records.source_documents,
+        key=lambda row: (row.asset_ticker, row.source_rank, row.source_document_id),
+    )
+    source_by_id = {row.source_document_id: row for row in source_rows}
+    chunk_rows = sorted(
+        records.source_chunks,
+        key=lambda row: (row.source_document_id, row.chunk_order, row.chunk_id),
+    )
+
+    sources = [
+        SourceDocumentFixture(
+            source_document_id=row.source_document_id,
+            asset_ticker=row.asset_ticker,
+            source_type=row.source_type,
+            source_rank=row.source_rank,
+            title=row.title,
+            publisher=row.publisher,
+            url=row.url,
+            published_at=row.published_at,
+            retrieved_at=row.retrieved_at,
+            content_type="text",
+            is_official=row.is_official,
+            freshness_state=FreshnessState(row.freshness_state),
+            as_of_date=row.as_of_date,
+            source_quality=row.source_quality,
+            allowlist_status=row.allowlist_status,
+            source_use_policy=row.source_use_policy,
+        )
+        for row in source_rows
+    ]
+    source_fixtures_by_id = {source.source_document_id: source for source in sources}
+
+    chunks = []
+    for row in chunk_rows:
+        if not row.stored_text:
+            raise KnowledgePackRepositoryContractError(
+                f"Chunk {row.chunk_id} has no persisted text for overview generation."
+            )
+        chunks.append(
+            RetrievedSourceChunk(
+                chunk=SourceChunkFixture(
+                    chunk_id=row.chunk_id,
+                    asset_ticker=row.asset_ticker,
+                    source_document_id=row.source_document_id,
+                    section_name=row.section_name,
+                    chunk_order=row.chunk_order,
+                    text=row.stored_text,
+                    token_count=row.token_count,
+                    char_start=0,
+                    char_end=len(row.stored_text),
+                    supported_claim_types=row.supported_claim_types,
+                ),
+                source_document=source_fixtures_by_id[row.source_document_id],
+            )
+        )
+
+    facts = []
+    for row in sorted(records.normalized_facts, key=lambda item: item.fact_id):
+        if row.value is None:
+            raise KnowledgePackRepositoryContractError(f"Fact {row.fact_id} has no persisted value for overview generation.")
+        source = source_by_id[row.source_document_id]
+        facts.append(
+            RetrievedFact(
+                fact=NormalizedFactFixture(
+                    fact_id=row.fact_id,
+                    asset_ticker=row.asset_ticker,
+                    fact_type=row.fact_type,
+                    field_name=row.field_name,
+                    value=row.value,
+                    unit=row.unit,
+                    period=row.period,
+                    as_of_date=row.as_of_date,
+                    source_document_id=row.source_document_id,
+                    source_chunk_id=row.source_chunk_id,
+                    extraction_method=row.extraction_method,
+                    confidence=float(row.confidence or 0.0),
+                    freshness_state=FreshnessState(row.freshness_state),
+                    evidence_state=row.evidence_state,
+                ),
+                source_document=source_fixtures_by_id[source.source_document_id],
+                source_chunk=next(item.chunk for item in chunks if item.chunk.chunk_id == row.source_chunk_id),
+            )
+        )
+
+    recent_developments = []
+    for row in sorted(records.recent_developments, key=lambda item: item.event_id):
+        if row.title is None or row.summary is None:
+            raise KnowledgePackRepositoryContractError(
+                f"Recent development {row.event_id} has no persisted title or summary for overview generation."
+            )
+        source = source_by_id[row.source_document_id]
+        recent_developments.append(
+            RetrievedRecentDevelopment(
+                recent_development=RecentDevelopmentFixture(
+                    event_id=row.event_id,
+                    asset_ticker=row.asset_ticker,
+                    event_type=row.event_type,
+                    title=row.title,
+                    summary=row.summary,
+                    event_date=row.event_date,
+                    source_document_id=row.source_document_id,
+                    source_chunk_id=row.source_chunk_id,
+                    importance_score=row.importance_score,
+                    freshness_state=FreshnessState(row.freshness_state),
+                    evidence_state=row.evidence_state,
+                ),
+                source_document=source_fixtures_by_id[source.source_document_id],
+                source_chunk=next(item.chunk for item in chunks if item.chunk.chunk_id == row.source_chunk_id),
+            )
+        )
+
+    return AssetKnowledgePack(
+        asset=AssetIdentity.model_validate(records.envelope.asset),
+        freshness=Freshness.model_validate(records.envelope.freshness),
+        source_documents=sources,
+        normalized_facts=facts,
+        source_chunks=chunks,
+        recent_developments=recent_developments,
+        evidence_gaps=[
+            EvidenceGap(
+                gap_id=row.gap_id,
+                asset_ticker=row.asset_ticker,
+                field_name=row.field_name,
+                evidence_state=row.evidence_state,
+                message=row.message or "",
+                freshness_state=FreshnessState(row.freshness_state),
+                source_document_id=row.source_document_id,
+                source_chunk_id=row.source_chunk_id,
+            )
+            for row in sorted(records.evidence_gaps, key=lambda item: item.gap_id)
+        ],
+    )
+
+
+def _validate_generated_output_cache_for_overview(
+    ticker: str,
+    records: GeneratedOutputCacheRepositoryRecords,
+    *,
+    pack: AssetKnowledgePack,
+    pack_records: KnowledgePackRepositoryRecords,
+    knowledge_pack_hash: str | None,
+) -> None:
+    if len(records.envelopes) != 1:
+        raise GeneratedOutputCacheContractError("Overview reuse requires exactly one generated-output cache envelope.")
+    envelope = records.envelopes[0]
+    if envelope.asset_ticker != ticker or pack.asset.ticker != ticker:
+        raise GeneratedOutputCacheContractError("Overview cache and knowledge pack must bind to the requested asset.")
+    if envelope.entry_kind != CacheEntryKind.asset_page.value or envelope.cache_scope != CacheScope.asset.value:
+        raise GeneratedOutputCacheContractError("Overview cache records must be asset-page scoped.")
+    if envelope.artifact_category != GeneratedOutputArtifactCategory.asset_overview_section.value:
+        raise GeneratedOutputCacheContractError("Overview cache records must use the asset overview artifact category.")
+    if envelope.output_identity != f"asset:{ticker}":
+        raise GeneratedOutputCacheContractError("Overview cache output identity must match the requested asset.")
+    if not envelope.cacheable or not envelope.generated_output_available:
+        raise GeneratedOutputCacheContractError("Overview cache records must be cacheable and generated-output available.")
+
+    if not pack_records.section_freshness_inputs:
+        raise GeneratedOutputCacheContractError("Overview persisted pack records require section freshness labels.")
+    section_freshness = [
+        SectionFreshnessInput(
+            section_id=row.section_id,
+            freshness_state=FreshnessState(row.freshness_state),
+            evidence_state=row.evidence_state,
+            as_of_date=row.as_of_date,
+            retrieved_at=row.retrieved_at,
+        )
+        for row in pack_records.section_freshness_inputs
+    ]
+    knowledge_input = build_knowledge_pack_freshness_input(pack, section_freshness_labels=section_freshness)
+    expected_knowledge_hash = compute_knowledge_pack_freshness_hash(knowledge_input)
+    if knowledge_pack_hash != expected_knowledge_hash or envelope.knowledge_pack_freshness_hash != expected_knowledge_hash:
+        raise GeneratedOutputCacheContractError("Overview cache knowledge-pack freshness hash does not match current evidence.")
+
+    pack_source_ids = {source.source_document_id for source in pack.source_documents}
+    pack_citation_ids = {
+        *{f"c_{item.fact.fact_id}" for item in pack.normalized_facts},
+        *{f"c_{item.chunk.chunk_id}" for item in pack.source_chunks},
+        *{f"c_{item.recent_development.event_id}" for item in pack.recent_developments},
+    }
+    if not set(envelope.source_document_ids) <= pack_source_ids:
+        raise GeneratedOutputCacheContractError("Overview cache source IDs must belong to the same persisted knowledge pack.")
+    if not set(envelope.citation_ids) <= pack_citation_ids:
+        raise GeneratedOutputCacheContractError("Overview cache citation IDs must belong to the same persisted knowledge pack.")
 
 
 def generate_overview_from_pack(pack: AssetKnowledgePack) -> OverviewResponse:
