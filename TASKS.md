@@ -1,60 +1,58 @@
 ## Current task
 
-### T-077: Add persisted knowledge-pack repository contracts
+### T-078: Route retrieval through persisted packs with fixture fallback
 
 Goal:
-Add the first persisted asset knowledge-pack repository contract on top of the dormant persistence boundary, without routing any current API, retrieval, generation, chat, comparison, export, or fixture behavior through a live database.
+Route the asset knowledge-pack build-result retrieval path through an injectable persisted-pack read boundary first, with deterministic fixture fallback preserved as the default behavior and no live database dependency in normal local or CI runs.
 
 Task-scope paragraph:
-This cycle is limited to defining the persistence contract for asset knowledge packs produced by the existing deterministic retrieval fixtures: SQLAlchemy metadata/table definitions or equivalent row models, a small repository boundary with explicit serialization/deserialization helpers, and focused tests that prove the contract preserves source, citation, freshness, support-state, evidence-gap, and source-use metadata without opening a real database connection. The repository may use an injected fake session or pure unit-level serialization tests, but current runtime paths must continue to call the existing fixture-backed retrieval builders. Do not route FastAPI endpoints, overview generation, comparison generation, grounded chat, exports, glossary context, Weekly News Focus, AI Comprehensive Analysis, or frontend code through the persisted repository in this task.
+This cycle is limited to adding a small retrieval repository adapter around the T-077 persisted knowledge-pack contract so `KnowledgePackBuildResponse` lookup can prefer an injected persisted record and fall back to the existing deterministic fixture builders when no persisted pack is available. The default app/test path must remain deterministic and fixture-backed unless a fake or explicitly injected repository reader is supplied. Do not open a real database connection, execute migrations, add ingestion writes, route generation/chat/comparison/export/glossary behavior through persistence, or change frontend behavior.
 
 Allowed files:
 
-- `backend/db.py`
-- `backend/persistence.py`
 - `backend/knowledge_pack_repository.py`
+- `backend/retrieval.py`
 - `backend/retrieval_repository.py`
 - `backend/repositories/knowledge_packs.py`
 - `backend/repositories/__init__.py`
-- `alembic/env.py`
-- `alembic/versions/<revision>_knowledge_pack_repository_contracts.py`
 - `tests/unit/test_knowledge_pack_repository.py`
 - `tests/unit/test_retrieval_repository.py`
-- `tests/unit/test_repo_contract.py`
+- `tests/unit/test_retrieval_fixtures.py`
+- `tests/integration/test_backend_api.py`
 - `docs/agent-journal/<run-id>.md`
 
 Do not change:
 
-- FastAPI routes, endpoint response schemas, route wiring, deterministic fixtures, retrieval output behavior, overview generation, comparison generation, grounded chat, glossary context, exports, Weekly News Focus, AI Comprehensive Analysis, source drawer payloads, source-use policy, citation validation, eval data, or generated content
+- FastAPI routes, endpoint response schemas, route wiring, deterministic fixture data, overview generation, comparison generation, grounded chat, glossary context, exports, Weekly News Focus, AI Comprehensive Analysis, source drawer payloads, source-use policy, citation validation, eval data, or generated content
 - frontend files, frontend smoke markers, home/search/navigation behavior, `/compare` behavior, `A vs B` search redirects, source drawer UI, contextual glossary UI, asset chat UI, export controls, freshness labels, or stock-vs-ETF relationship badges
 - supported/unsupported/out-of-scope/pending/partial/stale/unknown/unavailable/insufficient-evidence semantics
 - live provider, news, market-data, LLM, OpenRouter, SEC, ETF issuer, or external source calls
-- ingestion persistence, source snapshot storage, accountless chat persistence, trust-metric persistence, generated-output cache persistence, production deployment wiring, or any background worker execution path
+- ingestion persistence, source snapshot storage, accountless chat persistence, trust-metric persistence, generated-output cache persistence, production deployment wiring, migration execution, or any background worker execution path
 - Docker Compose service topology, CI workflow behavior, root npm scripts, apps/web workspace scripts, or agent-loop scripts
 - real secret values, committed credentials, browser-exposed provider keys, `NEXT_PUBLIC_*` secrets, `/health` secret exposure, or logs that echo sensitive values
 - source-use rights, export licensing behavior, safety/advice-boundary copy, or educational disclaimers
 
 Acceptance criteria:
 
-- Persistence metadata includes an explicit asset knowledge-pack schema boundary for persisted pack envelopes, source documents, source chunks or allowed excerpts, normalized facts, recent developments, evidence gaps, section freshness inputs, and checksum/hash metadata needed by current deterministic `KnowledgePackBuildResponse` contracts.
-- The migration revision is deterministic and inspectable without a live database; tests verify it creates only knowledge-pack repository contract tables and does not create ingestion, chat, trust-metric, generated-output cache, user-account, provider-secret, or deployment tables.
-- The repository boundary can serialize at least one supported local fixture-backed pack, such as `VOO`, into persistence-ready records and reconstruct a contract-equivalent in-memory pack or DTO with the same ticker, asset identity, support state, source IDs, citation/source boundaries, facts, chunks/excerpts, recent developments, evidence gaps, freshness state, source-use policy, and knowledge-pack freshness hash inputs.
-- Non-generated states such as eligible-not-cached, unsupported, out-of-scope, and unknown remain represented as non-generated metadata only; the repository contract must not create generated pages, generated chat answers, generated comparisons, generated risk summaries, or fake evidence for those states.
-- Source-use rights are enforced at the contract boundary: `rejected` or license-disallowed sources cannot be persisted for generated-output use, and `metadata_only` or `link_only` sources cannot persist raw article text or unrestricted chunks.
-- Important factual fields needed later for citations preserve same-asset source bindings; tests assert wrong-asset source IDs are rejected or marked invalid by the serializer/repository contract.
-- Repository imports, metadata imports, migrations, and tests remain lazy and deterministic: they do not open a database connection during module import, app import, static evals, frontend tests, or the main quality gate.
-- Existing backend API behavior remains fixture-backed and deterministic; supported asset pages, search, comparison, chat, exports, Weekly News Focus, AI Comprehensive Analysis, citations, freshness, and unsupported/out-of-scope states behave as before.
+- A retrieval repository boundary exists for `KnowledgePackBuildResponse` lookup that can read/deserialise T-077 `KnowledgePackRepositoryRecords` from an injected fake or repository reader before falling back to deterministic fixture builders.
+- Existing `build_asset_knowledge_pack_result(ticker)` call sites remain backward compatible and deterministic when no persisted reader is injected.
+- Tests prove a supported fixture-backed pack such as `VOO` can be serialized with the T-077 repository, returned through the new retrieval read boundary, and reconstructed with the same ticker, asset identity, build state, support state, generated-output availability, source IDs, citation IDs, source documents, facts, chunks, recent developments, evidence gaps, section freshness, source-use policy, source checksum metadata, cache key, and knowledge-pack freshness hash.
+- Tests prove fixture fallback is used when the persisted reader has no matching record, fails with a controlled repository-miss result, or is not configured; fallback output remains byte-for-byte equivalent to the current deterministic fixture-backed `KnowledgePackBuildResponse` for supported cached assets and non-generated states.
+- Non-generated states such as eligible-not-cached, unsupported, out-of-scope, and unknown remain represented as non-generated metadata only; the retrieval route must not create generated pages, generated chat answers, generated comparisons, generated risk summaries, source facts, citations, or fake evidence for those states.
+- Persisted records that violate T-077 source-use rights, wrong-asset source bindings, or citation/source boundaries are rejected and do not silently replace fixture-backed safe output.
+- Repository imports and retrieval imports remain lazy and deterministic: they do not open a database connection during module import, app import, static evals, frontend tests, backend API tests, or the main quality gate.
+- Existing backend API behavior remains response-compatible and deterministic; supported asset pages, search, comparison, chat, exports, Weekly News Focus, AI Comprehensive Analysis, citations, freshness, and unsupported/out-of-scope states behave as before when no persisted reader is injected.
 - Existing frontend behavior remains untouched and aligned with Frontend Design and Workflow v0.4: home remains single-stock-or-ETF search first; comparison remains separate through `/compare`; glossary remains contextual; source drawer, glossary, and chat mobile behavior remains unchanged; stock-vs-ETF relationship badges remain unchanged.
 - Placeholder env files remain placeholder-only and no new provider or database secrets are exposed to browser code, `NEXT_PUBLIC_*`, `/health`, docs, logs, or committed files.
 - No live provider, news, market-data, LLM, OpenRouter, SEC, ETF issuer, or external source calls are introduced.
 - Citation, freshness, uncertainty, source-use, and safety rules are unchanged: important claims require citations or explicit uncertainty, stale/unknown/unavailable/partial/insufficient-evidence states remain visible where applicable, and rejected or license-disallowed sources cannot feed generated output, rendered summaries, caches, or exports.
 - Product safety remains unchanged: no buy/sell/hold recommendations, personalized allocation advice, unsupported price targets, tax advice, brokerage/trading behavior, or unsupported factual claims are introduced.
-- Tests cover migration contract presence, repository serialization/deserialization, source-use text-storage restrictions, same-asset citation/source boundaries, non-generated state handling, lazy no-live-connection behavior, and preservation of current fixture-backed API behavior.
+- Tests cover persisted-first retrieval, deterministic fixture fallback, repository miss/error handling, source-use and same-asset validation, non-generated state handling, lazy no-live-connection behavior, and preservation of current fixture-backed API behavior.
 - Required commands from this cycle pass.
 
 Required commands:
 
-- `python3 -m pytest tests/unit/test_knowledge_pack_repository.py tests/unit/test_repo_contract.py -q`
+- `python3 -m pytest tests/unit/test_retrieval_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_retrieval_fixtures.py tests/integration/test_backend_api.py -q`
 - `python3 -m pytest tests -q`
 - `python3 evals/run_static_evals.py`
 - `bash scripts/run_quality_gate.sh`
@@ -66,6 +64,32 @@ Iteration budget:
 
 
 ## Completed
+
+### T-077: Add persisted knowledge-pack repository contracts
+
+Goal:
+Add the first persisted asset knowledge-pack repository contract on top of the dormant persistence boundary, without routing any current API, retrieval, generation, chat, comparison, export, or fixture behavior through a live database.
+
+Completed details:
+
+- Implementation commit `141b3c4 feat(T-077): add persisted knowledge-pack repository contracts` updated `backend/repositories/knowledge_packs.py`, `backend/knowledge_pack_repository.py`, `backend/repositories/__init__.py`, `alembic/versions/20260425_0002_knowledge_pack_repository_contracts.py`, `tests/unit/test_knowledge_pack_repository.py`, and `docs/agent-journal/20260425T040950Z.md`.
+- Merged branch `agent/T-077-20260425T040950Z` into `main` with local merge commit `80a318b chore(T-077): merge persisted knowledge-pack repository contracts`.
+- `backend/repositories/knowledge_packs.py` added a dormant pure-Python asset knowledge-pack repository contract with explicit table definitions and row models for pack envelopes, source documents, source chunks or excerpts, normalized facts, recent developments, evidence gaps, section freshness inputs, and source checksum metadata.
+- Serialization/deserialization helpers preserve supported fixture-backed `KnowledgePackBuildResponse` metadata and optional retrieval fixture details without routing runtime API, retrieval, generation, chat, comparison, export, glossary, Weekly News Focus, AI Comprehensive Analysis, or frontend behavior through a live database.
+- The repository contract validates source-use and same-asset boundaries: rejected or generated-output-disallowed sources are blocked, `metadata_only` and `link_only` sources do not persist raw chunk text, and facts, recent developments, and gaps must bind to same-pack sources and chunks.
+- `backend/knowledge_pack_repository.py` re-exports the repository boundary, table names, record model, contract error, and metadata helpers for future retrieval integration.
+- The Alembic revision is inspectable and limited to knowledge-pack repository contract tables. The journal records that it imports without Alembic or a database connection, while running it still requires Alembic/SQLAlchemy.
+- The journal records that the task did not add live database connections, ORM session execution, route wiring, ingestion persistence, generated-output cache persistence, production repository execution, or changes to current API/retrieval/generation/chat/comparison/export/glossary/frontend behavior.
+- `docs/agent-journal/20260425T040950Z.md` records these checks: `python3 -m pytest tests/unit/test_knowledge_pack_repository.py tests/unit/test_repo_contract.py -q` passed with 17 tests; `python3 -m pytest tests -q` passed with 216 tests; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed; `docker compose config` passed.
+- Remaining risks from the journal:
+  - The repository contract is intentionally dormant and in-memory/unit-tested only; no live database connection, ORM session, route wiring, ingestion persistence, generated-output cache persistence, or production repository execution path was added.
+  - The migration is deterministic and inspectable, but it was not executed against a database in this task.
+  - Deserialization reconstructs the knowledge-pack contract metadata; cache revalidation runtime objects remain outside the persisted contract for now.
+
+Completion commits:
+
+- `141b3c4 feat(T-077): add persisted knowledge-pack repository contracts`
+- `80a318b chore(T-077): merge persisted knowledge-pack repository contracts`
 
 ### T-076: Add backend persistence settings and migration scaffold
 
@@ -2055,8 +2079,6 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-078: Route retrieval through persisted packs with fixture fallback
 
 ## MVP Backend Roadmap
 
