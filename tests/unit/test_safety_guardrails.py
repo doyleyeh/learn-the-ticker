@@ -282,6 +282,29 @@ def test_glossary_asset_context_contract_copy_is_advice_safe():
     assert_no_forbidden_phrases("glossary asset context contract", combined)
 
 
+def test_etf_universe_manifest_copy_is_advice_safe():
+    combined = "\n".join(
+        [
+            (ROOT / "backend" / "etf_universe.py").read_text(encoding="utf-8"),
+            (ROOT / "data" / "universes" / "us_equity_etfs.current.json").read_text(encoding="utf-8"),
+        ]
+    )
+    markers = [
+        "us-equity-etf-universe-v1",
+        "eligible_not_cached",
+        "recognized_unsupported",
+        "out_of_scope",
+        "unavailable",
+        "generated outputs remain blocked",
+    ]
+
+    for marker in markers:
+        assert marker in combined
+        assert_no_forbidden_phrases(marker, marker)
+
+    assert_no_forbidden_phrases("ETF universe manifest contract", combined)
+
+
 def test_search_blocked_explanation_contract_copy_is_advice_safe():
     combined = "\n".join(
         [

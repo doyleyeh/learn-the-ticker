@@ -17,6 +17,7 @@ def test_core_agent_files_exist():
         "docs/learn-the-ticker_proposal.md",
         "docs/learn_the_ticker_PRD.md",
         "docs/learn_the_ticker_technical_design_spec.md",
+        "data/universes/us_equity_etfs.current.json",
     ]
 
     for filename in required:
@@ -201,6 +202,37 @@ def test_environment_scaffolds_are_placeholder_only():
     assert "NEXT_PUBLIC_API_BASE_URL" in web_env
     assert "OPENROUTER_API_KEY" not in web_env
     assert "FMP_API_KEY" not in web_env
+
+
+def test_etf_universe_contract_files_are_local_metadata_only():
+    manifest = read_file("data/universes/us_equity_etfs.current.json")
+    module = read_file("backend/etf_universe.py")
+
+    assert "us-equity-etf-universe-v1" in manifest
+    assert "EQUITY_ETF_UNIVERSE_MANIFEST_URI" in manifest
+    assert "no live provider" in manifest
+    assert "recognized_unsupported" in manifest
+    assert "eligible_not_cached" in manifest
+    assert "unavailable" in manifest
+    assert "ETFUniverseContractError" in module
+    assert "load_etf_universe_manifest" in module
+
+    combined = f"{manifest}\n{module}"
+    for forbidden in [
+        "BEGIN PRIVATE KEY",
+        "OPENROUTER_API_KEY=",
+        "FMP_API_KEY=",
+        "ALPHA_VANTAGE_API_KEY=",
+        "FINNHUB_API_KEY=",
+        "TIINGO_API_KEY=",
+        "EODHD_API_KEY=",
+        "import requests",
+        "import httpx",
+        "boto3",
+        "os.environ",
+        "api_key",
+    ]:
+        assert forbidden not in combined
 
 
 def test_control_docs_cover_new_mvp_operating_rules():

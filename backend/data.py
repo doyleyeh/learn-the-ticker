@@ -6,6 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from backend.etf_universe import legacy_eligible_not_cached_etf_metadata
 from backend.models import (
     AssetIdentity,
     AssetStatus,
@@ -429,96 +430,9 @@ UNSUPPORTED_ASSET_SEARCH_METADATA: dict[str, dict[str, str | list[str] | None]] 
 }
 
 
-_ELIGIBLE_NOT_CACHED_ETF_ASSETS: dict[str, dict[str, str | list[str] | None]] = {
-    "SPY": {
-        "name": "SPDR S&P 500 ETF Trust",
-        "asset_type": "etf",
-        "exchange": "NYSE Arca",
-        "issuer": "State Street Global Advisors",
-        "aliases": ["s&p 500 etf", "spdr s&p 500 etf", "plain vanilla etf"],
-        "launch_group": "broad_etf",
-    },
-    "VTI": {
-        "name": "Vanguard Total Stock Market ETF",
-        "asset_type": "etf",
-        "exchange": "NYSE Arca",
-        "issuer": "Vanguard",
-        "aliases": ["total market etf", "vanguard total stock market etf", "plain vanilla etf"],
-        "launch_group": "broad_etf",
-    },
-    "IVV": {
-        "name": "iShares Core S&P 500 ETF",
-        "asset_type": "etf",
-        "exchange": "NYSE Arca",
-        "issuer": "iShares",
-        "aliases": ["s&p 500 etf", "ishares core s&p 500 etf", "plain vanilla etf"],
-        "launch_group": "broad_etf",
-    },
-    "IWM": {
-        "name": "iShares Russell 2000 ETF",
-        "asset_type": "etf",
-        "exchange": "NYSE Arca",
-        "issuer": "iShares",
-        "aliases": ["russell 2000 etf", "small-cap etf", "plain vanilla etf"],
-        "launch_group": "broad_etf",
-    },
-    "DIA": {
-        "name": "SPDR Dow Jones Industrial Average ETF Trust",
-        "asset_type": "etf",
-        "exchange": "NYSE Arca",
-        "issuer": "State Street Global Advisors",
-        "aliases": ["dow jones etf", "dia etf", "plain vanilla etf"],
-        "launch_group": "broad_etf",
-    },
-    "VGT": {
-        "name": "Vanguard Information Technology ETF",
-        "asset_type": "etf",
-        "exchange": "NYSE Arca",
-        "issuer": "Vanguard",
-        "aliases": ["technology etf", "vanguard technology etf", "plain vanilla etf"],
-        "launch_group": "sector_theme_etf",
-    },
-    "XLK": {
-        "name": "Technology Select Sector SPDR Fund",
-        "asset_type": "etf",
-        "exchange": "NYSE Arca",
-        "issuer": "State Street Global Advisors",
-        "aliases": ["technology sector etf", "select sector technology", "plain vanilla etf"],
-        "launch_group": "sector_theme_etf",
-    },
-    "SOXX": {
-        "name": "iShares Semiconductor ETF",
-        "asset_type": "etf",
-        "exchange": "NASDAQ",
-        "issuer": "iShares",
-        "aliases": ["semiconductor etf", "ishares semiconductor etf", "plain vanilla etf"],
-        "launch_group": "sector_theme_etf",
-    },
-    "SMH": {
-        "name": "VanEck Semiconductor ETF",
-        "asset_type": "etf",
-        "exchange": "NASDAQ",
-        "issuer": "VanEck",
-        "aliases": ["semiconductor etf", "vaneck semiconductor etf", "plain vanilla etf"],
-        "launch_group": "sector_theme_etf",
-    },
-    "XLF": {
-        "name": "Financial Select Sector SPDR Fund",
-        "asset_type": "etf",
-        "exchange": "NYSE Arca",
-        "issuer": "State Street Global Advisors",
-        "aliases": ["financial sector etf", "select sector financial", "plain vanilla etf"],
-        "launch_group": "sector_theme_etf",
-    },
-    "XLV": {
-        "name": "Health Care Select Sector SPDR Fund",
-        "asset_type": "etf",
-        "exchange": "NYSE Arca",
-        "issuer": "State Street Global Advisors",
-        "aliases": ["health care sector etf", "select sector health care", "plain vanilla etf"],
-        "launch_group": "sector_theme_etf",
-    },
-}
+_ELIGIBLE_NOT_CACHED_ETF_ASSETS: dict[str, dict[str, str | list[str] | None]] = (
+    legacy_eligible_not_cached_etf_metadata()
+)
 
 
 def _eligible_not_cached_stock_assets_from_manifest() -> dict[str, dict[str, str | list[str] | None]]:
