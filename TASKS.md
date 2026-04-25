@@ -1,83 +1,106 @@
 ## Current task
 
-### T-092: Broaden search support classification through manifests
+### T-093: Add persisted Weekly News Focus event evidence contracts
 
 Goal:
-Route backend search/support classification through the Top-500 stock manifest and eligible ETF metadata contracts while preserving current cached asset behavior, blocked generated-output states, deterministic fixtures, frontend fallback behavior, and no-live-provider defaults.
+Add dormant persisted recent-event evidence contracts for Weekly News Focus items, candidate scoring diagnostics, source ranking, dedupe metadata, market-week windows, empty/limited states, and AI Comprehensive Analysis threshold inputs without live news/provider acquisition or generated analysis changes.
 
 Task-scope paragraph:
-This task should consume the existing deterministic Top-500 stock manifest and the completed ETF universe metadata contract in backend search/support classification. It should replace duplicated hard-coded launch-universe classification inputs where practical, while preserving the current public search schema, cached supported behavior for fixture-backed assets, blocked generated-output flags for eligible-not-cached and unsupported assets, comparison-query routing, ingestion-request metadata, and deterministic no-live-call behavior. This is a backend contract-alignment slice only; frontend search rendering, generated asset output, provider ingestion, and live universe expansion stay out of scope.
+This task should add pure repository/table metadata and validation models for persisted Weekly News Focus evidence. It should define how candidate events, selected high-signal weekly items, market-week windows, source ranking, dedupe decisions, evidence-limited states, source/citation references, source-use rights, freshness labels, sanitized diagnostics, and AI Comprehensive Analysis threshold metadata would be stored and validated later. This is a dormant backend contract slice only; it must not fetch live news, route current overview responses through persisted events, change generated Weekly News Focus or AI Comprehensive Analysis output, change frontend rendering, or expand source allowlists.
 
 Roadmap alignment:
 
-- Second narrow slice of "Broaden launch-universe search and support classification from the versioned manifest and eligible ETF metadata."
-- Depends on completed Top-500 manifest work and T-091 eligible ETF metadata.
-- Keeps frontend search rendering changes out of scope unless backend contract tests require marker-only fixture updates.
+- First narrow slice of "Add Weekly News Focus acquisition, windowing, dedupe, source ranking, empty/limited states, and AI Comprehensive Analysis thresholds from persisted recent-event evidence."
+- Establishes persisted evidence contracts before deterministic acquisition/selection or route-level persisted-read fallback.
+- Preserves stable canonical facts separately from Weekly News Focus and AI Comprehensive Analysis timely context.
+- Keeps v0.4 frontend workflow unchanged while backend deterministic contract work continues before live-provider or deployment expansion.
 
 Allowed files:
 
-- `backend/search.py`
-- `backend/data.py`
+- `backend/repositories/weekly_news.py`
+- `backend/weekly_news_repository.py`
+- `backend/repositories/__init__.py`
+- `backend/weekly_news.py`
 - `backend/models.py`
-- `backend/etf_universe.py`
-- `backend/ingestion.py`
-- `backend/ingestion_worker.py`
+- `alembic/versions/*weekly_news*.py`
+- `tests/unit/test_weekly_news.py`
+- `tests/unit/test_source_policy.py`
 - `tests/unit/test_repo_contract.py`
-- `tests/unit/test_search_classification.py`
-- `tests/unit/test_ingestion_jobs.py`
-- `tests/unit/test_provider_adapters.py`
 - `tests/unit/test_safety_guardrails.py`
-- `tests/integration/test_backend_api.py`
 - `docs/agent-journal/*.md`
 
 Do not change:
 
 - No frontend files under `apps/web`.
-- No public FastAPI route paths, HTTP status behavior, response schema removals, asset overview behavior, comparison generation behavior, glossary behavior, source drawer behavior, frontend behavior, live retrieval behavior, generated text, chat behavior, export behavior, or default deterministic fixture-generated output.
-- No changes to `apps/web`, frontend search/autocomplete UI, home-page workflow, comparison UI, glossary UI, source drawer UI, asset chat UI, export UI, or v0.4 workflow markers.
-- No edits to `data/universes/us_common_stocks_top500.current.json` or `data/universes/us_equity_etfs.current.json` unless a failing validation test proves a contract typo in the current manifest; do not broaden the universe in this task.
-- No live SEC, issuer, ETF, market-data, news, storage, database, object-storage, cache, Redis, LLM, Cloud Run Job, scheduler, admin auth, rate-limiting, external analytics, telemetry vendor, or deployment wiring.
-- No production dependency addition, source allowlist expansion, provider licensing change, environment/secret file change, runtime cache write behavior, cache invalidation worker, generated-output cache write, on-demand ingestion execution, or broad asset-universe expansion.
-- No generated pages, generated chat answers, generated comparisons, generated risk summaries, generated exports, source snapshots, provider fetches, LLM calls, or new cacheable generated output for eligible-not-cached stocks or ETFs.
-- No raw provider payloads, unrestricted source text, hidden prompts, prompt templates, raw model reasoning, raw user text, raw queries, raw questions, raw answers, raw chat transcripts, personal identifiers, portfolio/allocation details, real API keys, credentials, secrets, public storage URLs, signed URLs, external analytics IDs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, repository records, cache records, events, exports, or exported data.
-- No changes that make comparison a primary home-page workflow, make glossary a primary home-page workflow, or alter mobile source/glossary/chat behavior from the v0.4 baseline.
+- No public FastAPI route paths, HTTP status behavior, response schema removals, asset overview behavior, comparison generation behavior, glossary behavior, source drawer behavior, frontend behavior, generated text, chat behavior, export behavior, or default deterministic fixture-generated output.
+- No changes to home-page workflow, comparison UI, glossary UI, source drawer UI, asset chat UI, mobile bottom-sheet/full-screen behavior, stock-vs-ETF comparison structure, or any v0.4 workflow marker.
+- No live SEC, issuer, ETF, market-data, news, RSS, web, storage, database, object-storage, cache, Redis, LLM, Cloud Run Job, scheduler, admin auth, rate-limiting, external analytics, telemetry vendor, or deployment wiring.
+- No production dependency addition, source allowlist expansion, provider licensing change, environment/secret file change, runtime cache write behavior, event acquisition worker, route-level persisted-read fallback, generated-output cache write, or generated AI Comprehensive Analysis change.
+- No generated pages, generated chat answers, generated comparisons, generated risk summaries, generated exports, source snapshots, provider fetches, LLM calls, or new cacheable generated output.
+- No edits to `data/universes/us_common_stocks_top500.current.json` or `data/universes/us_equity_etfs.current.json`.
+- No raw full article text, unrestricted source text, unrestricted provider payloads, hidden prompts, prompt templates, raw model reasoning, raw user text, raw queries, raw questions, raw answers, raw chat transcripts, personal identifiers, portfolio/allocation details, real API keys, credentials, secrets, public storage URLs, signed URLs, external analytics IDs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, repository records, cache records, events, exports, or exported data.
+- No changes that let recent Weekly News Focus overwrite canonical asset facts, weaken citation/source-use rules, suppress required stale/unknown/unavailable/partial/insufficient-evidence states, or introduce buy/sell/hold, allocation, tax, price-target, brokerage, trading, or personalized recommendation language.
 
 Acceptance criteria:
 
-- `search_assets` builds stock support classifications from `data/universes/us_common_stocks_top500.current.json` through existing manifest helpers, not from a duplicated static stock launch-universe list.
-- `search_assets` builds eligible and blocked ETF support classifications from `data/universes/us_equity_etfs.current.json` through `backend/etf_universe.py`, not from a duplicated static ETF launch-universe list.
-- Preserve exact cached supported states for current generated fixture assets: `AAPL`, `VOO`, and `QQQ` remain `cached_supported`, can open generated pages, can answer chat, can compare, and keep their current generated routes.
-- Preserve explicit eligible-not-cached states for supported-scope assets that lack local knowledge packs, including Top-500 stock examples such as `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `META`, `TSLA`, `BRK.B`, `JPM`, and `UNH`, and ETF examples such as `SPY`, `VTI`, `IVV`, `IWM`, `DIA`, `VGT`, `XLK`, `SOXX`, `SMH`, `XLF`, and `XLV`.
-- Eligible-not-cached assets remain blocked from generated pages, generated chat answers, generated comparisons, generated risk summaries, generated exports, and cache eligibility; they may expose only deterministic future-ingestion metadata already supported by current routes.
-- Preserve recognized unsupported and out-of-scope states with clear blocked capability flags for crypto, leveraged ETFs, inverse ETFs, ETNs, fixed-income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, unsupported ETF-like products, and recognized common stocks outside the Top-500 manifest.
-- Preserve unknown, unavailable, ambiguous, and no-result behavior without invented facts. Unknown or unavailable searches must not fabricate asset type, issuer, support status, citations, freshness, or generated routes.
-- Preserve natural comparison-query handling such as `VOO vs QQQ` as comparison-route metadata rather than turning home search into a multi-asset result or comparison builder.
-- Preserve search result support-state semantics, including `cached_supported`, `eligible_not_cached`, `recognized_unsupported`, `out_of_scope`, and `unknown`, plus existing `can_open_generated_page`, `can_answer_chat`, `can_compare`, `can_request_ingestion`, and `ingestion_request_route` behavior.
-- Preserve current FastAPI `/api/search`, `/api/admin/ingest/{ticker}`, and related ingestion-state response schemas while aligning their classification sources with the manifests where they currently use duplicated metadata.
-- Preserve provider-adapter behavior. Existing mock SEC and ETF issuer responses remain fixture-only, no-live-call, same-asset bound, official/source-policy gated, and generated-output blocked where currently blocked.
-- Preserve source-use boundaries. Manifest-backed classification must not treat rejected or license-disallowed sources as usable evidence, must not expand the source allowlist, and must not store rights-restricted raw source text or unrestricted provider payloads.
-- Preserve freshness and uncertainty handling. Manifest-backed missing evidence must surface `unknown`, `unavailable`, `partial`, `stale`, or `insufficient_evidence` style states where applicable rather than inventing facts.
-- Preserve product guardrails: search messages, diagnostics, tests, and journal notes must not introduce buy/sell/hold recommendations, allocation advice, tax advice, price targets, brokerage/trading behavior, unsupported factual claims, or recent-news-as-canonical framing.
-- Preserve v0.4 workflow boundaries: home search remains single stock/ETF first, comparison remains a separate connected workflow, glossary remains contextual, and source drawer/glossary/chat mobile behavior is unchanged.
-- Add or update tests for stock manifest-backed classification, ETF metadata-backed classification, cached-supported versus eligible-not-cached behavior, unsupported ETF class blocking, out-of-scope stock blocking, unavailable/unknown states, ambiguous name/alias matches, comparison-query routing, no generated output for non-cached assets, no advice language, no live network/provider/database/LLM imports, no secret exposure, and API schema stability.
-- Current retrieval, generation, overview, comparison, chat, glossary, export, frontend, provider-secret, source-use policy, fixture-generated output, and quality-gate behavior remains unchanged outside manifest-backed support classification.
+- Add a dormant pure-Python Weekly News Focus event evidence repository contract with table metadata and row models for event candidates, selected event items, market-week windows, source ranking inputs, dedupe groups, evidence-limited states, AI Comprehensive Analysis threshold metadata, source/citation references, source-use policy, freshness labels, validation status, and sanitized diagnostics.
+- If an Alembic-style migration revision is added, it is importable and inspectable without requiring Alembic execution or a live database connection; the task journal must note that it was not run against a database.
+- Market-week window helpers or metadata enforce the PRD/TDS rule: last completed Monday-Sunday market week plus current week-to-date through yesterday, using U.S. Eastern dates and deterministic as-of inputs in tests.
+- Source ranking metadata prefers official filings, investor-relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes ahead of allowlisted news.
+- Source-use policy wins over rank or recency. Rejected, license-disallowed, unrecognized, non-allowlisted, promotional, irrelevant, duplicate, and rights-incompatible candidate events cannot become selected Weekly News Focus evidence.
+- Selected event rows preserve same-asset binding, event type, period bucket, event date or published date where available, retrieved timestamp, source quality, source-use tier, freshness state, citation/source references, selected-vs-configured item counts, and suppression reasons for excluded candidates.
+- The contract supports empty and limited Weekly News Focus states. Showing fewer than the configured maximum, including zero selected items, remains valid when evidence is thin.
+- AI Comprehensive Analysis threshold metadata is present and suppresses analysis unless at least two high-signal selected Weekly News Focus items exist.
+- Repository validation rejects wrong-asset source/citation references, missing citation/source references for important event claims, stale evidence without a stale label, unavailable evidence without an unavailable label, source-policy-blocked records, malformed selected-vs-configured counts, duplicate selected items, and unsupported generated-output states.
+- Sanitized diagnostics may include compact codes, timestamps, source IDs, event IDs, checksums, freshness labels, rank inputs, suppression reasons, and validation statuses, but must not include raw article bodies, unrestricted source passages, raw provider payloads, hidden prompts, raw model reasoning, raw user text, secrets, or public/signed storage URLs.
+- Preserve current overview/API/frontend behavior. Existing Weekly News Focus and AI Comprehensive Analysis responses remain deterministic fixture-backed unless a future task explicitly injects the persisted evidence boundary.
+- Preserve product guardrails: contracts, tests, fixture strings, and journal notes must not introduce buy/sell/hold recommendations, allocation advice, tax advice, price targets, brokerage/trading behavior, unsupported factual claims, or recent-news-as-canonical framing.
+- Preserve source freshness and uncertainty handling. Missing or weak Weekly News Focus evidence must be represented with `unknown`, `unavailable`, `partial`, `stale`, `insufficient_evidence`, `limited`, or empty-state style metadata rather than invented facts.
+- Add or update tests for repository metadata shape, serialization/validation helpers, deterministic U.S. Eastern market-week window calculations, ranking policy metadata, dedupe metadata, source-use gating, selected-vs-configured counts, evidence-limited and empty states, AI analysis threshold suppression/availability metadata, same-asset source/citation binding, sanitized diagnostics, no advice language, no secret exposure, and no live network/provider/database/LLM imports.
+- Current retrieval, generation, overview, comparison, chat, glossary, export, frontend, provider-secret, source-use policy, fixture-generated output, search classification, and quality-gate behavior remains unchanged outside dormant Weekly News Focus evidence contracts.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_ingestion_jobs.py tests/unit/test_provider_adapters.py -q
-python3 -m pytest tests/integration/test_backend_api.py -q
+python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_source_policy.py tests/unit/test_repo_contract.py tests/unit/test_safety_guardrails.py -q
 python3 -m pytest tests -q
-npm test
 python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
+git diff --check
 ```
 
 Iteration budget:
-One agent-loop cycle. If frontend search redesign, public API schema changes, live provider lookup, on-demand ingestion execution, generated output, broader asset universe expansion, source licensing review, source allowlist expansion, comparison UI changes, deployment work, or production persistence/cache wiring are needed, record the follow-up and stop after backend manifest-backed support-classification alignment.
+One agent-loop cycle. If live source fetching, route rendering, generated AI analysis, source allowlist expansion, provider licensing review, frontend changes, export rewrites, production database execution, or event acquisition worker logic are needed, record the follow-up and stop after dormant event evidence contracts.
 
 
 ## Completed
+
+### T-092: Broaden search support classification through manifests
+
+Goal:
+Route backend search/support classification through the Top-500 stock manifest and eligible ETF metadata contracts while preserving current cached asset behavior, blocked generated-output states, deterministic fixtures, frontend fallback behavior, and no-live-provider defaults.
+
+Completed details:
+
+- Implementation commit `0356606 feat(T-092): broaden search support classification through manifests` updated `backend/data.py`, `backend/search.py`, `backend/ingestion.py`, `backend/providers.py`, `tests/unit/test_search_classification.py`, `tests/unit/test_ingestion_jobs.py`, `tests/unit/test_provider_adapters.py`, and `tests/integration/test_backend_api.py`, and added `docs/agent-journal/20260425T202552Z.md`.
+- Merged branch `agent/T-092-20260425T202552Z` into `main` with local merge commit `d09b1b1 chore(T-092): merge broaden search support classification through manifests`.
+- Backend search now routes stock eligible-not-cached candidates through the Top-500 manifest helper instead of relying on duplicated launch-universe classification inputs.
+- Backend search now routes eligible, blocked, out-of-scope, unknown, and unavailable ETF search candidates through the ETF universe metadata contract.
+- Cached generated behavior for `AAPL`, `VOO`, and `QQQ` was preserved.
+- Eligible-not-cached and unsupported/out-of-scope assets remain blocked from generated output, including manifest-backed ETF examples.
+- The existing public unsupported search asset type for recognized unsupported assets was preserved while sourcing ETF classification from the manifest.
+- `backend/ingestion.py` and `backend/providers.py` were adjusted so related ingestion/provider classification paths preserve fixture-only, no-live-call behavior while consuming manifest-backed support metadata where applicable.
+- Tests were expanded for manifest-backed stock and ETF classification, ingestion job behavior, provider adapter behavior, and API schema stability.
+- `docs/agent-journal/20260425T202552Z.md` records these checks: `python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_ingestion_jobs.py tests/unit/test_provider_adapters.py -q` passed; `python3 -m pytest tests/integration/test_backend_api.py -q` passed; `python3 -m pytest tests -q` passed; `npm test` passed; `python3 evals/run_static_evals.py` passed after a revision restored the existing public `asset_type: unsupported` schema for recognized unsupported assets; `bash scripts/run_quality_gate.sh` passed; `git diff --check` passed.
+- Remaining risks from the journal:
+  - Search classification consumes the current deterministic manifests, but broader ETF-like products beyond manifest entries remain future metadata additions.
+  - Out-of-scope ETF-like products are covered through the existing out-of-scope compatibility map name, which still references common stocks for historical callers.
+  - No live provider lookup, ingestion execution, generated output, frontend search rendering, or source allowlist expansion was added.
+
+Completion commits:
+
+- `0356606 feat(T-092): broaden search support classification through manifests`
+- `d09b1b1 chore(T-092): merge broaden search support classification through manifests`
 
 ### T-091: Add eligible ETF universe metadata contracts
 
@@ -2479,39 +2502,6 @@ Completion commits:
 
 ## Backlog
 
-### T-093: Add persisted Weekly News Focus event evidence contracts
-
-Goal:
-Add dormant persisted recent-event evidence contracts for Weekly News Focus items, candidate scoring diagnostics, source ranking, dedupe metadata, market-week windows, empty/limited states, and AI Comprehensive Analysis threshold inputs without live news/provider acquisition or generated analysis changes.
-
-Roadmap alignment:
-
-- First narrow slice of "Add Weekly News Focus acquisition, windowing, dedupe, source ranking, empty/limited states, and AI Comprehensive Analysis thresholds from persisted recent-event evidence."
-- Establishes persisted evidence contracts before acquisition or route-level use.
-- Preserves stable canonical facts separately from timely context.
-
-Acceptance criteria:
-
-- Add pure repository/table metadata and row models for weekly event candidates, selected high-signal items, market-week window metadata, source ranking inputs, dedupe groups, evidence-limited states, AI Comprehensive Analysis threshold metadata, source/citation references, source-use policy, freshness labels, and sanitized diagnostics.
-- Enforce Monday-Sunday last-completed market week plus current week-to-date through yesterday using U.S. Eastern dates in deterministic helpers or metadata.
-- Prefer official filings, investor-relations releases, issuer announcements, prospectus updates, and fact-sheet changes ahead of allowlisted news in rank metadata.
-- Block unrecognized, rejected, duplicate, promotional, irrelevant, non-allowlisted, and license-disallowed items from selected Weekly News Focus evidence.
-- Preserve empty/limited states and AI Comprehensive Analysis suppression when fewer than two high-signal items exist.
-- Keep the contract dormant; no live source acquisition, route wiring, generated analysis changes, frontend changes, source allowlist expansion, provider calls, LLM calls, or export changes.
-- Add tests for table/metadata shape, window calculations, ranking policy metadata, dedupe metadata, source-use gating, selected-vs-configured counts, AI analysis threshold metadata, same-asset binding, sanitized diagnostics, and no-live-import behavior.
-
-Required commands:
-
-```bash
-python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_source_policy.py tests/unit/test_repo_contract.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-```
-
-Iteration budget:
-One agent-loop cycle. If live source fetching, route rendering, generated AI analysis, source allowlist expansion, provider licensing review, frontend changes, or export rewrites are needed, record the follow-up and stop after dormant event evidence contracts.
-
 ### T-094: Add deterministic Weekly News Focus acquisition worker contract
 
 Goal:
@@ -2595,9 +2585,10 @@ Operational defaults for backend roadmap tasks:
 - T-088 established dormant accountless chat session persistence contracts without route wiring, frontend changes, live database/cache execution, provider/LLM calls, analytics emission, or export rewrites. It is completed and must not be reintroduced as runnable backlog.
 - T-089 established injected persisted chat session lifecycle and transcript export boundaries after T-088 contracts. It is completed and must not be reintroduced as runnable backlog.
 - T-090 established dormant trust-metric event sink persistence contracts without real analytics emission, frontend instrumentation, route wiring, live database execution, or external analytics vendors. It is completed and must not be reintroduced as runnable backlog.
-- T-091 is the current promoted task for eligible ETF universe metadata contracts, not route-level search rewiring or live provider lookup.
-- T-092 is the prepared backlog task for route-level search classification alignment after T-091.
-- T-093 through T-095 are prepared backlog tasks that split Weekly News Focus persisted evidence into dormant event contracts, deterministic acquisition/selection, and route-level persisted-read fallback.
+- T-091 established eligible ETF universe metadata contracts. It is completed and must not be reintroduced as runnable backlog.
+- T-092 established route-level manifest-backed search support classification. It is completed and must not be reintroduced as runnable backlog.
+- T-093 is the current promoted task for dormant Weekly News Focus event evidence contracts.
+- T-094 and T-095 are prepared backlog tasks that split Weekly News Focus deterministic acquisition/selection and route-level persisted-read fallback.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted backend task should run the relevant EVALS.md backend checks: `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, and `bash scripts/run_quality_gate.sh`.
 
@@ -2620,9 +2611,9 @@ Roadmap integration tracker:
 | Accountless chat session persistence contracts | Completed | T-088 |
 | Persisted chat session lifecycle and exports | Completed | T-089 |
 | Trust-metric event sink | Completed | T-090 |
-| Eligible ETF universe metadata contracts | Promoted | T-091 |
-| Manifest-backed search support classification | Backlog | T-092 |
-| Weekly News Focus persisted event evidence contracts | Backlog | T-093 |
+| Eligible ETF universe metadata contracts | Completed | T-091 |
+| Manifest-backed search support classification | Completed | T-092 |
+| Weekly News Focus persisted event evidence contracts | Promoted | T-093 |
 | Weekly News Focus deterministic acquisition/selection | Backlog | T-094 |
 | Weekly News Focus persisted-read fallback | Backlog | T-095 |
 | Gated OpenRouter live generation | Roadmap only | Not yet promoted |
