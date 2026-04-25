@@ -43,6 +43,15 @@ from backend.repositories.generated_outputs import (
     generated_output_cache_repository_metadata,
     validate_generated_output_cache_records,
 )
+from backend.repositories.chat_sessions import (
+    ACCOUNTLESS_CHAT_SESSION_REPOSITORY_BOUNDARY,
+    ACCOUNTLESS_CHAT_SESSION_TABLES,
+    AccountlessChatSessionContractError,
+    ChatSessionRepository,
+    ChatSessionRepositoryRecords,
+    chat_session_repository_metadata,
+    validate_chat_session_records,
+)
 from backend.retrieval_repository import (
     RETRIEVAL_REPOSITORY_BOUNDARY,
     RetrievalRepositoryReadResult,
@@ -58,6 +67,8 @@ __all__ = [
     "SOURCE_SNAPSHOT_TABLES",
     "GENERATED_OUTPUT_CACHE_REPOSITORY_BOUNDARY",
     "GENERATED_OUTPUT_CACHE_TABLES",
+    "ACCOUNTLESS_CHAT_SESSION_REPOSITORY_BOUNDARY",
+    "ACCOUNTLESS_CHAT_SESSION_TABLES",
     "RETRIEVAL_REPOSITORY_BOUNDARY",
     "AssetKnowledgePackRepository",
     "IngestionJobCategory",
@@ -76,10 +87,14 @@ __all__ = [
     "GeneratedOutputCacheContractError",
     "GeneratedOutputCacheRepository",
     "GeneratedOutputCacheRepositoryRecords",
+    "AccountlessChatSessionContractError",
+    "ChatSessionRepository",
+    "ChatSessionRepositoryRecords",
     "artifact_from_knowledge_pack_source",
     "build_generated_output_cache_records",
     "classify_ingestion_scope",
     "generated_output_cache_repository_metadata",
+    "chat_session_repository_metadata",
     "ingestion_job_ledger_repository_metadata",
     "knowledge_pack_repository_metadata",
     "read_persisted_knowledge_pack_response",
@@ -87,5 +102,6 @@ __all__ = [
     "source_snapshot_repository_metadata",
     "validate_ingestion_job_ledger_records",
     "validate_generated_output_cache_records",
+    "validate_chat_session_records",
     "validate_source_snapshot_records",
 ]
