@@ -1,27 +1,27 @@
 ## Current task
 
-### T-090: Add trust-metric event sink persistence contracts
+### T-091: Add eligible ETF universe metadata contracts
 
 Goal:
-Add dormant trust-metric event sink persistence contracts for compact metadata events covering citation coverage, unsupported claims, freshness accuracy, glossary use, comparison use, source drawer use, safety redirects, export use, and latency without enabling real analytics emission, frontend instrumentation, external analytics vendors, live database execution, or raw user text storage.
+Add deterministic eligible ETF universe metadata contracts so search and support classification can later broaden beyond the cached launch fixtures while preserving generated-output blocking for eligible-not-cached, unsupported, out-of-scope, unknown, unavailable, leveraged, inverse, ETN, fixed-income, commodity, active, and multi-asset ETF states.
 
 Task-scope paragraph:
-This task should add the next narrow backend persistence-contract slice by creating pure repository/table metadata and row models for accepted trust/product event metadata, aggregate counters, latency summaries, validation status, freshness states, safety statuses, generated-output state consistency, and sanitized diagnostics. It should build on the existing validation-only `backend/trust_metrics.py` catalog/validator/summarizer and should keep default behavior validation-only unless a future task explicitly injects a persisted sink. The contract must not emit events, change frontend analytics helpers, mutate public API routes, create cookies or user identity, execute live database writes, add external analytics SDKs, call providers or LLMs, store raw queries/questions/answers/source passages/source URLs, or change any v0.4 frontend workflow behavior.
+This task should add the next narrow local metadata slice by defining a deterministic ETF universe manifest/contract and pure loader/validation helpers for supported-scope non-leveraged U.S.-listed equity index, sector, and thematic ETF candidates. It should complement the completed Top-500 stock manifest contract and prepare future search/support-classification routing without changing current public search behavior, frontend behavior, provider responses, generated-output eligibility, route schemas, ingestion execution, or cached launch fixture behavior. Existing generated coverage for `VOO` and `QQQ` must remain fixture-backed, eligible-not-cached ETF states such as `SPY` must remain blocked from generated pages/chat/comparisons unless already supported by current fixtures, and excluded ETF classes must remain explicitly blocked.
 
 Roadmap alignment:
 
-- Promotes the next roadmap item after accountless chat session lifecycle/export persisted boundaries.
-- Builds on the existing validation-only trust-metrics contract and keeps production observability out of scope.
-- Keeps frontend instrumentation, vendor analytics, route mutation, live database execution, and deployment monitoring out of scope.
+- First narrow slice of "Broaden launch-universe search and support classification from the versioned manifest and eligible ETF metadata."
+- Complements the completed Top-500 stock manifest contract without changing current search behavior or generated asset coverage.
+- Prepares eligible ETF metadata before route-level search/support classification consumes it.
 
 Allowed files:
 
-- `backend/repositories/trust_metrics.py`
-- `backend/trust_metric_repository.py`
-- `backend/repositories/__init__.py`
-- `backend/trust_metrics.py`
-- `alembic/versions/*trust_metric*.py`
-- `tests/unit/test_trust_metrics.py`
+- `data/universes/us_equity_etfs.current.json`
+- `backend/data.py`
+- `backend/models.py`
+- `backend/etf_universe.py`
+- `tests/unit/test_search_classification.py`
+- `tests/unit/test_provider_adapters.py`
 - `tests/unit/test_repo_contract.py`
 - `tests/unit/test_safety_guardrails.py`
 - `docs/agent-journal/*.md`
@@ -29,45 +29,74 @@ Allowed files:
 Do not change:
 
 - No frontend files under `apps/web`.
-- No public FastAPI route schema, endpoint path, HTTP status, asset overview behavior, comparison generation behavior, glossary behavior, source drawer behavior, frontend behavior, provider behavior, live retrieval behavior, generated text, chat behavior, export behavior, or default deterministic fixture behavior.
+- No public FastAPI route schema, endpoint path, HTTP status, asset overview behavior, comparison generation behavior, glossary behavior, source drawer behavior, frontend behavior, live retrieval behavior, generated text, chat behavior, export behavior, or default deterministic fixture behavior.
+- No route-level search classification rewiring in `backend/search.py`; consuming the ETF metadata contract in public search belongs to T-092.
+- No changes to `apps/web`, frontend search/autocomplete UI, comparison UI, glossary UI, source drawer UI, asset chat UI, export UI, or v0.4 workflow markers.
 - No live SEC, issuer, ETF, market-data, news, storage, database, object-storage, cache, Redis, LLM, Cloud Run Job, scheduler, admin auth, rate-limiting, external analytics, telemetry vendor, or deployment wiring.
-- No production dependency addition, source allowlist expansion, provider licensing change, environment/secret file change, runtime cache write behavior, cache invalidation worker, top-500 manifest change, ETF universe expansion, stock universe expansion, or broad asset-universe expansion.
-- No frontend analytics emission, browser local-storage change, cookie behavior, user accounts, device fingerprinting, session tracking, persistent user identity, analytics SDK integration, event collection route mutation, or production observability configuration.
-- No raw provider payloads, unrestricted source text, source URLs, hidden prompts, prompt templates, raw model reasoning, raw user text, raw queries, raw questions, raw answers, raw chat transcripts, personal identifiers, portfolio/allocation details, real API keys, credentials, secrets, public storage URLs, signed URLs, external analytics IDs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, repository records, cache records, events, exports, or exported data.
+- No production dependency addition, source allowlist expansion, provider licensing change, environment/secret file change, runtime cache write behavior, cache invalidation worker, top-500 stock manifest change, stock universe expansion, generated-output cache write, on-demand ingestion execution, or broad asset-universe expansion.
+- No generated pages, generated chat answers, generated comparisons, generated risk summaries, generated exports, source snapshots, provider fetches, LLM calls, or new cacheable generated output for eligible-not-cached ETFs.
+- No raw provider payloads, unrestricted source text, source URLs, hidden prompts, prompt templates, raw model reasoning, raw user text, raw queries, raw questions, raw answers, raw chat transcripts, personal identifiers, portfolio/allocation details, real API keys, credentials, secrets, public storage URLs, signed URLs, external analytics IDs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, manifest records, repository records, cache records, events, exports, or exported data.
 - No changes that make comparison a primary home-page workflow, make glossary a primary home-page workflow, or alter mobile source/glossary/chat behavior from the v0.4 baseline.
 
 Acceptance criteria:
 
-- Add a dormant pure-Python trust-metric event repository contract with table metadata and row models for accepted event metadata, validation status, aggregate counters, latency summaries, freshness states, safety statuses, generated-output state, and sanitized diagnostics.
-- Add a small re-export boundary module so future tasks can import the trust-metric repository contract without reaching into `backend/repositories` internals.
-- If an Alembic-style revision is added, keep it importable and inspectable without Alembic or a live database connection, and do not execute it against a database.
-- Reuse the existing trust-metric catalog and validation rules from `backend/trust_metrics.py`; accepted repository rows must be derivable from validated compact events, not from raw user input.
-- Preserve `get_trust_metric_event_catalog`, `validate_trust_metric_event`, `validate_trust_metric_events`, and `summarize_trust_metric_events` default behavior, including `validation_only=True`, `persistence_enabled=False`, `external_analytics_enabled=False`, and no-live-call semantics.
-- Reject or suppress repository rows that contain raw query text, questions, answers, source passages, source URLs, personal identifiers, cookies, portfolio/allocation details, external analytics IDs, hidden prompts, raw model reasoning, unrestricted provider payloads, real secrets, public storage URLs, or signed URLs.
-- Preserve product guardrails: trust events must not introduce buy/sell/hold recommendations, allocation advice, tax advice, price targets, brokerage/trading behavior, unsupported factual claims, or recent-news-as-canonical framing.
-- Preserve supported/unsupported state consistency. Events for unsupported, out-of-scope, eligible-not-cached without generated output, unknown, unavailable, validation-failed, stale-without-label, partial-without-label, source-policy-blocked, or insufficient-evidence-without-label states must not imply generated page/chat/comparison/risk-summary/export availability.
-- Preserve citation and source-use boundaries. Citation/source metadata in trust events must remain IDs/counts/statuses only, must not include raw passages or URLs, and must not treat rejected or license-disallowed sources as usable evidence.
-- Preserve freshness and uncertainty labeling. Freshness-related rows must carry `fresh`, `stale`, `unknown`, `unavailable`, `partial`, or `insufficient_evidence` metadata where relevant and must reject freshness-required events that omit freshness state.
-- Preserve v0.4 workflow boundaries in event taxonomy: home search remains single stock/ETF first, comparison remains a separate connected workflow, glossary is contextual, and source drawer/glossary/chat mobile behavior is not reclassified into a primary home workflow.
-- Add aggregate summary metadata support for counts/rates and latency summaries without storing raw event payloads or raw user content.
-- Diagnostics must be compact and sanitized, limited to validation codes, event IDs, event types, workflow areas, counters, statuses, timestamps, and non-sensitive metadata.
-- Tests cover repository metadata/table shape, serialization/validation helpers, accepted and rejected event persistence boundaries, aggregate summary metadata, latency summary metadata, freshness/safety/generated-output state consistency, privacy/licensing field rejection, no raw text/URL/secret/prompt/reasoning exposure, no live network/database/provider/LLM imports, and preservation of existing trust-metric validator/summarizer/safety behavior.
-- Current API, retrieval, generation, overview, comparison, chat, glossary, export, frontend, provider-secret, source-use policy, fixture, and quality-gate behavior remains unchanged outside the dormant trust-metric event sink contract.
+- Add a deterministic ETF universe metadata contract or fixture manifest for supported-scope non-leveraged U.S.-listed equity index, sector, and thematic ETF candidates.
+- Include schema version, manifest ID, universe name, local path, production mirror env var if applicable, coverage purpose, policy note, snapshot date, generated timestamp, approval timestamp, provenance, checksum input, generated checksum, and entry-level checksum/provenance metadata.
+- Include entry-level ETF ticker, fund name, issuer, asset type, exchange or listing metadata where available, ETF category, support state, launch/cache state, aliases when useful, exclusion flags, evidence/freshness or unavailable metadata, provenance, snapshot date, checksum input, generated checksum, and non-advice framing.
+- The manifest/contract must explicitly distinguish cached supported ETFs, eligible-not-cached supported-scope ETFs, recognized unsupported ETFs, out-of-scope ETF-like products, unknown ETF states, and unavailable metadata states.
+- Preserve existing cached generated coverage for current fixture-backed ETFs (`VOO` and `QQQ`) and preserve no-generated-output behavior for eligible-not-cached ETFs such as `SPY`, `VTI`, `IVV`, `IWM`, `DIA`, `VGT`, `XLK`, `SOXX`, `SMH`, `XLF`, and `XLV`.
+- Explicitly classify leveraged, inverse, ETN, fixed-income, commodity, active, multi-asset, unknown, unavailable, and other unsupported ETF categories as blocked from generated pages, generated chat answers, generated comparisons, generated risk summaries, generated exports, and cacheability.
+- Add pure loader/validation helpers that normalize ETF tickers, validate unique tickers, validate checksum/provenance fields, reject advice-like manifest language, reject duplicate or conflicting classifications, and expose deterministic lookup helpers for future search classification.
+- Keep current public `search_assets` results unchanged in this task; T-091 prepares metadata and tests preservation, while T-092 will route search/support classification through the manifest.
+- Preserve current provider-adapter behavior. Existing mock ETF issuer responses must remain fixture-only, no-live-call, same-asset bound, official/source-policy gated, and generated-output blocked where currently blocked.
+- Preserve product guardrails: manifest and diagnostics must not introduce buy/sell/hold recommendations, allocation advice, tax advice, price targets, brokerage/trading behavior, unsupported factual claims, or recent-news-as-canonical framing.
+- Preserve source-use boundaries. The metadata contract must not treat rejected or license-disallowed sources as usable evidence, must not expand the source allowlist, and must not store rights-restricted raw source text or unrestricted provider payloads.
+- Preserve freshness and uncertainty handling. ETF metadata entries with missing evidence must carry `unknown`, `unavailable`, `partial`, `stale`, or `insufficient_evidence` style metadata as applicable, rather than inventing facts.
+- Preserve v0.4 workflow boundaries: home search remains single stock/ETF first, comparison remains a separate connected workflow, glossary remains contextual, and source drawer/glossary/chat mobile behavior is unchanged.
+- Add tests for manifest/contract shape, checksum/provenance fields, supported-scope ETF eligibility, cached-supported versus eligible-not-cached states, unsupported ETF blocking, unavailable/unknown states, no advice language, no live network/provider/database/LLM imports, no secret exposure, and preservation of current search/provider behavior.
+- Current API, retrieval, generation, overview, comparison, chat, glossary, export, frontend, provider-secret, source-use policy, fixture, and quality-gate behavior remains unchanged outside the deterministic eligible ETF universe metadata contract.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_trust_metrics.py tests/unit/test_repo_contract.py tests/unit/test_safety_guardrails.py -q
+python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_provider_adapters.py tests/unit/test_repo_contract.py tests/unit/test_safety_guardrails.py -q
 python3 -m pytest tests -q
 python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
 ```
 
 Iteration budget:
-One agent-loop cycle. If real analytics emission, frontend instrumentation, API route mutation, vendor setup, live database execution, persistent production writes, user identity, cookies, browser storage, raw user text collection, provider or LLM calls, source allowlist expansion, paid-provider licensing review, deployment monitoring, or production observability changes are needed, record the follow-up and stop after dormant sink contracts.
+One agent-loop cycle. If route-level search behavior, frontend search UI, live provider lookup, generated output, ETF universe expansion beyond deterministic metadata, source licensing review, on-demand ingestion execution, source allowlist expansion, deployment work, or public API schema changes are needed, record the follow-up and stop after the local eligible ETF metadata contract.
 
 
 ## Completed
+
+### T-090: Add trust-metric event sink persistence contracts
+
+Goal:
+Add dormant trust-metric event sink persistence contracts for compact metadata events covering citation coverage, unsupported claims, freshness accuracy, glossary use, comparison use, source drawer use, safety redirects, export use, and latency without enabling real analytics emission, frontend instrumentation, external analytics vendors, live database execution, or raw user text storage.
+
+Completed details:
+
+- Implementation commit `5d69d7c feat(T-090): add trust-metric event sink persistence contracts` added `backend/repositories/trust_metrics.py`, `backend/trust_metric_repository.py`, `alembic/versions/20260425_0007_trust_metric_event_contracts.py`, and `docs/agent-journal/20260425T200127Z.md`, and updated `backend/repositories/__init__.py` and `tests/unit/test_trust_metrics.py`.
+- Merged branch `agent/T-090-20260425T200127Z` into `main` with local merge commit `a3bbbeb chore(T-090): merge trust-metric event sink persistence contracts`.
+- `backend/repositories/trust_metrics.py` added a dormant pure-Python trust-metric event repository contract with table metadata and row models for accepted event metadata, validation status, aggregate counters, latency summaries, freshness states, safety statuses, generated-output state consistency, and sanitized diagnostics.
+- `backend/trust_metric_repository.py` added a re-export boundary so future tasks can import the trust-metric repository contract without reaching into `backend/repositories` internals.
+- The Alembic-style revision `20260425_0007_trust_metric_event_contracts.py` is importable and inspectable without Alembic or a live database connection; the journal records that it was not run against a database.
+- Repository rows are derived from validated compact events and preserve the existing validation-only trust-metrics behavior, including `validation_only=True`, `persistence_enabled=False`, `external_analytics_enabled=False`, and no-live-call semantics.
+- Validation and tests reject or suppress raw query text, questions, answers, source passages, source URLs, personal identifiers, cookies, portfolio/allocation details, external analytics IDs, hidden prompts, raw model reasoning, unrestricted provider payloads, real secrets, public storage URLs, and signed URLs.
+- The contract preserves support-state, generated-output, citation/source-use, freshness/uncertainty, safety, and v0.4 workflow boundaries while keeping diagnostics compact and sanitized.
+- The implementation did not add frontend files, public API route changes, analytics emission, external analytics vendors, production database writers, cache writes, provider calls, LLM calls, generated-output changes, source allowlist changes, user identity, cookies, browser storage, or production observability wiring.
+- `docs/agent-journal/20260425T200127Z.md` records these checks: `python3 -m pytest tests/unit/test_trust_metrics.py tests/unit/test_repo_contract.py tests/unit/test_safety_guardrails.py -q` passed; `python3 -m pytest tests -q` passed; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed.
+- Remaining risks from the journal:
+  - The trust-metric repository is a dormant pure-Python contract only; no production database writer, analytics sink, route wiring, or migration execution was added.
+  - The Alembic-style revision is importable and inspectable but was not run against a database.
+  - Future integration must preserve the same compact metadata, no raw user text, no source URL, citation/source-use, freshness, support-state, and safety gates when an injected persisted sink is introduced.
+
+Completion commits:
+
+- `5d69d7c feat(T-090): add trust-metric event sink persistence contracts`
+- `a3bbbeb chore(T-090): merge trust-metric event sink persistence contracts`
 
 ### T-089: Route chat session lifecycle and exports through persisted session boundaries
 
@@ -2415,38 +2444,6 @@ Completion commits:
 
 ## Backlog
 
-### T-091: Add eligible ETF universe metadata contracts
-
-Goal:
-Add deterministic eligible ETF universe metadata contracts so search and support classification can later broaden beyond the cached launch fixtures while preserving generated-output blocking for eligible-not-cached, unsupported, out-of-scope, unknown, unavailable, leveraged, inverse, ETN, fixed-income, commodity, active, and multi-asset ETF states.
-
-Roadmap alignment:
-
-- First narrow slice of "Broaden launch-universe search and support classification from the versioned manifest and eligible ETF metadata."
-- Complements the completed Top-500 stock manifest contract without changing current search behavior or generated asset coverage.
-- Prepares eligible ETF metadata before route-level search/support classification consumes it.
-
-Acceptance criteria:
-
-- Add a deterministic ETF universe metadata contract or fixture manifest for supported-scope non-leveraged U.S.-listed equity index, sector, and thematic ETF candidates.
-- Include ETF ticker, fund name, issuer, category, exchange or listing metadata where available, support state, exclusion flags, provenance, snapshot date, checksum/provenance metadata, and non-advice framing.
-- Preserve current cached generated coverage for existing fixture-backed ETFs and no-generated-output behavior for eligible-not-cached ETFs.
-- Explicitly classify leveraged, inverse, ETN, fixed-income, commodity, active, multi-asset, unknown, unavailable, and other unsupported ETF categories as blocked from generated pages, chat answers, comparisons, risk summaries, and cacheability.
-- Keep the contract deterministic and local; no live issuer/provider calls, source allowlist expansion, route wiring, frontend changes, generated output, or broader public search behavior changes.
-- Add tests for manifest/contract shape, checksum/provenance fields, supported-scope ETF eligibility, unsupported ETF blocking, no advice language, no live network imports, no secret exposure, and preservation of current search/provider behavior.
-
-Required commands:
-
-```bash
-python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_provider_adapters.py tests/unit/test_repo_contract.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-```
-
-Iteration budget:
-One agent-loop cycle. If route-level search behavior, frontend search UI, live provider lookup, generated output, ETF universe expansion beyond deterministic metadata, or source licensing review is needed, record the follow-up and stop after the local metadata contract.
-
 ### T-092: Broaden search support classification through manifests
 
 Goal:
@@ -2595,8 +2592,9 @@ Operational defaults for backend roadmap tasks:
 - T-087 established injected persisted-read routing for grounded chat answer artifacts with fixture fallback. It is completed and must not be reintroduced as runnable backlog.
 - T-088 established dormant accountless chat session persistence contracts without route wiring, frontend changes, live database/cache execution, provider/LLM calls, analytics emission, or export rewrites. It is completed and must not be reintroduced as runnable backlog.
 - T-089 established injected persisted chat session lifecycle and transcript export boundaries after T-088 contracts. It is completed and must not be reintroduced as runnable backlog.
-- T-090 is the current promoted task for a dormant trust-metric event sink contract, not real analytics emission.
-- T-091 and T-092 are prepared backlog tasks that split broader launch-universe support classification into eligible ETF metadata contracts and route-level search classification alignment.
+- T-090 established dormant trust-metric event sink persistence contracts without real analytics emission, frontend instrumentation, route wiring, live database execution, or external analytics vendors. It is completed and must not be reintroduced as runnable backlog.
+- T-091 is the current promoted task for eligible ETF universe metadata contracts, not route-level search rewiring or live provider lookup.
+- T-092 is the prepared backlog task for route-level search classification alignment after T-091.
 - T-093 through T-095 are prepared backlog tasks that split Weekly News Focus persisted evidence into dormant event contracts, deterministic acquisition/selection, and route-level persisted-read fallback.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted backend task should run the relevant EVALS.md backend checks: `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, and `bash scripts/run_quality_gate.sh`.
@@ -2619,8 +2617,8 @@ Roadmap integration tracker:
 | Route grounded chat answer artifacts through persisted packs/cache | Completed | T-087 |
 | Accountless chat session persistence contracts | Completed | T-088 |
 | Persisted chat session lifecycle and exports | Completed | T-089 |
-| Trust-metric event sink | Promoted | T-090 |
-| Eligible ETF universe metadata contracts | Backlog | T-091 |
+| Trust-metric event sink | Completed | T-090 |
+| Eligible ETF universe metadata contracts | Promoted | T-091 |
 | Manifest-backed search support classification | Backlog | T-092 |
 | Weekly News Focus persisted event evidence contracts | Backlog | T-093 |
 | Weekly News Focus deterministic acquisition/selection | Backlog | T-094 |
