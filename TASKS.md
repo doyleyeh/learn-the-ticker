@@ -1,75 +1,110 @@
 ## Current task
 
-### T-091: Add eligible ETF universe metadata contracts
+### T-092: Broaden search support classification through manifests
 
 Goal:
-Add deterministic eligible ETF universe metadata contracts so search and support classification can later broaden beyond the cached launch fixtures while preserving generated-output blocking for eligible-not-cached, unsupported, out-of-scope, unknown, unavailable, leveraged, inverse, ETN, fixed-income, commodity, active, and multi-asset ETF states.
+Route backend search/support classification through the Top-500 stock manifest and eligible ETF metadata contracts while preserving current cached asset behavior, blocked generated-output states, deterministic fixtures, frontend fallback behavior, and no-live-provider defaults.
 
 Task-scope paragraph:
-This task should add the next narrow local metadata slice by defining a deterministic ETF universe manifest/contract and pure loader/validation helpers for supported-scope non-leveraged U.S.-listed equity index, sector, and thematic ETF candidates. It should complement the completed Top-500 stock manifest contract and prepare future search/support-classification routing without changing current public search behavior, frontend behavior, provider responses, generated-output eligibility, route schemas, ingestion execution, or cached launch fixture behavior. Existing generated coverage for `VOO` and `QQQ` must remain fixture-backed, eligible-not-cached ETF states such as `SPY` must remain blocked from generated pages/chat/comparisons unless already supported by current fixtures, and excluded ETF classes must remain explicitly blocked.
+This task should consume the existing deterministic Top-500 stock manifest and the completed ETF universe metadata contract in backend search/support classification. It should replace duplicated hard-coded launch-universe classification inputs where practical, while preserving the current public search schema, cached supported behavior for fixture-backed assets, blocked generated-output flags for eligible-not-cached and unsupported assets, comparison-query routing, ingestion-request metadata, and deterministic no-live-call behavior. This is a backend contract-alignment slice only; frontend search rendering, generated asset output, provider ingestion, and live universe expansion stay out of scope.
 
 Roadmap alignment:
 
-- First narrow slice of "Broaden launch-universe search and support classification from the versioned manifest and eligible ETF metadata."
-- Complements the completed Top-500 stock manifest contract without changing current search behavior or generated asset coverage.
-- Prepares eligible ETF metadata before route-level search/support classification consumes it.
+- Second narrow slice of "Broaden launch-universe search and support classification from the versioned manifest and eligible ETF metadata."
+- Depends on completed Top-500 manifest work and T-091 eligible ETF metadata.
+- Keeps frontend search rendering changes out of scope unless backend contract tests require marker-only fixture updates.
 
 Allowed files:
 
-- `data/universes/us_equity_etfs.current.json`
+- `backend/search.py`
 - `backend/data.py`
 - `backend/models.py`
 - `backend/etf_universe.py`
-- `tests/unit/test_search_classification.py`
-- `tests/unit/test_provider_adapters.py`
+- `backend/ingestion.py`
+- `backend/ingestion_worker.py`
 - `tests/unit/test_repo_contract.py`
+- `tests/unit/test_search_classification.py`
+- `tests/unit/test_ingestion_jobs.py`
+- `tests/unit/test_provider_adapters.py`
 - `tests/unit/test_safety_guardrails.py`
+- `tests/integration/test_backend_api.py`
 - `docs/agent-journal/*.md`
 
 Do not change:
 
 - No frontend files under `apps/web`.
-- No public FastAPI route schema, endpoint path, HTTP status, asset overview behavior, comparison generation behavior, glossary behavior, source drawer behavior, frontend behavior, live retrieval behavior, generated text, chat behavior, export behavior, or default deterministic fixture behavior.
-- No route-level search classification rewiring in `backend/search.py`; consuming the ETF metadata contract in public search belongs to T-092.
-- No changes to `apps/web`, frontend search/autocomplete UI, comparison UI, glossary UI, source drawer UI, asset chat UI, export UI, or v0.4 workflow markers.
+- No public FastAPI route paths, HTTP status behavior, response schema removals, asset overview behavior, comparison generation behavior, glossary behavior, source drawer behavior, frontend behavior, live retrieval behavior, generated text, chat behavior, export behavior, or default deterministic fixture-generated output.
+- No changes to `apps/web`, frontend search/autocomplete UI, home-page workflow, comparison UI, glossary UI, source drawer UI, asset chat UI, export UI, or v0.4 workflow markers.
+- No edits to `data/universes/us_common_stocks_top500.current.json` or `data/universes/us_equity_etfs.current.json` unless a failing validation test proves a contract typo in the current manifest; do not broaden the universe in this task.
 - No live SEC, issuer, ETF, market-data, news, storage, database, object-storage, cache, Redis, LLM, Cloud Run Job, scheduler, admin auth, rate-limiting, external analytics, telemetry vendor, or deployment wiring.
-- No production dependency addition, source allowlist expansion, provider licensing change, environment/secret file change, runtime cache write behavior, cache invalidation worker, top-500 stock manifest change, stock universe expansion, generated-output cache write, on-demand ingestion execution, or broad asset-universe expansion.
-- No generated pages, generated chat answers, generated comparisons, generated risk summaries, generated exports, source snapshots, provider fetches, LLM calls, or new cacheable generated output for eligible-not-cached ETFs.
-- No raw provider payloads, unrestricted source text, source URLs, hidden prompts, prompt templates, raw model reasoning, raw user text, raw queries, raw questions, raw answers, raw chat transcripts, personal identifiers, portfolio/allocation details, real API keys, credentials, secrets, public storage URLs, signed URLs, external analytics IDs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, manifest records, repository records, cache records, events, exports, or exported data.
+- No production dependency addition, source allowlist expansion, provider licensing change, environment/secret file change, runtime cache write behavior, cache invalidation worker, generated-output cache write, on-demand ingestion execution, or broad asset-universe expansion.
+- No generated pages, generated chat answers, generated comparisons, generated risk summaries, generated exports, source snapshots, provider fetches, LLM calls, or new cacheable generated output for eligible-not-cached stocks or ETFs.
+- No raw provider payloads, unrestricted source text, hidden prompts, prompt templates, raw model reasoning, raw user text, raw queries, raw questions, raw answers, raw chat transcripts, personal identifiers, portfolio/allocation details, real API keys, credentials, secrets, public storage URLs, signed URLs, external analytics IDs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, repository records, cache records, events, exports, or exported data.
 - No changes that make comparison a primary home-page workflow, make glossary a primary home-page workflow, or alter mobile source/glossary/chat behavior from the v0.4 baseline.
 
 Acceptance criteria:
 
-- Add a deterministic ETF universe metadata contract or fixture manifest for supported-scope non-leveraged U.S.-listed equity index, sector, and thematic ETF candidates.
-- Include schema version, manifest ID, universe name, local path, production mirror env var if applicable, coverage purpose, policy note, snapshot date, generated timestamp, approval timestamp, provenance, checksum input, generated checksum, and entry-level checksum/provenance metadata.
-- Include entry-level ETF ticker, fund name, issuer, asset type, exchange or listing metadata where available, ETF category, support state, launch/cache state, aliases when useful, exclusion flags, evidence/freshness or unavailable metadata, provenance, snapshot date, checksum input, generated checksum, and non-advice framing.
-- The manifest/contract must explicitly distinguish cached supported ETFs, eligible-not-cached supported-scope ETFs, recognized unsupported ETFs, out-of-scope ETF-like products, unknown ETF states, and unavailable metadata states.
-- Preserve existing cached generated coverage for current fixture-backed ETFs (`VOO` and `QQQ`) and preserve no-generated-output behavior for eligible-not-cached ETFs such as `SPY`, `VTI`, `IVV`, `IWM`, `DIA`, `VGT`, `XLK`, `SOXX`, `SMH`, `XLF`, and `XLV`.
-- Explicitly classify leveraged, inverse, ETN, fixed-income, commodity, active, multi-asset, unknown, unavailable, and other unsupported ETF categories as blocked from generated pages, generated chat answers, generated comparisons, generated risk summaries, generated exports, and cacheability.
-- Add pure loader/validation helpers that normalize ETF tickers, validate unique tickers, validate checksum/provenance fields, reject advice-like manifest language, reject duplicate or conflicting classifications, and expose deterministic lookup helpers for future search classification.
-- Keep current public `search_assets` results unchanged in this task; T-091 prepares metadata and tests preservation, while T-092 will route search/support classification through the manifest.
-- Preserve current provider-adapter behavior. Existing mock ETF issuer responses must remain fixture-only, no-live-call, same-asset bound, official/source-policy gated, and generated-output blocked where currently blocked.
-- Preserve product guardrails: manifest and diagnostics must not introduce buy/sell/hold recommendations, allocation advice, tax advice, price targets, brokerage/trading behavior, unsupported factual claims, or recent-news-as-canonical framing.
-- Preserve source-use boundaries. The metadata contract must not treat rejected or license-disallowed sources as usable evidence, must not expand the source allowlist, and must not store rights-restricted raw source text or unrestricted provider payloads.
-- Preserve freshness and uncertainty handling. ETF metadata entries with missing evidence must carry `unknown`, `unavailable`, `partial`, `stale`, or `insufficient_evidence` style metadata as applicable, rather than inventing facts.
+- `search_assets` builds stock support classifications from `data/universes/us_common_stocks_top500.current.json` through existing manifest helpers, not from a duplicated static stock launch-universe list.
+- `search_assets` builds eligible and blocked ETF support classifications from `data/universes/us_equity_etfs.current.json` through `backend/etf_universe.py`, not from a duplicated static ETF launch-universe list.
+- Preserve exact cached supported states for current generated fixture assets: `AAPL`, `VOO`, and `QQQ` remain `cached_supported`, can open generated pages, can answer chat, can compare, and keep their current generated routes.
+- Preserve explicit eligible-not-cached states for supported-scope assets that lack local knowledge packs, including Top-500 stock examples such as `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `META`, `TSLA`, `BRK.B`, `JPM`, and `UNH`, and ETF examples such as `SPY`, `VTI`, `IVV`, `IWM`, `DIA`, `VGT`, `XLK`, `SOXX`, `SMH`, `XLF`, and `XLV`.
+- Eligible-not-cached assets remain blocked from generated pages, generated chat answers, generated comparisons, generated risk summaries, generated exports, and cache eligibility; they may expose only deterministic future-ingestion metadata already supported by current routes.
+- Preserve recognized unsupported and out-of-scope states with clear blocked capability flags for crypto, leveraged ETFs, inverse ETFs, ETNs, fixed-income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, unsupported ETF-like products, and recognized common stocks outside the Top-500 manifest.
+- Preserve unknown, unavailable, ambiguous, and no-result behavior without invented facts. Unknown or unavailable searches must not fabricate asset type, issuer, support status, citations, freshness, or generated routes.
+- Preserve natural comparison-query handling such as `VOO vs QQQ` as comparison-route metadata rather than turning home search into a multi-asset result or comparison builder.
+- Preserve search result support-state semantics, including `cached_supported`, `eligible_not_cached`, `recognized_unsupported`, `out_of_scope`, and `unknown`, plus existing `can_open_generated_page`, `can_answer_chat`, `can_compare`, `can_request_ingestion`, and `ingestion_request_route` behavior.
+- Preserve current FastAPI `/api/search`, `/api/admin/ingest/{ticker}`, and related ingestion-state response schemas while aligning their classification sources with the manifests where they currently use duplicated metadata.
+- Preserve provider-adapter behavior. Existing mock SEC and ETF issuer responses remain fixture-only, no-live-call, same-asset bound, official/source-policy gated, and generated-output blocked where currently blocked.
+- Preserve source-use boundaries. Manifest-backed classification must not treat rejected or license-disallowed sources as usable evidence, must not expand the source allowlist, and must not store rights-restricted raw source text or unrestricted provider payloads.
+- Preserve freshness and uncertainty handling. Manifest-backed missing evidence must surface `unknown`, `unavailable`, `partial`, `stale`, or `insufficient_evidence` style states where applicable rather than inventing facts.
+- Preserve product guardrails: search messages, diagnostics, tests, and journal notes must not introduce buy/sell/hold recommendations, allocation advice, tax advice, price targets, brokerage/trading behavior, unsupported factual claims, or recent-news-as-canonical framing.
 - Preserve v0.4 workflow boundaries: home search remains single stock/ETF first, comparison remains a separate connected workflow, glossary remains contextual, and source drawer/glossary/chat mobile behavior is unchanged.
-- Add tests for manifest/contract shape, checksum/provenance fields, supported-scope ETF eligibility, cached-supported versus eligible-not-cached states, unsupported ETF blocking, unavailable/unknown states, no advice language, no live network/provider/database/LLM imports, no secret exposure, and preservation of current search/provider behavior.
-- Current API, retrieval, generation, overview, comparison, chat, glossary, export, frontend, provider-secret, source-use policy, fixture, and quality-gate behavior remains unchanged outside the deterministic eligible ETF universe metadata contract.
+- Add or update tests for stock manifest-backed classification, ETF metadata-backed classification, cached-supported versus eligible-not-cached behavior, unsupported ETF class blocking, out-of-scope stock blocking, unavailable/unknown states, ambiguous name/alias matches, comparison-query routing, no generated output for non-cached assets, no advice language, no live network/provider/database/LLM imports, no secret exposure, and API schema stability.
+- Current retrieval, generation, overview, comparison, chat, glossary, export, frontend, provider-secret, source-use policy, fixture-generated output, and quality-gate behavior remains unchanged outside manifest-backed support classification.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_provider_adapters.py tests/unit/test_repo_contract.py tests/unit/test_safety_guardrails.py -q
+python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_ingestion_jobs.py tests/unit/test_provider_adapters.py -q
+python3 -m pytest tests/integration/test_backend_api.py -q
 python3 -m pytest tests -q
+npm test
 python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
 ```
 
 Iteration budget:
-One agent-loop cycle. If route-level search behavior, frontend search UI, live provider lookup, generated output, ETF universe expansion beyond deterministic metadata, source licensing review, on-demand ingestion execution, source allowlist expansion, deployment work, or public API schema changes are needed, record the follow-up and stop after the local eligible ETF metadata contract.
+One agent-loop cycle. If frontend search redesign, public API schema changes, live provider lookup, on-demand ingestion execution, generated output, broader asset universe expansion, source licensing review, source allowlist expansion, comparison UI changes, deployment work, or production persistence/cache wiring are needed, record the follow-up and stop after backend manifest-backed support-classification alignment.
 
 
 ## Completed
+
+### T-091: Add eligible ETF universe metadata contracts
+
+Goal:
+Add deterministic eligible ETF universe metadata contracts so search and support classification can later broaden beyond the cached launch fixtures while preserving generated-output blocking for eligible-not-cached, unsupported, out-of-scope, unknown, unavailable, leveraged, inverse, ETN, fixed-income, commodity, active, and multi-asset ETF states.
+
+Completed details:
+
+- Implementation commit `6ab7c4c feat(T-091): add eligible ETF universe metadata contracts` added `backend/etf_universe.py`, `data/universes/us_equity_etfs.current.json`, and `docs/agent-journal/20260425T201409Z.md`, and updated `backend/data.py`, `backend/models.py`, `tests/unit/test_search_classification.py`, `tests/unit/test_provider_adapters.py`, `tests/unit/test_repo_contract.py`, and `tests/unit/test_safety_guardrails.py`.
+- Merged branch `agent/T-091-20260425T201409Z` into `main` with local merge commit `6cf68aa chore(T-091): merge eligible ETF universe metadata contracts`.
+- `data/universes/us_equity_etfs.current.json` added a deterministic ETF universe manifest for supported-scope non-leveraged U.S.-listed equity index, sector, and thematic ETF candidates, with manifest metadata, provenance, checksum fields, support state, launch/cache state, evidence/freshness or unavailable metadata, exclusion flags, and non-advice framing.
+- `backend/etf_universe.py` added pure loader, validation, checksum, no-advice-language, lookup, cached-supported, eligible-not-cached, blocked-entry, and generated-output-eligibility helpers for the ETF universe metadata contract.
+- `backend/models.py` added ETF universe manifest and entry models covering ETF category, support state, launch cache state, exclusion flags, evidence metadata, and manifest metadata.
+- `backend/data.py` now derives legacy eligible-not-cached ETF metadata from the ETF universe contract while preserving existing deterministic search behavior until the T-092 route-level classification task.
+- The contract preserves cached generated coverage for `VOO` and `QQQ`, keeps eligible-not-cached ETFs such as `SPY`, `VTI`, `IVV`, `IWM`, `DIA`, `VGT`, `XLK`, `SOXX`, `SMH`, `XLF`, and `XLV` blocked from generated output, and explicitly blocks unsupported ETF classes including leveraged, inverse, ETN, fixed-income, commodity, active, multi-asset, unknown, and unavailable states.
+- Tests cover manifest shape, checksum/provenance fields, supported-scope ETF eligibility, cached-supported versus eligible-not-cached states, unsupported ETF blocking, unknown/unavailable states, advice-language rejection, no-live-call/no-secret behavior, and preservation of current search/provider behavior.
+- The implementation did not change public search routes, generated-output behavior, provider behavior, frontend behavior, live provider wiring, source allowlists, GCS/provider/ingestion/cache/deployment wiring, or default fixture-generated output.
+- `docs/agent-journal/20260425T201409Z.md` records these checks: `python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_provider_adapters.py tests/unit/test_repo_contract.py tests/unit/test_safety_guardrails.py -q` passed with 47 tests; `python3 -m pytest tests -q` passed with 318 tests; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed; `git diff --check` passed.
+- Remaining risks from the journal:
+  - The ETF universe contract is metadata-only. Public route-level search/support classification still consumes the existing deterministic search fixtures until T-092.
+  - Unsupported and out-of-scope ETF-like products beyond the narrow fixture examples remain future metadata additions.
+  - The production mirror env var is declared as contract metadata only; no GCS, provider, ingestion, cache, or deployment wiring was added.
+
+Completion commits:
+
+- `6ab7c4c feat(T-091): add eligible ETF universe metadata contracts`
+- `6cf68aa chore(T-091): merge eligible ETF universe metadata contracts`
 
 ### T-090: Add trust-metric event sink persistence contracts
 
@@ -2443,39 +2478,6 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-092: Broaden search support classification through manifests
-
-Goal:
-Route backend search/support classification through the Top-500 stock manifest and eligible ETF metadata contracts while preserving current cached asset behavior, blocked generated-output states, deterministic fixtures, frontend fallback behavior, and no-live-provider defaults.
-
-Roadmap alignment:
-
-- Second narrow slice of "Broaden launch-universe search and support classification from the versioned manifest and eligible ETF metadata."
-- Depends on completed Top-500 manifest work and T-091 eligible ETF metadata.
-- Keeps frontend search rendering changes out of scope unless backend contract tests require marker-only fixture updates.
-
-Acceptance criteria:
-
-- Search resolution uses the versioned Top-500 stock manifest and eligible ETF metadata as local deterministic support-classification inputs, not live provider queries.
-- Preserve exact cached supported states for current generated fixture assets and explicit eligible-not-cached states for approved supported-scope assets without generated pages, chat answers, comparisons, risk summaries, or cache eligibility.
-- Preserve recognized unsupported, out-of-scope, unknown, unavailable, ambiguous, and no-result behavior with clear blocked capability flags.
-- Preserve clear comparison-query handling such as `VOO vs QQQ` as comparison-route metadata rather than home-page multi-asset search results.
-- Add tests for stock manifest-backed classification, ETF metadata-backed classification, ambiguous matches, unsupported ETF class blocking, exact unknown/no-result states, comparison query routing, no generated output for non-cached assets, no live provider imports, and current API schema stability.
-
-Required commands:
-
-```bash
-python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_ingestion_jobs.py tests/unit/test_provider_adapters.py -q
-python3 -m pytest tests/integration/test_backend_api.py -q
-python3 -m pytest tests -q
-npm test
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-```
-
-Iteration budget:
-One agent-loop cycle. If frontend search redesign, live provider lookup, on-demand ingestion execution, generated output, broader asset universe expansion, or comparison UI changes are needed, record the follow-up and stop after backend support-classification alignment.
 
 ### T-093: Add persisted Weekly News Focus event evidence contracts
 
