@@ -1,67 +1,94 @@
 ## Current task
 
-### T-083: Add ETF issuer and holdings source adapter fixture contracts
+### T-084: Add persisted generated-output cache and freshness-hash contracts
 
 Goal:
-Add fixture-backed ETF issuer, fact-sheet, holdings, prospectus, and exposure-file adapter contracts for supported non-leveraged U.S.-listed equity ETFs without live issuer/provider calls, generated-output changes, or unsupported ETF expansion.
+Add dormant persisted generated-output cache and freshness-hash repository contracts for overview, comparison, chat-safe answer artifacts, exports, source checksums, knowledge-pack hashes, generated-output freshness hashes, validation status, and invalidation diagnostics without routing current responses through the cache.
 
 Task-scope paragraph:
-This task should tighten the deterministic ETF issuer provider boundary only. It may extend the existing mock ETF issuer adapter contract, add narrowly scoped ETF fixture parser helpers, and add compact fixture records needed to represent issuer profile or fact-sheet metadata, holdings or exposure rows, prospectus references, benchmark and expense data, source attribution, freshness, and evidence gaps for existing deterministic ETF fixture coverage. It must remain fixture-only and import-safe. It must not fetch issuer/provider data, add live network or credential paths, broaden supported ETF coverage, route public APIs through a live provider, generate new pages or summaries, or change frontend behavior.
+This task should add a persisted-cache contract layer only. It may add pure repository/table metadata, row models, serialization helpers, validation helpers, and tests that describe how generated overview, comparison, grounded-chat, and export artifacts would be cached later using existing deterministic cache-key and freshness-hash helpers. It must stay dormant, import-safe, deterministic, and fixture/test backed. It must not make routes read from or write to a live cache, create generated output, change API/frontend behavior, add live database execution, add provider or LLM calls, or weaken citation, safety, freshness, source-use, unknown/stale/unavailable/partial, unsupported, or out-of-scope handling.
 
 Allowed files:
 
 - `backend/models.py`
-- `backend/providers.py`
-- `backend/provider_adapters/**/*.py`
-- `backend/retrieval.py`
-- `data/retrieval_fixtures.json`
-- `tests/unit/test_provider_adapters.py`
-- `tests/unit/test_retrieval_fixtures.py`
+- `backend/cache.py`
+- `backend/repositories/generated_outputs.py`
+- `backend/generated_output_cache_repository.py`
+- `backend/repositories/__init__.py`
+- `alembic/versions/*generated_output_cache*.py`
+- `tests/unit/test_cache_contracts.py`
 - `tests/unit/test_source_policy.py`
+- `tests/unit/test_safety_guardrails.py`
 - `tests/unit/test_repo_contract.py`
 - `docs/agent-journal/*.md`
 
 Do not change:
 
 - No frontend files under `apps/web`.
-- No FastAPI route behavior, public endpoint schemas, export behavior, chat behavior, comparison behavior, glossary behavior, generated content, source drawer behavior, Weekly News Focus behavior, AI Comprehensive Analysis behavior, or frontend behavior.
-- No live SEC, issuer, ETF, market-data, news, storage, database, object-storage, LLM, Cloud Run Job, scheduler, admin auth, rate-limiting, or deployment wiring.
-- No production dependency addition, source allowlist expansion, provider licensing change, environment/secret file change, runtime cache behavior change, top-500 manifest change, ETF universe expansion, or broad asset-universe expansion.
-- No generated pages, generated chat answers, generated comparisons, generated risk summaries, exports, or cacheable generated output for eligible-not-cached, unsupported, out-of-scope, unknown, unavailable, partial, validation-failed, source-policy-blocked, or rejected-source ETFs.
-- No raw issuer payloads, raw holdings files, raw provider payloads, real API keys, unrestricted source text, hidden prompts, raw model reasoning, raw user text, or secrets in fixtures, diagnostics, logs, docs, or exported data.
+- No FastAPI route behavior, public endpoint schemas, retrieval behavior, provider behavior, export behavior, chat behavior, comparison behavior, glossary behavior, generated content, source drawer behavior, Weekly News Focus behavior, AI Comprehensive Analysis behavior, or frontend behavior.
+- No live SEC, issuer, ETF, market-data, news, storage, database, object-storage, cache, Redis, LLM, Cloud Run Job, scheduler, admin auth, rate-limiting, or deployment wiring.
+- No production dependency addition, source allowlist expansion, provider licensing change, environment/secret file change, runtime cache read/write behavior change, top-500 manifest change, ETF universe expansion, stock universe expansion, or broad asset-universe expansion.
+- No generated pages, generated chat answers, generated comparisons, generated risk summaries, exports, cache hits, cache writes, cache invalidation jobs, or cacheable generated output for eligible-not-cached, unsupported, out-of-scope, unknown, unavailable, partial, stale-without-label, validation-failed, advice-like, source-policy-blocked, uncited, wrong-asset, wrong-pack, or rejected-source states.
+- No raw provider payloads, unrestricted source text, hidden prompts, prompt templates, raw model reasoning, raw user text, chat transcripts for analytics/training/evaluation, real API keys, credentials, secrets, or signed/public storage URLs in fixtures, diagnostics, logs, docs, cache records, or exported data.
 - No changes that make comparison a primary home-page workflow, make glossary a primary home-page workflow, or alter mobile source/glossary/chat behavior from the v0.4 baseline.
 
 Acceptance criteria:
 
-- Add or refine fixture-backed ETF issuer adapter records for issuer profile or fact-sheet metadata, holdings or exposure rows, prospectus references, benchmark data, expense data, source attribution, and evidence gaps needed by existing supported ETF fixture sections, with deterministic request/response behavior and no live network dependency.
-- Normalize compact ETF identity fields including ticker, fund name where available, issuer, exchange when available, asset type, support state, ETF classification, leveraged/inverse/ETN/active/fixed-income/commodity/multi-asset blocked-state indicators where applicable, and eligible-not-cached boundaries without adding broad coverage.
-- Normalize issuer or fact-sheet metadata such as benchmark/index, expense ratio, holdings count, source document ID, official issuer publisher/title/URL metadata, retrieved timestamp, as-of date, and freshness labels into existing `ProviderResponse` shapes or clearly dormant adapter records.
-- Normalize holdings or exposure metadata such as holding ticker or name, weight when available, exposure category, as-of date, unit, source document IDs, and citation IDs into existing `ProviderResponse` shapes or clearly dormant adapter records.
-- Normalize prospectus or statutory document references such as document type, publication or effective date where available, source document ID, official issuer publisher/title/URL metadata, retrieved timestamp, source-use policy, and freshness/as-of labels.
-- ETF issuer, fact-sheet, prospectus, holdings, and exposure sources rank ahead of structured market-reference and recent-context sources for ETF canonical facts, use canonical source usage, and preserve official/structured source hierarchy from the PRD/TDS.
-- Enforce same-ETF ticker/issuer/source binding before ETF sources or facts can support generated claims; wrong-ticker, wrong-issuer, wrong-source, wrong-asset, and wrong-comparison-pack bindings must be rejected or returned as non-generated validation failures.
-- Preserve ETF scope boundaries from the PRD/TDS: supported MVP ETFs are non-leveraged U.S.-listed equity index, sector, and thematic ETFs. Leveraged ETFs, inverse ETFs, ETNs, fixed income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, and other complex products remain blocked from generated pages, chat answers, comparisons, risk summaries, exports, and cacheable generated output.
-- Enforce source-use policy, permitted operations, and allowed excerpt behavior before any ETF source can support generated claims, citations, caches, or exports; rejected or source-policy-blocked sources must not feed generated output.
-- Preserve explicit stale, unavailable, partial, unknown, unsupported, out-of-scope, and eligible-not-cached states. Verified sections may be partial, but missing evidence must be labeled with `partial`, `stale`, `unknown`, `unavailable`, or `insufficient_evidence` instead of invented facts.
-- Keep generated-output flags false for provider adapter responses. This task may prepare evidence and attribution, but it must not create generated pages, chat answers, comparisons, risk summaries, exports, or cacheable generated output.
-- Keep Weekly News Focus and AI Comprehensive Analysis untouched; recent context must not overwrite canonical ETF identity, holdings, benchmark, fee, or risk facts.
-- Tests cover fixture parsing, issuer/fact-sheet/prospectus/holdings/exposure normalization, official issuer source attribution, freshness/evidence-gap states, same-ETF ticker/issuer/source binding, blocked ETF classes, source-policy enforcement, generated-output blocking, import-time no-live-network/no-credential behavior, no secret exposure, and preservation of existing retrieval fixture behavior.
-- Current API, retrieval, generation, chat, comparison, export, glossary, frontend, provider-secret, source-use policy, fixture, and quality-gate behavior remains unchanged outside the deterministic ETF issuer/holdings fixture adapter contract.
+- Add a dormant pure-Python generated-output cache repository contract with explicit metadata/table definitions and row models for cache envelopes, artifact records, source checksum inputs, knowledge-pack freshness hashes, generated-output freshness hashes, validation status, citation coverage, safety status, source-use status, freshness labels, and invalidation diagnostics.
+- Represent cacheable artifact categories for asset overview sections, comparison outputs, grounded chat-safe answer artifacts, Markdown/JSON export payload metadata, source-list export metadata, source checksum records, knowledge-pack hash inputs, generated-output hash inputs, and diagnostics. Chat records must remain answer-artifact metadata only and must not store raw user transcript text for analytics, training, or evaluation.
+- Reuse or extend existing deterministic `backend/cache.py` helper contracts without breaking T-026 cache-key, source-checksum, knowledge-pack freshness-hash, generated-output freshness-hash, and revalidation behavior.
+- Cache records must bind to exactly one supported asset or one same-comparison-pack pair, preserve left/right comparison identity where applicable, and reject wrong-asset, wrong-source, wrong-citation, wrong-comparison-pack, and cross-pack bindings.
+- Cacheability must require successful citation validation for important factual claims, same-asset or same-comparison-pack citation/source bindings, safety validation, source-use permission, allowed freshness labels, and no unsupported claims presented as facts.
+- Cacheability must be blocked for unsupported, out-of-scope, eligible-not-cached without generated output, unknown, unavailable, partial-without-label, stale-without-label, insufficient-evidence-without-label, validation-failed, advice-like, source-policy-disallowed, rejected-source, uncited-important-claim, wrong-asset, wrong-pack, and permission-limited states.
+- Generated-output cache metadata must preserve prompt version, model name or deterministic mock marker, schema version, source document IDs, citation IDs, section freshness labels, source checksum IDs, knowledge-pack hash, generated-output freshness hash, validation status, safety status, source-use status, created timestamp, expires-at or TTL metadata where applicable, and invalidation reasons.
+- Source-use policy must win over cache scoring or recency. `metadata_only` and `link_only` sources must not persist raw chunk text; `summary_allowed` sources may store only allowed summaries or excerpts; `rejected` and source-policy-blocked sources must not feed cacheable generated output.
+- Diagnostics must be compact and sanitized. They may include validation codes, invalidation reasons, source IDs, checksums, timestamps, and freshness states, but must not include unrestricted raw source text, raw provider payloads, hidden prompts, raw model reasoning, raw user text, credentials, or secrets.
+- Add an importable Alembic-style revision or equivalent migration-contract metadata limited to generated-output cache contract tables. It must be inspectable without opening a database connection and must not be executed against a database in this task.
+- Preserve current deterministic fixture fallback and current API, retrieval, generation, chat, comparison, export, glossary, provider, frontend, and quality-gate behavior. No route may read from or write to a live cache in this task.
+- Preserve Weekly News Focus and AI Comprehensive Analysis separation. Cache contracts may represent separate timely-context sections and analysis artifacts, but recent context must not overwrite canonical asset facts and AI Comprehensive Analysis remains suppressible when Weekly News Focus evidence is insufficient.
+- Tests cover repository metadata/table shape, artifact categories, hash persistence, invalidation metadata, citation/source binding, comparison left/right identity, safety gating, source-policy gating, freshness/unknown/stale/unavailable/partial blocking, unsupported/out-of-scope/eligible-not-cached blocking, sanitized diagnostics, no raw prompt/reasoning/user-text/secret exposure, import-time no-live-database/no-live-cache behavior, and preservation of existing cache helper behavior.
+- Current API, retrieval, generation, chat, comparison, export, glossary, frontend, provider-secret, source-use policy, fixture, and quality-gate behavior remains unchanged outside the dormant persisted generated-output cache contract.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_provider_adapters.py tests/unit/test_retrieval_fixtures.py tests/unit/test_source_policy.py tests/unit/test_repo_contract.py -q
+python3 -m pytest tests/unit/test_cache_contracts.py tests/unit/test_source_policy.py tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
 python3 -m pytest tests -q
 python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
 ```
 
 Iteration budget:
-One agent-loop cycle. If the ETF issuer/holdings fixture adapter work reveals a need for live issuer or provider calls, source snapshot writes, production provider execution, database persistence, route/admin wiring, generated-output cache writes, frontend changes, paid-provider licensing review, source allowlist expansion, or broader ETF-universe coverage, stop after the deterministic fixture contract and record the follow-up under Backlog instead of expanding scope.
+One agent-loop cycle. If the persisted generated-output cache contract reveals a need for live database execution, Redis or object-storage clients, route/admin wiring, generated-output cache reads or writes, cache invalidation workers, source snapshot writes, provider or LLM calls, frontend changes, paid-provider licensing review, source allowlist expansion, prompt storage, raw transcript storage, or broader asset-universe coverage, stop after the dormant repository contract and record the follow-up under Backlog instead of expanding scope.
 
 
 ## Completed
+
+### T-083: Add ETF issuer and holdings source adapter fixture contracts
+
+Goal:
+Add fixture-backed ETF issuer, fact-sheet, holdings, prospectus, and exposure-file adapter contracts for supported non-leveraged U.S.-listed equity ETFs without live issuer/provider calls, generated-output changes, or unsupported ETF expansion.
+
+Completed details:
+
+- Implementation commit `d1ab858 feat(T-083): add ETF issuer and holdings source adapter fixture contracts` added `backend/provider_adapters/etf_issuer.py` and `docs/agent-journal/20260425T060213Z.md`, and updated `backend/providers.py` and `tests/unit/test_provider_adapters.py`.
+- Merged branch `agent/T-083-20260425T060213Z` into `main` with local merge commit `8f5b6c8 chore(T-083): merge ETF issuer and holdings source adapter fixture contracts`.
+- `backend/provider_adapters/etf_issuer.py` added a dormant fixture-backed ETF issuer adapter contract for existing deterministic `VOO` and `QQQ` coverage.
+- The ETF fixture contract normalizes ETF identity, issuer/fact-sheet metadata, benchmark, expense ratio, holdings count, prospectus references, holdings rows, exposure rows, official issuer source attribution, freshness metadata, and explicit unavailable evidence gaps.
+- `backend/providers.py` routes the existing mock ETF issuer provider through the new fixture contract while preserving eligible-not-cached, unsupported, out-of-scope, unknown, and no-generated-output behavior.
+- The fixture contract validates same-ticker, same-issuer, same-source, source-use policy, official issuer quality, blocked ETF class indicators, and official ETF source ranking ahead of structured reference and recent-context sources.
+- Provider responses keep generated-output flags false and remain fixture-only/import-safe with no frontend behavior, public API route behavior, live issuer/provider calls, credential paths, source allowlist changes, ETF universe expansion, generated pages, chat answers, comparisons, risk summaries, exports, or cacheable generated output.
+- `tests/unit/test_provider_adapters.py` covers ETF issuer/fact-sheet/prospectus/holdings/exposure normalization, official source attribution, freshness and unavailable evidence-gap states, same-ETF ticker/issuer/source binding, blocked ETF class handling, source-policy enforcement, generated-output blocking, and no-live-call/no-secret import behavior.
+- `docs/agent-journal/20260425T060213Z.md` records these checks: `python3 -m pytest tests/unit/test_provider_adapters.py -q` passed with 14 tests; `python3 -m pytest tests/unit/test_provider_adapters.py tests/unit/test_retrieval_fixtures.py tests/unit/test_source_policy.py tests/unit/test_repo_contract.py -q` passed with 35 tests; `python3 -m pytest tests -q` passed with 264 tests; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed, including Python tests, static evals, frontend smoke, typecheck, build, and backend checks.
+- Remaining risks from the journal:
+  - The ETF issuer adapter contract is intentionally fixture-only and dormant; it does not fetch live issuer pages, fact sheets, prospectuses, holdings files, exposure files, or provider data.
+  - Only existing deterministic cached ETF coverage (`VOO` and `QQQ`) is represented; this does not broaden supported ETF coverage or generate output for eligible-not-cached ETFs such as `SPY`.
+  - Future live ETF ingestion still needs separate source snapshot, parser, storage, source-use, licensing, persistence, route/admin, and generated-output validation work before production execution is enabled.
+
+Completion commits:
+
+- `d1ab858 feat(T-083): add ETF issuer and holdings source adapter fixture contracts`
+- `8f5b6c8 chore(T-083): merge ETF issuer and holdings source adapter fixture contracts`
 
 ### T-082: Add SEC stock source adapter fixture contract
 
@@ -2213,27 +2240,7 @@ Completion commits:
 
 ## Backlog
 
-### T-084: Add persisted generated-output cache and freshness-hash contracts
-
-Goal:
-Add dormant persisted generated-output cache contracts for overview, comparison, chat-safe answer artifacts, exports, source checksums, knowledge-pack hashes, generated-output freshness hashes, and invalidation diagnostics without routing current responses through the cache.
-
-Acceptance criteria:
-
-- Add pure repository/table metadata and model helpers for generated-output cache entries, section-level freshness hashes, source checksum inputs, knowledge-pack hashes, validation status, citation coverage, safety status, and invalidation reasons.
-- Keep cache records tied to same-asset or same-comparison-pack evidence and existing source-use policy.
-- Preserve current deterministic fixture fallback and current API/frontend behavior; no route should read from or write to a live cache in this task.
-- Block cacheability for unsupported, out-of-scope, rejected-source, failed-validation, advice-like, uncited, stale-without-label, or source-policy-disallowed generated output.
-- Add tests for hash stability, invalidation metadata, citation/source binding, safety/source-policy gating, no raw model reasoning, no hidden prompts, no secrets, and no live database dependency.
-
-Required checks:
-
-```bash
-python3 -m pytest tests/unit/test_cache_contracts.py tests/unit/test_source_policy.py tests/unit/test_safety_guardrails.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-```
+No prepared backlog tasks. The backlog is empty after promoting T-084 into Current task.
 
 ## MVP Backend Roadmap
 
@@ -2248,8 +2255,8 @@ Operational defaults for backend roadmap tasks:
 - T-080 established the deterministic ingestion worker execution contract on top of injected ledger records. It is completed and must not be reintroduced as runnable backlog.
 - T-081 established dormant source snapshot artifact metadata contracts. It is completed and must not be reintroduced as runnable backlog.
 - T-082 established fixture-backed SEC stock source adapter/parser contracts without live SEC calls, route wiring, generated-output changes, or broader stock coverage. It is completed and must not be reintroduced as runnable backlog.
-- T-083 is the current promoted task and should add only fixture-backed ETF issuer/holdings source adapter contracts without live issuer/provider calls, route wiring, generated-output changes, or unsupported ETF expansion.
-- T-084 is the prepared backlog task promoted from the roadmap in a safe order.
+- T-083 established fixture-backed ETF issuer/holdings source adapter contracts without live issuer/provider calls, route wiring, generated-output changes, or unsupported ETF expansion. It is completed and must not be reintroduced as runnable backlog.
+- T-084 is the current promoted task and should add only dormant persisted generated-output cache and freshness-hash contracts without route cache reads/writes, live database/cache execution, provider/LLM calls, or frontend changes.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted backend task should run the relevant EVALS.md backend checks: `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, and `bash scripts/run_quality_gate.sh`.
 
@@ -2264,8 +2271,8 @@ Roadmap integration tracker:
 | Deterministic ingestion worker execution path | Completed | T-080 |
 | Source snapshot storage metadata | Completed | T-081 |
 | SEC stock source adapter/parser | Completed | T-082 |
-| ETF issuer, holdings, prospectus, and exposure adapters | Promoted | T-083 |
-| Generated-output cache and freshness hashes | Backlog | T-084 |
+| ETF issuer, holdings, prospectus, and exposure adapters | Completed | T-083 |
+| Generated-output cache and freshness hashes | Promoted | T-084 |
 | Route overview, comparison, and chat generation through persisted packs | Roadmap only | Not yet promoted |
 | Persist accountless chat sessions and transcript exports | Roadmap only | Not yet promoted |
 | Trust-metric event sink | Roadmap only | Not yet promoted |
