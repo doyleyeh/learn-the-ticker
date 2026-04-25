@@ -16,13 +16,17 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <div className="app-shell">
-          <header className="topbar">
+          <header className="topbar" data-global-navigation-workflow="single-search-separate-compare">
             <a className="brand" href="/">
               Learn the Ticker
             </a>
             <nav aria-label="Primary navigation">
-              <a href="/">Search</a>
-              <a href="/compare?left=VOO&right=QQQ">Compare</a>
+              <a href="/" data-nav-primary-entry="single-asset-search">
+                Search
+              </a>
+              <a href="/compare" data-nav-secondary-entry="separate-comparison-workflow">
+                Compare
+              </a>
             </nav>
           </header>
           {children}

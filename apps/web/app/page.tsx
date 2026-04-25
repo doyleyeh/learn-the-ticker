@@ -2,8 +2,8 @@ import { SearchBox } from "../components/SearchBox";
 
 export default function HomePage() {
   return (
-    <main>
-      <section className="hero-band">
+    <main data-home-workflow-baseline="single-asset-search-first">
+      <section className="hero-band" data-home-primary-workflow="single-supported-stock-or-etf-search">
         <div className="hero-copy">
           <p className="eyebrow">Beginner asset learning</p>
           <h1>Understand a stock or ETF in plain English</h1>
@@ -30,7 +30,7 @@ export default function HomePage() {
           </li>
           <li data-home-workflow-card="source-backed-learning">
             <strong>Keep reading with sources.</strong>
-            Asset pages keep citations, freshness, glossary help, chat, and Weekly News Focus in the learning flow.
+            Asset pages keep citations, freshness, contextual glossary help, chat, and Weekly News Focus in the learning flow.
           </li>
         </ol>
       </section>
