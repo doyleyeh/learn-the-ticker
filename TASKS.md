@@ -1,12 +1,12 @@
 ## Current task
 
-### T-082: Add SEC stock source adapter fixture contract
+### T-083: Add ETF issuer and holdings source adapter fixture contracts
 
 Goal:
-Add a fixture-backed SEC stock source adapter and parser contract for identity, submissions, selected filing metadata, XBRL company facts, source attribution, freshness, and evidence gaps without live SEC calls, generated-output changes, or broader stock coverage.
+Add fixture-backed ETF issuer, fact-sheet, holdings, prospectus, and exposure-file adapter contracts for supported non-leveraged U.S.-listed equity ETFs without live issuer/provider calls, generated-output changes, or unsupported ETF expansion.
 
 Task-scope paragraph:
-This task should tighten the deterministic SEC stock provider boundary only. It may extend the existing mock provider adapter contract, add narrowly scoped SEC fixture parser helpers, and add compact fixture records needed to represent SEC submissions, filing references, and XBRL company facts for existing deterministic stock fixture coverage. It must remain fixture-only and import-safe. It must not fetch SEC data, add live network or credential paths, broaden supported stock coverage, route public APIs through a live provider, generate new pages or summaries, or change frontend behavior.
+This task should tighten the deterministic ETF issuer provider boundary only. It may extend the existing mock ETF issuer adapter contract, add narrowly scoped ETF fixture parser helpers, and add compact fixture records needed to represent issuer profile or fact-sheet metadata, holdings or exposure rows, prospectus references, benchmark and expense data, source attribution, freshness, and evidence gaps for existing deterministic ETF fixture coverage. It must remain fixture-only and import-safe. It must not fetch issuer/provider data, add live network or credential paths, broaden supported ETF coverage, route public APIs through a live provider, generate new pages or summaries, or change frontend behavior.
 
 Allowed files:
 
@@ -25,25 +25,28 @@ Do not change:
 
 - No frontend files under `apps/web`.
 - No FastAPI route behavior, public endpoint schemas, export behavior, chat behavior, comparison behavior, glossary behavior, generated content, source drawer behavior, Weekly News Focus behavior, AI Comprehensive Analysis behavior, or frontend behavior.
-- No live SEC, issuer, market-data, news, storage, database, object-storage, LLM, Cloud Run Job, scheduler, admin auth, rate-limiting, or deployment wiring.
-- No production dependency addition, source allowlist expansion, provider licensing change, environment/secret file change, runtime cache behavior change, top-500 manifest change, or broad stock-universe expansion.
-- No generated pages, generated chat answers, generated comparisons, generated risk summaries, exports, or cacheable generated output for eligible-not-cached, unsupported, out-of-scope, unknown, unavailable, partial, validation-failed, source-policy-blocked, or rejected-source stocks.
-- No raw SEC payloads, raw provider payloads, real API keys, unrestricted source text, hidden prompts, raw model reasoning, raw user text, or secrets in fixtures, diagnostics, logs, docs, or exported data.
+- No live SEC, issuer, ETF, market-data, news, storage, database, object-storage, LLM, Cloud Run Job, scheduler, admin auth, rate-limiting, or deployment wiring.
+- No production dependency addition, source allowlist expansion, provider licensing change, environment/secret file change, runtime cache behavior change, top-500 manifest change, ETF universe expansion, or broad asset-universe expansion.
+- No generated pages, generated chat answers, generated comparisons, generated risk summaries, exports, or cacheable generated output for eligible-not-cached, unsupported, out-of-scope, unknown, unavailable, partial, validation-failed, source-policy-blocked, or rejected-source ETFs.
+- No raw issuer payloads, raw holdings files, raw provider payloads, real API keys, unrestricted source text, hidden prompts, raw model reasoning, raw user text, or secrets in fixtures, diagnostics, logs, docs, or exported data.
+- No changes that make comparison a primary home-page workflow, make glossary a primary home-page workflow, or alter mobile source/glossary/chat behavior from the v0.4 baseline.
 
 Acceptance criteria:
 
-- Add or refine fixture-backed SEC adapter records for SEC submissions, selected filing metadata, and XBRL company facts needed by existing supported stock fixture sections, with deterministic request/response behavior and no live network dependency.
-- Normalize compact stock identity fields including ticker, company name, CIK where available, exchange when available, asset type, support state, and top-500/eligible-not-cached boundaries without changing the top-500 manifest or adding broad coverage.
-- Normalize selected SEC filing metadata such as form type, accession or fixture identifier, filing date or report date, source document ID, official SEC publisher/title/URL metadata, retrieved timestamp, and freshness/as-of labels.
-- Normalize selected XBRL company-fact metadata such as field name, period/as-of date when available, unit when available, fact layer, source document IDs, and citation IDs into existing `ProviderResponse` shapes or clearly dormant adapter records.
-- SEC official sources rank ahead of structured market-reference and recent-context sources, use canonical source usage, and preserve official/structured source hierarchy from the PRD/TDS.
-- Enforce same-asset CIK/ticker binding before SEC sources or facts can support generated claims; wrong-ticker, wrong-CIK, wrong-source, and wrong-asset bindings must be rejected or returned as non-generated validation failures.
-- Enforce source-use policy and permitted operations before any SEC source can support generated claims, citations, caches, or exports; rejected or source-policy-blocked sources must not feed generated output.
+- Add or refine fixture-backed ETF issuer adapter records for issuer profile or fact-sheet metadata, holdings or exposure rows, prospectus references, benchmark data, expense data, source attribution, and evidence gaps needed by existing supported ETF fixture sections, with deterministic request/response behavior and no live network dependency.
+- Normalize compact ETF identity fields including ticker, fund name where available, issuer, exchange when available, asset type, support state, ETF classification, leveraged/inverse/ETN/active/fixed-income/commodity/multi-asset blocked-state indicators where applicable, and eligible-not-cached boundaries without adding broad coverage.
+- Normalize issuer or fact-sheet metadata such as benchmark/index, expense ratio, holdings count, source document ID, official issuer publisher/title/URL metadata, retrieved timestamp, as-of date, and freshness labels into existing `ProviderResponse` shapes or clearly dormant adapter records.
+- Normalize holdings or exposure metadata such as holding ticker or name, weight when available, exposure category, as-of date, unit, source document IDs, and citation IDs into existing `ProviderResponse` shapes or clearly dormant adapter records.
+- Normalize prospectus or statutory document references such as document type, publication or effective date where available, source document ID, official issuer publisher/title/URL metadata, retrieved timestamp, source-use policy, and freshness/as-of labels.
+- ETF issuer, fact-sheet, prospectus, holdings, and exposure sources rank ahead of structured market-reference and recent-context sources for ETF canonical facts, use canonical source usage, and preserve official/structured source hierarchy from the PRD/TDS.
+- Enforce same-ETF ticker/issuer/source binding before ETF sources or facts can support generated claims; wrong-ticker, wrong-issuer, wrong-source, wrong-asset, and wrong-comparison-pack bindings must be rejected or returned as non-generated validation failures.
+- Preserve ETF scope boundaries from the PRD/TDS: supported MVP ETFs are non-leveraged U.S.-listed equity index, sector, and thematic ETFs. Leveraged ETFs, inverse ETFs, ETNs, fixed income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, and other complex products remain blocked from generated pages, chat answers, comparisons, risk summaries, exports, and cacheable generated output.
+- Enforce source-use policy, permitted operations, and allowed excerpt behavior before any ETF source can support generated claims, citations, caches, or exports; rejected or source-policy-blocked sources must not feed generated output.
 - Preserve explicit stale, unavailable, partial, unknown, unsupported, out-of-scope, and eligible-not-cached states. Verified sections may be partial, but missing evidence must be labeled with `partial`, `stale`, `unknown`, `unavailable`, or `insufficient_evidence` instead of invented facts.
 - Keep generated-output flags false for provider adapter responses. This task may prepare evidence and attribution, but it must not create generated pages, chat answers, comparisons, risk summaries, exports, or cacheable generated output.
-- Keep Weekly News Focus and AI Comprehensive Analysis untouched; recent context must not overwrite canonical SEC identity or business facts.
-- Tests cover fixture parsing, SEC submissions and XBRL fact normalization, official source attribution, freshness/evidence-gap states, same-asset CIK/ticker/source binding, source-policy enforcement, generated-output blocking, import-time no-live-network/no-credential behavior, no secret exposure, and preservation of existing retrieval fixture behavior.
-- Current API, retrieval, generation, chat, comparison, export, glossary, frontend, provider-secret, source-use policy, fixture, and quality-gate behavior remains unchanged outside the deterministic SEC fixture adapter contract.
+- Keep Weekly News Focus and AI Comprehensive Analysis untouched; recent context must not overwrite canonical ETF identity, holdings, benchmark, fee, or risk facts.
+- Tests cover fixture parsing, issuer/fact-sheet/prospectus/holdings/exposure normalization, official issuer source attribution, freshness/evidence-gap states, same-ETF ticker/issuer/source binding, blocked ETF classes, source-policy enforcement, generated-output blocking, import-time no-live-network/no-credential behavior, no secret exposure, and preservation of existing retrieval fixture behavior.
+- Current API, retrieval, generation, chat, comparison, export, glossary, frontend, provider-secret, source-use policy, fixture, and quality-gate behavior remains unchanged outside the deterministic ETF issuer/holdings fixture adapter contract.
 
 Required commands:
 
@@ -55,10 +58,35 @@ bash scripts/run_quality_gate.sh
 ```
 
 Iteration budget:
-One agent-loop cycle. If the SEC fixture adapter work reveals a need for live SEC calls, source snapshot writes, production provider execution, database persistence, route/admin wiring, generated-output cache writes, frontend changes, paid-provider licensing review, source allowlist expansion, or broader stock-universe coverage, stop after the deterministic fixture contract and record the follow-up under Backlog instead of expanding scope.
+One agent-loop cycle. If the ETF issuer/holdings fixture adapter work reveals a need for live issuer or provider calls, source snapshot writes, production provider execution, database persistence, route/admin wiring, generated-output cache writes, frontend changes, paid-provider licensing review, source allowlist expansion, or broader ETF-universe coverage, stop after the deterministic fixture contract and record the follow-up under Backlog instead of expanding scope.
 
 
 ## Completed
+
+### T-082: Add SEC stock source adapter fixture contract
+
+Goal:
+Add a fixture-backed SEC stock source adapter and parser contract for identity, submissions, selected filing metadata, XBRL company facts, source attribution, freshness, and evidence gaps without live SEC calls, generated-output changes, or broader stock coverage.
+
+Completed details:
+
+- Implementation commit `6ccf295 feat(T-082): add SEC stock source adapter fixture contract` added `backend/provider_adapters/__init__.py`, `backend/provider_adapters/sec_stock.py`, and `docs/agent-journal/20260425T054900Z.md`, and updated `backend/providers.py` and `tests/unit/test_provider_adapters.py`.
+- Merged branch `agent/T-082-20260425T054900Z` into `main` with local merge commit `b4538c2 chore(T-082): merge SEC stock source adapter fixture contract`.
+- `backend/provider_adapters/sec_stock.py` added a dormant fixture-backed SEC stock adapter contract for `AAPL` with normalized SEC submissions metadata, selected Form 10-K filing metadata, XBRL company-fact metadata, official SEC source attribution, freshness metadata, and an explicit unavailable evidence gap for current valuation metrics.
+- `backend/providers.py` routes the existing mock SEC provider through the new fixture contract when a registered SEC stock fixture exists, while preserving existing supported, eligible-not-cached, unsupported, out-of-scope, unknown, and unavailable provider states.
+- The fixture contract validates Top-500 manifest CIK/ticker identity binding, same-asset source and fact binding, official SEC source policy, permitted source-use operations, wrong-CIK rejection, wrong-source rejection, and generated-output blocking.
+- Provider responses keep generated-output flags false and remain fixture-only/import-safe with no live SEC calls, credentials, route wiring, frontend changes, generated pages, chat answers, comparisons, risk summaries, exports, cache writes, source allowlist changes, or broader stock coverage.
+- `tests/unit/test_provider_adapters.py` covers SEC fixture parsing, submissions/filing/XBRL normalization, official attribution, freshness and unavailable evidence-gap states, same-asset binding, wrong-ticker/wrong-CIK/wrong-source rejection, source-policy blocking, generated-output blocking, and no-live-call/no-secret import behavior.
+- `docs/agent-journal/20260425T054900Z.md` records these checks: `python3 -m pytest tests/unit/test_provider_adapters.py -q` passed with 10 tests; `python3 -m pytest tests/unit/test_provider_adapters.py tests/unit/test_retrieval_fixtures.py tests/unit/test_source_policy.py tests/unit/test_repo_contract.py -q` passed with 32 tests; `python3 -m pytest tests -q` passed with 261 tests; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed.
+- Remaining risks from the journal:
+  - The SEC stock adapter contract is intentionally dormant and fixture-only; it does not fetch live SEC data, persist source snapshots, execute ingestion jobs, or route public APIs through a live provider.
+  - Only the existing deterministic cached stock fixture coverage is represented; this does not broaden stock support or add generated output for eligible-not-cached stocks.
+  - Future live SEC ingestion work still needs separate source snapshot, storage, rate-limit, user-agent, persistence, source-policy, and route/admin contracts before production execution is enabled.
+
+Completion commits:
+
+- `6ccf295 feat(T-082): add SEC stock source adapter fixture contract`
+- `b4538c2 chore(T-082): merge SEC stock source adapter fixture contract`
 
 ### T-081: Add source snapshot artifact metadata contracts
 
@@ -2185,28 +2213,6 @@ Completion commits:
 
 ## Backlog
 
-### T-083: Add ETF issuer and holdings source adapter fixture contracts
-
-Goal:
-Add fixture-backed ETF issuer, fact-sheet, holdings, prospectus, and exposure-file adapter contracts for supported non-leveraged U.S.-listed equity ETFs without live issuer/provider calls, generated-output changes, or unsupported ETF expansion.
-
-Acceptance criteria:
-
-- Add adapter interfaces and deterministic fixture responses for issuer profile/fact-sheet metadata, prospectus references, holdings or exposure rows, benchmark/expense data, source attribution, freshness, and evidence gaps.
-- Preserve ETF scope boundaries: non-leveraged U.S.-listed equity index, sector, and thematic ETFs only; leveraged, inverse, ETN, fixed-income, commodity, active, and multi-asset ETFs remain blocked from generated output.
-- Enforce source-use policy, allowed excerpt behavior, same-ETF binding, freshness labels, and partial/unavailable states before facts can support generated claims.
-- Do not add live network calls, browser provider calls, new generated pages, generated chat answers, generated comparisons, or unrestricted source exports.
-- Add tests for fixture parsing, holdings/source binding, blocked ETF classes, source-policy enforcement, freshness/evidence gaps, no live imports, and no secret exposure.
-
-Required checks:
-
-```bash
-python3 -m pytest tests/unit/test_provider_adapters.py tests/unit/test_retrieval_fixtures.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-```
-
 ### T-084: Add persisted generated-output cache and freshness-hash contracts
 
 Goal:
@@ -2241,8 +2247,9 @@ Operational defaults for backend roadmap tasks:
 - T-079 established the dormant persisted ingestion job ledger contract. It is completed and must not be reintroduced as runnable backlog.
 - T-080 established the deterministic ingestion worker execution contract on top of injected ledger records. It is completed and must not be reintroduced as runnable backlog.
 - T-081 established dormant source snapshot artifact metadata contracts. It is completed and must not be reintroduced as runnable backlog.
-- T-082 is the current promoted task and should add only fixture-backed SEC stock source adapter/parser contracts without live SEC calls, route wiring, generated-output changes, or broader stock coverage.
-- T-083 through T-084 are prepared backlog tasks promoted from the roadmap in a safe order.
+- T-082 established fixture-backed SEC stock source adapter/parser contracts without live SEC calls, route wiring, generated-output changes, or broader stock coverage. It is completed and must not be reintroduced as runnable backlog.
+- T-083 is the current promoted task and should add only fixture-backed ETF issuer/holdings source adapter contracts without live issuer/provider calls, route wiring, generated-output changes, or unsupported ETF expansion.
+- T-084 is the prepared backlog task promoted from the roadmap in a safe order.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted backend task should run the relevant EVALS.md backend checks: `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, and `bash scripts/run_quality_gate.sh`.
 
@@ -2256,8 +2263,8 @@ Roadmap integration tracker:
 | Ingestion job ledger | Completed | T-079 |
 | Deterministic ingestion worker execution path | Completed | T-080 |
 | Source snapshot storage metadata | Completed | T-081 |
-| SEC stock source adapter/parser | Promoted | T-082 |
-| ETF issuer, holdings, prospectus, and exposure adapters | Backlog | T-083 |
+| SEC stock source adapter/parser | Completed | T-082 |
+| ETF issuer, holdings, prospectus, and exposure adapters | Promoted | T-083 |
 | Generated-output cache and freshness hashes | Backlog | T-084 |
 | Route overview, comparison, and chat generation through persisted packs | Roadmap only | Not yet promoted |
 | Persist accountless chat sessions and transcript exports | Roadmap only | Not yet promoted |
