@@ -21,6 +21,7 @@ from backend.models import (
     SectionFreshnessInput,
     SourceAllowlistStatus,
     SourceChecksumRecord,
+    SourceOperationPermissions,
     SourceQuality,
     SourceUsePolicy,
     StateMessage,
@@ -367,19 +368,19 @@ def deserialize_knowledge_pack_response(records: KnowledgePackRepositoryRecords)
                 as_of_date=row.as_of_date,
                 retrieved_at=row.retrieved_at,
             )
-            for row in sorted(records.section_freshness_inputs, key=lambda item: item.section_id)
+            for row in records.section_freshness_inputs
         ],
         source_document_ids=envelope.source_document_ids,
         citation_ids=envelope.citation_ids,
         counts=KnowledgePackCounts.model_validate(envelope.counts),
-        source_documents=[_source_model(row) for row in sorted(records.source_documents, key=lambda item: item.source_document_id)],
-        normalized_facts=[_fact_model(row) for row in sorted(records.normalized_facts, key=lambda item: item.fact_id)],
-        source_chunks=[_chunk_model(row) for row in sorted(records.source_chunks, key=lambda item: item.chunk_id)],
+        source_documents=[_source_model(row) for row in records.source_documents],
+        normalized_facts=[_fact_model(row) for row in records.normalized_facts],
+        source_chunks=[_chunk_model(row) for row in records.source_chunks],
         recent_developments=[
-            _recent_model(row) for row in sorted(records.recent_developments, key=lambda item: item.event_id)
+            _recent_model(row) for row in records.recent_developments
         ],
-        evidence_gaps=[_gap_model(row) for row in sorted(records.evidence_gaps, key=lambda item: item.gap_id)],
-        source_checksums=[_checksum_model(row) for row in sorted(records.source_checksums, key=lambda item: item.source_document_id)],
+        evidence_gaps=[_gap_model(row) for row in records.evidence_gaps],
+        source_checksums=[_checksum_model(row) for row in records.source_checksums],
         knowledge_pack_freshness_hash=envelope.knowledge_pack_freshness_hash,
         cache_key=envelope.cache_key,
         cache_revalidation=None,
@@ -562,6 +563,7 @@ def _source_model(row: KnowledgePackSourceDocumentRow) -> KnowledgePackSourceMet
         source_quality=SourceQuality(row.source_quality),
         allowlist_status=SourceAllowlistStatus(row.allowlist_status),
         source_use_policy=SourceUsePolicy(row.source_use_policy),
+        permitted_operations=SourceOperationPermissions.model_validate(row.permitted_operations),
         citation_ids=row.citation_ids,
         fact_ids=row.fact_ids,
         recent_event_ids=row.recent_event_ids,

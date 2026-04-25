@@ -253,7 +253,18 @@ def build_asset_knowledge_pack(ticker: str) -> AssetKnowledgePack:
     )
 
 
-def build_asset_knowledge_pack_result(ticker: str) -> KnowledgePackBuildResponse:
+def build_asset_knowledge_pack_result(
+    ticker: str,
+    *,
+    persisted_reader: Any | None = None,
+) -> KnowledgePackBuildResponse:
+    if persisted_reader is not None:
+        from backend.retrieval_repository import read_persisted_knowledge_pack_response
+
+        persisted = read_persisted_knowledge_pack_response(ticker, reader=persisted_reader)
+        if persisted.found and persisted.response is not None:
+            return persisted.response
+
     dataset = load_retrieval_fixture_dataset()
     normalized = _normalize_ticker(ticker)
     fixture = _asset_fixture(dataset, normalized)
