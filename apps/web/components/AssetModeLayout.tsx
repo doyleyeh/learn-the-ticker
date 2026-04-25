@@ -1,37 +1,41 @@
 import type { ReactNode } from "react";
 import type { AssetFixture } from "../lib/fixtures";
 
-type AssetModeLayoutProps = {
+type AssetLearningLayoutProps = {
   asset: AssetFixture;
-  beginnerMode: ReactNode;
-  deepDiveMode: ReactNode;
+  beginnerSections: ReactNode;
+  deepDiveSections: ReactNode;
   afterDeepDive: ReactNode;
   sourceTools: ReactNode;
   helperRail: ReactNode;
   footerContent: ReactNode;
 };
 
-export function AssetModeLayout({
+export function AssetLearningLayout({
   asset,
-  beginnerMode,
-  deepDiveMode,
+  beginnerSections,
+  deepDiveSections,
   afterDeepDive,
   sourceTools,
   helperRail,
   footerContent
-}: AssetModeLayoutProps) {
-  const beginnerHeadingId = `beginner-mode-${asset.ticker.toLowerCase()}`;
-  const deepDiveHeadingId = `deep-dive-mode-${asset.ticker.toLowerCase()}`;
+}: AssetLearningLayoutProps) {
+  const learningFlowLabelId = `asset-learning-flow-${asset.ticker.toLowerCase()}`;
+  const deepDiveHeadingId = `deep-dive-${asset.ticker.toLowerCase()}`;
   const sourcesHeadingId = `asset-sources-${asset.ticker.toLowerCase()}`;
 
   return (
     <section
-      className="content-band two-column asset-mode-layout"
-      data-asset-mode-layout
+      className="content-band two-column asset-learning-layout"
+      aria-labelledby={learningFlowLabelId}
+      data-asset-learning-layout
       data-asset-ticker={asset.ticker}
       data-prd-learning-flow="supported-asset-page-v1"
       data-prd-section-order="beginner_summary,top_risks,key_facts,what_it_does_or_holds,weekly_news_focus,ai_comprehensive_analysis,deep_dive,ask_about_this_asset,sources,educational_disclaimer"
     >
+      <h2 id={learningFlowLabelId} className="sr-only">
+        Asset learning flow
+      </h2>
       <nav
         className="asset-mobile-actions"
         aria-label="Asset page quick actions"
@@ -49,43 +53,40 @@ export function AssetModeLayout({
         </a>
       </nav>
 
-      <div className="section-stack mode-stack" data-asset-prd-content-flow>
+      <div className="section-stack learning-stack" data-asset-prd-content-flow>
         <section
-          className="asset-mode-region beginner-mode-region"
-          aria-labelledby={beginnerHeadingId}
-          data-asset-mode-region="beginner"
-          data-beginner-mode-region={asset.ticker}
+          className="asset-section-region beginner-section-region"
+          aria-label="Beginner learning sections"
+          data-asset-section-region="beginner"
+          data-beginner-section-region={asset.ticker}
         >
-          <div className="mode-heading">
-            <p className="eyebrow">Beginner Mode</p>
-            <h2 id={beginnerHeadingId}>Beginner Mode</h2>
-          </div>
-          {beginnerMode}
+          {beginnerSections}
         </section>
 
         <section
-          className="asset-mode-region deep-dive-mode-region"
+          className="asset-section-region deep-dive-section-region"
           aria-labelledby={deepDiveHeadingId}
-          data-asset-mode-region="deep-dive"
-          data-deep-dive-mode-region={asset.ticker}
+          data-asset-section-region="deep-dive"
+          data-deep-dive-section-region={asset.ticker}
+          data-prd-section="deep_dive"
         >
-          <div className="mode-heading">
-            <p className="eyebrow">Deep-Dive Mode</p>
-            <h2 id={deepDiveHeadingId}>Deep-Dive Mode</h2>
+          <div className="section-shell-heading">
+            <p className="eyebrow">More detail</p>
+            <h2 id={deepDiveHeadingId}>Deep Dive</h2>
           </div>
-          {deepDiveMode}
+          {deepDiveSections}
         </section>
 
         {afterDeepDive}
 
         <section
           id="asset-sources"
-          className="asset-mode-region asset-source-region"
+          className="asset-section-region asset-source-region"
           aria-labelledby={sourcesHeadingId}
           data-prd-section="sources"
           data-asset-source-region={asset.ticker}
         >
-          <div className="mode-heading">
+          <div className="section-shell-heading">
             <p className="eyebrow">Sources</p>
             <h2 id={sourcesHeadingId}>Sources</h2>
           </div>

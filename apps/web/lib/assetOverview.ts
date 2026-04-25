@@ -3,8 +3,11 @@ import {
   type AssetFixture,
   type AssetType,
   type Citation,
+  type EvidenceState,
   type FreshnessState,
-  type SourceDocument
+  type SourceDocument,
+  type StockOverviewSection,
+  type StockSectionType
 } from "./fixtures";
 
 type Fetcher = typeof fetch;
@@ -81,6 +84,51 @@ type BackendSourceDocument = {
   permitted_operations: BackendPermittedOperations;
 };
 
+type BackendOverviewSectionItem = {
+  item_id: string;
+  title: string;
+  summary: string;
+  citation_ids: string[];
+  source_document_ids: string[];
+  freshness_state: string;
+  evidence_state: string;
+  event_date: string | null;
+  as_of_date: string | null;
+  retrieved_at: string | null;
+  limitations: string | null;
+};
+
+type BackendOverviewMetric = {
+  metric_id: string;
+  label: string;
+  value: string | number | null;
+  unit: string | null;
+  citation_ids: string[];
+  source_document_ids: string[];
+  freshness_state: string;
+  evidence_state: string;
+  as_of_date: string | null;
+  retrieved_at: string | null;
+  limitations: string | null;
+};
+
+type BackendOverviewSection = {
+  section_id: string;
+  title: string;
+  section_type: string;
+  applies_to: string[];
+  beginner_summary: string | null;
+  items: BackendOverviewSectionItem[];
+  metrics: BackendOverviewMetric[];
+  citation_ids: string[];
+  source_document_ids: string[];
+  freshness_state: string;
+  evidence_state: string;
+  as_of_date: string | null;
+  retrieved_at: string | null;
+  limitations: string | null;
+};
+
 type BackendOverviewResponse = {
   asset: BackendAssetIdentity;
   state: {
@@ -94,6 +142,7 @@ type BackendOverviewResponse = {
   claims: BackendClaim[];
   citations: BackendCitation[];
   source_documents: BackendSourceDocument[];
+  sections: BackendOverviewSection[];
 };
 
 export async function fetchSupportedAssetOverview(
@@ -162,16 +211,28 @@ function isSupportedAssetOverviewResponse(value: unknown, requestedTicker: strin
     Array.isArray(candidate.citations) &&
     candidate.citations.length > 0 &&
     Array.isArray(candidate.source_documents) &&
-    candidate.source_documents.length > 0
+    candidate.source_documents.length > 0 &&
+    Array.isArray(candidate.sections)
   );
 }
 
 function mergeAssetFixtureWithOverview(fallbackAsset: AssetFixture, overview: BackendOverviewResponse): AssetFixture {
+  const assetType = toAssetType(overview.asset.asset_type);
+  const backendSections = overview.sections
+    .filter((section) => section.applies_to.includes(assetType))
+    .map(toOverviewSection);
+  const backendSectionFields =
+    backendSections.length > 0
+      ? assetType === "stock"
+        ? { stockSections: backendSections, etfSections: undefined }
+        : { etfSections: backendSections, stockSections: undefined }
+      : {};
+
   return {
     ...fallbackAsset,
     ticker: overview.asset.ticker,
     name: overview.asset.name,
-    assetType: toAssetType(overview.asset.asset_type),
+    assetType,
     exchange: overview.asset.exchange ?? fallbackAsset.exchange,
     issuer: overview.asset.issuer ?? fallbackAsset.issuer,
     freshness: {
@@ -209,7 +270,8 @@ function mergeAssetFixtureWithOverview(fallbackAsset: AssetFixture, overview: Ba
       overview.source_documents.map(toSourceDocument),
       fallbackAsset.sourceDocuments,
       (source) => source.sourceDocumentId
-    )
+    ),
+    ...backendSectionFields
   };
 }
 
@@ -252,6 +314,51 @@ function toSourceDocument(source: BackendSourceDocument): SourceDocument {
   };
 }
 
+function toOverviewSection(section: BackendOverviewSection): StockOverviewSection {
+  return {
+    sectionId: section.section_id,
+    title: section.title,
+    sectionType: toStockSectionType(section.section_type),
+    beginnerSummary:
+      section.beginner_summary ??
+      section.limitations ??
+      "This section is unavailable because the backend overview contract did not provide a source-backed summary.",
+    items: section.items.map((item) => ({
+      itemId: item.item_id,
+      title: item.title,
+      summary: item.summary,
+      citationIds: item.citation_ids,
+      sourceDocumentIds: item.source_document_ids,
+      freshnessState: toFreshnessState(item.freshness_state),
+      evidenceState: toEvidenceState(item.evidence_state),
+      eventDate: item.event_date,
+      asOfDate: item.as_of_date,
+      retrievedAt: item.retrieved_at,
+      limitations: item.limitations
+    })),
+    metrics: section.metrics.map((metric) => ({
+      metricId: metric.metric_id,
+      label: metric.label,
+      value: metric.value,
+      unit: metric.unit,
+      citationIds: metric.citation_ids,
+      sourceDocumentIds: metric.source_document_ids,
+      freshnessState: toFreshnessState(metric.freshness_state),
+      evidenceState: toEvidenceState(metric.evidence_state),
+      asOfDate: metric.as_of_date,
+      retrievedAt: metric.retrieved_at,
+      limitations: metric.limitations
+    })),
+    citationIds: section.citation_ids,
+    sourceDocumentIds: section.source_document_ids,
+    freshnessState: toFreshnessState(section.freshness_state),
+    evidenceState: toEvidenceState(section.evidence_state),
+    asOfDate: section.as_of_date,
+    retrievedAt: section.retrieved_at,
+    limitations: section.limitations
+  };
+}
+
 function mergeUniqueBy<T>(preferred: T[], fallback: T[], getKey: (item: T) => string): T[] {
   const merged: T[] = [];
   const seen = new Set<string>();
@@ -282,6 +389,37 @@ function toFreshnessState(value: string): FreshnessState {
     return value;
   }
   return "unknown";
+}
+
+function toEvidenceState(value: string): EvidenceState {
+  if (
+    value === "supported" ||
+    value === "partial" ||
+    value === "mixed" ||
+    value === "unknown" ||
+    value === "unavailable" ||
+    value === "stale" ||
+    value === "insufficient_evidence" ||
+    value === "no_high_signal" ||
+    value === "no_major_recent_development" ||
+    value === "unsupported"
+  ) {
+    return value;
+  }
+  return "unknown";
+}
+
+function toStockSectionType(value: string): StockSectionType {
+  if (
+    value === "stable_facts" ||
+    value === "evidence_gap" ||
+    value === "risk" ||
+    value === "recent_developments" ||
+    value === "educational_suitability"
+  ) {
+    return value;
+  }
+  return "evidence_gap";
 }
 
 function toSourceQuality(value: string): SourceDocument["sourceQuality"] {

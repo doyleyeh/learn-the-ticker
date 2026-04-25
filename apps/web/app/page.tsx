@@ -15,32 +15,24 @@ export default function HomePage() {
         <SearchBox />
       </section>
       <section className="content-band">
-        <div className="section-heading">
+        <div className="section-heading home-next-steps-heading">
           <p className="eyebrow">How the workflow stays focused</p>
-          <h2>Start with one asset, then branch into sources, comparison, or follow-up learning</h2>
+          <h2>What happens next</h2>
         </div>
-        <div className="example-grid home-workflow-grid" aria-label="Educational secondary workflows">
-          <span className="example-card" data-home-workflow-card="single-asset-search">
-            <strong>Single search first</strong>
-            <span>
-              Search rows identify stock vs ETF results, exchange or issuer, and support-state chips before opening
-              a generated page.
-            </span>
-          </span>
-          <a className="example-card" href="/compare" data-home-workflow-card="separate-comparison">
-            <strong>Compare separately</strong>
-            <span>
-              Comparison stays in its own workflow. Clear searches like VOO vs QQQ route to the comparison page.
-            </span>
-          </a>
-          <span className="example-card" data-home-workflow-card="source-backed-learning">
-            <strong>Learn with sources</strong>
-            <span>
-              Supported asset pages keep stable facts, Weekly News Focus, citations, freshness, glossary help, and chat
-              in their reading flow.
-            </span>
-          </span>
-        </div>
+        <ol className="home-next-steps" aria-label="Educational secondary workflows" data-home-secondary-workflow="lightweight-next-steps">
+          <li data-home-workflow-card="single-asset-search">
+            <strong>Open one supported asset.</strong>
+            Search rows identify stock vs ETF results, exchange or issuer, and support-state chips before opening a generated page.
+          </li>
+          <li data-home-workflow-card="separate-comparison">
+            <strong>Compare only when asked.</strong>
+            Clear searches like VOO vs QQQ route to <a href="/compare">the comparison workflow</a>.
+          </li>
+          <li data-home-workflow-card="source-backed-learning">
+            <strong>Keep reading with sources.</strong>
+            Asset pages keep citations, freshness, glossary help, chat, and Weekly News Focus in the learning flow.
+          </li>
+        </ol>
       </section>
     </main>
   );

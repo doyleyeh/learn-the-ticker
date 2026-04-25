@@ -17,9 +17,19 @@ export function AssetEtfSections({ asset }: AssetEtfSectionsProps) {
     return null;
   }
 
+  const deepDiveSections = asset.etfSections.filter(
+    (section) => !["etf_specific_risks", "recent_developments", "educational_suitability"].includes(section.sectionId)
+  );
+
   return (
-    <div className="section-stack etf-prd-sections" data-etf-prd-sections data-asset-ticker={asset.ticker}>
-      {asset.etfSections.map((section) => (
+    <div
+      className="section-stack etf-prd-sections"
+      data-etf-prd-sections
+      data-asset-ticker={asset.ticker}
+      data-shared-prd-section-shell
+      data-deep-dive-duplicate-sections-filtered="etf_specific_risks,recent_developments,educational_suitability"
+    >
+      {deepDiveSections.map((section) => (
         <EtfSection key={section.sectionId} asset={asset} section={section} />
       ))}
     </div>
@@ -31,6 +41,7 @@ function EtfSection({ asset, section }: { asset: AssetFixture; section: EtfOverv
   const isRisk = section.sectionId === "etf_specific_risks";
   const riskItems = isRisk ? section.items.slice(0, 3) : section.items;
   const sectionClassName = [
+    "asset-prd-section",
     "plain-panel",
     isRecent ? "recent-section" : "stable-section",
     section.sectionType === "evidence_gap" ? "unknown-state" : ""

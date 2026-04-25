@@ -10,7 +10,7 @@ export function CitationChip({ citation, label }: CitationChipProps) {
     <a
       className="citation-chip"
       href={`#source-${citation.sourceDocumentId}`}
-      aria-label={`Open source drawer for ${citation.title}`}
+      aria-label={`Open source details for ${citation.title}`}
       data-citation-id={citation.citationId}
       data-source-document-id={citation.sourceDocumentId}
       data-freshness-state={citation.freshnessState}

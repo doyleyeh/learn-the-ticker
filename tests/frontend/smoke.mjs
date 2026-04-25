@@ -65,9 +65,11 @@ includes("app/page.tsx", "single-asset-search");
 includes("app/page.tsx", "separate-comparison");
 includes("app/page.tsx", "VOO vs QQQ");
 includes("app/page.tsx", "/compare");
+includes("app/page.tsx", "lightweight-next-steps");
+includes("app/page.tsx", "home-next-steps");
 includes("app/assets/[ticker]/page.tsx", "Stable facts");
 includes("app/assets/[ticker]/page.tsx", "Stale and unknown treatment");
-includes("app/assets/[ticker]/page.tsx", "AssetModeLayout");
+includes("app/assets/[ticker]/page.tsx", "AssetLearningLayout");
 includes("app/assets/[ticker]/page.tsx", "WeeklyNewsPanel");
 includes("app/assets/[ticker]/page.tsx", "AIComprehensiveAnalysisPanel");
 includes("app/assets/[ticker]/page.tsx", "data-prd-layout-marker");
@@ -82,12 +84,31 @@ includes("app/assets/[ticker]/page.tsx", "data-prd-section=\"educational_disclai
 includes("app/assets/[ticker]/page.tsx", "data-asset-what-section-id");
 includes("app/assets/[ticker]/page.tsx", "data-helper-rail-source-access");
 includes("app/assets/[ticker]/page.tsx", "data-beginner-primary-claim");
+includes("app/assets/[ticker]/page.tsx", "data-beginner-summary-card-count=\"3\"");
+includes("app/assets/[ticker]/page.tsx", "data-beginner-summary-card=\"what_it_is\"");
+includes("app/assets/[ticker]/page.tsx", "data-beginner-summary-card=\"why_people_look\"");
+includes("app/assets/[ticker]/page.tsx", "data-beginner-summary-card=\"main_caution\"");
 includes("app/assets/[ticker]/page.tsx", "data-beginner-top-risk-count");
 includes("app/assets/[ticker]/page.tsx", "data-beginner-stable-recent-separation");
 includes("app/assets/[ticker]/page.tsx", "data-beginner-educational-framing");
 includes("components/AssetHeader.tsx", "data-asset-header-layout");
 includes("components/AssetHeader.tsx", "data-prd-section");
-includes("app/assets/[ticker]/page.tsx", "SourceDrawer");
+includes("components/AssetHeader.tsx", "data-asset-header-actions=\"compare,export,sources\"");
+includes("components/AssetHeader.tsx", "Compare this asset");
+includes("components/AssetHeader.tsx", "Export");
+includes("components/AssetHeader.tsx", "View sources");
+assert.equal(
+  read("app/assets/[ticker]/page.tsx").includes("<SourceDrawer"),
+  false,
+  "Asset pages should not repeat full source drawer sections inline"
+);
+includes("app/assets/[ticker]/page.tsx", "data-asset-source-index");
+includes("app/assets/[ticker]/page.tsx", "data-asset-source-entry-count");
+includes("app/assets/[ticker]/page.tsx", "data-asset-source-full-drawers=\"dedicated-source-list\"");
+includes("app/assets/[ticker]/page.tsx", "data-asset-source-drawer-repetition=\"removed\"");
+includes("app/assets/[ticker]/page.tsx", "data-asset-source-index-entry");
+includes("app/assets/[ticker]/page.tsx", "data-asset-source-list-link");
+includes("app/assets/[ticker]/page.tsx", "Open full source details");
 includes("app/assets/[ticker]/page.tsx", "GlossaryPopover");
 includes("app/assets/[ticker]/page.tsx", "data-beginner-glossary-area");
 includes("app/assets/[ticker]/page.tsx", "data-glossary-asset-ticker");
@@ -114,7 +135,7 @@ includes("app/assets/[ticker]/page.tsx", "assetSourceListExportUrl");
 includes("app/assets/[ticker]/page.tsx", "fetchSupportedAssetExportContract");
 includes("app/assets/[ticker]/page.tsx", "data-asset-page-export-contract");
 includes("app/assets/[ticker]/page.tsx", "data-asset-source-list-export-contract");
-includes("app/assets/[ticker]/page.tsx", "rendered source document IDs");
+includes("app/assets/[ticker]/page.tsx", "Key source documents");
 includes("app/assets/[ticker]/page.tsx", "getAssetComparisonSuggestions");
 includes("app/assets/[ticker]/page.tsx", "ComparisonSuggestions");
 includes("app/assets/[ticker]/page.tsx", "AssetEtfSections");
@@ -183,6 +204,11 @@ includes("lib/trustMetrics.ts", "buildTrustMetricSurfaceDescriptor");
 includes("lib/assetOverview.ts", "/api/assets/");
 includes("lib/assetOverview.ts", "/overview");
 includes("lib/assetOverview.ts", "No API base URL is configured for supported asset overview fetches.");
+includes("lib/assetOverview.ts", "type BackendOverviewSection");
+includes("lib/assetOverview.ts", "sections: BackendOverviewSection\\[\\]");
+includes("lib/assetOverview.ts", "toOverviewSection");
+includes("lib/assetOverview.ts", "stockSections: backendSections");
+includes("lib/assetOverview.ts", "etfSections: backendSections");
 includes("lib/assetDetails.ts", "/api/assets/");
 includes("lib/assetDetails.ts", "/details");
 includes("lib/assetDetails.ts", "No API base URL is configured for supported asset detail fetches.");
@@ -278,19 +304,22 @@ includes("components/AssetChatPanel.tsx", "advice-boundary");
 includes("components/AssetChatPanel.tsx", "business model work");
 includes("components/AssetChatPanel.tsx", "fund exposure");
 includes("components/AssetChatPanel.tsx", "without a personal recommendation");
-includes("components/AssetModeLayout.tsx", "data-asset-mode-layout");
-includes("components/AssetModeLayout.tsx", "data-asset-mode-region");
-includes("components/AssetModeLayout.tsx", "data-beginner-mode-region");
-includes("components/AssetModeLayout.tsx", "data-deep-dive-mode-region");
+includes("components/AssetModeLayout.tsx", "AssetLearningLayout");
+includes("components/AssetModeLayout.tsx", "data-asset-learning-layout");
+includes("components/AssetModeLayout.tsx", "data-asset-section-region");
+includes("components/AssetModeLayout.tsx", "data-beginner-section-region");
+includes("components/AssetModeLayout.tsx", "data-deep-dive-section-region");
 includes("components/AssetModeLayout.tsx", "data-prd-learning-flow");
 includes("components/AssetModeLayout.tsx", "data-prd-section-order");
 includes("components/AssetModeLayout.tsx", "data-mobile-sticky-actions=\"ask-compare-sources\"");
 includes("components/AssetModeLayout.tsx", "data-mobile-actions-no-overlap=\"in-flow-sticky\"");
 includes("components/AssetModeLayout.tsx", "data-asset-helper-rail");
 includes("components/AssetModeLayout.tsx", "data-helper-rail-tools=\"ask,compare,freshness,sources\"");
+includes("components/AssetModeLayout.tsx", "data-prd-section=\"deep_dive\"");
 includes("components/AssetModeLayout.tsx", "data-prd-section=\"sources\"");
-includes("components/AssetModeLayout.tsx", "Beginner Mode");
-includes("components/AssetModeLayout.tsx", "Deep-Dive Mode");
+includes("components/AssetModeLayout.tsx", "Deep Dive");
+assert.equal(read("components/AssetModeLayout.tsx").includes("Beginner Mode"), false, "Asset layout should not expose a visible Beginner Mode wrapper");
+assert.equal(read("components/AssetModeLayout.tsx").includes("Deep-Dive Mode"), false, "Asset layout should not expose a visible Deep-Dive Mode wrapper");
 includes("components/WeeklyNewsPanel.tsx", "Weekly News Focus");
 includes("components/WeeklyNewsPanel.tsx", "data-weekly-news-state");
 includes("components/WeeklyNewsPanel.tsx", "data-weekly-news-configured-max");
@@ -375,11 +404,15 @@ includes("lib/compareSuggestions.ts", "not facts about the requested pair");
 includes("lib/compareSuggestions.ts", "requestedAvailabilityState");
 includes("components/AssetStockSections.tsx", "data-stock-prd-sections");
 includes("components/AssetStockSections.tsx", "data-stock-section-id");
+includes("components/AssetStockSections.tsx", "data-shared-prd-section-shell");
+includes("components/AssetStockSections.tsx", "data-deep-dive-duplicate-sections-filtered=\"top_risks,recent_developments,educational_suitability\"");
 includes("components/AssetStockSections.tsx", "data-stock-stable-recent-separation");
 includes("components/AssetStockSections.tsx", "data-stock-top-risk-count");
 includes("components/AssetStockSections.tsx", "No citation chip is shown because this item is an explicit evidence gap");
 includes("components/AssetEtfSections.tsx", "data-etf-prd-sections");
 includes("components/AssetEtfSections.tsx", "data-etf-section-id");
+includes("components/AssetEtfSections.tsx", "data-shared-prd-section-shell");
+includes("components/AssetEtfSections.tsx", "data-deep-dive-duplicate-sections-filtered=\"etf_specific_risks,recent_developments,educational_suitability\"");
 includes("components/AssetEtfSections.tsx", "data-etf-stable-recent-separation");
 includes("components/AssetEtfSections.tsx", "data-etf-top-risk-count");
 includes("components/AssetEtfSections.tsx", "No citation chip is shown because this ETF item is an explicit evidence gap");
@@ -450,6 +483,7 @@ includes("components/SourceDrawer.tsx", "Supporting passage");
 includes("components/SourceDrawer.tsx", "Official source");
 includes("components/SourceDrawer.tsx", "URL");
 includes("components/CitationChip.tsx", "data-source-document-id");
+includes("components/CitationChip.tsx", "Open source details");
 includes("styles/globals.css", "@media \\(max-width: 620px\\)");
 includes("styles/globals.css", "max-height: min\\(76vh, 640px\\)");
 includes("styles/globals.css", "overscroll-behavior: contain");
@@ -468,6 +502,9 @@ includes("styles/globals.css", ".export-controls");
 includes("styles/globals.css", ".export-result");
 includes("styles/globals.css", "max-height: min\\(58vh, 520px\\)");
 includes("styles/globals.css", ".asset-helper-rail");
+includes("styles/globals.css", ".asset-source-index");
+includes("styles/globals.css", ".asset-source-index-card");
+includes("styles/globals.css", ".compact-source-meta");
 includes("styles/globals.css", "max-height: calc\\(100vh - 36px\\)");
 includes("styles/globals.css", ".compare-builder-form");
 includes("styles/globals.css", ".selected-builder-card");
@@ -494,6 +531,9 @@ includes("components/SearchBox.tsx", "data-search-can-open-generated-page");
 includes("components/SearchBox.tsx", "Search a ticker or name, like VOO, QQQ, or Apple");
 includes("components/SearchBox.tsx", "Examples only, not recommendations");
 includes("components/SearchBox.tsx", "data-home-primary-action=\"single-asset-search\"");
+includes("components/SearchBox.tsx", "data-search-support-state-idle-visible=\"false\"");
+includes("components/SearchBox.tsx", "data-search-support-state-labels={V04_SUPPORT_STATE_CHIPS.join");
+includes("components/SearchBox.tsx", "result-state-chip");
 includes("components/SearchBox.tsx", "data-search-comparison-result");
 includes("components/SearchBox.tsx", "data-search-special-autocomplete-result");
 includes("components/SearchBox.tsx", "data-search-comparison-route");
@@ -503,6 +543,12 @@ includes("components/SearchBox.tsx", "Out of scope");
 includes("components/SearchBox.tsx", "No supported stock or ETF found for");
 includes("components/SearchBox.tsx", "No generated asset page, grounded chat, or comparison is available today");
 includes("components/SearchBox.tsx", "No facts are invented for this ticker or name");
+const searchBoxSource = read("components/SearchBox.tsx");
+assert.equal(searchBoxSource.includes("support-state-legend"), false, "Idle home search should not render the full support-state legend");
+assert.ok(
+  searchBoxSource.indexOf("data-search-result-state-label") < searchBoxSource.indexOf("export function SearchBox"),
+  "Support-state chips should be part of actual search result identity"
+);
 includes("lib/search.ts", "comparison_route");
 includes("lib/search.ts", "/compare\\?left=");
 includes("lib/search.ts", "VOO, QQQ, AAPL, NVDA, and SOXX");
@@ -656,8 +702,8 @@ assert.ok(
   "Comparison results should render source metadata after suggested comparisons"
 );
 assert.ok(
-  assetPage.indexOf("beginnerMode=") < assetPage.indexOf("deepDiveMode="),
-  "Asset page should pass Beginner Mode before Deep-Dive Mode"
+  assetPage.indexOf("beginnerSections=") < assetPage.indexOf("deepDiveSections="),
+  "Asset page should pass beginner sections before Deep Dive"
 );
 assert.ok(
   assetPage.indexOf("data-prd-section=\"beginner_summary\"") < assetPage.indexOf("data-prd-section=\"top_risks\""),
@@ -677,19 +723,19 @@ assert.ok(
 );
 assert.ok(
   assetPage.indexOf("data-beginner-top-risks") < assetPage.indexOf("<WeeklyNewsPanel"),
-  "Beginner Mode should show top risks before Weekly News Focus"
+  "Beginner section should show top risks before Weekly News Focus"
 );
 assert.ok(
   assetPage.indexOf("<WeeklyNewsPanel") < assetPage.indexOf("<AIComprehensiveAnalysisPanel"),
   "Weekly News Focus should render before AI Comprehensive Analysis"
 );
 assert.ok(
-  assetPage.indexOf("<AIComprehensiveAnalysisPanel") < assetPage.indexOf("deepDiveMode="),
-  "AI Comprehensive Analysis should render before Deep-Dive Mode"
+  assetPage.indexOf("<AIComprehensiveAnalysisPanel") < assetPage.indexOf("deepDiveSections="),
+  "AI Comprehensive Analysis should render before Deep Dive"
 );
 assert.ok(
-  assetPage.indexOf("deepDiveMode=") < assetPage.indexOf("afterDeepDive="),
-  "Deep-Dive Mode should render before Ask about this asset"
+  assetPage.indexOf("deepDiveSections=") < assetPage.indexOf("afterDeepDive="),
+  "Deep Dive should render before Ask about this asset"
 );
 assert.ok(
   assetPage.indexOf("afterDeepDive=") < assetPage.indexOf("sourceTools="),
@@ -706,7 +752,7 @@ assert.ok(
 assert.ok(
   assetPage.indexOf("data-beginner-stable-recent-separation=\"stable\"") <
     assetPage.indexOf("<WeeklyNewsPanel"),
-  "Beginner Mode should keep stable facts before timely-context modules"
+  "Beginner section should keep stable facts before timely-context modules"
 );
 assert.ok(
   assetPage.lastIndexOf("AssetChatPanel") > assetPage.indexOf("afterDeepDive=") &&

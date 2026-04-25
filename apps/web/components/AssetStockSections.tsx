@@ -17,9 +17,19 @@ export function AssetStockSections({ asset }: AssetStockSectionsProps) {
     return null;
   }
 
+  const deepDiveSections = asset.stockSections.filter(
+    (section) => !["top_risks", "recent_developments", "educational_suitability"].includes(section.sectionId)
+  );
+
   return (
-    <div className="section-stack stock-prd-sections" data-stock-prd-sections data-asset-ticker={asset.ticker}>
-      {asset.stockSections.map((section) => (
+    <div
+      className="section-stack stock-prd-sections"
+      data-stock-prd-sections
+      data-asset-ticker={asset.ticker}
+      data-shared-prd-section-shell
+      data-deep-dive-duplicate-sections-filtered="top_risks,recent_developments,educational_suitability"
+    >
+      {deepDiveSections.map((section) => (
         <StockSection key={section.sectionId} asset={asset} section={section} />
       ))}
     </div>
@@ -31,6 +41,7 @@ function StockSection({ asset, section }: { asset: AssetFixture; section: StockO
   const isRisk = section.sectionId === "top_risks";
   const riskItems = isRisk ? section.items.slice(0, 3) : section.items;
   const sectionClassName = [
+    "asset-prd-section",
     "plain-panel",
     isRecent ? "recent-section" : "stable-section",
     section.sectionType === "evidence_gap" ? "unknown-state" : ""

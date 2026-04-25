@@ -1,4 +1,5 @@
 import type { AssetFixture } from "../lib/fixtures";
+import { assetPageExportUrl } from "../lib/exportControls";
 import { FreshnessLabel } from "./FreshnessLabel";
 
 type AssetHeaderProps = {
@@ -20,6 +21,17 @@ export function AssetHeader({ asset, layoutMarker = "header" }: AssetHeaderProps
         <span>{asset.exchange}</span>
         {asset.issuer ? <span>{asset.issuer}</span> : null}
         <span>{asset.assetType.toUpperCase()}</span>
+      </div>
+      <div className="asset-header-actions" data-asset-header-actions="compare,export,sources">
+        <a href="#compare-this-asset" data-asset-header-action="compare">
+          Compare this asset
+        </a>
+        <a href={assetPageExportUrl(asset.ticker)} data-asset-header-action="export">
+          Export
+        </a>
+        <a href="#asset-sources" data-asset-header-action="sources">
+          View sources
+        </a>
       </div>
       <div className="freshness-row">
         <FreshnessLabel label="Page last updated" value={asset.freshness.pageLastUpdatedAt} state="fresh" />

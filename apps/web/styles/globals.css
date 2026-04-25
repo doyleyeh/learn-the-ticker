@@ -31,6 +31,18 @@ body {
   overflow-x: hidden;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 a {
   color: inherit;
 }
@@ -257,6 +269,12 @@ label {
   color: var(--accent-strong);
 }
 
+.search-result-panel .result-state-chip {
+  border-color: #b7d7d0;
+  background: #ecfaf7;
+  color: var(--accent-strong);
+}
+
 .status-unsupported,
 .freshness-stale {
   color: var(--stale);
@@ -272,7 +290,8 @@ label {
 .freshness-row,
 .inline-tools,
 .chip-row,
-.state-row {
+.state-row,
+.asset-header-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -281,7 +300,8 @@ label {
 
 .quick-links a,
 .quick-links button,
-.metadata-row span {
+.metadata-row span,
+.asset-header-actions a {
   display: inline-flex;
   max-width: 100%;
   min-height: 34px;
@@ -296,6 +316,12 @@ label {
   line-height: 1.25;
   text-decoration: none;
   white-space: normal;
+}
+
+.asset-header-actions a {
+  border-color: #b7d7d0;
+  background: #ecfaf7;
+  color: var(--accent-strong);
 }
 
 .quick-links button {
@@ -328,11 +354,13 @@ label {
   min-width: 0;
 }
 
-.mode-stack {
+.mode-stack,
+.learning-stack {
   gap: 32px;
 }
 
-.asset-mode-region {
+.asset-mode-region,
+.asset-section-region {
   display: grid;
   gap: 18px;
   min-width: 0;
@@ -344,14 +372,16 @@ label {
   grid-column: 1 / -1;
 }
 
-.mode-heading {
+.mode-heading,
+.section-shell-heading {
   display: grid;
   gap: 4px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--line);
 }
 
-.mode-heading h2 {
+.mode-heading h2,
+.section-shell-heading h2 {
   margin: 0;
   font-size: 28px;
   line-height: 1.15;
@@ -376,6 +406,35 @@ label {
   background: #fff8e6;
 }
 
+.beginner-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.beginner-summary-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f9fbfb;
+}
+
+.beginner-summary-card h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.beginner-summary-card p {
+  margin: 0;
+}
+
+.caution-card {
+  border-left: 4px solid var(--warn);
+  background: #fff8e6;
+}
+
 .example-grid,
 .risk-grid,
 .compare-grid {
@@ -389,6 +448,38 @@ label {
 
 .home-workflow-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.home-next-steps-heading {
+  max-width: 760px;
+}
+
+.home-next-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.home-next-steps li {
+  min-width: 0;
+  padding: 14px 0 0;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.home-next-steps strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--accent-strong);
+}
+
+.home-next-steps a {
+  color: var(--accent-strong);
+  font-weight: 750;
 }
 
 .example-card {
@@ -1028,6 +1119,32 @@ main[data-prd-source-list-marker] > .plain-panel:last-child {
   line-height: 1.45;
 }
 
+.asset-source-index {
+  display: grid;
+  gap: 14px;
+}
+
+.asset-source-index-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  padding: 16px;
+}
+
+.asset-source-index-card h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.compact-source-meta {
+  margin: 14px 0;
+}
+
+.asset-source-index-card a {
+  color: var(--accent-strong);
+  font-weight: 800;
+}
+
 .source-drawer {
   padding: 0;
   overflow: hidden;
@@ -1144,7 +1261,9 @@ blockquote {
   .two-column,
   .compare-grid,
   .example-grid,
-  .risk-grid {
+  .risk-grid,
+  .beginner-summary-grid,
+  .home-next-steps {
     grid-template-columns: 1fr;
   }
 
@@ -1202,6 +1321,7 @@ blockquote {
   }
 
   .asset-mode-region,
+  .asset-section-region,
   .asset-chat-panel,
   .export-controls,
   .source-drawer,

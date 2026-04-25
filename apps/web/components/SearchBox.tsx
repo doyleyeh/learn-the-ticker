@@ -56,7 +56,9 @@ function ResultIdentity({ result }: { result: LocalSearchResult }) {
       <span data-search-result-type>{formatSearchAssetType(result)}</span>
       {result.exchange ? <span data-search-result-exchange>{result.exchange}</span> : null}
       {result.issuer ? <span data-search-result-issuer>{result.issuer}</span> : null}
-      <span data-search-result-state-label>{resultStateLabel(result)}</span>
+      <span className="result-state-chip" data-search-result-state-label>
+        {resultStateLabel(result)}
+      </span>
     </>
   );
 }
@@ -112,7 +114,13 @@ export function SearchBox() {
   }
 
   return (
-    <section className="search-workflow" aria-label="Single stock or ETF search" data-home-primary-action="single-asset-search">
+    <section
+      className="search-workflow"
+      aria-label="Single stock or ETF search"
+      data-home-primary-action="single-asset-search"
+      data-search-support-state-idle-visible="false"
+      data-search-support-state-labels={V04_SUPPORT_STATE_CHIPS.join("|")}
+    >
       <label htmlFor="ticker-search">Ticker or asset name</label>
       <div className="search-row">
         <input
@@ -146,13 +154,6 @@ export function SearchBox() {
       >
         {helperText}
       </p>
-      <div className="support-state-legend" aria-label="Search support-state labels" data-search-support-state-labels>
-        {V04_SUPPORT_STATE_CHIPS.map((label) => (
-          <span key={label} data-search-support-state-chip={label}>
-            {label}
-          </span>
-        ))}
-      </div>
       {state === "comparison" && singleResult?.comparison_route ? (
         <div
           className="search-result-panel comparison-route-panel"

@@ -4,13 +4,12 @@ import { AIComprehensiveAnalysisPanel } from "../../../components/AIComprehensiv
 import { AssetChatPanel } from "../../../components/AssetChatPanel";
 import { AssetEtfSections } from "../../../components/AssetEtfSections";
 import { AssetStockSections } from "../../../components/AssetStockSections";
-import { AssetModeLayout } from "../../../components/AssetModeLayout";
+import { AssetLearningLayout } from "../../../components/AssetModeLayout";
 import { CitationChip } from "../../../components/CitationChip";
 import { ComparisonSuggestions } from "../../../components/ComparisonSuggestions";
 import { ExportControls } from "../../../components/ExportControls";
 import { FreshnessLabel } from "../../../components/FreshnessLabel";
 import { GlossaryPopover } from "../../../components/GlossaryPopover";
-import { SourceDrawer } from "../../../components/SourceDrawer";
 import { WeeklyNewsPanel } from "../../../components/WeeklyNewsPanel";
 import { fetchSupportedAssetDetails } from "../../../lib/assetDetails";
 import { fetchSupportedAssetGlossaryContexts } from "../../../lib/assetGlossary";
@@ -259,9 +258,9 @@ export default async function AssetPage({ params }: AssetPageProps) {
       data-prd-section-order="header,beginner_summary,top_risks,key_facts,what_it_does_or_holds,weekly_news_focus,ai_comprehensive_analysis,deep_dive,ask_about_this_asset,sources,educational_disclaimer"
     >
       <AssetHeader asset={asset} layoutMarker="header" />
-      <AssetModeLayout
+      <AssetLearningLayout
         asset={asset}
-        beginnerMode={
+        beginnerSections={
           <>
             <section
               className="plain-panel stable-section"
@@ -278,11 +277,26 @@ export default async function AssetPage({ params }: AssetPageProps) {
                 <FreshnessLabel label="Page last updated" value={asset.freshness.pageLastUpdatedAt} state="fresh" />
                 <FreshnessLabel label="Beginner overview as of" value={asset.freshness.factsAsOf} state="fresh" />
               </div>
-              <p>
-                {asset.beginnerSummary.whatItIs} <CitationChip citation={firstClaimCitation} />
-              </p>
-              <p>{asset.beginnerSummary.whyPeopleConsiderIt}</p>
-              <p className="notice-text">{asset.beginnerSummary.mainCatch}</p>
+              <div
+                className="beginner-summary-grid"
+                data-beginner-summary-card-count="3"
+                data-beginner-summary-card-layout="three_short_cards"
+              >
+                <article className="beginner-summary-card" data-beginner-summary-card="what_it_is">
+                  <h3>What it is</h3>
+                  <p>
+                    {asset.beginnerSummary.whatItIs} <CitationChip citation={firstClaimCitation} />
+                  </p>
+                </article>
+                <article className="beginner-summary-card" data-beginner-summary-card="why_people_look">
+                  <h3>Why people look at it</h3>
+                  <p>{asset.beginnerSummary.whyPeopleConsiderIt}</p>
+                </article>
+                <article className="beginner-summary-card caution-card" data-beginner-summary-card="main_caution">
+                  <h3>Main thing to be careful about</h3>
+                  <p>{asset.beginnerSummary.mainCatch}</p>
+                </article>
+              </div>
               <div className="inline-tools" aria-label="Beginner glossary terms">
                 {inlineGlossaryTerms.map((term) => (
                   <GlossaryPopover key={term} term={term} assetContext={backendGlossaryContexts?.get(term)} />
@@ -406,7 +420,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
             <AIComprehensiveAnalysisPanel analysis={aiComprehensiveAnalysis} citations={mergedCitations} />
           </>
         }
-        deepDiveMode={
+        deepDiveSections={
           <>
             {hasStockPrdSections ? (
               <AssetStockSections asset={asset} />
@@ -463,7 +477,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
           </>
         }
         afterDeepDive={
-          <section id="ask-about-this-asset" className="asset-mode-region" data-prd-section="ask_about_this_asset">
+          <section id="ask-about-this-asset" className="asset-section-region" data-prd-section="ask_about_this_asset">
             <AssetChatPanel ticker={asset.ticker} assetName={asset.name} />
           </section>
         }
@@ -492,27 +506,62 @@ export default async function AssetPage({ params }: AssetPageProps) {
               ]}
             />
             <p className="source-gap-note">
-              Asset-page source drawers prefer backend related claim context, section references, and allowed excerpts
-              when the deterministic source-drawer contract covers the rendered source document IDs.
+              Key source documents stay compact on the asset page. Open the source-list view for the full source drawer
+              metadata, related claim context, source-use policy, and allowed excerpts.
             </p>
-            {hasPrdSections ? (
-              renderedDrawerEntries.map((entry) => (
-                <SourceDrawer
+            <div
+              className="asset-source-index"
+              aria-label={`${asset.ticker} key source documents`}
+              data-asset-source-index
+              data-asset-source-entry-count={renderedDrawerEntries.length}
+              data-asset-source-full-drawers="dedicated-source-list"
+              data-asset-source-drawer-repetition="removed"
+            >
+              {renderedDrawerEntries.map((entry) => (
+                <article
                   key={entry.source.source_document_id}
-                  source={entry.source}
-                  claim={entry.claim}
-                  contexts={entry.contexts}
-                  drawerState={entry.drawerState}
-                />
-              ))
-            ) : (
-              <SourceDrawer
-                source={renderedDrawerEntries[0].source}
-                claim={renderedDrawerEntries[0].claim}
-                contexts={renderedDrawerEntries[0].contexts}
-                drawerState={renderedDrawerEntries[0].drawerState}
-              />
-            )}
+                  id={`source-${entry.source.source_document_id}`}
+                  className="asset-source-index-card"
+                  data-asset-source-index-entry
+                  data-source-document-id={entry.source.source_document_id}
+                  data-source-drawer-state={entry.drawerState}
+                  data-source-freshness-state={entry.source.freshness_state}
+                  data-source-use-policy={entry.source.source_use_policy}
+                >
+                  <div className="source-title-row">
+                    <div>
+                      <p className="eyebrow">{entry.source.source_type}</p>
+                      <h3>{entry.source.title}</h3>
+                    </div>
+                    {entry.source.isOfficial ? <span className="source-badge">Official source</span> : null}
+                  </div>
+                  <dl className="source-meta compact-source-meta">
+                    <div>
+                      <dt>Publisher</dt>
+                      <dd>{entry.source.publisher}</dd>
+                    </div>
+                    <div>
+                      <dt>Freshness</dt>
+                      <dd>{entry.source.freshness_state}</dd>
+                    </div>
+                    <div>
+                      <dt>Source-use policy</dt>
+                      <dd>{entry.source.source_use_policy}</dd>
+                    </div>
+                    <div>
+                      <dt>Related claims</dt>
+                      <dd>{entry.contexts.length || 1}</dd>
+                    </div>
+                  </dl>
+                  <a
+                    href={`/assets/${asset.ticker}/sources#source-${entry.source.source_document_id}`}
+                    data-asset-source-list-link
+                  >
+                    Open full source details
+                  </a>
+                </article>
+              ))}
+            </div>
           </>
         }
         helperRail={
@@ -569,9 +618,9 @@ export default async function AssetPage({ params }: AssetPageProps) {
                 <h2 id="helper-rail-sources">Source access</h2>
               </div>
               <p className="source-gap-note" data-helper-rail-source-access>
-                Source drawers remain in the Sources section so citation chips stay next to the claims they support.
+                Full source drawers live in the source-list view so this learning page stays focused.
               </p>
-              <ul className="helper-source-list" aria-label="Rendered source document IDs">
+              <ul className="helper-source-list" aria-label="Key source documents">
                 {keySourceTitles.map((title) => (
                   <li key={title}>{title}</li>
                 ))}
