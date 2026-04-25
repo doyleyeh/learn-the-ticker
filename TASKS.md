@@ -1,62 +1,60 @@
 ## Current task
 
-### T-076: Add backend persistence settings and migration scaffold
+### T-077: Add persisted knowledge-pack repository contracts
 
 Goal:
-Add the backend persistence configuration and migration scaffold needed for later persisted knowledge-pack work, without routing any current API, retrieval, generation, chat, comparison, or export behavior through a live database.
+Add the first persisted asset knowledge-pack repository contract on top of the dormant persistence boundary, without routing any current API, retrieval, generation, chat, comparison, export, or fixture behavior through a live database.
 
 Task-scope paragraph:
-This cycle is limited to establishing a dormant persistence boundary for the existing FastAPI backend: sanitized database settings, deterministic engine/session helpers or equivalent connection factories, and an Alembic-style migration scaffold that can be validated locally without opening a network connection or requiring a running Postgres service. Inspect current backend settings patterns, Docker/env placeholders, repository contract tests, and dependency files before editing. If production dependencies such as SQLAlchemy, Alembic, or psycopg are added, document the dependency rationale in code comments or tests where appropriate and keep the change focused on migration/readiness infrastructure only. Do not persist knowledge packs yet, do not add repository read/write behavior yet, and do not connect current routes or generators to the database.
+This cycle is limited to defining the persistence contract for asset knowledge packs produced by the existing deterministic retrieval fixtures: SQLAlchemy metadata/table definitions or equivalent row models, a small repository boundary with explicit serialization/deserialization helpers, and focused tests that prove the contract preserves source, citation, freshness, support-state, evidence-gap, and source-use metadata without opening a real database connection. The repository may use an injected fake session or pure unit-level serialization tests, but current runtime paths must continue to call the existing fixture-backed retrieval builders. Do not route FastAPI endpoints, overview generation, comparison generation, grounded chat, exports, glossary context, Weekly News Focus, AI Comprehensive Analysis, or frontend code through the persisted repository in this task.
 
 Allowed files:
 
-- `requirements.txt`
-- `requirements-dev.txt`
-- `.env.example`
-- `deploy/env/api.example.env`
-- `deploy/env/worker.example.env`
-- `backend/settings.py`
 - `backend/db.py`
 - `backend/persistence.py`
-- `alembic.ini`
+- `backend/knowledge_pack_repository.py`
+- `backend/retrieval_repository.py`
+- `backend/repositories/knowledge_packs.py`
+- `backend/repositories/__init__.py`
 - `alembic/env.py`
-- `alembic/script.py.mako`
-- `alembic/versions/<revision>_*.py`
-- `tests/unit/test_persistence_settings.py`
+- `alembic/versions/<revision>_knowledge_pack_repository_contracts.py`
+- `tests/unit/test_knowledge_pack_repository.py`
+- `tests/unit/test_retrieval_repository.py`
 - `tests/unit/test_repo_contract.py`
 - `docs/agent-journal/<run-id>.md`
 
 Do not change:
 
-- FastAPI routes, endpoint response schemas, route wiring, deterministic fixtures, retrieval, overview generation, comparison generation, grounded chat, glossary context, exports, Weekly News Focus, AI Comprehensive Analysis, source drawer payloads, source-use policy, citation validation, eval data, or generated content
+- FastAPI routes, endpoint response schemas, route wiring, deterministic fixtures, retrieval output behavior, overview generation, comparison generation, grounded chat, glossary context, exports, Weekly News Focus, AI Comprehensive Analysis, source drawer payloads, source-use policy, citation validation, eval data, or generated content
 - frontend files, frontend smoke markers, home/search/navigation behavior, `/compare` behavior, `A vs B` search redirects, source drawer UI, contextual glossary UI, asset chat UI, export controls, freshness labels, or stock-vs-ETF relationship badges
 - supported/unsupported/out-of-scope/pending/partial/stale/unknown/unavailable/insufficient-evidence semantics
 - live provider, news, market-data, LLM, OpenRouter, SEC, ETF issuer, or external source calls
-- database-backed knowledge-pack repositories, ingestion persistence, source snapshot storage, accountless chat persistence, trust-metric persistence, cache persistence, or production deployment wiring
+- ingestion persistence, source snapshot storage, accountless chat persistence, trust-metric persistence, generated-output cache persistence, production deployment wiring, or any background worker execution path
 - Docker Compose service topology, CI workflow behavior, root npm scripts, apps/web workspace scripts, or agent-loop scripts
 - real secret values, committed credentials, browser-exposed provider keys, `NEXT_PUBLIC_*` secrets, `/health` secret exposure, or logs that echo sensitive values
 - source-use rights, export licensing behavior, safety/advice-boundary copy, or educational disclaimers
 
 Acceptance criteria:
 
-- Backend exposes a small persistence settings module that reads database-related configuration from environment variables with deterministic defaults or explicit missing-config states suitable for local tests.
-- Settings helpers never inspect, print, log, commit, or return actual secret values; tests verify safe redaction or sanitized diagnostics for database URLs and credentials.
-- A database helper module provides a clear boundary for future SQLAlchemy/driver usage and can be imported in tests without opening a database connection.
-- Any engine/session or connection factory is lazy and does not connect during module import, app import, static evals, frontend tests, or the main quality gate.
-- Alembic or equivalent migration scaffolding exists with a deterministic configuration path, a documented metadata boundary, and an initial scaffold revision that can be inspected or rendered without a live database.
-- Migration scaffolding is dormant: it does not create knowledge-pack, source, chat, trust-metric, cache, or ingestion tables unless the task explicitly adds only a neutral migration baseline required by the tool.
-- If SQLAlchemy, Alembic, psycopg, or another production dependency is added, the dependency version is bounded and the task summary explains why it is needed, alternatives considered, and why it does not introduce live external calls in normal CI.
-- Placeholder env files remain placeholder-only and do not include real secrets; database placeholders stay server-side and are not added to frontend `NEXT_PUBLIC_*` variables.
-- Existing Docker Compose local Postgres support remains local development scaffolding only and is not required for CI or the quality gate.
+- Persistence metadata includes an explicit asset knowledge-pack schema boundary for persisted pack envelopes, source documents, source chunks or allowed excerpts, normalized facts, recent developments, evidence gaps, section freshness inputs, and checksum/hash metadata needed by current deterministic `KnowledgePackBuildResponse` contracts.
+- The migration revision is deterministic and inspectable without a live database; tests verify it creates only knowledge-pack repository contract tables and does not create ingestion, chat, trust-metric, generated-output cache, user-account, provider-secret, or deployment tables.
+- The repository boundary can serialize at least one supported local fixture-backed pack, such as `VOO`, into persistence-ready records and reconstruct a contract-equivalent in-memory pack or DTO with the same ticker, asset identity, support state, source IDs, citation/source boundaries, facts, chunks/excerpts, recent developments, evidence gaps, freshness state, source-use policy, and knowledge-pack freshness hash inputs.
+- Non-generated states such as eligible-not-cached, unsupported, out-of-scope, and unknown remain represented as non-generated metadata only; the repository contract must not create generated pages, generated chat answers, generated comparisons, generated risk summaries, or fake evidence for those states.
+- Source-use rights are enforced at the contract boundary: `rejected` or license-disallowed sources cannot be persisted for generated-output use, and `metadata_only` or `link_only` sources cannot persist raw article text or unrestricted chunks.
+- Important factual fields needed later for citations preserve same-asset source bindings; tests assert wrong-asset source IDs are rejected or marked invalid by the serializer/repository contract.
+- Repository imports, metadata imports, migrations, and tests remain lazy and deterministic: they do not open a database connection during module import, app import, static evals, frontend tests, or the main quality gate.
 - Existing backend API behavior remains fixture-backed and deterministic; supported asset pages, search, comparison, chat, exports, Weekly News Focus, AI Comprehensive Analysis, citations, freshness, and unsupported/out-of-scope states behave as before.
-- Source-use rights and citation rules are unchanged: rejected or license-disallowed sources still cannot feed generated output, rendered summaries, caches, or exports.
+- Existing frontend behavior remains untouched and aligned with Frontend Design and Workflow v0.4: home remains single-stock-or-ETF search first; comparison remains separate through `/compare`; glossary remains contextual; source drawer, glossary, and chat mobile behavior remains unchanged; stock-vs-ETF relationship badges remain unchanged.
+- Placeholder env files remain placeholder-only and no new provider or database secrets are exposed to browser code, `NEXT_PUBLIC_*`, `/health`, docs, logs, or committed files.
+- No live provider, news, market-data, LLM, OpenRouter, SEC, ETF issuer, or external source calls are introduced.
+- Citation, freshness, uncertainty, source-use, and safety rules are unchanged: important claims require citations or explicit uncertainty, stale/unknown/unavailable/partial/insufficient-evidence states remain visible where applicable, and rejected or license-disallowed sources cannot feed generated output, rendered summaries, caches, or exports.
 - Product safety remains unchanged: no buy/sell/hold recommendations, personalized allocation advice, unsupported price targets, tax advice, brokerage/trading behavior, or unsupported factual claims are introduced.
-- Tests cover settings parsing, secret redaction, lazy database boundary behavior, migration scaffold presence, placeholder env hygiene, and no-live-connection behavior.
+- Tests cover migration contract presence, repository serialization/deserialization, source-use text-storage restrictions, same-asset citation/source boundaries, non-generated state handling, lazy no-live-connection behavior, and preservation of current fixture-backed API behavior.
 - Required commands from this cycle pass.
 
 Required commands:
 
-- `python3 -m pytest tests/unit/test_persistence_settings.py tests/unit/test_repo_contract.py -q`
+- `python3 -m pytest tests/unit/test_knowledge_pack_repository.py tests/unit/test_repo_contract.py -q`
 - `python3 -m pytest tests -q`
 - `python3 evals/run_static_evals.py`
 - `bash scripts/run_quality_gate.sh`
@@ -68,6 +66,33 @@ Iteration budget:
 
 
 ## Completed
+
+### T-076: Add backend persistence settings and migration scaffold
+
+Goal:
+Add the backend persistence configuration and migration scaffold needed for later persisted knowledge-pack work, without routing any current API, retrieval, generation, chat, comparison, or export behavior through a live database.
+
+Completed details:
+
+- Implementation commit `351895f chore(T-076): add backend persistence settings and migration scaffold` updated `requirements.txt`, `.env.example`, backend API/worker env examples, backend persistence settings modules, Alembic scaffold files, `tests/unit/test_persistence_settings.py`, and `docs/agent-journal/20260425T035646Z.md`.
+- Merged branch `agent/T-076-20260425T035646Z` into `main` with local merge commit `d26cc62 chore(T-076): merge backend persistence settings and migration scaffold`.
+- `backend/settings.py` added `PersistenceSettings` helpers that read server-side database configuration, expose sanitized diagnostics, redact credentials and sensitive query values, and use deterministic missing-config defaults for local tests.
+- `backend/db.py` added a lazy `DatabaseEngineFactory` boundary so importing the module does not import SQLAlchemy or open a database connection; engine and session creation are explicit and fail fast when `DATABASE_URL` is missing.
+- `backend/persistence.py` added dormant persistence metadata with zero tables and diagnostics for the metadata boundary.
+- `alembic.ini`, `alembic/env.py`, `alembic/script.py.mako`, and `alembic/versions/20260425_0001_persistence_baseline.py` added an Alembic-style migration scaffold with a no-op baseline revision that can be imported without Alembic or a database connection.
+- `.env.example`, `deploy/env/api.example.env`, and `deploy/env/worker.example.env` added placeholder-only database tuning variables; no frontend `NEXT_PUBLIC_*` database variables were added.
+- `requirements.txt` added bounded production dependencies for SQLAlchemy, Alembic, and psycopg. The journal records the rationale: standard future engine/session abstraction, deterministic migration tooling, and PostgreSQL driver readiness once the dormant boundary is activated; alternatives considered were a custom migration runner or driver-only connection code.
+- The journal records that the task did not add repository read/write behavior, migration-generated tables, ingestion persistence, cache persistence, chat persistence, route wiring, live provider calls, or a real database connection in CI.
+- `docs/agent-journal/20260425T035646Z.md` records these checks: `python3 -m pytest tests/unit/test_persistence_settings.py tests/unit/test_repo_contract.py -q` passed with 20 tests; `python3 -m pytest tests -q` passed with 208 tests; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed, including 208 tests in both Python phases plus static evals, frontend smoke, typecheck, build, and backend checks; `docker compose config` passed.
+- Remaining risks from the journal:
+  - The scaffold is intentionally dormant: no repository read/write layer, migration-generated tables, ingestion persistence, cache persistence, chat persistence, or route wiring was added.
+  - SQLAlchemy, Alembic, and psycopg are declared as production dependencies, but this task does not install or exercise a real database connection in CI.
+  - The baseline migration is a no-op; future persistence work must add real tables and repository contracts in separate, narrowly scoped tasks.
+
+Completion commits:
+
+- `351895f chore(T-076): add backend persistence settings and migration scaffold`
+- `d26cc62 chore(T-076): merge backend persistence settings and migration scaffold`
 
 ### T-075: Re-audit home page and navigation against frontend workflow docs
 
@@ -2030,8 +2055,6 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-077: Add persisted knowledge-pack repository contracts
 
 ### T-078: Route retrieval through persisted packs with fixture fallback
 
