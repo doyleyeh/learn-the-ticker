@@ -1,9 +1,15 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
-from typing import Any, Iterable
+from typing import Any, Iterable, Protocol
 
+from backend.cache import (
+    build_generated_output_freshness_input,
+    build_knowledge_pack_freshness_input,
+    compute_generated_output_freshness_hash,
+    compute_knowledge_pack_freshness_hash,
+)
 from backend.citations import (
     CitationEvidence,
     CitationValidationClaim,
@@ -16,23 +22,41 @@ from backend.citations import (
     validate_claims,
 )
 from backend.comparison import generate_comparison
+from backend.generated_output_cache_repository import (
+    GeneratedOutputArtifactCategory,
+    GeneratedOutputCacheContractError,
+    GeneratedOutputCacheRepositoryRecords,
+    validate_generated_output_cache_records,
+)
 from backend.models import (
+    AssetIdentity,
     AssetStatus,
     AssetType,
+    CacheEntryKind,
+    CacheScope,
     ChatCitation,
     ChatCompareRouteSuggestion,
     ChatResponse,
+    Freshness,
     ChatSourceDocument,
     FreshnessState,
     SafetyClassification,
+    SectionFreshnessInput,
 )
 from backend.retrieval import (
     AssetKnowledgePack,
     RetrievedFact,
     RetrievedRecentDevelopment,
     RetrievedSourceChunk,
+    EvidenceGap,
+    NormalizedFactFixture,
+    RecentDevelopmentFixture,
+    SourceChunkFixture,
+    SourceDocumentFixture,
     build_asset_knowledge_pack,
 )
+from backend.repositories.knowledge_packs import KnowledgePackRepositoryContractError, KnowledgePackRepositoryRecords
+from backend.retrieval_repository import KnowledgePackRecordReader, read_persisted_knowledge_pack_response
 from backend.safety import classify_question, educational_redirect, find_forbidden_output_phrases
 from backend.search import search_assets
 from backend.source_policy import resolve_source_policy
@@ -40,6 +64,26 @@ from backend.source_policy import resolve_source_policy
 
 class ChatGenerationError(ValueError):
     """Raised when deterministic chat generation violates project contracts."""
+
+
+CHAT_PERSISTED_READ_BOUNDARY = "chat-persisted-read-boundary-v1"
+
+
+class GeneratedOutputChatCacheRecordReader(Protocol):
+    def read_chat_answer_records(self, ticker: str) -> GeneratedOutputCacheRepositoryRecords | None:
+        ...
+
+
+@dataclass(frozen=True)
+class PersistedChatReadResult:
+    status: str
+    ticker: str
+    chat_response: ChatResponse | None = None
+    diagnostics: tuple[str, ...] = field(default_factory=tuple)
+
+    @property
+    def found(self) -> bool:
+        return self.status == "found" and self.chat_response is not None
 
 
 @dataclass(frozen=True)
@@ -80,10 +124,420 @@ COMPARISON_INTENT_PATTERNS = (
 TICKER_TOKEN_PATTERN = re.compile(r"\b[A-Za-z]{1,5}(?:\.[A-Za-z])?\b")
 
 
-def generate_asset_chat(ticker: str, question: str) -> ChatResponse:
+def generate_asset_chat(
+    ticker: str,
+    question: str,
+    *,
+    persisted_pack_reader: KnowledgePackRecordReader | Any | None = None,
+    generated_output_cache_reader: GeneratedOutputChatCacheRecordReader | Any | None = None,
+) -> ChatResponse:
     """Build a ChatResponse-compatible payload from a selected asset knowledge pack."""
 
-    return generate_chat_from_pack(build_asset_knowledge_pack(ticker), question)
+    fixture_pack = build_asset_knowledge_pack(ticker)
+    safety_classification = classify_question(question, supported=fixture_pack.asset.supported)
+    if safety_classification in {
+        SafetyClassification.unsupported_asset_redirect,
+        SafetyClassification.personalized_advice_redirect,
+    }:
+        return generate_chat_from_pack(fixture_pack, question)
+
+    compare_route_redirect = _compare_route_redirect(fixture_pack, question)
+    if compare_route_redirect is not None:
+        return compare_route_redirect
+
+    persisted = read_persisted_chat_response(
+        ticker,
+        question,
+        persisted_pack_reader=persisted_pack_reader,
+        generated_output_cache_reader=generated_output_cache_reader,
+    )
+    if persisted.found and persisted.chat_response is not None:
+        return persisted.chat_response
+
+    return generate_chat_from_pack(fixture_pack, question)
+
+
+def read_persisted_chat_response(
+    ticker: str,
+    question: str,
+    *,
+    persisted_pack_reader: KnowledgePackRecordReader | Any | None = None,
+    generated_output_cache_reader: GeneratedOutputChatCacheRecordReader | Any | None = None,
+) -> PersistedChatReadResult:
+    normalized = ticker.strip().upper()
+    fixture_pack = build_asset_knowledge_pack(normalized)
+    safety_classification = classify_question(question, supported=fixture_pack.asset.supported)
+    if safety_classification is SafetyClassification.unsupported_asset_redirect:
+        return PersistedChatReadResult(
+            status="blocked_state",
+            ticker=normalized,
+            diagnostics=("chat:unsupported_or_unavailable_asset",),
+        )
+    if safety_classification is SafetyClassification.personalized_advice_redirect:
+        return PersistedChatReadResult(
+            status="blocked_state",
+            ticker=normalized,
+            diagnostics=("chat:advice_redirect_precedence",),
+        )
+    if _compare_route_redirect(fixture_pack, question) is not None:
+        return PersistedChatReadResult(
+            status="blocked_state",
+            ticker=normalized,
+            diagnostics=("chat:compare_redirect_precedence",),
+        )
+    if persisted_pack_reader is None or generated_output_cache_reader is None:
+        return PersistedChatReadResult(
+            status="not_configured",
+            ticker=normalized,
+            diagnostics=("reader:not_configured",),
+        )
+
+    pack_read = read_persisted_knowledge_pack_response(normalized, reader=persisted_pack_reader)
+    if not pack_read.found or pack_read.response is None or pack_read.records is None:
+        return PersistedChatReadResult(
+            status=pack_read.status,
+            ticker=normalized,
+            diagnostics=(f"knowledge_pack:{pack_read.status}",),
+        )
+    if not pack_read.response.asset.supported or not pack_read.response.generated_output_available:
+        return PersistedChatReadResult(
+            status="blocked_state",
+            ticker=normalized,
+            diagnostics=(f"knowledge_pack:blocked:{pack_read.response.build_state.value}",),
+        )
+
+    cache_read = _read_generated_chat_cache_records(generated_output_cache_reader, normalized)
+    if cache_read.status != "found" or cache_read.records is None:
+        return PersistedChatReadResult(
+            status=cache_read.status,
+            ticker=normalized,
+            diagnostics=cache_read.diagnostics,
+        )
+
+    try:
+        pack = _asset_knowledge_pack_from_repository_records(pack_read.records)
+        _validate_generated_output_cache_for_chat(
+            normalized,
+            cache_read.records,
+            pack=pack,
+        )
+        response = generate_chat_from_pack(pack, question)
+        if response.safety_classification is not SafetyClassification.educational:
+            return PersistedChatReadResult(
+                status="blocked_state",
+                ticker=normalized,
+                diagnostics=("chat:non_factual_response",),
+            )
+        report = validate_chat_response(response, pack)
+        if not report.valid:
+            return PersistedChatReadResult(
+                status="validation_error",
+                ticker=normalized,
+                diagnostics=("chat:citation_validation_failed",),
+            )
+        _validate_chat_cache_covers_response(cache_read.records, response)
+    except (
+        GeneratedOutputCacheContractError,
+        KnowledgePackRepositoryContractError,
+        ChatGenerationError,
+        LookupError,
+        StopIteration,
+        ValueError,
+        TypeError,
+    ) as exc:
+        return PersistedChatReadResult(
+            status="contract_error",
+            ticker=normalized,
+            diagnostics=(f"chat:{exc.__class__.__name__}",),
+        )
+
+    return PersistedChatReadResult(
+        status="found",
+        ticker=normalized,
+        chat_response=response,
+        diagnostics=("chat:persisted_hit",),
+    )
+
+
+@dataclass(frozen=True)
+class _GeneratedOutputChatCacheReadResult:
+    status: str
+    ticker: str
+    records: GeneratedOutputCacheRepositoryRecords | None = None
+    diagnostics: tuple[str, ...] = field(default_factory=tuple)
+
+
+def _read_generated_chat_cache_records(
+    reader: GeneratedOutputChatCacheRecordReader | Any,
+    ticker: str,
+) -> _GeneratedOutputChatCacheReadResult:
+    try:
+        raw_records = _read_generated_chat_cache_reader(reader, ticker)
+        if raw_records is None:
+            return _GeneratedOutputChatCacheReadResult(
+                status="miss",
+                ticker=ticker,
+                diagnostics=("generated_output_cache:miss",),
+            )
+        records = (
+            raw_records
+            if isinstance(raw_records, GeneratedOutputCacheRepositoryRecords)
+            else GeneratedOutputCacheRepositoryRecords.model_validate(raw_records)
+        )
+        validated = validate_generated_output_cache_records(records)
+    except GeneratedOutputCacheContractError as exc:
+        return _GeneratedOutputChatCacheReadResult(
+            status="contract_error",
+            ticker=ticker,
+            diagnostics=(f"generated_output_cache:{exc.__class__.__name__}",),
+        )
+    except Exception as exc:  # pragma: no cover - caller observes sanitized status only.
+        return _GeneratedOutputChatCacheReadResult(
+            status="reader_error",
+            ticker=ticker,
+            diagnostics=(f"generated_output_cache:{exc.__class__.__name__}",),
+        )
+    return _GeneratedOutputChatCacheReadResult(
+        status="found",
+        ticker=ticker,
+        records=validated,
+        diagnostics=("generated_output_cache:found",),
+    )
+
+
+def _read_generated_chat_cache_reader(
+    reader: GeneratedOutputChatCacheRecordReader | Any,
+    ticker: str,
+) -> GeneratedOutputCacheRepositoryRecords | None:
+    if isinstance(reader, dict):
+        return reader.get(ticker) or reader.get(f"{ticker}:chat") or reader.get(f"asset:{ticker}:chat-safe-answer-metadata")
+    if hasattr(reader, "read_chat_answer_records"):
+        return reader.read_chat_answer_records(ticker)
+    if hasattr(reader, "read_generated_chat_answer_records"):
+        return reader.read_generated_chat_answer_records(ticker)
+    if hasattr(reader, "read_generated_output_cache_records"):
+        return reader.read_generated_output_cache_records(ticker)
+    if hasattr(reader, "read"):
+        return reader.read(ticker)
+    if hasattr(reader, "get"):
+        return reader.get(ticker)
+    raise GeneratedOutputCacheContractError(
+        "Injected generated-output chat reader must expose read_chat_answer_records(ticker), "
+        "read_generated_chat_answer_records(ticker), read_generated_output_cache_records(ticker), "
+        "read(ticker), or get(ticker)."
+    )
+
+
+def _asset_knowledge_pack_from_repository_records(records: KnowledgePackRepositoryRecords) -> AssetKnowledgePack:
+    source_rows = sorted(
+        records.source_documents,
+        key=lambda row: (row.asset_ticker, row.source_rank, row.source_document_id),
+    )
+    source_by_id = {row.source_document_id: row for row in source_rows}
+    sources = [
+        SourceDocumentFixture(
+            source_document_id=row.source_document_id,
+            asset_ticker=row.asset_ticker,
+            source_type=row.source_type,
+            source_rank=row.source_rank,
+            title=row.title,
+            publisher=row.publisher,
+            url=row.url,
+            published_at=row.published_at,
+            retrieved_at=row.retrieved_at,
+            content_type="text",
+            is_official=row.is_official,
+            freshness_state=FreshnessState(row.freshness_state),
+            as_of_date=row.as_of_date,
+            source_quality=row.source_quality,
+            allowlist_status=row.allowlist_status,
+            source_use_policy=row.source_use_policy,
+        )
+        for row in source_rows
+    ]
+    source_fixtures_by_id = {source.source_document_id: source for source in sources}
+
+    chunks = []
+    for row in sorted(records.source_chunks, key=lambda item: (item.source_document_id, item.chunk_order, item.chunk_id)):
+        if not row.stored_text:
+            raise KnowledgePackRepositoryContractError(
+                f"Chunk {row.chunk_id} has no persisted text for chat generation."
+            )
+        chunks.append(
+            RetrievedSourceChunk(
+                chunk=SourceChunkFixture(
+                    chunk_id=row.chunk_id,
+                    asset_ticker=row.asset_ticker,
+                    source_document_id=row.source_document_id,
+                    section_name=row.section_name,
+                    chunk_order=row.chunk_order,
+                    text=row.stored_text,
+                    token_count=row.token_count,
+                    char_start=0,
+                    char_end=len(row.stored_text),
+                    supported_claim_types=row.supported_claim_types,
+                ),
+                source_document=source_fixtures_by_id[row.source_document_id],
+            )
+        )
+    chunks_by_id = {item.chunk.chunk_id: item for item in chunks}
+
+    facts = []
+    for row in sorted(records.normalized_facts, key=lambda item: item.fact_id):
+        if row.value is None:
+            raise KnowledgePackRepositoryContractError(f"Fact {row.fact_id} has no persisted value for chat generation.")
+        source = source_by_id[row.source_document_id]
+        facts.append(
+            RetrievedFact(
+                fact=NormalizedFactFixture(
+                    fact_id=row.fact_id,
+                    asset_ticker=row.asset_ticker,
+                    fact_type=row.fact_type,
+                    field_name=row.field_name,
+                    value=row.value,
+                    unit=row.unit,
+                    period=row.period,
+                    as_of_date=row.as_of_date,
+                    source_document_id=row.source_document_id,
+                    source_chunk_id=row.source_chunk_id,
+                    extraction_method=row.extraction_method,
+                    confidence=float(row.confidence or 0.0),
+                    freshness_state=FreshnessState(row.freshness_state),
+                    evidence_state=row.evidence_state,
+                ),
+                source_document=source_fixtures_by_id[source.source_document_id],
+                source_chunk=chunks_by_id[row.source_chunk_id].chunk,
+            )
+        )
+
+    recent_developments = []
+    for row in sorted(records.recent_developments, key=lambda item: item.event_id):
+        if row.title is None or row.summary is None:
+            raise KnowledgePackRepositoryContractError(
+                f"Recent development {row.event_id} has no persisted title or summary for chat generation."
+            )
+        source = source_by_id[row.source_document_id]
+        recent_developments.append(
+            RetrievedRecentDevelopment(
+                recent_development=RecentDevelopmentFixture(
+                    event_id=row.event_id,
+                    asset_ticker=row.asset_ticker,
+                    event_type=row.event_type,
+                    title=row.title,
+                    summary=row.summary,
+                    event_date=row.event_date,
+                    source_document_id=row.source_document_id,
+                    source_chunk_id=row.source_chunk_id,
+                    importance_score=row.importance_score,
+                    freshness_state=FreshnessState(row.freshness_state),
+                    evidence_state=row.evidence_state,
+                ),
+                source_document=source_fixtures_by_id[source.source_document_id],
+                source_chunk=chunks_by_id[row.source_chunk_id].chunk,
+            )
+        )
+
+    return AssetKnowledgePack(
+        asset=AssetIdentity.model_validate(records.envelope.asset),
+        freshness=Freshness.model_validate(records.envelope.freshness),
+        source_documents=sources,
+        normalized_facts=facts,
+        source_chunks=chunks,
+        recent_developments=recent_developments,
+        evidence_gaps=[
+            EvidenceGap(
+                gap_id=row.gap_id,
+                asset_ticker=row.asset_ticker,
+                field_name=row.field_name,
+                evidence_state=row.evidence_state,
+                message=row.message or "",
+                freshness_state=FreshnessState(row.freshness_state),
+                source_document_id=row.source_document_id,
+                source_chunk_id=row.source_chunk_id,
+            )
+            for row in sorted(records.evidence_gaps, key=lambda item: item.gap_id)
+        ],
+    )
+
+
+def _validate_generated_output_cache_for_chat(
+    ticker: str,
+    records: GeneratedOutputCacheRepositoryRecords,
+    *,
+    pack: AssetKnowledgePack,
+) -> None:
+    if len(records.envelopes) != 1:
+        raise GeneratedOutputCacheContractError("Chat reuse requires exactly one generated-output cache envelope.")
+    envelope = records.envelopes[0]
+    if envelope.asset_ticker != ticker or pack.asset.ticker != ticker:
+        raise GeneratedOutputCacheContractError("Chat cache and knowledge pack must bind to the requested asset.")
+    if envelope.entry_kind != CacheEntryKind.chat_answer.value or envelope.cache_scope != CacheScope.chat.value:
+        raise GeneratedOutputCacheContractError("Chat cache records must be chat-answer scoped.")
+    if envelope.artifact_category != GeneratedOutputArtifactCategory.grounded_chat_answer_artifact.value:
+        raise GeneratedOutputCacheContractError("Chat cache records must use the grounded chat answer artifact category.")
+    if envelope.output_identity != f"asset:{ticker}:chat-safe-answer-metadata":
+        raise GeneratedOutputCacheContractError("Chat cache output identity must match the requested asset.")
+    if envelope.comparison_id or envelope.comparison_left_ticker or envelope.comparison_right_ticker:
+        raise GeneratedOutputCacheContractError("Chat cache records must not bind a comparison pack.")
+    if not envelope.cacheable or not envelope.generated_output_available:
+        raise GeneratedOutputCacheContractError("Chat cache records must be cacheable and generated-output available.")
+
+    pack_source_ids = {source.source_document_id for source in pack.source_documents}
+    pack_citation_ids = {_citation_id(item.source_document.source_document_id, item.chunk.chunk_id) for item in pack.source_chunks}
+    if not set(envelope.source_document_ids) <= pack_source_ids:
+        raise GeneratedOutputCacheContractError("Chat cache source IDs must belong to the same selected-asset pack.")
+    if not set(envelope.citation_ids) <= pack_citation_ids:
+        raise GeneratedOutputCacheContractError("Chat cache citation IDs must belong to the same selected-asset pack.")
+
+    section_freshness_labels = [
+        SectionFreshnessInput(
+            section_id=section_id,
+            freshness_state=FreshnessState(freshness_state),
+            evidence_state=envelope.evidence_state_labels.get(section_id),
+        )
+        for section_id, freshness_state in sorted(envelope.section_freshness_labels.items())
+    ]
+    knowledge_input = build_knowledge_pack_freshness_input(
+        pack,
+        section_freshness_labels=section_freshness_labels,
+    )
+    if envelope.source_document_ids:
+        knowledge_input = knowledge_input.model_copy(
+            update={
+                "source_checksums": [
+                    checksum
+                    for checksum in knowledge_input.source_checksums
+                    if checksum.source_document_id in set(envelope.source_document_ids)
+                ]
+            }
+        )
+    expected_knowledge_hash = compute_knowledge_pack_freshness_hash(knowledge_input)
+    if envelope.knowledge_pack_freshness_hash != expected_knowledge_hash:
+        raise GeneratedOutputCacheContractError("Chat cache knowledge-pack freshness hash does not match current evidence.")
+    generated_input = build_generated_output_freshness_input(
+        output_identity=envelope.output_identity,
+        entry_kind=CacheEntryKind.chat_answer,
+        scope=CacheScope.chat,
+        schema_version=envelope.schema_version,
+        prompt_version=envelope.prompt_version,
+        model_name=envelope.model_name,
+        knowledge_input=knowledge_input,
+    )
+    if envelope.generated_output_freshness_hash != compute_generated_output_freshness_hash(generated_input):
+        raise GeneratedOutputCacheContractError("Chat cache generated-output freshness hash does not match current evidence.")
+
+
+def _validate_chat_cache_covers_response(
+    records: GeneratedOutputCacheRepositoryRecords,
+    response: ChatResponse,
+) -> None:
+    envelope = records.envelopes[0]
+    response_source_ids = {source.source_document_id for source in response.source_documents}
+    response_citation_ids = {citation.citation_id for citation in response.citations}
+    if not response_source_ids <= set(envelope.source_document_ids):
+        raise GeneratedOutputCacheContractError("Chat cache source bindings do not cover generated response sources.")
+    if envelope.citation_ids and not response_citation_ids <= set(envelope.citation_ids):
+        raise GeneratedOutputCacheContractError("Chat cache citation bindings do not cover generated response citations.")
 
 
 def generate_chat_from_pack(pack: AssetKnowledgePack, question: str) -> ChatResponse:
