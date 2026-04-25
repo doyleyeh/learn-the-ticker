@@ -25,6 +25,24 @@ function includes(path, marker) {
   assert.match(read(path), new RegExp(marker), `${path} should include ${marker}`);
 }
 
+function includesAll(path, markers, label) {
+  const source = read(path);
+  for (const marker of markers) {
+    assert.ok(source.includes(marker), `${path} should include ${marker} for ${label}`);
+  }
+}
+
+function orderedMarkers(path, markers, label) {
+  const source = read(path);
+  let previousIndex = -1;
+  for (const marker of markers) {
+    const index = source.indexOf(marker);
+    assert.notEqual(index, -1, `${path} should include ${marker} for ${label}`);
+    assert.ok(index > previousIndex, `${path} should keep ${marker} in order for ${label}`);
+    previousIndex = index;
+  }
+}
+
 [
   "app/page.tsx",
   "app/assets/[ticker]/page.tsx",
@@ -58,6 +76,171 @@ function includes(path, marker) {
   "lib/sourceDrawer.ts",
   "styles/globals.css"
 ].forEach(exists);
+
+includesAll("app/page.tsx", [
+  "SearchBox",
+  "Understand a stock or ETF in plain English",
+  "data-home-workflow-card=\"single-asset-search\"",
+  "data-home-workflow-card=\"separate-comparison\"",
+  "data-home-workflow-card=\"source-backed-learning\"",
+  "/compare"
+], "home single-asset-first route workflow");
+includesAll("components/SearchBox.tsx", [
+  "data-home-primary-action=\"single-asset-search\"",
+  "data-search-support-state-idle-visible=\"false\"",
+  "data-search-support-state-labels={V04_SUPPORT_STATE_CHIPS.join",
+  "data-search-comparison-result",
+  "data-search-special-autocomplete-result",
+  "data-search-comparison-route",
+  "data-search-open-comparison-route",
+  "data-search-supported-result",
+  "data-search-ingestion-needed-result",
+  "data-search-unsupported-result",
+  "data-search-out-of-scope-result",
+  "data-search-unknown-result",
+  "data-search-no-invented-facts"
+], "home search support-state and comparison redirect markers");
+orderedMarkers("components/SearchBox.tsx", [
+  "data-search-comparison-result",
+  "data-search-supported-result",
+  "data-search-ambiguous-result",
+  "data-search-ingestion-needed-result",
+  "data-search-unsupported-result",
+  "data-search-out-of-scope-result",
+  "data-search-unknown-result"
+], "search route-level result states");
+includesAll("lib/search.ts", [
+  "comparison_route",
+  "/compare?left=",
+  "can_open_generated_page: false",
+  "can_answer_chat: false",
+  "can_compare: true",
+  "Comparison is a separate workflow",
+  "We found this ticker, but it is not supported in v1.",
+  "blocked_capabilities: EMPTY_BLOCKED_CAPABILITIES"
+], "deterministic search routing and blocked-state contracts");
+assert.equal(
+  read("app/page.tsx").includes("name=\"left\"") || read("app/page.tsx").includes("name=\"right\""),
+  false,
+  "Home route should not expose two comparison-builder inputs"
+);
+assert.equal(
+  read("app/page.tsx").includes("data-home-workflow-card=\"glossary\"") ||
+    read("app/page.tsx").includes("Glossary for this page"),
+  false,
+  "Home route should not promote glossary as a primary MVP workflow"
+);
+
+orderedMarkers("app/assets/[ticker]/page.tsx", [
+  "data-prd-section=\"beginner_summary\"",
+  "data-prd-section=\"top_risks\"",
+  "data-prd-section=\"key_facts\"",
+  "data-prd-section=\"what_it_does_or_holds\"",
+  "<WeeklyNewsPanel",
+  "<AIComprehensiveAnalysisPanel",
+  "deepDiveSections=",
+  "data-prd-section=\"ask_about_this_asset\"",
+  "sourceTools=",
+  "data-prd-section=\"educational_disclaimer\""
+], "supported asset page PRD section order");
+includesAll("app/assets/[ticker]/page.tsx", [
+  "supported-asset-page-learning-flow-v1",
+  "data-beginner-stable-recent-separation=\"stable\"",
+  "data-beginner-summary-card-count=\"3\"",
+  "data-beginner-top-risk-count",
+  "data-asset-source-full-drawers=\"dedicated-source-list\"",
+  "data-asset-source-drawer-repetition=\"removed\"",
+  "data-asset-source-list-link",
+  "AssetChatPanel",
+  "ExportControls",
+  "InlineGlossaryText"
+], "asset route stable facts, sources, chat, export, and contextual glossary markers");
+includesAll("components/WeeklyNewsPanel.tsx", [
+  "data-weekly-news-configured-max",
+  "data-weekly-news-selected-count",
+  "data-weekly-news-evidence-limited-state",
+  "data-weekly-news-empty-behavior",
+  "data-weekly-news-limited-verified-set",
+  "No major Weekly News Focus items found",
+  "Source quality:",
+  "Source-use policy:"
+], "Weekly News Focus evidence-limited markers");
+includesAll("components/AIComprehensiveAnalysisPanel.tsx", [
+  "data-ai-analysis-minimum-weekly-news-items",
+  "data-ai-analysis-weekly-news-selected-count",
+  "data-ai-analysis-threshold-state",
+  "What Changed This Week",
+  "Market Context",
+  "Business/Fund Context",
+  "Risk Context",
+  "fabricated analysis"
+], "AI Comprehensive Analysis threshold and separation markers");
+
+includesAll("app/assets/[ticker]/sources/page.tsx", [
+  "supported-source-list-inspection-flow-v1",
+  "source-list-blocked-or-limited-flow-v1",
+  "data-source-list-state",
+  "data-source-list-source-count",
+  "data-source-list-freshness-overview",
+  "data-source-list-source-use-policies",
+  "data-source-list-allowlist-statuses",
+  "data-source-list-full-text-export-count",
+  "Source access is limited to supported, same-asset evidence packs",
+  "does not create generated"
+], "source-list route boundaries and source-use markers");
+includesAll("components/SourceDrawer.tsx", [
+  "data-source-drawer-mobile-presentation=\"bottom-sheet\"",
+  "data-source-drawer-close-control=\"native-details-summary\"",
+  "data-source-use-policy",
+  "data-source-allowlist-status",
+  "allowedExcerptNote",
+  "Source metadata is suppressed",
+  "Supporting passage",
+  "Related claim context"
+], "source drawer citation metadata and mobile behavior markers");
+includesAll("components/GlossaryPopover.tsx", [
+  "data-glossary-desktop-interaction=\"hover-click-focus-escape\"",
+  "data-glossary-mobile-presentation=\"bottom-sheet\"",
+  "data-glossary-close-control=\"button\"",
+  "data-glossary-asset-context",
+  "data-glossary-asset-citation-ids",
+  "data-glossary-source-references",
+  "Generic-only definition",
+  "Definition unavailable for this glossary term"
+], "contextual glossary interaction and evidence-boundary markers");
+
+includesAll("components/AssetChatPanel.tsx", [
+  "data-asset-chat-helper-role=\"bounded-asset-specific-helper\"",
+  "data-asset-chat-scope=\"selected-asset-knowledge-pack\"",
+  "data-asset-chat-general-finance-chatbot=\"false\"",
+  "data-asset-chat-mobile-presentation=\"bottom-sheet-or-full-screen\"",
+  "data-asset-chat-no-raw-transcript-analytics=\"true\"",
+  "data-asset-chat-advice-redirect-before-answer=\"true\"",
+  "data-asset-chat-comparison-redirect=\"/compare\"",
+  "data-asset-chat-no-live-external=\"true\"",
+  "data-chat-session-contract",
+  "data-chat-session-browser-persistence=\"none\""
+], "asset chat helper, safety, accountless, and no-live-call markers");
+includesAll("app/compare/page.tsx", [
+  "separate-comparison-workflow-v1",
+  "data-prd-compare-builder-state",
+  "data-compare-builder-generates-output=\"false\"",
+  "data-compare-builder-live-external-calls=\"false\"",
+  "data-compare-builder-suggestions=\"examples-not-recommendations\"",
+  "data-prd-compare-result-layout=\"source-backed-deterministic-pack\"",
+  "data-stock-etf-relationship-schema",
+  "data-stock-etf-basket-structure=\"single-company-vs-etf-basket\""
+], "comparison route builder, result, and stock-vs-ETF markers");
+includesAll("components/ExportControls.tsx", [
+  "data-export-supported-scope=\"markdown-json-citations-sources-freshness-disclaimer\"",
+  "data-export-unrestricted-raw-text=\"false\"",
+  "data-export-restricted-provider-payloads=\"false\"",
+  "data-export-hidden-prompts=\"false\"",
+  "data-export-raw-model-reasoning=\"false\"",
+  "data-export-secret-exposure=\"false\"",
+  "data-export-control-supported-formats=\"markdown-json\"",
+  "data-export-control-scope=\"citations-sources-freshness-disclaimer\""
+], "export scope and restricted-content markers");
 
 includes("app/page.tsx", "SearchBox");
 includes("app/page.tsx", "Understand a stock or ETF in plain English");
