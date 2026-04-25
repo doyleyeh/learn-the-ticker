@@ -1,68 +1,72 @@
 ## Current task
 
-### T-086: Route comparison generation through persisted pack and cache boundaries
+### T-087: Route grounded chat answer artifacts through persisted pack and cache boundaries
 
 Goal:
-Route supported comparison generation through injected persisted knowledge-pack and generated-output cache read boundaries first, while preserving deterministic local comparison fallback, same-comparison-pack citation boundaries, blocked states, export behavior, and stock-vs-ETF relationship behavior.
+Route grounded single-asset chat answer generation through injected persisted knowledge-pack and chat-safe generated-output cache read boundaries first, while preserving selected-asset grounding, advice redirects, comparison redirects, accountless session semantics, deterministic fixture fallback, citation/source-use/freshness gates, and current public chat/export behavior.
 
 Task-scope paragraph:
-This task should add the second narrow read-through integration slice for supported comparison generation only. It may add injectable pure-Python reader boundaries, adapter helpers, and tests that let comparison generation prefer valid same-comparison-pack persisted knowledge-pack and generated-output cache records when those readers are explicitly supplied, then fall back to the existing deterministic comparison fixture path on misses, invalid records, blocked states, reader failures, or unconfigured readers. It must not add live database/cache clients, cache writes, public route schema changes, frontend changes, new generated content, provider or LLM calls, broader asset coverage, or any behavior that weakens citation, safety, source-use, freshness, unknown/stale/unavailable/partial, unsupported, out-of-scope, comparison-export, or stock-vs-ETF relationship handling.
+This task should add the third narrow read-through integration slice for supported grounded chat answers only. It may add injectable pure-Python reader boundaries, adapter helpers, and tests that let factual single-asset chat answers prefer valid same-asset persisted knowledge-pack and chat-safe generated-output cache records when those readers are explicitly supplied, then fall back to the existing deterministic chat generation path on misses, invalid records, blocked states, reader failures, or unconfigured readers. Advice-like prompts and second-ticker comparison questions must keep their current redirect precedence and should not attempt persisted factual-answer reuse. This task must not add durable chat session persistence, live database/cache clients, cache writes, public route schema changes, frontend changes, new generated content, provider or LLM calls, broader asset coverage, or any behavior that weakens selected-asset grounding, citation, safety, source-use, freshness, unknown/stale/unavailable/partial, unsupported, out-of-scope, chat export, or accountless session handling.
 
 Roadmap alignment:
 
-- Second narrow slice of "Route overview, comparison, and chat generation through persisted knowledge packs."
-- Depends on completed comparison contracts, T-078 persisted-pack fallback, T-084 generated-output cache contracts, and T-085 overview persisted-read precedent.
-- Keeps overview, chat, frontend comparison UI, live cache writes, export rewrites, and production persistence execution out of scope so comparison fallback behavior can be validated independently.
+- Third narrow slice of "Route overview, comparison, and chat generation through persisted knowledge packs."
+- Depends on completed grounded chat contracts, T-078 persisted-pack fallback, T-084 chat-safe cache artifact contracts, T-085 overview persisted-read precedent, and T-086 comparison persisted-read precedent.
+- Leaves durable accountless chat session persistence to T-088 and T-089.
 
 Allowed files:
 
-- `backend/comparison.py`
+- `backend/chat.py`
 - `backend/cache.py`
 - `backend/generated_output_cache_repository.py`
 - `backend/retrieval.py`
 - `backend/retrieval_repository.py`
 - `backend/repositories/generated_outputs.py`
 - `backend/repositories/__init__.py`
-- `tests/unit/test_comparison_generation.py`
+- `tests/unit/test_chat_generation.py`
 - `tests/unit/test_cache_contracts.py`
 - `tests/unit/test_retrieval_repository.py`
+- `tests/unit/test_safety_guardrails.py`
 - `tests/integration/test_backend_api.py`
 - `docs/agent-journal/*.md`
 
 Do not change:
 
 - No frontend files under `apps/web`.
-- No public FastAPI route schema, endpoint path, HTTP status, asset overview behavior, chat behavior, glossary behavior, source drawer behavior, frontend behavior, provider behavior, live retrieval behavior, export shape, or generated text changes for the default deterministic path.
+- No public FastAPI route schema, endpoint path, HTTP status, asset overview behavior, comparison behavior, glossary behavior, source drawer behavior, frontend behavior, provider behavior, live retrieval behavior, export shape, session lifecycle behavior, or generated text changes for the default deterministic path.
 - No live SEC, issuer, ETF, market-data, news, storage, database, object-storage, cache, Redis, LLM, Cloud Run Job, scheduler, admin auth, rate-limiting, analytics, or deployment wiring.
 - No production dependency addition, source allowlist expansion, provider licensing change, environment/secret file change, runtime cache write behavior, cache invalidation worker, top-500 manifest change, ETF universe expansion, stock universe expansion, or broad asset-universe expansion.
-- No persisted comparison reuse for eligible-not-cached, unsupported, out-of-scope, unknown, unavailable, partial-without-label, stale-without-label, insufficient-evidence-without-label, validation-failed, advice-like, source-policy-blocked, uncited-important-claim, wrong-left-asset, wrong-right-asset, wrong-source, wrong-citation, wrong-pack, rejected-source, or permission-limited states.
-- No raw provider payloads, unrestricted source text, hidden prompts, prompt templates, raw model reasoning, raw user text, chat transcripts for analytics/training/evaluation, real API keys, credentials, secrets, public storage URLs, signed URLs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, cache records, comparison exports, or exported data.
+- No persisted chat answer artifact reuse for eligible-not-cached, unsupported, out-of-scope, unknown, unavailable, partial-without-label, stale-without-label, insufficient-evidence-without-label, validation-failed, advice-like, compare-redirect, source-policy-blocked, uncited-important-claim, wrong-asset, wrong-source, wrong-citation, wrong-pack, rejected-source, or permission-limited states.
+- No durable accountless chat session repository, transcript persistence, browser storage change, session TTL change, deletion-state change, or analytics/training/evaluation transcript storage.
+- No raw provider payloads, unrestricted source text, hidden prompts, prompt templates, raw model reasoning, raw user text, chat transcripts for analytics/training/evaluation, real API keys, credentials, secrets, public storage URLs, signed URLs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, cache records, chat exports, or exported data.
 - No changes that make comparison a primary home-page workflow, make glossary a primary home-page workflow, or alter mobile source/glossary/chat behavior from the v0.4 baseline.
 
 Acceptance criteria:
 
-- Add an injectable comparison read boundary that can prefer persisted same-comparison-pack knowledge-pack and generated-output cache records only when explicitly supplied by tests or future callers.
-- The default `generate_comparison(left_ticker, right_ticker)` path remains deterministic and fixture-backed with no live database, cache, provider, LLM, route, or frontend dependency.
-- Persisted-first comparison reads must fall back to existing deterministic comparison fixture behavior on unconfigured readers, misses, reader failures, invalid record shapes, invalid cache metadata, wrong-left/right identity, wrong-pack bindings, wrong-source bindings, wrong-citation bindings, validation failure, stale-without-label states, source-policy blocks, safety blocks, or cache freshness mismatch.
-- Valid persisted comparison records must bind to exactly one supported comparison pack and must preserve current `CompareResponse` shape, left/right asset identity, state, comparison type, key differences, beginner bottom line, citations, source documents, evidence availability, relationship badges, and stock-vs-ETF single-company-vs-ETF-basket structure where that fixture path is supported.
-- Preserve existing public `/api/compare` behavior and schemas for supported, reverse-order supported, unsupported, out-of-scope, eligible-not-cached, unknown, unavailable, and no-local-pack states. Public API responses must not expose whether a persisted reader was supplied.
-- Preserve comparison export behavior and schemas. Persisted comparison records must not weaken export citation/source metadata, freshness/as-of metadata, uncertainty labels, educational disclaimer, same-comparison-pack validation diagnostics, or source-use rights.
-- Preserve current frontend behavior, current deterministic supported comparison output for `VOO`/`QQQ` and `QQQ`/`VOO`, and any existing stock-vs-ETF relationship or no-local-pack behavior for `AAPL`/`VOO` when no injected persisted reader is supplied.
-- Preserve unsupported and out-of-scope blocking. Persisted comparison records must not create generated comparisons, citations, risk summaries, chat answers, asset pages, exports, or cache hits for unsupported, out-of-scope, eligible-not-cached without generated output, unknown, unavailable, no-local-pack, or source-policy-disallowed pairs.
-- Preserve citation validation for important factual claims. Persisted comparison records with uncited important factual claims, wrong-asset citations, wrong-source citations, missing citation/source records, or cross-pack evidence must be rejected or ignored in favor of fixture fallback.
-- Preserve same-comparison-pack boundaries. Both sides must be the requested supported assets, citation evidence must be inside the requested comparison pack, reverse-order behavior must stay explicit and deterministic, and persisted records must not silently substitute a different pair or reorder outputs unless current fixture behavior already supports that direction.
-- Preserve source-use rights. Source-use policy must win over cache scoring, recency, and availability; `metadata_only` and `link_only` sources must not provide raw chunk text, `summary_allowed` sources may use only allowed summaries or excerpts, and `rejected` or source-policy-blocked sources must not feed comparison reuse.
-- Preserve safety boundaries. Persisted comparison records with buy/sell/hold recommendations, allocation advice, price targets, tax advice, brokerage/trading instructions, personalized advice, raw prompts, raw model reasoning, raw user text, or secrets must be rejected or ignored in favor of fixture fallback.
-- Preserve stable-fact and timely-context separation. Persisted comparison reuse must not let recent news redefine stable canonical facts, must keep evidence-limited smaller/empty Weekly News Focus states valid when comparison evidence references them later, and must not introduce AI Comprehensive Analysis behavior into comparison output.
+- Add an injectable chat answer artifact read boundary that can prefer persisted same-asset knowledge-pack and chat-safe generated-output cache records only when explicitly supplied by tests or future callers.
+- The default `generate_asset_chat(ticker, question, ...)` path remains deterministic and fixture-backed with no live database, cache, provider, LLM, route, or frontend dependency.
+- Advice-like questions must keep redirect precedence before retrieval/cache reads. Persisted records must not be consulted or returned for buy/sell/hold, allocation, price-target, tax, brokerage/trading, or personalized recommendation prompts.
+- Second-ticker comparison questions must keep comparison-route redirect behavior before factual answer reuse. Persisted records must not turn comparison questions into single-asset factual answers.
+- Persisted-first chat answer reads must fall back to existing deterministic chat behavior on unconfigured readers, misses, reader failures, invalid record shapes, invalid cache metadata, wrong-asset identity, wrong-pack bindings, wrong-source bindings, wrong-citation bindings, validation failure, stale-without-label states, source-policy blocks, safety blocks, cache freshness mismatch, or cache records that store raw transcript text.
+- Valid persisted chat answer records must bind to exactly one supported selected-asset knowledge pack and must preserve current `ChatResponse` shape, asset identity, safety classification, grounded answer text, citations, source documents, educational disclaimer behavior, uncertainty labels, conversation/session metadata behavior, and selected-asset knowledge-pack grounding.
+- Preserve existing public `/api/assets/{ticker}/chat` behavior and schemas for supported factual answers, advice redirects, comparison redirects, unsupported, out-of-scope, eligible-not-cached, unknown, and unavailable states. Public API responses must not expose whether a persisted reader was supplied.
+- Preserve chat transcript export behavior and schemas. Persisted chat answer records must not weaken export citation/source metadata, freshness/as-of metadata, uncertainty labels, educational disclaimer, selected-asset validation diagnostics, no-raw-transcript rules, or source-use rights.
+- Preserve current frontend behavior and current deterministic supported chat output for existing fixture-backed `VOO` and `QQQ` factual questions when no injected persisted reader is supplied.
+- Preserve unsupported and out-of-scope blocking. Persisted chat answer artifacts must not create generated chat answers, citations, risk summaries, asset pages, comparisons, exports, or cache hits for unsupported, out-of-scope, eligible-not-cached without generated output, unknown, unavailable, or source-policy-disallowed assets.
+- Preserve citation validation for important factual claims. Persisted chat artifacts with uncited important factual claims, wrong-asset citations, wrong-source citations, missing citation/source records, or cross-pack evidence must be rejected or ignored in favor of fixture fallback.
+- Preserve selected-asset boundaries. The selected asset must be the requested supported asset, citation evidence must be inside that asset's knowledge pack, and persisted records must not silently substitute another asset or use comparison-pack evidence.
+- Preserve source-use rights. Source-use policy must win over cache scoring, recency, and availability; `metadata_only` and `link_only` sources must not provide raw chunk text, `summary_allowed` sources may use only allowed summaries or excerpts, and `rejected` or source-policy-blocked sources must not feed chat answer reuse.
+- Preserve safety boundaries. Persisted chat artifacts with buy/sell/hold recommendations, allocation advice, price targets, tax advice, brokerage/trading instructions, personalized advice, raw prompts, raw model reasoning, raw user text, raw transcript text for analytics/training/evaluation, or secrets must be rejected or ignored in favor of fixture fallback.
+- Preserve stable-fact and timely-context separation. Persisted chat answer reuse must not let recent news redefine stable canonical facts, must keep evidence-limited smaller/empty Weekly News Focus states valid when chat evidence references them later, and must not introduce AI Comprehensive Analysis behavior into chat output.
 - Preserve source freshness and uncertainty labels. Persisted records missing required freshness labels, as-of/retrieved metadata, stale/unknown/unavailable/partial/insufficient-evidence labels, or evidence-availability diagnostics must be rejected or ignored.
-- Diagnostics for persisted-read decisions must be compact and sanitized. They may include validation codes, invalidation reasons, source IDs, checksums, timestamps, freshness states, comparison IDs, and reader status, but must not include unrestricted raw source text, raw provider payloads, hidden prompts, raw model reasoning, raw user text, credentials, secrets, public URLs, or signed URLs.
-- Tests cover persisted-first comparison reads, default fixture fallback, invalid cache records, wrong-pack source/citation rejection, wrong-left/right identity rejection, reverse-order preservation, stock-vs-ETF relationship preservation where supported, source-use gating, freshness blocking, unsupported/out-of-scope/eligible-not-cached/unknown/unavailable/no-local-pack blocking, advice/safety blocking, sanitized diagnostics, no raw prompt/reasoning/user-text/secret exposure, no live database/cache/provider/LLM imports, and preservation of existing cache helper and retrieval repository behavior.
-- Current API, retrieval, generation, overview, chat, comparison export, glossary, frontend, provider-secret, source-use policy, fixture, and quality-gate behavior remains unchanged outside the explicit injected comparison read boundary.
+- Diagnostics for persisted-read decisions must be compact and sanitized. They may include validation codes, invalidation reasons, source IDs, checksums, timestamps, freshness states, asset IDs, cache IDs, and reader status, but must not include unrestricted raw source text, raw provider payloads, hidden prompts, raw model reasoning, raw user text, credentials, secrets, public URLs, signed URLs, or raw chat transcripts.
+- Tests cover persisted-first grounded chat answer reads, default fixture fallback, invalid cache records, wrong-pack source/citation rejection, wrong-asset identity rejection, advice redirect precedence, comparison redirect preservation, source-use gating, freshness blocking, unsupported/out-of-scope/eligible-not-cached/unknown/unavailable blocking, safety blocking, sanitized diagnostics, no raw prompt/reasoning/user-text/transcript/secret exposure, no live database/cache/provider/LLM imports, and preservation of existing cache helper, retrieval repository, chat export, and safety behavior.
+- Current API, retrieval, generation, overview, comparison, chat export, glossary, frontend, provider-secret, source-use policy, fixture, and quality-gate behavior remains unchanged outside the explicit injected chat answer read boundary.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_comparison_generation.py tests/unit/test_cache_contracts.py tests/unit/test_retrieval_repository.py -q
+python3 -m pytest tests/unit/test_chat_generation.py tests/unit/test_cache_contracts.py tests/unit/test_safety_guardrails.py -q
 python3 -m pytest tests/integration/test_backend_api.py -q
 python3 -m pytest tests -q
 python3 evals/run_static_evals.py
@@ -70,10 +74,37 @@ bash scripts/run_quality_gate.sh
 ```
 
 Iteration budget:
-One agent-loop cycle. If overview, chat, frontend comparison UI, export rewrites, live cache writes, live database execution, cache invalidation workers, provider or LLM calls, route schema changes, source allowlist expansion, paid-provider licensing review, broader asset-universe coverage, or production persistence wiring are needed, record the follow-up and stop after comparison persisted-read fallback behavior.
+One agent-loop cycle. If durable session storage, transcript export persistence, frontend chat changes, live cache writes, live database execution, cache invalidation workers, provider or LLM calls, route schema changes, source allowlist expansion, paid-provider licensing review, broader asset-universe coverage, or production persistence wiring are needed, record the follow-up and stop after chat answer artifact persisted-read fallback behavior.
 
 
 ## Completed
+
+### T-086: Route comparison generation through persisted pack and cache boundaries
+
+Goal:
+Route supported comparison generation through injected persisted knowledge-pack and generated-output cache read boundaries first, while preserving deterministic local comparison fallback, same-comparison-pack citation boundaries, blocked states, export behavior, and stock-vs-ETF relationship behavior.
+
+Completed details:
+
+- Implementation commit `63522b8 feat(T-086): route comparison generation through persisted pack and cache boundaries` updated `backend/comparison.py`, `tests/unit/test_comparison_generation.py`, and `docs/agent-journal/20260425T183344Z.md`.
+- Merged branch `agent/T-086-20260425T183344Z` into `main` with local merge commit `73968e9 chore(T-086): merge route comparison generation through persisted pack and cache boundaries`.
+- `backend/comparison.py` added the injected `COMPARISON_PERSISTED_READ_BOUNDARY`, `GeneratedOutputComparisonCacheRecordReader`, `PersistedComparisonReadResult`, and `read_persisted_comparison_response` boundary for supported comparison generation.
+- The default `generate_comparison(left_ticker, right_ticker)` path remains deterministic and fixture-backed unless persisted knowledge-pack and generated-output comparison cache readers are explicitly supplied.
+- Persisted comparison reuse validates requested left/right identity, same comparison pack, comparison cache scope, output identity, source/citation bindings, freshness hashes, generated-output hash, source-use permissions, blocked states, citation validation, and safety output before returning a persisted comparison result.
+- Invalid or blocked persisted inputs fall back to existing deterministic comparison behavior, including missing readers, reader failures, cache misses, invalid cache metadata, wrong identity, wrong citation or source bindings, no-local-pack states, unsupported states, source-use blocks, stale-without-label states, and unsafe persisted content.
+- Generated-output cache records remain metadata-only in this slice; the persisted path validates cache eligibility and freshness boundaries while regenerating comparison output from persisted knowledge-pack evidence plus the existing deterministic comparison fixture.
+- The implementation did not add live database or cache readers, cache writers, invalidation workers, route wiring, frontend changes, provider calls, LLM calls, export rewrites, or public API schema changes.
+- `tests/unit/test_comparison_generation.py` added coverage for valid persisted reads, default fallback, invalid cache fallback, wrong identity/citation rejection, reverse-order preservation, no-local-pack and unsupported blocking, source-use blocking, stale-without-label blocking, safety blocking, sanitized diagnostics, and unchanged deterministic output.
+- `docs/agent-journal/20260425T183344Z.md` records these checks: `python3 -m pytest tests/unit/test_comparison_generation.py -q` passed with 16 tests; `python3 -m pytest tests/unit/test_comparison_generation.py tests/unit/test_cache_contracts.py tests/unit/test_retrieval_repository.py -q` passed with 50 tests; `python3 -m pytest tests/integration/test_backend_api.py -q` passed with 33 tests; `python3 -m pytest tests -q` passed with 287 tests; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed.
+- Remaining risks from the journal:
+  - The persisted comparison path is injectable only; no live database/cache reader, cache writer, invalidation worker, route wiring, frontend change, provider call, or LLM call was added.
+  - Generated-output cache records remain metadata-only, so this slice validates cache eligibility and freshness boundaries while regenerating the comparison from persisted knowledge-pack evidence plus the existing deterministic comparison fixture.
+  - Future production integration still needs separate live persistence readers and route-level wiring with the same fallback, citation, source-use, freshness, and safety gates.
+
+Completion commits:
+
+- `63522b8 feat(T-086): route comparison generation through persisted pack and cache boundaries`
+- `73968e9 chore(T-086): merge route comparison generation through persisted pack and cache boundaries`
 
 ### T-085: Route asset overview through persisted pack and cache boundaries
 
@@ -2307,37 +2338,6 @@ Completion commits:
 
 ## Backlog
 
-### T-087: Route grounded chat answer artifacts through persisted pack and cache boundaries
-
-Goal:
-Route grounded single-asset chat answer generation through injected persisted knowledge-pack and chat-safe generated-output cache read boundaries first, while preserving selected-asset grounding, advice redirects, comparison redirects, accountless session semantics, and deterministic fixture fallback.
-
-Roadmap alignment:
-
-- Third narrow slice of "Route overview, comparison, and chat generation through persisted knowledge packs."
-- Depends on completed grounded chat contracts, T-078 persisted-pack fallback, and T-084 chat-safe cache artifact contracts.
-- Leaves durable accountless chat session persistence to T-088 and T-089.
-
-Acceptance criteria:
-
-- Add an injectable chat answer artifact read boundary that can prefer valid same-asset persisted records for factual answers, then fall back to existing deterministic chat generation on miss, invalid records, wrong-asset bindings, failed validation, source-policy blocks, or reader failures.
-- Preserve advice-like redirect precedence before retrieval/cache reads, comparison-route redirects for second-ticker questions, unsupported/out-of-scope/unknown blocking, no raw transcript analytics, and existing chat/export response schemas.
-- Reject persisted chat artifacts with raw user questions, raw transcript text for analytics/training/evaluation, wrong-asset citations, rejected sources, uncited important claims, stale-without-label evidence, advice-like output, raw prompts, raw model reasoning, secrets, or unrestricted source text.
-- Add focused tests for persisted-first grounded answers, fixture fallback, advice precedence, compare redirect preservation, same-asset citation/source gating, source-use and freshness blocking, unsupported/out-of-scope states, and no live database/cache/provider/LLM imports.
-
-Required commands:
-
-```bash
-python3 -m pytest tests/unit/test_chat_generation.py tests/unit/test_cache_contracts.py tests/unit/test_safety_guardrails.py -q
-python3 -m pytest tests/integration/test_backend_api.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-```
-
-Iteration budget:
-One agent-loop cycle. If durable session storage, transcript export persistence, live cache writes, frontend chat changes, or broader chat memory behavior are needed, record the follow-up and stop after chat answer artifact persisted-read fallback behavior.
-
 ### T-088: Add accountless chat session persistence contracts
 
 Goal:
@@ -2443,8 +2443,8 @@ Operational defaults for backend roadmap tasks:
 - T-083 established fixture-backed ETF issuer/holdings source adapter contracts without live issuer/provider calls, route wiring, generated-output changes, or unsupported ETF expansion. It is completed and must not be reintroduced as runnable backlog.
 - T-084 established dormant persisted generated-output cache and freshness-hash contracts. It is completed and must not be reintroduced as runnable backlog.
 - T-085 established injected persisted-read routing for asset overview generation with fixture fallback. It is completed and must not be reintroduced as runnable backlog.
-- T-086 is the current promoted task and should route only comparison generation through injected persisted pack/cache read boundaries without route schema changes, frontend changes, live database/cache execution, provider/LLM calls, or export rewrites.
-- T-087 is a prepared backlog task for grounded chat answer artifact persisted-boundary routing.
+- T-086 established injected persisted-read routing for comparison generation with fixture fallback. It is completed and must not be reintroduced as runnable backlog.
+- T-087 is the current promoted task and should route only grounded chat answer artifacts through injected persisted pack/cache read boundaries without route schema changes, frontend changes, durable chat session persistence, live database/cache execution, provider/LLM calls, or export rewrites.
 - T-088 and T-089 are prepared backlog tasks that split accountless chat session persistence into dormant contracts and then injected route-boundary fallback.
 - T-090 is a prepared backlog task for a dormant trust-metric event sink contract, not real analytics emission.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, and recurring jobs out of normal CI until the explicit production-hardening stage.
@@ -2464,8 +2464,8 @@ Roadmap integration tracker:
 | ETF issuer, holdings, prospectus, and exposure adapters | Completed | T-083 |
 | Generated-output cache and freshness hashes | Completed | T-084 |
 | Route overview generation through persisted packs/cache | Completed | T-085 |
-| Route comparison generation through persisted packs/cache | Promoted | T-086 |
-| Route grounded chat answer artifacts through persisted packs/cache | Backlog | T-087 |
+| Route comparison generation through persisted packs/cache | Completed | T-086 |
+| Route grounded chat answer artifacts through persisted packs/cache | Promoted | T-087 |
 | Accountless chat session persistence contracts | Backlog | T-088 |
 | Persisted chat session lifecycle and exports | Backlog | T-089 |
 | Trust-metric event sink | Backlog | T-090 |
