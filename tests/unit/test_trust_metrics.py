@@ -1,10 +1,30 @@
+import importlib.util
+from pathlib import Path
+
+import pytest
+
 from backend.models import TrustMetricEventType, TrustMetricWorkflowArea
+from backend.trust_metric_repository import (
+    TRUST_METRIC_EVENT_REPOSITORY_BOUNDARY,
+    TRUST_METRIC_EVENT_REPOSITORY_TABLES,
+    TrustMetricDiagnosticCategory,
+    TrustMetricDiagnosticRow,
+    TrustMetricEventRepositoryContractError,
+    TrustMetricRepository,
+    build_trust_metric_repository_records,
+    build_trust_metric_repository_records_from_payloads,
+    trust_metric_repository_metadata,
+    validate_trust_metric_repository_records,
+)
 from backend.trust_metrics import (
     get_trust_metric_event_catalog,
     summarize_trust_metric_events,
     validate_trust_metric_event,
     validate_trust_metric_events,
 )
+
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_trust_metric_catalog_covers_product_and_trust_metrics():
@@ -222,3 +242,248 @@ def test_summarization_is_deterministic_for_accepted_events_only():
 def test_event_enums_keep_catalog_workflow_shape_stable():
     assert TrustMetricEventType.search_success.value == "search_success"
     assert TrustMetricWorkflowArea.generated_output.value == "generated_output"
+
+
+def test_dormant_trust_metric_repository_metadata_and_revision_are_importable():
+    metadata = trust_metric_repository_metadata()
+
+    assert metadata.boundary == TRUST_METRIC_EVENT_REPOSITORY_BOUNDARY
+    assert metadata.opens_connection_on_import is False
+    assert metadata.creates_runtime_tables is False
+    assert tuple(metadata.tables) == TRUST_METRIC_EVENT_REPOSITORY_TABLES
+    assert set(TRUST_METRIC_EVENT_REPOSITORY_TABLES) == {
+        "trust_metric_event_envelopes",
+        "trust_metric_validation_statuses",
+        "trust_metric_aggregate_counters",
+        "trust_metric_latency_summaries",
+        "trust_metric_state_snapshots",
+        "trust_metric_diagnostics",
+    }
+    assert "event_type" in metadata.tables["trust_metric_event_envelopes"].columns
+    assert "sanitized_metadata" in metadata.tables["trust_metric_event_envelopes"].columns
+    assert "generated_output_state" in metadata.tables["trust_metric_validation_statuses"].columns
+    assert "rate" in metadata.tables["trust_metric_aggregate_counters"].columns
+    assert "average_ms" in metadata.tables["trust_metric_latency_summaries"].columns
+    assert "state_consistency_status" in metadata.tables["trust_metric_state_snapshots"].columns
+
+    revision_path = ROOT / "alembic" / "versions" / "20260425_0007_trust_metric_event_contracts.py"
+    source = revision_path.read_text(encoding="utf-8")
+    spec = importlib.util.spec_from_file_location("trust_metric_revision", revision_path)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    assert module.revision == "20260425_0007"
+    assert module.down_revision == "20260425_0006"
+    assert module.TRUST_METRIC_EVENT_TABLE_NAMES == TRUST_METRIC_EVENT_REPOSITORY_TABLES
+    for table_name in TRUST_METRIC_EVENT_REPOSITORY_TABLES:
+        assert f'"{table_name}"' in source
+
+    for marker in ["user_accounts", "cookies", "external_analytics_events", "provider_secrets", "raw_chat_transcripts"]:
+        assert marker not in module.TRUST_METRIC_EVENT_TABLE_NAMES
+        assert f'op.create_table("{marker}"' not in source
+
+
+def test_dormant_trust_metric_repository_builds_rows_from_validated_compact_events():
+    records = build_trust_metric_repository_records_from_payloads(
+        [
+            {
+                "event_type": "citation_coverage",
+                "workflow_area": "citation",
+                "client_event_id": "event-citation-coverage",
+                "asset_ticker": "VOO",
+                "generated_output_available": True,
+                "output_metadata": {
+                    "output_kind": "asset_page",
+                    "schema_valid": True,
+                    "citation_coverage_rate": 1.0,
+                    "citation_ids": ["c_voo_overview"],
+                    "source_document_ids": ["src_voo_fact_sheet_fixture"],
+                    "freshness_hash": "hash-voo",
+                    "freshness_state": "fresh",
+                    "safety_status": "educational",
+                    "unsupported_claim_count": 0,
+                    "weak_citation_count": 0,
+                    "stale_source_count": 0,
+                    "latency_ms": 30,
+                },
+                "metadata": {"evidence_state": "supported", "freshness_labeled": True},
+            },
+            {
+                "event_type": "chat_safety_redirect",
+                "workflow_area": "chat",
+                "client_event_id": "event-safety-redirect",
+                "asset_ticker": "VOO",
+                "metadata": {"chat_outcome": "safety_redirect", "safety_classification": "safety_redirect"},
+            },
+            {
+                "event_type": "latency_to_first_meaningful_result",
+                "workflow_area": "search",
+                "client_event_id": "event-latency",
+                "metadata": {"latency_ms": 20, "support_classification": "cached_supported"},
+            },
+        ],
+        batch_id="trust-batch-001",
+        created_at="2026-04-25T20:01:27Z",
+    )
+
+    persisted = TrustMetricRepository().persist(records)
+    event = persisted.events[0]
+
+    assert persisted.table_names == TRUST_METRIC_EVENT_REPOSITORY_TABLES
+    assert event.event_id == "event-citation-coverage"
+    assert event.asset_ticker == "VOO"
+    assert event.citation_ids == ["c_voo_overview"]
+    assert event.source_document_ids == ["src_voo_fact_sheet_fixture"]
+    assert event.citation_coverage_rate == 1.0
+    assert event.freshness_state == "fresh"
+    assert event.evidence_state == "supported"
+    assert event.safety_status == "educational"
+    assert event.validation_only is True
+    assert event.persistence_enabled is False
+    assert event.external_analytics_enabled is False
+    assert event.analytics_emitted is False
+    assert event.stores_raw_user_text is False
+    assert persisted.validation_statuses[0].generated_output_state == "available_metadata"
+    assert persisted.state_snapshots[0].state_consistency_status == "passed"
+    assert persisted.latency_summaries[0].count == 2
+    assert persisted.latency_summaries[0].average_ms == 25.0
+    assert any(row.event_type == "citation_coverage" and row.count == 1 for row in persisted.aggregate_counters)
+    assert any(row.rate is not None for row in persisted.aggregate_counters)
+
+
+def test_dormant_trust_metric_repository_rejects_unvalidated_raw_or_sensitive_payloads():
+    with pytest.raises(TrustMetricEventRepositoryContractError, match="pre-validated"):
+        build_trust_metric_repository_records_from_payloads(
+            [
+                {
+                    "event_type": "chat_answer_outcome",
+                    "workflow_area": "chat",
+                    "asset_ticker": "VOO",
+                    "question": "raw question text",
+                }
+            ],
+            batch_id="trust-batch-rejected",
+            created_at="2026-04-25T20:01:27Z",
+        )
+
+    accepted = validate_trust_metric_event(
+        {
+            "event_type": "search_success",
+            "workflow_area": "search",
+            "client_event_id": "event-search",
+            "asset_ticker": "VOO",
+            "metadata": {"result_count": 1, "support_classification": "cached_supported"},
+        }
+    ).normalized_event
+    assert accepted is not None
+    records = build_trust_metric_repository_records(
+        [accepted],
+        batch_id="trust-batch-search",
+        created_at="2026-04-25T20:01:27Z",
+    )
+
+    leaking = records.events[0].model_copy(update={"sanitized_metadata": {"raw_prompt": "hidden"}})
+    with pytest.raises(TrustMetricEventRepositoryContractError, match="sanitized"):
+        validate_trust_metric_repository_records(records.model_copy(update={"events": [leaking]}))
+
+    source_url = records.events[0].model_copy(update={"sanitized_metadata": {"source_url": "https://example.test/source"}})
+    with pytest.raises(TrustMetricEventRepositoryContractError, match="source URLs|sanitized"):
+        validate_trust_metric_repository_records(records.model_copy(update={"events": [source_url]}))
+
+    raw_flag = records.events[0].model_copy(update={"stores_raw_query_text": True})
+    with pytest.raises(TrustMetricEventRepositoryContractError, match="compact metadata"):
+        validate_trust_metric_repository_records(records.model_copy(update={"events": [raw_flag]}))
+
+
+def test_dormant_trust_metric_repository_enforces_state_freshness_and_source_policy_boundaries():
+    records = build_trust_metric_repository_records_from_payloads(
+        [
+            {
+                "event_type": "freshness_accuracy",
+                "workflow_area": "freshness",
+                "client_event_id": "event-freshness",
+                "asset_ticker": "VOO",
+                "generated_output_available": True,
+                "output_metadata": {
+                    "output_kind": "asset_page",
+                    "citation_ids": ["c_voo_overview"],
+                    "source_document_ids": ["src_voo_fact_sheet_fixture"],
+                    "freshness_state": "fresh",
+                    "safety_status": "educational",
+                },
+                "metadata": {"evidence_state": "supported", "freshness_labeled": True},
+            }
+        ],
+        batch_id="trust-batch-freshness",
+        created_at="2026-04-25T20:01:27Z",
+    )
+
+    blocked_support = records.events[0].model_copy(update={"asset_support_state": "recognized_unsupported"})
+    with pytest.raises(TrustMetricEventRepositoryContractError, match="blocked support"):
+        validate_trust_metric_repository_records(records.model_copy(update={"events": [blocked_support]}))
+
+    stale_unlabeled = records.events[0].model_copy(update={"freshness_state": "stale", "sanitized_metadata": {"freshness_labeled": False}})
+    with pytest.raises(TrustMetricEventRepositoryContractError, match="unsupported, stale, partial"):
+        validate_trust_metric_repository_records(records.model_copy(update={"events": [stale_unlabeled]}))
+
+    partial_unlabeled = records.events[0].model_copy(update={"evidence_state": "partial", "sanitized_metadata": {"uncertainty_labeled": False}})
+    with pytest.raises(TrustMetricEventRepositoryContractError, match="unsupported, stale, partial"):
+        validate_trust_metric_repository_records(records.model_copy(update={"events": [partial_unlabeled]}))
+
+    source_policy_block = records.events[0].model_copy(update={"sanitized_metadata": {"source_use_status": "source_policy_blocked"}})
+    with pytest.raises(TrustMetricEventRepositoryContractError, match="Source-policy-blocked"):
+        validate_trust_metric_repository_records(records.model_copy(update={"events": [source_policy_block]}))
+
+    diagnostic = TrustMetricDiagnosticRow(
+        diagnostic_id="diag-freshness-state",
+        batch_id="trust-batch-freshness",
+        event_id=records.events[0].event_id,
+        category=TrustMetricDiagnosticCategory.freshness.value,
+        code="freshness_label_checked",
+        event_type="freshness_accuracy",
+        workflow_area="freshness",
+        freshness_states={"page": "fresh"},
+        compact_metadata={"validation_code": "freshness_label_checked", "counter": 1},
+        created_at="2026-04-25T20:01:27Z",
+    )
+    validate_trust_metric_repository_records(records.model_copy(update={"diagnostics": [diagnostic]}))
+
+    leaking_diagnostic = diagnostic.model_copy(update={"compact_metadata": {"answer_text": "raw answer"}})
+    with pytest.raises(TrustMetricEventRepositoryContractError, match="sanitized"):
+        validate_trust_metric_repository_records(records.model_copy(update={"diagnostics": [leaking_diagnostic]}))
+
+
+def test_dormant_trust_metric_repository_imports_do_not_open_live_paths():
+    repository_source = (ROOT / "backend" / "repositories" / "trust_metrics.py").read_text(encoding="utf-8")
+
+    forbidden = [
+        "create_engine",
+        "sessionmaker",
+        "DATABASE_URL",
+        "requests",
+        "httpx",
+        "redis",
+        "boto3",
+        "OPENROUTER",
+        "openai",
+        "os.environ",
+        "api_key",
+        "document.cookie",
+        "localStorage",
+    ]
+    for marker in forbidden:
+        assert marker not in repository_source
+
+    records = build_trust_metric_repository_records_from_payloads(
+        [{"event_type": "search_success", "workflow_area": "search", "client_event_id": "event-search"}],
+        batch_id="trust-batch-session",
+        created_at="2026-04-25T20:01:27Z",
+    )
+
+    class BadSession:
+        pass
+
+    with pytest.raises(TrustMetricEventRepositoryContractError, match="add_all"):
+        TrustMetricRepository(session=BadSession()).persist(records)
