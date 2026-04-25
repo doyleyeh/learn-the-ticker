@@ -1,38 +1,44 @@
 ## Current task
 
-### T-074: Add route-level frontend docs-alignment smoke coverage
+### T-075: Re-audit home page and navigation against frontend workflow docs
 
 Goal:
-Add deterministic route-level smoke coverage that checks the existing frontend routes still expose the documented Frontend Design and Workflow v0.4 structure, without changing route behavior, React component logic, backend contracts, source-backed content, or generated copy.
+Re-audit and tighten the home page plus global navigation against the PRD/TDS Frontend Design and Workflow v0.4 baseline so the first user path remains single-stock-or-ETF search, while comparison stays separate but connected and glossary remains contextual inside reading flows.
 
 Task-scope paragraph:
-This cycle is limited to strengthening `tests/frontend/smoke.mjs` so it verifies route-level alignment with the PRD/TDS v0.4 workflow across the existing home, asset, source-list, comparison, contextual glossary, source drawer, asset chat, export, and Weekly News Focus surfaces. The task should inspect the current route/component files before editing the smoke test, add focused static assertions for already-present deterministic markers and ordering, and avoid changing application files unless an existing marker is genuinely missing and the task is explicitly narrowed again. The expected change is test coverage only.
+This cycle is limited to the visible home-page and global-navigation entry points after the v0.4 frontend workflow updates. Inspect the current home page, primary layout navigation, search/autocomplete, and related smoke coverage before editing. Make the smallest UI/copy/marker adjustments needed so home presents one primary single-asset search action, global navigation connects to the separate comparison workflow without making comparison the home primary action, and glossary is not promoted into a top-level or home-page workflow. Keep all behavior deterministic and fixture-backed; do not add new routes, new generated content, broader entity resolution, live provider calls, or production dependencies.
 
 Allowed files:
 
+- `apps/web/app/page.tsx`
+- `apps/web/app/layout.tsx`
+- `apps/web/components/SearchBox.tsx`
+- `apps/web/styles/globals.css`
 - `tests/frontend/smoke.mjs`
+- `docs/agent-journal/<run-id>.md`
 
 Do not change:
 
-- backend FastAPI routes, response schemas, deterministic fixtures, provider adapters, source-use policy, eval data, or generated content
-- frontend route files, React components, CSS, backend-contract adapters in `apps/web/lib/*`, deterministic fixtures, navigation targets, form submission behavior, `A vs B` detection, compare query params, chat redirects, export validation, citation bindings, source drawers, glossary interaction state, or source metadata rendering
-- home page primary workflow, comparison page workflow, asset-page section order, source-list behavior, stock-vs-ETF relationship badges/structure, Weekly News Focus evidence-limited behavior, AI Comprehensive Analysis thresholds, or source/freshness/unknown/stale/unavailable/partial labels
-- advice-boundary copy, citation validation rules, source-use rights, export scope, chat answer generation, accountless chat semantics, trust-metric readiness markers, live-provider gating, no-live-call guardrails, or production dependencies
+- backend FastAPI routes, response schemas, deterministic fixtures, provider adapters, retrieval, source-use policy, eval data, or generated content
+- frontend backend-contract adapters in `apps/web/lib/*`, deterministic asset/comparison/search fixtures, comparison route behavior, `A vs B` detection semantics, compare query params, asset-page section order, source-list behavior, source drawers, contextual glossary popover behavior, asset chat behavior, export validation, citation bindings, source metadata rendering, or freshness labels
+- supported/unsupported/out-of-scope/pending/partial/stale/unknown/unavailable/insufficient-evidence semantics
+- Weekly News Focus evidence-limited behavior, AI Comprehensive Analysis thresholds, stock-vs-ETF relationship badges, or single-company-vs-ETF-basket comparison structure
+- advice-boundary copy in generated/chat surfaces, citation validation rules, source-use rights, accountless chat semantics, trust-metric readiness markers, live-provider gating, no-live-call guardrails, or secret handling
 - production dependencies
 
 Acceptance criteria:
 
-- Smoke coverage checks the home route keeps one primary single-stock-or-ETF search workflow and does not promote comparison or glossary into a primary home-page workflow.
-- Smoke coverage checks clear `A vs B` search handling remains a comparison-route redirect to `/compare` and does not become a multi-input home-page builder.
-- Smoke coverage checks supported, unsupported, out-of-scope, unknown/no-result, pending/partial/stale/unavailable, stock/ETF identity, and support-state markers remain present in the search/autocomplete path where existing files expose them.
-- Smoke coverage checks supported asset pages preserve the documented route-level section order: Beginner Summary, Top 3 Risks, Key Facts, What It Does/What It Holds, Weekly News Focus, AI Comprehensive Analysis, Deep Dive, Ask, Sources, and educational framing.
-- Smoke coverage checks Weekly News Focus and AI Comprehensive Analysis remain separate from stable canonical facts, include evidence-limited or empty-state markers, and do not require the configured maximum item count when evidence is thin.
-- Smoke coverage checks source drawer and source-list route markers preserve same-asset source boundaries, citation/source metadata, freshness labels, source-use policy visibility, allowed excerpt handling, and mobile bottom-sheet-style behavior markers.
-- Smoke coverage checks contextual glossary markers preserve desktop hover/click/focus behavior, mobile bottom-sheet behavior, generic-only fallback labeling, and asset-context evidence boundaries.
-- Smoke coverage checks asset chat markers preserve selected-asset knowledge-pack scope, helper-surface behavior, advice redirect ordering, comparison redirects, no raw transcript analytics, accountless session markers, and no-live-call markers.
-- Smoke coverage checks comparison route markers preserve empty builder, one-side-selected builder, two-asset result flow, `/compare` query params, suggested comparison links, and stock-vs-ETF relationship badges plus single-company-vs-ETF-basket structure.
-- Smoke coverage checks export controls preserve Markdown/JSON scope, citations, source metadata, freshness/as-of labels, educational disclaimer, no unrestricted raw text, no restricted provider payload, no hidden prompts, no raw model reasoning, and no secret exposure.
-- Smoke coverage keeps the assertions deterministic and static; it does not require live provider, news, market-data, LLM, browser screenshot, or network calls.
+- Home page retains exactly one primary action: search for a single supported U.S.-listed common stock or non-leveraged U.S.-listed equity ETF.
+- Home page copy and visible affordances do not present comparison as a two-input primary home-page builder, and do not present glossary as a major home-page workflow.
+- Global navigation clearly exposes the separate comparison workflow through `/compare` or an equivalent comparison route, without using a default pair as the only top-level comparison entry point if a neutral `/compare` entry is feasible in the existing layout.
+- Search examples remain examples only, not recommendations, and the supported scope remains clear for beginners.
+- Clear `A vs B` and `A versus B` search patterns still route to `/compare?left=...&right=...` through the existing search path instead of generating a multi-asset home result.
+- Search/autocomplete rows still expose stock vs ETF identity, exchange or issuer context, support-state chips, and distinct supported, recognized-unsupported, out-of-scope, pending/eligible-not-cached, stale/partial/unavailable, and unknown/no-result behavior where the current deterministic contract exposes those states.
+- Any navigation or home-page wording preserves educational framing and does not include buy/sell/hold recommendations, personalized allocation advice, price targets, tax advice, brokerage/trading behavior, or unsupported claims presented as facts.
+- Important product claims introduced or changed in visible copy are either generic educational framing or remain supported by existing cited/structured product context; no new asset-specific factual claims are introduced on the home page without citations.
+- Smoke coverage is updated to verify the audited home/navigation markers and to prevent regression of the single-search-first, separate-comparison, contextual-glossary workflow.
+- Existing route-level smoke coverage for asset pages, comparison, source drawer/source list, glossary, chat, exports, Weekly News Focus, AI Comprehensive Analysis, freshness, uncertainty, source-use rights, and no-live-call markers remains intact.
+- The task remains deterministic and static; it does not require live provider, news, market-data, LLM, browser screenshot, or network calls.
 - No new live external calls, provider dependencies, generated facts, recommendation language, buy/sell/hold language, price targets, allocation advice, tax advice, brokerage/trading behavior, export scope expansion, or source-use-rights changes are introduced.
 - Required commands from this cycle pass.
 
@@ -50,6 +56,28 @@ Iteration budget:
 
 
 ## Completed
+
+### T-074: Add route-level frontend docs-alignment smoke coverage
+
+Goal:
+Add deterministic route-level smoke coverage that checks the existing frontend routes still expose the documented Frontend Design and Workflow v0.4 structure, without changing route behavior, React component logic, backend contracts, source-backed content, or generated copy.
+
+Completed details:
+
+- Implementation commit `8b9e58f docs(T-074): add route-level frontend docs-alignment smoke coverage` updated `tests/frontend/smoke.mjs` and added `docs/agent-journal/20260425T033755Z.md`.
+- Merged branch `agent/T-074-20260425T033755Z` into `main` with local merge commit `299d608 chore(T-074): merge route-level frontend docs-alignment smoke coverage`.
+- `tests/frontend/smoke.mjs` added grouped deterministic helpers for static marker and ordering assertions.
+- Smoke coverage now checks route-level v0.4 workflow markers across home/search, supported asset pages, Weekly News Focus, AI Comprehensive Analysis, source-list/source drawer, contextual glossary, asset chat, comparison, and export controls.
+- The journal records that the change stayed test-only: no application routes, React components, backend contracts, deterministic fixtures, generated content, source-use policy, dependencies, or behavior were changed.
+- `docs/agent-journal/20260425T033755Z.md` records these checks: `npm test` passed after one focused assertion revision; `npm run typecheck` passed; `npm run build` passed; `python3 -m pytest tests/unit/test_safety_guardrails.py -q` passed with 11 tests; `bash scripts/run_quality_gate.sh` passed, including 197 Python tests, static evals, frontend smoke, typecheck, build, and backend checks.
+- Remaining risks from the journal:
+  - Coverage is deterministic static smoke coverage only; it does not replace browser screenshot, viewport, or interaction testing for hover, tap, focus, drawers, bottom sheets, chat, or export controls.
+  - The smoke checks depend on existing route/component markers staying meaningful and aligned with actual rendered behavior.
+
+Completion commits:
+
+- `8b9e58f docs(T-074): add route-level frontend docs-alignment smoke coverage`
+- `299d608 chore(T-074): merge route-level frontend docs-alignment smoke coverage`
 
 ### T-073: Align global responsive spacing and no-overlap frontend layout
 
@@ -1967,9 +1995,6 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-
-### T-075: Re-audit home page and navigation against frontend workflow docs
 
 ### T-076: Add backend persistence settings and migration scaffold
 
