@@ -1,6 +1,62 @@
 ## Current task
 
-No current task is prepared. The runnable Backlog is empty.
+### T-079: Add persisted ingestion job ledger contracts
+
+Goal:
+Add the first persisted ingestion job ledger contract on top of the dormant persistence boundary so future manual pre-cache and on-demand ingestion work can track deterministic job states without routing current API, retrieval, generation, chat, comparison, export, or frontend behavior through a live database.
+
+Roadmap alignment:
+
+- Promotes the next incomplete MVP Backend Roadmap item after completed T-076, T-077, and T-078.
+- T-076 already added persistence settings and migration tooling.
+- T-077 already added persisted knowledge-pack repository contracts.
+- T-078 already added persisted-pack-first retrieval with deterministic fixture fallback.
+- This task should only add the job-ledger contract needed before source snapshot storage, worker execution, SEC adapters, ETF adapters, and generated-output cache persistence.
+
+Acceptance criteria:
+
+- Add a dormant pure-Python repository contract for ingestion job ledger records, including explicit schema/table metadata and row models.
+- Support deterministic job categories for manual pre-cache, approved on-demand ingestion, refresh, and source revalidation without adding recurring jobs or production scheduler behavior.
+- Support required job states: `pending`, `running`, `succeeded`, `failed`, `unsupported`, `out_of_scope`, `unknown`, `unavailable`, and `stale`.
+- Validate supported MVP scope boundaries: top-500-first U.S. common stocks, supported non-leveraged U.S.-listed equity ETFs, explicit approved `pending_ingestion` assets, and blocked unsupported/out-of-scope assets.
+- Preserve no-generated-output behavior for unsupported, out-of-scope, unknown, unavailable, and unapproved assets.
+- Store only compact job metadata, diagnostics, source-policy references, checksums, timestamps, and sanitized error categories; do not store raw provider payloads, raw article text, secrets, user text, or unrestricted source text.
+- Add an Alembic revision or migration metadata for the ledger tables that imports without opening a database connection.
+- Keep the current API, retrieval, generation, chat, comparison, export, glossary, frontend, provider, and fixture behavior unchanged unless tests need import-path exposure for the new dormant contract.
+- Document dependency impact if any new production dependency is proposed; prefer no new dependency for this task.
+
+Iteration budget:
+One agent-loop cycle. If the migration, repository contract, or focused tests expose broader worker execution or source snapshot requirements, stop after the ledger contract and record the follow-up under Backlog rather than expanding scope.
+
+Suggested files to inspect:
+
+- `backend/db.py`
+- `backend/persistence.py`
+- `backend/repositories/knowledge_packs.py`
+- `backend/ingestion.py`
+- `backend/models.py`
+- `alembic/versions/`
+- `tests/unit/test_persistence_settings.py`
+- `tests/unit/test_knowledge_pack_repository.py`
+- `tests/unit/test_ingestion_jobs.py`
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_repo_contract.py tests/unit/test_persistence_settings.py -q
+python3 -m pytest tests/unit/test_ingestion_jobs.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+docker compose config
+```
+
+Out of scope:
+
+- No live database connection or executed migration.
+- No SEC, issuer, market-data, news, storage, or LLM provider calls.
+- No worker loop, scheduler, Cloud Run Job wiring, admin auth, or rate-limit implementation.
+- No persisted source snapshots, persisted generated-output cache, chat persistence, trust-metric sink, or frontend behavior changes.
 
 
 ## Completed
@@ -2046,24 +2102,154 @@ Completion commits:
 
 ## Backlog
 
+### T-080: Add deterministic ingestion worker execution contract
+
+Goal:
+Add a deterministic ingestion worker execution contract that can consume the T-079 ingestion job ledger through injected in-memory records, run fixture-only job transitions, and preserve existing API and fixture behavior without live providers, live database execution, schedulers, or production worker wiring.
+
+Acceptance criteria:
+
+- Add a worker execution boundary that can move ledger-backed jobs through `pending`, `running`, terminal success, and terminal blocked/error states using deterministic fixtures.
+- Cover manual pre-cache and approved on-demand ingestion job categories, while explicitly blocking unsupported, out-of-scope, unknown, unavailable, and unapproved assets from generated output.
+- Record compact execution diagnostics and sanitized error categories only; do not record secrets, raw provider payloads, raw source text, raw user text, hidden prompts, or unrestricted article text.
+- Keep the execution path injectable and local-test-only; no Cloud Run Job wiring, scheduler, admin route, real database session, provider call, source snapshot write, or LLM call.
+- Add focused unit tests for state transitions, unsupported/out-of-scope blocking, idempotent retry behavior, stale/unavailable handling, and no-live-call imports.
+
+Required checks:
+
+```bash
+python3 -m pytest tests/unit/test_ingestion_jobs.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
+### T-081: Add source snapshot artifact metadata contracts
+
+Goal:
+Add dormant source snapshot artifact metadata contracts for raw, parsed, generated, and diagnostics artifacts so future ingestion can reference private object storage safely while preserving rights-tiered source-use policy and no-public-snapshot behavior.
+
+Acceptance criteria:
+
+- Add repository/table metadata and pure model helpers for source snapshot artifact records, private object URIs, checksums, source-use policy, allowed operations, retrieval timestamps, and artifact categories.
+- Enforce rights-tier behavior for `full_text_allowed`, `summary_allowed`, `metadata_only`, `link_only`, and `rejected` sources before any raw or parsed text field can be represented.
+- Keep snapshots private and metadata-only by default; do not expose public URLs, browser-facing storage paths, unrestricted provider payloads, raw article text, or rejected-source content.
+- Integrate with existing source allowlist/source-policy helpers and persisted knowledge-pack metadata only through dormant contracts or tests.
+- Add tests for rights-tier storage rules, same-asset/source binding, checksum metadata, redacted diagnostics, and no live storage/network imports.
+
+Required checks:
+
+```bash
+python3 -m pytest tests/unit/test_source_policy.py tests/unit/test_repo_contract.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
+### T-082: Add SEC stock source adapter fixture contract
+
+Goal:
+Add a fixture-backed SEC stock source adapter and parser contract for identity, filings, company facts, source attribution, freshness, and evidence gaps without live SEC calls, generated-output changes, or broader stock coverage.
+
+Acceptance criteria:
+
+- Add adapter interfaces and deterministic fixture responses for SEC submissions, selected filing metadata, and XBRL company facts needed by existing stock knowledge-pack sections.
+- Parse and normalize compact stock identity, business/filing references, financial fact metadata, source attribution, freshness labels, and evidence gaps into existing backend contract shapes or new dormant adapter records.
+- Enforce same-asset CIK/ticker binding and source-use policy before any source can support generated claims.
+- Keep top-500 manifest behavior unchanged and do not generate pages, chat answers, comparisons, or risk summaries for eligible-not-cached, unsupported, out-of-scope, unknown, or unavailable stocks.
+- Add tests for fixture parsing, stale/unavailable/partial handling, same-asset source binding, source policy enforcement, no live network imports, and no secret exposure.
+
+Required checks:
+
+```bash
+python3 -m pytest tests/unit/test_provider_adapters.py tests/unit/test_retrieval_fixtures.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
+### T-083: Add ETF issuer and holdings source adapter fixture contracts
+
+Goal:
+Add fixture-backed ETF issuer, fact-sheet, holdings, prospectus, and exposure-file adapter contracts for supported non-leveraged U.S.-listed equity ETFs without live issuer/provider calls, generated-output changes, or unsupported ETF expansion.
+
+Acceptance criteria:
+
+- Add adapter interfaces and deterministic fixture responses for issuer profile/fact-sheet metadata, prospectus references, holdings or exposure rows, benchmark/expense data, source attribution, freshness, and evidence gaps.
+- Preserve ETF scope boundaries: non-leveraged U.S.-listed equity index, sector, and thematic ETFs only; leveraged, inverse, ETN, fixed-income, commodity, active, and multi-asset ETFs remain blocked from generated output.
+- Enforce source-use policy, allowed excerpt behavior, same-ETF binding, freshness labels, and partial/unavailable states before facts can support generated claims.
+- Do not add live network calls, browser provider calls, new generated pages, generated chat answers, generated comparisons, or unrestricted source exports.
+- Add tests for fixture parsing, holdings/source binding, blocked ETF classes, source-policy enforcement, freshness/evidence gaps, no live imports, and no secret exposure.
+
+Required checks:
+
+```bash
+python3 -m pytest tests/unit/test_provider_adapters.py tests/unit/test_retrieval_fixtures.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
+### T-084: Add persisted generated-output cache and freshness-hash contracts
+
+Goal:
+Add dormant persisted generated-output cache contracts for overview, comparison, chat-safe answer artifacts, exports, source checksums, knowledge-pack hashes, generated-output freshness hashes, and invalidation diagnostics without routing current responses through the cache.
+
+Acceptance criteria:
+
+- Add pure repository/table metadata and model helpers for generated-output cache entries, section-level freshness hashes, source checksum inputs, knowledge-pack hashes, validation status, citation coverage, safety status, and invalidation reasons.
+- Keep cache records tied to same-asset or same-comparison-pack evidence and existing source-use policy.
+- Preserve current deterministic fixture fallback and current API/frontend behavior; no route should read from or write to a live cache in this task.
+- Block cacheability for unsupported, out-of-scope, rejected-source, failed-validation, advice-like, uncited, stale-without-label, or source-policy-disallowed generated output.
+- Add tests for hash stability, invalidation metadata, citation/source binding, safety/source-policy gating, no raw model reasoning, no hidden prompts, no secrets, and no live database dependency.
+
+Required checks:
+
+```bash
+python3 -m pytest tests/unit/test_cache_contracts.py tests/unit/test_source_policy.py tests/unit/test_safety_guardrails.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
 ## MVP Backend Roadmap
 
 This section is intentionally non-operational for the agent loop. Keep runnable repeat-mode tasks above this roadmap as third-level task headings, and keep this longer MVP roadmap as bullets until each item is promoted into a narrow task contract. Early backend tasks may add production dependencies such as SQLAlchemy, Alembic, or psycopg only with dependency rationale, focused tests, and no live external calls in normal CI.
 
 Operational defaults for backend roadmap tasks:
 
-- T-076 establishes the persistence boundary and migration tooling before provider or worker work starts.
-- T-077 and T-078 preserve current API response contracts and deterministic fixture fallback while introducing persistent-pack support.
+- T-076 established the persistence boundary and migration tooling before provider or worker work starts. It is completed and must not be reintroduced as runnable backlog.
+- T-077 established persisted knowledge-pack repository contracts. It is completed and must not be reintroduced as runnable backlog.
+- T-078 routed retrieval through persisted packs with deterministic fixture fallback. It is completed and must not be reintroduced as runnable backlog.
+- T-079 is the next promoted task and should add only the dormant persisted ingestion job ledger contract.
+- T-080 through T-084 are prepared backlog tasks promoted from the roadmap in a safe order.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted backend task should run the relevant EVALS.md backend checks: `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, and `bash scripts/run_quality_gate.sh`.
 
-Remaining backend MVP sequence:
+Roadmap integration tracker:
 
-- Add an ingestion job ledger and worker execution path with deterministic pending, running, succeeded, failed, unsupported, out-of-scope, unknown, unavailable, and stale states.
-- Add source snapshot storage and rights-tier metadata for raw, parsed, generated, and diagnostics artifacts without making source snapshots public.
-- Add a SEC stock source adapter and parser for identity, filings, company facts, source attribution, freshness, and evidence gaps.
-- Add ETF issuer, fact-sheet, holdings, prospectus, and exposure-file adapters with source-use and freshness metadata.
-- Add persisted generated-output cache entries, source checksums, knowledge-pack hashes, generated-output freshness hashes, and invalidation rules.
+| Roadmap area | Status | Task mapping |
+| --- | --- | --- |
+| Persistence settings and migration scaffold | Completed | T-076 |
+| Persisted knowledge-pack repository contracts | Completed | T-077 |
+| Persisted-pack-first retrieval with fixture fallback | Completed | T-078 |
+| Ingestion job ledger | Promoted | T-079 |
+| Deterministic ingestion worker execution path | Backlog | T-080 |
+| Source snapshot storage metadata | Backlog | T-081 |
+| SEC stock source adapter/parser | Backlog | T-082 |
+| ETF issuer, holdings, prospectus, and exposure adapters | Backlog | T-083 |
+| Generated-output cache and freshness hashes | Backlog | T-084 |
+| Route overview, comparison, and chat generation through persisted packs | Roadmap only | Not yet promoted |
+| Persist accountless chat sessions and transcript exports | Roadmap only | Not yet promoted |
+| Trust-metric event sink | Roadmap only | Not yet promoted |
+| Broaden launch-universe search and support classification | Roadmap only | Not yet promoted |
+| Weekly News Focus acquisition from persisted evidence | Roadmap only | Not yet promoted |
+| Gated OpenRouter live generation | Roadmap only | Not yet promoted |
+| Provider source-use/export enforcement hardening | Roadmap only | Not yet promoted |
+| Production hardening and deployment documentation | Roadmap only | Not yet promoted |
+
+Remaining unpromoted backend MVP sequence:
+
 - Route overview, comparison, and chat generation through persisted knowledge packs while preserving fixture fallback and current safety/citation behavior.
 - Persist accountless chat sessions, seven-day TTL metadata, deletion state, and transcript export payloads without raw transcript analytics or training storage.
 - Add a trust-metric event sink for compact metadata events covering citation coverage, unsupported claims, freshness accuracy, glossary use, comparison use, source drawer use, safety redirects, export use, and latency.
