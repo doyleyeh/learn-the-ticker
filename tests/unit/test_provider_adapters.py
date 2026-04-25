@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from backend.data import ELIGIBLE_NOT_CACHED_ASSETS
+from backend.etf_universe import eligible_not_cached_etf_entries, load_etf_universe_manifest
 from backend.models import (
     DEFAULT_BLOCKED_EXCERPT_BEHAVIOR,
     DEFAULT_BLOCKED_SOURCE_OPERATIONS,
@@ -400,6 +401,18 @@ def test_market_reference_adapter_covers_supported_and_eligible_not_cached_with_
         assert response.generated_output.creates_generated_chat_answer is False
         assert response.generated_output.creates_generated_comparison is False
 
+    manifest_eligible_etfs = eligible_not_cached_etf_entries()
+    assert set(manifest_eligible_etfs) <= set(ELIGIBLE_NOT_CACHED_ASSETS)
+    assert load_etf_universe_manifest().local_path == "data/universes/us_equity_etfs.current.json"
+    for ticker, entry in manifest_eligible_etfs.items():
+        response = adapter.fetch(adapter.request(ticker, ProviderDataCategory.asset_resolution))
+        assert response.state is ProviderResponseState.eligible_not_cached
+        assert response.asset is not None
+        assert response.asset.ticker == entry.ticker
+        assert response.generated_output.creates_generated_asset_page is False
+        assert response.generated_output.creates_generated_chat_answer is False
+        assert response.generated_output.creates_generated_comparison is False
+
 
 def test_provider_failure_states_are_explicit_without_invented_facts():
     market = mock_market_reference_adapter()
@@ -496,6 +509,7 @@ def test_source_hierarchy_keeps_official_sources_ahead_of_structured_and_recent_
 
 def test_provider_module_has_no_live_call_or_credential_imports():
     sources = [
+        (ROOT / "backend" / "etf_universe.py").read_text(encoding="utf-8"),
         (ROOT / "backend" / "providers.py").read_text(encoding="utf-8"),
         (ROOT / "backend" / "provider_adapters" / "sec_stock.py").read_text(encoding="utf-8"),
         (ROOT / "backend" / "provider_adapters" / "etf_issuer.py").read_text(encoding="utf-8"),

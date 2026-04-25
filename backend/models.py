@@ -401,6 +401,101 @@ class Top500StockUniverseManifest(BaseModel):
     entries: list[Top500StockUniverseEntry]
 
 
+class ETFUniverseSupportState(str, Enum):
+    cached_supported = "cached_supported"
+    eligible_not_cached = "eligible_not_cached"
+    recognized_unsupported = "recognized_unsupported"
+    out_of_scope = "out_of_scope"
+    unknown = "unknown"
+    unavailable = "unavailable"
+
+
+class ETFUniverseLaunchCacheState(str, Enum):
+    cached = "cached"
+    not_cached = "not_cached"
+    blocked = "blocked"
+    unknown = "unknown"
+    unavailable = "unavailable"
+
+
+class ETFUniverseCategory(str, Enum):
+    us_equity_index_etf = "us_equity_index_etf"
+    us_equity_sector_etf = "us_equity_sector_etf"
+    us_equity_thematic_etf = "us_equity_thematic_etf"
+    leveraged_etf = "leveraged_etf"
+    inverse_etf = "inverse_etf"
+    etn = "etn"
+    fixed_income_etf = "fixed_income_etf"
+    commodity_etf = "commodity_etf"
+    active_etf = "active_etf"
+    multi_asset_etf = "multi_asset_etf"
+    unknown = "unknown"
+    unavailable = "unavailable"
+    other_unsupported = "other_unsupported"
+
+
+class ETFUniverseExclusionFlags(BaseModel):
+    leveraged: bool = False
+    inverse: bool = False
+    etn: bool = False
+    fixed_income: bool = False
+    commodity: bool = False
+    active: bool = False
+    multi_asset: bool = False
+    crypto: bool = False
+    international: bool = False
+    other_unsupported: bool = False
+
+
+class ETFUniverseEvidenceMetadata(BaseModel):
+    evidence_state: EvidenceState
+    freshness_state: FreshnessState
+    evidence_as_of: str | None = None
+    retrieved_at: str | None = None
+    source_use_policy: SourceUsePolicy = SourceUsePolicy.metadata_only
+    source_quality: SourceQuality = SourceQuality.fixture
+    unavailable_reason: str | None = None
+
+
+class ETFUniverseEntry(BaseModel):
+    ticker: str
+    fund_name: str
+    issuer: str | None = None
+    asset_type: Literal["etf"]
+    exchange: str | None = None
+    listing_country: str = "US"
+    etf_category: ETFUniverseCategory
+    support_state: ETFUniverseSupportState
+    launch_cache_state: ETFUniverseLaunchCacheState
+    aliases: list[str] = Field(default_factory=list)
+    exclusion_flags: ETFUniverseExclusionFlags = Field(default_factory=ETFUniverseExclusionFlags)
+    evidence: ETFUniverseEvidenceMetadata
+    source_provenance: str
+    entry_provenance: str
+    snapshot_date: str
+    checksum_input: str
+    generated_checksum: str
+    approval_timestamp: str
+    non_advice_framing: str
+
+
+class ETFUniverseManifest(BaseModel):
+    schema_version: str
+    manifest_id: str
+    universe_name: str
+    local_path: str
+    production_mirror_env_var: str
+    coverage_purpose: str
+    policy_note: str
+    snapshot_date: str
+    generated_at: str
+    approved_at: str
+    source_provenance: str
+    checksum_input: str
+    generated_checksum: str
+    entries: list[ETFUniverseEntry]
+
+
 class StateMessage(BaseModel):
     status: AssetStatus
     message: str

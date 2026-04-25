@@ -1,8 +1,21 @@
+import pytest
+
 from backend.data import (
     ELIGIBLE_NOT_CACHED_ASSETS,
     load_top500_stock_universe_manifest,
     top500_stock_universe_entry,
 )
+from backend.etf_universe import (
+    ETFUniverseContractError,
+    blocked_etf_entries,
+    cached_supported_etf_entries,
+    can_generate_output_for_etf_entry,
+    eligible_not_cached_etf_entries,
+    etf_universe_entry,
+    load_etf_universe_manifest,
+    validate_etf_universe_manifest,
+)
+from backend.models import ETFUniverseSupportState
 from backend.models import SearchResponse
 from backend.search import search_assets
 
@@ -207,6 +220,92 @@ def test_top500_manifest_backs_cached_and_eligible_not_cached_stocks_only():
         response = search_assets(ticker)
         assert response.results[0].asset_type.value == "stock"
         assert response.results[0].support_classification.value in {"cached_supported", "eligible_not_cached"}
+
+
+def test_etf_universe_manifest_contract_distinguishes_cached_eligible_blocked_and_gap_states():
+    manifest = load_etf_universe_manifest()
+    entries = {entry.ticker: entry for entry in manifest.entries}
+
+    assert manifest.schema_version == "us-equity-etf-universe-v1"
+    assert manifest.local_path == "data/universes/us_equity_etfs.current.json"
+    assert manifest.production_mirror_env_var == "EQUITY_ETF_UNIVERSE_MANIFEST_URI"
+    assert "not a recommendation" in manifest.policy_note
+    assert manifest.checksum_input
+    assert manifest.generated_checksum.startswith("sha256:")
+
+    assert set(cached_supported_etf_entries()) == {"VOO", "QQQ"}
+    assert {entry.support_state for entry in cached_supported_etf_entries().values()} == {
+        ETFUniverseSupportState.cached_supported
+    }
+    assert {ticker for ticker, entry in entries.items() if can_generate_output_for_etf_entry(entry)} == {
+        "VOO",
+        "QQQ",
+    }
+
+    expected_eligible = {"SPY", "VTI", "IVV", "IWM", "DIA", "VGT", "XLK", "SOXX", "SMH", "XLF", "XLV"}
+    assert set(eligible_not_cached_etf_entries()) == expected_eligible
+    for ticker in expected_eligible:
+        entry = entries[ticker]
+        assert entry.support_state.value == "eligible_not_cached"
+        assert entry.launch_cache_state.value == "not_cached"
+        assert entry.evidence.evidence_state.value in {"partial", "unknown", "insufficient_evidence"}
+        assert can_generate_output_for_etf_entry(entry) is False
+
+    blocked = blocked_etf_entries()
+    for ticker, flag_name in [
+        ("TQQQ", "leveraged"),
+        ("SQQQ", "inverse"),
+        ("ARKK", "active"),
+        ("BND", "fixed_income"),
+        ("GLD", "commodity"),
+        ("AOR", "multi_asset"),
+        ("VXX", "etn"),
+    ]:
+        entry = blocked[ticker]
+        assert entry.launch_cache_state.value == "blocked"
+        assert getattr(entry.exclusion_flags, flag_name) is True
+        assert can_generate_output_for_etf_entry(entry) is False
+
+    assert entries["LTTU"].support_state.value == "unknown"
+    assert entries["LTTU"].evidence.evidence_state.value == "unknown"
+    assert entries["LTTX"].support_state.value == "unavailable"
+    assert entries["LTTX"].evidence.unavailable_reason
+
+
+def test_etf_universe_lookup_normalizes_tickers_and_preserves_current_search_behavior():
+    assert etf_universe_entry("spy") is etf_universe_entry("SPY")
+    assert etf_universe_entry("SPY").support_state.value == "eligible_not_cached"  # type: ignore[union-attr]
+    assert etf_universe_entry("VOO").support_state.value == "cached_supported"  # type: ignore[union-attr]
+
+    # T-091 exposes metadata only. Public search still uses the existing deterministic
+    # fixture behavior until T-092 routes search classification through the manifest.
+    assert search_assets("VOO").state.support_classification.value == "cached_supported"
+    assert search_assets("QQQ").state.support_classification.value == "cached_supported"
+    assert search_assets("SPY").state.support_classification.value == "eligible_not_cached"
+    assert search_assets("VTI").results[0].can_open_generated_page is False
+    assert search_assets("TQQQ").state.support_classification.value == "recognized_unsupported"
+    assert search_assets("ARKK").state.support_classification.value == "unknown"
+
+
+def test_etf_universe_contract_rejects_duplicate_conflicting_checksum_and_advice_language():
+    manifest = load_etf_universe_manifest()
+    duplicate = manifest.model_copy(update={"entries": [*manifest.entries, manifest.entries[0]]})
+    with pytest.raises(ETFUniverseContractError, match="unique tickers"):
+        validate_etf_universe_manifest(duplicate)
+
+    wrong_checksum_entry = manifest.entries[0].model_copy(update={"generated_checksum": "sha256:bad"})
+    wrong_checksum = manifest.model_copy(update={"entries": [wrong_checksum_entry, *manifest.entries[1:]]})
+    with pytest.raises(ETFUniverseContractError, match="generated checksum"):
+        validate_etf_universe_manifest(wrong_checksum)
+
+    conflicting = manifest.entries[2].model_copy(update={"launch_cache_state": "cached"})
+    wrong_state = manifest.model_copy(update={"entries": [*manifest.entries[:2], conflicting, *manifest.entries[3:]]})
+    with pytest.raises(ETFUniverseContractError, match="conflicting cache state"):
+        validate_etf_universe_manifest(wrong_state)
+
+    advice = manifest.model_copy(update={"policy_note": "Users should buy this ETF list."})
+    with pytest.raises(ETFUniverseContractError, match="advice-like language"):
+        validate_etf_universe_manifest(advice)
 
 
 def test_recognized_common_stock_outside_manifest_is_out_of_scope_not_eligible():
