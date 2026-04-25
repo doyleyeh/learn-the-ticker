@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from backend.chat import generate_asset_chat
-from backend.chat_sessions import chat_session_export_payload
+from backend.chat_sessions import PersistedChatSessionReader, chat_session_export_payload
 from backend.comparison import generate_comparison
 from backend.models import (
     AssetIdentity,
@@ -294,11 +294,20 @@ def export_comparison(request: ComparisonExportRequest) -> ExportResponse:
     return response.model_copy(update={"export_validation": _build_comparison_export_validation(response, comparison)})
 
 
-def export_chat_transcript(ticker: str, request: ChatTranscriptExportRequest) -> ExportResponse:
+def export_chat_transcript(
+    ticker: str,
+    request: ChatTranscriptExportRequest,
+    *,
+    persisted_session_reader: PersistedChatSessionReader | Any | None = None,
+) -> ExportResponse:
     """Export a single deterministic chat turn for a selected cached asset."""
 
     if request.conversation_id:
-        session_export = _maybe_export_existing_chat_session(request.conversation_id, request.export_format)
+        session_export = _maybe_export_existing_chat_session(
+            request.conversation_id,
+            request.export_format,
+            persisted_session_reader=persisted_session_reader,
+        )
         if session_export is not None:
             return session_export
 
@@ -444,16 +453,20 @@ def export_chat_transcript(ticker: str, request: ChatTranscriptExportRequest) ->
 def export_chat_session_transcript(
     conversation_id: str,
     export_format: ExportFormat | str = ExportFormat.markdown,
+    *,
+    persisted_session_reader: PersistedChatSessionReader | Any | None = None,
 ) -> ExportResponse:
-    metadata, turns = chat_session_export_payload(conversation_id)
+    metadata, turns = chat_session_export_payload(conversation_id, persisted_reader=persisted_session_reader)
     return _export_chat_session_payload(metadata, turns, export_format)
 
 
 def _maybe_export_existing_chat_session(
     conversation_id: str,
     export_format: ExportFormat | str,
+    *,
+    persisted_session_reader: PersistedChatSessionReader | Any | None = None,
 ) -> ExportResponse | None:
-    metadata, turns = chat_session_export_payload(conversation_id)
+    metadata, turns = chat_session_export_payload(conversation_id, persisted_reader=persisted_session_reader)
     if metadata.lifecycle_state is ChatSessionLifecycleState.unavailable and metadata.selected_asset is None:
         return None
     return _export_chat_session_payload(metadata, turns, export_format)
