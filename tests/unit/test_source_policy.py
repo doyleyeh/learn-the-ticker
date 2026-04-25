@@ -10,6 +10,12 @@ from backend.source_policy import (
     source_can_support_generated_output,
     validate_source_allowlist,
 )
+from backend.weekly_news_repository import (
+    WeeklyNewsSourceRankTier,
+    source_policy_allows_weekly_news_selection,
+    source_rank_tier_priority,
+)
+from tests.unit.test_weekly_news import _repository_candidate
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -90,3 +96,30 @@ def test_source_policy_config_has_no_live_calls_or_advice_like_language():
     for forbidden in ["should buy", "should sell", "should hold", "price target", "personalized allocation"]:
         assert forbidden not in text
 
+
+def test_weekly_news_source_policy_wins_over_rank_and_recency():
+    official = _repository_candidate("official", tier=WeeklyNewsSourceRankTier.official_filing, source_rank=1)
+    allowlisted = _repository_candidate(
+        "allowlisted",
+        tier=WeeklyNewsSourceRankTier.allowlisted_news,
+        source_rank=20,
+    )
+    metadata_only = _repository_candidate(
+        "metadata_only",
+        tier=WeeklyNewsSourceRankTier.official_filing,
+        source_rank=1,
+        source_use_policy=SourceUsePolicy.metadata_only,
+    )
+    rejected = _repository_candidate(
+        "rejected",
+        tier=WeeklyNewsSourceRankTier.official_filing,
+        source_rank=1,
+        source_use_policy=SourceUsePolicy.rejected,
+        allowlist_status=SourceAllowlistStatus.rejected,
+    )
+
+    assert source_rank_tier_priority(official.source_rank_tier) < source_rank_tier_priority(allowlisted.source_rank_tier)
+    assert source_policy_allows_weekly_news_selection(official) is True
+    assert source_policy_allows_weekly_news_selection(allowlisted) is True
+    assert source_policy_allows_weekly_news_selection(metadata_only) is False
+    assert source_policy_allows_weekly_news_selection(rejected) is False
