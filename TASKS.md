@@ -1,65 +1,95 @@
 ## Current task
 
-### T-081: Add source snapshot artifact metadata contracts
+### T-082: Add SEC stock source adapter fixture contract
 
 Goal:
-Add dormant source snapshot artifact metadata contracts for raw, parsed, generated, and diagnostics artifacts so future ingestion can reference private object storage safely while preserving rights-tiered source-use policy and no-public-snapshot behavior.
+Add a fixture-backed SEC stock source adapter and parser contract for identity, submissions, selected filing metadata, XBRL company facts, source attribution, freshness, and evidence gaps without live SEC calls, generated-output changes, or broader stock coverage.
 
 Task-scope paragraph:
-This task should add only the dormant metadata boundary needed for future ingestion workers to describe source snapshot artifacts. The contract may define pure Python repository/table metadata, record models, validation helpers, serialization helpers, and an import-only migration metadata revision if strictly needed to keep persistence contracts inspectable. It must not write to object storage, generate signed or public URLs, fetch SEC/issuer/market/news data, route current API/retrieval/generation behavior through snapshots, store unrestricted source text, or add any live database/storage execution path.
+This task should tighten the deterministic SEC stock provider boundary only. It may extend the existing mock provider adapter contract, add narrowly scoped SEC fixture parser helpers, and add compact fixture records needed to represent SEC submissions, filing references, and XBRL company facts for existing deterministic stock fixture coverage. It must remain fixture-only and import-safe. It must not fetch SEC data, add live network or credential paths, broaden supported stock coverage, route public APIs through a live provider, generate new pages or summaries, or change frontend behavior.
 
 Allowed files:
 
-- `backend/repositories/source_snapshots.py`
-- `backend/source_snapshot_repository.py`
-- `backend/repositories/__init__.py`
 - `backend/models.py`
-- `alembic/versions/*source_snapshot*`
-- `tests/unit/test_source_snapshot_repository.py`
+- `backend/providers.py`
+- `backend/provider_adapters/**/*.py`
+- `backend/retrieval.py`
+- `data/retrieval_fixtures.json`
+- `tests/unit/test_provider_adapters.py`
+- `tests/unit/test_retrieval_fixtures.py`
 - `tests/unit/test_source_policy.py`
-- `tests/unit/test_knowledge_pack_repository.py`
 - `tests/unit/test_repo_contract.py`
 - `docs/agent-journal/*.md`
 
 Do not change:
 
 - No frontend files under `apps/web`.
-- No FastAPI route behavior, public endpoint schemas, export behavior, chat behavior, comparison behavior, glossary behavior, generated content, or retrieval behavior.
-- No live database connection, ORM session execution, migration execution, object-storage client, source snapshot write, signed URL generation, SEC/issuer/market/news provider call, LLM call, Cloud Run Job wiring, scheduler, admin auth, rate limiting, or deployment configuration.
-- No source allowlist/source-use expansion, provider licensing change, production dependency addition, environment/secret file change, or runtime cache behavior change.
-- No generated pages, generated chat answers, generated comparisons, generated risk summaries, exports, source drawer behavior, Weekly News Focus behavior, or AI Comprehensive Analysis behavior should read from or write to the new snapshot contract in this task.
+- No FastAPI route behavior, public endpoint schemas, export behavior, chat behavior, comparison behavior, glossary behavior, generated content, source drawer behavior, Weekly News Focus behavior, AI Comprehensive Analysis behavior, or frontend behavior.
+- No live SEC, issuer, market-data, news, storage, database, object-storage, LLM, Cloud Run Job, scheduler, admin auth, rate-limiting, or deployment wiring.
+- No production dependency addition, source allowlist expansion, provider licensing change, environment/secret file change, runtime cache behavior change, top-500 manifest change, or broad stock-universe expansion.
+- No generated pages, generated chat answers, generated comparisons, generated risk summaries, exports, or cacheable generated output for eligible-not-cached, unsupported, out-of-scope, unknown, unavailable, partial, validation-failed, source-policy-blocked, or rejected-source stocks.
+- No raw SEC payloads, raw provider payloads, real API keys, unrestricted source text, hidden prompts, raw model reasoning, raw user text, or secrets in fixtures, diagnostics, logs, docs, or exported data.
 
 Acceptance criteria:
 
-- Add a pure-Python dormant source snapshot artifact repository contract with explicit metadata for artifact ID, asset or comparison scope, ingestion job ID when available, source document/source reference, artifact category, private object URI or storage key, checksum, byte size, content type, retrieval timestamp, created timestamp, source-use policy, permitted operations, freshness/evidence state, and compact diagnostics.
-- Artifact categories cover at least raw source, parsed text, normalized facts input, generated artifact reference, and diagnostics metadata without storing unrestricted content in the contract itself.
-- Private object references must be private by construction: no public URLs, browser-facing storage paths, signed URLs, external fetch URLs as storage locations, or frontend-readable bucket paths.
-- Enforce rights-tier behavior for `full_text_allowed`, `summary_allowed`, `metadata_only`, `link_only`, and `rejected` before any raw or parsed text artifact can be represented.
-- `full_text_allowed` may reference private raw and parsed artifacts when permitted operations allow storage; `summary_allowed` may reference metadata and allowed-excerpt or summary artifacts but not unrestricted raw text; `metadata_only` and `link_only` may reference metadata/checksum/diagnostic artifacts only; `rejected` sources cannot create snapshot artifacts that feed generated output, citations, caches, or exports.
-- Source snapshot records must bind to the same asset, comparison pack, or source reference they claim to support; wrong-asset and wrong-pack bindings are rejected.
-- Snapshot diagnostics store only compact metadata such as sanitized error category, retryability, source-policy reference, checksum, retrieval status, and timestamps.
-- Diagnostics and records must not store or expose secrets, raw provider payloads, raw article text for restricted tiers, raw user text, hidden prompts, raw model reasoning, unrestricted source excerpts, or provider credentials.
-- Generated-output availability remains blocked for unsupported, out-of-scope, unknown, unavailable, unapproved pending-ingestion, validation-failed, source-policy-blocked, and rejected-source records.
-- The contract integrates with existing source allowlist/source-policy helpers and persisted knowledge-pack metadata only through dormant helpers or tests; no current runtime path should depend on the new contract.
-- Any Alembic addition is import-only and inspectable, and must not require executing a migration or opening a database connection during tests.
-- Tests cover metadata/table contract shape, rights-tier storage rules, private URI validation, same-asset/source binding, checksum metadata, redacted diagnostics, generated-output blocking, import-time no-live-storage/no-network/no-database behavior, and fixture/source-policy preservation.
-- Current API, retrieval, generation, chat, comparison, export, glossary, frontend, provider, source-use policy, fixture, and quality-gate behavior remains unchanged outside the dormant snapshot metadata contract.
+- Add or refine fixture-backed SEC adapter records for SEC submissions, selected filing metadata, and XBRL company facts needed by existing supported stock fixture sections, with deterministic request/response behavior and no live network dependency.
+- Normalize compact stock identity fields including ticker, company name, CIK where available, exchange when available, asset type, support state, and top-500/eligible-not-cached boundaries without changing the top-500 manifest or adding broad coverage.
+- Normalize selected SEC filing metadata such as form type, accession or fixture identifier, filing date or report date, source document ID, official SEC publisher/title/URL metadata, retrieved timestamp, and freshness/as-of labels.
+- Normalize selected XBRL company-fact metadata such as field name, period/as-of date when available, unit when available, fact layer, source document IDs, and citation IDs into existing `ProviderResponse` shapes or clearly dormant adapter records.
+- SEC official sources rank ahead of structured market-reference and recent-context sources, use canonical source usage, and preserve official/structured source hierarchy from the PRD/TDS.
+- Enforce same-asset CIK/ticker binding before SEC sources or facts can support generated claims; wrong-ticker, wrong-CIK, wrong-source, and wrong-asset bindings must be rejected or returned as non-generated validation failures.
+- Enforce source-use policy and permitted operations before any SEC source can support generated claims, citations, caches, or exports; rejected or source-policy-blocked sources must not feed generated output.
+- Preserve explicit stale, unavailable, partial, unknown, unsupported, out-of-scope, and eligible-not-cached states. Verified sections may be partial, but missing evidence must be labeled with `partial`, `stale`, `unknown`, `unavailable`, or `insufficient_evidence` instead of invented facts.
+- Keep generated-output flags false for provider adapter responses. This task may prepare evidence and attribution, but it must not create generated pages, chat answers, comparisons, risk summaries, exports, or cacheable generated output.
+- Keep Weekly News Focus and AI Comprehensive Analysis untouched; recent context must not overwrite canonical SEC identity or business facts.
+- Tests cover fixture parsing, SEC submissions and XBRL fact normalization, official source attribution, freshness/evidence-gap states, same-asset CIK/ticker/source binding, source-policy enforcement, generated-output blocking, import-time no-live-network/no-credential behavior, no secret exposure, and preservation of existing retrieval fixture behavior.
+- Current API, retrieval, generation, chat, comparison, export, glossary, frontend, provider-secret, source-use policy, fixture, and quality-gate behavior remains unchanged outside the deterministic SEC fixture adapter contract.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_source_snapshot_repository.py tests/unit/test_source_policy.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_repo_contract.py -q
+python3 -m pytest tests/unit/test_provider_adapters.py tests/unit/test_retrieval_fixtures.py tests/unit/test_source_policy.py tests/unit/test_repo_contract.py -q
 python3 -m pytest tests -q
 python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
-docker compose config
 ```
 
 Iteration budget:
-One agent-loop cycle. If the snapshot metadata contract reveals a need for live object storage clients, signed URL generation, source adapter execution, SEC or ETF parsing, generated-output cache writes, production database readers/writers, route/admin wiring, export changes, or broader public API changes, stop after the dormant metadata boundary and record the follow-up under Backlog instead of expanding scope.
+One agent-loop cycle. If the SEC fixture adapter work reveals a need for live SEC calls, source snapshot writes, production provider execution, database persistence, route/admin wiring, generated-output cache writes, frontend changes, paid-provider licensing review, source allowlist expansion, or broader stock-universe coverage, stop after the deterministic fixture contract and record the follow-up under Backlog instead of expanding scope.
 
 
 ## Completed
+
+### T-081: Add source snapshot artifact metadata contracts
+
+Goal:
+Add dormant source snapshot artifact metadata contracts for raw, parsed, generated, and diagnostics artifacts so future ingestion can reference private object storage safely while preserving rights-tiered source-use policy and no-public-snapshot behavior.
+
+Completed details:
+
+- Implementation commit `355863b feat(T-081): add source snapshot artifact metadata contracts` updated `backend/repositories/source_snapshots.py`, `backend/source_snapshot_repository.py`, `backend/repositories/__init__.py`, `alembic/versions/20260425_0004_source_snapshot_artifact_contracts.py`, `tests/unit/test_source_snapshot_repository.py`, and `docs/agent-journal/20260425T053555Z.md`.
+- Merged branch `agent/T-081-20260425T053555Z` into `main` with local merge commit `611d957 chore(T-081): merge source snapshot artifact metadata contracts`.
+- `backend/repositories/source_snapshots.py` added a dormant pure-Python source snapshot artifact repository contract with explicit metadata rows for `source_snapshot_artifacts` and `source_snapshot_diagnostics`.
+- The contract defines artifact categories including `raw_source`, `parsed_text`, `normalized_facts_input`, `generated_artifact_reference`, `diagnostics_metadata`, metadata, checksum metadata, allowed-excerpt, and summary records.
+- Source snapshot artifacts record private object URI or storage key metadata, checksum, byte size, content type, retrieved and created timestamps, source-use policy, allowlist status, source quality, permitted operations, freshness/evidence state, generated-output eligibility flags, and compact diagnostics without storing unrestricted raw text in the contract.
+- Validation enforces private-by-construction storage references by rejecting public URLs, signed URLs, frontend-readable storage paths, and external fetch URLs as storage locations.
+- Validation enforces rights-tier behavior for `full_text_allowed`, `summary_allowed`, `metadata_only`, `link_only`, and `rejected` sources before raw, parsed, metadata, summary, allowed-excerpt, checksum, diagnostics, or generated-artifact-reference records can be represented.
+- Validation rejects wrong-asset and wrong-comparison-pack bindings, blocks rejected sources, blocks generated-output availability for unsupported or policy-blocked states, and keeps diagnostics limited to compact sanitized metadata.
+- `backend/source_snapshot_repository.py` re-exports the source snapshot repository boundary, row models, categories, validation helpers, serialization helpers, metadata helper, and contract error for future ingestion integration.
+- `backend/repositories/__init__.py` exposes the source snapshot artifact repository contract alongside the existing dormant repository contracts.
+- The Alembic revision `20260425_0004_source_snapshot_artifact_contracts.py` is importable and limited to source snapshot artifact and diagnostic contract tables; the journal records that it was not executed against a database.
+- `tests/unit/test_source_snapshot_repository.py` covers metadata/table shape, required artifact categories, migration importability, rights-tier storage rules, private reference validation, wrong-asset and wrong-pack rejection, sanitized diagnostics, generated-output blocking, repository validation/persistence behavior, serialization, and import-time no-live-storage/no-network/no-database behavior.
+- The journal records that the task did not add a live object-storage client, signed URL generation, provider fetch, migration execution, route wiring, retrieval wiring, generated-output cache write, or export behavior.
+- `docs/agent-journal/20260425T053555Z.md` records these checks: `python3 -m pytest tests/unit/test_source_snapshot_repository.py tests/unit/test_source_policy.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_repo_contract.py -q` passed with 32 tests; `python3 -m pytest tests -q` passed with 258 tests; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed; `docker compose config` passed.
+- Remaining risks from the journal:
+  - The source snapshot contract is intentionally dormant and metadata-only; no live object-storage client, signed URL generation, provider fetch, migration execution, route wiring, retrieval wiring, generated-output cache write, or export behavior was added.
+  - The Alembic revision is importable and inspectable, but it was not executed against a database.
+  - Future live ingestion work still needs separate object-storage, authorization, source-policy, persistence execution, and route/admin contracts before any production snapshot path is enabled.
+
+Completion commits:
+
+- `355863b feat(T-081): add source snapshot artifact metadata contracts`
+- `611d957 chore(T-081): merge source snapshot artifact metadata contracts`
 
 ### T-080: Add deterministic ingestion worker execution contract
 
@@ -2155,28 +2185,6 @@ Completion commits:
 
 ## Backlog
 
-### T-082: Add SEC stock source adapter fixture contract
-
-Goal:
-Add a fixture-backed SEC stock source adapter and parser contract for identity, filings, company facts, source attribution, freshness, and evidence gaps without live SEC calls, generated-output changes, or broader stock coverage.
-
-Acceptance criteria:
-
-- Add adapter interfaces and deterministic fixture responses for SEC submissions, selected filing metadata, and XBRL company facts needed by existing stock knowledge-pack sections.
-- Parse and normalize compact stock identity, business/filing references, financial fact metadata, source attribution, freshness labels, and evidence gaps into existing backend contract shapes or new dormant adapter records.
-- Enforce same-asset CIK/ticker binding and source-use policy before any source can support generated claims.
-- Keep top-500 manifest behavior unchanged and do not generate pages, chat answers, comparisons, or risk summaries for eligible-not-cached, unsupported, out-of-scope, unknown, or unavailable stocks.
-- Add tests for fixture parsing, stale/unavailable/partial handling, same-asset source binding, source policy enforcement, no live network imports, and no secret exposure.
-
-Required checks:
-
-```bash
-python3 -m pytest tests/unit/test_provider_adapters.py tests/unit/test_retrieval_fixtures.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-```
-
 ### T-083: Add ETF issuer and holdings source adapter fixture contracts
 
 Goal:
@@ -2232,8 +2240,9 @@ Operational defaults for backend roadmap tasks:
 - T-078 routed retrieval through persisted packs with deterministic fixture fallback. It is completed and must not be reintroduced as runnable backlog.
 - T-079 established the dormant persisted ingestion job ledger contract. It is completed and must not be reintroduced as runnable backlog.
 - T-080 established the deterministic ingestion worker execution contract on top of injected ledger records. It is completed and must not be reintroduced as runnable backlog.
-- T-081 is the current promoted task and should add only dormant source snapshot artifact metadata contracts without live storage, provider, route, or generated-output wiring.
-- T-082 through T-084 are prepared backlog tasks promoted from the roadmap in a safe order.
+- T-081 established dormant source snapshot artifact metadata contracts. It is completed and must not be reintroduced as runnable backlog.
+- T-082 is the current promoted task and should add only fixture-backed SEC stock source adapter/parser contracts without live SEC calls, route wiring, generated-output changes, or broader stock coverage.
+- T-083 through T-084 are prepared backlog tasks promoted from the roadmap in a safe order.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted backend task should run the relevant EVALS.md backend checks: `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, and `bash scripts/run_quality_gate.sh`.
 
@@ -2246,8 +2255,8 @@ Roadmap integration tracker:
 | Persisted-pack-first retrieval with fixture fallback | Completed | T-078 |
 | Ingestion job ledger | Completed | T-079 |
 | Deterministic ingestion worker execution path | Completed | T-080 |
-| Source snapshot storage metadata | Promoted | T-081 |
-| SEC stock source adapter/parser | Backlog | T-082 |
+| Source snapshot storage metadata | Completed | T-081 |
+| SEC stock source adapter/parser | Promoted | T-082 |
 | ETF issuer, holdings, prospectus, and exposure adapters | Backlog | T-083 |
 | Generated-output cache and freshness hashes | Backlog | T-084 |
 | Route overview, comparison, and chat generation through persisted packs | Roadmap only | Not yet promoted |
