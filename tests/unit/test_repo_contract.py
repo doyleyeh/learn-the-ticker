@@ -399,7 +399,7 @@ def test_backend_mvp_runtime_gap_audit_tracks_required_areas_without_runtime_wir
         assert forbidden.lower() not in audit_lower
 
 
-def test_tasks_general_mvp_roadmap_marks_t107_current_and_next_backlog():
+def test_tasks_general_mvp_roadmap_marks_t108_current_and_next_backlog():
     tasks = read_file("TASKS.md")
     current_task = tasks.split("## Current task", 1)[1].split("## Completed", 1)[0]
     backlog = tasks.split("## Backlog", 1)[1].split("## General MVP Roadmap", 1)[0]
@@ -408,10 +408,9 @@ def test_tasks_general_mvp_roadmap_marks_t107_current_and_next_backlog():
     assert "## MVP Backend Roadmap" not in tasks
     assert "No backlog tasks are currently prepared" not in backlog
     assert "General MVP alignment:" in current_task
-    assert "T-107 persists selected and suppressed Weekly News Focus event evidence" in current_task
+    assert "T-108 activates deterministic generated-output cache writes and freshness invalidation" in current_task
 
     for task_marker in [
-        "### T-108: Activate generated-output cache writes and freshness invalidation for validated outputs",
         "### T-109: Wire frontend search and dynamic asset pages to backend APIs",
     ]:
         assert task_marker in backlog, f"Backlog should include {task_marker}"
@@ -423,8 +422,9 @@ def test_tasks_general_mvp_roadmap_marks_t107_current_and_next_backlog():
     assert "T-103 established mocked SEC EDGAR stock golden-path acquisition" in roadmap
     assert "T-104 established mocked official ETF issuer golden-path acquisition" in roadmap
     assert "T-106 established deterministic normalized knowledge-pack writes from acquisition outputs" in roadmap
-    assert "T-107 is the current promoted task for deterministic persisted Weekly News Focus event evidence" in roadmap
-    assert "T-108 and T-109 are the next runnable golden-path tasks" in roadmap
+    assert "T-107 established deterministic persisted Weekly News Focus event evidence for golden assets" in roadmap
+    assert "T-108 is the current promoted task for generated-output cache writes and freshness invalidation" in roadmap
+    assert "T-109 is the next runnable golden-path task for frontend API-backed rendering" in roadmap
     assert "| Provider source-use/export enforcement hardening | Completed | T-099 |" in roadmap
     assert "| Backend fresh-data MVP runtime gap tracker | Completed | T-100 |" in roadmap
     assert "| Configured persisted-reader route wiring | Completed | T-101 |" in roadmap
@@ -433,8 +433,8 @@ def test_tasks_general_mvp_roadmap_marks_t107_current_and_next_backlog():
     assert "| Official ETF issuer golden-path acquisition | Completed | T-104 |" in roadmap
     assert "| Source snapshot and parsed acquisition artifact persistence | Completed | T-105 |" in roadmap
     assert "| Normalized knowledge-pack writes from ingestion | Completed | T-106 |" in roadmap
-    assert "| Weekly News Focus official-source event evidence persistence | Current | T-107 |" in roadmap
-    assert "| Generated-output cache writes and invalidation | Backlog | T-108 |" in roadmap
+    assert "| Weekly News Focus official-source event evidence persistence | Completed | T-107 |" in roadmap
+    assert "| Generated-output cache writes and invalidation | Current | T-108 |" in roadmap
     assert "| Frontend API-backed search, pending states, and asset rendering | Backlog | T-109 |" in roadmap
     assert "comparison, grounded chat, source drawer, citation chips, freshness labels, glossary context" in roadmap
 

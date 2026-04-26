@@ -43,8 +43,10 @@ from backend.repositories.generated_outputs import (
     GeneratedOutputCacheContractError,
     GeneratedOutputCacheRepository,
     GeneratedOutputCacheRepositoryRecords,
+    InMemoryGeneratedOutputCacheRepository,
     build_generated_output_cache_records,
     generated_output_cache_repository_metadata,
+    persist_generated_output_cache_records,
     validate_generated_output_cache_records,
 )
 from backend.repositories.chat_sessions import (
@@ -121,6 +123,7 @@ __all__ = [
     "GeneratedOutputCacheContractError",
     "GeneratedOutputCacheRepository",
     "GeneratedOutputCacheRepositoryRecords",
+    "InMemoryGeneratedOutputCacheRepository",
     "AccountlessChatSessionContractError",
     "ChatSessionRepository",
     "ChatSessionRepositoryRecords",
@@ -138,6 +141,7 @@ __all__ = [
     "build_trust_metric_repository_records_from_payloads",
     "classify_ingestion_scope",
     "generated_output_cache_repository_metadata",
+    "persist_generated_output_cache_records",
     "chat_session_repository_metadata",
     "trust_metric_repository_metadata",
     "weekly_news_event_evidence_repository_metadata",

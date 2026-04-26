@@ -20,6 +20,7 @@ from backend.chat import (
 from backend.citations import CitationEvidence, CitationValidationStatus
 from backend.generated_output_cache_repository import (
     GeneratedOutputArtifactCategory,
+    InMemoryGeneratedOutputCacheRepository,
     build_generated_output_cache_records,
 )
 from backend.knowledge_pack_repository import AssetKnowledgePackRepository
@@ -114,6 +115,24 @@ def test_persisted_chat_read_prefers_valid_same_asset_records_when_supplied():
     assert read.diagnostics == ("chat:persisted_hit",)
     assert read.chat_response.model_dump(mode="json") == default.model_dump(mode="json")
     assert generated.model_dump(mode="json") == default.model_dump(mode="json")
+
+
+def test_valid_chat_generation_writes_safe_answer_cache_metadata_and_blocks_advice():
+    writer = InMemoryGeneratedOutputCacheRepository()
+    default = generate_asset_chat("VOO", "What does it hold?")
+    generated = generate_asset_chat("VOO", "What does it hold?", generated_output_cache_writer=writer)
+    advice = generate_asset_chat("VOO", "Should I buy VOO?", generated_output_cache_writer=writer)
+    records = writer.read_chat_answer_records("VOO")
+
+    assert generated.model_dump(mode="json") == default.model_dump(mode="json")
+    assert advice.safety_classification is SafetyClassification.personalized_advice_redirect
+    assert records is not None
+    envelope = records.envelopes[0]
+    assert envelope.artifact_category == GeneratedOutputArtifactCategory.grounded_chat_answer_artifact.value
+    assert envelope.cache_scope == CacheScope.chat.value
+    assert envelope.stores_raw_user_text is False
+    assert envelope.stores_chat_transcript is False
+    assert set(envelope.citation_ids) <= {citation for row in records.source_checksums for citation in row.citation_ids}
 
 
 def test_default_chat_path_remains_fixture_backed_without_persisted_readers():

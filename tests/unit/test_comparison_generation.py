@@ -19,6 +19,7 @@ from backend.cache import (
 )
 from backend.generated_output_cache_repository import (
     GeneratedOutputArtifactCategory,
+    InMemoryGeneratedOutputCacheRepository,
     build_generated_output_cache_records,
 )
 from backend.models import AssetStatus, CacheEntryKind, CacheKeyMetadata, CacheScope, CompareResponse, FreshnessState, SourceDocument, SourceUsePolicy
@@ -178,6 +179,23 @@ def test_persisted_comparison_read_prefers_valid_same_pack_records_when_supplied
     assert read.diagnostics == ("comparison:persisted_hit",)
     assert "prompt" not in " ".join(read.diagnostics).lower()
     assert "secret" not in " ".join(read.diagnostics).lower()
+
+
+def test_valid_comparison_generation_writes_same_pack_cache_metadata_when_configured():
+    writer = InMemoryGeneratedOutputCacheRepository()
+    default = generate_comparison("VOO", "QQQ")
+    generated = generate_comparison("VOO", "QQQ", generated_output_cache_writer=writer)
+    records = writer.read_comparison_records("VOO", "QQQ")
+
+    assert generated.model_dump(mode="json") == default.model_dump(mode="json")
+    assert records is not None
+    envelope = records.envelopes[0]
+    assert envelope.artifact_category == GeneratedOutputArtifactCategory.comparison_output.value
+    assert envelope.comparison_left_ticker == "VOO"
+    assert envelope.comparison_right_ticker == "QQQ"
+    assert envelope.asset_ticker is None
+    assert envelope.cacheable is True
+    assert set(envelope.citation_ids) <= {citation for row in records.source_checksums for citation in row.citation_ids}
 
 
 def test_default_comparison_path_remains_fixture_backed_without_persisted_readers():

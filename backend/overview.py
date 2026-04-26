@@ -11,14 +11,13 @@ from backend.citations import (
     EvidenceKind,
     validate_claims,
 )
-from backend.cache import (
-    build_knowledge_pack_freshness_input,
-    compute_knowledge_pack_freshness_hash,
-)
+from backend.cache import build_knowledge_pack_freshness_input, compute_knowledge_pack_freshness_hash
 from backend.generated_output_cache_repository import (
     GeneratedOutputArtifactCategory,
     GeneratedOutputCacheContractError,
     GeneratedOutputCacheRepositoryRecords,
+    build_deterministic_generated_output_cache_records,
+    persist_generated_output_cache_records,
     validate_generated_output_cache_records,
 )
 from backend.models import (
@@ -143,6 +142,7 @@ def generate_asset_overview(
     *,
     persisted_pack_reader: KnowledgePackRecordReader | Any | None = None,
     generated_output_cache_reader: GeneratedOutputCacheRecordReader | Any | None = None,
+    generated_output_cache_writer: Any | None = None,
     persisted_weekly_news_reader: WeeklyNewsEventEvidenceRecordReader | Any | None = None,
 ) -> OverviewResponse:
     """Build an OverviewResponse-compatible payload from the local retrieval pack."""
@@ -155,10 +155,13 @@ def generate_asset_overview(
     if persisted.found and persisted.overview is not None:
         return persisted.overview
 
-    return generate_overview_from_pack(
-        build_asset_knowledge_pack(ticker),
+    pack = build_asset_knowledge_pack(ticker)
+    overview = generate_overview_from_pack(
+        pack,
         persisted_weekly_news_reader=persisted_weekly_news_reader,
     )
+    _maybe_write_overview_generated_output_cache(overview, pack, generated_output_cache_writer)
+    return overview
 
 
 def read_persisted_overview_response(
@@ -606,6 +609,63 @@ def validate_overview_response(overview: OverviewResponse, pack: AssetKnowledgeP
     ]
     claims.extend(_section_validation_claims(overview))
     return validate_claims(claims, evidence, CitationValidationContext(allowed_asset_tickers=[pack.asset.ticker]))
+
+
+def _maybe_write_overview_generated_output_cache(
+    overview: OverviewResponse,
+    pack: AssetKnowledgePack,
+    writer: Any | None,
+) -> None:
+    if writer is None or not overview.asset.supported:
+        return
+    try:
+        report = validate_overview_response(overview, pack)
+        if not report.valid or find_forbidden_output_phrases(str(overview.model_dump(mode="json"))):
+            return
+        source_ids = {source.source_document_id for source in overview.source_documents}
+        citations_by_source: dict[str, list[str]] = {}
+        for citation in overview.citations:
+            citations_by_source.setdefault(citation.source_document_id, []).append(citation.citation_id)
+        section_labels = [
+            SectionFreshnessInput(
+                section_id=item.section_id,
+                freshness_state=item.displayed_freshness_state,
+                evidence_state=item.displayed_evidence_state.value,
+                as_of_date=item.displayed_as_of_date,
+                retrieved_at=item.displayed_retrieved_at,
+            )
+            for item in overview.section_freshness_validation
+        ]
+        knowledge_input = build_knowledge_pack_freshness_input(pack, section_freshness_labels=section_labels)
+        knowledge_input = knowledge_input.model_copy(
+            update={
+                "source_checksums": [
+                    checksum.model_copy(
+                        update={"citation_ids": sorted(citations_by_source.get(checksum.source_document_id, []))}
+                    )
+                    for checksum in knowledge_input.source_checksums
+                    if checksum.source_document_id in source_ids
+                ]
+            }
+        )
+        records = build_deterministic_generated_output_cache_records(
+            cache_entry_id=f"generated-output-{overview.asset.ticker.lower()}-overview",
+            output_identity=f"asset:{overview.asset.ticker}",
+            mode_or_output_type="beginner-overview",
+            artifact_category=GeneratedOutputArtifactCategory.asset_overview_section,
+            entry_kind=CacheEntryKind.asset_page,
+            scope=CacheScope.asset,
+            schema_version="asset-page-v1",
+            prompt_version="asset-page-prompt-v1",
+            knowledge_input=knowledge_input,
+            citation_ids=[citation.citation_id for citation in overview.citations],
+            created_at=overview.freshness.page_last_updated_at,
+            ttl_seconds=604800,
+            asset_ticker=overview.asset.ticker,
+        )
+        persist_generated_output_cache_records(writer, records)
+    except Exception:
+        return
 
 
 def validate_generated_overview_claims(

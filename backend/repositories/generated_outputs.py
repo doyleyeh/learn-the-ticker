@@ -372,6 +372,96 @@ class GeneratedOutputCacheRepository:
         return validated
 
 
+@dataclass
+class InMemoryGeneratedOutputCacheRepository:
+    records_by_entry_id: dict[str, GeneratedOutputCacheRepositoryRecords] = Field(default_factory=dict)
+    records_by_asset_category: dict[tuple[str, str], GeneratedOutputCacheRepositoryRecords] = Field(default_factory=dict)
+    records_by_comparison_category: dict[tuple[str, str, str], GeneratedOutputCacheRepositoryRecords] = Field(default_factory=dict)
+
+    def __init__(self) -> None:
+        self.records_by_entry_id = {}
+        self.records_by_asset_category = {}
+        self.records_by_comparison_category = {}
+
+    def persist(self, records: GeneratedOutputCacheRepositoryRecords) -> GeneratedOutputCacheRepositoryRecords:
+        validated = validate_generated_output_cache_records(records).model_copy(deep=True)
+        envelope = validated.envelopes[0]
+        self.records_by_entry_id[envelope.cache_entry_id] = validated
+        if envelope.scope_kind == GeneratedOutputScopeKind.asset.value and envelope.asset_ticker:
+            self.records_by_asset_category[(envelope.asset_ticker, envelope.artifact_category)] = validated
+        if envelope.scope_kind == GeneratedOutputScopeKind.comparison.value:
+            self.records_by_comparison_category[
+                (envelope.comparison_left_ticker or "", envelope.comparison_right_ticker or "", envelope.artifact_category)
+            ] = validated
+        return validated.model_copy(deep=True)
+
+    def read_asset_overview_records(self, ticker: str) -> GeneratedOutputCacheRepositoryRecords | None:
+        return self._asset_record(ticker, GeneratedOutputArtifactCategory.asset_overview_section)
+
+    def read_chat_answer_records(self, ticker: str) -> GeneratedOutputCacheRepositoryRecords | None:
+        return self._asset_record(ticker, GeneratedOutputArtifactCategory.grounded_chat_answer_artifact)
+
+    def read_export_records(self, ticker: str) -> GeneratedOutputCacheRepositoryRecords | None:
+        return self._asset_record(ticker, GeneratedOutputArtifactCategory.export_payload_metadata)
+
+    def read_source_list_records(self, ticker: str) -> GeneratedOutputCacheRepositoryRecords | None:
+        return self._asset_record(ticker, GeneratedOutputArtifactCategory.source_list_export_metadata)
+
+    def read_comparison_records(self, left_ticker: str, right_ticker: str) -> GeneratedOutputCacheRepositoryRecords | None:
+        return self._comparison_record(left_ticker, right_ticker, GeneratedOutputArtifactCategory.comparison_output)
+
+    def read_generated_output_cache_records(self, *args: str) -> GeneratedOutputCacheRepositoryRecords | None:
+        if len(args) == 1:
+            return self.read_asset_overview_records(args[0]) or self.read_chat_answer_records(args[0])
+        if len(args) == 2:
+            return self.read_comparison_records(args[0], args[1])
+        raise GeneratedOutputCacheContractError("In-memory generated-output cache reads require one asset or two comparison tickers.")
+
+    def _asset_record(
+        self,
+        ticker: str,
+        category: GeneratedOutputArtifactCategory,
+    ) -> GeneratedOutputCacheRepositoryRecords | None:
+        records = self.records_by_asset_category.get((ticker.strip().upper(), category.value))
+        return records.model_copy(deep=True) if records else None
+
+    def _comparison_record(
+        self,
+        left_ticker: str,
+        right_ticker: str,
+        category: GeneratedOutputArtifactCategory,
+    ) -> GeneratedOutputCacheRepositoryRecords | None:
+        records = self.records_by_comparison_category.get(
+            (left_ticker.strip().upper(), right_ticker.strip().upper(), category.value)
+        )
+        return records.model_copy(deep=True) if records else None
+
+
+def persist_generated_output_cache_records(
+    writer: Any,
+    records: GeneratedOutputCacheRepositoryRecords,
+) -> GeneratedOutputCacheRepositoryRecords:
+    validated = validate_generated_output_cache_records(records)
+    if hasattr(writer, "persist"):
+        persisted = writer.persist(validated)
+    elif hasattr(writer, "write_generated_output_cache_records"):
+        persisted = writer.write_generated_output_cache_records(validated)
+    elif hasattr(writer, "save"):
+        persisted = writer.save(validated)
+    else:
+        raise GeneratedOutputCacheContractError(
+            "Injected generated-output cache writer must expose persist(records), "
+            "write_generated_output_cache_records(records), or save(records)."
+        )
+    if persisted is None:
+        return validated
+    return validate_generated_output_cache_records(
+        persisted
+        if isinstance(persisted, GeneratedOutputCacheRepositoryRecords)
+        else GeneratedOutputCacheRepositoryRecords.model_validate(persisted)
+    )
+
+
 def build_generated_output_cache_records(
     *,
     cache_entry_id: str,
@@ -685,10 +775,16 @@ def _validate_sources(source_rows: list[GeneratedOutputSourceChecksumRow], envel
 
 def _validate_freshness_labels(rows: _RowsForEntry, envelope: GeneratedOutputCacheEnvelopeRow) -> None:
     source_states = set(envelope.source_freshness_states.values())
-    if FreshnessState.unknown.value in source_states or FreshnessState.unavailable.value in source_states:
-        raise GeneratedOutputCacheContractError("Unknown or unavailable source freshness blocks generated-output cacheability.")
     section_states = set(envelope.section_freshness_labels.values())
     evidence_states = set(envelope.evidence_state_labels.values())
+    if FreshnessState.unknown.value in source_states and (
+        FreshnessState.unknown.value not in section_states and "unknown" not in evidence_states
+    ):
+        raise GeneratedOutputCacheContractError("Unknown or unavailable source freshness requires explicit section or evidence labels.")
+    if FreshnessState.unavailable.value in source_states and (
+        FreshnessState.unavailable.value not in section_states and "unavailable" not in evidence_states
+    ):
+        raise GeneratedOutputCacheContractError("Unknown or unavailable source freshness requires explicit section or evidence labels.")
     if FreshnessState.stale.value in source_states and FreshnessState.stale.value not in section_states:
         raise GeneratedOutputCacheContractError("Stale inputs must be preserved with explicit section freshness labels.")
     if envelope.evidence_state == "partial" and "partial" not in evidence_states:

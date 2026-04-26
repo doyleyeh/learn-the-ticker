@@ -15,6 +15,7 @@ from backend.ingestion_worker import (
     IngestionWorkerFixtureOutcome,
     execute_ingestion_worker_record,
 )
+from backend.generated_output_cache_repository import InMemoryGeneratedOutputCacheRepository
 from backend.models import (
     EvidenceState,
     FreshnessState,
@@ -24,6 +25,7 @@ from backend.models import (
     SourceUsePolicy,
     WeeklyNewsEventType,
 )
+from backend.overview import generate_asset_overview
 from backend.provider_adapters.etf_issuer import build_etf_issuer_acquisition_result
 from backend.provider_adapters.sec_stock import build_sec_stock_acquisition_result
 from backend.providers import fetch_mock_provider_response, mock_etf_issuer_adapter, mock_sec_stock_adapter
@@ -613,6 +615,68 @@ def test_refresh_and_source_revalidation_categories_preserve_future_state_space_
     assert revalidation_result.summary.terminal_state == "stale"
     assert refresh_result.summary.generated_output_available is True
     assert revalidation_result.summary.generated_output_available is True
+
+
+def test_worker_can_persist_generated_output_cache_metadata_with_mocked_writer():
+    generated_writer = InMemoryGeneratedOutputCacheRepository()
+    generate_asset_overview("VOO", generated_output_cache_writer=generated_writer)
+    generated_records = generated_writer.read_asset_overview_records("VOO")
+    assert generated_records is not None
+
+    records = serialize_ingestion_job_response(get_pre_cache_job_status("pre-cache-launch-voo"))
+    records = records.model_copy(update={"ledger": records.ledger.model_copy(update={"job_state": "pending"})})
+    ledger = InMemoryIngestionWorkerLedger.from_records([records])
+    cache_repository = InMemoryGeneratedOutputCacheRepository()
+    worker = DeterministicIngestionWorker(
+        ledger_boundary=ledger,
+        generated_output_cache_repository=cache_repository,
+        fixture_outcomes={
+            "pre-cache-launch-voo": IngestionWorkerFixtureOutcome(
+                terminal_state=IngestionLedgerJobState.succeeded,
+                generated_output_cache_records=generated_records,
+            )
+        },
+    )
+
+    result = worker.execute("pre-cache-launch-voo")
+    persisted_cache = cache_repository.read_asset_overview_records("VOO")
+
+    assert result.summary.transitions == ["pending", "running", "succeeded"]
+    assert result.summary.generated_output_cacheable is True
+    assert persisted_cache is not None
+    assert result.records.ledger.compact_metadata["generated_output_cache_persistence_configured"] is True
+    assert result.records.ledger.compact_metadata["generated_output_cache_entry_count"] == 1
+
+
+def test_worker_generated_output_cache_writer_failure_fails_closed():
+    generated_writer = InMemoryGeneratedOutputCacheRepository()
+    generate_asset_overview("VOO", generated_output_cache_writer=generated_writer)
+    generated_records = generated_writer.read_asset_overview_records("VOO")
+    assert generated_records is not None
+
+    class FailingGeneratedOutputCacheWriter:
+        def persist(self, records):
+            raise RuntimeError("controlled generated-output cache failure")
+
+    records = serialize_ingestion_job_response(get_pre_cache_job_status("pre-cache-launch-voo"))
+    records = records.model_copy(update={"ledger": records.ledger.model_copy(update={"job_state": "pending"})})
+    worker = DeterministicIngestionWorker(
+        ledger_boundary=InMemoryIngestionWorkerLedger.from_records([records]),
+        generated_output_cache_repository=FailingGeneratedOutputCacheWriter(),
+        fixture_outcomes={
+            "pre-cache-launch-voo": IngestionWorkerFixtureOutcome(
+                terminal_state=IngestionLedgerJobState.succeeded,
+                generated_output_cache_records=generated_records,
+            )
+        },
+    )
+
+    result = worker.execute("pre-cache-launch-voo")
+
+    assert result.summary.transitions == ["pending", "running", "failed"]
+    assert result.summary.generated_output_available is False
+    assert result.records.diagnostics[0].error_code == "generated_output_cache_persistence_failed"
+    assert result.records.diagnostics[0].stores_raw_source_text is False
 
 
 def test_ingestion_worker_import_surface_has_no_live_database_or_provider_markers():

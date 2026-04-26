@@ -53,6 +53,8 @@ from backend.generated_output_cache_repository import (
     GeneratedOutputArtifactCategory,
     GeneratedOutputCacheContractError,
     GeneratedOutputCacheRepositoryRecords,
+    build_deterministic_generated_output_cache_records,
+    persist_generated_output_cache_records,
     validate_generated_output_cache_records,
 )
 from backend.retrieval import (
@@ -141,6 +143,7 @@ def generate_comparison(
     *,
     persisted_pack_reader: KnowledgePackRecordReader | Any | None = None,
     generated_output_cache_reader: GeneratedOutputComparisonCacheRecordReader | Any | None = None,
+    generated_output_cache_writer: Any | None = None,
 ) -> CompareResponse:
     """Build a CompareResponse-compatible payload from local comparison fixtures."""
 
@@ -168,7 +171,9 @@ def generate_comparison(
             "No deterministic local comparison knowledge pack is available for these tickers.",
         )
 
-    return generate_comparison_from_pack(pack)
+    comparison = generate_comparison_from_pack(pack)
+    _maybe_write_comparison_generated_output_cache(comparison, pack, generated_output_cache_writer)
+    return comparison
 
 
 def read_persisted_comparison_response(
@@ -681,6 +686,58 @@ def validate_comparison_response(
     if not report.valid:
         return report
     return _validate_comparison_source_documents(comparison, pack)
+
+
+def _maybe_write_comparison_generated_output_cache(
+    comparison: CompareResponse,
+    pack: ComparisonKnowledgePack,
+    writer: Any | None,
+) -> None:
+    if writer is None or comparison.state.status is not AssetStatus.supported:
+        return
+    try:
+        report = validate_comparison_response(comparison, pack)
+        if not report.valid or find_forbidden_output_phrases(str(comparison.model_dump(mode="json"))):
+            return
+        source_ids = {source.source_document_id for source in comparison.source_documents}
+        citations_by_source: dict[str, list[str]] = {}
+        for citation in comparison.citations:
+            citations_by_source.setdefault(citation.source_document_id, []).append(citation.citation_id)
+        knowledge_input = build_comparison_pack_freshness_input(pack)
+        knowledge_input = knowledge_input.model_copy(
+            update={
+                "source_checksums": [
+                    checksum.model_copy(
+                        update={"citation_ids": sorted(citations_by_source.get(checksum.source_document_id, []))}
+                    )
+                    for checksum in knowledge_input.source_checksums
+                    if checksum.source_document_id in source_ids
+                ]
+            }
+        )
+        records = build_deterministic_generated_output_cache_records(
+            cache_entry_id=(
+                f"generated-output-{comparison.left_asset.ticker.lower()}-"
+                f"{comparison.right_asset.ticker.lower()}-comparison"
+            ),
+            output_identity=f"comparison:{comparison.left_asset.ticker}-to-{comparison.right_asset.ticker}",
+            mode_or_output_type="beginner-comparison",
+            artifact_category=GeneratedOutputArtifactCategory.comparison_output,
+            entry_kind=CacheEntryKind.comparison,
+            scope=CacheScope.comparison,
+            schema_version="comparison-v1",
+            prompt_version="comparison-prompt-v1",
+            knowledge_input=knowledge_input,
+            citation_ids=[citation.citation_id for citation in comparison.citations],
+            created_at="2026-04-25T18:33:44Z",
+            ttl_seconds=604800,
+            comparison_id=pack.comparison_pack_id,
+            comparison_left_ticker=comparison.left_asset.ticker,
+            comparison_right_ticker=comparison.right_asset.ticker,
+        )
+        persist_generated_output_cache_records(writer, records)
+    except Exception:
+        return
 
 
 def validate_generated_comparison_claims(
