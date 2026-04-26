@@ -28,6 +28,8 @@ from backend.weekly_news import (
 from backend.weekly_news_repository import (
     WEEKLY_NEWS_EVENT_EVIDENCE_REPOSITORY_BOUNDARY,
     WEEKLY_NEWS_FIXTURE_ACQUISITION_BOUNDARY,
+    WEEKLY_NEWS_LIVE_ACQUISITION_READINESS_BOUNDARY,
+    WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_ACQUISITION_BOUNDARY,
     WEEKLY_NEWS_EVENT_EVIDENCE_TABLES,
     WeeklyNewsAIThresholdRow,
     WeeklyNewsDedupeGroupRow,
@@ -44,8 +46,10 @@ from backend.weekly_news_repository import (
     WeeklyNewsValidationStatusRow,
     WeeklyNewsFixtureAcquisitionBoundary,
     InMemoryWeeklyNewsEventEvidenceRepository,
+    acquire_weekly_news_event_evidence_from_official_sources,
     acquire_weekly_news_event_evidence_from_fixtures,
     build_market_week_window_row,
+    evaluate_weekly_news_live_acquisition_readiness,
     source_rank_tier_priority,
     validate_weekly_news_event_evidence_records,
     weekly_news_event_evidence_repository_metadata,
@@ -499,6 +503,183 @@ def test_fixture_acquisition_boundary_supports_empty_limited_and_ai_threshold_st
     assert one_item.evidence_states[0].limited_state_valid is True
     assert one_item.ai_thresholds[0].analysis_allowed is False
     assert one_item.ai_thresholds[0].high_signal_selected_item_count == 1
+
+
+def test_weekly_news_live_acquisition_readiness_is_explicit_and_sanitized():
+    candidates = [_repository_candidate("official_filing")]
+
+    blocked = evaluate_weekly_news_live_acquisition_readiness("QQQ", candidates=candidates)
+    ready = evaluate_weekly_news_live_acquisition_readiness(
+        "QQQ",
+        opt_in_enabled=True,
+        official_source_configured=True,
+        rate_limit_ready=True,
+        repository_writer_ready=True,
+        candidates=candidates,
+    )
+    unsupported = evaluate_weekly_news_live_acquisition_readiness(
+        "TQQQ",
+        opt_in_enabled=True,
+        official_source_configured=True,
+        rate_limit_ready=True,
+        repository_writer_ready=True,
+        candidates=[],
+    )
+    invalid_source = evaluate_weekly_news_live_acquisition_readiness(
+        "QQQ",
+        opt_in_enabled=True,
+        official_source_configured=True,
+        rate_limit_ready=True,
+        repository_writer_ready=True,
+        candidates=[_repository_candidate("allowlisted_news", tier=WeeklyNewsSourceRankTier.allowlisted_news, source_rank=20)],
+    )
+
+    assert blocked.boundary == WEEKLY_NEWS_LIVE_ACQUISITION_READINESS_BOUNDARY
+    assert blocked.status == "blocked"
+    assert blocked.can_attempt_live_acquisition is False
+    assert "explicit_live_weekly_news_acquisition_opt_in_missing" in blocked.blocked_reasons
+    assert "weekly_news_evidence_repository_writer_not_ready" in blocked.blocked_reasons
+    assert ready.status == "ready"
+    assert ready.can_attempt_live_acquisition is True
+    assert unsupported.status == "blocked"
+    assert "unsupported_asset" in unsupported.blocked_reasons
+    assert invalid_source.status == "blocked"
+    assert "official_source_use_validation_failed" in invalid_source.blocked_reasons
+
+    serialized = repr(ready.sanitized_diagnostics)
+    for forbidden in ["raw_article", "provider_payload", "raw_user_text", "secret", "https://"]:
+        assert forbidden not in serialized
+
+
+def test_weekly_news_official_source_live_acquisition_uses_mocked_golden_paths_only():
+    candidates = [
+        _repository_candidate("official_filing", tier=WeeklyNewsSourceRankTier.official_filing, source_rank=1),
+        _repository_candidate("investor_relations", tier=WeeklyNewsSourceRankTier.investor_relations_release, source_rank=2),
+        _repository_candidate("duplicate", tier=WeeklyNewsSourceRankTier.investor_relations_release, source_rank=3, duplicate_group_id="investor_relations"),
+        _repository_candidate("promotional", tier=WeeklyNewsSourceRankTier.official_filing, promotional=True),
+        _repository_candidate("metadata_only", tier=WeeklyNewsSourceRankTier.official_filing, source_use_policy=SourceUsePolicy.metadata_only),
+        _repository_candidate("outside_window", tier=WeeklyNewsSourceRankTier.official_filing, event_date="2026-04-01"),
+    ]
+
+    result = acquire_weekly_news_event_evidence_from_official_sources(
+        asset_ticker="QQQ",
+        as_of="2026-04-23",
+        created_at="2026-04-23T12:00:00Z",
+        candidates=candidates,
+        opt_in_enabled=True,
+        official_source_configured=True,
+        rate_limit_ready=True,
+        repository_writer_ready=True,
+    )
+
+    assert result.boundary == WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_ACQUISITION_BOUNDARY
+    assert result.status == "acquired"
+    assert result.readiness.can_attempt_live_acquisition is True
+    assert result.records is not None
+    assert validate_weekly_news_event_evidence_records(result.records) == result.records
+    assert [row.candidate_event_id for row in result.records.selected_events] == ["official_filing", "investor_relations"]
+    assert result.selected_event_count == 2
+    assert result.evidence_limited_state == "limited_verified_set"
+    assert result.ai_analysis_allowed is True
+    assert result.records.evidence_states[0].selected_item_count == 2
+    assert result.records.evidence_states[0].configured_max_item_count == 8
+    assert result.records.ai_thresholds[0].analysis_allowed is True
+    assert result.records.diagnostics[0].compact_metadata["selected_count"] == 2
+    suppressed = {row.candidate_event_id: row.suppression_reason_codes for row in result.records.candidates if row.candidate_decision == "suppressed"}
+    assert "duplicate" in suppressed["duplicate"]
+    assert "promotional" in suppressed["promotional"]
+    assert "source_policy_blocked" in suppressed["metadata_only"]
+    assert "outside_market_week_window" in suppressed["outside_window"]
+    assert "https://" not in repr(result.sanitized_diagnostics).lower()
+
+
+def test_weekly_news_official_source_live_acquisition_covers_aapl_voo_and_qqq_states():
+    cases = {
+        "AAPL": [
+            _repository_candidate("official_filing", tier=WeeklyNewsSourceRankTier.official_filing).model_copy(
+                update={
+                    "asset_ticker": "AAPL",
+                    "source_asset_ticker": "AAPL",
+                    "citation_asset_tickers": {"c_weekly_official_filing": "AAPL"},
+                }
+            )
+        ],
+        "VOO": [
+            _repository_candidate("issuer_announcement", tier=WeeklyNewsSourceRankTier.etf_issuer_announcement).model_copy(
+                update={
+                    "asset_ticker": "VOO",
+                    "source_asset_ticker": "VOO",
+                    "citation_asset_tickers": {"c_weekly_issuer_announcement": "VOO"},
+                    "source_quality": SourceQuality.issuer.value,
+                }
+            ),
+            _repository_candidate("fact_sheet", tier=WeeklyNewsSourceRankTier.fact_sheet_change).model_copy(
+                update={
+                    "asset_ticker": "VOO",
+                    "source_asset_ticker": "VOO",
+                    "citation_asset_tickers": {"c_weekly_fact_sheet": "VOO"},
+                    "source_quality": SourceQuality.issuer.value,
+                }
+            ),
+        ],
+        "QQQ": [
+            _repository_candidate("prospectus", tier=WeeklyNewsSourceRankTier.prospectus_update).model_copy(
+                update={"source_quality": SourceQuality.issuer.value}
+            )
+        ],
+    }
+
+    results = {
+        ticker: acquire_weekly_news_event_evidence_from_official_sources(
+            asset_ticker=ticker,
+            as_of="2026-04-23",
+            created_at="2026-04-23T12:00:00Z",
+            candidates=candidates,
+            opt_in_enabled=True,
+            official_source_configured=True,
+            rate_limit_ready=True,
+            repository_writer_ready=True,
+        )
+        for ticker, candidates in cases.items()
+    }
+
+    assert results["AAPL"].status == "acquired"
+    assert results["AAPL"].selected_event_count == 1
+    assert results["AAPL"].ai_analysis_allowed is False
+    assert results["VOO"].selected_event_count == 2
+    assert results["VOO"].ai_analysis_allowed is True
+    assert results["QQQ"].selected_event_count == 1
+    assert results["QQQ"].evidence_limited_state == "limited_verified_set"
+    assert all(result.records is not None for result in results.values())
+
+
+def test_weekly_news_official_source_live_acquisition_blocks_invalid_checksum_and_missing_opt_in():
+    invalid = _repository_candidate("bad_checksum")
+    invalid.evidence_checksum = "md5:not-allowed"
+
+    blocked = acquire_weekly_news_event_evidence_from_official_sources(
+        asset_ticker="QQQ",
+        as_of="2026-04-23",
+        created_at="2026-04-23T12:00:00Z",
+        candidates=[_repository_candidate("official_filing")],
+    )
+    bad_checksum = acquire_weekly_news_event_evidence_from_official_sources(
+        asset_ticker="QQQ",
+        as_of="2026-04-23",
+        created_at="2026-04-23T12:00:00Z",
+        candidates=[invalid],
+        opt_in_enabled=True,
+        official_source_configured=True,
+        rate_limit_ready=True,
+        repository_writer_ready=True,
+    )
+
+    assert blocked.status == "blocked"
+    assert blocked.records is None
+    assert "explicit_live_weekly_news_acquisition_opt_in_missing" in blocked.readiness.blocked_reasons
+    assert bad_checksum.status == "blocked"
+    assert bad_checksum.records is None
+    assert "official_source_use_validation_failed" in bad_checksum.readiness.blocked_reasons
 
 
 def test_weekly_news_module_does_not_import_live_network_clients():

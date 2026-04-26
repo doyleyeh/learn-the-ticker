@@ -16,6 +16,7 @@ DEFAULT_LOCAL_DURABLE_REPOSITORIES_ENABLED = False
 DEFAULT_LOCAL_DURABLE_REPOSITORY_COMMIT_ON_WRITE = False
 DEFAULT_LIVE_SEC_STOCK_ACQUISITION_ENABLED = False
 DEFAULT_LIVE_ETF_ISSUER_ACQUISITION_ENABLED = False
+DEFAULT_LIVE_WEEKLY_NEWS_ACQUISITION_ENABLED = False
 DEFAULT_LIVE_SOURCE_RATE_LIMIT_READY = False
 DEFAULT_LOCAL_DURABLE_OBJECT_NAMESPACE = "local-private-source-artifacts"
 DEFAULT_OFFLINE_MIGRATION_DATABASE_URL = "postgresql+psycopg://placeholder@localhost:5432/learn_the_ticker"
@@ -24,11 +25,14 @@ LOCAL_DURABLE_DISABLED_REASON = "local_durable_repositories_disabled"
 INVALID_LOCAL_DURABLE_OBJECT_NAMESPACE_REASON = "local_durable_object_namespace_invalid"
 LIVE_SEC_STOCK_ACQUISITION_DISABLED_REASON = "live_sec_stock_acquisition_opt_in_missing"
 LIVE_ETF_ISSUER_ACQUISITION_DISABLED_REASON = "live_etf_issuer_acquisition_opt_in_missing"
+LIVE_WEEKLY_NEWS_ACQUISITION_DISABLED_REASON = "live_weekly_news_acquisition_opt_in_missing"
 LIVE_SEC_SOURCE_CONFIGURATION_MISSING_REASON = "live_sec_source_configuration_missing"
 LIVE_ETF_ISSUER_SOURCE_CONFIGURATION_MISSING_REASON = "live_etf_issuer_source_configuration_missing"
+LIVE_WEEKLY_NEWS_SOURCE_CONFIGURATION_MISSING_REASON = "live_weekly_news_official_source_configuration_missing"
 LIVE_SOURCE_RATE_LIMIT_NOT_READY_REASON = "live_source_rate_limit_not_ready"
 LIVE_SOURCE_SNAPSHOT_WRITER_MISSING_REASON = "live_source_snapshot_writer_missing"
 LIVE_KNOWLEDGE_PACK_WRITER_MISSING_REASON = "live_knowledge_pack_writer_missing"
+LIVE_WEEKLY_NEWS_WRITER_MISSING_REASON = "live_weekly_news_evidence_writer_missing"
 SENSITIVE_QUERY_KEY_MARKERS = ("password", "pass", "token", "secret", "key", "credential")
 _UNSAFE_OBJECT_NAMESPACE_MARKERS = (
     "://",
@@ -86,11 +90,14 @@ class LiveAcquisitionSettings:
     schema_version: str
     sec_stock_enabled: bool
     etf_issuer_enabled: bool
+    weekly_news_enabled: bool
     sec_source_configured: bool
     etf_issuer_source_configured: bool
+    weekly_news_official_source_configured: bool
     rate_limit_ready: bool
     source_snapshot_writer_ready: bool
     knowledge_pack_writer_ready: bool
+    weekly_news_evidence_writer_ready: bool
     generated_output_cache_writer_ready: bool
     missing_reasons: tuple[str, ...] = ()
 
@@ -115,8 +122,17 @@ class LiveAcquisitionSettings:
         )
 
     @property
+    def weekly_news_ready(self) -> bool:
+        return (
+            self.weekly_news_enabled
+            and self.weekly_news_official_source_configured
+            and self.rate_limit_ready
+            and self.weekly_news_evidence_writer_ready
+        )
+
+    @property
     def status(self) -> str:
-        return "configured" if self.sec_stock_ready or self.etf_issuer_ready else "blocked"
+        return "configured" if self.sec_stock_ready or self.etf_issuer_ready or self.weekly_news_ready else "blocked"
 
     @property
     def safe_diagnostics(self) -> dict[str, object]:
@@ -125,11 +141,14 @@ class LiveAcquisitionSettings:
             "status": self.status,
             "sec_stock_enabled": self.sec_stock_enabled,
             "etf_issuer_enabled": self.etf_issuer_enabled,
+            "weekly_news_enabled": self.weekly_news_enabled,
             "sec_source_configured": self.sec_source_configured,
             "etf_issuer_source_configured": self.etf_issuer_source_configured,
+            "weekly_news_official_source_configured": self.weekly_news_official_source_configured,
             "rate_limit_ready": self.rate_limit_ready,
             "source_snapshot_writer_ready": self.source_snapshot_writer_ready,
             "knowledge_pack_writer_ready": self.knowledge_pack_writer_ready,
+            "weekly_news_evidence_writer_ready": self.weekly_news_evidence_writer_ready,
             "generated_output_cache_writer_ready": self.generated_output_cache_writer_ready,
             "missing_reasons": list(self.missing_reasons),
         }
@@ -261,12 +280,28 @@ def build_live_acquisition_settings(env: dict[str, str] | None = None) -> LiveAc
         ),
         DEFAULT_LIVE_ETF_ISSUER_ACQUISITION_ENABLED,
     )
+    weekly_news_enabled = _bool_setting(
+        _first_present(
+            source,
+            "LIVE_WEEKLY_NEWS_ACQUISITION_ENABLED",
+            "WEEKLY_NEWS_LIVE_ACQUISITION_ENABLED",
+        ),
+        DEFAULT_LIVE_WEEKLY_NEWS_ACQUISITION_ENABLED,
+    )
     sec_source_configured = _bool_setting(
         _first_present(source, "LIVE_SEC_SOURCE_CONFIGURED", "SEC_EDGAR_SOURCE_CONFIGURED"),
         False,
     )
     etf_issuer_source_configured = _bool_setting(
         _first_present(source, "LIVE_ETF_ISSUER_SOURCE_CONFIGURED", "ETF_ISSUER_SOURCE_CONFIGURED"),
+        False,
+    )
+    weekly_news_official_source_configured = _bool_setting(
+        _first_present(
+            source,
+            "LIVE_WEEKLY_NEWS_OFFICIAL_SOURCE_CONFIGURED",
+            "WEEKLY_NEWS_OFFICIAL_SOURCE_CONFIGURED",
+        ),
         False,
     )
     rate_limit_ready = _bool_setting(
@@ -281,6 +316,10 @@ def build_live_acquisition_settings(env: dict[str, str] | None = None) -> LiveAc
         _first_present(source, "LIVE_ACQUISITION_KNOWLEDGE_PACK_WRITER_READY"),
         False,
     )
+    weekly_news_evidence_writer_ready = _bool_setting(
+        _first_present(source, "LIVE_ACQUISITION_WEEKLY_NEWS_WRITER_READY"),
+        False,
+    )
     generated_output_cache_writer_ready = _bool_setting(
         _first_present(source, "LIVE_ACQUISITION_GENERATED_OUTPUT_CACHE_WRITER_READY"),
         False,
@@ -290,26 +329,35 @@ def build_live_acquisition_settings(env: dict[str, str] | None = None) -> LiveAc
         missing_reasons.append(LIVE_SEC_STOCK_ACQUISITION_DISABLED_REASON)
     if not etf_issuer_enabled:
         missing_reasons.append(LIVE_ETF_ISSUER_ACQUISITION_DISABLED_REASON)
+    if not weekly_news_enabled:
+        missing_reasons.append(LIVE_WEEKLY_NEWS_ACQUISITION_DISABLED_REASON)
     if sec_stock_enabled and not sec_source_configured:
         missing_reasons.append(LIVE_SEC_SOURCE_CONFIGURATION_MISSING_REASON)
     if etf_issuer_enabled and not etf_issuer_source_configured:
         missing_reasons.append(LIVE_ETF_ISSUER_SOURCE_CONFIGURATION_MISSING_REASON)
-    if (sec_stock_enabled or etf_issuer_enabled) and not rate_limit_ready:
+    if weekly_news_enabled and not weekly_news_official_source_configured:
+        missing_reasons.append(LIVE_WEEKLY_NEWS_SOURCE_CONFIGURATION_MISSING_REASON)
+    if (sec_stock_enabled or etf_issuer_enabled or weekly_news_enabled) and not rate_limit_ready:
         missing_reasons.append(LIVE_SOURCE_RATE_LIMIT_NOT_READY_REASON)
     if (sec_stock_enabled or etf_issuer_enabled) and not source_snapshot_writer_ready:
         missing_reasons.append(LIVE_SOURCE_SNAPSHOT_WRITER_MISSING_REASON)
     if (sec_stock_enabled or etf_issuer_enabled) and not knowledge_pack_writer_ready:
         missing_reasons.append(LIVE_KNOWLEDGE_PACK_WRITER_MISSING_REASON)
+    if weekly_news_enabled and not weekly_news_evidence_writer_ready:
+        missing_reasons.append(LIVE_WEEKLY_NEWS_WRITER_MISSING_REASON)
 
     return LiveAcquisitionSettings(
         schema_version=LIVE_ACQUISITION_SETTINGS_SCHEMA_VERSION,
         sec_stock_enabled=sec_stock_enabled,
         etf_issuer_enabled=etf_issuer_enabled,
+        weekly_news_enabled=weekly_news_enabled,
         sec_source_configured=sec_source_configured,
         etf_issuer_source_configured=etf_issuer_source_configured,
+        weekly_news_official_source_configured=weekly_news_official_source_configured,
         rate_limit_ready=rate_limit_ready,
         source_snapshot_writer_ready=source_snapshot_writer_ready,
         knowledge_pack_writer_ready=knowledge_pack_writer_ready,
+        weekly_news_evidence_writer_ready=weekly_news_evidence_writer_ready,
         generated_output_cache_writer_ready=generated_output_cache_writer_ready,
         missing_reasons=tuple(missing_reasons),
     )
