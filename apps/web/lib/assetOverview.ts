@@ -147,7 +147,7 @@ type BackendOverviewResponse = {
 
 export async function fetchSupportedAssetOverview(
   ticker: string,
-  fallbackAsset: AssetFixture,
+  fallbackAsset?: AssetFixture,
   fetcher: Fetcher = fetch
 ): Promise<AssetFixture> {
   const normalizedTicker = normalizeTicker(ticker);
@@ -216,7 +216,7 @@ function isSupportedAssetOverviewResponse(value: unknown, requestedTicker: strin
   );
 }
 
-function mergeAssetFixtureWithOverview(fallbackAsset: AssetFixture, overview: BackendOverviewResponse): AssetFixture {
+function mergeAssetFixtureWithOverview(fallbackAsset: AssetFixture | undefined, overview: BackendOverviewResponse): AssetFixture {
   const assetType = toAssetType(overview.asset.asset_type);
   const backendSections = overview.sections
     .filter((section) => section.applies_to.includes(assetType))
@@ -227,18 +227,26 @@ function mergeAssetFixtureWithOverview(fallbackAsset: AssetFixture, overview: Ba
         ? { stockSections: backendSections, etfSections: undefined }
         : { etfSections: backendSections, stockSections: undefined }
       : {};
+  const fallbackCitations = fallbackAsset?.citations ?? [];
+  const fallbackSources = fallbackAsset?.sourceDocuments ?? [];
+  const sourceDocuments = mergeUniqueBy(
+    overview.source_documents.map(toSourceDocument),
+    fallbackSources,
+    (source) => source.sourceDocumentId
+  );
+  const citations = mergeUniqueBy(overview.citations.map(toCitation), fallbackCitations, (citation) => citation.citationId);
 
   return {
-    ...fallbackAsset,
+    ...(fallbackAsset ?? {}),
     ticker: overview.asset.ticker,
     name: overview.asset.name,
     assetType,
-    exchange: overview.asset.exchange ?? fallbackAsset.exchange,
-    issuer: overview.asset.issuer ?? fallbackAsset.issuer,
+    exchange: overview.asset.exchange ?? fallbackAsset?.exchange ?? "Unknown",
+    issuer: overview.asset.issuer ?? fallbackAsset?.issuer,
     freshness: {
       pageLastUpdatedAt: overview.freshness.page_last_updated_at,
       factsAsOf: overview.freshness.facts_as_of,
-      holdingsAsOf: overview.freshness.holdings_as_of ?? fallbackAsset.freshness.holdingsAsOf,
+      holdingsAsOf: overview.freshness.holdings_as_of ?? fallbackAsset?.freshness.holdingsAsOf,
       recentEventsAsOf: overview.freshness.recent_events_as_of
     },
     beginnerSummary: {
@@ -256,21 +264,16 @@ function mergeAssetFixtureWithOverview(fallbackAsset: AssetFixture, overview: Ba
       plainEnglishExplanation: risk.plain_english_explanation,
       citationIds: risk.citation_ids
     })),
+    facts: fallbackAsset?.facts ?? factsFromOverviewSections(backendSections),
+    recentDevelopments: fallbackAsset?.recentDevelopments ?? [],
     suitabilitySummary: {
       mayFit: overview.suitability_summary.may_fit,
       mayNotFit: overview.suitability_summary.may_not_fit,
       learnNext: overview.suitability_summary.learn_next
     },
-    citations: mergeUniqueBy(
-      overview.citations.map(toCitation),
-      fallbackAsset.citations,
-      (citation) => citation.citationId
-    ),
-    sourceDocuments: mergeUniqueBy(
-      overview.source_documents.map(toSourceDocument),
-      fallbackAsset.sourceDocuments,
-      (source) => source.sourceDocumentId
-    ),
+    citations,
+    sourceDocuments,
+    citationContexts: fallbackAsset?.citationContexts ?? citationContextsFromOverview(backendSections, citations, sourceDocuments),
     ...backendSectionFields
   };
 }
@@ -312,6 +315,98 @@ function toSourceDocument(source: BackendSourceDocument): SourceDocument {
       can_export_full_text: source.permitted_operations.can_export_full_text
     }
   };
+}
+
+function factsFromOverviewSections(sections: StockOverviewSection[]): AssetFixture["facts"] {
+  const facts: AssetFixture["facts"] = [];
+  const seen = new Set<string>();
+
+  for (const section of sections) {
+    for (const metric of section.metrics ?? []) {
+      if (seen.has(metric.label)) {
+        continue;
+      }
+      seen.add(metric.label);
+      facts.push({
+        label: metric.label,
+        value: formatSectionMetricValue(metric.value, metric.unit),
+        citationId: metric.citationIds[0]
+      });
+    }
+
+    for (const item of section.items) {
+      if (facts.length >= 6 || seen.has(item.title)) {
+        continue;
+      }
+      seen.add(item.title);
+      facts.push({
+        label: item.title,
+        value: item.summary,
+        citationId: item.citationIds[0]
+      });
+    }
+  }
+
+  return facts.slice(0, 6);
+}
+
+function citationContextsFromOverview(
+  sections: StockOverviewSection[],
+  citations: Citation[],
+  sourceDocuments: SourceDocument[]
+): AssetFixture["citationContexts"] {
+  const citationSourceIds = new Map(citations.map((citation) => [citation.citationId, citation.sourceDocumentId]));
+  const sourcePassages = new Map(sourceDocuments.map((source) => [source.sourceDocumentId, source.supportingPassage]));
+  const contexts: NonNullable<AssetFixture["citationContexts"]> = [];
+  const seen = new Set<string>();
+
+  for (const section of sections) {
+    const subjects = [
+      ...section.items.map((item) => ({
+        id: item.itemId,
+        title: item.title,
+        summary: item.summary,
+        citationIds: item.citationIds
+      })),
+      ...(section.metrics ?? []).map((metric) => ({
+        id: metric.metricId,
+        title: metric.label,
+        summary: formatSectionMetricValue(metric.value, metric.unit),
+        citationIds: metric.citationIds
+      }))
+    ];
+
+    for (const subject of subjects) {
+      for (const citationId of subject.citationIds) {
+        const sourceDocumentId = citationSourceIds.get(citationId);
+        if (!sourceDocumentId) {
+          continue;
+        }
+        const key = `${section.sectionId}:${subject.id}:${citationId}`;
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        contexts.push({
+          citationId,
+          sourceDocumentId,
+          sectionId: section.sectionId,
+          sectionTitle: section.title,
+          claimContext: `${subject.title}: ${subject.summary}`,
+          supportingPassage: sourcePassages.get(sourceDocumentId) ?? ""
+        });
+      }
+    }
+  }
+
+  return contexts;
+}
+
+function formatSectionMetricValue(value: string | number | null, unit: string | null | undefined) {
+  if (value === null || value === undefined) {
+    return "Unavailable";
+  }
+  return unit ? `${value}${unit}` : String(value);
 }
 
 function toOverviewSection(section: BackendOverviewSection): StockOverviewSection {

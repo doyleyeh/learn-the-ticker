@@ -5,7 +5,7 @@ import {
   sourceDrawerStateFromSupportState,
   type SourceDrawerState
 } from "../../../../components/SourceDrawer";
-import { resolveLocalSearchResponse } from "../../../../lib/search";
+import { resolveSearchResponse } from "../../../../lib/search";
 import { fetchSupportedSourceDrawerResponse } from "../../../../lib/sourceDrawer";
 import {
   assetFixtures,
@@ -108,7 +108,7 @@ export function generateStaticParams() {
 
 export default async function AssetSourcesPage({ params }: AssetSourcesPageProps) {
   const { ticker } = await params;
-  const search = resolveLocalSearchResponse(ticker);
+  const search = await resolveSearchResponse(ticker);
   const searchState = sourceListStateFromSearch(search.state.status);
   const asset = getAssetFixture(ticker);
   const listState: SourceDrawerState = asset && searchState === "available" ? "available" : searchState;
