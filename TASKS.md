@@ -1,18 +1,18 @@
 ## Current task
 
-### T-097: Add gated OpenRouter transport adapter with mocked tests
+### T-098: Add live-generation validation and fallback orchestration contract
 
 Goal:
-Add an OpenRouter-compatible live-provider transport adapter behind explicit server-side feature flags and injectable mocked transports, preserving deterministic mock behavior and making no live calls in normal CI.
+Add a deterministic live-generation orchestration contract that can validate mocked provider outputs through schema, citation, source-policy, freshness, and safety gates, perform one repair retry, and represent paid fallback metadata without routing public outputs through live generation.
 
 Task-scope paragraph:
-This task should add the backend-only OpenRouter transport boundary that future live-generation orchestration can call, but it must remain inactive unless the readiness contract from T-096 says live generation is enabled, a server-side key is configured, endpoint/model metadata is configured, validation gates are ready, and the caller explicitly opts into a live transport call. Tests must exercise only injected mocked transport responses; normal local and CI behavior must remain deterministic and must not import or call a live network client by default. This is a transport-contract slice only: no public route integration, no generated-output use, no prompt redesign, no cache writes, no frontend exposure, no provider licensing changes, no production secret wiring, and no real OpenRouter calls.
+This task should add the backend-only orchestration boundary that future live-generation work can call after T-096 readiness diagnostics and T-097 mocked transport. The orchestrator may consume injected mocked transport results and local deterministic validation inputs, then return validation, retry, fallback, public metadata, and cache-eligibility decisions. It must not make live OpenRouter calls, route public asset/comparison/chat/Weekly News outputs through live generation, rewrite prompts, change generated fixture output, activate cache writes, or expose provider details to the frontend. This is a validation/fallback contract slice only and must keep normal local and CI behavior deterministic.
 
 Roadmap alignment:
 
-- Second narrow slice of "Add gated OpenRouter live generation behind `LLM_LIVE_GENERATION_ENABLED=true`."
-- Builds on T-096 readiness diagnostics and explicit validation-gate metadata.
-- Adds the provider transport boundary without routing public outputs through live generation.
+- Third narrow slice of gated OpenRouter live generation.
+- Builds on existing deterministic generation, T-096 readiness diagnostics, and T-097 mocked transport.
+- Adds validation, repair-retry, and fallback orchestration metadata before any public route can use live generation.
 - Keeps deterministic mocks as the normal CI/local default.
 - Preserves v0.4 frontend workflow and deterministic backend outputs before live-provider or deployment expansion.
 
@@ -21,46 +21,54 @@ Allowed files:
 - `backend/llm.py`
 - `backend/llm_transport.py`
 - `backend/models.py`
-- `backend/settings.py`
+- `backend/overview.py`
+- `backend/comparison.py`
+- `backend/chat.py`
+- `backend/weekly_news.py`
 - `tests/unit/test_llm_provider.py`
+- `tests/unit/test_overview_generation.py`
+- `tests/unit/test_comparison_generation.py`
+- `tests/unit/test_chat_generation.py`
+- `tests/unit/test_weekly_news.py`
+- `tests/unit/test_source_policy.py`
 - `tests/unit/test_safety_guardrails.py`
 - `tests/unit/test_repo_contract.py`
-- `tests/integration/test_backend_api.py`
+- `tests/unit/test_cache_contracts.py`
 - `docs/agent-journal/*.md`
 
 Do not change:
 
 - No frontend files under `apps/web`.
-- No public FastAPI route paths, HTTP status behavior, `/health` behavior, generated overview/comparison/chat/Weekly News Focus output, source drawer behavior, glossary behavior, comparison behavior, chat behavior, export behavior, search behavior, or default deterministic fixture-generated output.
+- No public FastAPI route paths, HTTP status behavior, `/health` behavior, generated overview/comparison/chat/Weekly News Focus output, AI Comprehensive Analysis output, source drawer behavior, glossary behavior, comparison behavior, chat behavior, export behavior, search behavior, or default deterministic fixture-generated output.
 - No changes to home-page workflow, comparison UI, glossary UI, source drawer UI, asset chat UI, mobile bottom-sheet/full-screen behavior, stock-vs-ETF comparison structure, or any v0.4 workflow marker.
 - No live OpenRouter, LLM, SEC, issuer, ETF, market-data, news, RSS, web, storage, database, object-storage, cache, Redis, Cloud Run Job, scheduler, admin auth, rate-limiting, external analytics, telemetry vendor, or deployment wiring.
-- No route-level live-generation integration, generated-output cache write, generated AI Comprehensive Analysis rewrite, prompt template rewrite, provider licensing change, source allowlist expansion, runtime secret setup, or production dependency addition.
-- No generated pages, generated chat answers, generated comparisons, generated risk summaries, generated exports, source snapshots, provider fetches, LLM calls, or new cacheable generated output.
+- No route-level live-generation integration, generated-output cache write activation, generated AI Comprehensive Analysis rewrite, prompt template rewrite, provider licensing change, source allowlist expansion, runtime secret setup, or production dependency addition.
+- No generated pages, generated chat answers, generated comparisons, generated risk summaries, generated exports, source snapshots, provider fetches, live LLM calls, or new cacheable generated output.
 - No edits to `data/universes/us_common_stocks_top500.current.json` or `data/universes/us_equity_etfs.current.json`.
-- No raw full article text, unrestricted source text, unrestricted provider payloads, hidden prompts, prompt templates, raw model reasoning, raw user text, raw queries, raw questions, raw answers, raw chat transcripts, personal identifiers, portfolio/allocation details, real API keys, credentials, secrets, public storage URLs, signed URLs, external analytics IDs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, repository records, cache records, events, exports, or exported data.
+- No raw full article text, unrestricted source text, unrestricted provider payloads, hidden prompts, raw prompt text, raw model reasoning, raw user text, raw queries, raw questions, raw answers, raw chat transcripts, personal identifiers, portfolio/allocation details, real API keys, credentials, secrets, public storage URLs, signed URLs, external analytics IDs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, repository records, cache records, events, exports, or exported data.
 - No `NEXT_PUBLIC_*` provider variables, no `/health` secret exposure, no docs/env examples containing real secrets, and no logging or diagnostics that include API key values or provider credentials.
-- No changes that weaken citation/source-use rules, suppress required stale/unknown/unavailable/partial/insufficient-evidence states, let recent Weekly News Focus overwrite canonical asset facts, or introduce buy/sell/hold, allocation, tax, price-target, brokerage, trading, or personalized recommendation language.
+- No changes that weaken citation/source-use rules, suppress required stale/unknown/unavailable/partial/insufficient-evidence states, let recent Weekly News Focus overwrite canonical asset facts, pad Weekly News Focus beyond available evidence, or introduce buy/sell/hold, allocation, tax, price-target, brokerage, trading, or personalized recommendation language.
 
 Acceptance criteria:
 
-- Add a backend-only OpenRouter-compatible transport adapter or transport boundary that can build a request from server-side model-chain metadata, schema-mode or JSON-mode intent, sanitized metadata, and explicit caller opt-in.
-- The adapter must stay inactive unless `LLM_PROVIDER=openrouter`, `LLM_LIVE_GENERATION_ENABLED=true`, `server_side_key_present=True`, `OPENROUTER_BASE_URL` is configured, the OpenRouter model chain is configured, validation readiness is true, and the caller explicitly chooses the live transport path.
-- Preserve the T-096 model chain metadata in request construction: free primary `openai/gpt-oss-120b:free`, free fallbacks `google/gemma-4-31b-it:free`, `qwen/qwen3-next-80b-a3b-instruct:free`, and `meta-llama/llama-3.3-70b-instruct:free`, plus paid fallback `deepseek/deepseek-v3.2` metadata for later orchestration.
-- Tests must use injected mocked transport callables or fixture responses only; no test may require or attempt network, OpenRouter, market-data, news, SEC, issuer, storage, database, or LLM calls.
-- Disabled, missing-key, missing-endpoint, missing-model-chain, validation-not-ready, and no-explicit-opt-in states must return compact blocked/unavailable transport results rather than attempting a request.
-- Adapter request metadata may include provider kind, base URL configured state, model IDs, model tiers/order, schema-mode or JSON-mode metadata, validation retry count, reasoning-summary-only state, timeout/retryability metadata, and sanitized request diagnostics.
-- Adapter response metadata must preserve model ID, tier when known, provider status, finish reason when available, schema-mode or JSON-mode metadata, retryability classification, token usage and cost metadata when available, latency metadata when supplied by the mocked transport, and a compact sanitized diagnostic code.
-- Adapter response handling must not expose API key values, authorization headers, raw prompts, raw user text, raw generated text in diagnostics, raw model reasoning, `reasoning_details`, unrestricted source text, unrestricted provider payloads, credentials, signed URLs, public storage URLs, or frontend-readable storage paths.
-- Mocked provider failures must be classified into compact sanitized categories such as timeout, retryable provider error, nonretryable provider error, invalid response shape, missing content, and blocked by readiness, without leaking raw exception text or secrets.
-- The default deterministic mock generation path and existing public runtime diagnostics must remain unchanged except for additive sanitized transport metadata needed by tests.
-- No browser-readable env var, `NEXT_PUBLIC_*` provider variable, `/health` secret exposure, route-level generation change, generated-output cache write, export change, source allowlist change, or frontend change may be introduced.
-- Tests must cover disabled gating, missing key blocking, missing endpoint/model blocking, validation-not-ready blocking, explicit opt-in requirement, mocked success, mocked schema/JSON mode metadata, mocked provider failure, timeout or retryable error classification, paid fallback metadata preservation, redacted diagnostics, no raw reasoning exposure, no live network/provider imports by default, no browser env exposure, and deterministic mock default preservation.
+- Add a backend-only orchestration boundary for mocked generated overview, comparison, Weekly News Focus analysis, and chat-safe answer artifacts that accepts deterministic generation metadata, mocked transport results, validation inputs, and existing source/citation/safety context without changing public route outputs.
+- The orchestration boundary must stay inactive for public behavior unless runtime readiness is `ready_for_explicit_live_call`, T-097 transport results are supplied by injected mocks, and the caller explicitly opts into the orchestration path; default deterministic generation must remain unchanged.
+- Validate mocked provider content against schema validity, citation validity, same-asset or same-comparison-pack binding, source-use permissions, freshness/uncertainty labels, safety/no-advice checks, hidden-prompt absence, raw-reasoning absence, unrestricted-source-text absence, and unsupported-claim checks before marking output usable.
+- Enforce Weekly News Focus and AI Comprehensive Analysis separation: analysis artifacts may be considered usable only when underlying Weekly News Focus evidence and canonical facts satisfy existing citation/source-use/freshness rules, and AI analysis remains suppressed when fewer than two high-signal Weekly News Focus items exist.
+- Model exactly one repair retry after schema, citation, source-policy, freshness, safety, unsupported-claim, raw-reasoning, hidden-prompt, or unrestricted-source-text validation failure; repair must be represented as metadata and mocked output only, not a live call or prompt rewrite.
+- Preserve paid fallback metadata for the configured DeepSeek fallback when free-chain or validation-after-repair failures justify fallback, but do not execute or route to a paid provider.
+- Reject or suppress outputs that fail validation after the retry, produce compact rejection reason codes, and return unavailable/partial metadata rather than usable generated content.
+- Preserve cache eligibility decisions so only fully validated, source-policy-allowed, citation-safe, freshness-labeled, no-advice, no-leak outputs can be marked cacheable; no actual cache write may be enabled.
+- Orchestration diagnostics may include provider kind, model IDs, model tiers/order, attempt counts, request mode, validation status, fallback trigger, retryability, token/cost/latency metadata from mocks, cache eligibility, and compact sanitized rejection codes.
+- Orchestration diagnostics and public metadata must not expose API key values, authorization headers, raw prompts, raw user text, raw generated text in diagnostics, raw model reasoning, `reasoning_details`, unrestricted source text, unrestricted provider payloads, credentials, signed URLs, public storage URLs, source URLs where prohibited, or frontend-readable storage paths.
+- Existing deterministic mock generation paths, public runtime diagnostics, public route responses, exports, frontend behavior, source allowlists, fixture outputs, and no-live-call CI defaults must remain unchanged except for additive dormant contract metadata covered by tests.
+- Tests must cover valid mocked output, schema failure, repair retry success, validation failure after repair, paid fallback metadata, citation/source-use rejection, wrong-asset or wrong-pack rejection, stale-without-label rejection, unsupported-claim rejection, safety rejection, hidden prompt/raw reasoning/unrestricted source text rejection, cache eligibility blocking, unchanged default deterministic behavior, no live network/provider imports by default, no browser env exposure, and sanitized diagnostics.
 - Preserve product guardrails: implementation, tests, fixture strings, diagnostics, and journal notes must not introduce buy/sell/hold recommendations, allocation advice, tax advice, price targets, brokerage/trading behavior, unsupported factual claims, or recent-news-as-canonical framing.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_llm_provider.py tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
+python3 -m pytest tests/unit/test_llm_provider.py tests/unit/test_overview_generation.py tests/unit/test_comparison_generation.py tests/unit/test_chat_generation.py tests/unit/test_safety_guardrails.py -q
 python3 -m pytest tests -q
 python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
@@ -68,10 +76,38 @@ git diff --check
 ```
 
 Iteration budget:
-One agent-loop cycle. If route integration, real network calls, generated-output cache writes, prompt rewrites, frontend changes, provider licensing changes, production secret/deployment wiring, or external provider calls are needed, record the follow-up and stop after the mocked transport adapter.
+One agent-loop cycle. If public route live-generation wiring, real OpenRouter calls, prompt redesign, frontend changes, production secret setup, generated-output cache write activation, or provider licensing changes are needed, record the follow-up and stop after mocked validation/fallback orchestration.
 
 
 ## Completed
+
+### T-097: Add gated OpenRouter transport adapter with mocked tests
+
+Goal:
+Add an OpenRouter-compatible live-provider transport adapter behind explicit server-side feature flags and injectable mocked transports, preserving deterministic mock behavior and making no live calls in normal CI.
+
+Completed details:
+
+- Implementation commit `57c4b6e test(T-097): add gated OpenRouter transport adapter with mocked tests` added `backend/llm_transport.py` and `docs/agent-journal/20260426T033549Z.md`, and updated `backend/models.py`, `tests/unit/test_llm_provider.py`, and `tests/unit/test_repo_contract.py`.
+- Merged branch `agent/T-097-20260426T033549Z` into `main` with local merge commit `f634a14 chore(T-097): merge gated OpenRouter transport adapter with mocked tests`.
+- `backend/llm_transport.py` added the dormant `llm-transport-contract-v1` OpenRouter transport boundary with `call_openrouter_transport`, `build_openrouter_transport_request`, `TransportCallable`, `OPENROUTER_CHAT_COMPLETIONS_PATH`, and a default 30-second timeout metadata value.
+- The transport boundary never imports a network client, never reads process configuration, and can execute only through an explicitly injected callable, keeping normal local and CI behavior deterministic.
+- Transport gating blocks non-OpenRouter providers, disabled live generation, missing server-side key state, missing OpenRouter base URL, missing model chain, incomplete endpoint configuration, validation-not-ready state, readiness states other than `ready_for_explicit_live_call`, missing caller opt-in, and missing injected transport.
+- Request metadata preserves schema-mode or JSON-mode intent, configured free-model chain metadata from T-096, paid fallback metadata, base URL/model-chain/endpoint configured booleans, validation retry count, reasoning-summary-only state, timeout/retryability metadata, and sanitized diagnostics.
+- Response handling maps mocked provider success into compact metadata with model name, model tier, provider status, finish reason, token usage, cost, latency, request mode, and sanitized diagnostics while returning content only as the direct transport result.
+- Mocked failures are classified as timeout, retryable provider error, nonretryable provider error, invalid response shape, missing content, or blocked, with compact diagnostic codes and without surfacing raw exception text.
+- `backend/models.py` added `LlmTransportMode`, `LlmTransportStatus`, `LlmTransportRetryability`, `LlmTransportRequestMetadata`, `LlmTransportResponseMetadata`, and `LlmTransportResult`.
+- Tests cover disabled/missing-key/missing-endpoint/missing-model-chain/validation-not-ready/no-opt-in/missing-injected-transport blocking, mocked schema-mode success, mocked JSON-mode and paid-model metadata, retryable/nonretryable provider failures, invalid shape, missing content, timeout handling, diagnostic redaction, no raw reasoning exposure, no live network client import, no browser env exposure, and deterministic mock defaults.
+- The implementation did not add live OpenRouter calls, route-level live-generation integration, generated-output cache writes, frontend exposure, production secret wiring, prompt rewrites, provider licensing changes, or public generated-output behavior changes.
+- `docs/agent-journal/20260426T033549Z.md` records these checks: `python3 -m pytest tests/unit/test_llm_provider.py tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q` passed; `python3 -m pytest tests -q` passed; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed; `git diff --check` passed.
+- Remaining risks from the journal:
+  - The OpenRouter transport is a backend-only dormant contract with injected mocked transports only; no live network client, public route integration, generated-output cache write, frontend exposure, or production secret wiring was added.
+  - Future live-generation orchestration must preserve the same readiness gates, explicit opt-in requirement, sanitized diagnostics, no raw reasoning exposure, citation/source-use validation, freshness/uncertainty labels, and safety checks before any generated output is used or cached.
+
+Completion commits:
+
+- `57c4b6e test(T-097): add gated OpenRouter transport adapter with mocked tests`
+- `f634a14 chore(T-097): merge gated OpenRouter transport adapter with mocked tests`
 
 ### T-096: Add live LLM runtime readiness diagnostics contract
 
@@ -2602,38 +2638,6 @@ Completion commits:
 
 ## Backlog
 
-### T-098: Add live-generation validation and fallback orchestration contract
-
-Goal:
-Add a deterministic live-generation orchestration contract that can validate mocked provider outputs through schema, citation, source-policy, freshness, and safety gates, perform one repair retry, and represent paid fallback metadata without routing public outputs through live generation.
-
-Roadmap alignment:
-
-- Third narrow slice of gated OpenRouter live generation.
-- Builds on existing deterministic generation, T-096 readiness diagnostics, and T-097 mocked transport.
-- Keeps route-level live generation disabled until validation gates are stable.
-
-Acceptance criteria:
-
-- Add an orchestration boundary for generated overview, comparison, Weekly News Focus analysis, and chat-safe answer artifacts that can evaluate mocked provider outputs against existing schemas and validation contracts.
-- Enforce citation validation, same-asset or same-comparison-pack source binding, source-use permissions, freshness/uncertainty labels, no-advice safety checks, no unsupported claims, no raw reasoning exposure, and no hidden prompt export.
-- Model one repair retry and final paid fallback metadata without making live calls in tests.
-- Reject or suppress outputs that fail schema, citation, source-use, freshness, safety, unsupported-claim, wrong-asset, wrong-pack, or raw-reasoning checks.
-- Preserve current deterministic route outputs, fixture fallback, generated-output cache behavior, frontend behavior, exports, and CI no-live-call defaults.
-- Add tests for valid mocked output, schema failure, repair retry, paid fallback metadata, citation/source-use rejection, safety rejection, stale-without-label rejection, unsupported-claim rejection, no raw reasoning/prompt exposure, and unchanged default deterministic behavior.
-
-Required commands:
-
-```bash
-python3 -m pytest tests/unit/test_llm_provider.py tests/unit/test_overview_generation.py tests/unit/test_comparison_generation.py tests/unit/test_chat_generation.py tests/unit/test_safety_guardrails.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-```
-
-Iteration budget:
-One agent-loop cycle. If public route live-generation wiring, real OpenRouter calls, prompt redesign, frontend changes, production secret setup, or cache write activation are needed, record the follow-up and stop after mocked validation/fallback orchestration.
-
 ### T-099: Add provider content export-rights hardening contract
 
 Goal:
@@ -2725,8 +2729,8 @@ Operational defaults for backend roadmap tasks:
 - T-094 established deterministic Weekly News Focus acquisition/selection. It is completed and must not be reintroduced as runnable backlog.
 - T-095 established route-level persisted-read fallback for Weekly News Focus. It is completed and must not be reintroduced as runnable backlog.
 - T-096 established live LLM runtime readiness diagnostics. It is completed and must not be reintroduced as runnable backlog.
-- T-097 is the current promoted task for the gated OpenRouter transport adapter with mocked tests.
-- T-098 is the prepared backlog task for live-generation validation and fallback orchestration after the mocked transport boundary.
+- T-097 established the gated OpenRouter transport adapter with mocked tests. It is completed and must not be reintroduced as runnable backlog.
+- T-098 is the current promoted task for live-generation validation and fallback orchestration after the mocked transport boundary.
 - T-099 is a prepared backlog task for deterministic provider content export-rights hardening.
 - T-100 is a prepared backlog task for production hardening readiness diagnostics, not production deployment.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, and recurring jobs out of normal CI until the explicit production-hardening stage.
@@ -2755,10 +2759,10 @@ Roadmap integration tracker:
 | Manifest-backed search support classification | Completed | T-092 |
 | Weekly News Focus persisted event evidence contracts | Completed | T-093 |
 | Weekly News Focus deterministic acquisition/selection | Completed | T-094 |
-| Weekly News Focus persisted-read fallback | Promoted | T-095 |
-| Live LLM runtime readiness diagnostics | Backlog | T-096 |
-| Gated OpenRouter mocked transport adapter | Backlog | T-097 |
-| Live-generation validation and fallback orchestration | Backlog | T-098 |
+| Weekly News Focus persisted-read fallback | Completed | T-095 |
+| Live LLM runtime readiness diagnostics | Completed | T-096 |
+| Gated OpenRouter mocked transport adapter | Completed | T-097 |
+| Live-generation validation and fallback orchestration | Current | T-098 |
 | Provider source-use/export enforcement hardening | Backlog | T-099 |
 | Production hardening readiness diagnostics | Backlog | T-100 |
 
