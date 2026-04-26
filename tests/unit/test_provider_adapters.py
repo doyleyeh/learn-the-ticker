@@ -26,19 +26,23 @@ from backend.provider_adapters import etf_issuer as etf_issuer_module
 from backend.provider_adapters.etf_issuer import (
     ETF_ISSUER_ACQUISITION_BOUNDARY,
     ETF_ISSUER_FIXTURE_CONTRACT_VERSION,
+    ETF_ISSUER_LIVE_ACQUISITION_READINESS_BOUNDARY,
     ETF_ISSUER_FIXTURES,
     EtfIssuerFixtureContractError,
     build_etf_issuer_acquisition_result,
     build_etf_issuer_provider_response,
+    evaluate_etf_issuer_live_acquisition_readiness,
     etf_issuer_fixture_for_ticker,
 )
 from backend.provider_adapters.sec_stock import (
     SEC_STOCK_ACQUISITION_BOUNDARY,
     SEC_STOCK_FIXTURE_CONTRACT_VERSION,
+    SEC_STOCK_LIVE_ACQUISITION_READINESS_BOUNDARY,
     SEC_STOCK_FIXTURES,
     SecStockFixtureContractError,
     build_sec_stock_acquisition_result,
     build_sec_stock_provider_response,
+    evaluate_sec_stock_live_acquisition_readiness,
     sec_stock_fixture_for_ticker,
 )
 from backend.providers import (
@@ -320,6 +324,76 @@ def test_sec_stock_acquisition_boundary_blocks_non_golden_or_wrong_scope_inputs(
         assert acquisition.diagnostics[0].stores_secret is False
 
 
+def test_sec_stock_live_acquisition_readiness_is_explicit_opt_in_and_manifest_cik_bound():
+    adapter = mock_sec_stock_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.sec, "AAPL").licensing
+    acquisition = build_sec_stock_acquisition_result(adapter, adapter.request("AAPL"), licensing)
+
+    blocked = evaluate_sec_stock_live_acquisition_readiness("AAPL")
+
+    assert blocked.boundary == SEC_STOCK_LIVE_ACQUISITION_READINESS_BOUNDARY
+    assert blocked.status == "blocked"
+    assert blocked.can_attempt_live_acquisition is False
+    assert "explicit_live_sec_stock_acquisition_opt_in_missing" in blocked.blocked_reasons
+    assert "sec_source_configuration_missing" in blocked.blocked_reasons
+    assert "source_rate_limit_not_ready" in blocked.blocked_reasons
+    assert "repository_writer_not_ready" in blocked.blocked_reasons
+    assert blocked.no_live_external_calls is True
+    assert "secret" not in str(blocked.sanitized_diagnostics).lower()
+
+    ready = evaluate_sec_stock_live_acquisition_readiness(
+        "AAPL",
+        opt_in_enabled=True,
+        sec_source_configured=True,
+        rate_limit_ready=True,
+        source_snapshot_writer_ready=True,
+        knowledge_pack_writer_ready=True,
+        expected_cik="0000320193",
+        acquisition_result=acquisition,
+    )
+    wrong_cik = evaluate_sec_stock_live_acquisition_readiness(
+        "AAPL",
+        opt_in_enabled=True,
+        sec_source_configured=True,
+        rate_limit_ready=True,
+        source_snapshot_writer_ready=True,
+        knowledge_pack_writer_ready=True,
+        expected_cik="0000000000",
+        acquisition_result=acquisition,
+    )
+    invalid_checksum = evaluate_sec_stock_live_acquisition_readiness(
+        "AAPL",
+        opt_in_enabled=True,
+        sec_source_configured=True,
+        rate_limit_ready=True,
+        source_snapshot_writer_ready=True,
+        knowledge_pack_writer_ready=True,
+        expected_cik="0000320193",
+        acquisition_result=replace(
+            acquisition,
+            source_records=(replace(acquisition.source_records[0], checksum="not-a-sha"), *acquisition.source_records[1:]),
+        ),
+    )
+    unsupported = evaluate_sec_stock_live_acquisition_readiness(
+        "TQQQ",
+        opt_in_enabled=True,
+        sec_source_configured=True,
+        rate_limit_ready=True,
+        source_snapshot_writer_ready=True,
+        knowledge_pack_writer_ready=True,
+    )
+
+    assert ready.status == "ready"
+    assert ready.can_attempt_live_acquisition is True
+    assert ready.blocked_reasons == ()
+    assert wrong_cik.can_attempt_live_acquisition is False
+    assert "sec_cik_validation_failed" in wrong_cik.blocked_reasons
+    assert invalid_checksum.can_attempt_live_acquisition is False
+    assert "source_use_validation_failed" in invalid_checksum.blocked_reasons
+    assert unsupported.can_attempt_live_acquisition is False
+    assert "supported_common_stock_identity_not_ready" in unsupported.blocked_reasons
+
+
 def test_etf_issuer_adapter_returns_voo_and_qqq_official_facts_and_holdings_metadata():
     adapter = mock_etf_issuer_adapter()
 
@@ -599,6 +673,80 @@ def test_etf_issuer_acquisition_boundary_blocks_non_golden_or_wrong_scope_inputs
         assert acquisition.diagnostics[0].stores_raw_source_text is False
         assert acquisition.diagnostics[0].stores_raw_provider_payload is False
         assert acquisition.diagnostics[0].stores_secret is False
+
+
+def test_etf_issuer_live_acquisition_readiness_requires_issuer_binding_and_supported_etf_scope():
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.etf_issuer, "VOO").licensing
+    acquisition = build_etf_issuer_acquisition_result(adapter, adapter.request("VOO"), licensing)
+
+    blocked = evaluate_etf_issuer_live_acquisition_readiness("VOO")
+
+    assert blocked.boundary == ETF_ISSUER_LIVE_ACQUISITION_READINESS_BOUNDARY
+    assert blocked.status == "blocked"
+    assert blocked.can_attempt_live_acquisition is False
+    assert "explicit_live_etf_issuer_acquisition_opt_in_missing" in blocked.blocked_reasons
+    assert "issuer_source_configuration_missing" in blocked.blocked_reasons
+    assert "source_rate_limit_not_ready" in blocked.blocked_reasons
+    assert "repository_writer_not_ready" in blocked.blocked_reasons
+    assert blocked.no_live_external_calls is True
+
+    ready = evaluate_etf_issuer_live_acquisition_readiness(
+        "VOO",
+        opt_in_enabled=True,
+        issuer_source_configured=True,
+        rate_limit_ready=True,
+        source_snapshot_writer_ready=True,
+        knowledge_pack_writer_ready=True,
+        expected_issuer="Vanguard",
+        acquisition_result=acquisition,
+    )
+    wrong_issuer = evaluate_etf_issuer_live_acquisition_readiness(
+        "VOO",
+        opt_in_enabled=True,
+        issuer_source_configured=True,
+        rate_limit_ready=True,
+        source_snapshot_writer_ready=True,
+        knowledge_pack_writer_ready=True,
+        expected_issuer="Wrong Issuer",
+        acquisition_result=acquisition,
+    )
+    wrong_source_binding = acquisition.provider_response.model_copy(
+        update={
+            "source_attributions": [
+                acquisition.provider_response.source_attributions[0].model_copy(update={"asset_ticker": "QQQ"}),
+                *acquisition.provider_response.source_attributions[1:],
+            ]
+        }
+    )
+    invalid_source = evaluate_etf_issuer_live_acquisition_readiness(
+        "VOO",
+        opt_in_enabled=True,
+        issuer_source_configured=True,
+        rate_limit_ready=True,
+        source_snapshot_writer_ready=True,
+        knowledge_pack_writer_ready=True,
+        expected_issuer="Vanguard",
+        acquisition_result=replace(acquisition, provider_response=wrong_source_binding),
+    )
+    unsupported = evaluate_etf_issuer_live_acquisition_readiness(
+        "TQQQ",
+        opt_in_enabled=True,
+        issuer_source_configured=True,
+        rate_limit_ready=True,
+        source_snapshot_writer_ready=True,
+        knowledge_pack_writer_ready=True,
+    )
+
+    assert ready.status == "ready"
+    assert ready.can_attempt_live_acquisition is True
+    assert ready.blocked_reasons == ()
+    assert wrong_issuer.can_attempt_live_acquisition is False
+    assert "issuer_or_source_binding_validation_failed" in wrong_issuer.blocked_reasons
+    assert invalid_source.can_attempt_live_acquisition is False
+    assert "source_use_validation_failed" in invalid_source.blocked_reasons
+    assert unsupported.can_attempt_live_acquisition is False
+    assert "supported_non_leveraged_us_equity_etf_identity_not_ready" in unsupported.blocked_reasons
 
 
 def test_market_reference_adapter_covers_supported_and_eligible_not_cached_with_restricted_licensing():
