@@ -2702,6 +2702,98 @@ docker compose config
 Iteration budget:
 One agent-loop cycle. If actual deployment, cloud resource creation, route auth enforcement, secret-manager integration, frontend deployment changes, or production credentials are needed, record the follow-up and stop after readiness diagnostics.
 
+### T-101: Add MVP backend readiness gap audit contract
+
+Goal:
+Add a deterministic MVP backend readiness gap audit contract that summarizes remaining backend acceptance gaps across search/support classification, asset overview, comparison, Weekly News Focus, chat, exports, source-use rights, caching/freshness, live-generation readiness, and production hardening without changing public behavior.
+
+Roadmap alignment:
+
+- First post-roadmap quality-closure task after T-100 readiness diagnostics.
+- Uses the completed backend roadmap contracts to identify residual MVP acceptance gaps instead of enabling live production behavior.
+- Keeps frontend redesign, provider calls, production deployment, and route behavior changes out of scope.
+
+Acceptance criteria:
+
+- Add a deterministic backend readiness audit helper or fixture-backed report that references existing contract metadata and quality-gate expectations.
+- Cover supported/cached, eligible-not-cached, unsupported, out-of-scope, unknown, unavailable, stale, partial, and insufficient-evidence states where relevant.
+- Include compact pass/gap/blocked statuses for citations, source-use rights, freshness labels, Weekly News Focus evidence limits, AI Comprehensive Analysis thresholds, chat safety redirects, export rights, generated-output cache eligibility, live-generation gating, and production readiness diagnostics.
+- Diagnostics must be sanitized and must not include raw user text, raw generated text, raw source text, raw provider payloads, hidden prompts, raw model reasoning, secrets, credentials, public/signed storage URLs, or frontend-readable storage paths.
+- Keep public API routes, frontend behavior, generated output, cache writes, provider calls, LLM calls, deployment files, and source allowlists unchanged unless a focused test import path is needed.
+- Add tests for report shape, required MVP surfaces, blocked-state coverage, secret/raw-text redaction, no-live-call behavior, no advice language, and no public behavior changes.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_repo_contract.py tests/unit/test_safety_guardrails.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
+Iteration budget:
+One agent-loop cycle. If the audit discovers implementation gaps, record them as follow-up backlog tasks rather than fixing them inside this audit task.
+
+### T-102: Add backend MVP route contract regression matrix
+
+Goal:
+Add deterministic regression coverage that verifies key backend MVP route contracts remain aligned across search, overview, sources, weekly-news, comparison, chat, exports, diagnostics, unsupported states, and no-live-call defaults.
+
+Roadmap alignment:
+
+- Post-roadmap quality-closure task after T-101 gap auditing.
+- Hardens the completed backend roadmap by preventing regressions in public route contracts before any future production/live-provider work.
+
+Acceptance criteria:
+
+- Add or tighten route-contract tests for supported cached assets, eligible-not-cached assets, recognized unsupported assets, out-of-scope assets, unknown assets, unavailable states, and stale/partial/insufficient-evidence labels where route contracts expose them.
+- Verify important factual output keeps same-asset or same-comparison-pack citations, source-use metadata, freshness/as-of labels, educational disclaimers, no-advice language, and no raw reasoning/prompt/secret exposure.
+- Verify live-provider, market-data, news, OpenRouter, object-storage, cache, and database execution remain disabled by default in normal CI.
+- Preserve existing route schemas unless the test reveals an intentional documented contract mismatch; do not change frontend behavior or generated copy in this task.
+- Add focused integration/unit coverage and static eval expectations as needed.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/integration/test_backend_api.py tests/unit/test_safety_guardrails.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
+Iteration budget:
+One agent-loop cycle. If route behavior changes are needed, record a separate follow-up task and stop after regression coverage unless the change is required to keep existing documented behavior passing.
+
+### T-103: Prepare MVP backend go/no-go checklist and follow-up queue
+
+Goal:
+Prepare a deterministic MVP backend go/no-go checklist and follow-up task queue from the completed backend roadmap, readiness audit, route regression matrix, quality gate results, and documented residual risks.
+
+Roadmap alignment:
+
+- Post-roadmap planning task after T-101 and T-102.
+- Converts residual implementation risks into narrow next-cycle tasks without enabling live providers, deployment, or production behavior.
+
+Acceptance criteria:
+
+- Add or update a backend MVP go/no-go checklist document or `TASKS.md` section that maps completed backend roadmap areas to MVP acceptance criteria.
+- List unresolved gaps as narrow follow-up tasks with acceptance criteria, required commands, and explicit out-of-scope constraints.
+- Preserve safety, citation, freshness, source-use, unsupported/out-of-scope blocking, no-live-call defaults, secret-handling, and v0.4 frontend workflow boundaries.
+- Do not change runtime code, frontend behavior, generated output, provider calls, source allowlists, deployment files, or public API schemas.
+- Run deterministic documentation/control-plane checks.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_repo_contract.py -q
+npm test
+bash scripts/run_quality_gate.sh
+docker compose config
+```
+
+Iteration budget:
+One agent-loop cycle. Keep this as a planning/control-plane task and do not implement runtime follow-ups in the same cycle.
+
 ## MVP Backend Roadmap
 
 This section is intentionally non-operational for the agent loop. Keep runnable repeat-mode tasks above this roadmap as third-level task headings, and keep this longer MVP roadmap as bullets until each item is promoted into a narrow task contract. Early backend tasks may add production dependencies such as SQLAlchemy, Alembic, or psycopg only with dependency rationale, focused tests, and no live external calls in normal CI.
@@ -2730,9 +2822,10 @@ Operational defaults for backend roadmap tasks:
 - T-095 established route-level persisted-read fallback for Weekly News Focus. It is completed and must not be reintroduced as runnable backlog.
 - T-096 established live LLM runtime readiness diagnostics. It is completed and must not be reintroduced as runnable backlog.
 - T-097 established the gated OpenRouter transport adapter with mocked tests. It is completed and must not be reintroduced as runnable backlog.
-- T-098 is the current promoted task for live-generation validation and fallback orchestration after the mocked transport boundary.
-- T-099 is a prepared backlog task for deterministic provider content export-rights hardening.
+- T-098 established live-generation validation and fallback orchestration after the mocked transport boundary. It is completed and must not be reintroduced as runnable backlog.
+- T-099 is the current promoted task for deterministic provider content export-rights hardening.
 - T-100 is a prepared backlog task for production hardening readiness diagnostics, not production deployment.
+- T-101 through T-103 are prepared post-roadmap quality-closure tasks for MVP backend readiness auditing, route contract regression coverage, and go/no-go follow-up planning.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted backend task should run the relevant EVALS.md backend checks: `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, and `bash scripts/run_quality_gate.sh`.
 
@@ -2762,10 +2855,13 @@ Roadmap integration tracker:
 | Weekly News Focus persisted-read fallback | Completed | T-095 |
 | Live LLM runtime readiness diagnostics | Completed | T-096 |
 | Gated OpenRouter mocked transport adapter | Completed | T-097 |
-| Live-generation validation and fallback orchestration | Current | T-098 |
-| Provider source-use/export enforcement hardening | Backlog | T-099 |
+| Live-generation validation and fallback orchestration | Completed | T-098 |
+| Provider source-use/export enforcement hardening | Current | T-099 |
 | Production hardening readiness diagnostics | Backlog | T-100 |
+| MVP backend readiness gap audit | Backlog | T-101 |
+| Backend MVP route contract regression matrix | Backlog | T-102 |
+| MVP backend go/no-go checklist and follow-up queue | Backlog | T-103 |
 
 Remaining unpromoted backend MVP sequence:
 
-No remaining backend MVP roadmap areas are promoted beyond T-100. Future tasks after T-100 should be prepared from implementation risks recorded by T-096 through T-100, or from MVP acceptance gaps discovered by the quality gate, rather than enabling live production behavior by default.
+No remaining backend MVP roadmap areas are promoted beyond T-100. T-101 through T-103 are post-roadmap quality-closure tasks prepared from completed-roadmap risks and MVP acceptance gaps; they must not enable live production behavior by default.
