@@ -235,7 +235,8 @@ def asset_sources(
 
 @app.get("/api/assets/{ticker}/glossary", response_model=GlossaryResponse, tags=["assets"])
 def asset_glossary(ticker: str, term: str | None = None) -> GlossaryResponse:
-    return build_glossary_response(ticker, term=term)
+    readers = _read_dependencies()
+    return build_glossary_response(ticker, term=term, persisted_pack_reader=readers.reader("knowledge_pack_reader"))
 
 
 @app.get("/api/assets/{ticker}/export", response_model=ExportResponse, tags=["exports"])

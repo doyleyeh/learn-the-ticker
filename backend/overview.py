@@ -151,6 +151,7 @@ def generate_asset_overview(
         ticker,
         persisted_pack_reader=persisted_pack_reader,
         generated_output_cache_reader=generated_output_cache_reader,
+        persisted_weekly_news_reader=persisted_weekly_news_reader,
     )
     if persisted.found and persisted.overview is not None:
         return persisted.overview
@@ -169,6 +170,7 @@ def read_persisted_overview_response(
     *,
     persisted_pack_reader: KnowledgePackRecordReader | Any | None = None,
     generated_output_cache_reader: GeneratedOutputCacheRecordReader | Any | None = None,
+    persisted_weekly_news_reader: WeeklyNewsEventEvidenceRecordReader | Any | None = None,
 ) -> PersistedOverviewReadResult:
     normalized = ticker.strip().upper()
     if persisted_pack_reader is None or generated_output_cache_reader is None:
@@ -209,7 +211,7 @@ def read_persisted_overview_response(
             pack_records=pack_read.records,
             knowledge_pack_hash=pack_read.response.knowledge_pack_freshness_hash,
         )
-        overview = generate_overview_from_pack(pack)
+        overview = generate_overview_from_pack(pack, persisted_weekly_news_reader=persisted_weekly_news_reader)
         report = validate_overview_response(overview, pack)
         if not report.valid:
             return PersistedOverviewReadResult(
