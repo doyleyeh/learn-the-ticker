@@ -1,72 +1,80 @@
 ## Current task
 
-### T-109: Wire frontend search and dynamic asset pages to backend APIs
+### T-110: Verify persisted golden-path comparison, chat, sources, glossary, and exports end to end
 
 Goal:
-Move frontend search, pending-ingestion states, and dynamic asset pages from local-fixture-first behavior to backend API-backed behavior while preserving deterministic fixture fallback during transition.
+Prove the MVP learning surfaces can render and export persisted golden-path evidence and generated-output cache records end to end after T-109 made frontend search and asset pages API-backed.
 
 Task-scope paragraph:
-Update the Next.js frontend so home search and dynamic asset-page data loading prefer the existing FastAPI backend contracts for search, supported asset overview/details/source-list/Weekly News Focus, and pending ingestion/job state when a backend API base is configured. Preserve deterministic local fixture fallback for tests and offline development. Keep Frontend Design and Workflow v0.4 intact: home remains one single stock/ETF search, comparison stays a separate connected workflow, glossary remains contextual, source/glossary/chat mobile surfaces remain bottom-sheet or full-screen oriented, stock-vs-ETF comparison relationship structure remains unchanged, and Weekly News Focus must still show fewer or empty states when evidence is thin. This task is frontend API convergence only; do not add live providers, production deployment wiring, broad pre-cache expansion, or new backend generation behavior.
+Add deterministic end-to-end verification that comparison, grounded chat, source drawer, citation chips, freshness labels, glossary context, and Markdown/JSON exports can consume configured persisted golden packs, Weekly News evidence, and generated-output cache records for AAPL, VOO, QQQ, and supported VOO-vs-QQQ/AAPL-vs-VOO golden comparisons. Exercise existing route shapes and frontend adapters with mocked configured repositories. Preserve Frontend Design and Workflow v0.4: home remains single stock/ETF search first, comparison remains a separate connected workflow, glossary remains contextual, source/glossary/chat mobile surfaces remain bottom-sheet or full-screen oriented, stock-vs-ETF comparison keeps relationship badges and the single-company-vs-ETF-basket structure, and Weekly News Focus shows only evidence-supported items. Do not add live providers, production database/object-storage execution, deployment wiring, paid provider integration, broad launch-universe expansion, or new public API route shapes.
 
 Roadmap alignment:
 
-- First frontend API-backed rendering task after T-101 configured backend route readers, T-102 executable local ingestion ledger, T-103/T-104 mocked official-source acquisition, T-105 source snapshots, T-106 normalized knowledge packs, T-107 persisted Weekly News event evidence, and T-108 generated-output cache-write activation.
-- Moves the deterministic frontend closer to the local mocked ingest-to-persist-to-render milestone without live provider, live LLM, production persistence, deployment, or launch-universe expansion.
-- Preserves Frontend Design and Workflow v0.4 before broader production hardening: single-asset home search, separate connected comparison workflow, contextual glossary, mobile source/glossary/chat bottom sheets or full-screen panels, stock-vs-ETF relationship badges, and evidence-limited Weekly News Focus behavior.
+- First end-to-end persisted-surface verification task after T-109 wired frontend search and dynamic asset pages to backend adapters.
+- Proves that already-built deterministic persistence/cache boundaries can feed the comparison, chat, source, glossary, and export surfaces before local durable repository execution or live official-source acquisition.
+- Keeps Frontend Design and Workflow v0.4 stable before broader runtime expansion: single-asset home search, separate connected comparison workflow, contextual glossary, mobile source/glossary/chat sheets or full-screen panels, stock-vs-ETF relationship badges, and evidence-limited Weekly News behavior.
 
 General MVP alignment:
-T-109 wires the frontend search and dynamic asset-page surfaces toward existing backend contracts with fixture fallback. It does not complete the MVP by itself; comparison/chat/export persisted rendering verification, launch pre-cache expansion, live-provider readiness, recurring acquisition, production persistence execution, route regression matrices, and deployment remain separate follow-up tasks.
+T-110 verifies deterministic persisted golden-path rendering and export behavior across the remaining MVP learning surfaces. It does not complete the MVP by itself; durable local persistence execution, live official-source acquisition, launch pre-cache expansion, recurring jobs, route regression matrices, and deployment remain separate follow-up tasks.
 
 Roadmap contract refinement:
-T-109 must also update the stale General MVP roadmap contract test so it marks T-109 as the current promoted task and T-110 through T-114 as prepared backlog. The focused repo-contract test currently still expects T-108 to be current and T-109 to be backlog.
+T-110 may update focused roadmap contract expectations only if they are stale after this promotion, but edits must stay within the allowed files. Do not update operational control docs other than the required journal note unless a test explicitly depends on it.
 
 Allowed files:
 
-- `apps/web/lib/search.ts`
-- `apps/web/lib/assetOverview.ts`
-- `apps/web/lib/assetDetails.ts`
-- `apps/web/lib/assetWeeklyNews.ts`
+- `apps/web/lib/compare.ts`
+- `apps/web/lib/assetChat.ts`
+- `apps/web/lib/assetGlossary.ts`
 - `apps/web/lib/sourceDrawer.ts`
-- `apps/web/lib/fixtures.ts` only for deterministic fallback adapters or fixture-fallback tests
-- `apps/web/lib/assetGlossary.ts` only if asset-page backend data mapping needs to preserve existing glossary context
-- `apps/web/lib/exportControls.ts` only if asset-page backend response mapping requires existing export metadata parity
-- `apps/web/lib/compareSuggestions.ts` only if asset-page backend response mapping must preserve existing comparison CTA suggestions
-- `apps/web/components/SearchBox.tsx`
-- `apps/web/components/AssetHeader.tsx`
-- `apps/web/components/AssetModeLayout.tsx`
-- `apps/web/components/AssetStockSections.tsx`
-- `apps/web/components/AssetEtfSections.tsx`
-- `apps/web/components/WeeklyNewsPanel.tsx`
-- `apps/web/components/AIComprehensiveAnalysisPanel.tsx`
+- `apps/web/lib/exportControls.ts`
+- `apps/web/lib/assetOverview.ts` only for narrow persisted golden-path fixture/adapter parity needed by comparison/chat/source/glossary/export verification
+- `apps/web/lib/assetWeeklyNews.ts` only for narrow Weekly News evidence-limited parity needed by verified rendered surfaces
+- `apps/web/lib/fixtures.ts` only for deterministic golden-path persisted fixture adapters or tests
+- `apps/web/components/ComparisonResult.tsx`
+- `apps/web/components/ComparisonSourceDetails.tsx`
 - `apps/web/components/SourceDrawer.tsx`
 - `apps/web/components/CitationChip.tsx`
 - `apps/web/components/FreshnessLabel.tsx`
-- `apps/web/components/ComparisonSuggestions.tsx`
-- `apps/web/components/AssetChatPanel.tsx` only if asset-page data loading changes require preserving chat helper placement/state
-- `apps/web/app/page.tsx`
-- `apps/web/app/assets/[ticker]/page.tsx`
+- `apps/web/components/GlossaryPopover.tsx`
+- `apps/web/components/InlineGlossaryText.tsx`
+- `apps/web/components/AssetChatPanel.tsx`
+- `apps/web/components/ExportControls.tsx`
+- `apps/web/app/compare/page.tsx`
 - `apps/web/app/assets/[ticker]/sources/page.tsx`
+- `apps/web/app/assets/[ticker]/page.tsx` only if a narrow adapter hook is required for shared persisted golden-path verification
+- `backend/main.py` only for dependency injection in existing routes, with no route/schema changes
+- `backend/comparison.py`
+- `backend/chat.py`
+- `backend/sources.py`
+- `backend/export.py`
+- `backend/glossary.py`
+- `backend/overview.py` only for narrow configured-reader reuse needed by persisted golden-path verification
+- `backend/repositories/*.py` only for in-memory/mocked test helper support, not production durable execution
 - `tests/frontend/smoke.mjs`
-- `tests/integration/test_backend_api.py` only if existing backend response fixture expectations need a narrow assertion for frontend-consumed contract stability
+- `tests/integration/test_backend_api.py`
+- `tests/unit/test_comparison_generation.py`
+- `tests/unit/test_chat_generation.py`
+- `tests/unit/test_exports.py`
+- `tests/unit/test_source_drawer.py`
+- `tests/unit/test_glossary_context.py`
 - `tests/unit/test_repo_contract.py`
 - `tests/unit/test_safety_guardrails.py`
 - `docs/agent-journal/*.md`
 
 Do not change:
 
-- No backend behavior changes except a narrow contract-stability test assertion if needed.
-- No public FastAPI route paths, HTTP status behavior, response schemas, `/health` behavior, source drawer behavior, glossary behavior, comparison behavior, chat behavior, search behavior, export behavior, or deterministic backend fixture output changes.
+- No public FastAPI route paths, HTTP status behavior, response schemas, `/health` behavior, search behavior, generated asset overview schema, source drawer schema, glossary schema, comparison schema, chat schema, export schema, or deterministic backend fixture output changes.
 - No changes to home-page workflow that make comparison or glossary a primary home-page workflow; home must remain single stock/ETF search first.
-- No changes to `/compare` behavior except preserving existing search redirect links and asset-page CTAs.
+- No changes to `/compare` behavior except narrow persisted-reader verification needed for existing comparison routes, source metadata, relationship badges, and blocked states.
 - No changes to stock-vs-ETF comparison relationship badges, special single-company-vs-ETF-basket structure, comparison result templates, or comparison generation logic.
 - No removal or weakening of contextual glossary desktop hover/click/focus behavior or mobile bottom-sheet behavior.
 - No removal or weakening of source drawer desktop drawer behavior, mobile bottom-sheet behavior, citation chips, freshness labels, stale/unknown/unavailable/partial/insufficient-evidence display states, export controls, or asset chat helper placement.
-- No live OpenRouter, LLM, issuer, SEC, ETF, market-data, news, RSS, web, object-storage, Redis, Cloud Run Job, scheduler, admin auth enforcement, rate-limiting, external analytics, telemetry vendor, or deployment wiring.
+- No live OpenRouter, LLM, issuer, SEC, ETF, market-data, news, RSS, web, object-storage, Redis, database, Cloud Run Job, scheduler, admin auth enforcement, rate-limiting, external analytics, telemetry vendor, or deployment wiring.
 - No browser calls to source providers, LLM providers, market-data/news providers, admin ingestion secrets, object storage, signed URLs, or provider endpoints. Browser code may call only the configured backend API base and local deterministic fallback helpers.
 - No new `NEXT_PUBLIC_*` provider variables, no provider keys in browser code, no `/health` secret exposure, no docs/env examples containing real secrets, and no logging or diagnostics that include API key values or provider credentials.
 - No production dependency addition.
-- No schema migrations, production database session execution, real Weekly News source acquisition in CI, prompt template rewrite, provider licensing change, broad source allowlist expansion, runtime secret setup, production deployment setup, or actual legal/licensing determination.
-- No new generated pages, generated chat answers, generated comparisons, generated risk summaries, live LLM calls, or cache writes beyond existing deterministic backend behavior.
+- No schema migrations, durable repository implementations, production database session execution, real Weekly News source acquisition in CI, prompt template rewrite, provider licensing change, broad source allowlist expansion, runtime secret setup, production deployment setup, or actual legal/licensing determination.
+- No new generated pages, generated chat answers, generated comparisons, generated risk summaries, live LLM calls, or cache writes beyond existing deterministic backend behavior and mocked configured repositories.
 - No edits to `data/universes/us_common_stocks_top500.current.json` or `data/universes/us_equity_etfs.current.json`.
 - No expansion to leveraged ETFs, inverse ETFs, ETNs, fixed-income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, international ETFs, preferred stocks, warrants, rights, options, crypto, or other out-of-scope products.
 - No raw full article text, unrestricted source text, unrestricted provider payloads, hidden prompts, raw prompt text, raw model reasoning, raw user text, raw queries, raw questions, raw answers, raw chat transcripts, personal identifiers, portfolio/allocation details, real API keys, credentials, secrets, public storage URLs, signed URLs, external analytics IDs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, browser state, repository records, knowledge-pack records, cache records, job records, events, exports, or exported data.
@@ -74,21 +82,19 @@ Do not change:
 
 Acceptance criteria:
 
-- Home search prefers the configured backend `/api/search` contract through a frontend backend adapter when an API base is configured, while preserving deterministic fixture fallback for local/offline tests, backend misses, backend failures, invalid response shapes, and unavailable API configuration.
-- Search results preserve stock-vs-ETF identity, exchange or issuer metadata, support-state chips, exact unsupported behavior, out-of-scope blocked behavior, pending-ingestion affordances, unavailable/unknown/no-result copy, and beginner-readable labels.
-- Clear comparison queries such as `VOO vs QQQ`, `AAPL vs VOO`, and other unambiguous `A vs B` patterns continue to route toward `/compare?left=...&right=...` instead of turning the home page into a two-input comparison builder.
-- The home page remains one primary single-asset search action; comparison and glossary do not become primary home-page workflows.
-- Dynamic asset pages prefer backend overview/details/source-list/Weekly News Focus responses where configured and can render supported, pending-ingestion, partial, stale, unknown, unavailable, and insufficient-evidence states beyond static AAPL/VOO/QQQ fixtures.
-- Dynamic asset pages preserve deterministic fixture fallback for AAPL, VOO, QQQ, unsupported assets, out-of-scope assets, invalid backend responses, missing backend responses, and local/offline tests.
-- Supported backend-backed pages preserve Beginner-first layout, Deep-Dive availability, source drawer access, citation chips, freshness labels, top-risk ordering, comparison CTAs, suggested comparisons, export controls, contextual glossary, and asset chat helper placement.
-- Weekly News Focus and AI Comprehensive Analysis remain visually and structurally separate from stable canonical facts; Weekly News Focus does not pad to the configured maximum when backend evidence is limited, and AI Comprehensive Analysis remains suppressed when backend threshold metadata is insufficient.
-- Source drawer still exposes source title, source type, publisher, URL, dates, freshness, source-use policy where available, related claim, and allowed supporting excerpt, with desktop drawer and mobile bottom-sheet behavior intact.
-- Contextual glossary remains in reading flows with desktop hover/click/focus and mobile tap bottom-sheet behavior; it must not be promoted into a home-page primary workflow.
-- Asset chat remains a helper feature with desktop helper placement and mobile bottom-sheet or full-screen behavior; single-asset chat comparison redirects remain compatible with separate comparison workflow behavior.
+- Persisted golden packs, Weekly News evidence, and generated-output cache records can drive comparison, grounded chat, source drawer, citation chip, freshness, glossary-context, source-list export, asset-page export, comparison export, and chat transcript export flows without falling back to unrelated local fixtures.
+- Configured mocked repositories are exercised end to end through existing backend route dependencies and frontend adapters for AAPL, VOO, QQQ, VOO-vs-QQQ, and AAPL-vs-VOO where those golden paths already exist.
+- Same-asset and same-comparison-pack citation/source binding is verified across rendered UI data, backend route responses, source drawer metadata, glossary context, chat answers, and exports.
+- Source drawer output continues to expose source title, source type, publisher, URL, dates, freshness, source-use policy where available, related claim, and allowed supporting excerpt, with desktop drawer and mobile bottom-sheet behavior intact.
+- Contextual glossary remains in reading flows with desktop hover/click/focus and mobile tap bottom-sheet behavior; asset-specific glossary context is grounded in the selected asset pack and does not invent uncited asset facts.
+- Asset chat remains a helper feature with desktop helper placement and mobile bottom-sheet or full-screen behavior; single-asset chat comparison redirects remain compatible with the separate comparison workflow.
+- Comparison rendering preserves supported ETF-vs-ETF, stock-vs-stock where available, and stock-vs-ETF paths; stock-vs-ETF output keeps relationship badges and the single-company-vs-ETF-basket structure.
+- Markdown and JSON exports include citations, source metadata, freshness or as-of dates, uncertainty labels, and the educational disclaimer while respecting source-use rights and omitting restricted/raw content.
+- Weekly News Focus and AI Comprehensive Analysis remain visually, structurally, and citation-wise separate from stable canonical facts; Weekly News Focus does not pad to the configured maximum when evidence is limited, and AI Comprehensive Analysis remains suppressed when threshold metadata is insufficient.
+- Unsupported, out-of-scope, unknown, unavailable, stale, partial, insufficient-evidence, wrong-asset, wrong-comparison-pack, rejected-source, and source-policy-blocked records remain blocked or explicitly labeled.
+- Tests or smoke coverage preserve v0.4 workflow markers: single-asset home search, separate comparison workflow, contextual glossary, mobile source/glossary/chat sheets or full-screen panels, stock-vs-ETF relationship badges, and evidence-limited Weekly News behavior.
 - Browser code calls only the configured backend API base and deterministic local fallback helpers. It never calls OpenRouter, LLM providers, SEC, issuer, ETF, market-data, news, RSS, object storage, signed URLs, admin-secret endpoints, or provider endpoints directly.
-- Frontend API configuration and diagnostics do not expose provider secrets, real API keys, hidden prompts, raw model reasoning, raw user text, raw transcripts, unrestricted source text, public storage URLs, signed URLs, or frontend-readable private storage paths.
-- Tests prove backend API preference and fixture fallback for home search and dynamic asset pages, including success, miss/failure, invalid response, unsupported, out-of-scope, pending-ingestion, stale, unknown, unavailable, partial, and insufficient-evidence cases.
-- Tests or smoke coverage prove v0.4 workflow markers remain intact: single-asset home search, separate comparison workflow, contextual glossary, mobile source/glossary/chat sheets or full-screen panels, stock-vs-ETF relationship badges when comparison surfaces are touched, and evidence-limited Weekly News behavior.
+- Frontend and backend diagnostics do not expose provider secrets, real API keys, hidden prompts, raw model reasoning, raw user text, raw transcripts, unrestricted source text, public storage URLs, signed URLs, or frontend-readable private storage paths.
 - Preserve existing root npm script delegation, `apps/web` workspace scripts, backend deterministic test behavior, route schemas, no-live-call defaults, citation/source-use guardrails, safety/advice boundaries, and PRD/TDS-first authority after safety.
 - Preserve product guardrails in implementation, tests, docs, and journal notes: no buy/sell/hold recommendations, allocation advice, tax advice, price targets, brokerage/trading behavior, unsupported factual claims, or recent-news-as-canonical framing.
 
@@ -99,6 +105,7 @@ npm test
 npm run typecheck
 npm run build
 python3 -m pytest tests/integration/test_backend_api.py -q
+python3 -m pytest tests/unit/test_comparison_generation.py tests/unit/test_chat_generation.py tests/unit/test_exports.py tests/unit/test_source_drawer.py tests/unit/test_glossary_context.py -q
 python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
 python3 -m pytest tests -q
 python3 evals/run_static_evals.py
@@ -107,10 +114,39 @@ git diff --check
 ```
 
 Iteration budget:
-One agent-loop cycle. Stop after frontend API-backed search and dynamic asset-page rendering with deterministic fixture fallback. If comparison/chat/export persisted rendering verification, launch pre-cache expansion, generated AI Comprehensive Analysis activation from fresh persisted data, live providers, production object-storage/database execution, source allowlist expansion, broad asset coverage, recurring jobs, route regression matrices, or deployment work are needed, record the follow-up and stop.
+One agent-loop cycle. Stop after deterministic persisted end-to-end verification for golden comparison/chat/source/glossary/export flows. If durable local persistence execution, live official-source acquisition, launch pre-cache expansion, generated AI Comprehensive Analysis activation from fresh persisted data, production object-storage/database execution, source allowlist expansion, broad asset coverage, recurring jobs, route regression matrices, or deployment work are needed, record the follow-up and stop.
 
 
 ## Completed
+
+### T-109: Wire frontend search and dynamic asset pages to backend APIs
+
+Goal:
+Move frontend search, pending-ingestion states, and dynamic asset pages from local-fixture-first behavior to backend API-backed behavior while preserving deterministic fixture fallback during transition.
+
+Completed details:
+
+- Implementation commit `3b35858 feat(T-109): wire frontend search and dynamic asset pages to backend APIs` updated `apps/web/lib/search.ts`, `apps/web/components/SearchBox.tsx`, `apps/web/lib/assetOverview.ts`, `apps/web/app/assets/[ticker]/page.tsx`, `apps/web/app/assets/[ticker]/sources/page.tsx`, `tests/frontend/smoke.mjs`, and `docs/agent-journal/20260426T211844Z.md`.
+- Roadmap-contract commit `f932b20 chore(T-109): update roadmap contract for promoted task` updated `TASKS.md` and `tests/unit/test_repo_contract.py`.
+- Merged branch `agent/T-109-20260426T211844Z` into `main` with local merge commit `2ff9750 chore(T-109): merge wire frontend search and dynamic asset pages to backend APIs`.
+- `apps/web/lib/search.ts` added `resolveSearchResponse`, `fetchBackendSearchResponse`, `/api/search` endpoint construction from `NEXT_PUBLIC_API_BASE_URL` or `API_BASE_URL`, backend response-shape validation, and fixture fallback through `resolveLocalSearchResponse` for unavailable API configuration, failed requests, and invalid payloads.
+- Search comparison-query handling remains local-first so clear `A vs B` searches still route to `/compare?left=...&right=...` instead of becoming a two-input home workflow.
+- `apps/web/components/SearchBox.tsx` now keeps immediate deterministic local search state while asynchronously resolving the configured backend search contract, with loading copy that explicitly preserves fixture fallback.
+- `apps/web/lib/assetOverview.ts` now allows backend overview mapping without an existing local fixture, merges backend citations/source documents with fallback data when present, and derives facts and citation contexts from backend overview sections for dynamic supported pages.
+- `apps/web/app/assets/[ticker]/page.tsx` now attempts backend overview loading for fixture and non-fixture tickers, renders `LimitedAssetStatePage` for blocked, unknown, unsupported, out-of-scope, or pending-ingestion states, and builds empty Weekly News Focus plus suppressed AI Comprehensive Analysis fallbacks when backend-only dynamic pages lack local timely-context fixtures.
+- `apps/web/app/assets/[ticker]/sources/page.tsx` now resolves source-list support state through `resolveSearchResponse`, preserving blocked source-list behavior for unsupported, out-of-scope, unknown, unavailable, and eligible-not-cached states.
+- `tests/frontend/smoke.mjs` was updated to assert backend search preference before fixture fallback, dynamic asset limited-state markers, pending-ingestion/no-generated-output markers, source-list search resolution, and continued no-inline-fetch/no-live-external-call frontend boundaries.
+- `docs/agent-journal/20260426T211844Z.md` records these checks: `npm test` passed; `npm run typecheck` passed; `npm run build` passed; `python3 -m pytest tests/integration/test_backend_api.py -q` passed with 35 tests; `python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q` passed with 30 tests; `python3 -m pytest tests -q` passed with 395 tests; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed; `git diff --check` passed.
+- Remaining risks from the journal:
+  - Frontend search now prefers `/api/search` only when a configured API base is available; local/offline behavior still depends on deterministic fixture fallback.
+  - Dynamic backend-only asset pages can render from the overview contract and show blocked or pending states, but persisted comparison/chat/export end-to-end verification remains T-110 scope.
+  - No live providers, production persistence, deployment wiring, or broad pre-cache expansion were added.
+
+Completion commits:
+
+- `f932b20 chore(T-109): update roadmap contract for promoted task`
+- `3b35858 feat(T-109): wire frontend search and dynamic asset pages to backend APIs`
+- `2ff9750 chore(T-109): merge wire frontend search and dynamic asset pages to backend APIs`
 
 ### T-108: Activate generated-output cache writes and freshness invalidation for validated outputs
 
@@ -2965,40 +3001,6 @@ Completion commits:
 
 ## Backlog
 
-### T-110: Verify persisted golden-path comparison, chat, sources, glossary, and exports end to end
-
-Goal:
-Prove the MVP learning surfaces can render and export persisted golden-path evidence and generated-output cache records end to end after T-109 makes frontend search and asset pages API-backed.
-
-Task-scope paragraph:
-Add deterministic end-to-end verification that comparison, grounded chat, source drawer, citation chips, freshness labels, glossary context, and Markdown/JSON exports can consume configured persisted golden packs, Weekly News evidence, and generated-output cache records for AAPL, VOO, QQQ, and the supported VOO-vs-QQQ/AAPL-vs-VOO golden comparisons. This task should exercise existing route shapes and frontend adapters with mocked configured repositories. It must not add live providers, production database/object-storage execution, deployment wiring, paid provider integration, broad launch-universe expansion, or new public API route shapes.
-
-Acceptance criteria:
-
-- Persisted golden packs and cache records can drive comparison, grounded chat, source drawer, citation chip, freshness, glossary-context, source-list export, asset-page export, comparison export, and chat transcript export flows without falling back to unrelated local fixtures.
-- Same-asset and same-comparison-pack citation/source binding is verified across rendered UI data, route responses, source drawer metadata, glossary context, chat answers, and exports.
-- Unsupported, out-of-scope, unknown, unavailable, stale, partial, insufficient-evidence, wrong-asset, wrong-comparison-pack, rejected-source, and source-policy-blocked records remain blocked or explicitly labeled.
-- Frontend and backend tests preserve v0.4 workflow markers: single-asset home search, separate comparison workflow, contextual glossary, mobile source/glossary/chat behavior, stock-vs-ETF relationship badges, and evidence-limited Weekly News behavior.
-- Normal CI remains deterministic with mocked repositories only and no live provider, live LLM, production storage, real secrets, public storage URLs, signed URLs, raw transcripts, raw source text, or unrestricted provider payloads.
-
-Required commands:
-
-```bash
-npm test
-npm run typecheck
-npm run build
-python3 -m pytest tests/integration/test_backend_api.py -q
-python3 -m pytest tests/unit/test_comparison_generation.py tests/unit/test_chat_generation.py tests/unit/test_exports.py tests/unit/test_source_drawer.py tests/unit/test_glossary_context.py -q
-python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-git diff --check
-```
-
-Iteration budget:
-One agent-loop cycle. Stop after deterministic persisted end-to-end verification for golden comparison/chat/source/glossary/export flows; leave durable local persistence execution, live acquisition, launch pre-cache expansion, and production readiness for later tasks.
-
 ### T-111: Wire local durable repository execution with in-memory fallback
 
 Goal:
@@ -3135,8 +3137,9 @@ Current runtime snapshot:
 
 - Backend contracts, configured reader boundaries, ingestion ledger execution, source-use/export gates, Weekly News contracts, generated-output cache contracts, and live-generation readiness diagnostics are broad and stable.
 - The current runtime is still not end-to-end fresh-data functional: acquisition is mocked/golden-path, source snapshots, normalized knowledge packs, Weekly News evidence, and generated-output cache records are written only through deterministic in-memory/mocked boundaries, and production persistence/storage is not the normal path.
-- The frontend renders the main learning surfaces with deterministic fixtures and selected backend adapters, but home search still uses local search resolution and the static smoke contract still asserts no `/api/search`; API-backed search, pending states, and dynamic asset pages are the current promoted MVP blocker.
-- The next fully functional milestone is a local deterministic golden path where admin/server-side ingestion acquires official-source data through explicit server-side paths, persists validated snapshots and knowledge packs, writes validated cache records, and the frontend renders backend API responses with fixture fallback.
+- The frontend renders the main learning surfaces with deterministic fixtures and selected backend adapters; T-109 added API-backed home search and dynamic asset-page rendering with deterministic fixture fallback.
+- The current promoted MVP blocker is deterministic end-to-end verification that persisted golden packs, Weekly News evidence, and generated-output cache records can drive comparison, chat, source, glossary, and export surfaces before durable local persistence or live official-source acquisition.
+- The next fully functional milestone is a local deterministic golden path where admin/server-side ingestion acquires official-source data through explicit server-side paths, persists validated snapshots and knowledge packs, writes validated cache records, and all frontend learning surfaces render backend API responses with fixture fallback.
 
 Operational defaults for general MVP roadmap tasks:
 
@@ -3173,8 +3176,9 @@ Operational defaults for general MVP roadmap tasks:
 - T-106 established deterministic normalized knowledge-pack writes from acquisition outputs. It is completed and must not be reintroduced as runnable backlog.
 - T-107 established deterministic persisted Weekly News Focus event evidence for golden assets. It is completed and must not be reintroduced as runnable backlog.
 - T-108 established deterministic generated-output cache writes and freshness invalidation for validated golden-path outputs. It is completed and must not be reintroduced as runnable backlog.
-- T-109 is the current promoted task for frontend API-backed search, pending states, and dynamic asset-page rendering.
-- T-110 through T-114 are the next runnable tasks for persisted end-to-end rendering verification, local durable repository execution, opt-in live official-source acquisition, official-source Weekly News live acquisition, and launch readiness.
+- T-109 established frontend API-backed search, pending states, and dynamic asset-page rendering. It is completed and must not be reintroduced as runnable backlog.
+- T-110 is the current promoted task for persisted end-to-end comparison, chat, source, glossary, and export verification.
+- T-111 through T-114 are the next runnable tasks for local durable repository execution, opt-in live official-source acquisition, official-source Weekly News live acquisition, and launch readiness.
 - Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until the local durable golden ingest-to-render path works with deterministic CI coverage.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted task should run the relevant EVALS.md checks, `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, `bash scripts/run_quality_gate.sh`, and `git diff --check`.
@@ -3216,8 +3220,8 @@ Roadmap integration tracker:
 | Normalized knowledge-pack writes from ingestion | Completed | T-106 |
 | Weekly News Focus official-source event evidence persistence | Completed | T-107 |
 | Generated-output cache writes and invalidation | Completed | T-108 |
-| Frontend API-backed search, pending states, and asset rendering | Current | T-109 |
-| Persisted comparison/chat/source/glossary/export end-to-end verification | Backlog | T-110 |
+| Frontend API-backed search, pending states, and asset rendering | Completed | T-109 |
+| Persisted comparison/chat/source/glossary/export end-to-end verification | Current | T-110 |
 | Local durable repository execution with in-memory fallback | Backlog | T-111 |
 | Opt-in live SEC and ETF issuer golden acquisition | Backlog | T-112 |
 | Official-source Weekly News live acquisition for golden assets | Backlog | T-113 |
