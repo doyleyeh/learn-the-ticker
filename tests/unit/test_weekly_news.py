@@ -24,6 +24,7 @@ from backend.weekly_news import (
 )
 from backend.weekly_news_repository import (
     WEEKLY_NEWS_EVENT_EVIDENCE_REPOSITORY_BOUNDARY,
+    WEEKLY_NEWS_FIXTURE_ACQUISITION_BOUNDARY,
     WEEKLY_NEWS_EVENT_EVIDENCE_TABLES,
     WeeklyNewsAIThresholdRow,
     WeeklyNewsDedupeGroupRow,
@@ -37,6 +38,8 @@ from backend.weekly_news_repository import (
     WeeklyNewsSourceRankInputRow,
     WeeklyNewsSourceRankTier,
     WeeklyNewsValidationStatusRow,
+    WeeklyNewsFixtureAcquisitionBoundary,
+    acquire_weekly_news_event_evidence_from_fixtures,
     build_market_week_window_row,
     source_rank_tier_priority,
     validate_weekly_news_event_evidence_records,
@@ -176,11 +179,108 @@ def test_ai_comprehensive_analysis_requires_two_high_signal_items_and_preserves_
     assert validate_ai_comprehensive_analysis(analysis, focus) == analysis
 
 
+def test_fixture_acquisition_boundary_selects_ranked_deduped_weekly_news_evidence():
+    candidates = [
+        _repository_candidate("allowlisted_context", tier=WeeklyNewsSourceRankTier.allowlisted_news, source_rank=20, source_quality=SourceQuality.allowlisted),
+        _repository_candidate("official_filing", tier=WeeklyNewsSourceRankTier.official_filing, source_rank=1),
+        _repository_candidate(
+            "duplicate_context",
+            tier=WeeklyNewsSourceRankTier.allowlisted_news,
+            source_rank=20,
+            source_quality=SourceQuality.allowlisted,
+            duplicate_group_id="allowlisted_context",
+        ),
+        _repository_candidate("metadata_only", source_use_policy=SourceUsePolicy.metadata_only),
+        _repository_candidate("rejected_source", source_use_policy=SourceUsePolicy.rejected, allowlist_status=SourceAllowlistStatus.rejected, source_quality=SourceQuality.rejected),
+        _repository_candidate("not_allowlisted", allowlist_status=SourceAllowlistStatus.not_allowlisted),
+        _repository_candidate("promotional", promotional=True),
+        _repository_candidate("irrelevant", irrelevant=True),
+        _repository_candidate("outside_window", event_date="2026-04-01"),
+        _repository_candidate("wrong_asset").model_copy(update={"asset_ticker": "AAPL", "source_asset_ticker": "AAPL"}),
+    ]
+
+    records = WeeklyNewsFixtureAcquisitionBoundary().select(
+        asset_ticker="QQQ",
+        as_of="2026-04-23",
+        created_at="2026-04-23T12:00:00Z",
+        candidates=candidates,
+    )
+
+    assert WEEKLY_NEWS_FIXTURE_ACQUISITION_BOUNDARY == "weekly-news-fixture-acquisition-boundary-v1"
+    assert validate_weekly_news_event_evidence_records(records) == records
+    assert [row.candidate_event_id for row in records.selected_events] == ["official_filing", "allowlisted_context"]
+    assert records.evidence_states[0].selected_item_count == 2
+    assert records.evidence_states[0].suppressed_candidate_count == 8
+    assert records.evidence_states[0].evidence_limited_state == "limited_verified_set"
+    assert records.ai_thresholds[0].analysis_allowed is True
+    assert records.ai_thresholds[0].selected_item_count == 2
+    assert records.ai_thresholds[0].high_signal_selected_item_count == 2
+    assert records.dedupe_groups
+    assert any(row.duplicate_candidate_event_ids == ["duplicate_context"] for row in records.dedupe_groups)
+
+    suppressed = {row.candidate_event_id: row.suppression_reason_codes for row in records.candidates if row.candidate_decision == "suppressed"}
+    assert "source_policy_blocked" in suppressed["metadata_only"]
+    assert "rejected_source" in suppressed["rejected_source"]
+    assert "non_allowlisted_source" in suppressed["not_allowlisted"]
+    assert "promotional" in suppressed["promotional"]
+    assert "irrelevant" in suppressed["irrelevant"]
+    assert "outside_market_week_window" in suppressed["outside_window"]
+    assert "duplicate" in suppressed["duplicate_context"]
+    assert "wrong_asset" not in {row.candidate_event_id for row in records.candidates}
+
+    diagnostic = records.diagnostics[0]
+    assert diagnostic.compact_metadata["skipped_wrong_asset_count"] == 1
+    assert diagnostic.compact_metadata["selected_count"] == 2
+    assert "AAPL" not in repr(diagnostic)
+    assert all(row.stores_raw_article_text is False for row in records.candidates)
+    assert all(row.stores_raw_provider_payload is False for row in records.candidates)
+    assert all(row.stores_unrestricted_source_text is False for row in records.candidates)
+    assert diagnostic.stores_hidden_prompt is False
+    assert diagnostic.stores_secret is False
+    assert "https://" not in repr(records).lower()
+
+
+def test_fixture_acquisition_boundary_supports_empty_limited_and_ai_threshold_states():
+    empty = acquire_weekly_news_event_evidence_from_fixtures(
+        asset_ticker="VOO",
+        as_of="2026-04-20",
+        created_at="2026-04-20T12:00:00Z",
+        candidates=[
+            _repository_candidate("future_item", event_date="2026-04-20").model_copy(
+                update={"asset_ticker": "VOO", "source_asset_ticker": "VOO", "citation_asset_tickers": {"c_weekly_future_item": "VOO"}}
+            )
+        ],
+    )
+
+    assert empty.windows[0].news_window_end == "2026-04-19"
+    assert empty.selected_events == []
+    assert empty.evidence_states[0].empty_state_valid is True
+    assert empty.evidence_states[0].evidence_limited_state == "empty"
+    assert empty.ai_thresholds[0].analysis_allowed is False
+    assert empty.ai_thresholds[0].suppression_reason_code == "fewer_than_two_high_signal_items"
+
+    one_item = acquire_weekly_news_event_evidence_from_fixtures(
+        asset_ticker="QQQ",
+        as_of="2026-04-23",
+        created_at="2026-04-23T12:00:00Z",
+        candidates=[_repository_candidate("only_one")],
+    )
+
+    assert one_item.selected_events[0].selected_item_count == 1
+    assert one_item.evidence_states[0].limited_state_valid is True
+    assert one_item.ai_thresholds[0].analysis_allowed is False
+    assert one_item.ai_thresholds[0].high_signal_selected_item_count == 1
+
+
 def test_weekly_news_module_does_not_import_live_network_clients():
     source = (ROOT / "backend" / "weekly_news.py").read_text(encoding="utf-8")
 
     for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import", "os.environ", "api_key"]:
         assert forbidden not in source
+
+    repository_source = (ROOT / "backend" / "repositories" / "weekly_news.py").read_text(encoding="utf-8")
+    for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import", "os.environ", "api_key"]:
+        assert forbidden not in repository_source
 
 
 def test_weekly_news_event_evidence_repository_metadata_and_migration_are_inspectable():
@@ -390,7 +490,10 @@ def _repository_candidate(
     source_asset_ticker: str = "QQQ",
     freshness_state: FreshnessState = FreshnessState.fresh,
     evidence_state: EvidenceState = EvidenceState.supported,
+    event_date: str = "2026-04-21",
     duplicate_group_id: str | None = None,
+    promotional: bool = False,
+    irrelevant: bool = False,
     suppression_reason_codes: list[str] | None = None,
 ) -> WeeklyNewsEventCandidateRow:
     return WeeklyNewsEventCandidateRow(
@@ -399,8 +502,8 @@ def _repository_candidate(
         asset_ticker="QQQ",
         source_asset_ticker=source_asset_ticker,
         event_type=WeeklyNewsEventType.methodology_change.value,
-        event_date="2026-04-21",
-        published_at="2026-04-21T12:00:00Z",
+        event_date=event_date,
+        published_at=f"{event_date}T12:00:00Z",
         retrieved_at="2026-04-23T12:00:00Z",
         period_bucket="current_week_to_date",
         source_document_id=f"src_{event_id}",
@@ -416,6 +519,8 @@ def _repository_candidate(
         freshness_state=freshness_state.value,
         evidence_state=evidence_state.value,
         importance_score=10,
+        promotional=promotional,
+        irrelevant=irrelevant,
         duplicate_group_id=duplicate_group_id or event_id,
         candidate_decision="selected",
         suppression_reason_codes=suppression_reason_codes or [],
