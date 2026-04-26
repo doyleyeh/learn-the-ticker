@@ -42,6 +42,7 @@ from backend.weekly_news_repository import (
     WeeklyNewsSourceRankTier,
     WeeklyNewsValidationStatusRow,
     WeeklyNewsFixtureAcquisitionBoundary,
+    InMemoryWeeklyNewsEventEvidenceRepository,
     acquire_weekly_news_event_evidence_from_fixtures,
     build_market_week_window_row,
     source_rank_tier_priority,
@@ -235,6 +236,41 @@ def test_persisted_weekly_news_read_prefers_valid_same_asset_event_evidence():
         "c_weekly_issuer_update",
     }
     assert focus.model_dump(mode="json") == result.weekly_news_focus.model_dump(mode="json")
+
+
+def test_in_memory_weekly_news_repository_persists_and_reads_validated_golden_records():
+    records = acquire_weekly_news_event_evidence_from_fixtures(
+        asset_ticker="QQQ",
+        as_of="2026-04-23",
+        created_at="2026-04-23T12:00:00Z",
+        candidates=[
+            _repository_candidate("official_filing", tier=WeeklyNewsSourceRankTier.official_filing),
+            _repository_candidate("issuer_update", tier=WeeklyNewsSourceRankTier.etf_issuer_announcement, source_rank=3),
+        ],
+    )
+    repository = InMemoryWeeklyNewsEventEvidenceRepository()
+
+    persisted = repository.persist(records)
+    read_back = repository.read_weekly_news_event_evidence_records("qqq")
+
+    assert persisted == records
+    assert read_back == records
+    assert repository.read("QQQ") == records
+    assert repository.get("QQQ") == records
+    assert repository.read_weekly_news_event_evidence_records("VOO") is None
+    assert read_back is not None
+    read_back.windows[0].asset_ticker = "AAPL"
+    assert repository.read_weekly_news_event_evidence_records("QQQ").windows[0].asset_ticker == "QQQ"
+
+    focus = read_persisted_weekly_news_focus(
+        build_asset_knowledge_pack("QQQ").asset,
+        as_of="2026-04-23",
+        persisted_event_reader=repository,
+    )
+    assert focus.found is True
+    assert focus.weekly_news_focus is not None
+    assert [item.event_id for item in focus.weekly_news_focus.items] == ["official_filing", "issuer_update"]
+    assert focus.high_signal_selected_item_count == 2
 
 
 def test_persisted_weekly_news_read_falls_back_on_miss_failure_invalid_and_wrong_asset_records():

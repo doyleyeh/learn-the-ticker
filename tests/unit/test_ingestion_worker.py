@@ -15,7 +15,15 @@ from backend.ingestion_worker import (
     IngestionWorkerFixtureOutcome,
     execute_ingestion_worker_record,
 )
-from backend.models import IngestionCapabilities
+from backend.models import (
+    EvidenceState,
+    FreshnessState,
+    IngestionCapabilities,
+    SourceAllowlistStatus,
+    SourceQuality,
+    SourceUsePolicy,
+    WeeklyNewsEventType,
+)
 from backend.provider_adapters.etf_issuer import build_etf_issuer_acquisition_result
 from backend.provider_adapters.sec_stock import build_sec_stock_acquisition_result
 from backend.providers import fetch_mock_provider_response, mock_etf_issuer_adapter, mock_sec_stock_adapter
@@ -29,6 +37,13 @@ from backend.source_snapshot_repository import (
     InMemorySourceSnapshotArtifactRepository,
     SourceSnapshotContractError,
     source_snapshot_records_from_acquisition_result,
+)
+from backend.weekly_news_repository import (
+    InMemoryWeeklyNewsEventEvidenceRepository,
+    WeeklyNewsEventCandidateRow,
+    WeeklyNewsEventEvidenceContractError,
+    WeeklyNewsSourceRankTier,
+    acquire_weekly_news_event_evidence_from_fixtures,
 )
 
 
@@ -369,6 +384,109 @@ def test_worker_persists_golden_knowledge_pack_through_injected_mocked_writer_on
     assert persisted.envelope.generated_route is None
 
 
+def test_worker_persists_weekly_news_evidence_through_injected_mocked_writer_only():
+    weekly_news_records = acquire_weekly_news_event_evidence_from_fixtures(
+        asset_ticker="VOO",
+        as_of="2026-04-23",
+        created_at="2026-04-23T12:00:00Z",
+        candidates=[
+            _weekly_news_candidate("issuer_announcement", "VOO", WeeklyNewsSourceRankTier.etf_issuer_announcement),
+            _weekly_news_candidate("fact_sheet_change", "VOO", WeeklyNewsSourceRankTier.fact_sheet_change),
+        ],
+    )
+    response = get_pre_cache_job_status("pre-cache-launch-voo").model_copy(
+        update={
+            "job_state": IngestionLedgerJobState.pending,
+            "worker_status": None,
+            "generated_route": None,
+            "generated_output_available": False,
+            "capabilities": IngestionCapabilities(),
+            "citation_ids": [],
+            "source_document_ids": [],
+        }
+    )
+    records = serialize_ingestion_job_response(response)
+    ledger = InMemoryIngestionWorkerLedger.from_records([records])
+    weekly_news_repository = InMemoryWeeklyNewsEventEvidenceRepository()
+    worker = DeterministicIngestionWorker(
+        ledger_boundary=ledger,
+        weekly_news_repository=weekly_news_repository,
+        fixture_outcomes={
+            "pre-cache-launch-voo": IngestionWorkerFixtureOutcome(
+                terminal_state=IngestionLedgerJobState.succeeded,
+                source_policy_ref="source-use-policy-v1",
+                checksum="sha256:weekly-news-voo",
+                weekly_news_records=weekly_news_records,
+            )
+        },
+    )
+
+    result = worker.execute("pre-cache-launch-voo")
+    persisted = weekly_news_repository.read_weekly_news_event_evidence_records("voo")
+
+    assert result.summary.terminal_state == "succeeded"
+    assert result.summary.generated_output_available is False
+    assert result.summary.generated_output_cacheable is False
+    assert result.records.ledger.compact_metadata["weekly_news_persistence_configured"] is True
+    assert result.records.ledger.compact_metadata["weekly_news_window_count"] == 1
+    assert result.records.ledger.compact_metadata["weekly_news_candidate_count"] == len(weekly_news_records.candidates)
+    assert result.records.ledger.compact_metadata["weekly_news_selected_event_count"] == 2
+    assert result.records.ledger.compact_metadata["weekly_news_ai_threshold_count"] == 1
+    assert persisted == weekly_news_records
+    assert persisted.ai_thresholds[0].analysis_allowed is True
+    assert all(row.no_generated_analysis_change is True for row in persisted.selected_events)
+    assert all(row.stores_raw_article_text is False for row in persisted.candidates)
+
+
+class FailingWeeklyNewsRepository:
+    def persist(self, records):
+        raise WeeklyNewsEventEvidenceContractError("mocked writer rejected weekly news records")
+
+
+def test_worker_fails_closed_when_configured_weekly_news_writer_rejects_records():
+    weekly_news_records = acquire_weekly_news_event_evidence_from_fixtures(
+        asset_ticker="AAPL",
+        as_of="2026-04-23",
+        created_at="2026-04-23T12:00:00Z",
+        candidates=[_weekly_news_candidate("official_filing", "AAPL", WeeklyNewsSourceRankTier.official_filing)],
+    )
+    response = get_pre_cache_job_status("pre-cache-launch-aapl").model_copy(
+        update={
+            "job_state": IngestionLedgerJobState.pending,
+            "worker_status": None,
+            "generated_route": None,
+            "generated_output_available": False,
+            "capabilities": IngestionCapabilities(),
+            "citation_ids": [],
+            "source_document_ids": [],
+        }
+    )
+    records = serialize_ingestion_job_response(response)
+    ledger = InMemoryIngestionWorkerLedger.from_records([records])
+    worker = DeterministicIngestionWorker(
+        ledger_boundary=ledger,
+        weekly_news_repository=FailingWeeklyNewsRepository(),
+        fixture_outcomes={
+            "pre-cache-launch-aapl": IngestionWorkerFixtureOutcome(
+                terminal_state=IngestionLedgerJobState.succeeded,
+                source_policy_ref="source-use-policy-v1",
+                checksum="sha256:weekly-news-aapl",
+                weekly_news_records=weekly_news_records,
+            )
+        },
+    )
+
+    result = worker.execute("pre-cache-launch-aapl")
+
+    assert result.summary.transitions == ["pending", "running", "failed"]
+    assert result.summary.terminal_state == "failed"
+    assert result.summary.generated_output_available is False
+    assert result.records.ledger.can_open_generated_page is False
+    assert result.records.diagnostics[0].category == "validation_failed"
+    assert result.records.diagnostics[0].error_code == "weekly_news_persistence_failed"
+    assert result.records.diagnostics[0].stores_raw_source_text is False
+
+
 class FailingKnowledgePackRepository:
     def persist(self, records):
         raise KnowledgePackRepositoryContractError("mocked writer rejected knowledge-pack records")
@@ -513,3 +631,44 @@ def test_ingestion_worker_import_surface_has_no_live_database_or_provider_marker
     ]
     for marker in forbidden:
         assert marker not in source
+
+
+def _weekly_news_candidate(
+    event_id: str,
+    ticker: str,
+    tier: WeeklyNewsSourceRankTier,
+) -> WeeklyNewsEventCandidateRow:
+    ticker = ticker.upper()
+    issuer_tiers = {
+        WeeklyNewsSourceRankTier.etf_issuer_announcement,
+        WeeklyNewsSourceRankTier.prospectus_update,
+        WeeklyNewsSourceRankTier.fact_sheet_change,
+    }
+    source_quality = SourceQuality.issuer if tier in issuer_tiers else SourceQuality.official
+    return WeeklyNewsEventCandidateRow(
+        candidate_event_id=event_id,
+        window_id=f"wnf_window:{ticker}:2026-04-23",
+        asset_ticker=ticker,
+        source_asset_ticker=ticker,
+        event_type=WeeklyNewsEventType.methodology_change.value,
+        event_date="2026-04-21",
+        published_at="2026-04-21T12:00:00Z",
+        retrieved_at="2026-04-23T12:00:00Z",
+        period_bucket="current_week_to_date",
+        source_document_id=f"src_{ticker.lower()}_{event_id}",
+        source_chunk_id=f"chk_{ticker.lower()}_{event_id}",
+        citation_ids=[f"c_weekly_{ticker.lower()}_{event_id}"],
+        citation_asset_tickers={f"c_weekly_{ticker.lower()}_{event_id}": ticker},
+        source_type=tier.value,
+        source_rank=1,
+        source_rank_tier=tier.value,
+        source_quality=source_quality.value,
+        allowlist_status=SourceAllowlistStatus.allowed.value,
+        source_use_policy=SourceUsePolicy.summary_allowed.value,
+        freshness_state=FreshnessState.fresh.value,
+        evidence_state=EvidenceState.supported.value,
+        importance_score=10,
+        duplicate_group_id=event_id,
+        title_checksum=f"sha256:title:{ticker}:{event_id}",
+        evidence_checksum=f"sha256:evidence:{ticker}:{event_id}",
+    )

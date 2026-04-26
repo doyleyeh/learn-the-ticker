@@ -70,6 +70,7 @@ from backend.repositories.trust_metrics import (
 from backend.repositories.weekly_news import (
     WEEKLY_NEWS_EVENT_EVIDENCE_REPOSITORY_BOUNDARY,
     WEEKLY_NEWS_EVENT_EVIDENCE_TABLES,
+    InMemoryWeeklyNewsEventEvidenceRepository,
     WeeklyNewsEventEvidenceContractError,
     WeeklyNewsEventEvidenceRepository,
     WeeklyNewsEventEvidenceRepositoryRecords,
@@ -126,6 +127,7 @@ __all__ = [
     "TrustMetricEventRepositoryContractError",
     "TrustMetricRepository",
     "TrustMetricRepositoryRecords",
+    "InMemoryWeeklyNewsEventEvidenceRepository",
     "WeeklyNewsEventEvidenceContractError",
     "WeeklyNewsEventEvidenceRepository",
     "WeeklyNewsEventEvidenceRepositoryRecords",

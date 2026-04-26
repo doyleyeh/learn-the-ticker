@@ -15,6 +15,7 @@ from backend.repositories.ingestion_jobs import (
 )
 from backend.source_snapshot_repository import SourceSnapshotRepositoryRecords
 from backend.knowledge_pack_repository import KnowledgePackRepositoryRecords
+from backend.weekly_news_repository import WeeklyNewsEventEvidenceRepositoryRecords
 
 
 INGESTION_WORKER_EXECUTION_BOUNDARY = "deterministic-ingestion-worker-execution-contract-v1"
@@ -64,6 +65,11 @@ class KnowledgePackWriterBoundary(Protocol):
         ...
 
 
+class WeeklyNewsEventEvidenceWriterBoundary(Protocol):
+    def persist(self, records: WeeklyNewsEventEvidenceRepositoryRecords) -> WeeklyNewsEventEvidenceRepositoryRecords:
+        ...
+
+
 class IngestionWorkerFixtureOutcome(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -76,6 +82,7 @@ class IngestionWorkerFixtureOutcome(BaseModel):
     checksum: str | None = None
     source_snapshot_records: SourceSnapshotRepositoryRecords | None = None
     knowledge_pack_records: KnowledgePackRepositoryRecords | None = None
+    weekly_news_records: WeeklyNewsEventEvidenceRepositoryRecords | None = None
 
     @field_validator("terminal_state")
     @classmethod
@@ -137,6 +144,7 @@ class DeterministicIngestionWorker:
     fixture_outcomes: Mapping[str, IngestionWorkerFixtureOutcome] = field(default_factory=dict)
     source_snapshot_repository: SourceSnapshotWriterBoundary | None = None
     knowledge_pack_repository: KnowledgePackWriterBoundary | None = None
+    weekly_news_repository: WeeklyNewsEventEvidenceWriterBoundary | None = None
     timestamp: str = STUB_TIMESTAMP
 
     def execute(self, job_id: str) -> IngestionWorkerExecutionResult:
@@ -176,6 +184,24 @@ class DeterministicIngestionWorker:
                     error_category=SanitizedErrorCategory.validation_failed,
                     error_code="knowledge_pack_persistence_failed",
                     sanitized_message="Knowledge-pack persistence failed closed through the configured mocked writer.",
+                    retryable=True,
+                    source_policy_ref=outcome.source_policy_ref,
+                    checksum=outcome.checksum,
+                )
+                result = execute_ingestion_worker_record(records, fixture_outcome=failed_outcome, timestamp=self.timestamp)
+        if _should_persist_weekly_news_evidence(result, outcome, self.weekly_news_repository):
+            weekly_news_repository = self.weekly_news_repository
+            weekly_news_records = outcome.weekly_news_records if outcome else None
+            if weekly_news_repository is None or weekly_news_records is None:
+                raise IngestionWorkerContractError("Weekly News evidence persistence was requested without a mocked writer.")
+            try:
+                weekly_news_repository.persist(weekly_news_records)
+            except Exception:
+                failed_outcome = IngestionWorkerFixtureOutcome(
+                    terminal_state=IngestionLedgerJobState.failed,
+                    error_category=SanitizedErrorCategory.validation_failed,
+                    error_code="weekly_news_persistence_failed",
+                    sanitized_message="Weekly News evidence persistence failed closed through the configured mocked writer.",
                     retryable=True,
                     source_policy_ref=outcome.source_policy_ref,
                     checksum=outcome.checksum,
@@ -252,6 +278,13 @@ def _apply_terminal_outcome(
         metadata["knowledge_pack_fact_count"] = len(outcome.knowledge_pack_records.normalized_facts)
         metadata["knowledge_pack_chunk_count"] = len(outcome.knowledge_pack_records.source_chunks)
         metadata["knowledge_pack_boundary"] = "asset-knowledge-pack-repository-contract-v1"
+    if outcome.weekly_news_records:
+        metadata["weekly_news_persistence_configured"] = True
+        metadata["weekly_news_window_count"] = len(outcome.weekly_news_records.windows)
+        metadata["weekly_news_candidate_count"] = len(outcome.weekly_news_records.candidates)
+        metadata["weekly_news_selected_event_count"] = len(outcome.weekly_news_records.selected_events)
+        metadata["weekly_news_ai_threshold_count"] = len(outcome.weekly_news_records.ai_thresholds)
+        metadata["weekly_news_boundary"] = "weekly-news-event-evidence-repository-contract-v1"
 
     ledger = records.ledger.model_copy(
         update={
@@ -386,6 +419,20 @@ def _should_persist_knowledge_pack(
         repository is not None
         and outcome is not None
         and outcome.knowledge_pack_records is not None
+        and result.summary.initial_state not in _TERMINAL_STATES
+        and result.summary.terminal_state == IngestionLedgerJobState.succeeded.value
+    )
+
+
+def _should_persist_weekly_news_evidence(
+    result: IngestionWorkerExecutionResult,
+    outcome: IngestionWorkerFixtureOutcome | None,
+    repository: WeeklyNewsEventEvidenceWriterBoundary | None,
+) -> bool:
+    return (
+        repository is not None
+        and outcome is not None
+        and outcome.weekly_news_records is not None
         and result.summary.initial_state not in _TERMINAL_STATES
         and result.summary.terminal_state == IngestionLedgerJobState.succeeded.value
     )
