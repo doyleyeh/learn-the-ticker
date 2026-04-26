@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from enum import Enum
 from typing import Any
 
@@ -22,6 +23,7 @@ from backend.weekly_news import compute_weekly_news_window
 
 
 WEEKLY_NEWS_EVENT_EVIDENCE_REPOSITORY_BOUNDARY = "weekly-news-event-evidence-repository-contract-v1"
+WEEKLY_NEWS_FIXTURE_ACQUISITION_BOUNDARY = "weekly-news-fixture-acquisition-boundary-v1"
 WEEKLY_NEWS_EVENT_EVIDENCE_SCHEMA_VERSION = "weekly-news-event-evidence-repository-v1"
 WEEKLY_NEWS_EVENT_EVIDENCE_TABLES = (
     "weekly_news_market_week_windows",
@@ -518,6 +520,175 @@ class WeeklyNewsEventEvidenceRepository:
         return validated
 
 
+@dataclass(frozen=True)
+class WeeklyNewsFixtureAcquisitionBoundary:
+    """Deterministic fixture-only selector for future Weekly News Focus acquisition workers."""
+
+    configured_max_item_count: int = 8
+    minimum_ai_analysis_item_count: int = 2
+    minimum_display_score: int = 7
+
+    def select(
+        self,
+        *,
+        asset_ticker: str,
+        as_of: str,
+        created_at: str,
+        candidates: list[WeeklyNewsEventCandidateRow],
+    ) -> WeeklyNewsEventEvidenceRepositoryRecords:
+        return acquire_weekly_news_event_evidence_from_fixtures(
+            asset_ticker=asset_ticker,
+            as_of=as_of,
+            created_at=created_at,
+            candidates=candidates,
+            configured_max_item_count=self.configured_max_item_count,
+            minimum_ai_analysis_item_count=self.minimum_ai_analysis_item_count,
+            minimum_display_score=self.minimum_display_score,
+        )
+
+
+def acquire_weekly_news_event_evidence_from_fixtures(
+    *,
+    asset_ticker: str,
+    as_of: str,
+    created_at: str,
+    candidates: list[WeeklyNewsEventCandidateRow],
+    configured_max_item_count: int = 8,
+    minimum_ai_analysis_item_count: int = 2,
+    minimum_display_score: int = 7,
+) -> WeeklyNewsEventEvidenceRepositoryRecords:
+    """Transform local candidate rows into selected Weekly News Focus evidence rows."""
+
+    normalized_ticker = _normalize_ticker(asset_ticker)
+    window = build_market_week_window_row(
+        asset_ticker=normalized_ticker,
+        as_of=as_of,
+        created_at=created_at,
+        configured_max_item_count=configured_max_item_count,
+        minimum_ai_analysis_item_count=minimum_ai_analysis_item_count,
+    )
+
+    candidate_rows: list[WeeklyNewsEventCandidateRow] = []
+    rank_rows: list[WeeklyNewsSourceRankInputRow] = []
+    skipped_wrong_asset_count = 0
+
+    for candidate in candidates:
+        if _normalize_ticker(candidate.asset_ticker) != normalized_ticker:
+            skipped_wrong_asset_count += 1
+            continue
+
+        prepared, rank_input = _prepare_candidate_for_fixture_selection(
+            candidate,
+            window=window,
+            created_at=created_at,
+            minimum_display_score=minimum_display_score,
+        )
+        candidate_rows.append(prepared)
+        rank_rows.append(rank_input)
+
+    dedupe_groups, dedupe_suppressed_ids = _build_fixture_dedupe_groups(
+        window=window,
+        candidates=candidate_rows,
+        created_at=created_at,
+    )
+    candidate_rows = [
+        _mark_candidate_suppressed(candidate, "duplicate") if candidate.candidate_event_id in dedupe_suppressed_ids else candidate
+        for candidate in candidate_rows
+    ]
+    rank_rows = [
+        rank.model_copy(update={"duplicate_penalty": 5, "total_score": max(0, rank.total_score - 5), "selected_by_score": False})
+        if rank.candidate_event_id in dedupe_suppressed_ids
+        else rank
+        for rank in rank_rows
+    ]
+
+    selectable = [
+        candidate
+        for candidate in candidate_rows
+        if not _candidate_block_reasons(candidate)
+        and _rank_input_by_candidate_id(rank_rows, candidate.candidate_event_id).selected_by_score
+    ]
+    ranked = sorted(
+        selectable,
+        key=lambda row: (
+            source_rank_tier_priority(row.source_rank_tier),
+            row.source_rank,
+            -row.importance_score,
+            row.event_date or row.published_at or "",
+            row.candidate_event_id,
+        ),
+    )
+    selected_candidates = ranked[:configured_max_item_count]
+    selected_ids = {row.candidate_event_id for row in selected_candidates}
+
+    final_candidates = [
+        candidate.model_copy(
+            update={
+                "candidate_decision": WeeklyNewsCandidateDecision.selected.value
+                if candidate.candidate_event_id in selected_ids
+                else WeeklyNewsCandidateDecision.suppressed.value,
+                "suppression_reason_codes": []
+                if candidate.candidate_event_id in selected_ids
+                else sorted(set(candidate.suppression_reason_codes or ["not_selected"])),
+            }
+        )
+        for candidate in candidate_rows
+    ]
+
+    suppressed_count = len(final_candidates) - len(selected_candidates) + skipped_wrong_asset_count
+    selected_events = [
+        _selected_event_from_candidate(
+            candidate,
+            rank_position=index,
+            selected_item_count=len(selected_candidates),
+            suppressed_candidate_count=suppressed_count,
+            configured_max_item_count=configured_max_item_count,
+        )
+        for index, candidate in enumerate(selected_candidates, start=1)
+    ]
+    evidence_state = _evidence_state_row(
+        window=window,
+        selected_count=len(selected_candidates),
+        suppressed_count=suppressed_count,
+        created_at=created_at,
+    )
+    threshold = _ai_threshold_row(
+        window=window,
+        selected_events=selected_events,
+        selected_candidates=selected_candidates,
+        created_at=created_at,
+    )
+    diagnostics = _fixture_acquisition_diagnostics(
+        window=window,
+        candidates=final_candidates,
+        selected_events=selected_events,
+        suppressed_count=suppressed_count,
+        skipped_wrong_asset_count=skipped_wrong_asset_count,
+        created_at=created_at,
+    )
+
+    records = WeeklyNewsEventEvidenceRepositoryRecords(
+        windows=[window],
+        candidates=final_candidates,
+        source_rank_inputs=rank_rows,
+        dedupe_groups=dedupe_groups,
+        selected_events=selected_events,
+        evidence_states=[evidence_state],
+        ai_thresholds=[threshold],
+        validation_statuses=[
+            WeeklyNewsValidationStatusRow(
+                validation_id=f"validation:{window.window_id}:fixture_acquisition",
+                window_id=window.window_id,
+                subject_type="fixture_acquisition",
+                subject_id=window.window_id,
+                validated_at=created_at,
+            )
+        ],
+        diagnostics=diagnostics,
+    )
+    return validate_weekly_news_event_evidence_records(records)
+
+
 def build_market_week_window_row(
     *,
     asset_ticker: str,
@@ -561,6 +732,265 @@ def source_rank_tier_priority(source_rank_tier: str) -> int:
 
 def source_policy_allows_weekly_news_selection(candidate: WeeklyNewsEventCandidateRow) -> bool:
     return not _candidate_source_policy_reasons(candidate)
+
+
+def _prepare_candidate_for_fixture_selection(
+    candidate: WeeklyNewsEventCandidateRow,
+    *,
+    window: WeeklyNewsMarketWeekWindowRow,
+    created_at: str,
+    minimum_display_score: int,
+) -> tuple[WeeklyNewsEventCandidateRow, WeeklyNewsSourceRankInputRow]:
+    period_bucket = _period_bucket_for_candidate(candidate, window)
+    source_rank = max(candidate.source_rank, source_rank_tier_priority(candidate.source_rank_tier))
+    source_quality_weight = _source_quality_weight(candidate)
+    event_type_weight = _event_type_weight(candidate.event_type)
+    recency_weight = _recency_weight(candidate, window)
+    asset_relevance_weight = 3
+    total_score = source_quality_weight + event_type_weight + recency_weight + asset_relevance_weight
+    evidence_state = _freshness_labeled_evidence_state(candidate.freshness_state, candidate.evidence_state)
+    source_policy_allowed = source_policy_allows_weekly_news_selection(candidate)
+    reasons = _fixture_suppression_reasons(
+        candidate,
+        window=window,
+        total_score=total_score,
+        minimum_display_score=minimum_display_score,
+    )
+
+    prepared = candidate.model_copy(
+        update={
+            "window_id": window.window_id,
+            "asset_ticker": window.asset_ticker,
+            "source_asset_ticker": _normalize_ticker(candidate.source_asset_ticker),
+            "period_bucket": period_bucket,
+            "source_rank": source_rank,
+            "evidence_state": evidence_state,
+            "importance_score": total_score,
+            "candidate_decision": WeeklyNewsCandidateDecision.suppressed.value
+            if reasons
+            else WeeklyNewsCandidateDecision.candidate.value,
+            "suppression_reason_codes": reasons,
+        }
+    )
+    return prepared, WeeklyNewsSourceRankInputRow(
+        candidate_event_id=prepared.candidate_event_id,
+        window_id=window.window_id,
+        asset_ticker=window.asset_ticker,
+        source_rank_tier=prepared.source_rank_tier,
+        source_rank=source_rank,
+        source_quality_weight=source_quality_weight,
+        event_type_weight=event_type_weight,
+        recency_weight=recency_weight,
+        asset_relevance_weight=asset_relevance_weight,
+        duplicate_penalty=0,
+        total_score=total_score,
+        minimum_display_score=minimum_display_score,
+        selected_by_score=total_score >= minimum_display_score and source_policy_allowed and not reasons,
+        source_policy_allowed=source_policy_allowed,
+        created_at=created_at,
+    )
+
+
+def _build_fixture_dedupe_groups(
+    *,
+    window: WeeklyNewsMarketWeekWindowRow,
+    candidates: list[WeeklyNewsEventCandidateRow],
+    created_at: str,
+) -> tuple[list[WeeklyNewsDedupeGroupRow], set[str]]:
+    grouped: dict[str, list[WeeklyNewsEventCandidateRow]] = {}
+    for candidate in candidates:
+        key = candidate.duplicate_group_id or _canonical_event_key(candidate)
+        grouped.setdefault(key, []).append(candidate)
+
+    dedupe_rows: list[WeeklyNewsDedupeGroupRow] = []
+    suppressed_ids: set[str] = set()
+    for group_id, rows in grouped.items():
+        ranked = sorted(
+            rows,
+            key=lambda row: (
+                bool(_candidate_block_reasons(row)),
+                source_rank_tier_priority(row.source_rank_tier),
+                row.source_rank,
+                -row.importance_score,
+                row.candidate_event_id,
+            ),
+        )
+        retained = ranked[0]
+        duplicates = [row.candidate_event_id for row in ranked[1:]]
+        suppressed_ids.update(duplicates)
+        dedupe_rows.append(
+            WeeklyNewsDedupeGroupRow(
+                dedupe_group_id=group_id,
+                window_id=window.window_id,
+                asset_ticker=window.asset_ticker,
+                canonical_event_key=_canonical_event_key(retained),
+                retained_candidate_event_id=retained.candidate_event_id,
+                duplicate_candidate_event_ids=duplicates,
+                dedupe_status="deduped" if duplicates else "unique",
+                reason_codes=["duplicate"] if duplicates else [],
+                created_at=created_at,
+            )
+        )
+    return dedupe_rows, suppressed_ids
+
+
+def _mark_candidate_suppressed(candidate: WeeklyNewsEventCandidateRow, reason: str) -> WeeklyNewsEventCandidateRow:
+    reasons = sorted({*candidate.suppression_reason_codes, reason})
+    return candidate.model_copy(
+        update={
+            "candidate_decision": WeeklyNewsCandidateDecision.suppressed.value,
+            "duplicate_of_event_id": candidate.duplicate_of_event_id or candidate.duplicate_group_id,
+            "suppression_reason_codes": reasons,
+        }
+    )
+
+
+def _rank_input_by_candidate_id(
+    rows: list[WeeklyNewsSourceRankInputRow],
+    candidate_event_id: str,
+) -> WeeklyNewsSourceRankInputRow:
+    for row in rows:
+        if row.candidate_event_id == candidate_event_id:
+            return row
+    raise WeeklyNewsEventEvidenceContractError("Fixture acquisition rank inputs must reference every candidate.")
+
+
+def _selected_event_from_candidate(
+    candidate: WeeklyNewsEventCandidateRow,
+    *,
+    rank_position: int,
+    selected_item_count: int,
+    suppressed_candidate_count: int,
+    configured_max_item_count: int,
+) -> WeeklyNewsSelectedEventRow:
+    return WeeklyNewsSelectedEventRow(
+        selected_event_id=f"selected:{candidate.candidate_event_id}",
+        candidate_event_id=candidate.candidate_event_id,
+        window_id=candidate.window_id,
+        asset_ticker=candidate.asset_ticker,
+        event_type=candidate.event_type,
+        period_bucket=candidate.period_bucket,
+        event_date=candidate.event_date,
+        published_at=candidate.published_at,
+        retrieved_at=candidate.retrieved_at,
+        source_document_id=candidate.source_document_id,
+        source_chunk_id=candidate.source_chunk_id,
+        citation_ids=candidate.citation_ids,
+        citation_asset_tickers=candidate.citation_asset_tickers,
+        source_quality=candidate.source_quality,
+        allowlist_status=candidate.allowlist_status,
+        source_use_policy=candidate.source_use_policy,
+        freshness_state=candidate.freshness_state,
+        evidence_state=candidate.evidence_state,
+        importance_score=candidate.importance_score,
+        rank_position=rank_position,
+        configured_max_item_count=configured_max_item_count,
+        selected_item_count=selected_item_count,
+        suppressed_candidate_count=suppressed_candidate_count,
+        dedupe_group_id=candidate.duplicate_group_id,
+        canonical_event_key=_canonical_event_key(candidate),
+    )
+
+
+def _evidence_state_row(
+    *,
+    window: WeeklyNewsMarketWeekWindowRow,
+    selected_count: int,
+    suppressed_count: int,
+    created_at: str,
+) -> WeeklyNewsEvidenceStateRow:
+    if selected_count == 0:
+        state = WeeklyNewsContractState.no_high_signal.value
+        evidence_state = EvidenceState.no_high_signal.value
+        limited_state = WeeklyNewsEvidenceLimitedState.empty.value
+        missing_label = EvidenceState.no_high_signal.value
+    elif selected_count < window.configured_max_item_count:
+        state = WeeklyNewsContractState.available.value
+        evidence_state = EvidenceState.partial.value
+        limited_state = WeeklyNewsEvidenceLimitedState.limited_verified_set.value
+        missing_label = EvidenceState.partial.value
+    else:
+        state = WeeklyNewsContractState.available.value
+        evidence_state = EvidenceState.supported.value
+        limited_state = WeeklyNewsEvidenceLimitedState.full.value
+        missing_label = None
+
+    return WeeklyNewsEvidenceStateRow(
+        evidence_state_id=f"evidence:{window.window_id}",
+        window_id=window.window_id,
+        asset_ticker=window.asset_ticker,
+        state=state,
+        evidence_state=evidence_state,
+        evidence_limited_state=limited_state,
+        configured_max_item_count=window.configured_max_item_count,
+        selected_item_count=selected_count,
+        suppressed_candidate_count=suppressed_count,
+        empty_state_valid=selected_count == 0,
+        limited_state_valid=0 < selected_count < window.configured_max_item_count,
+        missing_evidence_label=missing_label,
+        created_at=created_at,
+    )
+
+
+def _ai_threshold_row(
+    *,
+    window: WeeklyNewsMarketWeekWindowRow,
+    selected_events: list[WeeklyNewsSelectedEventRow],
+    selected_candidates: list[WeeklyNewsEventCandidateRow],
+    created_at: str,
+) -> WeeklyNewsAIThresholdRow:
+    high_signal_count = len([candidate for candidate in selected_candidates if candidate.high_signal])
+    analysis_allowed = high_signal_count >= window.minimum_ai_analysis_item_count
+    return WeeklyNewsAIThresholdRow(
+        threshold_id=f"threshold:{window.window_id}",
+        window_id=window.window_id,
+        asset_ticker=window.asset_ticker,
+        minimum_weekly_news_item_count=window.minimum_ai_analysis_item_count,
+        selected_item_count=len(selected_events),
+        high_signal_selected_item_count=high_signal_count,
+        analysis_allowed=analysis_allowed,
+        analysis_state=WeeklyNewsContractState.available.value if analysis_allowed else WeeklyNewsContractState.suppressed.value,
+        suppression_reason_code=None if analysis_allowed else "fewer_than_two_high_signal_items",
+        selected_event_ids=[event.selected_event_id for event in selected_events],
+        created_at=created_at,
+    )
+
+
+def _fixture_acquisition_diagnostics(
+    *,
+    window: WeeklyNewsMarketWeekWindowRow,
+    candidates: list[WeeklyNewsEventCandidateRow],
+    selected_events: list[WeeklyNewsSelectedEventRow],
+    suppressed_count: int,
+    skipped_wrong_asset_count: int,
+    created_at: str,
+) -> list[WeeklyNewsDiagnosticRow]:
+    reason_codes = sorted({reason for candidate in candidates for reason in candidate.suppression_reason_codes})
+    source_ids = sorted({candidate.source_document_id for candidate in candidates})
+    event_ids = sorted({candidate.candidate_event_id for candidate in candidates})
+    checksums = sorted({checksum for candidate in candidates for checksum in [candidate.title_checksum, candidate.evidence_checksum] if checksum})
+    return [
+        WeeklyNewsDiagnosticRow(
+            diagnostic_id=f"diag:{window.window_id}:fixture_selection",
+            window_id=window.window_id,
+            category=WeeklyNewsDiagnosticCategory.ranking.value,
+            code="fixture_selection_completed",
+            created_at=created_at,
+            compact_metadata={
+                "candidate_count": len(candidates),
+                "selected_count": len(selected_events),
+                "suppressed_count": suppressed_count,
+                "skipped_wrong_asset_count": skipped_wrong_asset_count,
+                "configured_max_item_count": window.configured_max_item_count,
+            },
+            freshness_labels={candidate.candidate_event_id: candidate.freshness_state for candidate in candidates},
+            source_document_ids=source_ids,
+            event_ids=event_ids,
+            checksums=checksums,
+            rank_inputs={"minimum_ai_analysis_item_count": window.minimum_ai_analysis_item_count},
+            suppression_reason_codes=reason_codes,
+        )
+    ]
 
 
 def records_to_row_list(records: WeeklyNewsEventEvidenceRepositoryRecords) -> list[StrictRow]:
@@ -820,6 +1250,106 @@ def _validate_diagnostic(row: WeeklyNewsDiagnosticRow) -> None:
         or row.stores_public_or_signed_url
     ):
         raise WeeklyNewsEventEvidenceContractError("Weekly News Focus diagnostics may store sanitized compact metadata only.")
+
+
+def _fixture_suppression_reasons(
+    candidate: WeeklyNewsEventCandidateRow,
+    *,
+    window: WeeklyNewsMarketWeekWindowRow,
+    total_score: int,
+    minimum_display_score: int,
+) -> list[str]:
+    reasons = set(candidate.suppression_reason_codes)
+    reasons.update(_candidate_source_policy_reasons(candidate))
+    if not _candidate_date_in_window(candidate, window):
+        reasons.add("outside_market_week_window")
+    if candidate.promotional:
+        reasons.add("promotional")
+    if candidate.irrelevant:
+        reasons.add("irrelevant")
+    if candidate.duplicate_of_event_id:
+        reasons.add("duplicate")
+    if candidate.event_type == WeeklyNewsEventType.no_major_recent_development.value:
+        reasons.add("no_major_recent_development_marker")
+    if total_score < minimum_display_score:
+        reasons.add("below_minimum_display_score")
+    return sorted(reasons)
+
+
+def _period_bucket_for_candidate(
+    candidate: WeeklyNewsEventCandidateRow,
+    window: WeeklyNewsMarketWeekWindowRow,
+) -> str:
+    event_date = _candidate_event_date(candidate)
+    current_start = window.current_week_to_date_start
+    current_end = window.current_week_to_date_end
+    if current_start and current_end and date.fromisoformat(current_start) <= event_date <= date.fromisoformat(current_end):
+        return WeeklyNewsPeriodBucket.current_week_to_date.value
+    return WeeklyNewsPeriodBucket.previous_market_week.value
+
+
+def _candidate_date_in_window(
+    candidate: WeeklyNewsEventCandidateRow,
+    window: WeeklyNewsMarketWeekWindowRow,
+) -> bool:
+    event_date = _candidate_event_date(candidate)
+    return date.fromisoformat(window.news_window_start) <= event_date <= date.fromisoformat(window.news_window_end)
+
+
+def _candidate_event_date(candidate: WeeklyNewsEventCandidateRow) -> date:
+    value = candidate.event_date or (candidate.published_at or "")[:10]
+    return date.fromisoformat(value)
+
+
+def _source_quality_weight(candidate: WeeklyNewsEventCandidateRow) -> int:
+    if candidate.source_quality in {SourceQuality.official.value, SourceQuality.issuer.value}:
+        return 5
+    if candidate.source_quality in {SourceQuality.allowlisted.value, SourceQuality.fixture.value}:
+        return 3
+    if candidate.source_quality == SourceQuality.provider.value:
+        return 1
+    return 0
+
+
+def _event_type_weight(event_type: str) -> int:
+    return {
+        WeeklyNewsEventType.earnings.value: 5,
+        WeeklyNewsEventType.guidance.value: 5,
+        WeeklyNewsEventType.fee_change.value: 5,
+        WeeklyNewsEventType.methodology_change.value: 5,
+        WeeklyNewsEventType.index_change.value: 4,
+        WeeklyNewsEventType.fund_merger.value: 4,
+        WeeklyNewsEventType.fund_liquidation.value: 4,
+        WeeklyNewsEventType.sponsor_update.value: 3,
+        WeeklyNewsEventType.product_announcement.value: 3,
+        WeeklyNewsEventType.regulatory_event.value: 3,
+        WeeklyNewsEventType.legal_event.value: 3,
+        WeeklyNewsEventType.capital_allocation.value: 3,
+        WeeklyNewsEventType.large_flow_event.value: 2,
+        WeeklyNewsEventType.merger_acquisition.value: 2,
+        WeeklyNewsEventType.leadership_change.value: 2,
+        WeeklyNewsEventType.other.value: 1,
+    }.get(event_type, 0)
+
+
+def _recency_weight(candidate: WeeklyNewsEventCandidateRow, window: WeeklyNewsMarketWeekWindowRow) -> int:
+    if not _candidate_date_in_window(candidate, window):
+        return 0
+    return 3 if _period_bucket_for_candidate(candidate, window) == WeeklyNewsPeriodBucket.current_week_to_date.value else 2
+
+
+def _freshness_labeled_evidence_state(freshness_state: str, evidence_state: str) -> str:
+    if freshness_state == FreshnessState.stale.value:
+        return EvidenceState.stale.value
+    if freshness_state == FreshnessState.unavailable.value:
+        return EvidenceState.unavailable.value
+    return evidence_state
+
+
+def _canonical_event_key(candidate: WeeklyNewsEventCandidateRow) -> str:
+    event_date = candidate.event_date or (candidate.published_at or "")[:10]
+    evidence_key = candidate.title_checksum or candidate.evidence_checksum or candidate.candidate_event_id
+    return f"{_normalize_ticker(candidate.asset_ticker)}:{candidate.event_type}:{event_date}:{evidence_key}"
 
 
 def _candidate_block_reasons(row: WeeklyNewsEventCandidateRow) -> list[str]:
