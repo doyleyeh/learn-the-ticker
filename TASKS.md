@@ -1,58 +1,64 @@
 ## Current task
 
-### T-113: Add official-source Weekly News live acquisition for golden assets
+### T-114: Expand launch pre-cache coverage and add MVP readiness regression matrix
 
 Goal:
-Add explicit opt-in server-side live acquisition readiness for official-source Weekly News Focus evidence for golden assets, preserving source-use gates, dedupe, evidence-limited states, market-week windows, and AI Comprehensive Analysis thresholds.
+Expand deterministic launch pre-cache coverage beyond the smallest golden path and add an MVP readiness regression matrix plus go/no-go checklist before production deployment work.
 
 Task-scope paragraph:
-Extend the Weekly News acquisition path so official filings, investor-relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes can be fetched through server-side/admin-only opt-in paths for golden assets. The task is readiness-only and must use mocked HTTP/provider fixtures in tests. The selection pipeline must preserve official-source priority, source-use policy, dedupe, empty/limited/full evidence states, selected-vs-configured counts, U.S. Eastern Monday-Sunday market-week windows plus current week-to-date through yesterday, and AI Comprehensive Analysis suppression unless threshold evidence is valid. Keep the work focused on official-source Weekly News Focus for AAPL, VOO, and QQQ where existing deterministic source contracts support it; do not add broad news providers, paid news APIs, source allowlist expansion, browser provider calls, production schedulers, deployment wiring, or public route schema changes.
+Prepare the MVP launch readiness layer after local durable ingest-to-render and opt-in official-source acquisition work exists. Expand pre-cache coverage only within approved Top-500 common stock and non-leveraged U.S. equity ETF scope, using deterministic manifests, existing fixtures, and mocked acquisition outputs. Add route-contract and frontend workflow regression coverage for search, pending ingestion, asset pages, comparison, source drawer, contextual glossary, grounded chat, exports, mobile behavior markers, Weekly News evidence limits, AI Comprehensive Analysis thresholds, and safety/source-use gates. Add a go/no-go checklist for production readiness without deploying, enabling recurring jobs, adding paid providers, adding broad news providers, or committing secrets.
 
 Roadmap alignment:
 
-- Follows T-112, which added explicit opt-in readiness gates for live SEC stock and ETF issuer canonical acquisition without enabling live calls by default.
-- Moves the Weekly News Focus layer from deterministic persisted evidence fixtures toward explicit server-side official-source acquisition readiness while keeping normal CI deterministic and mocked.
+- Follows T-113, which added explicit opt-in official-source Weekly News live acquisition readiness for golden assets without enabling live calls by default.
+- Moves the project from golden-path readiness toward deterministic MVP launch regression coverage before production deployment hardening.
 - Keeps Frontend Design and Workflow v0.4 stable: home remains single stock/ETF search first, comparison remains a separate connected workflow, glossary remains contextual, mobile source/glossary/chat surfaces remain bottom-sheet or full-screen where appropriate, stock-vs-ETF comparison badges and structure are unchanged, and Weekly News Focus shows fewer or empty states when evidence is thin.
 
 General MVP alignment:
-T-113 prepares explicit opt-in official-source Weekly News acquisition readiness after canonical SEC/ETF issuer live readiness exists. It does not complete the MVP by itself; launch pre-cache expansion, recurring jobs, route regression matrices, production deployment, broad news/provider expansion, and frontend workflow expansion remain separate follow-up tasks.
+T-114 prepares deterministic launch readiness after canonical source acquisition, Weekly News acquisition, persisted repository, generated-output cache, backend route, and frontend API-backed rendering work exists. It does not complete production deployment by itself; admin auth enforcement, rate limiting, production database/object-storage execution, recurring jobs, live-provider default changes, monitoring, rollback, broad paid-provider expansion, and post-MVP features remain separate follow-up tasks.
 
 Roadmap contract refinement:
-T-113 may update focused roadmap contract expectations only if they are stale after this promotion, but edits must stay within the allowed files. Do not update operational control docs other than the required journal note unless a test explicitly depends on it.
+T-114 may update focused roadmap contract expectations only if they are stale after this promotion, but edits must stay within the allowed files. Do not update operational control docs other than the required journal note unless a test explicitly depends on it.
 
 Allowed files:
 
-- `backend/weekly_news.py`
-- `backend/weekly_news_repository.py`
-- `backend/repositories/weekly_news.py`
-- `backend/settings.py` only for explicit server-side Weekly News live acquisition readiness flags and sanitized diagnostics
-- `backend/ingestion_worker.py` only for routing explicitly opted-in mocked Weekly News acquisition results through existing server-side worker and repository writer boundaries
-- `backend/ingestion.py` only if a narrow admin/server-side readiness boundary needs to expose blocked status without public route schema changes
-- `backend/source_policy.py` only for narrow validation of existing source-use rules; do not add new allowlisted domains or licensing decisions
-- `tests/unit/test_ingestion_worker.py`
-- `tests/unit/test_ingestion_jobs.py`
-- `tests/unit/test_weekly_news.py`
-- `tests/unit/test_overview_generation.py`
-- `tests/unit/test_persistence_settings.py`
-- `tests/unit/test_source_policy.py`
+- `backend/data.py` only for deterministic launch pre-cache fixture metadata within existing approved stock/ETF scope
+- `backend/search.py` only for manifest-backed launch-regression support-state coverage
+- `backend/ingestion.py` only for deterministic launch pre-cache job-state coverage and no-generated-output blocked states
+- `backend/ingestion_worker.py` only for deterministic launch pre-cache fixture outcome metadata; do not add live worker execution paths
+- `backend/overview.py`, `backend/weekly_news.py`, `backend/weekly_news_repository.py`, `backend/comparison.py`, `backend/chat.py`, `backend/sources.py`, `backend/glossary.py`, and `backend/export.py` only if narrow route-regression adapters need existing deterministic fixture parity
+- `apps/web/lib/search.ts`, `apps/web/lib/assetOverview.ts`, `apps/web/lib/assetWeeklyNews.ts`, `apps/web/lib/compare.ts`, `apps/web/lib/assetChat.ts`, `apps/web/lib/sourceDrawer.ts`, `apps/web/lib/glossary.ts`, and `apps/web/lib/exportControls.ts` only for regression markers or backend-contract fixture parity; no workflow redesign
+- `apps/web/components/SearchBox.tsx`, `apps/web/components/WeeklyNewsPanel.tsx`, `apps/web/components/AIComprehensiveAnalysisPanel.tsx`, `apps/web/components/SourceDrawer.tsx`, `apps/web/components/GlossaryPopover.tsx`, `apps/web/components/AssetChatPanel.tsx`, and `apps/web/app/compare/page.tsx` only if needed to preserve existing v0.4 regression markers; no visual redesign
+- `tests/frontend/smoke.mjs`
 - `tests/integration/test_backend_api.py`
+- `tests/unit/test_search_classification.py`
+- `tests/unit/test_ingestion_jobs.py`
+- `tests/unit/test_ingestion_worker.py`
+- `tests/unit/test_weekly_news.py`
+- `tests/unit/test_source_drawer.py`
+- `tests/unit/test_glossary_context.py`
+- `tests/unit/test_comparison_generation.py`
+- `tests/unit/test_chat_generation.py`
+- `tests/unit/test_exports.py`
 - `tests/unit/test_repo_contract.py`
 - `tests/unit/test_safety_guardrails.py`
+- `docs/mvp_launch_readiness_regression_matrix.md`
+- `docs/mvp_go_no_go_checklist.md`
 - `docs/agent-journal/*.md`
 
 Do not change:
 
-- No public FastAPI route paths, HTTP status behavior, response schemas, `/health` behavior, search behavior, generated asset overview schema, source drawer schema, glossary schema, comparison schema, chat schema, export schema, or deterministic backend fixture output changes.
-- No changes to frontend workflow, home search, `/compare` UI, glossary UI, source drawer UI, export UI, chat UI, mobile bottom sheets, stock-vs-ETF relationship badges, or the single-company-vs-ETF-basket comparison structure.
-- No live OpenRouter, LLM, market-data, broad news provider, RSS, web, Redis, Cloud Run Job, scheduler, admin auth enforcement, rate-limiting, external analytics, telemetry vendor, or deployment wiring.
+- No public FastAPI route paths, HTTP status behavior, response schemas, `/health` behavior, generated asset overview schema, source drawer schema, glossary schema, comparison schema, chat schema, export schema, or live-provider behavior changes.
+- No frontend workflow redesign: home stays single stock/ETF search first; comparison stays a separate connected `/compare` workflow; glossary stays contextual; source drawer, glossary, and chat preserve mobile bottom-sheet or full-screen behavior; stock-vs-ETF comparison keeps relationship badges and the single-company-vs-ETF-basket structure.
+- No live OpenRouter, LLM, market-data, broad news provider, RSS, web fetch, Redis, Cloud Run Job, scheduler, admin auth enforcement, rate-limiting, external analytics, telemetry vendor, monitoring vendor, rollback tooling, or deployment wiring.
 - No default live SEC, issuer, ETF, market-data, news, Weekly News, RSS, or source-provider execution in tests, public routes, browser code, normal local runs, or CI.
 - No production database, production object-storage, production bucket, signed URL, public storage URL, Cloud Run, Neon, GCS, Secret Manager, or Docker-required execution path.
 - No import-time database, object-storage, network, provider, Redis, or credential validation connections.
 - No browser calls to source providers, LLM providers, market-data/news providers, RSS feeds, admin ingestion secrets, object storage, signed URLs, or provider endpoints. Browser code may call only the configured backend API base and local deterministic fallback helpers.
 - No new `NEXT_PUBLIC_*` provider variables, no provider keys in browser code, no `/health` secret exposure, no docs/env examples containing real secrets, and no logging or diagnostics that include API key values, database URLs, storage URLs, or provider credentials.
 - No production dependency addition.
-- No schema migrations beyond existing migration scaffold usage, destructive migrations, production database session execution, prompt template rewrite, provider licensing change, broad source allowlist expansion, runtime secret setup, production deployment setup, or actual legal/licensing determination.
-- No new generated pages, generated chat answers, generated comparisons, generated risk summaries, live LLM calls, live generated-output content changes, prompt rewrites, or output copy changes beyond existing deterministic backend behavior and explicitly configured mocked Weekly News acquisition tests.
+- No schema migrations, destructive migrations, production database session execution, prompt template rewrite, provider licensing change, broad source allowlist expansion, runtime secret setup, production deployment setup, or actual legal/licensing determination.
+- No new generated pages, generated chat answers, generated comparisons, generated risk summaries, live LLM calls, live generated-output content changes, prompt rewrites, or output copy changes beyond existing deterministic backend behavior and narrow regression-state copy when unavoidable.
 - No edits to `data/universes/us_common_stocks_top500.current.json` or `data/universes/us_equity_etfs.current.json`.
 - No expansion to leveraged ETFs, inverse ETFs, ETNs, fixed-income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, international ETFs, preferred stocks, warrants, rights, options, crypto, or other out-of-scope products.
 - No raw full article text, unrestricted source text, unrestricted provider payloads, hidden prompts, raw prompt text, raw model reasoning, raw user text, raw queries, raw questions, raw answers, raw chat transcripts, personal identifiers, portfolio/allocation details, real API keys, credentials, secrets, public storage URLs, signed URLs, external analytics IDs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, browser state, repository records, knowledge-pack records, cache records, job records, events, exports, or exported data.
@@ -60,27 +66,26 @@ Do not change:
 
 Acceptance criteria:
 
-- Live official-source Weekly News acquisition readiness is blocked unless explicit server-side opt-in, official-source configuration readiness, rate-limit readiness, same-asset support-state validation, source-use validation, market-week window validation, and configured Weekly News evidence repository writer readiness are present.
-- Mocked HTTP/provider fixtures prove golden AAPL, VOO, and QQQ official-source Weekly News paths where existing source contracts support them. Include only official filings, investor-relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes; do not add broad news feeds or paid news providers.
-- Tests cover official filing, investor-relations release, ETF issuer announcement, prospectus or fact-sheet update, duplicate, promotional, non-allowlisted, irrelevant, rejected-source, metadata/link-only blocked source, stale-without-label, outside-window, wrong-asset, unsupported asset, out-of-scope asset, missing opt-in flag, missing rate-limit readiness, missing repository writer readiness, invalid response shape, invalid checksum or evidence checksum, and secret-like diagnostic cases.
-- Acquired Weekly News evidence records preserve candidate rows, selected-event rows, citations, source metadata, source quality, source-use tier, allowlist status, event dates, published/retrieved/as-of dates, U.S. Eastern market-week windows, selected-vs-configured counts, dedupe metadata, evidence-limited state, AI threshold metadata, validation rows, and sanitized diagnostics.
-- Weekly News Focus shows the configured maximum only when enough validated evidence supports it, shows a smaller verified set when evidence is limited, and shows an empty/no-high-signal state when no selected official-source evidence remains.
-- AI Comprehensive Analysis remains suppressed unless at least two high-signal selected Weekly News items and required canonical fact citations are available; when generated by existing deterministic paths, it must cite selected Weekly News items and canonical facts and preserve the required section order.
-- Source-use policy wins over score: rejected, unrecognized, non-allowlisted, metadata-only/link-only for generated summary needs, promotional, irrelevant, duplicate, wrong-asset, stale-without-label, and license-disallowed inputs must not feed selected Weekly News items, AI Comprehensive Analysis, caches, exports, or rendered summaries.
-- Ingestion worker execution remains server-side/admin-only, fail-closed, and deterministic in tests; mocked Weekly News acquisition results route through existing ledger and Weekly News evidence writer boundaries without changing public route behavior.
-- Existing deterministic fixture fallback remains authoritative when live Weekly News acquisition flags are absent, disabled, invalid, or mocked providers fail validation.
-- Diagnostics are sanitized and redact or omit API keys, database URLs, storage URLs, credentials, signed URLs, public storage URLs, raw article/source text, raw provider payloads, raw user text, hidden prompts, raw model reasoning, and provider keys.
-- Public route schemas, frontend behavior, root npm script delegation, `apps/web` workspace scripts, no-live-call defaults, source-use gates, safety/advice boundaries, and PRD/TDS-first authority after safety remain unchanged.
-- Preserve product guardrails in implementation, tests, docs, and journal notes: no buy/sell/hold recommendations, allocation advice, tax advice, price targets, brokerage/trading behavior, unsupported factual claims, or recent-news-as-canonical framing.
+- Launch pre-cache expansion remains deterministic and manifest-driven. It may add or document representative pre-cache coverage only for approved Top-500 common stocks and non-leveraged U.S.-listed equity ETFs, and it must continue to block unsupported, out-of-scope, unknown, unavailable, leveraged, inverse, ETN, fixed-income, commodity, active, multi-asset, international, preferred, warrant, rights, options, and crypto assets from generated output.
+- The regression matrix covers backend route contracts and frontend workflow markers for supported, pending ingestion, partial, stale, unknown, unavailable, unsupported, out-of-scope, no-result, comparison, source drawer, contextual glossary, grounded chat, exports, mobile source/glossary/chat surfaces, Weekly News Focus, and AI Comprehensive Analysis states.
+- Search regression coverage preserves single-asset home search as the primary home action, search rows with stock-vs-ETF identity and support-state chips, exact unsupported/no-result behavior, manifest-backed Top-500 stock support, and `A vs B` redirect behavior into `/compare?left=...&right=...`.
+- Asset-page regression coverage preserves Beginner Summary first, citation chips, source freshness labels, stale/unknown/unavailable/partial/insufficient-evidence states, Top 3 Risks first where risk content is present, and separation of canonical facts from Weekly News Focus and AI Comprehensive Analysis.
+- Comparison regression coverage preserves empty, one-side-selected, two-side-selected, partial, pending, unsupported, out-of-scope, ETF-vs-ETF, stock-vs-stock, and stock-vs-ETF states, including relationship badges and the special single-company-vs-ETF-basket structure.
+- Source drawer, glossary, chat, and export regression coverage preserves cited source metadata, source-use policy visibility where available, allowed excerpts only, desktop and mobile behavior markers, contextual glossary behavior, grounded chat comparison redirects, educational chat boundaries, Markdown/JSON export availability, and export licensing/source-use restrictions.
+- Weekly News Focus regression coverage verifies official-source priority, U.S. Eastern market-week windows, selected-vs-configured counts, smaller verified sets when evidence is limited, empty/no-high-signal states when evidence is thin, and no padding with weak, promotional, duplicate, wrong-asset, non-allowlisted, rejected, or license-disallowed items.
+- AI Comprehensive Analysis regression coverage verifies suppression unless at least two high-signal selected Weekly News items and required canonical fact citations are available; when deterministic generated analysis is present, section order and citations remain valid.
+- MVP go/no-go checklist records open risks for production admin auth, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run service settings, Cloud Run Job settings, recurring job decisions, source allowlist review, live-provider opt-in, monitoring, rollback, cost controls, and launch support, without enabling those production behaviors.
+- Docs and tests preserve PRD/TDS-first authority after safety, no-advice framing, citation/source-use rules, freshness/unknown/stale/unavailable/partial handling, deterministic CI, root npm delegation, `apps/web` workspace script behavior, and no-live-call defaults.
+- No real provider data, raw restricted source text, credentials, signed URLs, public storage URLs, secrets, hidden prompts, raw model reasoning, raw user text, or raw transcripts are committed, logged, exported, or stored in fixtures.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_overview_generation.py tests/unit/test_source_policy.py -q
-python3 -m pytest tests/unit/test_ingestion_worker.py tests/unit/test_ingestion_jobs.py -q
-python3 -m pytest tests/unit/test_persistence_settings.py -q
+npm test
+npm run typecheck
+npm run build
 python3 -m pytest tests/integration/test_backend_api.py -q
-python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
+python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_ingestion_jobs.py tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
 python3 -m pytest tests -q
 python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
@@ -88,10 +93,37 @@ git diff --check
 ```
 
 Iteration budget:
-One agent-loop cycle. Stop after official-source Weekly News live-acquisition readiness for golden assets with mocked tests. If broader allowlisted news, paid news APIs, recurring jobs, deployment credentials, production database/object-storage execution, launch pre-cache expansion, frontend workflow changes, source allowlist expansion, live generated-output content changes, or production deployment are needed, record the follow-up and stop.
+One agent-loop cycle. Stop after deterministic launch pre-cache expansion, MVP regression matrix coverage, and go/no-go documentation. If full production deployment, recurring production jobs, paid or broad provider expansion, source allowlist expansion, live-provider default changes, production credentials, production database/object-storage execution, or post-MVP features are needed, record the follow-up and stop.
 
 
 ## Completed
+
+### T-113: Add official-source Weekly News live acquisition for golden assets
+
+Goal:
+Add explicit opt-in server-side live acquisition readiness for official-source Weekly News Focus evidence for golden assets, preserving source-use gates, dedupe, evidence-limited states, market-week windows, and AI Comprehensive Analysis thresholds.
+
+Completed details:
+
+- Implementation commit `0e33516 feat(T-113): add official-source Weekly News live acquisition for golden assets` updated `backend/settings.py`, `backend/repositories/weekly_news.py`, `backend/weekly_news_repository.py`, `backend/ingestion_worker.py`, focused unit tests, roadmap contract tests, and `docs/agent-journal/20260426T221149Z.md`.
+- Merged branch `agent/T-113-20260426T221149Z` into `main` with local merge commit `90908ac chore(T-113): merge official-source Weekly News live acquisition for golden assets`.
+- `backend/settings.py` extended the existing `live-acquisition-readiness-settings-v1` boundary with disabled-by-default Weekly News live acquisition readiness, including `LIVE_WEEKLY_NEWS_ACQUISITION_ENABLED`, `LIVE_WEEKLY_NEWS_OFFICIAL_SOURCE_CONFIGURED`, shared `LIVE_SOURCE_RATE_LIMIT_READY`, `LIVE_ACQUISITION_WEEKLY_NEWS_WRITER_READY`, `weekly_news_ready`, missing-reason diagnostics, and sanitized `safe_diagnostics`.
+- `backend/repositories/weekly_news.py` added `WEEKLY_NEWS_LIVE_ACQUISITION_READINESS_BOUNDARY`, `WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_ACQUISITION_BOUNDARY`, `WeeklyNewsLiveAcquisitionReadiness`, `WeeklyNewsOfficialSourceAcquisitionResult`, `evaluate_weekly_news_live_acquisition_readiness`, and `acquire_weekly_news_event_evidence_from_official_sources`.
+- Weekly News readiness now requires explicit opt-in, official-source configuration, source rate-limit readiness, Weekly News evidence writer readiness, same-asset support-state validation, golden-asset scope for AAPL/VOO/QQQ, source-use validation, and U.S. Eastern market-week window validation before mocked official-source acquisition can proceed.
+- Mocked official-source acquisition filters to official filing, investor-relations release, ETF issuer announcement, prospectus update, and fact-sheet change source tiers, then routes through the existing fixture acquisition and Weekly News evidence repository validation path.
+- Weekly News evidence validation now requires `sha256:` title checksums when present and `sha256:` evidence checksums, preserving compact metadata and rejecting malformed evidence before persistence.
+- `backend/ingestion_worker.py` now fails closed when a ready live Weekly News acquisition outcome requires repository writers but no Weekly News repository writer is configured, while still routing ready mocked records through the existing injected writer boundary when configured.
+- Tests added or updated coverage for blocked default Weekly News readiness, missing official-source/rate-limit/writer readiness, ready weekly settings, ready official-source AAPL/VOO/QQQ acquisition paths, unsupported and wrong-asset candidates, non-official, promotional, rejected, stale-without-label, and outside-window candidates, evidence checksum validation, sanitized diagnostics, worker fail-closed behavior, and worker persistence through the mocked Weekly News writer.
+- `docs/agent-journal/20260426T221149Z.md` records these checks: `python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_overview_generation.py tests/unit/test_source_policy.py -q` passed with 47 tests; `python3 -m pytest tests/unit/test_ingestion_worker.py tests/unit/test_ingestion_jobs.py -q` passed with 40 tests; `python3 -m pytest tests/unit/test_persistence_settings.py -q` passed with 18 tests; `python3 -m pytest tests/integration/test_backend_api.py -q` passed with 36 tests; `python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q` passed with 30 tests; `python3 -m pytest tests -q` passed with 418 tests; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed; `git diff --check` passed.
+- Remaining risks from the journal:
+  - Weekly News live acquisition remains readiness-only and mocked. No real HTTP transport, broad news provider, paid news API, scheduler, production database/object-storage execution, or deployment wiring was added.
+  - Golden coverage is limited to AAPL, VOO, and QQQ official-source candidate paths that route through existing Weekly News evidence selection and repository validation.
+  - The path persists evidence metadata only; it does not create live generated Weekly News prose, AI Comprehensive Analysis content, public route schema changes, frontend changes, or generated-output cache content changes.
+
+Completion commits:
+
+- `0e33516 feat(T-113): add official-source Weekly News live acquisition for golden assets`
+- `90908ac chore(T-113): merge official-source Weekly News live acquisition for golden assets`
 
 ### T-112: Add explicit opt-in live SEC and ETF issuer golden acquisition
 
@@ -3056,38 +3088,7 @@ Completion commits:
 
 ## Backlog
 
-### T-114: Expand launch pre-cache coverage and add MVP readiness regression matrix
-
-Goal:
-Expand deterministic launch pre-cache coverage beyond the smallest golden path and add an MVP readiness regression matrix plus go/no-go checklist before production deployment work.
-
-Task-scope paragraph:
-Prepare the MVP launch readiness layer after local durable ingest-to-render and opt-in official-source acquisition work exists. Expand pre-cache coverage only within approved Top-500 common stock and non-leveraged U.S. equity ETF scope, using deterministic manifests and mocked acquisition outputs. Add route-contract and frontend workflow regression coverage for search, pending ingestion, asset pages, comparison, source drawer, chat, exports, mobile behavior, Weekly News evidence limits, and safety/source-use gates. Add a go/no-go checklist for production readiness without deploying, enabling recurring jobs, adding paid providers, or committing secrets.
-
-Acceptance criteria:
-
-- Launch pre-cache expansion remains manifest-driven and blocks unsupported, out-of-scope, unknown, unavailable, leveraged, inverse, ETN, fixed-income, commodity, active, multi-asset, international, preferred, warrant, rights, options, and crypto assets from generated output.
-- Regression matrix covers backend route contracts and frontend workflows for supported, pending, partial, stale, unknown, unavailable, unsupported, out-of-scope, comparison, chat, export, source drawer, glossary, mobile, and Weekly News states.
-- MVP go/no-go checklist records open risks for production auth, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, recurring job decisions, source allowlist review, live-provider opt-in, and monitoring.
-- No production deployment, recurring scheduler, paid provider integration, source allowlist expansion, live default calls, or secret handling changes are enabled.
-- Quality gates remain deterministic and no real provider data, raw restricted source text, credentials, signed URLs, or public storage URLs are committed.
-
-Required commands:
-
-```bash
-npm test
-npm run typecheck
-npm run build
-python3 -m pytest tests/integration/test_backend_api.py -q
-python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_ingestion_jobs.py tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-git diff --check
-```
-
-Iteration budget:
-One agent-loop cycle. Stop after deterministic launch readiness expansion and go/no-go documentation; leave full production deployment, recurring production jobs, paid/broad provider expansion, and post-MVP features for later.
+No queued backlog tasks. The next local agent-loop cycle should run the promoted Current task above before any new task is invented.
 
 ## General MVP Roadmap
 
@@ -3098,8 +3099,8 @@ Current runtime snapshot:
 - Backend contracts, configured reader boundaries, ingestion ledger execution, source-use/export gates, Weekly News contracts, generated-output cache contracts, and live-generation readiness diagnostics are broad and stable.
 - The current runtime is still not end-to-end fresh-data functional: acquisition is mocked/golden-path, source snapshots, normalized knowledge packs, Weekly News evidence, and generated-output cache records can be routed through deterministic in-memory/mocked boundaries or explicitly configured local durable repository factories, and production persistence/storage is not the normal path.
 - The frontend renders the main learning surfaces with deterministic fixtures and selected backend adapters; T-109 added API-backed home search and dynamic asset-page rendering with deterministic fixture fallback.
-- The current promoted MVP blocker is explicit opt-in official-source Weekly News live acquisition readiness for golden assets, after T-112 added explicit opt-in SEC and ETF issuer live acquisition readiness.
-- The next fully functional milestone is a local deterministic golden path where admin/server-side ingestion acquires official-source data through explicit server-side paths, persists validated snapshots and knowledge packs, writes validated cache records, and all frontend learning surfaces render backend API responses with fixture fallback.
+- The current promoted MVP blocker is deterministic launch pre-cache expansion and an MVP readiness regression matrix before production deployment work.
+- The next fully functional milestone is a launch-readiness checkpoint where deterministic pre-cache coverage, backend route contracts, frontend workflow markers, source-use gates, Weekly News evidence limits, safety checks, and go/no-go risks are documented and covered by CI-safe regression tests.
 
 Operational defaults for general MVP roadmap tasks:
 
@@ -3139,8 +3140,9 @@ Operational defaults for general MVP roadmap tasks:
 - T-109 established frontend API-backed search, pending states, and dynamic asset-page rendering. It is completed and must not be reintroduced as runnable backlog.
 - T-110 established persisted end-to-end comparison, chat, source, glossary, Weekly News, and export verification. It is completed and must not be reintroduced as runnable backlog.
 - T-111 established local durable repository execution with in-memory fallback. It is completed and must not be reintroduced as runnable backlog.
-- T-112 is the current promoted task for opt-in live SEC and ETF issuer golden acquisition readiness.
-- T-113 and T-114 are the next runnable tasks for official-source Weekly News live acquisition and launch readiness.
+- T-112 established opt-in live SEC and ETF issuer golden acquisition readiness. It is completed and must not be reintroduced as runnable backlog.
+- T-113 established opt-in official-source Weekly News live acquisition readiness for golden assets. It is completed and must not be reintroduced as runnable backlog.
+- T-114 is the current promoted task for deterministic launch pre-cache expansion and the MVP readiness regression matrix.
 - Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until opt-in official-source acquisition and launch readiness work pass deterministic CI coverage.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted task should run the relevant EVALS.md checks, `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, `bash scripts/run_quality_gate.sh`, and `git diff --check`.
@@ -3185,9 +3187,9 @@ Roadmap integration tracker:
 | Frontend API-backed search, pending states, and asset rendering | Completed | T-109 |
 | Persisted comparison/chat/source/glossary/export end-to-end verification | Completed | T-110 |
 | Local durable repository execution with in-memory fallback | Completed | T-111 |
-| Opt-in live SEC and ETF issuer golden acquisition | Current | T-112 |
-| Official-source Weekly News live acquisition for golden assets | Backlog | T-113 |
-| Launch pre-cache expansion and MVP readiness regression matrix | Backlog | T-114 |
+| Opt-in live SEC and ETF issuer golden acquisition | Completed | T-112 |
+| Official-source Weekly News live acquisition for golden assets | Completed | T-113 |
+| Launch pre-cache expansion and MVP readiness regression matrix | Current | T-114 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
 Remaining unpromoted general MVP sequence:
