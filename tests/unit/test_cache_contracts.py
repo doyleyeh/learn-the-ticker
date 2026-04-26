@@ -28,6 +28,7 @@ from backend.generated_output_cache_repository import (
     GeneratedOutputDiagnosticRow,
     GeneratedOutputSourceChecksumRow,
     GeneratedOutputValidationStatusRow,
+    InMemoryGeneratedOutputCacheRepository,
     build_generated_output_cache_records,
     generated_output_cache_repository_metadata,
     validate_generated_output_cache_records,
@@ -692,6 +693,19 @@ def test_generated_output_cache_records_preserve_hashes_validation_and_citation_
     assert records.artifacts[0].stores_payload_text is False
 
 
+def test_in_memory_generated_output_cache_repository_reads_metadata_by_artifact_category():
+    repository = InMemoryGeneratedOutputCacheRepository()
+    records = _generated_cache_records("VOO")
+
+    persisted = repository.persist(records)
+    read_back = repository.read_asset_overview_records("voo")
+
+    assert persisted.envelopes[0].cache_entry_id == "generated-output-voo-overview"
+    assert read_back is not None
+    assert read_back.envelopes[0].artifact_category == GeneratedOutputArtifactCategory.asset_overview_section.value
+    assert repository.read_generated_output_cache_records("VOO").envelopes[0].cache_entry_id == "generated-output-voo-overview"
+
+
 def test_comparison_generated_output_cache_preserves_left_right_identity_and_pack_binding():
     comparison_pack = build_comparison_knowledge_pack("VOO", "QQQ")
     knowledge_input = build_comparison_pack_freshness_input(comparison_pack)
@@ -810,6 +824,23 @@ def test_generated_output_cache_blocks_unsafe_unvalidated_unknown_and_unlabeled_
     )
     with pytest.raises(GeneratedOutputCacheContractError, match="Stale inputs"):
         validate_generated_output_cache_records(records.model_copy(update={"envelopes": [stale_without_label]}))
+
+    unavailable_with_label = records.envelopes[0].model_copy(
+        update={
+            "source_freshness_states": {records.source_checksums[0].source_document_id: "unavailable"},
+            "section_freshness_labels": {"source_limitation": "unavailable"},
+            "evidence_state_labels": {"source_limitation": "unavailable"},
+        }
+    )
+    unavailable_source = records.source_checksums[0].model_copy(update={"freshness_state": "unavailable"})
+    validate_generated_output_cache_records(
+        records.model_copy(
+            update={
+                "envelopes": [unavailable_with_label],
+                "source_checksums": [unavailable_source, *records.source_checksums[1:]],
+            }
+        )
+    )
 
 
 def test_chat_safe_answer_artifact_metadata_does_not_store_raw_user_text_or_transcripts():

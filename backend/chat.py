@@ -26,6 +26,8 @@ from backend.generated_output_cache_repository import (
     GeneratedOutputArtifactCategory,
     GeneratedOutputCacheContractError,
     GeneratedOutputCacheRepositoryRecords,
+    build_deterministic_generated_output_cache_records,
+    persist_generated_output_cache_records,
     validate_generated_output_cache_records,
 )
 from backend.models import (
@@ -130,6 +132,7 @@ def generate_asset_chat(
     *,
     persisted_pack_reader: KnowledgePackRecordReader | Any | None = None,
     generated_output_cache_reader: GeneratedOutputChatCacheRecordReader | Any | None = None,
+    generated_output_cache_writer: Any | None = None,
 ) -> ChatResponse:
     """Build a ChatResponse-compatible payload from a selected asset knowledge pack."""
 
@@ -154,7 +157,9 @@ def generate_asset_chat(
     if persisted.found and persisted.chat_response is not None:
         return persisted.chat_response
 
-    return generate_chat_from_pack(fixture_pack, question)
+    response = generate_chat_from_pack(fixture_pack, question)
+    _maybe_write_chat_generated_output_cache(response, fixture_pack, generated_output_cache_writer)
+    return response
 
 
 def read_persisted_chat_response(
@@ -583,6 +588,68 @@ def validate_chat_response(response: ChatResponse, pack: AssetKnowledgePack) -> 
     if not report.valid:
         return report
     return _validate_chat_source_documents(response, pack)
+
+
+def _maybe_write_chat_generated_output_cache(
+    response: ChatResponse,
+    pack: AssetKnowledgePack,
+    writer: Any | None,
+) -> None:
+    if (
+        writer is None
+        or response.safety_classification is not SafetyClassification.educational
+        or not response.asset.supported
+        or not response.citations
+    ):
+        return
+    try:
+        report = validate_chat_response(response, pack)
+        if not report.valid or find_forbidden_output_phrases(str(response.model_dump(mode="json"))):
+            return
+        source_ids = {source.source_document_id for source in response.source_documents}
+        citation_ids = [citation.citation_id for citation in response.citations]
+        citations_by_source: dict[str, list[str]] = {}
+        for citation in response.citations:
+            citations_by_source.setdefault(citation.source_document_id, []).append(citation.citation_id)
+        knowledge_input = build_knowledge_pack_freshness_input(
+            pack,
+            section_freshness_labels=[
+                SectionFreshnessInput(
+                    section_id="chat_answer",
+                    freshness_state=FreshnessState.fresh,
+                    evidence_state="supported",
+                )
+            ],
+        )
+        knowledge_input = knowledge_input.model_copy(
+            update={
+                "source_checksums": [
+                    checksum.model_copy(
+                        update={"citation_ids": sorted(citations_by_source.get(checksum.source_document_id, []))}
+                    )
+                    for checksum in knowledge_input.source_checksums
+                    if checksum.source_document_id in source_ids
+                ]
+            }
+        )
+        records = build_deterministic_generated_output_cache_records(
+            cache_entry_id=f"generated-output-{response.asset.ticker.lower()}-chat-answer",
+            output_identity=f"asset:{response.asset.ticker}:chat-safe-answer-metadata",
+            mode_or_output_type="grounded-chat-safe-answer",
+            artifact_category=GeneratedOutputArtifactCategory.grounded_chat_answer_artifact,
+            entry_kind=CacheEntryKind.chat_answer,
+            scope=CacheScope.chat,
+            schema_version="chat-answer-v1",
+            prompt_version="chat-answer-prompt-v1",
+            knowledge_input=knowledge_input,
+            citation_ids=citation_ids,
+            created_at="2026-04-25T18:33:44Z",
+            ttl_seconds=604800,
+            asset_ticker=response.asset.ticker,
+        )
+        persist_generated_output_cache_records(writer, records)
+    except Exception:
+        return
 
 
 def validate_generated_chat_claims(

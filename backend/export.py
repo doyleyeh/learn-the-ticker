@@ -2,12 +2,20 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.cache import build_comparison_pack_freshness_input, build_knowledge_pack_freshness_input
 from backend.chat import generate_asset_chat
 from backend.chat_sessions import PersistedChatSessionReader, chat_session_export_payload
 from backend.comparison import generate_comparison
+from backend.generated_output_cache_repository import (
+    GeneratedOutputArtifactCategory,
+    build_deterministic_generated_output_cache_records,
+    persist_generated_output_cache_records,
+)
 from backend.models import (
     AssetIdentity,
     AssetStatus,
+    CacheEntryKind,
+    CacheScope,
     ChatSourceDocument,
     ChatSessionLifecycleState,
     ChatSessionPublicMetadata,
@@ -41,6 +49,7 @@ from backend.models import (
     OverviewSectionType,
     SafetyClassification,
     SearchSupportClassification,
+    SectionFreshnessInput,
     SourceAllowlistStatus,
     SourceDocument,
     SourcePolicyDecisionState,
@@ -48,6 +57,7 @@ from backend.models import (
     StateMessage,
 )
 from backend.overview import generate_asset_overview
+from backend.retrieval import build_asset_knowledge_pack, build_comparison_knowledge_pack
 from backend.search import search_assets
 from backend.source_policy import (
     excerpt_text_for_policy,
@@ -75,6 +85,7 @@ def export_asset_page(
     *,
     persisted_pack_reader: Any | None = None,
     generated_output_cache_reader: Any | None = None,
+    generated_output_cache_writer: Any | None = None,
     persisted_weekly_news_reader: Any | None = None,
 ) -> ExportResponse:
     """Shape an existing deterministic asset overview into an accountless export payload."""
@@ -118,7 +129,9 @@ def export_asset_page(
             "source": "local_fixture_overview",
         },
     )
-    return response.model_copy(update={"export_validation": _build_asset_export_validation(response, overview)})
+    response = response.model_copy(update={"export_validation": _build_asset_export_validation(response, overview)})
+    _maybe_write_asset_export_cache(response, generated_output_cache_writer)
+    return response
 
 
 def export_asset_source_list(
@@ -127,6 +140,7 @@ def export_asset_source_list(
     *,
     persisted_pack_reader: Any | None = None,
     generated_output_cache_reader: Any | None = None,
+    generated_output_cache_writer: Any | None = None,
     persisted_weekly_news_reader: Any | None = None,
 ) -> ExportResponse:
     """Export source metadata for an asset without adding new source material."""
@@ -204,7 +218,9 @@ def export_asset_source_list(
         rendered_markdown=markdown,
         metadata={"source_count": len(overview.source_documents), "source": "local_fixture_overview"},
     )
-    return response.model_copy(update={"export_validation": _build_asset_export_validation(response, overview)})
+    response = response.model_copy(update={"export_validation": _build_asset_export_validation(response, overview)})
+    _maybe_write_asset_source_list_cache(response, generated_output_cache_writer)
+    return response
 
 
 def export_comparison(
@@ -212,6 +228,7 @@ def export_comparison(
     *,
     persisted_pack_reader: Any | None = None,
     generated_output_cache_reader: Any | None = None,
+    generated_output_cache_writer: Any | None = None,
 ) -> ExportResponse:
     """Shape an existing deterministic comparison into an export payload."""
 
@@ -334,7 +351,9 @@ def export_comparison(
         rendered_markdown=markdown,
         metadata={"comparison_type": comparison.comparison_type, "source": "local_fixture_comparison"},
     )
-    return response.model_copy(update={"export_validation": _build_comparison_export_validation(response, comparison)})
+    response = response.model_copy(update={"export_validation": _build_comparison_export_validation(response, comparison)})
+    _maybe_write_comparison_export_cache(response, generated_output_cache_writer)
+    return response
 
 
 def export_chat_transcript(
@@ -344,6 +363,7 @@ def export_chat_transcript(
     persisted_session_reader: PersistedChatSessionReader | Any | None = None,
     persisted_pack_reader: Any | None = None,
     generated_output_cache_reader: Any | None = None,
+    generated_output_cache_writer: Any | None = None,
 ) -> ExportResponse:
     """Export a single deterministic chat turn for a selected cached asset."""
 
@@ -495,9 +515,11 @@ def export_chat_transcript(
             "source": "local_fixture_chat",
         },
     )
-    return response.model_copy(
+    response = response.model_copy(
         update={"export_validation": _build_chat_export_validation(response, asset_ticker=chat.asset.ticker)}
     )
+    _maybe_write_chat_export_cache(response, generated_output_cache_writer)
+    return response
 
 
 def export_chat_session_transcript(
@@ -520,6 +542,243 @@ def _maybe_export_existing_chat_session(
     if metadata.lifecycle_state is ChatSessionLifecycleState.unavailable and metadata.selected_asset is None:
         return None
     return _export_chat_session_payload(metadata, turns, export_format)
+
+
+def _maybe_write_asset_export_cache(response: ExportResponse, writer: Any | None) -> None:
+    if writer is None or response.asset is None or response.export_state is not ExportState.available or not response.citations:
+        return
+    try:
+        pack = build_asset_knowledge_pack(response.asset.ticker)
+        source_ids = {source.source_document_id for source in response.source_documents}
+        citations_by_source = _citations_by_source(response)
+        section_labels = [
+            *_section_freshness_inputs_from_export(response),
+            *[
+                SectionFreshnessInput(
+                    section_id=f"source_list_{source.source_document_id}",
+                    freshness_state=source.freshness_state,
+                    evidence_state=EvidenceState.supported.value,
+                    as_of_date=source.as_of_date,
+                    retrieved_at=source.retrieved_at,
+                )
+                for source in response.source_documents
+            ],
+        ]
+        knowledge_input = build_knowledge_pack_freshness_input(
+            pack,
+            section_freshness_labels=section_labels,
+        )
+        knowledge_input = knowledge_input.model_copy(
+            update={
+                "source_checksums": [
+                    checksum.model_copy(
+                        update={"citation_ids": sorted(citations_by_source.get(checksum.source_document_id, []))}
+                    )
+                    for checksum in knowledge_input.source_checksums
+                    if checksum.source_document_id in source_ids
+                ]
+            }
+        )
+        records = build_deterministic_generated_output_cache_records(
+            cache_entry_id=f"generated-output-{response.asset.ticker.lower()}-asset-export",
+            output_identity=f"asset:{response.asset.ticker}:export:asset_page",
+            mode_or_output_type="asset-page-export-metadata",
+            artifact_category=GeneratedOutputArtifactCategory.export_payload_metadata,
+            entry_kind=CacheEntryKind.export_payload,
+            scope=CacheScope.asset,
+            schema_version="export-payload-v1",
+            prompt_version="export-payload-prompt-v1",
+            knowledge_input=knowledge_input,
+            citation_ids=[citation.citation_id for citation in response.citations],
+            created_at=response.freshness.page_last_updated_at if response.freshness else "2026-04-25T18:33:44Z",
+            ttl_seconds=604800,
+            asset_ticker=response.asset.ticker,
+        )
+        persist_generated_output_cache_records(writer, records)
+    except Exception:
+        return
+
+
+def _maybe_write_asset_source_list_cache(response: ExportResponse, writer: Any | None) -> None:
+    if writer is None or response.asset is None or response.export_state is not ExportState.available:
+        return
+    try:
+        pack = build_asset_knowledge_pack(response.asset.ticker)
+        source_ids = {source.source_document_id for source in response.source_documents}
+        citations_by_source = _citations_by_source(response)
+        section_labels = [
+            *_section_freshness_inputs_from_export(response),
+            *[
+                SectionFreshnessInput(
+                    section_id=f"source_list_{source.source_document_id}",
+                    freshness_state=source.freshness_state,
+                    evidence_state=EvidenceState.supported.value,
+                    as_of_date=source.as_of_date,
+                    retrieved_at=source.retrieved_at,
+                )
+                for source in response.source_documents
+            ],
+        ]
+        knowledge_input = build_knowledge_pack_freshness_input(
+            pack,
+            section_freshness_labels=section_labels,
+        )
+        knowledge_input = knowledge_input.model_copy(
+            update={
+                "source_checksums": [
+                    checksum.model_copy(
+                        update={"citation_ids": sorted(citations_by_source.get(checksum.source_document_id, []))}
+                    )
+                    for checksum in knowledge_input.source_checksums
+                    if checksum.source_document_id in source_ids
+                ]
+            }
+        )
+        records = build_deterministic_generated_output_cache_records(
+            cache_entry_id=f"generated-output-{response.asset.ticker.lower()}-source-list",
+            output_identity=f"asset:{response.asset.ticker}:source-list-metadata",
+            mode_or_output_type="source-list-export-metadata",
+            artifact_category=GeneratedOutputArtifactCategory.source_list_export_metadata,
+            entry_kind=CacheEntryKind.source_list,
+            scope=CacheScope.asset,
+            schema_version="source-list-v1",
+            prompt_version="source-list-prompt-v1",
+            knowledge_input=knowledge_input,
+            citation_ids=[citation.citation_id for citation in response.citations],
+            created_at=response.freshness.page_last_updated_at if response.freshness else "2026-04-25T18:33:44Z",
+            ttl_seconds=604800,
+            asset_ticker=response.asset.ticker,
+        )
+        persist_generated_output_cache_records(writer, records)
+    except Exception:
+        return
+
+
+def _maybe_write_comparison_export_cache(response: ExportResponse, writer: Any | None) -> None:
+    if (
+        writer is None
+        or response.left_asset is None
+        or response.right_asset is None
+        or response.export_state is not ExportState.available
+        or not response.citations
+    ):
+        return
+    try:
+        pack = build_comparison_knowledge_pack(response.left_asset.ticker, response.right_asset.ticker)
+        source_ids = {source.source_document_id for source in response.source_documents}
+        citations_by_source = _citations_by_source(response)
+        knowledge_input = build_comparison_pack_freshness_input(
+            pack,
+            section_freshness_labels=_section_freshness_inputs_from_export(response),
+        )
+        knowledge_input = knowledge_input.model_copy(
+            update={
+                "source_checksums": [
+                    checksum.model_copy(
+                        update={"citation_ids": sorted(citations_by_source.get(checksum.source_document_id, []))}
+                    )
+                    for checksum in knowledge_input.source_checksums
+                    if checksum.source_document_id in source_ids
+                ]
+            }
+        )
+        records = build_deterministic_generated_output_cache_records(
+            cache_entry_id=(
+                f"generated-output-{response.left_asset.ticker.lower()}-"
+                f"{response.right_asset.ticker.lower()}-comparison-export"
+            ),
+            output_identity=f"comparison:{response.left_asset.ticker}-to-{response.right_asset.ticker}:export",
+            mode_or_output_type="comparison-export-metadata",
+            artifact_category=GeneratedOutputArtifactCategory.export_payload_metadata,
+            entry_kind=CacheEntryKind.export_payload,
+            scope=CacheScope.comparison,
+            schema_version="export-payload-v1",
+            prompt_version="export-payload-prompt-v1",
+            knowledge_input=knowledge_input,
+            citation_ids=[citation.citation_id for citation in response.citations],
+            created_at="2026-04-25T18:33:44Z",
+            ttl_seconds=604800,
+            comparison_id=pack.comparison_pack_id,
+            comparison_left_ticker=response.left_asset.ticker,
+            comparison_right_ticker=response.right_asset.ticker,
+        )
+        persist_generated_output_cache_records(writer, records)
+    except Exception:
+        return
+
+
+def _maybe_write_chat_export_cache(response: ExportResponse, writer: Any | None) -> None:
+    if (
+        writer is None
+        or response.asset is None
+        or response.export_state is not ExportState.available
+        or response.metadata.get("safety_classification") != SafetyClassification.educational.value
+        or not response.citations
+    ):
+        return
+    try:
+        pack = build_asset_knowledge_pack(response.asset.ticker)
+        source_ids = {source.source_document_id for source in response.source_documents}
+        citations_by_source = _citations_by_source(response)
+        knowledge_input = build_knowledge_pack_freshness_input(
+            pack,
+            section_freshness_labels=_section_freshness_inputs_from_export(response),
+        )
+        knowledge_input = knowledge_input.model_copy(
+            update={
+                "source_checksums": [
+                    checksum.model_copy(
+                        update={"citation_ids": sorted(citations_by_source.get(checksum.source_document_id, []))}
+                    )
+                    for checksum in knowledge_input.source_checksums
+                    if checksum.source_document_id in source_ids
+                ]
+            }
+        )
+        records = build_deterministic_generated_output_cache_records(
+            cache_entry_id=f"generated-output-{response.asset.ticker.lower()}-chat-export",
+            output_identity=f"asset:{response.asset.ticker}:chat-export-metadata",
+            mode_or_output_type="chat-transcript-export-metadata",
+            artifact_category=GeneratedOutputArtifactCategory.export_payload_metadata,
+            entry_kind=CacheEntryKind.export_payload,
+            scope=CacheScope.chat,
+            schema_version="export-payload-v1",
+            prompt_version="export-payload-prompt-v1",
+            knowledge_input=knowledge_input,
+            citation_ids=[citation.citation_id for citation in response.citations],
+            created_at="2026-04-25T18:33:44Z",
+            ttl_seconds=604800,
+            asset_ticker=response.asset.ticker,
+        )
+        persist_generated_output_cache_records(writer, records)
+    except Exception:
+        return
+
+
+def _section_freshness_inputs_from_export(response: ExportResponse) -> list[SectionFreshnessInput]:
+    return [
+        SectionFreshnessInput(
+            section_id=section.section_id,
+            freshness_state=section.freshness_state or FreshnessState.fresh,
+            evidence_state=section.evidence_state.value if section.evidence_state else EvidenceState.supported.value,
+            as_of_date=section.as_of_date,
+            retrieved_at=section.retrieved_at,
+        )
+        for section in response.sections
+    ] or [
+        SectionFreshnessInput(
+            section_id="export_metadata",
+            freshness_state=FreshnessState.fresh,
+            evidence_state=EvidenceState.supported.value,
+        )
+    ]
+
+
+def _citations_by_source(response: ExportResponse) -> dict[str, list[str]]:
+    citations_by_source: dict[str, list[str]] = {}
+    for citation in response.citations:
+        citations_by_source.setdefault(citation.source_document_id, []).append(citation.citation_id)
+    return citations_by_source
 
 
 def _export_chat_session_payload(

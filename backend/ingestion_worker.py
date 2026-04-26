@@ -16,6 +16,7 @@ from backend.repositories.ingestion_jobs import (
 from backend.source_snapshot_repository import SourceSnapshotRepositoryRecords
 from backend.knowledge_pack_repository import KnowledgePackRepositoryRecords
 from backend.weekly_news_repository import WeeklyNewsEventEvidenceRepositoryRecords
+from backend.generated_output_cache_repository import GeneratedOutputCacheRepositoryRecords
 
 
 INGESTION_WORKER_EXECUTION_BOUNDARY = "deterministic-ingestion-worker-execution-contract-v1"
@@ -70,6 +71,11 @@ class WeeklyNewsEventEvidenceWriterBoundary(Protocol):
         ...
 
 
+class GeneratedOutputCacheWriterBoundary(Protocol):
+    def persist(self, records: GeneratedOutputCacheRepositoryRecords) -> GeneratedOutputCacheRepositoryRecords:
+        ...
+
+
 class IngestionWorkerFixtureOutcome(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -83,6 +89,7 @@ class IngestionWorkerFixtureOutcome(BaseModel):
     source_snapshot_records: SourceSnapshotRepositoryRecords | None = None
     knowledge_pack_records: KnowledgePackRepositoryRecords | None = None
     weekly_news_records: WeeklyNewsEventEvidenceRepositoryRecords | None = None
+    generated_output_cache_records: GeneratedOutputCacheRepositoryRecords | None = None
 
     @field_validator("terminal_state")
     @classmethod
@@ -145,6 +152,7 @@ class DeterministicIngestionWorker:
     source_snapshot_repository: SourceSnapshotWriterBoundary | None = None
     knowledge_pack_repository: KnowledgePackWriterBoundary | None = None
     weekly_news_repository: WeeklyNewsEventEvidenceWriterBoundary | None = None
+    generated_output_cache_repository: GeneratedOutputCacheWriterBoundary | None = None
     timestamp: str = STUB_TIMESTAMP
 
     def execute(self, job_id: str) -> IngestionWorkerExecutionResult:
@@ -202,6 +210,24 @@ class DeterministicIngestionWorker:
                     error_category=SanitizedErrorCategory.validation_failed,
                     error_code="weekly_news_persistence_failed",
                     sanitized_message="Weekly News evidence persistence failed closed through the configured mocked writer.",
+                    retryable=True,
+                    source_policy_ref=outcome.source_policy_ref,
+                    checksum=outcome.checksum,
+                )
+                result = execute_ingestion_worker_record(records, fixture_outcome=failed_outcome, timestamp=self.timestamp)
+        if _should_persist_generated_output_cache(result, outcome, self.generated_output_cache_repository):
+            generated_output_cache_repository = self.generated_output_cache_repository
+            generated_output_cache_records = outcome.generated_output_cache_records if outcome else None
+            if generated_output_cache_repository is None or generated_output_cache_records is None:
+                raise IngestionWorkerContractError("Generated-output cache persistence was requested without a mocked writer.")
+            try:
+                generated_output_cache_repository.persist(generated_output_cache_records)
+            except Exception:
+                failed_outcome = IngestionWorkerFixtureOutcome(
+                    terminal_state=IngestionLedgerJobState.failed,
+                    error_category=SanitizedErrorCategory.validation_failed,
+                    error_code="generated_output_cache_persistence_failed",
+                    sanitized_message="Generated-output cache persistence failed closed through the configured mocked writer.",
                     retryable=True,
                     source_policy_ref=outcome.source_policy_ref,
                     checksum=outcome.checksum,
@@ -285,6 +311,11 @@ def _apply_terminal_outcome(
         metadata["weekly_news_selected_event_count"] = len(outcome.weekly_news_records.selected_events)
         metadata["weekly_news_ai_threshold_count"] = len(outcome.weekly_news_records.ai_thresholds)
         metadata["weekly_news_boundary"] = "weekly-news-event-evidence-repository-contract-v1"
+    if outcome.generated_output_cache_records:
+        metadata["generated_output_cache_persistence_configured"] = True
+        metadata["generated_output_cache_entry_count"] = len(outcome.generated_output_cache_records.envelopes)
+        metadata["generated_output_cache_artifact_count"] = len(outcome.generated_output_cache_records.artifacts)
+        metadata["generated_output_cache_boundary"] = "generated-output-cache-repository-contract-v1"
 
     ledger = records.ledger.model_copy(
         update={
@@ -435,6 +466,21 @@ def _should_persist_weekly_news_evidence(
         and outcome.weekly_news_records is not None
         and result.summary.initial_state not in _TERMINAL_STATES
         and result.summary.terminal_state == IngestionLedgerJobState.succeeded.value
+    )
+
+
+def _should_persist_generated_output_cache(
+    result: IngestionWorkerExecutionResult,
+    outcome: IngestionWorkerFixtureOutcome | None,
+    repository: GeneratedOutputCacheWriterBoundary | None,
+) -> bool:
+    return (
+        repository is not None
+        and outcome is not None
+        and outcome.generated_output_cache_records is not None
+        and result.summary.initial_state not in _TERMINAL_STATES
+        and result.summary.terminal_state == IngestionLedgerJobState.succeeded.value
+        and result.summary.generated_output_available
     )
 
 

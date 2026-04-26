@@ -23,6 +23,7 @@ from backend.cache import (
 )
 from backend.generated_output_cache_repository import (
     GeneratedOutputArtifactCategory,
+    InMemoryGeneratedOutputCacheRepository,
     build_generated_output_cache_records,
 )
 from backend.knowledge_pack_repository import AssetKnowledgePackRepository
@@ -158,6 +159,25 @@ def test_persisted_overview_read_boundary_prefers_valid_same_asset_records():
     assert read_result.overview is not None
     assert read_result.overview.model_dump(mode="json") == fixture.model_dump(mode="json")
     assert generated.model_dump(mode="json") == fixture.model_dump(mode="json")
+
+
+def test_valid_overview_generation_writes_metadata_only_cache_records_when_configured():
+    writer = InMemoryGeneratedOutputCacheRepository()
+    fixture = generate_asset_overview("VOO")
+    generated = generate_asset_overview("VOO", generated_output_cache_writer=writer)
+    records = writer.read_asset_overview_records("VOO")
+
+    assert generated.model_dump(mode="json") == fixture.model_dump(mode="json")
+    assert records is not None
+    envelope = records.envelopes[0]
+    assert envelope.asset_ticker == "VOO"
+    assert envelope.artifact_category == GeneratedOutputArtifactCategory.asset_overview_section.value
+    assert envelope.cacheable is True
+    assert envelope.generated_output_available is True
+    assert envelope.stores_generated_payload is False
+    assert envelope.stores_raw_source_text is False
+    assert "unavailable" in set(envelope.section_freshness_labels.values())
+    assert set(envelope.citation_ids) <= {citation for row in records.source_checksums for citation in row.citation_ids}
 
 
 def test_overview_uses_injected_persisted_weekly_news_and_ai_threshold_metadata():

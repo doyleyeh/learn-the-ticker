@@ -10,6 +10,10 @@ from backend.export import (
     export_chat_transcript,
     export_comparison,
 )
+from backend.generated_output_cache_repository import (
+    GeneratedOutputArtifactCategory,
+    InMemoryGeneratedOutputCacheRepository,
+)
 from backend.models import (
     ChatTranscriptExportRequest,
     ComparisonExportRequest,
@@ -166,6 +170,32 @@ def test_asset_source_list_export_contains_source_metadata_and_allowed_excerpts(
     assert source.source_use_policy.value == "full_text_allowed"
     assert "source-use policy" in export.rendered_markdown
     assert "full paid-news articles" in export.licensing_note.text
+
+
+def test_exports_write_metadata_only_cache_records_when_configured():
+    writer = InMemoryGeneratedOutputCacheRepository()
+
+    export_asset_page("AAPL", generated_output_cache_writer=writer)
+    export_asset_source_list("VOO", generated_output_cache_writer=writer)
+    export_comparison(ComparisonExportRequest(left_ticker="VOO", right_ticker="QQQ"), generated_output_cache_writer=writer)
+    export_chat_transcript(
+        "QQQ",
+        ChatTranscriptExportRequest(question="What is this fund?"),
+        generated_output_cache_writer=writer,
+    )
+    export_chat_transcript(
+        "VOO",
+        ChatTranscriptExportRequest(question="Should I buy VOO today?"),
+        generated_output_cache_writer=writer,
+    )
+
+    categories = {records.envelopes[0].artifact_category for records in writer.records_by_entry_id.values()}
+    assert GeneratedOutputArtifactCategory.export_payload_metadata.value in categories
+    assert GeneratedOutputArtifactCategory.source_list_export_metadata.value in categories
+    assert writer.read_source_list_records("VOO") is not None
+    assert len(writer.records_by_entry_id) == 4
+    assert all(records.artifacts[0].stores_payload_text is False for records in writer.records_by_entry_id.values())
+    assert "submitted_question" not in str([records.artifacts[0].payload_metadata for records in writer.records_by_entry_id.values()])
 
 
 def test_export_source_metadata_limits_restricted_tiers_and_suppresses_rejected_sources():
