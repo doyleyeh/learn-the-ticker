@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from enum import Enum
 from typing import Any
@@ -520,6 +520,37 @@ class WeeklyNewsEventEvidenceRepository:
         return validated
 
 
+@dataclass
+class InMemoryWeeklyNewsEventEvidenceRepository:
+    records_by_ticker: dict[str, WeeklyNewsEventEvidenceRepositoryRecords] = field(default_factory=dict)
+
+    def persist(
+        self,
+        records: WeeklyNewsEventEvidenceRepositoryRecords,
+    ) -> WeeklyNewsEventEvidenceRepositoryRecords:
+        validated = validate_weekly_news_event_evidence_records(records)
+        for ticker in sorted({_normalize_ticker(window.asset_ticker) for window in validated.windows}):
+            ticker_records = _records_for_ticker(validated, ticker)
+            self.records_by_ticker[ticker] = ticker_records.model_copy(deep=True)
+        return validated
+
+    def read_weekly_news_event_evidence_records(
+        self,
+        ticker: str,
+    ) -> WeeklyNewsEventEvidenceRepositoryRecords | None:
+        records = self.records_by_ticker.get(_normalize_ticker(ticker))
+        return records.model_copy(deep=True) if records else None
+
+    def read(self, ticker: str) -> WeeklyNewsEventEvidenceRepositoryRecords | None:
+        return self.read_weekly_news_event_evidence_records(ticker)
+
+    def get(self, ticker: str) -> WeeklyNewsEventEvidenceRepositoryRecords | None:
+        return self.read_weekly_news_event_evidence_records(ticker)
+
+    def records(self) -> list[WeeklyNewsEventEvidenceRepositoryRecords]:
+        return [record.model_copy(deep=True) for record in self.records_by_ticker.values()]
+
+
 @dataclass(frozen=True)
 class WeeklyNewsFixtureAcquisitionBoundary:
     """Deterministic fixture-only selector for future Weekly News Focus acquisition workers."""
@@ -1005,6 +1036,50 @@ def records_to_row_list(records: WeeklyNewsEventEvidenceRepositoryRecords) -> li
         *records.validation_statuses,
         *records.diagnostics,
     ]
+
+
+def _records_for_ticker(
+    records: WeeklyNewsEventEvidenceRepositoryRecords,
+    ticker: str,
+) -> WeeklyNewsEventEvidenceRepositoryRecords:
+    normalized_ticker = _normalize_ticker(ticker)
+    window_ids = {
+        window.window_id
+        for window in records.windows
+        if _normalize_ticker(window.asset_ticker) == normalized_ticker
+    }
+    candidate_ids = {
+        candidate.candidate_event_id
+        for candidate in records.candidates
+        if candidate.window_id in window_ids
+    }
+    selected_ids = {
+        selected.selected_event_id
+        for selected in records.selected_events
+        if selected.window_id in window_ids
+    }
+    ticker_records = WeeklyNewsEventEvidenceRepositoryRecords(
+        windows=[row for row in records.windows if row.window_id in window_ids],
+        candidates=[row for row in records.candidates if row.window_id in window_ids],
+        source_rank_inputs=[
+            row
+            for row in records.source_rank_inputs
+            if row.window_id in window_ids and row.candidate_event_id in candidate_ids
+        ],
+        dedupe_groups=[row for row in records.dedupe_groups if row.window_id in window_ids],
+        selected_events=[row for row in records.selected_events if row.window_id in window_ids],
+        evidence_states=[row for row in records.evidence_states if row.window_id in window_ids],
+        ai_thresholds=[row for row in records.ai_thresholds if row.window_id in window_ids],
+        validation_statuses=[row for row in records.validation_statuses if row.window_id in window_ids],
+        diagnostics=[
+            row
+            for row in records.diagnostics
+            if row.window_id in window_ids
+            and (row.candidate_event_id is None or row.candidate_event_id in candidate_ids)
+            and (row.selected_event_id is None or row.selected_event_id in selected_ids)
+        ],
+    )
+    return validate_weekly_news_event_evidence_records(ticker_records)
 
 
 def validate_weekly_news_event_evidence_records(
