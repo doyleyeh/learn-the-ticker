@@ -3,11 +3,24 @@ import os
 os.environ.setdefault("LTT_FORCE_COMPAT_FASTAPI", "1")
 
 from backend.main import app
+from backend.chat import generate_asset_chat
+from backend.comparison import generate_comparison
+from backend.generated_output_cache_repository import InMemoryGeneratedOutputCacheRepository
 from backend.ingestion import execute_ingestion_job_through_ledger
 from backend.ingestion_worker import InMemoryIngestionWorkerLedger
+from backend.knowledge_pack_repository import AssetKnowledgePackRepository, InMemoryAssetKnowledgePackRepository
+from backend.models import FreshnessState, SourceAllowlistStatus, SourceQuality, SourceUsePolicy, WeeklyNewsEventType
+from backend.overview import generate_asset_overview
 from backend.persistence import BackendReadDependencies, configure_backend_read_dependencies
+from backend.retrieval import build_asset_knowledge_pack, build_asset_knowledge_pack_result
 from backend.safety import find_forbidden_output_phrases
 from backend.testing import TestClient
+from backend.weekly_news_repository import (
+    InMemoryWeeklyNewsEventEvidenceRepository,
+    WeeklyNewsEventCandidateRow,
+    WeeklyNewsSourceRankTier,
+    acquire_weekly_news_event_evidence_from_fixtures,
+)
 
 
 client = TestClient(app)
@@ -50,10 +63,126 @@ class RouteReaderSpy:
         return records
 
 
+class RecordingKnowledgePackRepository(InMemoryAssetKnowledgePackRepository):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls: list[str] = []
+
+    def read_knowledge_pack_records(self, ticker: str):
+        self.calls.append(ticker.strip().upper())
+        return super().read_knowledge_pack_records(ticker)
+
+
+class RecordingGeneratedOutputRepository(InMemoryGeneratedOutputCacheRepository):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls: list[tuple[str, tuple[str, ...]]] = []
+
+    def read_generated_output_cache_records(self, *args: str):
+        self.calls.append(("generic", tuple(arg.strip().upper() for arg in args)))
+        return super().read_generated_output_cache_records(*args)
+
+    def read_asset_overview_records(self, ticker: str):
+        self.calls.append(("asset_overview", (ticker.strip().upper(),)))
+        return super().read_asset_overview_records(ticker)
+
+    def read_chat_answer_records(self, ticker: str):
+        self.calls.append(("chat_answer", (ticker.strip().upper(),)))
+        return super().read_chat_answer_records(ticker)
+
+    def read_comparison_records(self, left_ticker: str, right_ticker: str):
+        self.calls.append(("comparison", (left_ticker.strip().upper(), right_ticker.strip().upper())))
+        return super().read_comparison_records(left_ticker, right_ticker)
+
+
+class RecordingWeeklyNewsRepository(InMemoryWeeklyNewsEventEvidenceRepository):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls: list[str] = []
+
+    def read_weekly_news_event_evidence_records(self, ticker: str):
+        self.calls.append(ticker.strip().upper())
+        return super().read_weekly_news_event_evidence_records(ticker)
+
+
 def _without_session(payload: dict) -> dict:
     stripped = dict(payload)
     stripped.pop("session", None)
     return stripped
+
+
+def _persist_fixture_knowledge_pack(repository: InMemoryAssetKnowledgePackRepository, ticker: str) -> None:
+    repository.persist(
+        AssetKnowledgePackRepository().serialize(
+            build_asset_knowledge_pack_result(ticker),
+            retrieval_pack=build_asset_knowledge_pack(ticker),
+        )
+    )
+
+
+def _weekly_candidate(ticker: str, event_id: str) -> WeeklyNewsEventCandidateRow:
+    return WeeklyNewsEventCandidateRow(
+        candidate_event_id=event_id,
+        window_id=f"wnf_window:{ticker}:2026-04-23",
+        asset_ticker=ticker,
+        source_asset_ticker=ticker,
+        event_type=WeeklyNewsEventType.methodology_change.value,
+        event_date="2026-04-21",
+        published_at="2026-04-21T12:00:00Z",
+        retrieved_at="2026-04-23T12:00:00Z",
+        period_bucket="current_week_to_date",
+        source_document_id=f"src_{ticker.lower()}_{event_id}",
+        source_chunk_id=f"chk_{ticker.lower()}_{event_id}",
+        citation_ids=[f"c_weekly_{ticker.lower()}_{event_id}"],
+        citation_asset_tickers={f"c_weekly_{ticker.lower()}_{event_id}": ticker},
+        source_type=WeeklyNewsSourceRankTier.official_filing.value,
+        source_rank=1,
+        source_rank_tier=WeeklyNewsSourceRankTier.official_filing.value,
+        source_quality=SourceQuality.official.value,
+        allowlist_status=SourceAllowlistStatus.allowed.value,
+        source_use_policy=SourceUsePolicy.summary_allowed.value,
+        freshness_state=FreshnessState.fresh.value,
+        evidence_state="supported",
+        importance_score=10,
+        duplicate_group_id=event_id,
+        candidate_decision="selected",
+        title_checksum=f"sha256:title:{ticker}:{event_id}",
+        evidence_checksum=f"sha256:evidence:{ticker}:{event_id}",
+    )
+
+
+def _persist_weekly_news(
+    repository: InMemoryWeeklyNewsEventEvidenceRepository,
+    ticker: str,
+    candidates: list[WeeklyNewsEventCandidateRow] | None = None,
+) -> None:
+    repository.persist(
+        acquire_weekly_news_event_evidence_from_fixtures(
+            asset_ticker=ticker,
+            as_of="2026-04-23",
+            created_at="2026-04-23T12:00:00Z",
+            candidates=candidates or [],
+        )
+    )
+
+
+def _configured_golden_repositories():
+    knowledge_repo = RecordingKnowledgePackRepository()
+    generated_repo = RecordingGeneratedOutputRepository()
+    weekly_repo = RecordingWeeklyNewsRepository()
+
+    for ticker in ["AAPL", "VOO", "QQQ"]:
+        _persist_fixture_knowledge_pack(knowledge_repo, ticker)
+        generate_asset_overview(ticker, generated_output_cache_writer=generated_repo)
+        generate_asset_chat(ticker, "What is this fund?", generated_output_cache_writer=generated_repo)
+        _persist_weekly_news(
+            weekly_repo,
+            ticker,
+            [_weekly_candidate(ticker, "official_fixture_update")] if ticker == "QQQ" else [],
+        )
+
+    generate_comparison("VOO", "QQQ", generated_output_cache_writer=generated_repo)
+    return knowledge_repo, generated_repo, weekly_repo
 
 
 def test_configured_backend_readers_are_route_wired_with_fixture_fallback():
@@ -100,6 +229,120 @@ def test_configured_backend_readers_are_route_wired_with_fixture_fallback():
     assert ("knowledge_pack", ("QQQ",)) in spy.calls
     assert ("weekly_news", ("VOO",)) in spy.calls
     assert ("chat_session", ("missing-session",)) in spy.calls
+
+
+def test_configured_persisted_golden_records_drive_learning_surfaces_end_to_end():
+    knowledge_repo, generated_repo, weekly_repo = _configured_golden_repositories()
+    configure_backend_read_dependencies(
+        app,
+        BackendReadDependencies(
+            persisted_reads_enabled=True,
+            knowledge_pack_reader=knowledge_repo,
+            generated_output_cache_reader=generated_repo,
+            weekly_news_reader=weekly_repo,
+        ),
+    )
+    try:
+        overview = client.get("/api/assets/QQQ/overview").json()
+        weekly = client.get("/api/assets/QQQ/weekly-news").json()
+        aapl_weekly = client.get("/api/assets/AAPL/weekly-news").json()
+        sources = client.get("/api/assets/VOO/sources").json()
+        glossary = client.get("/api/assets/AAPL/glossary", params={"term": "revenue"}).json()
+        comparison = client.post("/api/compare", json={"left_ticker": "VOO", "right_ticker": "QQQ"}).json()
+        chat = client.post("/api/assets/VOO/chat", json={"question": "What does it hold?"}).json()
+        asset_export = client.get("/api/assets/VOO/export", params={"export_format": "json"}).json()
+        source_export = client.get("/api/assets/VOO/sources/export", params={"export_format": "json"}).json()
+        comparison_export = client.get(
+            "/api/compare/export",
+            params={"left_ticker": "VOO", "right_ticker": "QQQ", "export_format": "json"},
+        ).json()
+        chat_export = client.post(
+            "/api/assets/VOO/chat/export",
+            json={"question": "What does it hold?", "export_format": "json"},
+        ).json()
+    finally:
+        configure_backend_read_dependencies(app, None)
+
+    assert overview["asset"]["ticker"] == "QQQ"
+    assert overview["weekly_news_focus"]["selected_item_count"] == 1
+    assert overview["weekly_news_focus"]["configured_max_item_count"] == 8
+    assert overview["weekly_news_focus"]["evidence_limited_state"] == "limited_verified_set"
+    assert len(overview["weekly_news_focus"]["items"]) == 1
+    assert overview["ai_comprehensive_analysis"]["analysis_available"] is False
+    assert overview["ai_comprehensive_analysis"]["weekly_news_selected_item_count"] == 1
+    assert overview["ai_comprehensive_analysis"]["minimum_weekly_news_item_count"] == 2
+    assert weekly["weekly_news_focus"] == overview["weekly_news_focus"]
+    assert weekly["ai_comprehensive_analysis"] == overview["ai_comprehensive_analysis"]
+    assert aapl_weekly["asset"]["ticker"] == "AAPL"
+    assert aapl_weekly["weekly_news_focus"]["selected_item_count"] == 0
+    assert aapl_weekly["weekly_news_focus"]["evidence_limited_state"] == "empty"
+    assert aapl_weekly["ai_comprehensive_analysis"]["analysis_available"] is False
+
+    assert sources["drawer_state"] == "available"
+    assert sources["source_groups"]
+    assert sources["citation_bindings"]
+    assert all(group["title"] and group["publisher"] and group["url"] for group in sources["source_groups"])
+    assert all(group["retrieved_at"] for group in sources["source_groups"])
+    assert all(group["allowlist_status"] == "allowed" for group in sources["source_groups"])
+    assert all(group["source_use_policy"] in {"full_text_allowed", "summary_allowed"} for group in sources["source_groups"])
+    assert all(group["permitted_operations"]["can_export_full_text"] is False for group in sources["source_groups"])
+    assert any(group["allowed_excerpts"] for group in sources["source_groups"])
+
+    assert glossary["glossary_state"] == "available"
+    assert glossary["selected_asset"]["ticker"] == "AAPL"
+    assert glossary["terms"][0]["term_identity"]["term"] == "revenue"
+    assert glossary["terms"][0]["asset_context"]["citation_ids"]
+    assert glossary["citation_bindings"]
+    assert {binding["asset_ticker"] for binding in glossary["citation_bindings"]} == {"AAPL"}
+    assert all(binding["supports_asset_specific_context"] for binding in glossary["citation_bindings"])
+
+    assert comparison["comparison_type"] == "etf_vs_etf"
+    assert comparison["evidence_availability"]["availability_state"] == "available"
+    assert comparison["bottom_line_for_beginners"]["citation_ids"]
+    comparison_source_ids = {source["source_document_id"] for source in comparison["source_documents"]}
+    assert {citation["source_document_id"] for citation in comparison["citations"]} <= comparison_source_ids
+    assert {
+        binding["source_document_id"] for binding in comparison["evidence_availability"]["citation_bindings"]
+    } <= comparison_source_ids
+
+    assert chat["asset"]["ticker"] == "VOO"
+    assert chat["safety_classification"] == "educational"
+    assert chat["citations"]
+    assert chat["source_documents"]
+    assert {citation["source_document_id"] for citation in chat["citations"]} <= {
+        source["source_document_id"] for source in chat["source_documents"]
+    }
+
+    for export in [asset_export, source_export, comparison_export, chat_export]:
+        assert export["export_format"] == "json"
+        assert export["export_state"] == "available"
+        assert export["disclaimer"]
+        assert export["licensing_note"]["note_id"] == "export_licensing_scope"
+        assert export["export_validation"]["schema_version"] == "export-validation-v1"
+        assert export["export_validation"]["diagnostics"]["no_live_external_calls"] is True
+        assert export["source_documents"]
+        assert all(source["title"] and source["url"] and source["retrieved_at"] for source in export["source_documents"])
+        assert all(source["source_use_policy"] in {"full_text_allowed", "summary_allowed"} for source in export["source_documents"])
+        assert all(source["allowed_excerpt"] is not None for source in export["source_documents"])
+        assert "raw_model_reasoning" not in str(export).lower()
+        assert "openrouter" not in str(export).lower()
+
+    assert asset_export["content_type"] == "asset_page"
+    assert asset_export["export_validation"]["binding_scope"] == "same_asset"
+    assert source_export["content_type"] == "asset_source_list"
+    assert source_export["export_validation"]["binding_scope"] == "same_asset"
+    assert comparison_export["content_type"] == "comparison"
+    assert comparison_export["export_validation"]["binding_scope"] == "same_comparison_pack"
+    assert comparison_export["export_validation"]["diagnostics"]["same_comparison_pack_citation_bindings_only"] is True
+    assert chat_export["content_type"] == "chat_transcript"
+    assert chat_export["export_validation"]["binding_scope"] == "same_asset"
+    assert chat_export["export_validation"]["diagnostics"]["used_existing_chat_contract"] is True
+
+    assert {"AAPL", "VOO", "QQQ"} <= set(knowledge_repo.calls)
+    assert {"AAPL", "VOO", "QQQ"} <= set(weekly_repo.calls)
+    assert ("generic", ("QQQ",)) in generated_repo.calls
+    assert ("chat_answer", ("VOO",)) in generated_repo.calls
+    assert ("comparison", ("VOO", "QQQ")) in generated_repo.calls
 
 
 def test_configured_ingestion_ledger_is_route_wired_with_fixture_fallback():
