@@ -13,6 +13,7 @@ from backend.repositories.ingestion_jobs import (
     SanitizedErrorCategory,
     validate_ingestion_job_ledger_records,
 )
+from backend.source_snapshot_repository import SourceSnapshotRepositoryRecords
 
 
 INGESTION_WORKER_EXECUTION_BOUNDARY = "deterministic-ingestion-worker-execution-contract-v1"
@@ -52,6 +53,11 @@ class IngestionWorkerLedgerBoundary(Protocol):
         ...
 
 
+class SourceSnapshotWriterBoundary(Protocol):
+    def persist(self, records: SourceSnapshotRepositoryRecords) -> SourceSnapshotRepositoryRecords:
+        ...
+
+
 class IngestionWorkerFixtureOutcome(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -62,6 +68,7 @@ class IngestionWorkerFixtureOutcome(BaseModel):
     retryable: bool = False
     source_policy_ref: str | None = None
     checksum: str | None = None
+    source_snapshot_records: SourceSnapshotRepositoryRecords | None = None
 
     @field_validator("terminal_state")
     @classmethod
@@ -121,6 +128,7 @@ class InMemoryIngestionWorkerLedger:
 class DeterministicIngestionWorker:
     ledger_boundary: IngestionWorkerLedgerBoundary
     fixture_outcomes: Mapping[str, IngestionWorkerFixtureOutcome] = field(default_factory=dict)
+    source_snapshot_repository: SourceSnapshotWriterBoundary | None = None
     timestamp: str = STUB_TIMESTAMP
 
     def execute(self, job_id: str) -> IngestionWorkerExecutionResult:
@@ -129,6 +137,24 @@ class DeterministicIngestionWorker:
             raise IngestionWorkerContractError("Injected in-memory ingestion ledger has no record for job_id.")
         outcome = self.fixture_outcomes.get(job_id)
         result = execute_ingestion_worker_record(records, fixture_outcome=outcome, timestamp=self.timestamp)
+        if _should_persist_source_snapshots(result, outcome, self.source_snapshot_repository):
+            snapshot_repository = self.source_snapshot_repository
+            snapshot_records = outcome.source_snapshot_records if outcome else None
+            if snapshot_repository is None or snapshot_records is None:
+                raise IngestionWorkerContractError("Source snapshot persistence was requested without a mocked writer.")
+            try:
+                snapshot_repository.persist(snapshot_records)
+            except Exception:
+                failed_outcome = IngestionWorkerFixtureOutcome(
+                    terminal_state=IngestionLedgerJobState.failed,
+                    error_category=SanitizedErrorCategory.validation_failed,
+                    error_code="source_snapshot_persistence_failed",
+                    sanitized_message="Source snapshot persistence failed closed through the configured mocked writer.",
+                    retryable=True,
+                    source_policy_ref=outcome.source_policy_ref,
+                    checksum=outcome.checksum,
+                )
+                result = execute_ingestion_worker_record(records, fixture_outcome=failed_outcome, timestamp=self.timestamp)
         self.ledger_boundary.save(result.records)
         return result
 
@@ -189,6 +215,11 @@ def _apply_terminal_outcome(
         metadata["source_policy_ref"] = outcome.source_policy_ref
     if outcome.checksum:
         metadata["checksum"] = outcome.checksum
+    if outcome.source_snapshot_records:
+        metadata["source_snapshot_persistence_configured"] = True
+        metadata["source_snapshot_artifact_count"] = len(outcome.source_snapshot_records.artifacts)
+        metadata["source_snapshot_diagnostic_count"] = len(outcome.source_snapshot_records.diagnostics)
+        metadata["source_snapshot_boundary"] = "source-snapshot-artifact-repository-contract-v1"
 
     ledger = records.ledger.model_copy(
         update={
@@ -298,6 +329,20 @@ def _result(
         diagnostics_count=len(records.diagnostics),
     )
     return IngestionWorkerExecutionResult(summary=summary, records=records)
+
+
+def _should_persist_source_snapshots(
+    result: IngestionWorkerExecutionResult,
+    outcome: IngestionWorkerFixtureOutcome | None,
+    repository: SourceSnapshotWriterBoundary | None,
+) -> bool:
+    return (
+        repository is not None
+        and outcome is not None
+        and outcome.source_snapshot_records is not None
+        and result.summary.initial_state not in _TERMINAL_STATES
+        and result.summary.terminal_state == IngestionLedgerJobState.succeeded.value
+    )
 
 
 def _sanitize_diagnostic_message(message: str) -> str:

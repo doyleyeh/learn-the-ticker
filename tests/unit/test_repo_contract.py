@@ -399,7 +399,7 @@ def test_backend_mvp_runtime_gap_audit_tracks_required_areas_without_runtime_wir
         assert forbidden.lower() not in audit_lower
 
 
-def test_tasks_general_mvp_roadmap_marks_t104_current_and_next_backlog():
+def test_tasks_general_mvp_roadmap_marks_t105_current_and_next_backlog():
     tasks = read_file("TASKS.md")
     current_task = tasks.split("## Current task", 1)[1].split("## Completed", 1)[0]
     backlog = tasks.split("## Backlog", 1)[1].split("## General MVP Roadmap", 1)[0]
@@ -408,10 +408,9 @@ def test_tasks_general_mvp_roadmap_marks_t104_current_and_next_backlog():
     assert "## MVP Backend Roadmap" not in tasks
     assert "No backlog tasks are currently prepared" not in backlog
     assert "General MVP alignment:" in current_task
-    assert "T-104 completes the mocked official-source ETF acquisition prerequisite" in current_task
+    assert "T-105 is the first deterministic mocked ingest-to-persist step" in current_task
 
     for task_marker in [
-        "### T-105: Persist source snapshots and parsed acquisition artifacts for the golden path",
         "### T-106: Write normalized knowledge packs from acquisition outputs",
         "### T-107: Persist official-source Weekly News Focus event evidence for golden assets",
         "### T-108: Activate generated-output cache writes and freshness invalidation for validated outputs",
@@ -424,15 +423,16 @@ def test_tasks_general_mvp_roadmap_marks_t104_current_and_next_backlog():
     assert "T-101 established configured persisted-reader route wiring with fixture fallback" in roadmap
     assert "T-102 established executable local ingestion ledger and mocked worker transitions" in roadmap
     assert "T-103 established mocked SEC EDGAR stock golden-path acquisition" in roadmap
-    assert "T-104 is the current promoted task for mocked official ETF issuer golden-path acquisition" in roadmap
-    assert "T-105 through T-109 are the next runnable golden-path tasks" in roadmap
+    assert "T-104 established mocked official ETF issuer golden-path acquisition" in roadmap
+    assert "T-105 is the current promoted task for deterministic source snapshot" in roadmap
+    assert "T-106 through T-109 are the next runnable golden-path tasks" in roadmap
     assert "| Provider source-use/export enforcement hardening | Completed | T-099 |" in roadmap
     assert "| Backend fresh-data MVP runtime gap tracker | Completed | T-100 |" in roadmap
     assert "| Configured persisted-reader route wiring | Completed | T-101 |" in roadmap
     assert "| Executable local ingestion ledger and mocked worker path | Completed | T-102 |" in roadmap
     assert "| SEC EDGAR stock golden-path acquisition | Completed | T-103 |" in roadmap
-    assert "| Official ETF issuer golden-path acquisition | Current | T-104 |" in roadmap
-    assert "| Source snapshot and parsed acquisition artifact persistence | Backlog | T-105 |" in roadmap
+    assert "| Official ETF issuer golden-path acquisition | Completed | T-104 |" in roadmap
+    assert "| Source snapshot and parsed acquisition artifact persistence | Current | T-105 |" in roadmap
     assert "| Normalized knowledge-pack writes from ingestion | Backlog | T-106 |" in roadmap
     assert "| Weekly News Focus official-source event evidence persistence | Backlog | T-107 |" in roadmap
     assert "| Generated-output cache writes and invalidation | Backlog | T-108 |" in roadmap

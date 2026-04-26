@@ -20,6 +20,11 @@ from backend.provider_adapters.etf_issuer import build_etf_issuer_acquisition_re
 from backend.provider_adapters.sec_stock import build_sec_stock_acquisition_result
 from backend.providers import fetch_mock_provider_response, mock_etf_issuer_adapter, mock_sec_stock_adapter
 from backend.repositories.ingestion_jobs import SanitizedErrorCategory
+from backend.source_snapshot_repository import (
+    InMemorySourceSnapshotArtifactRepository,
+    SourceSnapshotContractError,
+    source_snapshot_records_from_acquisition_result,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -257,6 +262,104 @@ def test_worker_can_exercise_etf_issuer_acquisition_metadata_without_activating_
     assert result.records.ledger.raw_provider_payload_stored is False
     assert result.records.ledger.unrestricted_source_text_stored is False
     assert result.records.ledger.secrets_stored is False
+
+
+def test_worker_persists_golden_acquisition_snapshots_through_injected_mocked_writer_only():
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(adapter.provider_kind, "QQQ").licensing
+    acquisition = build_etf_issuer_acquisition_result(adapter, adapter.request("QQQ"), licensing)
+    snapshot_records = source_snapshot_records_from_acquisition_result(
+        acquisition,
+        ingestion_job_id="pre-cache-launch-qqq",
+    )
+    response = get_pre_cache_job_status("pre-cache-launch-qqq").model_copy(
+        update={
+            "job_state": IngestionLedgerJobState.pending,
+            "worker_status": None,
+            "generated_route": None,
+            "generated_output_available": False,
+            "capabilities": IngestionCapabilities(),
+            "citation_ids": [],
+            "source_document_ids": [],
+        }
+    )
+    records = serialize_ingestion_job_response(response)
+    ledger = InMemoryIngestionWorkerLedger.from_records([records])
+    snapshot_repository = InMemorySourceSnapshotArtifactRepository()
+    worker = DeterministicIngestionWorker(
+        ledger_boundary=ledger,
+        source_snapshot_repository=snapshot_repository,
+        fixture_outcomes={
+            "pre-cache-launch-qqq": IngestionWorkerFixtureOutcome(
+                terminal_state=IngestionLedgerJobState.succeeded,
+                source_policy_ref=acquisition.source_policy_ref,
+                checksum=acquisition.checksum,
+                source_snapshot_records=snapshot_records,
+            )
+        },
+    )
+
+    result = worker.execute("pre-cache-launch-qqq")
+    persisted = snapshot_repository.records()
+
+    assert result.summary.terminal_state == "succeeded"
+    assert result.summary.generated_output_available is False
+    assert result.summary.generated_output_cacheable is False
+    assert result.records.ledger.compact_metadata["source_snapshot_persistence_configured"] is True
+    assert result.records.ledger.compact_metadata["source_snapshot_artifact_count"] == len(snapshot_records.artifacts)
+    assert persisted == snapshot_records
+    assert all(artifact.generated_output_available is False for artifact in persisted.artifacts)
+    assert all(artifact.raw_provider_payload_stored is False for artifact in persisted.artifacts)
+
+
+class FailingSourceSnapshotRepository:
+    def persist(self, records):
+        raise SourceSnapshotContractError("mocked writer rejected source snapshot records")
+
+
+def test_worker_fails_closed_when_configured_source_snapshot_writer_rejects_records():
+    adapter = mock_sec_stock_adapter()
+    licensing = fetch_mock_provider_response(adapter.provider_kind, "AAPL").licensing
+    acquisition = build_sec_stock_acquisition_result(adapter, adapter.request("AAPL"), licensing)
+    snapshot_records = source_snapshot_records_from_acquisition_result(
+        acquisition,
+        ingestion_job_id="pre-cache-launch-aapl",
+    )
+    response = get_pre_cache_job_status("pre-cache-launch-aapl").model_copy(
+        update={
+            "job_state": IngestionLedgerJobState.pending,
+            "worker_status": None,
+            "generated_route": None,
+            "generated_output_available": False,
+            "capabilities": IngestionCapabilities(),
+            "citation_ids": [],
+            "source_document_ids": [],
+        }
+    )
+    records = serialize_ingestion_job_response(response)
+    ledger = InMemoryIngestionWorkerLedger.from_records([records])
+    worker = DeterministicIngestionWorker(
+        ledger_boundary=ledger,
+        source_snapshot_repository=FailingSourceSnapshotRepository(),
+        fixture_outcomes={
+            "pre-cache-launch-aapl": IngestionWorkerFixtureOutcome(
+                terminal_state=IngestionLedgerJobState.succeeded,
+                source_policy_ref=acquisition.source_policy_ref,
+                checksum=acquisition.checksum,
+                source_snapshot_records=snapshot_records,
+            )
+        },
+    )
+
+    result = worker.execute("pre-cache-launch-aapl")
+
+    assert result.summary.transitions == ["pending", "running", "failed"]
+    assert result.summary.terminal_state == "failed"
+    assert result.summary.generated_output_available is False
+    assert result.records.ledger.can_open_generated_page is False
+    assert result.records.diagnostics[0].category == "validation_failed"
+    assert result.records.diagnostics[0].error_code == "source_snapshot_persistence_failed"
+    assert result.records.diagnostics[0].stores_raw_source_text is False
 
 
 def test_refresh_and_source_revalidation_categories_preserve_future_state_space_as_stale():

@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import importlib.util
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from backend.models import SourceUsePolicy
+from backend.models import SourceAllowlistStatus, SourceUsePolicy
+from backend.providers import fetch_mock_provider_response, mock_etf_issuer_adapter, mock_sec_stock_adapter
+from backend.provider_adapters.etf_issuer import build_etf_issuer_acquisition_result
+from backend.provider_adapters.sec_stock import build_sec_stock_acquisition_result
 from backend.retrieval import build_asset_knowledge_pack_result
 from backend.source_snapshot_repository import (
+    InMemorySourceSnapshotArtifactRepository,
     SOURCE_SNAPSHOT_REPOSITORY_BOUNDARY,
     SOURCE_SNAPSHOT_TABLES,
     SourceSnapshotArtifactCategory,
@@ -17,6 +22,7 @@ from backend.source_snapshot_repository import (
     SourceSnapshotRepositoryRecords,
     artifact_from_knowledge_pack_source,
     source_snapshot_repository_metadata,
+    source_snapshot_records_from_acquisition_result,
     validate_source_snapshot_records,
 )
 
@@ -213,6 +219,192 @@ def test_rejected_sources_cannot_create_snapshot_artifacts():
 
     with pytest.raises(SourceSnapshotContractError, match="Rejected sources"):
         validate_source_snapshot_records(SourceSnapshotRepositoryRecords(artifacts=[rejected]))
+
+
+def test_acquisition_outputs_create_private_source_snapshot_records_for_aapl_voo_and_qqq():
+    sec_adapter = mock_sec_stock_adapter()
+    sec_licensing = fetch_mock_provider_response(sec_adapter.provider_kind, "AAPL").licensing
+    etf_adapter = mock_etf_issuer_adapter()
+    etf_licensing = fetch_mock_provider_response(etf_adapter.provider_kind, "VOO").licensing
+
+    cases = [
+        ("AAPL", build_sec_stock_acquisition_result(sec_adapter, sec_adapter.request("AAPL"), sec_licensing), 3),
+        ("VOO", build_etf_issuer_acquisition_result(etf_adapter, etf_adapter.request("VOO"), etf_licensing), 4),
+        ("QQQ", build_etf_issuer_acquisition_result(etf_adapter, etf_adapter.request("QQQ"), etf_licensing), 4),
+    ]
+
+    for ticker, acquisition, source_count in cases:
+        records = source_snapshot_records_from_acquisition_result(
+            acquisition,
+            ingestion_job_id=f"pre-cache-launch-{ticker.lower()}",
+        )
+        assert len(records.artifacts) == source_count * 2
+        assert {artifact.artifact_category for artifact in records.artifacts} == {"raw_source", "parsed_text"}
+        assert {artifact.asset_ticker for artifact in records.artifacts} == {ticker}
+        assert {artifact.source_asset_ticker for artifact in records.artifacts} == {ticker}
+        assert all(artifact.source_document_id == artifact.source_reference_id for artifact in records.artifacts)
+        assert all(artifact.ingestion_job_id == f"pre-cache-launch-{ticker.lower()}" for artifact in records.artifacts)
+        assert all(artifact.checksum.startswith("sha256:") for artifact in records.artifacts)
+        assert all(artifact.source_use_policy == "full_text_allowed" for artifact in records.artifacts)
+        assert all(artifact.allowlist_status == "allowed" for artifact in records.artifacts)
+        assert all(artifact.no_public_snapshot_access is True for artifact in records.artifacts)
+        assert all(artifact.private_object_uri is None for artifact in records.artifacts)
+        assert all(artifact.storage_key and artifact.storage_key.startswith(f"snapshots/{ticker.lower()}/") for artifact in records.artifacts)
+        assert all("http" not in artifact.storage_key.lower() for artifact in records.artifacts if artifact.storage_key)
+        assert all(artifact.raw_text_stored_in_contract is False for artifact in records.artifacts)
+        assert all(artifact.raw_provider_payload_stored is False for artifact in records.artifacts)
+        assert all(artifact.secrets_stored is False for artifact in records.artifacts)
+        assert all(artifact.compact_diagnostics["source_policy_ref"] == "source-use-policy-v1" for artifact in records.artifacts)
+        assert all(artifact.compact_diagnostics["evidence_gap_states"] for artifact in records.artifacts)
+        assert len(records.diagnostics) == 1
+        assert records.diagnostics[0].stores_raw_source_text is False
+        assert records.diagnostics[0].stores_provider_payload is False
+
+
+def test_acquisition_snapshot_builder_enforces_rights_tiers_and_blocks_rejected_sources():
+    adapter = mock_sec_stock_adapter()
+    licensing = fetch_mock_provider_response(adapter.provider_kind, "AAPL").licensing
+    acquisition = build_sec_stock_acquisition_result(adapter, adapter.request("AAPL"), licensing)
+    assert acquisition.provider_response is not None
+
+    source = acquisition.provider_response.source_attributions[0]
+    summary_operations = source.permitted_operations.model_copy(
+        update={
+            "can_store_raw_text": False,
+            "can_display_excerpt": True,
+            "can_summarize": True,
+            "can_support_generated_output": True,
+            "can_support_citations": True,
+        }
+    )
+    summary_source = source.model_copy(
+        update={"source_use_policy": SourceUsePolicy.summary_allowed, "permitted_operations": summary_operations}
+    )
+    summary_response = acquisition.provider_response.model_copy(update={"source_attributions": [summary_source]})
+    summary_record = replace(acquisition.source_records[0], source_use_policy=SourceUsePolicy.summary_allowed)
+    summary_acquisition = replace(
+        acquisition,
+        provider_response=summary_response,
+        source_records=(summary_record,),
+        checksum="sha256:summary-acquisition",
+    )
+    summary_records = source_snapshot_records_from_acquisition_result(summary_acquisition)
+    assert [artifact.artifact_category for artifact in summary_records.artifacts] == ["summary"]
+
+    metadata_operations = source.permitted_operations.model_copy(
+        update={
+            "can_store_raw_text": False,
+            "can_display_excerpt": False,
+            "can_summarize": False,
+            "can_cache": False,
+            "can_export_metadata": False,
+            "can_support_generated_output": False,
+            "can_support_citations": False,
+            "can_support_canonical_facts": False,
+        }
+    )
+    metadata_source = source.model_copy(
+        update={"source_use_policy": SourceUsePolicy.metadata_only, "permitted_operations": metadata_operations}
+    )
+    metadata_response = acquisition.provider_response.model_copy(update={"source_attributions": [metadata_source]})
+    metadata_record = replace(acquisition.source_records[0], source_use_policy=SourceUsePolicy.metadata_only)
+    metadata_acquisition = replace(
+        acquisition,
+        provider_response=metadata_response,
+        source_records=(metadata_record,),
+        checksum="sha256:metadata-acquisition",
+    )
+    metadata_records = source_snapshot_records_from_acquisition_result(metadata_acquisition)
+    assert [artifact.artifact_category for artifact in metadata_records.artifacts] == ["checksum_metadata"]
+    assert metadata_records.artifacts[0].can_feed_generated_output is False
+    assert metadata_records.artifacts[0].can_support_citations is False
+
+    rejected_source = source.model_copy(
+        update={"source_use_policy": SourceUsePolicy.rejected, "allowlist_status": SourceAllowlistStatus.rejected}
+    )
+    rejected_response = acquisition.provider_response.model_copy(update={"source_attributions": [rejected_source]})
+    rejected_record = replace(
+        acquisition.source_records[0],
+        source_use_policy=SourceUsePolicy.rejected,
+        allowlist_status=SourceAllowlistStatus.rejected,
+    )
+    rejected_acquisition = replace(
+        acquisition,
+        provider_response=rejected_response,
+        source_records=(rejected_record,),
+        checksum="sha256:rejected-acquisition",
+    )
+    rejected_records = source_snapshot_records_from_acquisition_result(rejected_acquisition)
+    assert rejected_records.artifacts == []
+
+
+def test_acquisition_snapshot_builder_rejects_wrong_asset_source_document_and_checksum():
+    adapter = mock_sec_stock_adapter()
+    licensing = fetch_mock_provider_response(adapter.provider_kind, "AAPL").licensing
+    acquisition = build_sec_stock_acquisition_result(adapter, adapter.request("AAPL"), licensing)
+    assert acquisition.provider_response is not None
+
+    wrong_asset_source = acquisition.provider_response.source_attributions[0].model_copy(update={"asset_ticker": "MSFT"})
+    wrong_asset = replace(
+        acquisition,
+        provider_response=acquisition.provider_response.model_copy(update={"source_attributions": [wrong_asset_source]}),
+        source_records=(acquisition.source_records[0],),
+    )
+    with pytest.raises(SourceSnapshotContractError, match="match the asset"):
+        source_snapshot_records_from_acquisition_result(wrong_asset)
+
+    wrong_source_record = replace(acquisition.source_records[0], source_document_id="provider_sec_aapl_wrong_2026")
+    wrong_source = replace(
+        acquisition,
+        provider_response=acquisition.provider_response.model_copy(
+            update={"source_attributions": [acquisition.provider_response.source_attributions[0]]}
+        ),
+        source_records=(wrong_source_record,),
+    )
+    with pytest.raises(SourceSnapshotContractError, match="bind every provider source"):
+        source_snapshot_records_from_acquisition_result(wrong_source)
+
+    invalid_checksum = replace(acquisition.source_records[0], checksum="not-a-sha")
+    bad_checksum = replace(
+        acquisition,
+        provider_response=acquisition.provider_response.model_copy(
+            update={"source_attributions": [acquisition.provider_response.source_attributions[0]]}
+        ),
+        source_records=(invalid_checksum,),
+    )
+    with pytest.raises(SourceSnapshotContractError, match="sha256"):
+        source_snapshot_records_from_acquisition_result(bad_checksum)
+
+
+def test_blocked_or_unavailable_acquisition_results_create_diagnostics_without_artifacts():
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(adapter.provider_kind, "VOO").licensing
+
+    for ticker in ["SPY", "TQQQ", "ZZZZ"]:
+        acquisition = build_etf_issuer_acquisition_result(adapter, adapter.request(ticker), licensing)
+        records = source_snapshot_records_from_acquisition_result(acquisition)
+        assert records.artifacts == []
+        assert records.diagnostics
+        assert records.diagnostics[0].source_policy_ref == "source-use-policy-v1"
+        assert records.diagnostics[0].stores_secret is False
+        assert records.diagnostics[0].stores_provider_payload is False
+        assert records.diagnostics[0].stores_raw_source_text is False
+
+
+def test_in_memory_source_snapshot_repository_persists_validated_copies_idempotently():
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(adapter.provider_kind, "VOO").licensing
+    acquisition = build_etf_issuer_acquisition_result(adapter, adapter.request("VOO"), licensing)
+    records = source_snapshot_records_from_acquisition_result(acquisition)
+    repository = InMemorySourceSnapshotArtifactRepository()
+
+    repository.persist(records)
+    repository.persist(records)
+    persisted = repository.records()
+
+    assert len(persisted.artifacts) == len(records.artifacts)
+    assert len(persisted.diagnostics) == len(records.diagnostics)
+    assert persisted == records
 
 
 def test_private_object_references_reject_public_signed_or_browser_paths():
