@@ -399,15 +399,50 @@ def test_backend_mvp_runtime_gap_audit_tracks_required_areas_without_runtime_wir
         assert forbidden.lower() not in audit_lower
 
 
-def test_tasks_runtime_roadmap_marks_t102_current_after_t101_completion():
+def test_tasks_runtime_roadmap_marks_t103_current_after_t102_completion():
     tasks = read_file("TASKS.md")
     roadmap = tasks.split("## MVP Backend Roadmap", 1)[1]
 
     assert "T-099 established deterministic provider content export-rights hardening" in roadmap
     assert "T-100 established the backend MVP runtime gap audit and roadmap tracker" in roadmap
     assert "T-101 established configured persisted-reader route wiring with fixture fallback" in roadmap
-    assert "T-102 is the current promoted task for making ingestion jobs executable through the local ledger" in roadmap
+    assert "T-102 established executable local ingestion ledger and mocked worker transitions" in roadmap
+    assert "T-103 is the current promoted task for mocked SEC EDGAR stock golden-path acquisition" in roadmap
     assert "| Provider source-use/export enforcement hardening | Completed | T-099 |" in roadmap
     assert "| Backend fresh-data MVP runtime gap tracker | Completed | T-100 |" in roadmap
     assert "| Configured persisted-reader route wiring | Completed | T-101 |" in roadmap
-    assert "| Executable local ingestion ledger and mocked worker path | Current | T-102 |" in roadmap
+    assert "| Executable local ingestion ledger and mocked worker path | Completed | T-102 |" in roadmap
+    assert "| SEC EDGAR stock golden-path acquisition | Current | T-103 |" in roadmap
+
+
+def test_sec_stock_acquisition_contract_is_backend_only_fixture_backed_and_sanitized():
+    adapter = read_file("backend/provider_adapters/sec_stock.py")
+    worker = read_file("backend/ingestion_worker.py")
+    combined = f"{adapter}\n{worker}"
+
+    assert "sec-stock-acquisition-boundary-v1" in adapter
+    assert "SecStockConfigurationReadiness" in adapter
+    assert "build_sec_stock_acquisition_result" in adapter
+    assert "user_agent_configured" in adapter
+    assert "rate_limit_ready" in adapter
+    assert "live_call_disabled" in adapter
+    assert "wrote_source_snapshot: bool = False" in adapter
+    assert "wrote_knowledge_pack: bool = False" in adapter
+    assert "wrote_generated_output_cache: bool = False" in adapter
+    assert "created_generated_asset_page: bool = False" in adapter
+    assert "created_generated_chat_answer: bool = False" in adapter
+    assert "created_generated_comparison: bool = False" in adapter
+    assert "created_generated_risk_summary: bool = False" in adapter
+
+    for forbidden in [
+        "import requests",
+        "import httpx",
+        "urllib.request",
+        "from socket import",
+        "os.environ",
+        "NEXT_PUBLIC",
+        "OPENROUTER_API_KEY",
+        "Authorization",
+        "Bearer ",
+    ]:
+        assert forbidden not in combined

@@ -31,9 +31,11 @@ from backend.provider_adapters.etf_issuer import (
     etf_issuer_fixture_for_ticker,
 )
 from backend.provider_adapters.sec_stock import (
+    SEC_STOCK_ACQUISITION_BOUNDARY,
     SEC_STOCK_FIXTURE_CONTRACT_VERSION,
     SEC_STOCK_FIXTURES,
     SecStockFixtureContractError,
+    build_sec_stock_acquisition_result,
     build_sec_stock_provider_response,
     sec_stock_fixture_for_ticker,
 )
@@ -167,6 +169,57 @@ def test_sec_stock_fixture_contract_normalizes_submissions_filings_xbrl_and_gaps
     assert fixture.xbrl_company_facts[0].field_name == "net_sales_2024"
     assert fixture.xbrl_company_facts[0].unit == "USD"
     assert fixture.evidence_gaps[0].evidence_state is EvidenceState.unavailable
+    assert all(source.checksum.startswith("sha256:sec-aapl-") for source in fixture.sources)
+
+
+def test_sec_stock_acquisition_boundary_exposes_readiness_checksums_and_gap_states():
+    adapter = mock_sec_stock_adapter()
+    request = adapter.request("AAPL")
+    licensing = fetch_mock_provider_response(ProviderKind.sec, "AAPL").licensing
+
+    acquisition = build_sec_stock_acquisition_result(adapter, request, licensing)
+
+    assert acquisition.boundary == SEC_STOCK_ACQUISITION_BOUNDARY
+    assert acquisition.ticker == "AAPL"
+    assert acquisition.cik == "0000320193"
+    assert acquisition.response_state is ProviderResponseState.supported
+    assert acquisition.provider_response is not None
+    assert acquisition.provider_response.asset is not None
+    assert acquisition.provider_response.asset.ticker == "AAPL"
+    assert acquisition.configuration_readiness.user_agent_configured is False
+    assert acquisition.configuration_readiness.rate_limit_ready is True
+    assert acquisition.configuration_readiness.live_call_disabled is True
+    assert acquisition.configuration_readiness.no_live_external_calls is True
+    assert acquisition.no_live_external_calls is True
+    assert acquisition.opened_database_connection is False
+    assert acquisition.wrote_source_snapshot is False
+    assert acquisition.wrote_knowledge_pack is False
+    assert acquisition.wrote_generated_output_cache is False
+    assert acquisition.created_generated_asset_page is False
+    assert acquisition.created_generated_chat_answer is False
+    assert acquisition.created_generated_comparison is False
+    assert acquisition.created_generated_risk_summary is False
+    assert acquisition.checksum is not None
+    assert acquisition.checksum.startswith("sha256:sec-acquisition:")
+    assert len(acquisition.source_records) == 3
+    assert {record.source_type for record in acquisition.source_records} == {
+        "sec_submissions",
+        "sec_filing",
+        "sec_xbrl_company_facts",
+    }
+    assert all(record.checksum.startswith("sha256:sec-aapl-") for record in acquisition.source_records)
+    assert all(record.source_use_policy is SourceUsePolicy.full_text_allowed for record in acquisition.source_records)
+    assert all(record.allowlist_status is SourceAllowlistStatus.allowed for record in acquisition.source_records)
+    assert all(record.source_quality is SourceQuality.official for record in acquisition.source_records)
+    assert all(record.stores_raw_source_text is False for record in acquisition.source_records)
+    assert all(record.stores_raw_provider_payload is False for record in acquisition.source_records)
+    assert acquisition.evidence_gap_states == {"current_valuation_metrics": "unavailable"}
+    assert acquisition.diagnostics[0].code == "sec_evidence_gap_current_valuation_metrics"
+    assert acquisition.diagnostics[0].evidence_state is EvidenceState.unavailable
+    assert acquisition.diagnostics[0].stores_raw_source_text is False
+    assert acquisition.diagnostics[0].stores_raw_provider_payload is False
+    assert acquisition.diagnostics[0].stores_secret is False
+    _assert_no_generated_outputs(acquisition.provider_response)
 
 
 def test_sec_stock_fixture_contract_rejects_wrong_ticker_and_policy_blocked_sources(monkeypatch):
@@ -194,6 +247,14 @@ def test_sec_stock_fixture_contract_rejects_wrong_ticker_and_policy_blocked_sour
     with pytest.raises(SecStockFixtureContractError, match="cannot support generated claims"):
         build_sec_stock_provider_response(adapter, adapter.request("AAPL"), licensing)
 
+    acquisition = build_sec_stock_acquisition_result(adapter, adapter.request("AAPL"), licensing)
+    assert acquisition.response_state is ProviderResponseState.permission_limited
+    assert acquisition.provider_response is None
+    assert acquisition.diagnostics[0].code == "source_policy_blocked"
+    assert acquisition.diagnostics[0].message == "Sanitized SEC acquisition diagnostic."
+    assert acquisition.created_generated_asset_page is False
+    assert acquisition.wrote_generated_output_cache is False
+
 
 def test_sec_stock_fixture_contract_rejects_wrong_cik_and_wrong_source_binding(monkeypatch):
     adapter = mock_sec_stock_adapter()
@@ -210,6 +271,51 @@ def test_sec_stock_fixture_contract_rejects_wrong_cik_and_wrong_source_binding(m
     monkeypatch.setitem(SEC_STOCK_FIXTURES, "AAPL", wrong_source)
     with pytest.raises(SecStockFixtureContractError, match="invalid source evidence"):
         build_sec_stock_provider_response(adapter, adapter.request("AAPL"), licensing)
+
+    acquisition = build_sec_stock_acquisition_result(adapter, adapter.request("AAPL"), licensing)
+    assert acquisition.response_state is ProviderResponseState.unavailable
+    assert acquisition.provider_response is None
+    assert acquisition.diagnostics[0].code == "sec_fixture_validation_failed"
+    assert acquisition.diagnostics[0].stores_raw_provider_payload is False
+
+
+def test_sec_stock_acquisition_boundary_blocks_non_golden_or_wrong_scope_inputs():
+    adapter = mock_sec_stock_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.sec, "AAPL").licensing
+
+    unsupported = build_sec_stock_acquisition_result(adapter, adapter.request("TQQQ"), licensing)
+    wrong_asset_type = build_sec_stock_acquisition_result(adapter, adapter.request("VOO"), licensing)
+    out_of_scope = build_sec_stock_acquisition_result(adapter, adapter.request("GME"), licensing)
+    eligible = build_sec_stock_acquisition_result(adapter, adapter.request("NVDA"), licensing)
+    unknown = build_sec_stock_acquisition_result(adapter, adapter.request("ZZZZ"), licensing)
+
+    assert unsupported.response_state is ProviderResponseState.unsupported
+    assert unsupported.diagnostics[0].code == "blocked_unsupported_asset"
+    assert wrong_asset_type.response_state is ProviderResponseState.out_of_scope
+    assert wrong_asset_type.diagnostics[0].code == "blocked_wrong_asset_type_for_sec_stock_acquisition"
+    assert out_of_scope.response_state is ProviderResponseState.out_of_scope
+    assert out_of_scope.diagnostics[0].code == "blocked_out_of_scope_asset"
+    assert eligible.response_state is ProviderResponseState.eligible_not_cached
+    assert eligible.diagnostics[0].code == "fixture_not_registered_for_sec_golden_path"
+    assert eligible.evidence_gap_states["sec_acquisition"] == "partial"
+    assert unknown.response_state is ProviderResponseState.unknown
+    assert unknown.diagnostics[0].code == "unknown_or_unavailable_asset"
+
+    for acquisition in [unsupported, wrong_asset_type, out_of_scope, eligible, unknown]:
+        assert acquisition.provider_response is None
+        assert acquisition.source_records == ()
+        assert acquisition.checksum is None
+        assert acquisition.no_live_external_calls is True
+        assert acquisition.created_generated_asset_page is False
+        assert acquisition.created_generated_chat_answer is False
+        assert acquisition.created_generated_comparison is False
+        assert acquisition.created_generated_risk_summary is False
+        assert acquisition.wrote_source_snapshot is False
+        assert acquisition.wrote_knowledge_pack is False
+        assert acquisition.wrote_generated_output_cache is False
+        assert acquisition.diagnostics[0].stores_raw_source_text is False
+        assert acquisition.diagnostics[0].stores_raw_provider_payload is False
+        assert acquisition.diagnostics[0].stores_secret is False
 
 
 def test_etf_issuer_adapter_returns_voo_and_qqq_official_facts_and_holdings_metadata():
