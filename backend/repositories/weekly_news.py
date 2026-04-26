@@ -500,6 +500,7 @@ def weekly_news_event_evidence_repository_metadata() -> RepositoryMetadata:
 @dataclass
 class WeeklyNewsEventEvidenceRepository:
     session: Any | None = None
+    commit_on_write: bool = False
 
     def validate(
         self,
@@ -514,10 +515,39 @@ class WeeklyNewsEventEvidenceRepository:
         validated = validate_weekly_news_event_evidence_records(records)
         if self.session is None:
             return validated
-        if not hasattr(self.session, "add_all"):
-            raise WeeklyNewsEventEvidenceContractError("Injected Weekly News Focus session must expose add_all(records).")
-        self.session.add_all(records_to_row_list(validated))
+        tickers = sorted({_normalize_ticker(window.asset_ticker) for window in validated.windows})
+        for ticker in tickers:
+            _persist_records(
+                self.session,
+                collection="weekly_news_event_evidence",
+                key=ticker,
+                records=_records_for_ticker(validated, ticker),
+                rows=records_to_row_list(validated),
+                commit_on_write=self.commit_on_write,
+            )
         return validated
+
+    def read_weekly_news_event_evidence_records(
+        self,
+        ticker: str,
+    ) -> WeeklyNewsEventEvidenceRepositoryRecords | None:
+        if self.session is None:
+            return None
+        raw = _read_records(self.session, "weekly_news_event_evidence", _normalize_ticker(ticker))
+        if raw is None:
+            return None
+        records = (
+            raw
+            if isinstance(raw, WeeklyNewsEventEvidenceRepositoryRecords)
+            else WeeklyNewsEventEvidenceRepositoryRecords.model_validate(raw)
+        )
+        return validate_weekly_news_event_evidence_records(records)
+
+    def read(self, ticker: str) -> WeeklyNewsEventEvidenceRepositoryRecords | None:
+        return self.read_weekly_news_event_evidence_records(ticker)
+
+    def get(self, ticker: str) -> WeeklyNewsEventEvidenceRepositoryRecords | None:
+        return self.read_weekly_news_event_evidence_records(ticker)
 
 
 @dataclass
@@ -1494,3 +1524,36 @@ def _unique(label: str, values: list[str]) -> set[str]:
 
 def _normalize_ticker(ticker: str) -> str:
     return ticker.strip().upper()
+
+
+def _persist_records(
+    session: Any,
+    *,
+    collection: str,
+    key: str,
+    records: WeeklyNewsEventEvidenceRepositoryRecords,
+    rows: list[StrictRow],
+    commit_on_write: bool,
+) -> None:
+    if hasattr(session, "save_repository_record"):
+        session.save_repository_record(collection, key, records.model_copy(deep=True))
+    elif hasattr(session, "save"):
+        session.save(collection, key, records.model_copy(deep=True))
+    elif hasattr(session, "add_all"):
+        session.add_all(rows)
+    else:
+        raise WeeklyNewsEventEvidenceContractError(
+            "Injected Weekly News Focus session must expose save_repository_record(collection, key, records), save(...), or add_all(records)."
+        )
+    if commit_on_write and hasattr(session, "commit"):
+        session.commit()
+
+
+def _read_records(session: Any, collection: str, key: str) -> Any | None:
+    if hasattr(session, "get_repository_record"):
+        return session.get_repository_record(collection, key)
+    if hasattr(session, "read_repository_record"):
+        return session.read_repository_record(collection, key)
+    if hasattr(session, "get"):
+        return session.get(collection, key)
+    return None

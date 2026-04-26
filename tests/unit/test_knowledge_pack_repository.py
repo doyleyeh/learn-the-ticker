@@ -25,6 +25,25 @@ from backend.source_snapshot_repository import source_snapshot_records_from_acqu
 ROOT = Path(__file__).resolve().parents[2]
 
 
+class FakeDurableSession:
+    def __init__(self):
+        self.records = {}
+        self.rows = []
+        self.commits = 0
+
+    def save_repository_record(self, collection, key, records):
+        self.records[(collection, key)] = records
+
+    def get_repository_record(self, collection, key):
+        return self.records.get((collection, key))
+
+    def add_all(self, rows):
+        self.rows.extend(rows)
+
+    def commit(self):
+        self.commits += 1
+
+
 def _golden_acquisition(ticker: str):
     if ticker == "AAPL":
         adapter = mock_sec_stock_adapter()
@@ -201,6 +220,23 @@ def test_in_memory_repository_reads_acquisition_records_with_fixture_fallback_co
     assert read_back == records
     assert repository.get("VOO") == records
     assert read_back.envelope.generated_output_available is False
+
+
+def test_durable_knowledge_pack_repository_persists_and_reads_by_ticker():
+    records, _, _ = _records_from_golden_acquisition("VOO")
+    session = FakeDurableSession()
+    repository = AssetKnowledgePackRepository(session=session, commit_on_write=True)
+
+    persisted = repository.persist(records)
+    read_back = repository.read_knowledge_pack_records("voo")
+
+    assert persisted == records
+    assert read_back == records
+    assert repository.read("VOO") == records
+    assert repository.get("VOO") == records
+    assert repository.get("QQQ") is None
+    assert session.records[("asset_knowledge_pack", "VOO")] == records
+    assert session.commits == 1
 
 
 def test_summary_allowed_acquisition_source_stores_allowed_excerpt_only():

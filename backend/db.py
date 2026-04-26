@@ -46,6 +46,9 @@ class DatabaseEngineFactory:
         sessionmaker = _load_sqlalchemy_sessionmaker()
         return sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
+    def create_session(self) -> Any:
+        return self.create_session_factory()()
+
 
 def build_engine_factory(settings: PersistenceSettings | None = None) -> DatabaseEngineFactory:
     return DatabaseEngineFactory(settings=settings or build_persistence_settings())

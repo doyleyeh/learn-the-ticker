@@ -186,6 +186,7 @@ def ingestion_job_ledger_repository_metadata() -> RepositoryMetadata:
 @dataclass
 class IngestionJobLedgerRepository:
     session: Any | None = None
+    commit_on_write: bool = False
 
     def classify_scope(self, ticker: str) -> IngestionScopeBoundaryRow:
         return classify_ingestion_scope(ticker)
@@ -199,12 +200,33 @@ class IngestionJobLedgerRepository:
         return serialize_ingestion_job_response(response, category=category)
 
     def persist(self, records: IngestionJobLedgerRecords) -> IngestionJobLedgerRecords:
+        validated = validate_ingestion_job_ledger_records(records)
         if self.session is None:
-            return records
-        if not hasattr(self.session, "add_all"):
-            raise IngestionJobLedgerContractError("Injected ledger session must expose add_all(records).")
-        self.session.add_all(records_to_row_list(records))
-        return records
+            return validated
+        _persist_records(
+            self.session,
+            collection="ingestion_job_ledger",
+            key=validated.ledger.job_id,
+            records=validated,
+            rows=records_to_row_list(validated),
+            commit_on_write=self.commit_on_write,
+        )
+        return validated
+
+    def save(self, records: IngestionJobLedgerRecords) -> None:
+        self.persist(records)
+
+    def get(self, job_id: str) -> IngestionJobLedgerRecords | None:
+        if self.session is None:
+            return None
+        raw = _read_records(self.session, "ingestion_job_ledger", job_id)
+        if raw is None:
+            return None
+        records = raw if isinstance(raw, IngestionJobLedgerRecords) else IngestionJobLedgerRecords.model_validate(raw)
+        return validate_ingestion_job_ledger_records(records)
+
+    def read(self, job_id: str) -> IngestionJobLedgerRecords | None:
+        return self.get(job_id)
 
 
 def classify_ingestion_scope(ticker: str) -> IngestionScopeBoundaryRow:
@@ -443,3 +465,36 @@ def _assert_no_generated_output(ledger: IngestionJobLedgerRecordRow) -> None:
         raise IngestionJobLedgerContractError(
             "Unsupported, out-of-scope, unknown, unavailable, stale pending, and unapproved jobs cannot expose generated output."
         )
+
+
+def _persist_records(
+    session: Any,
+    *,
+    collection: str,
+    key: str,
+    records: IngestionJobLedgerRecords,
+    rows: list[StrictRow],
+    commit_on_write: bool,
+) -> None:
+    if hasattr(session, "save_repository_record"):
+        session.save_repository_record(collection, key, records.model_copy(deep=True))
+    elif hasattr(session, "save"):
+        session.save(collection, key, records.model_copy(deep=True))
+    elif hasattr(session, "add_all"):
+        session.add_all(rows)
+    else:
+        raise IngestionJobLedgerContractError(
+            "Injected ledger session must expose save_repository_record(collection, key, records), save(...), or add_all(records)."
+        )
+    if commit_on_write and hasattr(session, "commit"):
+        session.commit()
+
+
+def _read_records(session: Any, collection: str, key: str) -> Any | None:
+    if hasattr(session, "get_repository_record"):
+        return session.get_repository_record(collection, key)
+    if hasattr(session, "read_repository_record"):
+        return session.read_repository_record(collection, key)
+    if hasattr(session, "get"):
+        return session.get(collection, key)
+    return None

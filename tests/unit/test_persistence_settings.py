@@ -7,8 +7,17 @@ import pytest
 
 from backend import db
 from backend.persistence import persistence_metadata_diagnostics, target_metadata
+from backend.persistence import (
+    LOCAL_DURABLE_REPOSITORY_FACTORY_BOUNDARY,
+    build_backend_read_dependencies_from_local_durable_config,
+    build_local_durable_repository_factories,
+)
+from backend.ingestion import request_ingestion
 from backend.settings import (
+    INVALID_LOCAL_DURABLE_OBJECT_NAMESPACE_REASON,
+    LOCAL_DURABLE_DISABLED_REASON,
     MISSING_DATABASE_URL_REASON,
+    build_local_durable_repository_settings,
     build_persistence_settings,
     offline_migration_database_url,
     redact_database_url,
@@ -16,6 +25,25 @@ from backend.settings import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+class FakeDurableSession:
+    def __init__(self):
+        self.records = {}
+        self.rows = []
+        self.commits = 0
+
+    def save_repository_record(self, collection, key, records):
+        self.records[(collection, key)] = records
+
+    def get_repository_record(self, collection, key):
+        return self.records.get((collection, key))
+
+    def add_all(self, rows):
+        self.rows.extend(rows)
+
+    def commit(self):
+        self.commits += 1
 
 
 def test_persistence_settings_default_to_missing_config_without_secrets():
@@ -113,6 +141,112 @@ def test_database_engine_factory_rejects_missing_url_without_importing_sqlalchem
 
     with pytest.raises(db.PersistenceConfigurationError):
         factory.create_engine()
+
+
+def test_local_durable_repository_settings_default_to_disabled_fallback():
+    settings = build_local_durable_repository_settings(env={})
+
+    assert settings.enabled is False
+    assert settings.can_construct is False
+    assert settings.status == "disabled"
+    assert LOCAL_DURABLE_DISABLED_REASON in settings.missing_reasons
+    assert settings.safe_diagnostics["database_url_configured"] is False
+    assert "DATABASE_URL" not in str(settings.safe_diagnostics)
+
+
+def test_local_durable_repository_settings_are_explicit_and_sanitized():
+    raw_url = "postgresql+psycopg://app_user:secret@localhost:5432/learn_the_ticker?password=query-secret"
+    settings = build_local_durable_repository_settings(
+        env={
+            "LOCAL_DURABLE_REPOSITORIES_ENABLED": "true",
+            "LOCAL_DURABLE_OBJECT_NAMESPACE": "local-private-source-artifacts",
+            "LOCAL_DURABLE_REPOSITORY_COMMIT_ON_WRITE": "true",
+            "DATABASE_URL": raw_url,
+        }
+    )
+    serialized = str(settings.safe_diagnostics)
+
+    assert settings.enabled is True
+    assert settings.can_construct is True
+    assert settings.status == "configured"
+    assert settings.object_namespace == "local-private-source-artifacts"
+    assert settings.commit_on_write is True
+    assert "<credentials>@localhost:5432" in serialized
+    assert "secret" not in serialized
+    assert "app_user" not in serialized
+    assert raw_url not in serialized
+
+
+def test_local_durable_repository_settings_reject_public_or_signed_storage_namespaces():
+    settings = build_local_durable_repository_settings(
+        env={
+            "LOCAL_DURABLE_REPOSITORIES_ENABLED": "true",
+            "DATABASE_URL": "postgresql+psycopg://placeholder@localhost:5432/learn_the_ticker",
+            "LOCAL_DURABLE_OBJECT_NAMESPACE": "https://storage.example/public/snapshots?signature=abc",
+        }
+    )
+
+    assert settings.can_construct is False
+    assert settings.status == "invalid_config"
+    assert INVALID_LOCAL_DURABLE_OBJECT_NAMESPACE_REASON in settings.invalid_reasons
+
+
+def test_local_durable_repository_factories_are_lazy_and_build_configured_readers():
+    raw_url = "postgresql+psycopg://app_user:secret@localhost:5432/learn_the_ticker"
+    sessions: list[FakeDurableSession] = []
+
+    def session_factory():
+        session = FakeDurableSession()
+        sessions.append(session)
+        return session
+
+    factories = build_local_durable_repository_factories(
+        env={
+            "LOCAL_DURABLE_REPOSITORIES_ENABLED": "true",
+            "DATABASE_URL": raw_url,
+            "LOCAL_DURABLE_REPOSITORY_COMMIT_ON_WRITE": "true",
+        },
+        session_factory=session_factory,
+    )
+
+    assert factories.boundary == LOCAL_DURABLE_REPOSITORY_FACTORY_BOUNDARY
+    assert factories.active is True
+    assert sessions == []
+    assert factories.safe_diagnostics["opens_connection_on_import"] is False
+    assert "secret" not in str(factories.safe_diagnostics)
+
+    dependencies = factories.build_backend_read_dependencies()
+
+    assert dependencies.active is True
+    assert sessions == []
+    assert dependencies.knowledge_pack_reader is not None
+    assert dependencies.generated_output_cache_reader is not None
+    assert dependencies.weekly_news_reader is not None
+    assert dependencies.ingestion_job_ledger is not None
+    assert dependencies.source_snapshot_repository is not None
+    assert dependencies.safe_diagnostics["source_snapshot_repository_configured"] is True
+
+    dependencies.ingestion_job_ledger.save(
+        dependencies.ingestion_job_ledger.serialize_response(request_ingestion("SPY"))
+    )
+
+    assert len(sessions) == 1
+    assert sessions[0].commits == 1
+
+
+def test_backend_read_dependencies_fall_back_when_local_durable_config_is_absent_or_invalid():
+    disabled = build_backend_read_dependencies_from_local_durable_config(env={})
+    invalid = build_backend_read_dependencies_from_local_durable_config(
+        env={
+            "LOCAL_DURABLE_REPOSITORIES_ENABLED": "true",
+            "DATABASE_URL": "postgresql+psycopg://placeholder@localhost:5432/learn_the_ticker",
+            "LOCAL_DURABLE_OBJECT_NAMESPACE": "public/snapshots",
+        },
+        session_factory=FakeDurableSession,
+    )
+
+    assert disabled.active is False
+    assert invalid.active is False
 
 
 def test_persistence_metadata_boundary_is_dormant():

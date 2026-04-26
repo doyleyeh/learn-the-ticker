@@ -358,6 +358,7 @@ def generated_output_cache_repository_metadata() -> RepositoryMetadata:
 @dataclass
 class GeneratedOutputCacheRepository:
     session: Any | None = None
+    commit_on_write: bool = False
 
     def validate(self, records: GeneratedOutputCacheRepositoryRecords) -> GeneratedOutputCacheRepositoryRecords:
         return validate_generated_output_cache_records(records)
@@ -366,10 +367,58 @@ class GeneratedOutputCacheRepository:
         validated = validate_generated_output_cache_records(records)
         if self.session is None:
             return validated
-        if not hasattr(self.session, "add_all"):
-            raise GeneratedOutputCacheContractError("Injected generated-output cache session must expose add_all(records).")
-        self.session.add_all(records_to_row_list(validated))
+        envelope = validated.envelopes[0]
+        for collection, key in _cache_record_keys(envelope):
+            _persist_records(
+                self.session,
+                collection=collection,
+                key=key,
+                records=validated,
+                rows=records_to_row_list(validated),
+                commit_on_write=self.commit_on_write,
+            )
         return validated
+
+    def read_asset_overview_records(self, ticker: str) -> GeneratedOutputCacheRepositoryRecords | None:
+        return self._asset_record(ticker, GeneratedOutputArtifactCategory.asset_overview_section)
+
+    def read_chat_answer_records(self, ticker: str) -> GeneratedOutputCacheRepositoryRecords | None:
+        return self._asset_record(ticker, GeneratedOutputArtifactCategory.grounded_chat_answer_artifact)
+
+    def read_export_records(self, ticker: str) -> GeneratedOutputCacheRepositoryRecords | None:
+        return self._asset_record(ticker, GeneratedOutputArtifactCategory.export_payload_metadata)
+
+    def read_source_list_records(self, ticker: str) -> GeneratedOutputCacheRepositoryRecords | None:
+        return self._asset_record(ticker, GeneratedOutputArtifactCategory.source_list_export_metadata)
+
+    def read_comparison_records(self, left_ticker: str, right_ticker: str) -> GeneratedOutputCacheRepositoryRecords | None:
+        return self._comparison_record(left_ticker, right_ticker, GeneratedOutputArtifactCategory.comparison_output)
+
+    def read_generated_output_cache_records(self, *args: str) -> GeneratedOutputCacheRepositoryRecords | None:
+        if len(args) == 1:
+            return self.read_asset_overview_records(args[0]) or self.read_chat_answer_records(args[0])
+        if len(args) == 2:
+            return self.read_comparison_records(args[0], args[1])
+        raise GeneratedOutputCacheContractError("Generated-output cache reads require one asset or two comparison tickers.")
+
+    def _asset_record(
+        self,
+        ticker: str,
+        category: GeneratedOutputArtifactCategory,
+    ) -> GeneratedOutputCacheRepositoryRecords | None:
+        return _read_cache_records(self.session, _asset_key(ticker, category)) if self.session is not None else None
+
+    def _comparison_record(
+        self,
+        left_ticker: str,
+        right_ticker: str,
+        category: GeneratedOutputArtifactCategory,
+    ) -> GeneratedOutputCacheRepositoryRecords | None:
+        return (
+            _read_cache_records(self.session, _comparison_key(left_ticker, right_ticker, category))
+            if self.session is not None
+            else None
+        )
 
 
 @dataclass
@@ -995,3 +1044,70 @@ def _section_freshness_labels(labels: list[SectionFreshnessInput]) -> dict[str, 
 
 def _section_evidence_labels(labels: list[SectionFreshnessInput]) -> dict[str, str]:
     return {label.section_id: str(label.evidence_state) for label in labels if label.evidence_state}
+
+
+def _cache_record_keys(envelope: GeneratedOutputCacheEnvelopeRow) -> tuple[tuple[str, str], ...]:
+    keys = [("generated_output_cache_entry", envelope.cache_entry_id)]
+    if envelope.scope_kind == GeneratedOutputScopeKind.asset.value and envelope.asset_ticker:
+        keys.append(("generated_output_cache_lookup", _asset_key(envelope.asset_ticker, envelope.artifact_category)))
+    if envelope.scope_kind == GeneratedOutputScopeKind.comparison.value:
+        keys.append(
+            (
+                "generated_output_cache_lookup",
+                _comparison_key(
+                    envelope.comparison_left_ticker or "",
+                    envelope.comparison_right_ticker or "",
+                    envelope.artifact_category,
+                ),
+            )
+        )
+    return tuple(keys)
+
+
+def _asset_key(ticker: str, category: GeneratedOutputArtifactCategory | str) -> str:
+    value = category.value if isinstance(category, GeneratedOutputArtifactCategory) else str(category)
+    return f"asset:{ticker.strip().upper()}:{value}"
+
+
+def _comparison_key(left_ticker: str, right_ticker: str, category: GeneratedOutputArtifactCategory | str) -> str:
+    value = category.value if isinstance(category, GeneratedOutputArtifactCategory) else str(category)
+    return f"comparison:{left_ticker.strip().upper()}:{right_ticker.strip().upper()}:{value}"
+
+
+def _persist_records(
+    session: Any,
+    *,
+    collection: str,
+    key: str,
+    records: GeneratedOutputCacheRepositoryRecords,
+    rows: list[StrictRow],
+    commit_on_write: bool,
+) -> None:
+    if hasattr(session, "save_repository_record"):
+        session.save_repository_record(collection, key, records.model_copy(deep=True))
+    elif hasattr(session, "save"):
+        session.save(collection, key, records.model_copy(deep=True))
+    elif hasattr(session, "add_all"):
+        if collection != "generated_output_cache_entry":
+            return
+        session.add_all(rows)
+    else:
+        raise GeneratedOutputCacheContractError(
+            "Injected generated-output cache session must expose save_repository_record(collection, key, records), save(...), or add_all(records)."
+        )
+    if commit_on_write and hasattr(session, "commit"):
+        session.commit()
+
+
+def _read_cache_records(session: Any, key: str) -> GeneratedOutputCacheRepositoryRecords | None:
+    raw = None
+    if hasattr(session, "get_repository_record"):
+        raw = session.get_repository_record("generated_output_cache_lookup", key)
+    elif hasattr(session, "read_repository_record"):
+        raw = session.read_repository_record("generated_output_cache_lookup", key)
+    elif hasattr(session, "get"):
+        raw = session.get("generated_output_cache_lookup", key)
+    if raw is None:
+        return None
+    records = raw if isinstance(raw, GeneratedOutputCacheRepositoryRecords) else GeneratedOutputCacheRepositoryRecords.model_validate(raw)
+    return validate_generated_output_cache_records(records)
