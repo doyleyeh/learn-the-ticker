@@ -1,49 +1,49 @@
 ## Current task
 
-### T-098: Add live-generation validation and fallback orchestration contract
+### T-099: Add provider content export-rights hardening contract
 
 Goal:
-Add a deterministic live-generation orchestration contract that can validate mocked provider outputs through schema, citation, source-policy, freshness, and safety gates, perform one repair retry, and represent paid fallback metadata without routing public outputs through live generation.
+Add deterministic provider-content export-rights hardening so exports, caches, generated-output eligibility, and diagnostics consistently enforce `metadata_only`, `link_only`, `summary_allowed`, `full_text_allowed`, and `rejected` tiers for provider and source-derived content.
 
 Task-scope paragraph:
-This task should add the backend-only orchestration boundary that future live-generation work can call after T-096 readiness diagnostics and T-097 mocked transport. The orchestrator may consume injected mocked transport results and local deterministic validation inputs, then return validation, retry, fallback, public metadata, and cache-eligibility decisions. It must not make live OpenRouter calls, route public asset/comparison/chat/Weekly News outputs through live generation, rewrite prompts, change generated fixture output, activate cache writes, or expose provider details to the frontend. This is a validation/fallback contract slice only and must keep normal local and CI behavior deterministic.
+This task should tighten the backend rights boundary that decides whether provider/source-derived material can be used for generated factual claims, source drawers, Markdown/JSON exports, generated-output cache metadata, and diagnostics. It should use deterministic fixtures and existing source-use policy metadata only. It must not add live providers, source acquisition, source allowlist expansion, frontend redesign, production licensing decisions, or new public workflow behavior. The goal is to make restricted provider content consistently metadata-only or omitted where required, while preserving official/structured source priority and visible uncertainty, freshness, and citation behavior.
 
 Roadmap alignment:
 
-- Third narrow slice of gated OpenRouter live generation.
-- Builds on existing deterministic generation, T-096 readiness diagnostics, and T-097 mocked transport.
-- Adds validation, repair-retry, and fallback orchestration metadata before any public route can use live generation.
-- Keeps deterministic mocks as the normal CI/local default.
+- First narrow slice of "Enforce source-use and export rules for provider content."
+- Builds on source policy, export validation, source snapshots, generated-output cache, provider adapters, and live-generation validation/fallback contracts.
+- Keeps live providers and production deployment out of scope.
 - Preserves v0.4 frontend workflow and deterministic backend outputs before live-provider or deployment expansion.
 
 Allowed files:
 
-- `backend/llm.py`
-- `backend/llm_transport.py`
+- `backend/source_policy.py`
+- `backend/export.py`
+- `backend/cache.py`
+- `backend/sources.py`
+- `backend/providers.py`
 - `backend/models.py`
-- `backend/overview.py`
-- `backend/comparison.py`
-- `backend/chat.py`
-- `backend/weekly_news.py`
-- `tests/unit/test_llm_provider.py`
-- `tests/unit/test_overview_generation.py`
-- `tests/unit/test_comparison_generation.py`
-- `tests/unit/test_chat_generation.py`
-- `tests/unit/test_weekly_news.py`
+- `backend/repositories/generated_outputs.py`
+- `backend/provider_adapters/sec_stock.py`
+- `backend/provider_adapters/etf_issuer.py`
+- `config/source_allowlist.yaml` only to tighten existing source-use/export metadata without adding new domains or sources
 - `tests/unit/test_source_policy.py`
+- `tests/unit/test_exports.py`
+- `tests/unit/test_cache_contracts.py`
+- `tests/unit/test_provider_adapters.py`
 - `tests/unit/test_safety_guardrails.py`
 - `tests/unit/test_repo_contract.py`
-- `tests/unit/test_cache_contracts.py`
+- `tests/integration/test_backend_api.py`
 - `docs/agent-journal/*.md`
 
 Do not change:
 
 - No frontend files under `apps/web`.
-- No public FastAPI route paths, HTTP status behavior, `/health` behavior, generated overview/comparison/chat/Weekly News Focus output, AI Comprehensive Analysis output, source drawer behavior, glossary behavior, comparison behavior, chat behavior, export behavior, search behavior, or default deterministic fixture-generated output.
+- No public FastAPI route paths, HTTP status behavior, `/health` behavior, generated overview/comparison/chat/Weekly News Focus output, AI Comprehensive Analysis output, source drawer UI behavior, glossary behavior, comparison behavior, chat behavior, search behavior, or default deterministic fixture-generated output except export/source/cache metadata changes directly required to enforce existing source-use rights.
 - No changes to home-page workflow, comparison UI, glossary UI, source drawer UI, asset chat UI, mobile bottom-sheet/full-screen behavior, stock-vs-ETF comparison structure, or any v0.4 workflow marker.
 - No live OpenRouter, LLM, SEC, issuer, ETF, market-data, news, RSS, web, storage, database, object-storage, cache, Redis, Cloud Run Job, scheduler, admin auth, rate-limiting, external analytics, telemetry vendor, or deployment wiring.
-- No route-level live-generation integration, generated-output cache write activation, generated AI Comprehensive Analysis rewrite, prompt template rewrite, provider licensing change, source allowlist expansion, runtime secret setup, or production dependency addition.
-- No generated pages, generated chat answers, generated comparisons, generated risk summaries, generated exports, source snapshots, provider fetches, live LLM calls, or new cacheable generated output.
+- No live provider calls, route-level live-generation integration, generated-output cache write activation, prompt template rewrite, provider licensing change, source allowlist expansion, runtime secret setup, production dependency addition, or actual legal/licensing determination beyond enforcing existing policy tiers.
+- No new source domains, no new allowlisted providers, no generated pages, generated chat answers, generated comparisons, generated risk summaries, source snapshots, provider fetches, live LLM calls, or new cacheable generated output.
 - No edits to `data/universes/us_common_stocks_top500.current.json` or `data/universes/us_equity_etfs.current.json`.
 - No raw full article text, unrestricted source text, unrestricted provider payloads, hidden prompts, raw prompt text, raw model reasoning, raw user text, raw queries, raw questions, raw answers, raw chat transcripts, personal identifiers, portfolio/allocation details, real API keys, credentials, secrets, public storage URLs, signed URLs, external analytics IDs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, repository records, cache records, events, exports, or exported data.
 - No `NEXT_PUBLIC_*` provider variables, no `/health` secret exposure, no docs/env examples containing real secrets, and no logging or diagnostics that include API key values or provider credentials.
@@ -51,24 +51,28 @@ Do not change:
 
 Acceptance criteria:
 
-- Add a backend-only orchestration boundary for mocked generated overview, comparison, Weekly News Focus analysis, and chat-safe answer artifacts that accepts deterministic generation metadata, mocked transport results, validation inputs, and existing source/citation/safety context without changing public route outputs.
-- The orchestration boundary must stay inactive for public behavior unless runtime readiness is `ready_for_explicit_live_call`, T-097 transport results are supplied by injected mocks, and the caller explicitly opts into the orchestration path; default deterministic generation must remain unchanged.
-- Validate mocked provider content against schema validity, citation validity, same-asset or same-comparison-pack binding, source-use permissions, freshness/uncertainty labels, safety/no-advice checks, hidden-prompt absence, raw-reasoning absence, unrestricted-source-text absence, and unsupported-claim checks before marking output usable.
-- Enforce Weekly News Focus and AI Comprehensive Analysis separation: analysis artifacts may be considered usable only when underlying Weekly News Focus evidence and canonical facts satisfy existing citation/source-use/freshness rules, and AI analysis remains suppressed when fewer than two high-signal Weekly News Focus items exist.
-- Model exactly one repair retry after schema, citation, source-policy, freshness, safety, unsupported-claim, raw-reasoning, hidden-prompt, or unrestricted-source-text validation failure; repair must be represented as metadata and mocked output only, not a live call or prompt rewrite.
-- Preserve paid fallback metadata for the configured DeepSeek fallback when free-chain or validation-after-repair failures justify fallback, but do not execute or route to a paid provider.
-- Reject or suppress outputs that fail validation after the retry, produce compact rejection reason codes, and return unavailable/partial metadata rather than usable generated content.
-- Preserve cache eligibility decisions so only fully validated, source-policy-allowed, citation-safe, freshness-labeled, no-advice, no-leak outputs can be marked cacheable; no actual cache write may be enabled.
-- Orchestration diagnostics may include provider kind, model IDs, model tiers/order, attempt counts, request mode, validation status, fallback trigger, retryability, token/cost/latency metadata from mocks, cache eligibility, and compact sanitized rejection codes.
-- Orchestration diagnostics and public metadata must not expose API key values, authorization headers, raw prompts, raw user text, raw generated text in diagnostics, raw model reasoning, `reasoning_details`, unrestricted source text, unrestricted provider payloads, credentials, signed URLs, public storage URLs, source URLs where prohibited, or frontend-readable storage paths.
-- Existing deterministic mock generation paths, public runtime diagnostics, public route responses, exports, frontend behavior, source allowlists, fixture outputs, and no-live-call CI defaults must remain unchanged except for additive dormant contract metadata covered by tests.
-- Tests must cover valid mocked output, schema failure, repair retry success, validation failure after repair, paid fallback metadata, citation/source-use rejection, wrong-asset or wrong-pack rejection, stale-without-label rejection, unsupported-claim rejection, safety rejection, hidden prompt/raw reasoning/unrestricted source text rejection, cache eligibility blocking, unchanged default deterministic behavior, no live network/provider imports by default, no browser env exposure, and sanitized diagnostics.
+- Add or tighten deterministic validation helpers that classify source/provider content rights for these actions: generated-claim support, cache input/checksum eligibility, cacheable generated output, source-list export metadata, allowed excerpt export, Markdown/JSON section export, and diagnostics.
+- All five source-use tiers must have explicit tested behavior: `full_text_allowed`, `summary_allowed`, `metadata_only`, `link_only`, and `rejected`.
+- `full_text_allowed` may support generated factual claims, allowed supporting excerpts, source metadata exports, cache inputs, and generated-output cache eligibility when citations, freshness, safety, and same-asset or same-comparison-pack binding are valid.
+- `summary_allowed` may support summaries or allowed excerpts only within existing policy metadata and must not export full raw article/provider text or unrestricted source passages.
+- `metadata_only` and `link_only` sources must not support generated factual claims, unrestricted excerpts, raw source storage, generated-output cache eligibility, or exported source passages; exports may include only policy-allowed metadata and clear restricted/omitted-content messages.
+- `rejected`, not-allowlisted, policy-disallowed, wrong-asset, wrong-comparison-pack, stale-without-label, unavailable-without-label, or unsupported-claim inputs must be suppressed or blocked from generated-output cache eligibility and exports that would present them as supporting evidence.
+- Source-list, asset-page, comparison, and chat transcript exports must preserve citations, source metadata, freshness/as-of dates, uncertainty labels, educational disclaimers, licensing notes, and source-use policy fields while omitting or metadata-limiting restricted provider/source content.
+- Generated-output cache metadata and freshness inputs must reject or mark non-cacheable any source checksum, artifact, diagnostic, or generated-output record that stores unrestricted provider payloads, raw article text, unrestricted source text/excerpts, hidden prompts, raw model reasoning, secrets, signed/public URLs, or source-policy-disallowed evidence.
+- Provider adapter fixtures must surface source-use/licensing metadata consistently enough for downstream export and cache validators to enforce restrictions, including restricted market/reference provider content and summary-allowed recent-context provider content.
+- Official and structured sources must remain preferred for stable facts; recent/news/provider context must not overwrite canonical asset identity and must keep Weekly News Focus or recent-context separation where applicable.
+- Important factual claims must remain citation-bound to the same asset or same comparison pack, and stale/unknown/unavailable/partial/insufficient-evidence states must remain visible instead of inventing evidence.
+- Diagnostics must use compact reason codes and sanitized booleans/counts only; no raw user text, raw generated text, raw provider payloads, raw article text, unrestricted source text, hidden prompts, raw model reasoning, credentials, signed URLs, public storage URLs, or frontend-readable storage paths may appear.
+- Existing public route schemas, deterministic fixture behavior, source allowlist scope, no-live-call defaults, and v0.4 frontend workflow markers must remain unchanged except for additive or tightened rights metadata required by this task.
+- Tests must cover all source-use tiers, provider fixture licensing metadata, source-list exports, asset/comparison/chat exports, generated-output cache eligibility, rejected-source suppression, metadata-only/link-only omission behavior, summary-allowed excerpt limits, official/structured source preservation, same-asset/same-pack binding, stale/unknown/unavailable/partial handling, no advice language, no secret/raw-payload exposure, and no live external calls.
 - Preserve product guardrails: implementation, tests, fixture strings, diagnostics, and journal notes must not introduce buy/sell/hold recommendations, allocation advice, tax advice, price targets, brokerage/trading behavior, unsupported factual claims, or recent-news-as-canonical framing.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_llm_provider.py tests/unit/test_overview_generation.py tests/unit/test_comparison_generation.py tests/unit/test_chat_generation.py tests/unit/test_safety_guardrails.py -q
+python3 -m pytest tests/unit/test_source_policy.py tests/unit/test_exports.py tests/unit/test_cache_contracts.py tests/unit/test_provider_adapters.py -q
+python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
+python3 -m pytest tests/integration/test_backend_api.py -q
 python3 -m pytest tests -q
 python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
@@ -76,10 +80,38 @@ git diff --check
 ```
 
 Iteration budget:
-One agent-loop cycle. If public route live-generation wiring, real OpenRouter calls, prompt redesign, frontend changes, production secret setup, generated-output cache write activation, or provider licensing changes are needed, record the follow-up and stop after mocked validation/fallback orchestration.
+One agent-loop cycle. If new source allowlist entries, paid provider integration, live provider calls, frontend export redesign, route-level behavior changes, actual licensing/legal review decisions, production cache writes, or deployment work are needed, record the follow-up and stop after deterministic export-rights hardening.
 
 
 ## Completed
+
+### T-098: Add live-generation validation and fallback orchestration contract
+
+Goal:
+Add a deterministic live-generation orchestration contract that can validate mocked provider outputs through schema, citation, source-policy, freshness, and safety gates, perform one repair retry, and represent paid fallback metadata without routing public outputs through live generation.
+
+Completed details:
+
+- Implementation commit `4d9b517 feat(T-098): add live-generation validation and fallback orchestration contract` updated `backend/llm.py`, `backend/models.py`, `tests/unit/test_llm_provider.py`, and `docs/agent-journal/20260426T034633Z.md`.
+- Merged branch `agent/T-098-20260426T034633Z` into `main` with local merge commit `3abb3d6 chore(T-098): merge live-generation validation and fallback orchestration contract`.
+- `backend/llm.py` extended `validate_llm_generated_output` to validate freshness-label state, unsupported-claim codes, and Weekly News Focus analysis evidence rules in addition to schema, citation/source-policy, safety, hidden-prompt, raw-reasoning, and unrestricted-source-text gates.
+- `backend/llm.py` added `run_mocked_live_generation_orchestration`, a dormant backend-only `llm-live-orchestration-contract-v1` boundary that calls the T-097 injected OpenRouter transport only when runtime readiness is explicit, the caller opts in, and a mocked transport is supplied.
+- The orchestration contract records sanitized attempt metadata, validates mocked transport content, models one repair retry, preserves paid DeepSeek fallback metadata when validation still fails after repair, and returns generated-content usability, public metadata, cache eligibility, and compact rejection diagnostics without exposing raw generated text.
+- Cache eligibility now remains conservative for invalid, suppressed, missing-input-hash, non-success, and repair-attempt outputs; the journal notes that repair success is usable in contract metadata but is not cache-eligible.
+- Weekly News Focus analysis artifacts are validated against the two-selected-item threshold and canonical-fact citation availability before being marked usable.
+- `backend/models.py` added blocked/not-validated/freshness/unsupported-claim/Weekly-News validation statuses and added `generated_content_usable` plus sanitized diagnostics to `LlmOrchestrationResult`.
+- Tests in `tests/unit/test_llm_provider.py` cover active mocked orchestration, inactive states without readiness/opt-in/transport, one repair retry success, validation failure after repair with paid fallback metadata, wrong-asset and rejected-source citations, stale-without-label, freshness failure, unsupported claims, safety failure, hidden prompt, raw reasoning, unrestricted source text, Weekly News Focus threshold enforcement, cache eligibility blocking, and sanitized diagnostics that exclude raw mocked output.
+- The implementation did not add public route integration, live provider execution, frontend exposure, generated-output cache writes, prompt rewrites, production secret setup, or public generated-output behavior changes.
+- `docs/agent-journal/20260426T034633Z.md` records these checks: `python3 -m pytest tests/unit/test_llm_provider.py -q` passed; `python3 -m pytest tests/unit/test_llm_provider.py tests/unit/test_overview_generation.py tests/unit/test_comparison_generation.py tests/unit/test_chat_generation.py tests/unit/test_safety_guardrails.py -q` passed; `python3 -m pytest tests -q` passed; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed; `git diff --check` passed.
+- Remaining risks from the journal:
+  - The orchestration path is dormant and backend-only; no public route integration, live provider execution, frontend exposure, or generated-output cache write was added.
+  - Repair success is validated and usable in contract metadata, but cache eligibility remains conservative for repair-attempt output.
+  - Future live wiring must preserve explicit readiness and caller opt-in gates, sanitized diagnostics, citation/source-use/freshness/safety validation, Weekly News Focus analysis thresholds, and fallback-as-metadata behavior before any public output can consume it.
+
+Completion commits:
+
+- `4d9b517 feat(T-098): add live-generation validation and fallback orchestration contract`
+- `3abb3d6 chore(T-098): merge live-generation validation and fallback orchestration contract`
 
 ### T-097: Add gated OpenRouter transport adapter with mocked tests
 
@@ -2637,38 +2669,6 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-099: Add provider content export-rights hardening contract
-
-Goal:
-Add deterministic provider-content export-rights hardening so exports, caches, generated-output eligibility, and diagnostics consistently enforce `metadata_only`, `link_only`, `summary_allowed`, `full_text_allowed`, and `rejected` tiers for provider and source-derived content.
-
-Roadmap alignment:
-
-- First narrow slice of "Enforce source-use and export rules for provider content."
-- Builds on source policy, export validation, source snapshots, generated-output cache, provider adapters, and live-generation readiness work.
-- Keeps live providers and production deployment out of scope.
-
-Acceptance criteria:
-
-- Add or tighten validation helpers that decide whether provider/source-derived content may be cached, summarized, displayed, exported as metadata, exported as allowed excerpts, or excluded.
-- Ensure exports omit or safely summarize paid/restricted/provider content unless rights permit the requested Markdown/JSON output.
-- Ensure generated-output cache eligibility is blocked for rejected or source-policy-disallowed sources and never stores unrestricted provider payloads, raw article text, hidden prompts, raw model reasoning, secrets, or signed/public URLs.
-- Preserve official/structured source priority and same-asset/same-comparison-pack citation binding.
-- Add tests for all source-use tiers, provider fixture content, source-list exports, asset/comparison/chat exports, generated-output cache eligibility, rejected-source suppression, allowed-excerpt behavior, and no secret/raw-payload exposure.
-
-Required commands:
-
-```bash
-python3 -m pytest tests/unit/test_source_policy.py tests/unit/test_exports.py tests/unit/test_cache_contracts.py tests/unit/test_provider_adapters.py -q
-python3 -m pytest tests/integration/test_backend_api.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-```
-
-Iteration budget:
-One agent-loop cycle. If new source allowlist entries, paid provider integration, live provider calls, frontend export redesign, or legal/licensing review changes are needed, record the follow-up and stop after deterministic export-rights hardening.
 
 ### T-100: Add production hardening readiness checklist contracts
 
