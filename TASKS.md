@@ -12,6 +12,8 @@ Roadmap alignment:
 
 - First narrow slice of "Enforce source-use and export rules for provider content."
 - Builds on source policy, export validation, source snapshots, generated-output cache, provider adapters, and live-generation validation/fallback contracts.
+- Prerequisite gate before real provider or official-source content can safely enter persisted packs, exports, source drawers, generated-output cache metadata, or diagnostics.
+- Does not make the MVP fresh-data functional by itself; the runtime ingestion, persistence, cache, and frontend API wiring gaps remain tracked in the rebaselined backend roadmap below.
 - Keeps live providers and production deployment out of scope.
 - Preserves v0.4 frontend workflow and deterministic backend outputs before live-provider or deployment expansion.
 
@@ -2670,133 +2672,178 @@ Completion commits:
 
 ## Backlog
 
-### T-100: Add production hardening readiness checklist contracts
+### T-100: Rebaseline backend MVP runtime gap audit and roadmap tracker
 
 Goal:
-Add production hardening readiness checklist contracts and deterministic validation for admin auth, rate limits, CORS, Secret Manager, Cloud Run Jobs, private GCS object URIs, Vercel API wiring, and deployment documentation without enabling production deployment behavior.
+Add a deterministic backend MVP runtime gap audit and roadmap tracker that separates completed deterministic contracts from the remaining fresh-data runtime path needed to ingest official sources, persist knowledge packs, generate/cache validated outputs, and render them through the frontend.
 
 Roadmap alignment:
 
-- First narrow slice of production hardening after live-generation and source/export enforcement groundwork.
-- Keeps actual Cloud Run/Vercel/GCS/Secret Manager deployment changes out of scope.
+- First task after T-099 to reset backend planning around a functional fresh-data MVP instead of treating contract scaffolding as runtime completion.
+- Uses existing implementation evidence from backend routes, ingestion worker contracts, provider adapters, persistence contracts, frontend fixture fallback, and quality gates.
+- Keeps runtime code changes, provider calls, production deployment, source allowlist expansion, and frontend behavior changes out of scope.
 
 Acceptance criteria:
 
-- Add a deterministic readiness checklist or diagnostics contract for production hardening requirements, including admin auth, rate limits, CORS, server-side secrets, private object storage, Cloud Run Jobs, Vercel API base wiring, logging/error reporting, and no-live-call CI defaults.
-- Diagnostics must use placeholders and sanitized booleans only; no secret values, credentials, signed URLs, project IDs beyond placeholders, or real deployment tokens.
-- Preserve local Docker Compose as local-only support and normal CI as deterministic mock/fixture-backed.
-- Do not change runtime route auth, deployment files, cloud resources, frontend behavior, provider calls, or production infrastructure.
-- Add tests for readiness checklist shape, placeholder-only env handling, secret redaction, local-only Docker assumptions, Cloud Run/Vercel/GCS readiness metadata, and no production side effects.
-
-Required commands:
-
-```bash
-python3 -m pytest tests/unit/test_repo_contract.py tests/unit/test_persistence_settings.py tests/unit/test_safety_guardrails.py -q
-npm test
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-docker compose config
-```
-
-Iteration budget:
-One agent-loop cycle. If actual deployment, cloud resource creation, route auth enforcement, secret-manager integration, frontend deployment changes, or production credentials are needed, record the follow-up and stop after readiness diagnostics.
-
-### T-101: Add MVP backend readiness gap audit contract
-
-Goal:
-Add a deterministic MVP backend readiness gap audit contract that summarizes remaining backend acceptance gaps across search/support classification, asset overview, comparison, Weekly News Focus, chat, exports, source-use rights, caching/freshness, live-generation readiness, and production hardening without changing public behavior.
-
-Roadmap alignment:
-
-- First post-roadmap quality-closure task after T-100 readiness diagnostics.
-- Uses the completed backend roadmap contracts to identify residual MVP acceptance gaps instead of enabling live production behavior.
-- Keeps frontend redesign, provider calls, production deployment, and route behavior changes out of scope.
-
-Acceptance criteria:
-
-- Add a deterministic backend readiness audit helper or fixture-backed report that references existing contract metadata and quality-gate expectations.
-- Cover supported/cached, eligible-not-cached, unsupported, out-of-scope, unknown, unavailable, stale, partial, and insufficient-evidence states where relevant.
-- Include compact pass/gap/blocked statuses for citations, source-use rights, freshness labels, Weekly News Focus evidence limits, AI Comprehensive Analysis thresholds, chat safety redirects, export rights, generated-output cache eligibility, live-generation gating, and production readiness diagnostics.
-- Diagnostics must be sanitized and must not include raw user text, raw generated text, raw source text, raw provider payloads, hidden prompts, raw model reasoning, secrets, credentials, public/signed storage URLs, or frontend-readable storage paths.
-- Keep public API routes, frontend behavior, generated output, cache writes, provider calls, LLM calls, deployment files, and source allowlists unchanged unless a focused test import path is needed.
-- Add tests for report shape, required MVP surfaces, blocked-state coverage, secret/raw-text redaction, no-live-call behavior, no advice language, and no public behavior changes.
+- Add or update a deterministic audit helper, fixture-backed report, or control-doc section that marks each backend MVP area as `contract_complete`, `runtime_gap`, `current`, `backlog`, or `later`.
+- Cover source acquisition, source snapshot storage, normalized knowledge-pack persistence, route read-path wiring, generated-output cache writes, Weekly News Focus acquisition, ingestion job execution, frontend API rendering, launch-universe pre-cache, and production hardening.
+- Explicitly call out current runtime gaps: public routes still default to fixtures, ingestion jobs do not fetch real sources, persistence is not wired to configured sessions, provider adapters are fixture-backed, and frontend asset/search pages remain local-fixture-first.
+- Preserve no-live-call CI defaults, source-use rights, citation binding, freshness/uncertainty states, unsupported/out-of-scope blocking, safety guardrails, and secret redaction.
+- Add focused tests or repo-contract checks for the audit/tracker shape, sanitized diagnostics, no advice language, no secret/raw-text exposure, and no public behavior changes.
 
 Required commands:
 
 ```bash
 python3 -m pytest tests/unit/test_repo_contract.py tests/unit/test_safety_guardrails.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-```
-
-Iteration budget:
-One agent-loop cycle. If the audit discovers implementation gaps, record them as follow-up backlog tasks rather than fixing them inside this audit task.
-
-### T-102: Add backend MVP route contract regression matrix
-
-Goal:
-Add deterministic regression coverage that verifies key backend MVP route contracts remain aligned across search, overview, sources, weekly-news, comparison, chat, exports, diagnostics, unsupported states, and no-live-call defaults.
-
-Roadmap alignment:
-
-- Post-roadmap quality-closure task after T-101 gap auditing.
-- Hardens the completed backend roadmap by preventing regressions in public route contracts before any future production/live-provider work.
-
-Acceptance criteria:
-
-- Add or tighten route-contract tests for supported cached assets, eligible-not-cached assets, recognized unsupported assets, out-of-scope assets, unknown assets, unavailable states, and stale/partial/insufficient-evidence labels where route contracts expose them.
-- Verify important factual output keeps same-asset or same-comparison-pack citations, source-use metadata, freshness/as-of labels, educational disclaimers, no-advice language, and no raw reasoning/prompt/secret exposure.
-- Verify live-provider, market-data, news, OpenRouter, object-storage, cache, and database execution remain disabled by default in normal CI.
-- Preserve existing route schemas unless the test reveals an intentional documented contract mismatch; do not change frontend behavior or generated copy in this task.
-- Add focused integration/unit coverage and static eval expectations as needed.
-
-Required commands:
-
-```bash
-python3 -m pytest tests/integration/test_backend_api.py tests/unit/test_safety_guardrails.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-```
-
-Iteration budget:
-One agent-loop cycle. If route behavior changes are needed, record a separate follow-up task and stop after regression coverage unless the change is required to keep existing documented behavior passing.
-
-### T-103: Prepare MVP backend go/no-go checklist and follow-up queue
-
-Goal:
-Prepare a deterministic MVP backend go/no-go checklist and follow-up task queue from the completed backend roadmap, readiness audit, route regression matrix, quality gate results, and documented residual risks.
-
-Roadmap alignment:
-
-- Post-roadmap planning task after T-101 and T-102.
-- Converts residual implementation risks into narrow next-cycle tasks without enabling live providers, deployment, or production behavior.
-
-Acceptance criteria:
-
-- Add or update a backend MVP go/no-go checklist document or `TASKS.md` section that maps completed backend roadmap areas to MVP acceptance criteria.
-- List unresolved gaps as narrow follow-up tasks with acceptance criteria, required commands, and explicit out-of-scope constraints.
-- Preserve safety, citation, freshness, source-use, unsupported/out-of-scope blocking, no-live-call defaults, secret-handling, and v0.4 frontend workflow boundaries.
-- Do not change runtime code, frontend behavior, generated output, provider calls, source allowlists, deployment files, or public API schemas.
-- Run deterministic documentation/control-plane checks.
-
-Required commands:
-
-```bash
-python3 -m pytest tests/unit/test_repo_contract.py -q
 npm test
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
 docker compose config
 ```
 
 Iteration budget:
-One agent-loop cycle. Keep this as a planning/control-plane task and do not implement runtime follow-ups in the same cycle.
+One agent-loop cycle. If the audit discovers implementation gaps, record or confirm them in the roadmap/backlog rather than fixing runtime behavior in the audit task.
+
+### T-101: Wire backend routes to configured persistence readers with fixture fallback
+
+Goal:
+Wire public backend read paths to configured persistent repository readers and existing injected boundaries when persistence is explicitly configured, while preserving deterministic fixture fallback and current route schemas when it is not.
+
+Roadmap alignment:
+
+- First runtime wiring task after T-100 documents the gap.
+- Builds on T-077 through T-095 repository and persisted-read contracts without adding provider acquisition or generated-output writes.
+- Keeps normal local/CI behavior fixture-backed and no-live-call by default.
+
+Acceptance criteria:
+
+- Add an app-level backend dependency or service factory that can supply configured readers for persisted knowledge packs, Weekly News Focus event evidence, generated-output cache metadata, chat sessions, and source/export metadata without opening a database connection at import time.
+- Route overview, knowledge-pack, details/sources where applicable, Weekly News Focus, comparison, grounded chat, chat-session export/status/delete, and export read paths through the configured readers only when explicitly available.
+- Preserve existing fixture fallback for missing config, missing readers, reader failures, invalid records, wrong-asset records, source-use blocks, freshness failures, unsupported states, and normal CI.
+- Keep public route paths, response schemas, advice boundaries, citation/source-use validation, freshness labels, and no-live-provider defaults unchanged.
+- Add in-memory or mocked-reader tests proving persisted-first behavior and fixture fallback without requiring a live database, provider, cache, LLM, object storage, or frontend change.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_overview_generation.py tests/unit/test_weekly_news.py tests/unit/test_comparison_generation.py tests/unit/test_chat_generation.py tests/unit/test_chat_sessions.py tests/unit/test_exports.py -q
+python3 -m pytest tests/integration/test_backend_api.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
+Iteration budget:
+One agent-loop cycle. If live database sessions, schema migrations, source acquisition, cache writes, generated-output changes, or frontend API behavior changes are needed, record the follow-up and stop after route read-path wiring.
+
+### T-102: Make ingestion jobs executable through the local ledger
+
+Goal:
+Make manual pre-cache and on-demand ingestion jobs executable through the existing ingestion job ledger and worker boundary using mocked acquisition outcomes, so local runtime job state transitions can be exercised without live provider calls.
+
+Roadmap alignment:
+
+- First execution task for ingestion after route read-path wiring.
+- Builds on T-079 and T-080, moving from dormant/in-memory contracts toward a configured local job ledger while keeping acquisition mocked.
+- Keeps real SEC, issuer, news, market-data, object-storage, LLM, and frontend rendering changes out of scope.
+
+Acceptance criteria:
+
+- Wire admin ingestion job creation, job status lookup, and worker execution through a configured ledger boundary when explicitly available, with deterministic fixture fallback when it is not.
+- Support queued, running, succeeded, failed, unsupported, out-of-scope, unknown, unavailable, stale, and source-policy-blocked states with sanitized diagnostics.
+- Keep successful mocked execution from creating generated pages, generated chat answers, comparisons, risk summaries, or cacheable generated output until source acquisition and persistence tasks land.
+- Preserve admin/server-only execution assumptions, no-live-call CI, no secret exposure, unsupported/out-of-scope generated-output blocking, and existing public route schemas.
+- Add tests for ledger-backed job transitions, idempotent terminal states, fallback on missing config, failure diagnostics, no raw provider/source text, and no provider/network/database requirement in normal CI.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_ingestion_job_repository.py tests/unit/test_ingestion_worker.py tests/unit/test_ingestion_jobs.py -q
+python3 -m pytest tests/integration/test_backend_api.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+docker compose config
+```
+
+Iteration budget:
+One agent-loop cycle. If real source fetching, object storage, generated-output cache writes, production worker scheduling, admin auth enforcement, or frontend pending-state UI changes are needed, record the follow-up and stop after executable mocked job transitions.
+
+### T-103: Implement server-side SEC EDGAR acquisition for the stock golden path
+
+Goal:
+Implement the first server-side SEC EDGAR stock acquisition path for a small golden stock set, using mocked HTTP fixtures in tests and preserving no live external calls in normal CI.
+
+Roadmap alignment:
+
+- First official-source acquisition task for fresh stock data after ingestion jobs can execute.
+- Builds on the fixture-backed SEC adapter/parser contract from T-082 and the rights gates from T-099.
+- Keeps public route live fetching, frontend changes, non-golden stock expansion, paid providers, and live calls in CI out of scope.
+
+Acceptance criteria:
+
+- Add a backend-only SEC acquisition boundary for golden common-stock assets such as AAPL and one or two manifest-backed peers, with explicit SEC user-agent/rate-limit configuration readiness and sanitized diagnostics.
+- Fetch or parse mocked SEC submissions, selected filing metadata, XBRL/company-facts metadata, source IDs, checksums, source-use policy, freshness/as-of dates, and unavailable evidence gaps into normalized acquisition records.
+- Tests must use local mocked HTTP/fixture responses only; live SEC calls require an explicit local opt-in path and must never run in CI or public route handlers.
+- Preserve same-CIK/same-ticker binding, official-source priority, rights-tiered storage rules, source sanitization, SSRF defenses, no advice language, and no raw unrestricted source text in diagnostics.
+- Do not yet broaden public generated pages beyond persisted/fixture availability; any persisted-pack or generated-output creation must be deferred unless already covered by the task scope.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_provider_adapters.py tests/unit/test_source_policy.py tests/unit/test_ingestion_worker.py tests/unit/test_safety_guardrails.py -q
+python3 -m pytest tests/integration/test_backend_api.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
+Iteration budget:
+One agent-loop cycle. If production SEC scheduling, broad top-500 refresh, frontend rendering, generated summaries, cache writes, or object-storage activation are needed, record the follow-up and stop after mocked SEC golden-path acquisition.
+
+### T-104: Implement official ETF issuer acquisition for the ETF golden path
+
+Goal:
+Implement the first server-side official ETF issuer acquisition path for golden ETFs such as VOO, QQQ, and SPY, using mocked HTTP fixtures in tests and preserving source-use restrictions.
+
+Roadmap alignment:
+
+- First official-source acquisition task for fresh ETF data after the SEC golden path.
+- Builds on the fixture-backed ETF issuer, holdings, prospectus, and exposure adapter contract from T-083 and the rights gates from T-099.
+- Keeps public route live fetching, frontend changes, broad ETF-universe expansion, paid ETF providers, and live calls in CI out of scope.
+
+Acceptance criteria:
+
+- Add a backend-only issuer acquisition boundary for official ETF pages, fact sheets, prospectus references, holdings files, and exposure files for the golden ETF set.
+- Parse mocked issuer responses into normalized ETF identity, issuer, benchmark/index, expense ratio, AUM/reference metadata where allowed, holdings count, top holdings, concentration, holdings as-of dates, source IDs, checksums, freshness labels, and unavailable evidence gaps.
+- Tests must use local mocked HTTP/fixture responses only; live issuer calls require explicit local opt-in and must never run in CI or browser code.
+- Preserve issuer/source binding, non-leveraged U.S. equity ETF scope, blocked ETF classes, source-use/export restrictions, no unrestricted provider payloads, source sanitization, SSRF defenses, and no advice language.
+- Do not yet activate generated pages, comparisons, chat answers, generated risk summaries, cache writes, or frontend API rendering for newly acquired ETFs unless covered by a later promoted task.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_provider_adapters.py tests/unit/test_source_policy.py tests/unit/test_ingestion_worker.py tests/unit/test_safety_guardrails.py -q
+python3 -m pytest tests/integration/test_backend_api.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
+Iteration budget:
+One agent-loop cycle. If broad issuer coverage, paid ETF data, production object storage, frontend rendering, generated summaries, or source allowlist expansion is needed, record the follow-up and stop after mocked ETF issuer golden-path acquisition.
 
 ## MVP Backend Roadmap
 
-This section is intentionally non-operational for the agent loop. Keep runnable repeat-mode tasks above this roadmap as third-level task headings, and keep this longer MVP roadmap as bullets until each item is promoted into a narrow task contract. Early backend tasks may add production dependencies such as SQLAlchemy, Alembic, or psycopg only with dependency rationale, focused tests, and no live external calls in normal CI.
+This section is intentionally non-operational for the agent loop. Keep runnable repeat-mode tasks above this roadmap as third-level task headings, and keep this longer MVP roadmap as bullets until each item is promoted into a narrow task contract. This roadmap now separates completed deterministic contracts from the remaining runtime work required for a functional fresh-data MVP. Early backend tasks may add production dependencies such as SQLAlchemy, Alembic, or psycopg only with dependency rationale, focused tests, and no live external calls in normal CI.
+
+Current runtime snapshot:
+
+- The backend has broad deterministic contracts for search, overview/details, comparison, chat, exports, source policy, persistence repositories, ingestion states, provider adapters, Weekly News Focus, generated-output cache metadata, and live-generation readiness.
+- The MVP is not yet fresh-data functional: public route handlers still default to fixture/local data, ingestion workers do not fetch official sources, configured persistence is not the normal read/write path, and provider adapters are fixture-backed.
+- The frontend can render the MVP learning surfaces for cached fixtures and may call backend adapters where configured, but home search and static asset coverage remain local-fixture-first until later API-backed frontend tasks.
+- The next runtime milestone is an end-to-end golden path where admin/server-side ingestion fetches mocked official-source data, stores validated source snapshots and knowledge packs, and existing routes render those persisted packs with fixture fallback.
 
 Operational defaults for backend roadmap tasks:
 
@@ -2823,10 +2870,10 @@ Operational defaults for backend roadmap tasks:
 - T-096 established live LLM runtime readiness diagnostics. It is completed and must not be reintroduced as runnable backlog.
 - T-097 established the gated OpenRouter transport adapter with mocked tests. It is completed and must not be reintroduced as runnable backlog.
 - T-098 established live-generation validation and fallback orchestration after the mocked transport boundary. It is completed and must not be reintroduced as runnable backlog.
-- T-099 is the current promoted task for deterministic provider content export-rights hardening.
-- T-100 is a prepared backlog task for production hardening readiness diagnostics, not production deployment.
-- T-101 through T-103 are prepared post-roadmap quality-closure tasks for MVP backend readiness auditing, route contract regression coverage, and go/no-go follow-up planning.
-- Later promoted tasks must keep live providers, secrets, deployment credentials, and recurring jobs out of normal CI until the explicit production-hardening stage.
+- T-099 is the current promoted task for deterministic provider content export-rights hardening; it is a prerequisite rights gate, not the runtime fresh-data completion point.
+- T-100 through T-104 are the prepared five-cycle backlog for rebaselining the runtime gap, wiring route readers, making ingestion jobs executable through the local ledger, and adding mocked official-source acquisition for stock and ETF golden paths.
+- Production hardening readiness diagnostics, backend route regression matrices, go/no-go launch checklists, and deploy work move later until the ingestion-to-persist-to-render path exists.
+- Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted backend task should run the relevant EVALS.md backend checks: `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, and `bash scripts/run_quality_gate.sh`.
 
 Roadmap integration tracker:
@@ -2856,12 +2903,26 @@ Roadmap integration tracker:
 | Live LLM runtime readiness diagnostics | Completed | T-096 |
 | Gated OpenRouter mocked transport adapter | Completed | T-097 |
 | Live-generation validation and fallback orchestration | Completed | T-098 |
-| Provider source-use/export enforcement hardening | Current | T-099 |
-| Production hardening readiness diagnostics | Backlog | T-100 |
-| MVP backend readiness gap audit | Backlog | T-101 |
-| Backend MVP route contract regression matrix | Backlog | T-102 |
-| MVP backend go/no-go checklist and follow-up queue | Backlog | T-103 |
+| Provider source-use/export enforcement hardening | Current prerequisite | T-099 |
+| Backend fresh-data MVP runtime gap tracker | Backlog | T-100 |
+| Configured persisted-reader route wiring | Backlog | T-101 |
+| Executable local ingestion ledger and mocked worker path | Backlog | T-102 |
+| SEC EDGAR stock golden-path acquisition | Backlog | T-103 |
+| Official ETF issuer golden-path acquisition | Backlog | T-104 |
+| Source snapshot object-storage execution | Runtime gap | Unpromoted |
+| Normalized knowledge-pack writes from ingestion | Runtime gap | Unpromoted |
+| Generated-output cache writes and invalidation | Runtime gap | Unpromoted |
+| Weekly News Focus official-source acquisition execution | Runtime gap | Unpromoted |
+| Frontend API-backed search, pending states, and asset rendering | Runtime gap | Unpromoted |
+| Launch-universe pre-cache expansion and golden coverage | Runtime gap | Unpromoted |
+| Production hardening, route regression, and go/no-go checklist | Later | Unpromoted |
 
 Remaining unpromoted backend MVP sequence:
 
-No remaining backend MVP roadmap areas are promoted beyond T-100. T-101 through T-103 are post-roadmap quality-closure tasks prepared from completed-roadmap risks and MVP acceptance gaps; they must not enable live production behavior by default.
+- Persist source snapshots and parsed artifacts to the configured private storage boundary, with rights-tier enforcement and no public/signed URLs.
+- Write normalized source-backed knowledge packs, source checksums, evidence gaps, and section freshness from ingestion outputs into configured persistence.
+- Activate generated-output cache writes and freshness-hash invalidation only for validated, citation-bound, source-policy-allowed outputs.
+- Execute Weekly News Focus official-source acquisition and selection from persisted event evidence, preserving empty/limited states and the AI Comprehensive Analysis threshold.
+- Switch frontend search and asset pages from local-fixture-first behavior to backend API-backed behavior, including pending-ingestion/job states and dynamic supported assets beyond AAPL/VOO/QQQ.
+- Expand the launch pre-cache universe only after the golden stock and ETF source acquisition paths are persisted and rendered end to end.
+- Add production hardening readiness diagnostics, route-contract regression matrix, and MVP go/no-go checklist after the runtime path can ingest, persist, cache, and render fresh official-source data.
