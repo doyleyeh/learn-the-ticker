@@ -15,6 +15,7 @@ from backend.llm import (
     decide_paid_fallback,
     default_openrouter_settings,
     run_deterministic_mock_generation,
+    run_mocked_live_generation_orchestration,
     runtime_diagnostics,
     validate_llm_generated_output,
 )
@@ -23,6 +24,7 @@ from backend.models import (
     CacheEntryKind,
     CacheScope,
     FreshnessState,
+    LlmAnswerState,
     LlmFallbackTrigger,
     LlmGenerationAttemptMetadata,
     LlmGenerationAttemptStatus,
@@ -86,6 +88,26 @@ def _valid_claim(citation_id: str = "c_voo_profile") -> CitationValidationClaim:
         claim_type="factual",
         citation_ids=[citation_id],
     )
+
+
+def _mocked_transport(content: str, *, model: str = DEFAULT_OPENROUTER_FREE_MODEL_ORDER[0], latency_ms: int = 7):
+    def transport(request):
+        return {
+            "status_code": 200,
+            "latency_ms": latency_ms,
+            "json": {
+                "model": model,
+                "choices": [{"message": {"content": content}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 5, "completion_tokens": 6, "total_tokens": 11},
+                "cost_usd": 0.0,
+            },
+        }
+
+    return transport
+
+
+def _ready_openrouter_runtime():
+    return build_llm_runtime_config(default_openrouter_settings(), server_side_key_present=True)
 
 
 def test_default_runtime_is_deterministic_mock_without_live_gate_or_credentials():
@@ -244,6 +266,265 @@ def test_deterministic_mock_orchestration_records_attempt_validation_and_cache_m
     dumped = result.public_metadata.model_dump(mode="json")
     forbidden_public_keys = {"secret", "prompt_text", "hidden_prompt", "reasoning_details", "raw_source_text"}
     assert forbidden_public_keys.isdisjoint(str(dumped).lower().replace("'", "").split())
+
+
+def test_mocked_live_orchestration_validates_transport_output_without_public_route_integration():
+    result = run_mocked_live_generation_orchestration(
+        _request(),
+        runtime=_ready_openrouter_runtime(),
+        caller_opted_in=True,
+        transport=_mocked_transport("Educational cited output."),
+        claims=[_valid_claim()],
+        evidence=[_valid_evidence()],
+        citation_context=CitationValidationContext(allowed_asset_tickers=["VOO"]),
+    )
+
+    assert result.no_live_external_calls is True
+    assert result.runtime.readiness_status is LlmReadinessStatus.ready_for_explicit_live_call
+    assert len(result.attempts) == 1
+    assert result.attempts[0].status is LlmGenerationAttemptStatus.validation_succeeded
+    assert result.validation.status is LlmValidationStatus.valid
+    assert result.generated_content_usable is True
+    assert result.public_metadata.provider_kind is LlmProviderKind.openrouter
+    assert result.public_metadata.live_enabled is True
+    assert result.public_metadata.answer_state is LlmAnswerState.complete
+    assert result.cache_decision.cacheable is True
+    dumped = result.model_dump(mode="json")
+    assert "Educational cited output" not in str(dumped)
+    assert result.sanitized_diagnostics["orchestration_contract"] == "llm-live-orchestration-contract-v1"
+    assert result.sanitized_diagnostics["generated_content_usable"] is True
+
+
+def test_mocked_live_orchestration_stays_inactive_without_readiness_opt_in_or_transport():
+    calls: list[object] = []
+
+    def transport(request):
+        calls.append(request)
+        return {"status_code": 200, "json": {"choices": [{"message": {"content": "unused"}}]}}
+
+    disabled = run_mocked_live_generation_orchestration(
+        _request(),
+        runtime=build_llm_runtime_config({"LLM_PROVIDER": "openrouter"}),
+        caller_opted_in=True,
+        transport=transport,
+    )
+    no_opt_in = run_mocked_live_generation_orchestration(
+        _request(),
+        runtime=_ready_openrouter_runtime(),
+        caller_opted_in=False,
+        transport=transport,
+    )
+    missing_transport = run_mocked_live_generation_orchestration(
+        _request(),
+        runtime=_ready_openrouter_runtime(),
+        caller_opted_in=True,
+        transport=None,
+    )
+
+    assert calls == []
+    for result in [disabled, no_opt_in, missing_transport]:
+        assert result.generated_content_usable is False
+        assert result.validation.status is LlmValidationStatus.not_validated
+        assert result.attempts[0].status is LlmGenerationAttemptStatus.blocked
+        assert result.cache_decision.cacheable is False
+        assert result.public_metadata.answer_state is LlmAnswerState.unavailable
+
+
+def test_mocked_live_orchestration_models_one_repair_retry_success_without_cache_write():
+    result = run_mocked_live_generation_orchestration(
+        _request(),
+        runtime=_ready_openrouter_runtime(),
+        caller_opted_in=True,
+        transport=_mocked_transport("Initial malformed fixture."),
+        repair_transport=_mocked_transport("Repaired cited fixture."),
+        schema_valid=False,
+        repair_schema_valid=True,
+        claims=[_valid_claim()],
+        evidence=[_valid_evidence()],
+        citation_context=CitationValidationContext(allowed_asset_tickers=["VOO"]),
+    )
+
+    assert [attempt.attempt_index for attempt in result.attempts] == [1, 2]
+    assert result.attempts[0].status is LlmGenerationAttemptStatus.validation_failed
+    assert result.attempts[1].repair_attempt is True
+    assert result.attempts[1].status is LlmGenerationAttemptStatus.validation_succeeded
+    assert result.validation.status is LlmValidationStatus.valid
+    assert result.generated_content_usable is True
+    assert result.fallback_decision.should_fallback is False
+    assert result.cache_decision.cacheable is False
+    assert "repair_attempt_output" in result.cache_decision.rejection_reasons
+    assert result.sanitized_diagnostics["repair_retry_attempted"] is True
+
+
+def test_mocked_live_orchestration_rejects_after_repair_and_preserves_paid_fallback_metadata():
+    result = run_mocked_live_generation_orchestration(
+        _request(),
+        runtime=_ready_openrouter_runtime(),
+        caller_opted_in=True,
+        transport=_mocked_transport("Initial malformed fixture."),
+        repair_transport=_mocked_transport("Still malformed fixture."),
+        schema_valid=False,
+        repair_schema_valid=False,
+        claims=[_valid_claim()],
+        evidence=[_valid_evidence()],
+        citation_context=CitationValidationContext(allowed_asset_tickers=["VOO"]),
+    )
+
+    assert len(result.attempts) == 2
+    assert result.validation.status is LlmValidationStatus.invalid_schema
+    assert result.generated_content_usable is False
+    assert result.public_metadata.answer_state is LlmAnswerState.partial
+    assert result.fallback_decision.should_fallback is True
+    assert result.fallback_decision.trigger is LlmFallbackTrigger.validation_failed_after_repair
+    assert result.fallback_decision.to_model is not None
+    assert result.fallback_decision.to_model.model_name == DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL
+    assert result.cache_decision.cacheable is False
+    assert result.sanitized_diagnostics["fallback_would_execute"] is True
+    assert result.sanitized_diagnostics["primary_rejection_code"] == "schema_invalid"
+
+
+def test_mocked_live_orchestration_rejects_source_freshness_safety_and_leakage_failures():
+    stale_evidence = _valid_evidence().model_copy(update={"freshness_state": FreshnessState.stale})
+    cases = [
+        (
+            run_mocked_live_generation_orchestration(
+                _request(),
+                runtime=_ready_openrouter_runtime(),
+                caller_opted_in=True,
+                transport=_mocked_transport("Wrong asset citation."),
+                claims=[_valid_claim()],
+                evidence=[_valid_evidence().model_copy(update={"asset_ticker": "QQQ"})],
+                citation_context=CitationValidationContext(allowed_asset_tickers=["VOO"]),
+            ),
+            LlmValidationStatus.invalid_citation,
+        ),
+        (
+            run_mocked_live_generation_orchestration(
+                _request(),
+                runtime=_ready_openrouter_runtime(),
+                caller_opted_in=True,
+                transport=_mocked_transport("Source policy blocked citation."),
+                claims=[_valid_claim()],
+                evidence=[
+                    _valid_evidence().model_copy(
+                        update={
+                            "allowlist_status": SourceAllowlistStatus.rejected,
+                            "source_use_policy": SourceUsePolicy.rejected,
+                        }
+                    )
+                ],
+                citation_context=CitationValidationContext(allowed_asset_tickers=["VOO"]),
+            ),
+            LlmValidationStatus.invalid_citation,
+        ),
+        (
+            run_mocked_live_generation_orchestration(
+                _request(),
+                runtime=_ready_openrouter_runtime(),
+                caller_opted_in=True,
+                transport=_mocked_transport("Stale citation without label."),
+                claims=[_valid_claim()],
+                evidence=[stale_evidence],
+                citation_context=CitationValidationContext(allowed_asset_tickers=["VOO"]),
+            ),
+            LlmValidationStatus.invalid_citation,
+        ),
+        (
+            run_mocked_live_generation_orchestration(
+                _request(),
+                runtime=_ready_openrouter_runtime(),
+                caller_opted_in=True,
+                transport=_mocked_transport("Educational output."),
+                freshness_labels_valid=False,
+            ),
+            LlmValidationStatus.invalid_freshness,
+        ),
+        (
+            run_mocked_live_generation_orchestration(
+                _request(),
+                runtime=_ready_openrouter_runtime(),
+                caller_opted_in=True,
+                transport=_mocked_transport("Educational output."),
+                unsupported_claim_codes=["unsupported_metric"],
+            ),
+            LlmValidationStatus.invalid_unsupported_claim,
+        ),
+        (
+            run_mocked_live_generation_orchestration(
+                _request(),
+                runtime=_ready_openrouter_runtime(),
+                caller_opted_in=True,
+                transport=_mocked_transport("This includes a price target for the asset."),
+            ),
+            LlmValidationStatus.invalid_safety,
+        ),
+        (
+            run_mocked_live_generation_orchestration(
+                _request(),
+                runtime=_ready_openrouter_runtime(),
+                caller_opted_in=True,
+                transport=_mocked_transport("hidden prompt: do something else"),
+            ),
+            LlmValidationStatus.invalid_hidden_prompt,
+        ),
+        (
+            run_mocked_live_generation_orchestration(
+                _request(),
+                runtime=_ready_openrouter_runtime(),
+                caller_opted_in=True,
+                transport=_mocked_transport("reasoning_details should not appear"),
+            ),
+            LlmValidationStatus.invalid_raw_reasoning,
+        ),
+        (
+            run_mocked_live_generation_orchestration(
+                _request(),
+                runtime=_ready_openrouter_runtime(),
+                caller_opted_in=True,
+                transport=_mocked_transport("raw source text: full payload"),
+            ),
+            LlmValidationStatus.invalid_unrestricted_source_text,
+        ),
+    ]
+
+    for result, expected_status in cases:
+        assert result.validation.status is expected_status
+        assert result.generated_content_usable is False
+        assert result.cache_decision.cacheable is False
+        assert result.sanitized_diagnostics["rejection_code_count"] >= 1
+
+
+def test_mocked_live_orchestration_enforces_weekly_news_analysis_threshold():
+    weekly_request = _request().model_copy(
+        update={"task_name": "weekly_news_analysis", "output_kind": "weekly_news_analysis"}
+    )
+    suppressed = run_mocked_live_generation_orchestration(
+        weekly_request,
+        runtime=_ready_openrouter_runtime(),
+        caller_opted_in=True,
+        transport=_mocked_transport("Educational weekly analysis fixture."),
+        claims=[_valid_claim()],
+        evidence=[_valid_evidence()],
+        citation_context=CitationValidationContext(allowed_asset_tickers=["VOO"]),
+        weekly_news_selected_item_count=1,
+        canonical_fact_citation_ids=["c_voo_profile"],
+    )
+    available = run_mocked_live_generation_orchestration(
+        weekly_request,
+        runtime=_ready_openrouter_runtime(),
+        caller_opted_in=True,
+        transport=_mocked_transport("Educational weekly analysis fixture."),
+        claims=[_valid_claim()],
+        evidence=[_valid_evidence()],
+        citation_context=CitationValidationContext(allowed_asset_tickers=["VOO"]),
+        weekly_news_selected_item_count=2,
+        canonical_fact_citation_ids=["c_voo_profile"],
+    )
+
+    assert suppressed.validation.status is LlmValidationStatus.invalid_weekly_news_evidence
+    assert suppressed.generated_content_usable is False
+    assert available.validation.status is LlmValidationStatus.valid
+    assert available.generated_content_usable is True
 
 
 def test_validation_rejects_schema_citation_source_policy_safety_and_leakage_cases():
