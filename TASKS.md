@@ -1,36 +1,43 @@
 ## Current task
 
-### T-107: Persist official-source Weekly News Focus event evidence for golden assets
+### T-108: Activate generated-output cache writes and freshness invalidation for validated outputs
 
 Goal:
-Persist official-source Weekly News Focus event evidence for the golden stock and ETF path while preserving evidence-limited selection, dedupe, source-use gates, and AI Comprehensive Analysis thresholds.
+Activate deterministic generated-output cache writes for validated, citation-bound, source-policy-allowed golden-path outputs and preserve freshness-hash invalidation.
 
 Task-scope paragraph:
-Extend the existing Weekly News Focus event evidence contracts so mocked official filings, investor-relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes for golden assets can be persisted and read through configured in-memory or mocked repository boundaries. Keep the Monday-Sunday plus current-week-to-yesterday U.S. Eastern window logic, selected-vs-configured counts, empty/limited states, official-source ranking, dedupe metadata, source-use rights gates, sanitized diagnostics, and AI Comprehensive Analysis threshold metadata. This task must not add live news/provider calls, source allowlist expansion, generated analysis output changes, frontend changes, production scheduling, generated-output cache writes, or deployment work.
+Wire the generated-output cache writer boundary for validated golden asset overview sections, comparisons, grounded chat-safe answer artifacts, exports, and source-list metadata. Cache writes must occur only after deterministic outputs pass schema, citation, same-asset or same-comparison-pack binding, source-use, freshness, safety, and advice-boundary validation. Keep mocked/deterministic generation as the default. Do not enable live LLM calls, live provider calls, frontend API migration, broad asset coverage, production cache infrastructure, or cache writes for unsupported, out-of-scope, unknown, unavailable, stale-without-label, partial-without-label, insufficient-evidence-without-label, rejected-source, source-policy-blocked, wrong-asset, wrong-comparison-pack, or advice-like outputs.
 
 Roadmap alignment:
 
-- First deterministic persisted Weekly News Focus event-evidence write step after T-093 event evidence contracts, T-094 deterministic Weekly News acquisition/selection, T-095 persisted-read fallback, T-101 configured route readers, T-102 executable mocked worker transitions, and T-106 normalized acquisition-backed knowledge packs.
-- Keeps generated-output cache writes, generated AI Comprehensive Analysis activation, frontend API migration, live provider execution, production database/object-storage execution, broad source allowlist expansion, launch pre-cache expansion, recurring jobs, and deployment hardening out of scope.
+- First deterministic generated-output cache-write activation after T-084 cache/freshness-hash contracts, T-085/T-086/T-087 persisted-pack/cache reader routing, T-099 export-rights hardening, T-101 configured route readers, T-105 source snapshots, T-106 normalized knowledge packs, and T-107 persisted Weekly News event evidence.
+- Keeps frontend API migration, live LLM execution, live source/provider execution, production cache/database/object-storage execution, broad source allowlist expansion, launch pre-cache expansion, recurring jobs, and deployment hardening out of scope.
 - Preserves Frontend Design and Workflow v0.4 before live-provider or deployment expansion: single-asset home search, separate connected comparison workflow, contextual glossary, mobile source/glossary/chat bottom sheets or full-screen panels, stock-vs-ETF relationship badges, and evidence-limited Weekly News Focus behavior.
 
 General MVP alignment:
-T-107 persists selected and suppressed Weekly News Focus event evidence for the golden path. It does not complete the MVP by itself; generated-output cache writes, frontend API migration, launch pre-cache expansion, live-provider readiness, recurring Weekly News acquisition, and production deployment remain separate follow-up tasks.
+T-108 activates deterministic generated-output cache writes and freshness invalidation for validated golden-path outputs. It does not complete the MVP by itself; frontend API migration, end-to-end persisted rendering for all user workflows, launch pre-cache expansion, live-provider readiness, recurring acquisition, production persistence execution, and deployment remain separate follow-up tasks.
 
 Allowed files:
 
-- `backend/repositories/weekly_news.py`
-- `backend/weekly_news_repository.py`
-- `backend/repositories/__init__.py` only if exports need a narrow update for Weekly News evidence write/read helpers
-- `backend/weekly_news.py` only if persisted-read fallback needs a narrow same-schema adjustment
-- `backend/overview.py` only if existing configured Weekly News reader fallback needs a narrow same-schema adjustment
+- `backend/cache.py`
+- `backend/generated_output_cache_repository.py`
+- `backend/repositories/__init__.py` only if generated-output cache writer exports need a narrow update
+- `backend/overview.py`
+- `backend/comparison.py`
+- `backend/chat.py`
+- `backend/export.py`
+- `backend/sources.py` only if source-list metadata cache records require a narrow existing-schema hook
+- `backend/weekly_news.py` only if generated AI Comprehensive Analysis cache eligibility metadata must read T-107 Weekly News evidence without changing generated analysis content
 - `backend/ingestion_worker.py`
-- `backend/ingestion.py` only if worker execution/status metadata needs to expose configured Weekly News evidence persistence without public schema changes
-- `backend/persistence.py` only if an existing configured dependency boundary needs a narrow Weekly News writer hook
-- `backend/models.py` only if schema-neutral server-side Weekly News evidence persistence metadata is required
-- `backend/source_policy.py` only if an existing source-use operation mapping needs a narrow metadata-safe adjustment
-- `tests/unit/test_weekly_news.py`
+- `backend/ingestion.py` only if worker execution/status metadata needs to expose configured generated-output cache writes without public schema changes
+- `backend/persistence.py` only if an existing configured dependency boundary needs a narrow generated-output cache writer hook
+- `backend/models.py` only if schema-neutral server-side generated-output cache write metadata is required
+- `backend/source_policy.py` only if an existing generated-output/cache source-use operation mapping needs a narrow metadata-safe adjustment
+- `tests/unit/test_cache_contracts.py`
 - `tests/unit/test_overview_generation.py`
+- `tests/unit/test_comparison_generation.py`
+- `tests/unit/test_chat_generation.py`
+- `tests/unit/test_exports.py`
 - `tests/unit/test_source_policy.py`
 - `tests/unit/test_ingestion_worker.py`
 - `tests/unit/test_repo_contract.py`
@@ -41,14 +48,15 @@ Allowed files:
 Do not change:
 
 - No frontend files under `apps/web`.
-- No public FastAPI route paths, HTTP status behavior, response schemas, `/health` behavior, generated overview/comparison/chat output, source drawer behavior, glossary behavior, comparison behavior, chat behavior, search behavior, export behavior, or default deterministic fixture output unless focused tests prove unchanged fallback.
-- No generated AI Comprehensive Analysis content changes; only threshold metadata may be persisted or read if it preserves existing suppression/availability behavior.
+- No public FastAPI route paths, HTTP status behavior, response schemas, `/health` behavior, source drawer behavior, glossary behavior, comparison behavior, chat behavior, search behavior, export behavior, or default deterministic fixture output unless focused tests prove unchanged fallback.
+- No generated overview, comparison, grounded chat, export, source-list, Weekly News Focus, or AI Comprehensive Analysis prose rewrites except minimal metadata required to cache already validated deterministic outputs.
+- No generated AI Comprehensive Analysis activation from fresh persisted data; only cache eligibility or suppression metadata may be written if it preserves existing suppression/availability behavior.
 - No changes to home-page workflow, comparison UI, glossary UI, source drawer UI, asset chat UI, mobile bottom-sheet/full-screen behavior, stock-vs-ETF comparison structure, or any v0.4 workflow marker.
-- No live OpenRouter, LLM, issuer, SEC, ETF, market-data, news, RSS, web, object-storage, generated-output cache, Redis, Cloud Run Job, scheduler, admin auth enforcement, rate-limiting, external analytics, telemetry vendor, or deployment wiring.
+- No live OpenRouter, LLM, issuer, SEC, ETF, market-data, news, RSS, web, object-storage, Redis, Cloud Run Job, scheduler, admin auth enforcement, rate-limiting, external analytics, telemetry vendor, or deployment wiring.
 - No live SEC, ETF issuer, object-storage, database, or provider calls in tests, CI, public route handlers, import-time code, or default local commands. Any live storage/readiness path must be explicit, server-side, dormant by default, and outside normal tests.
-- No database connection at import time and no live database requirement for normal CI; configured ledger tests must use in-memory or mocked boundaries.
-- No schema migrations, production database session execution, real Weekly News source acquisition in CI, generated-output cache write activation, frontend API migration, prompt template rewrite, provider licensing change, broad source allowlist expansion, runtime secret setup, production dependency addition, or actual legal/licensing determination.
-- No generated pages, generated chat answers, generated comparisons, generated risk summaries, live LLM calls, or new cacheable generated output.
+- No database connection at import time and no live database requirement for normal CI; configured cache-writer tests must use in-memory or mocked boundaries.
+- No schema migrations, production database session execution, real Weekly News source acquisition in CI, frontend API migration, prompt template rewrite, provider licensing change, broad source allowlist expansion, runtime secret setup, production dependency addition, or actual legal/licensing determination.
+- No new generated pages, generated chat answers, generated comparisons, generated risk summaries, live LLM calls, or cacheable outputs beyond existing deterministic golden-path validated outputs.
 - No edits to `data/universes/us_common_stocks_top500.current.json` or `data/universes/us_equity_etfs.current.json`.
 - No expansion to leveraged ETFs, inverse ETFs, ETNs, fixed-income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, international ETFs, preferred stocks, warrants, rights, options, crypto, or other out-of-scope products.
 - No raw full article text, unrestricted source text, unrestricted provider payloads, hidden prompts, raw prompt text, raw model reasoning, raw user text, raw queries, raw questions, raw answers, raw chat transcripts, personal identifiers, portfolio/allocation details, real API keys, credentials, secrets, public storage URLs, signed URLs, external analytics IDs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, repository records, knowledge-pack records, cache records, job records, events, exports, or exported data.
@@ -57,28 +65,26 @@ Do not change:
 
 Acceptance criteria:
 
-- Golden asset Weekly News candidates can be persisted as event evidence records with market-week window rows, candidate rows, source-rank inputs, dedupe groups, selected-event rows, evidence-state rows, AI-threshold rows, validation rows, and sanitized diagnostics.
-- Persisted Weekly News records use the existing repository/storage boundary and configured in-memory or mocked writer only; normal tests and default local commands make no live object-storage, database, SEC, ETF issuer, provider, market-data, news, RSS, web, or LLM calls.
-- Weekly News windows use the last completed Monday-Sunday market week plus current week-to-date through yesterday in U.S. Eastern dates, including the Monday edge case where current week-to-date is empty.
-- Official filings, investor-relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes rank ahead of allowlisted news/provider context; source-use policy wins over rank or score.
-- Selection preserves selected-vs-configured counts: show the configured maximum only when enough valid evidence supports it, show a smaller verified set with `partial`/limited metadata when evidence is thin, and show a clear empty/no-high-signal state when no selected items qualify.
-- Duplicate, promotional, irrelevant, wrong-asset, outside-window, non-allowlisted, metadata-only, link-only, rejected, license-disallowed, and source-policy-blocked candidates are suppressed or skipped and must not become selected Weekly News Focus items.
-- Important Weekly News event claims have same-asset citation IDs, source document IDs, source-use policy metadata, source quality, event/published/retrieved dates, freshness labels, and evidence states. Stale, unknown, unavailable, partial, and insufficient-evidence inputs are labeled or suppressed instead of invented or silently selected.
-- AI Comprehensive Analysis threshold metadata remains suppressed unless at least two high-signal selected Weekly News Focus items exist and canonical fact citations are available; this task must not generate or rewrite AI Comprehensive Analysis output.
-- Existing route readers prefer valid configured Weekly News evidence where explicitly enabled and preserve deterministic fixture fallback for missing, invalid, wrong-asset, wrong-window, source-policy-blocked, stale-without-label, unavailable, unknown, or failing repository records.
-- The deterministic worker can exercise Weekly News evidence persistence metadata through the existing server-side worker/ledger boundary when a configured mocked writer is supplied, while preserving terminal-state idempotency and no generated-output activation.
-- Writer failures, writer misses, invalid persisted records, wrong-asset records, wrong-source records, bad market-week windows, source-policy-blocked records, and stale/unavailable evidence states fail closed or fall back safely without public route behavior drift.
-- Persisted diagnostics are compact and sanitized: no raw full article text, unrestricted source text, raw provider payloads, hidden prompts, raw model reasoning, raw user text, chat transcripts, personal identifiers, portfolio/allocation details, API keys, credentials, public URLs, signed URLs, or frontend-readable storage paths.
+- Valid deterministic golden-path outputs can write generated-output cache records with cache keys, artifact category, source checksums, knowledge-pack freshness hashes, generated-output freshness hashes, citation IDs, source-document IDs, same-asset or same-comparison-pack bindings, source-use eligibility, schema/prompt version metadata, validation status, and compact sanitized invalidation diagnostics.
+- Cache writes use only the existing repository/storage boundary and configured in-memory or mocked writer; normal tests and default local commands make no live object-storage, database, SEC, ETF issuer, provider, market-data, news, RSS, web, or LLM calls.
+- Cache writes are blocked for invalid, unsafe, uncited, wrong-asset, wrong-comparison-pack, stale-without-label, unknown-without-label, unavailable-without-label, partial-without-label, insufficient-evidence-without-label, source-policy-disallowed, rejected-source, unsupported, out-of-scope, or advice-like records.
+- Cache invalidation detects source checksum, knowledge-pack freshness hash, generated-output freshness hash, schema version, prompt version, source-use eligibility, citation binding, and freshness-label changes, and it fails closed when invalidation inputs are missing or inconsistent.
+- Overview, comparison, grounded chat-safe answer artifacts, exports, and source-list metadata can exercise configured cache writes for AAPL, VOO, QQQ, and supported golden comparisons without changing public response schemas or deterministic fallback output.
+- Weekly News Focus and AI Comprehensive Analysis cache eligibility respects T-107 evidence limits: configured maximum is not padded, empty/limited states remain valid, and AI Comprehensive Analysis remains suppressed unless at least two high-signal selected Weekly News Focus items and canonical fact citations are available.
+- Existing route readers prefer valid configured generated-output cache records where explicitly enabled and preserve deterministic fixture fallback for missing, invalid, wrong-asset, wrong-comparison-pack, source-policy-blocked, stale-without-label, unavailable, unknown, or failing repository records.
+- The deterministic worker can exercise generated-output cache persistence metadata through the existing server-side worker/ledger boundary when a configured mocked writer is supplied, while preserving terminal-state idempotency and no live generation activation.
+- Writer failures, writer misses, invalid persisted records, wrong-source records, bad freshness hashes, source-policy-blocked records, rejected-source records, and stale/unavailable evidence states fail closed or fall back safely without public route behavior drift.
+- Persisted cache diagnostics are compact and sanitized: no raw full article text, unrestricted source text, raw provider payloads, hidden prompts, raw model reasoning, raw user text, chat transcripts, personal identifiers, portfolio/allocation details, API keys, credentials, public URLs, signed URLs, or frontend-readable storage paths.
 - Preserve existing public/admin route paths, HTTP statuses, response models, deterministic fixture output for AAPL/VOO/QQQ and eligible pending assets, search behavior, source drawer/export behavior, no-live-call defaults, and v0.4 frontend workflow markers.
-- Add focused tests proving Weekly News event evidence persistence for mocked golden assets, official-first ranking, dedupe, evidence-limited and empty states, AI threshold suppression/availability metadata, rights-tier enforcement, blocked rejected/wrong-source/wrong-asset records, sanitized diagnostics, no import-time database connection, no live network dependency, no secret exposure, no raw unrestricted source text, and no generated pages/chat/comparisons/risk summaries/cache writes.
+- Add focused tests proving generated-output cache write activation for validated golden outputs, freshness invalidation, wrong-asset and wrong-comparison-pack blocking, citation/source-use enforcement, rejected/restricted-source blocking, stale/unknown/unavailable/partial handling, sanitized diagnostics, no import-time database connection, no live network dependency, no secret exposure, no raw unrestricted source text, and no live generated pages/chat/comparisons/risk summaries outside deterministic mocks.
 - Add or update repo-contract/safety tests only where needed to prove no live network imports or default live calls, no secret exposure, no advice language, no source-use weakening, no unsupported ETF expansion, no recent-news-as-canonical framing, and no public behavior drift.
-- Keep generated-output cache writes, frontend API-backed rendering, production worker scheduling, admin auth enforcement, rate limiting, deployment hardening, paid provider integration, broad source allowlist expansion, recurring Weekly News jobs, and actual live object-storage/database execution out of scope.
+- Keep frontend API-backed rendering, production worker scheduling, admin auth enforcement, rate limiting, deployment hardening, paid provider integration, broad source allowlist expansion, recurring Weekly News jobs, launch pre-cache expansion, and actual live object-storage/database execution out of scope.
 - Preserve product guardrails in implementation, tests, docs, and journal notes: no buy/sell/hold recommendations, allocation advice, tax advice, price targets, brokerage/trading behavior, unsupported factual claims, or recent-news-as-canonical framing.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_overview_generation.py tests/unit/test_source_policy.py -q
+python3 -m pytest tests/unit/test_cache_contracts.py tests/unit/test_overview_generation.py tests/unit/test_comparison_generation.py tests/unit/test_chat_generation.py tests/unit/test_exports.py tests/unit/test_source_policy.py -q
 python3 -m pytest tests/unit/test_ingestion_worker.py -q
 python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
 python3 -m pytest tests/integration/test_backend_api.py -q
@@ -89,10 +95,36 @@ git diff --check
 ```
 
 Iteration budget:
-One agent-loop cycle. Stop after deterministic persisted Weekly News event evidence for golden assets and configured reader fallback validation. If generated-output cache writes, generated AI Comprehensive Analysis activation, frontend API migration, live providers, production object-storage/database execution, source allowlist expansion, broad asset coverage, launch pre-cache expansion, recurring jobs, or deployment work are needed, record the follow-up and stop.
+One agent-loop cycle. Stop after deterministic generated-output cache-write and freshness-invalidation activation for validated golden-path outputs. If frontend API migration, generated AI Comprehensive Analysis activation from fresh persisted data, live providers, production object-storage/database execution, source allowlist expansion, broad asset coverage, launch pre-cache expansion, recurring jobs, or deployment work are needed, record the follow-up and stop.
 
 
 ## Completed
+
+### T-107: Persist official-source Weekly News Focus event evidence for golden assets
+
+Goal:
+Persist official-source Weekly News Focus event evidence for the golden stock and ETF path while preserving evidence-limited selection, dedupe, source-use gates, and AI Comprehensive Analysis thresholds.
+
+Completed details:
+
+- Implementation commit `e3e1bb2 feat(T-107): persist official-source Weekly News Focus event evidence for golden assets` updated `backend/repositories/weekly_news.py`, `backend/weekly_news_repository.py`, `backend/repositories/__init__.py`, `backend/ingestion_worker.py`, `tests/unit/test_weekly_news.py`, `tests/unit/test_ingestion_worker.py`, `tests/unit/test_repo_contract.py`, and `docs/agent-journal/20260426T060412Z.md`.
+- Merged branch `agent/T-107-20260426T060412Z` into `main` with local merge commit `4ad51db chore(T-107): merge persist official-source Weekly News Focus event evidence for golden assets`.
+- `backend/repositories/weekly_news.py` added an in-memory Weekly News event evidence repository that validates persisted market-week windows, candidate rows, source-rank inputs, dedupe rows, selected events, evidence states, AI threshold metadata, validation rows, and sanitized diagnostics before records are read or written.
+- The repository path preserves evidence-limited Weekly News behavior for fixture-backed golden assets: official-source evidence can be persisted while invalid, wrong-asset, wrong-window, source-policy-blocked, stale-without-label, unavailable, unknown, or otherwise unsafe records are rejected or fall back safely.
+- The persisted evidence metadata preserves source-use gates, same-asset citation/source bindings, selected-event counts, suppressed-candidate diagnostics, and AI Comprehensive Analysis threshold metadata without generating or rewriting AI Comprehensive Analysis content.
+- `backend/ingestion_worker.py` added an injected mocked Weekly News evidence writer path so the deterministic worker can persist Weekly News evidence metadata through the existing server-side worker/ledger boundary, and fail closed when the configured writer rejects records.
+- The implementation preserved fixture fallback, no-live-call defaults, public route schemas, generated-output cache inactivity, and existing AI Comprehensive Analysis content behavior.
+- Tests were added for in-memory Weekly News evidence persistence, worker writer integration, writer rejection fail-closed behavior, roadmap contract updates, and no public behavior drift.
+- `docs/agent-journal/20260426T060412Z.md` records these checks: `python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_ingestion_worker.py tests/unit/test_repo_contract.py -q` passed with 52 tests; `python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_overview_generation.py tests/unit/test_source_policy.py -q` passed with 41 tests; `python3 -m pytest tests/unit/test_ingestion_worker.py -q` passed with 18 tests; `python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q` passed with 30 tests; `python3 -m pytest tests/integration/test_backend_api.py -q` passed with 35 tests; `python3 -m pytest tests -q` passed with 388 tests; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed, including Python tests, static evals, frontend smoke, typecheck, build, and backend checks; `git diff --check` passed.
+- Remaining risks from the journal:
+  - Persistence remains deterministic and in-memory/mocked only; no production database, object storage, live source acquisition, scheduler, or provider path was activated.
+  - Golden-path coverage remains limited to fixture-backed records exercised by tests.
+  - Generated-output cache writes, generated analysis activation from fresh persisted data, frontend API migration, recurring acquisition, and production hardening remain follow-up tasks.
+
+Completion commits:
+
+- `e3e1bb2 feat(T-107): persist official-source Weekly News Focus event evidence for golden assets`
+- `4ad51db chore(T-107): merge persist official-source Weekly News Focus event evidence for golden assets`
 
 ### T-106: Write normalized knowledge packs from acquisition outputs
 
@@ -2893,37 +2925,6 @@ Completion commits:
 
 ## Backlog
 
-### T-108: Activate generated-output cache writes and freshness invalidation for validated outputs
-
-Goal:
-Activate deterministic generated-output cache writes for validated, citation-bound, source-policy-allowed golden-path outputs and preserve freshness-hash invalidation.
-
-Task-scope paragraph:
-Wire the generated-output cache writer boundary for golden asset overview sections, comparisons, grounded chat-safe answer artifacts, exports, and source-list metadata only after outputs pass citation, same-asset or same-comparison-pack binding, source-use, freshness, safety, and schema validation. This task should keep mocked/deterministic generation as the default and must not enable live LLM calls, live provider calls, frontend migration, broad asset coverage, or cache writes for unsupported, out-of-scope, unknown, unavailable, stale-without-label, partial-without-label, insufficient-evidence-without-label, rejected-source, or advice-like outputs.
-
-Acceptance criteria:
-
-- Valid golden-path outputs can write generated-output cache records with source checksums, knowledge-pack hashes, freshness hashes, citation/source bindings, validation status, and sanitized invalidation diagnostics.
-- Cache writes are blocked for invalid, unsafe, uncited, wrong-asset, wrong-comparison-pack, stale-without-label, source-policy-disallowed, rejected-source, unsupported, out-of-scope, unknown, unavailable, or advice-like records.
-- Cache invalidation fires on source checksum, knowledge-pack hash, freshness hash, schema version, prompt version, or source-use eligibility changes.
-- Public route behavior and schemas remain stable, and fixture fallback still works when configured cache writers/readers miss, fail, or return invalid records.
-- Live LLM generation remains opt-in and server-side only; normal CI uses deterministic mocks and no secrets.
-
-Required commands:
-
-```bash
-python3 -m pytest tests/unit/test_cache_contracts.py tests/unit/test_overview_generation.py tests/unit/test_comparison_generation.py tests/unit/test_chat_generation.py tests/unit/test_exports.py tests/unit/test_source_policy.py -q
-python3 -m pytest tests/integration/test_backend_api.py -q
-python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-git diff --check
-```
-
-Iteration budget:
-One agent-loop cycle. Stop after deterministic cache-write and invalidation activation for validated golden-path outputs; leave frontend API migration, live LLM execution, and production cache infrastructure for later.
-
 ### T-109: Wire frontend search and dynamic asset pages to backend APIs
 
 Goal:
@@ -2964,7 +2965,7 @@ This section is intentionally non-operational for the agent loop. Keep runnable 
 Current runtime snapshot:
 
 - Backend contracts, configured reader boundaries, ingestion ledger execution, source-use/export gates, Weekly News contracts, generated-output cache contracts, and live-generation readiness diagnostics are broad and stable.
-- The current runtime is still not end-to-end fresh-data functional: acquisition is mocked/golden-path, source snapshots and normalized knowledge packs are written only through deterministic in-memory/mocked boundaries, generated-output cache writes are inactive, Weekly News evidence persistence is the current golden-path task, and production persistence/storage is not the normal path.
+- The current runtime is still not end-to-end fresh-data functional: acquisition is mocked/golden-path, source snapshots, normalized knowledge packs, and Weekly News evidence are written only through deterministic in-memory/mocked boundaries, generated-output cache writes are the current golden-path task, and production persistence/storage is not the normal path.
 - The frontend renders the main learning surfaces with deterministic fixtures and selected backend adapters, but smoke tests still require home search to stay local and not call `/api/search`; API-backed search, pending states, and dynamic asset pages remain an explicit MVP blocker.
 - The next fully functional milestone is a local deterministic golden path where admin/server-side ingestion acquires mocked official-source data, persists validated snapshots and knowledge packs, writes validated cache records, and the frontend renders backend API responses with fixture fallback.
 
@@ -3001,8 +3002,9 @@ Operational defaults for general MVP roadmap tasks:
 - T-104 established mocked official ETF issuer golden-path acquisition. It is completed and must not be reintroduced as runnable backlog.
 - T-105 established deterministic source snapshot and parsed acquisition artifact persistence. It is completed and must not be reintroduced as runnable backlog.
 - T-106 established deterministic normalized knowledge-pack writes from acquisition outputs. It is completed and must not be reintroduced as runnable backlog.
-- T-107 is the current promoted task for deterministic persisted Weekly News Focus event evidence for golden assets.
-- T-108 and T-109 are the next runnable golden-path tasks for generated-output cache writes and frontend API-backed rendering.
+- T-107 established deterministic persisted Weekly News Focus event evidence for golden assets. It is completed and must not be reintroduced as runnable backlog.
+- T-108 is the current promoted task for generated-output cache writes and freshness invalidation.
+- T-109 is the next runnable golden-path task for frontend API-backed rendering.
 - Production hardening readiness diagnostics, route regression matrices, go/no-go launch checklists, deploy work, broad launch-universe pre-cache expansion, and recurring jobs move later until the mocked golden ingest-to-persist-to-render path works locally.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted task should run the relevant EVALS.md checks, `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, `bash scripts/run_quality_gate.sh`, and `git diff --check`.
@@ -3042,8 +3044,8 @@ Roadmap integration tracker:
 | Official ETF issuer golden-path acquisition | Completed | T-104 |
 | Source snapshot and parsed acquisition artifact persistence | Completed | T-105 |
 | Normalized knowledge-pack writes from ingestion | Completed | T-106 |
-| Weekly News Focus official-source event evidence persistence | Current | T-107 |
-| Generated-output cache writes and invalidation | Backlog | T-108 |
+| Weekly News Focus official-source event evidence persistence | Completed | T-107 |
+| Generated-output cache writes and invalidation | Current | T-108 |
 | Frontend API-backed search, pending states, and asset rendering | Backlog | T-109 |
 | Comparison, chat, source drawer, and export end-to-end persisted rendering | Runtime gap | Unpromoted |
 | Launch-universe pre-cache expansion and golden coverage | Runtime gap | Unpromoted |
