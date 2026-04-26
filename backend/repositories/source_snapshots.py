@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
 from pydantic import Field, field_validator
 
+from backend.data import STUB_TIMESTAMP
 from backend.models import (
     DEFAULT_ALLOWED_EXCERPT_BEHAVIOR,
     FreshnessState,
@@ -40,6 +41,7 @@ _BLOCKED_GENERATED_OUTPUT_STATES = {
     "source_policy_blocked",
     "rejected_source",
 }
+_SUPPORTED_ACQUISITION_STATE = "supported"
 
 
 class SourceSnapshotContractError(ValueError):
@@ -206,6 +208,82 @@ class SourceSnapshotArtifactRepository:
         return validated
 
 
+@dataclass
+class InMemorySourceSnapshotArtifactRepository:
+    artifacts_by_id: dict[str, SourceSnapshotArtifactRow] = field(default_factory=dict)
+    diagnostics_by_id: dict[str, SourceSnapshotDiagnosticRow] = field(default_factory=dict)
+
+    def persist(self, records: SourceSnapshotRepositoryRecords) -> SourceSnapshotRepositoryRecords:
+        validated = validate_source_snapshot_records(records)
+        for artifact in validated.artifacts:
+            self.artifacts_by_id[artifact.artifact_id] = artifact.model_copy(deep=True)
+        for diagnostic in validated.diagnostics:
+            self.diagnostics_by_id[diagnostic.diagnostic_id] = diagnostic.model_copy(deep=True)
+        return validated
+
+    def records(self) -> SourceSnapshotRepositoryRecords:
+        return SourceSnapshotRepositoryRecords(
+            artifacts=list(self.artifacts_by_id.values()),
+            diagnostics=list(self.diagnostics_by_id.values()),
+        )
+
+
+def source_snapshot_records_from_acquisition_result(
+    acquisition: Any,
+    *,
+    ingestion_job_id: str | None = None,
+    created_at: str = STUB_TIMESTAMP,
+    storage_prefix: str = "snapshots",
+) -> SourceSnapshotRepositoryRecords:
+    """Build private source snapshot metadata records from a deterministic acquisition result."""
+
+    ticker = str(getattr(acquisition, "ticker", "")).upper()
+    if not ticker:
+        raise SourceSnapshotContractError("Acquisition source snapshots require a ticker binding.")
+
+    response_state = _enum_value(getattr(acquisition, "response_state", None))
+    diagnostics = _diagnostics_from_acquisition(acquisition, created_at=created_at)
+    if response_state != _SUPPORTED_ACQUISITION_STATE:
+        return validate_source_snapshot_records(SourceSnapshotRepositoryRecords(diagnostics=diagnostics))
+
+    response = getattr(acquisition, "provider_response", None)
+    if response is None:
+        raise SourceSnapshotContractError("Supported acquisition snapshots require a provider response.")
+    if getattr(response, "asset", None) is None or response.asset.ticker != ticker:
+        raise SourceSnapshotContractError("Acquisition provider response must bind to the same asset ticker.")
+    if _enum_value(getattr(response, "state", None)) != _SUPPORTED_ACQUISITION_STATE:
+        raise SourceSnapshotContractError("Acquisition provider response must be supported before snapshot persistence.")
+
+    source_record_by_id = {
+        record.source_document_id: record for record in getattr(acquisition, "source_records", ())
+    }
+    artifacts: list[SourceSnapshotArtifactRow] = []
+    for source in response.source_attributions:
+        source_record = source_record_by_id.get(source.source_document_id)
+        if source_record is None:
+            raise SourceSnapshotContractError("Acquisition source records must bind every provider source document.")
+        _validate_acquisition_source_binding(acquisition, source, source_record)
+        if source.source_use_policy is SourceUsePolicy.rejected or source.allowlist_status is SourceAllowlistStatus.rejected:
+            continue
+        for category in _artifact_categories_for_source(source):
+            artifacts.append(
+                _artifact_from_provider_source(
+                    source,
+                    artifact_category=category,
+                    checksum=_artifact_checksum(source_record.checksum, category),
+                    byte_size=0,
+                    content_type=_content_type_for_category(category),
+                    created_at=created_at,
+                    storage_key=_artifact_storage_key(storage_prefix, ticker, source.source_document_id, category),
+                    ingestion_job_id=ingestion_job_id,
+                    acquisition=acquisition,
+                    source_record_checksum=source_record.checksum,
+                )
+            )
+
+    return validate_source_snapshot_records(SourceSnapshotRepositoryRecords(artifacts=artifacts, diagnostics=diagnostics))
+
+
 def artifact_from_knowledge_pack_source(
     source: KnowledgePackSourceMetadata,
     *,
@@ -251,6 +329,60 @@ def artifact_from_knowledge_pack_source(
     )
 
 
+def _artifact_from_provider_source(
+    source: Any,
+    *,
+    artifact_category: SourceSnapshotArtifactCategory,
+    checksum: str,
+    byte_size: int,
+    content_type: str,
+    created_at: str,
+    storage_key: str,
+    ingestion_job_id: str | None,
+    acquisition: Any,
+    source_record_checksum: str,
+) -> SourceSnapshotArtifactRow:
+    can_feed_generated_output = _provider_source_can_support_generated_output(source)
+    return SourceSnapshotArtifactRow(
+        artifact_id=f"snapshot-{source.asset_ticker.lower()}-{source.source_document_id}-{artifact_category.value}",
+        scope_kind=SourceSnapshotScopeKind.asset.value,
+        asset_ticker=source.asset_ticker,
+        ingestion_job_id=ingestion_job_id,
+        source_document_id=source.source_document_id,
+        source_reference_id=source.source_document_id,
+        source_asset_ticker=source.asset_ticker,
+        artifact_category=artifact_category.value,
+        storage_key=storage_key,
+        checksum=checksum,
+        byte_size=byte_size,
+        content_type=content_type,
+        retrieved_at=source.retrieved_at,
+        created_at=created_at,
+        source_use_policy=source.source_use_policy.value,
+        allowlist_status=source.allowlist_status.value,
+        source_quality=source.source_quality.value,
+        permitted_operations=source.permitted_operations.model_dump(mode="json"),
+        freshness_state=source.freshness_state.value,
+        evidence_state=_source_evidence_state(acquisition),
+        can_feed_generated_output=can_feed_generated_output,
+        can_support_citations=source.permitted_operations.can_support_citations,
+        cache_allowed=source.permitted_operations.can_cache,
+        export_allowed=source.permitted_operations.can_export_metadata,
+        compact_diagnostics={
+            "acquisition_boundary": getattr(acquisition, "boundary", None),
+            "source_policy_ref": getattr(acquisition, "source_policy_ref", None),
+            "source_document_id": source.source_document_id,
+            "source_type": source.source_type,
+            "provider_kind": _enum_value(source.provider_kind),
+            "data_category": _enum_value(source.data_category),
+            "as_of_date": source.as_of_date,
+            "source_record_checksum": source_record_checksum,
+            "evidence_gap_states": dict(getattr(acquisition, "evidence_gap_states", {})),
+            "no_live_external_calls": bool(getattr(acquisition, "no_live_external_calls", True)),
+        },
+    )
+
+
 def validate_source_snapshot_records(records: SourceSnapshotRepositoryRecords) -> SourceSnapshotRepositoryRecords:
     artifact_ids = {artifact.artifact_id for artifact in records.artifacts}
     if len(artifact_ids) != len(records.artifacts):
@@ -282,8 +414,14 @@ def _validate_artifact(artifact: SourceSnapshotArtifactRow) -> None:
 
     if artifact.byte_size < 0:
         raise SourceSnapshotContractError("Source snapshot byte size cannot be negative.")
+    if not artifact.source_document_id or not artifact.source_reference_id:
+        raise SourceSnapshotContractError("Source snapshot artifacts require source document bindings.")
+    if artifact.source_document_id != artifact.source_reference_id:
+        raise SourceSnapshotContractError("Source snapshot source document and source reference bindings must match.")
     if not artifact.checksum:
         raise SourceSnapshotContractError("Source snapshot artifacts require checksum metadata.")
+    if not artifact.checksum.startswith("sha256:"):
+        raise SourceSnapshotContractError("Source snapshot artifacts require deterministic sha256 checksum metadata.")
 
     if policy is SourceUsePolicy.rejected or allowlist_status is SourceAllowlistStatus.rejected:
         raise SourceSnapshotContractError("Rejected sources cannot create source snapshot artifacts.")
@@ -383,6 +521,144 @@ def _validate_diagnostic(diagnostic: SourceSnapshotDiagnosticRow, artifact_ids: 
         or diagnostic.stores_raw_model_reasoning
     ):
         raise SourceSnapshotContractError("Source snapshot diagnostics must store compact sanitized metadata only.")
+
+
+def _validate_acquisition_source_binding(acquisition: Any, source: Any, source_record: Any) -> None:
+    ticker = str(getattr(acquisition, "ticker", "")).upper()
+    if source.asset_ticker != ticker:
+        raise SourceSnapshotContractError("Acquisition source snapshot source ticker must match the asset.")
+    if source_record.source_document_id != source.source_document_id:
+        raise SourceSnapshotContractError("Acquisition source snapshot source document binding must match.")
+    if _enum_value(source_record.source_use_policy) != source.source_use_policy.value:
+        raise SourceSnapshotContractError("Acquisition source-use metadata must match the provider source.")
+    if _enum_value(source_record.allowlist_status) != source.allowlist_status.value:
+        raise SourceSnapshotContractError("Acquisition allowlist metadata must match the provider source.")
+    if _enum_value(source_record.source_quality) != source.source_quality.value:
+        raise SourceSnapshotContractError("Acquisition source quality metadata must match the provider source.")
+    if _enum_value(source_record.freshness_state) != source.freshness_state.value:
+        raise SourceSnapshotContractError("Acquisition freshness metadata must match the provider source.")
+    if not str(source_record.checksum).startswith("sha256:"):
+        raise SourceSnapshotContractError("Acquisition source records require deterministic sha256 checksums.")
+    issuer = getattr(acquisition, "issuer", None)
+    if issuer and source.publisher != issuer:
+        raise SourceSnapshotContractError("ETF issuer source snapshots must bind to the same issuer.")
+
+
+def _artifact_categories_for_source(source: Any) -> tuple[SourceSnapshotArtifactCategory, ...]:
+    policy = SourceUsePolicy(source.source_use_policy)
+    if policy is SourceUsePolicy.full_text_allowed:
+        return (SourceSnapshotArtifactCategory.raw_source, SourceSnapshotArtifactCategory.parsed_text)
+    if policy is SourceUsePolicy.summary_allowed:
+        return (SourceSnapshotArtifactCategory.summary,)
+    if policy in {SourceUsePolicy.metadata_only, SourceUsePolicy.link_only}:
+        return (SourceSnapshotArtifactCategory.checksum_metadata,)
+    return ()
+
+
+def _artifact_checksum(source_checksum: str, category: SourceSnapshotArtifactCategory) -> str:
+    if not source_checksum.startswith("sha256:"):
+        raise SourceSnapshotContractError("Source snapshot artifact inputs require deterministic sha256 checksums.")
+    checksum_body = source_checksum.split(":", 1)[1]
+    if category is SourceSnapshotArtifactCategory.raw_source:
+        return source_checksum
+    return f"sha256:{category.value}:{checksum_body}"
+
+
+def _artifact_storage_key(
+    storage_prefix: str,
+    ticker: str,
+    source_document_id: str,
+    category: SourceSnapshotArtifactCategory,
+) -> str:
+    prefix = storage_prefix.strip("/")
+    return f"{prefix}/{ticker.lower()}/{source_document_id}/{category.value}.json"
+
+
+def _content_type_for_category(category: SourceSnapshotArtifactCategory) -> str:
+    if category is SourceSnapshotArtifactCategory.raw_source:
+        return "application/octet-stream"
+    return "application/json"
+
+
+def _diagnostics_from_acquisition(acquisition: Any, *, created_at: str) -> list[SourceSnapshotDiagnosticRow]:
+    ticker = str(getattr(acquisition, "ticker", "")).lower() or "unknown"
+    rows: list[SourceSnapshotDiagnosticRow] = []
+    for index, diagnostic in enumerate(getattr(acquisition, "diagnostics", ())):
+        code = str(getattr(diagnostic, "code", "unknown"))
+        rows.append(
+            SourceSnapshotDiagnosticRow(
+                diagnostic_id=f"snapshot-{ticker}-{code}-{index + 1}",
+                category=_diagnostic_category(code).value,
+                retrieval_status=_enum_value(getattr(diagnostic, "freshness_state", None)),
+                retryable=bool(getattr(diagnostic, "retryable", False)),
+                source_policy_ref=getattr(acquisition, "source_policy_ref", None),
+                checksum=getattr(acquisition, "checksum", None),
+                occurred_at=created_at,
+                created_at=created_at,
+                compact_metadata={
+                    "acquisition_boundary": getattr(acquisition, "boundary", None),
+                    "diagnostic_code": code,
+                    "evidence_state": _enum_value(getattr(diagnostic, "evidence_state", None)),
+                    "freshness_state": _enum_value(getattr(diagnostic, "freshness_state", None)),
+                    "response_state": _enum_value(getattr(acquisition, "response_state", None)),
+                },
+                stores_secret=bool(getattr(diagnostic, "stores_secret", False)),
+                stores_provider_payload=bool(getattr(diagnostic, "stores_raw_provider_payload", False)),
+                stores_raw_source_text=bool(getattr(diagnostic, "stores_raw_source_text", False)),
+            )
+        )
+    return rows
+
+
+def _diagnostic_category(code: str) -> SourceSnapshotDiagnosticCategory:
+    lowered = code.lower()
+    if "source_policy" in lowered or "rejected" in lowered:
+        return SourceSnapshotDiagnosticCategory.source_policy_blocked
+    if "checksum" in lowered:
+        return SourceSnapshotDiagnosticCategory.checksum_mismatch
+    if "parser" in lowered:
+        return SourceSnapshotDiagnosticCategory.parser_failed
+    if "validation" in lowered or "fixture" in lowered:
+        return SourceSnapshotDiagnosticCategory.validation_failed
+    if "unavailable" in lowered or "unknown" in lowered or "evidence_gap" in lowered:
+        return SourceSnapshotDiagnosticCategory.retrieval_unavailable
+    return SourceSnapshotDiagnosticCategory.unknown
+
+
+def _source_evidence_state(acquisition: Any) -> str:
+    gap_states = set(getattr(acquisition, "evidence_gap_states", {}).values())
+    if "stale" in gap_states:
+        return "stale"
+    if "partial" in gap_states:
+        return "partial"
+    if "unknown" in gap_states:
+        return "unknown"
+    if "unavailable" in gap_states:
+        return "partial"
+    if "insufficient_evidence" in gap_states:
+        return "insufficient_evidence"
+    return "supported"
+
+
+def _provider_source_can_support_generated_output(source: Any) -> bool:
+    decision = SourcePolicyDecision(
+        decision=SourcePolicyDecisionState.allowed,
+        source_id=source.source_document_id,
+        matched_by="local_fixture",
+        source_quality=source.source_quality,
+        allowlist_status=source.allowlist_status,
+        source_use_policy=source.source_use_policy,
+        permitted_operations=source.permitted_operations,
+        allowed_excerpt=DEFAULT_ALLOWED_EXCERPT_BEHAVIOR.model_copy(),
+        reason="Deterministic source snapshot persistence reused source-use generated-output policy helper.",
+    )
+    return source_can_support_generated_output(decision)
+
+
+def _enum_value(value: Any) -> str | None:
+    if value is None:
+        return None
+    return getattr(value, "value", value)
 
 
 def _validate_compact_metadata(metadata: dict[str, Any]) -> None:

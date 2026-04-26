@@ -24,12 +24,14 @@ from backend.repositories.ingestion_jobs import (
 from backend.repositories.source_snapshots import (
     SOURCE_SNAPSHOT_REPOSITORY_BOUNDARY,
     SOURCE_SNAPSHOT_TABLES,
+    InMemorySourceSnapshotArtifactRepository,
     SourceSnapshotArtifactCategory,
     SourceSnapshotArtifactRepository,
     SourceSnapshotContractError,
     SourceSnapshotRepositoryRecords,
     artifact_from_knowledge_pack_source,
     source_snapshot_repository_metadata,
+    source_snapshot_records_from_acquisition_result,
     validate_source_snapshot_records,
 )
 from backend.repositories.generated_outputs import (
@@ -106,6 +108,7 @@ __all__ = [
     "KnowledgePackRepositoryContractError",
     "KnowledgePackRepositoryRecords",
     "RetrievalRepositoryReadResult",
+    "InMemorySourceSnapshotArtifactRepository",
     "SourceSnapshotArtifactCategory",
     "SourceSnapshotArtifactRepository",
     "SourceSnapshotContractError",
@@ -138,6 +141,7 @@ __all__ = [
     "read_persisted_knowledge_pack_response",
     "serialize_ingestion_job_response",
     "source_snapshot_repository_metadata",
+    "source_snapshot_records_from_acquisition_result",
     "validate_ingestion_job_ledger_records",
     "validate_generated_output_cache_records",
     "validate_chat_session_records",
