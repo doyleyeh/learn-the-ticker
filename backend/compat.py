@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from inspect import signature
+from types import SimpleNamespace
 from typing import Any, Callable, get_type_hints
 from urllib.parse import parse_qsl, urlsplit
 
@@ -29,6 +30,7 @@ class FastAPI:
 
     def __init__(self, **_: Any):
         self.routes: list[_Route] = []
+        self.state = SimpleNamespace()
 
     def get(self, path: str, **_: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         return self._register("GET", path)

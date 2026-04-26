@@ -3,6 +3,7 @@ import os
 os.environ.setdefault("LTT_FORCE_COMPAT_FASTAPI", "1")
 
 from backend.main import app
+from backend.persistence import BackendReadDependencies, configure_backend_read_dependencies
 from backend.safety import find_forbidden_output_phrases
 from backend.testing import TestClient
 
@@ -10,10 +11,93 @@ from backend.testing import TestClient
 client = TestClient(app)
 
 
+class RouteReaderSpy:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple[str, ...]]] = []
+
+    def read_knowledge_pack_records(self, ticker: str):
+        self.calls.append(("knowledge_pack", (ticker,)))
+        return None
+
+    def read_generated_output_cache_records(self, *args: str):
+        self.calls.append(("generated_output_cache", tuple(args)))
+        return None
+
+    def read_comparison_records(self, left_ticker: str, right_ticker: str):
+        self.calls.append(("comparison_cache", (left_ticker, right_ticker)))
+        return None
+
+    def read_chat_answer_records(self, ticker: str):
+        self.calls.append(("chat_cache", (ticker,)))
+        return None
+
+    def read_weekly_news_event_evidence_records(self, ticker: str):
+        self.calls.append(("weekly_news", (ticker,)))
+        return None
+
+    def read_chat_session_records(self, conversation_id: str):
+        self.calls.append(("chat_session", (conversation_id,)))
+        return None
+
+    def persist_chat_session_records(self, records):
+        self.calls.append(("chat_session_persist", (records.envelopes[0].conversation_id,)))
+        return records
+
+    def mark_chat_session_deleted(self, records):
+        self.calls.append(("chat_session_delete", (records.envelopes[0].conversation_id,)))
+        return records
+
+
 def _without_session(payload: dict) -> dict:
     stripped = dict(payload)
     stripped.pop("session", None)
     return stripped
+
+
+def test_configured_backend_readers_are_route_wired_with_fixture_fallback():
+    spy = RouteReaderSpy()
+    configure_backend_read_dependencies(
+        app,
+        BackendReadDependencies(
+            persisted_reads_enabled=True,
+            knowledge_pack_reader=spy,
+            generated_output_cache_reader=spy,
+            weekly_news_reader=spy,
+            chat_session_reader=spy,
+            chat_session_writer=spy,
+        ),
+    )
+    try:
+        overview = client.get("/api/assets/VOO/overview").json()
+        weekly = client.get("/api/assets/VOO/weekly-news").json()
+        details = client.get("/api/assets/VOO/details").json()
+        sources = client.get("/api/assets/VOO/sources").json()
+        knowledge_pack = client.get("/api/assets/VOO/knowledge-pack").json()
+        comparison = client.post("/api/compare", json={"left_ticker": "VOO", "right_ticker": "QQQ"}).json()
+        asset_export = client.get("/api/assets/VOO/export").json()
+        comparison_export = client.get("/api/compare/export", params={"left_ticker": "VOO", "right_ticker": "QQQ"}).json()
+        chat = client.post("/api/assets/VOO/chat", json={"question": "What is VOO?"}).json()
+        status = client.get("/api/chat-sessions/missing-session").json()
+        chat_export = client.post("/api/assets/VOO/chat/export", json={"question": "What is VOO?"}).json()
+    finally:
+        configure_backend_read_dependencies(app, None)
+
+    assert overview["asset"]["ticker"] == "VOO"
+    assert weekly["weekly_news_focus"]["selected_item_count"] == 0
+    assert details["facts"]
+    assert sources["drawer_state"] == "available"
+    assert knowledge_pack["build_state"] == "available"
+    assert comparison["comparison_type"] == "etf_vs_etf"
+    assert asset_export["export_state"] == "available"
+    assert comparison_export["export_state"] == "available"
+    assert chat["asset"]["ticker"] == "VOO"
+    assert status["session"]["lifecycle_state"] == "unavailable"
+    assert chat_export["export_state"] == "available"
+
+    assert ("knowledge_pack", ("VOO",)) in spy.calls
+    assert ("knowledge_pack", ("QQQ",)) in spy.calls
+    assert ("weekly_news", ("VOO",)) in spy.calls
+    assert ("chat_session", ("missing-session",)) in spy.calls
 
 
 def test_health_endpoint_available():

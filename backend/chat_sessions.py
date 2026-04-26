@@ -246,6 +246,8 @@ def answer_chat_with_session(
     store: ChatSessionStore = DEFAULT_CHAT_SESSION_STORE,
     persisted_reader: PersistedChatSessionReader | Any | None = None,
     persisted_writer: PersistedChatSessionWriter | Any | None = None,
+    persisted_pack_reader: Any | None = None,
+    generated_output_cache_reader: Any | None = None,
 ) -> ChatResponse:
     selected_ticker = ticker.upper()
     if request.conversation_id:
@@ -253,7 +255,12 @@ def answer_chat_with_session(
         if persisted_access is not None:
             if persisted_access.lifecycle_state is not ChatSessionLifecycleState.active or persisted_access.record is None:
                 return _session_unavailable_chat(selected_ticker, persisted_access)
-            response = generate_asset_chat(selected_ticker, request.question)
+            response = generate_asset_chat(
+                selected_ticker,
+                request.question,
+                persisted_pack_reader=persisted_pack_reader,
+                generated_output_cache_reader=generated_output_cache_reader,
+            )
             response.session = store.append_turn(persisted_access.record, response)
             _try_persist_session_records(persisted_writer, _records_from_session_record(persisted_access.record))
             return response
@@ -261,12 +268,22 @@ def answer_chat_with_session(
         access = store.access(request.conversation_id, selected_ticker)
         if access.lifecycle_state is not ChatSessionLifecycleState.active or access.record is None:
             return _session_unavailable_chat(selected_ticker, access)
-        response = generate_asset_chat(selected_ticker, request.question)
+        response = generate_asset_chat(
+            selected_ticker,
+            request.question,
+            persisted_pack_reader=persisted_pack_reader,
+            generated_output_cache_reader=generated_output_cache_reader,
+        )
         response.session = store.append_turn(access.record, response)
         _try_persist_session_records(persisted_writer, _records_from_session_record(access.record))
         return response
 
-    response = generate_asset_chat(selected_ticker, request.question)
+    response = generate_asset_chat(
+        selected_ticker,
+        request.question,
+        persisted_pack_reader=persisted_pack_reader,
+        generated_output_cache_reader=generated_output_cache_reader,
+    )
     if not response.asset.supported:
         response.session = _unavailable_metadata(
             None,
