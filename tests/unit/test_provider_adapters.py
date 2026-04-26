@@ -24,9 +24,11 @@ from backend.models import (
 from backend.provider_adapters import sec_stock as sec_stock_module
 from backend.provider_adapters import etf_issuer as etf_issuer_module
 from backend.provider_adapters.etf_issuer import (
+    ETF_ISSUER_ACQUISITION_BOUNDARY,
     ETF_ISSUER_FIXTURE_CONTRACT_VERSION,
     ETF_ISSUER_FIXTURES,
     EtfIssuerFixtureContractError,
+    build_etf_issuer_acquisition_result,
     build_etf_issuer_provider_response,
     etf_issuer_fixture_for_ticker,
 )
@@ -408,6 +410,57 @@ def test_etf_issuer_fixture_contract_normalizes_sources_holdings_exposures_and_g
     assert fixture.evidence_gaps[0].evidence_state is EvidenceState.unavailable
 
 
+def test_etf_issuer_acquisition_boundary_exposes_readiness_checksums_and_gap_states():
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.etf_issuer, "VOO").licensing
+
+    for ticker, issuer in [("VOO", "Vanguard"), ("QQQ", "Invesco")]:
+        acquisition = build_etf_issuer_acquisition_result(adapter, adapter.request(ticker), licensing)
+
+        assert acquisition.boundary == ETF_ISSUER_ACQUISITION_BOUNDARY
+        assert acquisition.ticker == ticker
+        assert acquisition.issuer == issuer
+        assert acquisition.response_state is ProviderResponseState.supported
+        assert acquisition.provider_response is not None
+        assert acquisition.provider_response.asset is not None
+        assert acquisition.provider_response.asset.ticker == ticker
+        assert acquisition.configuration_readiness.issuer_source_configured is True
+        assert acquisition.configuration_readiness.rate_limit_ready is True
+        assert acquisition.configuration_readiness.live_call_disabled is True
+        assert acquisition.configuration_readiness.no_live_external_calls is True
+        assert acquisition.no_live_external_calls is True
+        assert acquisition.opened_database_connection is False
+        assert acquisition.wrote_source_snapshot is False
+        assert acquisition.wrote_knowledge_pack is False
+        assert acquisition.wrote_generated_output_cache is False
+        assert acquisition.created_generated_asset_page is False
+        assert acquisition.created_generated_chat_answer is False
+        assert acquisition.created_generated_comparison is False
+        assert acquisition.created_generated_risk_summary is False
+        assert acquisition.checksum is not None
+        assert acquisition.checksum.startswith("sha256:etf-issuer-acquisition:")
+        assert len(acquisition.source_records) == 4
+        assert {record.source_type for record in acquisition.source_records} == {
+            "issuer_fact_sheet",
+            "summary_prospectus",
+            "issuer_holdings_file",
+            "issuer_exposure_file",
+        }
+        assert all(record.checksum.startswith(f"sha256:issuer-{ticker.lower()}-") for record in acquisition.source_records)
+        assert all(record.source_use_policy is SourceUsePolicy.full_text_allowed for record in acquisition.source_records)
+        assert all(record.allowlist_status is SourceAllowlistStatus.allowed for record in acquisition.source_records)
+        assert all(record.source_quality is SourceQuality.issuer for record in acquisition.source_records)
+        assert all(record.stores_raw_source_text is False for record in acquisition.source_records)
+        assert all(record.stores_raw_provider_payload is False for record in acquisition.source_records)
+        assert acquisition.evidence_gap_states == {"premium_discount_or_spread": "unavailable"}
+        assert acquisition.diagnostics[0].code == "etf_issuer_evidence_gap_premium_discount_or_spread"
+        assert acquisition.diagnostics[0].evidence_state is EvidenceState.unavailable
+        assert acquisition.diagnostics[0].stores_raw_source_text is False
+        assert acquisition.diagnostics[0].stores_raw_provider_payload is False
+        assert acquisition.diagnostics[0].stores_secret is False
+        _assert_no_generated_outputs(acquisition.provider_response)
+
+
 def test_etf_issuer_fixture_contract_rejects_wrong_ticker_issuer_blocked_classes_and_policy(monkeypatch):
     adapter = mock_etf_issuer_adapter()
     licensing = fetch_mock_provider_response(ProviderKind.etf_issuer, "VOO").licensing
@@ -448,6 +501,49 @@ def test_etf_issuer_fixture_contract_rejects_wrong_ticker_issuer_blocked_classes
         build_etf_issuer_provider_response(adapter, adapter.request("VOO"), licensing)
 
 
+def test_etf_issuer_acquisition_boundary_sanitizes_policy_and_fixture_failures(monkeypatch):
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.etf_issuer, "VOO").licensing
+    fixture = ETF_ISSUER_FIXTURES["VOO"]
+
+    monkeypatch.setitem(ETF_ISSUER_FIXTURES, "SPY", fixture)
+    wrong_ticker = build_etf_issuer_acquisition_result(adapter, adapter.request("SPY"), licensing)
+    assert wrong_ticker.response_state is ProviderResponseState.unavailable
+    assert wrong_ticker.provider_response is None
+    assert wrong_ticker.diagnostics[0].code == "etf_issuer_fixture_validation_failed"
+    assert wrong_ticker.diagnostics[0].message == "Sanitized ETF issuer acquisition diagnostic."
+    assert wrong_ticker.diagnostics[0].stores_raw_provider_payload is False
+
+    blocked_class = replace(fixture, identity=replace(fixture.identity, leveraged=True))
+    monkeypatch.setitem(ETF_ISSUER_FIXTURES, "VOO", blocked_class)
+    blocked = build_etf_issuer_acquisition_result(adapter, adapter.request("VOO"), licensing)
+    assert blocked.response_state is ProviderResponseState.unavailable
+    assert blocked.provider_response is None
+    assert blocked.diagnostics[0].code == "etf_issuer_fixture_validation_failed"
+
+    monkeypatch.setitem(ETF_ISSUER_FIXTURES, "VOO", fixture)
+    rejected_decision = SourcePolicyDecision(
+        decision=SourcePolicyDecisionState.rejected,
+        source_id="rejected_etf_fixture",
+        matched_by="domain",
+        source_quality=SourceQuality.rejected,
+        allowlist_status=SourceAllowlistStatus.rejected,
+        source_use_policy=SourceUsePolicy.rejected,
+        permitted_operations=DEFAULT_BLOCKED_SOURCE_OPERATIONS.model_copy(),
+        allowed_excerpt=DEFAULT_BLOCKED_EXCERPT_BEHAVIOR.model_copy(),
+        canonical_facts_allowed=False,
+        reason="Test rejected source policy.",
+    )
+    monkeypatch.setattr(etf_issuer_module, "resolve_source_policy", lambda url: rejected_decision)
+    source_blocked = build_etf_issuer_acquisition_result(adapter, adapter.request("VOO"), licensing)
+    assert source_blocked.response_state is ProviderResponseState.permission_limited
+    assert source_blocked.provider_response is None
+    assert source_blocked.diagnostics[0].code == "source_policy_blocked"
+    assert source_blocked.diagnostics[0].message == "Sanitized ETF issuer acquisition diagnostic."
+    assert source_blocked.wrote_generated_output_cache is False
+    assert source_blocked.created_generated_asset_page is False
+
+
 def test_etf_issuer_fixture_contract_rejects_wrong_source_binding(monkeypatch):
     adapter = mock_etf_issuer_adapter()
     licensing = fetch_mock_provider_response(ProviderKind.etf_issuer, "VOO").licensing
@@ -464,6 +560,45 @@ def test_etf_issuer_fixture_contract_rejects_wrong_source_binding(monkeypatch):
     )
     with pytest.raises(EtfIssuerFixtureContractError, match="invalid source evidence"):
         build_etf_issuer_provider_response(adapter, adapter.request("VOO"), licensing)
+
+
+def test_etf_issuer_acquisition_boundary_blocks_non_golden_or_wrong_scope_inputs():
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.etf_issuer, "VOO").licensing
+
+    wrong_asset_type = build_etf_issuer_acquisition_result(adapter, adapter.request("AAPL"), licensing)
+    eligible = build_etf_issuer_acquisition_result(adapter, adapter.request("SPY"), licensing)
+    unsupported = build_etf_issuer_acquisition_result(adapter, adapter.request("TQQQ"), licensing)
+    out_of_scope = build_etf_issuer_acquisition_result(adapter, adapter.request("VXX"), licensing)
+    unknown = build_etf_issuer_acquisition_result(adapter, adapter.request("ZZZZ"), licensing)
+
+    assert wrong_asset_type.response_state is ProviderResponseState.out_of_scope
+    assert wrong_asset_type.diagnostics[0].code == "blocked_wrong_asset_type_for_etf_issuer_acquisition"
+    assert eligible.response_state is ProviderResponseState.eligible_not_cached
+    assert eligible.diagnostics[0].code == "fixture_not_registered_for_etf_golden_path"
+    assert eligible.evidence_gap_states["etf_issuer_acquisition"] == "partial"
+    assert unsupported.response_state is ProviderResponseState.unsupported
+    assert unsupported.diagnostics[0].code == "blocked_unsupported_asset"
+    assert out_of_scope.response_state is ProviderResponseState.out_of_scope
+    assert out_of_scope.diagnostics[0].code == "blocked_out_of_scope_asset"
+    assert unknown.response_state is ProviderResponseState.unknown
+    assert unknown.diagnostics[0].code == "unknown_or_unavailable_asset"
+
+    for acquisition in [wrong_asset_type, eligible, unsupported, out_of_scope, unknown]:
+        assert acquisition.provider_response is None
+        assert acquisition.source_records == ()
+        assert acquisition.checksum is None
+        assert acquisition.no_live_external_calls is True
+        assert acquisition.created_generated_asset_page is False
+        assert acquisition.created_generated_chat_answer is False
+        assert acquisition.created_generated_comparison is False
+        assert acquisition.created_generated_risk_summary is False
+        assert acquisition.wrote_source_snapshot is False
+        assert acquisition.wrote_knowledge_pack is False
+        assert acquisition.wrote_generated_output_cache is False
+        assert acquisition.diagnostics[0].stores_raw_source_text is False
+        assert acquisition.diagnostics[0].stores_raw_provider_payload is False
+        assert acquisition.diagnostics[0].stores_secret is False
 
 
 def test_market_reference_adapter_covers_supported_and_eligible_not_cached_with_restricted_licensing():

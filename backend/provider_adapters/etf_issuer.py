@@ -3,7 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from backend.data import ASSETS, STUB_TIMESTAMP, normalize_ticker
+from backend.data import (
+    ASSETS,
+    ELIGIBLE_NOT_CACHED_ASSETS,
+    OUT_OF_SCOPE_COMMON_STOCKS,
+    STUB_TIMESTAMP,
+    UNSUPPORTED_ASSETS,
+    normalize_ticker,
+)
 from backend.models import (
     AssetIdentity,
     AssetType,
@@ -28,6 +35,8 @@ from backend.source_policy import resolve_source_policy, source_can_support_gene
 
 
 ETF_ISSUER_FIXTURE_CONTRACT_VERSION = "etf-issuer-fixture-adapter-v1"
+ETF_ISSUER_ACQUISITION_BOUNDARY = "etf-issuer-acquisition-boundary-v1"
+ETF_ISSUER_SOURCE_POLICY_REF = "source-use-policy-v1"
 
 
 class EtfIssuerFixtureContractError(ValueError):
@@ -124,6 +133,66 @@ class EtfIssuerFixture:
     prospectus: EtfProspectusReferenceFixture
     holdings_or_exposures: tuple[EtfHoldingExposureFixture, ...]
     evidence_gaps: tuple[EtfEvidenceGapFixture, ...] = ()
+
+
+@dataclass(frozen=True)
+class EtfIssuerConfigurationReadiness:
+    issuer_source_configured: bool
+    rate_limit_ready: bool
+    live_call_disabled: bool
+    no_live_external_calls: bool = True
+    configuration_source: str = "deterministic_fixture"
+
+
+@dataclass(frozen=True)
+class EtfIssuerAcquisitionSourceRecord:
+    source_document_id: str
+    source_type: str
+    checksum: str
+    source_use_policy: SourceUsePolicy
+    allowlist_status: SourceAllowlistStatus
+    source_quality: SourceQuality
+    freshness_state: FreshnessState
+    retrieved_at: str
+    as_of_date: str | None
+    stores_raw_source_text: bool = False
+    stores_raw_provider_payload: bool = False
+
+
+@dataclass(frozen=True)
+class EtfIssuerAcquisitionDiagnostic:
+    code: str
+    message: str
+    evidence_state: EvidenceState
+    freshness_state: FreshnessState
+    retryable: bool = False
+    stores_raw_source_text: bool = False
+    stores_raw_provider_payload: bool = False
+    stores_secret: bool = False
+
+
+@dataclass(frozen=True)
+class EtfIssuerAcquisitionResult:
+    boundary: str
+    ticker: str
+    issuer: str | None
+    response_state: ProviderResponseState
+    provider_response: ProviderResponse | None
+    configuration_readiness: EtfIssuerConfigurationReadiness
+    source_records: tuple[EtfIssuerAcquisitionSourceRecord, ...]
+    diagnostics: tuple[EtfIssuerAcquisitionDiagnostic, ...]
+    evidence_gap_states: dict[str, str]
+    checksum: str | None
+    source_policy_ref: str = ETF_ISSUER_SOURCE_POLICY_REF
+    no_live_external_calls: bool = True
+    opened_database_connection: bool = False
+    wrote_source_snapshot: bool = False
+    wrote_knowledge_pack: bool = False
+    wrote_generated_output_cache: bool = False
+    created_generated_asset_page: bool = False
+    created_generated_chat_answer: bool = False
+    created_generated_comparison: bool = False
+    created_generated_risk_summary: bool = False
 
 
 ETF_ISSUER_FIXTURES: dict[str, EtfIssuerFixture] = {
@@ -352,6 +421,51 @@ def etf_issuer_fixture_for_ticker(ticker: str) -> EtfIssuerFixture | None:
     return ETF_ISSUER_FIXTURES.get(normalize_ticker(ticker))
 
 
+def build_etf_issuer_acquisition_result(
+    adapter: EtfIssuerAdapterLike,
+    request: ProviderRequestMetadata,
+    licensing: ProviderLicensing,
+) -> EtfIssuerAcquisitionResult:
+    ticker = normalize_ticker(request.normalized_ticker)
+    fixture = etf_issuer_fixture_for_ticker(ticker)
+    if fixture is None:
+        return _blocked_or_unavailable_acquisition_result(ticker)
+
+    try:
+        response = build_etf_issuer_provider_response(adapter, request, licensing)
+    except EtfIssuerFixtureContractError as exc:
+        return _contract_error_acquisition_result(ticker, str(exc))
+
+    source_records = tuple(_acquisition_source_record(source) for source in response.source_attributions)
+    evidence_gap_states = {
+        fact.field_name: fact.evidence_state.value
+        for fact in response.facts
+        if fact.evidence_state is not EvidenceState.supported
+    }
+    diagnostics = tuple(
+        EtfIssuerAcquisitionDiagnostic(
+            code=f"etf_issuer_evidence_gap_{gap.field_name}",
+            message=gap.message,
+            evidence_state=gap.evidence_state,
+            freshness_state=gap.freshness_state,
+            retryable=gap.evidence_state in {EvidenceState.stale, EvidenceState.unavailable, EvidenceState.unknown},
+        )
+        for gap in fixture.evidence_gaps
+    )
+    return EtfIssuerAcquisitionResult(
+        boundary=ETF_ISSUER_ACQUISITION_BOUNDARY,
+        ticker=ticker,
+        issuer=fixture.identity.issuer,
+        response_state=response.state,
+        provider_response=response,
+        configuration_readiness=_configuration_readiness(),
+        source_records=source_records,
+        diagnostics=diagnostics,
+        evidence_gap_states=evidence_gap_states,
+        checksum=_combined_checksum(source_records),
+    )
+
+
 def build_etf_issuer_provider_response(
     adapter: EtfIssuerAdapterLike,
     request: ProviderRequestMetadata,
@@ -395,6 +509,142 @@ def build_etf_issuer_provider_response(
 
 def _asset_identity(identity: EtfIdentityFixture) -> AssetIdentity:
     return ASSETS[identity.ticker]["identity"].model_copy(deep=True)
+
+
+def _configuration_readiness() -> EtfIssuerConfigurationReadiness:
+    return EtfIssuerConfigurationReadiness(
+        issuer_source_configured=True,
+        rate_limit_ready=True,
+        live_call_disabled=True,
+    )
+
+
+def _acquisition_source_record(source: ProviderSourceAttribution) -> EtfIssuerAcquisitionSourceRecord:
+    return EtfIssuerAcquisitionSourceRecord(
+        source_document_id=source.source_document_id,
+        source_type=source.source_type,
+        checksum=_source_checksum(source.source_document_id),
+        source_use_policy=source.source_use_policy,
+        allowlist_status=source.allowlist_status,
+        source_quality=source.source_quality,
+        freshness_state=source.freshness_state,
+        retrieved_at=source.retrieved_at,
+        as_of_date=source.as_of_date,
+    )
+
+
+def _blocked_or_unavailable_acquisition_result(ticker: str) -> EtfIssuerAcquisitionResult:
+    cached_asset = ASSETS.get(ticker)
+    eligible_asset = ELIGIBLE_NOT_CACHED_ASSETS.get(ticker)
+    cached_asset_type = cached_asset["identity"].asset_type.value if cached_asset else None
+    eligible_asset_type = str(eligible_asset["asset_type"]) if eligible_asset else None
+
+    if cached_asset_type and cached_asset_type != "etf":
+        state = ProviderResponseState.out_of_scope
+        code = "blocked_wrong_asset_type_for_etf_issuer_acquisition"
+        message = "ETF issuer acquisition is limited to supported non-leveraged U.S. equity ETFs; this cached asset is not an ETF."
+        evidence = EvidenceState.unsupported
+        freshness = FreshnessState.unavailable
+    elif eligible_asset_type and eligible_asset_type != "etf":
+        state = ProviderResponseState.out_of_scope
+        code = "blocked_wrong_asset_type_for_etf_issuer_acquisition"
+        message = "ETF issuer acquisition is limited to supported non-leveraged U.S. equity ETFs; this pending asset is not an ETF."
+        evidence = EvidenceState.unsupported
+        freshness = FreshnessState.unavailable
+    elif ticker in ASSETS:
+        state = ProviderResponseState.unavailable
+        code = "fixture_not_registered_for_etf_golden_path"
+        message = "Cached asset has no deterministic ETF issuer golden-path fixture for this task."
+        evidence = EvidenceState.partial
+        freshness = FreshnessState.unknown
+    elif ticker in ELIGIBLE_NOT_CACHED_ASSETS:
+        state = ProviderResponseState.eligible_not_cached
+        code = "fixture_not_registered_for_etf_golden_path"
+        message = "Asset is eligible but no deterministic ETF issuer golden-path fixture is registered for this task."
+        evidence = EvidenceState.partial
+        freshness = FreshnessState.unknown
+    elif ticker in UNSUPPORTED_ASSETS:
+        state = ProviderResponseState.unsupported
+        code = "blocked_unsupported_asset"
+        message = "Recognized unsupported ETF class; issuer acquisition is blocked and no generated output was created."
+        evidence = EvidenceState.unsupported
+        freshness = FreshnessState.unavailable
+    elif ticker in OUT_OF_SCOPE_COMMON_STOCKS:
+        state = ProviderResponseState.out_of_scope
+        code = "blocked_out_of_scope_asset"
+        message = "Recognized asset outside the current ETF issuer acquisition scope; no generated output was created."
+        evidence = EvidenceState.unsupported
+        freshness = FreshnessState.unavailable
+    else:
+        state = ProviderResponseState.unknown
+        code = "unknown_or_unavailable_asset"
+        message = "No deterministic ETF issuer acquisition fixture matched the requested ticker."
+        evidence = EvidenceState.unknown
+        freshness = FreshnessState.unknown
+
+    return EtfIssuerAcquisitionResult(
+        boundary=ETF_ISSUER_ACQUISITION_BOUNDARY,
+        ticker=ticker,
+        issuer=None,
+        response_state=state,
+        provider_response=None,
+        configuration_readiness=_configuration_readiness(),
+        source_records=(),
+        diagnostics=(
+            EtfIssuerAcquisitionDiagnostic(
+                code=code,
+                message=message,
+                evidence_state=evidence,
+                freshness_state=freshness,
+                retryable=state in {ProviderResponseState.unavailable, ProviderResponseState.unknown},
+            ),
+        ),
+        evidence_gap_states={"etf_issuer_acquisition": evidence.value},
+        checksum=None,
+    )
+
+
+def _contract_error_acquisition_result(ticker: str, error_message: str) -> EtfIssuerAcquisitionResult:
+    source_policy_blocked = any(
+        marker in error_message.lower()
+        for marker in ("source policy", "source-use", "allowlisted", "rejected", "generated claims")
+    )
+    code = "source_policy_blocked" if source_policy_blocked else "etf_issuer_fixture_validation_failed"
+    return EtfIssuerAcquisitionResult(
+        boundary=ETF_ISSUER_ACQUISITION_BOUNDARY,
+        ticker=ticker,
+        issuer=None,
+        response_state=ProviderResponseState.permission_limited if source_policy_blocked else ProviderResponseState.unavailable,
+        provider_response=None,
+        configuration_readiness=_configuration_readiness(),
+        source_records=(),
+        diagnostics=(
+            EtfIssuerAcquisitionDiagnostic(
+                code=code,
+                message="Sanitized ETF issuer acquisition diagnostic.",
+                evidence_state=EvidenceState.unavailable,
+                freshness_state=FreshnessState.unavailable,
+                retryable=not source_policy_blocked,
+            ),
+        ),
+        evidence_gap_states={"etf_issuer_acquisition": EvidenceState.unavailable.value},
+        checksum=None,
+    )
+
+
+def _source_checksum(source_document_id: str) -> str:
+    ticker = _ticker_from_source_id(source_document_id)
+    fixture = ETF_ISSUER_FIXTURES.get(ticker)
+    if fixture:
+        for source in fixture.sources:
+            if source.source_document_id == source_document_id:
+                return f"sha256:issuer-{ticker.lower()}-{source.source_type}-2026-fixture"
+    raise EtfIssuerFixtureContractError(f"ETF issuer fixture references missing checksum for {source_document_id}.")
+
+
+def _combined_checksum(source_records: tuple[EtfIssuerAcquisitionSourceRecord, ...]) -> str:
+    checksums = "|".join(record.checksum for record in source_records)
+    return f"sha256:etf-issuer-acquisition:{checksums}"
 
 
 def _source_attribution(
