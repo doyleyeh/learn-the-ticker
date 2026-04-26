@@ -1,12 +1,23 @@
 from backend.data import ASSETS, ELIGIBLE_NOT_CACHED_ASSETS
 from backend.ingestion import (
+    execute_ingestion_job_through_ledger,
     get_ingestion_job_status,
     get_pre_cache_job_status,
     request_ingestion,
     request_launch_universe_pre_cache,
     request_pre_cache_for_asset,
 )
+from backend.ingestion_worker import InMemoryIngestionWorkerLedger
 from backend.models import IngestionJobResponse, PreCacheBatchResponse, PreCacheJobResponse
+from backend.repositories.ingestion_jobs import IngestionJobLedgerRecords, serialize_ingestion_job_response
+
+
+class FailingLedger:
+    def get(self, job_id: str) -> IngestionJobLedgerRecords | None:
+        raise RuntimeError("configured ledger unavailable")
+
+    def save(self, records: IngestionJobLedgerRecords) -> None:
+        raise RuntimeError("configured ledger unavailable")
 
 
 def test_eligible_not_cached_asset_requests_deterministic_on_demand_job():
@@ -28,6 +39,68 @@ def test_eligible_not_cached_asset_requests_deterministic_on_demand_job():
     assert validated.capabilities.can_open_generated_page is False
     assert validated.capabilities.can_answer_chat is False
     assert validated.capabilities.can_compare is False
+
+
+def test_configured_ledger_backs_on_demand_creation_status_and_worker_execution():
+    ledger = InMemoryIngestionWorkerLedger()
+
+    created = request_ingestion("SPY", ingestion_job_ledger=ledger)
+    queued_status = get_ingestion_job_status("ingest-on-demand-spy", ingestion_job_ledger=ledger)
+    execution = execute_ingestion_job_through_ledger("ingest-on-demand-spy", ingestion_job_ledger=ledger)
+    completed_status = get_ingestion_job_status("ingest-on-demand-spy", ingestion_job_ledger=ledger)
+
+    assert created.job_id == "ingest-on-demand-spy"
+    assert queued_status.job_state.value == "pending"
+    assert execution.summary.transitions == ["pending", "running", "succeeded"]
+    assert completed_status.job_state.value == "succeeded"
+    assert completed_status.generated_route is None
+    assert completed_status.capabilities.can_open_generated_page is False
+    assert completed_status.capabilities.can_answer_chat is False
+    assert completed_status.capabilities.can_compare is False
+
+
+def test_configured_ledger_backs_pre_cache_creation_status_and_worker_execution():
+    ledger = InMemoryIngestionWorkerLedger()
+
+    created = request_pre_cache_for_asset("SPY", ingestion_job_ledger=ledger)
+    queued_status = get_pre_cache_job_status("pre-cache-launch-spy", ingestion_job_ledger=ledger)
+    execution = execute_ingestion_job_through_ledger("pre-cache-launch-spy", ingestion_job_ledger=ledger)
+    completed_status = get_pre_cache_job_status("pre-cache-launch-spy", ingestion_job_ledger=ledger)
+
+    assert created.job_id == "pre-cache-launch-spy"
+    assert queued_status.job_state.value == "pending"
+    assert execution.summary.transitions == ["pending", "running", "succeeded"]
+    assert completed_status.job_state.value == "succeeded"
+    assert completed_status.generated_route is None
+    assert completed_status.generated_output_available is False
+    assert completed_status.capabilities.can_open_generated_page is False
+    assert completed_status.capabilities.can_answer_chat is False
+    assert completed_status.capabilities.can_compare is False
+
+
+def test_configured_ledger_failure_falls_back_to_fixture_status():
+    failing = FailingLedger()
+
+    created = request_ingestion("SPY", ingestion_job_ledger=failing)
+    status = get_ingestion_job_status("ingest-on-demand-spy", ingestion_job_ledger=failing)
+    pre_cache = request_pre_cache_for_asset("SPY", ingestion_job_ledger=failing)
+    pre_cache_status = get_pre_cache_job_status("pre-cache-launch-spy", ingestion_job_ledger=failing)
+
+    assert created.job_state.value == "pending"
+    assert status.job_state.value == "pending"
+    assert pre_cache.job_state.value == "pending"
+    assert pre_cache_status.job_state.value == "pending"
+
+
+def test_invalid_configured_ledger_record_falls_back_to_matching_fixture():
+    valid = serialize_ingestion_job_response(request_ingestion("SPY"))
+    wrong_ticker = valid.model_copy(update={"ledger": valid.ledger.model_copy(update={"ticker": "QQQ"})})
+    ledger = InMemoryIngestionWorkerLedger(records_by_job_id={"ingest-on-demand-spy": wrong_ticker})
+
+    status = get_ingestion_job_status("ingest-on-demand-spy", ingestion_job_ledger=ledger)
+
+    assert status.ticker == "SPY"
+    assert status.job_state.value == "pending"
 
 
 def test_all_launch_universe_eligible_not_cached_assets_get_stable_non_generated_jobs():

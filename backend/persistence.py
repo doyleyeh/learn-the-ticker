@@ -29,6 +29,7 @@ class BackendReadDependencies:
     weekly_news_reader: Any | None = field(default=None, repr=False, compare=False)
     chat_session_reader: Any | None = field(default=None, repr=False, compare=False)
     chat_session_writer: Any | None = field(default=None, repr=False, compare=False)
+    ingestion_job_ledger: Any | None = field(default=None, repr=False, compare=False)
 
     @property
     def active(self) -> bool:
@@ -40,6 +41,7 @@ class BackendReadDependencies:
                 self.weekly_news_reader,
                 self.chat_session_reader,
                 self.chat_session_writer,
+                self.ingestion_job_ledger,
             ]
         )
 
@@ -59,6 +61,7 @@ class BackendReadDependencies:
             "weekly_news_reader_configured": self.weekly_news_reader is not None,
             "chat_session_reader_configured": self.chat_session_reader is not None,
             "chat_session_writer_configured": self.chat_session_writer is not None,
+            "ingestion_job_ledger_configured": self.ingestion_job_ledger is not None,
             "no_database_connection_opened": True,
         }
 

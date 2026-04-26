@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from backend.ingestion import get_pre_cache_job_status, request_ingestion
+from backend.ingestion import execute_ingestion_job_through_ledger, get_pre_cache_job_status, request_ingestion
 from backend.ingestion_job_repository import (
     IngestionJobCategory,
     IngestionLedgerJobState,
@@ -52,6 +52,19 @@ def test_worker_uses_injected_in_memory_ledger_boundary_only():
     assert result.summary.no_live_external_calls is True
     assert result.summary.opened_database_connection is False
     assert result.summary.called_live_provider is False
+
+
+def test_server_side_execution_helper_uses_configured_ledger_or_fixture_fallback():
+    records = serialize_ingestion_job_response(request_ingestion("SPY"))
+    boundary = InMemoryIngestionWorkerLedger.from_records([records])
+
+    configured = execute_ingestion_job_through_ledger("ingest-on-demand-spy", ingestion_job_ledger=boundary)
+    fallback = execute_ingestion_job_through_ledger("ingest-on-demand-spy")
+
+    assert configured.summary.transitions == ["pending", "running", "succeeded"]
+    assert boundary.get("ingest-on-demand-spy").ledger.job_state == "succeeded"
+    assert fallback.summary.transitions == ["pending", "running", "succeeded"]
+    assert fallback.summary.generated_output_available is False
 
 
 def test_manual_pre_cache_cached_asset_is_terminal_and_idempotent():

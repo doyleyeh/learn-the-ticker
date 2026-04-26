@@ -3,6 +3,8 @@ import os
 os.environ.setdefault("LTT_FORCE_COMPAT_FASTAPI", "1")
 
 from backend.main import app
+from backend.ingestion import execute_ingestion_job_through_ledger
+from backend.ingestion_worker import InMemoryIngestionWorkerLedger
 from backend.persistence import BackendReadDependencies, configure_backend_read_dependencies
 from backend.safety import find_forbidden_output_phrases
 from backend.testing import TestClient
@@ -98,6 +100,35 @@ def test_configured_backend_readers_are_route_wired_with_fixture_fallback():
     assert ("knowledge_pack", ("QQQ",)) in spy.calls
     assert ("weekly_news", ("VOO",)) in spy.calls
     assert ("chat_session", ("missing-session",)) in spy.calls
+
+
+def test_configured_ingestion_ledger_is_route_wired_with_fixture_fallback():
+    ledger = InMemoryIngestionWorkerLedger()
+    configure_backend_read_dependencies(
+        app,
+        BackendReadDependencies(
+            persisted_reads_enabled=True,
+            ingestion_job_ledger=ledger,
+        ),
+    )
+    try:
+        created = client.post("/api/admin/ingest/SPY").json()
+        queued = client.get("/api/jobs/ingest-on-demand-spy").json()
+        execution = execute_ingestion_job_through_ledger("ingest-on-demand-spy", ingestion_job_ledger=ledger)
+        completed = client.get("/api/jobs/ingest-on-demand-spy").json()
+        pre_cache = client.post("/api/admin/pre-cache/SPY").json()
+        pre_cache_status = client.get("/api/admin/pre-cache/jobs/pre-cache-launch-spy").json()
+    finally:
+        configure_backend_read_dependencies(app, None)
+
+    assert created["job_state"] == "pending"
+    assert queued["job_state"] == "pending"
+    assert execution.summary.terminal_state == "succeeded"
+    assert completed["job_state"] == "succeeded"
+    assert completed["generated_route"] is None
+    assert completed["capabilities"]["can_open_generated_page"] is False
+    assert pre_cache["job_id"] == "pre-cache-launch-spy"
+    assert pre_cache_status["job_id"] == "pre-cache-launch-spy"
 
 
 def test_health_endpoint_available():

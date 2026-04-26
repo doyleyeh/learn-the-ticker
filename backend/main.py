@@ -143,32 +143,38 @@ def search(q: str) -> SearchResponse:
 
 @app.post("/api/admin/ingest/{ticker}", response_model=IngestionJobResponse, tags=["ingestion"])
 def ingest_asset(ticker: str) -> IngestionJobResponse:
-    return request_ingestion(ticker)
+    readers = _read_dependencies()
+    return request_ingestion(ticker, ingestion_job_ledger=readers.reader("ingestion_job_ledger"))
 
 
 @app.get("/api/jobs/{job_id}", response_model=IngestionJobResponse, tags=["ingestion"])
 def ingestion_job_status(job_id: str) -> IngestionJobResponse:
-    return get_ingestion_job_status(job_id)
+    readers = _read_dependencies()
+    return get_ingestion_job_status(job_id, ingestion_job_ledger=readers.reader("ingestion_job_ledger"))
 
 
 @app.post("/api/admin/pre-cache/launch-universe", response_model=PreCacheBatchResponse, tags=["ingestion"])
 def launch_universe_pre_cache() -> PreCacheBatchResponse:
-    return request_launch_universe_pre_cache()
+    readers = _read_dependencies()
+    return request_launch_universe_pre_cache(ingestion_job_ledger=readers.reader("ingestion_job_ledger"))
 
 
 @app.get("/api/admin/pre-cache/launch-universe", response_model=PreCacheBatchResponse, tags=["ingestion"])
 def launch_universe_pre_cache_status() -> PreCacheBatchResponse:
-    return request_launch_universe_pre_cache()
+    readers = _read_dependencies()
+    return request_launch_universe_pre_cache(ingestion_job_ledger=readers.reader("ingestion_job_ledger"))
 
 
 @app.get("/api/admin/pre-cache/jobs/{job_id}", response_model=PreCacheJobResponse, tags=["ingestion"])
 def pre_cache_job_status(job_id: str) -> PreCacheJobResponse:
-    return get_pre_cache_job_status(job_id)
+    readers = _read_dependencies()
+    return get_pre_cache_job_status(job_id, ingestion_job_ledger=readers.reader("ingestion_job_ledger"))
 
 
 @app.post("/api/admin/pre-cache/{ticker}", response_model=PreCacheJobResponse, tags=["ingestion"])
 def pre_cache_asset(ticker: str) -> PreCacheJobResponse:
-    return request_pre_cache_for_asset(ticker)
+    readers = _read_dependencies()
+    return request_pre_cache_for_asset(ticker, ingestion_job_ledger=readers.reader("ingestion_job_ledger"))
 
 
 @app.get("/api/assets/{ticker}/overview", response_model=OverviewResponse, tags=["assets"])
