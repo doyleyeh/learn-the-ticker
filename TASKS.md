@@ -2557,6 +2557,163 @@ bash scripts/run_quality_gate.sh
 Iteration budget:
 One agent-loop cycle. If live news/provider calls, generated analysis rewrites, frontend changes, source allowlist expansion, or export rewrites are needed, record the follow-up and stop after persisted-read fallback behavior.
 
+### T-096: Add live LLM runtime readiness diagnostics contract
+
+Goal:
+Add a server-side live LLM runtime readiness diagnostics contract for the OpenRouter-first deployment model chain, feature flags, sanitized configuration state, validation requirements, and disabled-by-default behavior without making live model calls or exposing secrets.
+
+Roadmap alignment:
+
+- First narrow slice of "Add gated OpenRouter live generation behind `LLM_LIVE_GENERATION_ENABLED=true`."
+- Prepares runtime readiness and diagnostics before adding any transport or generation path.
+- Keeps deterministic mocks as the normal CI/local default.
+
+Acceptance criteria:
+
+- Add or tighten backend-only settings/helpers for `LLM_LIVE_GENERATION_ENABLED`, provider selection, model chain metadata, validation retry count, reasoning-summary-only behavior, and sanitized readiness diagnostics.
+- Represent the OpenRouter first-deployment model chain in server-side metadata without browser exposure, including free primary/fallback order and paid DeepSeek fallback metadata.
+- Diagnostics may report configured/missing/disabled status and model IDs, but must not expose API keys, secret values, request payloads, raw prompts, raw model reasoning, raw generated text, user text, or provider credentials.
+- Preserve default `LLM_LIVE_GENERATION_ENABLED=false` behavior for local tests and CI, with no live external calls, no frontend `NEXT_PUBLIC_*` provider variables, no health-route secret exposure, and no route behavior changes.
+- Add tests for disabled defaults, sanitized diagnostics, model-chain order, missing-key behavior, secret redaction, no browser env exposure, no live network imports, and no generated-output behavior changes.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_llm_provider.py tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
+Iteration budget:
+One agent-loop cycle. If live HTTP transport, model invocation, route-level generation, frontend changes, provider licensing changes, or deployment secret wiring are needed, record the follow-up and stop after readiness diagnostics.
+
+### T-097: Add gated OpenRouter transport adapter with mocked tests
+
+Goal:
+Add an OpenRouter-compatible live-provider transport adapter behind explicit server-side feature flags and injectable mocked transports, preserving deterministic mock behavior and making no live calls in normal CI.
+
+Roadmap alignment:
+
+- Second narrow slice of gated OpenRouter live generation after T-096 readiness diagnostics.
+- Adds the provider boundary but not route-level generated-output use.
+
+Acceptance criteria:
+
+- Add a backend-only OpenRouter transport adapter that is inactive unless `LLM_LIVE_GENERATION_ENABLED=true`, a server-side API key is configured, and a caller explicitly opts into live generation.
+- Tests must use mocked transport responses only; normal CI must not require or attempt network, OpenRouter, market-data, news, or LLM calls.
+- Adapter requests must keep keys server-side, avoid `NEXT_PUBLIC_*`, avoid health/log exposure, and redact secrets from diagnostics/errors.
+- Adapter responses must preserve schema-mode or JSON-mode metadata, model ID, provider status, retryability, token/cost metadata if available, and no raw reasoning exposure.
+- Add tests for disabled gating, missing key blocking, mocked success, mocked provider failure, timeout/retryable error classification, paid fallback metadata, redacted diagnostics, no live imports, and deterministic mock default preservation.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_llm_provider.py tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
+Iteration budget:
+One agent-loop cycle. If route integration, real network calls, generated-output cache writes, prompt rewrites, frontend changes, or production secret/deployment wiring are needed, record the follow-up and stop after the mocked transport adapter.
+
+### T-098: Add live-generation validation and fallback orchestration contract
+
+Goal:
+Add a deterministic live-generation orchestration contract that can validate mocked provider outputs through schema, citation, source-policy, freshness, and safety gates, perform one repair retry, and represent paid fallback metadata without routing public outputs through live generation.
+
+Roadmap alignment:
+
+- Third narrow slice of gated OpenRouter live generation.
+- Builds on existing deterministic generation, T-096 readiness diagnostics, and T-097 mocked transport.
+- Keeps route-level live generation disabled until validation gates are stable.
+
+Acceptance criteria:
+
+- Add an orchestration boundary for generated overview, comparison, Weekly News Focus analysis, and chat-safe answer artifacts that can evaluate mocked provider outputs against existing schemas and validation contracts.
+- Enforce citation validation, same-asset or same-comparison-pack source binding, source-use permissions, freshness/uncertainty labels, no-advice safety checks, no unsupported claims, no raw reasoning exposure, and no hidden prompt export.
+- Model one repair retry and final paid fallback metadata without making live calls in tests.
+- Reject or suppress outputs that fail schema, citation, source-use, freshness, safety, unsupported-claim, wrong-asset, wrong-pack, or raw-reasoning checks.
+- Preserve current deterministic route outputs, fixture fallback, generated-output cache behavior, frontend behavior, exports, and CI no-live-call defaults.
+- Add tests for valid mocked output, schema failure, repair retry, paid fallback metadata, citation/source-use rejection, safety rejection, stale-without-label rejection, unsupported-claim rejection, no raw reasoning/prompt exposure, and unchanged default deterministic behavior.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_llm_provider.py tests/unit/test_overview_generation.py tests/unit/test_comparison_generation.py tests/unit/test_chat_generation.py tests/unit/test_safety_guardrails.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
+Iteration budget:
+One agent-loop cycle. If public route live-generation wiring, real OpenRouter calls, prompt redesign, frontend changes, production secret setup, or cache write activation are needed, record the follow-up and stop after mocked validation/fallback orchestration.
+
+### T-099: Add provider content export-rights hardening contract
+
+Goal:
+Add deterministic provider-content export-rights hardening so exports, caches, generated-output eligibility, and diagnostics consistently enforce `metadata_only`, `link_only`, `summary_allowed`, `full_text_allowed`, and `rejected` tiers for provider and source-derived content.
+
+Roadmap alignment:
+
+- First narrow slice of "Enforce source-use and export rules for provider content."
+- Builds on source policy, export validation, source snapshots, generated-output cache, provider adapters, and live-generation readiness work.
+- Keeps live providers and production deployment out of scope.
+
+Acceptance criteria:
+
+- Add or tighten validation helpers that decide whether provider/source-derived content may be cached, summarized, displayed, exported as metadata, exported as allowed excerpts, or excluded.
+- Ensure exports omit or safely summarize paid/restricted/provider content unless rights permit the requested Markdown/JSON output.
+- Ensure generated-output cache eligibility is blocked for rejected or source-policy-disallowed sources and never stores unrestricted provider payloads, raw article text, hidden prompts, raw model reasoning, secrets, or signed/public URLs.
+- Preserve official/structured source priority and same-asset/same-comparison-pack citation binding.
+- Add tests for all source-use tiers, provider fixture content, source-list exports, asset/comparison/chat exports, generated-output cache eligibility, rejected-source suppression, allowed-excerpt behavior, and no secret/raw-payload exposure.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_source_policy.py tests/unit/test_exports.py tests/unit/test_cache_contracts.py tests/unit/test_provider_adapters.py -q
+python3 -m pytest tests/integration/test_backend_api.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+```
+
+Iteration budget:
+One agent-loop cycle. If new source allowlist entries, paid provider integration, live provider calls, frontend export redesign, or legal/licensing review changes are needed, record the follow-up and stop after deterministic export-rights hardening.
+
+### T-100: Add production hardening readiness checklist contracts
+
+Goal:
+Add production hardening readiness checklist contracts and deterministic validation for admin auth, rate limits, CORS, Secret Manager, Cloud Run Jobs, private GCS object URIs, Vercel API wiring, and deployment documentation without enabling production deployment behavior.
+
+Roadmap alignment:
+
+- First narrow slice of production hardening after live-generation and source/export enforcement groundwork.
+- Keeps actual Cloud Run/Vercel/GCS/Secret Manager deployment changes out of scope.
+
+Acceptance criteria:
+
+- Add a deterministic readiness checklist or diagnostics contract for production hardening requirements, including admin auth, rate limits, CORS, server-side secrets, private object storage, Cloud Run Jobs, Vercel API base wiring, logging/error reporting, and no-live-call CI defaults.
+- Diagnostics must use placeholders and sanitized booleans only; no secret values, credentials, signed URLs, project IDs beyond placeholders, or real deployment tokens.
+- Preserve local Docker Compose as local-only support and normal CI as deterministic mock/fixture-backed.
+- Do not change runtime route auth, deployment files, cloud resources, frontend behavior, provider calls, or production infrastructure.
+- Add tests for readiness checklist shape, placeholder-only env handling, secret redaction, local-only Docker assumptions, Cloud Run/Vercel/GCS readiness metadata, and no production side effects.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_repo_contract.py tests/unit/test_persistence_settings.py tests/unit/test_safety_guardrails.py -q
+npm test
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+docker compose config
+```
+
+Iteration budget:
+One agent-loop cycle. If actual deployment, cloud resource creation, route auth enforcement, secret-manager integration, frontend deployment changes, or production credentials are needed, record the follow-up and stop after readiness diagnostics.
+
 ## MVP Backend Roadmap
 
 This section is intentionally non-operational for the agent loop. Keep runnable repeat-mode tasks above this roadmap as third-level task headings, and keep this longer MVP roadmap as bullets until each item is promoted into a narrow task contract. Early backend tasks may add production dependencies such as SQLAlchemy, Alembic, or psycopg only with dependency rationale, focused tests, and no live external calls in normal CI.
@@ -2583,6 +2740,9 @@ Operational defaults for backend roadmap tasks:
 - T-093 established dormant Weekly News Focus event evidence contracts. It is completed and must not be reintroduced as runnable backlog.
 - T-094 is the current promoted task for deterministic Weekly News Focus acquisition/selection.
 - T-095 is the prepared backlog task for route-level persisted-read fallback.
+- T-096 through T-098 are prepared backlog tasks that split gated OpenRouter live-generation work into readiness diagnostics, mocked transport, and validation/fallback orchestration.
+- T-099 is a prepared backlog task for deterministic provider content export-rights hardening.
+- T-100 is a prepared backlog task for production hardening readiness diagnostics, not production deployment.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted backend task should run the relevant EVALS.md backend checks: `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, and `bash scripts/run_quality_gate.sh`.
 
@@ -2610,12 +2770,12 @@ Roadmap integration tracker:
 | Weekly News Focus persisted event evidence contracts | Completed | T-093 |
 | Weekly News Focus deterministic acquisition/selection | Promoted | T-094 |
 | Weekly News Focus persisted-read fallback | Backlog | T-095 |
-| Gated OpenRouter live generation | Roadmap only | Not yet promoted |
-| Provider source-use/export enforcement hardening | Roadmap only | Not yet promoted |
-| Production hardening and deployment documentation | Roadmap only | Not yet promoted |
+| Live LLM runtime readiness diagnostics | Backlog | T-096 |
+| Gated OpenRouter mocked transport adapter | Backlog | T-097 |
+| Live-generation validation and fallback orchestration | Backlog | T-098 |
+| Provider source-use/export enforcement hardening | Backlog | T-099 |
+| Production hardening readiness diagnostics | Backlog | T-100 |
 
 Remaining unpromoted backend MVP sequence:
 
-- Add gated OpenRouter live generation behind `LLM_LIVE_GENERATION_ENABLED=true`, with schema, citation, source-policy, safety validation, repair retry, paid fallback metadata, and no raw reasoning exposure.
-- Enforce source-use and export rules for provider content, including metadata-only, link-only, summary-allowed, full-text-allowed, and rejected tiers.
-- Harden production surfaces with admin auth, rate limits, CORS, Secret Manager, Cloud Run Jobs, private GCS object URIs, Vercel API wiring, and deployment documentation.
+No remaining backend MVP roadmap areas are promoted beyond T-100. Future tasks after T-100 should be prepared from implementation risks recorded by T-096 through T-100, or from MVP acceptance gaps discovered by the quality gate, rather than enabling live production behavior by default.
