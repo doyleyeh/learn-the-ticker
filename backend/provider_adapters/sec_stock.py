@@ -3,7 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from backend.data import ASSETS, STUB_TIMESTAMP, normalize_ticker, top500_stock_universe_entry
+from backend.data import (
+    ASSETS,
+    ELIGIBLE_NOT_CACHED_ASSETS,
+    OUT_OF_SCOPE_COMMON_STOCKS,
+    STUB_TIMESTAMP,
+    UNSUPPORTED_ASSETS,
+    normalize_ticker,
+    top500_stock_universe_entry,
+)
 from backend.models import (
     AssetIdentity,
     EvidenceState,
@@ -27,6 +35,8 @@ from backend.source_policy import resolve_source_policy, source_can_support_gene
 
 
 SEC_STOCK_FIXTURE_CONTRACT_VERSION = "sec-stock-fixture-adapter-v1"
+SEC_STOCK_ACQUISITION_BOUNDARY = "sec-stock-acquisition-boundary-v1"
+SEC_STOCK_SOURCE_POLICY_REF = "source-use-policy-v1"
 
 
 class SecStockFixtureContractError(ValueError):
@@ -62,6 +72,7 @@ class SecStockSourceFixture:
     published_at: str | None
     as_of_date: str | None
     freshness_state: FreshnessState
+    checksum: str
     usage: ProviderSourceUsage = ProviderSourceUsage.canonical
     source_rank: int = 1
     can_support_canonical_facts: bool = True
@@ -108,6 +119,66 @@ class SecStockFixture:
     evidence_gaps: tuple[SecEvidenceGapFixture, ...] = ()
 
 
+@dataclass(frozen=True)
+class SecStockConfigurationReadiness:
+    user_agent_configured: bool
+    rate_limit_ready: bool
+    live_call_disabled: bool
+    no_live_external_calls: bool = True
+    configuration_source: str = "deterministic_fixture"
+
+
+@dataclass(frozen=True)
+class SecStockAcquisitionSourceRecord:
+    source_document_id: str
+    source_type: str
+    checksum: str
+    source_use_policy: SourceUsePolicy
+    allowlist_status: SourceAllowlistStatus
+    source_quality: SourceQuality
+    freshness_state: FreshnessState
+    retrieved_at: str
+    as_of_date: str | None
+    stores_raw_source_text: bool = False
+    stores_raw_provider_payload: bool = False
+
+
+@dataclass(frozen=True)
+class SecStockAcquisitionDiagnostic:
+    code: str
+    message: str
+    evidence_state: EvidenceState
+    freshness_state: FreshnessState
+    retryable: bool = False
+    stores_raw_source_text: bool = False
+    stores_raw_provider_payload: bool = False
+    stores_secret: bool = False
+
+
+@dataclass(frozen=True)
+class SecStockAcquisitionResult:
+    boundary: str
+    ticker: str
+    cik: str | None
+    response_state: ProviderResponseState
+    provider_response: ProviderResponse | None
+    configuration_readiness: SecStockConfigurationReadiness
+    source_records: tuple[SecStockAcquisitionSourceRecord, ...]
+    diagnostics: tuple[SecStockAcquisitionDiagnostic, ...]
+    evidence_gap_states: dict[str, str]
+    checksum: str | None
+    source_policy_ref: str = SEC_STOCK_SOURCE_POLICY_REF
+    no_live_external_calls: bool = True
+    opened_database_connection: bool = False
+    wrote_source_snapshot: bool = False
+    wrote_knowledge_pack: bool = False
+    wrote_generated_output_cache: bool = False
+    created_generated_asset_page: bool = False
+    created_generated_chat_answer: bool = False
+    created_generated_comparison: bool = False
+    created_generated_risk_summary: bool = False
+
+
 SEC_STOCK_FIXTURES: dict[str, SecStockFixture] = {
     "AAPL": SecStockFixture(
         identity=SecStockIdentityFixture(
@@ -131,6 +202,7 @@ SEC_STOCK_FIXTURES: dict[str, SecStockFixture] = {
                 published_at=None,
                 as_of_date="2026-04-01",
                 freshness_state=FreshnessState.fresh,
+                checksum="sha256:sec-aapl-submissions-2026-fixture",
             ),
             SecStockSourceFixture(
                 source_document_id="provider_sec_aapl_10k_2026",
@@ -141,6 +213,7 @@ SEC_STOCK_FIXTURES: dict[str, SecStockFixture] = {
                 published_at="2026-04-01",
                 as_of_date=None,
                 freshness_state=FreshnessState.fresh,
+                checksum="sha256:sec-aapl-10k-2026-fixture",
             ),
             SecStockSourceFixture(
                 source_document_id="provider_sec_aapl_xbrl_2026",
@@ -151,6 +224,7 @@ SEC_STOCK_FIXTURES: dict[str, SecStockFixture] = {
                 published_at=None,
                 as_of_date="2026-04-01",
                 freshness_state=FreshnessState.fresh,
+                checksum="sha256:sec-aapl-xbrl-2026-fixture",
             ),
         ),
         selected_filings=(
@@ -201,6 +275,51 @@ def sec_stock_fixture_for_ticker(ticker: str) -> SecStockFixture | None:
     return SEC_STOCK_FIXTURES.get(normalize_ticker(ticker))
 
 
+def build_sec_stock_acquisition_result(
+    adapter: SecProviderAdapterLike,
+    request: ProviderRequestMetadata,
+    licensing: ProviderLicensing,
+) -> SecStockAcquisitionResult:
+    ticker = normalize_ticker(request.normalized_ticker)
+    fixture = sec_stock_fixture_for_ticker(ticker)
+    if fixture is None:
+        return _blocked_or_unavailable_acquisition_result(ticker)
+
+    try:
+        response = build_sec_stock_provider_response(adapter, request, licensing)
+    except SecStockFixtureContractError as exc:
+        return _contract_error_acquisition_result(ticker, str(exc))
+
+    source_records = tuple(_acquisition_source_record(source) for source in response.source_attributions)
+    evidence_gap_states = {
+        fact.field_name: fact.evidence_state.value
+        for fact in response.facts
+        if fact.evidence_state is not EvidenceState.supported
+    }
+    diagnostics = tuple(
+        SecStockAcquisitionDiagnostic(
+            code=f"sec_evidence_gap_{gap.field_name}",
+            message=gap.message,
+            evidence_state=gap.evidence_state,
+            freshness_state=gap.freshness_state,
+            retryable=gap.evidence_state in {EvidenceState.stale, EvidenceState.unavailable, EvidenceState.unknown},
+        )
+        for gap in fixture.evidence_gaps
+    )
+    return SecStockAcquisitionResult(
+        boundary=SEC_STOCK_ACQUISITION_BOUNDARY,
+        ticker=ticker,
+        cik=fixture.identity.cik,
+        response_state=response.state,
+        provider_response=response,
+        configuration_readiness=_configuration_readiness(),
+        source_records=source_records,
+        diagnostics=diagnostics,
+        evidence_gap_states=evidence_gap_states,
+        checksum=_combined_checksum(source_records),
+    )
+
+
 def build_sec_stock_provider_response(
     adapter: SecProviderAdapterLike,
     request: ProviderRequestMetadata,
@@ -244,6 +363,136 @@ def build_sec_stock_provider_response(
 
 def _asset_identity(identity: SecStockIdentityFixture) -> AssetIdentity:
     return ASSETS[identity.ticker]["identity"].model_copy(deep=True)
+
+
+def _configuration_readiness() -> SecStockConfigurationReadiness:
+    return SecStockConfigurationReadiness(
+        user_agent_configured=False,
+        rate_limit_ready=True,
+        live_call_disabled=True,
+    )
+
+
+def _acquisition_source_record(source: ProviderSourceAttribution) -> SecStockAcquisitionSourceRecord:
+    return SecStockAcquisitionSourceRecord(
+        source_document_id=source.source_document_id,
+        source_type=source.source_type,
+        checksum=_source_checksum(source.source_document_id),
+        source_use_policy=source.source_use_policy,
+        allowlist_status=source.allowlist_status,
+        source_quality=source.source_quality,
+        freshness_state=source.freshness_state,
+        retrieved_at=source.retrieved_at,
+        as_of_date=source.as_of_date,
+    )
+
+
+def _blocked_or_unavailable_acquisition_result(ticker: str) -> SecStockAcquisitionResult:
+    cached_asset = ASSETS.get(ticker)
+    eligible_asset = ELIGIBLE_NOT_CACHED_ASSETS.get(ticker)
+    cached_asset_type = cached_asset["identity"].asset_type.value if cached_asset else None
+    eligible_asset_type = str(eligible_asset["asset_type"]) if eligible_asset else None
+
+    if cached_asset_type and cached_asset_type != "stock":
+        state = ProviderResponseState.out_of_scope
+        code = "blocked_wrong_asset_type_for_sec_stock_acquisition"
+        message = "SEC stock acquisition is limited to common stocks; this cached asset is not a stock."
+        evidence = EvidenceState.unsupported
+        freshness = FreshnessState.unavailable
+    elif eligible_asset_type and eligible_asset_type != "stock":
+        state = ProviderResponseState.out_of_scope
+        code = "blocked_wrong_asset_type_for_sec_stock_acquisition"
+        message = "SEC stock acquisition is limited to common stocks; this pending asset is not a stock."
+        evidence = EvidenceState.unsupported
+        freshness = FreshnessState.unavailable
+    elif ticker in UNSUPPORTED_ASSETS:
+        state = ProviderResponseState.unsupported
+        code = "blocked_unsupported_asset"
+        message = "Recognized unsupported asset; SEC acquisition is blocked and no generated output was created."
+        evidence = EvidenceState.unsupported
+        freshness = FreshnessState.unavailable
+    elif ticker in OUT_OF_SCOPE_COMMON_STOCKS:
+        state = ProviderResponseState.out_of_scope
+        code = "blocked_out_of_scope_asset"
+        message = "Recognized asset outside the current stock acquisition scope; no generated output was created."
+        evidence = EvidenceState.unsupported
+        freshness = FreshnessState.unavailable
+    elif ticker in ELIGIBLE_NOT_CACHED_ASSETS:
+        state = ProviderResponseState.eligible_not_cached
+        code = "fixture_not_registered_for_sec_golden_path"
+        message = "Asset is eligible but no deterministic SEC golden-path fixture is registered for this task."
+        evidence = EvidenceState.partial
+        freshness = FreshnessState.unknown
+    else:
+        state = ProviderResponseState.unknown
+        code = "unknown_or_unavailable_asset"
+        message = "No deterministic SEC acquisition fixture matched the requested ticker."
+        evidence = EvidenceState.unknown
+        freshness = FreshnessState.unknown
+
+    return SecStockAcquisitionResult(
+        boundary=SEC_STOCK_ACQUISITION_BOUNDARY,
+        ticker=ticker,
+        cik=None,
+        response_state=state,
+        provider_response=None,
+        configuration_readiness=_configuration_readiness(),
+        source_records=(),
+        diagnostics=(
+            SecStockAcquisitionDiagnostic(
+                code=code,
+                message=message,
+                evidence_state=evidence,
+                freshness_state=freshness,
+                retryable=state in {ProviderResponseState.eligible_not_cached, ProviderResponseState.unknown},
+            ),
+        ),
+        evidence_gap_states={"sec_acquisition": evidence.value},
+        checksum=None,
+    )
+
+
+def _contract_error_acquisition_result(ticker: str, error_message: str) -> SecStockAcquisitionResult:
+    source_policy_blocked = any(
+        marker in error_message.lower()
+        for marker in ("source policy", "source-use", "allowlisted", "rejected", "generated claims")
+    )
+    code = "source_policy_blocked" if source_policy_blocked else "sec_fixture_validation_failed"
+    return SecStockAcquisitionResult(
+        boundary=SEC_STOCK_ACQUISITION_BOUNDARY,
+        ticker=ticker,
+        cik=None,
+        response_state=ProviderResponseState.permission_limited if source_policy_blocked else ProviderResponseState.unavailable,
+        provider_response=None,
+        configuration_readiness=_configuration_readiness(),
+        source_records=(),
+        diagnostics=(
+            SecStockAcquisitionDiagnostic(
+                code=code,
+                message="Sanitized SEC acquisition diagnostic.",
+                evidence_state=EvidenceState.unavailable,
+                freshness_state=FreshnessState.unavailable,
+                retryable=not source_policy_blocked,
+            ),
+        ),
+        evidence_gap_states={"sec_acquisition": EvidenceState.unavailable.value},
+        checksum=None,
+    )
+
+
+def _source_checksum(source_document_id: str) -> str:
+    ticker = _ticker_from_source_id(source_document_id)
+    fixture = SEC_STOCK_FIXTURES.get(ticker)
+    if fixture:
+        for source in fixture.sources:
+            if source.source_document_id == source_document_id:
+                return source.checksum
+    raise SecStockFixtureContractError(f"SEC fixture references missing checksum for {source_document_id}.")
+
+
+def _combined_checksum(source_records: tuple[SecStockAcquisitionSourceRecord, ...]) -> str:
+    checksums = "|".join(record.checksum for record in source_records)
+    return f"sha256:sec-acquisition:{checksums}"
 
 
 def _source_attribution(
@@ -506,4 +755,3 @@ def _ticker_from_source_id(source_document_id: str) -> str:
     if len(parts) < 3 or parts[0] != "provider" or parts[1] != "sec":
         raise SecStockFixtureContractError(f"SEC source ID has an invalid deterministic shape: {source_document_id}.")
     return parts[2].upper()
-
