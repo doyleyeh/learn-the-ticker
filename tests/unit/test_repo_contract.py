@@ -471,3 +471,36 @@ def test_sec_stock_acquisition_contract_is_backend_only_fixture_backed_and_sanit
         "Bearer ",
     ]:
         assert forbidden not in combined
+
+
+def test_etf_issuer_acquisition_contract_is_backend_only_fixture_backed_and_sanitized():
+    adapter = read_file("backend/provider_adapters/etf_issuer.py")
+    worker = read_file("backend/ingestion_worker.py")
+    combined = f"{adapter}\n{worker}"
+
+    assert "etf-issuer-acquisition-boundary-v1" in adapter
+    assert "EtfIssuerConfigurationReadiness" in adapter
+    assert "build_etf_issuer_acquisition_result" in adapter
+    assert "issuer_source_configured" in adapter
+    assert "rate_limit_ready" in adapter
+    assert "live_call_disabled" in adapter
+    assert "wrote_source_snapshot: bool = False" in adapter
+    assert "wrote_knowledge_pack: bool = False" in adapter
+    assert "wrote_generated_output_cache: bool = False" in adapter
+    assert "created_generated_asset_page: bool = False" in adapter
+    assert "created_generated_chat_answer: bool = False" in adapter
+    assert "created_generated_comparison: bool = False" in adapter
+    assert "created_generated_risk_summary: bool = False" in adapter
+
+    for forbidden in [
+        "import requests",
+        "import httpx",
+        "urllib.request",
+        "from socket import",
+        "os.environ",
+        "NEXT_PUBLIC",
+        "OPENROUTER_API_KEY",
+        "Authorization",
+        "Bearer ",
+    ]:
+        assert forbidden not in combined

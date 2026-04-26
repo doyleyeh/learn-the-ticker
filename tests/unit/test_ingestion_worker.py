@@ -16,8 +16,9 @@ from backend.ingestion_worker import (
     execute_ingestion_worker_record,
 )
 from backend.models import IngestionCapabilities
+from backend.provider_adapters.etf_issuer import build_etf_issuer_acquisition_result
 from backend.provider_adapters.sec_stock import build_sec_stock_acquisition_result
-from backend.providers import fetch_mock_provider_response, mock_sec_stock_adapter
+from backend.providers import fetch_mock_provider_response, mock_etf_issuer_adapter, mock_sec_stock_adapter
 from backend.repositories.ingestion_jobs import SanitizedErrorCategory
 
 
@@ -185,6 +186,45 @@ def test_worker_can_exercise_sec_acquisition_metadata_without_activating_generat
     licensing = fetch_mock_provider_response(adapter.provider_kind, "AAPL").licensing
     acquisition = build_sec_stock_acquisition_result(adapter, adapter.request("AAPL"), licensing)
     response = get_pre_cache_job_status("pre-cache-launch-aapl").model_copy(
+        update={
+            "job_state": IngestionLedgerJobState.pending,
+            "worker_status": None,
+            "generated_route": None,
+            "generated_output_available": False,
+            "capabilities": IngestionCapabilities(),
+            "citation_ids": [],
+            "source_document_ids": [],
+        }
+    )
+    records = serialize_ingestion_job_response(response)
+    outcome = IngestionWorkerFixtureOutcome(
+        terminal_state=IngestionLedgerJobState.succeeded,
+        source_policy_ref=acquisition.source_policy_ref,
+        checksum=acquisition.checksum,
+    )
+
+    result = execute_ingestion_worker_record(records, fixture_outcome=outcome)
+
+    assert result.summary.transitions == ["pending", "running", "succeeded"]
+    assert result.summary.terminal_state == "succeeded"
+    assert result.summary.generated_output_available is False
+    assert result.summary.generated_output_cacheable is False
+    assert result.summary.blocked_from_generated_outputs is False
+    assert result.summary.no_live_external_calls is True
+    assert result.summary.opened_database_connection is False
+    assert result.summary.called_live_provider is False
+    assert result.records.ledger.compact_metadata["source_policy_ref"] == "source-use-policy-v1"
+    assert result.records.ledger.compact_metadata["checksum"] == acquisition.checksum
+    assert result.records.ledger.raw_provider_payload_stored is False
+    assert result.records.ledger.unrestricted_source_text_stored is False
+    assert result.records.ledger.secrets_stored is False
+
+
+def test_worker_can_exercise_etf_issuer_acquisition_metadata_without_activating_generated_outputs():
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(adapter.provider_kind, "VOO").licensing
+    acquisition = build_etf_issuer_acquisition_result(adapter, adapter.request("VOO"), licensing)
+    response = get_pre_cache_job_status("pre-cache-launch-voo").model_copy(
         update={
             "job_state": IngestionLedgerJobState.pending,
             "worker_status": None,
