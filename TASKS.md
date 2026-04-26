@@ -1,67 +1,62 @@
 ## Current task
 
-### T-095: Route Weekly News Focus through persisted event evidence fallback
+### T-096: Add live LLM runtime readiness diagnostics contract
 
 Goal:
-Route Weekly News Focus and AI Comprehensive Analysis threshold reads through injected persisted recent-event evidence boundaries first, while preserving deterministic fixture fallback, stable/timely context separation, source-use policy, empty/limited states, and current API/frontend behavior.
+Add a server-side live LLM runtime readiness diagnostics contract for the OpenRouter-first deployment model chain, feature flags, sanitized configuration state, validation requirements, and disabled-by-default behavior without making live model calls or exposing secrets.
 
 Task-scope paragraph:
-This task should add an injectable route-level persisted-read fallback for Weekly News Focus evidence produced by the T-093 repository contracts and T-094 deterministic fixture acquisition boundary. The default app behavior must remain deterministic and fixture-backed unless a caller injects valid persisted recent-event evidence. When injected records are valid, the Weekly News Focus read path may prefer same-asset selected event evidence and AI threshold metadata; when records are missing, invalid, stale without labels, rights-blocked, wrong-asset, duplicate, insufficient, or reader failures occur, the system must fall back to the existing deterministic fixture output. This is a backend read-boundary slice only; it must not add live news acquisition, database execution, generated AI analysis rewrites, cache writes, frontend changes, source allowlist expansion, or deployment/runtime provider wiring.
+This task should tighten the backend-only LLM runtime readiness contract so the first-deployment OpenRouter model chain, live-generation gating, validation retry count, reasoning-summary-only setting, and sanitized diagnostics are explicit, testable, and disabled by default. The work may build on existing `backend/llm.py` and model/settings helpers, but must stay a diagnostics/readiness slice only: no live HTTP transport, no model invocation, no route-level generation, no generated-output cache writes, no prompt rewrites, no frontend changes, and no deployment secret wiring. Deterministic mocks and fixture-backed behavior must remain the normal local/CI default.
 
 Roadmap alignment:
 
-- Third narrow slice of Weekly News Focus persisted-evidence work after T-093 and T-094.
-- Completes route-level persisted evidence fallback before live source acquisition or LLM generation work.
-- Preserves stable canonical facts separately from Weekly News Focus and AI Comprehensive Analysis timely context.
-- Keeps v0.4 frontend workflow unchanged while backend deterministic contract work continues before live-provider or deployment expansion.
+- First narrow slice of "Add gated OpenRouter live generation behind `LLM_LIVE_GENERATION_ENABLED=true`."
+- Prepares runtime readiness and diagnostics before adding any transport or generation path.
+- Keeps deterministic mocks as the normal CI/local default.
+- Preserves v0.4 frontend workflow and deterministic backend outputs before live-provider or deployment expansion.
 
 Allowed files:
 
-- `backend/weekly_news.py`
-- `backend/overview.py`
-- `backend/repositories/weekly_news.py`
-- `backend/weekly_news_repository.py`
+- `backend/llm.py`
 - `backend/models.py`
-- `tests/unit/test_weekly_news.py`
-- `tests/unit/test_overview_generation.py`
-- `tests/unit/test_source_policy.py`
+- `backend/settings.py`
+- `tests/unit/test_llm_provider.py`
 - `tests/unit/test_safety_guardrails.py`
+- `tests/unit/test_repo_contract.py`
 - `tests/integration/test_backend_api.py`
 - `docs/agent-journal/*.md`
 
 Do not change:
 
 - No frontend files under `apps/web`.
-- No public FastAPI route paths, HTTP status behavior, response schema removals, comparison generation behavior, glossary behavior, source drawer behavior, frontend behavior, generated text outside the injected persisted-read path, chat behavior, export behavior, or default deterministic fixture-generated output.
+- No public FastAPI route paths, HTTP status behavior, generated overview/comparison/chat/Weekly News Focus output, source drawer behavior, glossary behavior, comparison behavior, chat behavior, export behavior, search behavior, or default deterministic fixture-generated output.
 - No changes to home-page workflow, comparison UI, glossary UI, source drawer UI, asset chat UI, mobile bottom-sheet/full-screen behavior, stock-vs-ETF comparison structure, or any v0.4 workflow marker.
-- No live SEC, issuer, ETF, market-data, news, RSS, web, storage, database, object-storage, cache, Redis, LLM, Cloud Run Job, scheduler, admin auth, rate-limiting, external analytics, telemetry vendor, or deployment wiring.
-- No production dependency addition, source allowlist expansion, provider licensing change, environment/secret file change, runtime cache write behavior, live event acquisition worker, generated-output cache write, or generated AI Comprehensive Analysis rewrite.
+- No live OpenRouter, LLM, SEC, issuer, ETF, market-data, news, RSS, web, storage, database, object-storage, cache, Redis, Cloud Run Job, scheduler, admin auth, rate-limiting, external analytics, telemetry vendor, or deployment wiring.
+- No live HTTP transport adapter, model invocation, route-level live-generation integration, prompt template rewrite, generated-output cache write, generated AI Comprehensive Analysis rewrite, provider licensing change, source allowlist expansion, runtime secret setup, or production dependency addition.
 - No generated pages, generated chat answers, generated comparisons, generated risk summaries, generated exports, source snapshots, provider fetches, LLM calls, or new cacheable generated output.
 - No edits to `data/universes/us_common_stocks_top500.current.json` or `data/universes/us_equity_etfs.current.json`.
 - No raw full article text, unrestricted source text, unrestricted provider payloads, hidden prompts, prompt templates, raw model reasoning, raw user text, raw queries, raw questions, raw answers, raw chat transcripts, personal identifiers, portfolio/allocation details, real API keys, credentials, secrets, public storage URLs, signed URLs, external analytics IDs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, repository records, cache records, events, exports, or exported data.
-- No changes that let recent Weekly News Focus overwrite canonical asset facts, weaken citation/source-use rules, suppress required stale/unknown/unavailable/partial/insufficient-evidence states, or introduce buy/sell/hold, allocation, tax, price-target, brokerage, trading, or personalized recommendation language.
+- No `NEXT_PUBLIC_*` provider variables, no `/health` secret exposure, no docs/env examples containing real secrets, and no logging or diagnostics that include API key values or provider credentials.
+- No changes that weaken citation/source-use rules, suppress required stale/unknown/unavailable/partial/insufficient-evidence states, let recent Weekly News Focus overwrite canonical asset facts, or introduce buy/sell/hold, allocation, tax, price-target, brokerage, trading, or personalized recommendation language.
 
 Acceptance criteria:
 
-- Add an injectable persisted Weekly News Focus read boundary that can validate T-093/T-094 `WeeklyNewsEventEvidenceRepositoryRecords` and prefer valid same-asset selected event evidence plus AI threshold metadata when explicitly supplied.
-- The default `generate_weekly_news_focus`, asset overview/API, and frontend-visible behavior remains deterministic fixture-backed when no persisted reader is injected, when a reader misses, or when persisted records fail validation.
-- Persisted-read fallback preserves public overview and weekly-news response schemas, Weekly News Focus section separation, freshness/source metadata, citation chips/source references, and current API status behavior.
-- Persisted selected events must preserve same-asset binding, event type, period bucket, source/citation references, event or published dates where available, retrieved timestamp, source quality, source-use tier, freshness state, selected-vs-configured item counts, suppressed candidate counts, and empty/limited state metadata.
-- AI Comprehensive Analysis threshold metadata is read from validated records only and must continue to suppress analysis unless at least two high-signal selected Weekly News Focus items exist.
-- If persisted threshold metadata is missing, malformed, below threshold, stale without labels, unsupported, or disconnected from selected events, the path must fall back to existing deterministic fixture behavior rather than inventing generated analysis.
-- Source-use policy wins over persisted availability. Rejected, license-disallowed, unrecognized, non-allowlisted, promotional, irrelevant, duplicate, rights-incompatible, raw-text-incompatible, or wrong-asset persisted events cannot feed Weekly News Focus output.
-- Persisted evidence with wrong-asset citations, wrong-source asset binding, missing citation/source references for important event claims, malformed selected-vs-configured counts, duplicate selected items, stale evidence without a stale label, unavailable evidence without an unavailable label, unsafe diagnostics, or unsupported generated-output states must be rejected or cause fixture fallback.
-- Empty and limited Weekly News Focus states remain valid. Showing fewer than the configured maximum, including zero selected persisted items, must not trigger padding with weak, promotional, duplicate, non-allowlisted, or license-disallowed records.
-- Persisted-read diagnostics may include compact codes, timestamps, source IDs, event IDs, checksums, freshness labels, dedupe group IDs, suppression reasons, validation statuses, reader status, and fallback reason codes, but must not include raw article bodies, unrestricted source passages, raw provider payloads, hidden prompts, raw model reasoning, raw user text, secrets, public URLs, signed URLs, or frontend-readable storage paths.
+- Add or tighten backend-only settings/helpers for `LLM_LIVE_GENERATION_ENABLED`, `LLM_PROVIDER`, `OPENROUTER_BASE_URL`, OpenRouter free-model order, paid fallback model, validation retry count, reasoning-summary-only behavior, and sanitized readiness diagnostics.
+- Represent the OpenRouter first-deployment model chain in server-side metadata without browser exposure: free primary `openai/gpt-oss-120b:free`, free fallbacks `google/gemma-4-31b-it:free`, `qwen/qwen3-next-80b-a3b-instruct:free`, and `meta-llama/llama-3.3-70b-instruct:free`, plus paid fallback `deepseek/deepseek-v3.2`.
+- Diagnostics may report provider kind, live-generation enabled/disabled state, server-side key configured/missing boolean, base URL configured/missing state, model IDs, tier/order metadata, validation retry count, reasoning-summary-only state, readiness status, unavailable reason codes, and no-live-call status.
+- Diagnostics must not expose API key values, authorization headers, secret values, raw prompts, request payloads, raw generated text, raw model reasoning, `reasoning_details`, unrestricted source text, user text, provider credentials, public storage URLs, signed URLs, or frontend-readable storage paths.
+- Preserve default `LLM_LIVE_GENERATION_ENABLED=false` behavior for local tests and CI, with no live external calls, no transport imports that can attempt network by default, no frontend `NEXT_PUBLIC_*` provider variables, no `/health` secret exposure, no public route path/status behavior changes, and no generated-output behavior changes.
+- The readiness contract must distinguish disabled-by-default, missing-key, missing model-chain metadata, missing base URL, validation-not-ready, and ready-for-explicit-live-call states using compact reason codes rather than raw exception text or secrets.
+- Validation readiness must preserve schema validation, citation validation, same-asset or same-comparison-pack source binding, source-use policy, freshness/uncertainty labels, safety checks, one repair retry metadata, and reasoning-summary-only requirements as gates before future live output can be cacheable.
+- Existing deterministic mock generation and validation behavior must remain unchanged unless the change only adds stricter sanitized metadata around readiness.
+- Existing API/runtime diagnostics, if touched, must remain server-shaped and sanitized, and must not expose provider secrets through browser-readable health data.
+- Tests must cover disabled defaults, model-chain order and tier metadata, paid fallback metadata, missing-key behavior, missing endpoint/model settings, sanitized diagnostics, secret redaction, no browser env exposure, no `/health` secret exposure, no live network/provider imports, no raw prompt/reasoning/user-text leakage, validation retry metadata, reasoning-summary-only behavior, and unchanged generated-output behavior.
 - Preserve product guardrails: implementation, tests, fixture strings, and journal notes must not introduce buy/sell/hold recommendations, allocation advice, tax advice, price targets, brokerage/trading behavior, unsupported factual claims, or recent-news-as-canonical framing.
-- Preserve source freshness and uncertainty handling. Missing, stale, weak, unavailable, or partial Weekly News Focus evidence must be represented with `unknown`, `unavailable`, `partial`, `stale`, `insufficient_evidence`, `limited`, or empty-state metadata rather than invented facts.
-- Add or update tests for persisted-first event reads, fixture fallback on reader miss/failure/invalid records, same-asset source/citation binding, selected-vs-configured counts, suppressed candidate counts, empty and limited states, AI threshold suppression/availability metadata, source-use gating, freshness labels, rejected/non-allowlisted/promotional/irrelevant/duplicate suppression, sanitized diagnostics, unchanged default fixture output, no advice language, no secret exposure, and no live network/provider/database/LLM imports.
-- Current retrieval, generation defaults, overview, comparison, chat, glossary, export, frontend, provider-secret, source-use policy, fixture-generated output, search classification, and quality-gate behavior remains unchanged outside the injected Weekly News Focus persisted-read boundary.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_overview_generation.py tests/unit/test_source_policy.py -q
+python3 -m pytest tests/unit/test_llm_provider.py tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
 python3 -m pytest tests/integration/test_backend_api.py -q
 python3 -m pytest tests -q
 python3 evals/run_static_evals.py
@@ -70,10 +65,36 @@ git diff --check
 ```
 
 Iteration budget:
-One agent-loop cycle. If live source fetching, generated AI analysis rewrites, frontend changes, source allowlist expansion, provider licensing review, export rewrites, production database execution, cache writes, live worker scheduling, or deployment/runtime provider wiring is needed, record the follow-up and stop after injected persisted-read fallback behavior.
+One agent-loop cycle. If live HTTP transport, model invocation, route-level generation, generated-output cache writes, prompt rewrites, frontend changes, provider licensing changes, production secret/deployment wiring, or external provider calls are needed, record the follow-up and stop after readiness diagnostics.
 
 
 ## Completed
+
+### T-095: Route Weekly News Focus through persisted event evidence fallback
+
+Goal:
+Route Weekly News Focus and AI Comprehensive Analysis threshold reads through injected persisted recent-event evidence boundaries first, while preserving deterministic fixture fallback, stable/timely context separation, source-use policy, empty/limited states, and current API/frontend behavior.
+
+Completed details:
+
+- Implementation commit `ac16b34 feat(T-095): route Weekly News Focus through persisted event evidence fallback` updated `backend/weekly_news.py`, `backend/overview.py`, `tests/unit/test_weekly_news.py`, `tests/unit/test_overview_generation.py`, and `docs/agent-journal/20260426T031547Z.md`.
+- Merged branch `agent/T-095-20260426T031547Z` into `main` with local merge commit `6db2302 chore(T-095): merge route Weekly News Focus through persisted event evidence fallback`.
+- `backend/weekly_news.py` added `WEEKLY_NEWS_PERSISTED_READ_BOUNDARY`, `WeeklyNewsEventEvidenceRecordReader`, `PersistedWeeklyNewsReadResult`, and `read_persisted_weekly_news_focus` to validate injected persisted Weekly News Focus event evidence records before using them.
+- Valid same-asset persisted records are mapped into the existing `WeeklyNewsFocusResponse` schema with event type, period bucket, citation/source references, event or published dates where available, retrieved timestamp, source quality, source-use tier, freshness state, selected-vs-configured counts, suppressed candidate counts, and empty/limited state metadata.
+- The read path preserves deterministic fixture fallback when no reader is injected, a reader misses, a reader fails, records fail validation, no matching same-asset window exists, or AI threshold metadata is disconnected from selected events.
+- Persisted event display text is metadata-derived because the repository contract intentionally avoids raw article text and unrestricted source passages.
+- `backend/overview.py` routes overview generation through the injected Weekly News reader only when explicitly supplied and reads validated AI threshold metadata so persisted selected items with fewer than two high-signal events suppress AI Comprehensive Analysis instead of inventing analysis.
+- Tests were expanded for persisted-first Weekly News reads, fallback on miss/failure/invalid/wrong-asset records, empty and limited states without padding, disconnected threshold rejection, sanitized diagnostics, source-use tiers, overview integration with injected Weekly News records, and AI Comprehensive Analysis threshold availability/suppression.
+- The implementation did not add live database execution, provider calls, cache writes, acquisition worker scheduling, source allowlist changes, frontend changes, generated-output cache integration, or public route behavior changes.
+- `docs/agent-journal/20260426T031547Z.md` records these checks: `python3 -m pytest tests/unit/test_weekly_news.py -q` passed; `python3 -m pytest tests/unit/test_overview_generation.py -q` passed; `python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_overview_generation.py tests/unit/test_source_policy.py -q` passed; `python3 -m pytest tests/integration/test_backend_api.py -q` passed; `python3 -m pytest tests -q` passed; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed; `git diff --check` passed.
+- Remaining risks from the journal:
+  - The persisted Weekly News reader is injectable and dormant only; no live database, provider, cache write, acquisition worker, scheduler, source allowlist change, frontend change, or generated-output cache integration was added.
+  - Future production reader wiring must preserve the same same-asset, source-use, freshness, dedupe, empty/limited-state, AI-threshold, and sanitized-diagnostic fallback gates.
+
+Completion commits:
+
+- `ac16b34 feat(T-095): route Weekly News Focus through persisted event evidence fallback`
+- `6db2302 chore(T-095): merge route Weekly News Focus through persisted event evidence fallback`
 
 ### T-094: Add deterministic Weekly News Focus acquisition worker contract
 
@@ -2551,37 +2572,6 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-096: Add live LLM runtime readiness diagnostics contract
-
-Goal:
-Add a server-side live LLM runtime readiness diagnostics contract for the OpenRouter-first deployment model chain, feature flags, sanitized configuration state, validation requirements, and disabled-by-default behavior without making live model calls or exposing secrets.
-
-Roadmap alignment:
-
-- First narrow slice of "Add gated OpenRouter live generation behind `LLM_LIVE_GENERATION_ENABLED=true`."
-- Prepares runtime readiness and diagnostics before adding any transport or generation path.
-- Keeps deterministic mocks as the normal CI/local default.
-
-Acceptance criteria:
-
-- Add or tighten backend-only settings/helpers for `LLM_LIVE_GENERATION_ENABLED`, provider selection, model chain metadata, validation retry count, reasoning-summary-only behavior, and sanitized readiness diagnostics.
-- Represent the OpenRouter first-deployment model chain in server-side metadata without browser exposure, including free primary/fallback order and paid DeepSeek fallback metadata.
-- Diagnostics may report configured/missing/disabled status and model IDs, but must not expose API keys, secret values, request payloads, raw prompts, raw model reasoning, raw generated text, user text, or provider credentials.
-- Preserve default `LLM_LIVE_GENERATION_ENABLED=false` behavior for local tests and CI, with no live external calls, no frontend `NEXT_PUBLIC_*` provider variables, no health-route secret exposure, and no route behavior changes.
-- Add tests for disabled defaults, sanitized diagnostics, model-chain order, missing-key behavior, secret redaction, no browser env exposure, no live network imports, and no generated-output behavior changes.
-
-Required commands:
-
-```bash
-python3 -m pytest tests/unit/test_llm_provider.py tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-```
-
-Iteration budget:
-One agent-loop cycle. If live HTTP transport, model invocation, route-level generation, frontend changes, provider licensing changes, or deployment secret wiring are needed, record the follow-up and stop after readiness diagnostics.
 
 ### T-097: Add gated OpenRouter transport adapter with mocked tests
 
