@@ -730,6 +730,7 @@ includes("styles/globals.css", ".comparison-suggestion-list");
 includes("styles/globals.css", "scroll-margin-top: 88px");
 includes("components/SearchBox.tsx", "data-search-state");
 includes("components/SearchBox.tsx", "resolveLocalSearchResponse");
+includes("components/SearchBox.tsx", "resolveSearchResponse");
 includes("components/SearchBox.tsx", "data-search-supported-result");
 includes("components/SearchBox.tsx", "data-search-ingestion-needed-result");
 includes("components/SearchBox.tsx", "data-search-eligible-not-cached-result");
@@ -1241,7 +1242,23 @@ for (const scriptName of ["dev", "build", "start", "typecheck"]) {
 }
 
 assert.equal(read("components/SearchBox.tsx").includes("fetch("), false, "Home search should stay local");
-assert.equal(read("components/SearchBox.tsx").includes("/api/search"), false, "Home search should not call /api/search");
+includes("lib/search.ts", "/api/search");
+includes("lib/search.ts", "No API base URL is configured for search fetches.");
+includes("lib/search.ts", "backendSearchEndpoint");
+includes("lib/search.ts", "resolveLocalSearchResponse");
+orderedMarkers("lib/search.ts", [
+  "return await fetchBackendSearchResponse",
+  "return resolveLocalSearchResponse"
+], "backend search preference before fixture fallback");
+includesAll("app/assets/[ticker]/page.tsx", [
+  "fetchSupportedAssetOverview(fallbackAsset?.ticker ?? ticker, fallbackAsset)",
+  "LimitedAssetStatePage",
+  "data-asset-pending-ingestion-state",
+  "data-asset-no-generated-output-for-blocked-state",
+  "buildEmptyWeeklyNewsFocus",
+  "buildSuppressedAnalysis"
+], "dynamic backend asset page and limited-state fallback");
+includes("app/assets/[ticker]/sources/page.tsx", "resolveSearchResponse");
 assert.equal(
   read("components/SearchBox.tsx").includes("https://") || read("components/SearchBox.tsx").includes("http://"),
   false,

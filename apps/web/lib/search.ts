@@ -35,6 +35,8 @@ type SearchCandidate = {
   aliases: string[];
 };
 
+type Fetcher = typeof fetch;
+
 type SearchBlockedCapabilityFlags = {
   can_open_generated_page: boolean;
   can_answer_chat: boolean;
@@ -531,6 +533,165 @@ function comparisonRouteResult(query: string): LocalSearchResponse | null {
       blocked_explanation: null
     }
   };
+}
+
+export async function resolveSearchResponse(query: string, fetcher: Fetcher = fetch): Promise<LocalSearchResponse> {
+  const raw_query = query.trim();
+  const comparison = comparisonRouteResult(raw_query);
+  if (comparison) {
+    return comparison;
+  }
+
+  try {
+    return await fetchBackendSearchResponse(raw_query, fetcher);
+  } catch {
+    return resolveLocalSearchResponse(query);
+  }
+}
+
+export async function fetchBackendSearchResponse(query: string, fetcher: Fetcher = fetch): Promise<LocalSearchResponse> {
+  const endpoint = backendSearchEndpoint(query);
+  const response = await fetcher(endpoint);
+
+  if (!response.ok) {
+    throw new Error(`Search request failed with status ${response.status}`);
+  }
+
+  const payload: unknown = await response.json();
+  if (!isBackendSearchResponse(payload)) {
+    throw new Error("Search response did not match the expected backend response contract.");
+  }
+
+  return {
+    query: payload.query,
+    results: payload.results.map((result) => ({
+      ticker: result.ticker,
+      name: result.name,
+      asset_type: result.asset_type,
+      exchange: result.exchange,
+      issuer: result.issuer,
+      supported: result.supported,
+      status: result.status,
+      support_classification: result.support_classification,
+      eligible_for_ingestion: result.eligible_for_ingestion,
+      requires_ingestion: result.requires_ingestion,
+      can_open_generated_page: result.can_open_generated_page,
+      can_answer_chat: result.can_answer_chat,
+      can_compare: result.can_compare,
+      generated_route: result.generated_route ?? null,
+      comparison_route: null,
+      comparison_left_ticker: null,
+      comparison_right_ticker: null,
+      can_request_ingestion: result.can_request_ingestion,
+      ingestion_request_route: result.ingestion_request_route ?? null,
+      message: result.message ?? null,
+      blocked_explanation: result.blocked_explanation ?? null
+    })),
+    state: {
+      status: payload.state.status,
+      message: payload.state.message,
+      result_count: payload.state.result_count,
+      support_classification: payload.state.support_classification ?? null,
+      requires_disambiguation: payload.state.requires_disambiguation ?? false,
+      requires_ingestion: payload.state.requires_ingestion ?? false,
+      can_open_generated_page: payload.state.can_open_generated_page ?? false,
+      generated_route: payload.state.generated_route ?? null,
+      comparison_route: null,
+      comparison_left_ticker: null,
+      comparison_right_ticker: null,
+      can_request_ingestion: payload.state.can_request_ingestion ?? false,
+      ingestion_request_route: payload.state.ingestion_request_route ?? null,
+      blocked_explanation: payload.state.blocked_explanation ?? null
+    }
+  };
+}
+
+function backendSearchEndpoint(query: string) {
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || process.env.API_BASE_URL?.trim();
+  if (!apiBaseUrl) {
+    throw new Error("No API base URL is configured for search fetches.");
+  }
+  const endpoint = new URL("/api/search", apiBaseUrl);
+  endpoint.searchParams.set("q", query);
+  return endpoint.toString();
+}
+
+function isBackendSearchResponse(value: unknown): value is LocalSearchResponse {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<LocalSearchResponse>;
+  return (
+    typeof candidate.query === "string" &&
+    Array.isArray(candidate.results) &&
+    candidate.results.every(isBackendSearchResult) &&
+    !!candidate.state &&
+    typeof candidate.state === "object" &&
+    isSearchResponseStatus(candidate.state.status) &&
+    typeof candidate.state.message === "string" &&
+    typeof candidate.state.result_count === "number"
+  );
+}
+
+function isBackendSearchResult(value: unknown): value is LocalSearchResult {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<LocalSearchResult>;
+  return (
+    typeof candidate.ticker === "string" &&
+    typeof candidate.name === "string" &&
+    isSearchAssetType(candidate.asset_type) &&
+    typeof candidate.supported === "boolean" &&
+    isSearchResultStatus(candidate.status) &&
+    isSearchSupportClassification(candidate.support_classification) &&
+    typeof candidate.eligible_for_ingestion === "boolean" &&
+    typeof candidate.requires_ingestion === "boolean" &&
+    typeof candidate.can_open_generated_page === "boolean" &&
+    typeof candidate.can_answer_chat === "boolean" &&
+    typeof candidate.can_compare === "boolean" &&
+    typeof candidate.can_request_ingestion === "boolean"
+  );
+}
+
+function isSearchAssetType(value: unknown): value is SearchAssetType {
+  return value === "stock" || value === "etf" || value === "unsupported" || value === "unknown";
+}
+
+function isSearchResponseStatus(value: unknown): value is SearchResponseStatus {
+  return (
+    value === "supported" ||
+    value === "ambiguous" ||
+    value === "ingestion_needed" ||
+    value === "unsupported" ||
+    value === "out_of_scope" ||
+    value === "unknown" ||
+    value === "comparison"
+  );
+}
+
+function isSearchResultStatus(value: unknown): value is SearchResultStatus {
+  return (
+    value === "supported" ||
+    value === "ingestion_needed" ||
+    value === "unsupported" ||
+    value === "out_of_scope" ||
+    value === "unknown" ||
+    value === "comparison"
+  );
+}
+
+function isSearchSupportClassification(value: unknown): value is SearchSupportClassification {
+  return (
+    value === "cached_supported" ||
+    value === "eligible_not_cached" ||
+    value === "recognized_unsupported" ||
+    value === "out_of_scope" ||
+    value === "unknown" ||
+    value === "comparison_route"
+  );
 }
 
 function blockedExplanationForResult(result: LocalSearchResult): LocalSearchBlockedExplanation | null {

@@ -18,6 +18,7 @@ import { fetchSupportedSourceDrawerResponse, sourceDrawerEntriesByDocumentId } f
 import { fetchSupportedAssetWeeklyNews } from "../../../lib/assetWeeklyNews";
 import { beginnerGlossaryGroupsByAssetType, type GlossaryTermKey } from "../../../lib/glossary";
 import { getAssetComparisonSuggestions } from "../../../lib/compareSuggestions";
+import { resolveSearchResponse, type LocalSearchResponse } from "../../../lib/search";
 import {
   assetPageExportUrl,
   assetSourceListExportUrl,
@@ -33,7 +34,10 @@ import {
   getPrimarySource,
   getAssetFixture,
   toSourceDrawerDocument,
-  getWeeklyNewsFocusFixture
+  getWeeklyNewsFocusFixture,
+  type AIComprehensiveAnalysisFixture,
+  type AssetFixture,
+  type WeeklyNewsFocusFixture
 } from "../../../lib/fixtures";
 
 type AssetPageProps = {
@@ -83,12 +87,7 @@ export function generateStaticParams() {
 export default async function AssetPage({ params }: AssetPageProps) {
   const { ticker } = await params;
   const fallbackAsset = getAssetFixture(ticker);
-
-  if (!fallbackAsset) {
-    notFound();
-  }
-
-  let asset = fallbackAsset;
+  let asset: AssetFixture | null = fallbackAsset ?? null;
   let overviewRendering: "backend_contract" | "local_fixture" = "local_fixture";
   let detailsRendering: "backend_contract" | "local_fixture" = "local_fixture";
   let weeklyNewsRendering: "backend_contract" | "local_fixture" = "local_fixture";
@@ -98,10 +97,18 @@ export default async function AssetPage({ params }: AssetPageProps) {
   let assetSourceListExportContract: AssetExportContractValidation | null = null;
 
   try {
-    asset = await fetchSupportedAssetOverview(fallbackAsset.ticker, fallbackAsset);
+    asset = await fetchSupportedAssetOverview(fallbackAsset?.ticker ?? ticker, fallbackAsset);
     overviewRendering = "backend_contract";
   } catch {
-    asset = fallbackAsset;
+    asset = fallbackAsset ?? null;
+  }
+
+  if (!asset) {
+    const search = await resolveSearchResponse(ticker);
+    if (search.state.status === "unknown" && search.results[0]?.ticker === "") {
+      notFound();
+    }
+    return <LimitedAssetStatePage ticker={ticker} search={search} />;
   }
 
   try {
@@ -111,12 +118,8 @@ export default async function AssetPage({ params }: AssetPageProps) {
     detailsRendering = "local_fixture";
   }
 
-  let weeklyNewsFocus = getWeeklyNewsFocusFixture(asset.ticker);
-  let aiComprehensiveAnalysis = getAIComprehensiveAnalysisFixture(asset.ticker);
-
-  if (!weeklyNewsFocus || !aiComprehensiveAnalysis) {
-    notFound();
-  }
+  let weeklyNewsFocus = getWeeklyNewsFocusFixture(asset.ticker) ?? buildEmptyWeeklyNewsFocus(asset);
+  let aiComprehensiveAnalysis = getAIComprehensiveAnalysisFixture(asset.ticker) ?? buildSuppressedAnalysis(asset, weeklyNewsFocus);
 
   try {
     const backendWeeklyNews = await fetchSupportedAssetWeeklyNews(
@@ -689,4 +692,120 @@ export default async function AssetPage({ params }: AssetPageProps) {
       />
     </main>
   );
+}
+
+function LimitedAssetStatePage({ ticker, search }: { ticker: string; search: LocalSearchResponse }) {
+  const result = search.results[0];
+  const status = search.state.status;
+  const supportClassification = search.state.support_classification ?? result?.support_classification ?? "unknown";
+  const titleTicker = result?.ticker || ticker.toUpperCase();
+  const stateLabel = status.replaceAll("_", " ");
+  const message =
+    search.state.blocked_explanation?.summary ??
+    result?.blocked_explanation?.summary ??
+    search.state.message ??
+    "This asset page is unavailable in the current deterministic frontend fallback.";
+
+  return (
+    <main
+      data-prd-layout-marker="asset-page-blocked-or-limited-flow-v1"
+      data-asset-overview-rendering="local_fixture"
+      data-asset-dynamic-fallback-state={status}
+      data-asset-support-classification={supportClassification}
+      data-asset-generated-page-blocked={status !== "supported"}
+    >
+      <section className="plain-panel unknown-state" data-dynamic-asset-state={status}>
+        <div className="section-heading">
+          <p className="eyebrow">Asset availability</p>
+          <h1>{titleTicker} learning page</h1>
+        </div>
+        <div className="state-row">
+          <span className="state-pill" data-evidence-state={status}>
+            State: {stateLabel}
+          </span>
+          <span className="state-pill" data-support-classification={supportClassification}>
+            {supportClassification.replaceAll("_", " ")}
+          </span>
+        </div>
+        <p className="source-gap-note">{message}</p>
+        {result?.message ? <p className="source-gap-note">{result.message}</p> : null}
+        {search.state.requires_ingestion || result?.requires_ingestion ? (
+          <p className="source-gap-note" data-asset-pending-ingestion-state>
+            This asset is eligible for a future ingestion workflow, but no generated page, chat answer, comparison, or
+            risk summary is created from the frontend fallback.
+          </p>
+        ) : null}
+        <p className="source-gap-note" data-asset-no-generated-output-for-blocked-state>
+          Unsupported, out-of-scope, unknown, unavailable, and pending-ingestion states stay blocked until a same-asset
+          backend evidence pack can support the learning page.
+        </p>
+        <nav className="source-list-nav" aria-label="Asset availability navigation">
+          <a href="/">Back to search</a>
+          <a href="/compare">Open comparison workflow</a>
+        </nav>
+      </section>
+    </main>
+  );
+}
+
+function buildEmptyWeeklyNewsFocus(asset: AssetFixture): WeeklyNewsFocusFixture {
+  return {
+    schemaVersion: "weekly-news-focus-v1",
+    state: "no_high_signal",
+    window: {
+      asOfDate: asset.freshness.recentEventsAsOf,
+      timezone: "America/New_York",
+      previousMarketWeek: {
+        start: null,
+        end: null
+      },
+      currentWeekToDate: {
+        start: null,
+        end: null
+      },
+      newsWindowStart: asset.freshness.recentEventsAsOf,
+      newsWindowEnd: asset.freshness.recentEventsAsOf,
+      includesCurrentWeekToDate: false
+    },
+    configuredMaxItemCount: 8,
+    selectedItemCount: 0,
+    suppressedCandidateCount: 0,
+    evidenceState: "no_high_signal",
+    evidenceLimitedState: "empty",
+    items: [],
+    emptyState: {
+      state: "no_high_signal",
+      message: "No major Weekly News Focus items found in the backend-backed dynamic page fallback.",
+      evidenceState: "no_high_signal",
+      selectedItemCount: 0,
+      suppressedCandidateCount: 0
+    },
+    citations: [],
+    sourceDocuments: [],
+    noLiveExternalCalls: true,
+    stableFactsAreSeparate: true
+  };
+}
+
+function buildSuppressedAnalysis(
+  asset: AssetFixture,
+  weeklyNewsFocus: WeeklyNewsFocusFixture
+): AIComprehensiveAnalysisFixture {
+  return {
+    schemaVersion: "ai-comprehensive-analysis-v1",
+    state: "suppressed",
+    analysisAvailable: false,
+    minimumWeeklyNewsItemCount: 2,
+    weeklyNewsSelectedItemCount: weeklyNewsFocus.selectedItemCount,
+    suppressionReason: "AI Comprehensive Analysis is suppressed until at least two high-signal Weekly News Focus items exist.",
+    sections: [],
+    citationIds: [],
+    sourceDocumentIds: [],
+    weeklyNewsEventIds: [],
+    canonicalFactCitationIds: asset.claims.flatMap((claim) => claim.citationIds).slice(0, 1),
+    citations: [],
+    sourceDocuments: [],
+    noLiveExternalCalls: true,
+    stableFactsAreSeparate: true
+  };
 }

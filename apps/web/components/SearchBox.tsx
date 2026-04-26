@@ -1,7 +1,14 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { formatSearchAssetType, resolveLocalSearchResponse, searchQueryExampleText, type LocalSearchResult } from "../lib/search";
+import {
+  formatSearchAssetType,
+  resolveLocalSearchResponse,
+  resolveSearchResponse,
+  searchQueryExampleText,
+  type LocalSearchResponse,
+  type LocalSearchResult
+} from "../lib/search";
 
 type SearchState =
   | "empty"
@@ -66,8 +73,8 @@ function ResultIdentity({ result }: { result: LocalSearchResult }) {
 export function SearchBox() {
   const [query, setQuery] = useState("");
   const [state, setState] = useState<SearchState>("empty");
+  const [resolution, setResolution] = useState<LocalSearchResponse>(() => resolveLocalSearchResponse(""));
   const searchRequestId = useRef(0);
-  const resolution = useMemo(() => resolveLocalSearchResponse(query), [query]);
   const singleResult = state !== "ambiguous" && state !== "empty" && state !== "loading" ? resolution.results[0] : null;
   const canOpenSupportedAsset = state === "supported" && Boolean(singleResult?.can_open_generated_page && singleResult.generated_route);
   const canOpenComparison = state === "comparison" && Boolean(singleResult?.comparison_route);
@@ -77,7 +84,7 @@ export function SearchBox() {
       return searchQueryExampleText();
     }
     if (state === "loading") {
-      return "Checking deterministic local search fixtures only.";
+      return "Checking the configured backend search contract, with deterministic fixture fallback if it is unavailable.";
     }
     if (state === "supported" && singleResult) {
       return `${singleResult.ticker} has a cached local generated page available today.`;
@@ -96,7 +103,8 @@ export function SearchBox() {
 
   function handleChange(value: string) {
     setQuery(value);
-    const nextResolution = resolveLocalSearchResponse(value);
+    const localResolution = resolveLocalSearchResponse(value);
+    setResolution(localResolution);
     searchRequestId.current += 1;
     const requestId = searchRequestId.current;
 
@@ -106,8 +114,10 @@ export function SearchBox() {
     }
 
     setState("loading");
-    window.setTimeout(() => {
+    window.setTimeout(async () => {
+      const nextResolution = await resolveSearchResponse(value);
       if (requestId === searchRequestId.current) {
+        setResolution(nextResolution);
         setState(nextResolution.state.status);
       }
     }, 120);
