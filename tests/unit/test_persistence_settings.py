@@ -22,6 +22,9 @@ from backend.settings import (
     LIVE_SEC_STOCK_ACQUISITION_DISABLED_REASON,
     LIVE_SOURCE_RATE_LIMIT_NOT_READY_REASON,
     LIVE_SOURCE_SNAPSHOT_WRITER_MISSING_REASON,
+    LIVE_WEEKLY_NEWS_ACQUISITION_DISABLED_REASON,
+    LIVE_WEEKLY_NEWS_SOURCE_CONFIGURATION_MISSING_REASON,
+    LIVE_WEEKLY_NEWS_WRITER_MISSING_REASON,
     MISSING_DATABASE_URL_REASON,
     build_live_acquisition_settings,
     build_local_durable_repository_settings,
@@ -204,8 +207,10 @@ def test_live_acquisition_settings_default_to_blocked_and_sanitized():
     assert settings.status == "blocked"
     assert settings.sec_stock_ready is False
     assert settings.etf_issuer_ready is False
+    assert settings.weekly_news_ready is False
     assert LIVE_SEC_STOCK_ACQUISITION_DISABLED_REASON in settings.missing_reasons
     assert LIVE_ETF_ISSUER_ACQUISITION_DISABLED_REASON in settings.missing_reasons
+    assert LIVE_WEEKLY_NEWS_ACQUISITION_DISABLED_REASON in settings.missing_reasons
     serialized = str(settings.safe_diagnostics)
     assert "API_KEY" not in serialized
     assert "DATABASE_URL" not in serialized
@@ -241,7 +246,31 @@ def test_live_acquisition_settings_require_source_rate_limit_and_writer_readines
     assert ready.status == "configured"
     assert ready.sec_stock_ready is True
     assert ready.etf_issuer_ready is True
+    assert ready.weekly_news_ready is False
     assert ready.generated_output_cache_writer_ready is False
+
+    weekly_missing = build_live_acquisition_settings(
+        env={
+            "LIVE_WEEKLY_NEWS_ACQUISITION_ENABLED": "true",
+        }
+    )
+    assert weekly_missing.weekly_news_ready is False
+    assert LIVE_WEEKLY_NEWS_SOURCE_CONFIGURATION_MISSING_REASON in weekly_missing.missing_reasons
+    assert LIVE_SOURCE_RATE_LIMIT_NOT_READY_REASON in weekly_missing.missing_reasons
+    assert LIVE_WEEKLY_NEWS_WRITER_MISSING_REASON in weekly_missing.missing_reasons
+
+    weekly_ready = build_live_acquisition_settings(
+        env={
+            "LIVE_WEEKLY_NEWS_ACQUISITION_ENABLED": "true",
+            "LIVE_WEEKLY_NEWS_OFFICIAL_SOURCE_CONFIGURED": "true",
+            "LIVE_SOURCE_RATE_LIMIT_READY": "true",
+            "LIVE_ACQUISITION_WEEKLY_NEWS_WRITER_READY": "true",
+        }
+    )
+    assert weekly_ready.status == "configured"
+    assert weekly_ready.weekly_news_ready is True
+    assert weekly_ready.sec_stock_ready is False
+    assert weekly_ready.etf_issuer_ready is False
 
 
 def test_local_durable_repository_factories_are_lazy_and_build_configured_readers():

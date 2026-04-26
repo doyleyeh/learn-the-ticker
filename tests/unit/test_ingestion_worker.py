@@ -543,6 +543,100 @@ def test_worker_persists_weekly_news_evidence_through_injected_mocked_writer_onl
     assert all(row.stores_raw_article_text is False for row in persisted.candidates)
 
 
+def test_worker_blocks_ready_live_weekly_news_acquisition_without_weekly_writer():
+    weekly_news_records = acquire_weekly_news_event_evidence_from_fixtures(
+        asset_ticker="VOO",
+        as_of="2026-04-23",
+        created_at="2026-04-23T12:00:00Z",
+        candidates=[
+            _weekly_news_candidate("issuer_announcement", "VOO", WeeklyNewsSourceRankTier.etf_issuer_announcement),
+        ],
+    )
+    response = get_pre_cache_job_status("pre-cache-launch-voo").model_copy(
+        update={
+            "job_state": IngestionLedgerJobState.pending,
+            "worker_status": None,
+            "generated_route": None,
+            "generated_output_available": False,
+            "capabilities": IngestionCapabilities(),
+            "citation_ids": [],
+            "source_document_ids": [],
+        }
+    )
+    records = serialize_ingestion_job_response(response)
+    worker = DeterministicIngestionWorker(
+        ledger_boundary=InMemoryIngestionWorkerLedger.from_records([records]),
+        fixture_outcomes={
+            "pre-cache-launch-voo": IngestionWorkerFixtureOutcome(
+                terminal_state=IngestionLedgerJobState.succeeded,
+                source_policy_ref="source-use-policy-v1",
+                checksum="sha256:weekly-news-voo",
+                weekly_news_records=weekly_news_records,
+                live_acquisition_attempted=True,
+                live_acquisition_readiness_passed=True,
+                live_repository_writers_required=True,
+            )
+        },
+    )
+
+    result = worker.execute("pre-cache-launch-voo")
+
+    assert result.summary.terminal_state == "failed"
+    assert result.records.diagnostics[0].error_code == "live_acquisition_readiness_failed"
+    assert result.records.ledger.generated_output_available is False
+    assert result.records.ledger.raw_provider_payload_stored is False
+    assert result.records.ledger.secrets_stored is False
+
+
+def test_worker_routes_ready_live_weekly_news_acquisition_through_mocked_writer():
+    weekly_news_records = acquire_weekly_news_event_evidence_from_fixtures(
+        asset_ticker="QQQ",
+        as_of="2026-04-23",
+        created_at="2026-04-23T12:00:00Z",
+        candidates=[
+            _weekly_news_candidate("prospectus", "QQQ", WeeklyNewsSourceRankTier.prospectus_update),
+            _weekly_news_candidate("fact_sheet", "QQQ", WeeklyNewsSourceRankTier.fact_sheet_change),
+        ],
+    )
+    response = get_pre_cache_job_status("pre-cache-launch-qqq").model_copy(
+        update={
+            "job_state": IngestionLedgerJobState.pending,
+            "worker_status": None,
+            "generated_route": None,
+            "generated_output_available": False,
+            "capabilities": IngestionCapabilities(),
+            "citation_ids": [],
+            "source_document_ids": [],
+        }
+    )
+    records = serialize_ingestion_job_response(response)
+    repository = InMemoryWeeklyNewsEventEvidenceRepository()
+    worker = DeterministicIngestionWorker(
+        ledger_boundary=InMemoryIngestionWorkerLedger.from_records([records]),
+        weekly_news_repository=repository,
+        fixture_outcomes={
+            "pre-cache-launch-qqq": IngestionWorkerFixtureOutcome(
+                terminal_state=IngestionLedgerJobState.succeeded,
+                source_policy_ref="source-use-policy-v1",
+                checksum="sha256:weekly-news-qqq",
+                weekly_news_records=weekly_news_records,
+                live_acquisition_attempted=True,
+                live_acquisition_readiness_passed=True,
+                live_repository_writers_required=True,
+            )
+        },
+    )
+
+    result = worker.execute("pre-cache-launch-qqq")
+    persisted = repository.read_weekly_news_event_evidence_records("QQQ")
+
+    assert result.summary.terminal_state == "succeeded"
+    assert persisted == weekly_news_records
+    assert result.records.ledger.compact_metadata["live_acquisition_attempted"] is True
+    assert result.records.ledger.compact_metadata["live_acquisition_readiness_passed"] is True
+    assert result.records.ledger.compact_metadata["weekly_news_persistence_configured"] is True
+
+
 class FailingWeeklyNewsRepository:
     def persist(self, records):
         raise WeeklyNewsEventEvidenceContractError("mocked writer rejected weekly news records")

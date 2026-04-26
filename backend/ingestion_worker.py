@@ -469,6 +469,8 @@ def _should_fail_closed_live_acquisition(
         return True
     if not outcome.live_repository_writers_required:
         return False
+    if outcome.weekly_news_records is not None:
+        return worker.weekly_news_repository is None
     return (
         worker.source_snapshot_repository is None
         or worker.knowledge_pack_repository is None

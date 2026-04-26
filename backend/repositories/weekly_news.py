@@ -7,7 +7,10 @@ from typing import Any
 
 from pydantic import Field, field_validator
 
+from backend.data import ASSETS, OUT_OF_SCOPE_COMMON_STOCKS, UNSUPPORTED_ASSETS, normalize_ticker
 from backend.models import (
+    AssetStatus,
+    AssetType,
     EvidenceState,
     FreshnessState,
     SourceAllowlistStatus,
@@ -24,6 +27,8 @@ from backend.weekly_news import compute_weekly_news_window
 
 WEEKLY_NEWS_EVENT_EVIDENCE_REPOSITORY_BOUNDARY = "weekly-news-event-evidence-repository-contract-v1"
 WEEKLY_NEWS_FIXTURE_ACQUISITION_BOUNDARY = "weekly-news-fixture-acquisition-boundary-v1"
+WEEKLY_NEWS_LIVE_ACQUISITION_READINESS_BOUNDARY = "weekly-news-live-acquisition-readiness-boundary-v1"
+WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_ACQUISITION_BOUNDARY = "weekly-news-official-source-mocked-acquisition-boundary-v1"
 WEEKLY_NEWS_EVENT_EVIDENCE_SCHEMA_VERSION = "weekly-news-event-evidence-repository-v1"
 WEEKLY_NEWS_EVENT_EVIDENCE_TABLES = (
     "weekly_news_market_week_windows",
@@ -40,6 +45,13 @@ WEEKLY_NEWS_EVENT_EVIDENCE_TABLES = (
 _SELECTABLE_SOURCE_POLICIES = {
     SourceUsePolicy.summary_allowed.value,
     SourceUsePolicy.full_text_allowed.value,
+}
+_OFFICIAL_SOURCE_RANK_TIERS = {
+    "official_filing",
+    "investor_relations_release",
+    "etf_issuer_announcement",
+    "prospectus_update",
+    "fact_sheet_change",
 }
 _SOURCE_POLICY_BLOCKED_REASONS = {
     "source_policy_blocked",
@@ -130,6 +142,41 @@ class WeeklyNewsDiagnosticCategory(str, Enum):
     citation_binding = "citation_binding"
     ai_threshold = "ai_threshold"
     privacy = "privacy"
+
+
+@dataclass(frozen=True)
+class WeeklyNewsLiveAcquisitionReadiness:
+    boundary: str
+    ticker: str
+    status: str
+    can_attempt_live_acquisition: bool
+    blocked_reasons: tuple[str, ...]
+    opt_in_enabled: bool
+    official_source_configured: bool
+    rate_limit_ready: bool
+    repository_writer_ready: bool
+    same_asset_support_state_valid: bool
+    source_use_ready: bool
+    market_week_window_ready: bool
+    golden_asset_supported: bool
+    no_live_external_calls: bool = True
+    sanitized_diagnostics: dict[str, object] | None = None
+
+
+@dataclass(frozen=True)
+class WeeklyNewsOfficialSourceAcquisitionResult:
+    boundary: str
+    ticker: str
+    status: str
+    readiness: WeeklyNewsLiveAcquisitionReadiness
+    records: WeeklyNewsEventEvidenceRepositoryRecords | None = None
+    selected_event_count: int = 0
+    candidate_count: int = 0
+    configured_max_item_count: int = 8
+    evidence_limited_state: str | None = None
+    ai_analysis_allowed: bool = False
+    sanitized_diagnostics: dict[str, object] | None = None
+    no_live_external_calls: bool = True
 
 
 class WeeklyNewsMarketWeekWindowRow(StrictRow):
@@ -795,6 +842,161 @@ def source_policy_allows_weekly_news_selection(candidate: WeeklyNewsEventCandida
     return not _candidate_source_policy_reasons(candidate)
 
 
+def evaluate_weekly_news_live_acquisition_readiness(
+    ticker: str,
+    *,
+    settings=None,
+    opt_in_enabled: bool | None = None,
+    official_source_configured: bool | None = None,
+    rate_limit_ready: bool | None = None,
+    repository_writer_ready: bool | None = None,
+    as_of: str = "2026-04-23",
+    candidates: list[WeeklyNewsEventCandidateRow] | None = None,
+) -> WeeklyNewsLiveAcquisitionReadiness:
+    normalized = _normalize_ticker(ticker)
+    opt_in = _setting_bool(settings, "weekly_news_enabled", opt_in_enabled, False)
+    source_configured = _setting_bool(
+        settings,
+        "weekly_news_official_source_configured",
+        official_source_configured,
+        False,
+    )
+    rate_ready = _setting_bool(settings, "rate_limit_ready", rate_limit_ready, False)
+    writer_ready = _setting_bool(settings, "weekly_news_evidence_writer_ready", repository_writer_ready, False)
+    support_valid = _same_asset_support_state_valid(normalized)
+    golden_supported = normalized in {"AAPL", "VOO", "QQQ"} and support_valid
+    window_ready = _market_week_window_ready(as_of)
+    source_ready = _official_source_candidates_ready(normalized, candidates or [])
+
+    blocked: list[str] = []
+    if not opt_in:
+        blocked.append("explicit_live_weekly_news_acquisition_opt_in_missing")
+    if not source_configured:
+        blocked.append("weekly_news_official_source_configuration_missing")
+    if not rate_ready:
+        blocked.append("source_rate_limit_not_ready")
+    if not writer_ready:
+        blocked.append("weekly_news_evidence_repository_writer_not_ready")
+    if not support_valid:
+        if normalized in UNSUPPORTED_ASSETS:
+            blocked.append("unsupported_asset")
+        elif normalized in OUT_OF_SCOPE_COMMON_STOCKS:
+            blocked.append("out_of_scope_asset")
+        else:
+            blocked.append("same_asset_support_state_validation_failed")
+    if not golden_supported:
+        blocked.append("golden_asset_scope_validation_failed")
+    if not window_ready:
+        blocked.append("market_week_window_validation_failed")
+    if candidates is not None and not source_ready:
+        blocked.append("official_source_use_validation_failed")
+
+    can_attempt = not blocked
+    diagnostics = {
+        "boundary": WEEKLY_NEWS_LIVE_ACQUISITION_READINESS_BOUNDARY,
+        "status": "ready" if can_attempt else "blocked",
+        "blocked_reasons": list(blocked),
+        "ticker": normalized,
+        "candidate_count": len(candidates or []),
+        "no_live_external_calls": True,
+    }
+    return WeeklyNewsLiveAcquisitionReadiness(
+        boundary=WEEKLY_NEWS_LIVE_ACQUISITION_READINESS_BOUNDARY,
+        ticker=normalized,
+        status="ready" if can_attempt else "blocked",
+        can_attempt_live_acquisition=can_attempt,
+        blocked_reasons=tuple(blocked),
+        opt_in_enabled=opt_in,
+        official_source_configured=source_configured,
+        rate_limit_ready=rate_ready,
+        repository_writer_ready=writer_ready,
+        same_asset_support_state_valid=support_valid,
+        source_use_ready=source_ready,
+        market_week_window_ready=window_ready,
+        golden_asset_supported=golden_supported,
+        sanitized_diagnostics=diagnostics,
+    )
+
+
+def acquire_weekly_news_event_evidence_from_official_sources(
+    *,
+    asset_ticker: str,
+    as_of: str,
+    created_at: str,
+    candidates: list[WeeklyNewsEventCandidateRow],
+    settings=None,
+    opt_in_enabled: bool | None = None,
+    official_source_configured: bool | None = None,
+    rate_limit_ready: bool | None = None,
+    repository_writer_ready: bool | None = None,
+    configured_max_item_count: int = 8,
+    minimum_ai_analysis_item_count: int = 2,
+    minimum_display_score: int = 7,
+) -> WeeklyNewsOfficialSourceAcquisitionResult:
+    normalized = _normalize_ticker(asset_ticker)
+    readiness = evaluate_weekly_news_live_acquisition_readiness(
+        normalized,
+        settings=settings,
+        opt_in_enabled=opt_in_enabled,
+        official_source_configured=official_source_configured,
+        rate_limit_ready=rate_limit_ready,
+        repository_writer_ready=repository_writer_ready,
+        as_of=as_of,
+        candidates=candidates,
+    )
+    if not readiness.can_attempt_live_acquisition:
+        return WeeklyNewsOfficialSourceAcquisitionResult(
+            boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_ACQUISITION_BOUNDARY,
+            ticker=normalized,
+            status="blocked",
+            readiness=readiness,
+            candidate_count=len(candidates),
+            configured_max_item_count=configured_max_item_count,
+            sanitized_diagnostics=readiness.sanitized_diagnostics,
+        )
+
+    official_candidates = [
+        candidate
+        for candidate in candidates
+        if candidate.source_rank_tier in _OFFICIAL_SOURCE_RANK_TIERS
+    ]
+    records = acquire_weekly_news_event_evidence_from_fixtures(
+        asset_ticker=normalized,
+        as_of=as_of,
+        created_at=created_at,
+        candidates=official_candidates,
+        configured_max_item_count=configured_max_item_count,
+        minimum_ai_analysis_item_count=minimum_ai_analysis_item_count,
+        minimum_display_score=minimum_display_score,
+    )
+    evidence_state = records.evidence_states[0] if records.evidence_states else None
+    threshold = records.ai_thresholds[0] if records.ai_thresholds else None
+    diagnostics = {
+        "boundary": WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_ACQUISITION_BOUNDARY,
+        "status": "acquired",
+        "ticker": normalized,
+        "candidate_count": len(records.candidates),
+        "selected_event_count": len(records.selected_events),
+        "configured_max_item_count": configured_max_item_count,
+        "evidence_limited_state": evidence_state.evidence_limited_state if evidence_state else None,
+        "ai_analysis_allowed": threshold.analysis_allowed if threshold else False,
+        "no_live_external_calls": True,
+    }
+    return WeeklyNewsOfficialSourceAcquisitionResult(
+        boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_ACQUISITION_BOUNDARY,
+        ticker=normalized,
+        status="acquired",
+        readiness=readiness,
+        records=records,
+        selected_event_count=len(records.selected_events),
+        candidate_count=len(records.candidates),
+        configured_max_item_count=configured_max_item_count,
+        evidence_limited_state=evidence_state.evidence_limited_state if evidence_state else None,
+        ai_analysis_allowed=threshold.analysis_allowed if threshold else False,
+        sanitized_diagnostics=diagnostics,
+    )
+
+
 def _prepare_candidate_for_fixture_selection(
     candidate: WeeklyNewsEventCandidateRow,
     *,
@@ -1220,6 +1422,10 @@ def _validate_candidate_row(row: WeeklyNewsEventCandidateRow, window: WeeklyNews
         raise WeeklyNewsEventEvidenceContractError("Weekly News Focus candidates may store compact metadata only.")
     if row.importance_score < 0:
         raise WeeklyNewsEventEvidenceContractError("Weekly News Focus importance scores cannot be negative.")
+    if row.title_checksum is not None and not row.title_checksum.startswith("sha256:"):
+        raise WeeklyNewsEventEvidenceContractError("Weekly News Focus title checksums must use sha256 metadata.")
+    if row.evidence_checksum is None or not row.evidence_checksum.startswith("sha256:"):
+        raise WeeklyNewsEventEvidenceContractError("Weekly News Focus evidence checksums must use sha256 metadata.")
     reasons = _candidate_block_reasons(row)
     if row.candidate_decision == WeeklyNewsCandidateDecision.selected.value and reasons:
         raise WeeklyNewsEventEvidenceContractError("Selected candidate rows cannot carry source-policy, duplicate, or relevance blocks.")
@@ -1379,6 +1585,64 @@ def _fixture_suppression_reasons(
     if total_score < minimum_display_score:
         reasons.add("below_minimum_display_score")
     return sorted(reasons)
+
+
+def _setting_bool(settings, name: str, explicit: bool | None, default: bool) -> bool:
+    if explicit is not None:
+        return bool(explicit)
+    if settings is not None and hasattr(settings, name):
+        return bool(getattr(settings, name))
+    return default
+
+
+def _same_asset_support_state_valid(ticker: str) -> bool:
+    asset = ASSETS.get(_normalize_ticker(ticker))
+    if asset is None:
+        return False
+    identity = asset["identity"]
+    asset_type = getattr(getattr(identity, "asset_type", None), "value", None)
+    status = getattr(getattr(identity, "status", None), "value", None)
+    return (
+        getattr(identity, "ticker", None) == _normalize_ticker(ticker)
+        and status == AssetStatus.supported.value
+        and asset_type in {AssetType.stock.value, AssetType.etf.value}
+    )
+
+
+def _market_week_window_ready(as_of: str) -> bool:
+    try:
+        window = compute_weekly_news_window(as_of)
+    except Exception:
+        return False
+    return (
+        window.timezone == "America/New_York"
+        and bool(window.news_window_start)
+        and bool(window.news_window_end)
+        and window.news_window_start <= window.news_window_end
+    )
+
+
+def _official_source_candidates_ready(ticker: str, candidates: list[WeeklyNewsEventCandidateRow]) -> bool:
+    normalized = _normalize_ticker(ticker)
+    try:
+        for candidate in candidates:
+            if _normalize_ticker(candidate.asset_ticker) != normalized:
+                return False
+            if _normalize_ticker(candidate.source_asset_ticker) != normalized:
+                return False
+            if candidate.source_rank_tier not in _OFFICIAL_SOURCE_RANK_TIERS:
+                return False
+            if candidate.source_quality not in {SourceQuality.official.value, SourceQuality.issuer.value}:
+                return False
+            if candidate.title_checksum is not None and not candidate.title_checksum.startswith("sha256:"):
+                return False
+            if candidate.evidence_checksum is None or not candidate.evidence_checksum.startswith("sha256:"):
+                return False
+            if candidate.stores_raw_article_text or candidate.stores_raw_provider_payload or candidate.stores_unrestricted_source_text:
+                return False
+        return True
+    except Exception:
+        return False
 
 
 def _period_bucket_for_candidate(

@@ -243,6 +243,8 @@ def test_weekly_news_event_evidence_repository_contract_is_dormant_metadata_only
     combined = f"{repository}\n{shim}\n{migration}"
 
     assert "weekly-news-event-evidence-repository-contract-v1" in combined
+    assert "weekly-news-live-acquisition-readiness-boundary-v1" in combined
+    assert "weekly-news-official-source-mocked-acquisition-boundary-v1" in combined
     assert "weekly_news_market_week_windows" in combined
     assert "weekly_news_event_candidates" in combined
     assert "weekly_news_selected_events" in combined
@@ -399,7 +401,7 @@ def test_backend_mvp_runtime_gap_audit_tracks_required_areas_without_runtime_wir
         assert forbidden.lower() not in audit_lower
 
 
-def test_tasks_general_mvp_roadmap_marks_t112_current_and_next_backlog():
+def test_tasks_general_mvp_roadmap_marks_t113_current_with_t114_backlog():
     tasks = read_file("TASKS.md")
     current_task = tasks.split("## Current task", 1)[1].split("## Completed", 1)[0]
     backlog = tasks.split("## Backlog", 1)[1].split("## General MVP Roadmap", 1)[0]
@@ -408,12 +410,11 @@ def test_tasks_general_mvp_roadmap_marks_t112_current_and_next_backlog():
     assert "## MVP Backend Roadmap" not in tasks
     assert "No backlog tasks are currently prepared" not in backlog
     assert "General MVP alignment:" in current_task
-    assert "T-112 prepares explicit opt-in official-source acquisition" in current_task
+    assert "T-113 prepares explicit opt-in official-source Weekly News acquisition" in current_task
     assert "Roadmap contract refinement:" in current_task
-    assert "Stop after explicit opt-in live SEC/issuer acquisition readiness with mocked tests" in current_task
+    assert "Stop after official-source Weekly News live-acquisition readiness for golden assets with mocked tests" in current_task
 
     for task_marker in [
-        "### T-113: Add official-source Weekly News live acquisition for golden assets",
         "### T-114: Expand launch pre-cache coverage and add MVP readiness regression matrix",
     ]:
         assert task_marker in backlog, f"Backlog should include {task_marker}"
@@ -430,8 +431,8 @@ def test_tasks_general_mvp_roadmap_marks_t112_current_and_next_backlog():
     assert "T-109 established frontend API-backed search, pending states, and dynamic asset-page rendering" in roadmap
     assert "T-110 established persisted end-to-end comparison, chat, source, glossary, Weekly News, and export verification" in roadmap
     assert "T-111 established local durable repository execution with in-memory fallback" in roadmap
-    assert "T-112 is the current promoted task for opt-in live SEC and ETF issuer golden acquisition readiness" in roadmap
-    assert "T-113 and T-114 are the next runnable tasks" in roadmap
+    assert "The current promoted MVP blocker is explicit opt-in official-source Weekly News live acquisition readiness for golden assets" in roadmap
+    assert "after T-112 added explicit opt-in SEC and ETF issuer live acquisition readiness" in roadmap
     assert "| Provider source-use/export enforcement hardening | Completed | T-099 |" in roadmap
     assert "| Backend fresh-data MVP runtime gap tracker | Completed | T-100 |" in roadmap
     assert "| Configured persisted-reader route wiring | Completed | T-101 |" in roadmap
