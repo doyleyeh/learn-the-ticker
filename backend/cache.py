@@ -24,8 +24,10 @@ from backend.models import (
     KnowledgePackFreshnessInput,
     LlmCacheEligibilityDecision,
     SectionFreshnessInput,
+    SourceAllowlistStatus,
     SourceChecksumInput,
     SourceChecksumRecord,
+    SourceUsePolicy,
 )
 
 
@@ -438,12 +440,21 @@ def cache_entry_metadata_from_generated_output(
         unavailable_states=[
             gap.gap_id for gap in freshness_input.evidence_gaps if gap.freshness_state is FreshnessState.unavailable
         ],
-        cache_allowed=cache_allowed and all(checksum.cache_allowed for checksum in freshness_input.source_checksums),
+        cache_allowed=cache_allowed
+        and all(_checksum_can_feed_generated_output_cache(checksum) for checksum in freshness_input.source_checksums),
         export_allowed=export_allowed,
         created_at=created_at,
         expires_at=expires_at,
         prompt_version=freshness_input.prompt_version,
         model_name=freshness_input.model_name,
+    )
+
+
+def _checksum_can_feed_generated_output_cache(checksum: SourceChecksumRecord) -> bool:
+    return (
+        checksum.cache_allowed
+        and checksum.allowlist_status is SourceAllowlistStatus.allowed
+        and checksum.source_use_policy in {SourceUsePolicy.summary_allowed, SourceUsePolicy.full_text_allowed}
     )
 
 

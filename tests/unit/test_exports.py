@@ -1,7 +1,10 @@
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from backend.export import (
+    _build_export_source_bindings,
+    _export_sources,
     export_asset_page,
     export_asset_source_list,
     export_chat_transcript,
@@ -16,6 +19,7 @@ from backend.models import (
     ExportState,
     ExportValidationBindingScope,
     ExportValidationOutcome,
+    FreshnessState,
 )
 from backend.safety import find_forbidden_output_phrases
 
@@ -162,6 +166,58 @@ def test_asset_source_list_export_contains_source_metadata_and_allowed_excerpts(
     assert source.source_use_policy.value == "full_text_allowed"
     assert "source-use policy" in export.rendered_markdown
     assert "full paid-news articles" in export.licensing_note.text
+
+
+def test_export_source_metadata_limits_restricted_tiers_and_suppresses_rejected_sources():
+    metadata_only_source = _source_fixture(
+        source_document_id="provider_market_aapl_reference",
+        url="",
+        provider_name="Mock Market Reference",
+        supporting_passage="Restricted provider payload text must not be exported.",
+    )
+    link_only_source = _source_fixture(
+        source_document_id="link_only_news_reference",
+        url="https://link-only.example/story",
+        publisher="Link Only Example",
+        supporting_passage="Link-only article text must not be exported.",
+    )
+    rejected_source = _source_fixture(
+        source_document_id="rejected_news_reference",
+        url="https://unlicensed.example/story",
+        publisher="Unlicensed Example",
+        supporting_passage="Rejected article text must not be exported.",
+    )
+
+    exported = _export_sources([metadata_only_source, link_only_source, rejected_source])
+    exported_by_id = {source.source_document_id: source for source in exported}
+
+    assert set(exported_by_id) == {"provider_market_aapl_reference", "link_only_news_reference"}
+    metadata = exported_by_id["provider_market_aapl_reference"]
+    assert metadata.source_use_policy.value == "metadata_only"
+    assert metadata.allowed_excerpt is not None
+    assert metadata.allowed_excerpt.kind == "excerpt_metadata"
+    assert metadata.allowed_excerpt.text is None
+    assert metadata.permitted_operations.can_export_metadata is False
+
+    link_only = exported_by_id["link_only_news_reference"]
+    assert link_only.source_use_policy.value == "link_only"
+    assert link_only.allowed_excerpt is not None
+    assert link_only.allowed_excerpt.kind == "excerpt_metadata"
+    assert link_only.allowed_excerpt.text is None
+    assert link_only.permitted_operations.can_export_metadata is True
+
+    bindings, _ = _build_export_source_bindings(
+        exported,
+        {
+            "provider_market_aapl_reference": {"asset_source_list"},
+            "link_only_news_reference": {"asset_source_list"},
+        },
+        binding_scope=ExportValidationBindingScope.same_asset,
+        asset_ticker="AAPL",
+    )
+    assert all(binding.excerpt_exported is False for binding in bindings)
+    assert all(binding.excerpt_metadata_only is True for binding in bindings)
+    assert any("policy-safe attribution" in (binding.omitted_content_message or "") for binding in bindings)
 
 
 def test_comparison_exports_preserve_pack_citations_sources_and_reverse_order():
@@ -313,3 +369,27 @@ def _flatten_text(value: Any) -> str:
     if isinstance(value, dict):
         return " ".join(_flatten_text(item) for item in value.values())
     return ""
+
+
+def _source_fixture(
+    *,
+    source_document_id: str,
+    url: str,
+    publisher: str = "Mock Market Reference",
+    provider_name: str | None = None,
+    supporting_passage: str,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        source_document_id=source_document_id,
+        title=f"{source_document_id} title",
+        source_type="provider_fixture",
+        publisher=publisher,
+        url=url,
+        published_at=None,
+        as_of_date="2026-04-01",
+        retrieved_at="2026-04-25T18:04:25Z",
+        freshness_state=FreshnessState.fresh,
+        is_official=False,
+        supporting_passage=supporting_passage,
+        provider_name=provider_name,
+    )

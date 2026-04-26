@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from enum import Enum
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -37,6 +39,34 @@ REQUIRED_SOURCE_USE_POLICIES = {
     SourceUsePolicy.full_text_allowed,
     SourceUsePolicy.rejected,
 }
+TEXT_LIMITED_SOURCE_USE_POLICIES = {
+    SourceUsePolicy.metadata_only,
+    SourceUsePolicy.link_only,
+    SourceUsePolicy.rejected,
+}
+
+
+class SourcePolicyAction(str, Enum):
+    generated_claim_support = "generated_claim_support"
+    cache_input_checksum = "cache_input_checksum"
+    cacheable_generated_output = "cacheable_generated_output"
+    source_list_export_metadata = "source_list_export_metadata"
+    allowed_excerpt_export = "allowed_excerpt_export"
+    markdown_json_section_export = "markdown_json_section_export"
+    diagnostics = "diagnostics"
+
+
+@dataclass(frozen=True)
+class SourcePolicyActionDecision:
+    action: SourcePolicyAction
+    allowed: bool
+    reason_code: str
+    source_use_policy: SourceUsePolicy
+    allowlist_status: SourceAllowlistStatus
+    sanitized_diagnostics_only: bool = False
+    metadata_only: bool = False
+    text_or_excerpt_allowed: bool = False
+    generated_output_eligible: bool = False
 
 
 class SourcePolicyError(ValueError):
@@ -118,23 +148,111 @@ def resolve_source_policy(
 
 
 def source_can_support_generated_output(decision: SourcePolicyDecision) -> bool:
-    return (
-        decision.decision is SourcePolicyDecisionState.allowed
-        and decision.allowlist_status is SourceAllowlistStatus.allowed
-        and decision.source_use_policy
-        not in {SourceUsePolicy.metadata_only, SourceUsePolicy.link_only, SourceUsePolicy.rejected}
-        and decision.permitted_operations.can_support_generated_output
-        and decision.permitted_operations.can_support_citations
-    )
+    return evaluate_source_policy_action(decision, SourcePolicyAction.generated_claim_support).allowed
 
 
 def source_can_export_excerpt(decision: SourcePolicyDecision) -> bool:
-    return (
-        decision.decision is SourcePolicyDecisionState.allowed
-        and decision.allowed_excerpt.allowed
-        and decision.permitted_operations.can_export_excerpt
-        and decision.source_use_policy in {SourceUsePolicy.summary_allowed, SourceUsePolicy.full_text_allowed}
-    )
+    return evaluate_source_policy_action(decision, SourcePolicyAction.allowed_excerpt_export).allowed
+
+
+def source_can_cache_input_checksum(decision: SourcePolicyDecision) -> bool:
+    return evaluate_source_policy_action(decision, SourcePolicyAction.cache_input_checksum).allowed
+
+
+def source_can_feed_generated_output_cache(decision: SourcePolicyDecision) -> bool:
+    return evaluate_source_policy_action(decision, SourcePolicyAction.cacheable_generated_output).allowed
+
+
+def source_can_export_source_metadata(decision: SourcePolicyDecision) -> bool:
+    return evaluate_source_policy_action(decision, SourcePolicyAction.source_list_export_metadata).allowed
+
+
+def source_can_support_markdown_json_export(decision: SourcePolicyDecision) -> bool:
+    return evaluate_source_policy_action(decision, SourcePolicyAction.markdown_json_section_export).allowed
+
+
+def classify_source_policy_actions(decision: SourcePolicyDecision) -> dict[SourcePolicyAction, SourcePolicyActionDecision]:
+    return {action: evaluate_source_policy_action(decision, action) for action in SourcePolicyAction}
+
+
+def evaluate_source_policy_action(
+    decision: SourcePolicyDecision,
+    action: SourcePolicyAction | str,
+) -> SourcePolicyActionDecision:
+    normalized_action = SourcePolicyAction(action)
+    base = {
+        "action": normalized_action,
+        "source_use_policy": decision.source_use_policy,
+        "allowlist_status": decision.allowlist_status,
+        "metadata_only": decision.source_use_policy in {SourceUsePolicy.metadata_only, SourceUsePolicy.link_only},
+    }
+
+    blocked_reason = _policy_block_reason(decision)
+    if normalized_action is SourcePolicyAction.diagnostics:
+        return SourcePolicyActionDecision(
+            **base,
+            allowed=True,
+            sanitized_diagnostics_only=True,
+            reason_code="diagnostics_sanitized_only" if blocked_reason else "diagnostics_compact_metadata_only",
+        )
+    if blocked_reason:
+        return SourcePolicyActionDecision(**base, allowed=False, reason_code=blocked_reason)
+
+    operations = decision.permitted_operations
+    policy = decision.source_use_policy
+
+    if normalized_action is SourcePolicyAction.cache_input_checksum:
+        allowed = operations.can_store_metadata and operations.can_cache and policy is not SourceUsePolicy.rejected
+        return SourcePolicyActionDecision(
+            **base,
+            allowed=allowed,
+            reason_code="cache_checksum_metadata_only" if allowed else "cache_checksum_not_permitted",
+        )
+
+    if normalized_action is SourcePolicyAction.source_list_export_metadata:
+        allowed = operations.can_display_metadata and operations.can_export_metadata and policy is not SourceUsePolicy.rejected
+        return SourcePolicyActionDecision(
+            **base,
+            allowed=allowed,
+            reason_code="source_metadata_export_allowed" if allowed else "source_metadata_export_not_permitted",
+        )
+
+    if normalized_action is SourcePolicyAction.allowed_excerpt_export:
+        allowed = (
+            policy in {SourceUsePolicy.summary_allowed, SourceUsePolicy.full_text_allowed}
+            and decision.allowed_excerpt.allowed
+            and operations.can_export_excerpt
+        )
+        return SourcePolicyActionDecision(
+            **base,
+            allowed=allowed,
+            reason_code="bounded_excerpt_export_allowed" if allowed else _text_limited_reason(policy),
+            text_or_excerpt_allowed=allowed,
+        )
+
+    if normalized_action in {
+        SourcePolicyAction.generated_claim_support,
+        SourcePolicyAction.cacheable_generated_output,
+        SourcePolicyAction.markdown_json_section_export,
+    }:
+        allowed = (
+            policy not in TEXT_LIMITED_SOURCE_USE_POLICIES
+            and operations.can_support_generated_output
+            and operations.can_support_citations
+        )
+        if normalized_action is SourcePolicyAction.cacheable_generated_output:
+            allowed = allowed and operations.can_cache
+        if normalized_action is SourcePolicyAction.markdown_json_section_export:
+            allowed = allowed and operations.can_export_metadata
+        return SourcePolicyActionDecision(
+            **base,
+            allowed=allowed,
+            reason_code="generated_output_rights_allowed" if allowed else _text_limited_reason(policy),
+            text_or_excerpt_allowed=policy in {SourceUsePolicy.summary_allowed, SourceUsePolicy.full_text_allowed},
+            generated_output_eligible=allowed,
+        )
+
+    raise SourcePolicyError(f"Unhandled source policy action: {normalized_action.value}.")
 
 
 def policy_fields_from_decision(decision: SourcePolicyDecision) -> dict[str, Any]:
@@ -154,6 +272,30 @@ def excerpt_text_for_policy(text: str, decision: SourcePolicyDecision) -> str | 
     if max_words and len(words) > max_words:
         return " ".join(words[:max_words])
     return text
+
+
+def _policy_block_reason(decision: SourcePolicyDecision) -> str | None:
+    if decision.decision is not SourcePolicyDecisionState.allowed:
+        if decision.decision is SourcePolicyDecisionState.not_allowlisted:
+            return "source_not_allowlisted"
+        if decision.decision is SourcePolicyDecisionState.pending_review:
+            return "source_pending_review"
+        return "source_rejected"
+    if decision.allowlist_status is not SourceAllowlistStatus.allowed:
+        return f"allowlist_{decision.allowlist_status.value}"
+    if decision.source_use_policy is SourceUsePolicy.rejected:
+        return "source_rejected"
+    return None
+
+
+def _text_limited_reason(policy: SourceUsePolicy) -> str:
+    if policy is SourceUsePolicy.metadata_only:
+        return "metadata_only_content_omitted"
+    if policy is SourceUsePolicy.link_only:
+        return "link_only_content_omitted"
+    if policy is SourceUsePolicy.rejected:
+        return "source_rejected"
+    return "operation_not_permitted"
 
 
 def _decision_from_record(record: SourceAllowlistRecord, *, matched_by: str) -> SourcePolicyDecision:
@@ -279,4 +421,3 @@ def _normalize_provider(value: str) -> str:
 
 def _operation_values(operations: SourceOperationPermissions) -> list[bool]:
     return [bool(value) for value in operations.model_dump(mode="json").values()]
-
