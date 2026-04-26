@@ -812,6 +812,13 @@ class LlmLiveGateState(str, Enum):
     enabled = "enabled"
 
 
+class LlmReadinessStatus(str, Enum):
+    disabled_by_default = "disabled_by_default"
+    unavailable = "unavailable"
+    validation_not_ready = "validation_not_ready"
+    ready_for_explicit_live_call = "ready_for_explicit_live_call"
+
+
 class LlmGenerationAttemptStatus(str, Enum):
     not_attempted = "not_attempted"
     mock_succeeded = "mock_succeeded"
@@ -857,16 +864,22 @@ class LlmModelDescriptor(BaseModel):
 class LlmRuntimeConfig(BaseModel):
     provider_kind: LlmProviderKind = LlmProviderKind.mock
     runtime_mode: LlmRuntimeMode = LlmRuntimeMode.deterministic_mock
+    readiness_status: LlmReadinessStatus = LlmReadinessStatus.disabled_by_default
     live_generation_enabled: bool = False
     live_gate_state: LlmLiveGateState = LlmLiveGateState.disabled
     server_side_key_present: bool = False
+    base_url_configured: bool = False
+    model_chain_configured: bool = False
     endpoint_configured: bool = False
     configured_model_chain: list[LlmModelDescriptor] = Field(default_factory=list)
     paid_fallback_model: LlmModelDescriptor | None = None
     paid_fallback_enabled: bool = False
     validation_retry_count: int = 1
     reasoning_summary_only: bool = True
+    validation_ready: bool = True
+    validation_gates: list[str] = Field(default_factory=list)
     live_network_calls_allowed: bool = False
+    no_live_call_status: Literal["no_live_calls_attempted"] = "no_live_calls_attempted"
     unavailable_reasons: list[str] = Field(default_factory=list)
 
 
