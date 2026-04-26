@@ -15,6 +15,9 @@ Roadmap alignment:
 - Keeps public route live fetching, frontend changes, broad ETF-universe expansion, paid ETF providers, production source storage, generated-output writes, and live calls in CI out of scope.
 - Preserves Frontend Design and Workflow v0.4 before live-provider or deployment expansion: single-asset home search, separate connected comparison workflow, contextual glossary, mobile source/glossary/chat bottom sheets or full-screen panels, stock-vs-ETF relationship badges, and evidence-limited Weekly News Focus behavior.
 
+General MVP alignment:
+T-104 completes the mocked official-source ETF acquisition prerequisite for the fully functional MVP path. It does not complete the MVP by itself; source snapshot persistence, normalized knowledge-pack writes, generated-output cache writes, frontend API migration, Weekly News execution, launch pre-cache expansion, and production readiness remain separate follow-up tasks.
+
 Allowed files:
 
 - `backend/provider_adapters/etf_issuer.py`
@@ -2801,20 +2804,174 @@ Completion commits:
 
 ## Backlog
 
-No backlog tasks are currently prepared. The first backlog task was promoted into Current task as T-104.
+### T-105: Persist source snapshots and parsed acquisition artifacts for the golden path
 
-## MVP Backend Roadmap
+Goal:
+Persist validated source snapshot metadata and parsed acquisition artifacts from the mocked SEC stock and ETF issuer golden paths into the configured private storage/repository boundary, preserving rights-tier source-use rules and fixture fallback.
 
-This section is intentionally non-operational for the agent loop. Keep runnable repeat-mode tasks above this roadmap as third-level task headings, and keep this longer MVP roadmap as bullets until each item is promoted into a narrow task contract. This roadmap now separates completed deterministic contracts from the remaining runtime work required for a functional fresh-data MVP. Early backend tasks may add production dependencies such as SQLAlchemy, Alembic, or psycopg only with dependency rationale, focused tests, and no live external calls in normal CI.
+Task-scope paragraph:
+Wire the existing source snapshot artifact contracts to the deterministic acquisition outputs from T-103 and T-104 for AAPL and the golden ETFs. This task should persist metadata, checksums, retrieval/as-of timestamps, source-use tiers, parsed artifact references, and sanitized diagnostics through configured in-memory or mocked storage/repository boundaries only. It must not expose public or signed storage URLs, write unrestricted source text beyond rights policy, change public route schemas, activate live provider calls, write normalized knowledge packs, write generated-output cache records, or modify frontend rendering.
+
+Acceptance criteria:
+
+- Mocked SEC and ETF acquisition outputs can produce source snapshot artifact records with same-asset, same-source-document, checksum, source-use, freshness, and diagnostics metadata.
+- Rights tiers are enforced for official/full-text-allowed, summary-allowed, metadata-only, link-only, and rejected sources before any raw or parsed content reference is persisted.
+- Configured repository/storage writer failures, misses, invalid records, wrong-asset bindings, wrong-source bindings, rejected sources, and out-of-scope assets fall back or block safely without public behavior drift.
+- Diagnostics remain sanitized and contain no secrets, raw unrestricted source text, raw provider payloads, signed URLs, public storage URLs, hidden prompts, raw model reasoning, raw user text, or frontend-readable storage paths.
+- Existing public route responses, fixture fallback, no-live-call defaults, generated-output behavior, frontend behavior, and source-use/export gates remain unchanged.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_source_snapshot_repository.py tests/unit/test_provider_adapters.py tests/unit/test_ingestion_worker.py tests/unit/test_source_policy.py -q
+python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+git diff --check
+```
+
+Iteration budget:
+One agent-loop cycle. Stop after deterministic source snapshot persistence for golden acquisition artifacts; do not add normalized knowledge-pack writes, generated-output cache writes, frontend API migration, live providers, or production object-storage execution.
+
+### T-106: Write normalized knowledge packs from acquisition outputs
+
+Goal:
+Write normalized, source-backed knowledge packs from the persisted golden-path acquisition artifacts, then route existing configured readers through those packs with fixture fallback.
+
+Task-scope paragraph:
+Convert the validated AAPL SEC and golden ETF acquisition artifacts into normalized knowledge-pack records: source documents, source chunks or allowed excerpts, normalized facts, evidence gaps, section freshness inputs, source checksums, citation IDs, and pack freshness metadata. The task should use configured repository writer/reader boundaries and existing route fallback behavior. It must not change public route paths or schemas, add live provider calls, broaden asset coverage, generate uncited pages, activate generated-output cache writes, or migrate frontend pages yet.
+
+Acceptance criteria:
+
+- Golden stock and ETF acquisition artifacts can write valid knowledge-pack records with same-asset source and citation bindings.
+- Existing route readers prefer valid configured packs where enabled and preserve deterministic fixture fallback for missing, invalid, stale, wrong-asset, unsupported, unknown, unavailable, or source-policy-blocked records.
+- Evidence gaps are represented honestly with partial, stale, unknown, unavailable, or insufficient-evidence states instead of invented facts.
+- Generated pages, chat answers, comparisons, risk summaries, and reusable generated-output cache writes remain disabled unless existing deterministic fixtures already provide them.
+- Safety, citation, source-use, freshness, and no-live-call constraints remain unchanged.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_knowledge_pack_repository.py tests/unit/test_retrieval_repository.py tests/unit/test_overview_generation.py tests/unit/test_source_policy.py -q
+python3 -m pytest tests/integration/test_backend_api.py -q
+python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+git diff --check
+```
+
+Iteration budget:
+One agent-loop cycle. Stop after deterministic golden-path knowledge-pack writes and read fallback validation; leave generated-output cache writes, frontend migration, launch pre-cache expansion, and production database execution for later tasks.
+
+### T-107: Persist official-source Weekly News Focus event evidence for golden assets
+
+Goal:
+Persist official-source Weekly News Focus event evidence for the golden stock and ETF path while preserving evidence-limited selection, dedupe, source-use gates, and AI Comprehensive Analysis thresholds.
+
+Task-scope paragraph:
+Extend the existing Weekly News event evidence contracts so mocked official filings, investor-relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes for golden assets can be persisted and read through configured boundaries. This task should keep the Monday-Sunday plus current-week-to-yesterday window logic, selected-vs-configured counts, empty/limited states, source ranking, dedupe metadata, and AI threshold metadata. It must not add allowlist expansion, live news calls, generated analysis changes, frontend changes, or production scheduling.
+
+Acceptance criteria:
+
+- Golden asset Weekly News candidates can be persisted as event evidence with market-week windows, source quality, source-use tier, freshness, citation/source references, dedupe groups, and sanitized diagnostics.
+- Selection preserves official-source priority, evidence-limited states, duplicate/promotional/non-allowlisted/rejected-source suppression, and the configured maximum only when evidence supports it.
+- AI Comprehensive Analysis threshold metadata remains unavailable unless at least two high-signal selected items exist and canonical fact citations are available.
+- Persisted Weekly News reads preserve existing route schemas and deterministic fallback when records miss, fail validation, bind to the wrong asset, or fail source-use/freshness checks.
+- No live provider/news/LLM calls, source allowlist expansion, frontend changes, generated-output cache writes, or production schedulers are added.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_overview_generation.py tests/unit/test_source_policy.py -q
+python3 -m pytest tests/integration/test_backend_api.py -q
+python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+git diff --check
+```
+
+Iteration budget:
+One agent-loop cycle. Stop after deterministic persisted Weekly News event evidence for golden assets; leave live acquisition, generated analysis activation, frontend migration, and recurring jobs for later.
+
+### T-108: Activate generated-output cache writes and freshness invalidation for validated outputs
+
+Goal:
+Activate deterministic generated-output cache writes for validated, citation-bound, source-policy-allowed golden-path outputs and preserve freshness-hash invalidation.
+
+Task-scope paragraph:
+Wire the generated-output cache writer boundary for golden asset overview sections, comparisons, grounded chat-safe answer artifacts, exports, and source-list metadata only after outputs pass citation, same-asset or same-comparison-pack binding, source-use, freshness, safety, and schema validation. This task should keep mocked/deterministic generation as the default and must not enable live LLM calls, live provider calls, frontend migration, broad asset coverage, or cache writes for unsupported, out-of-scope, unknown, unavailable, stale-without-label, partial-without-label, insufficient-evidence-without-label, rejected-source, or advice-like outputs.
+
+Acceptance criteria:
+
+- Valid golden-path outputs can write generated-output cache records with source checksums, knowledge-pack hashes, freshness hashes, citation/source bindings, validation status, and sanitized invalidation diagnostics.
+- Cache writes are blocked for invalid, unsafe, uncited, wrong-asset, wrong-comparison-pack, stale-without-label, source-policy-disallowed, rejected-source, unsupported, out-of-scope, unknown, unavailable, or advice-like records.
+- Cache invalidation fires on source checksum, knowledge-pack hash, freshness hash, schema version, prompt version, or source-use eligibility changes.
+- Public route behavior and schemas remain stable, and fixture fallback still works when configured cache writers/readers miss, fail, or return invalid records.
+- Live LLM generation remains opt-in and server-side only; normal CI uses deterministic mocks and no secrets.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_cache_contracts.py tests/unit/test_overview_generation.py tests/unit/test_comparison_generation.py tests/unit/test_chat_generation.py tests/unit/test_exports.py tests/unit/test_source_policy.py -q
+python3 -m pytest tests/integration/test_backend_api.py -q
+python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+git diff --check
+```
+
+Iteration budget:
+One agent-loop cycle. Stop after deterministic cache-write and invalidation activation for validated golden-path outputs; leave frontend API migration, live LLM execution, and production cache infrastructure for later.
+
+### T-109: Wire frontend search and dynamic asset pages to backend APIs
+
+Goal:
+Move frontend search, pending-ingestion states, and dynamic asset pages from local-fixture-first behavior to backend API-backed behavior while preserving fixture fallback during transition.
+
+Task-scope paragraph:
+Update the Next.js frontend so `SearchBox` and asset-page data loading prefer the existing backend API contracts for `/api/search`, asset overview/details/sources/weekly-news, and ingestion/job state where configured. Keep local fixtures as deterministic fallback for tests and offline development. Update smoke tests that currently require home search to stay local so they instead verify backend API preference, safe fixture fallback, no browser provider calls, no browser LLM calls, no secret exposure, preserved v0.4 workflow markers, and correct pending/unsupported/out-of-scope behavior.
+
+Acceptance criteria:
+
+- Home search prefers `/api/search` through the frontend backend adapter when an API base is configured, while preserving deterministic fixture fallback for local/offline tests.
+- Search results keep stock-vs-ETF identity, support-state chips, no-result copy, comparison-query redirects, pending ingestion affordances, and blocked unsupported/out-of-scope behavior.
+- Dynamic asset pages can render supported, pending-ingestion, partial, stale, unknown, unavailable, and insufficient-evidence states from backend responses beyond static AAPL/VOO/QQQ fixtures.
+- Source drawer, citation chips, freshness labels, Weekly News Focus, AI Comprehensive Analysis suppression, comparison CTAs, export controls, contextual glossary, and mobile bottom-sheet/full-screen behavior remain intact.
+- Browser code never calls source providers, LLM providers, market-data/news providers, admin ingestion secrets, object storage, signed URLs, or `NEXT_PUBLIC_*` provider credentials.
+
+Required commands:
+
+```bash
+npm test
+npm run typecheck
+npm run build
+python3 -m pytest tests/integration/test_backend_api.py -q
+python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+git diff --check
+```
+
+Iteration budget:
+One agent-loop cycle. Stop after frontend API-backed search and dynamic asset-page rendering with fixture fallback; leave launch pre-cache expansion, production deployment, recurring jobs, and broad live-provider enablement for later.
+
+## General MVP Roadmap
+
+This section is intentionally non-operational for the agent loop. Keep runnable repeat-mode tasks above this roadmap as third-level task headings, and keep this longer MVP roadmap as bullets until each item is promoted into a narrow task contract. This roadmap now covers the full functional MVP path: server-side/admin ingestion, source snapshot storage, normalized knowledge-pack persistence, generated-output cache writes, Weekly News Focus execution, backend route reads, frontend API rendering, comparison/chat/export rendering, launch pre-cache expansion, and production readiness.
 
 Current runtime snapshot:
 
-- The backend has broad deterministic contracts for search, overview/details, comparison, chat, exports, source policy, persistence repositories, ingestion states, provider adapters, Weekly News Focus, generated-output cache metadata, and live-generation readiness.
-- The MVP is not yet fresh-data functional: public route handlers can use explicitly configured persisted readers but still default to fixture/local data, ingestion workers do not fetch official sources, configured persistence is not the normal write path, and provider adapters are fixture-backed.
-- The frontend can render the MVP learning surfaces for cached fixtures and may call backend adapters where configured, but home search and static asset coverage remain local-fixture-first until later API-backed frontend tasks.
-- The next runtime milestone is an end-to-end golden path where admin/server-side ingestion fetches mocked official-source data, stores validated source snapshots and knowledge packs, and existing routes render those persisted packs with fixture fallback.
+- Backend contracts, configured reader boundaries, ingestion ledger execution, source-use/export gates, Weekly News contracts, generated-output cache contracts, and live-generation readiness diagnostics are broad and stable.
+- The current runtime is still not end-to-end fresh-data functional: acquisition is mocked/golden-path, source snapshots are not written, normalized knowledge packs are not written from ingestion, generated-output cache writes are inactive, Weekly News evidence is not executed from official sources, and production persistence/storage is not the normal path.
+- The frontend renders the main learning surfaces with deterministic fixtures and selected backend adapters, but smoke tests still require home search to stay local and not call `/api/search`; API-backed search, pending states, and dynamic asset pages remain an explicit MVP blocker.
+- The next fully functional milestone is a local deterministic golden path where admin/server-side ingestion acquires mocked official-source data, persists validated snapshots and knowledge packs, writes validated cache records, and the frontend renders backend API responses with fixture fallback.
 
-Operational defaults for backend roadmap tasks:
+Operational defaults for general MVP roadmap tasks:
 
 - T-076 established the persistence boundary and migration tooling before provider or worker work starts. It is completed and must not be reintroduced as runnable backlog.
 - T-077 established persisted knowledge-pack repository contracts. It is completed and must not be reintroduced as runnable backlog.
@@ -2845,9 +3002,10 @@ Operational defaults for backend roadmap tasks:
 - T-102 established executable local ingestion ledger and mocked worker transitions. It is completed and must not be reintroduced as runnable backlog.
 - T-103 established mocked SEC EDGAR stock golden-path acquisition. It is completed and must not be reintroduced as runnable backlog.
 - T-104 is the current promoted task for mocked official ETF issuer golden-path acquisition.
-- Production hardening readiness diagnostics, backend route regression matrices, go/no-go launch checklists, and deploy work move later until the ingestion-to-persist-to-render path exists.
+- T-105 through T-109 are the next runnable golden-path tasks for source snapshots, knowledge-pack writes, Weekly News event persistence, generated-output cache writes, and frontend API-backed rendering.
+- Production hardening readiness diagnostics, route regression matrices, go/no-go launch checklists, deploy work, broad launch-universe pre-cache expansion, and recurring jobs move later until the mocked golden ingest-to-persist-to-render path works locally.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
-- Each promoted backend task should run the relevant EVALS.md backend checks: `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, and `bash scripts/run_quality_gate.sh`.
+- Each promoted task should run the relevant EVALS.md checks, `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, `bash scripts/run_quality_gate.sh`, and `git diff --check`.
 
 Roadmap integration tracker:
 
@@ -2882,20 +3040,19 @@ Roadmap integration tracker:
 | Executable local ingestion ledger and mocked worker path | Completed | T-102 |
 | SEC EDGAR stock golden-path acquisition | Completed | T-103 |
 | Official ETF issuer golden-path acquisition | Current | T-104 |
-| Source snapshot object-storage execution | Runtime gap | Unpromoted |
-| Normalized knowledge-pack writes from ingestion | Runtime gap | Unpromoted |
-| Generated-output cache writes and invalidation | Runtime gap | Unpromoted |
-| Weekly News Focus official-source acquisition execution | Runtime gap | Unpromoted |
-| Frontend API-backed search, pending states, and asset rendering | Runtime gap | Unpromoted |
+| Source snapshot and parsed acquisition artifact persistence | Backlog | T-105 |
+| Normalized knowledge-pack writes from ingestion | Backlog | T-106 |
+| Weekly News Focus official-source event evidence persistence | Backlog | T-107 |
+| Generated-output cache writes and invalidation | Backlog | T-108 |
+| Frontend API-backed search, pending states, and asset rendering | Backlog | T-109 |
+| Comparison, chat, source drawer, and export end-to-end persisted rendering | Runtime gap | Unpromoted |
 | Launch-universe pre-cache expansion and golden coverage | Runtime gap | Unpromoted |
 | Production hardening, route regression, and go/no-go checklist | Later | Unpromoted |
 
-Remaining unpromoted backend MVP sequence:
+Remaining unpromoted general MVP sequence:
 
-- Persist source snapshots and parsed artifacts to the configured private storage boundary, with rights-tier enforcement and no public/signed URLs.
-- Write normalized source-backed knowledge packs, source checksums, evidence gaps, and section freshness from ingestion outputs into configured persistence.
-- Activate generated-output cache writes and freshness-hash invalidation only for validated, citation-bound, source-policy-allowed outputs.
-- Execute Weekly News Focus official-source acquisition and selection from persisted event evidence, preserving empty/limited states and the AI Comprehensive Analysis threshold.
-- Switch frontend search and asset pages from local-fixture-first behavior to backend API-backed behavior, including pending-ingestion/job states and dynamic supported assets beyond AAPL/VOO/QQQ.
-- Expand the launch pre-cache universe only after the golden stock and ETF source acquisition paths are persisted and rendered end to end.
-- Add production hardening readiness diagnostics, route-contract regression matrix, and MVP go/no-go checklist after the runtime path can ingest, persist, cache, and render fresh official-source data.
+- Verify comparison, grounded chat, source drawer, citation chips, freshness labels, glossary context, and Markdown/JSON exports against persisted golden packs and generated-output cache records.
+- Expand the launch pre-cache universe only after the golden stock and ETF paths persist and render end to end with fixture fallback.
+- Add route-contract and frontend workflow regression matrices for search, pending ingestion, asset pages, comparison, source drawer, chat, exports, mobile behavior, and evidence-limited Weekly News Focus.
+- Add production readiness only after local deterministic runtime parity: admin auth, rate limiting, deploy env validation, private object storage, database migration execution, Cloud Run/Job settings, recurring-job decisions, and MVP go/no-go checklist.
+- Add live-provider execution only behind explicit server-side readiness gates, provider licensing/source-use review, no-secret-exposure tests, mocked CI fixtures, and source-rights validation.
