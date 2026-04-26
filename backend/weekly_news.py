@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Protocol
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -38,12 +39,32 @@ DEFAULT_WEEKLY_NEWS_AS_OF = "2026-04-23"
 MINIMUM_DISPLAY_SCORE = 7
 MINIMUM_AI_ANALYSIS_ITEMS = 2
 MAX_WEEKLY_ITEMS = 8
+WEEKLY_NEWS_PERSISTED_READ_BOUNDARY = "weekly-news-persisted-read-boundary-v1"
 
 _EASTERN = ZoneInfo("America/New_York")
 
 
 class WeeklyNewsContractError(ValueError):
     """Raised when deterministic Weekly News Focus contracts are violated."""
+
+
+class WeeklyNewsEventEvidenceRecordReader(Protocol):
+    def read_weekly_news_event_evidence_records(self, ticker: str) -> Any | None:
+        ...
+
+
+@dataclass(frozen=True)
+class PersistedWeeklyNewsReadResult:
+    status: str
+    ticker: str
+    weekly_news_focus: WeeklyNewsFocusResponse | None = None
+    minimum_ai_analysis_item_count: int = MINIMUM_AI_ANALYSIS_ITEMS
+    high_signal_selected_item_count: int = 0
+    diagnostics: tuple[str, ...] = field(default_factory=tuple)
+
+    @property
+    def found(self) -> bool:
+        return self.status == "found" and self.weekly_news_focus is not None
 
 
 class WeeklyNewsCandidate(BaseModel):
@@ -111,9 +132,67 @@ def build_weekly_news_focus_from_pack(
     pack: AssetKnowledgePack,
     *,
     as_of: str | date | datetime,
+    persisted_event_reader: WeeklyNewsEventEvidenceRecordReader | Any | None = None,
 ) -> WeeklyNewsFocusResponse:
+    persisted = read_persisted_weekly_news_focus(
+        pack.asset,
+        as_of=as_of,
+        persisted_event_reader=persisted_event_reader,
+    )
+    if persisted.found and persisted.weekly_news_focus is not None:
+        return persisted.weekly_news_focus
+
     candidates = [_candidate_from_recent_development(item) for item in pack.recent_developments]
     return select_weekly_news_focus(pack.asset, candidates, as_of=as_of)
+
+
+def read_persisted_weekly_news_focus(
+    asset: AssetIdentity,
+    *,
+    as_of: str | date | datetime,
+    persisted_event_reader: WeeklyNewsEventEvidenceRecordReader | Any | None = None,
+) -> PersistedWeeklyNewsReadResult:
+    normalized_ticker = _normalize_ticker(asset.ticker)
+    if persisted_event_reader is None:
+        return PersistedWeeklyNewsReadResult(
+            status="not_configured",
+            ticker=normalized_ticker,
+            diagnostics=("weekly_news_reader:not_configured",),
+        )
+
+    try:
+        from backend.weekly_news_repository import (
+            WeeklyNewsEventEvidenceContractError,
+            WeeklyNewsEventEvidenceRepositoryRecords,
+            validate_weekly_news_event_evidence_records,
+        )
+
+        raw_records = persisted_event_reader.read_weekly_news_event_evidence_records(normalized_ticker)
+        if raw_records is None:
+            return PersistedWeeklyNewsReadResult(
+                status="miss",
+                ticker=normalized_ticker,
+                diagnostics=("weekly_news_reader:miss",),
+            )
+        records = (
+            raw_records
+            if isinstance(raw_records, WeeklyNewsEventEvidenceRepositoryRecords)
+            else WeeklyNewsEventEvidenceRepositoryRecords.model_validate(raw_records)
+        )
+        validated = validate_weekly_news_event_evidence_records(records)
+        return _weekly_news_focus_from_persisted_records(asset, validated, as_of=as_of)
+    except (WeeklyNewsEventEvidenceContractError, WeeklyNewsContractError) as exc:
+        return PersistedWeeklyNewsReadResult(
+            status="contract_error",
+            ticker=normalized_ticker,
+            diagnostics=(f"weekly_news:{exc.__class__.__name__}",),
+        )
+    except Exception as exc:
+        return PersistedWeeklyNewsReadResult(
+            status="reader_error",
+            ticker=normalized_ticker,
+            diagnostics=(f"weekly_news:{exc.__class__.__name__}",),
+        )
 
 
 def select_weekly_news_focus(
@@ -198,22 +277,232 @@ def select_weekly_news_focus(
     )
 
 
+def _weekly_news_focus_from_persisted_records(
+    asset: AssetIdentity,
+    records: Any,
+    *,
+    as_of: str | date | datetime,
+) -> PersistedWeeklyNewsReadResult:
+    normalized_ticker = _normalize_ticker(asset.ticker)
+    as_of_date = _eastern_date(as_of).isoformat()
+    window = next(
+        (
+            row
+            for row in records.windows
+            if _normalize_ticker(row.asset_ticker) == normalized_ticker and row.as_of_date == as_of_date
+        ),
+        None,
+    )
+    if window is None:
+        return PersistedWeeklyNewsReadResult(
+            status="miss",
+            ticker=normalized_ticker,
+            diagnostics=("weekly_news_records:matching_window_miss",),
+        )
+
+    selected_rows = sorted(
+        [row for row in records.selected_events if row.window_id == window.window_id],
+        key=lambda row: (row.rank_position, row.selected_event_id),
+    )
+    evidence_state = next((row for row in records.evidence_states if row.window_id == window.window_id), None)
+    threshold = next((row for row in records.ai_thresholds if row.window_id == window.window_id), None)
+    if evidence_state is None or threshold is None:
+        raise WeeklyNewsContractError("Persisted Weekly News Focus records require evidence state and AI threshold metadata.")
+    if set(threshold.selected_event_ids) != {row.selected_event_id for row in selected_rows}:
+        raise WeeklyNewsContractError("Persisted AI threshold metadata must stay connected to selected events.")
+
+    candidates_by_id = {row.candidate_event_id: row for row in records.candidates}
+    rank_inputs_by_id = {row.candidate_event_id: row for row in records.source_rank_inputs}
+    items = [
+        _item_from_persisted_selected_event(
+            selected,
+            candidate=candidates_by_id[selected.candidate_event_id],
+            rank_input=rank_inputs_by_id.get(selected.candidate_event_id),
+        )
+        for selected in selected_rows
+    ]
+
+    citations = [
+        Citation(
+            citation_id=citation_id,
+            source_document_id=item.source.source_document_id,
+            title=item.source.title,
+            publisher=item.source.publisher,
+            freshness_state=item.freshness_state,
+        )
+        for item in items
+        for citation_id in item.citation_ids
+    ]
+    source_documents = _dedupe_weekly_source_documents([_source_document_from_item(item) for item in items])
+
+    state = WeeklyNewsContractState(evidence_state.state)
+    evidence_label = EvidenceState(evidence_state.evidence_state)
+    empty_state = None
+    if not items:
+        empty_state = WeeklyNewsEmptyState(
+            state=state,
+            message=f"No major Weekly News Focus items found in validated persisted evidence for {normalized_ticker}.",
+            evidence_state=evidence_label,
+            selected_item_count=evidence_state.selected_item_count,
+            suppressed_candidate_count=evidence_state.suppressed_candidate_count,
+        )
+
+    focus = WeeklyNewsFocusResponse(
+        asset=asset,
+        state=state,
+        window=WeeklyNewsWindow(
+            as_of_date=window.as_of_date,
+            previous_market_week=MarketWeekPeriod(
+                start=window.previous_market_week_start,
+                end=window.previous_market_week_end,
+            ),
+            current_week_to_date=MarketWeekPeriod(
+                start=window.current_week_to_date_start,
+                end=window.current_week_to_date_end,
+            ),
+            news_window_start=window.news_window_start,
+            news_window_end=window.news_window_end,
+            includes_current_week_to_date=window.includes_current_week_to_date,
+        ),
+        configured_max_item_count=window.configured_max_item_count,
+        selected_item_count=evidence_state.selected_item_count,
+        suppressed_candidate_count=evidence_state.suppressed_candidate_count,
+        evidence_state=evidence_label,
+        evidence_limited_state=WeeklyNewsEvidenceLimitedState(evidence_state.evidence_limited_state),
+        items=items,
+        empty_state=empty_state,
+        citations=citations,
+        source_documents=source_documents,
+    )
+    return PersistedWeeklyNewsReadResult(
+        status="found",
+        ticker=normalized_ticker,
+        weekly_news_focus=focus,
+        minimum_ai_analysis_item_count=threshold.minimum_weekly_news_item_count,
+        high_signal_selected_item_count=threshold.high_signal_selected_item_count,
+        diagnostics=("weekly_news:persisted_hit",),
+    )
+
+
+def _item_from_persisted_selected_event(
+    selected: Any,
+    *,
+    candidate: Any,
+    rank_input: Any | None,
+) -> WeeklyNewsItem:
+    event_type = WeeklyNewsEventType(selected.event_type)
+    source_quality = SourceQuality(selected.source_quality)
+    allowlist_status = SourceAllowlistStatus(selected.allowlist_status)
+    source_use_policy = SourceUsePolicy(selected.source_use_policy)
+    freshness_state = FreshnessState(selected.freshness_state)
+    source_priority = getattr(candidate, "source_rank", selected.rank_position)
+    total_score = getattr(rank_input, "total_score", selected.importance_score)
+    title = _persisted_event_title(event_type, selected)
+    summary = _persisted_event_summary(event_type, selected)
+
+    return WeeklyNewsItem(
+        event_id=selected.candidate_event_id,
+        asset_ticker=_normalize_ticker(selected.asset_ticker),
+        event_type=event_type,
+        title=title,
+        summary=summary,
+        event_date=selected.event_date,
+        published_at=selected.published_at,
+        period_bucket=WeeklyNewsPeriodBucket(selected.period_bucket),
+        citation_ids=list(selected.citation_ids),
+        source=WeeklyNewsSourceMetadata(
+            source_document_id=selected.source_document_id,
+            source_type=getattr(candidate, "source_type", "persisted_weekly_news_evidence"),
+            title=_persisted_source_title(selected),
+            publisher=_persisted_source_publisher(source_quality),
+            url=f"local://weekly-news-evidence/{_normalize_ticker(selected.asset_ticker)}/{selected.source_document_id}",
+            published_at=selected.published_at,
+            as_of_date=selected.event_date or (selected.published_at[:10] if selected.published_at else None),
+            retrieved_at=selected.retrieved_at,
+            freshness_state=freshness_state,
+            is_official=source_quality in {SourceQuality.official, SourceQuality.issuer},
+            source_quality=source_quality,
+            allowlist_status=allowlist_status,
+            source_use_policy=source_use_policy,
+        ),
+        freshness_state=freshness_state,
+        importance_score=selected.importance_score,
+        deduplication=WeeklyNewsDeduplicationMetadata(
+            canonical_event_key=selected.canonical_event_key,
+            duplicate_group_id=selected.dedupe_group_id,
+            duplicate_of_event_id=None,
+            is_duplicate=False,
+        ),
+        selection_rationale=WeeklyNewsSelectionRationale(
+            source_priority=source_priority,
+            source_quality_weight=getattr(rank_input, "source_quality_weight", 0),
+            event_type_weight=getattr(rank_input, "event_type_weight", 0),
+            recency_weight=getattr(rank_input, "recency_weight", 0),
+            asset_relevance_weight=getattr(rank_input, "asset_relevance_weight", 0),
+            duplicate_penalty=getattr(rank_input, "duplicate_penalty", 0),
+            total_score=total_score,
+            minimum_display_score=getattr(rank_input, "minimum_display_score", MINIMUM_DISPLAY_SCORE),
+            selected=True,
+            exclusion_reasons=[],
+        ),
+    )
+
+
+def _persisted_event_title(event_type: WeeklyNewsEventType, selected: Any) -> str:
+    label = event_type.value.replace("_", " ").title()
+    period = WeeklyNewsPeriodBucket(selected.period_bucket).value.replace("_", " ")
+    return f"{label} evidence in {period}"
+
+
+def _persisted_event_summary(event_type: WeeklyNewsEventType, selected: Any) -> str:
+    label = event_type.value.replace("_", " ")
+    period = WeeklyNewsPeriodBucket(selected.period_bucket).value.replace("_", " ")
+    return (
+        f"Validated persisted Weekly News Focus metadata for {_normalize_ticker(selected.asset_ticker)} "
+        f"selected a {label} item in the {period} window."
+    )
+
+
+def _persisted_source_title(selected: Any) -> str:
+    source_type = str(getattr(selected, "source_type", "weekly_news_evidence")).replace("_", " ")
+    return f"Persisted {source_type} source {selected.source_document_id}"
+
+
+def _persisted_source_publisher(source_quality: SourceQuality) -> str:
+    return f"{source_quality.value.replace('_', ' ').title()} source"
+
+
+def _dedupe_weekly_source_documents(source_documents: list[SourceDocument]) -> list[SourceDocument]:
+    by_id: dict[str, SourceDocument] = {}
+    for source in source_documents:
+        by_id.setdefault(source.source_document_id, source)
+    return [by_id[source_id] for source_id in sorted(by_id)]
+
+
 def build_ai_comprehensive_analysis(
     asset: AssetIdentity,
     weekly_news_focus: WeeklyNewsFocusResponse,
     *,
     canonical_fact_citation_ids: list[str] | None = None,
     canonical_source_document_ids: list[str] | None = None,
+    minimum_weekly_news_item_count: int = MINIMUM_AI_ANALYSIS_ITEMS,
+    high_signal_weekly_news_item_count: int | None = None,
 ) -> AIComprehensiveAnalysisResponse:
     canonical_fact_citation_ids = sorted(set(canonical_fact_citation_ids or []))
     canonical_source_document_ids = sorted(set(canonical_source_document_ids or []))
 
-    if len(weekly_news_focus.items) < MINIMUM_AI_ANALYSIS_ITEMS:
+    high_signal_count = (
+        len(weekly_news_focus.items)
+        if high_signal_weekly_news_item_count is None
+        else high_signal_weekly_news_item_count
+    )
+
+    if high_signal_count < minimum_weekly_news_item_count:
         return AIComprehensiveAnalysisResponse(
             asset=asset,
             state=WeeklyNewsContractState.suppressed,
             analysis_available=False,
-            minimum_weekly_news_item_count=MINIMUM_AI_ANALYSIS_ITEMS,
+            minimum_weekly_news_item_count=minimum_weekly_news_item_count,
             weekly_news_selected_item_count=weekly_news_focus.selected_item_count,
             suppression_reason="AI Comprehensive Analysis is suppressed because fewer than two high-signal Weekly News Focus items are available.",
             canonical_fact_citation_ids=canonical_fact_citation_ids,
@@ -269,7 +558,7 @@ def build_ai_comprehensive_analysis(
         asset=asset,
         state=WeeklyNewsContractState.available,
         analysis_available=True,
-        minimum_weekly_news_item_count=MINIMUM_AI_ANALYSIS_ITEMS,
+        minimum_weekly_news_item_count=minimum_weekly_news_item_count,
         weekly_news_selected_item_count=weekly_news_focus.selected_item_count,
         sections=sections,
         citation_ids=all_citations,
