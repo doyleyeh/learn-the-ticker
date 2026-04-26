@@ -1,7 +1,18 @@
 from pathlib import Path
 from typing import Any
 
-from backend.models import AssetStatus, EvidenceState, FreshnessState, MetricValue, OverviewResponse
+from backend.models import (
+    AssetStatus,
+    EvidenceState,
+    FreshnessState,
+    MetricValue,
+    OverviewResponse,
+    SourceAllowlistStatus,
+    SourceQuality,
+    SourceUsePolicy,
+    WeeklyNewsContractState,
+    WeeklyNewsEventType,
+)
 from backend.cache import (
     build_cache_key,
     build_generated_output_freshness_input,
@@ -25,6 +36,11 @@ from backend.overview import (
 )
 from backend.retrieval import build_asset_knowledge_pack, build_asset_knowledge_pack_result
 from backend.safety import find_forbidden_output_phrases
+from backend.weekly_news_repository import (
+    WeeklyNewsEventCandidateRow,
+    WeeklyNewsSourceRankTier,
+    acquire_weekly_news_event_evidence_from_fixtures,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -53,6 +69,16 @@ class FakeGeneratedOutputCacheReader:
 class FailingGeneratedOutputCacheReader:
     def read_generated_output_cache_records(self, ticker: str):
         raise RuntimeError(f"controlled cache miss for {ticker}")
+
+
+class FakeWeeklyNewsReader:
+    def __init__(self, records_by_ticker):
+        self.records_by_ticker = records_by_ticker
+        self.requests: list[str] = []
+
+    def read_weekly_news_event_evidence_records(self, ticker: str):
+        self.requests.append(ticker)
+        return self.records_by_ticker.get(ticker)
 
 
 def test_supported_asset_overviews_are_schema_valid_and_source_backed():
@@ -132,6 +158,51 @@ def test_persisted_overview_read_boundary_prefers_valid_same_asset_records():
     assert read_result.overview is not None
     assert read_result.overview.model_dump(mode="json") == fixture.model_dump(mode="json")
     assert generated.model_dump(mode="json") == fixture.model_dump(mode="json")
+
+
+def test_overview_uses_injected_persisted_weekly_news_and_ai_threshold_metadata():
+    records = acquire_weekly_news_event_evidence_from_fixtures(
+        asset_ticker="QQQ",
+        as_of="2026-04-23",
+        created_at="2026-04-23T12:00:00Z",
+        candidates=[
+            _weekly_candidate("official_filing", tier=WeeklyNewsSourceRankTier.official_filing),
+            _weekly_candidate("issuer_update", tier=WeeklyNewsSourceRankTier.etf_issuer_announcement, source_rank=3),
+        ],
+    )
+    reader = FakeWeeklyNewsReader({"QQQ": records})
+
+    overview = generate_asset_overview("QQQ", persisted_weekly_news_reader=reader)
+
+    assert reader.requests == ["QQQ"]
+    assert overview.weekly_news_focus is not None
+    assert overview.weekly_news_focus.selected_item_count == 2
+    assert [item.event_id for item in overview.weekly_news_focus.items] == ["official_filing", "issuer_update"]
+    assert overview.ai_comprehensive_analysis.analysis_available is True
+    assert overview.ai_comprehensive_analysis.weekly_news_selected_item_count == 2
+    freshness_by_id = {item.section_id: item for item in overview.section_freshness_validation}
+    assert freshness_by_id["weekly_news_focus"].validation_outcome.value in {"validated", "validated_with_limitations"}
+    assert freshness_by_id["ai_comprehensive_analysis"].validation_outcome.value in {"validated", "validated_with_limitations"}
+
+    suppressed_threshold = records.ai_thresholds[0].model_copy(
+        update={
+            "high_signal_selected_item_count": 1,
+            "analysis_allowed": False,
+            "analysis_state": WeeklyNewsContractState.suppressed.value,
+            "suppression_reason_code": "fewer_than_two_high_signal_items",
+        }
+    )
+    suppressed_records = records.model_copy(update={"ai_thresholds": [suppressed_threshold]})
+    suppressed = generate_asset_overview(
+        "QQQ",
+        persisted_weekly_news_reader=FakeWeeklyNewsReader({"QQQ": suppressed_records}),
+    )
+
+    assert suppressed.weekly_news_focus is not None
+    assert suppressed.weekly_news_focus.selected_item_count == 2
+    assert suppressed.ai_comprehensive_analysis.analysis_available is False
+    assert suppressed.ai_comprehensive_analysis.weekly_news_selected_item_count == 2
+    assert "fewer than two high-signal" in suppressed.ai_comprehensive_analysis.suppression_reason
 
 
 def test_persisted_overview_falls_back_on_unconfigured_missing_and_failing_readers():
@@ -530,6 +601,41 @@ def _flatten_text(value: Any) -> str:
     if isinstance(value, dict):
         return " ".join(_flatten_text(item) for item in value.values())
     return ""
+
+
+def _weekly_candidate(
+    event_id: str,
+    *,
+    tier: WeeklyNewsSourceRankTier,
+    source_rank: int = 1,
+) -> WeeklyNewsEventCandidateRow:
+    return WeeklyNewsEventCandidateRow(
+        candidate_event_id=event_id,
+        window_id="wnf_window:QQQ:2026-04-23",
+        asset_ticker="QQQ",
+        source_asset_ticker="QQQ",
+        event_type=WeeklyNewsEventType.methodology_change.value,
+        event_date="2026-04-21",
+        published_at="2026-04-21T12:00:00Z",
+        retrieved_at="2026-04-23T12:00:00Z",
+        period_bucket="current_week_to_date",
+        source_document_id=f"src_{event_id}",
+        source_chunk_id=f"chk_{event_id}",
+        citation_ids=[f"c_weekly_{event_id}"],
+        citation_asset_tickers={f"c_weekly_{event_id}": "QQQ"},
+        source_type=tier.value,
+        source_rank=source_rank,
+        source_rank_tier=tier.value,
+        source_quality=SourceQuality.official.value,
+        allowlist_status=SourceAllowlistStatus.allowed.value,
+        source_use_policy=SourceUsePolicy.summary_allowed.value,
+        freshness_state=FreshnessState.fresh.value,
+        evidence_state=EvidenceState.supported.value,
+        importance_score=10,
+        duplicate_group_id=event_id,
+        title_checksum=f"sha256:title:{event_id}",
+        evidence_checksum=f"sha256:evidence:{event_id}",
+    )
 
 
 def _persisted_overview_records(ticker: str):

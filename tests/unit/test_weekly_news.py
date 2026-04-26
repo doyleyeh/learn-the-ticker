@@ -12,13 +12,16 @@ from backend.models import (
     SourceUsePolicy,
     WeeklyNewsContractState,
     WeeklyNewsEventType,
+    WeeklyNewsPeriodBucket,
 )
 from backend.retrieval import build_asset_knowledge_pack
 from backend.weekly_news import (
+    WEEKLY_NEWS_PERSISTED_READ_BOUNDARY,
     WeeklyNewsCandidate,
     build_ai_comprehensive_analysis,
     build_weekly_news_focus_from_pack,
     compute_weekly_news_window,
+    read_persisted_weekly_news_focus,
     select_weekly_news_focus,
     validate_ai_comprehensive_analysis,
 )
@@ -48,6 +51,19 @@ from backend.weekly_news_repository import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+class FakeWeeklyNewsReader:
+    def __init__(self, records_by_ticker):
+        self.records_by_ticker = records_by_ticker
+        self.requests: list[str] = []
+
+    def read_weekly_news_event_evidence_records(self, ticker: str):
+        self.requests.append(ticker)
+        value = self.records_by_ticker.get(ticker)
+        if isinstance(value, Exception):
+            raise value
+        return value
 
 
 def test_market_week_window_uses_explicit_eastern_as_of_date():
@@ -177,6 +193,139 @@ def test_ai_comprehensive_analysis_requires_two_high_signal_items_and_preserves_
     assert "c_fact_qqq_asset_identity" in analysis.citation_ids
     assert all(section.citation_ids for section in analysis.sections)
     assert validate_ai_comprehensive_analysis(analysis, focus) == analysis
+
+
+def test_persisted_weekly_news_read_prefers_valid_same_asset_event_evidence():
+    asset = build_asset_knowledge_pack("QQQ").asset
+    records = _repository_records(
+        [
+            _repository_candidate("official_filing", tier=WeeklyNewsSourceRankTier.official_filing),
+            _repository_candidate("issuer_update", tier=WeeklyNewsSourceRankTier.etf_issuer_announcement, source_rank=3),
+        ]
+    )
+    reader = FakeWeeklyNewsReader({"QQQ": records})
+
+    result = read_persisted_weekly_news_focus(asset, as_of="2026-04-23", persisted_event_reader=reader)
+    focus = build_weekly_news_focus_from_pack(
+        build_asset_knowledge_pack("QQQ"),
+        as_of="2026-04-23",
+        persisted_event_reader=reader,
+    )
+
+    assert WEEKLY_NEWS_PERSISTED_READ_BOUNDARY == "weekly-news-persisted-read-boundary-v1"
+    assert result.status == "found"
+    assert result.found is True
+    assert result.diagnostics == ("weekly_news:persisted_hit",)
+    assert reader.requests == ["QQQ", "QQQ"]
+    assert result.weekly_news_focus is not None
+    assert result.weekly_news_focus.selected_item_count == 2
+    assert result.weekly_news_focus.suppressed_candidate_count == 0
+    assert result.weekly_news_focus.evidence_limited_state.value == "limited_verified_set"
+    assert [item.event_id for item in result.weekly_news_focus.items] == ["official_filing", "issuer_update"]
+    assert all(item.asset_ticker == "QQQ" for item in result.weekly_news_focus.items)
+    assert all(item.period_bucket is WeeklyNewsPeriodBucket.current_week_to_date for item in result.weekly_news_focus.items)
+    assert all(item.source.allowlist_status is SourceAllowlistStatus.allowed for item in result.weekly_news_focus.items)
+    assert all(
+        item.source.source_use_policy in {SourceUsePolicy.summary_allowed, SourceUsePolicy.full_text_allowed}
+        for item in result.weekly_news_focus.items
+    )
+    assert result.high_signal_selected_item_count == 2
+    assert {citation.citation_id for citation in result.weekly_news_focus.citations} == {
+        "c_weekly_official_filing",
+        "c_weekly_issuer_update",
+    }
+    assert focus.model_dump(mode="json") == result.weekly_news_focus.model_dump(mode="json")
+
+
+def test_persisted_weekly_news_read_falls_back_on_miss_failure_invalid_and_wrong_asset_records():
+    asset = build_asset_knowledge_pack("QQQ").asset
+    fixture = build_weekly_news_focus_from_pack(build_asset_knowledge_pack("QQQ"), as_of="2026-04-23").model_dump(mode="json")
+
+    assert read_persisted_weekly_news_focus(asset, as_of="2026-04-23").status == "not_configured"
+    assert (
+        build_weekly_news_focus_from_pack(
+            build_asset_knowledge_pack("QQQ"),
+            as_of="2026-04-23",
+            persisted_event_reader=FakeWeeklyNewsReader({}),
+        ).model_dump(mode="json")
+        == fixture
+    )
+    assert (
+        build_weekly_news_focus_from_pack(
+            build_asset_knowledge_pack("QQQ"),
+            as_of="2026-04-23",
+            persisted_event_reader=FakeWeeklyNewsReader({"QQQ": RuntimeError("controlled weekly reader failure")}),
+        ).model_dump(mode="json")
+        == fixture
+    )
+
+    wrong_asset_records = _repository_records([_repository_candidate("wrong_asset")])
+    wrong_asset_records.windows[0].asset_ticker = "AAPL"
+    invalid = read_persisted_weekly_news_focus(
+        asset,
+        as_of="2026-04-23",
+        persisted_event_reader=FakeWeeklyNewsReader({"QQQ": wrong_asset_records}),
+    )
+    assert invalid.status in {"contract_error", "reader_error"}
+    assert "controlled weekly reader failure" not in " ".join(invalid.diagnostics)
+    assert (
+        build_weekly_news_focus_from_pack(
+            build_asset_knowledge_pack("QQQ"),
+            as_of="2026-04-23",
+            persisted_event_reader=FakeWeeklyNewsReader({"QQQ": wrong_asset_records}),
+        ).model_dump(mode="json")
+        == fixture
+    )
+
+
+def test_persisted_weekly_news_empty_and_limited_states_do_not_pad_items():
+    asset = build_asset_knowledge_pack("QQQ").asset
+    empty_records = _repository_records([], include_selected=False)
+    limited_records = _repository_records([_repository_candidate("single_official")])
+
+    empty = read_persisted_weekly_news_focus(
+        asset,
+        as_of="2026-04-23",
+        persisted_event_reader=FakeWeeklyNewsReader({"QQQ": empty_records}),
+    )
+    limited = read_persisted_weekly_news_focus(
+        asset,
+        as_of="2026-04-23",
+        persisted_event_reader=FakeWeeklyNewsReader({"QQQ": limited_records}),
+    )
+
+    assert empty.found is True
+    assert empty.weekly_news_focus is not None
+    assert empty.weekly_news_focus.items == []
+    assert empty.weekly_news_focus.empty_state is not None
+    assert empty.weekly_news_focus.evidence_limited_state.value == "empty"
+    assert empty.high_signal_selected_item_count == 0
+
+    assert limited.found is True
+    assert limited.weekly_news_focus is not None
+    assert [item.event_id for item in limited.weekly_news_focus.items] == ["single_official"]
+    assert limited.weekly_news_focus.selected_item_count == 1
+    assert limited.weekly_news_focus.configured_max_item_count == 8
+    assert limited.weekly_news_focus.evidence_limited_state.value == "limited_verified_set"
+    assert limited.high_signal_selected_item_count == 1
+
+
+def test_persisted_weekly_news_rejects_disconnected_threshold_and_sanitizes_diagnostics():
+    asset = build_asset_knowledge_pack("QQQ").asset
+    records = _repository_records([_repository_candidate("official_filing")])
+    records.ai_thresholds[0].selected_event_ids = []
+
+    result = read_persisted_weekly_news_focus(
+        asset,
+        as_of="2026-04-23",
+        persisted_event_reader=FakeWeeklyNewsReader({"QQQ": records}),
+    )
+
+    assert result.status == "contract_error"
+    assert result.weekly_news_focus is None
+    diagnostics = " ".join(result.diagnostics)
+    for forbidden in ["raw_article", "provider_payload", "raw_user_text", "secret", "https://"]:
+        assert forbidden not in diagnostics
 
 
 def test_fixture_acquisition_boundary_selects_ranked_deduped_weekly_news_evidence():

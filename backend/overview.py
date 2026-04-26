@@ -76,8 +76,10 @@ from backend.safety import find_forbidden_output_phrases
 from backend.source_policy import resolve_source_policy
 from backend.weekly_news import (
     DEFAULT_WEEKLY_NEWS_AS_OF,
+    WeeklyNewsEventEvidenceRecordReader,
     build_ai_comprehensive_analysis,
     build_weekly_news_focus_from_pack,
+    read_persisted_weekly_news_focus,
 )
 
 
@@ -141,6 +143,7 @@ def generate_asset_overview(
     *,
     persisted_pack_reader: KnowledgePackRecordReader | Any | None = None,
     generated_output_cache_reader: GeneratedOutputCacheRecordReader | Any | None = None,
+    persisted_weekly_news_reader: WeeklyNewsEventEvidenceRecordReader | Any | None = None,
 ) -> OverviewResponse:
     """Build an OverviewResponse-compatible payload from the local retrieval pack."""
 
@@ -152,7 +155,10 @@ def generate_asset_overview(
     if persisted.found and persisted.overview is not None:
         return persisted.overview
 
-    return generate_overview_from_pack(build_asset_knowledge_pack(ticker))
+    return generate_overview_from_pack(
+        build_asset_knowledge_pack(ticker),
+        persisted_weekly_news_reader=persisted_weekly_news_reader,
+    )
 
 
 def read_persisted_overview_response(
@@ -484,7 +490,11 @@ def _validate_generated_output_cache_for_overview(
         raise GeneratedOutputCacheContractError("Overview cache citation IDs must belong to the same persisted knowledge pack.")
 
 
-def generate_overview_from_pack(pack: AssetKnowledgePack) -> OverviewResponse:
+def generate_overview_from_pack(
+    pack: AssetKnowledgePack,
+    *,
+    persisted_weekly_news_reader: WeeklyNewsEventEvidenceRecordReader | Any | None = None,
+) -> OverviewResponse:
     if not pack.asset.supported:
         return _unsupported_overview(pack)
 
@@ -500,7 +510,16 @@ def generate_overview_from_pack(pack: AssetKnowledgePack) -> OverviewResponse:
     risk_citation_id = bindings.for_chunk(risk_chunk).citation.citation_id
     top_risks = _build_top_risks(pack, risk_citation_id)
     recent_developments = _build_recent_developments(pack, bindings)
-    weekly_news_focus = build_weekly_news_focus_from_pack(pack, as_of=DEFAULT_WEEKLY_NEWS_AS_OF)
+    weekly_news_read = read_persisted_weekly_news_focus(
+        pack.asset,
+        as_of=DEFAULT_WEEKLY_NEWS_AS_OF,
+        persisted_event_reader=persisted_weekly_news_reader,
+    )
+    weekly_news_focus = (
+        weekly_news_read.weekly_news_focus
+        if weekly_news_read.found and weekly_news_read.weekly_news_focus is not None
+        else build_weekly_news_focus_from_pack(pack, as_of=DEFAULT_WEEKLY_NEWS_AS_OF)
+    )
     suitability_summary = _build_suitability_summary(pack, facts_by_field)
     sections = _build_overview_sections(
         pack=pack,
@@ -537,6 +556,10 @@ def generate_overview_from_pack(pack: AssetKnowledgePack) -> OverviewResponse:
         weekly_news_focus,
         canonical_fact_citation_ids=canonical_citation_ids,
         canonical_source_document_ids=[identity_fact.source_document.source_document_id],
+        minimum_weekly_news_item_count=weekly_news_read.minimum_ai_analysis_item_count,
+        high_signal_weekly_news_item_count=(
+            weekly_news_read.high_signal_selected_item_count if weekly_news_read.found else None
+        ),
     )
     citations = bindings.citations()
     source_documents = bindings.source_documents()
@@ -904,8 +927,8 @@ def _subject_from_weekly_news(
     supporting_freshness_states = tuple(item.freshness_state for item in weekly.items)
     supporting_as_of_dates = tuple(
         [
-            *[item.source.as_of_date for item in weekly.items if item.source.as_of_date],
             weekly.window.as_of_date,
+            *[item.source.as_of_date for item in weekly.items if item.source.as_of_date],
         ]
     )
     supporting_retrieved_ats = tuple(item.source.retrieved_at for item in weekly.items if item.source.retrieved_at)
@@ -1005,6 +1028,23 @@ def _source_bindings_for_subject(
     for source_id in sorted(set(subject.source_document_ids)):
         source = overview_sources.get(source_id)
         pack_source = pack_sources_by_id.get(source_id)
+        if (
+            source is not None
+            and pack_source is None
+            and subject.section_type
+            in {OverviewSectionType.weekly_news_focus, OverviewSectionType.ai_comprehensive_analysis}
+        ):
+            bindings.append(
+                OverviewSectionFreshnessSourceBinding(
+                    source_document_id=source.source_document_id,
+                    asset_ticker=pack_asset_ticker,
+                    source_type=source.source_type,
+                    freshness_state=source.freshness_state,
+                    as_of_date=source.as_of_date or source.published_at,
+                    retrieved_at=source.retrieved_at,
+                )
+            )
+            continue
         if source is None or pack_source is None:
             missing_source_ids.append(source_id)
             continue
@@ -1035,6 +1075,22 @@ def _citation_bindings_for_subject(
     for citation_id in sorted(set(subject.citation_ids)):
         citation = overview_citations.get(citation_id)
         pack_source = pack_sources_by_id.get(citation.source_document_id) if citation is not None else None
+        if (
+            citation is not None
+            and pack_source is None
+            and subject.section_type
+            in {OverviewSectionType.weekly_news_focus, OverviewSectionType.ai_comprehensive_analysis}
+        ):
+            bindings.append(
+                OverviewSectionFreshnessCitationBinding(
+                    citation_id=citation.citation_id,
+                    source_document_id=citation.source_document_id,
+                    asset_ticker=pack_asset_ticker,
+                    freshness_state=citation.freshness_state,
+                    evidence_state=subject.displayed_evidence_state,
+                )
+            )
+            continue
         if citation is None or pack_source is None:
             missing_citation_ids.append(citation_id)
             continue
