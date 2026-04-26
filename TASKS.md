@@ -1,46 +1,47 @@
 ## Current task
 
-### T-102: Make ingestion jobs executable through the local ledger
+### T-103: Implement server-side SEC EDGAR acquisition for the stock golden path
 
 Goal:
-Make manual pre-cache and on-demand ingestion jobs executable through the existing ingestion job ledger and worker boundary using mocked acquisition outcomes, so local runtime job state transitions can be exercised without live provider calls.
+Implement the first server-side SEC EDGAR stock acquisition path for a small golden stock set, using mocked HTTP fixtures in tests and preserving no live external calls in normal CI.
 
 Task-scope paragraph:
-This task is the first narrow ingestion execution task after T-101. Wire existing admin ingestion/pre-cache job creation and job status helpers to a configured ingestion ledger boundary when explicitly available, and add a small server-side execution helper that runs the deterministic worker against configured or in-memory ledger records with mocked acquisition outcomes. The default local and CI path must remain deterministic and fixture-backed. This task must not fetch real SEC, issuer, ETF, market-data, news, RSS, web, object-storage, cache, Redis, LLM, or provider data, and it must not create generated pages, generated chat answers, generated comparisons, generated risk summaries, source snapshots, normalized knowledge packs, or generated-output cache writes.
+This task is the first narrow official-source acquisition task after T-102 made local ingestion jobs executable through the ledger. Add a backend-only SEC EDGAR acquisition boundary for a small golden common-stock set, starting with AAPL and at most one or two manifest-backed peers if existing fixtures support them. The acquisition path should parse mocked SEC submissions, filing metadata, XBRL/company-facts metadata, checksums, source-use decisions, freshness/as-of dates, and evidence gaps into normalized acquisition/provider records that the deterministic worker can exercise. The default local and CI path must remain fixture-backed and no-live-call. This task must not activate public route live fetching, frontend rendering changes, source snapshot writes, normalized knowledge-pack persistence, generated-output cache writes, generated pages, generated chat answers, generated comparisons, or generated risk summaries.
 
 Roadmap alignment:
 
-- First execution task for ingestion after configured route read-path wiring.
-- Builds on T-079 ingestion job ledger contracts and T-080 deterministic worker execution contracts, moving from dormant/in-memory behavior toward configured local job transitions while keeping acquisition mocked.
-- Keeps normal local/CI behavior fixture-backed and no-live-call by default.
+- First official-source acquisition task for fresh stock data after ingestion jobs can execute locally through the ledger.
+- Builds on T-082 fixture-backed SEC adapter/parser contracts, T-099 provider content export-rights gates, and T-102 executable mocked worker transitions.
+- Keeps public route live fetching, frontend changes, non-golden stock expansion, paid providers, production source storage, generated-output writes, and live calls in CI out of scope.
 - Preserves Frontend Design and Workflow v0.4 before live-provider or deployment expansion: single-asset home search, separate connected comparison workflow, contextual glossary, mobile source/glossary/chat bottom sheets or full-screen panels, stock-vs-ETF relationship badges, and evidence-limited Weekly News Focus behavior.
 
 Allowed files:
 
-- `backend/main.py`
-- `backend/persistence.py`
+- `backend/provider_adapters/sec_stock.py`
+- `backend/providers.py`
 - `backend/ingestion.py`
 - `backend/ingestion_worker.py`
-- `backend/ingestion_job_repository.py`
-- `backend/repositories/ingestion_jobs.py`
-- `backend/models.py` only if schema-neutral internal ingestion diagnostics are required
-- `tests/unit/test_ingestion_job_repository.py`
-- `tests/unit/test_ingestion_worker.py`
+- `backend/models.py` only if schema-neutral server-side acquisition metadata is required
+- `backend/source_policy.py` only if an existing official SEC source-use decision needs a narrow metadata-safe adjustment
+- `tests/unit/test_provider_adapters.py`
+- `tests/unit/test_source_policy.py`
 - `tests/unit/test_ingestion_jobs.py`
+- `tests/unit/test_ingestion_worker.py`
 - `tests/unit/test_repo_contract.py`
 - `tests/unit/test_safety_guardrails.py`
-- `tests/integration/test_backend_api.py`
+- `tests/integration/test_backend_api.py` only if route fixture fallback or ingestion job status behavior is touched
 - `docs/agent-journal/*.md`
 
 Do not change:
 
 - No frontend files under `apps/web`.
-- No public FastAPI route paths, HTTP status behavior, response schemas, `/health` behavior, generated overview/comparison/chat/Weekly News Focus output, AI Comprehensive Analysis output, source drawer behavior, glossary behavior, comparison behavior, chat behavior, search behavior, export behavior, or default deterministic fixture-generated output.
+- No public FastAPI route paths, HTTP status behavior, response schemas, `/health` behavior, generated overview/comparison/chat/Weekly News Focus output, AI Comprehensive Analysis output, source drawer behavior, glossary behavior, comparison behavior, chat behavior, search behavior, export behavior, or default deterministic fixture-generated output unless a test proves unchanged fixture fallback.
 - No changes to home-page workflow, comparison UI, glossary UI, source drawer UI, asset chat UI, mobile bottom-sheet/full-screen behavior, stock-vs-ETF comparison structure, or any v0.4 workflow marker.
-- No live OpenRouter, LLM, SEC, issuer, ETF, market-data, news, RSS, web, object-storage, cache, Redis, Cloud Run Job, scheduler, admin auth enforcement, rate-limiting, external analytics, telemetry vendor, or deployment wiring.
+- No live OpenRouter, LLM, issuer, ETF, market-data, news, RSS, web, object-storage, cache, Redis, Cloud Run Job, scheduler, admin auth enforcement, rate-limiting, external analytics, telemetry vendor, or deployment wiring.
+- No live SEC calls in tests, CI, public route handlers, import-time code, or default local commands. Any live SEC readiness path must be explicit, server-side, dormant by default, and outside normal tests.
 - No database connection at import time and no live database requirement for normal CI; configured ledger tests must use in-memory or mocked boundaries.
-- No schema migrations, production database session execution, real source acquisition, source snapshot writes, normalized knowledge-pack writes from ingestion, generated-output cache write activation, frontend API migration, prompt template rewrite, provider licensing change, source allowlist expansion, runtime secret setup, production dependency addition, or actual legal/licensing determination.
-- No new source domains, no new allowlisted providers, no generated pages, generated chat answers, generated comparisons, generated risk summaries, provider fetches, live LLM calls, or new cacheable generated output.
+- No schema migrations, production database session execution, real source acquisition in CI, source snapshot writes, normalized knowledge-pack writes from ingestion, generated-output cache write activation, frontend API migration, prompt template rewrite, provider licensing change, broad source allowlist expansion, runtime secret setup, production dependency addition, or actual legal/licensing determination.
+- No generated pages, generated chat answers, generated comparisons, generated risk summaries, live LLM calls, or new cacheable generated output.
 - No edits to `data/universes/us_common_stocks_top500.current.json` or `data/universes/us_equity_etfs.current.json`.
 - No raw full article text, unrestricted source text, unrestricted provider payloads, hidden prompts, raw prompt text, raw model reasoning, raw user text, raw queries, raw questions, raw answers, raw chat transcripts, personal identifiers, portfolio/allocation details, real API keys, credentials, secrets, public storage URLs, signed URLs, external analytics IDs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, repository records, cache records, job records, events, exports, or exported data.
 - No `NEXT_PUBLIC_*` provider variables, no `/health` secret exposure, no docs/env examples containing real secrets, and no logging or diagnostics that include API key values or provider credentials.
@@ -48,35 +49,63 @@ Do not change:
 
 Acceptance criteria:
 
-- Add a small configured ingestion ledger boundary or reuse the existing app-level dependency pattern so ingestion job creation, pre-cache creation, job status lookup, and deterministic worker execution can use configured ledger records only when explicitly available.
-- Preserve fixture fallback when no configured ledger is present, configured ledger records are missing, records fail validation, records belong to the wrong job/ticker, terminal states are already reached, or the configured boundary fails.
-- Support deterministic state transitions for queued/pending, running, succeeded, failed, unsupported, out-of-scope, unknown, unavailable, stale, and source-policy-blocked outcomes with sanitized diagnostics and no raw provider/source/user text.
-- Preserve idempotent terminal-state behavior: rerunning the worker for succeeded, failed, unsupported, out-of-scope, unknown, unavailable, or stale records must not reopen jobs, create generated output, or erase diagnostics.
-- Keep successful mocked execution from creating generated pages, generated chat answers, comparisons, generated risk summaries, source snapshots, normalized knowledge packs, source-document records, source chunks, or cacheable generated output until later source acquisition and persistence-write tasks land.
-- Preserve existing public/admin route paths, HTTP statuses, response models, deterministic fixture output for AAPL/VOO/QQQ and eligible pending assets, search behavior, source allowlist scope, no-live-call defaults, and v0.4 frontend workflow markers.
-- Add focused tests proving ledger-backed job creation/status/execution, in-memory or mocked ledger fallback, idempotent terminal states, failure diagnostics, source-policy-blocked diagnostics, unsupported/out-of-scope/unknown blocking, and no generated-output activation.
-- Add or update repo-contract/safety tests only where needed to prove no live network imports, no import-time database connection requirement, no secret exposure, no raw provider/source text, no advice language, no source-use weakening, and no public behavior drift.
-- Keep T-103 SEC acquisition, T-104 ETF issuer acquisition, live provider calls, source snapshot writes, normalized knowledge-pack writes, generated-output cache writes, frontend API-backed rendering, production worker scheduling, admin auth enforcement, rate limiting, and deployment hardening out of scope.
+- Add or extend a backend-only SEC EDGAR acquisition boundary that can build a normalized deterministic acquisition/provider response for the stock golden path from mocked SEC submissions, selected filing metadata, XBRL/company-facts metadata, and evidence-gap fixtures.
+- Include explicit SEC configuration-readiness metadata such as user-agent configured state, rate-limit readiness, and live-call disabled state without reading, echoing, logging, or exposing secret values and without performing live network calls.
+- Preserve same-ticker and same-CIK binding. Wrong ticker, wrong CIK, wrong source-document binding, wrong asset type, unsupported, out-of-scope, unknown, and unavailable inputs must be rejected, blocked, or labeled without generated outputs.
+- Preserve official-source priority and source-use rights. SEC source attributions must remain official/allowlisted only where policy permits them, include source IDs/checksums/retrieved or as-of metadata where available, and avoid broad source allowlist expansion.
+- Represent partial evidence honestly with `partial`, `stale`, `unknown`, `unavailable`, or `insufficient_evidence` style states where the mocked SEC evidence cannot verify a section or field.
+- Keep diagnostics sanitized: no raw unrestricted source text, raw SEC payloads, raw provider responses, raw user text, hidden prompts, raw model reasoning, API keys, signed URLs, public storage URLs, or frontend-readable storage paths.
+- Wire the deterministic worker to exercise the mocked SEC golden-path acquisition result only through the existing server-side worker/ledger boundary if that is needed for the task, while preserving terminal-state idempotency and no generated-output activation.
+- Preserve existing public/admin route paths, HTTP statuses, response models, deterministic fixture output for AAPL/VOO/QQQ and eligible pending assets, search behavior, source drawer/export behavior, no-live-call defaults, and v0.4 frontend workflow markers.
+- Add focused tests proving mocked SEC acquisition success for the golden stock path, blocked wrong-asset/wrong-CIK evidence, source-policy-blocked diagnostics, unavailable/partial evidence gaps, no live network dependency, no import-time database connection, no secret exposure, and no generated pages/chat/comparisons/risk summaries/cache writes.
+- Add or update repo-contract/safety tests only where needed to prove no live network imports or default live calls, no secret exposure, no raw provider/source text, no advice language, no source-use weakening, and no public behavior drift.
+- Keep T-104 ETF issuer acquisition, source snapshot writes, normalized knowledge-pack writes, generated-output cache writes, frontend API-backed rendering, production worker scheduling, admin auth enforcement, rate limiting, deployment hardening, paid provider integration, and broad top-500 refresh out of scope.
 - Preserve product guardrails in implementation, tests, docs, and journal notes: no buy/sell/hold recommendations, allocation advice, tax advice, price targets, brokerage/trading behavior, unsupported factual claims, or recent-news-as-canonical framing.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_ingestion_job_repository.py tests/unit/test_ingestion_worker.py tests/unit/test_ingestion_jobs.py -q
+python3 -m pytest tests/unit/test_provider_adapters.py tests/unit/test_source_policy.py tests/unit/test_ingestion_worker.py tests/unit/test_ingestion_jobs.py -q
 python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
 python3 -m pytest tests/integration/test_backend_api.py -q
 python3 -m pytest tests -q
 python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
-docker compose config
 git diff --check
 ```
 
 Iteration budget:
-One agent-loop cycle. If real source fetching, object storage, generated-output cache writes, source snapshot writes, normalized knowledge-pack writes, production worker scheduling, admin auth enforcement, rate limiting, frontend pending-state UI changes, live database sessions, live provider calls, source allowlist expansion, production deployment work, or paid-provider integration are needed, record the follow-up and stop after executable mocked job transitions.
+One agent-loop cycle. If live SEC fetching, production SEC scheduling, broad top-500 refresh, source snapshot object-storage writes, normalized knowledge-pack persistence, generated summaries, cache writes, frontend rendering, paid providers, source allowlist expansion, or deployment work are needed, record the follow-up and stop after mocked SEC golden-path acquisition.
 
 
 ## Completed
+
+### T-102: Make ingestion jobs executable through the local ledger
+
+Goal:
+Make manual pre-cache and on-demand ingestion jobs executable through the existing ingestion job ledger and worker boundary using mocked acquisition outcomes, so local runtime job state transitions can be exercised without live provider calls.
+
+Completed details:
+
+- Implementation commit `e3652a0 feat(T-102): make ingestion jobs executable through the local ledger` updated `backend/ingestion.py`, `backend/main.py`, `backend/persistence.py`, `tests/unit/test_ingestion_jobs.py`, `tests/unit/test_ingestion_worker.py`, `tests/unit/test_repo_contract.py`, `tests/integration/test_backend_api.py`, and `docs/agent-journal/20260426T044844Z.md`.
+- Merged branch `agent/T-102-20260426T044844Z` into `main` with local merge commit `3fa8d40 chore(T-102): merge make ingestion jobs executable through the local ledger`.
+- `backend/persistence.py` added `ingestion_job_ledger` to the app-level `BackendReadDependencies` boundary, active-reader calculation, and safe diagnostics without opening a database connection at import time.
+- `backend/main.py` now passes the configured ingestion job ledger, when explicitly enabled, into admin ingestion creation, ingestion job status lookup, launch-universe pre-cache creation/status, individual pre-cache job status, and individual pre-cache creation routes.
+- `backend/ingestion.py` now lets eligible on-demand and pre-cache job creation/status read and save configured ledger records, with fixture fallback when the configured ledger is absent, fails, misses, returns invalid records, or returns records for the wrong ticker/job.
+- `backend/ingestion.py` added `execute_ingestion_job_through_ledger`, which runs the deterministic worker against a configured ledger when provided and falls back to serialized fixture records otherwise.
+- Ledger-backed response shaping maps ledger records back into existing public ingestion/pre-cache response models, including sanitized diagnostics, generated-output capability flags, status URLs, timestamps, and terminal state handling. Stale ledger terminal states remain internal and surface through the existing public `refresh_needed` enum to avoid a public schema change.
+- Successful mocked execution remains non-generative for newly executable jobs: it does not create generated pages, generated chat answers, generated comparisons, generated risk summaries, source snapshots, normalized knowledge packs, source chunks, or generated-output cache writes.
+- Tests added coverage for ledger-backed on-demand creation/status/execution, ledger-backed pre-cache creation/status/execution, configured-ledger failure fallback, invalid or wrong-ticker ledger fallback, server-side execution helper configured/fallback behavior, and route-level ledger wiring with fixture fallback.
+- `docs/agent-journal/20260426T044844Z.md` records these checks: `python3 -m pytest tests/unit/test_ingestion_job_repository.py tests/unit/test_ingestion_worker.py tests/unit/test_ingestion_jobs.py -q` passed with 38 tests; `python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q` passed with 28 tests; `python3 -m pytest tests/integration/test_backend_api.py -q` passed with 35 tests; `python3 -m pytest tests -q` passed with 362 tests; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed; `docker compose config` passed; `git diff --check` passed.
+- Remaining risks from the journal:
+  - This only wires the configured in-memory/mocked ingestion ledger path; it does not add live source acquisition, source snapshots, normalized knowledge-pack writes, generated-output cache writes, production scheduling, admin auth, rate limiting, or deployment hardening.
+  - Stale ledger terminal states are preserved internally by the worker; existing public ingestion response enums still surface them through the existing `refresh_needed` state to avoid a public schema change.
+  - Future T-103/T-104 acquisition work must preserve the same fixture fallback, sanitized diagnostics, no-live-call defaults, terminal-state idempotency, and no generated-output activation until validated source persistence and generation gates are added.
+
+Completion commits:
+
+- `e3652a0 feat(T-102): make ingestion jobs executable through the local ledger`
+- `3fa8d40 chore(T-102): merge make ingestion jobs executable through the local ledger`
 
 ### T-101: Wire backend routes to configured persistence readers with fixture fallback
 
@@ -2745,38 +2774,6 @@ Completion commits:
 
 ## Backlog
 
-### T-103: Implement server-side SEC EDGAR acquisition for the stock golden path
-
-Goal:
-Implement the first server-side SEC EDGAR stock acquisition path for a small golden stock set, using mocked HTTP fixtures in tests and preserving no live external calls in normal CI.
-
-Roadmap alignment:
-
-- First official-source acquisition task for fresh stock data after ingestion jobs can execute.
-- Builds on the fixture-backed SEC adapter/parser contract from T-082 and the rights gates from T-099.
-- Keeps public route live fetching, frontend changes, non-golden stock expansion, paid providers, and live calls in CI out of scope.
-
-Acceptance criteria:
-
-- Add a backend-only SEC acquisition boundary for golden common-stock assets such as AAPL and one or two manifest-backed peers, with explicit SEC user-agent/rate-limit configuration readiness and sanitized diagnostics.
-- Fetch or parse mocked SEC submissions, selected filing metadata, XBRL/company-facts metadata, source IDs, checksums, source-use policy, freshness/as-of dates, and unavailable evidence gaps into normalized acquisition records.
-- Tests must use local mocked HTTP/fixture responses only; live SEC calls require an explicit local opt-in path and must never run in CI or public route handlers.
-- Preserve same-CIK/same-ticker binding, official-source priority, rights-tiered storage rules, source sanitization, SSRF defenses, no advice language, and no raw unrestricted source text in diagnostics.
-- Do not yet broaden public generated pages beyond persisted/fixture availability; any persisted-pack or generated-output creation must be deferred unless already covered by the task scope.
-
-Required commands:
-
-```bash
-python3 -m pytest tests/unit/test_provider_adapters.py tests/unit/test_source_policy.py tests/unit/test_ingestion_worker.py tests/unit/test_safety_guardrails.py -q
-python3 -m pytest tests/integration/test_backend_api.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-```
-
-Iteration budget:
-One agent-loop cycle. If production SEC scheduling, broad top-500 refresh, frontend rendering, generated summaries, cache writes, or object-storage activation are needed, record the follow-up and stop after mocked SEC golden-path acquisition.
-
 ### T-104: Implement official ETF issuer acquisition for the ETF golden path
 
 Goal:
@@ -2848,8 +2845,9 @@ Operational defaults for backend roadmap tasks:
 - T-099 established deterministic provider content export-rights hardening. It is a prerequisite rights gate, not the runtime fresh-data completion point.
 - T-100 established the backend MVP runtime gap audit and roadmap tracker. It is completed and must not be reintroduced as runnable backlog.
 - T-101 established configured persisted-reader route wiring with fixture fallback. It is completed and must not be reintroduced as runnable backlog.
-- T-102 is the current promoted task for making ingestion jobs executable through the local ledger with mocked acquisition outcomes.
-- T-103 and T-104 remain the prepared backlog for adding mocked official-source acquisition for stock and ETF golden paths.
+- T-102 established executable local ingestion ledger and mocked worker transitions. It is completed and must not be reintroduced as runnable backlog.
+- T-103 is the current promoted task for mocked SEC EDGAR stock golden-path acquisition.
+- T-104 remains the prepared backlog for mocked official ETF issuer golden-path acquisition.
 - Production hardening readiness diagnostics, backend route regression matrices, go/no-go launch checklists, and deploy work move later until the ingestion-to-persist-to-render path exists.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted backend task should run the relevant EVALS.md backend checks: `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, and `bash scripts/run_quality_gate.sh`.
@@ -2884,8 +2882,8 @@ Roadmap integration tracker:
 | Provider source-use/export enforcement hardening | Completed | T-099 |
 | Backend fresh-data MVP runtime gap tracker | Completed | T-100 |
 | Configured persisted-reader route wiring | Completed | T-101 |
-| Executable local ingestion ledger and mocked worker path | Current | T-102 |
-| SEC EDGAR stock golden-path acquisition | Backlog | T-103 |
+| Executable local ingestion ledger and mocked worker path | Completed | T-102 |
+| SEC EDGAR stock golden-path acquisition | Current | T-103 |
 | Official ETF issuer golden-path acquisition | Backlog | T-104 |
 | Source snapshot object-storage execution | Runtime gap | Unpromoted |
 | Normalized knowledge-pack writes from ingestion | Runtime gap | Unpromoted |
