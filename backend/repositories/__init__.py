@@ -4,8 +4,10 @@ from backend.repositories.knowledge_packs import (
     KNOWLEDGE_PACK_REPOSITORY_BOUNDARY,
     KNOWLEDGE_PACK_REPOSITORY_TABLES,
     AssetKnowledgePackRepository,
+    InMemoryAssetKnowledgePackRepository,
     KnowledgePackRepositoryContractError,
     KnowledgePackRepositoryRecords,
+    knowledge_pack_records_from_acquisition_result,
     knowledge_pack_repository_metadata,
 )
 from backend.repositories.ingestion_jobs import (
@@ -100,6 +102,7 @@ __all__ = [
     "WEEKLY_NEWS_EVENT_EVIDENCE_TABLES",
     "RETRIEVAL_REPOSITORY_BOUNDARY",
     "AssetKnowledgePackRepository",
+    "InMemoryAssetKnowledgePackRepository",
     "IngestionJobCategory",
     "IngestionJobLedgerContractError",
     "IngestionJobLedgerRepository",
@@ -138,6 +141,7 @@ __all__ = [
     "weekly_news_event_evidence_repository_metadata",
     "ingestion_job_ledger_repository_metadata",
     "knowledge_pack_repository_metadata",
+    "knowledge_pack_records_from_acquisition_result",
     "read_persisted_knowledge_pack_response",
     "serialize_ingestion_job_response",
     "source_snapshot_repository_metadata",

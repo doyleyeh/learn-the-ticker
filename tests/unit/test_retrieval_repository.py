@@ -3,11 +3,16 @@ from __future__ import annotations
 import pytest
 
 from backend.knowledge_pack_repository import AssetKnowledgePackRepository
+from backend.knowledge_pack_repository import InMemoryAssetKnowledgePackRepository
+from backend.knowledge_pack_repository import knowledge_pack_records_from_acquisition_result
+from backend.provider_adapters.etf_issuer import build_etf_issuer_acquisition_result
+from backend.providers import fetch_mock_provider_response, mock_etf_issuer_adapter
 from backend.retrieval import build_asset_knowledge_pack, build_asset_knowledge_pack_result
 from backend.retrieval_repository import (
     RETRIEVAL_REPOSITORY_BOUNDARY,
     read_persisted_knowledge_pack_response,
 )
+from backend.source_snapshot_repository import source_snapshot_records_from_acquisition_result
 
 
 class FakeKnowledgePackReader:
@@ -31,6 +36,14 @@ def _serialized_voo_records():
         build_asset_knowledge_pack_result("VOO"),
         retrieval_pack=build_asset_knowledge_pack("VOO"),
     )
+
+
+def _acquisition_voo_records():
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(adapter.provider_kind, "VOO").licensing
+    acquisition = build_etf_issuer_acquisition_result(adapter, adapter.request("VOO"), licensing)
+    snapshots = source_snapshot_records_from_acquisition_result(acquisition, ingestion_job_id="pre-cache-launch-voo")
+    return knowledge_pack_records_from_acquisition_result(acquisition, snapshots)
 
 
 def test_retrieval_repository_boundary_is_dormant_and_persisted_first_for_voo():
@@ -134,6 +147,22 @@ def test_invalid_source_use_persisted_records_are_rejected_and_do_not_replace_fi
     assert read_result.status == "contract_error"
     assert "cannot support generated-output use" in read_result.message
     assert fallback.model_dump(mode="json") == build_asset_knowledge_pack_result("VOO").model_dump(mode="json")
+
+
+def test_acquisition_pack_reader_is_valid_but_public_fixture_fallback_handles_non_generated_routes():
+    repository = InMemoryAssetKnowledgePackRepository()
+    repository.persist(_acquisition_voo_records())
+
+    read_result = read_persisted_knowledge_pack_response("VOO", reader=repository)
+    response = build_asset_knowledge_pack_result("VOO", persisted_reader=repository)
+
+    assert read_result.status == "found"
+    assert response.ticker == "VOO"
+    assert response.build_state.value == "available"
+    assert response.generated_output_available is False
+    assert response.generated_route is None
+    assert response.source_documents
+    assert response.source_checksums
 
 
 def test_wrong_asset_persisted_records_are_rejected_and_do_not_replace_fixture_output():

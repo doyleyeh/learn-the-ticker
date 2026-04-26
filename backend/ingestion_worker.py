@@ -14,6 +14,7 @@ from backend.repositories.ingestion_jobs import (
     validate_ingestion_job_ledger_records,
 )
 from backend.source_snapshot_repository import SourceSnapshotRepositoryRecords
+from backend.knowledge_pack_repository import KnowledgePackRepositoryRecords
 
 
 INGESTION_WORKER_EXECUTION_BOUNDARY = "deterministic-ingestion-worker-execution-contract-v1"
@@ -58,6 +59,11 @@ class SourceSnapshotWriterBoundary(Protocol):
         ...
 
 
+class KnowledgePackWriterBoundary(Protocol):
+    def persist(self, records: KnowledgePackRepositoryRecords) -> KnowledgePackRepositoryRecords:
+        ...
+
+
 class IngestionWorkerFixtureOutcome(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -69,6 +75,7 @@ class IngestionWorkerFixtureOutcome(BaseModel):
     source_policy_ref: str | None = None
     checksum: str | None = None
     source_snapshot_records: SourceSnapshotRepositoryRecords | None = None
+    knowledge_pack_records: KnowledgePackRepositoryRecords | None = None
 
     @field_validator("terminal_state")
     @classmethod
@@ -129,6 +136,7 @@ class DeterministicIngestionWorker:
     ledger_boundary: IngestionWorkerLedgerBoundary
     fixture_outcomes: Mapping[str, IngestionWorkerFixtureOutcome] = field(default_factory=dict)
     source_snapshot_repository: SourceSnapshotWriterBoundary | None = None
+    knowledge_pack_repository: KnowledgePackWriterBoundary | None = None
     timestamp: str = STUB_TIMESTAMP
 
     def execute(self, job_id: str) -> IngestionWorkerExecutionResult:
@@ -150,6 +158,24 @@ class DeterministicIngestionWorker:
                     error_category=SanitizedErrorCategory.validation_failed,
                     error_code="source_snapshot_persistence_failed",
                     sanitized_message="Source snapshot persistence failed closed through the configured mocked writer.",
+                    retryable=True,
+                    source_policy_ref=outcome.source_policy_ref,
+                    checksum=outcome.checksum,
+                )
+                result = execute_ingestion_worker_record(records, fixture_outcome=failed_outcome, timestamp=self.timestamp)
+        if _should_persist_knowledge_pack(result, outcome, self.knowledge_pack_repository):
+            knowledge_pack_repository = self.knowledge_pack_repository
+            knowledge_pack_records = outcome.knowledge_pack_records if outcome else None
+            if knowledge_pack_repository is None or knowledge_pack_records is None:
+                raise IngestionWorkerContractError("Knowledge-pack persistence was requested without a mocked writer.")
+            try:
+                knowledge_pack_repository.persist(knowledge_pack_records)
+            except Exception:
+                failed_outcome = IngestionWorkerFixtureOutcome(
+                    terminal_state=IngestionLedgerJobState.failed,
+                    error_category=SanitizedErrorCategory.validation_failed,
+                    error_code="knowledge_pack_persistence_failed",
+                    sanitized_message="Knowledge-pack persistence failed closed through the configured mocked writer.",
                     retryable=True,
                     source_policy_ref=outcome.source_policy_ref,
                     checksum=outcome.checksum,
@@ -220,6 +246,12 @@ def _apply_terminal_outcome(
         metadata["source_snapshot_artifact_count"] = len(outcome.source_snapshot_records.artifacts)
         metadata["source_snapshot_diagnostic_count"] = len(outcome.source_snapshot_records.diagnostics)
         metadata["source_snapshot_boundary"] = "source-snapshot-artifact-repository-contract-v1"
+    if outcome.knowledge_pack_records:
+        metadata["knowledge_pack_persistence_configured"] = True
+        metadata["knowledge_pack_source_document_count"] = len(outcome.knowledge_pack_records.source_documents)
+        metadata["knowledge_pack_fact_count"] = len(outcome.knowledge_pack_records.normalized_facts)
+        metadata["knowledge_pack_chunk_count"] = len(outcome.knowledge_pack_records.source_chunks)
+        metadata["knowledge_pack_boundary"] = "asset-knowledge-pack-repository-contract-v1"
 
     ledger = records.ledger.model_copy(
         update={
@@ -340,6 +372,20 @@ def _should_persist_source_snapshots(
         repository is not None
         and outcome is not None
         and outcome.source_snapshot_records is not None
+        and result.summary.initial_state not in _TERMINAL_STATES
+        and result.summary.terminal_state == IngestionLedgerJobState.succeeded.value
+    )
+
+
+def _should_persist_knowledge_pack(
+    result: IngestionWorkerExecutionResult,
+    outcome: IngestionWorkerFixtureOutcome | None,
+    repository: KnowledgePackWriterBoundary | None,
+) -> bool:
+    return (
+        repository is not None
+        and outcome is not None
+        and outcome.knowledge_pack_records is not None
         and result.summary.initial_state not in _TERMINAL_STATES
         and result.summary.terminal_state == IngestionLedgerJobState.succeeded.value
     )
