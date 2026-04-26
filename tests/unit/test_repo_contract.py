@@ -322,3 +322,88 @@ def test_control_docs_cover_new_mvp_operating_rules():
         "Docker Compose",
     ]:
         assert marker in combined, f"control docs should mention {marker}"
+
+
+def test_backend_mvp_runtime_gap_audit_tracks_required_areas_without_runtime_wiring():
+    audit = read_file("docs/backend_mvp_runtime_gap_audit.md")
+    audit_lower = audit.lower()
+
+    assert "Task: T-100" in audit
+    for status in ["contract_complete", "runtime_gap", "current", "backlog", "later"]:
+        assert f"`{status}`" in audit, f"audit should define status {status}"
+
+    required_areas = [
+        "Source acquisition",
+        "Source snapshot storage",
+        "Normalized knowledge-pack persistence",
+        "Configured route read-path wiring",
+        "Generated-output cache writes",
+        "Weekly News Focus acquisition",
+        "Ingestion job execution",
+        "Frontend API rendering",
+        "Launch-universe pre-cache",
+        "Exports and source-use enforcement",
+        "Live-generation readiness",
+        "Trust metrics",
+        "Production hardening",
+    ]
+    for area in required_areas:
+        assert area in audit, f"audit should cover {area}"
+
+    required_gap_markers = [
+        "public routes still default to fixtures where configured readers are absent",
+        "ingestion jobs do not fetch real official sources",
+        "persistence is not the normal read/write path",
+        "provider adapters are fixture-backed",
+        "generated-output cache writes are not activated for public output",
+        "frontend asset/search pages still have local-fixture-first behavior",
+    ]
+    for marker in required_gap_markers:
+        assert marker in audit, f"audit should explicitly record gap: {marker}"
+
+    for task_marker in [
+        "T-101 route read-path wiring",
+        "T-102 executable ingestion jobs",
+        "T-103 SEC golden-path acquisition",
+        "T-104 ETF issuer golden-path acquisition",
+    ]:
+        assert task_marker in audit, f"audit should map next task {task_marker}"
+
+    for workflow_marker in [
+        "home page single-asset stock or ETF search first",
+        "comparison as a separate connected workflow",
+        "glossary as contextual help",
+        "mobile source, glossary, and chat surfaces",
+        "stock-vs-ETF comparison relationship badges",
+        "Weekly News Focus showing only the evidence-backed set",
+    ]:
+        assert workflow_marker in audit, f"audit should preserve v0.4 marker {workflow_marker}"
+
+    for forbidden in [
+        "import requests",
+        "import httpx",
+        "urllib.request",
+        "from socket import",
+        "os.environ",
+        "api_key",
+        "OPENROUTER_API_KEY",
+        "FMP_API_KEY",
+        "ALPHA_VANTAGE_API_KEY",
+        "FINNHUB_API_KEY",
+        "TIINGO_API_KEY",
+        "EODHD_API_KEY",
+        "BEGIN PRIVATE KEY",
+        "signed url",
+        "public storage url",
+    ]:
+        assert forbidden.lower() not in audit_lower
+
+
+def test_tasks_runtime_roadmap_marks_t100_current_after_t099_completion():
+    tasks = read_file("TASKS.md")
+    roadmap = tasks.split("## MVP Backend Roadmap", 1)[1]
+
+    assert "T-099 established deterministic provider content export-rights hardening" in roadmap
+    assert "T-100 is the current promoted task for rebaselining the backend MVP runtime gap" in roadmap
+    assert "| Provider source-use/export enforcement hardening | Completed | T-099 |" in roadmap
+    assert "| Backend fresh-data MVP runtime gap tracker | Current | T-100 |" in roadmap

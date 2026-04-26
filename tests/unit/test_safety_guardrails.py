@@ -349,3 +349,40 @@ def test_weekly_news_event_evidence_contract_copy_is_advice_safe():
         assert_no_forbidden_phrases(marker, marker)
 
     assert_no_forbidden_phrases("weekly news event evidence contract", combined)
+
+
+def test_backend_runtime_gap_audit_copy_is_advice_safe_and_sanitized():
+    text = (ROOT / "docs" / "backend_mvp_runtime_gap_audit.md").read_text(encoding="utf-8")
+
+    markers = [
+        "Backend MVP Runtime Gap Audit",
+        "runtime_gap",
+        "T-101 route read-path wiring",
+        "T-102 executable ingestion jobs",
+        "T-103 SEC golden-path acquisition",
+        "T-104 ETF issuer golden-path acquisition",
+        "Weekly News Focus showing only the evidence-backed set",
+        "Normal CI remains deterministic",
+    ]
+
+    for marker in markers:
+        assert marker in text
+        assert_no_forbidden_phrases(marker, marker)
+
+    for forbidden in [
+        "OPENROUTER_API_KEY",
+        "FMP_API_KEY",
+        "ALPHA_VANTAGE_API_KEY",
+        "FINNHUB_API_KEY",
+        "TIINGO_API_KEY",
+        "EODHD_API_KEY",
+        "BEGIN PRIVATE KEY",
+        "Authorization",
+        "Bearer ",
+        "signed URL",
+        "public storage URL",
+        "raw transcript",
+    ]:
+        assert forbidden not in text
+
+    assert_no_forbidden_phrases("backend runtime gap audit", text)
