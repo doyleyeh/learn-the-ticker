@@ -1,47 +1,32 @@
 ## Current task
 
-### T-101: Wire backend routes to configured persistence readers with fixture fallback
+### T-102: Make ingestion jobs executable through the local ledger
 
 Goal:
-Wire public backend read paths to configured persistent repository readers and existing injected boundaries when persistence is explicitly configured, while preserving deterministic fixture fallback and current route schemas when it is not.
+Make manual pre-cache and on-demand ingestion jobs executable through the existing ingestion job ledger and worker boundary using mocked acquisition outcomes, so local runtime job state transitions can be exercised without live provider calls.
 
 Task-scope paragraph:
-This task is the first narrow runtime wiring task after T-100. Add an app-level backend dependency, service factory, or similarly small configured-reader boundary that can supply persisted readers to existing public read paths only when persistence is explicitly configured. The default local and CI path must remain deterministic and fixture-backed. This task may route existing overview, details/source, Weekly News Focus, comparison, grounded chat, chat-session status/delete/export, and export helpers through already-existing injected persisted-reader boundaries, but it must not add source acquisition, generated-output cache writes, live database requirements in normal CI, frontend API migration, or public response-schema changes.
+This task is the first narrow ingestion execution task after T-101. Wire existing admin ingestion/pre-cache job creation and job status helpers to a configured ingestion ledger boundary when explicitly available, and add a small server-side execution helper that runs the deterministic worker against configured or in-memory ledger records with mocked acquisition outcomes. The default local and CI path must remain deterministic and fixture-backed. This task must not fetch real SEC, issuer, ETF, market-data, news, RSS, web, object-storage, cache, Redis, LLM, or provider data, and it must not create generated pages, generated chat answers, generated comparisons, generated risk summaries, source snapshots, normalized knowledge packs, or generated-output cache writes.
 
 Roadmap alignment:
 
-- First runtime wiring task after T-100 documents the backend MVP runtime gap.
-- Builds on T-077 through T-095 repository and persisted-read contracts without adding provider acquisition or generated-output writes.
+- First execution task for ingestion after configured route read-path wiring.
+- Builds on T-079 ingestion job ledger contracts and T-080 deterministic worker execution contracts, moving from dormant/in-memory behavior toward configured local job transitions while keeping acquisition mocked.
 - Keeps normal local/CI behavior fixture-backed and no-live-call by default.
 - Preserves Frontend Design and Workflow v0.4 before live-provider or deployment expansion: single-asset home search, separate connected comparison workflow, contextual glossary, mobile source/glossary/chat bottom sheets or full-screen panels, stock-vs-ETF relationship badges, and evidence-limited Weekly News Focus behavior.
 
 Allowed files:
 
 - `backend/main.py`
-- `backend/settings.py`
 - `backend/persistence.py`
-- `backend/sources.py`
-- `backend/retrieval.py`
-- `backend/retrieval_repository.py`
-- `backend/overview.py`
-- `backend/weekly_news.py`
-- `backend/comparison.py`
-- `backend/chat.py`
-- `backend/chat_sessions.py`
-- `backend/export.py`
-- `backend/knowledge_pack_repository.py` only if a small import/re-export adjustment is needed for configured readers
-- `backend/weekly_news_repository.py` only if a small import/re-export adjustment is needed for configured readers
-- `backend/generated_output_cache_repository.py` only if a small import/re-export adjustment is needed for configured readers
-- `backend/chat_session_repository.py` only if a small import/re-export adjustment is needed for configured readers
-- `backend/source_snapshot_repository.py` only if a small import/re-export adjustment is needed for configured readers or source/export metadata lookup
-- `backend/models.py` only if schema-neutral internal configuration or diagnostics metadata is required
-- `tests/unit/test_overview_generation.py`
-- `tests/unit/test_weekly_news.py`
-- `tests/unit/test_comparison_generation.py`
-- `tests/unit/test_chat_generation.py`
-- `tests/unit/test_chat_sessions.py`
-- `tests/unit/test_exports.py`
-- `tests/unit/test_source_drawer.py`
+- `backend/ingestion.py`
+- `backend/ingestion_worker.py`
+- `backend/ingestion_job_repository.py`
+- `backend/repositories/ingestion_jobs.py`
+- `backend/models.py` only if schema-neutral internal ingestion diagnostics are required
+- `tests/unit/test_ingestion_job_repository.py`
+- `tests/unit/test_ingestion_worker.py`
+- `tests/unit/test_ingestion_jobs.py`
 - `tests/unit/test_repo_contract.py`
 - `tests/unit/test_safety_guardrails.py`
 - `tests/integration/test_backend_api.py`
@@ -50,48 +35,76 @@ Allowed files:
 Do not change:
 
 - No frontend files under `apps/web`.
-- No public FastAPI route paths, HTTP status behavior, response schemas, `/health` behavior, generated overview/comparison/chat/Weekly News Focus output, AI Comprehensive Analysis output, source drawer UI behavior, glossary behavior, comparison behavior, chat behavior, search behavior, or default deterministic fixture-generated output.
+- No public FastAPI route paths, HTTP status behavior, response schemas, `/health` behavior, generated overview/comparison/chat/Weekly News Focus output, AI Comprehensive Analysis output, source drawer behavior, glossary behavior, comparison behavior, chat behavior, search behavior, export behavior, or default deterministic fixture-generated output.
 - No changes to home-page workflow, comparison UI, glossary UI, source drawer UI, asset chat UI, mobile bottom-sheet/full-screen behavior, stock-vs-ETF comparison structure, or any v0.4 workflow marker.
-- No live OpenRouter, LLM, SEC, issuer, ETF, market-data, news, RSS, web, object-storage, cache, Redis, Cloud Run Job, scheduler, admin auth, rate-limiting, external analytics, telemetry vendor, or deployment wiring.
-- No database connection at import time and no live database requirement for normal CI.
-- No schema migrations, production database session execution, source acquisition, source snapshot writes, normalized knowledge-pack writes from ingestion, generated-output cache write activation, frontend API migration, prompt template rewrite, provider licensing change, source allowlist expansion, runtime secret setup, production dependency addition, or actual legal/licensing determination.
+- No live OpenRouter, LLM, SEC, issuer, ETF, market-data, news, RSS, web, object-storage, cache, Redis, Cloud Run Job, scheduler, admin auth enforcement, rate-limiting, external analytics, telemetry vendor, or deployment wiring.
+- No database connection at import time and no live database requirement for normal CI; configured ledger tests must use in-memory or mocked boundaries.
+- No schema migrations, production database session execution, real source acquisition, source snapshot writes, normalized knowledge-pack writes from ingestion, generated-output cache write activation, frontend API migration, prompt template rewrite, provider licensing change, source allowlist expansion, runtime secret setup, production dependency addition, or actual legal/licensing determination.
 - No new source domains, no new allowlisted providers, no generated pages, generated chat answers, generated comparisons, generated risk summaries, provider fetches, live LLM calls, or new cacheable generated output.
 - No edits to `data/universes/us_common_stocks_top500.current.json` or `data/universes/us_equity_etfs.current.json`.
-- No raw full article text, unrestricted source text, unrestricted provider payloads, hidden prompts, raw prompt text, raw model reasoning, raw user text, raw queries, raw questions, raw answers, raw chat transcripts, personal identifiers, portfolio/allocation details, real API keys, credentials, secrets, public storage URLs, signed URLs, external analytics IDs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, repository records, cache records, events, exports, or exported data.
+- No raw full article text, unrestricted source text, unrestricted provider payloads, hidden prompts, raw prompt text, raw model reasoning, raw user text, raw queries, raw questions, raw answers, raw chat transcripts, personal identifiers, portfolio/allocation details, real API keys, credentials, secrets, public storage URLs, signed URLs, external analytics IDs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, repository records, cache records, job records, events, exports, or exported data.
 - No `NEXT_PUBLIC_*` provider variables, no `/health` secret exposure, no docs/env examples containing real secrets, and no logging or diagnostics that include API key values or provider credentials.
 - No changes that weaken citation/source-use rules, suppress required stale/unknown/unavailable/partial/insufficient-evidence states, let recent Weekly News Focus overwrite canonical asset facts, pad Weekly News Focus beyond available evidence, or introduce buy/sell/hold, allocation, tax, price-target, brokerage, trading, or personalized recommendation language.
 
 Acceptance criteria:
 
-- Add a small configured-reader boundary for public backend read paths that does not open a database connection at import time and can be exercised with in-memory or mocked readers in tests.
-- Route overview/details generation through configured persisted knowledge-pack and generated-output cache readers when explicitly available, while preserving fixture fallback for missing configuration, missing records, invalid records, wrong-asset records, stale/failed validation, and reader failures.
-- Route Weekly News Focus read paths through configured persisted event evidence readers when explicitly available, while preserving evidence-limited empty/smaller-set behavior, source-use gates, same-asset citation binding, freshness/uncertainty labels, and fixture fallback.
-- Route comparison and grounded chat read paths through configured persisted pack/cache readers when explicitly available, while preserving unsupported/out-of-scope blocking, same-comparison-pack or same-asset citation binding, advice redirects, comparison redirects, and default deterministic outputs.
-- Route chat-session status, delete, and transcript export helpers through configured persisted session readers/writers when explicitly available, while preserving seven-day TTL semantics, user-delete behavior, metadata-only safe transcript records, no raw question/answer export from persisted records, and in-memory fallback.
-- Route asset-page exports, comparison exports, source-list exports, and chat exports through configured readers only when the relevant source or session metadata is explicitly available, while preserving source-use policy enforcement and Markdown/JSON export behavior.
-- Preserve existing public route paths, HTTP statuses, response models, deterministic fixture output for AAPL/VOO/QQQ, search behavior, source allowlist scope, no-live-call defaults, and v0.4 frontend workflow markers.
-- Add focused in-memory or mocked-reader tests proving persisted-first behavior and fallback behavior for overview, Weekly News Focus, comparison, chat, chat sessions, exports, and integration routes without requiring a live database, provider, cache, LLM, object storage, or frontend change.
-- Add or update repo-contract/safety tests only where needed to prove no live network imports, no import-time database connection requirement, no secret exposure, no raw text/transcript exposure, no advice language, no source-use weakening, and no public behavior drift.
-- Keep T-102 ingestion execution, T-103 SEC acquisition, T-104 ETF issuer acquisition, source snapshot writes, normalized knowledge-pack writes, generated-output cache writes, frontend API-backed rendering, live-provider calls, and deployment hardening out of scope.
+- Add a small configured ingestion ledger boundary or reuse the existing app-level dependency pattern so ingestion job creation, pre-cache creation, job status lookup, and deterministic worker execution can use configured ledger records only when explicitly available.
+- Preserve fixture fallback when no configured ledger is present, configured ledger records are missing, records fail validation, records belong to the wrong job/ticker, terminal states are already reached, or the configured boundary fails.
+- Support deterministic state transitions for queued/pending, running, succeeded, failed, unsupported, out-of-scope, unknown, unavailable, stale, and source-policy-blocked outcomes with sanitized diagnostics and no raw provider/source/user text.
+- Preserve idempotent terminal-state behavior: rerunning the worker for succeeded, failed, unsupported, out-of-scope, unknown, unavailable, or stale records must not reopen jobs, create generated output, or erase diagnostics.
+- Keep successful mocked execution from creating generated pages, generated chat answers, comparisons, generated risk summaries, source snapshots, normalized knowledge packs, source-document records, source chunks, or cacheable generated output until later source acquisition and persistence-write tasks land.
+- Preserve existing public/admin route paths, HTTP statuses, response models, deterministic fixture output for AAPL/VOO/QQQ and eligible pending assets, search behavior, source allowlist scope, no-live-call defaults, and v0.4 frontend workflow markers.
+- Add focused tests proving ledger-backed job creation/status/execution, in-memory or mocked ledger fallback, idempotent terminal states, failure diagnostics, source-policy-blocked diagnostics, unsupported/out-of-scope/unknown blocking, and no generated-output activation.
+- Add or update repo-contract/safety tests only where needed to prove no live network imports, no import-time database connection requirement, no secret exposure, no raw provider/source text, no advice language, no source-use weakening, and no public behavior drift.
+- Keep T-103 SEC acquisition, T-104 ETF issuer acquisition, live provider calls, source snapshot writes, normalized knowledge-pack writes, generated-output cache writes, frontend API-backed rendering, production worker scheduling, admin auth enforcement, rate limiting, and deployment hardening out of scope.
 - Preserve product guardrails in implementation, tests, docs, and journal notes: no buy/sell/hold recommendations, allocation advice, tax advice, price targets, brokerage/trading behavior, unsupported factual claims, or recent-news-as-canonical framing.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_overview_generation.py tests/unit/test_weekly_news.py tests/unit/test_comparison_generation.py tests/unit/test_chat_generation.py tests/unit/test_chat_sessions.py tests/unit/test_exports.py -q
+python3 -m pytest tests/unit/test_ingestion_job_repository.py tests/unit/test_ingestion_worker.py tests/unit/test_ingestion_jobs.py -q
 python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
 python3 -m pytest tests/integration/test_backend_api.py -q
 python3 -m pytest tests -q
 python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
+docker compose config
 git diff --check
 ```
 
 Iteration budget:
-One agent-loop cycle. If live database sessions, schema migrations, source acquisition, source snapshot writes, normalized knowledge-pack writes, generated-output cache writes, generated-output changes, frontend API behavior changes, source allowlist expansion, live provider calls, production deployment work, or paid-provider integration are needed, record the follow-up and stop after configured-reader route wiring.
+One agent-loop cycle. If real source fetching, object storage, generated-output cache writes, source snapshot writes, normalized knowledge-pack writes, production worker scheduling, admin auth enforcement, rate limiting, frontend pending-state UI changes, live database sessions, live provider calls, source allowlist expansion, production deployment work, or paid-provider integration are needed, record the follow-up and stop after executable mocked job transitions.
 
 
 ## Completed
+
+### T-101: Wire backend routes to configured persistence readers with fixture fallback
+
+Goal:
+Wire public backend read paths to configured persistent repository readers and existing injected boundaries when persistence is explicitly configured, while preserving deterministic fixture fallback and current route schemas when it is not.
+
+Completed details:
+
+- Implementation commit `1d9d664 feat(T-101): wire backend routes to configured persistence readers with fixture fallback` updated `backend/persistence.py`, `backend/main.py`, `backend/export.py`, `backend/chat_sessions.py`, `backend/sources.py`, `backend/compat.py`, `tests/integration/test_backend_api.py`, `tests/unit/test_repo_contract.py`, and `docs/agent-journal/20260426T043838Z.md`.
+- Merged branch `agent/T-101-20260426T043838Z` into `main` with local merge commit `11b9785 chore(T-101): merge wire backend routes to configured persistence readers with fixture fallback`.
+- `backend/persistence.py` added the `BackendReadDependencies` app-state boundary, default disabled dependencies, safe diagnostics, and helpers to configure or read app-level dependencies without opening a database connection at import time.
+- `backend/main.py` now passes configured readers into overview, recent context, Weekly News Focus, comparison, knowledge-pack, source drawer, asset export, comparison export, grounded chat, chat-session status/delete/export, and chat export routes when persisted reads are explicitly enabled.
+- `backend/main.py` added a configured-reader details path that builds a `DetailsResponse` from validated persisted knowledge-pack records when available, otherwise preserving deterministic fixture fallback.
+- `backend/export.py`, `backend/chat_sessions.py`, and `backend/sources.py` now accept configured persisted pack/cache, Weekly News, and chat-session reader/writer dependencies while preserving existing fallback behavior and source-use/export validation.
+- `backend/compat.py` was adjusted for compatibility support needed by the route wiring tests.
+- `tests/integration/test_backend_api.py` added a `RouteReaderSpy` integration test proving configured route wiring for overview, Weekly News Focus, details, sources, knowledge pack, comparison, asset export, comparison export, chat, chat-session status, and chat export while preserving fixture fallback responses.
+- `tests/unit/test_repo_contract.py` was updated so the runtime roadmap recognized T-101 as current after T-100 completion during that task branch.
+- The implementation did not add live database sessions, source acquisition, source snapshot writes, normalized knowledge-pack writes, generated-output cache writes, frontend migration, live provider calls, or deployment hardening.
+- `docs/agent-journal/20260426T043838Z.md` records these checks: `python3 -m pytest tests/unit/test_overview_generation.py tests/unit/test_weekly_news.py tests/unit/test_comparison_generation.py tests/unit/test_chat_generation.py tests/unit/test_chat_sessions.py tests/unit/test_exports.py -q` passed; `python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q` passed; `python3 -m pytest tests/integration/test_backend_api.py -q` passed; `python3 -m pytest tests -q` passed; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed; `git diff --check` passed.
+- Remaining risks from the journal:
+  - This wires configured reader boundaries only; it does not add live database sessions, source acquisition, generated-output cache writes, source snapshot writes, frontend migration, or deployment hardening.
+  - Source drawer and export paths still preserve deterministic fixture fallback when configured persisted readers miss, fail, or are absent.
+  - Future production reader wiring must preserve the same no-import-time-connection behavior, same-asset/comparison-pack citation binding, source-use gates, chat transcript metadata-only behavior, and no-live-call defaults.
+
+Completion commits:
+
+- `1d9d664 feat(T-101): wire backend routes to configured persistence readers with fixture fallback`
+- `11b9785 chore(T-101): merge wire backend routes to configured persistence readers with fixture fallback`
 
 ### T-100: Rebaseline backend MVP runtime gap audit and roadmap tracker
 
@@ -2732,39 +2745,6 @@ Completion commits:
 
 ## Backlog
 
-### T-102: Make ingestion jobs executable through the local ledger
-
-Goal:
-Make manual pre-cache and on-demand ingestion jobs executable through the existing ingestion job ledger and worker boundary using mocked acquisition outcomes, so local runtime job state transitions can be exercised without live provider calls.
-
-Roadmap alignment:
-
-- First execution task for ingestion after route read-path wiring.
-- Builds on T-079 and T-080, moving from dormant/in-memory contracts toward a configured local job ledger while keeping acquisition mocked.
-- Keeps real SEC, issuer, news, market-data, object-storage, LLM, and frontend rendering changes out of scope.
-
-Acceptance criteria:
-
-- Wire admin ingestion job creation, job status lookup, and worker execution through a configured ledger boundary when explicitly available, with deterministic fixture fallback when it is not.
-- Support queued, running, succeeded, failed, unsupported, out-of-scope, unknown, unavailable, stale, and source-policy-blocked states with sanitized diagnostics.
-- Keep successful mocked execution from creating generated pages, generated chat answers, comparisons, risk summaries, or cacheable generated output until source acquisition and persistence tasks land.
-- Preserve admin/server-only execution assumptions, no-live-call CI, no secret exposure, unsupported/out-of-scope generated-output blocking, and existing public route schemas.
-- Add tests for ledger-backed job transitions, idempotent terminal states, fallback on missing config, failure diagnostics, no raw provider/source text, and no provider/network/database requirement in normal CI.
-
-Required commands:
-
-```bash
-python3 -m pytest tests/unit/test_ingestion_job_repository.py tests/unit/test_ingestion_worker.py tests/unit/test_ingestion_jobs.py -q
-python3 -m pytest tests/integration/test_backend_api.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-docker compose config
-```
-
-Iteration budget:
-One agent-loop cycle. If real source fetching, object storage, generated-output cache writes, production worker scheduling, admin auth enforcement, or frontend pending-state UI changes are needed, record the follow-up and stop after executable mocked job transitions.
-
 ### T-103: Implement server-side SEC EDGAR acquisition for the stock golden path
 
 Goal:
@@ -2836,7 +2816,7 @@ This section is intentionally non-operational for the agent loop. Keep runnable 
 Current runtime snapshot:
 
 - The backend has broad deterministic contracts for search, overview/details, comparison, chat, exports, source policy, persistence repositories, ingestion states, provider adapters, Weekly News Focus, generated-output cache metadata, and live-generation readiness.
-- The MVP is not yet fresh-data functional: public route handlers still default to fixture/local data, ingestion workers do not fetch official sources, configured persistence is not the normal read/write path, and provider adapters are fixture-backed.
+- The MVP is not yet fresh-data functional: public route handlers can use explicitly configured persisted readers but still default to fixture/local data, ingestion workers do not fetch official sources, configured persistence is not the normal write path, and provider adapters are fixture-backed.
 - The frontend can render the MVP learning surfaces for cached fixtures and may call backend adapters where configured, but home search and static asset coverage remain local-fixture-first until later API-backed frontend tasks.
 - The next runtime milestone is an end-to-end golden path where admin/server-side ingestion fetches mocked official-source data, stores validated source snapshots and knowledge packs, and existing routes render those persisted packs with fixture fallback.
 
@@ -2867,8 +2847,9 @@ Operational defaults for backend roadmap tasks:
 - T-098 established live-generation validation and fallback orchestration after the mocked transport boundary. It is completed and must not be reintroduced as runnable backlog.
 - T-099 established deterministic provider content export-rights hardening. It is a prerequisite rights gate, not the runtime fresh-data completion point.
 - T-100 established the backend MVP runtime gap audit and roadmap tracker. It is completed and must not be reintroduced as runnable backlog.
-- T-101 is the current promoted task for wiring public backend routes to configured persistence readers with fixture fallback.
-- T-102 through T-104 are the prepared backlog for making ingestion jobs executable through the local ledger and adding mocked official-source acquisition for stock and ETF golden paths.
+- T-101 established configured persisted-reader route wiring with fixture fallback. It is completed and must not be reintroduced as runnable backlog.
+- T-102 is the current promoted task for making ingestion jobs executable through the local ledger with mocked acquisition outcomes.
+- T-103 and T-104 remain the prepared backlog for adding mocked official-source acquisition for stock and ETF golden paths.
 - Production hardening readiness diagnostics, backend route regression matrices, go/no-go launch checklists, and deploy work move later until the ingestion-to-persist-to-render path exists.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted backend task should run the relevant EVALS.md backend checks: `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, and `bash scripts/run_quality_gate.sh`.
@@ -2902,8 +2883,8 @@ Roadmap integration tracker:
 | Live-generation validation and fallback orchestration | Completed | T-098 |
 | Provider source-use/export enforcement hardening | Completed | T-099 |
 | Backend fresh-data MVP runtime gap tracker | Completed | T-100 |
-| Configured persisted-reader route wiring | Current | T-101 |
-| Executable local ingestion ledger and mocked worker path | Backlog | T-102 |
+| Configured persisted-reader route wiring | Completed | T-101 |
+| Executable local ingestion ledger and mocked worker path | Current | T-102 |
 | SEC EDGAR stock golden-path acquisition | Backlog | T-103 |
 | Official ETF issuer golden-path acquisition | Backlog | T-104 |
 | Source snapshot object-storage execution | Runtime gap | Unpromoted |
