@@ -18,6 +18,7 @@ from backend.llm import (
     runtime_diagnostics,
     validate_llm_generated_output,
 )
+from backend.llm_transport import call_openrouter_transport
 from backend.models import (
     CacheEntryKind,
     CacheScope,
@@ -30,6 +31,9 @@ from backend.models import (
     LlmModelTier,
     LlmProviderKind,
     LlmReadinessStatus,
+    LlmTransportMode,
+    LlmTransportRetryability,
+    LlmTransportStatus,
     LlmValidationStatus,
     SourceAllowlistStatus,
     SourceUsePolicy,
@@ -377,6 +381,276 @@ def test_runtime_diagnostics_exposes_only_sanitized_public_metadata():
     assert "raw_source_text" not in str(dumped).lower()
 
 
+def test_openrouter_transport_blocks_disabled_missing_key_endpoint_validation_and_opt_in_states():
+    calls: list[object] = []
+
+    def mocked_transport(request):
+        calls.append(request)
+        return {"status_code": 200, "json": {"choices": [{"message": {"content": "unused"}}]}}
+
+    disabled = call_openrouter_transport(
+        runtime=build_llm_runtime_config({"LLM_PROVIDER": "openrouter"}),
+        request_mode=LlmTransportMode.schema_mode,
+        caller_opted_in=True,
+        transport=mocked_transport,
+    )
+    missing_key = call_openrouter_transport(
+        runtime=build_llm_runtime_config(default_openrouter_settings(), server_side_key_present=False),
+        request_mode=LlmTransportMode.schema_mode,
+        caller_opted_in=True,
+        transport=mocked_transport,
+    )
+    missing_base_url = call_openrouter_transport(
+        runtime=build_llm_runtime_config(
+            {**default_openrouter_settings(), "OPENROUTER_BASE_URL": ""},
+            server_side_key_present=True,
+        ),
+        request_mode=LlmTransportMode.schema_mode,
+        caller_opted_in=True,
+        transport=mocked_transport,
+    )
+    missing_model_chain = call_openrouter_transport(
+        runtime=build_llm_runtime_config(
+            {**default_openrouter_settings(), "OPENROUTER_FREE_MODEL_ORDER": ""},
+            server_side_key_present=True,
+        ),
+        request_mode=LlmTransportMode.schema_mode,
+        caller_opted_in=True,
+        transport=mocked_transport,
+    )
+    validation_not_ready = call_openrouter_transport(
+        runtime=build_llm_runtime_config(
+            {
+                **default_openrouter_settings(),
+                "LLM_VALIDATION_RETRY_COUNT": "0",
+                "LLM_REASONING_SUMMARY_ONLY": "false",
+            },
+            server_side_key_present=True,
+        ),
+        request_mode=LlmTransportMode.schema_mode,
+        caller_opted_in=True,
+        transport=mocked_transport,
+    )
+    no_opt_in = call_openrouter_transport(
+        runtime=build_llm_runtime_config(default_openrouter_settings(), server_side_key_present=True),
+        request_mode=LlmTransportMode.schema_mode,
+        caller_opted_in=False,
+        transport=mocked_transport,
+    )
+    no_injected_transport = call_openrouter_transport(
+        runtime=build_llm_runtime_config(default_openrouter_settings(), server_side_key_present=True),
+        request_mode=LlmTransportMode.schema_mode,
+        caller_opted_in=True,
+        transport=None,
+    )
+
+    assert calls == []
+    blocked = [
+        disabled,
+        missing_key,
+        missing_base_url,
+        missing_model_chain,
+        validation_not_ready,
+        no_opt_in,
+        no_injected_transport,
+    ]
+    assert all(result.response.status is LlmTransportStatus.blocked for result in blocked)
+    assert [result.response.diagnostic_code for result in blocked] == [
+        "live_generation_disabled",
+        "server_side_key_missing",
+        "openrouter_base_url_missing",
+        "openrouter_model_chain_missing",
+        "validation_not_ready",
+        "explicit_live_transport_opt_in_missing",
+        "injected_transport_missing",
+    ]
+    assert all(result.content is None for result in blocked)
+    assert all(result.no_live_external_calls is True for result in blocked)
+
+
+def test_openrouter_transport_mocked_success_preserves_schema_metadata_and_paid_fallback():
+    captured = []
+
+    def mocked_transport(request):
+        captured.append(request)
+        return {
+            "status_code": 200,
+            "latency_ms": 42,
+            "json": {
+                "model": DEFAULT_OPENROUTER_FREE_MODEL_ORDER[0],
+                "choices": [{"message": {"content": "Educational transport fixture."}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18},
+                "cost_usd": 0.0,
+            },
+        }
+
+    result = call_openrouter_transport(
+        runtime=build_llm_runtime_config(default_openrouter_settings(), server_side_key_present=True),
+        request_mode=LlmTransportMode.schema_mode,
+        caller_opted_in=True,
+        transport=mocked_transport,
+        sanitized_diagnostics={"fixture_case": "success", "raw_prompt": "do not keep this"},
+    )
+
+    assert len(captured) == 1
+    request = captured[0]
+    assert request.request_mode is LlmTransportMode.schema_mode
+    assert request.sanitized_diagnostics["schema_mode"] is True
+    assert "raw_prompt" not in request.sanitized_diagnostics
+    assert [model.model_name for model in request.configured_model_chain] == list(DEFAULT_OPENROUTER_FREE_MODEL_ORDER)
+    assert [model.order for model in request.configured_model_chain] == [1, 2, 3, 4]
+    assert all(model.tier is LlmModelTier.free for model in request.configured_model_chain)
+    assert request.paid_fallback_model is not None
+    assert request.paid_fallback_model.model_name == DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL
+    assert request.paid_fallback_model.tier is LlmModelTier.paid
+
+    assert result.response.status is LlmTransportStatus.succeeded
+    assert result.response.diagnostic_code == "ok"
+    assert result.response.model_name == DEFAULT_OPENROUTER_FREE_MODEL_ORDER[0]
+    assert result.response.model_tier is LlmModelTier.free
+    assert result.response.provider_status == "ok"
+    assert result.response.finish_reason == "stop"
+    assert result.response.prompt_tokens == 11
+    assert result.response.completion_tokens == 7
+    assert result.response.total_tokens == 18
+    assert result.response.cost_usd == 0.0
+    assert result.response.latency_ms == 42
+    assert result.content == "Educational transport fixture."
+
+
+def test_openrouter_transport_mocked_json_mode_and_paid_model_metadata():
+    def mocked_transport(request):
+        return {
+            "status_code": 200,
+            "json": {
+                "model": DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL,
+                "choices": [{"message": {"content": "Educational fallback fixture."}, "finish_reason": "stop"}],
+            },
+        }
+
+    result = call_openrouter_transport(
+        runtime=build_llm_runtime_config(default_openrouter_settings(), server_side_key_present=True),
+        request_mode="json_mode",
+        caller_opted_in=True,
+        transport=mocked_transport,
+    )
+
+    assert result.request is not None
+    assert result.request.request_mode is LlmTransportMode.json_mode
+    assert result.request.sanitized_diagnostics["json_mode"] is True
+    assert result.response.status is LlmTransportStatus.succeeded
+    assert result.response.request_mode is LlmTransportMode.json_mode
+    assert result.response.model_name == DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL
+    assert result.response.model_tier is LlmModelTier.paid
+
+
+def test_openrouter_transport_classifies_mocked_provider_failures_and_timeouts():
+    retryable_error = call_openrouter_transport(
+        runtime=build_llm_runtime_config(default_openrouter_settings(), server_side_key_present=True),
+        request_mode=LlmTransportMode.schema_mode,
+        caller_opted_in=True,
+        transport=lambda request: {"status_code": 429, "json": {"error": "rate limited"}, "latency_ms": 9},
+    )
+    nonretryable_error = call_openrouter_transport(
+        runtime=build_llm_runtime_config(default_openrouter_settings(), server_side_key_present=True),
+        request_mode=LlmTransportMode.schema_mode,
+        caller_opted_in=True,
+        transport=lambda request: {"status_code": 400, "json": {"error": "bad request"}},
+    )
+    invalid_shape = call_openrouter_transport(
+        runtime=build_llm_runtime_config(default_openrouter_settings(), server_side_key_present=True),
+        request_mode=LlmTransportMode.schema_mode,
+        caller_opted_in=True,
+        transport=lambda request: {"status_code": 200, "json": {"choices": []}},
+    )
+    missing_content = call_openrouter_transport(
+        runtime=build_llm_runtime_config(default_openrouter_settings(), server_side_key_present=True),
+        request_mode=LlmTransportMode.schema_mode,
+        caller_opted_in=True,
+        transport=lambda request: {
+            "status_code": 200,
+            "json": {"choices": [{"message": {"content": "   "}, "finish_reason": "length"}]},
+        },
+    )
+
+    def timeout_transport(request):
+        raise TimeoutError("network details are not surfaced")
+
+    timeout = call_openrouter_transport(
+        runtime=build_llm_runtime_config(default_openrouter_settings(), server_side_key_present=True),
+        request_mode=LlmTransportMode.schema_mode,
+        caller_opted_in=True,
+        transport=timeout_transport,
+    )
+
+    assert retryable_error.response.status is LlmTransportStatus.retryable_provider_error
+    assert retryable_error.response.retryability is LlmTransportRetryability.retryable
+    assert retryable_error.response.provider_status == "http_429"
+    assert retryable_error.response.latency_ms == 9
+    assert nonretryable_error.response.status is LlmTransportStatus.nonretryable_provider_error
+    assert nonretryable_error.response.retryability is LlmTransportRetryability.nonretryable
+    assert invalid_shape.response.status is LlmTransportStatus.invalid_response_shape
+    assert invalid_shape.response.retryability is LlmTransportRetryability.nonretryable
+    assert missing_content.response.status is LlmTransportStatus.missing_content
+    assert missing_content.response.retryability is LlmTransportRetryability.retryable
+    assert missing_content.response.finish_reason == "length"
+    assert timeout.response.status is LlmTransportStatus.timeout
+    assert timeout.response.retryability is LlmTransportRetryability.retryable
+
+
+def test_openrouter_transport_redacts_diagnostics_and_omits_raw_reasoning_payloads():
+    def mocked_transport(request):
+        return {
+            "status_code": 200,
+            "latency_ms": 5,
+            "json": {
+                "model": DEFAULT_OPENROUTER_FREE_MODEL_ORDER[0],
+                "choices": [
+                    {
+                        "message": {
+                            "content": "Educational transport fixture.",
+                            "reasoning_details": "hidden chain should not be surfaced",
+                        },
+                        "finish_reason": "stop",
+                    }
+                ],
+                "reasoning_details": "hidden chain should not be surfaced",
+            },
+        }
+
+    result = call_openrouter_transport(
+        runtime=build_llm_runtime_config(default_openrouter_settings(), server_side_key_present=True),
+        request_mode=LlmTransportMode.schema_mode,
+        caller_opted_in=True,
+        transport=mocked_transport,
+        sanitized_diagnostics={
+            "fixture_case": "redaction",
+            "authorization": "Bearer should-not-appear",
+            "user_question": "raw user text should not be kept",
+            "source_url": "https://example.com/source",
+            "storage_path": "/tmp/browser-readable",
+            "safe_count": 2,
+        },
+    )
+
+    dumped = result.model_dump(mode="json")
+    serialized = str(dumped).lower()
+    assert result.content == "Educational transport fixture."
+    assert result.request is not None
+    assert result.request.sanitized_diagnostics["fixture_case"] == "redaction"
+    assert result.request.sanitized_diagnostics["safe_count"] == 2
+    assert "authorization" not in result.request.sanitized_diagnostics
+    assert "user_question" not in result.request.sanitized_diagnostics
+    assert "source_url" not in result.request.sanitized_diagnostics
+    assert "storage_path" not in result.request.sanitized_diagnostics
+    assert "bearer" not in serialized
+    assert "should-not-appear" not in serialized
+    assert "raw user text" not in serialized
+    assert "https://example.com/source" not in serialized
+    assert "reasoning_details" not in serialized
+    assert "hidden chain should not be surfaced" not in serialized
+
+
 def test_llm_module_has_no_live_call_or_secret_imports():
     source = (ROOT / "backend" / "llm.py").read_text(encoding="utf-8")
     forbidden = [
@@ -389,6 +663,23 @@ def test_llm_module_has_no_live_call_or_secret_imports():
         "os.environ",
         "api_key",
         "subprocess",
+    ]
+    for needle in forbidden:
+        assert needle not in source
+
+
+def test_llm_transport_module_has_no_live_network_client_or_browser_env_exposure():
+    source = (ROOT / "backend" / "llm_transport.py").read_text(encoding="utf-8")
+    forbidden = [
+        "import requests",
+        "import httpx",
+        "urllib.request",
+        "from socket import",
+        "openai",
+        "anthropic",
+        "os.environ",
+        "NEXT_PUBLIC",
+        "OPENROUTER_API_KEY",
     ]
     for needle in forbidden:
         assert needle not in source
