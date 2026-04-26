@@ -1,51 +1,41 @@
 ## Current task
 
-### T-099: Add provider content export-rights hardening contract
+### T-100: Rebaseline backend MVP runtime gap audit and roadmap tracker
 
 Goal:
-Add deterministic provider-content export-rights hardening so exports, caches, generated-output eligibility, and diagnostics consistently enforce `metadata_only`, `link_only`, `summary_allowed`, `full_text_allowed`, and `rejected` tiers for provider and source-derived content.
+Add a deterministic backend MVP runtime gap audit and roadmap tracker that separates completed deterministic contracts from the remaining fresh-data runtime path needed to ingest official sources, persist knowledge packs, generate/cache validated outputs, and render them through the frontend.
 
 Task-scope paragraph:
-This task should tighten the backend rights boundary that decides whether provider/source-derived material can be used for generated factual claims, source drawers, Markdown/JSON exports, generated-output cache metadata, and diagnostics. It should use deterministic fixtures and existing source-use policy metadata only. It must not add live providers, source acquisition, source allowlist expansion, frontend redesign, production licensing decisions, or new public workflow behavior. The goal is to make restricted provider content consistently metadata-only or omitted where required, while preserving official/structured source priority and visible uncertainty, freshness, and citation behavior.
+This task should add or update a deterministic audit helper, fixture-backed report, or control-doc section that describes the backend MVP runtime state after the completed contract-scaffold work. It should mark each major MVP backend area as `contract_complete`, `runtime_gap`, `current`, `backlog`, or `later`, and it should make clear which gaps block a functional fresh-data MVP. This is a planning and validation task only: it must not wire live providers, change public route behavior, add persistence execution, add generated-output cache writes, redesign frontend workflows, or expand deployment scope.
 
 Roadmap alignment:
 
-- First narrow slice of "Enforce source-use and export rules for provider content."
-- Builds on source policy, export validation, source snapshots, generated-output cache, provider adapters, and live-generation validation/fallback contracts.
-- Prerequisite gate before real provider or official-source content can safely enter persisted packs, exports, source drawers, generated-output cache metadata, or diagnostics.
-- Does not make the MVP fresh-data functional by itself; the runtime ingestion, persistence, cache, and frontend API wiring gaps remain tracked in the rebaselined backend roadmap below.
+- First task after T-099 to reset backend planning around a functional fresh-data MVP instead of treating contract scaffolding as runtime completion.
+- Uses existing implementation evidence from backend routes, ingestion worker contracts, provider adapters, persistence contracts, frontend fixture fallback, and quality gates.
+- Establishes a narrow roadmap tracker for the next runtime wiring tasks before live-provider or deployment expansion.
 - Keeps live providers and production deployment out of scope.
 - Preserves v0.4 frontend workflow and deterministic backend outputs before live-provider or deployment expansion.
 
 Allowed files:
 
-- `backend/source_policy.py`
-- `backend/export.py`
-- `backend/cache.py`
-- `backend/sources.py`
-- `backend/providers.py`
-- `backend/models.py`
-- `backend/repositories/generated_outputs.py`
-- `backend/provider_adapters/sec_stock.py`
-- `backend/provider_adapters/etf_issuer.py`
-- `config/source_allowlist.yaml` only to tighten existing source-use/export metadata without adding new domains or sources
-- `tests/unit/test_source_policy.py`
-- `tests/unit/test_exports.py`
-- `tests/unit/test_cache_contracts.py`
-- `tests/unit/test_provider_adapters.py`
-- `tests/unit/test_safety_guardrails.py`
-- `tests/unit/test_repo_contract.py`
-- `tests/integration/test_backend_api.py`
+- `SPEC.md`
+- `TASKS.md`
+- `EVALS.md`
+- `docs/backend_mvp_runtime_gap_audit.md`
 - `docs/agent-journal/*.md`
+- `scripts/*` only if adding or updating a deterministic audit/report helper used by tests
+- `tests/unit/test_repo_contract.py`
+- `tests/unit/test_safety_guardrails.py`
 
 Do not change:
 
 - No frontend files under `apps/web`.
-- No public FastAPI route paths, HTTP status behavior, `/health` behavior, generated overview/comparison/chat/Weekly News Focus output, AI Comprehensive Analysis output, source drawer UI behavior, glossary behavior, comparison behavior, chat behavior, search behavior, or default deterministic fixture-generated output except export/source/cache metadata changes directly required to enforce existing source-use rights.
+- No backend runtime modules unless a tiny read-only audit helper is necessary and covered by tests.
+- No public FastAPI route paths, HTTP status behavior, `/health` behavior, generated overview/comparison/chat/Weekly News Focus output, AI Comprehensive Analysis output, source drawer UI behavior, glossary behavior, comparison behavior, chat behavior, search behavior, or default deterministic fixture-generated output.
 - No changes to home-page workflow, comparison UI, glossary UI, source drawer UI, asset chat UI, mobile bottom-sheet/full-screen behavior, stock-vs-ETF comparison structure, or any v0.4 workflow marker.
 - No live OpenRouter, LLM, SEC, issuer, ETF, market-data, news, RSS, web, storage, database, object-storage, cache, Redis, Cloud Run Job, scheduler, admin auth, rate-limiting, external analytics, telemetry vendor, or deployment wiring.
-- No live provider calls, route-level live-generation integration, generated-output cache write activation, prompt template rewrite, provider licensing change, source allowlist expansion, runtime secret setup, production dependency addition, or actual legal/licensing determination beyond enforcing existing policy tiers.
-- No new source domains, no new allowlisted providers, no generated pages, generated chat answers, generated comparisons, generated risk summaries, source snapshots, provider fetches, live LLM calls, or new cacheable generated output.
+- No route-level persistence wiring, generated-output cache write activation, provider acquisition, source snapshot writes, frontend API migration, prompt template rewrite, provider licensing change, source allowlist expansion, runtime secret setup, production dependency addition, or actual legal/licensing determination.
+- No new source domains, no new allowlisted providers, no generated pages, generated chat answers, generated comparisons, generated risk summaries, provider fetches, live LLM calls, or new cacheable generated output.
 - No edits to `data/universes/us_common_stocks_top500.current.json` or `data/universes/us_equity_etfs.current.json`.
 - No raw full article text, unrestricted source text, unrestricted provider payloads, hidden prompts, raw prompt text, raw model reasoning, raw user text, raw queries, raw questions, raw answers, raw chat transcripts, personal identifiers, portfolio/allocation details, real API keys, credentials, secrets, public storage URLs, signed URLs, external analytics IDs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, repository records, cache records, events, exports, or exported data.
 - No `NEXT_PUBLIC_*` provider variables, no `/health` secret exposure, no docs/env examples containing real secrets, and no logging or diagnostics that include API key values or provider credentials.
@@ -53,39 +43,60 @@ Do not change:
 
 Acceptance criteria:
 
-- Add or tighten deterministic validation helpers that classify source/provider content rights for these actions: generated-claim support, cache input/checksum eligibility, cacheable generated output, source-list export metadata, allowed excerpt export, Markdown/JSON section export, and diagnostics.
-- All five source-use tiers must have explicit tested behavior: `full_text_allowed`, `summary_allowed`, `metadata_only`, `link_only`, and `rejected`.
-- `full_text_allowed` may support generated factual claims, allowed supporting excerpts, source metadata exports, cache inputs, and generated-output cache eligibility when citations, freshness, safety, and same-asset or same-comparison-pack binding are valid.
-- `summary_allowed` may support summaries or allowed excerpts only within existing policy metadata and must not export full raw article/provider text or unrestricted source passages.
-- `metadata_only` and `link_only` sources must not support generated factual claims, unrestricted excerpts, raw source storage, generated-output cache eligibility, or exported source passages; exports may include only policy-allowed metadata and clear restricted/omitted-content messages.
-- `rejected`, not-allowlisted, policy-disallowed, wrong-asset, wrong-comparison-pack, stale-without-label, unavailable-without-label, or unsupported-claim inputs must be suppressed or blocked from generated-output cache eligibility and exports that would present them as supporting evidence.
-- Source-list, asset-page, comparison, and chat transcript exports must preserve citations, source metadata, freshness/as-of dates, uncertainty labels, educational disclaimers, licensing notes, and source-use policy fields while omitting or metadata-limiting restricted provider/source content.
-- Generated-output cache metadata and freshness inputs must reject or mark non-cacheable any source checksum, artifact, diagnostic, or generated-output record that stores unrestricted provider payloads, raw article text, unrestricted source text/excerpts, hidden prompts, raw model reasoning, secrets, signed/public URLs, or source-policy-disallowed evidence.
-- Provider adapter fixtures must surface source-use/licensing metadata consistently enough for downstream export and cache validators to enforce restrictions, including restricted market/reference provider content and summary-allowed recent-context provider content.
-- Official and structured sources must remain preferred for stable facts; recent/news/provider context must not overwrite canonical asset identity and must keep Weekly News Focus or recent-context separation where applicable.
-- Important factual claims must remain citation-bound to the same asset or same comparison pack, and stale/unknown/unavailable/partial/insufficient-evidence states must remain visible instead of inventing evidence.
-- Diagnostics must use compact reason codes and sanitized booleans/counts only; no raw user text, raw generated text, raw provider payloads, raw article text, unrestricted source text, hidden prompts, raw model reasoning, credentials, signed URLs, public storage URLs, or frontend-readable storage paths may appear.
-- Existing public route schemas, deterministic fixture behavior, source allowlist scope, no-live-call defaults, and v0.4 frontend workflow markers must remain unchanged except for additive or tightened rights metadata required by this task.
-- Tests must cover all source-use tiers, provider fixture licensing metadata, source-list exports, asset/comparison/chat exports, generated-output cache eligibility, rejected-source suppression, metadata-only/link-only omission behavior, summary-allowed excerpt limits, official/structured source preservation, same-asset/same-pack binding, stale/unknown/unavailable/partial handling, no advice language, no secret/raw-payload exposure, and no live external calls.
-- Preserve product guardrails: implementation, tests, fixture strings, diagnostics, and journal notes must not introduce buy/sell/hold recommendations, allocation advice, tax advice, price targets, brokerage/trading behavior, unsupported factual claims, or recent-news-as-canonical framing.
+- Add or update a deterministic audit artifact that marks each covered backend MVP area as `contract_complete`, `runtime_gap`, `current`, `backlog`, or `later`.
+- Cover at minimum: source acquisition, source snapshot storage, normalized knowledge-pack persistence, configured route read-path wiring, generated-output cache writes, Weekly News Focus acquisition, ingestion job execution, frontend API rendering, launch-universe pre-cache, exports/source-use enforcement, live-generation readiness, trust metrics, and production hardening.
+- Explicitly call out current runtime gaps without fixing them: public routes still default to fixtures where configured readers are absent, ingestion jobs do not fetch real official sources, persistence is not the normal read/write path, provider adapters are fixture-backed, generated-output cache writes are not activated for public output, and frontend asset/search pages still have local-fixture-first behavior for parts of the workflow.
+- Tie each `runtime_gap` or `backlog` item to a narrow next-step task area, including T-101 route read-path wiring, T-102 executable ingestion jobs, T-103 SEC golden-path acquisition, and T-104 ETF issuer golden-path acquisition where applicable.
+- Preserve the current MVP priority order: close deterministic contract/runtime parity before live providers, paid providers, broad ingestion, or deployment hardening.
+- The audit must state that Frontend Design and Workflow v0.4 remains the planning baseline: single-asset home search, separate connected comparison workflow, contextual glossary, mobile source/glossary/chat bottom sheets or full-screen panels, stock-vs-ETF relationship badges, and evidence-limited Weekly News Focus behavior.
+- The audit must preserve PRD/TDS authority after safety rules and must not contradict source hierarchy, source-use rights, citation binding, freshness/as-of labels, unknown/stale/unavailable/partial/insufficient-evidence handling, unsupported/out-of-scope generated-output blocking, educational framing, or no-live-call CI defaults.
+- Add focused repo-contract or safety tests, if needed, for the audit/tracker shape, required status vocabulary, required gap coverage, sanitized wording, no advice language, no secret/raw-text exposure, no stale workflow language, and no public behavior change.
+- Any deterministic audit helper must avoid raw source text, raw provider payloads, raw user text, raw generated text, hidden prompts, raw model reasoning, credentials, signed/public URLs, and frontend-readable storage paths.
+- Existing public route schemas, deterministic fixture behavior, source allowlist scope, no-live-call defaults, and v0.4 frontend workflow markers must remain unchanged.
+- Preserve product guardrails in implementation, tests, docs, and journal notes: no buy/sell/hold recommendations, allocation advice, tax advice, price targets, brokerage/trading behavior, unsupported factual claims, or recent-news-as-canonical framing.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_source_policy.py tests/unit/test_exports.py tests/unit/test_cache_contracts.py tests/unit/test_provider_adapters.py -q
 python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
-python3 -m pytest tests/integration/test_backend_api.py -q
+npm test
 python3 -m pytest tests -q
 python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
+docker compose config
 git diff --check
 ```
 
 Iteration budget:
-One agent-loop cycle. If new source allowlist entries, paid provider integration, live provider calls, frontend export redesign, route-level behavior changes, actual licensing/legal review decisions, production cache writes, or deployment work are needed, record the follow-up and stop after deterministic export-rights hardening.
+One agent-loop cycle. If the audit discovers implementation gaps, record or confirm them in the roadmap/backlog rather than fixing runtime behavior in the audit task. If live providers, production database sessions, source acquisition, route behavior changes, frontend rewrites, generated-output cache writes, deployment work, source allowlist expansion, or paid-provider integration are needed, stop after documenting the follow-up.
 
 
 ## Completed
+
+### T-099: Add provider content export-rights hardening contract
+
+Goal:
+Add deterministic provider-content export-rights hardening so exports, caches, generated-output eligibility, and diagnostics consistently enforce `metadata_only`, `link_only`, `summary_allowed`, `full_text_allowed`, and `rejected` tiers for provider and source-derived content.
+
+Completed details:
+
+- Implementation commit `bba6f8b feat(T-099): add provider content export-rights hardening contract` updated `backend/source_policy.py`, `backend/export.py`, `backend/cache.py`, `tests/unit/test_source_policy.py`, `tests/unit/test_exports.py`, `tests/unit/test_cache_contracts.py`, and `docs/agent-journal/20260426T041918Z.md`.
+- Merged branch `agent/T-099-20260426T041918Z` into `main` with local merge commit `6c61062 chore(T-099): merge provider content export-rights hardening contract`.
+- `backend/source_policy.py` added deterministic source-use action classification for generated-claim support, cache input/checksum use, generated-output cache eligibility, source-list metadata export, allowed excerpt export, Markdown/JSON section export, and sanitized diagnostics.
+- `backend/cache.py` tightened generated-output cache metadata so restricted `metadata_only`, `link_only`, rejected, or not-allowed source checksum inputs cannot make generated outputs cacheable.
+- `backend/export.py` hardened export source shaping so rejected and not-allowlisted sources are suppressed, metadata-only and link-only sources export metadata-limited entries without passages, and export validation records restricted-content messages.
+- Existing persisted chat-session metadata-only export behavior was preserved while restricted passages remain omitted.
+- Tests in `tests/unit/test_source_policy.py`, `tests/unit/test_exports.py`, and `tests/unit/test_cache_contracts.py` cover the action-level rights checks, restricted-source cache eligibility blocking, source-list export suppression, metadata-only/link-only omission behavior, and restricted-content validation messages.
+- The implementation did not add live provider calls, legal/licensing review, source acquisition, persistence writes, frontend workflow changes, public route behavior changes, or deployment work.
+- `docs/agent-journal/20260426T041918Z.md` records these checks: `python3 -m pytest tests/unit/test_source_policy.py tests/unit/test_exports.py tests/unit/test_cache_contracts.py tests/unit/test_provider_adapters.py -q` passed; `python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q` passed; `python3 -m pytest tests/integration/test_backend_api.py -q` passed; `python3 -m pytest tests -q` passed; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed; `git diff --check` passed.
+- Remaining risks from the journal:
+  - This is deterministic contract hardening only; no live provider, legal/licensing review, source acquisition, persistence writes, or frontend workflow changes were added.
+  - Future provider or source-ingestion wiring must preserve these action-level rights checks before allowing restricted source material into generated claims, cacheable outputs, exports, or diagnostics.
+
+Completion commits:
+
+- `bba6f8b feat(T-099): add provider content export-rights hardening contract`
+- `6c61062 chore(T-099): merge provider content export-rights hardening contract`
 
 ### T-098: Add live-generation validation and fallback orchestration contract
 
@@ -2671,39 +2682,6 @@ Completion commits:
 - `c7e2004 chore: add agent loop retries`
 
 ## Backlog
-
-### T-100: Rebaseline backend MVP runtime gap audit and roadmap tracker
-
-Goal:
-Add a deterministic backend MVP runtime gap audit and roadmap tracker that separates completed deterministic contracts from the remaining fresh-data runtime path needed to ingest official sources, persist knowledge packs, generate/cache validated outputs, and render them through the frontend.
-
-Roadmap alignment:
-
-- First task after T-099 to reset backend planning around a functional fresh-data MVP instead of treating contract scaffolding as runtime completion.
-- Uses existing implementation evidence from backend routes, ingestion worker contracts, provider adapters, persistence contracts, frontend fixture fallback, and quality gates.
-- Keeps runtime code changes, provider calls, production deployment, source allowlist expansion, and frontend behavior changes out of scope.
-
-Acceptance criteria:
-
-- Add or update a deterministic audit helper, fixture-backed report, or control-doc section that marks each backend MVP area as `contract_complete`, `runtime_gap`, `current`, `backlog`, or `later`.
-- Cover source acquisition, source snapshot storage, normalized knowledge-pack persistence, route read-path wiring, generated-output cache writes, Weekly News Focus acquisition, ingestion job execution, frontend API rendering, launch-universe pre-cache, and production hardening.
-- Explicitly call out current runtime gaps: public routes still default to fixtures, ingestion jobs do not fetch real sources, persistence is not wired to configured sessions, provider adapters are fixture-backed, and frontend asset/search pages remain local-fixture-first.
-- Preserve no-live-call CI defaults, source-use rights, citation binding, freshness/uncertainty states, unsupported/out-of-scope blocking, safety guardrails, and secret redaction.
-- Add focused tests or repo-contract checks for the audit/tracker shape, sanitized diagnostics, no advice language, no secret/raw-text exposure, and no public behavior changes.
-
-Required commands:
-
-```bash
-python3 -m pytest tests/unit/test_repo_contract.py tests/unit/test_safety_guardrails.py -q
-npm test
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-docker compose config
-```
-
-Iteration budget:
-One agent-loop cycle. If the audit discovers implementation gaps, record or confirm them in the roadmap/backlog rather than fixing runtime behavior in the audit task.
 
 ### T-101: Wire backend routes to configured persistence readers with fixture fallback
 
