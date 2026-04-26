@@ -1,81 +1,86 @@
 ## Current task
 
-### T-105: Persist source snapshots and parsed acquisition artifacts for the golden path
+### T-106: Write normalized knowledge packs from acquisition outputs
 
 Goal:
-Persist validated source snapshot metadata and parsed acquisition artifacts from the mocked SEC stock and ETF issuer golden paths into the configured private storage/repository boundary, preserving rights-tier source-use rules and fixture fallback.
+Write normalized, source-backed knowledge packs from the persisted golden-path acquisition artifacts, then route existing configured readers through those packs with fixture fallback.
 
 Task-scope paragraph:
-Wire the existing source snapshot artifact contracts to the deterministic acquisition outputs from T-103 and T-104 for AAPL, VOO, and QQQ. This task should persist source snapshot artifact metadata, parsed acquisition artifact references, deterministic checksums, retrieval/as-of timestamps, source-use tiers, permitted operations, freshness states, source IDs, source-document bindings, evidence-gap markers, and sanitized diagnostics through configured in-memory or mocked storage/repository boundaries only. It must not expose public or signed storage URLs, write unrestricted source text beyond rights policy, change public route schemas, activate live provider calls, write normalized knowledge packs, write generated-output cache records, or modify frontend rendering.
+Convert the validated AAPL SEC and VOO/QQQ ETF acquisition and source snapshot artifacts into normalized knowledge-pack records: source documents, source chunks or allowed excerpts, normalized facts, evidence gaps, section freshness inputs, source checksums, citation IDs, and pack freshness metadata. Use configured in-memory or mocked repository writer/reader boundaries and preserve existing public route fixture fallback when configured persisted packs are absent, invalid, stale, wrong-asset, unsupported, unknown, unavailable, source-policy-blocked, or fail closed. This task must not change public route paths or schemas, add live provider calls, broaden asset coverage, generate uncited pages, activate generated-output cache writes, migrate frontend pages, or weaken the PRD/TDS v0.4 workflow baseline.
 
 Roadmap alignment:
 
-- First persistence step after T-103 SEC stock acquisition and T-104 ETF issuer acquisition.
-- Builds on T-081 source snapshot artifact metadata contracts, T-099 provider content export-rights gates, T-102 executable mocked worker transitions, and the T-103/T-104 acquisition metadata/checksum/source-policy patterns.
-- Keeps normalized knowledge-pack writes, generated-output cache writes, public route live fetching, frontend changes, production object storage, paid providers, broad universe expansion, and live calls in CI out of scope.
+- First normalized knowledge-pack write step after T-105 source snapshot and parsed acquisition artifact persistence.
+- Builds on T-077 persisted knowledge-pack repository contracts, T-078 persisted-pack retrieval fallback, T-099 source-use/export rights gates, T-101 configured route readers, T-102 executable mocked worker transitions, T-103/T-104 acquisition outputs, and T-105 source snapshot records.
+- Keeps generated-output cache writes, frontend API migration, live provider execution, production database/object-storage execution, broad universe expansion, launch pre-cache expansion, and deployment hardening out of scope.
 - Preserves Frontend Design and Workflow v0.4 before live-provider or deployment expansion: single-asset home search, separate connected comparison workflow, contextual glossary, mobile source/glossary/chat bottom sheets or full-screen panels, stock-vs-ETF relationship badges, and evidence-limited Weekly News Focus behavior.
 
 General MVP alignment:
-T-105 is the first deterministic mocked ingest-to-persist step for official-source evidence. It does not complete the MVP by itself; normalized knowledge-pack writes, generated-output cache writes, frontend API migration, Weekly News execution, launch pre-cache expansion, live-provider readiness, and production deployment remain separate follow-up tasks.
+T-106 is the first deterministic mocked source-snapshot-to-knowledge-pack step for official-source evidence. It does not complete the MVP by itself; generated-output cache writes, frontend API migration, Weekly News execution from official-source evidence, launch pre-cache expansion, live-provider readiness, and production deployment remain separate follow-up tasks.
 
 Allowed files:
 
-- `backend/source_snapshot_repository.py`
-- `backend/repositories/source_snapshots.py`
+- `backend/repositories/knowledge_packs.py`
+- `backend/knowledge_pack_repository.py`
+- `backend/repositories/__init__.py` only if exports need a narrow update for knowledge-pack write helpers
+- `backend/retrieval_repository.py`
+- `backend/retrieval.py` only if persisted-pack retrieval fallback needs a narrow same-schema adjustment
+- `backend/overview.py` only if existing configured reader fallback needs a narrow same-schema adjustment
 - `backend/ingestion_worker.py`
-- `backend/ingestion.py` only if worker execution/status metadata needs to expose configured source snapshot persistence without public schema changes
-- `backend/persistence.py` only if an existing configured dependency boundary needs a narrow source snapshot writer hook
-- `backend/provider_adapters/sec_stock.py` only if acquisition output metadata needs a narrow, backward-compatible source snapshot artifact input field
-- `backend/provider_adapters/etf_issuer.py`
-- `backend/models.py` only if schema-neutral server-side source snapshot persistence metadata is required
+- `backend/ingestion.py` only if worker execution/status metadata needs to expose configured knowledge-pack persistence without public schema changes
+- `backend/persistence.py` only if an existing configured dependency boundary needs a narrow knowledge-pack writer hook
+- `backend/source_snapshot_repository.py` only if reading T-105 snapshot records requires a narrow import/export helper
+- `backend/repositories/source_snapshots.py` only if T-105 snapshot record serialization needs a backward-compatible metadata accessor
+- `backend/models.py` only if schema-neutral server-side knowledge-pack persistence metadata is required
 - `backend/source_policy.py` only if an existing source-use operation mapping needs a narrow metadata-safe adjustment
-- `tests/unit/test_source_snapshot_repository.py`
-- `tests/unit/test_provider_adapters.py`
+- `tests/unit/test_knowledge_pack_repository.py`
+- `tests/unit/test_retrieval_repository.py`
+- `tests/unit/test_overview_generation.py`
 - `tests/unit/test_source_policy.py`
-- `tests/unit/test_ingestion_jobs.py`
 - `tests/unit/test_ingestion_worker.py`
 - `tests/unit/test_repo_contract.py`
 - `tests/unit/test_safety_guardrails.py`
-- `tests/integration/test_backend_api.py` only if route fixture fallback or ingestion job status behavior is touched without schema changes
+- `tests/integration/test_backend_api.py` only if route fixture fallback or configured reader behavior is touched without schema changes
 - `docs/agent-journal/*.md`
 
 Do not change:
 
 - No frontend files under `apps/web`.
-- No public FastAPI route paths, HTTP status behavior, response schemas, `/health` behavior, generated overview/comparison/chat/Weekly News Focus output, AI Comprehensive Analysis output, source drawer behavior, glossary behavior, comparison behavior, chat behavior, search behavior, export behavior, or default deterministic fixture-generated output unless a test proves unchanged fixture fallback.
+- No public FastAPI route paths, HTTP status behavior, response schemas, `/health` behavior, generated overview/comparison/chat/Weekly News Focus output, AI Comprehensive Analysis output, source drawer behavior, glossary behavior, comparison behavior, chat behavior, search behavior, export behavior, or default deterministic fixture-generated output unless focused tests prove unchanged fixture fallback.
 - No changes to home-page workflow, comparison UI, glossary UI, source drawer UI, asset chat UI, mobile bottom-sheet/full-screen behavior, stock-vs-ETF comparison structure, or any v0.4 workflow marker.
-- No live OpenRouter, LLM, issuer, SEC, ETF, market-data, news, RSS, web, object-storage, cache, Redis, Cloud Run Job, scheduler, admin auth enforcement, rate-limiting, external analytics, telemetry vendor, or deployment wiring.
-- No live SEC, ETF issuer, object-storage, or provider calls in tests, CI, public route handlers, import-time code, or default local commands. Any live storage/readiness path must be explicit, server-side, dormant by default, and outside normal tests.
+- No live OpenRouter, LLM, issuer, SEC, ETF, market-data, news, RSS, web, object-storage, generated-output cache, Redis, Cloud Run Job, scheduler, admin auth enforcement, rate-limiting, external analytics, telemetry vendor, or deployment wiring.
+- No live SEC, ETF issuer, object-storage, database, or provider calls in tests, CI, public route handlers, import-time code, or default local commands. Any live storage/readiness path must be explicit, server-side, dormant by default, and outside normal tests.
 - No database connection at import time and no live database requirement for normal CI; configured ledger tests must use in-memory or mocked boundaries.
-- No schema migrations, production database session execution, real source acquisition in CI, normalized knowledge-pack writes from ingestion, generated-output cache write activation, frontend API migration, prompt template rewrite, provider licensing change, broad source allowlist expansion, runtime secret setup, production dependency addition, or actual legal/licensing determination.
+- No schema migrations, production database session execution, real source acquisition in CI, generated-output cache write activation, frontend API migration, prompt template rewrite, provider licensing change, broad source allowlist expansion, runtime secret setup, production dependency addition, or actual legal/licensing determination.
 - No generated pages, generated chat answers, generated comparisons, generated risk summaries, live LLM calls, or new cacheable generated output.
 - No edits to `data/universes/us_common_stocks_top500.current.json` or `data/universes/us_equity_etfs.current.json`.
 - No expansion to leveraged ETFs, inverse ETFs, ETNs, fixed-income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, international ETFs, preferred stocks, warrants, rights, options, crypto, or other out-of-scope products.
-- No raw full article text, unrestricted source text, unrestricted provider payloads, hidden prompts, raw prompt text, raw model reasoning, raw user text, raw queries, raw questions, raw answers, raw chat transcripts, personal identifiers, portfolio/allocation details, real API keys, credentials, secrets, public storage URLs, signed URLs, external analytics IDs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, repository records, cache records, job records, events, exports, or exported data.
+- No raw full article text, unrestricted source text, unrestricted provider payloads, hidden prompts, raw prompt text, raw model reasoning, raw user text, raw queries, raw questions, raw answers, raw chat transcripts, personal identifiers, portfolio/allocation details, real API keys, credentials, secrets, public storage URLs, signed URLs, external analytics IDs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, repository records, knowledge-pack records, cache records, job records, events, exports, or exported data.
 - No `NEXT_PUBLIC_*` provider variables, no `/health` secret exposure, no docs/env examples containing real secrets, and no logging or diagnostics that include API key values or provider credentials.
 - No changes that weaken citation/source-use rules, suppress required stale/unknown/unavailable/partial/insufficient-evidence states, let recent Weekly News Focus overwrite canonical ETF facts, pad Weekly News Focus beyond available evidence, or introduce buy/sell/hold, allocation, tax, price-target, brokerage, trading, or personalized recommendation language.
 
 Acceptance criteria:
 
-- Mocked SEC and ETF acquisition outputs can produce source snapshot artifact records for AAPL, VOO, and QQQ with same-asset, same-source-document, source ID, checksum, source-use, freshness/as-of, retrieval timestamp, artifact category, storage reference, and diagnostics metadata.
-- Persisted records use the existing source snapshot repository/storage boundary and configured in-memory or mocked writer only; normal tests and default local commands make no live object-storage, database, SEC, ETF issuer, provider, market-data, news, or LLM calls.
-- Rights tiers are enforced before persistence: official/full-text-allowed sources may reference raw and parsed artifact metadata where permitted; summary-allowed sources may reference summary/excerpt/metadata artifacts only; metadata-only and link-only sources may reference metadata artifacts only; rejected or license-disallowed sources must not create snapshot artifacts or feed generated output.
-- Same-ticker, same-CIK or same-issuer where available, same-source-document, same-checksum, supported-asset, and source-use bindings are validated. Wrong asset, wrong CIK, wrong issuer, wrong source document, invalid checksum, rejected source, unsupported asset, out-of-scope ETF class, unknown asset, unavailable acquisition, and eligible-but-not-golden inputs are blocked or labeled without generated outputs.
-- Private storage references remain private metadata only. Records must not contain public URLs, signed URLs, browser-readable paths, external fetch URLs as storage references, real storage credentials, unrestricted source text, raw provider payloads, hidden prompts, raw model reasoning, raw user text, or secrets.
-- Parsed acquisition artifact references preserve evidence gaps honestly with `partial`, `stale`, `unknown`, `unavailable`, or `insufficient_evidence` states where acquisition metadata cannot verify a section or field.
-- The deterministic worker can exercise source snapshot persistence metadata for the golden acquisition path through the existing server-side worker/ledger boundary when a configured mocked writer is supplied, while preserving terminal-state idempotency and no generated-output activation.
+- Mocked AAPL SEC and VOO/QQQ ETF issuer acquisition outputs plus T-105 source snapshot records can produce valid knowledge-pack repository records with same-asset, same-source-document, same-checksum, source ID, citation ID, source-use, freshness/as-of, retrieved timestamp, evidence-gap, and section-freshness metadata.
+- Knowledge-pack records use the existing repository/storage boundary and configured in-memory or mocked writer only; normal tests and default local commands make no live object-storage, database, SEC, ETF issuer, provider, market-data, news, or LLM calls.
+- Rights tiers are enforced before writing chunks or excerpts: official/full-text-allowed sources may store permitted source chunks or parsed text excerpts; summary-allowed sources may store allowed excerpts or summary metadata only; metadata-only and link-only sources may store metadata and citation/source references only; rejected or license-disallowed sources must not create knowledge-pack evidence or feed generated output.
+- Same-ticker, same-CIK or same-issuer where available, same-source-document, same-checksum, supported-asset, and source-use bindings are validated. Wrong asset, wrong CIK, wrong issuer, wrong source document, invalid checksum, rejected source, unsupported asset, out-of-scope ETF class, unknown asset, unavailable acquisition, stale-without-label, and eligible-but-not-golden inputs are blocked or labeled without generated outputs.
+- Knowledge-pack records include normalized source documents, source chunks or allowed excerpt metadata, normalized facts, evidence gaps, section freshness inputs, source checksum records, citation IDs, pack freshness hash metadata, support/build state, and generated-output unavailable/cache-miss flags where applicable.
+- Evidence gaps are represented honestly with `partial`, `stale`, `unknown`, `unavailable`, or `insufficient_evidence` states instead of invented facts when acquisition or snapshot metadata cannot verify a section or field.
+- Existing route readers prefer valid configured packs where explicitly enabled and preserve deterministic fixture fallback for missing, invalid, stale, wrong-asset, unsupported, unknown, unavailable, source-policy-blocked, or failing repository records.
+- The deterministic worker can exercise knowledge-pack persistence metadata for the golden acquisition path through the existing server-side worker/ledger boundary when a configured mocked writer is supplied, while preserving terminal-state idempotency and no generated-output activation.
 - Writer failures, writer misses, invalid persisted records, wrong-asset records, wrong-source records, invalid private storage references, source-policy-blocked records, and stale/unavailable acquisition states fail closed or fall back safely without public route behavior drift.
 - Preserve existing public/admin route paths, HTTP statuses, response models, deterministic fixture output for AAPL/VOO/QQQ and eligible pending assets, search behavior, source drawer/export behavior, no-live-call defaults, and v0.4 frontend workflow markers.
-- Add focused tests proving source snapshot artifact creation and persistence for mocked AAPL SEC and VOO/QQQ ETF issuer golden paths, rights-tier enforcement, blocked rejected/wrong-source/wrong-asset records, sanitized diagnostics, no public/signed/frontend-readable storage references, no import-time database connection, no live network dependency, no secret exposure, and no generated pages/chat/comparisons/risk summaries/cache writes.
-- Add or update repo-contract/safety tests only where needed to prove no live network imports or default live calls, no secret exposure, no raw provider/source text in persisted metadata, no advice language, no source-use weakening, no unsupported ETF expansion, and no public behavior drift.
-- Keep normalized knowledge-pack writes, generated-output cache writes, frontend API-backed rendering, production worker scheduling, admin auth enforcement, rate limiting, deployment hardening, paid provider integration, broad ETF universe refresh, and actual live object-storage execution out of scope.
+- Add focused tests proving knowledge-pack creation and persistence for mocked AAPL SEC and VOO/QQQ ETF issuer golden paths, rights-tier enforcement, blocked rejected/wrong-source/wrong-asset records, sanitized diagnostics, no public/signed/frontend-readable storage references, no import-time database connection, no live network dependency, no secret exposure, no raw unrestricted source text, and no generated pages/chat/comparisons/risk summaries/cache writes.
+- Add or update repo-contract/safety tests only where needed to prove no live network imports or default live calls, no secret exposure, no raw provider/source text in persisted metadata beyond policy-permitted chunks/excerpts, no advice language, no source-use weakening, no unsupported ETF expansion, and no public behavior drift.
+- Keep generated-output cache writes, frontend API-backed rendering, production worker scheduling, admin auth enforcement, rate limiting, deployment hardening, paid provider integration, broad ETF universe refresh, and actual live object-storage/database execution out of scope.
 - Preserve product guardrails in implementation, tests, docs, and journal notes: no buy/sell/hold recommendations, allocation advice, tax advice, price targets, brokerage/trading behavior, unsupported factual claims, or recent-news-as-canonical framing.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_source_snapshot_repository.py tests/unit/test_provider_adapters.py tests/unit/test_ingestion_worker.py tests/unit/test_source_policy.py -q
-python3 -m pytest tests/unit/test_ingestion_jobs.py -q
+python3 -m pytest tests/unit/test_knowledge_pack_repository.py tests/unit/test_retrieval_repository.py tests/unit/test_overview_generation.py tests/unit/test_source_policy.py -q
+python3 -m pytest tests/unit/test_ingestion_worker.py -q
 python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
 python3 -m pytest tests/integration/test_backend_api.py -q
 python3 -m pytest tests -q
@@ -85,10 +90,37 @@ git diff --check
 ```
 
 Iteration budget:
-One agent-loop cycle. Stop after deterministic source snapshot persistence for golden acquisition artifacts. If normalized knowledge-pack writes, generated-output cache writes, frontend API migration, live providers, production object-storage execution, source allowlist expansion, broad asset coverage, or deployment work are needed, record the follow-up and stop.
+One agent-loop cycle. Stop after deterministic golden-path knowledge-pack writes and configured reader fallback validation. If generated-output cache writes, frontend API migration, live providers, production object-storage/database execution, source allowlist expansion, broad asset coverage, launch pre-cache expansion, or deployment work are needed, record the follow-up and stop.
 
 
 ## Completed
+
+### T-105: Persist source snapshots and parsed acquisition artifacts for the golden path
+
+Goal:
+Persist validated source snapshot metadata and parsed acquisition artifacts from the mocked SEC stock and ETF issuer golden paths into the configured private storage/repository boundary, preserving rights-tier source-use rules and fixture fallback.
+
+Completed details:
+
+- Implementation commit `cde7692 feat(T-105): persist source snapshots and parsed acquisition artifacts for the golden path` updated `backend/repositories/source_snapshots.py`, `backend/source_snapshot_repository.py`, `backend/repositories/__init__.py`, `backend/ingestion_worker.py`, `tests/unit/test_source_snapshot_repository.py`, `tests/unit/test_ingestion_worker.py`, `tests/unit/test_repo_contract.py`, and `docs/agent-journal/20260426T053753Z.md`.
+- Merged branch `agent/T-105-20260426T053753Z` into `main` with local merge commit `2b42762 chore(T-105): merge persist source snapshots and parsed acquisition artifacts for the golden path`.
+- `backend/repositories/source_snapshots.py` added `InMemorySourceSnapshotArtifactRepository` and `source_snapshot_records_from_acquisition_result` for deterministic private source snapshot metadata built from acquisition results.
+- The snapshot builder creates artifact metadata for supported AAPL, VOO, and QQQ acquisition outputs with same-asset, same-source-document, deterministic checksum, source-use policy, allowlist, source quality, freshness, permitted operation, evidence-gap, retrieval/as-of, private storage-key, and sanitized diagnostic metadata.
+- Rights-tier behavior is enforced before artifact creation: full-text-allowed sources can create raw-source and parsed-text artifact metadata, summary-allowed sources can create summary artifact metadata, metadata-only/link-only sources can create checksum metadata, and rejected sources do not create snapshot artifacts.
+- The source snapshot validation now rejects missing source bindings, source-reference mismatches, non-`sha256:` checksums, wrong asset/source bindings, wrong issuer/source metadata, public/signed/frontend-readable storage references, raw provider payload flags, raw source text flags, and secret flags.
+- `backend/ingestion_worker.py` added an injected mocked `SourceSnapshotWriterBoundary`, worker fixture support for `source_snapshot_records`, ledger metadata for configured snapshot persistence, and fail-closed behavior when a configured mocked writer rejects records.
+- The deterministic worker can persist golden acquisition snapshot records through an in-memory mocked writer without activating generated pages, generated chat answers, comparisons, risk summaries, normalized knowledge-pack writes, generated-output cache writes, live calls, or database/object-storage execution.
+- Tests were added for AAPL/VOO/QQQ artifact creation, rights-tier enforcement, rejected/wrong-source/wrong-asset/invalid-checksum blocking, sanitized diagnostics, no public or signed storage references, in-memory repository persistence, worker persistence through an injected writer, and writer failure fail-closed behavior.
+- `docs/agent-journal/20260426T053753Z.md` records these checks: `python3 -m pytest tests/unit/test_source_snapshot_repository.py tests/unit/test_provider_adapters.py tests/unit/test_ingestion_worker.py tests/unit/test_source_policy.py -q` passed with 55 tests; `python3 -m pytest tests/unit/test_ingestion_jobs.py -q` passed with 16 tests; `python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q` passed with 30 tests; `python3 -m pytest tests/integration/test_backend_api.py -q` passed with 35 tests; `python3 -m pytest tests -q` passed with 378 tests; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed, including Python tests, static evals, frontend smoke, typecheck, build, and backend checks; `git diff --check` passed.
+- Remaining risks from the journal:
+  - Persistence remains deterministic and in-memory/mocked only; no production object storage, database session, live SEC/issuer fetching, or signed/public storage URL path was added.
+  - Snapshot records reference raw and parsed artifact metadata only; no raw source text, provider payloads, normalized knowledge-pack rows, generated-output cache records, generated pages, generated chat answers, comparisons, or risk summaries are written.
+  - Golden coverage is limited to AAPL, VOO, and QQQ acquisition outputs. Eligible-but-not-golden, unsupported, unknown, wrong-source, wrong-asset, invalid-checksum, rejected-source, and writer-failure paths are blocked or diagnosed without generated output.
+
+Completion commits:
+
+- `cde7692 feat(T-105): persist source snapshots and parsed acquisition artifacts for the golden path`
+- `2b42762 chore(T-105): merge persist source snapshots and parsed acquisition artifacts for the golden path`
 
 ### T-104: Implement official ETF issuer acquisition for the ETF golden path
 
@@ -2834,37 +2866,6 @@ Completion commits:
 
 ## Backlog
 
-### T-106: Write normalized knowledge packs from acquisition outputs
-
-Goal:
-Write normalized, source-backed knowledge packs from the persisted golden-path acquisition artifacts, then route existing configured readers through those packs with fixture fallback.
-
-Task-scope paragraph:
-Convert the validated AAPL SEC and golden ETF acquisition artifacts into normalized knowledge-pack records: source documents, source chunks or allowed excerpts, normalized facts, evidence gaps, section freshness inputs, source checksums, citation IDs, and pack freshness metadata. The task should use configured repository writer/reader boundaries and existing route fallback behavior. It must not change public route paths or schemas, add live provider calls, broaden asset coverage, generate uncited pages, activate generated-output cache writes, or migrate frontend pages yet.
-
-Acceptance criteria:
-
-- Golden stock and ETF acquisition artifacts can write valid knowledge-pack records with same-asset source and citation bindings.
-- Existing route readers prefer valid configured packs where enabled and preserve deterministic fixture fallback for missing, invalid, stale, wrong-asset, unsupported, unknown, unavailable, or source-policy-blocked records.
-- Evidence gaps are represented honestly with partial, stale, unknown, unavailable, or insufficient-evidence states instead of invented facts.
-- Generated pages, chat answers, comparisons, risk summaries, and reusable generated-output cache writes remain disabled unless existing deterministic fixtures already provide them.
-- Safety, citation, source-use, freshness, and no-live-call constraints remain unchanged.
-
-Required commands:
-
-```bash
-python3 -m pytest tests/unit/test_knowledge_pack_repository.py tests/unit/test_retrieval_repository.py tests/unit/test_overview_generation.py tests/unit/test_source_policy.py -q
-python3 -m pytest tests/integration/test_backend_api.py -q
-python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-git diff --check
-```
-
-Iteration budget:
-One agent-loop cycle. Stop after deterministic golden-path knowledge-pack writes and read fallback validation; leave generated-output cache writes, frontend migration, launch pre-cache expansion, and production database execution for later tasks.
-
 ### T-107: Persist official-source Weekly News Focus event evidence for golden assets
 
 Goal:
@@ -2967,7 +2968,7 @@ This section is intentionally non-operational for the agent loop. Keep runnable 
 Current runtime snapshot:
 
 - Backend contracts, configured reader boundaries, ingestion ledger execution, source-use/export gates, Weekly News contracts, generated-output cache contracts, and live-generation readiness diagnostics are broad and stable.
-- The current runtime is still not end-to-end fresh-data functional: acquisition is mocked/golden-path, source snapshots are not written, normalized knowledge packs are not written from ingestion, generated-output cache writes are inactive, Weekly News evidence is not executed from official sources, and production persistence/storage is not the normal path.
+- The current runtime is still not end-to-end fresh-data functional: acquisition is mocked/golden-path, source snapshots are written only through deterministic in-memory/mocked boundaries, normalized knowledge packs are not written from ingestion, generated-output cache writes are inactive, Weekly News evidence is not executed from official sources, and production persistence/storage is not the normal path.
 - The frontend renders the main learning surfaces with deterministic fixtures and selected backend adapters, but smoke tests still require home search to stay local and not call `/api/search`; API-backed search, pending states, and dynamic asset pages remain an explicit MVP blocker.
 - The next fully functional milestone is a local deterministic golden path where admin/server-side ingestion acquires mocked official-source data, persists validated snapshots and knowledge packs, writes validated cache records, and the frontend renders backend API responses with fixture fallback.
 
@@ -3002,8 +3003,9 @@ Operational defaults for general MVP roadmap tasks:
 - T-102 established executable local ingestion ledger and mocked worker transitions. It is completed and must not be reintroduced as runnable backlog.
 - T-103 established mocked SEC EDGAR stock golden-path acquisition. It is completed and must not be reintroduced as runnable backlog.
 - T-104 established mocked official ETF issuer golden-path acquisition. It is completed and must not be reintroduced as runnable backlog.
-- T-105 is the current promoted task for deterministic source snapshot and parsed acquisition artifact persistence.
-- T-106 through T-109 are the next runnable golden-path tasks for knowledge-pack writes, Weekly News event persistence, generated-output cache writes, and frontend API-backed rendering.
+- T-105 established deterministic source snapshot and parsed acquisition artifact persistence. It is completed and must not be reintroduced as runnable backlog.
+- T-106 is the current promoted task for deterministic normalized knowledge-pack writes from acquisition outputs.
+- T-107 through T-109 are the next runnable golden-path tasks for Weekly News event persistence, generated-output cache writes, and frontend API-backed rendering.
 - Production hardening readiness diagnostics, route regression matrices, go/no-go launch checklists, deploy work, broad launch-universe pre-cache expansion, and recurring jobs move later until the mocked golden ingest-to-persist-to-render path works locally.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted task should run the relevant EVALS.md checks, `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, `bash scripts/run_quality_gate.sh`, and `git diff --check`.
@@ -3041,8 +3043,8 @@ Roadmap integration tracker:
 | Executable local ingestion ledger and mocked worker path | Completed | T-102 |
 | SEC EDGAR stock golden-path acquisition | Completed | T-103 |
 | Official ETF issuer golden-path acquisition | Completed | T-104 |
-| Source snapshot and parsed acquisition artifact persistence | Current | T-105 |
-| Normalized knowledge-pack writes from ingestion | Backlog | T-106 |
+| Source snapshot and parsed acquisition artifact persistence | Completed | T-105 |
+| Normalized knowledge-pack writes from ingestion | Current | T-106 |
 | Weekly News Focus official-source event evidence persistence | Backlog | T-107 |
 | Generated-output cache writes and invalidation | Backlog | T-108 |
 | Frontend API-backed search, pending states, and asset rendering | Backlog | T-109 |
