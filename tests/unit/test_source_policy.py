@@ -4,6 +4,12 @@ from backend.models import SourceAllowlistStatus, SourcePolicyDecisionState, Sou
 from backend.source_policy import (
     DEFAULT_SOURCE_ALLOWLIST_PATH,
     REQUIRED_SOURCE_USE_POLICIES,
+    SourcePolicyAction,
+    classify_source_policy_actions,
+    source_can_cache_input_checksum,
+    source_can_export_source_metadata,
+    source_can_feed_generated_output_cache,
+    source_can_support_markdown_json_export,
     load_source_allowlist,
     resolve_source_policy,
     source_can_export_excerpt,
@@ -123,3 +129,62 @@ def test_weekly_news_source_policy_wins_over_rank_and_recency():
     assert source_policy_allows_weekly_news_selection(allowlisted) is True
     assert source_policy_allows_weekly_news_selection(metadata_only) is False
     assert source_policy_allows_weekly_news_selection(rejected) is False
+
+
+def test_source_policy_action_contract_covers_all_tiers_and_export_rights():
+    full_text = resolve_source_policy(url="https://www.sec.gov/Archives/example")
+    summary = resolve_source_policy(source_identifier="local://fixtures/aapl/recent-review/source")
+    metadata = resolve_source_policy(provider_name="Mock Market Reference")
+    link_only = resolve_source_policy(url="https://link-only.example/story")
+    rejected = resolve_source_policy(url="https://unlicensed.example/story")
+
+    decisions_by_policy = {
+        decision.source_use_policy: classify_source_policy_actions(decision)
+        for decision in [full_text, summary, metadata, link_only, rejected]
+    }
+    assert set(decisions_by_policy) == REQUIRED_SOURCE_USE_POLICIES
+
+    assert source_can_support_generated_output(full_text) is True
+    assert source_can_feed_generated_output_cache(full_text) is True
+    assert source_can_export_source_metadata(full_text) is True
+    assert source_can_export_excerpt(full_text) is True
+    assert source_can_support_markdown_json_export(full_text) is True
+
+    assert source_can_support_generated_output(summary) is True
+    assert source_can_feed_generated_output_cache(summary) is True
+    assert source_can_export_source_metadata(summary) is True
+    assert source_can_export_excerpt(summary) is True
+    assert source_can_support_markdown_json_export(summary) is True
+    assert summary.canonical_facts_allowed is False
+    assert summary.recent_context_only is True
+
+    assert source_can_cache_input_checksum(metadata) is True
+    assert source_can_support_generated_output(metadata) is False
+    assert source_can_feed_generated_output_cache(metadata) is False
+    assert source_can_export_source_metadata(metadata) is False
+    assert source_can_export_excerpt(metadata) is False
+    assert source_can_support_markdown_json_export(metadata) is False
+    assert decisions_by_policy[SourceUsePolicy.metadata_only][
+        SourcePolicyAction.generated_claim_support
+    ].reason_code == "metadata_only_content_omitted"
+
+    assert source_can_cache_input_checksum(link_only) is True
+    assert source_can_support_generated_output(link_only) is False
+    assert source_can_feed_generated_output_cache(link_only) is False
+    assert source_can_export_source_metadata(link_only) is True
+    assert source_can_export_excerpt(link_only) is False
+    assert source_can_support_markdown_json_export(link_only) is False
+    assert decisions_by_policy[SourceUsePolicy.link_only][
+        SourcePolicyAction.allowed_excerpt_export
+    ].reason_code == "link_only_content_omitted"
+
+    assert source_can_cache_input_checksum(rejected) is False
+    assert source_can_support_generated_output(rejected) is False
+    assert source_can_feed_generated_output_cache(rejected) is False
+    assert source_can_export_source_metadata(rejected) is False
+    assert source_can_export_excerpt(rejected) is False
+    assert source_can_support_markdown_json_export(rejected) is False
+    assert decisions_by_policy[SourceUsePolicy.rejected][SourcePolicyAction.diagnostics].allowed is True
+    assert decisions_by_policy[SourceUsePolicy.rejected][
+        SourcePolicyAction.diagnostics
+    ].sanitized_diagnostics_only is True

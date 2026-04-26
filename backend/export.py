@@ -41,12 +41,21 @@ from backend.models import (
     OverviewSectionType,
     SafetyClassification,
     SearchSupportClassification,
+    SourceAllowlistStatus,
     SourceDocument,
+    SourcePolicyDecisionState,
+    SourceUsePolicy,
     StateMessage,
 )
 from backend.overview import generate_asset_overview
 from backend.search import search_assets
-from backend.source_policy import excerpt_text_for_policy, resolve_source_policy, source_can_export_excerpt
+from backend.source_policy import (
+    excerpt_text_for_policy,
+    resolve_source_policy,
+    source_can_export_excerpt,
+    source_can_export_source_metadata,
+    source_can_support_markdown_json_export,
+)
 
 
 EXPORT_LICENSING_NOTE = ExportNote(
@@ -1202,11 +1211,11 @@ def _export_sources(sources: list[Any]) -> list[ExportSourceMetadata]:
         seen.add(key)
         chunk_id = getattr(source, "chunk_id", None)
         supporting_passage = getattr(source, "supporting_passage", "")
-        decision = resolve_source_policy(
-            url=source.url,
-            source_identifier=source.url if str(source.url).startswith("local://") else None,
-        )
+        decision = _decision_from_source_like(source)
+        if decision.decision is not SourcePolicyDecisionState.allowed:
+            continue
         excerpt_text = excerpt_text_for_policy(supporting_passage, decision)
+        excerpt_decision = decision if source_can_export_excerpt(decision) else _resolved_decision_from_source_like(source)
         exported.append(
             ExportSourceMetadata(
                 source_document_id=source.source_document_id,
@@ -1230,9 +1239,9 @@ def _export_sources(sources: list[Any]) -> list[ExportSourceMetadata]:
                     citation_id=citation_id,
                     chunk_id=chunk_id,
                     redistribution_allowed=decision.permitted_operations.can_export_excerpt,
-                    source_use_policy=decision.source_use_policy,
-                    allowlist_status=decision.allowlist_status,
-                    note=decision.allowed_excerpt.note,
+                    source_use_policy=excerpt_decision.source_use_policy,
+                    allowlist_status=excerpt_decision.allowlist_status,
+                    note=excerpt_decision.allowed_excerpt.note,
                 ),
             )
         )
@@ -1706,8 +1715,12 @@ def _build_export_source_bindings(
             else None
         )
         omitted_message = None
+        if not source_can_export_source_metadata(
+            _decision_from_export_source(source)
+        ):
+            omitted_message = "Source metadata is restricted to policy-safe attribution fields only."
         if excerpt is not None and excerpt.kind == "excerpt_metadata":
-            omitted_message = "Only metadata or bounded excerpt metadata is exportable for this source."
+            omitted_message = omitted_message or "Only metadata or bounded excerpt metadata is exportable for this source."
         bindings.append(
             ExportValidationSourceBinding(
                 binding_id=binding_id,
@@ -1775,8 +1788,7 @@ def _build_export_citation_bindings(
                 scope=binding_scope,
                 supports_exported_content=bool(
                     source is not None
-                    and source.permitted_operations.can_support_citations
-                    and source.permitted_operations.can_export_metadata
+                    and source_can_support_markdown_json_export(_decision_from_export_source(source))
                 ),
             )
         )
@@ -1791,6 +1803,63 @@ def _source_lookup_for_citations(sources: list[ExportSourceMetadata]) -> dict[st
         if source.allowed_excerpt and source.allowed_excerpt.citation_id:
             lookup[source.allowed_excerpt.citation_id] = source
     return lookup
+
+
+def _decision_from_source_like(source: Any) -> Any:
+    resolved = _resolved_decision_from_source_like(source)
+    allowlist_status = getattr(source, "allowlist_status", None)
+    source_use_policy = getattr(source, "source_use_policy", None)
+    permitted_operations = getattr(source, "permitted_operations", None)
+    if allowlist_status is None or source_use_policy is None or permitted_operations is None:
+        return resolved
+
+    normalized_allowlist = (
+        allowlist_status
+        if isinstance(allowlist_status, SourceAllowlistStatus)
+        else SourceAllowlistStatus(str(allowlist_status))
+    )
+    normalized_policy = (
+        source_use_policy if isinstance(source_use_policy, SourceUsePolicy) else SourceUsePolicy(str(source_use_policy))
+    )
+    decision_state = (
+        SourcePolicyDecisionState.allowed
+        if normalized_allowlist is SourceAllowlistStatus.allowed
+        else SourcePolicyDecisionState.rejected
+        if normalized_allowlist is SourceAllowlistStatus.rejected
+        else SourcePolicyDecisionState.pending_review
+    )
+    return resolved.model_copy(
+        update={
+            "decision": decision_state,
+            "source_quality": getattr(source, "source_quality", resolved.source_quality),
+            "allowlist_status": normalized_allowlist,
+            "source_use_policy": normalized_policy,
+            "permitted_operations": permitted_operations,
+        }
+    )
+
+
+def _resolved_decision_from_source_like(source: Any) -> Any:
+    return resolve_source_policy(
+        url=getattr(source, "url", None),
+        source_identifier=(
+            getattr(source, "url", None)
+            if str(getattr(source, "url", "")).startswith("local://")
+            else None
+        ),
+        provider_name=getattr(source, "provider_name", None),
+    )
+
+
+def _decision_from_export_source(source: ExportSourceMetadata) -> Any:
+    return _decision_from_source_like(source).model_copy(
+        update={
+            "source_quality": source.source_quality,
+            "allowlist_status": source.allowlist_status,
+            "source_use_policy": source.source_use_policy,
+            "permitted_operations": source.permitted_operations,
+        }
+    )
 
 
 def _build_export_section_validation(

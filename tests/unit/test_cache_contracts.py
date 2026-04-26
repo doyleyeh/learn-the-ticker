@@ -45,6 +45,7 @@ from backend.models import (
     GeneratedOutputFreshnessInput,
     KnowledgePackFreshnessInput,
     SectionFreshnessInput,
+    SourceAllowlistStatus,
     SourceChecksumInput,
     SourceUsePolicy,
 )
@@ -544,6 +545,60 @@ def test_cache_entry_metadata_preserves_source_citation_and_freshness_fields():
     assert metadata.prompt_version == "prompt-v1"
     assert metadata.model_name == "model-v1"
     assert metadata.export_allowed is False
+
+
+def test_cache_entry_metadata_blocks_generated_output_for_restricted_source_use_tiers():
+    restricted_checksums = [
+        compute_source_document_checksum(
+            SourceChecksumInput(
+                source_document_id=f"src_{policy.value}",
+                asset_ticker="TEST",
+                source_type="provider_fixture",
+                publisher="Restricted Fixture",
+                freshness_state=FreshnessState.fresh,
+                citation_ids=[f"c_{policy.value}"],
+                cache_allowed=True,
+                allowlist_status=(
+                    SourceAllowlistStatus.rejected if policy is SourceUsePolicy.rejected else SourceAllowlistStatus.allowed
+                ),
+                source_use_policy=policy,
+            )
+        )
+        for policy in [SourceUsePolicy.metadata_only, SourceUsePolicy.link_only, SourceUsePolicy.rejected]
+    ]
+    for checksum in restricted_checksums:
+        generated = GeneratedOutputFreshnessInput(
+            output_identity="asset:TEST",
+            entry_kind=CacheEntryKind.asset_page,
+            scope=CacheScope.asset,
+            schema_version="asset-page-v1",
+            source_freshness_state=FreshnessState.fresh,
+            source_checksums=[checksum],
+            canonical_facts=[],
+            recent_events=[],
+            evidence_gaps=[],
+            section_freshness_labels=[
+                SectionFreshnessInput(
+                    section_id="beginner_summary",
+                    freshness_state=FreshnessState.fresh,
+                    evidence_state="supported",
+                )
+            ],
+        )
+        freshness_hash = compute_generated_output_freshness_hash(generated)
+        metadata = cache_entry_metadata_from_generated_output(
+            cache_key="restricted-cache-key",
+            freshness_input=generated,
+            freshness_hash=freshness_hash,
+            citation_ids=checksum.citation_ids,
+            cache_allowed=True,
+        )
+        decision = evaluate_cache_revalidation(None, "restricted-cache-key", cache_allowed=metadata.cache_allowed)
+
+        assert checksum.cache_allowed is True
+        assert metadata.cache_allowed is False
+        assert decision.state is CacheEntryState.permission_limited
+        assert decision.reusable is False
 
 
 def test_generated_output_cache_repository_metadata_is_dormant_and_explicit():
