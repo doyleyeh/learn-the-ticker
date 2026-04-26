@@ -399,11 +399,13 @@ def test_backend_mvp_runtime_gap_audit_tracks_required_areas_without_runtime_wir
         assert forbidden.lower() not in audit_lower
 
 
-def test_tasks_runtime_roadmap_marks_t100_current_after_t099_completion():
+def test_tasks_runtime_roadmap_marks_t101_current_after_t100_completion():
     tasks = read_file("TASKS.md")
     roadmap = tasks.split("## MVP Backend Roadmap", 1)[1]
 
     assert "T-099 established deterministic provider content export-rights hardening" in roadmap
-    assert "T-100 is the current promoted task for rebaselining the backend MVP runtime gap" in roadmap
+    assert "T-100 established the backend MVP runtime gap audit and roadmap tracker" in roadmap
+    assert "T-101 is the current promoted task for wiring public backend routes to configured persistence readers" in roadmap
     assert "| Provider source-use/export enforcement hardening | Completed | T-099 |" in roadmap
-    assert "| Backend fresh-data MVP runtime gap tracker | Current | T-100 |" in roadmap
+    assert "| Backend fresh-data MVP runtime gap tracker | Completed | T-100 |" in roadmap
+    assert "| Configured persisted-reader route wiring | Current | T-101 |" in roadmap

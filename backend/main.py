@@ -63,9 +63,13 @@ from backend.models import (
     TrustMetricValidationRequest,
     TrustMetricValidationResponse,
     WeeklyNewsResponse,
+    Citation,
+    FreshnessState,
 )
 from backend.overview import generate_asset_overview
+from backend.persistence import BackendReadDependencies, backend_read_dependencies_from_app
 from backend.retrieval import build_asset_knowledge_pack_result
+from backend.retrieval_repository import read_persisted_knowledge_pack_response
 from backend.search import search_assets
 from backend.sources import build_asset_source_drawer_response
 from backend.trust_metrics import get_trust_metric_event_catalog, validate_trust_metric_events
@@ -83,6 +87,47 @@ def _asset_payload(ticker: str) -> tuple[AssetIdentity, dict[str, Any] | None]:
     if payload:
         return payload["identity"], payload
     return fallback_asset(ticker), None
+
+
+def _read_dependencies() -> BackendReadDependencies:
+    return backend_read_dependencies_from_app(app)
+
+
+def _details_from_configured_reader(ticker: str, readers: BackendReadDependencies) -> DetailsResponse | None:
+    pack_reader = readers.reader("knowledge_pack_reader")
+    if pack_reader is None:
+        return None
+
+    persisted = read_persisted_knowledge_pack_response(ticker, reader=pack_reader)
+    if not persisted.found or persisted.response is None or persisted.records is None:
+        return None
+    if not persisted.response.asset.supported or not persisted.response.generated_output_available:
+        return None
+
+    source_by_id = {source.source_document_id: source for source in persisted.records.source_documents}
+    facts = {
+        fact.field_name: fact.value
+        for fact in persisted.records.normalized_facts
+        if fact.value is not None and fact.evidence_state == "supported"
+    }
+    citations = [
+        Citation(
+            citation_id=f"c_{fact.fact_id}",
+            source_document_id=fact.source_document_id,
+            title=source_by_id[fact.source_document_id].title if fact.source_document_id in source_by_id else None,
+            publisher=source_by_id[fact.source_document_id].publisher if fact.source_document_id in source_by_id else None,
+            freshness_state=FreshnessState(fact.freshness_state),
+        )
+        for fact in persisted.records.normalized_facts
+        if fact.value is not None and fact.source_document_id in source_by_id
+    ]
+    return DetailsResponse(
+        asset=persisted.response.asset,
+        state=persisted.response.state,
+        freshness=persisted.response.freshness,
+        facts=facts,
+        citations=citations,
+    )
 
 
 @app.get("/health", tags=["health"])
@@ -128,16 +173,28 @@ def pre_cache_asset(ticker: str) -> PreCacheJobResponse:
 
 @app.get("/api/assets/{ticker}/overview", response_model=OverviewResponse, tags=["assets"])
 def asset_overview(ticker: str, mode: str = "beginner") -> OverviewResponse:
-    return generate_asset_overview(ticker)
+    readers = _read_dependencies()
+    return generate_asset_overview(
+        ticker,
+        persisted_pack_reader=readers.reader("knowledge_pack_reader"),
+        generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+        persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
+    )
 
 
 @app.get("/api/assets/{ticker}/knowledge-pack", response_model=KnowledgePackBuildResponse, tags=["assets"])
 def asset_knowledge_pack(ticker: str) -> KnowledgePackBuildResponse:
-    return build_asset_knowledge_pack_result(ticker)
+    readers = _read_dependencies()
+    return build_asset_knowledge_pack_result(ticker, persisted_reader=readers.reader("knowledge_pack_reader"))
 
 
 @app.get("/api/assets/{ticker}/details", response_model=DetailsResponse, tags=["assets"])
 def asset_details(ticker: str) -> DetailsResponse:
+    readers = _read_dependencies()
+    persisted_details = _details_from_configured_reader(ticker, readers)
+    if persisted_details is not None:
+        return persisted_details
+
     asset, payload = _asset_payload(ticker)
     state = state_for_asset(asset)
 
@@ -159,10 +216,14 @@ def asset_sources(
     citation_id: str | None = None,
     source_document_id: str | None = None,
 ) -> SourcesResponse:
+    readers = _read_dependencies()
     return build_asset_source_drawer_response(
         ticker,
         citation_id=citation_id,
         source_document_id=source_document_id,
+        persisted_pack_reader=readers.reader("knowledge_pack_reader"),
+        generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+        persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
     )
 
 
@@ -173,17 +234,37 @@ def asset_glossary(ticker: str, term: str | None = None) -> GlossaryResponse:
 
 @app.get("/api/assets/{ticker}/export", response_model=ExportResponse, tags=["exports"])
 def asset_page_export(ticker: str, export_format: ExportFormat = ExportFormat.markdown) -> ExportResponse:
-    return export_asset_page(ticker, export_format)
+    readers = _read_dependencies()
+    return export_asset_page(
+        ticker,
+        export_format,
+        persisted_pack_reader=readers.reader("knowledge_pack_reader"),
+        generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+        persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
+    )
 
 
 @app.get("/api/assets/{ticker}/sources/export", response_model=ExportResponse, tags=["exports"])
 def asset_sources_export(ticker: str, export_format: ExportFormat = ExportFormat.markdown) -> ExportResponse:
-    return export_asset_source_list(ticker, export_format)
+    readers = _read_dependencies()
+    return export_asset_source_list(
+        ticker,
+        export_format,
+        persisted_pack_reader=readers.reader("knowledge_pack_reader"),
+        generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+        persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
+    )
 
 
 @app.get("/api/assets/{ticker}/recent", response_model=RecentResponse, tags=["assets"])
 def asset_recent(ticker: str) -> RecentResponse:
-    overview = generate_asset_overview(ticker)
+    readers = _read_dependencies()
+    overview = generate_asset_overview(
+        ticker,
+        persisted_pack_reader=readers.reader("knowledge_pack_reader"),
+        generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+        persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
+    )
     return RecentResponse(
         asset=overview.asset,
         state=overview.state,
@@ -194,7 +275,13 @@ def asset_recent(ticker: str) -> RecentResponse:
 
 @app.get("/api/assets/{ticker}/weekly-news", response_model=WeeklyNewsResponse, tags=["assets"])
 def asset_weekly_news(ticker: str) -> WeeklyNewsResponse:
-    overview = generate_asset_overview(ticker)
+    readers = _read_dependencies()
+    overview = generate_asset_overview(
+        ticker,
+        persisted_pack_reader=readers.reader("knowledge_pack_reader"),
+        generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+        persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
+    )
     return WeeklyNewsResponse(
         asset=overview.asset,
         state=overview.state,
@@ -205,12 +292,23 @@ def asset_weekly_news(ticker: str) -> WeeklyNewsResponse:
 
 @app.post("/api/compare", response_model=CompareResponse, tags=["compare"])
 def compare_assets(request: CompareRequest) -> CompareResponse:
-    return generate_comparison(request.left_ticker, request.right_ticker)
+    readers = _read_dependencies()
+    return generate_comparison(
+        request.left_ticker,
+        request.right_ticker,
+        persisted_pack_reader=readers.reader("knowledge_pack_reader"),
+        generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+    )
 
 
 @app.post("/api/compare/export", response_model=ExportResponse, tags=["exports"])
 def compare_assets_export(request: ComparisonExportRequest) -> ExportResponse:
-    return export_comparison(request)
+    readers = _read_dependencies()
+    return export_comparison(
+        request,
+        persisted_pack_reader=readers.reader("knowledge_pack_reader"),
+        generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+    )
 
 
 @app.get("/api/compare/export", response_model=ExportResponse, tags=["exports"])
@@ -219,24 +317,41 @@ def compare_assets_export_query(
     right_ticker: str,
     export_format: ExportFormat = ExportFormat.markdown,
 ) -> ExportResponse:
+    readers = _read_dependencies()
     return export_comparison(
-        ComparisonExportRequest(left_ticker=left_ticker, right_ticker=right_ticker, export_format=export_format)
+        ComparisonExportRequest(left_ticker=left_ticker, right_ticker=right_ticker, export_format=export_format),
+        persisted_pack_reader=readers.reader("knowledge_pack_reader"),
+        generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
     )
 
 
 @app.post("/api/assets/{ticker}/chat", response_model=ChatResponse, tags=["chat"])
 def asset_chat(ticker: str, request: ChatRequest) -> ChatResponse:
-    return answer_chat_with_session(ticker, request)
+    readers = _read_dependencies()
+    return answer_chat_with_session(
+        ticker,
+        request,
+        persisted_reader=readers.reader("chat_session_reader"),
+        persisted_writer=readers.reader("chat_session_writer"),
+        persisted_pack_reader=readers.reader("knowledge_pack_reader"),
+        generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+    )
 
 
 @app.get("/api/chat-sessions/{conversation_id}", response_model=ChatSessionStatusResponse, tags=["chat"])
 def chat_session_status(conversation_id: str) -> ChatSessionStatusResponse:
-    return get_chat_session_status(conversation_id)
+    readers = _read_dependencies()
+    return get_chat_session_status(conversation_id, persisted_reader=readers.reader("chat_session_reader"))
 
 
 @app.post("/api/chat-sessions/{conversation_id}/delete", response_model=ChatSessionDeleteResponse, tags=["chat"])
 def chat_session_delete(conversation_id: str) -> ChatSessionDeleteResponse:
-    return delete_chat_session(conversation_id)
+    readers = _read_dependencies()
+    return delete_chat_session(
+        conversation_id,
+        persisted_reader=readers.reader("chat_session_reader"),
+        persisted_writer=readers.reader("chat_session_writer"),
+    )
 
 
 @app.get("/api/chat-sessions/{conversation_id}/export", response_model=ExportResponse, tags=["exports"])
@@ -244,12 +359,24 @@ def chat_session_export(
     conversation_id: str,
     export_format: ExportFormat = ExportFormat.markdown,
 ) -> ExportResponse:
-    return export_chat_session_transcript(conversation_id, export_format)
+    readers = _read_dependencies()
+    return export_chat_session_transcript(
+        conversation_id,
+        export_format,
+        persisted_session_reader=readers.reader("chat_session_reader"),
+    )
 
 
 @app.post("/api/assets/{ticker}/chat/export", response_model=ExportResponse, tags=["exports"])
 def asset_chat_export(ticker: str, request: ChatTranscriptExportRequest) -> ExportResponse:
-    return export_chat_transcript(ticker, request)
+    readers = _read_dependencies()
+    return export_chat_transcript(
+        ticker,
+        request,
+        persisted_session_reader=readers.reader("chat_session_reader"),
+        persisted_pack_reader=readers.reader("knowledge_pack_reader"),
+        generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+    )
 
 
 @app.get("/api/trust-metrics/catalog", response_model=TrustMetricCatalogResponse, tags=["trust-metrics"])

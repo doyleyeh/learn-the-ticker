@@ -40,12 +40,15 @@ def build_asset_source_drawer_response(
     *,
     citation_id: str | None = None,
     source_document_id: str | None = None,
+    persisted_pack_reader: object | None = None,
+    generated_output_cache_reader: object | None = None,
+    persisted_weekly_news_reader: object | None = None,
 ) -> SourcesResponse:
     """Shape existing local overview evidence into the source drawer API contract."""
 
     normalized = ticker.strip().upper()
     filters = _filters(citation_id=citation_id, source_document_id=source_document_id)
-    pack_result = build_asset_knowledge_pack_result(normalized)
+    pack_result = build_asset_knowledge_pack_result(normalized, persisted_reader=persisted_pack_reader)
     if pack_result.build_state is not KnowledgePackBuildState.available:
         return _non_generated_response(
             asset=_asset_for_non_generated_state(normalized, pack_result.asset),
@@ -56,7 +59,12 @@ def build_asset_source_drawer_response(
         )
 
     pack = build_asset_knowledge_pack(normalized)
-    overview = generate_asset_overview(normalized)
+    overview = generate_asset_overview(
+        normalized,
+        persisted_pack_reader=persisted_pack_reader,
+        generated_output_cache_reader=generated_output_cache_reader,
+        persisted_weekly_news_reader=persisted_weekly_news_reader,
+    )
     source_fixture_by_id = {source.source_document_id: source for source in pack.source_documents}
     if not overview.asset.supported:
         return _non_generated_response(

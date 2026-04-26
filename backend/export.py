@@ -69,14 +69,26 @@ EXPORT_LICENSING_NOTE = ExportNote(
 )
 
 
-def export_asset_page(ticker: str, export_format: ExportFormat | str = ExportFormat.markdown) -> ExportResponse:
+def export_asset_page(
+    ticker: str,
+    export_format: ExportFormat | str = ExportFormat.markdown,
+    *,
+    persisted_pack_reader: Any | None = None,
+    generated_output_cache_reader: Any | None = None,
+    persisted_weekly_news_reader: Any | None = None,
+) -> ExportResponse:
     """Shape an existing deterministic asset overview into an accountless export payload."""
 
     blocked = _blocked_asset_response(ticker, ExportContentType.asset_page, export_format)
     if blocked is not None:
         return blocked
 
-    overview = generate_asset_overview(ticker)
+    overview = generate_asset_overview(
+        ticker,
+        persisted_pack_reader=persisted_pack_reader,
+        generated_output_cache_reader=generated_output_cache_reader,
+        persisted_weekly_news_reader=persisted_weekly_news_reader,
+    )
     if not overview.asset.supported:
         return _unavailable_asset_response(overview.asset, overview.state, ExportContentType.asset_page, export_format)
 
@@ -109,14 +121,26 @@ def export_asset_page(ticker: str, export_format: ExportFormat | str = ExportFor
     return response.model_copy(update={"export_validation": _build_asset_export_validation(response, overview)})
 
 
-def export_asset_source_list(ticker: str, export_format: ExportFormat | str = ExportFormat.markdown) -> ExportResponse:
+def export_asset_source_list(
+    ticker: str,
+    export_format: ExportFormat | str = ExportFormat.markdown,
+    *,
+    persisted_pack_reader: Any | None = None,
+    generated_output_cache_reader: Any | None = None,
+    persisted_weekly_news_reader: Any | None = None,
+) -> ExportResponse:
     """Export source metadata for an asset without adding new source material."""
 
     blocked = _blocked_asset_response(ticker, ExportContentType.asset_source_list, export_format)
     if blocked is not None:
         return blocked
 
-    overview = generate_asset_overview(ticker)
+    overview = generate_asset_overview(
+        ticker,
+        persisted_pack_reader=persisted_pack_reader,
+        generated_output_cache_reader=generated_output_cache_reader,
+        persisted_weekly_news_reader=persisted_weekly_news_reader,
+    )
     if not overview.asset.supported:
         return _unavailable_asset_response(
             overview.asset,
@@ -183,10 +207,20 @@ def export_asset_source_list(ticker: str, export_format: ExportFormat | str = Ex
     return response.model_copy(update={"export_validation": _build_asset_export_validation(response, overview)})
 
 
-def export_comparison(request: ComparisonExportRequest) -> ExportResponse:
+def export_comparison(
+    request: ComparisonExportRequest,
+    *,
+    persisted_pack_reader: Any | None = None,
+    generated_output_cache_reader: Any | None = None,
+) -> ExportResponse:
     """Shape an existing deterministic comparison into an export payload."""
 
-    comparison = generate_comparison(request.left_ticker, request.right_ticker)
+    comparison = generate_comparison(
+        request.left_ticker,
+        request.right_ticker,
+        persisted_pack_reader=persisted_pack_reader,
+        generated_output_cache_reader=generated_output_cache_reader,
+    )
     export_format = _coerce_format(request.export_format)
     title = f"{comparison.left_asset.ticker} vs {comparison.right_asset.ticker} comparison export"
 
@@ -308,6 +342,8 @@ def export_chat_transcript(
     request: ChatTranscriptExportRequest,
     *,
     persisted_session_reader: PersistedChatSessionReader | Any | None = None,
+    persisted_pack_reader: Any | None = None,
+    generated_output_cache_reader: Any | None = None,
 ) -> ExportResponse:
     """Export a single deterministic chat turn for a selected cached asset."""
 
@@ -326,7 +362,12 @@ def export_chat_transcript(
         blocked.metadata["generated_chat_answer"] = False
         return blocked
 
-    chat = generate_asset_chat(ticker, request.question)
+    chat = generate_asset_chat(
+        ticker,
+        request.question,
+        persisted_pack_reader=persisted_pack_reader,
+        generated_output_cache_reader=generated_output_cache_reader,
+    )
     export_format = _coerce_format(request.export_format)
     title = f"{chat.asset.ticker} chat transcript export"
     sections = [
