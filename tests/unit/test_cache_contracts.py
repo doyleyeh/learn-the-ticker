@@ -59,6 +59,25 @@ from backend.models import ProviderKind, ProviderResponseState
 ROOT = Path(__file__).resolve().parents[2]
 
 
+class FakeDurableSession:
+    def __init__(self):
+        self.records = {}
+        self.rows = []
+        self.commits = 0
+
+    def save_repository_record(self, collection, key, records):
+        self.records[(collection, key)] = records
+
+    def get_repository_record(self, collection, key):
+        return self.records.get((collection, key))
+
+    def add_all(self, rows):
+        self.rows.extend(rows)
+
+    def commit(self):
+        self.commits += 1
+
+
 def _generated_cache_records(ticker: str = "VOO") -> GeneratedOutputCacheRepositoryRecords:
     source_checksum = compute_source_document_checksum(
         SourceChecksumInput(
@@ -623,6 +642,24 @@ def test_generated_output_cache_repository_metadata_is_dormant_and_explicit():
     assert "source_use_policy" in metadata.tables["generated_output_cache_source_checksums"].columns
     assert "stores_raw_user_text" in metadata.tables["generated_output_cache_artifacts"].columns
     assert "compact_metadata" in metadata.tables["generated_output_cache_diagnostics"].columns
+
+
+def test_durable_generated_output_cache_repository_persists_metadata_and_reads_by_asset_category():
+    records = _generated_cache_records("VOO")
+    session = FakeDurableSession()
+    repository = GeneratedOutputCacheRepository(session=session, commit_on_write=True)
+
+    persisted = repository.persist(records)
+    read_back = repository.read_asset_overview_records("voo")
+
+    assert persisted == records
+    assert read_back == records
+    assert repository.read_generated_output_cache_records("VOO") == records
+    assert session.records[("generated_output_cache_entry", "generated-output-voo-overview")] == records
+    assert session.records[("generated_output_cache_lookup", "asset:VOO:asset_overview_section")] == records
+    assert session.commits == 2
+    assert all(artifact.stores_payload_text is False for artifact in persisted.artifacts)
+    assert all(envelope.stores_raw_model_reasoning is False for envelope in persisted.envelopes)
 
 
 def test_generated_output_cache_categories_cover_required_artifacts():

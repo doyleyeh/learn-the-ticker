@@ -67,7 +67,12 @@ from backend.models import (
     FreshnessState,
 )
 from backend.overview import generate_asset_overview
-from backend.persistence import BackendReadDependencies, backend_read_dependencies_from_app
+from backend.persistence import (
+    BackendReadDependencies,
+    backend_read_dependencies_from_app,
+    build_backend_read_dependencies_from_local_durable_config,
+    configure_backend_read_dependencies,
+)
 from backend.retrieval import build_asset_knowledge_pack_result
 from backend.retrieval_repository import read_persisted_knowledge_pack_response
 from backend.search import search_assets
@@ -80,6 +85,7 @@ app = FastAPI(
     version="0.1.0",
     description="Deterministic FastAPI skeleton for citation-first stock and ETF education.",
 )
+configure_backend_read_dependencies(app, build_backend_read_dependencies_from_local_durable_config())
 
 
 def _asset_payload(ticker: str) -> tuple[AssetIdentity, dict[str, Any] | None]:

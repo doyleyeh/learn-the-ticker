@@ -35,6 +35,7 @@ from backend.weekly_news_repository import (
     WeeklyNewsDiagnosticRow,
     WeeklyNewsEventCandidateRow,
     WeeklyNewsEventEvidenceContractError,
+    WeeklyNewsEventEvidenceRepository,
     WeeklyNewsEventEvidenceRepositoryRecords,
     WeeklyNewsEvidenceStateRow,
     WeeklyNewsSelectedEventRow,
@@ -65,6 +66,25 @@ class FakeWeeklyNewsReader:
         if isinstance(value, Exception):
             raise value
         return value
+
+
+class FakeDurableSession:
+    def __init__(self):
+        self.records = {}
+        self.rows = []
+        self.commits = 0
+
+    def save_repository_record(self, collection, key, records):
+        self.records[(collection, key)] = records
+
+    def get_repository_record(self, collection, key):
+        return self.records.get((collection, key))
+
+    def add_all(self, rows):
+        self.rows.extend(rows)
+
+    def commit(self):
+        self.commits += 1
 
 
 def test_market_week_window_uses_explicit_eastern_as_of_date():
@@ -271,6 +291,30 @@ def test_in_memory_weekly_news_repository_persists_and_reads_validated_golden_re
     assert focus.weekly_news_focus is not None
     assert [item.event_id for item in focus.weekly_news_focus.items] == ["official_filing", "issuer_update"]
     assert focus.high_signal_selected_item_count == 2
+
+
+def test_durable_weekly_news_repository_persists_and_reads_validated_evidence():
+    records = acquire_weekly_news_event_evidence_from_fixtures(
+        asset_ticker="QQQ",
+        as_of="2026-04-23",
+        created_at="2026-04-23T12:00:00Z",
+        candidates=[
+            _repository_candidate("official_filing", tier=WeeklyNewsSourceRankTier.official_filing),
+            _repository_candidate("issuer_update", tier=WeeklyNewsSourceRankTier.etf_issuer_announcement, source_rank=3),
+        ],
+    )
+    session = FakeDurableSession()
+    repository = WeeklyNewsEventEvidenceRepository(session=session, commit_on_write=True)
+
+    persisted = repository.persist(records)
+    read_back = repository.read_weekly_news_event_evidence_records("qqq")
+
+    assert persisted == records
+    assert read_back == records
+    assert repository.read("QQQ") == records
+    assert repository.get("QQQ") == records
+    assert session.records[("weekly_news_event_evidence", "QQQ")] == records
+    assert session.commits == 1
 
 
 def test_persisted_weekly_news_read_falls_back_on_miss_failure_invalid_and_wrong_asset_records():

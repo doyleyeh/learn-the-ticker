@@ -296,6 +296,7 @@ def knowledge_pack_repository_metadata() -> RepositoryMetadata:
 @dataclass
 class AssetKnowledgePackRepository:
     session: Any | None = None
+    commit_on_write: bool = False
 
     def serialize(
         self,
@@ -309,12 +310,34 @@ class AssetKnowledgePackRepository:
         return deserialize_knowledge_pack_response(records)
 
     def persist(self, records: KnowledgePackRepositoryRecords) -> KnowledgePackRepositoryRecords:
+        _validate_records(records)
         if self.session is None:
             return records
-        if not hasattr(self.session, "add_all"):
-            raise KnowledgePackRepositoryContractError("Injected repository session must expose add_all(records).")
-        self.session.add_all(records_to_row_list(records))
+        _persist_records(
+            self.session,
+            collection="asset_knowledge_pack",
+            key=records.envelope.ticker,
+            records=records,
+            rows=records_to_row_list(records),
+            commit_on_write=self.commit_on_write,
+        )
         return records
+
+    def read_knowledge_pack_records(self, ticker: str) -> KnowledgePackRepositoryRecords | None:
+        if self.session is None:
+            return None
+        raw = _read_records(self.session, "asset_knowledge_pack", ticker.strip().upper())
+        if raw is None:
+            return None
+        records = raw if isinstance(raw, KnowledgePackRepositoryRecords) else KnowledgePackRepositoryRecords.model_validate(raw)
+        _validate_records(records)
+        return records
+
+    def read(self, ticker: str) -> KnowledgePackRepositoryRecords | None:
+        return self.read_knowledge_pack_records(ticker)
+
+    def get(self, ticker: str) -> KnowledgePackRepositoryRecords | None:
+        return self.read_knowledge_pack_records(ticker)
 
 
 @dataclass
@@ -1515,3 +1538,36 @@ def _require_known_citations(known: set[str], citation_ids: list[str], row_id: s
     missing = set(citation_ids) - known
     if missing:
         raise KnowledgePackRepositoryContractError(f"Row {row_id} references unknown citations: {sorted(missing)}.")
+
+
+def _persist_records(
+    session: Any,
+    *,
+    collection: str,
+    key: str,
+    records: KnowledgePackRepositoryRecords,
+    rows: list[StrictRow],
+    commit_on_write: bool,
+) -> None:
+    if hasattr(session, "save_repository_record"):
+        session.save_repository_record(collection, key, records.model_copy(deep=True))
+    elif hasattr(session, "save"):
+        session.save(collection, key, records.model_copy(deep=True))
+    elif hasattr(session, "add_all"):
+        session.add_all(rows)
+    else:
+        raise KnowledgePackRepositoryContractError(
+            "Injected repository session must expose save_repository_record(collection, key, records), save(...), or add_all(records)."
+        )
+    if commit_on_write and hasattr(session, "commit"):
+        session.commit()
+
+
+def _read_records(session: Any, collection: str, key: str) -> Any | None:
+    if hasattr(session, "get_repository_record"):
+        return session.get_repository_record(collection, key)
+    if hasattr(session, "read_repository_record"):
+        return session.read_repository_record(collection, key)
+    if hasattr(session, "get"):
+        return session.get(collection, key)
+    return None

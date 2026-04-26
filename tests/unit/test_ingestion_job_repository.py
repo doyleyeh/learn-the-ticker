@@ -33,6 +33,25 @@ from backend.repositories.ingestion_jobs import (
 ROOT = Path(__file__).resolve().parents[2]
 
 
+class FakeDurableSession:
+    def __init__(self):
+        self.records = {}
+        self.rows = []
+        self.commits = 0
+
+    def save_repository_record(self, collection, key, records):
+        self.records[(collection, key)] = records
+
+    def get_repository_record(self, collection, key):
+        return self.records.get((collection, key))
+
+    def add_all(self, rows):
+        self.rows.extend(rows)
+
+    def commit(self):
+        self.commits += 1
+
+
 def test_ingestion_job_ledger_metadata_is_dormant_and_explicit():
     metadata = ingestion_job_ledger_repository_metadata()
 
@@ -150,6 +169,21 @@ def test_ledger_serializes_approved_on_demand_pending_without_generated_output()
     assert records.ledger.raw_article_text_stored is False
     assert records.ledger.raw_user_text_stored is False
     assert records.ledger.secrets_stored is False
+
+
+def test_durable_ingestion_ledger_save_and_read_preserve_validated_records():
+    session = FakeDurableSession()
+    repository = IngestionJobLedgerRepository(session=session, commit_on_write=True)
+    records = serialize_ingestion_job_response(request_ingestion("SPY"))
+
+    repository.save(records)
+    read_back = repository.get(records.ledger.job_id)
+
+    assert read_back == records
+    assert session.records[("ingestion_job_ledger", records.ledger.job_id)] == records
+    assert session.commits == 1
+    assert repository.read(records.ledger.job_id) == records
+    assert repository.get("missing") is None
 
 
 def test_ledger_serializes_manual_pre_cache_blocked_assets_without_generated_output():

@@ -16,6 +16,7 @@ from backend.source_snapshot_repository import (
     SOURCE_SNAPSHOT_REPOSITORY_BOUNDARY,
     SOURCE_SNAPSHOT_TABLES,
     SourceSnapshotArtifactCategory,
+    SourceSnapshotArtifactRepository,
     SourceSnapshotArtifactRow,
     SourceSnapshotContractError,
     SourceSnapshotDiagnosticRow,
@@ -28,6 +29,25 @@ from backend.source_snapshot_repository import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+class FakeDurableSession:
+    def __init__(self):
+        self.records = {}
+        self.rows = []
+        self.commits = 0
+
+    def save_repository_record(self, collection, key, records):
+        self.records[(collection, key)] = records
+
+    def get_repository_record(self, collection, key):
+        return self.records.get((collection, key))
+
+    def add_all(self, rows):
+        self.rows.extend(rows)
+
+    def commit(self):
+        self.commits += 1
 
 
 def _source(policy: SourceUsePolicy | None = None):
@@ -405,6 +425,25 @@ def test_in_memory_source_snapshot_repository_persists_validated_copies_idempote
     assert len(persisted.artifacts) == len(records.artifacts)
     assert len(persisted.diagnostics) == len(records.diagnostics)
     assert persisted == records
+
+
+def test_durable_source_snapshot_repository_persists_metadata_only_records():
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(adapter.provider_kind, "VOO").licensing
+    acquisition = build_etf_issuer_acquisition_result(adapter, adapter.request("VOO"), licensing)
+    records = source_snapshot_records_from_acquisition_result(acquisition)
+    session = FakeDurableSession()
+    repository = SourceSnapshotArtifactRepository(session=session, commit_on_write=True)
+
+    persisted = repository.persist(records)
+    read_back = repository.records()
+
+    assert persisted == records
+    assert read_back == records
+    assert session.records[("source_snapshot_artifacts", "source_snapshot_artifacts")] == records
+    assert session.commits == 1
+    assert all(artifact.raw_text_stored_in_contract is False for artifact in persisted.artifacts)
+    assert all(artifact.signed_url_created is False for artifact in persisted.artifacts)
 
 
 def test_private_object_references_reject_public_signed_or_browser_paths():

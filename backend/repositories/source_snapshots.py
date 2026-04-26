@@ -194,6 +194,7 @@ def source_snapshot_repository_metadata() -> RepositoryMetadata:
 @dataclass
 class SourceSnapshotArtifactRepository:
     session: Any | None = None
+    commit_on_write: bool = False
 
     def validate(self, records: SourceSnapshotRepositoryRecords) -> SourceSnapshotRepositoryRecords:
         return validate_source_snapshot_records(records)
@@ -202,10 +203,24 @@ class SourceSnapshotArtifactRepository:
         validated = validate_source_snapshot_records(records)
         if self.session is None:
             return validated
-        if not hasattr(self.session, "add_all"):
-            raise SourceSnapshotContractError("Injected source snapshot session must expose add_all(records).")
-        self.session.add_all(records_to_row_list(validated))
+        _persist_records(
+            self.session,
+            collection="source_snapshot_artifacts",
+            key="source_snapshot_artifacts",
+            records=validated,
+            rows=records_to_row_list(validated),
+            commit_on_write=self.commit_on_write,
+        )
         return validated
+
+    def records(self) -> SourceSnapshotRepositoryRecords | None:
+        if self.session is None:
+            return None
+        raw = _read_records(self.session, "source_snapshot_artifacts", "source_snapshot_artifacts")
+        if raw is None:
+            return None
+        records = raw if isinstance(raw, SourceSnapshotRepositoryRecords) else SourceSnapshotRepositoryRecords.model_validate(raw)
+        return validate_source_snapshot_records(records)
 
 
 @dataclass
@@ -706,3 +721,36 @@ def _source_metadata_can_support_generated_output(source: KnowledgePackSourceMet
         reason="Dormant source snapshot contract reuses source-use generated-output policy helper.",
     )
     return source_can_support_generated_output(decision)
+
+
+def _persist_records(
+    session: Any,
+    *,
+    collection: str,
+    key: str,
+    records: SourceSnapshotRepositoryRecords,
+    rows: list[StrictRow],
+    commit_on_write: bool,
+) -> None:
+    if hasattr(session, "save_repository_record"):
+        session.save_repository_record(collection, key, records.model_copy(deep=True))
+    elif hasattr(session, "save"):
+        session.save(collection, key, records.model_copy(deep=True))
+    elif hasattr(session, "add_all"):
+        session.add_all(rows)
+    else:
+        raise SourceSnapshotContractError(
+            "Injected source snapshot session must expose save_repository_record(collection, key, records), save(...), or add_all(records)."
+        )
+    if commit_on_write and hasattr(session, "commit"):
+        session.commit()
+
+
+def _read_records(session: Any, collection: str, key: str) -> Any | None:
+    if hasattr(session, "get_repository_record"):
+        return session.get_repository_record(collection, key)
+    if hasattr(session, "read_repository_record"):
+        return session.read_repository_record(collection, key)
+    if hasattr(session, "get"):
+        return session.get(collection, key)
+    return None
