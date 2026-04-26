@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -8,14 +9,40 @@ import pytest
 from backend.knowledge_pack_repository import (
     KNOWLEDGE_PACK_REPOSITORY_TABLES,
     AssetKnowledgePackRepository,
+    InMemoryAssetKnowledgePackRepository,
     KnowledgePackRepositoryContractError,
+    knowledge_pack_records_from_acquisition_result,
     knowledge_pack_repository_metadata,
 )
 from backend.models import SourceUsePolicy
+from backend.provider_adapters.etf_issuer import build_etf_issuer_acquisition_result
+from backend.provider_adapters.sec_stock import build_sec_stock_acquisition_result
+from backend.providers import fetch_mock_provider_response, mock_etf_issuer_adapter, mock_sec_stock_adapter
 from backend.retrieval import build_asset_knowledge_pack, build_asset_knowledge_pack_result
+from backend.source_snapshot_repository import source_snapshot_records_from_acquisition_result
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _golden_acquisition(ticker: str):
+    if ticker == "AAPL":
+        adapter = mock_sec_stock_adapter()
+        builder = build_sec_stock_acquisition_result
+    else:
+        adapter = mock_etf_issuer_adapter()
+        builder = build_etf_issuer_acquisition_result
+    licensing = fetch_mock_provider_response(adapter.provider_kind, ticker).licensing
+    return builder(adapter, adapter.request(ticker), licensing)
+
+
+def _records_from_golden_acquisition(ticker: str):
+    acquisition = _golden_acquisition(ticker)
+    snapshots = source_snapshot_records_from_acquisition_result(
+        acquisition,
+        ingestion_job_id=f"pre-cache-launch-{ticker.lower()}",
+    )
+    return knowledge_pack_records_from_acquisition_result(acquisition, snapshots), acquisition, snapshots
 
 
 def test_knowledge_pack_repository_metadata_is_dormant_and_explicit():
@@ -119,6 +146,118 @@ def test_repository_serializes_and_reconstructs_supported_voo_contract():
     assert {gap.evidence_state for gap in restored.evidence_gaps} == {
         gap.evidence_state for gap in response.evidence_gaps
     }
+
+
+def test_acquisition_outputs_create_non_generated_knowledge_pack_records_for_golden_assets():
+    for ticker in ["AAPL", "VOO", "QQQ"]:
+        records, acquisition, snapshots = _records_from_golden_acquisition(ticker)
+        source_record_by_id = {record.source_document_id: record for record in acquisition.source_records}
+
+        assert records.envelope.ticker == ticker
+        assert records.envelope.build_state == "available"
+        assert records.envelope.generated_output_available is False
+        assert records.envelope.reusable_generated_output_cache_hit is False
+        assert records.envelope.generated_route is None
+        assert records.envelope.no_live_external_calls is True
+        assert records.envelope.exports_full_source_documents is False
+        assert records.envelope.knowledge_pack_freshness_hash.startswith("sha256:")
+        assert records.envelope.cache_key is None
+        assert records.source_documents
+        assert records.source_chunks
+        assert records.normalized_facts
+        assert records.source_checksums
+        assert records.section_freshness_inputs
+        assert records.envelope.source_document_ids == sorted(source_record_by_id)
+        assert set(records.envelope.citation_ids) == {
+            citation for fact in acquisition.provider_response.facts for citation in fact.citation_ids
+        }
+        assert {row.asset_ticker for row in records.source_documents} == {ticker}
+        assert {row.asset_ticker for row in records.source_chunks} == {ticker}
+        assert {row.asset_ticker for row in records.normalized_facts} == {ticker}
+        assert {row.source_document_id: row.checksum for row in records.source_checksums} == {
+            source_id: source_record.checksum for source_id, source_record in source_record_by_id.items()
+        }
+        assert all(row.checksum.startswith("sha256:") for row in records.source_checksums)
+        assert all(row.source_use_policy in {"full_text_allowed", "summary_allowed"} for row in records.source_documents)
+        assert all(row.stored_text for row in records.source_chunks)
+        assert all("raw_provider_payload" not in repr(row.model_dump()).lower() for row in records.source_chunks)
+        assert all(not getattr(artifact, "signed_url_created") for artifact in snapshots.artifacts)
+        assert {row.section_id for row in records.section_freshness_inputs} >= {
+            "canonical_facts",
+            "source_documents",
+            "weekly_news_focus",
+            "ai_comprehensive_analysis",
+        }
+
+
+def test_in_memory_repository_reads_acquisition_records_with_fixture_fallback_contract():
+    records, _, _ = _records_from_golden_acquisition("VOO")
+    repository = InMemoryAssetKnowledgePackRepository()
+
+    persisted = repository.persist(records)
+    read_back = repository.read_knowledge_pack_records("voo")
+
+    assert persisted == records
+    assert read_back == records
+    assert repository.get("VOO") == records
+    assert read_back.envelope.generated_output_available is False
+
+
+def test_summary_allowed_acquisition_source_stores_allowed_excerpt_only():
+    acquisition = _golden_acquisition("VOO")
+    response = acquisition.provider_response
+    source = response.source_attributions[0].model_copy(update={"source_use_policy": SourceUsePolicy.summary_allowed})
+    source_record = replace(acquisition.source_records[0], source_use_policy=SourceUsePolicy.summary_allowed)
+    mutated_response = response.model_copy(
+        update={"source_attributions": [source, *response.source_attributions[1:]]},
+        deep=True,
+    )
+    mutated = replace(
+        acquisition,
+        provider_response=mutated_response,
+        source_records=(source_record, *acquisition.source_records[1:]),
+    )
+    snapshots = source_snapshot_records_from_acquisition_result(mutated, ingestion_job_id="pre-cache-launch-voo")
+
+    records = knowledge_pack_records_from_acquisition_result(mutated, snapshots)
+    limited_rows = [row for row in records.source_chunks if row.source_document_id == source.source_document_id]
+
+    assert limited_rows
+    assert all(row.source_use_policy == "summary_allowed" for row in limited_rows)
+    assert all(row.text_storage_policy == "allowed_excerpt" for row in limited_rows)
+    assert all(row.stored_text for row in limited_rows)
+    assert all(len(row.stored_text.split()) <= 80 for row in limited_rows)
+
+
+def test_rejected_or_wrong_checksum_acquisition_records_are_blocked():
+    records, acquisition, snapshots = _records_from_golden_acquisition("AAPL")
+    wrong_checksum = replace(acquisition.source_records[0], checksum="sha256:wrong")
+    wrong_checksum_acquisition = replace(
+        acquisition,
+        source_records=(wrong_checksum, *acquisition.source_records[1:]),
+    )
+
+    with pytest.raises(KnowledgePackRepositoryContractError, match="checksum binding"):
+        knowledge_pack_records_from_acquisition_result(wrong_checksum_acquisition, snapshots)
+
+    source = acquisition.provider_response.source_attributions[0].model_copy(
+        update={"source_use_policy": SourceUsePolicy.rejected}
+    )
+    rejected_source_record = replace(acquisition.source_records[0], source_use_policy=SourceUsePolicy.rejected)
+    rejected_response = acquisition.provider_response.model_copy(
+        update={"source_attributions": [source, *acquisition.provider_response.source_attributions[1:]]},
+        deep=True,
+    )
+    rejected = replace(
+        acquisition,
+        provider_response=rejected_response,
+        source_records=(rejected_source_record, *acquisition.source_records[1:]),
+    )
+
+    with pytest.raises(KnowledgePackRepositoryContractError, match="Rejected sources"):
+        knowledge_pack_records_from_acquisition_result(rejected, snapshots)
+
+    assert records.envelope.generated_output_available is False
 
 
 def test_non_generated_states_remain_metadata_only_without_fake_evidence():

@@ -19,6 +19,11 @@ from backend.models import IngestionCapabilities
 from backend.provider_adapters.etf_issuer import build_etf_issuer_acquisition_result
 from backend.provider_adapters.sec_stock import build_sec_stock_acquisition_result
 from backend.providers import fetch_mock_provider_response, mock_etf_issuer_adapter, mock_sec_stock_adapter
+from backend.knowledge_pack_repository import (
+    InMemoryAssetKnowledgePackRepository,
+    KnowledgePackRepositoryContractError,
+    knowledge_pack_records_from_acquisition_result,
+)
 from backend.repositories.ingestion_jobs import SanitizedErrorCategory
 from backend.source_snapshot_repository import (
     InMemorySourceSnapshotArtifactRepository,
@@ -310,6 +315,109 @@ def test_worker_persists_golden_acquisition_snapshots_through_injected_mocked_wr
     assert persisted == snapshot_records
     assert all(artifact.generated_output_available is False for artifact in persisted.artifacts)
     assert all(artifact.raw_provider_payload_stored is False for artifact in persisted.artifacts)
+
+
+def test_worker_persists_golden_knowledge_pack_through_injected_mocked_writer_only():
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(adapter.provider_kind, "VOO").licensing
+    acquisition = build_etf_issuer_acquisition_result(adapter, adapter.request("VOO"), licensing)
+    snapshot_records = source_snapshot_records_from_acquisition_result(
+        acquisition,
+        ingestion_job_id="pre-cache-launch-voo",
+    )
+    knowledge_pack_records = knowledge_pack_records_from_acquisition_result(acquisition, snapshot_records)
+    response = get_pre_cache_job_status("pre-cache-launch-voo").model_copy(
+        update={
+            "job_state": IngestionLedgerJobState.pending,
+            "worker_status": None,
+            "generated_route": None,
+            "generated_output_available": False,
+            "capabilities": IngestionCapabilities(),
+            "citation_ids": [],
+            "source_document_ids": [],
+        }
+    )
+    records = serialize_ingestion_job_response(response)
+    ledger = InMemoryIngestionWorkerLedger.from_records([records])
+    knowledge_pack_repository = InMemoryAssetKnowledgePackRepository()
+    worker = DeterministicIngestionWorker(
+        ledger_boundary=ledger,
+        knowledge_pack_repository=knowledge_pack_repository,
+        fixture_outcomes={
+            "pre-cache-launch-voo": IngestionWorkerFixtureOutcome(
+                terminal_state=IngestionLedgerJobState.succeeded,
+                source_policy_ref=acquisition.source_policy_ref,
+                checksum=acquisition.checksum,
+                knowledge_pack_records=knowledge_pack_records,
+            )
+        },
+    )
+
+    result = worker.execute("pre-cache-launch-voo")
+    persisted = knowledge_pack_repository.read_knowledge_pack_records("VOO")
+
+    assert result.summary.terminal_state == "succeeded"
+    assert result.summary.generated_output_available is False
+    assert result.summary.generated_output_cacheable is False
+    assert result.records.ledger.compact_metadata["knowledge_pack_persistence_configured"] is True
+    assert result.records.ledger.compact_metadata["knowledge_pack_source_document_count"] == len(
+        knowledge_pack_records.source_documents
+    )
+    assert persisted == knowledge_pack_records
+    assert persisted.envelope.generated_output_available is False
+    assert persisted.envelope.reusable_generated_output_cache_hit is False
+    assert persisted.envelope.generated_route is None
+
+
+class FailingKnowledgePackRepository:
+    def persist(self, records):
+        raise KnowledgePackRepositoryContractError("mocked writer rejected knowledge-pack records")
+
+
+def test_worker_fails_closed_when_configured_knowledge_pack_writer_rejects_records():
+    adapter = mock_sec_stock_adapter()
+    licensing = fetch_mock_provider_response(adapter.provider_kind, "AAPL").licensing
+    acquisition = build_sec_stock_acquisition_result(adapter, adapter.request("AAPL"), licensing)
+    snapshot_records = source_snapshot_records_from_acquisition_result(
+        acquisition,
+        ingestion_job_id="pre-cache-launch-aapl",
+    )
+    knowledge_pack_records = knowledge_pack_records_from_acquisition_result(acquisition, snapshot_records)
+    response = get_pre_cache_job_status("pre-cache-launch-aapl").model_copy(
+        update={
+            "job_state": IngestionLedgerJobState.pending,
+            "worker_status": None,
+            "generated_route": None,
+            "generated_output_available": False,
+            "capabilities": IngestionCapabilities(),
+            "citation_ids": [],
+            "source_document_ids": [],
+        }
+    )
+    records = serialize_ingestion_job_response(response)
+    ledger = InMemoryIngestionWorkerLedger.from_records([records])
+    worker = DeterministicIngestionWorker(
+        ledger_boundary=ledger,
+        knowledge_pack_repository=FailingKnowledgePackRepository(),
+        fixture_outcomes={
+            "pre-cache-launch-aapl": IngestionWorkerFixtureOutcome(
+                terminal_state=IngestionLedgerJobState.succeeded,
+                source_policy_ref=acquisition.source_policy_ref,
+                checksum=acquisition.checksum,
+                knowledge_pack_records=knowledge_pack_records,
+            )
+        },
+    )
+
+    result = worker.execute("pre-cache-launch-aapl")
+
+    assert result.summary.transitions == ["pending", "running", "failed"]
+    assert result.summary.terminal_state == "failed"
+    assert result.summary.generated_output_available is False
+    assert result.records.ledger.can_open_generated_page is False
+    assert result.records.diagnostics[0].category == "validation_failed"
+    assert result.records.diagnostics[0].error_code == "knowledge_pack_persistence_failed"
+    assert result.records.diagnostics[0].stores_raw_source_text is False
 
 
 class FailingSourceSnapshotRepository:
