@@ -1,62 +1,52 @@
 ## Current task
 
-### T-110: Verify persisted golden-path comparison, chat, sources, glossary, and exports end to end
+### T-111: Wire local durable repository execution with in-memory fallback
 
 Goal:
-Prove the MVP learning surfaces can render and export persisted golden-path evidence and generated-output cache records end to end after T-109 made frontend search and asset pages API-backed.
+Add local durable Postgres/object-storage-style repository execution for ingestion ledger, source snapshots, knowledge packs, Weekly News evidence, and generated-output cache records while preserving in-memory fallback and deterministic CI.
 
 Task-scope paragraph:
-Add deterministic end-to-end verification that comparison, grounded chat, source drawer, citation chips, freshness labels, glossary context, and Markdown/JSON exports can consume configured persisted golden packs, Weekly News evidence, and generated-output cache records for AAPL, VOO, QQQ, and supported VOO-vs-QQQ/AAPL-vs-VOO golden comparisons. Exercise existing route shapes and frontend adapters with mocked configured repositories. Preserve Frontend Design and Workflow v0.4: home remains single stock/ETF search first, comparison remains a separate connected workflow, glossary remains contextual, source/glossary/chat mobile surfaces remain bottom-sheet or full-screen oriented, stock-vs-ETF comparison keeps relationship badges and the single-company-vs-ETF-basket structure, and Weekly News Focus shows only evidence-supported items. Do not add live providers, production database/object-storage execution, deployment wiring, paid provider integration, broad launch-universe expansion, or new public API route shapes.
+Wire repository factories and local durable execution boundaries so the ingestion ledger, source snapshot artifact records, normalized knowledge-pack records, Weekly News event evidence, and generated-output cache records can be persisted through configured local durable repositories when explicitly enabled. The default path must remain in-memory/mocked for normal tests and local offline runs. This task should reuse existing repository contracts and migration scaffolds, avoid import-time database or storage connections, keep diagnostics sanitized, and preserve fixture fallback. Keep the task focused on local durable repository execution only; do not start live official-source acquisition, live provider calls, deployment wiring, frontend redesign, or broad launch-universe expansion.
 
 Roadmap alignment:
 
-- First end-to-end persisted-surface verification task after T-109 wired frontend search and dynamic asset pages to backend adapters.
-- Proves that already-built deterministic persistence/cache boundaries can feed the comparison, chat, source, glossary, and export surfaces before local durable repository execution or live official-source acquisition.
-- Keeps Frontend Design and Workflow v0.4 stable before broader runtime expansion: single-asset home search, separate connected comparison workflow, contextual glossary, mobile source/glossary/chat sheets or full-screen panels, stock-vs-ETF relationship badges, and evidence-limited Weekly News behavior.
+- First runtime task after T-110 verified persisted golden-path comparison, chat, source, glossary, Weekly News, and export surfaces through configured in-memory repositories.
+- Moves the deterministic repository contracts toward a local durable golden path before explicit opt-in live SEC/issuer acquisition or deployment expansion.
+- Keeps Frontend Design and Workflow v0.4 stable while the backend persistence layer is made executable: single-asset home search, separate connected comparison workflow, contextual glossary, mobile source/glossary/chat sheets or full-screen panels, stock-vs-ETF relationship badges, and evidence-limited Weekly News behavior.
 
 General MVP alignment:
-T-110 verifies deterministic persisted golden-path rendering and export behavior across the remaining MVP learning surfaces. It does not complete the MVP by itself; durable local persistence execution, live official-source acquisition, launch pre-cache expansion, recurring jobs, route regression matrices, and deployment remain separate follow-up tasks.
+T-111 enables local durable repository execution as the next step toward a deterministic golden ingest-to-render path. It does not complete the MVP by itself; live official-source acquisition, official-source Weekly News live acquisition, launch pre-cache expansion, recurring jobs, route regression matrices, production deployment, and broad provider expansion remain separate follow-up tasks.
 
 Roadmap contract refinement:
-T-110 may update focused roadmap contract expectations only if they are stale after this promotion, but edits must stay within the allowed files. Do not update operational control docs other than the required journal note unless a test explicitly depends on it.
+T-111 may update focused roadmap contract expectations only if they are stale after this promotion, but edits must stay within the allowed files. Do not update operational control docs other than the required journal note unless a test explicitly depends on it.
 
 Allowed files:
 
-- `apps/web/lib/compare.ts`
-- `apps/web/lib/assetChat.ts`
-- `apps/web/lib/assetGlossary.ts`
-- `apps/web/lib/sourceDrawer.ts`
-- `apps/web/lib/exportControls.ts`
-- `apps/web/lib/assetOverview.ts` only for narrow persisted golden-path fixture/adapter parity needed by comparison/chat/source/glossary/export verification
-- `apps/web/lib/assetWeeklyNews.ts` only for narrow Weekly News evidence-limited parity needed by verified rendered surfaces
-- `apps/web/lib/fixtures.ts` only for deterministic golden-path persisted fixture adapters or tests
-- `apps/web/components/ComparisonResult.tsx`
-- `apps/web/components/ComparisonSourceDetails.tsx`
-- `apps/web/components/SourceDrawer.tsx`
-- `apps/web/components/CitationChip.tsx`
-- `apps/web/components/FreshnessLabel.tsx`
-- `apps/web/components/GlossaryPopover.tsx`
-- `apps/web/components/InlineGlossaryText.tsx`
-- `apps/web/components/AssetChatPanel.tsx`
-- `apps/web/components/ExportControls.tsx`
-- `apps/web/app/compare/page.tsx`
-- `apps/web/app/assets/[ticker]/sources/page.tsx`
-- `apps/web/app/assets/[ticker]/page.tsx` only if a narrow adapter hook is required for shared persisted golden-path verification
-- `backend/main.py` only for dependency injection in existing routes, with no route/schema changes
-- `backend/comparison.py`
-- `backend/chat.py`
-- `backend/sources.py`
-- `backend/export.py`
-- `backend/glossary.py`
-- `backend/overview.py` only for narrow configured-reader reuse needed by persisted golden-path verification
-- `backend/repositories/*.py` only for in-memory/mocked test helper support, not production durable execution
-- `tests/frontend/smoke.mjs`
+- `backend/persistence.py`
+- `backend/settings.py` only for explicit local durable repository configuration metadata and sanitized validation helpers
+- `backend/db.py` only for local durable session/engine factory helpers that do not connect at import time
+- `backend/repositories/ingestion_jobs.py`
+- `backend/repositories/source_snapshots.py`
+- `backend/repositories/knowledge_packs.py`
+- `backend/repositories/weekly_news.py`
+- `backend/repositories/generated_outputs.py`
+- `backend/repositories/__init__.py`
+- `backend/ingestion_job_repository.py`
+- `backend/source_snapshot_repository.py`
+- `backend/knowledge_pack_repository.py`
+- `backend/weekly_news_repository.py`
+- `backend/generated_output_cache_repository.py`
+- `backend/ingestion_worker.py` only for wiring explicitly configured durable repositories through existing worker boundaries
+- `backend/main.py` only for dependency injection of configured repositories with no route/schema/status changes
+- `backend/overview.py`, `backend/comparison.py`, `backend/chat.py`, `backend/export.py`, `backend/sources.py`, and `backend/glossary.py` only if a narrow configured-reader compatibility hook is required by durable repository execution tests
+- `tests/unit/test_persistence_settings.py`
+- `tests/unit/test_ingestion_job_repository.py`
+- `tests/unit/test_source_snapshot_repository.py`
+- `tests/unit/test_knowledge_pack_repository.py`
+- `tests/unit/test_weekly_news.py`
+- `tests/unit/test_cache_contracts.py`
+- `tests/unit/test_ingestion_worker.py`
 - `tests/integration/test_backend_api.py`
-- `tests/unit/test_comparison_generation.py`
-- `tests/unit/test_chat_generation.py`
-- `tests/unit/test_exports.py`
-- `tests/unit/test_source_drawer.py`
-- `tests/unit/test_glossary_context.py`
 - `tests/unit/test_repo_contract.py`
 - `tests/unit/test_safety_guardrails.py`
 - `docs/agent-journal/*.md`
@@ -64,17 +54,15 @@ Allowed files:
 Do not change:
 
 - No public FastAPI route paths, HTTP status behavior, response schemas, `/health` behavior, search behavior, generated asset overview schema, source drawer schema, glossary schema, comparison schema, chat schema, export schema, or deterministic backend fixture output changes.
-- No changes to home-page workflow that make comparison or glossary a primary home-page workflow; home must remain single stock/ETF search first.
-- No changes to `/compare` behavior except narrow persisted-reader verification needed for existing comparison routes, source metadata, relationship badges, and blocked states.
-- No changes to stock-vs-ETF comparison relationship badges, special single-company-vs-ETF-basket structure, comparison result templates, or comparison generation logic.
-- No removal or weakening of contextual glossary desktop hover/click/focus behavior or mobile bottom-sheet behavior.
-- No removal or weakening of source drawer desktop drawer behavior, mobile bottom-sheet behavior, citation chips, freshness labels, stale/unknown/unavailable/partial/insufficient-evidence display states, export controls, or asset chat helper placement.
-- No live OpenRouter, LLM, issuer, SEC, ETF, market-data, news, RSS, web, object-storage, Redis, database, Cloud Run Job, scheduler, admin auth enforcement, rate-limiting, external analytics, telemetry vendor, or deployment wiring.
+- No changes to frontend workflow, home search, `/compare` UI, glossary UI, source drawer UI, export UI, chat UI, mobile bottom sheets, stock-vs-ETF relationship badges, or the single-company-vs-ETF-basket comparison structure.
+- No live OpenRouter, LLM, issuer, SEC, ETF, market-data, news, RSS, web, Redis, Cloud Run Job, scheduler, admin auth enforcement, rate-limiting, external analytics, telemetry vendor, or deployment wiring.
+- No production database, production object-storage, production bucket, signed URL, public storage URL, Cloud Run, Neon, GCS, Secret Manager, or Docker-required execution path.
+- No import-time database, object-storage, network, provider, Redis, or credential validation connections.
 - No browser calls to source providers, LLM providers, market-data/news providers, admin ingestion secrets, object storage, signed URLs, or provider endpoints. Browser code may call only the configured backend API base and local deterministic fallback helpers.
-- No new `NEXT_PUBLIC_*` provider variables, no provider keys in browser code, no `/health` secret exposure, no docs/env examples containing real secrets, and no logging or diagnostics that include API key values or provider credentials.
+- No new `NEXT_PUBLIC_*` provider variables, no provider keys in browser code, no `/health` secret exposure, no docs/env examples containing real secrets, and no logging or diagnostics that include API key values, database URLs, storage URLs, or provider credentials.
 - No production dependency addition.
-- No schema migrations, durable repository implementations, production database session execution, real Weekly News source acquisition in CI, prompt template rewrite, provider licensing change, broad source allowlist expansion, runtime secret setup, production deployment setup, or actual legal/licensing determination.
-- No new generated pages, generated chat answers, generated comparisons, generated risk summaries, live LLM calls, or cache writes beyond existing deterministic backend behavior and mocked configured repositories.
+- No schema migrations beyond existing migration scaffold usage, destructive migrations, production database session execution, real Weekly News source acquisition in CI, prompt template rewrite, provider licensing change, broad source allowlist expansion, runtime secret setup, production deployment setup, or actual legal/licensing determination.
+- No new generated pages, generated chat answers, generated comparisons, generated risk summaries, live LLM calls, or generated-output content changes beyond existing deterministic backend behavior and explicitly configured local durable repository tests.
 - No edits to `data/universes/us_common_stocks_top500.current.json` or `data/universes/us_equity_etfs.current.json`.
 - No expansion to leveraged ETFs, inverse ETFs, ETNs, fixed-income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, international ETFs, preferred stocks, warrants, rights, options, crypto, or other out-of-scope products.
 - No raw full article text, unrestricted source text, unrestricted provider payloads, hidden prompts, raw prompt text, raw model reasoning, raw user text, raw queries, raw questions, raw answers, raw chat transcripts, personal identifiers, portfolio/allocation details, real API keys, credentials, secrets, public storage URLs, signed URLs, external analytics IDs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, browser state, repository records, knowledge-pack records, cache records, job records, events, exports, or exported data.
@@ -82,30 +70,26 @@ Do not change:
 
 Acceptance criteria:
 
-- Persisted golden packs, Weekly News evidence, and generated-output cache records can drive comparison, grounded chat, source drawer, citation chip, freshness, glossary-context, source-list export, asset-page export, comparison export, and chat transcript export flows without falling back to unrelated local fixtures.
-- Configured mocked repositories are exercised end to end through existing backend route dependencies and frontend adapters for AAPL, VOO, QQQ, VOO-vs-QQQ, and AAPL-vs-VOO where those golden paths already exist.
-- Same-asset and same-comparison-pack citation/source binding is verified across rendered UI data, backend route responses, source drawer metadata, glossary context, chat answers, and exports.
-- Source drawer output continues to expose source title, source type, publisher, URL, dates, freshness, source-use policy where available, related claim, and allowed supporting excerpt, with desktop drawer and mobile bottom-sheet behavior intact.
-- Contextual glossary remains in reading flows with desktop hover/click/focus and mobile tap bottom-sheet behavior; asset-specific glossary context is grounded in the selected asset pack and does not invent uncited asset facts.
-- Asset chat remains a helper feature with desktop helper placement and mobile bottom-sheet or full-screen behavior; single-asset chat comparison redirects remain compatible with the separate comparison workflow.
-- Comparison rendering preserves supported ETF-vs-ETF, stock-vs-stock where available, and stock-vs-ETF paths; stock-vs-ETF output keeps relationship badges and the single-company-vs-ETF-basket structure.
-- Markdown and JSON exports include citations, source metadata, freshness or as-of dates, uncertainty labels, and the educational disclaimer while respecting source-use rights and omitting restricted/raw content.
-- Weekly News Focus and AI Comprehensive Analysis remain visually, structurally, and citation-wise separate from stable canonical facts; Weekly News Focus does not pad to the configured maximum when evidence is limited, and AI Comprehensive Analysis remains suppressed when threshold metadata is insufficient.
-- Unsupported, out-of-scope, unknown, unavailable, stale, partial, insufficient-evidence, wrong-asset, wrong-comparison-pack, rejected-source, and source-policy-blocked records remain blocked or explicitly labeled.
-- Tests or smoke coverage preserve v0.4 workflow markers: single-asset home search, separate comparison workflow, contextual glossary, mobile source/glossary/chat sheets or full-screen panels, stock-vs-ETF relationship badges, and evidence-limited Weekly News behavior.
-- Browser code calls only the configured backend API base and deterministic local fallback helpers. It never calls OpenRouter, LLM providers, SEC, issuer, ETF, market-data, news, RSS, object storage, signed URLs, admin-secret endpoints, or provider endpoints directly.
-- Frontend and backend diagnostics do not expose provider secrets, real API keys, hidden prompts, raw model reasoning, raw user text, raw transcripts, unrestricted source text, public storage URLs, signed URLs, or frontend-readable private storage paths.
-- Preserve existing root npm script delegation, `apps/web` workspace scripts, backend deterministic test behavior, route schemas, no-live-call defaults, citation/source-use guardrails, safety/advice boundaries, and PRD/TDS-first authority after safety.
+- Explicit local configuration can construct durable repository implementations or durable repository factories for ingestion job ledger records, source snapshot metadata, normalized knowledge-pack records, Weekly News event evidence, and generated-output cache metadata without opening database, storage, network, provider, or Redis connections at import time.
+- In-memory/mocked repository fallback remains the default when durable configuration is absent, invalid, disabled, fails validation, or cannot be safely constructed.
+- Durable repository execution is exercised with temporary or mocked local boundaries only; normal CI does not require live Postgres, object storage, Docker, external network, real secrets, signed URLs, or production credentials.
+- Existing repository validation remains authoritative before durable writes: same asset, same source document, same checksum, same comparison pack, source-use policy, freshness labels, unknown/stale/unavailable/partial/insufficient-evidence states, and no-live-call metadata are preserved.
+- Ingestion ledger durable execution preserves pending, running, succeeded, failed, unsupported, out-of-scope, unknown, unavailable, stale, and no-generated-route states where existing contracts expose them.
+- Source snapshot durable execution preserves rights-tier artifact metadata only and rejects public URLs, signed URLs, frontend-readable storage paths, raw provider payload flags, raw source text flags, wrong-asset records, wrong-source records, invalid checksums, rejected sources, and secret-like diagnostics.
+- Knowledge-pack durable execution preserves normalized facts, source documents, source chunks or allowed excerpts, recent-development rows, evidence gaps, citation IDs, source checksums, freshness hash metadata, support/build state, generated-output unavailable/cache-miss flags, and blocked non-generated states without inventing generated output.
+- Weekly News durable execution preserves official-source priority metadata, market-week windows, selected-event counts, dedupe metadata, source-use gates, threshold metadata, limited/empty evidence states, and AI Comprehensive Analysis suppression when threshold evidence is insufficient.
+- Generated-output cache durable execution preserves validated cache metadata, freshness hashes, citation IDs, source checksums, schema/prompt metadata, TTL metadata, validation metadata, and artifact-category reads without storing raw model reasoning, hidden prompts, raw user text, raw transcripts, unrestricted source text, or provider payloads.
+- Configured durable readers and writers remain injectable through existing backend dependency boundaries; public routes continue to fall back to deterministic fixtures or in-memory readers when durable repositories are not explicitly configured.
+- Repository diagnostics are sanitized and redact or omit database URLs, storage URLs, credentials, signed URLs, public storage URLs, raw source text, raw provider payloads, raw user text, hidden prompts, raw model reasoning, and provider keys.
+- Public route schemas, frontend behavior, root npm script delegation, `apps/web` workspace scripts, no-live-call defaults, source-use gates, safety/advice boundaries, and PRD/TDS-first authority after safety remain unchanged.
 - Preserve product guardrails in implementation, tests, docs, and journal notes: no buy/sell/hold recommendations, allocation advice, tax advice, price targets, brokerage/trading behavior, unsupported factual claims, or recent-news-as-canonical framing.
 
 Required commands:
 
 ```bash
-npm test
-npm run typecheck
-npm run build
+python3 -m pytest tests/unit/test_persistence_settings.py tests/unit/test_ingestion_job_repository.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_weekly_news.py tests/unit/test_cache_contracts.py -q
 python3 -m pytest tests/integration/test_backend_api.py -q
-python3 -m pytest tests/unit/test_comparison_generation.py tests/unit/test_chat_generation.py tests/unit/test_exports.py tests/unit/test_source_drawer.py tests/unit/test_glossary_context.py -q
+python3 -m pytest tests/unit/test_ingestion_worker.py -q
 python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
 python3 -m pytest tests -q
 python3 evals/run_static_evals.py
@@ -114,10 +98,37 @@ git diff --check
 ```
 
 Iteration budget:
-One agent-loop cycle. Stop after deterministic persisted end-to-end verification for golden comparison/chat/source/glossary/export flows. If durable local persistence execution, live official-source acquisition, launch pre-cache expansion, generated AI Comprehensive Analysis activation from fresh persisted data, production object-storage/database execution, source allowlist expansion, broad asset coverage, recurring jobs, route regression matrices, or deployment work are needed, record the follow-up and stop.
+One agent-loop cycle. Stop after local durable repository execution boundaries and in-memory fallback tests. If live source fetching, recurring jobs, deployment credentials, production database/object-storage execution, broad launch pre-cache expansion, frontend workflow changes, source allowlist expansion, generated output content changes, or production deployment are needed, record the follow-up and stop.
 
 
 ## Completed
+
+### T-110: Verify persisted golden-path comparison, chat, sources, glossary, and exports end to end
+
+Goal:
+Prove the MVP learning surfaces can render and export persisted golden-path evidence and generated-output cache records end to end after T-109 made frontend search and asset pages API-backed.
+
+Completed details:
+
+- Implementation commit `032ca82 feat(T-110): verify persisted golden-path comparison, chat, sources, glossary, and exports end to end` updated `backend/glossary.py`, `backend/main.py`, `backend/overview.py`, `tests/integration/test_backend_api.py`, `tests/unit/test_repo_contract.py`, and `docs/agent-journal/20260426T212915Z.md`.
+- Merged branch `agent/T-110-20260426T212915Z` into `main` with local merge commit `e3fdee4 chore(T-110): merge verify persisted golden-path comparison, chat, sources, glossary, and exports end to end`.
+- `backend/glossary.py` added a configured persisted knowledge-pack reader path for glossary responses, using `read_persisted_knowledge_pack_response` and repository-record conversion when validated persisted records are available, with deterministic fixture fallback when records are missing, unavailable, non-generated, or invalid.
+- `backend/main.py` now passes the configured `knowledge_pack_reader` into `/api/assets/{ticker}/glossary`, aligning glossary with the configured backend read dependency pattern already used by overview, sources, comparison, chat, Weekly News, and exports.
+- `backend/overview.py` received a narrow compatibility update needed by persisted golden-path route verification.
+- `tests/integration/test_backend_api.py` added configured golden repository coverage proving persisted AAPL, VOO, and QQQ records can drive overview, Weekly News, source drawer, glossary, VOO-vs-QQQ comparison, grounded chat, asset export, source-list export, comparison export, and chat transcript export through existing backend route dependencies.
+- The persisted route coverage verifies evidence-limited Weekly News behavior: QQQ returns one selected item against a configured maximum of eight with `limited_verified_set`, AI Comprehensive Analysis remains suppressed below the two-item threshold, and AAPL returns an empty Weekly News state with analysis suppressed.
+- The route coverage verifies source drawer metadata, allowed source-use policies, allowed excerpts, same-asset glossary bindings for AAPL revenue context, same-comparison-pack comparison citations for VOO-vs-QQQ, educational grounded chat citations for VOO, JSON export validation metadata, educational disclaimers, licensing notes, and omission of raw model reasoning/OpenRouter markers.
+- `tests/unit/test_repo_contract.py` was updated to mark T-110 as the current roadmap task during that branch and keep T-111 through T-114 in the prepared backlog.
+- `docs/agent-journal/20260426T212915Z.md` records these checks: `npm test` passed; `npm run typecheck` passed; `npm run build` passed; `python3 -m pytest tests/integration/test_backend_api.py -q` passed with 36 tests; `python3 -m pytest tests/unit/test_comparison_generation.py tests/unit/test_chat_generation.py tests/unit/test_exports.py tests/unit/test_source_drawer.py tests/unit/test_glossary_context.py -q` passed with 56 tests; `python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q` passed with 30 tests; `python3 -m pytest tests -q` passed with 396 tests; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed; `git diff --check` passed.
+- Remaining risks from the journal:
+  - Verification remains deterministic and in-memory/mocked only; no durable local database/object-storage execution, live official-source acquisition, live provider calls, or production deployment wiring was added.
+  - Backend persisted verification covers the existing supported VOO-vs-QQQ comparison path; the frontend-only AAPL-vs-VOO stock-vs-ETF relationship view remains covered by existing frontend smoke/static markers and is not converted into a new backend comparison route.
+  - A persisted details-route edge case with complex normalized fact values was observed during focused testing but left out of scope for T-110 because the task targets comparison, chat, sources, glossary, Weekly News, and exports.
+
+Completion commits:
+
+- `032ca82 feat(T-110): verify persisted golden-path comparison, chat, sources, glossary, and exports end to end`
+- `e3fdee4 chore(T-110): merge verify persisted golden-path comparison, chat, sources, glossary, and exports end to end`
 
 ### T-109: Wire frontend search and dynamic asset pages to backend APIs
 
@@ -3001,37 +3012,6 @@ Completion commits:
 
 ## Backlog
 
-### T-111: Wire local durable repository execution with in-memory fallback
-
-Goal:
-Add local durable Postgres/object-storage-style repository execution for ingestion ledger, source snapshots, knowledge packs, Weekly News evidence, and generated-output cache records while preserving in-memory fallback and deterministic CI.
-
-Task-scope paragraph:
-Wire repository factories and local durable execution boundaries so the ingestion ledger, source snapshot artifact records, normalized knowledge-pack records, Weekly News event evidence, and generated-output cache records can be persisted through configured local durable repositories when explicitly enabled. The default path must remain in-memory/mocked for normal tests and local offline runs. This task should reuse existing repository contracts and migration scaffolds, avoid import-time database or storage connections, keep diagnostics sanitized, and preserve fixture fallback.
-
-Acceptance criteria:
-
-- Explicit configuration can construct local durable repository implementations for the ingestion ledger, source snapshot metadata, knowledge packs, Weekly News event evidence, and generated-output cache metadata without opening connections at import time.
-- In-memory fallback remains the default when durable configuration is absent, invalid, disabled, or fails validation.
-- Durable repository tests use local mocked or temporary boundaries only; normal CI does not require live Postgres, object storage, external network, real secrets, or Docker.
-- Repository diagnostics redact database/storage URLs, credentials, signed URLs, public storage URLs, raw source text, raw provider payloads, raw user text, hidden prompts, and raw model reasoning.
-- Existing public routes, schemas, generated output, frontend behavior, no-live-call defaults, source-use gates, and fixture fallback remain unchanged unless configured durable readers are explicitly supplied.
-
-Required commands:
-
-```bash
-python3 -m pytest tests/unit/test_persistence_settings.py tests/unit/test_ingestion_job_repository.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_weekly_news.py tests/unit/test_cache_contracts.py -q
-python3 -m pytest tests/integration/test_backend_api.py -q
-python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-git diff --check
-```
-
-Iteration budget:
-One agent-loop cycle. Stop after local durable repository execution boundaries and fallback tests; do not add live source fetching, recurring jobs, deployment credentials, broad launch pre-cache expansion, or production deployment.
-
 ### T-112: Add explicit opt-in live SEC and ETF issuer golden acquisition
 
 Goal:
@@ -3138,7 +3118,7 @@ Current runtime snapshot:
 - Backend contracts, configured reader boundaries, ingestion ledger execution, source-use/export gates, Weekly News contracts, generated-output cache contracts, and live-generation readiness diagnostics are broad and stable.
 - The current runtime is still not end-to-end fresh-data functional: acquisition is mocked/golden-path, source snapshots, normalized knowledge packs, Weekly News evidence, and generated-output cache records are written only through deterministic in-memory/mocked boundaries, and production persistence/storage is not the normal path.
 - The frontend renders the main learning surfaces with deterministic fixtures and selected backend adapters; T-109 added API-backed home search and dynamic asset-page rendering with deterministic fixture fallback.
-- The current promoted MVP blocker is deterministic end-to-end verification that persisted golden packs, Weekly News evidence, and generated-output cache records can drive comparison, chat, source, glossary, and export surfaces before durable local persistence or live official-source acquisition.
+- The current promoted MVP blocker is local durable repository execution with in-memory fallback, after deterministic persisted golden packs, Weekly News evidence, and generated-output cache records were verified across comparison, chat, source, glossary, and export surfaces.
 - The next fully functional milestone is a local deterministic golden path where admin/server-side ingestion acquires official-source data through explicit server-side paths, persists validated snapshots and knowledge packs, writes validated cache records, and all frontend learning surfaces render backend API responses with fixture fallback.
 
 Operational defaults for general MVP roadmap tasks:
@@ -3177,8 +3157,9 @@ Operational defaults for general MVP roadmap tasks:
 - T-107 established deterministic persisted Weekly News Focus event evidence for golden assets. It is completed and must not be reintroduced as runnable backlog.
 - T-108 established deterministic generated-output cache writes and freshness invalidation for validated golden-path outputs. It is completed and must not be reintroduced as runnable backlog.
 - T-109 established frontend API-backed search, pending states, and dynamic asset-page rendering. It is completed and must not be reintroduced as runnable backlog.
-- T-110 is the current promoted task for persisted end-to-end comparison, chat, source, glossary, and export verification.
-- T-111 through T-114 are the next runnable tasks for local durable repository execution, opt-in live official-source acquisition, official-source Weekly News live acquisition, and launch readiness.
+- T-110 established persisted end-to-end comparison, chat, source, glossary, Weekly News, and export verification. It is completed and must not be reintroduced as runnable backlog.
+- T-111 is the current promoted task for local durable repository execution with in-memory fallback.
+- T-112 through T-114 are the next runnable tasks for opt-in live official-source acquisition, official-source Weekly News live acquisition, and launch readiness.
 - Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until the local durable golden ingest-to-render path works with deterministic CI coverage.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted task should run the relevant EVALS.md checks, `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, `bash scripts/run_quality_gate.sh`, and `git diff --check`.
@@ -3221,8 +3202,8 @@ Roadmap integration tracker:
 | Weekly News Focus official-source event evidence persistence | Completed | T-107 |
 | Generated-output cache writes and invalidation | Completed | T-108 |
 | Frontend API-backed search, pending states, and asset rendering | Completed | T-109 |
-| Persisted comparison/chat/source/glossary/export end-to-end verification | Current | T-110 |
-| Local durable repository execution with in-memory fallback | Backlog | T-111 |
+| Persisted comparison/chat/source/glossary/export end-to-end verification | Completed | T-110 |
+| Local durable repository execution with in-memory fallback | Current | T-111 |
 | Opt-in live SEC and ETF issuer golden acquisition | Backlog | T-112 |
 | Official-source Weekly News live acquisition for golden assets | Backlog | T-113 |
 | Launch pre-cache expansion and MVP readiness regression matrix | Backlog | T-114 |
