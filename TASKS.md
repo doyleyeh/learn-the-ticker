@@ -2848,8 +2848,9 @@ Operational defaults for backend roadmap tasks:
 - T-096 established live LLM runtime readiness diagnostics. It is completed and must not be reintroduced as runnable backlog.
 - T-097 established the gated OpenRouter transport adapter with mocked tests. It is completed and must not be reintroduced as runnable backlog.
 - T-098 established live-generation validation and fallback orchestration after the mocked transport boundary. It is completed and must not be reintroduced as runnable backlog.
-- T-099 is the current promoted task for deterministic provider content export-rights hardening; it is a prerequisite rights gate, not the runtime fresh-data completion point.
-- T-100 through T-104 are the prepared five-cycle backlog for rebaselining the runtime gap, wiring route readers, making ingestion jobs executable through the local ledger, and adding mocked official-source acquisition for stock and ETF golden paths.
+- T-099 established deterministic provider content export-rights hardening. It is a prerequisite rights gate, not the runtime fresh-data completion point.
+- T-100 is the current promoted task for rebaselining the backend MVP runtime gap and roadmap tracker.
+- T-101 through T-104 are the prepared backlog for wiring route readers, making ingestion jobs executable through the local ledger, and adding mocked official-source acquisition for stock and ETF golden paths.
 - Production hardening readiness diagnostics, backend route regression matrices, go/no-go launch checklists, and deploy work move later until the ingestion-to-persist-to-render path exists.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted backend task should run the relevant EVALS.md backend checks: `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, and `bash scripts/run_quality_gate.sh`.
@@ -2881,8 +2882,8 @@ Roadmap integration tracker:
 | Live LLM runtime readiness diagnostics | Completed | T-096 |
 | Gated OpenRouter mocked transport adapter | Completed | T-097 |
 | Live-generation validation and fallback orchestration | Completed | T-098 |
-| Provider source-use/export enforcement hardening | Current prerequisite | T-099 |
-| Backend fresh-data MVP runtime gap tracker | Backlog | T-100 |
+| Provider source-use/export enforcement hardening | Completed | T-099 |
+| Backend fresh-data MVP runtime gap tracker | Current | T-100 |
 | Configured persisted-reader route wiring | Backlog | T-101 |
 | Executable local ingestion ledger and mocked worker path | Backlog | T-102 |
 | SEC EDGAR stock golden-path acquisition | Backlog | T-103 |
