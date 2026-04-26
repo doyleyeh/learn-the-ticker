@@ -854,6 +854,27 @@ class LlmAnswerState(str, Enum):
     unavailable = "unavailable"
 
 
+class LlmTransportMode(str, Enum):
+    schema_mode = "schema_mode"
+    json_mode = "json_mode"
+
+
+class LlmTransportStatus(str, Enum):
+    blocked = "blocked"
+    succeeded = "succeeded"
+    timeout = "timeout"
+    retryable_provider_error = "retryable_provider_error"
+    nonretryable_provider_error = "nonretryable_provider_error"
+    invalid_response_shape = "invalid_response_shape"
+    missing_content = "missing_content"
+
+
+class LlmTransportRetryability(str, Enum):
+    retryable = "retryable"
+    nonretryable = "nonretryable"
+    not_applicable = "not_applicable"
+
+
 class LlmModelDescriptor(BaseModel):
     provider_kind: LlmProviderKind
     model_name: str
@@ -895,6 +916,49 @@ class LlmGenerationRequestMetadata(BaseModel):
     knowledge_pack_hash: str | None = None
     source_freshness_hash: str | None = None
     request_id: str = "deterministic-llm-request"
+
+
+class LlmTransportRequestMetadata(BaseModel):
+    schema_version: Literal["llm-transport-contract-v1"] = "llm-transport-contract-v1"
+    provider_kind: LlmProviderKind
+    request_mode: LlmTransportMode
+    active_model: LlmModelDescriptor | None = None
+    configured_model_chain: list[LlmModelDescriptor] = Field(default_factory=list)
+    paid_fallback_model: LlmModelDescriptor | None = None
+    base_url_configured: bool = False
+    model_chain_configured: bool = False
+    endpoint_configured: bool = False
+    validation_retry_count: int = 1
+    reasoning_summary_only: bool = True
+    timeout_seconds: int = 30
+    retryable: bool = True
+    sanitized_diagnostics: dict[str, str | int | bool | float | None] = Field(default_factory=dict)
+
+
+class LlmTransportResponseMetadata(BaseModel):
+    schema_version: Literal["llm-transport-contract-v1"] = "llm-transport-contract-v1"
+    provider_kind: LlmProviderKind
+    status: LlmTransportStatus
+    retryability: LlmTransportRetryability
+    diagnostic_code: str
+    request_mode: LlmTransportMode
+    model_name: str | None = None
+    model_tier: LlmModelTier | None = None
+    provider_status: str | None = None
+    finish_reason: str | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+    cost_usd: float | None = None
+    latency_ms: int | None = None
+    sanitized_diagnostics: dict[str, str | int | bool | float | None] = Field(default_factory=dict)
+
+
+class LlmTransportResult(BaseModel):
+    request: LlmTransportRequestMetadata | None = None
+    response: LlmTransportResponseMetadata
+    content: str | None = None
+    no_live_external_calls: bool = True
 
 
 class LlmValidationResult(BaseModel):

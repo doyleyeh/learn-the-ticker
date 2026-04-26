@@ -273,6 +273,39 @@ def test_weekly_news_event_evidence_repository_contract_is_dormant_metadata_only
         assert forbidden not in combined
 
 
+def test_llm_transport_contract_is_backend_only_mock_injected_and_dormant():
+    transport = read_file("backend/llm_transport.py")
+    models = read_file("backend/models.py")
+    combined = f"{transport}\n{models}"
+
+    assert "llm-transport-contract-v1" in combined
+    assert "call_openrouter_transport" in transport
+    assert "TransportCallable" in transport
+    assert "injected_transport_missing" in transport
+    assert "explicit_live_transport_opt_in_missing" in transport
+    assert "server_side_key_missing" in transport
+    assert "openrouter_model_chain_missing" in transport
+    assert "validation_not_ready" in transport
+    assert "LlmTransportResult" in models
+    assert "LlmTransportStatus" in models
+    assert "LlmTransportMode" in models
+
+    for forbidden in [
+        "import requests",
+        "import httpx",
+        "urllib.request",
+        "from socket import",
+        "os.environ",
+        "openai",
+        "anthropic",
+        "NEXT_PUBLIC",
+        "OPENROUTER_API_KEY",
+        "Authorization",
+        "Bearer ",
+    ]:
+        assert forbidden not in transport
+
+
 def test_control_docs_cover_new_mvp_operating_rules():
     combined = "\n".join(read_file(name) for name in ["AGENTS.md", "SPEC.md", "EVALS.md"])
 
