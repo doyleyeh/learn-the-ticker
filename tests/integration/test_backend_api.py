@@ -774,10 +774,19 @@ def test_llm_runtime_route_is_sanitized_diagnostics_only_contract():
     assert body["schema_version"] == "llm-runtime-contract-v1"
     assert body["runtime"]["provider_kind"] == "mock"
     assert body["runtime"]["runtime_mode"] == "deterministic_mock"
+    assert body["runtime"]["readiness_status"] == "disabled_by_default"
     assert body["runtime"]["live_generation_enabled"] is False
     assert body["runtime"]["live_gate_state"] == "disabled"
     assert body["runtime"]["server_side_key_present"] is False
+    assert body["runtime"]["base_url_configured"] is False
+    assert body["runtime"]["model_chain_configured"] is True
+    assert body["runtime"]["validation_retry_count"] == 1
+    assert body["runtime"]["reasoning_summary_only"] is True
+    assert body["runtime"]["validation_ready"] is True
+    assert body["runtime"]["no_live_call_status"] == "no_live_calls_attempted"
     assert body["runtime"]["live_network_calls_allowed"] is False
+    assert "schema_validation_required" in body["runtime"]["validation_gates"]
+    assert "same_asset_or_comparison_pack_source_binding_required" in body["runtime"]["validation_gates"]
     assert body["credential_values_exposed"] is False
     assert body["private_prompt_fields_exposed"] is False
     assert body["model_reasoning_payload_exposed"] is False

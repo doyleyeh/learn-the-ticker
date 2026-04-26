@@ -18,6 +18,7 @@ from backend.models import (
     LlmOrchestrationResult,
     LlmProviderKind,
     LlmPublicResponseMetadata,
+    LlmReadinessStatus,
     LlmRuntimeConfig,
     LlmRuntimeDiagnosticsResponse,
     LlmRuntimeMode,
@@ -38,6 +39,16 @@ DEFAULT_OPENROUTER_FREE_MODEL_ORDER = (
 )
 DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL = "deepseek/deepseek-v3.2"
 DEFAULT_VALIDATION_RETRY_COUNT = 1
+LLM_VALIDATION_GATE_CODES = (
+    "schema_validation_required",
+    "citation_validation_required",
+    "same_asset_or_comparison_pack_source_binding_required",
+    "source_use_policy_required",
+    "freshness_uncertainty_labels_required",
+    "safety_validation_required",
+    "one_repair_retry_metadata_required",
+    "reasoning_summary_only_required",
+)
 
 HIDDEN_PROMPT_MARKERS = (
     "system prompt",
@@ -82,14 +93,18 @@ def build_llm_runtime_config(
     live_enabled = _bool_setting(settings, "LLM_LIVE_GENERATION_ENABLED", False)
     validation_retry_count = _int_setting(settings, "LLM_VALIDATION_RETRY_COUNT", DEFAULT_VALIDATION_RETRY_COUNT)
     reasoning_summary_only = _bool_setting(settings, "LLM_REASONING_SUMMARY_ONLY", True)
+    validation_ready = validation_retry_count >= 1 and reasoning_summary_only
 
     if provider_kind is LlmProviderKind.mock:
         return LlmRuntimeConfig(
             provider_kind=LlmProviderKind.mock,
             runtime_mode=LlmRuntimeMode.deterministic_mock,
+            readiness_status=LlmReadinessStatus.disabled_by_default,
             live_generation_enabled=False,
             live_gate_state=LlmLiveGateState.disabled,
             server_side_key_present=False,
+            base_url_configured=False,
+            model_chain_configured=True,
             endpoint_configured=False,
             configured_model_chain=[
                 LlmModelDescriptor(
@@ -103,15 +118,20 @@ def build_llm_runtime_config(
             paid_fallback_enabled=False,
             validation_retry_count=validation_retry_count,
             reasoning_summary_only=True,
+            validation_ready=True,
+            validation_gates=list(LLM_VALIDATION_GATE_CODES),
             live_network_calls_allowed=False,
-            unavailable_reasons=["mock_provider_is_default"],
+            unavailable_reasons=["mock_provider_is_default", "live_generation_disabled_by_default"],
         )
 
     base_url = _setting(settings, "OPENROUTER_BASE_URL")
     free_model_order = _model_order(_setting(settings, "OPENROUTER_FREE_MODEL_ORDER"))
     paid_fallback_model_name = _setting(settings, "OPENROUTER_PAID_FALLBACK_MODEL")
     paid_fallback_enabled = _bool_setting(settings, "OPENROUTER_PAID_FALLBACK_ENABLED", True)
-    endpoint_configured = bool(base_url and free_model_order and paid_fallback_model_name)
+    base_url_configured = bool(base_url)
+    model_chain_configured = bool(free_model_order)
+    paid_fallback_configured = bool(paid_fallback_model_name)
+    endpoint_configured = bool(base_url_configured and model_chain_configured and paid_fallback_configured)
     unavailable_reasons: list[str] = []
     if not live_enabled:
         unavailable_reasons.append("live_generation_flag_disabled")
@@ -123,14 +143,27 @@ def build_llm_runtime_config(
         unavailable_reasons.append("openrouter_free_model_order_missing")
     if not paid_fallback_model_name:
         unavailable_reasons.append("openrouter_paid_fallback_model_missing")
+    if validation_retry_count < 1:
+        unavailable_reasons.append("validation_retry_count_below_minimum")
+    if not reasoning_summary_only:
+        unavailable_reasons.append("reasoning_summary_only_disabled")
 
-    enabled = live_enabled and server_side_key_present and endpoint_configured
+    enabled = live_enabled and server_side_key_present and endpoint_configured and validation_ready
+    readiness_status = _readiness_status(
+        live_enabled=live_enabled,
+        server_side_key_present=server_side_key_present,
+        endpoint_configured=endpoint_configured,
+        validation_ready=validation_ready,
+    )
     return LlmRuntimeConfig(
         provider_kind=LlmProviderKind.openrouter,
         runtime_mode=LlmRuntimeMode.gated_live,
+        readiness_status=readiness_status,
         live_generation_enabled=live_enabled,
         live_gate_state=LlmLiveGateState.enabled if enabled else LlmLiveGateState.unavailable,
         server_side_key_present=server_side_key_present,
+        base_url_configured=base_url_configured,
+        model_chain_configured=model_chain_configured,
         endpoint_configured=endpoint_configured,
         configured_model_chain=[
             LlmModelDescriptor(
@@ -150,6 +183,8 @@ def build_llm_runtime_config(
         paid_fallback_enabled=paid_fallback_enabled,
         validation_retry_count=validation_retry_count,
         reasoning_summary_only=reasoning_summary_only,
+        validation_ready=validation_ready,
+        validation_gates=list(LLM_VALIDATION_GATE_CODES),
         live_network_calls_allowed=False,
         unavailable_reasons=unavailable_reasons,
     )
@@ -419,6 +454,22 @@ def _int_setting(settings: dict[str, str | bool | int | None], key: str, default
         return int(str(value).strip())
     except (TypeError, ValueError):
         return default
+
+
+def _readiness_status(
+    *,
+    live_enabled: bool,
+    server_side_key_present: bool,
+    endpoint_configured: bool,
+    validation_ready: bool,
+) -> LlmReadinessStatus:
+    if not live_enabled:
+        return LlmReadinessStatus.disabled_by_default
+    if not server_side_key_present or not endpoint_configured:
+        return LlmReadinessStatus.unavailable
+    if not validation_ready:
+        return LlmReadinessStatus.validation_not_ready
+    return LlmReadinessStatus.ready_for_explicit_live_call
 
 
 def _validation_status(

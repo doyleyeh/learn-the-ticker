@@ -29,6 +29,7 @@ from backend.models import (
     LlmLiveGateState,
     LlmModelTier,
     LlmProviderKind,
+    LlmReadinessStatus,
     LlmValidationStatus,
     SourceAllowlistStatus,
     SourceUsePolicy,
@@ -87,13 +88,22 @@ def test_default_runtime_is_deterministic_mock_without_live_gate_or_credentials(
     config = build_llm_runtime_config()
 
     assert config.provider_kind is LlmProviderKind.mock
+    assert config.readiness_status is LlmReadinessStatus.disabled_by_default
     assert config.live_generation_enabled is False
     assert config.live_gate_state is LlmLiveGateState.disabled
     assert config.server_side_key_present is False
+    assert config.base_url_configured is False
+    assert config.model_chain_configured is True
     assert config.live_network_calls_allowed is False
+    assert config.no_live_call_status == "no_live_calls_attempted"
     assert config.configured_model_chain[0].model_name == DEFAULT_MOCK_MODEL
     assert config.configured_model_chain[0].tier is LlmModelTier.mock
     assert config.paid_fallback_model is None
+    assert config.validation_retry_count == 1
+    assert config.reasoning_summary_only is True
+    assert config.validation_ready is True
+    assert "schema_validation_required" in config.validation_gates
+    assert "same_asset_or_comparison_pack_source_binding_required" in config.validation_gates
 
 
 def test_openrouter_gate_requires_flag_key_presence_and_endpoint_model_settings():
@@ -102,22 +112,96 @@ def test_openrouter_gate_requires_flag_key_presence_and_endpoint_model_settings(
     enabled = build_llm_runtime_config(default_openrouter_settings(), server_side_key_present=True)
 
     assert disabled.provider_kind is LlmProviderKind.openrouter
+    assert disabled.readiness_status is LlmReadinessStatus.disabled_by_default
     assert disabled.live_gate_state is LlmLiveGateState.unavailable
     assert "live_generation_flag_disabled" in disabled.unavailable_reasons
     assert "server_side_key_presence_flag_missing" in disabled.unavailable_reasons
 
     assert missing_key.live_generation_enabled is True
+    assert missing_key.readiness_status is LlmReadinessStatus.unavailable
     assert missing_key.live_gate_state is LlmLiveGateState.unavailable
     assert "server_side_key_presence_flag_missing" in missing_key.unavailable_reasons
 
     assert enabled.live_generation_enabled is True
+    assert enabled.readiness_status is LlmReadinessStatus.ready_for_explicit_live_call
     assert enabled.live_gate_state is LlmLiveGateState.enabled
+    assert enabled.base_url_configured is True
+    assert enabled.model_chain_configured is True
+    assert enabled.endpoint_configured is True
     assert enabled.live_network_calls_allowed is False
+    assert enabled.validation_retry_count == 1
+    assert enabled.reasoning_summary_only is True
+    assert enabled.validation_ready is True
     assert [model.model_name for model in enabled.configured_model_chain] == list(DEFAULT_OPENROUTER_FREE_MODEL_ORDER)
+    assert [model.order for model in enabled.configured_model_chain] == [1, 2, 3, 4]
     assert all(model.tier is LlmModelTier.free for model in enabled.configured_model_chain)
     assert enabled.paid_fallback_model is not None
     assert enabled.paid_fallback_model.model_name == DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL
     assert enabled.paid_fallback_model.tier is LlmModelTier.paid
+    assert enabled.paid_fallback_model.order == 5
+
+
+def test_openrouter_readiness_distinguishes_missing_endpoint_models_and_validation_gates():
+    missing_base_url = build_llm_runtime_config(
+        {
+            **default_openrouter_settings(),
+            "OPENROUTER_BASE_URL": "",
+        },
+        server_side_key_present=True,
+    )
+    missing_model_chain = build_llm_runtime_config(
+        {
+            **default_openrouter_settings(),
+            "OPENROUTER_FREE_MODEL_ORDER": "",
+        },
+        server_side_key_present=True,
+    )
+    missing_paid_fallback = build_llm_runtime_config(
+        {
+            **default_openrouter_settings(),
+            "OPENROUTER_PAID_FALLBACK_MODEL": "",
+        },
+        server_side_key_present=True,
+    )
+    validation_not_ready = build_llm_runtime_config(
+        {
+            **default_openrouter_settings(),
+            "LLM_VALIDATION_RETRY_COUNT": "0",
+            "LLM_REASONING_SUMMARY_ONLY": "false",
+        },
+        server_side_key_present=True,
+    )
+
+    assert missing_base_url.readiness_status is LlmReadinessStatus.unavailable
+    assert missing_base_url.base_url_configured is False
+    assert missing_base_url.endpoint_configured is False
+    assert "openrouter_base_url_missing" in missing_base_url.unavailable_reasons
+
+    assert missing_model_chain.readiness_status is LlmReadinessStatus.unavailable
+    assert missing_model_chain.model_chain_configured is False
+    assert missing_model_chain.configured_model_chain == []
+    assert "openrouter_free_model_order_missing" in missing_model_chain.unavailable_reasons
+
+    assert missing_paid_fallback.readiness_status is LlmReadinessStatus.unavailable
+    assert missing_paid_fallback.endpoint_configured is False
+    assert "openrouter_paid_fallback_model_missing" in missing_paid_fallback.unavailable_reasons
+
+    assert validation_not_ready.readiness_status is LlmReadinessStatus.validation_not_ready
+    assert validation_not_ready.live_gate_state is LlmLiveGateState.unavailable
+    assert validation_not_ready.validation_ready is False
+    assert validation_not_ready.validation_retry_count == 0
+    assert validation_not_ready.reasoning_summary_only is False
+    assert "validation_retry_count_below_minimum" in validation_not_ready.unavailable_reasons
+    assert "reasoning_summary_only_disabled" in validation_not_ready.unavailable_reasons
+    assert set(validation_not_ready.validation_gates) >= {
+        "schema_validation_required",
+        "citation_validation_required",
+        "source_use_policy_required",
+        "freshness_uncertainty_labels_required",
+        "safety_validation_required",
+        "one_repair_retry_metadata_required",
+        "reasoning_summary_only_required",
+    }
 
 
 def test_paid_fallback_metadata_requires_free_chain_or_validation_failure_trigger():
