@@ -822,6 +822,7 @@ class LlmReadinessStatus(str, Enum):
 class LlmGenerationAttemptStatus(str, Enum):
     not_attempted = "not_attempted"
     mock_succeeded = "mock_succeeded"
+    blocked = "blocked"
     provider_error = "provider_error"
     rate_limited = "rate_limited"
     structured_output_failed = "structured_output_failed"
@@ -830,14 +831,18 @@ class LlmGenerationAttemptStatus(str, Enum):
 
 
 class LlmValidationStatus(str, Enum):
+    not_validated = "not_validated"
     valid = "valid"
     invalid_schema = "invalid_schema"
     invalid_citation = "invalid_citation"
     invalid_source_policy = "invalid_source_policy"
+    invalid_freshness = "invalid_freshness"
     invalid_safety = "invalid_safety"
     invalid_hidden_prompt = "invalid_hidden_prompt"
     invalid_raw_reasoning = "invalid_raw_reasoning"
     invalid_unrestricted_source_text = "invalid_unrestricted_source_text"
+    invalid_unsupported_claim = "invalid_unsupported_claim"
+    invalid_weekly_news_evidence = "invalid_weekly_news_evidence"
 
 
 class LlmFallbackTrigger(str, Enum):
@@ -1037,6 +1042,8 @@ class LlmOrchestrationResult(BaseModel):
     fallback_decision: LlmFallbackDecision
     public_metadata: LlmPublicResponseMetadata
     cache_decision: LlmCacheEligibilityDecision
+    generated_content_usable: bool = False
+    sanitized_diagnostics: dict[str, str | int | bool | float | None] = Field(default_factory=dict)
     no_live_external_calls: bool = True
 
 
