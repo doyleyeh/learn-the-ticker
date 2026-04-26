@@ -21,6 +21,19 @@ from backend.models import (
     PreCacheBatchSummary,
     PreCacheJobResponse,
 )
+from backend.repositories.ingestion_jobs import (
+    IngestionJobLedgerRecords,
+    IngestionLedgerJobState,
+    validate_ingestion_job_ledger_records,
+    serialize_ingestion_job_response,
+)
+from backend.ingestion_worker import (
+    DeterministicIngestionWorker,
+    IngestionWorkerExecutionResult,
+    IngestionWorkerFixtureOutcome,
+    IngestionWorkerLedgerBoundary,
+    execute_ingestion_worker_record,
+)
 
 LAUNCH_PRE_CACHE_BATCH_ID = "pre-cache-launch-universe-v1"
 LAUNCH_PRE_CACHE_STATUS_URL = "/api/admin/pre-cache/launch-universe"
@@ -32,7 +45,11 @@ _CACHED_LAUNCH_GROUPS: dict[str, str] = {
 }
 
 
-def request_ingestion(ticker: str) -> IngestionJobResponse:
+def request_ingestion(
+    ticker: str,
+    *,
+    ingestion_job_ledger: IngestionWorkerLedgerBoundary | None = None,
+) -> IngestionJobResponse:
     normalized = normalize_ticker(ticker)
 
     cached_asset = ASSETS.get(normalized)
@@ -54,10 +71,17 @@ def request_ingestion(ticker: str) -> IngestionJobResponse:
 
     eligible_asset = ELIGIBLE_NOT_CACHED_ASSETS.get(normalized)
     if eligible_asset:
-        job = _STATUS_FIXTURES.get(_on_demand_job_id(normalized))
+        job_id = _on_demand_job_id(normalized)
+        existing = _configured_ingestion_job_response(ingestion_job_ledger, job_id, expected_ticker=normalized)
+        if existing:
+            return existing
+        job = _STATUS_FIXTURES.get(job_id)
         if job:
-            return job.model_copy(deep=True)
-        return _eligible_on_demand_job_response(normalized, eligible_asset)
+            return _save_ingestion_job_response(job.model_copy(deep=True), ingestion_job_ledger)
+        return _save_ingestion_job_response(
+            _eligible_on_demand_job_response(normalized, eligible_asset),
+            ingestion_job_ledger,
+        )
 
     if normalized in UNSUPPORTED_ASSETS:
         return IngestionJobResponse(
@@ -90,8 +114,14 @@ def request_ingestion(ticker: str) -> IngestionJobResponse:
     )
 
 
-def request_launch_universe_pre_cache() -> PreCacheBatchResponse:
-    jobs = [_pre_cache_job_for_launch_ticker(ticker) for ticker in _launch_universe_tickers()]
+def request_launch_universe_pre_cache(
+    *,
+    ingestion_job_ledger: IngestionWorkerLedgerBoundary | None = None,
+) -> PreCacheBatchResponse:
+    jobs = [
+        request_pre_cache_for_asset(ticker, ingestion_job_ledger=ingestion_job_ledger)
+        for ticker in _launch_universe_tickers()
+    ]
     return PreCacheBatchResponse(
         batch_id=LAUNCH_PRE_CACHE_BATCH_ID,
         status_url=LAUNCH_PRE_CACHE_STATUS_URL,
@@ -106,19 +136,35 @@ def request_launch_universe_pre_cache() -> PreCacheBatchResponse:
     )
 
 
-def request_pre_cache_for_asset(ticker: str) -> PreCacheJobResponse:
+def request_pre_cache_for_asset(
+    ticker: str,
+    *,
+    ingestion_job_ledger: IngestionWorkerLedgerBoundary | None = None,
+) -> PreCacheJobResponse:
     normalized = normalize_ticker(ticker)
     cached_asset = ASSETS.get(normalized)
     if cached_asset or normalized in ELIGIBLE_NOT_CACHED_ASSETS:
-        return _pre_cache_job_for_launch_ticker(normalized)
+        job_id = _pre_cache_job_id(normalized)
+        existing = _configured_pre_cache_job_response(ingestion_job_ledger, job_id, expected_ticker=normalized)
+        if existing:
+            return existing
+        return _save_pre_cache_job_response(_pre_cache_job_for_launch_ticker(normalized), ingestion_job_ledger)
     if normalized in UNSUPPORTED_ASSETS:
-        return _pre_cache_unsupported_job(normalized)
+        return _save_pre_cache_job_response(_pre_cache_unsupported_job(normalized), ingestion_job_ledger)
     if normalized in OUT_OF_SCOPE_COMMON_STOCKS:
-        return _pre_cache_out_of_scope_job(normalized)
-    return _pre_cache_unknown_job(normalized)
+        return _save_pre_cache_job_response(_pre_cache_out_of_scope_job(normalized), ingestion_job_ledger)
+    return _save_pre_cache_job_response(_pre_cache_unknown_job(normalized), ingestion_job_ledger)
 
 
-def get_pre_cache_job_status(job_id: str) -> PreCacheJobResponse:
+def get_pre_cache_job_status(
+    job_id: str,
+    *,
+    ingestion_job_ledger: IngestionWorkerLedgerBoundary | None = None,
+) -> PreCacheJobResponse:
+    existing = _configured_pre_cache_job_response(ingestion_job_ledger, job_id)
+    if existing:
+        return existing
+
     for ticker in _launch_universe_tickers():
         expected = _pre_cache_job_id(ticker)
         if job_id == expected:
@@ -151,7 +197,15 @@ def get_pre_cache_job_status(job_id: str) -> PreCacheJobResponse:
     )
 
 
-def get_ingestion_job_status(job_id: str) -> IngestionJobResponse:
+def get_ingestion_job_status(
+    job_id: str,
+    *,
+    ingestion_job_ledger: IngestionWorkerLedgerBoundary | None = None,
+) -> IngestionJobResponse:
+    existing = _configured_ingestion_job_response(ingestion_job_ledger, job_id)
+    if existing:
+        return existing
+
     job = _STATUS_FIXTURES.get(job_id)
     if job:
         return job.model_copy(deep=True)
@@ -171,6 +225,212 @@ def get_ingestion_job_status(job_id: str) -> IngestionJobResponse:
         retryable=False,
         capabilities=_capabilities(),
         message="No deterministic local ingestion job fixture matched this job ID.",
+    )
+
+
+def execute_ingestion_job_through_ledger(
+    job_id: str,
+    *,
+    ingestion_job_ledger: IngestionWorkerLedgerBoundary | None = None,
+    fixture_outcome: IngestionWorkerFixtureOutcome | None = None,
+) -> IngestionWorkerExecutionResult:
+    if ingestion_job_ledger is not None:
+        try:
+            return DeterministicIngestionWorker(
+                ledger_boundary=ingestion_job_ledger,
+                fixture_outcomes={job_id: fixture_outcome} if fixture_outcome else {},
+            ).execute(job_id)
+        except Exception:
+            pass
+
+    fallback_records = _fallback_records_for_worker(job_id)
+    return execute_ingestion_worker_record(fallback_records, fixture_outcome=fixture_outcome)
+
+
+def _configured_ingestion_job_response(
+    ingestion_job_ledger: IngestionWorkerLedgerBoundary | None,
+    job_id: str,
+    *,
+    expected_ticker: str | None = None,
+) -> IngestionJobResponse | None:
+    records = _configured_records(ingestion_job_ledger, job_id, expected_ticker=expected_ticker)
+    if records is None:
+        return None
+    return _ingestion_response_from_ledger_records(records)
+
+
+def _configured_pre_cache_job_response(
+    ingestion_job_ledger: IngestionWorkerLedgerBoundary | None,
+    job_id: str,
+    *,
+    expected_ticker: str | None = None,
+) -> PreCacheJobResponse | None:
+    records = _configured_records(ingestion_job_ledger, job_id, expected_ticker=expected_ticker)
+    if records is None or records.ledger.job_category != "manual_pre_cache":
+        return None
+    return _pre_cache_response_from_ledger_records(records)
+
+
+def _configured_records(
+    ingestion_job_ledger: IngestionWorkerLedgerBoundary | None,
+    job_id: str,
+    *,
+    expected_ticker: str | None = None,
+) -> IngestionJobLedgerRecords | None:
+    if ingestion_job_ledger is None:
+        return None
+    try:
+        records = ingestion_job_ledger.get(job_id)
+        if records is None:
+            return None
+        validate_ingestion_job_ledger_records(records)
+    except Exception:
+        return None
+    if records.ledger.job_id != job_id:
+        return None
+    if expected_ticker and records.ledger.ticker != expected_ticker:
+        return None
+    return records
+
+
+def _save_ingestion_job_response(
+    response: IngestionJobResponse,
+    ingestion_job_ledger: IngestionWorkerLedgerBoundary | None,
+) -> IngestionJobResponse:
+    if ingestion_job_ledger is None or not response.job_id:
+        return response
+    try:
+        ingestion_job_ledger.save(serialize_ingestion_job_response(response))
+    except Exception:
+        return response
+    return response
+
+
+def _save_pre_cache_job_response(
+    response: PreCacheJobResponse,
+    ingestion_job_ledger: IngestionWorkerLedgerBoundary | None,
+) -> PreCacheJobResponse:
+    if ingestion_job_ledger is None:
+        return response
+    try:
+        ingestion_job_ledger.save(serialize_ingestion_job_response(response))
+    except Exception:
+        return response
+    return response
+
+
+def _fallback_records_for_worker(job_id: str) -> IngestionJobLedgerRecords:
+    if job_id.startswith("pre-cache-"):
+        return serialize_ingestion_job_response(get_pre_cache_job_status(job_id))
+    return serialize_ingestion_job_response(get_ingestion_job_status(job_id))
+
+
+def _ingestion_response_from_ledger_records(records: IngestionJobLedgerRecords) -> IngestionJobResponse:
+    ledger = records.ledger
+    return _job_response(
+        ticker=ledger.ticker,
+        asset_type=AssetType(ledger.asset_type),
+        job_type=_job_type_for_ledger_category(ledger.job_category),
+        job_id=ledger.job_id,
+        job_state=_response_state_for_ledger_state(ledger.job_state),
+        worker_status=_response_worker_status(ledger.worker_status),
+        retryable=ledger.retryable,
+        capabilities=_capabilities(
+            can_open_generated_page=ledger.can_open_generated_page,
+            can_answer_chat=ledger.can_answer_chat,
+            can_compare=ledger.can_compare,
+            can_request_ingestion=ledger.can_request_ingestion,
+        ),
+        message=_ledger_message(records),
+        started_at=ledger.started_at,
+        finished_at=ledger.finished_at,
+        error_metadata=_error_metadata_from_diagnostics(records),
+        generated_route=ledger.generated_route,
+    ).model_copy(
+        update={
+            "created_at": ledger.created_at,
+            "updated_at": ledger.updated_at,
+            "status_url": ledger.status_url or f"/api/jobs/{ledger.job_id}",
+        }
+    )
+
+
+def _pre_cache_response_from_ledger_records(records: IngestionJobLedgerRecords) -> PreCacheJobResponse:
+    ledger = records.ledger
+    return _pre_cache_job_response(
+        ticker=ledger.ticker,
+        name=records.scope.asset_name or ledger.ticker,
+        asset_type=AssetType(ledger.asset_type),
+        launch_group=ledger.launch_group,
+        job_id=ledger.job_id,
+        job_state=_response_state_for_ledger_state(ledger.job_state),
+        worker_status=_response_worker_status(ledger.worker_status),
+        retryable=ledger.retryable,
+        capabilities=_capabilities(
+            can_open_generated_page=ledger.can_open_generated_page,
+            can_answer_chat=ledger.can_answer_chat,
+            can_compare=ledger.can_compare,
+            can_request_ingestion=ledger.can_request_ingestion,
+        ),
+        message=_ledger_message(records),
+        started_at=ledger.started_at,
+        finished_at=ledger.finished_at,
+        error_metadata=_error_metadata_from_diagnostics(records),
+        generated_route=ledger.generated_route,
+        generated_output_available=ledger.generated_output_available,
+    ).model_copy(
+        update={
+            "batch_id": ledger.batch_id or LAUNCH_PRE_CACHE_BATCH_ID,
+            "created_at": ledger.created_at,
+            "updated_at": ledger.updated_at,
+            "status_url": ledger.status_url or f"/api/admin/pre-cache/jobs/{ledger.job_id}",
+        }
+    )
+
+
+def _response_state_for_ledger_state(job_state: str) -> IngestionJobState:
+    if job_state == IngestionLedgerJobState.stale.value:
+        return IngestionJobState.refresh_needed
+    return IngestionJobState(job_state)
+
+
+def _response_worker_status(worker_status: str | None) -> IngestionWorkerStatus | None:
+    if not worker_status:
+        return None
+    try:
+        return IngestionWorkerStatus(worker_status)
+    except ValueError:
+        return None
+
+
+def _job_type_for_ledger_category(job_category: str) -> IngestionJobType:
+    if job_category == "manual_pre_cache":
+        return IngestionJobType.pre_cache
+    if job_category == "approved_on_demand":
+        return IngestionJobType.on_demand
+    if job_category == "refresh":
+        return IngestionJobType.refresh
+    return IngestionJobType.repair
+
+
+def _error_metadata_from_diagnostics(records: IngestionJobLedgerRecords) -> IngestionErrorMetadata | None:
+    if not records.diagnostics:
+        return None
+    diagnostic = records.diagnostics[-1]
+    return IngestionErrorMetadata(
+        code=diagnostic.error_code or diagnostic.category,
+        message=diagnostic.sanitized_message or "Sanitized deterministic ingestion diagnostic.",
+        retryable=diagnostic.retryable,
+    )
+
+
+def _ledger_message(records: IngestionJobLedgerRecords) -> str:
+    message = records.ledger.compact_metadata.get("message")
+    if isinstance(message, str) and message:
+        return message
+    return (
+        "Deterministic ingestion ledger record. No live provider call, source snapshot, "
+        "knowledge-pack write, generated page, chat answer, comparison, risk summary, or generated-output cache write was created."
     )
 
 
