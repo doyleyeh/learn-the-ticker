@@ -11,6 +11,7 @@ from backend.data import (
     UNSUPPORTED_ASSETS,
     normalize_ticker,
 )
+from backend.etf_universe import can_generate_output_for_etf_entry, etf_universe_entry
 from backend.models import (
     AssetIdentity,
     AssetType,
@@ -36,6 +37,7 @@ from backend.source_policy import resolve_source_policy, source_can_support_gene
 
 ETF_ISSUER_FIXTURE_CONTRACT_VERSION = "etf-issuer-fixture-adapter-v1"
 ETF_ISSUER_ACQUISITION_BOUNDARY = "etf-issuer-acquisition-boundary-v1"
+ETF_ISSUER_LIVE_ACQUISITION_READINESS_BOUNDARY = "etf-issuer-live-acquisition-readiness-boundary-v1"
 ETF_ISSUER_SOURCE_POLICY_REF = "source-use-policy-v1"
 
 
@@ -193,6 +195,24 @@ class EtfIssuerAcquisitionResult:
     created_generated_chat_answer: bool = False
     created_generated_comparison: bool = False
     created_generated_risk_summary: bool = False
+
+
+@dataclass(frozen=True)
+class EtfIssuerLiveAcquisitionReadiness:
+    boundary: str
+    ticker: str
+    status: str
+    can_attempt_live_acquisition: bool
+    blocked_reasons: tuple[str, ...]
+    opt_in_enabled: bool
+    issuer_source_configured: bool
+    rate_limit_ready: bool
+    repository_writer_ready: bool
+    supported_equity_etf_identity: bool
+    issuer_binding_ready: bool
+    source_use_ready: bool
+    no_live_external_calls: bool = True
+    sanitized_diagnostics: dict[str, object] | None = None
 
 
 ETF_ISSUER_FIXTURES: dict[str, EtfIssuerFixture] = {
@@ -466,6 +486,72 @@ def build_etf_issuer_acquisition_result(
     )
 
 
+def evaluate_etf_issuer_live_acquisition_readiness(
+    ticker: str,
+    *,
+    settings=None,
+    opt_in_enabled: bool | None = None,
+    issuer_source_configured: bool | None = None,
+    rate_limit_ready: bool | None = None,
+    repository_writer_ready: bool | None = None,
+    source_snapshot_writer_ready: bool | None = None,
+    knowledge_pack_writer_ready: bool | None = None,
+    expected_issuer: str | None = None,
+    acquisition_result: EtfIssuerAcquisitionResult | None = None,
+) -> EtfIssuerLiveAcquisitionReadiness:
+    normalized = normalize_ticker(ticker)
+    fixture = etf_issuer_fixture_for_ticker(normalized)
+    opt_in = _setting_bool(settings, "etf_issuer_enabled", opt_in_enabled, False)
+    source_configured = _setting_bool(settings, "etf_issuer_source_configured", issuer_source_configured, False)
+    rate_ready = _setting_bool(settings, "rate_limit_ready", rate_limit_ready, False)
+    snapshot_ready = _setting_bool(settings, "source_snapshot_writer_ready", source_snapshot_writer_ready, False)
+    pack_ready = _setting_bool(settings, "knowledge_pack_writer_ready", knowledge_pack_writer_ready, False)
+    writer_ready = repository_writer_ready if repository_writer_ready is not None else (snapshot_ready and pack_ready)
+    writer_ready = bool(writer_ready)
+    supported_identity = _supported_equity_etf_identity_ready(normalized, fixture)
+    issuer_ready = _issuer_binding_ready(fixture, expected_issuer=expected_issuer)
+    source_ready = _source_use_ready(fixture, acquisition_result)
+
+    blocked = []
+    if not opt_in:
+        blocked.append("explicit_live_etf_issuer_acquisition_opt_in_missing")
+    if not source_configured:
+        blocked.append("issuer_source_configuration_missing")
+    if not rate_ready:
+        blocked.append("source_rate_limit_not_ready")
+    if not writer_ready:
+        blocked.append("repository_writer_not_ready")
+    if not supported_identity:
+        blocked.append("supported_non_leveraged_us_equity_etf_identity_not_ready")
+    if not issuer_ready:
+        blocked.append("issuer_or_source_binding_validation_failed")
+    if not source_ready:
+        blocked.append("source_use_validation_failed")
+
+    can_attempt = not blocked
+    return EtfIssuerLiveAcquisitionReadiness(
+        boundary=ETF_ISSUER_LIVE_ACQUISITION_READINESS_BOUNDARY,
+        ticker=normalized,
+        status="ready" if can_attempt else "blocked",
+        can_attempt_live_acquisition=can_attempt,
+        blocked_reasons=tuple(blocked),
+        opt_in_enabled=opt_in,
+        issuer_source_configured=source_configured,
+        rate_limit_ready=rate_ready,
+        repository_writer_ready=writer_ready,
+        supported_equity_etf_identity=supported_identity,
+        issuer_binding_ready=issuer_ready,
+        source_use_ready=source_ready,
+        sanitized_diagnostics={
+            "boundary": ETF_ISSUER_LIVE_ACQUISITION_READINESS_BOUNDARY,
+            "status": "ready" if can_attempt else "blocked",
+            "blocked_reasons": list(blocked),
+            "ticker": normalized,
+            "no_live_external_calls": True,
+        },
+    )
+
+
 def build_etf_issuer_provider_response(
     adapter: EtfIssuerAdapterLike,
     request: ProviderRequestMetadata,
@@ -517,6 +603,102 @@ def _configuration_readiness() -> EtfIssuerConfigurationReadiness:
         rate_limit_ready=True,
         live_call_disabled=True,
     )
+
+
+def _setting_bool(settings, name: str, explicit: bool | None, default: bool) -> bool:
+    if explicit is not None:
+        return bool(explicit)
+    if settings is not None and hasattr(settings, name):
+        return bool(getattr(settings, name))
+    return default
+
+
+def _supported_equity_etf_identity_ready(ticker: str, fixture: EtfIssuerFixture | None) -> bool:
+    if fixture is None:
+        return False
+    cached_asset = ASSETS.get(ticker)
+    if cached_asset is None:
+        return False
+    identity = cached_asset["identity"]
+    entry = etf_universe_entry(ticker)
+    return (
+        getattr(identity, "ticker", None) == ticker
+        and getattr(getattr(identity, "asset_type", None), "value", None) == "etf"
+        and fixture.identity.asset_type == "etf"
+        and fixture.identity.support_state == "supported"
+        and fixture.identity.etf_classification.startswith("non_leveraged_us_equity_")
+        and not any(
+            (
+                fixture.identity.leveraged,
+                fixture.identity.inverse,
+                fixture.identity.etn,
+                fixture.identity.active,
+                fixture.identity.fixed_income,
+                fixture.identity.commodity,
+                fixture.identity.multi_asset,
+            )
+        )
+        and entry is not None
+        and can_generate_output_for_etf_entry(entry)
+    )
+
+
+def _issuer_binding_ready(fixture: EtfIssuerFixture | None, *, expected_issuer: str | None) -> bool:
+    if fixture is None:
+        return False
+    if expected_issuer is not None and expected_issuer != fixture.identity.issuer:
+        return False
+    return all(source.publisher == fixture.identity.issuer for source in fixture.sources)
+
+
+def _source_use_ready(
+    fixture: EtfIssuerFixture | None,
+    acquisition_result: EtfIssuerAcquisitionResult | None,
+) -> bool:
+    if fixture is None:
+        return False
+    try:
+        for source in fixture.sources:
+            decision = resolve_source_policy(url=source.url)
+            if not source_can_support_generated_output(decision) or not decision.canonical_facts_allowed:
+                return False
+        if acquisition_result is not None:
+            if acquisition_result.response_state is not ProviderResponseState.supported:
+                return False
+            response = acquisition_result.provider_response
+            if response is None:
+                return False
+            if response.asset is None or response.asset.ticker != fixture.identity.ticker:
+                return False
+            source_records_by_id = {
+                record.source_document_id: record for record in acquisition_result.source_records
+            }
+            if set(source_records_by_id) != {source.source_document_id for source in response.source_attributions}:
+                return False
+            if any(source.asset_ticker != fixture.identity.ticker for source in response.source_attributions):
+                return False
+            if any(source.publisher != fixture.identity.issuer for source in response.source_attributions):
+                return False
+            for record in acquisition_result.source_records:
+                if not record.checksum.startswith("sha256:"):
+                    return False
+                if (
+                    record.source_use_policy is SourceUsePolicy.rejected
+                    or record.allowlist_status is SourceAllowlistStatus.rejected
+                ):
+                    return False
+            for source in response.source_attributions:
+                record = source_records_by_id[source.source_document_id]
+                if (
+                    source.source_use_policy is not record.source_use_policy
+                    or source.allowlist_status is not record.allowlist_status
+                    or source.source_quality is not record.source_quality
+                    or source.freshness_state is not record.freshness_state
+                ):
+                    return False
+        return True
+    except Exception:
+        return False
 
 
 def _acquisition_source_record(source: ProviderSourceAttribution) -> EtfIssuerAcquisitionSourceRecord:

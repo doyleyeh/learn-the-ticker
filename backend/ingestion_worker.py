@@ -90,6 +90,9 @@ class IngestionWorkerFixtureOutcome(BaseModel):
     knowledge_pack_records: KnowledgePackRepositoryRecords | None = None
     weekly_news_records: WeeklyNewsEventEvidenceRepositoryRecords | None = None
     generated_output_cache_records: GeneratedOutputCacheRepositoryRecords | None = None
+    live_acquisition_attempted: bool = False
+    live_acquisition_readiness_passed: bool = False
+    live_repository_writers_required: bool = False
 
     @field_validator("terminal_state")
     @classmethod
@@ -161,6 +164,17 @@ class DeterministicIngestionWorker:
             raise IngestionWorkerContractError("Injected in-memory ingestion ledger has no record for job_id.")
         outcome = self.fixture_outcomes.get(job_id)
         result = execute_ingestion_worker_record(records, fixture_outcome=outcome, timestamp=self.timestamp)
+        if _should_fail_closed_live_acquisition(outcome, self):
+            failed_outcome = IngestionWorkerFixtureOutcome(
+                terminal_state=IngestionLedgerJobState.failed,
+                error_category=SanitizedErrorCategory.validation_failed,
+                error_code="live_acquisition_readiness_failed",
+                sanitized_message="Live acquisition readiness failed closed before source writes.",
+                retryable=False,
+                source_policy_ref=outcome.source_policy_ref if outcome else None,
+                checksum=outcome.checksum if outcome else None,
+            )
+            result = execute_ingestion_worker_record(records, fixture_outcome=failed_outcome, timestamp=self.timestamp)
         if _should_persist_source_snapshots(result, outcome, self.source_snapshot_repository):
             snapshot_repository = self.source_snapshot_repository
             snapshot_records = outcome.source_snapshot_records if outcome else None
@@ -316,6 +330,10 @@ def _apply_terminal_outcome(
         metadata["generated_output_cache_entry_count"] = len(outcome.generated_output_cache_records.envelopes)
         metadata["generated_output_cache_artifact_count"] = len(outcome.generated_output_cache_records.artifacts)
         metadata["generated_output_cache_boundary"] = "generated-output-cache-repository-contract-v1"
+    if outcome.live_acquisition_attempted:
+        metadata["live_acquisition_attempted"] = True
+        metadata["live_acquisition_readiness_passed"] = outcome.live_acquisition_readiness_passed
+        metadata["live_repository_writers_required"] = outcome.live_repository_writers_required
 
     ledger = records.ledger.model_copy(
         update={
@@ -438,6 +456,24 @@ def _should_persist_source_snapshots(
         and outcome.source_snapshot_records is not None
         and result.summary.initial_state not in _TERMINAL_STATES
         and result.summary.terminal_state == IngestionLedgerJobState.succeeded.value
+    )
+
+
+def _should_fail_closed_live_acquisition(
+    outcome: IngestionWorkerFixtureOutcome | None,
+    worker: DeterministicIngestionWorker,
+) -> bool:
+    if outcome is None or not outcome.live_acquisition_attempted:
+        return False
+    if not outcome.live_acquisition_readiness_passed:
+        return True
+    if not outcome.live_repository_writers_required:
+        return False
+    return (
+        worker.source_snapshot_repository is None
+        or worker.knowledge_pack_repository is None
+        or outcome.source_snapshot_records is None
+        or outcome.knowledge_pack_records is None
     )
 
 

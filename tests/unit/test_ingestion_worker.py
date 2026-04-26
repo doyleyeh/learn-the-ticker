@@ -334,6 +334,109 @@ def test_worker_persists_golden_acquisition_snapshots_through_injected_mocked_wr
     assert all(artifact.raw_provider_payload_stored is False for artifact in persisted.artifacts)
 
 
+def test_worker_blocks_live_acquisition_records_without_explicit_readiness_and_writers():
+    adapter = mock_sec_stock_adapter()
+    licensing = fetch_mock_provider_response(adapter.provider_kind, "AAPL").licensing
+    acquisition = build_sec_stock_acquisition_result(adapter, adapter.request("AAPL"), licensing)
+    snapshot_records = source_snapshot_records_from_acquisition_result(
+        acquisition,
+        ingestion_job_id="pre-cache-launch-aapl",
+    )
+    knowledge_pack_records = knowledge_pack_records_from_acquisition_result(acquisition, snapshot_records)
+    response = get_pre_cache_job_status("pre-cache-launch-aapl").model_copy(
+        update={
+            "job_state": IngestionLedgerJobState.pending,
+            "worker_status": None,
+            "generated_route": None,
+            "generated_output_available": False,
+            "capabilities": IngestionCapabilities(),
+            "citation_ids": [],
+            "source_document_ids": [],
+        }
+    )
+    records = serialize_ingestion_job_response(response)
+    ledger = InMemoryIngestionWorkerLedger.from_records([records])
+    worker = DeterministicIngestionWorker(
+        ledger_boundary=ledger,
+        fixture_outcomes={
+            "pre-cache-launch-aapl": IngestionWorkerFixtureOutcome(
+                terminal_state=IngestionLedgerJobState.succeeded,
+                source_policy_ref=acquisition.source_policy_ref,
+                checksum=acquisition.checksum,
+                source_snapshot_records=snapshot_records,
+                knowledge_pack_records=knowledge_pack_records,
+                live_acquisition_attempted=True,
+                live_acquisition_readiness_passed=False,
+                live_repository_writers_required=True,
+            )
+        },
+    )
+
+    result = worker.execute("pre-cache-launch-aapl")
+
+    assert result.summary.terminal_state == "failed"
+    assert result.records.diagnostics[0].error_code == "live_acquisition_readiness_failed"
+    assert result.records.ledger.generated_output_available is False
+    assert result.records.ledger.raw_provider_payload_stored is False
+    assert result.records.ledger.unrestricted_source_text_stored is False
+    assert result.records.ledger.secrets_stored is False
+
+
+def test_worker_routes_ready_live_acquisition_records_through_existing_mocked_writer_boundaries():
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(adapter.provider_kind, "VOO").licensing
+    acquisition = build_etf_issuer_acquisition_result(adapter, adapter.request("VOO"), licensing)
+    snapshot_records = source_snapshot_records_from_acquisition_result(
+        acquisition,
+        ingestion_job_id="pre-cache-launch-voo",
+    )
+    knowledge_pack_records = knowledge_pack_records_from_acquisition_result(acquisition, snapshot_records)
+    response = get_pre_cache_job_status("pre-cache-launch-voo").model_copy(
+        update={
+            "job_state": IngestionLedgerJobState.pending,
+            "worker_status": None,
+            "generated_route": None,
+            "generated_output_available": False,
+            "capabilities": IngestionCapabilities(),
+            "citation_ids": [],
+            "source_document_ids": [],
+        }
+    )
+    records = serialize_ingestion_job_response(response)
+    ledger = InMemoryIngestionWorkerLedger.from_records([records])
+    snapshot_repository = InMemorySourceSnapshotArtifactRepository()
+    knowledge_pack_repository = InMemoryAssetKnowledgePackRepository()
+    worker = DeterministicIngestionWorker(
+        ledger_boundary=ledger,
+        source_snapshot_repository=snapshot_repository,
+        knowledge_pack_repository=knowledge_pack_repository,
+        fixture_outcomes={
+            "pre-cache-launch-voo": IngestionWorkerFixtureOutcome(
+                terminal_state=IngestionLedgerJobState.succeeded,
+                source_policy_ref=acquisition.source_policy_ref,
+                checksum=acquisition.checksum,
+                source_snapshot_records=snapshot_records,
+                knowledge_pack_records=knowledge_pack_records,
+                live_acquisition_attempted=True,
+                live_acquisition_readiness_passed=True,
+                live_repository_writers_required=True,
+            )
+        },
+    )
+
+    result = worker.execute("pre-cache-launch-voo")
+
+    assert result.summary.terminal_state == "succeeded"
+    assert result.summary.no_live_external_calls is True
+    assert result.summary.called_live_provider is False
+    assert snapshot_repository.records().artifacts
+    assert knowledge_pack_repository.read_knowledge_pack_records("VOO") is not None
+    assert result.records.ledger.compact_metadata["live_acquisition_attempted"] is True
+    assert result.records.ledger.compact_metadata["live_acquisition_readiness_passed"] is True
+    assert result.records.ledger.compact_metadata["source_snapshot_persistence_configured"] is True
+    assert result.records.ledger.compact_metadata["knowledge_pack_persistence_configured"] is True
+
+
 def test_worker_persists_golden_knowledge_pack_through_injected_mocked_writer_only():
     adapter = mock_etf_issuer_adapter()
     licensing = fetch_mock_provider_response(adapter.provider_kind, "VOO").licensing

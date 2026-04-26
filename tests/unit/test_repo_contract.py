@@ -399,7 +399,7 @@ def test_backend_mvp_runtime_gap_audit_tracks_required_areas_without_runtime_wir
         assert forbidden.lower() not in audit_lower
 
 
-def test_tasks_general_mvp_roadmap_marks_t111_current_and_next_backlog():
+def test_tasks_general_mvp_roadmap_marks_t112_current_and_next_backlog():
     tasks = read_file("TASKS.md")
     current_task = tasks.split("## Current task", 1)[1].split("## Completed", 1)[0]
     backlog = tasks.split("## Backlog", 1)[1].split("## General MVP Roadmap", 1)[0]
@@ -408,12 +408,11 @@ def test_tasks_general_mvp_roadmap_marks_t111_current_and_next_backlog():
     assert "## MVP Backend Roadmap" not in tasks
     assert "No backlog tasks are currently prepared" not in backlog
     assert "General MVP alignment:" in current_task
-    assert "T-111 enables local durable repository execution" in current_task
+    assert "T-112 prepares explicit opt-in official-source acquisition" in current_task
     assert "Roadmap contract refinement:" in current_task
-    assert "Stop after local durable repository execution boundaries and in-memory fallback tests" in current_task
+    assert "Stop after explicit opt-in live SEC/issuer acquisition readiness with mocked tests" in current_task
 
     for task_marker in [
-        "### T-112: Add explicit opt-in live SEC and ETF issuer golden acquisition",
         "### T-113: Add official-source Weekly News live acquisition for golden assets",
         "### T-114: Expand launch pre-cache coverage and add MVP readiness regression matrix",
     ]:
@@ -430,8 +429,9 @@ def test_tasks_general_mvp_roadmap_marks_t111_current_and_next_backlog():
     assert "T-108 established deterministic generated-output cache writes and freshness invalidation" in roadmap
     assert "T-109 established frontend API-backed search, pending states, and dynamic asset-page rendering" in roadmap
     assert "T-110 established persisted end-to-end comparison, chat, source, glossary, Weekly News, and export verification" in roadmap
-    assert "T-111 is the current promoted task for local durable repository execution with in-memory fallback" in roadmap
-    assert "T-112 through T-114 are the next runnable tasks" in roadmap
+    assert "T-111 established local durable repository execution with in-memory fallback" in roadmap
+    assert "T-112 is the current promoted task for opt-in live SEC and ETF issuer golden acquisition readiness" in roadmap
+    assert "T-113 and T-114 are the next runnable tasks" in roadmap
     assert "| Provider source-use/export enforcement hardening | Completed | T-099 |" in roadmap
     assert "| Backend fresh-data MVP runtime gap tracker | Completed | T-100 |" in roadmap
     assert "| Configured persisted-reader route wiring | Completed | T-101 |" in roadmap
@@ -444,8 +444,8 @@ def test_tasks_general_mvp_roadmap_marks_t111_current_and_next_backlog():
     assert "| Generated-output cache writes and invalidation | Completed | T-108 |" in roadmap
     assert "| Frontend API-backed search, pending states, and asset rendering | Completed | T-109 |" in roadmap
     assert "| Persisted comparison/chat/source/glossary/export end-to-end verification | Completed | T-110 |" in roadmap
-    assert "| Local durable repository execution with in-memory fallback | Current | T-111 |" in roadmap
-    assert "| Opt-in live SEC and ETF issuer golden acquisition | Backlog | T-112 |" in roadmap
+    assert "| Local durable repository execution with in-memory fallback | Completed | T-111 |" in roadmap
+    assert "| Opt-in live SEC and ETF issuer golden acquisition | Current | T-112 |" in roadmap
     assert "| Official-source Weekly News live acquisition for golden assets | Backlog | T-113 |" in roadmap
     assert "| Launch pre-cache expansion and MVP readiness regression matrix | Backlog | T-114 |" in roadmap
     assert "| Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |" in roadmap

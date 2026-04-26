@@ -36,6 +36,7 @@ from backend.source_policy import resolve_source_policy, source_can_support_gene
 
 SEC_STOCK_FIXTURE_CONTRACT_VERSION = "sec-stock-fixture-adapter-v1"
 SEC_STOCK_ACQUISITION_BOUNDARY = "sec-stock-acquisition-boundary-v1"
+SEC_STOCK_LIVE_ACQUISITION_READINESS_BOUNDARY = "sec-stock-live-acquisition-readiness-boundary-v1"
 SEC_STOCK_SOURCE_POLICY_REF = "source-use-policy-v1"
 
 
@@ -179,6 +180,25 @@ class SecStockAcquisitionResult:
     created_generated_risk_summary: bool = False
 
 
+@dataclass(frozen=True)
+class SecStockLiveAcquisitionReadiness:
+    boundary: str
+    ticker: str
+    status: str
+    can_attempt_live_acquisition: bool
+    blocked_reasons: tuple[str, ...]
+    opt_in_enabled: bool
+    sec_source_configured: bool
+    rate_limit_ready: bool
+    repository_writer_ready: bool
+    supported_common_stock_identity: bool
+    top500_manifest_ready: bool
+    cik_ready: bool
+    source_use_ready: bool
+    no_live_external_calls: bool = True
+    sanitized_diagnostics: dict[str, object] | None = None
+
+
 SEC_STOCK_FIXTURES: dict[str, SecStockFixture] = {
     "AAPL": SecStockFixture(
         identity=SecStockIdentityFixture(
@@ -320,6 +340,76 @@ def build_sec_stock_acquisition_result(
     )
 
 
+def evaluate_sec_stock_live_acquisition_readiness(
+    ticker: str,
+    *,
+    settings=None,
+    opt_in_enabled: bool | None = None,
+    sec_source_configured: bool | None = None,
+    rate_limit_ready: bool | None = None,
+    repository_writer_ready: bool | None = None,
+    source_snapshot_writer_ready: bool | None = None,
+    knowledge_pack_writer_ready: bool | None = None,
+    expected_cik: str | None = None,
+    acquisition_result: SecStockAcquisitionResult | None = None,
+) -> SecStockLiveAcquisitionReadiness:
+    normalized = normalize_ticker(ticker)
+    fixture = sec_stock_fixture_for_ticker(normalized)
+    opt_in = _setting_bool(settings, "sec_stock_enabled", opt_in_enabled, False)
+    source_configured = _setting_bool(settings, "sec_source_configured", sec_source_configured, False)
+    rate_ready = _setting_bool(settings, "rate_limit_ready", rate_limit_ready, False)
+    snapshot_ready = _setting_bool(settings, "source_snapshot_writer_ready", source_snapshot_writer_ready, False)
+    pack_ready = _setting_bool(settings, "knowledge_pack_writer_ready", knowledge_pack_writer_ready, False)
+    writer_ready = repository_writer_ready if repository_writer_ready is not None else (snapshot_ready and pack_ready)
+    writer_ready = bool(writer_ready)
+    supported_identity = _supported_common_stock_identity_ready(normalized, fixture)
+    manifest_ready = _top500_manifest_ready(normalized, fixture)
+    cik_ready = _cik_ready(normalized, fixture, expected_cik=expected_cik)
+    source_ready = _source_use_ready(fixture, acquisition_result)
+
+    blocked = []
+    if not opt_in:
+        blocked.append("explicit_live_sec_stock_acquisition_opt_in_missing")
+    if not source_configured:
+        blocked.append("sec_source_configuration_missing")
+    if not rate_ready:
+        blocked.append("source_rate_limit_not_ready")
+    if not writer_ready:
+        blocked.append("repository_writer_not_ready")
+    if not supported_identity:
+        blocked.append("supported_common_stock_identity_not_ready")
+    if not manifest_ready:
+        blocked.append("top500_manifest_or_cik_validation_failed")
+    if not cik_ready:
+        blocked.append("sec_cik_validation_failed")
+    if not source_ready:
+        blocked.append("source_use_validation_failed")
+
+    can_attempt = not blocked
+    return SecStockLiveAcquisitionReadiness(
+        boundary=SEC_STOCK_LIVE_ACQUISITION_READINESS_BOUNDARY,
+        ticker=normalized,
+        status="ready" if can_attempt else "blocked",
+        can_attempt_live_acquisition=can_attempt,
+        blocked_reasons=tuple(blocked),
+        opt_in_enabled=opt_in,
+        sec_source_configured=source_configured,
+        rate_limit_ready=rate_ready,
+        repository_writer_ready=writer_ready,
+        supported_common_stock_identity=supported_identity,
+        top500_manifest_ready=manifest_ready,
+        cik_ready=cik_ready,
+        source_use_ready=source_ready,
+        sanitized_diagnostics={
+            "boundary": SEC_STOCK_LIVE_ACQUISITION_READINESS_BOUNDARY,
+            "status": "ready" if can_attempt else "blocked",
+            "blocked_reasons": list(blocked),
+            "ticker": normalized,
+            "no_live_external_calls": True,
+        },
+    )
+
+
 def build_sec_stock_provider_response(
     adapter: SecProviderAdapterLike,
     request: ProviderRequestMetadata,
@@ -371,6 +461,99 @@ def _configuration_readiness() -> SecStockConfigurationReadiness:
         rate_limit_ready=True,
         live_call_disabled=True,
     )
+
+
+def _setting_bool(settings, name: str, explicit: bool | None, default: bool) -> bool:
+    if explicit is not None:
+        return bool(explicit)
+    if settings is not None and hasattr(settings, name):
+        return bool(getattr(settings, name))
+    return default
+
+
+def _supported_common_stock_identity_ready(ticker: str, fixture: SecStockFixture | None) -> bool:
+    if fixture is None:
+        return False
+    cached_asset = ASSETS.get(ticker)
+    if cached_asset is None:
+        return False
+    identity = cached_asset["identity"]
+    return (
+        getattr(identity, "ticker", None) == ticker
+        and getattr(getattr(identity, "asset_type", None), "value", None) == "stock"
+        and fixture.identity.asset_type == "stock"
+        and fixture.identity.support_state == "supported"
+    )
+
+
+def _top500_manifest_ready(ticker: str, fixture: SecStockFixture | None) -> bool:
+    if fixture is None:
+        return False
+    manifest_entry = top500_stock_universe_entry(ticker)
+    if manifest_entry is None:
+        return False
+    manifest_cik = getattr(manifest_entry, "cik", None)
+    return manifest_cik in {None, fixture.identity.cik}
+
+
+def _cik_ready(ticker: str, fixture: SecStockFixture | None, *, expected_cik: str | None) -> bool:
+    if fixture is None:
+        return False
+    if expected_cik is not None and expected_cik != fixture.identity.cik:
+        return False
+    manifest_entry = top500_stock_universe_entry(ticker)
+    manifest_cik = getattr(manifest_entry, "cik", None) if manifest_entry else None
+    if manifest_cik is not None and manifest_cik != fixture.identity.cik:
+        return False
+    return bool(fixture.identity.cik)
+
+
+def _source_use_ready(
+    fixture: SecStockFixture | None,
+    acquisition_result: SecStockAcquisitionResult | None,
+) -> bool:
+    if fixture is None:
+        return False
+    try:
+        for source in fixture.sources:
+            decision = resolve_source_policy(url=source.url)
+            if not source_can_support_generated_output(decision) or not decision.canonical_facts_allowed:
+                return False
+        if acquisition_result is not None:
+            if acquisition_result.response_state is not ProviderResponseState.supported:
+                return False
+            response = acquisition_result.provider_response
+            if response is None:
+                return False
+            if response.asset is None or response.asset.ticker != fixture.identity.ticker:
+                return False
+            source_records_by_id = {
+                record.source_document_id: record for record in acquisition_result.source_records
+            }
+            if set(source_records_by_id) != {source.source_document_id for source in response.source_attributions}:
+                return False
+            if any(source.asset_ticker != fixture.identity.ticker for source in response.source_attributions):
+                return False
+            for record in acquisition_result.source_records:
+                if not record.checksum.startswith("sha256:"):
+                    return False
+                if (
+                    record.source_use_policy is SourceUsePolicy.rejected
+                    or record.allowlist_status is SourceAllowlistStatus.rejected
+                ):
+                    return False
+            for source in response.source_attributions:
+                record = source_records_by_id[source.source_document_id]
+                if (
+                    source.source_use_policy is not record.source_use_policy
+                    or source.allowlist_status is not record.allowlist_status
+                    or source.source_quality is not record.source_quality
+                    or source.freshness_state is not record.freshness_state
+                ):
+                    return False
+        return True
+    except Exception:
+        return False
 
 
 def _acquisition_source_record(source: ProviderSourceAttribution) -> SecStockAcquisitionSourceRecord:

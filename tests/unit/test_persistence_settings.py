@@ -16,7 +16,14 @@ from backend.ingestion import request_ingestion
 from backend.settings import (
     INVALID_LOCAL_DURABLE_OBJECT_NAMESPACE_REASON,
     LOCAL_DURABLE_DISABLED_REASON,
+    LIVE_ETF_ISSUER_ACQUISITION_DISABLED_REASON,
+    LIVE_KNOWLEDGE_PACK_WRITER_MISSING_REASON,
+    LIVE_SEC_SOURCE_CONFIGURATION_MISSING_REASON,
+    LIVE_SEC_STOCK_ACQUISITION_DISABLED_REASON,
+    LIVE_SOURCE_RATE_LIMIT_NOT_READY_REASON,
+    LIVE_SOURCE_SNAPSHOT_WRITER_MISSING_REASON,
     MISSING_DATABASE_URL_REASON,
+    build_live_acquisition_settings,
     build_local_durable_repository_settings,
     build_persistence_settings,
     offline_migration_database_url,
@@ -189,6 +196,52 @@ def test_local_durable_repository_settings_reject_public_or_signed_storage_names
     assert settings.can_construct is False
     assert settings.status == "invalid_config"
     assert INVALID_LOCAL_DURABLE_OBJECT_NAMESPACE_REASON in settings.invalid_reasons
+
+
+def test_live_acquisition_settings_default_to_blocked_and_sanitized():
+    settings = build_live_acquisition_settings(env={})
+
+    assert settings.status == "blocked"
+    assert settings.sec_stock_ready is False
+    assert settings.etf_issuer_ready is False
+    assert LIVE_SEC_STOCK_ACQUISITION_DISABLED_REASON in settings.missing_reasons
+    assert LIVE_ETF_ISSUER_ACQUISITION_DISABLED_REASON in settings.missing_reasons
+    serialized = str(settings.safe_diagnostics)
+    assert "API_KEY" not in serialized
+    assert "DATABASE_URL" not in serialized
+    assert "secret" not in serialized.lower()
+
+
+def test_live_acquisition_settings_require_source_rate_limit_and_writer_readiness():
+    missing = build_live_acquisition_settings(
+        env={
+            "LIVE_SEC_STOCK_ACQUISITION_ENABLED": "true",
+            "LIVE_ETF_ISSUER_ACQUISITION_ENABLED": "false",
+        }
+    )
+
+    assert missing.sec_stock_ready is False
+    assert LIVE_SEC_SOURCE_CONFIGURATION_MISSING_REASON in missing.missing_reasons
+    assert LIVE_SOURCE_RATE_LIMIT_NOT_READY_REASON in missing.missing_reasons
+    assert LIVE_SOURCE_SNAPSHOT_WRITER_MISSING_REASON in missing.missing_reasons
+    assert LIVE_KNOWLEDGE_PACK_WRITER_MISSING_REASON in missing.missing_reasons
+
+    ready = build_live_acquisition_settings(
+        env={
+            "LIVE_SEC_STOCK_ACQUISITION_ENABLED": "true",
+            "LIVE_ETF_ISSUER_ACQUISITION_ENABLED": "true",
+            "LIVE_SEC_SOURCE_CONFIGURED": "true",
+            "LIVE_ETF_ISSUER_SOURCE_CONFIGURED": "true",
+            "LIVE_SOURCE_RATE_LIMIT_READY": "true",
+            "LIVE_ACQUISITION_SOURCE_SNAPSHOT_WRITER_READY": "true",
+            "LIVE_ACQUISITION_KNOWLEDGE_PACK_WRITER_READY": "true",
+        }
+    )
+
+    assert ready.status == "configured"
+    assert ready.sec_stock_ready is True
+    assert ready.etf_issuer_ready is True
+    assert ready.generated_output_cache_writer_ready is False
 
 
 def test_local_durable_repository_factories_are_lazy_and_build_configured_readers():
