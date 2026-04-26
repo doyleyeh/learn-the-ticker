@@ -1,40 +1,41 @@
 ## Current task
 
-### T-094: Add deterministic Weekly News Focus acquisition worker contract
+### T-095: Route Weekly News Focus through persisted event evidence fallback
 
 Goal:
-Add a deterministic fixture-backed Weekly News Focus acquisition worker contract that can consume persisted recent-event evidence boundaries, apply windowing, dedupe, source ranking, and empty/limited-state selection without live news/provider calls or generated analysis changes.
+Route Weekly News Focus and AI Comprehensive Analysis threshold reads through injected persisted recent-event evidence boundaries first, while preserving deterministic fixture fallback, stable/timely context separation, source-use policy, empty/limited states, and current API/frontend behavior.
 
 Task-scope paragraph:
-This task should add a deterministic acquisition and selection boundary for Weekly News Focus candidate events using local fixtures and the T-093 persisted event evidence contracts. It should model how a future worker would transform candidate event records into selected Weekly News Focus evidence by applying U.S. Eastern market-week windows, source-quality ranking, dedupe groups, source-use policy gates, evidence-limited and empty states, selected-vs-configured counts, and AI Comprehensive Analysis threshold metadata. This is a fixture-only backend contract slice; it must not fetch live news, execute a database worker, route current overview responses through persisted events, change generated Weekly News Focus or AI Comprehensive Analysis output, change frontend rendering, or expand source allowlists.
+This task should add an injectable route-level persisted-read fallback for Weekly News Focus evidence produced by the T-093 repository contracts and T-094 deterministic fixture acquisition boundary. The default app behavior must remain deterministic and fixture-backed unless a caller injects valid persisted recent-event evidence. When injected records are valid, the Weekly News Focus read path may prefer same-asset selected event evidence and AI threshold metadata; when records are missing, invalid, stale without labels, rights-blocked, wrong-asset, duplicate, insufficient, or reader failures occur, the system must fall back to the existing deterministic fixture output. This is a backend read-boundary slice only; it must not add live news acquisition, database execution, generated AI analysis rewrites, cache writes, frontend changes, source allowlist expansion, or deployment/runtime provider wiring.
 
 Roadmap alignment:
 
-- Second narrow slice of Weekly News Focus persisted-evidence work after T-093 contracts.
-- Establishes deterministic acquisition/selection semantics before route-level persisted-read fallback.
+- Third narrow slice of Weekly News Focus persisted-evidence work after T-093 and T-094.
+- Completes route-level persisted evidence fallback before live source acquisition or LLM generation work.
 - Preserves stable canonical facts separately from Weekly News Focus and AI Comprehensive Analysis timely context.
 - Keeps v0.4 frontend workflow unchanged while backend deterministic contract work continues before live-provider or deployment expansion.
 
 Allowed files:
 
+- `backend/weekly_news.py`
+- `backend/overview.py`
 - `backend/repositories/weekly_news.py`
 - `backend/weekly_news_repository.py`
-- `backend/weekly_news.py`
 - `backend/models.py`
 - `tests/unit/test_weekly_news.py`
 - `tests/unit/test_overview_generation.py`
 - `tests/unit/test_source_policy.py`
-- `tests/unit/test_repo_contract.py`
 - `tests/unit/test_safety_guardrails.py`
+- `tests/integration/test_backend_api.py`
 - `docs/agent-journal/*.md`
 
 Do not change:
 
 - No frontend files under `apps/web`.
-- No public FastAPI route paths, HTTP status behavior, response schema removals, asset overview behavior, comparison generation behavior, glossary behavior, source drawer behavior, frontend behavior, generated text, chat behavior, export behavior, or default deterministic fixture-generated output.
+- No public FastAPI route paths, HTTP status behavior, response schema removals, comparison generation behavior, glossary behavior, source drawer behavior, frontend behavior, generated text outside the injected persisted-read path, chat behavior, export behavior, or default deterministic fixture-generated output.
 - No changes to home-page workflow, comparison UI, glossary UI, source drawer UI, asset chat UI, mobile bottom-sheet/full-screen behavior, stock-vs-ETF comparison structure, or any v0.4 workflow marker.
 - No live SEC, issuer, ETF, market-data, news, RSS, web, storage, database, object-storage, cache, Redis, LLM, Cloud Run Job, scheduler, admin auth, rate-limiting, external analytics, telemetry vendor, or deployment wiring.
-- No production dependency addition, source allowlist expansion, provider licensing change, environment/secret file change, runtime cache write behavior, live event acquisition worker, route-level persisted-read fallback, generated-output cache write, or generated AI Comprehensive Analysis change.
+- No production dependency addition, source allowlist expansion, provider licensing change, environment/secret file change, runtime cache write behavior, live event acquisition worker, generated-output cache write, or generated AI Comprehensive Analysis rewrite.
 - No generated pages, generated chat answers, generated comparisons, generated risk summaries, generated exports, source snapshots, provider fetches, LLM calls, or new cacheable generated output.
 - No edits to `data/universes/us_common_stocks_top500.current.json` or `data/universes/us_equity_etfs.current.json`.
 - No raw full article text, unrestricted source text, unrestricted provider payloads, hidden prompts, prompt templates, raw model reasoning, raw user text, raw queries, raw questions, raw answers, raw chat transcripts, personal identifiers, portfolio/allocation details, real API keys, credentials, secrets, public storage URLs, signed URLs, external analytics IDs, or frontend-readable storage paths in fixtures, diagnostics, logs, docs, repository records, cache records, events, exports, or exported data.
@@ -42,22 +43,20 @@ Do not change:
 
 Acceptance criteria:
 
-- Add an injectable deterministic Weekly News Focus acquisition/selection boundary that can transform local fixture candidate event records into validated selected Weekly News Focus evidence records.
-- The fixture-only boundary consumes or emits the T-093 row models and validation helpers rather than creating a separate incompatible event schema.
-- Market-week windowing enforces the PRD/TDS rule: last completed Monday-Sunday market week plus current week-to-date through yesterday, using U.S. Eastern dates and deterministic as-of inputs in tests.
-- Source ranking prefers official filings, investor-relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes ahead of allowlisted news.
-- Source-use policy wins over rank, recency, or score. Rejected, license-disallowed, unrecognized, non-allowlisted, promotional, irrelevant, duplicate, and rights-incompatible candidate events cannot become selected Weekly News Focus evidence.
-- Dedupe handling groups duplicate or near-duplicate candidate records and preserves compact suppression metadata for excluded candidates without storing raw article bodies or unrestricted source text.
-- Selected event evidence preserves same-asset binding, event type, period bucket, event date or published date where available, retrieved timestamp, source quality, source-use tier, freshness state, citation/source references, selected-vs-configured item counts, suppressed candidate counts, and suppression reasons.
-- The acquisition/selection contract supports empty and limited Weekly News Focus states. Showing fewer than the configured maximum, including zero selected items, remains valid when evidence is thin.
-- AI Comprehensive Analysis threshold metadata is produced from selected high-signal event counts and suppresses analysis unless at least two high-signal selected Weekly News Focus items exist.
-- Validation rejects wrong-asset source/citation references, missing citation/source references for important event claims, stale evidence without a stale label, unavailable evidence without an unavailable label, source-policy-blocked records, malformed selected-vs-configured counts, duplicate selected items, and unsupported generated-output states.
-- Sanitized diagnostics may include compact codes, timestamps, source IDs, event IDs, checksums, freshness labels, rank inputs, dedupe group IDs, suppression reasons, and validation statuses, but must not include raw article bodies, unrestricted source passages, raw provider payloads, hidden prompts, raw model reasoning, raw user text, secrets, public URLs, signed URLs, or frontend-readable storage paths.
-- Preserve current overview/API/frontend behavior. Existing Weekly News Focus and AI Comprehensive Analysis responses remain deterministic fixture-backed unless a future task explicitly injects persisted event reads.
-- Preserve product guardrails: contracts, tests, fixture strings, and journal notes must not introduce buy/sell/hold recommendations, allocation advice, tax advice, price targets, brokerage/trading behavior, unsupported factual claims, or recent-news-as-canonical framing.
-- Preserve source freshness and uncertainty handling. Missing or weak Weekly News Focus evidence must be represented with `unknown`, `unavailable`, `partial`, `stale`, `insufficient_evidence`, `limited`, or empty-state style metadata rather than invented facts.
-- Add or update tests for fixture acquisition, deterministic U.S. Eastern market-week window filtering, source-quality ranking, dedupe grouping, source-use blocking, rejected/unrecognized/non-allowlisted/promotional/irrelevant suppression, selected-vs-configured counts, suppressed candidate counts, evidence-limited and empty states, AI threshold suppression/availability metadata, same-asset source/citation binding, sanitized diagnostics, no advice language, no secret exposure, and no live network/provider/database/LLM imports.
-- Current retrieval, generation, overview, comparison, chat, glossary, export, frontend, provider-secret, source-use policy, fixture-generated output, search classification, and quality-gate behavior remains unchanged outside the injected fixture-only Weekly News Focus acquisition/selection boundary.
+- Add an injectable persisted Weekly News Focus read boundary that can validate T-093/T-094 `WeeklyNewsEventEvidenceRepositoryRecords` and prefer valid same-asset selected event evidence plus AI threshold metadata when explicitly supplied.
+- The default `generate_weekly_news_focus`, asset overview/API, and frontend-visible behavior remains deterministic fixture-backed when no persisted reader is injected, when a reader misses, or when persisted records fail validation.
+- Persisted-read fallback preserves public overview and weekly-news response schemas, Weekly News Focus section separation, freshness/source metadata, citation chips/source references, and current API status behavior.
+- Persisted selected events must preserve same-asset binding, event type, period bucket, source/citation references, event or published dates where available, retrieved timestamp, source quality, source-use tier, freshness state, selected-vs-configured item counts, suppressed candidate counts, and empty/limited state metadata.
+- AI Comprehensive Analysis threshold metadata is read from validated records only and must continue to suppress analysis unless at least two high-signal selected Weekly News Focus items exist.
+- If persisted threshold metadata is missing, malformed, below threshold, stale without labels, unsupported, or disconnected from selected events, the path must fall back to existing deterministic fixture behavior rather than inventing generated analysis.
+- Source-use policy wins over persisted availability. Rejected, license-disallowed, unrecognized, non-allowlisted, promotional, irrelevant, duplicate, rights-incompatible, raw-text-incompatible, or wrong-asset persisted events cannot feed Weekly News Focus output.
+- Persisted evidence with wrong-asset citations, wrong-source asset binding, missing citation/source references for important event claims, malformed selected-vs-configured counts, duplicate selected items, stale evidence without a stale label, unavailable evidence without an unavailable label, unsafe diagnostics, or unsupported generated-output states must be rejected or cause fixture fallback.
+- Empty and limited Weekly News Focus states remain valid. Showing fewer than the configured maximum, including zero selected persisted items, must not trigger padding with weak, promotional, duplicate, non-allowlisted, or license-disallowed records.
+- Persisted-read diagnostics may include compact codes, timestamps, source IDs, event IDs, checksums, freshness labels, dedupe group IDs, suppression reasons, validation statuses, reader status, and fallback reason codes, but must not include raw article bodies, unrestricted source passages, raw provider payloads, hidden prompts, raw model reasoning, raw user text, secrets, public URLs, signed URLs, or frontend-readable storage paths.
+- Preserve product guardrails: implementation, tests, fixture strings, and journal notes must not introduce buy/sell/hold recommendations, allocation advice, tax advice, price targets, brokerage/trading behavior, unsupported factual claims, or recent-news-as-canonical framing.
+- Preserve source freshness and uncertainty handling. Missing, stale, weak, unavailable, or partial Weekly News Focus evidence must be represented with `unknown`, `unavailable`, `partial`, `stale`, `insufficient_evidence`, `limited`, or empty-state metadata rather than invented facts.
+- Add or update tests for persisted-first event reads, fixture fallback on reader miss/failure/invalid records, same-asset source/citation binding, selected-vs-configured counts, suppressed candidate counts, empty and limited states, AI threshold suppression/availability metadata, source-use gating, freshness labels, rejected/non-allowlisted/promotional/irrelevant/duplicate suppression, sanitized diagnostics, unchanged default fixture output, no advice language, no secret exposure, and no live network/provider/database/LLM imports.
+- Current retrieval, generation defaults, overview, comparison, chat, glossary, export, frontend, provider-secret, source-use policy, fixture-generated output, search classification, and quality-gate behavior remains unchanged outside the injected Weekly News Focus persisted-read boundary.
 
 Required commands:
 
@@ -71,10 +70,36 @@ git diff --check
 ```
 
 Iteration budget:
-One agent-loop cycle. If live source fetching, route integration, generated AI analysis changes, frontend changes, source allowlist expansion, provider licensing review, export rewrites, production database execution, or live worker scheduling is needed, record the follow-up and stop after deterministic acquisition/selection contracts.
+One agent-loop cycle. If live source fetching, generated AI analysis rewrites, frontend changes, source allowlist expansion, provider licensing review, export rewrites, production database execution, cache writes, live worker scheduling, or deployment/runtime provider wiring is needed, record the follow-up and stop after injected persisted-read fallback behavior.
 
 
 ## Completed
+
+### T-094: Add deterministic Weekly News Focus acquisition worker contract
+
+Goal:
+Add a deterministic fixture-backed Weekly News Focus acquisition worker contract that can consume persisted recent-event evidence boundaries, apply windowing, dedupe, source ranking, and empty/limited-state selection without live news/provider calls or generated analysis changes.
+
+Completed details:
+
+- Implementation commit `bb2686a feat(T-094): add deterministic Weekly News Focus acquisition worker contract` updated `backend/repositories/weekly_news.py`, `backend/weekly_news_repository.py`, `tests/unit/test_weekly_news.py`, and `docs/agent-journal/20260426T030431Z.md`.
+- Merged branch `agent/T-094-20260426T030431Z` into `main` with local merge commit `d748752 chore(T-094): merge deterministic Weekly News Focus acquisition worker contract`.
+- `backend/repositories/weekly_news.py` added `WEEKLY_NEWS_FIXTURE_ACQUISITION_BOUNDARY`, `WeeklyNewsFixtureAcquisitionBoundary`, and `acquire_weekly_news_event_evidence_from_fixtures` to transform local `WeeklyNewsEventCandidateRow` records into validated `WeeklyNewsEventEvidenceRepositoryRecords`.
+- The fixture acquisition path builds deterministic U.S. Eastern market-week windows, prepares candidate rows, computes source rank inputs, applies source-use policy gates, groups dedupe metadata, selects ranked events up to the configured maximum, records selected-vs-configured and suppressed candidate counts, and emits evidence-state, AI threshold, validation, and sanitized diagnostic rows.
+- The selection logic skips wrong-asset candidates, suppresses blocked, stale/unavailable-without-label, non-allowlisted, policy-disallowed, promotional, irrelevant, duplicate, out-of-window, and below-score candidates, and preserves compact suppression metadata without raw article bodies or unrestricted source text.
+- AI Comprehensive Analysis threshold metadata remains metadata-only and enforces the two high-signal selected-item rule without changing generated AI analysis output.
+- `backend/weekly_news_repository.py` re-exports the new acquisition boundary and helper alongside the T-093 repository row models and validators.
+- Tests were expanded for ranked and deduped fixture acquisition, wrong-asset skipping, selected-vs-configured counts, suppressed candidate counts, empty and limited states, AI threshold availability/suppression metadata, source-use blocking, freshness/uncertainty labels, sanitized diagnostics, no advice language, no secret exposure, and no live network/provider/database/LLM imports.
+- The implementation did not change public routes, generated Weekly News Focus output, generated AI Comprehensive Analysis output, frontend behavior, live provider wiring, source allowlists, route-level persisted-read fallback, generated-output caches, database execution, worker scheduling, or deployment wiring.
+- `docs/agent-journal/20260426T030431Z.md` records these checks: `python3 -m pytest tests/unit/test_weekly_news.py -q` passed; `python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_overview_generation.py tests/unit/test_source_policy.py -q` passed; `python3 -m pytest tests/integration/test_backend_api.py -q` passed; `python3 -m pytest tests -q` passed; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed; `git diff --check` passed.
+- Remaining risks from the journal:
+  - The acquisition boundary is still dormant and fixture-only; no live worker, database execution, route-level persisted-read fallback, provider fetch, cache write, or scheduler wiring was added.
+  - Future route integration must preserve same-asset citation/source binding, source-use policy gates, freshness/uncertainty labels, dedupe suppression metadata, empty/limited states, and AI analysis threshold suppression before generated output consumes persisted events.
+
+Completion commits:
+
+- `bb2686a feat(T-094): add deterministic Weekly News Focus acquisition worker contract`
+- `d748752 chore(T-094): merge deterministic Weekly News Focus acquisition worker contract`
 
 ### T-093: Add persisted Weekly News Focus event evidence contracts
 
@@ -2527,36 +2552,6 @@ Completion commits:
 
 ## Backlog
 
-### T-095: Route Weekly News Focus through persisted event evidence fallback
-
-Goal:
-Route Weekly News Focus and AI Comprehensive Analysis threshold reads through injected persisted recent-event evidence boundaries first, while preserving deterministic fixture fallback, stable/timely context separation, source-use policy, empty/limited states, and current API/frontend behavior.
-
-Roadmap alignment:
-
-- Third narrow slice of Weekly News Focus persisted-evidence work after T-093 and T-094.
-- Completes route-level persisted evidence fallback before live source acquisition or LLM generation work.
-
-Acceptance criteria:
-
-- Add an injectable persisted Weekly News Focus read boundary that can prefer valid same-asset selected event evidence and threshold metadata, then fall back to existing deterministic fixture behavior on miss, invalid records, wrong-asset evidence, source-use blocks, stale-without-label states, insufficient evidence, or reader failures.
-- Preserve public overview and weekly-news response schemas, Weekly News Focus section separation, AI Comprehensive Analysis suppression unless threshold requirements are met, and current frontend behavior.
-- Reject persisted evidence with wrong-asset citations, rejected/source-policy-disallowed sources, duplicate selected items, non-allowlisted items, promotional/irrelevant items, missing freshness labels, uncited important event claims, raw article text beyond rights tier, raw prompts, raw model reasoning, secrets, or raw user text.
-- Add tests for persisted-first event reads, fixture fallback, empty/limited states, selected-vs-configured counts, AI threshold metadata, source-use gating, freshness labels, same-asset citations, rejected evidence suppression, and no live provider/LLM/database imports.
-
-Required commands:
-
-```bash
-python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_overview_generation.py tests/unit/test_source_policy.py -q
-python3 -m pytest tests/integration/test_backend_api.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-```
-
-Iteration budget:
-One agent-loop cycle. If live news/provider calls, generated analysis rewrites, frontend changes, source allowlist expansion, or export rewrites are needed, record the follow-up and stop after persisted-read fallback behavior.
-
 ### T-096: Add live LLM runtime readiness diagnostics contract
 
 Goal:
@@ -2738,8 +2733,8 @@ Operational defaults for backend roadmap tasks:
 - T-091 established eligible ETF universe metadata contracts. It is completed and must not be reintroduced as runnable backlog.
 - T-092 established route-level manifest-backed search support classification. It is completed and must not be reintroduced as runnable backlog.
 - T-093 established dormant Weekly News Focus event evidence contracts. It is completed and must not be reintroduced as runnable backlog.
-- T-094 is the current promoted task for deterministic Weekly News Focus acquisition/selection.
-- T-095 is the prepared backlog task for route-level persisted-read fallback.
+- T-094 established deterministic Weekly News Focus acquisition/selection. It is completed and must not be reintroduced as runnable backlog.
+- T-095 is the current promoted task for route-level persisted-read fallback.
 - T-096 through T-098 are prepared backlog tasks that split gated OpenRouter live-generation work into readiness diagnostics, mocked transport, and validation/fallback orchestration.
 - T-099 is a prepared backlog task for deterministic provider content export-rights hardening.
 - T-100 is a prepared backlog task for production hardening readiness diagnostics, not production deployment.
@@ -2768,8 +2763,8 @@ Roadmap integration tracker:
 | Eligible ETF universe metadata contracts | Completed | T-091 |
 | Manifest-backed search support classification | Completed | T-092 |
 | Weekly News Focus persisted event evidence contracts | Completed | T-093 |
-| Weekly News Focus deterministic acquisition/selection | Promoted | T-094 |
-| Weekly News Focus persisted-read fallback | Backlog | T-095 |
+| Weekly News Focus deterministic acquisition/selection | Completed | T-094 |
+| Weekly News Focus persisted-read fallback | Promoted | T-095 |
 | Live LLM runtime readiness diagnostics | Backlog | T-096 |
 | Gated OpenRouter mocked transport adapter | Backlog | T-097 |
 | Live-generation validation and fallback orchestration | Backlog | T-098 |
