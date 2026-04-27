@@ -14,6 +14,7 @@ from backend.persistence import (
 )
 from backend.ingestion import request_ingestion
 from backend.settings import (
+    CORS_SETTINGS_SCHEMA_VERSION,
     INVALID_LOCAL_DURABLE_OBJECT_NAMESPACE_REASON,
     LOCAL_DURABLE_DISABLED_REASON,
     LIVE_ETF_ISSUER_ACQUISITION_DISABLED_REASON,
@@ -26,6 +27,7 @@ from backend.settings import (
     LIVE_WEEKLY_NEWS_SOURCE_CONFIGURATION_MISSING_REASON,
     LIVE_WEEKLY_NEWS_WRITER_MISSING_REASON,
     MISSING_DATABASE_URL_REASON,
+    build_cors_settings,
     build_live_acquisition_settings,
     build_local_durable_repository_settings,
     build_persistence_settings,
@@ -66,6 +68,30 @@ def test_persistence_settings_default_to_missing_config_without_secrets():
     assert settings.connect_timeout_seconds == 5
     assert settings.safe_diagnostics["database_url_configured"] is False
     assert "DATABASE_URL" not in str(settings.safe_diagnostics)
+
+
+def test_cors_settings_default_to_local_web_origins_and_are_sanitized():
+    settings = build_cors_settings(env={})
+
+    assert settings.schema_version == CORS_SETTINGS_SCHEMA_VERSION
+    assert settings.enabled is True
+    assert settings.allowed_origins == ("http://localhost:3000", "http://127.0.0.1:3000")
+    assert settings.allowed_methods == ("GET", "POST", "OPTIONS")
+    assert settings.allow_credentials is False
+    assert settings.safe_diagnostics["enabled"] is True
+    assert "API_KEY" not in str(settings.safe_diagnostics)
+
+
+def test_cors_settings_parse_explicit_origin_list_and_allow_disabled_empty_value():
+    configured = build_cors_settings(
+        env={"CORS_ALLOWED_ORIGINS": "https://example.vercel.app, http://localhost:3000"}
+    )
+    disabled = build_cors_settings(env={"CORS_ALLOWED_ORIGINS": " "})
+
+    assert configured.allowed_origins == ("https://example.vercel.app", "http://localhost:3000")
+    assert configured.enabled is True
+    assert disabled.allowed_origins == ()
+    assert disabled.enabled is False
 
 
 def test_database_url_redaction_hides_credentials_and_sensitive_query_values():

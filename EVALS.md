@@ -44,6 +44,7 @@ Verify:
 - Weekly News Focus and AI Comprehensive Analysis remain visually separate from stable facts
 - contextual glossary supports desktop hover/click/focus popovers and mobile tap bottom-sheet behavior
 - asset-specific chat remains a helper feature and supports mobile bottom-sheet or full-screen behavior
+- frontend chat, export, and comparison calls use the configured backend API base or a documented Next `/api` proxy instead of silently relying on missing Next API routes
 - comparison UI covers empty, one-side-selected, two-side-selected, partial, pending, unsupported, and out-of-scope states
 - stock-vs-ETF comparison uses relationship badges and the special single-company-vs-ETF-basket structure
 - mobile and desktop layouts keep Beginner section, source access, glossary, chat, and comparison flows usable
@@ -72,6 +73,7 @@ Verify:
 - generated citations bind only to same-asset or same-comparison-pack evidence
 - unsupported and out-of-scope assets are blocked from generated pages, generated chat, and generated comparisons
 - normal CI uses local fixtures or mocks, not live external calls
+- browser-facing direct backend calls are allowed only when FastAPI CORS is wired from explicit local/deployment origins
 
 ### Citation, Safety, Summaries, Suitability, And Chat Tasks
 
@@ -243,6 +245,7 @@ Verify:
 - agent prompts read proposal, PRD, technical design, SPEC, TASKS, and EVALS
 - PRD/TDS/proposal are treated as the current baseline after safety rules
 - root npm scripts delegate to `apps/web`
+- local web/API smoke instructions cover `NEXT_PUBLIC_API_BASE_URL`, `API_BASE_URL`, `CORS_ALLOWED_ORIGINS`, and the Next `/api/:path*` rewrite behavior
 - Docker Compose scaffolding remains local-only and is not required for CI
 - env examples use placeholders only and contain no real secrets
 - docs do not contradict safety, citation, freshness, source-use, secret-handling, or no-live-calls rules

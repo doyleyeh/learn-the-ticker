@@ -24,7 +24,7 @@ services:
       APP_ENV: local
       PORT: "8000"
       DATABASE_URL: postgresql://learn_the_ticker:learn_the_ticker@postgres:5432/learn_the_ticker
-      CORS_ALLOWED_ORIGINS: http://localhost:3000
+      CORS_ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
       TOP500_UNIVERSE_MANIFEST_URI: data/universes/us_common_stocks_top500.current.json
       LLM_PROVIDER: mock
       LLM_LIVE_GENERATION_ENABLED: "false"

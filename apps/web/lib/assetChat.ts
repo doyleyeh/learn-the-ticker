@@ -1,3 +1,5 @@
+import { publicApiEndpoint } from "./apiEndpoints";
+
 export type ChatSafetyClassification =
   | "educational"
   | "personalized_advice_redirect"
@@ -86,7 +88,7 @@ export async function postAssetChat(
   const conversationId =
     typeof conversationIdOrFetcher === "function" ? null : conversationIdOrFetcher ?? null;
   const resolvedFetcher = typeof conversationIdOrFetcher === "function" ? conversationIdOrFetcher : fetcher;
-  const endpoint = `/api/assets/${encodeURIComponent(ticker.trim().toUpperCase())}/chat`;
+  const endpoint = publicApiEndpoint(`/api/assets/${encodeURIComponent(ticker.trim().toUpperCase())}/chat`);
   const response = await resolvedFetcher(endpoint, {
     method: "POST",
     headers: {

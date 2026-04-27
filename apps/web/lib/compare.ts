@@ -1,3 +1,4 @@
+import { publicApiEndpoint } from "./apiEndpoints";
 import { getAssetFixture, normalizeTicker, type FreshnessState } from "./fixtures";
 import { resolveLocalSearchResponse } from "./search";
 
@@ -52,7 +53,7 @@ export async function fetchComparisonResponse(
   rightTicker: string,
   fetcher: Fetcher = fetch
 ): Promise<ComparePageFixture> {
-  const endpoint = "/api/compare";
+  const endpoint = publicApiEndpoint("/api/compare");
   const response = await fetcher(endpoint, {
     method: "POST",
     headers: {

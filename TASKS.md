@@ -1,9 +1,135 @@
 ## Current task
 
-No current task is prepared. The backlog is empty.
+Ready for next task selection after T-119. Keep the next promoted task narrow and deterministic.
+
+
+## Backlog
+
+### T-120: Prove local durable repository smoke with API proxy enabled
+
+Goal:
+Run and document a local `local_durable` smoke path, when Docker/Postgres/object-storage substitutes are available, that verifies the same API-backed browser surfaces covered by T-118 and T-119 without making live provider, news, market-data, or LLM calls.
+
+Acceptance criteria:
+
+- Local durable configuration remains opt-in and placeholder-only.
+- Backend route reads prefer configured durable repositories and fall back safely when local durable services are unavailable.
+- Frontend `/api` proxy, direct API base helpers, and FastAPI CORS are included in the local browser smoke checklist.
+- Source drawer, chat, comparison, and exports render from approved source metadata only.
+- If Docker is unavailable, the task records that blocker without weakening CI expectations.
+
+Required commands:
+
+```bash
+python3 -m pytest tests -q
+npm test
+npm run typecheck
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+git diff --check
+```
+
+Iteration budget:
+One agent-loop cycle. Do not add production storage, live provider fetches, credentials, or recurring jobs.
+
+### T-121: Add browser E2E local smoke for API-backed MVP flows
+
+Goal:
+Add an optional local browser smoke script that starts or targets the web and API dev servers, then verifies asset page rendering, chat POST, export links, comparison rendering, source drawer access, and CORS headers through real HTTP.
+
+Acceptance criteria:
+
+- The smoke can be skipped in CI unless local servers are explicitly provided.
+- It checks `POST /api/assets/VOO/chat`, asset/source-list export URLs, `/compare?left=VOO&right=QQQ`, and source/glossary markers.
+- It fails on frontend 404s for API-backed chat/export/compare paths.
+- It records console/network failures without storing raw user text or secrets.
+
+Required commands:
+
+```bash
+npm test
+npm run typecheck
+npm run build
+python3 -m pytest tests -q
+bash scripts/run_quality_gate.sh
+git diff --check
+```
+
+Iteration budget:
+One agent-loop cycle. Keep it deterministic and localhost-only.
+
+### T-122: Promote real official-source fetchers behind handoff-gated local opt-in
+
+Goal:
+Replace the current mocked official-source acquisition readiness for a golden stock and ETF with explicit operator-only local fetcher execution, keeping normal CI mocked and requiring Golden Asset Source Handoff before evidence use.
+
+Acceptance criteria:
+
+- Real retrieval is disabled by default and never required by CI.
+- Retrieved SEC/issuer payloads cannot become source snapshots, normalized facts, citations, generated-output cache records, source drawer excerpts, or exports until handoff approval is present.
+- Parser diagnostics, freshness/as-of metadata, rights tier, source-use policy, checksums, and review status are persisted or blocked fail-closed.
+- No secret values, unrestricted raw text, or raw provider payloads appear in committed logs or fixtures.
+
+Required commands:
+
+```bash
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+git diff --check
+```
+
+Iteration budget:
+One agent-loop cycle. Do not broaden beyond golden assets.
+
+### T-123: Prepare reviewed launch-universe expansion plan
+
+Goal:
+Prepare the next deterministic step from the current small fixture manifest toward a reviewed top-500 launch manifest and launch ETF pack without changing runtime coverage truth or promoting unreviewed candidates.
+
+Acceptance criteria:
+
+- Candidate generation still writes `data/universes/us_common_stocks_top500.candidate.YYYY-MM.json` and a diff report only.
+- Runtime stock support remains tied to `data/universes/us_common_stocks_top500.current.json`.
+- ETF launch-pack expansion stays reviewed metadata-only and does not use live holdings as runtime support truth.
+- Source provenance, source snapshot dates, checksums, rank basis, SEC/Nasdaq validation status, and warnings are documented for review.
+
+Required commands:
+
+```bash
+python3 -m pytest tests -q
+npm test
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+git diff --check
+```
+
+Iteration budget:
+One agent-loop cycle. Do not promote a candidate manifest without manual approval.
 
 
 ## Completed
+
+### T-119: Wire local frontend API access and backend CORS
+
+Goal:
+Fix the local MVP blockers where chat, export, and comparison frontend paths could resolve to frontend 404s or masked fixture fallback even though the FastAPI routes work directly.
+
+Completed details:
+
+- Added `apps/web/lib/apiEndpoints.ts` so browser-facing chat, export, and comparison helpers prefer `NEXT_PUBLIC_API_BASE_URL` or `API_BASE_URL`, use `http://127.0.0.1:8000` during local development, and keep relative `/api` fallback for deployments that proxy the backend.
+- Added a Next.js rewrite in `apps/web/next.config.mjs` so local `/api/:path*` requests can proxy to the configured FastAPI backend when links or helpers stay relative.
+- Updated `apps/web/lib/assetChat.ts`, `apps/web/lib/exportControls.ts`, and `apps/web/lib/compare.ts` so chat POSTs, export links/POSTs, and server-side comparison fetches no longer depend on a missing Next API route.
+- Added `build_cors_settings` and CORS diagnostics in `backend/settings.py`, then installed `CORSMiddleware` in `backend/main.py` when FastAPI is available and origins are configured.
+- Updated frontend smoke and persistence-settings tests for the API helper, rewrite, and CORS settings.
+- Updated implementation docs, the runtime gap audit, SPEC, EVALS, and this task tracker so the next development cycle starts from the new local API/CORS baseline.
+- `docs/agent-journal/20260427T203834Z.md` records focused checks, the full quality gate, local dev-server smoke results, and the Docker availability blocker.
+
+Remaining risks:
+
+- This task wires local browser/API plumbing and deterministic tests. It does not add production auth, rate limiting, production deployment, broad live provider execution, or a full reviewed 500-name launch manifest.
+- Real official-source acquisition remains opt-in and golden-asset scoped until a future task promotes handoff-gated fetcher execution.
+- Local browser E2E is still manual curl/dev-server smoke in this task; an automated localhost browser smoke remains T-121.
 
 ### T-118: Prove local fresh-data ingest-to-render smoke path
 
@@ -3124,9 +3250,9 @@ Completion commits:
 - `4be1fa3 chore: add agentic development scaffold`
 - `c7e2004 chore: add agent loop retries`
 
-## Backlog
+## Historical Backlog Note
 
-No backlog task is prepared. The backlog is empty after completing T-118.
+This older scaffold note is retained only for history. The active runnable backlog is at the top of this file and now starts with T-120 after T-119.
 
 ## General MVP Roadmap
 
@@ -3136,10 +3262,11 @@ Current runtime snapshot:
 
 - Backend contracts, configured reader boundaries, ingestion ledger execution, source-use/export gates, Weekly News contracts, generated-output cache contracts, and live-generation readiness diagnostics are broad and stable.
 - The current runtime has deterministic local fresh-data ingest-to-render smoke coverage for a golden asset. Official-source acquisition remains mocked/golden-path, source snapshots, normalized knowledge packs, Weekly News evidence, and generated-output cache records can be routed through deterministic in-memory/mocked boundaries or explicitly configured local durable repository factories, and production persistence/storage is not the normal path.
-- The frontend renders the main learning surfaces with deterministic fixtures and selected backend adapters; T-109 added API-backed home search and dynamic asset-page rendering with deterministic fixture fallback.
+- The frontend renders the main learning surfaces with deterministic fixtures and selected backend adapters; T-109 added API-backed home search and dynamic asset-page rendering with deterministic fixture fallback, and T-119 wired local chat, export, and comparison API access through configured backend URLs plus a Next `/api` rewrite fallback.
 - The updated PRD/TDS/proposal make Golden Asset Source Handoff a blocker before retrieved sources can become evidence for storage, generation, citation, cache, source drawer, or export behavior.
 - The updated Top-500 workflow keeps runtime stock support tied to the approved current manifest; T-116 added deterministic monthly IWB/SPY/IVV/VOO candidate generation, SEC/Nasdaq validation, diff reporting, and manual-promotion gates, but no candidate has been approved or promoted to the current manifest.
-- No current task is prepared, and the backlog is empty.
+- T-119 closed the local frontend/API plumbing blockers found during manual smoke testing: chat POSTs, export URLs, comparison fetches, and browser direct backend calls now have a documented API-base/proxy/CORS strategy.
+- The prepared backlog is T-120 through T-123: optional local durable smoke, localhost browser E2E smoke, handoff-gated real official-source fetchers for golden assets, and reviewed launch-universe expansion planning.
 - T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, source allowlist expansion, admin auth/rate limiting, broader live ingestion, and real provider execution remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:
@@ -3187,7 +3314,8 @@ Operational defaults for general MVP roadmap tasks:
 - T-116 established reviewed Top-500 candidate manifest workflow contracts. It is completed and must not be reintroduced as runnable backlog.
 - T-117 established handoff-gated mocked official-source acquisition execution for golden assets. It is completed and must not be reintroduced as runnable backlog.
 - T-118 established the local fresh-data ingest-to-render runbook and deterministic smoke coverage. It is completed and must not be reintroduced as runnable backlog.
-- Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until Golden Asset Source Handoff enforcement, reviewed Top-500 candidate workflow, handoff-gated official-source acquisition execution, local fresh-data verification, and launch readiness work pass deterministic CI coverage.
+- T-119 established local frontend API access and backend CORS for chat, exports, comparison, and direct browser API calls. It is completed and must not be reintroduced as runnable backlog.
+- Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until local durable smoke, browser E2E smoke, handoff-gated real official-source fetchers, reviewed launch-universe expansion planning, and launch readiness work pass deterministic CI coverage.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted task should run the relevant EVALS.md checks, `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, `bash scripts/run_quality_gate.sh`, and `git diff --check`.
 
@@ -3238,11 +3366,15 @@ Roadmap integration tracker:
 | Reviewed Top-500 candidate manifest workflow contracts | Completed | T-116 |
 | Handoff-gated official-source acquisition execution for golden assets | Completed | T-117 |
 | Local fresh-data ingest-to-render runbook and smoke coverage | Completed | T-118 |
+| Local frontend API access and backend CORS | Completed | T-119 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
 Remaining unpromoted general MVP sequence:
 
-- Full production deployment after T-118: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
+- Local durable repository smoke and browser E2E smoke after T-119, so dev-server testing can catch API proxy, CORS, chat, comparison, source drawer, glossary, and export regressions before production deployment work.
+- Handoff-gated real official-source fetcher execution for golden assets after local smoke coverage, while normal CI remains mocked and deterministic.
+- Reviewed launch-universe expansion planning before any promotion of a real top-500 current manifest or broader ETF launch pack.
+- Full production deployment after those local MVP gaps: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
 - Recurring production jobs only after manual official-source acquisition, Top-500 candidate refresh review, and local fresh-data behavior are stable.
 - Broad paid-provider or news-provider integrations only after provider licensing/source-use review, no-secret-exposure tests, mocked CI fixtures, source-rights validation, and export/display constraints are documented.
 - Post-MVP features such as accounts, saved assets, watchlists, PDF exports, localization, richer analytics dashboards, and broad provider enrichment remain out of the fully functional MVP stage.

@@ -25,7 +25,7 @@ This checklist records production-readiness gates. It does not approve deploymen
 | --- | --- |
 | Production admin auth | Add and verify admin ingestion/pre-cache protection before exposing admin routes outside a controlled environment. |
 | Rate limiting | Enforce configured search, chat, and ingestion limits before expensive provider, retrieval, ingestion, or LLM work begins. |
-| Deployment environment validation | Validate Cloud Run, Vercel, Neon, storage, CORS, and server-only secret configuration without exposing secret values. |
+| Deployment environment validation | Validate Cloud Run, Vercel, Neon, storage, production CORS origins, and server-only secret configuration without exposing secret values. T-119 covers local CORS/proxy plumbing only. |
 | Private object storage | Prove private snapshot/artifact storage behavior and safe object namespace validation before production source snapshots or generated artifacts are written. |
 | Database migration execution | Run and verify production migration strategy, rollback approach, connection pooling, and read/write permissions. |
 | Cloud Run API settings | Review region, `PORT`, min instances, max instances, CORS origins, budget guardrails, logging, and error handling. |

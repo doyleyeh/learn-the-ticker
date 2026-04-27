@@ -1,6 +1,6 @@
 # Local Fresh-Data Ingest-To-Render Runbook
 
-Task: T-118
+Task: T-118, updated by T-119
 
 This runbook describes the local golden-asset smoke path before production deployment work. Normal CI uses deterministic fixtures, mocked official-source acquisition, and in-memory repositories. It must not require real SEC, issuer, market-data, broad news, storage, database, Redis, RSS, or LLM calls.
 
@@ -21,6 +21,7 @@ export LTT_LOCAL_REPOSITORY_MODE=in_memory
 export LTT_LOCAL_SOURCE_MODE=mocked_official_sources
 export API_BASE_URL=http://127.0.0.1:8000
 export NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
+export CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 ```
 
 Do not add provider credentials, production storage paths, signed links, public bucket links, raw provider payloads, raw source text, hidden prompts, raw model reasoning, raw user text, or transcript text to environment examples, fixtures, logs, diagnostics, or committed files.
@@ -69,7 +70,36 @@ Expected result:
 - AI Comprehensive Analysis is suppressed below two high-signal Weekly News Focus items and available only when the threshold is met
 - unsupported, out-of-scope, pending-ingestion, partial, stale, unknown, unavailable, pending-review, rejected-source, parser-invalid, wrong-asset, hidden/internal, unclear-rights, and insufficient-evidence states stay blocked or labeled according to section behavior
 
-6. Verify frontend rendering with the API base configured:
+6. Verify local frontend/API plumbing.
+
+T-119 established two valid local strategies:
+
+- browser helpers prefer `NEXT_PUBLIC_API_BASE_URL` and call FastAPI directly, with FastAPI CORS allowing the local web origins
+- the Next app also rewrites `/api/:path*` to the configured FastAPI backend, so relative chat/export links do not hit missing Next API routes during local development
+
+Start the API with the placeholder CORS origins and start the web app with the API base configured:
+
+```bash
+npm --workspace apps/web run dev -- --hostname 127.0.0.1 --port 3000
+```
+
+Then verify the prior frontend 404 blockers:
+
+```bash
+curl -s -X POST http://127.0.0.1:3000/api/assets/VOO/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"What does this fund hold?"}'
+curl -s http://127.0.0.1:3000/api/assets/VOO/export?export_format=markdown
+curl -s -X POST http://127.0.0.1:3000/api/compare \
+  -H 'Content-Type: application/json' \
+  -d '{"left_ticker":"VOO","right_ticker":"QQQ"}'
+curl -s -D - -o /dev/null http://127.0.0.1:8000/api/search?q=VOO \
+  -H 'Origin: http://127.0.0.1:3000'
+```
+
+Expected result: chat, export, and compare return backend payloads instead of Next 404s, and the Origin request includes an `Access-Control-Allow-Origin` header for the configured local origin.
+
+7. Verify frontend rendering with the API base configured:
 
 ```bash
 npm run dev
@@ -97,5 +127,7 @@ For optional `local_durable`, remove only local throwaway data created for the s
 - If Weekly News Focus has fewer items than expected, treat that as valid when evidence is thin. Do not pad the section.
 - If source drawer or export output is empty, verify that sources are allowlisted, parser-valid, same-asset, and excerpt-allowed.
 - If frontend rendering uses local fallback, confirm `NEXT_PUBLIC_API_BASE_URL` or `API_BASE_URL` points to the local backend.
+- If chat or export links return frontend 404s, confirm the web dev server was started after setting `NEXT_PUBLIC_API_BASE_URL` or that the Next `/api/:path*` rewrite can reach the local FastAPI backend.
+- If browser direct API calls fail, confirm `CORS_ALLOWED_ORIGINS` includes the exact local web origin, including hostname and port.
 
-The deterministic regression for this runbook is `test_t118_local_fresh_data_ingest_to_render_smoke_path_is_deterministic` in `tests/integration/test_backend_api.py`.
+The deterministic regression for this runbook is `test_t118_local_fresh_data_ingest_to_render_smoke_path_is_deterministic` in `tests/integration/test_backend_api.py`. T-119 adds static coverage for the frontend API helper, Next rewrite, and CORS settings; a future task should add optional localhost browser E2E smoke.

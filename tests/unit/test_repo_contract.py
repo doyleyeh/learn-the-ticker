@@ -367,9 +367,8 @@ def test_backend_mvp_runtime_gap_audit_tracks_required_areas_without_runtime_wir
 
     required_gap_markers = [
         "official-source acquisition readiness is mocked and golden-asset scoped",
-        "Golden Asset Source Handoff is partially represented",
-        "the Top-500 monthly candidate-manifest workflow does not yet exist",
-        "a newly fetched official source cannot yet be run through a documented local ingest-to-persist-to-render workflow",
+        "local browser verification is still manual curl/dev-server smoke",
+        "a newly fetched real official source cannot yet be run through handoff-gated local fetcher execution",
         "Current file is a small fixture manifest",
         "Real official fetch and parser outcomes are not yet the normal path",
     ]
@@ -377,11 +376,11 @@ def test_backend_mvp_runtime_gap_audit_tracks_required_areas_without_runtime_wir
         assert marker in audit, f"audit should explicitly record gap: {marker}"
 
     for task_marker in [
-        "T-114: deterministic launch pre-cache expansion",
-        "T-115: add Golden Asset Source Handoff",
-        "T-116: add Top-500 candidate-manifest",
-        "T-117: add handoff-gated official-source acquisition",
-        "T-118: add local fresh-data ingest-to-render",
+        "T-119 is complete",
+        "T-120: prove optional local durable repository smoke",
+        "T-121: add automated localhost browser E2E smoke",
+        "T-122: promote real official-source fetchers",
+        "T-123: prepare reviewed launch-universe expansion",
     ]:
         assert task_marker in audit, f"audit should map next task {task_marker}"
 
@@ -525,23 +524,35 @@ def test_t114_mvp_launch_readiness_docs_cover_regression_matrix_and_go_no_go_wit
         assert forbidden.lower() not in combined_lower
 
 
-def test_tasks_general_mvp_roadmap_marks_t118_completed_with_empty_current_task_and_backlog():
+def test_tasks_general_mvp_roadmap_marks_t119_completed_with_prepared_backlog():
     tasks = read_file("TASKS.md")
     current_task = tasks.split("## Current task", 1)[1].split("## Completed", 1)[0]
-    completed = tasks.split("## Completed", 1)[1].split("## Backlog", 1)[0]
-    backlog = tasks.split("## Backlog", 1)[1].split("## General MVP Roadmap", 1)[0]
+    backlog = tasks.split("## Backlog", 1)[1].split("## Completed", 1)[0]
+    completed = tasks.split("## Completed", 1)[1].split("## Historical Backlog Note", 1)[0]
     roadmap = tasks.split("## General MVP Roadmap", 1)[1]
 
     assert "## MVP Backend Roadmap" not in tasks
-    assert "No current task is prepared. The backlog is empty." in current_task
-    assert "No backlog task is prepared" in backlog
+    assert "Ready for next task selection after T-119" in current_task
+    for task_marker in [
+        "### T-120: Prove local durable repository smoke with API proxy enabled",
+        "### T-121: Add browser E2E local smoke for API-backed MVP flows",
+        "### T-122: Promote real official-source fetchers behind handoff-gated local opt-in",
+        "### T-123: Prepare reviewed launch-universe expansion plan",
+    ]:
+        assert task_marker in backlog
+    assert "Acceptance criteria" in backlog
+    assert "Required commands" in backlog
+    assert "Iteration budget" in backlog
+    assert "### T-119: Wire local frontend API access and backend CORS" in completed
+    assert "Next.js rewrite" in completed
+    assert "build_cors_settings" in completed
     assert "### T-118: Prove local fresh-data ingest-to-render smoke path" in completed
     assert "The runbook explicitly states that fetching alone is retrieval, not evidence approval" in completed
     assert "deterministic integration smoke coverage for the VOO golden path" in completed
     assert "mocked official-source acquisition" in completed
     assert "Golden Asset Source Handoff" in completed
     assert "Production deployment, production durable storage, scheduled jobs" in completed
-    assert "No current task is prepared, and the backlog is empty." in roadmap
+    assert "T-119 closed the local frontend/API plumbing blockers" in roadmap
 
     assert "T-099 established deterministic provider content export-rights hardening" in roadmap
     assert "T-100 established the backend MVP runtime gap audit and roadmap tracker" in roadmap
@@ -558,6 +569,7 @@ def test_tasks_general_mvp_roadmap_marks_t118_completed_with_empty_current_task_
     assert "T-115 established Golden Asset Source Handoff contract enforcement" in roadmap
     assert "T-116 established reviewed Top-500 candidate manifest workflow contracts" in roadmap
     assert "T-117 established handoff-gated mocked official-source acquisition execution for golden assets" in roadmap
+    assert "T-119 established local frontend API access and backend CORS" in roadmap
     assert "T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path" in roadmap
     assert "T-118 established the local fresh-data ingest-to-render runbook and deterministic smoke coverage" in roadmap
     assert "monthly IWB/SPY/IVV/VOO candidate generation" in roadmap
@@ -581,6 +593,7 @@ def test_tasks_general_mvp_roadmap_marks_t118_completed_with_empty_current_task_
     assert "| Reviewed Top-500 candidate manifest workflow contracts | Completed | T-116 |" in roadmap
     assert "| Handoff-gated official-source acquisition execution for golden assets | Completed | T-117 |" in roadmap
     assert "| Local fresh-data ingest-to-render runbook and smoke coverage | Completed | T-118 |" in roadmap
+    assert "| Local frontend API access and backend CORS | Completed | T-119 |" in roadmap
     assert "| Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |" in roadmap
 
 

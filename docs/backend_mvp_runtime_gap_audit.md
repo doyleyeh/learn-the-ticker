@@ -1,8 +1,8 @@
 # MVP Fresh-Data Runtime Gap Audit
 
-Task: 2026-04-27 control-doc refresh after updated PRD, technical design spec, and proposal.
+Task: 2026-04-27 control-doc refresh after updated PRD, technical design spec, proposal, and T-119 local API/CORS fixes.
 
-Purpose: rebaseline the project after the deterministic contract work through T-113 and the updated Top-500 manifest workflow plus Golden Asset Source Handoff policy. This audit separates what is already implemented from what still has to land before the MVP can locally ingest fresh official data, approve evidence, persist it, generate validated outputs, and render it through the frontend.
+Purpose: rebaseline the project after deterministic contract work through T-119. This audit separates what is already implemented from what still has to land before the MVP can locally ingest fresh official data, approve evidence, persist it, generate validated outputs, and render it through the frontend under local browser testing.
 
 This is a planning artifact only. It does not enable live providers, change public route behavior, run production persistence, add broad source coverage, deploy services, or alter frontend workflows.
 
@@ -46,58 +46,59 @@ The project is well past planning-only:
 - Deterministic tests and evals cover search/support classification, citations, source policy, safety, Weekly News Focus, cache/freshness hashes, exports, glossary, comparison, chat, provider adapters, ingestion jobs, repository contracts, and frontend smoke markers.
 - The Top-500 manifest contract is implemented, but the checked-in current manifest is a 10-entry fixture manifest for `AAPL`, `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `META`, `TSLA`, `BRK.B`, `JPM`, and `UNH`, not a full reviewed 500-name launch manifest.
 - ETF manifest metadata exists for supported, eligible-not-cached, unsupported, and out-of-scope ETF states. Local generated ETF pages are still limited to the fixture-backed cached path.
-- T-101 through T-113 established configured persisted readers, executable ledger and worker boundaries, mocked SEC and ETF issuer acquisition, source snapshot records, normalized knowledge-pack writes, Weekly News event evidence records, generated-output cache writes, API-backed frontend rendering, end-to-end persisted verification, local durable repository execution with in-memory fallback, and opt-in live acquisition readiness for SEC, issuer, and Weekly News golden paths.
+- T-101 through T-119 established configured persisted readers, executable ledger and worker boundaries, mocked SEC and ETF issuer acquisition, source snapshot records, normalized knowledge-pack writes, Weekly News event evidence records, generated-output cache writes, API-backed frontend rendering, end-to-end persisted verification, local durable repository execution with in-memory fallback, opt-in live acquisition readiness for SEC/issuer/Weekly News golden paths, Golden Asset Source Handoff enforcement, reviewed Top-500 candidate workflow contracts, local fresh-data ingest-to-render runbook coverage, and local browser API/CORS plumbing for chat, exports, and comparison.
 
-The MVP is still not locally fresh-data functional end to end:
+The MVP is closer, but still not fully locally fresh-data functional end to end:
 
 - official-source acquisition readiness is mocked and golden-asset scoped
 - real allowlisted fetchers and parsers are not the normal local path
-- Golden Asset Source Handoff is partially represented through source-use policy and allowlist status, but the updated approval fields are not yet enforced across every persistence, citation, generation, cache, source drawer, and export boundary
-- the Top-500 monthly candidate-manifest workflow does not yet exist
-- a newly fetched official source cannot yet be run through a documented local ingest-to-persist-to-render workflow and verified in the frontend
+- the local fresh-data smoke path is deterministic and in-memory/mocked by default, not a proven local durable Postgres/object-storage run
+- local browser verification is still manual curl/dev-server smoke, not an automated localhost browser E2E check
+- a newly fetched real official source cannot yet be run through handoff-gated local fetcher execution as the normal path
+- the checked-in current Top-500 manifest remains a small fixture manifest; candidate workflow contracts exist, but no real reviewed 500-name manifest has been promoted
 - production deployment, admin protections, rate limiting, recurring jobs, monitoring, rollback, and cost controls remain later work
 
 ## Area Tracker
 
 | Area | Status | Current deterministic state | Functional MVP blocker | Next task area |
 | --- | --- | --- | --- | --- |
-| Route contracts and fixture fallback | `deterministic_complete` | Public schemas and fixture fallback are broad and stable. | Fresh persisted data still needs a proven local run. | Preserve in T-114 and later local fresh-data verification. |
-| Configured persisted readers | `deterministic_complete` | App-level dependencies can prefer configured knowledge-pack, cache, Weekly News, ledger, and source repositories with fallback. | Local configuration and migration execution need fresh-data verification. | T-118 local fresh-data runbook and smoke. |
-| Ingestion ledger and worker | `deterministic_complete` | Manual ingestion and pre-cache job states can execute through mocked outcomes and in-memory or local durable boundaries. | Real official fetch and parser outcomes are not yet the normal path. | T-117 official-source acquisition execution. |
-| Source snapshot storage | `contract_complete` | Rights-aware source snapshot records and private artifact metadata exist. | Fresh retrieved sources need Golden Asset Source Handoff before snapshot writes. | T-115 then T-117. |
-| Normalized knowledge-pack persistence | `deterministic_complete` | Knowledge-pack repository contracts and writes from deterministic acquisition outputs exist. | Real parser outputs need to populate normalized facts and evidence gaps. | T-117. |
-| Generated-output cache writes | `deterministic_complete` | Cache writes and freshness invalidation exist for validated deterministic outputs. | Fresh-source inputs need handoff metadata and validation before cache writes. | T-115 then T-118. |
-| Weekly News Focus evidence | `deterministic_complete` | Official-source event evidence records, selection, windows, and persisted reads exist for golden paths. | Real official event fetchers are readiness-only and mocked. | T-117. |
-| Golden Asset Source Handoff | `runtime_gap` | Source allowlist and source-use gates exist. | Updated PRD requires approval status, official-source status, storage rights, export rights, parser status, freshness/as-of metadata, rationale, and review status across evidence boundaries. | T-115. |
-| Top-500 current manifest | `contract_complete` | Runtime support classification reads the approved current manifest. | Current file is a small fixture manifest, not the reviewed top-500 candidate output. | T-116. |
-| Top-500 candidate refresh | `runtime_gap` | Policy is documented in PRD/TDS/proposal. | No IWB primary workflow, fallback workflow, SEC/Nasdaq validation, diff report, or reviewable PR workflow exists. | T-116. |
-| Frontend API rendering | `deterministic_complete` | Search and dynamic asset pages call backend APIs with deterministic fallback and MVP workflow markers. | A fresh persisted asset needs a local browser/dev-server verification path. | T-118. |
-| Launch pre-cache readiness | `current` | T-114 is promoted for deterministic launch pre-cache expansion and MVP readiness regression coverage. | It does not make fresh acquisition or production deployment complete. | T-114. |
-| Production hardening | `production_gap` | Free-tier target architecture is documented. | Admin auth, rate limiting, migration execution, private storage, Cloud Run settings, recurring jobs, monitoring, rollback, and budget checks are not done. | Later after T-118. |
+| Route contracts and fixture fallback | `deterministic_complete` | Public schemas and fixture fallback are broad and stable. | Fresh real-source persisted data still needs a proven local durable/browser run. | Preserve in T-120 and T-121. |
+| Configured persisted readers | `deterministic_complete` | App-level dependencies can prefer configured knowledge-pack, cache, Weekly News, ledger, and source repositories with fallback. | Optional local durable smoke still needs proof outside in-memory/mocked CI. | T-120. |
+| Ingestion ledger and worker | `deterministic_complete` | Manual ingestion and pre-cache job states can execute through mocked outcomes and in-memory or local durable boundaries. | Real official fetch and parser outcomes are not yet the normal path. | T-122. |
+| Source snapshot storage | `deterministic_complete` | Rights-aware source snapshot records and private artifact metadata exist behind handoff gates. | Real retrieved source snapshots still need operator-only fetcher execution and parser diagnostics. | T-122. |
+| Normalized knowledge-pack persistence | `deterministic_complete` | Knowledge-pack repository contracts and writes from deterministic acquisition outputs exist. | Real parser outputs need to populate normalized facts and evidence gaps under handoff approval. | T-122. |
+| Generated-output cache writes | `deterministic_complete` | Cache writes and freshness invalidation exist for validated deterministic outputs. | Fresh-source inputs need real handoff-gated fetch/parser execution before cache writes. | T-122. |
+| Weekly News Focus evidence | `deterministic_complete` | Official-source event evidence records, selection, windows, and persisted reads exist for golden paths. | Real official event fetchers are readiness-only and mocked. | T-122. |
+| Golden Asset Source Handoff | `deterministic_complete` | Approval metadata and fail-closed validation are enforced across source policy, snapshots, knowledge packs, citations, cache, source drawer, and exports. | Real fetchers must populate the same fields before evidence use. | Preserve in T-122 and later. |
+| Top-500 current manifest | `contract_complete` | Runtime support classification reads the approved current manifest. | Current file is a small fixture manifest, not a reviewed top-500 launch manifest. | T-123. |
+| Top-500 candidate refresh | `deterministic_complete` | IWB primary, SPY/IVV/VOO fallback, SEC/Nasdaq validation, checksums, warnings, diff report, and manual-promotion gates exist as deterministic contracts. | A real reviewed candidate has not been generated, reviewed, or promoted. | T-123. |
+| Frontend API rendering | `deterministic_complete` | Search, asset pages, chat, export links, and comparison helpers can target the backend via API base or local Next rewrite, with deterministic fallback where appropriate. | Automated localhost browser E2E is still missing. | T-121. |
+| FastAPI CORS | `deterministic_complete` | `CORS_ALLOWED_ORIGINS` is parsed into FastAPI CORS middleware when available. | Production origin review remains deployment-hardening work. | Preserve in deployment tasks. |
+| Launch pre-cache readiness | `deterministic_complete` | Deterministic launch pre-cache expansion and MVP readiness regression coverage exist. | It does not make real broad acquisition or production deployment complete. | Preserve. |
+| Production hardening | `production_gap` | Free-tier target architecture is documented. | Admin auth, rate limiting, migration execution, private storage, Cloud Run settings, recurring jobs, monitoring, rollback, and budget checks are not done. | Later after T-120 through T-123. |
 
 ## Fresh-Data MVP Blockers
 
 The local functional MVP still needs these gaps closed, in order:
 
-1. Finish T-114 so launch-readiness regression coverage and go/no-go documentation lock down existing behavior before broader runtime changes.
-2. Add Golden Asset Source Handoff as a first-class contract across source records, repository rows, source snapshots, normalized knowledge packs, citations, generated-output cache records, source drawer output, and exports.
-3. Add the reviewed Top-500 candidate-manifest workflow so the app can move from a 10-entry fixture manifest toward a real top-500 launch manifest without making live runtime coverage decisions.
-4. Add official-source acquisition execution for golden assets through mocked HTTP tests and explicit local opt-in, including parser diagnostics and handoff-gated persistence.
-5. Prove a local fresh-data run from manual ingestion through persisted data, generated-output cache validation, backend routes, frontend rendering, and export/source drawer behavior.
-6. Only after local fresh-data behavior is reliable, add production hardening for admin routes, rate limiting, deployment env validation, private storage, database migrations, Cloud Run service/job settings, recurring job decisions, monitoring, rollback, and cost controls.
+1. Prove optional local durable repository execution through the T-118/T-119 route and browser surfaces when Docker/Postgres/object-storage substitutes are available.
+2. Add automated localhost browser E2E smoke for the local web/API pairing so chat, exports, comparison, source drawer, glossary, and CORS regressions are caught before production work.
+3. Promote real official-source fetcher execution for golden assets behind explicit local opt-in and Golden Asset Source Handoff approval, while keeping CI mocked.
+4. Prepare reviewed launch-universe expansion from candidate contracts toward a real top-500 stock manifest and ETF launch pack without changing runtime support truth until review.
+5. Only after local fresh-data behavior is reliable, add production hardening for admin routes, rate limiting, deployment env validation, private storage, database migrations, Cloud Run service/job settings, recurring job decisions, monitoring, rollback, and cost controls.
 
 ## Refined Agent Track
 
 Current promoted task:
 
-- T-114: deterministic launch pre-cache expansion and MVP readiness regression matrix. This should preserve v0.4 frontend behavior, source/freshness states, Weekly News evidence limits, AI Comprehensive Analysis thresholds, safety gates, and no-live-call defaults.
+- T-119 is complete: local frontend API access and FastAPI CORS are wired for chat, exports, comparison, and direct browser API calls.
 
-Next runnable backlog after T-114:
+Next runnable backlog after T-119:
 
-- T-115: add Golden Asset Source Handoff contract fields and fail-closed validation across source policy, source snapshots, knowledge packs, citations, generated-output cache, source drawer, and exports.
-- T-116: add Top-500 candidate-manifest generation and validation contracts using official IWB primary input, official SPY/IVV/VOO fallback inputs, SEC/Nasdaq validation, checksums, warnings, and diff-report output.
-- T-117: add handoff-gated official-source acquisition execution for golden SEC stock, ETF issuer, and Weekly News paths with injected mocked HTTP tests and explicit local opt-in.
-- T-118: add local fresh-data ingest-to-render runbook and smoke coverage that verifies a manually ingested golden asset can render through backend APIs, frontend pages, source drawer, exports, Weekly News, and generated-output cache without weakening deterministic CI.
+- T-120: prove optional local durable repository smoke with API proxy/CORS enabled.
+- T-121: add automated localhost browser E2E smoke for API-backed MVP flows.
+- T-122: promote real official-source fetchers behind handoff-gated local opt-in for golden assets.
+- T-123: prepare reviewed launch-universe expansion planning without unreviewed manifest promotion.
 
 Later, unpromoted work:
 

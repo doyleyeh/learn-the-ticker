@@ -63,6 +63,7 @@ function orderedMarkers(path, markers, label) {
   "components/InlineGlossaryText.tsx",
   "components/WeeklyNewsPanel.tsx",
   "lib/assetDetails.ts",
+  "lib/apiEndpoints.ts",
   "lib/assetChat.ts",
   "lib/assetGlossary.ts",
   "lib/assetOverview.ts",
@@ -653,10 +654,13 @@ includes("components/AssetEtfSections.tsx", "glossaryMatches");
 includes("components/AssetEtfSections.tsx", "No citation chip is shown because this ETF item is an explicit evidence gap");
 includes("lib/assetChat.ts", "/api/assets/");
 includes("lib/assetChat.ts", "/chat");
+includes("lib/assetChat.ts", "publicApiEndpoint");
 includes("lib/assetChat.ts", "conversation_id");
 includes("lib/assetChat.ts", "chat-session-contract-v1");
 includes("lib/assetChat.ts", "export_available");
 includes("lib/exportControls.ts", "/api/assets/");
+includes("lib/exportControls.ts", "publicApiEndpoint");
+includes("lib/exportControls.ts", "requiredApiEndpoint");
 includes("lib/exportControls.ts", "/export\\?export_format=");
 includes("lib/exportControls.ts", "/sources/export\\?export_format=");
 includes("lib/exportControls.ts", "fetchSupportedAssetExportContract");
@@ -688,6 +692,7 @@ includes("lib/exportControls.ts", "used_existing_chat_contract");
 includes("lib/exportControls.ts", "no_factual_evidence");
 includes("lib/exportControls.ts", "safe session turn records");
 includes("lib/compare.ts", "source_documents");
+includes("lib/compare.ts", "publicApiEndpoint\\(\"/api/compare\"\\)");
 includes("lib/compare.ts", "c_fact_voo_benchmark");
 includes("lib/compare.ts", "c_fact_qqq_benchmark");
 includes("lib/compare.ts", "src_voo_fact_sheet_fixture");
@@ -804,6 +809,19 @@ for (const blockedFallbackMarker of [
 ]) {
   includes("lib/search.ts", blockedFallbackMarker);
 }
+includesAll("lib/apiEndpoints.ts", [
+  "NEXT_PUBLIC_API_BASE_URL",
+  "API_BASE_URL",
+  "http://127.0.0.1:8000",
+  "publicApiEndpoint",
+  "requiredApiEndpoint"
+], "local browser API helpers prefer configured FastAPI and keep a relative fallback");
+includesAll("next.config.mjs", [
+  "NEXT_PUBLIC_API_BASE_URL",
+  "API_BASE_URL",
+  "/api/:path*",
+  "http://127.0.0.1:8000"
+], "local Next API proxy rewrite to FastAPI backend");
 includes("components/FreshnessLabel.tsx", "data-freshness-state");
 includes("components/GlossaryPopover.tsx", "data-glossary-term");
 includes("components/GlossaryPopover.tsx", "data-glossary-visible-label");

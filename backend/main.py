@@ -10,6 +10,10 @@ else:
         from fastapi import FastAPI
     except ModuleNotFoundError:  # pragma: no cover - exercised only in dependency-free local gates.
         from backend.compat import FastAPI
+try:
+    from fastapi.middleware.cors import CORSMiddleware
+except ModuleNotFoundError:  # pragma: no cover - exercised only when FastAPI is unavailable.
+    CORSMiddleware = None
 
 from backend.data import (
     STUB_TIMESTAMP,
@@ -76,8 +80,24 @@ from backend.persistence import (
 from backend.retrieval import build_asset_knowledge_pack_result
 from backend.retrieval_repository import read_persisted_knowledge_pack_response
 from backend.search import search_assets
+from backend.settings import build_cors_settings
 from backend.sources import build_asset_source_drawer_response
 from backend.trust_metrics import get_trust_metric_event_catalog, validate_trust_metric_events
+
+
+def configure_cors_middleware(fastapi_app: FastAPI) -> None:
+    settings = build_cors_settings()
+    fastapi_app.state.cors_settings = settings.safe_diagnostics
+    if not settings.enabled or CORSMiddleware is None or not hasattr(fastapi_app, "add_middleware"):
+        return
+
+    fastapi_app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(settings.allowed_origins),
+        allow_methods=list(settings.allowed_methods),
+        allow_headers=["*"],
+        allow_credentials=settings.allow_credentials,
+    )
 
 
 app = FastAPI(
@@ -85,6 +105,7 @@ app = FastAPI(
     version="0.1.0",
     description="Deterministic FastAPI skeleton for citation-first stock and ETF education.",
 )
+configure_cors_middleware(app)
 configure_backend_read_dependencies(app, build_backend_read_dependencies_from_local_durable_config())
 
 

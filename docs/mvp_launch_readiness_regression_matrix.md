@@ -36,6 +36,8 @@ This matrix is the deterministic launch-readiness regression layer before produc
 | `/api/assets/{ticker}/chat` | educational answer, advice redirect, compare redirect, insufficient evidence, unsupported/unknown | Single-asset chat stays grounded in the selected asset pack and redirects second-ticker questions to `/compare`. |
 | `/api/assets/{ticker}/sources` | available, unsupported, out of scope, unknown, eligible-not-cached | Source drawer returns approved metadata and allowed excerpts only; blocked states return no unrestricted text. |
 | `/api/assets/{ticker}/glossary` | generic context, asset-specific context, unavailable term | Asset-specific context is same-asset cited; generic definitions do not invent asset facts. |
+
+T-119 local web/API plumbing note: local browser smoke should verify that chat POSTs, export URLs, and comparison requests reach FastAPI through either `NEXT_PUBLIC_API_BASE_URL`/`API_BASE_URL` or the Next `/api/:path*` rewrite, and that direct browser calls are covered by `CORS_ALLOWED_ORIGINS`.
 | Export endpoints | asset page, source list, comparison, chat transcript, blocked/unavailable | Markdown and JSON exports include disclaimer, citations, freshness, uncertainty, source-use policy, and no restricted raw content. |
 | Ingestion and pre-cache routes | pending, running, succeeded, failed, unsupported, out of scope, unknown, unavailable | Deterministic jobs do not create provider calls, source facts, citations, generated pages, generated chat, generated comparisons, risk summaries, or generated-output cache records unless an existing validated fixture already provides them. |
 

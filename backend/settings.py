@@ -8,6 +8,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 PERSISTENCE_SETTINGS_SCHEMA_VERSION = "persistence-settings-v1"
 LOCAL_DURABLE_REPOSITORY_SETTINGS_SCHEMA_VERSION = "local-durable-repository-settings-v1"
 LIVE_ACQUISITION_SETTINGS_SCHEMA_VERSION = "live-acquisition-readiness-settings-v1"
+CORS_SETTINGS_SCHEMA_VERSION = "cors-settings-v1"
 DEFAULT_DATABASE_CONNECT_TIMEOUT_SECONDS = 5
 DEFAULT_DATABASE_POOL_PRE_PING = False
 DEFAULT_DATABASE_ECHO_SQL = False
@@ -20,6 +21,8 @@ DEFAULT_LIVE_WEEKLY_NEWS_ACQUISITION_ENABLED = False
 DEFAULT_LIVE_SOURCE_RATE_LIMIT_READY = False
 DEFAULT_LOCAL_DURABLE_OBJECT_NAMESPACE = "local-private-source-artifacts"
 DEFAULT_OFFLINE_MIGRATION_DATABASE_URL = "postgresql+psycopg://placeholder@localhost:5432/learn_the_ticker"
+DEFAULT_CORS_ALLOWED_ORIGINS = ("http://localhost:3000", "http://127.0.0.1:3000")
+DEFAULT_CORS_ALLOWED_METHODS = ("GET", "POST", "OPTIONS")
 MISSING_DATABASE_URL_REASON = "database_url_missing"
 LOCAL_DURABLE_DISABLED_REASON = "local_durable_repositories_disabled"
 INVALID_LOCAL_DURABLE_OBJECT_NAMESPACE_REASON = "local_durable_object_namespace_invalid"
@@ -203,6 +206,28 @@ class LocalDurableRepositorySettings:
         }
 
 
+@dataclass(frozen=True)
+class CorsSettings:
+    schema_version: str
+    allowed_origins: tuple[str, ...]
+    allowed_methods: tuple[str, ...]
+    allow_credentials: bool
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.allowed_origins)
+
+    @property
+    def safe_diagnostics(self) -> dict[str, object]:
+        return {
+            "schema_version": self.schema_version,
+            "enabled": self.enabled,
+            "allowed_origins": list(self.allowed_origins),
+            "allowed_methods": list(self.allowed_methods),
+            "allow_credentials": self.allow_credentials,
+        }
+
+
 def build_persistence_settings(env: dict[str, str] | None = None) -> PersistenceSettings:
     source = os.environ if env is None else env
     database_url = _clean_optional(source.get("DATABASE_URL"))
@@ -225,6 +250,19 @@ def build_persistence_settings(env: dict[str, str] | None = None) -> Persistence
         migrations_enabled=_bool_setting(source.get("DATABASE_MIGRATIONS_ENABLED"), DEFAULT_DATABASE_MIGRATIONS_ENABLED),
         missing_reasons=() if database_url else (MISSING_DATABASE_URL_REASON,),
         _database_url=database_url,
+    )
+
+
+def build_cors_settings(env: dict[str, str] | None = None) -> CorsSettings:
+    source = os.environ if env is None else env
+    raw_origins = source.get("CORS_ALLOWED_ORIGINS")
+    allowed_origins = _csv_setting(raw_origins) if raw_origins is not None else DEFAULT_CORS_ALLOWED_ORIGINS
+
+    return CorsSettings(
+        schema_version=CORS_SETTINGS_SCHEMA_VERSION,
+        allowed_origins=allowed_origins,
+        allowed_methods=DEFAULT_CORS_ALLOWED_METHODS,
+        allow_credentials=False,
     )
 
 
@@ -434,6 +472,13 @@ def _clean_optional(value: str | None) -> str | None:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+def _csv_setting(value: str | None) -> tuple[str, ...]:
+    cleaned = _clean_optional(value)
+    if cleaned is None:
+        return ()
+    return tuple(item.strip() for item in cleaned.split(",") if item.strip())
 
 
 def _first_present(source: dict[str, str] | os._Environ[str], *names: str) -> str | None:

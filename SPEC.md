@@ -59,6 +59,7 @@ Current implementation stage:
 
 - backend contracts exist for search, overview/details, Weekly News Focus, AI Comprehensive Analysis, comparison, grounded chat, glossary, exports, ingestion states, provider adapters, trust metrics, generated-output cache writes, local durable repository reads/writes, and LLM runtime diagnostics
 - frontend routes and components exist for home search, API-backed asset pages with deterministic fallback, comparison, chat, source metadata, glossary, and export controls
+- local frontend/API plumbing exists for MVP smoke testing: browser helpers prefer the configured FastAPI base URL, the Next app can rewrite `/api/:path*` to the local backend, and FastAPI CORS is wired from `CORS_ALLOWED_ORIGINS`
 - local durable repository execution has in-memory fallback and configured reader boundaries, but normal CI remains fixture-backed
 - opt-in official-source acquisition readiness exists for SEC stock, ETF issuer, and Weekly News golden paths, but the current readiness paths are still mocked and golden-asset scoped
 - CI and local checks are deterministic and fixture-backed; normal quality gates do not depend on live provider, market-data, news, or LLM calls
@@ -68,8 +69,9 @@ Near-term implementation priority order:
 1. preserve the deterministic launch-readiness regression layer for search, support states, asset pages, comparison, source drawer, contextual glossary, grounded chat, exports, Weekly News Focus, AI Comprehensive Analysis, and mobile workflow markers
 2. harden Golden Asset Source Handoff across source allowlist records, source snapshots, knowledge packs, citations, generated-output cache entries, source drawer output, and exports
 3. add a reviewed Top-500 candidate-manifest refresh workflow that uses official IWB holdings first, official SPY/IVV/VOO holdings only as fallback inputs, SEC/Nasdaq validation, checksums, and a diff report before current-manifest promotion
-4. implement a local fresh-data path for golden assets: allowlisted retrieval, source handoff, private snapshot storage, parser diagnostics, normalized knowledge-pack writes, Weekly News evidence writes, generated-output cache writes, and API/frontend rendering from persisted data
-5. defer production deployment hardening, recurring jobs, broad paid-provider integrations, and post-MVP features until the local fresh-data path passes strict quality gates
+4. prove local durable and browser E2E smoke for golden assets using the API-base/proxy/CORS path before production deployment work
+5. implement real official-source fetcher execution behind explicit local opt-in and Golden Asset Source Handoff for golden assets, while preserving mocked deterministic CI
+6. defer production deployment hardening, recurring jobs, broad paid-provider integrations, and post-MVP features until the local fresh-data path passes strict quality gates
 
 When choosing the next task, prefer improving PRD/TDS alignment of the current deterministic scaffold over adding new domains or speculative infrastructure.
 The local agent-loop harness should default to `gpt-5.5` with `high` reasoning effort, while allowing explicit per-run overrides such as `gpt-5.3-codex-spark` when the operator requests it.

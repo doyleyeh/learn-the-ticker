@@ -1,3 +1,5 @@
+import { publicApiEndpoint, requiredApiEndpoint } from "./apiEndpoints";
+
 export type ExportFormat = "markdown";
 
 type Fetcher = typeof fetch;
@@ -49,12 +51,12 @@ export const EXPORT_LICENSING_CONTEXT =
 
 export function assetPageExportUrl(ticker: string, exportFormat: ExportFormat = EXPORT_FORMAT): string {
   const encodedTicker = encodeTicker(ticker);
-  return `/api/assets/${encodedTicker}/export?export_format=${exportFormat}`;
+  return publicApiEndpoint(`/api/assets/${encodedTicker}/export?export_format=${exportFormat}`);
 }
 
 export function assetSourceListExportUrl(ticker: string, exportFormat: ExportFormat = EXPORT_FORMAT): string {
   const encodedTicker = encodeTicker(ticker);
-  return `/api/assets/${encodedTicker}/sources/export?export_format=${exportFormat}`;
+  return publicApiEndpoint(`/api/assets/${encodedTicker}/sources/export?export_format=${exportFormat}`);
 }
 
 export async function fetchSupportedAssetExportContract(
@@ -110,7 +112,7 @@ export function comparisonExportUrl(
     export_format: exportFormat
   });
 
-  return `/api/compare/export?${params.toString()}`;
+  return publicApiEndpoint(`/api/compare/export?${params.toString()}`);
 }
 
 export async function fetchSupportedComparisonExportContract(
@@ -161,7 +163,7 @@ export async function fetchSupportedComparisonExportContract(
 }
 
 export function chatTranscriptExportUrl(ticker: string): string {
-  return `/api/assets/${encodeTicker(ticker)}/chat/export`;
+  return publicApiEndpoint(`/api/assets/${encodeTicker(ticker)}/chat/export`);
 }
 
 export async function postChatTranscriptExport(
@@ -230,11 +232,7 @@ function exportEndpoint(
   relativeUrl: string,
   missingApiBaseMessage = "No API base URL is configured for supported export contract fetches."
 ) {
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || process.env.API_BASE_URL?.trim();
-  if (!apiBaseUrl) {
-    throw new Error(missingApiBaseMessage);
-  }
-  return new URL(relativeUrl, apiBaseUrl).toString();
+  return requiredApiEndpoint(relativeUrl, missingApiBaseMessage);
 }
 
 function encodeTicker(ticker: string): string {
