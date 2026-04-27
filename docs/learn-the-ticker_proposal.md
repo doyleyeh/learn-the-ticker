@@ -53,6 +53,8 @@ A user can search one ticker or asset name such as `VOO`, `QQQ`, `Apple`, or `AA
 
 The product should use official and structured sources as the factual backbone. The language model should not be treated as the source of truth. Instead, the model should translate verified facts, filings, prospectuses, holdings data, and other source-backed material into simple explanations for beginners.
 
+Fetching a filing, issuer document, API endpoint, or provider payload is only retrieval. It is not evidence approval. Golden Asset Source Handoff is the approval layer that decides whether a retrieved source may be stored, summarized, cited, generated from, or exported.
+
 The result should feel like a calm learning product with receipts: easy to understand, visibly sourced, and careful about the difference between education and investment advice. The home page should lead with single-asset search. Comparison should be easy to enter, but it should live in its own workflow rather than replacing the main search experience.
 
 ---
@@ -197,9 +199,11 @@ This framing is better for trust, easier for scope control, and more consistent 
 
 Important facts must come from official or structured sources before the model writes explanations.
 
-For stocks, that means sources such as SEC filings, XBRL data, company investor relations materials, earnings materials, structured market/reference data, and official or allowlisted news for weekly context.
+For stocks such as `AAPL` and `NVDA`, that means SEC EDGAR, SEC XBRL company facts, and SEC filing documents form the canonical backbone. Company investor relations pages, earnings releases, and presentations can be official secondary sources for recent context and management explanations.
 
-For ETFs, that means sources such as issuer pages, fact sheets, prospectuses, shareholder reports, holdings files, market/reference data, and official or allowlisted news for weekly context.
+For ETFs such as `VOO`, `QQQ`, and `SOXX`, that means issuer materials form the canonical backbone: the official issuer page, fact sheet, prospectus, shareholder reports, holdings files, exposure files, and sponsor announcements.
+
+Market/reference APIs and other provider payloads are retrieval and enrichment tools, not automatic evidence. Before any source can support product output, Golden Asset Source Handoff must approve its domain, source type, official-source status, storage rights, export rights, source-use policy, rationale, parser validity, and review status.
 
 ### 6.2 Plain English first
 
@@ -332,9 +336,21 @@ The exact top-500 stock universe should come from a versioned manifest, not from
 - Local source of truth: `data/universes/us_common_stocks_top500.current.json`.
 - Production mirror: private GCS object configured through `TOP500_UNIVERSE_MANIFEST_URI`.
 - Manifest entries should include ticker, name, CIK when available, exchange, rank, rank basis, provider/source provenance, snapshot date, generated checksum, and approval timestamp.
-- External providers can supply ranking inputs, but the manifest is what the app trusts at runtime.
+- External providers can supply ranking inputs, but the manifest is what the app trusts at runtime. Runtime coverage must never be resolved directly from a live ETF or provider holdings file.
 - Refresh monthly by default. Ad hoc refreshes require a development-log entry.
 - This universe is for operational coverage and testing only. It is not a recommendation list.
+
+The monthly refresh should use official ETF holdings as source inputs, then produce a reviewed candidate manifest instead of directly overwriting runtime coverage.
+
+- Primary source: official iShares Russell 1000 ETF (`IWB`) holdings. Rank valid U.S. common-stock rows by fund weight and record `rank_basis = "iwb_weight_proxy"`.
+- Fallback source: official S&P 500 ETF holdings from `SPY`, `IVV`, and `VOO`. Use this only when IWB fails, is stale, cannot be parsed, or yields too few validated common-stock rows, and record `rank_basis = "sp500_etf_weight_proxy_fallback"`.
+- Candidate output: `data/universes/us_common_stocks_top500.candidate.YYYY-MM.json`.
+- Approved output: `data/universes/us_common_stocks_top500.current.json`, mirrored to the private GCS object used by production.
+- Candidate manifests should include source provenance, source snapshot date, source checksum, rank, rank basis, CIK, exchange, validation status, and warnings.
+- Normalize tickers and security rows before ranking. Exclude cash, futures, options, swaps, index rows, ETFs, preferreds, warrants, rights, units, funds, and other non-common-stock securities.
+- Validate candidates against SEC `company_tickers_exchange.json` and Nasdaq Trader symbol-directory fields such as `ETF` and `Test Issue`. Rows that cannot be validated should be flagged for review instead of silently included.
+- Generate a diff report before approval, including added tickers, removed tickers, rank changes, missing CIKs, Nasdaq validation failures, source used, source dates, and checksum.
+- Require manual approval when fallback sources are used, source snapshots are stale or unparseable, validation coverage is below threshold, many tickers change, or top-ranked names disappear.
 
 ### 8.2 Out of scope for v1
 
@@ -900,6 +916,8 @@ The MVP should assume a free-first evidence strategy: SEC data, official issuer 
 
 The source hierarchy is part of the product's trust model. Stable understanding should come from official and structured sources first. Weekly News Focus should add context, not define the asset.
 
+Golden Asset Source Handoff is the approval layer between retrieval and evidence use. API clients, fetch adapters, SEC/issuer fetch commands, provider endpoints, and downloaded payloads belong to the retrieval layer. Approved evidence requires allowlisted domain, source type, official-source status, storage rights, export rights, source-use policy, rationale, parser validity, freshness/as-of metadata, and review status. A source that is missing from the allowlist, has unclear rights, fails parser validation, or comes from a hidden/internal endpoint should be marked `pending_review` or `rejected` rather than used as evidence.
+
 Weekly News Focus should use a tiered allowlist. Official sources come first, including SEC filings, company investor relations releases, ETF issuer announcements, prospectus updates, fact-sheet updates, exchange notices, and issuer newsrooms. Reuters/AP-style and other reputable news publishers should be treated as license-gated, not as free full-content sources by default. Before content is stored, summarized, rendered, or exported, the app should know whether the source is `metadata_only`, `link_only`, `summary_allowed`, `full_text_allowed`, or `rejected`.
 
 Allowlist governance should be config-only review. The allowlist lives in configuration, for example `config/source_allowlist.yaml`. A future agent may update it only when the domain, source type, source-use policy, rationale, and validation tests move together, and the development log records why the source changed. Automated scoring can rank already-allowed sources but cannot approve a new source.
@@ -907,7 +925,7 @@ Allowlist governance should be config-only review. The allowlist lives in config
 Provider hierarchy for v1:
 
 - Use SEC EDGAR and ETF issuer materials as the trust backbone for stable facts, source documents, and risk extraction.
-- Use Financial Modeling Prep, Finnhub, Tiingo, Alpha Vantage, and EODHD only as optional structured enrichment where licensing, rate limits, caching, display, and export rights allow.
+- Use Financial Modeling Prep, Finnhub, Tiingo, Alpha Vantage, EODHD, yfinance, and similar services only as optional enrichment where licensing, rate limits, caching, attribution, display, and export rights allow. Provider data must not override official SEC or issuer evidence.
 - Use official-first event sources for Weekly News Focus before any general news API.
 - Treat yfinance as local-development and fallback-only, not production truth.
 - Design the UI around `fresh`, `stale`, `partial`, and `unavailable` states instead of assuming every quote or reference field is present.
@@ -922,13 +940,15 @@ Provider roles:
 - EODHD is useful for light testing and selective enrichment where EOD-style history, delayed live data, and basic fundamentals are enough, but free access is small and public usage requires personal-use/commercial-use review.
 - yfinance is useful for local development and fallback diagnostics only. It should not be used as production truth or as a redistributable public product data source.
 
-Raw source text should use a rights-tiered policy. Official filings, issuer materials, and `full_text_allowed` sources may store full raw text and chunks. `summary_allowed` sources may store metadata, links, checksums, and allowed excerpts. `metadata_only` and `link_only` sources may store metadata, hashes, canonical URLs, timestamps, and diagnostics, but not full article text. `rejected` sources should not feed generated output.
+Raw source text should use a rights-tiered policy. Official filings, issuer materials, and `full_text_allowed` sources may store raw text, parsed text, chunks, checksums, and private snapshots. `summary_allowed` sources may store metadata, links, checksums, and limited excerpts needed for summaries. `metadata_only` and `link_only` sources may store metadata, hashes, canonical URLs, timestamps, and diagnostics, but not full article text. `rejected` sources should not feed generated output. Missing or unclear rights should default to `pending_review` or `rejected`, not evidence.
+
+The operational rule is: fetch only from allowlisted sources, store according to source-use policy, generate only from approved evidence, and export only what the policy permits. Automated scoring may rank already-approved sources, but it must not approve a new source by itself.
 
 ## 12.1 Stocks
 
 For stocks, the source priority should be:
 
-1. SEC filings and XBRL data;
+1. SEC EDGAR, SEC XBRL company facts, and SEC filing documents;
 2. company investor relations pages;
 3. earnings presentations and transcripts;
 4. free or official reference metadata where available;
@@ -942,8 +962,8 @@ For ETFs, the source priority should be:
 2. ETF fact sheet;
 3. summary prospectus and full prospectus;
 4. shareholder reports;
-5. issuer holdings files and official ETF website disclosures;
-6. allowlisted reputable free news sources for Weekly News Focus context.
+5. issuer holdings files, exposure files, and official ETF website disclosures;
+6. sponsor announcements and allowlisted reputable free news sources for Weekly News Focus context.
 
 ## 12.3 Source use by content type
 
@@ -953,10 +973,10 @@ Different content sections should use different source types.
 | ------------------------- | ----------------------------------------------------- |
 | Stock identity            | SEC metadata, free/reference metadata                  |
 | Stock business overview   | 10-K, 10-Q, company investor relations                |
-| Stock financial trends    | SEC XBRL, structured financial data                   |
+| Stock financial trends    | SEC XBRL, approved structured enrichment data         |
 | Stock risks               | 10-K and 10-Q risk factors                            |
 | Stock Weekly News Focus events | 8-Ks, earnings releases, allowlisted news             |
-| ETF identity              | issuer page, free/reference metadata                  |
+| ETF identity              | issuer page, approved free/reference metadata         |
 | ETF holdings              | issuer holdings file, fact sheet                      |
 | ETF methodology           | prospectus, index methodology, issuer page            |
 | ETF risks                 | prospectus, summary prospectus                        |
@@ -972,14 +992,16 @@ The system pipeline should follow these steps:
 
 1. resolve the entity;
 2. retrieve canonical facts;
-3. ingest source documents;
-4. chunk and index those documents;
-5. extract normalized facts;
-6. retrieve official Weekly News Focus events and allowlisted source context;
-7. assemble an asset knowledge pack;
-8. generate page summaries, Weekly News Focus, and AI Comprehensive Analysis;
-9. bind citations;
-10. cache and refresh.
+3. fetch source documents only from allowlisted sources;
+4. pass retrieved sources through Golden Asset Source Handoff before evidence use;
+5. store raw or parsed content only according to source-use policy;
+6. chunk and index approved documents;
+7. extract normalized facts;
+8. retrieve official Weekly News Focus events and allowlisted source context;
+9. assemble an asset knowledge pack from approved evidence;
+10. generate page summaries, Weekly News Focus, and AI Comprehensive Analysis;
+11. bind citations;
+12. cache and refresh.
 
 ## 13.2 Stock pipeline
 
@@ -1003,6 +1025,8 @@ Fetch submissions history and XBRL-backed company facts.
 
 SEC EDGAR data can support filings history and extracted XBRL data. This should be fetched server-side, rate-limited, and cached.
 
+Fetched SEC metadata, XBRL facts, and filing documents still pass through Golden Asset Source Handoff before storage, chunking, citation, or export. SEC sources are official, but each retrieved URL, filing type, parser result, storage right, export right, and as-of date still needs a reviewed evidence record.
+
 ### Step 3: Filing retrieval
 
 Locate the latest:
@@ -1024,6 +1048,8 @@ Extract:
 ### Step 5: Reference data
 
 Add quote and reference fields from free or official sources where available, or from adapter-backed providers if configured. Free-first v1 must treat missing quote, valuation, or trading fields as partial data rather than inventing or inferring them.
+
+Provider quote and reference fields are optional enrichment. They can fill convenience metadata or delayed/best-effort market fields only after rights and attribution are reviewed, and they must not override SEC-backed canonical facts.
 
 Potential fields include:
 
@@ -1085,7 +1111,12 @@ Fetch:
 - fact sheet;
 - summary prospectus;
 - full prospectus;
-- shareholder reports where relevant.
+- shareholder reports where relevant;
+- holdings files;
+- exposure files;
+- sponsor announcements where relevant.
+
+Fetched issuer materials still pass through Golden Asset Source Handoff before storage, chunking, citation, or export. Official issuer status is necessary but not sufficient; domain, source type, parser validity, storage rights, export rights, and rationale must also be approved.
 
 ### Step 3: Holdings and exposure retrieval
 
@@ -1490,7 +1521,15 @@ Fields:
 - `published_at`;
 - `retrieved_at`;
 - `checksum`;
-- `source_use_policy`.
+- `source_use_policy`;
+- `is_official`;
+- `allowlist_status`;
+- `approval_status`;
+- `storage_rights`;
+- `export_rights`;
+- `approval_rationale`;
+- `parser_status`;
+- `freshness_state`.
 
 ## 17.3 `document_chunks`
 
@@ -1669,7 +1708,7 @@ The source drawer should show:
 
 On desktop, source details should open as a right-side drawer. On mobile, they should open as a bottom sheet.
 
-The public `citation_id` should be opaque, such as `cit_...`, and should never expose raw database row IDs. Resolving a citation should return only allowed source metadata and allowed excerpts: title, publisher, URL, source type, source-use policy, published/as-of/retrieved dates, freshness state, and claim role. It should never expose unrestricted provider payloads, full restricted article text, private raw PDF text, secrets, hidden prompts, raw model reasoning, or unrestricted raw source text.
+The public `citation_id` should be opaque, such as `cit_...`, and should never expose raw database row IDs. Resolving a citation should return only approved source metadata and allowed excerpts: title, publisher, URL, source type, official-source status, source-use policy, published/as-of/retrieved dates, freshness state, normalized fact references where relevant, and claim role. It should never expose unrestricted provider payloads, full restricted article text, private raw PDF text, secrets, hidden prompts, raw model reasoning, or unrestricted raw source text.
 
 ## 19.3 Official source badges
 
@@ -1895,3 +1934,10 @@ The product should help users understand what they are looking at before they ma
 [1]: https://www.sec.gov/investor/pubs/sec-guide-to-mutual-funds.pdf "Mutual Funds and ETFs"
 [2]: https://www.sec.gov/about/divisions-offices/division-investment-management/accounting-disclosure-information/adi-2025-15-website-posting-requirements "SEC.gov | ADI 2025-15 - Website posting requirements"
 [3]: https://www.sec.gov/search-filings/edgar-application-programming-interfaces "SEC.gov | EDGAR Application Programming Interfaces (APIs)"
+[4]: https://www.ishares.com/us/products/239707/ishares-russell-1000-etf "iShares Russell 1000 ETF"
+[5]: https://www.ishares.com/us/products/239707/ishares-russell-1000-etf/?dataType=fund&fileName=IWB_holdings&fileType=csv "iShares IWB holdings CSV"
+[6]: https://www.ssga.com/us/en/intermediary/etfs/state-street-spdr-sp-500-etf-trust-spy "State Street SPDR S&P 500 ETF Trust"
+[7]: https://www.ishares.com/us/products/239726/ishares-core-sp-500-etf "iShares Core S&P 500 ETF"
+[8]: https://institutional.vanguard.com/assets/corp/fund_communications/pdf_publish/us-products/fact-sheet/F0968.pdf "Vanguard S&P 500 ETF fact sheet"
+[9]: https://www.sec.gov/file/company-tickers-exchange "SEC Company Tickers Exchange"
+[10]: https://www.nasdaqtrader.com/trader.aspx?id=symboldirdefs "Nasdaq Trader Symbol Directory Definitions"

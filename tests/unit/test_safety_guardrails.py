@@ -355,12 +355,13 @@ def test_backend_runtime_gap_audit_copy_is_advice_safe_and_sanitized():
     text = (ROOT / "docs" / "backend_mvp_runtime_gap_audit.md").read_text(encoding="utf-8")
 
     markers = [
-        "Backend MVP Runtime Gap Audit",
+        "MVP Fresh-Data Runtime Gap Audit",
         "runtime_gap",
-        "T-101 route read-path wiring",
-        "T-102 executable ingestion jobs",
-        "T-103 SEC golden-path acquisition",
-        "T-104 ETF issuer golden-path acquisition",
+        "Golden Asset Source Handoff",
+        "Top-500 candidate refresh",
+        "T-115: add Golden Asset Source Handoff",
+        "T-116: add Top-500 candidate-manifest",
+        "T-118: add local fresh-data ingest-to-render",
         "Weekly News Focus showing only the evidence-backed set",
         "Normal CI remains deterministic",
     ]

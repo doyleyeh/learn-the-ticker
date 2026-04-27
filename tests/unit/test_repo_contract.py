@@ -313,6 +313,9 @@ def test_control_docs_cover_new_mvp_operating_rules():
 
     for marker in [
         "Top-500",
+        "candidate manifest",
+        "IWB",
+        "Golden Asset Source Handoff",
         "pending_ingestion",
         "out-of-scope",
         "Weekly News Focus",
@@ -330,44 +333,53 @@ def test_backend_mvp_runtime_gap_audit_tracks_required_areas_without_runtime_wir
     audit = read_file("docs/backend_mvp_runtime_gap_audit.md")
     audit_lower = audit.lower()
 
-    assert "Task: T-100" in audit
-    for status in ["contract_complete", "runtime_gap", "current", "backlog", "later"]:
+    assert "Task: 2026-04-27 control-doc refresh" in audit
+    for status in [
+        "contract_complete",
+        "deterministic_complete",
+        "runtime_gap",
+        "local_runtime_gap",
+        "production_gap",
+        "current",
+        "backlog",
+        "later",
+    ]:
         assert f"`{status}`" in audit, f"audit should define status {status}"
 
     required_areas = [
-        "Source acquisition",
+        "Route contracts and fixture fallback",
+        "Ingestion ledger and worker",
         "Source snapshot storage",
         "Normalized knowledge-pack persistence",
-        "Configured route read-path wiring",
         "Generated-output cache writes",
-        "Weekly News Focus acquisition",
-        "Ingestion job execution",
+        "Weekly News Focus evidence",
+        "Golden Asset Source Handoff",
+        "Top-500 current manifest",
+        "Top-500 candidate refresh",
         "Frontend API rendering",
-        "Launch-universe pre-cache",
-        "Exports and source-use enforcement",
-        "Live-generation readiness",
-        "Trust metrics",
+        "Launch pre-cache readiness",
         "Production hardening",
     ]
     for area in required_areas:
         assert area in audit, f"audit should cover {area}"
 
     required_gap_markers = [
-        "public routes still default to fixtures where configured readers are absent",
-        "ingestion jobs do not fetch real official sources",
-        "persistence is not the normal read/write path",
-        "provider adapters are fixture-backed",
-        "generated-output cache writes are not activated for public output",
-        "frontend asset/search pages still have local-fixture-first behavior",
+        "official-source acquisition readiness is mocked and golden-asset scoped",
+        "Golden Asset Source Handoff is partially represented",
+        "the Top-500 monthly candidate-manifest workflow does not yet exist",
+        "a newly fetched official source cannot yet be run through a documented local ingest-to-persist-to-render workflow",
+        "Current file is a small fixture manifest",
+        "Real official fetch and parser outcomes are not yet the normal path",
     ]
     for marker in required_gap_markers:
         assert marker in audit, f"audit should explicitly record gap: {marker}"
 
     for task_marker in [
-        "T-101 route read-path wiring",
-        "T-102 executable ingestion jobs",
-        "T-103 SEC golden-path acquisition",
-        "T-104 ETF issuer golden-path acquisition",
+        "T-114: deterministic launch pre-cache expansion",
+        "T-115: add Golden Asset Source Handoff",
+        "T-116: add Top-500 candidate-manifest",
+        "T-117: add handoff-gated official-source acquisition",
+        "T-118: add local fresh-data ingest-to-render",
     ]:
         assert task_marker in audit, f"audit should map next task {task_marker}"
 
@@ -401,7 +413,7 @@ def test_backend_mvp_runtime_gap_audit_tracks_required_areas_without_runtime_wir
         assert forbidden.lower() not in audit_lower
 
 
-def test_tasks_general_mvp_roadmap_marks_t113_current_with_t114_backlog():
+def test_tasks_general_mvp_roadmap_marks_t114_current_with_fresh_data_backlog():
     tasks = read_file("TASKS.md")
     current_task = tasks.split("## Current task", 1)[1].split("## Completed", 1)[0]
     backlog = tasks.split("## Backlog", 1)[1].split("## General MVP Roadmap", 1)[0]
@@ -410,12 +422,17 @@ def test_tasks_general_mvp_roadmap_marks_t113_current_with_t114_backlog():
     assert "## MVP Backend Roadmap" not in tasks
     assert "No backlog tasks are currently prepared" not in backlog
     assert "General MVP alignment:" in current_task
-    assert "T-113 prepares explicit opt-in official-source Weekly News acquisition" in current_task
+    assert "T-114 prepares deterministic launch readiness" in current_task
+    assert "Golden Asset Source Handoff" in current_task
+    assert "data/universes/us_common_stocks_top500.current.json" in current_task
     assert "Roadmap contract refinement:" in current_task
-    assert "Stop after official-source Weekly News live-acquisition readiness for golden assets with mocked tests" in current_task
+    assert "Stop after deterministic launch pre-cache expansion" in current_task
 
     for task_marker in [
-        "### T-114: Expand launch pre-cache coverage and add MVP readiness regression matrix",
+        "### T-115: Add Golden Asset Source Handoff contract enforcement",
+        "### T-116: Add reviewed Top-500 candidate manifest workflow contracts",
+        "### T-117: Execute handoff-gated official-source acquisition for golden assets",
+        "### T-118: Prove local fresh-data ingest-to-render smoke path",
     ]:
         assert task_marker in backlog, f"Backlog should include {task_marker}"
 
@@ -431,8 +448,9 @@ def test_tasks_general_mvp_roadmap_marks_t113_current_with_t114_backlog():
     assert "T-109 established frontend API-backed search, pending states, and dynamic asset-page rendering" in roadmap
     assert "T-110 established persisted end-to-end comparison, chat, source, glossary, Weekly News, and export verification" in roadmap
     assert "T-111 established local durable repository execution with in-memory fallback" in roadmap
-    assert "The current promoted MVP blocker is explicit opt-in official-source Weekly News live acquisition readiness for golden assets" in roadmap
-    assert "after T-112 added explicit opt-in SEC and ETF issuer live acquisition readiness" in roadmap
+    assert "The current promoted MVP blocker is deterministic launch pre-cache expansion and an MVP readiness regression matrix" in roadmap
+    assert "The updated PRD/TDS/proposal make Golden Asset Source Handoff a blocker" in roadmap
+    assert "monthly IWB/SPY/IVV/VOO candidate generation" in roadmap
     assert "| Provider source-use/export enforcement hardening | Completed | T-099 |" in roadmap
     assert "| Backend fresh-data MVP runtime gap tracker | Completed | T-100 |" in roadmap
     assert "| Configured persisted-reader route wiring | Completed | T-101 |" in roadmap
@@ -446,9 +464,13 @@ def test_tasks_general_mvp_roadmap_marks_t113_current_with_t114_backlog():
     assert "| Frontend API-backed search, pending states, and asset rendering | Completed | T-109 |" in roadmap
     assert "| Persisted comparison/chat/source/glossary/export end-to-end verification | Completed | T-110 |" in roadmap
     assert "| Local durable repository execution with in-memory fallback | Completed | T-111 |" in roadmap
-    assert "| Opt-in live SEC and ETF issuer golden acquisition | Current | T-112 |" in roadmap
-    assert "| Official-source Weekly News live acquisition for golden assets | Backlog | T-113 |" in roadmap
-    assert "| Launch pre-cache expansion and MVP readiness regression matrix | Backlog | T-114 |" in roadmap
+    assert "| Opt-in live SEC and ETF issuer golden acquisition | Completed | T-112 |" in roadmap
+    assert "| Official-source Weekly News live acquisition for golden assets | Completed | T-113 |" in roadmap
+    assert "| Launch pre-cache expansion and MVP readiness regression matrix | Current | T-114 |" in roadmap
+    assert "| Golden Asset Source Handoff contract enforcement | Backlog | T-115 |" in roadmap
+    assert "| Reviewed Top-500 candidate manifest workflow contracts | Backlog | T-116 |" in roadmap
+    assert "| Handoff-gated official-source acquisition execution for golden assets | Backlog | T-117 |" in roadmap
+    assert "| Local fresh-data ingest-to-render runbook and smoke coverage | Backlog | T-118 |" in roadmap
     assert "| Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |" in roadmap
 
 

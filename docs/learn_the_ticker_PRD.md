@@ -58,6 +58,7 @@ This version resolves the previous open questions and makes the MVP direction ex
 | Coverage universe        | Support a top-500-first U.S.-listed common stock universe plus non-leveraged U.S.-listed equity index, sector, and thematic ETFs. Pre-cache the existing curated high-demand universe for speed, testing, and reliability. Treat stocks outside the top 500 as future expansion unless explicitly added to an allowlisted on-demand ingestion queue.                                                                                                                     |
 | Unsupported assets       | Block unsupported and out-of-scope assets from generated pages, chat, and comparisons. Search may show a recognized-but-unsupported or recognized-but-out-of-scope result with a clear explanation.                                                                                                                                                |
 | Market/reference data    | Use a free-first approach: SEC EDGAR/XBRL, official issuer materials, free/reference metadata where available, provider adapters, deterministic mocks, and fixtures for tests. No paid provider keys are assumed for v1; paid market/reference providers may be added later behind adapters after licensing and export-rights review.                 |
+| Golden Asset Source Handoff | Treat source handoff as the approval layer and API fetching as only the retrieval layer. A fetched API payload, endpoint, issuer page, or filing URL is not approved evidence until domain, source type, official-source status, storage rights, export rights, source-use policy, rationale, parser validity, freshness/as-of metadata, and review status are approved. |
 | Weekly News Focus and analysis | Use a fixed Monday-Sunday market-week model plus current week-to-date through yesterday, based on U.S. Eastern dates. Use official filings, company investor relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes first. Use tiered allowlisted sources only when source-use rights allow the intended display, storage, summary, and export behavior. AI Comprehensive Analysis starts with What Changed This Week and then Market Context, Business/Fund Context, and Risk Context. |
 | Grounded chat timing     | Include limited asset-specific grounded chat in MVP as a beta feature. Do not ship a general finance chatbot.                                                                                                                                                                                                                                                                                                 |
 | Citation strictness      | Require citations for important factual claims, not every sentence. Generic educational explanations do not require citations unless they include asset-specific facts.                                                                                                                                                                                                                                       |
@@ -103,6 +104,8 @@ These deployment choices do not relax product safety. Generated and exported out
 
 Provider API keys are configuration readiness only. `OPENROUTER_API_KEY`, `FMP_API_KEY`, `ALPHA_VANTAGE_API_KEY`, `FINNHUB_API_KEY`, `TIINGO_API_KEY`, and `EODHD_API_KEY` are server-side only; local live runs inherit them from WSL Bash, and production uses Secret Manager. Market/reference provider keys do not change source hierarchy or licensing constraints.
 
+Golden Asset Source Handoff is required before any retrieved source can be stored as evidence, summarized, cited, used in generation, or exported. Retrieval tools include SEC/issuer fetch commands, API clients, provider endpoints, adapters, and downloaded payloads. Approval requires the source to be allowlisted or explicitly governed by review, compatible with the requested source type, classified for official-source status, assigned storage and export rights, given a source-use policy and rationale, parsed successfully, and labeled with freshness/as-of metadata. Sources missing from the allowlist, carrying unclear rights, failing parser validation, or coming from hidden/internal endpoints default to `pending_review` or `rejected` and must not support generated output.
+
 ### 2.2 Top-500 Universe Definition
 
 The authoritative source for the top-500 stock universe is a versioned manifest, not a live provider response at request time.
@@ -110,10 +113,21 @@ The authoritative source for the top-500 stock universe is a versioned manifest,
 - Manifest path: `data/universes/us_common_stocks_top500.current.json`.
 - Production mirror: a private GCS object referenced by `TOP500_UNIVERSE_MANIFEST_URI`.
 - Each entry includes ticker, name, CIK when available, exchange, rank, rank basis, provider/source provenance, snapshot date, generated checksum, and approval timestamp.
-- External providers may supply provenance inputs, but the manifest is the runtime source of truth.
+- External providers may supply provenance inputs, but the manifest is the runtime source of truth. Runtime coverage must never be resolved directly from a live ETF holdings file or provider response.
 - Refresh cadence is monthly by default. Ad hoc refreshes require a development-log entry explaining source, checksum, and reason.
 - The manifest is operational coverage metadata, not an endorsement, recommendation, or model portfolio.
 - Stocks outside the manifest return `out_of_scope` unless explicitly added to the approved on-demand ingestion queue.
+
+Monthly refresh workflow:
+
+- Use official iShares Russell 1000 ETF (`IWB`) holdings as the primary source input. Rank valid U.S. common-stock rows by IWB portfolio weight and set `rank_basis = "iwb_weight_proxy"`.
+- If IWB fails, is stale, cannot be parsed, or yields too few validated common-stock rows, use official S&P 500 ETF holdings from `SPY`, `IVV`, and `VOO` as fallback inputs and set `rank_basis = "sp500_etf_weight_proxy_fallback"`.
+- Write monthly candidates to `data/universes/us_common_stocks_top500.candidate.YYYY-MM.json`; promote only an approved candidate to `data/universes/us_common_stocks_top500.current.json`.
+- Candidate rows must include source provenance, source snapshot date, source checksum, rank, rank basis, CIK, exchange, validation status, and warnings.
+- Normalize tickers and remove cash, futures, options, swaps, index rows, ETFs, preferred shares, warrants, rights, units, funds, and other non-common-stock rows before ranking.
+- Validate candidate rows against SEC `company_tickers_exchange.json` and Nasdaq Trader symbol-directory fields such as `ETF` and `Test Issue`. Rows that cannot be validated are review warnings, not silent inclusions.
+- Produce a diff report before approval with added tickers, removed tickers, rank changes, missing CIKs, Nasdaq validation failures, source used, source dates, and checksum.
+- Require manual approval when fallback sources are used, source snapshots are stale or unparseable, validation coverage is below threshold, many tickers change, or top-ranked names disappear.
 
 ## 3. Product positioning
 
@@ -915,7 +929,7 @@ Acceptance criteria:
 - User can distinguish official source material from news or third-party data.
 - User can tell when a page or section was last updated.
 - Unsupported claims are removed, regenerated, or marked as uncertain.
-- A public `citation_id` resolves to source title, publisher, URL, source type, source-use policy, published/as-of/retrieved dates, freshness state, claim role, and an allowed supporting excerpt.
+- A public `citation_id` resolves only to approved source metadata: source title, publisher, URL, source type, official-source status, source-use policy, published/as-of/retrieved dates, freshness state, claim role, normalized fact references, and an allowed supporting excerpt.
 - A public `citation_id` never resolves to unrestricted provider payloads, full restricted article text, private raw PDF text, secrets, hidden prompts, or unrestricted raw source text.
 - Citation chips should be near the supported claim and compact enough not to clutter beginner reading.
 
@@ -951,6 +965,7 @@ Acceptance criteria:
 - A user can save their learning output without creating an account.
 - Export includes citations, freshness dates, uncertainty labels, and the educational disclaimer.
 - Export includes Weekly News Focus and AI Comprehensive Analysis when they are present on the page.
+- Export includes only approved citations, source titles, URLs, source types, freshness/as-of dates, normalized facts, uncertainty labels, and excerpts permitted by source-use policy.
 - Export does not include content prohibited by data-provider licenses.
 - Export never includes restricted source text, unrestricted provider payloads, hidden prompts, raw model reasoning, or secrets.
 
@@ -1218,11 +1233,11 @@ The model must not become the source of truth.
 
 #### For stocks
 
-1. SEC filings and XBRL data
+1. SEC EDGAR, SEC XBRL company facts, and SEC filing documents
 2. Company investor relations pages
 3. Earnings releases and presentations
-4. Structured market/reference data provider
-5. Reputable news sources
+4. Free/reference metadata or approved provider enrichment
+5. Official and allowlisted reputable sources for Weekly News Focus
 
 #### For ETFs
 
@@ -1230,8 +1245,9 @@ The model must not become the source of truth.
 2. ETF fact sheet
 3. Summary prospectus and full prospectus
 4. Shareholder reports
-5. Structured market/reference data provider
-6. Reputable news sources
+5. Issuer holdings files, exposure files, and official ETF website disclosures
+6. Sponsor announcements and official or allowlisted sources for Weekly News Focus
+7. Free/reference metadata or approved provider enrichment
 
 ### 13.3 Recommended market/reference data stack
 
@@ -1245,8 +1261,10 @@ Recommended MVP stack:
 
 Provider strategy:
 
-- SEC EDGAR and official issuer materials are the trust backbone.
-- Structured enrichment providers can improve convenience and coverage only when licensing, rate limits, caching, display, and export rights allow the intended product use.
+- SEC EDGAR, SEC XBRL company facts, and SEC filing documents are the trust backbone for stocks such as `AAPL` and `NVDA`.
+- Official issuer pages, fact sheets, prospectuses, shareholder reports, holdings files, exposure files, and sponsor announcements are the trust backbone for ETFs such as `VOO`, `QQQ`, and `SOXX`.
+- Structured enrichment providers can improve convenience and coverage only when licensing, rate limits, caching, attribution, display, and export rights allow the intended product use.
+- FMP, Finnhub, Tiingo, Alpha Vantage, EODHD, yfinance, and similar services are optional enrichment only. Their payloads must not override official SEC or issuer evidence, and unclear rights limit them to internal diagnostics, enrichment, or metadata-only use.
 - Quote fields in the MVP are delayed or best-effort. The UI must label freshness and must show `unavailable` when quote data cannot be verified instead of implying real-time coverage.
 - yfinance is allowed only for local development or fallback diagnostics and must not become production truth or a public redistributable data source.
 
@@ -1278,12 +1296,26 @@ Source-use categories:
 - `full_text_allowed`
 - `rejected`
 
+Approval statuses:
+
+- `approved`
+- `pending_review`
+- `rejected`
+
 Source allowlist governance:
 
 - The source allowlist lives in config, e.g. `config/source_allowlist.yaml`.
-- Config-only review means a future agent may update the allowlist only when the source-use policy, source type, domain, rationale, and validation tests are updated together.
+- Config-only review means a future agent may update the allowlist only when source-use policy, source type, domain, official-source status, storage rights, export rights, rationale, and validation tests are updated together.
 - Automated scoring cannot approve new sources. It only ranks sources already present in the allowlist.
 - Allowlist records must include `source_use_policy`: `metadata_only`, `link_only`, `summary_allowed`, `full_text_allowed`, or `rejected`.
+
+Operational source rule:
+
+- Fetch only from allowlisted sources.
+- Store according to source-use policy.
+- Generate only from approved evidence.
+- Export only what the policy permits.
+- Mark missing, unclear, hidden/internal, parser-invalid, or non-allowlisted sources as `pending_review` or `rejected` instead of using them as evidence.
 
 Weekly News Focus items should be filtered for:
 
@@ -1327,8 +1359,8 @@ AI Comprehensive Analysis should be generated only from the selected asset's Wee
 
 The MVP uses a rights-tiered raw source text policy.
 
-- Official filings, issuer materials, and `full_text_allowed` sources may store full raw text, parsed text, chunks, checksums, and source snapshots.
-- `summary_allowed` sources may store metadata, checksums, links, and excerpts needed to support summaries.
+- Official filings, issuer materials, and `full_text_allowed` sources may store raw text, parsed text, chunks, checksums, and source snapshots.
+- `summary_allowed` sources may store metadata, checksums, links, and limited excerpts needed to support summaries.
 - `metadata_only` and `link_only` sources may store metadata, hashes, canonical URLs, timestamps, and source-use diagnostics, but not full article text.
 - `rejected` sources are not used for generated output and should keep only rejection diagnostics when needed for debugging.
 - Exports and citation drawers must honor the same policy and never reveal unrestricted restricted text.
@@ -1720,6 +1752,7 @@ Before public launch, the product should receive legal/compliance review for:
 - data-provider licensing
 - export/download behavior
 - source attribution
+- Golden Asset Source Handoff approval criteria
 - chat safety behavior
 
 ---
@@ -1919,6 +1952,7 @@ The MVP is ready when:
 - System resolves the asset correctly.
 - Unsupported assets are blocked clearly.
 - Exact recognized-but-unsupported ticker searches show a blocked state rather than generated content.
+- Golden Asset Source Handoff blocks non-allowlisted, unclear-rights, parser-invalid, hidden/internal, and rejected sources from storage as evidence, generation, citation, and export.
 - User lands on the correct stock or ETF page.
 - Asset pages show the Beginner Summary first.
 - Exactly three top risks are shown first.
@@ -1951,6 +1985,7 @@ Strict MVP quality gates:
 - Zero known buy/sell/hold, allocation, tax, guaranteed-return, or unsupported price-target violations in golden tests.
 - Cached search, asset pages, comparison pages, source drawer, and chat meet the performance targets in the technical design spec.
 - CI includes unit, integration, schema, citation validation, safety, export, and golden asset tests.
+- Golden tests verify that `AAPL` and `NVDA` canonical facts prefer SEC EDGAR/XBRL/filing documents, while `VOO`, `QQQ`, and `SOXX` canonical facts prefer issuer materials.
 - Golden tests verify that duplicate, promotional, irrelevant, non-allowlisted, and license-disallowed news is excluded from Weekly News Focus.
 - Golden tests verify Monday-Sunday plus current week-to-date through yesterday windowing.
 - Golden tests verify prompt-injection, source-sanitization, SSRF-defense, chat privacy, rate-limit, many-citation, fact-versioning, and stock-vs-ETF comparison scenarios.
@@ -2012,7 +2047,9 @@ Risk: market/news provider licenses may restrict caching, redistribution, or exp
 
 Mitigation:
 
+- Treat API fetching as retrieval only, not approval.
 - Review provider contracts before launch.
+- Keep provider data optional enrichment that cannot override official SEC or issuer evidence.
 - Export only allowed fields and excerpts.
 - Include attribution where required.
 - Avoid exporting full paid news articles.
@@ -2036,9 +2073,9 @@ These sources support the provider and compliance direction in this PRD. V1 is f
 
 Provider role summary:
 
-- SEC EDGAR is the primary official source for stock identity, filings history, XBRL company facts, filing-derived business descriptions, and risk extraction.
+- SEC EDGAR, SEC XBRL company facts, and SEC filing documents are the primary official sources for stock identity, filings history, filing-derived business descriptions, financial facts, and risk extraction.
 - Official ETF issuer materials are the primary source for ETF identity, holdings, fees, methodology, exposures, and fund risks.
-- Financial Modeling Prep, Finnhub, Tiingo, Alpha Vantage, and EODHD may be used only as structured enrichment where licensing, rate limits, attribution, display, caching, and export rights allow.
+- Financial Modeling Prep, Finnhub, Tiingo, Alpha Vantage, EODHD, yfinance, and similar providers may be used only as enrichment where licensing, rate limits, attribution, display, caching, and export rights allow; unclear rights restrict usage to internal diagnostics, enrichment, or metadata-only use.
 - Official filings, company investor relations, ETF issuer updates, and license-compatible allowlisted sources should feed Weekly News Focus before general news APIs.
 - yfinance is a local-development and emergency fallback tool only, not production truth.
 
@@ -2107,6 +2144,36 @@ Provider role summary:
 
 21. yfinance is not affiliated with Yahoo, is intended for research/educational use, and points users to Yahoo terms for rights to downloaded data. It must remain local-development or fallback-only and should not be treated as production truth.
     Reference: https://github.com/ranaroussi/yfinance
+
+22. iShares describes IWB as exposure to large U.S. companies, access to about 1,000 domestic stocks, and an ETF seeking to track large- and mid-capitalization U.S. equities. IWB official holdings are the preferred monthly top-500 ranking proxy.
+    References: https://www.ishares.com/us/products/239707/ishares-russell-1000-etf, https://www.ishares.com/us/products/239707/ishares-russell-1000-etf/?dataType=fund&fileName=IWB_holdings&fileType=csv
+
+23. State Street's official SPY page exposes S&P 500 ETF holdings and a daily holdings download. SPY may be used only as a fallback source input for a reviewed candidate manifest, not as runtime truth.
+    Reference: https://www.ssga.com/us/en/intermediary/etfs/state-street-spdr-sp-500-etf-trust-spy
+
+24. iShares describes IVV as seeking to track the S&P 500 Index, with official holdings and portfolio characteristics. IVV may be used only as a fallback source input for a reviewed candidate manifest.
+    Reference: https://www.ishares.com/us/products/239726/ishares-core-sp-500-etf
+
+25. Vanguard publishes official VOO fund materials describing the Vanguard S&P 500 ETF and its index-tracking objective. VOO may be used as a fallback source input when its official materials can be parsed and reviewed.
+    Reference: https://institutional.vanguard.com/assets/corp/fund_communications/pdf_publish/us-products/fact-sheet/F0968.pdf
+
+26. SEC publishes `company_tickers_exchange.json` for company name, CIK, ticker, and exchange associations. Top-500 candidate rows should use it to attach or confirm stock identity metadata.
+    Reference: https://www.sec.gov/file/company-tickers-exchange
+
+27. Nasdaq Trader symbol-directory definitions include fields such as `ETF` and `Test Issue`. Top-500 candidate validation should use these fields to reject ETFs and test issues.
+    Reference: https://www.nasdaqtrader.com/trader.aspx?id=symboldirdefs
+
+28. GitHub Actions supports scheduled workflows and manual `workflow_dispatch` runs. Scheduled workflows run from the default branch, making GitHub Actions a good first automation path for reviewable monthly candidate-manifest PRs.
+    References: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule, https://docs.github.com/actions/how-tos/managing-workflow-runs-and-deployments/managing-workflow-runs/manually-running-a-workflow
+
+29. The `peter-evans/create-pull-request` action is designed to commit workspace changes to a branch and open or update a pull request, which fits the reviewed candidate-manifest workflow.
+    Reference: https://github.com/peter-evans/create-pull-request
+
+30. Google Cloud documents executing Cloud Run Jobs on a schedule with Cloud Scheduler. This should be a later production automation option after the GitHub Actions PR workflow and manual Cloud Run Jobs are proven useful.
+    Reference: https://docs.cloud.google.com/run/docs/execute/jobs-on-schedule
+
+31. Cloud Scheduler has a small free tier measured per billing account, but scheduled jobs are still billable resources after the free tier. Keep scheduler usage minimal and reviewed.
+    Reference: https://cloud.google.com/scheduler/pricing
 
 ---
 

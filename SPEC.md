@@ -57,16 +57,19 @@ The repository is no longer planning-only. It is currently a deterministic, fixt
 
 Current implementation stage:
 
-- backend contracts exist for search, overview/details, Weekly News Focus, AI Comprehensive Analysis, comparison, grounded chat, glossary, exports, ingestion states, provider adapters, trust metrics, and LLM runtime diagnostics
-- frontend routes and components exist for home search, asset pages, comparison, chat, source metadata, glossary, and export controls
+- backend contracts exist for search, overview/details, Weekly News Focus, AI Comprehensive Analysis, comparison, grounded chat, glossary, exports, ingestion states, provider adapters, trust metrics, generated-output cache writes, local durable repository reads/writes, and LLM runtime diagnostics
+- frontend routes and components exist for home search, API-backed asset pages with deterministic fallback, comparison, chat, source metadata, glossary, and export controls
+- local durable repository execution has in-memory fallback and configured reader boundaries, but normal CI remains fixture-backed
+- opt-in official-source acquisition readiness exists for SEC stock, ETF issuer, and Weekly News golden paths, but the current readiness paths are still mocked and golden-asset scoped
 - CI and local checks are deterministic and fixture-backed; normal quality gates do not depend on live provider, market-data, news, or LLM calls
 
 Near-term implementation priority order:
 
-1. close Frontend Design and Workflow v0.4 UX gaps first, especially single-asset home search, search/autocomplete support states, natural comparison redirects, contextual glossary behavior, mobile source/glossary/chat bottom sheets, and stock-vs-ETF relationship badges
-2. converge frontend rendering onto the richer deterministic backend contracts instead of expanding duplicate frontend-only fixture logic
-3. close remaining MVP-visible contract gaps, especially Weekly News Focus and AI Comprehensive Analysis rendering, support-state parity, comparison-state parity, and source/freshness parity
-4. defer live-provider, persistence, deployment-hardening, and broader ingestion work until deterministic contract parity and quality gates are stable
+1. preserve the deterministic launch-readiness regression layer for search, support states, asset pages, comparison, source drawer, contextual glossary, grounded chat, exports, Weekly News Focus, AI Comprehensive Analysis, and mobile workflow markers
+2. harden Golden Asset Source Handoff across source allowlist records, source snapshots, knowledge packs, citations, generated-output cache entries, source drawer output, and exports
+3. add a reviewed Top-500 candidate-manifest refresh workflow that uses official IWB holdings first, official SPY/IVV/VOO holdings only as fallback inputs, SEC/Nasdaq validation, checksums, and a diff report before current-manifest promotion
+4. implement a local fresh-data path for golden assets: allowlisted retrieval, source handoff, private snapshot storage, parser diagnostics, normalized knowledge-pack writes, Weekly News evidence writes, generated-output cache writes, and API/frontend rendering from persisted data
+5. defer production deployment hardening, recurring jobs, broad paid-provider integrations, and post-MVP features until the local fresh-data path passes strict quality gates
 
 When choosing the next task, prefer improving PRD/TDS alignment of the current deterministic scaffold over adding new domains or speculative infrastructure.
 The local agent-loop harness should default to `gpt-5.5` with `high` reasoning effort, while allowing explicit per-run overrides such as `gpt-5.3-codex-spark` when the operator requests it.
@@ -88,6 +91,10 @@ AI Comprehensive Analysis must be suppressed unless at least two high-signal Wee
 
 Source-use policy wins over scoring. Rejected or license-disallowed sources must not display, summarize, cache, or export. Raw source text storage is rights-tiered across `full_text_allowed`, `summary_allowed`, `metadata_only`, `link_only`, and `rejected`.
 
+Golden Asset Source Handoff is the approval layer between retrieval and evidence use. Fetching from SEC, issuer sites, ETF holdings files, APIs, or provider adapters does not approve evidence by itself. Before evidence can be stored as evidence, cited, summarized, generated from, cached, or exported, the source must have approved domain/source identity, source type, official-source status, storage rights, export rights, source-use policy, approval rationale, parser status, freshness/as-of metadata, and review status.
+
+Top-500 stock coverage must be manifest-owned. The approved runtime manifest is `data/universes/us_common_stocks_top500.current.json`; monthly refresh work produces a candidate manifest and diff report before review. Official IWB holdings are the primary source input; official SPY, IVV, and VOO holdings are fallback inputs only. Live holdings or provider responses may inform candidates, but they must never become runtime coverage truth directly.
+
 ## Hard Product Rules
 
 The product must:
@@ -101,6 +108,8 @@ The product must:
 - block unsupported and out-of-scope assets from generated pages, generated chat, and generated comparisons
 - frame suitability as education, not personalized advice
 - preserve source hierarchy and source-use rights
+- run Golden Asset Source Handoff before evidence storage, generation, citation, cache, or export use
+- resolve top-500 stock support from the approved manifest rather than live runtime provider data
 - keep live provider, market-data, news, and LLM calls out of normal CI
 
 The product must not:
@@ -136,6 +145,7 @@ A task is complete only when:
 - Weekly News Focus/source-use tests pass when timely context or source allowlists are touched
 - frontend smoke/type/build checks pass when UI or frontend workspace layout is touched
 - Bash and PowerShell workflow prompts stay aligned when agent-loop instructions are touched
+- Top-500 manifest and Golden Asset Source Handoff checks pass when coverage, ingestion, source policy, citations, caches, or exports are touched
 - no unrelated behavior is changed
 - normal CI remains deterministic and does not require live external calls
 - placeholder env files contain no real secrets
@@ -151,6 +161,8 @@ MVP is ready when:
 - search rows show ticker, name, stock/ETF identity, exchange or issuer, and support-state chips
 - unsupported and out-of-scope assets show clear blocked states
 - top-500 stock scope is driven by the versioned manifest, not live runtime provider queries
+- Top-500 candidate refreshes produce reviewed candidate files, source provenance, checksums, validation warnings, and diff reports before promotion
+- Golden Asset Source Handoff blocks non-allowlisted, unclear-rights, parser-invalid, hidden/internal, pending-review, and rejected sources from evidence storage, generation, citation, cache, and export paths
 - stock and ETF pages render beginner summaries from source-backed evidence
 - stock pages cover business overview, products/services, strengths, financial quality, risks, valuation context, Weekly News Focus, AI Comprehensive Analysis, and educational suitability
 - ETF pages cover role, holdings/exposure, construction, cost/trading context, risks, comparison/overlap, Weekly News Focus, AI Comprehensive Analysis, and educational suitability

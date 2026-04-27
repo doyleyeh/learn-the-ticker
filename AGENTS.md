@@ -127,6 +127,17 @@ Supported MVP coverage is:
 - pre-cached high-demand assets for reliable launch behavior
 - explicit `pending_ingestion` only for eligible supported assets that are approved for on-demand ingestion
 
+The top-500 manifest is the runtime source of truth for stock coverage. Runtime support classification must never be resolved directly from a live ETF holdings file, provider holdings file, market-data response, or rank query.
+
+Top-500 refresh work must:
+
+- produce reviewed candidates at `data/universes/us_common_stocks_top500.candidate.YYYY-MM.json`
+- use official IWB holdings as the primary ranking input with `rank_basis = "iwb_weight_proxy"`
+- use official SPY, IVV, and VOO holdings only as fallback inputs with `rank_basis = "sp500_etf_weight_proxy_fallback"`
+- validate candidates against SEC `company_tickers_exchange.json` and Nasdaq Trader symbol-directory fields
+- preserve source provenance, source snapshot dates, checksums, rank basis, validation status, and warnings
+- generate a diff report and require manual approval before replacing `data/universes/us_common_stocks_top500.current.json`
+
 Unsupported or out-of-scope assets include options, crypto, international equities, leveraged ETFs, inverse ETFs, ETNs, fixed income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, preferred stocks, warrants, rights, and other complex products unless explicitly added later. Recognized-but-unsupported and out-of-scope assets may appear in search, but must not receive generated pages, generated chat answers, generated comparisons, or generated risk summaries.
 
 Partial evidence is acceptable. If sources cannot verify a section, render verified sections only and label missing pieces as `partial`, `stale`, `unknown`, `unavailable`, or `insufficient_evidence`.
@@ -167,14 +178,28 @@ If evidence is missing, say unknown, stale, mixed evidence, unavailable, partial
 
 Stable facts should use official and structured sources before news. Source-use policy wins over scoring: `rejected` or license-disallowed sources must not feed generated output, rendered summaries, caches, or exports.
 
+Golden Asset Source Handoff is required between retrieval and evidence use. Fetching a filing, issuer page, holdings file, API payload, or provider response is only retrieval. It is not approval to store the source as evidence, cite it, summarize it, generate from it, cache it, or export it.
+
+Golden Asset Source Handoff approval requires:
+
+- allowlisted or explicitly reviewed domain/source identity
+- source type and official-source status
+- storage rights and export rights
+- source-use policy and approval rationale
+- parser validity or parser failure diagnostics
+- freshness/as-of metadata
+- review status of `approved`, `pending_review`, or `rejected`
+
+Sources that are missing from the allowlist, unclear-rights, parser-invalid, hidden/internal, or rejected must default to `pending_review` or `rejected` and must not support generated output, citation support, exported content, or generated-output cache entries.
+
 Raw source text storage is rights-tiered:
 
-- official filings, issuer materials, and `full_text_allowed` sources may store full raw text and chunks
-- `summary_allowed` sources may store metadata, links, checksums, and allowed excerpts
+- official filings, issuer materials, and `full_text_allowed` sources may store raw text, parsed text, chunks, checksums, and private snapshots
+- `summary_allowed` sources may store metadata, links, checksums, and limited allowed excerpts
 - `metadata_only` and `link_only` sources may store metadata, hashes, canonical URLs, timestamps, and diagnostics, but not full article text
 - `rejected` sources must not feed generated output
 
-Source allowlist changes must update source-use policy, source type, domain, rationale, validation tests, and development-log rationale together. Automated scoring can rank already-allowed sources but cannot approve a new source.
+Source allowlist changes must update source-use policy, source type, domain, official-source status, storage rights, export rights, rationale, validation tests, and development-log rationale together. Automated scoring can rank already-allowed sources but cannot approve a new source.
 
 ## Provider, secret, and environment rules
 
@@ -204,6 +229,14 @@ When touching retrieval, summaries, chat, citations, Weekly News Focus, source-u
 - safety evals
 - golden asset tests
 - the full quality gate
+
+When touching Top-500 manifest workflow or Golden Asset Source Handoff behavior, verify:
+
+- runtime stock support still reads `data/universes/us_common_stocks_top500.current.json`
+- candidate manifests do not overwrite the approved current manifest without review
+- manifest refresh inputs are official-source inputs that pass source handoff before being used as evidence or provenance
+- non-allowlisted, unclear-rights, parser-invalid, hidden/internal, pending-review, and rejected sources cannot feed persistence-as-evidence, generation, citation, cache, or export paths
+- source drawer, citation, export, generated-output cache, and knowledge-pack records expose only approved source metadata and allowed excerpts
 
 When touching frontend UI, verify:
 

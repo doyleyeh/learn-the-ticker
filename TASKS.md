@@ -3,16 +3,17 @@
 ### T-114: Expand launch pre-cache coverage and add MVP readiness regression matrix
 
 Goal:
-Expand deterministic launch pre-cache coverage beyond the smallest golden path and add an MVP readiness regression matrix plus go/no-go checklist before production deployment work.
+Expand deterministic launch pre-cache coverage beyond the smallest golden path and add an MVP readiness regression matrix plus go/no-go checklist before production deployment work, explicitly preserving the updated Top-500 manifest-owned coverage rule and Golden Asset Source Handoff gates.
 
 Task-scope paragraph:
-Prepare the MVP launch readiness layer after local durable ingest-to-render and opt-in official-source acquisition work exists. Expand pre-cache coverage only within approved Top-500 common stock and non-leveraged U.S. equity ETF scope, using deterministic manifests, existing fixtures, and mocked acquisition outputs. Add route-contract and frontend workflow regression coverage for search, pending ingestion, asset pages, comparison, source drawer, contextual glossary, grounded chat, exports, mobile behavior markers, Weekly News evidence limits, AI Comprehensive Analysis thresholds, and safety/source-use gates. Add a go/no-go checklist for production readiness without deploying, enabling recurring jobs, adding paid providers, adding broad news providers, or committing secrets.
+Prepare the MVP launch readiness layer after local durable ingest-to-render and opt-in official-source acquisition work exists. Expand pre-cache coverage only within approved Top-500 common stock and non-leveraged U.S. equity ETF scope, using deterministic manifests, existing fixtures, and mocked acquisition outputs. Add route-contract and frontend workflow regression coverage for search, pending ingestion, asset pages, comparison, source drawer, contextual glossary, grounded chat, exports, mobile behavior markers, Weekly News evidence limits, AI Comprehensive Analysis thresholds, Top-500 manifest-backed support, and safety/source-use/Golden Asset Source Handoff gates. Add a go/no-go checklist for production readiness without deploying, enabling recurring jobs, adding paid providers, adding broad news providers, or committing secrets.
 
 Roadmap alignment:
 
 - Follows T-113, which added explicit opt-in official-source Weekly News live acquisition readiness for golden assets without enabling live calls by default.
 - Moves the project from golden-path readiness toward deterministic MVP launch regression coverage before production deployment hardening.
 - Keeps Frontend Design and Workflow v0.4 stable: home remains single stock/ETF search first, comparison remains a separate connected workflow, glossary remains contextual, mobile source/glossary/chat surfaces remain bottom-sheet or full-screen where appropriate, stock-vs-ETF comparison badges and structure are unchanged, and Weekly News Focus shows fewer or empty states when evidence is thin.
+- Keeps the updated PRD/TDS/proposal source rules visible: runtime stock coverage reads `data/universes/us_common_stocks_top500.current.json`, candidate Top-500 refreshes do not become runtime truth without review, and source fetching is not evidence approval until Golden Asset Source Handoff passes.
 
 General MVP alignment:
 T-114 prepares deterministic launch readiness after canonical source acquisition, Weekly News acquisition, persisted repository, generated-output cache, backend route, and frontend API-backed rendering work exists. It does not complete production deployment by itself; admin auth enforcement, rate limiting, production database/object-storage execution, recurring jobs, live-provider default changes, monitoring, rollback, broad paid-provider expansion, and post-MVP features remain separate follow-up tasks.
@@ -67,6 +68,8 @@ Do not change:
 Acceptance criteria:
 
 - Launch pre-cache expansion remains deterministic and manifest-driven. It may add or document representative pre-cache coverage only for approved Top-500 common stocks and non-leveraged U.S.-listed equity ETFs, and it must continue to block unsupported, out-of-scope, unknown, unavailable, leveraged, inverse, ETN, fixed-income, commodity, active, multi-asset, international, preferred, warrant, rights, options, and crypto assets from generated output.
+- Top-500 regression coverage confirms runtime support classification reads the approved current manifest, not live holdings/provider data, and documents that monthly candidate refresh work is a later reviewed workflow.
+- Golden Asset Source Handoff regression coverage confirms non-allowlisted, unclear-rights, parser-invalid, hidden/internal, pending-review, and rejected sources cannot feed evidence storage, generated output, citations, source drawer excerpts, generated-output cache records, or exports.
 - The regression matrix covers backend route contracts and frontend workflow markers for supported, pending ingestion, partial, stale, unknown, unavailable, unsupported, out-of-scope, no-result, comparison, source drawer, contextual glossary, grounded chat, exports, mobile source/glossary/chat surfaces, Weekly News Focus, and AI Comprehensive Analysis states.
 - Search regression coverage preserves single-asset home search as the primary home action, search rows with stock-vs-ETF identity and support-state chips, exact unsupported/no-result behavior, manifest-backed Top-500 stock support, and `A vs B` redirect behavior into `/compare?left=...&right=...`.
 - Asset-page regression coverage preserves Beginner Summary first, citation chips, source freshness labels, stale/unknown/unavailable/partial/insufficient-evidence states, Top 3 Risks first where risk content is present, and separation of canonical facts from Weekly News Focus and AI Comprehensive Analysis.
@@ -3088,19 +3091,142 @@ Completion commits:
 
 ## Backlog
 
-No queued backlog tasks. The next local agent-loop cycle should run the promoted Current task above before any new task is invented.
+The next local agent-loop cycle should run the promoted Current task above first. The queued tasks below are sequential and should not be started until T-114 passes its required checks.
+
+### T-115: Add Golden Asset Source Handoff contract enforcement
+
+Goal:
+Make Golden Asset Source Handoff a first-class deterministic contract across source policy, persisted evidence records, citations, generated-output cache records, source drawer responses, and exports.
+
+Task-scope paragraph:
+Add or tighten backend models, repository rows, validators, deterministic fixtures, and evals so every evidence-bearing source can represent domain/source identity, source type, official-source status, storage rights, export rights, source-use policy, approval rationale, parser status, freshness/as-of metadata, and review status. Fail closed for non-allowlisted, unclear-rights, parser-invalid, hidden/internal, pending-review, and rejected sources. This task is contract-only and must not add live fetching, source allowlist expansion, prompt rewrites, production persistence execution, or frontend redesign.
+
+Acceptance criteria:
+
+- Source policy and source records distinguish retrieval from approved evidence use.
+- Source snapshots, knowledge packs, Weekly News evidence, generated-output cache records, citations, source drawer responses, and exports carry enough approval/source-use metadata to block unapproved evidence.
+- Missing approval metadata defaults to `pending_review`, `rejected`, `unavailable`, or `insufficient_evidence`, not generated output.
+- Tests cover same-asset binding, approved evidence, pending-review blocking, parser-invalid blocking, hidden/internal blocking, rejected blocking, citation blocking, cache blocking, and export blocking.
+- Normal CI remains deterministic with no live provider, storage, database, news, market-data, or LLM calls.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_source_policy.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_citation_validation.py tests/unit/test_source_drawer.py tests/unit/test_exports.py tests/unit/test_repo_contract.py -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+git diff --check
+```
+
+Iteration budget:
+One agent-loop cycle. Stop after deterministic handoff contract enforcement and tests; do not add live source retrieval.
+
+### T-116: Add reviewed Top-500 candidate manifest workflow contracts
+
+Goal:
+Add a deterministic reviewed candidate-manifest workflow for monthly Top-500 stock universe refreshes without changing runtime coverage or overwriting the approved current manifest.
+
+Task-scope paragraph:
+Create candidate manifest generation and validation contracts using mocked official IWB holdings as the primary source input and mocked official SPY, IVV, and VOO holdings as fallback-only inputs. Preserve source provenance, source snapshot date, source checksum, rank, rank basis, CIK, exchange, validation status, and warnings. Add SEC `company_tickers_exchange.json` and Nasdaq symbol-directory validation fixtures, a diff-report output contract, and tests proving manual approval is required before promotion. Do not edit `data/universes/us_common_stocks_top500.current.json` except in a later explicit approval task.
+
+Acceptance criteria:
+
+- Candidate output path is `data/universes/us_common_stocks_top500.candidate.YYYY-MM.json`.
+- IWB rows use `rank_basis = "iwb_weight_proxy"`; fallback rows use `rank_basis = "sp500_etf_weight_proxy_fallback"`.
+- Cash, futures, options, swaps, index rows, ETFs, preferred shares, warrants, rights, units, funds, and other non-common-stock rows are rejected or warned before ranking.
+- SEC and Nasdaq validation attach or confirm ticker, CIK, name, exchange, ETF/test-issue flags, validation status, and warnings.
+- Diff report includes added tickers, removed tickers, rank changes, missing CIKs, Nasdaq validation failures, source used, source dates, and checksum.
+- Runtime search/support classification still reads only the approved current manifest.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_repo_contract.py -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+git diff --check
+```
+
+Iteration budget:
+One agent-loop cycle. Stop after candidate workflow contracts, validation fixtures, and docs; do not promote a new current manifest.
+
+### T-117: Execute handoff-gated official-source acquisition for golden assets
+
+Goal:
+Turn the existing opt-in official-source readiness boundaries into a mocked-HTTP execution path for golden SEC stock, ETF issuer, and Weekly News acquisition that writes only handoff-approved records.
+
+Task-scope paragraph:
+Add injected HTTP/fetch boundaries and parser adapters for AAPL/NVDA-style SEC sources, VOO/QQQ/SOXX-style issuer sources, and official Weekly News source candidates. Tests must use mocked responses only. The worker should route fetched records through Golden Asset Source Handoff before source snapshot, parsed artifact, normalized knowledge-pack, Weekly News evidence, and generated-output cache writes. Fail closed when parser validity, approval metadata, source binding, source-use policy, freshness, or writer readiness is missing.
+
+Acceptance criteria:
+
+- Live acquisition remains explicitly opt-in and server-side only.
+- Mocked SEC and issuer fetchers prove source retrieval does not approve evidence by itself.
+- Parser diagnostics distinguish parsed, partial, failed, pending-review, and unavailable states.
+- Approved records can write source snapshots, normalized knowledge packs, Weekly News evidence, and validated generated-output cache records through existing writer boundaries.
+- Blocked records do not create generated pages, generated chat answers, generated comparisons, citations, cache entries, exports, or source drawer excerpts.
+- CI has no real network, provider, storage, database, news, market-data, or LLM calls.
+
+Required commands:
+
+```bash
+python3 -m pytest tests/unit/test_provider_adapters.py tests/unit/test_ingestion_worker.py tests/unit/test_ingestion_jobs.py tests/unit/test_weekly_news.py tests/unit/test_source_policy.py -q
+python3 -m pytest tests/integration/test_backend_api.py -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+git diff --check
+```
+
+Iteration budget:
+One agent-loop cycle. Stop after mocked execution and persistence verification; do not enable broad live ingestion or production jobs.
+
+### T-118: Prove local fresh-data ingest-to-render smoke path
+
+Goal:
+Document and test the local MVP path for manually ingesting a golden asset into configured durable repositories, reading it through backend APIs, and rendering it in the frontend before production deployment work.
+
+Task-scope paragraph:
+Add a local runbook and deterministic smoke coverage for manual ingestion with local durable repositories or in-memory equivalents. Verify the path from ingestion job request to source handoff, source snapshots, normalized knowledge pack, Weekly News evidence, generated-output cache validation, asset overview, source drawer, comparison/chat/export behavior, and frontend API rendering. Keep CI mocked and deterministic; live local runs may be documented as opt-in only and must not expose secrets.
+
+Acceptance criteria:
+
+- Runbook explains local setup, env placeholders, manual ingestion, route verification, frontend dev server verification, expected states, cleanup, and troubleshooting without printing secrets.
+- Tests cover the equivalent mocked path end to end.
+- Backend APIs render persisted golden asset data before falling back to fixtures.
+- Frontend pages show fresh persisted data with citations, freshness labels, source drawer metadata, Weekly News evidence limits, AI Comprehensive Analysis thresholds, chat grounding, and export restrictions.
+- Unsupported, out-of-scope, pending-ingestion, partial, stale, unknown, unavailable, pending-review, and rejected-source states remain visible and blocked correctly.
+- Production deployment, recurring jobs, admin auth enforcement, rate limiting, monitoring, rollback, broad provider expansion, and post-MVP features stay unpromoted.
+
+Required commands:
+
+```bash
+npm test
+npm run typecheck
+npm run build
+python3 -m pytest tests/integration/test_backend_api.py -q
+python3 -m pytest tests/unit/test_ingestion_worker.py tests/unit/test_source_policy.py tests/unit/test_exports.py tests/unit/test_repo_contract.py -q
+python3 -m pytest tests -q
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+git diff --check
+```
+
+Iteration budget:
+One agent-loop cycle. Stop after local fresh-data runbook and deterministic smoke coverage; production deployment remains later.
 
 ## General MVP Roadmap
 
-This section is intentionally non-operational for the agent loop. Keep runnable repeat-mode tasks above this roadmap as third-level task headings, and keep this longer MVP roadmap as bullets until each item is promoted into a narrow task contract. This roadmap now covers the full functional MVP path: server-side/admin ingestion, source snapshot storage, normalized knowledge-pack persistence, generated-output cache writes, Weekly News Focus execution, backend route reads, frontend API rendering, comparison/chat/export rendering, launch pre-cache expansion, and production readiness.
+This section is intentionally non-operational for the agent loop. Keep runnable repeat-mode tasks above this roadmap as third-level task headings, and keep this longer MVP roadmap as bullets until each item is promoted into a narrow task contract. This roadmap now covers the full functional MVP path: deterministic launch readiness, Golden Asset Source Handoff, reviewed Top-500 candidate refreshes, server-side/admin ingestion, source snapshot storage, normalized knowledge-pack persistence, generated-output cache writes, Weekly News Focus execution, backend route reads, frontend API rendering, comparison/chat/export rendering, local fresh-data verification, and production readiness.
 
 Current runtime snapshot:
 
 - Backend contracts, configured reader boundaries, ingestion ledger execution, source-use/export gates, Weekly News contracts, generated-output cache contracts, and live-generation readiness diagnostics are broad and stable.
-- The current runtime is still not end-to-end fresh-data functional: acquisition is mocked/golden-path, source snapshots, normalized knowledge packs, Weekly News evidence, and generated-output cache records can be routed through deterministic in-memory/mocked boundaries or explicitly configured local durable repository factories, and production persistence/storage is not the normal path.
+- The current runtime is still not end-to-end fresh-data functional: official-source acquisition is mocked/golden-path, source snapshots, normalized knowledge packs, Weekly News evidence, and generated-output cache records can be routed through deterministic in-memory/mocked boundaries or explicitly configured local durable repository factories, and production persistence/storage is not the normal path.
 - The frontend renders the main learning surfaces with deterministic fixtures and selected backend adapters; T-109 added API-backed home search and dynamic asset-page rendering with deterministic fixture fallback.
+- The updated PRD/TDS/proposal make Golden Asset Source Handoff a blocker before retrieved sources can become evidence for storage, generation, citation, cache, source drawer, or export behavior.
+- The updated Top-500 workflow keeps runtime stock support tied to the approved current manifest; monthly IWB/SPY/IVV/VOO candidate generation, SEC/Nasdaq validation, diff reporting, and approval are not implemented yet.
 - The current promoted MVP blocker is deterministic launch pre-cache expansion and an MVP readiness regression matrix before production deployment work.
-- The next fully functional milestone is a launch-readiness checkpoint where deterministic pre-cache coverage, backend route contracts, frontend workflow markers, source-use gates, Weekly News evidence limits, safety checks, and go/no-go risks are documented and covered by CI-safe regression tests.
+- The next fully functional milestone is local fresh-data ingest-to-render: handoff-approved official source retrieval, parser diagnostics, source snapshots, normalized packs, Weekly News evidence, generated-output cache validation, backend route reads, frontend rendering, source drawers, exports, and safety/source-use checks all verified locally before production hardening.
 
 Operational defaults for general MVP roadmap tasks:
 
@@ -3143,6 +3269,10 @@ Operational defaults for general MVP roadmap tasks:
 - T-112 established opt-in live SEC and ETF issuer golden acquisition readiness. It is completed and must not be reintroduced as runnable backlog.
 - T-113 established opt-in official-source Weekly News live acquisition readiness for golden assets. It is completed and must not be reintroduced as runnable backlog.
 - T-114 is the current promoted task for deterministic launch pre-cache expansion and the MVP readiness regression matrix.
+- T-115 is queued for Golden Asset Source Handoff contract enforcement.
+- T-116 is queued for reviewed Top-500 candidate manifest workflow contracts.
+- T-117 is queued for handoff-gated mocked official-source acquisition execution for golden assets.
+- T-118 is queued for local fresh-data ingest-to-render runbook and smoke coverage.
 - Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until opt-in official-source acquisition and launch readiness work pass deterministic CI coverage.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted task should run the relevant EVALS.md checks, `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, `bash scripts/run_quality_gate.sh`, and `git diff --check`.
@@ -3190,11 +3320,15 @@ Roadmap integration tracker:
 | Opt-in live SEC and ETF issuer golden acquisition | Completed | T-112 |
 | Official-source Weekly News live acquisition for golden assets | Completed | T-113 |
 | Launch pre-cache expansion and MVP readiness regression matrix | Current | T-114 |
+| Golden Asset Source Handoff contract enforcement | Backlog | T-115 |
+| Reviewed Top-500 candidate manifest workflow contracts | Backlog | T-116 |
+| Handoff-gated official-source acquisition execution for golden assets | Backlog | T-117 |
+| Local fresh-data ingest-to-render runbook and smoke coverage | Backlog | T-118 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
 Remaining unpromoted general MVP sequence:
 
-- Full production deployment after T-114: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
-- Recurring production jobs only after manual official-source acquisition and launch pre-cache behavior are stable.
+- Full production deployment after T-118: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
+- Recurring production jobs only after manual official-source acquisition, Top-500 candidate refresh review, and local fresh-data behavior are stable.
 - Broad paid-provider or news-provider integrations only after provider licensing/source-use review, no-secret-exposure tests, mocked CI fixtures, source-rights validation, and export/display constraints are documented.
 - Post-MVP features such as accounts, saved assets, watchlists, PDF exports, localization, richer analytics dashboards, and broad provider enrichment remain out of the fully functional MVP stage.

@@ -29,7 +29,8 @@ That three-layer knowledge architecture comes directly from the proposal and rem
 
 | Goal | Design implication |
 |---|---|
-| Source-first explanations | Store raw source documents, normalized facts, chunks, and citation mappings before generating summaries. |
+| Source-first explanations | Store approved source documents, normalized facts, chunks, and citation mappings before generating summaries. |
+| Golden Asset Source Handoff | Treat API fetching as retrieval only; source handoff approves which retrieved sources may become evidence. |
 | Beginner-friendly language | Generate structured summaries using schemas for the Beginner section and glossary terms. |
 | Visible citations | Every important claim should map to a `source_document`, `document_chunk`, or normalized `fact`. |
 | Stable facts separated from Weekly News Focus and analysis | Maintain separate data tables and UI sections for canonical facts, Weekly News Focus, and AI Comprehensive Analysis. |
@@ -202,11 +203,12 @@ Runtime feature defaults:
 
 - Resolve assets.
 - Classify supported, unsupported, out-of-scope, `pending_ingestion`, partial, stale, unknown, and unavailable states.
-- Fetch source documents.
-- Store raw source snapshots.
-- Parse filings, fact sheets, issuer pages, and holdings files.
+- Fetch source documents only through allowlisted and SSRF-safe retrieval paths.
+- Run Golden Asset Source Handoff before any fetched source is stored, parsed for evidence, cited, summarized, generated from, or exported.
+- Store raw source snapshots only when source-use policy and storage rights permit it.
+- Parse filings, fact sheets, issuer pages, holdings files, and exposure files.
 - Extract normalized facts.
-- Chunk source text.
+- Chunk approved source text.
 - Generate embeddings when the embedding adapter is enabled.
 - Refresh stale assets.
 - Support pre-cache jobs for the top-500-first launch universe and explicit `pending_ingestion` states for approved on-demand assets outside it.
@@ -264,7 +266,7 @@ Priority labels in engineering tables follow the PRD: `P0` is a launch blocker f
 | Free/reference metadata or configured provider adapter | ticker reference, delayed or best-effort price, market cap, sector, industry, valuation fields, volume where available | P0 |
 | Allowlisted free/RSS/news source | Weekly News Focus only, after official filings and investor-relations sources | P1 |
 
-SEC EDGAR APIs should be used server-side, cached aggressively, and rate-limited. Stock ingestion should never depend on live user-page calls to SEC. V1 is free-first and assumes no paid provider keys; provider integrations must be optional adapters with fixtures and mocks for tests.
+SEC EDGAR, SEC XBRL company facts, and SEC filing documents are the canonical backbone for stocks such as `AAPL` and `NVDA`. SEC EDGAR APIs should be used server-side, cached aggressively, and rate-limited. Stock ingestion should never depend on live user-page calls to SEC. V1 is free-first and assumes no paid provider keys; provider integrations must be optional adapters with fixtures and mocks for tests. Fetched SEC sources are official, but each retrieved URL, source type, parser result, storage right, export right, rationale, and as-of date still needs a Golden Asset Source Handoff record before evidence use.
 
 ### 6.2 ETF sources
 
@@ -275,10 +277,11 @@ SEC EDGAR APIs should be used server-side, cached aggressively, and rate-limited
 | Summary prospectus / full prospectus | risks, methodology, objective, fees | P0 |
 | Shareholder reports | official fund reporting context | P1 |
 | Holdings CSV / JSON / Excel | top holdings, concentration, country/sector exposure | P0 |
+| Exposure CSV / JSON / Excel | sector, industry, country, market-cap, and factor exposures where issuer-published | P0 |
 | Free/reference metadata or configured provider adapter | delayed or best-effort quote, AUM, average volume, spread data, ETF reference metadata where available | P0 |
 | Sponsor press releases / allowlisted free/RSS/news sources | fee cuts, methodology changes, mergers, liquidations | P1 |
 
-ETF issuer websites are especially important because ETF disclosure includes investor-facing items such as holdings, premium/discount information, and bid-ask spread disclosures. V1 should support non-leveraged U.S.-listed equity index, sector, and thematic ETFs first. Paid ETF data providers are optional future adapters and must be validated against issuer sources before production use.
+ETF issuer materials are the canonical backbone for ETFs such as `VOO`, `QQQ`, and `SOXX`: issuer page, fact sheet, prospectus, shareholder reports, holdings files, exposure files, and sponsor announcements. ETF issuer websites are especially important because ETF disclosure includes investor-facing items such as holdings, premium/discount information, and bid-ask spread disclosures. V1 should support non-leveraged U.S.-listed equity index, sector, and thematic ETFs first. Paid ETF data providers are optional future adapters and must be validated against issuer sources before production use.
 
 News and RSS sources use a tiered allowlist. Official sources have the highest rank. Reuters/AP-style and similar publishers are license-gated: the source registry must record whether each source is `metadata_only`, `link_only`, `summary_allowed`, `full_text_allowed`, or `rejected` before ingestion output can be displayed, summarized, stored, or exported.
 
@@ -292,15 +295,41 @@ The top-500 U.S. common stock universe is resolved from a versioned manifest.
 - Monthly refresh is the default. Ad hoc refresh requires a development-log entry.
 - The manifest is operational coverage metadata, not advice or a recommendation list.
 - Resolver behavior: a U.S. common stock outside the manifest returns `out_of_scope` unless it is explicitly added to an approved on-demand ingestion queue.
+- Runtime behavior: asset resolution, generated-page eligibility, chat, comparison, Weekly News Focus, and AI Comprehensive Analysis must read the approved manifest, never a live ETF holdings file or provider ranking response.
+
+Monthly source workflow:
+
+- Primary source input: official iShares Russell 1000 ETF (`IWB`) holdings. Rank valid U.S. common-stock rows by IWB portfolio weight and record `rank_basis = "iwb_weight_proxy"`.
+- Fallback source input: official S&P 500 ETF holdings from `SPY`, `IVV`, and `VOO`. Use the fallback only when IWB fails, is stale, cannot be parsed, or produces too few validated common-stock rows; record `rank_basis = "sp500_etf_weight_proxy_fallback"`.
+- Candidate path: `data/universes/us_common_stocks_top500.candidate.YYYY-MM.json`.
+- Approved path: `data/universes/us_common_stocks_top500.current.json`.
+- Candidate rows must preserve source provenance, source snapshot date, source checksum, rank, rank basis, CIK, exchange, validation status, and warnings.
+- Normalization must standardize class-share ticker formats such as `BRK.B` and `BRK-B`, then exclude cash, futures, options, swaps, index rows, ETFs, preferred shares, warrants, rights, units, funds, and other non-common-stock rows.
+- Validation must attach or confirm CIK, name, ticker, and exchange through SEC `company_tickers_exchange.json`, and reject or flag Nasdaq Trader rows with disqualifying fields such as `ETF = Y` or `Test Issue = Y`.
+- Candidate review must produce a diff report with added tickers, removed tickers, rank changes, rows with missing CIKs, Nasdaq validation failures, source used, source dates, and checksum.
+- Manual approval is required when fallback sources are used, snapshots are stale or unparseable, validation coverage is below threshold, many tickers change, or top-ranked names disappear.
+
+Automation model:
+
+- V1 automation should be a GitHub Actions scheduled monthly workflow with `workflow_dispatch` for manual reruns. It should generate only the candidate manifest and diff report, run manifest validation, and open a pull request for review.
+- V1.1 automation may move candidate generation into a Cloud Scheduler-triggered Cloud Run Job once manual Cloud Run Jobs and the GitHub Actions PR workflow are proven useful. This later path should still produce a candidate manifest and require review before promotion.
 
 ### 6.4 Source allowlist governance and raw text policy
 
-The source allowlist lives in configuration, e.g. `config/source_allowlist.yaml`. Config-only review means future agents may update it when source-use policy, source type, domain, rationale, validation tests, and development-log rationale are updated together. Automated scoring can rank only already-allowed sources; it cannot approve new sources.
+The source allowlist lives in configuration, e.g. `config/source_allowlist.yaml`. Config-only review means future agents may update it when source-use policy, source type, domain, official-source status, storage rights, export rights, rationale, validation tests, and development-log rationale are updated together. Automated scoring can rank only already-allowed sources; it cannot approve new sources.
+
+Golden Asset Source Handoff is the approval layer between retrieval and evidence use:
+
+- Retrieval layer: API clients, fetch adapters, SEC/issuer fetch commands, provider endpoints, and downloaded payloads.
+- Approval/evidence layer: allowlisted domain, source type, official-source status, storage rights, export rights, source-use policy, rationale, parser validity, freshness/as-of metadata, and review status.
+- Approval statuses: `approved`, `pending_review`, and `rejected`.
+- Missing, unclear, hidden/internal, parser-invalid, or non-allowlisted sources default to `pending_review` or `rejected` and cannot support generated output.
+- The operational rule is fetch only from allowlisted sources, store according to source-use policy, generate only from approved evidence, and export only what policy permits.
 
 The raw source text policy is rights-tiered:
 
-- Official filings, issuer materials, and `full_text_allowed` sources may store full raw text, parsed text, chunks, checksums, and snapshots.
-- `summary_allowed` sources may store metadata, checksums, links, and excerpts needed to support summaries.
+- Official filings, issuer materials, and `full_text_allowed` sources may store raw text, parsed text, chunks, checksums, and private snapshots.
+- `summary_allowed` sources may store metadata, checksums, links, and limited excerpts needed to support summaries.
 - `metadata_only` and `link_only` sources may store metadata, hashes, canonical URLs, timestamps, and diagnostics, but not full article text.
 - `rejected` sources must not feed generated output and should retain only rejection diagnostics when needed.
 
@@ -314,6 +343,7 @@ The raw source text policy is rights-tiered:
 - Tiingo can enrich end-of-day data, corporate actions, selected news/fundamentals endpoints, and ETF/mutual-fund fee metadata. Prefer it for stable non-tick workflows.
 - EODHD can support light testing, EOD-style history, delayed live data, and basic fundamentals, but free access is small and public usage requires personal-use/commercial-use review.
 - yfinance may be used only for local development or fallback diagnostics. It must not be production truth.
+- Provider payloads are optional enrichment. They must not override official SEC or issuer evidence, and if rate limits, licensing, caching rights, display rights, attribution, or export rights are unclear, they are limited to internal diagnostics, enrichment, or metadata-only use.
 - UI and API contracts must expose `fresh`, `stale`, `partial`, and `unavailable` states for quote/reference data; do not imply real-time coverage.
 
 ---
@@ -324,10 +354,10 @@ The system should rank evidence using the hierarchy from the proposal. Stable fa
 
 ### 7.1 Stock source ranking
 
-1. SEC filings and XBRL data.
+1. SEC EDGAR, SEC XBRL company facts, and SEC filing documents.
 2. Company investor relations pages.
 3. Earnings releases and presentations.
-4. Free/reference metadata or configured provider adapter.
+4. Free/reference metadata or approved provider enrichment.
 5. Official and allowlisted free-news sources, used only for Weekly News Focus context.
 
 ### 7.2 ETF source ranking
@@ -336,8 +366,9 @@ The system should rank evidence using the hierarchy from the proposal. Stable fa
 2. ETF fact sheet.
 3. Summary prospectus and full prospectus.
 4. Shareholder reports.
-5. Free/reference metadata or configured provider adapter.
-6. Official and allowlisted free-news sources, used only for Weekly News Focus context.
+5. Issuer holdings files, exposure files, and official ETF website disclosures.
+6. Sponsor announcements and official or allowlisted free-news sources, used only for Weekly News Focus context.
+7. Free/reference metadata or approved provider enrichment.
 
 ---
 
@@ -402,7 +433,12 @@ source_documents (
   is_official BOOLEAN DEFAULT FALSE,
   source_quality TEXT, -- official | allowlisted | provider | fixture | rejected | unknown
   allowlist_status TEXT, -- allowed | rejected | not_applicable | pending_review
+  approval_status TEXT, -- approved | pending_review | rejected
   source_use_policy TEXT, -- metadata_only | link_only | summary_allowed | full_text_allowed | rejected
+  storage_rights TEXT, -- raw_snapshot_allowed | summary_allowed | metadata_only | link_only | rejected | unknown
+  export_rights TEXT, -- excerpts_allowed | metadata_only | link_only | rejected | unknown
+  approval_rationale TEXT,
+  parser_status TEXT, -- parsed | partial | failed | not_applicable | pending_review
   freshness_state TEXT, -- fresh | stale | unknown | unavailable
   created_at TIMESTAMPTZ
 )
@@ -714,19 +750,20 @@ pgvector can remain installed for future migration compatibility, but vector ind
 ```text
 1. Resolve asset using SEC/issuer metadata and the top-500 manifest.
 2. Classify asset as supported, unsupported, out-of-scope, `pending_ingestion`, partial, stale, unknown, or unavailable.
-3. Fetch source documents for supported assets
-4. Save raw snapshots
-5. Parse source documents
-6. Chunk parsed text
-7. Run keyword/metadata indexing; generate embeddings only when `EMBEDDINGS_ENABLED=true`.
-8. Extract normalized facts
-9. Retrieve high-signal Weekly News Focus events
-10. Mark section-level evidence states for partial pages
-11. Build or refresh asset knowledge pack
-12. Generate or invalidate summaries
-13. Validate citations
-14. Mark freshness state
-15. Update shared cache entries and freshness hashes
+3. Fetch source documents for supported assets only from allowlisted retrieval paths.
+4. Run Golden Asset Source Handoff.
+5. Save raw snapshots only when storage rights permit.
+6. Parse source documents.
+7. Chunk parsed text only for approved evidence.
+8. Run keyword/metadata indexing; generate embeddings only when `EMBEDDINGS_ENABLED=true`.
+9. Extract normalized facts.
+10. Retrieve high-signal Weekly News Focus events from official or allowlisted sources.
+11. Mark section-level evidence states for partial pages.
+12. Build or refresh asset knowledge pack from approved evidence.
+13. Generate or invalidate summaries.
+14. Validate citations.
+15. Mark freshness state.
+16. Update shared cache entries and freshness hashes.
 ```
 
 MVP should support pre-cache ingestion for the top-500-first launch universe and explicit `pending_ingestion` states for approved on-demand assets outside that universe. Unsupported and out-of-scope assets should return a recognized-but-unsupported or recognized-but-out-of-scope state from search and must not trigger generated pages, generated chat, or generated comparisons. Supported assets with incomplete evidence should return partial pages instead of invented content.
@@ -783,6 +820,8 @@ Fetch:
 - latest 10-Q
 - recent 8-Ks
 - company facts / XBRL
+
+Fetching these records does not itself approve evidence. The source record must pass Golden Asset Source Handoff before storage, normalization, chunking, citation, generation, or export.
 
 #### Step 3: Parse filings
 
@@ -868,6 +907,9 @@ Fetch:
 - shareholder reports when relevant
 - holdings file
 - sector / country exposure file
+- sponsor announcements when relevant
+
+Fetching these issuer records does not itself approve evidence. The source record must pass Golden Asset Source Handoff before storage, normalization, chunking, citation, generation, or export.
 
 #### Step 3: Normalize ETF facts
 
@@ -1384,15 +1426,17 @@ Citation binding is the most important trust mechanism.
 
 ```text
 1. Source document is fetched.
-2. Source document is parsed.
-3. Source text is chunked.
-4. Normalized facts are linked to source document and chunk IDs.
-5. LLM receives facts/chunks with stable IDs.
-6. LLM generates claims with citation IDs.
-7. `claim_citations` stores one or more supporting citations for each claim.
-8. Validator checks every citation ID.
-9. UI renders citation chips.
-10. Source drawer opens exact source metadata and supporting passage.
+2. Golden Asset Source Handoff approves or rejects evidence use.
+3. Source document is stored only according to source-use policy.
+4. Source document is parsed.
+5. Source text is chunked only when policy permits.
+6. Normalized facts are linked to source document and chunk IDs.
+7. LLM receives approved facts/chunks with stable IDs.
+8. LLM generates claims with citation IDs.
+9. `claim_citations` stores one or more supporting citations for each claim.
+10. Validator checks every citation ID and source approval status.
+11. UI renders citation chips.
+12. Source drawer opens approved source metadata and allowed supporting passage.
 ```
 
 ### 12.2 Citation validation rules
@@ -1403,6 +1447,7 @@ A generated output is valid only if:
 - or, if evidence is missing, the claim is suppressed and the section carries an explicit uncertainty, unavailable, stale, or partial label
 - every citation ID exists
 - cited source belongs to the same asset or comparison pack
+- cited source has `approval_status=approved`
 - cited source is not stale unless labeled stale
 - numeric claims match the cited fact value
 - quoted or paraphrased claims are supported by cited chunks
@@ -1547,6 +1592,8 @@ GET /api/citations/cit_abc123
   "publisher": "SEC EDGAR",
   "url": "https://www.sec.gov/...",
   "source_type": "10-k",
+  "is_official": true,
+  "approval_status": "approved",
   "source_use_policy": "full_text_allowed",
   "published_at": "2025-10-31",
   "as_of_date": "2025-09-27",
@@ -1557,7 +1604,7 @@ GET /api/citations/cit_abc123
 }
 ```
 
-`citation_id` is public and opaque. It must not expose raw database row IDs. Citation resolution must never return unrestricted provider payloads, full restricted article text, private raw PDF text, secrets, hidden prompts, or unrestricted raw source text.
+`citation_id` is public and opaque. It must not expose raw database row IDs. Citation resolution returns only approved source metadata and policy-allowed excerpts. It must never return unrestricted provider payloads, full restricted article text, private raw PDF text, secrets, hidden prompts, or unrestricted raw source text.
 
 ### 14.3 Asset overview
 
@@ -1778,7 +1825,7 @@ Supported MVP export shapes:
 
 Export behavior must respect provider licensing. Paid news or restricted provider content should be summarized or omitted unless redistribution rights are confirmed.
 
-Exported outputs should include the persistent educational disclaimer and should preserve the same citation, freshness, uncertainty, and advice-boundary labels shown in the UI.
+Exported outputs should include the persistent educational disclaimer and should preserve the same citation, freshness, uncertainty, and advice-boundary labels shown in the UI. They should include only approved citations, source titles, URLs, source types, freshness/as-of dates, normalized facts, uncertainty labels, and allowed excerpts. They must not include unrestricted provider payloads, full restricted content, hidden prompts, raw reasoning, or source text beyond the source-use policy.
 
 ---
 
@@ -2136,6 +2183,7 @@ For each generated output, log:
 - AI Comprehensive Analysis generation from the selected asset's Weekly News Focus pack
 - Markdown and JSON export endpoints
 - source-use policy enforcement for metadata-only, link-only, summary-allowed, full-text-allowed, and rejected sources
+- Golden Asset Source Handoff rejection for non-allowlisted, unclear-rights, parser-invalid, hidden/internal, and pending-review sources
 - prompt-injection rejection from retrieved source text
 - HTML/PDF sanitization and SSRF-defense checks
 - accountless chat continuation, expiry, deletion, and rate limiting
@@ -2176,6 +2224,8 @@ For each golden asset, maintain expected checks:
 - claims can resolve multiple citations through `claim_citations`
 - current fact queries use `is_current`, while superseded facts and summaries remain audit-readable
 - Markdown and JSON exports include disclaimer, citations, freshness, and uncertainty metadata
+- AAPL and NVDA canonical facts prefer SEC EDGAR/XBRL/filing evidence over provider enrichment
+- VOO, QQQ, and SOXX canonical facts prefer issuer page, fact sheet, prospectus, shareholder report, holdings, and exposure evidence over provider enrichment
 
 ### 19.4 LLM evaluation tests
 
@@ -2224,6 +2274,8 @@ Do not commit filled production env files. `deploy/env/*.example.env`, `apps/web
 
 FMP, Alpha Vantage, Finnhub, Tiingo, and EODHD keys are configuration readiness only. Live adapters and public display/export use require provider-specific licensing and rate-limit review.
 
+API keys, endpoints, and successful fetches are not evidence approval. Golden Asset Source Handoff must approve source domain, type, official status, storage rights, export rights, source-use policy, rationale, parser status, freshness/as-of metadata, and review status before any fetched payload feeds persistence, citation, generation, or export.
+
 ### 20.2 Source sanitization
 
 External HTML and PDF content should be sanitized before display. Never render arbitrary source HTML directly in the app. Sanitization should remove scripts, event handlers, unsafe links, embedded active content, and hidden prompt-like instructions from rendered views.
@@ -2232,7 +2284,7 @@ Ingestion fetchers must use allowlisted domains or controlled URL resolution. Th
 
 ### 20.3 User data
 
-MVP should be accountless. Users can download asset summaries, comparison output, source lists, and chat transcripts without creating accounts. These exports should be Markdown or JSON and include citations, freshness metadata, uncertainty labels, and the educational disclaimer. They should omit or summarize restricted provider content unless redistribution rights are confirmed.
+MVP should be accountless. Users can download asset summaries, comparison output, source lists, and chat transcripts without creating accounts. These exports should be Markdown or JSON and include citations, freshness metadata, uncertainty labels, and the educational disclaimer. They should expose only approved source metadata and allowed excerpts, and omit or summarize restricted provider content unless redistribution rights are confirmed.
 
 Accountless chat uses anonymous random conversation IDs, not user accounts. The browser stores only `conversation_id`, asset ticker, `updated_at`, and `expires_at`; the server stores transcript state for follow-up grounding and client-requested export. Chat sessions expire 7 days after last activity. A user delete action must clear the local browser reference and delete or invalidate the server-side session.
 
@@ -2476,8 +2528,9 @@ MVP is technically ready when:
 12. LLM integration should be adapter-first with deterministic mocks for tests and a feature-flagged explicit OpenRouter free-model chain plus automatic DeepSeek V3.2 paid fallback for the first live deployment.
 13. Weekly News Focus is an asset-page feature with a fixed Monday-Sunday market-week window plus current week-to-date through yesterday; it is not a separate market brief page.
 14. Source allowlist changes use config-only review with validation and a development-log rationale; scoring never auto-approves a new source.
-15. Raw source text storage is rights-tiered across official, full-text-allowed, summary-allowed, metadata-only, link-only, and rejected sources.
-16. V1 is English-first. Traditional Chinese localization and read-aloud/TTS are post-MVP.
+15. Golden Asset Source Handoff is the approval layer; API fetching is only retrieval and does not approve evidence use.
+16. Raw source text storage is rights-tiered across official, full-text-allowed, summary-allowed, metadata-only, link-only, and rejected sources.
+17. V1 is English-first. Traditional Chinese localization and read-aloud/TTS are post-MVP.
 
 ---
 

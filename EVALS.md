@@ -96,7 +96,7 @@ Verify:
 
 ### Weekly News Focus And Source-Use Tasks
 
-Use for market-week window logic, recent events, source allowlists, source-use policies, raw text policy, news/event scoring, and AI Comprehensive Analysis inputs.
+Use for market-week window logic, recent events, source allowlists, Golden Asset Source Handoff, source-use policies, raw text policy, news/event scoring, and AI Comprehensive Analysis inputs.
 
 Required checks:
 
@@ -108,9 +108,11 @@ bash scripts/run_quality_gate.sh
 
 Verify:
 
+- Golden Asset Source Handoff treats fetching as retrieval only, not approval
+- evidence use requires approved domain/source identity, source type, official-source status, storage rights, export rights, source-use policy, rationale, parser status, freshness/as-of metadata, and review status
+- non-allowlisted, unclear-rights, parser-invalid, hidden/internal, pending-review, rejected, duplicate, promotional, irrelevant, and license-disallowed sources cannot feed evidence storage, generation, citation, cache, export, Weekly News Focus, or AI Comprehensive Analysis
 - Weekly News Focus uses the last completed Monday-Sunday market week plus current week-to-date through yesterday in U.S. Eastern dates
 - official filings, investor-relations releases, issuer announcements, prospectus updates, and fact-sheet changes rank before allowlisted news
-- unrecognized, rejected, duplicate, promotional, irrelevant, non-allowlisted, and license-disallowed items are excluded
 - Weekly News Focus shows the configured maximum only when evidence supports it, otherwise a smaller verified set or empty state
 - source-use policy values cover `metadata_only`, `link_only`, `summary_allowed`, `full_text_allowed`, and `rejected`
 - source-use policy wins over score
@@ -119,7 +121,7 @@ Verify:
 
 ### Ingestion, Provider, Caching, And Freshness Tasks
 
-Use for provider adapters, on-demand ingestion, pre-cache workflows, refresh logic, source checksums, freshness hashes, cache invalidation, and provider-secret handling.
+Use for provider adapters, on-demand ingestion, pre-cache workflows, Top-500 candidate manifest refreshes, Golden Asset Source Handoff execution, source checksums, freshness hashes, cache invalidation, and provider-secret handling.
 
 Required checks:
 
@@ -133,6 +135,9 @@ Verify:
 
 - tests use mocked provider responses or local provider fixtures
 - no API keys, paid-provider credentials, or live network calls are required in normal CI
+- source acquisition separates retrieval from evidence approval through Golden Asset Source Handoff
+- source snapshots, parser outputs, normalized packs, generated-output cache records, citations, source drawer responses, and exports carry source-use and approval metadata needed to block unapproved evidence
+- source records missing approval metadata default closed to `pending_review`, `rejected`, `unavailable`, or `insufficient_evidence`
 - unsupported and out-of-scope assets are blocked from generated pages, generated chat, and generated comparisons
 - freshness fields include page-level and section-level dates or explicit unknown/stale/unavailable/partial states
 - pre-cache and on-demand ingestion paths expose pending, running, succeeded, failed, unsupported, out-of-scope, unknown, unavailable, and stale states where relevant
@@ -141,7 +146,7 @@ Verify:
 
 ### Search, Support Classification, And Entity-Resolution Tasks
 
-Use for ticker/name search, ambiguous-match states, supported/unsupported/out-of-scope classification, Top-500 manifest behavior, and on-demand ingestion routing.
+Use for ticker/name search, ambiguous-match states, supported/unsupported/out-of-scope classification, Top-500 runtime manifest behavior, Top-500 candidate refresh workflow, and on-demand ingestion routing.
 
 Required checks:
 
@@ -157,6 +162,9 @@ Verify:
 - supported U.S.-listed common stocks and non-leveraged U.S.-listed equity ETFs resolve by exact ticker, partial ticker, asset name, and issuer/provider where useful
 - clear comparison queries such as `VOO vs QQQ` show a comparison-route result instead of turning home search into a comparison builder
 - top-500 stock support comes from `data/universes/us_common_stocks_top500.current.json`, not a live provider query at request time
+- Top-500 refresh work writes reviewed candidates to `data/universes/us_common_stocks_top500.candidate.YYYY-MM.json` and never overwrites the approved current manifest without review
+- candidate manifest rows preserve source provenance, source snapshot date, source checksum, rank, rank basis, CIK, exchange, validation status, and warnings
+- IWB official holdings are the primary source input, SPY/IVV/VOO official holdings are fallback-only inputs, and SEC/Nasdaq validation failures are surfaced for review
 - ambiguous searches show disambiguation instead of silently guessing
 - recognized-but-unsupported and out-of-scope assets do not link to generated asset pages, chat, or comparisons
 - unknown searches say unknown or unavailable without invented facts
@@ -228,8 +236,9 @@ Verify:
 - task instructions are narrow enough for one agent-loop cycle
 - `TASKS.md` has a current task or backlog when continuous agent work is expected
 - backlog headings are small, sequential, and aligned with MVP scope
-- near-term task sequencing prioritizes Frontend Design and Workflow v0.4 gaps and frontend/backend deterministic contract convergence before live-provider or deployment expansion
+- near-term task sequencing preserves Frontend Design and Workflow v0.4, then closes Golden Asset Source Handoff, Top-500 candidate refresh, and local fresh-data ingest-to-render gaps before production deployment expansion
 - agent prompts keep the v0.4 baseline visible: single-asset home search, separate comparison workflow, contextual glossary, mobile source/glossary/chat bottom sheets, stock-vs-ETF relationship badges, and evidence-backed Weekly News Focus limits
+- agent prompts keep the manifest-owned Top-500 rule and Golden Asset Source Handoff rule visible
 - Bash and PowerShell agent loops default to `gpt-5.5` with `high` reasoning effort, and allow explicit script-argument overrides such as `gpt-5.3-codex-spark`
 - agent prompts read proposal, PRD, technical design, SPEC, TASKS, and EVALS
 - PRD/TDS/proposal are treated as the current baseline after safety rules
