@@ -34,6 +34,8 @@ WEEKLY_NEWS_EVENT_EVIDENCE_REPOSITORY_BOUNDARY = "weekly-news-event-evidence-rep
 WEEKLY_NEWS_FIXTURE_ACQUISITION_BOUNDARY = "weekly-news-fixture-acquisition-boundary-v1"
 WEEKLY_NEWS_LIVE_ACQUISITION_READINESS_BOUNDARY = "weekly-news-live-acquisition-readiness-boundary-v1"
 WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_ACQUISITION_BOUNDARY = "weekly-news-official-source-mocked-acquisition-boundary-v1"
+WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_FETCH_BOUNDARY = "weekly-news-official-source-mocked-fetch-boundary-v1"
+WEEKLY_NEWS_OFFICIAL_SOURCE_PARSER_ADAPTER_BOUNDARY = "weekly-news-official-source-parser-adapter-boundary-v1"
 WEEKLY_NEWS_EVENT_EVIDENCE_SCHEMA_VERSION = "weekly-news-event-evidence-repository-v1"
 WEEKLY_NEWS_EVENT_EVIDENCE_TABLES = (
     "weekly_news_market_week_windows",
@@ -180,8 +182,88 @@ class WeeklyNewsOfficialSourceAcquisitionResult:
     configured_max_item_count: int = 8
     evidence_limited_state: str | None = None
     ai_analysis_allowed: bool = False
+    mocked_fetch_boundary: str | None = None
+    parser_adapter_boundary: str | None = None
+    fetched_source_count: int = 0
+    parser_diagnostic_count: int = 0
+    handoff_approved_source_count: int = 0
+    handoff_blocked_source_count: int = 0
     sanitized_diagnostics: dict[str, object] | None = None
     no_live_external_calls: bool = True
+
+
+@dataclass(frozen=True)
+class WeeklyNewsOfficialSourceMockFetchResponse:
+    boundary: str
+    candidate_event_id: str
+    source_document_id: str
+    status: str
+    checksum: str
+    retrieved_at: str
+    no_live_external_calls: bool = True
+    stores_raw_article_text: bool = False
+    stores_raw_provider_payload: bool = False
+    stores_secret: bool = False
+
+
+@dataclass(frozen=True)
+class WeeklyNewsOfficialSourceParserDiagnostic:
+    boundary: str
+    candidate_event_id: str
+    source_document_id: str
+    parser_status: SourceParserStatus
+    evidence_state: EvidenceState
+    freshness_state: FreshnessState
+    code: str
+    parser_failure_diagnostics: str | None = None
+    no_live_external_calls: bool = True
+    stores_raw_article_text: bool = False
+    stores_raw_provider_payload: bool = False
+    stores_secret: bool = False
+
+
+@dataclass(frozen=True)
+class WeeklyNewsOfficialSourceMockFetcher:
+    def fetch(self, candidate: "WeeklyNewsEventCandidateRow") -> WeeklyNewsOfficialSourceMockFetchResponse:
+        return WeeklyNewsOfficialSourceMockFetchResponse(
+            boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_FETCH_BOUNDARY,
+            candidate_event_id=candidate.candidate_event_id,
+            source_document_id=candidate.source_document_id,
+            status="fetched",
+            checksum=candidate.evidence_checksum or "",
+            retrieved_at=candidate.retrieved_at,
+        )
+
+
+@dataclass(frozen=True)
+class WeeklyNewsOfficialSourceParserAdapter:
+    def parse(
+        self,
+        response: WeeklyNewsOfficialSourceMockFetchResponse,
+        candidate: "WeeklyNewsEventCandidateRow",
+    ) -> WeeklyNewsOfficialSourceParserDiagnostic:
+        parser_status = SourceParserStatus(candidate.parser_status)
+        if parser_status is SourceParserStatus.failed or not response.checksum.startswith("sha256:"):
+            return WeeklyNewsOfficialSourceParserDiagnostic(
+                boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_PARSER_ADAPTER_BOUNDARY,
+                candidate_event_id=candidate.candidate_event_id,
+                source_document_id=candidate.source_document_id,
+                parser_status=SourceParserStatus.failed,
+                evidence_state=EvidenceState.unavailable,
+                freshness_state=FreshnessState.unavailable,
+                code="weekly_news_parser_failed",
+                parser_failure_diagnostics=candidate.parser_failure_diagnostics or "parser_or_checksum_invalid",
+            )
+        return WeeklyNewsOfficialSourceParserDiagnostic(
+            boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_PARSER_ADAPTER_BOUNDARY,
+            candidate_event_id=candidate.candidate_event_id,
+            source_document_id=candidate.source_document_id,
+            parser_status=parser_status,
+            evidence_state=EvidenceState(candidate.evidence_state),
+            freshness_state=FreshnessState(candidate.freshness_state),
+            code=f"weekly_news_parser_{parser_status.value}",
+            parser_failure_diagnostics=candidate.parser_failure_diagnostics,
+        )
 
 
 class WeeklyNewsMarketWeekWindowRow(StrictRow):
@@ -951,6 +1033,8 @@ def acquire_weekly_news_event_evidence_from_official_sources(
     official_source_configured: bool | None = None,
     rate_limit_ready: bool | None = None,
     repository_writer_ready: bool | None = None,
+    fetcher: WeeklyNewsOfficialSourceMockFetcher | None = None,
+    parser: WeeklyNewsOfficialSourceParserAdapter | None = None,
     configured_max_item_count: int = 8,
     minimum_ai_analysis_item_count: int = 2,
     minimum_display_score: int = 7,
@@ -982,11 +1066,65 @@ def acquire_weekly_news_event_evidence_from_official_sources(
         for candidate in candidates
         if candidate.source_rank_tier in _OFFICIAL_SOURCE_RANK_TIERS
     ]
+    fetch_boundary = fetcher or WeeklyNewsOfficialSourceMockFetcher()
+    parser_boundary = parser or WeeklyNewsOfficialSourceParserAdapter()
+    handoff_approved_count = 0
+    handoff_blocked_count = 0
+    parser_diagnostic_count = 0
+    prepared_candidates: list[WeeklyNewsEventCandidateRow] = []
+    for candidate in official_candidates:
+        fetched = fetch_boundary.fetch(candidate)
+        parsed = parser_boundary.parse(fetched, candidate)
+        parser_diagnostic_count += 1
+        parsed_candidate = candidate.model_copy(
+            update={
+                "parser_status": parsed.parser_status.value,
+                "parser_failure_diagnostics": parsed.parser_failure_diagnostics,
+            }
+        )
+        handoff = validate_source_handoff(parsed_candidate, action=SourcePolicyAction.generated_claim_support)
+        if not handoff.allowed:
+            handoff_blocked_count += 1
+            if parsed.parser_status in {SourceParserStatus.failed, SourceParserStatus.pending_review}:
+                return WeeklyNewsOfficialSourceAcquisitionResult(
+                    boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_ACQUISITION_BOUNDARY,
+                    ticker=normalized,
+                    status="blocked",
+                    readiness=readiness,
+                    candidate_count=len(candidates),
+                    configured_max_item_count=configured_max_item_count,
+                    mocked_fetch_boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_FETCH_BOUNDARY,
+                    parser_adapter_boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_PARSER_ADAPTER_BOUNDARY,
+                    fetched_source_count=parser_diagnostic_count,
+                    parser_diagnostic_count=parser_diagnostic_count,
+                    handoff_approved_source_count=handoff_approved_count,
+                    handoff_blocked_source_count=handoff_blocked_count,
+                    sanitized_diagnostics={
+                        "boundary": WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_ACQUISITION_BOUNDARY,
+                        "status": "blocked",
+                        "ticker": normalized,
+                        "blocked_reason": "weekly_news_source_handoff_failed",
+                        "no_live_external_calls": True,
+                    },
+                )
+            prepared_candidates.append(
+                parsed_candidate.model_copy(
+                    update={
+                        "suppression_reason_codes": sorted(
+                            {*parsed_candidate.suppression_reason_codes, "source_policy_blocked"}
+                        )
+                    }
+                )
+            )
+            continue
+        handoff_approved_count += 1
+        prepared_candidates.append(parsed_candidate)
+
     records = acquire_weekly_news_event_evidence_from_fixtures(
         asset_ticker=normalized,
         as_of=as_of,
         created_at=created_at,
-        candidates=official_candidates,
+        candidates=prepared_candidates,
         configured_max_item_count=configured_max_item_count,
         minimum_ai_analysis_item_count=minimum_ai_analysis_item_count,
         minimum_display_score=minimum_display_score,
@@ -1002,6 +1140,9 @@ def acquire_weekly_news_event_evidence_from_official_sources(
         "configured_max_item_count": configured_max_item_count,
         "evidence_limited_state": evidence_state.evidence_limited_state if evidence_state else None,
         "ai_analysis_allowed": threshold.analysis_allowed if threshold else False,
+        "mocked_fetch_boundary": WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_FETCH_BOUNDARY,
+        "parser_adapter_boundary": WEEKLY_NEWS_OFFICIAL_SOURCE_PARSER_ADAPTER_BOUNDARY,
+        "handoff_approved_source_count": handoff_approved_count,
         "no_live_external_calls": True,
     }
     return WeeklyNewsOfficialSourceAcquisitionResult(
@@ -1015,6 +1156,12 @@ def acquire_weekly_news_event_evidence_from_official_sources(
         configured_max_item_count=configured_max_item_count,
         evidence_limited_state=evidence_state.evidence_limited_state if evidence_state else None,
         ai_analysis_allowed=threshold.analysis_allowed if threshold else False,
+        mocked_fetch_boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_FETCH_BOUNDARY,
+        parser_adapter_boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_PARSER_ADAPTER_BOUNDARY,
+        fetched_source_count=parser_diagnostic_count,
+        parser_diagnostic_count=parser_diagnostic_count,
+        handoff_approved_source_count=handoff_approved_count,
+        handoff_blocked_source_count=handoff_blocked_count,
         sanitized_diagnostics=diagnostics,
     )
 
@@ -1669,6 +1816,8 @@ def _official_source_candidates_ready(ticker: str, candidates: list[WeeklyNewsEv
             if candidate.title_checksum is not None and not candidate.title_checksum.startswith("sha256:"):
                 return False
             if candidate.evidence_checksum is None or not candidate.evidence_checksum.startswith("sha256:"):
+                return False
+            if SourceParserStatus(candidate.parser_status) in {SourceParserStatus.failed, SourceParserStatus.pending_review}:
                 return False
             if candidate.stores_raw_article_text or candidate.stores_raw_provider_payload or candidate.stores_unrestricted_source_text:
                 return False
