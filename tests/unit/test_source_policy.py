@@ -266,3 +266,27 @@ def test_golden_asset_source_handoff_requires_approval_parser_rights_and_freshne
     )
     assert metadata_only.allowed is False
     assert "metadata_only_content_omitted" in metadata_only.reason_codes
+
+
+def test_top500_refresh_mocked_official_fixture_inputs_pass_handoff_metadata_contract():
+    decision = resolve_source_policy(source_identifier="local://fixtures/top500_refresh/official_iwb_holdings")
+    source = {
+        **source_handoff_fields_from_policy(
+            decision,
+            source_identity="local://fixtures/top500_refresh/official_iwb_holdings",
+            approval_rationale="Reviewed deterministic official-source Top-500 candidate fixture input.",
+        ),
+        "source_document_id": "official_iwb_holdings_2026_04_fixture",
+        "source_type": "official_issuer_holdings",
+        "is_official": True,
+        "source_quality": decision.source_quality,
+        "allowlist_status": decision.allowlist_status,
+        "source_use_policy": decision.source_use_policy,
+        "permitted_operations": decision.permitted_operations,
+        "freshness_state": FreshnessState.fresh,
+        "as_of_date": "2026-04-01",
+        "retrieved_at": "2026-04-27T00:00:00Z",
+    }
+
+    assert decision.allowlist_status is SourceAllowlistStatus.allowed
+    assert validate_source_handoff(source, action=SourcePolicyAction.generated_claim_support).allowed is True

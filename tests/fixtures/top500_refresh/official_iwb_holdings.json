@@ -1,0 +1,32 @@
+{
+  "source": {
+    "source_id": "official_iwb_holdings_2026_04_fixture",
+    "ticker": "IWB",
+    "source_role": "primary",
+    "title": "iShares Russell 1000 ETF mocked official holdings",
+    "publisher": "iShares",
+    "source_type": "official_issuer_holdings",
+    "source_identity": "local://fixtures/top500_refresh/official_iwb_holdings",
+    "source_snapshot_date": "2026-04-01",
+    "source_checksum": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "retrieved_at": "2026-04-27T00:00:00Z",
+    "freshness_state": "fresh",
+    "is_official": true,
+    "parser_status": "parsed"
+  },
+  "holdings": [
+    {"source_id": "official_iwb_holdings_2026_04_fixture", "ticker": "AAPL", "name": "Apple Inc.", "weight": 7.0, "asset_type": "stock", "security_type": "common_stock", "exchange": "NASDAQ"},
+    {"source_id": "official_iwb_holdings_2026_04_fixture", "ticker": "MSFT", "name": "Microsoft Corporation", "weight": 6.0, "asset_type": "stock", "security_type": "common_stock", "exchange": "NASDAQ"},
+    {"source_id": "official_iwb_holdings_2026_04_fixture", "ticker": "NVDA", "name": "NVIDIA Corporation", "weight": 5.0, "asset_type": "stock", "security_type": "common_stock", "exchange": "NASDAQ"},
+    {"source_id": "official_iwb_holdings_2026_04_fixture", "ticker": "AMZN", "name": "Amazon.com, Inc.", "weight": 4.0, "asset_type": "stock", "security_type": "common_stock", "exchange": "NASDAQ"},
+    {"source_id": "official_iwb_holdings_2026_04_fixture", "ticker": "GOOGL", "name": "Alphabet Inc. Class A", "weight": 3.0, "asset_type": "stock", "security_type": "common_stock", "exchange": "NASDAQ"},
+    {"source_id": "official_iwb_holdings_2026_04_fixture", "ticker": "META", "name": "Meta Platforms, Inc.", "weight": 2.5, "asset_type": "stock", "security_type": "common_stock", "exchange": "NASDAQ"},
+    {"source_id": "official_iwb_holdings_2026_04_fixture", "ticker": "TSLA", "name": "Tesla, Inc.", "weight": 2.4, "asset_type": "stock", "security_type": "common_stock", "exchange": "NASDAQ"},
+    {"source_id": "official_iwb_holdings_2026_04_fixture", "ticker": "BRK-B", "name": "Berkshire Hathaway Inc. Class B", "weight": 2.3, "asset_type": "stock", "security_type": "common_stock", "exchange": "NYSE"},
+    {"source_id": "official_iwb_holdings_2026_04_fixture", "ticker": "JPM", "name": "JPMorgan Chase & Co.", "weight": 2.2, "asset_type": "stock", "security_type": "common_stock", "exchange": "NYSE"},
+    {"source_id": "official_iwb_holdings_2026_04_fixture", "ticker": "UNH", "name": "UnitedHealth Group Incorporated", "weight": 2.1, "asset_type": "stock", "security_type": "common_stock", "exchange": "NYSE"},
+    {"source_id": "official_iwb_holdings_2026_04_fixture", "ticker": "CASH_USD", "name": "U.S. Dollar cash", "weight": 1.0, "asset_type": "cash", "security_type": "cash", "exchange": null},
+    {"source_id": "official_iwb_holdings_2026_04_fixture", "ticker": "SPY", "name": "SPDR S&P 500 ETF Trust", "weight": 0.5, "asset_type": "etf", "security_type": "etf", "exchange": "NYSE ARCA"},
+    {"source_id": "official_iwb_holdings_2026_04_fixture", "ticker": "PFFD", "name": "Preferred share fixture row", "weight": 0.2, "asset_type": "stock", "security_type": "preferred", "exchange": "NYSE"}
+  ]
+}

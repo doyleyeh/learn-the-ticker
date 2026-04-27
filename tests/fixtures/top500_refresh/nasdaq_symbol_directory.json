@@ -1,0 +1,16 @@
+{
+  "rows": [
+    {"Symbol": "AAPL", "Security Name": "Apple Inc. Common Stock", "Exchange": "NASDAQ", "ETF": "N", "Test Issue": "N"},
+    {"Symbol": "MSFT", "Security Name": "Microsoft Corporation Common Stock", "Exchange": "NASDAQ", "ETF": "N", "Test Issue": "N"},
+    {"Symbol": "NVDA", "Security Name": "NVIDIA Corporation Common Stock", "Exchange": "NASDAQ", "ETF": "N", "Test Issue": "N"},
+    {"Symbol": "AMZN", "Security Name": "Amazon.com Inc. Common Stock", "Exchange": "NASDAQ", "ETF": "N", "Test Issue": "N"},
+    {"Symbol": "GOOGL", "Security Name": "Alphabet Inc. Class A Common Stock", "Exchange": "NASDAQ", "ETF": "N", "Test Issue": "N"},
+    {"Symbol": "META", "Security Name": "Meta Platforms Inc. Class A Common Stock", "Exchange": "NASDAQ", "ETF": "N", "Test Issue": "N"},
+    {"Symbol": "TSLA", "Security Name": "Tesla Inc. Common Stock", "Exchange": "NASDAQ", "ETF": "N", "Test Issue": "N"},
+    {"Symbol": "BRK-B", "Security Name": "Berkshire Hathaway Inc. Class B Common Stock", "Exchange": "NYSE", "ETF": "N", "Test Issue": "N"},
+    {"Symbol": "JPM", "Security Name": "JPMorgan Chase & Co. Common Stock", "Exchange": "NYSE", "ETF": "N", "Test Issue": "N"},
+    {"Symbol": "UNH", "Security Name": "UnitedHealth Group Incorporated Common Stock", "Exchange": "NYSE", "ETF": "N", "Test Issue": "N"},
+    {"Symbol": "SPY", "Security Name": "SPDR S&P 500 ETF Trust", "Exchange": "NYSE ARCA", "ETF": "Y", "Test Issue": "N"},
+    {"Symbol": "TEST", "Security Name": "Test Issue Common Stock", "Exchange": "NASDAQ", "ETF": "N", "Test Issue": "Y"}
+  ]
+}
