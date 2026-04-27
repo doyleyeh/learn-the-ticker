@@ -525,26 +525,23 @@ def test_t114_mvp_launch_readiness_docs_cover_regression_matrix_and_go_no_go_wit
         assert forbidden.lower() not in combined_lower
 
 
-def test_tasks_general_mvp_roadmap_marks_t117_current_with_fresh_data_backlog():
+def test_tasks_general_mvp_roadmap_marks_t118_current_with_empty_backlog_after_promotion():
     tasks = read_file("TASKS.md")
     current_task = tasks.split("## Current task", 1)[1].split("## Completed", 1)[0]
     backlog = tasks.split("## Backlog", 1)[1].split("## General MVP Roadmap", 1)[0]
     roadmap = tasks.split("## General MVP Roadmap", 1)[1]
 
     assert "## MVP Backend Roadmap" not in tasks
-    assert "No backlog tasks are currently prepared" not in backlog
+    assert "No backlog task is prepared" in backlog
     assert "General MVP alignment:" in current_task
-    assert "T-117 proves the mocked execution layer" in current_task
+    assert "### T-118: Prove local fresh-data ingest-to-render smoke path" in current_task
+    assert "T-117, which added mocked HTTP/fetch and parser execution helpers" in current_task
+    assert "golden fresh-data path from manual ingestion trigger" in current_task
     assert "Golden Asset Source Handoff" in current_task
-    assert "mocked official-source execution" in current_task
+    assert "mocked official-source acquisition or existing deterministic fixtures only" in current_task
     assert "data/universes/us_common_stocks_top500.current.json" in current_task
     assert "Roadmap contract refinement:" in current_task
-    assert "Stop after mocked official-source execution" in current_task
-
-    for task_marker in [
-        "### T-118: Prove local fresh-data ingest-to-render smoke path",
-    ]:
-        assert task_marker in backlog, f"Backlog should include {task_marker}"
+    assert "Stop after local fresh-data runbook and deterministic smoke coverage" in current_task
 
     assert "T-099 established deterministic provider content export-rights hardening" in roadmap
     assert "T-100 established the backend MVP runtime gap audit and roadmap tracker" in roadmap
@@ -559,7 +556,9 @@ def test_tasks_general_mvp_roadmap_marks_t117_current_with_fresh_data_backlog():
     assert "T-110 established persisted end-to-end comparison, chat, source, glossary, Weekly News, and export verification" in roadmap
     assert "T-111 established local durable repository execution with in-memory fallback" in roadmap
     assert "T-115 established Golden Asset Source Handoff contract enforcement" in roadmap
-    assert "T-117 is the current promoted task for handoff-gated mocked official-source acquisition execution for golden assets" in roadmap
+    assert "T-116 established reviewed Top-500 candidate manifest workflow contracts" in roadmap
+    assert "T-117 established handoff-gated mocked official-source acquisition execution for golden assets" in roadmap
+    assert "T-118 is the current promoted task for local fresh-data ingest-to-render runbook and smoke coverage" in roadmap
     assert "monthly IWB/SPY/IVV/VOO candidate generation" in roadmap
     assert "| Provider source-use/export enforcement hardening | Completed | T-099 |" in roadmap
     assert "| Backend fresh-data MVP runtime gap tracker | Completed | T-100 |" in roadmap
@@ -579,9 +578,62 @@ def test_tasks_general_mvp_roadmap_marks_t117_current_with_fresh_data_backlog():
     assert "| Launch pre-cache expansion and MVP readiness regression matrix | Completed | T-114 |" in roadmap
     assert "| Golden Asset Source Handoff contract enforcement | Completed | T-115 |" in roadmap
     assert "| Reviewed Top-500 candidate manifest workflow contracts | Completed | T-116 |" in roadmap
-    assert "| Handoff-gated official-source acquisition execution for golden assets | Current | T-117 |" in roadmap
-    assert "| Local fresh-data ingest-to-render runbook and smoke coverage | Backlog | T-118 |" in roadmap
+    assert "| Handoff-gated official-source acquisition execution for golden assets | Completed | T-117 |" in roadmap
+    assert "| Local fresh-data ingest-to-render runbook and smoke coverage | Current | T-118 |" in roadmap
     assert "| Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |" in roadmap
+
+
+def test_t118_local_fresh_data_runbook_covers_deterministic_smoke_without_live_requirements():
+    runbook = read_file("docs/local_fresh_data_ingest_to_render_runbook.md")
+    runbook_lower = runbook.lower()
+
+    for marker in [
+        "Task: T-118",
+        "Fetching alone is retrieval, not evidence approval",
+        "`in_memory`: deterministic smoke mode",
+        "`local_durable`: optional operator-only local repository mode",
+        "`operator_live_experiment`: optional local experiment mode",
+        "placeholder-only environment",
+        "manual pre-cache job",
+        "mocked official-source acquisition",
+        "parser diagnostics marked `parsed`",
+        "Golden Asset Source Handoff marked `approved`",
+        "private source snapshot metadata only",
+        "normalized knowledge-pack records from deterministic fixtures",
+        "Weekly News Focus evidence records from deterministic official-source candidates",
+        "generated-output cache records that already passed citation, source-use, freshness, and safety validation",
+        "/api/assets/VOO/overview",
+        "/api/assets/VOO/weekly-news",
+        "/api/assets/VOO/sources",
+        "/api/assets/VOO/glossary?term=expense%20ratio",
+        "/api/assets/VOO/export?export_format=json",
+        "home remains single stock/ETF search first",
+        "comparison remains a separate connected `/compare` workflow",
+        "glossary appears as contextual help",
+        "stock-vs-ETF comparison keeps relationship badges",
+        "Weekly News Focus renders only the evidence-backed set",
+        "test_t118_local_fresh_data_ingest_to_render_smoke_path_is_deterministic",
+    ]:
+        assert marker in runbook, f"T-118 runbook should include marker: {marker}"
+
+    for forbidden in [
+        "OPENROUTER",
+        "FMP_API",
+        "ALPHA_VANTAGE",
+        "FINNHUB",
+        "TIINGO",
+        "EODHD",
+        "api_key",
+        "BEGIN PRIVATE KEY",
+        "signed url",
+        "public storage url",
+        "sk-",
+        "xoxb-",
+        "ghp_",
+        "raw model reasoning is shown",
+        "raw transcript",
+    ]:
+        assert forbidden.lower() not in runbook_lower
 
 
 def test_sec_stock_acquisition_contract_is_backend_only_fixture_backed_and_sanitized():
