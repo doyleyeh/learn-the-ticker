@@ -525,23 +525,23 @@ def test_t114_mvp_launch_readiness_docs_cover_regression_matrix_and_go_no_go_wit
         assert forbidden.lower() not in combined_lower
 
 
-def test_tasks_general_mvp_roadmap_marks_t118_current_with_empty_backlog_after_promotion():
+def test_tasks_general_mvp_roadmap_marks_t118_completed_with_empty_current_task_and_backlog():
     tasks = read_file("TASKS.md")
     current_task = tasks.split("## Current task", 1)[1].split("## Completed", 1)[0]
+    completed = tasks.split("## Completed", 1)[1].split("## Backlog", 1)[0]
     backlog = tasks.split("## Backlog", 1)[1].split("## General MVP Roadmap", 1)[0]
     roadmap = tasks.split("## General MVP Roadmap", 1)[1]
 
     assert "## MVP Backend Roadmap" not in tasks
+    assert "No current task is prepared. The backlog is empty." in current_task
     assert "No backlog task is prepared" in backlog
-    assert "General MVP alignment:" in current_task
-    assert "### T-118: Prove local fresh-data ingest-to-render smoke path" in current_task
-    assert "T-117, which added mocked HTTP/fetch and parser execution helpers" in current_task
-    assert "golden fresh-data path from manual ingestion trigger" in current_task
-    assert "Golden Asset Source Handoff" in current_task
-    assert "mocked official-source acquisition or existing deterministic fixtures only" in current_task
-    assert "data/universes/us_common_stocks_top500.current.json" in current_task
-    assert "Roadmap contract refinement:" in current_task
-    assert "Stop after local fresh-data runbook and deterministic smoke coverage" in current_task
+    assert "### T-118: Prove local fresh-data ingest-to-render smoke path" in completed
+    assert "The runbook explicitly states that fetching alone is retrieval, not evidence approval" in completed
+    assert "deterministic integration smoke coverage for the VOO golden path" in completed
+    assert "mocked official-source acquisition" in completed
+    assert "Golden Asset Source Handoff" in completed
+    assert "Production deployment, production durable storage, scheduled jobs" in completed
+    assert "No current task is prepared, and the backlog is empty." in roadmap
 
     assert "T-099 established deterministic provider content export-rights hardening" in roadmap
     assert "T-100 established the backend MVP runtime gap audit and roadmap tracker" in roadmap
@@ -558,7 +558,8 @@ def test_tasks_general_mvp_roadmap_marks_t118_current_with_empty_backlog_after_p
     assert "T-115 established Golden Asset Source Handoff contract enforcement" in roadmap
     assert "T-116 established reviewed Top-500 candidate manifest workflow contracts" in roadmap
     assert "T-117 established handoff-gated mocked official-source acquisition execution for golden assets" in roadmap
-    assert "T-118 is the current promoted task for local fresh-data ingest-to-render runbook and smoke coverage" in roadmap
+    assert "T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path" in roadmap
+    assert "T-118 established the local fresh-data ingest-to-render runbook and deterministic smoke coverage" in roadmap
     assert "monthly IWB/SPY/IVV/VOO candidate generation" in roadmap
     assert "| Provider source-use/export enforcement hardening | Completed | T-099 |" in roadmap
     assert "| Backend fresh-data MVP runtime gap tracker | Completed | T-100 |" in roadmap
@@ -579,7 +580,7 @@ def test_tasks_general_mvp_roadmap_marks_t118_current_with_empty_backlog_after_p
     assert "| Golden Asset Source Handoff contract enforcement | Completed | T-115 |" in roadmap
     assert "| Reviewed Top-500 candidate manifest workflow contracts | Completed | T-116 |" in roadmap
     assert "| Handoff-gated official-source acquisition execution for golden assets | Completed | T-117 |" in roadmap
-    assert "| Local fresh-data ingest-to-render runbook and smoke coverage | Current | T-118 |" in roadmap
+    assert "| Local fresh-data ingest-to-render runbook and smoke coverage | Completed | T-118 |" in roadmap
     assert "| Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |" in roadmap
 
 
