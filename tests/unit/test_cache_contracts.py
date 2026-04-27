@@ -48,6 +48,8 @@ from backend.models import (
     SectionFreshnessInput,
     SourceAllowlistStatus,
     SourceChecksumInput,
+    SourceParserStatus,
+    SourceReviewStatus,
     SourceUsePolicy,
 )
 from backend.providers import fetch_mock_provider_response
@@ -829,6 +831,20 @@ def test_generated_output_cache_blocks_wrong_asset_wrong_citation_and_source_pol
     rejected = records.source_checksums[0].model_copy(update={"allowlist_status": "rejected"})
     with pytest.raises(GeneratedOutputCacheContractError, match="allowlist status"):
         validate_generated_output_cache_records(records.model_copy(update={"source_checksums": [rejected, *records.source_checksums[1:]]}))
+
+    parser_invalid = records.source_checksums[0].model_copy(
+        update={"parser_status": SourceParserStatus.failed.value, "parser_failure_diagnostics": "fixture parse failed"}
+    )
+    with pytest.raises(GeneratedOutputCacheContractError, match="Golden Asset Source Handoff"):
+        validate_generated_output_cache_records(
+            records.model_copy(update={"source_checksums": [parser_invalid, *records.source_checksums[1:]]})
+        )
+
+    pending_review = records.source_checksums[0].model_copy(update={"review_status": SourceReviewStatus.pending_review.value})
+    with pytest.raises(GeneratedOutputCacheContractError, match="Golden Asset Source Handoff"):
+        validate_generated_output_cache_records(
+            records.model_copy(update={"source_checksums": [pending_review, *records.source_checksums[1:]]})
+        )
 
 
 def test_generated_output_cache_blocks_unsafe_unvalidated_unknown_and_unlabeled_freshness_states():

@@ -16,9 +16,15 @@ from backend.models import (
     SectionFreshnessInput,
     SourceAllowlistStatus,
     SourceChecksumRecord,
+    SourceExportRights,
+    SourceParserStatus,
+    SourceQuality,
+    SourceReviewStatus,
+    SourceStorageRights,
     SourceUsePolicy,
 )
 from backend.repositories.knowledge_packs import RepositoryMetadata, RepositoryTableDefinition, StrictRow
+from backend.source_policy import SourcePolicyAction, validate_source_handoff
 
 
 GENERATED_OUTPUT_CACHE_REPOSITORY_BOUNDARY = "generated-output-cache-repository-contract-v1"
@@ -210,6 +216,18 @@ class GeneratedOutputSourceChecksumRow(StrictRow):
     source_use_policy: str
     source_type: str
     source_rank: int | None = None
+    source_identity: str | None = None
+    retrieved_at: str | None = None
+    as_of_date: str | None = None
+    published_at: str | None = None
+    is_official: bool | None = False
+    source_quality: str = SourceQuality.fixture.value
+    storage_rights: str = SourceStorageRights.raw_snapshot_allowed.value
+    export_rights: str = SourceExportRights.excerpts_allowed.value
+    review_status: str = SourceReviewStatus.approved.value
+    approval_rationale: str = "Deterministic fixture source passed local source-use policy review."
+    parser_status: str = SourceParserStatus.parsed.value
+    parser_failure_diagnostics: str | None = None
     citation_ids: list[str] = Field(default_factory=list)
     fact_bindings: list[str] = Field(default_factory=list)
     recent_event_bindings: list[str] = Field(default_factory=list)
@@ -820,6 +838,11 @@ def _validate_sources(source_rows: list[GeneratedOutputSourceChecksumRow], envel
             raise GeneratedOutputCacheContractError("Source allowlist status must be allowed for generated-output cacheability.")
         if source.source_use_policy in _TEXT_LIMITED_POLICIES:
             raise GeneratedOutputCacheContractError("Source-use policy must allow generated output before cacheability.")
+        handoff = validate_source_handoff(source, action=SourcePolicyAction.cacheable_generated_output)
+        if not handoff.allowed:
+            raise GeneratedOutputCacheContractError(
+                "Generated-output source failed Golden Asset Source Handoff: " + ", ".join(handoff.reason_codes)
+            )
 
 
 def _validate_freshness_labels(rows: _RowsForEntry, envelope: GeneratedOutputCacheEnvelopeRow) -> None:
@@ -977,6 +1000,18 @@ def _source_checksum_row(cache_entry_id: str, checksum: SourceChecksumRecord) ->
         source_use_policy=checksum.source_use_policy.value,
         source_type=checksum.source_type,
         source_rank=checksum.source_rank,
+        source_identity=checksum.source_identity or checksum.source_document_id,
+        retrieved_at=checksum.retrieved_at,
+        as_of_date=checksum.as_of_date,
+        published_at=checksum.published_at,
+        is_official=checksum.is_official,
+        source_quality=checksum.source_quality.value,
+        storage_rights=checksum.storage_rights.value,
+        export_rights=checksum.export_rights.value,
+        review_status=checksum.review_status.value,
+        approval_rationale=checksum.approval_rationale,
+        parser_status=checksum.parser_status.value,
+        parser_failure_diagnostics=checksum.parser_failure_diagnostics,
         citation_ids=checksum.citation_ids,
         fact_bindings=checksum.fact_bindings,
         recent_event_bindings=checksum.recent_event_bindings,

@@ -12,14 +12,18 @@ from backend.models import (
     FreshnessState,
     KnowledgePackSourceMetadata,
     SourceAllowlistStatus,
+    SourceExportRights,
     SourceOperationPermissions,
+    SourceParserStatus,
     SourcePolicyDecision,
     SourcePolicyDecisionState,
     SourceQuality,
+    SourceReviewStatus,
+    SourceStorageRights,
     SourceUsePolicy,
 )
 from backend.repositories.knowledge_packs import RepositoryMetadata, RepositoryTableDefinition, StrictRow
-from backend.source_policy import source_can_support_generated_output
+from backend.source_policy import SourcePolicyAction, source_can_support_generated_output, validate_source_handoff
 
 
 SOURCE_SNAPSHOT_REPOSITORY_BOUNDARY = "source-snapshot-artifact-repository-contract-v1"
@@ -99,6 +103,15 @@ class SourceSnapshotArtifactRow(StrictRow):
     allowlist_status: str
     source_quality: str
     permitted_operations: dict[str, Any]
+    source_type: str = "fixture_source"
+    source_identity: str | None = None
+    is_official: bool | None = False
+    storage_rights: str = SourceStorageRights.raw_snapshot_allowed.value
+    export_rights: str = SourceExportRights.excerpts_allowed.value
+    review_status: str = SourceReviewStatus.approved.value
+    approval_rationale: str = "Deterministic fixture source passed local source-use policy review."
+    parser_status: str = SourceParserStatus.parsed.value
+    parser_failure_diagnostics: str | None = None
     freshness_state: str
     evidence_state: str
     support_status: str = "supported"
@@ -335,6 +348,19 @@ def artifact_from_knowledge_pack_source(
         allowlist_status=source.allowlist_status.value,
         source_quality=source.source_quality.value,
         permitted_operations=source.permitted_operations.model_dump(mode="json"),
+        source_type=source.source_type,
+        source_identity=getattr(source, "source_identity", None) or source.url or source.source_document_id,
+        is_official=source.is_official,
+        storage_rights=getattr(source, "storage_rights", SourceStorageRights.raw_snapshot_allowed).value,
+        export_rights=getattr(source, "export_rights", SourceExportRights.excerpts_allowed).value,
+        review_status=getattr(source, "review_status", SourceReviewStatus.approved).value,
+        approval_rationale=getattr(
+            source,
+            "approval_rationale",
+            "Deterministic fixture source passed local source-use policy review.",
+        ),
+        parser_status=getattr(source, "parser_status", SourceParserStatus.parsed).value,
+        parser_failure_diagnostics=getattr(source, "parser_failure_diagnostics", None),
         freshness_state=source.freshness_state.value,
         evidence_state=evidence_state,
         can_feed_generated_output=can_feed_generated_output,
@@ -377,6 +403,19 @@ def _artifact_from_provider_source(
         allowlist_status=source.allowlist_status.value,
         source_quality=source.source_quality.value,
         permitted_operations=source.permitted_operations.model_dump(mode="json"),
+        source_type=source.source_type,
+        source_identity=getattr(source, "source_identity", None) or source.url or source.source_document_id,
+        is_official=source.is_official,
+        storage_rights=getattr(source, "storage_rights", SourceStorageRights.raw_snapshot_allowed).value,
+        export_rights=getattr(source, "export_rights", SourceExportRights.excerpts_allowed).value,
+        review_status=getattr(source, "review_status", SourceReviewStatus.approved).value,
+        approval_rationale=getattr(
+            source,
+            "approval_rationale",
+            "Deterministic fixture source passed local source-use policy review.",
+        ),
+        parser_status=getattr(source, "parser_status", SourceParserStatus.parsed).value,
+        parser_failure_diagnostics=getattr(source, "parser_failure_diagnostics", None),
         freshness_state=source.freshness_state.value,
         evidence_state=_source_evidence_state(acquisition),
         can_feed_generated_output=can_feed_generated_output,
@@ -442,6 +481,18 @@ def _validate_artifact(artifact: SourceSnapshotArtifactRow) -> None:
         raise SourceSnapshotContractError("Rejected sources cannot create source snapshot artifacts.")
     if not operations.can_store_metadata:
         raise SourceSnapshotContractError("Source snapshot artifacts require metadata storage permission.")
+    handoff = validate_source_handoff(
+        artifact,
+        action=(
+            SourcePolicyAction.cacheable_generated_output
+            if artifact.can_feed_generated_output
+            else SourcePolicyAction.diagnostics
+        ),
+    )
+    if not handoff.allowed:
+        raise SourceSnapshotContractError(
+            "Source snapshot artifact failed Golden Asset Source Handoff: " + ", ".join(handoff.reason_codes)
+        )
 
     if category.value in _RAW_OR_PARSED_CATEGORIES:
         if policy is not SourceUsePolicy.full_text_allowed or not operations.can_store_raw_text:

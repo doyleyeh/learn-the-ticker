@@ -60,11 +60,13 @@ from backend.overview import generate_asset_overview
 from backend.retrieval import build_asset_knowledge_pack, build_comparison_knowledge_pack
 from backend.search import search_assets
 from backend.source_policy import (
+    SourcePolicyAction,
     excerpt_text_for_policy,
     resolve_source_policy,
     source_can_export_excerpt,
     source_can_export_source_metadata,
     source_can_support_markdown_json_export,
+    validate_source_handoff,
 )
 
 
@@ -1514,6 +1516,9 @@ def _export_sources(sources: list[Any]) -> list[ExportSourceMetadata]:
         decision = _decision_from_source_like(source)
         if decision.decision is not SourcePolicyDecisionState.allowed:
             continue
+        handoff = validate_source_handoff(_source_like_with_policy(source, decision), action=SourcePolicyAction.diagnostics)
+        if not handoff.allowed:
+            continue
         excerpt_text = excerpt_text_for_policy(supporting_passage, decision)
         excerpt_decision = decision if source_can_export_excerpt(decision) else _resolved_decision_from_source_like(source)
         exported.append(
@@ -1532,6 +1537,17 @@ def _export_sources(sources: list[Any]) -> list[ExportSourceMetadata]:
                 allowlist_status=getattr(source, "allowlist_status", decision.allowlist_status),
                 source_use_policy=getattr(source, "source_use_policy", decision.source_use_policy),
                 permitted_operations=decision.permitted_operations,
+                source_identity=getattr(source, "source_identity", None) or getattr(source, "url", None),
+                storage_rights=getattr(source, "storage_rights", "raw_snapshot_allowed"),
+                export_rights=getattr(source, "export_rights", "excerpts_allowed"),
+                review_status=getattr(source, "review_status", "approved"),
+                approval_rationale=getattr(
+                    source,
+                    "approval_rationale",
+                    "Deterministic fixture source passed local source-use policy review.",
+                ),
+                parser_status=getattr(source, "parser_status", "parsed"),
+                parser_failure_diagnostics=getattr(source, "parser_failure_diagnostics", None),
                 allowed_excerpt=ExportExcerpt(
                     excerpt_id=f"excerpt_{citation_id or source.source_document_id}",
                     kind="supporting_passage" if source_can_export_excerpt(decision) else "excerpt_metadata",
@@ -2089,6 +2105,7 @@ def _build_export_citation_bindings(
                 supports_exported_content=bool(
                     source is not None
                     and source_can_support_markdown_json_export(_decision_from_export_source(source))
+                    and validate_source_handoff(source, action=SourcePolicyAction.markdown_json_section_export).allowed
                 ),
             )
         )
@@ -2137,6 +2154,32 @@ def _decision_from_source_like(source: Any) -> Any:
             "permitted_operations": permitted_operations,
         }
     )
+
+
+def _source_like_with_policy(source: Any, decision: Any) -> dict[str, Any]:
+    return {
+        "source_document_id": getattr(source, "source_document_id", None),
+        "source_identity": getattr(source, "source_identity", None) or getattr(source, "url", None) or getattr(source, "source_document_id", None),
+        "url": getattr(source, "url", None),
+        "source_type": getattr(source, "source_type", None),
+        "is_official": getattr(source, "is_official", False),
+        "source_quality": getattr(source, "source_quality", decision.source_quality),
+        "allowlist_status": getattr(source, "allowlist_status", decision.allowlist_status),
+        "source_use_policy": getattr(source, "source_use_policy", decision.source_use_policy),
+        "permitted_operations": getattr(source, "permitted_operations", decision.permitted_operations),
+        "storage_rights": getattr(source, "storage_rights", "raw_snapshot_allowed"),
+        "export_rights": getattr(source, "export_rights", "excerpts_allowed"),
+        "review_status": getattr(source, "review_status", "approved"),
+        "approval_rationale": getattr(source, "approval_rationale", decision.reason),
+        "parser_status": getattr(source, "parser_status", "parsed"),
+        "parser_failure_diagnostics": getattr(source, "parser_failure_diagnostics", None),
+        "freshness_state": getattr(source, "freshness_state", FreshnessState.fresh),
+        "as_of_date": getattr(source, "as_of_date", None),
+        "published_at": getattr(source, "published_at", None),
+        "retrieved_at": getattr(source, "retrieved_at", None),
+        "cache_allowed": getattr(source, "cache_allowed", True),
+        "export_allowed": getattr(source, "export_allowed", True),
+    }
 
 
 def _resolved_decision_from_source_like(source: Any) -> Any:

@@ -14,7 +14,11 @@ from backend.models import (
     EvidenceState,
     FreshnessState,
     SourceAllowlistStatus,
+    SourceExportRights,
+    SourceParserStatus,
     SourceQuality,
+    SourceReviewStatus,
+    SourceStorageRights,
     SourceUsePolicy,
     WeeklyNewsContractState,
     WeeklyNewsEventType,
@@ -22,6 +26,7 @@ from backend.models import (
     WeeklyNewsPeriodBucket,
 )
 from backend.repositories.knowledge_packs import RepositoryMetadata, RepositoryTableDefinition, StrictRow
+from backend.source_policy import SourcePolicyAction, validate_source_handoff
 from backend.weekly_news import compute_weekly_news_window
 
 
@@ -223,6 +228,14 @@ class WeeklyNewsEventCandidateRow(StrictRow):
     source_quality: str
     allowlist_status: str
     source_use_policy: str
+    source_identity: str | None = None
+    is_official: bool | None = True
+    storage_rights: str = SourceStorageRights.summary_allowed.value
+    export_rights: str = SourceExportRights.excerpts_allowed.value
+    review_status: str = SourceReviewStatus.approved.value
+    approval_rationale: str = "Deterministic Weekly News Focus source passed local source-use policy review."
+    parser_status: str = SourceParserStatus.parsed.value
+    parser_failure_diagnostics: str | None = None
     freshness_state: str
     evidence_state: str = EvidenceState.supported.value
     importance_score: int
@@ -339,6 +352,15 @@ class WeeklyNewsSelectedEventRow(StrictRow):
     source_quality: str
     allowlist_status: str
     source_use_policy: str
+    source_type: str = "weekly_news_evidence"
+    source_identity: str | None = None
+    is_official: bool | None = True
+    storage_rights: str = SourceStorageRights.summary_allowed.value
+    export_rights: str = SourceExportRights.excerpts_allowed.value
+    review_status: str = SourceReviewStatus.approved.value
+    approval_rationale: str = "Deterministic Weekly News Focus source passed local source-use policy review."
+    parser_status: str = SourceParserStatus.parsed.value
+    parser_failure_diagnostics: str | None = None
     freshness_state: str
     evidence_state: str
     importance_score: int
@@ -1429,6 +1451,11 @@ def _validate_candidate_row(row: WeeklyNewsEventCandidateRow, window: WeeklyNews
     reasons = _candidate_block_reasons(row)
     if row.candidate_decision == WeeklyNewsCandidateDecision.selected.value and reasons:
         raise WeeklyNewsEventEvidenceContractError("Selected candidate rows cannot carry source-policy, duplicate, or relevance blocks.")
+    handoff = validate_source_handoff(row, action=SourcePolicyAction.generated_claim_support)
+    if not handoff.allowed and row.candidate_decision == WeeklyNewsCandidateDecision.selected.value:
+        raise WeeklyNewsEventEvidenceContractError(
+            "Selected candidate failed Golden Asset Source Handoff: " + ", ".join(handoff.reason_codes)
+        )
 
 
 def _validate_rank_input(row: WeeklyNewsSourceRankInputRow, candidate: WeeklyNewsEventCandidateRow) -> None:
@@ -1468,6 +1495,11 @@ def _validate_selected_event(
         raise WeeklyNewsEventEvidenceContractError("Selected events must preserve candidate source binding.")
     if selected.source_use_policy not in _SELECTABLE_SOURCE_POLICIES or selected.allowlist_status != SourceAllowlistStatus.allowed.value:
         raise WeeklyNewsEventEvidenceContractError("Selected events must use license-compatible allowlisted source evidence.")
+    handoff = validate_source_handoff(selected, action=SourcePolicyAction.generated_claim_support)
+    if not handoff.allowed:
+        raise WeeklyNewsEventEvidenceContractError(
+            "Selected event failed Golden Asset Source Handoff: " + ", ".join(handoff.reason_codes)
+        )
     if selected.citation_ids != candidate.citation_ids:
         raise WeeklyNewsEventEvidenceContractError("Selected events must preserve candidate citation bindings.")
     if selected.configured_max_item_count != window.configured_max_item_count:

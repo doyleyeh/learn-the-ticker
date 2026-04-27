@@ -523,7 +523,7 @@ def test_t114_mvp_launch_readiness_docs_cover_regression_matrix_and_go_no_go_wit
         assert forbidden.lower() not in combined_lower
 
 
-def test_tasks_general_mvp_roadmap_marks_t114_current_with_fresh_data_backlog():
+def test_tasks_general_mvp_roadmap_marks_t115_current_with_fresh_data_backlog():
     tasks = read_file("TASKS.md")
     current_task = tasks.split("## Current task", 1)[1].split("## Completed", 1)[0]
     backlog = tasks.split("## Backlog", 1)[1].split("## General MVP Roadmap", 1)[0]
@@ -532,14 +532,13 @@ def test_tasks_general_mvp_roadmap_marks_t114_current_with_fresh_data_backlog():
     assert "## MVP Backend Roadmap" not in tasks
     assert "No backlog tasks are currently prepared" not in backlog
     assert "General MVP alignment:" in current_task
-    assert "T-114 prepares deterministic launch readiness" in current_task
+    assert "T-115 hardens the approval boundary" in current_task
     assert "Golden Asset Source Handoff" in current_task
     assert "data/universes/us_common_stocks_top500.current.json" in current_task
     assert "Roadmap contract refinement:" in current_task
-    assert "Stop after deterministic launch pre-cache expansion" in current_task
+    assert "Stop after deterministic handoff contract enforcement" in current_task
 
     for task_marker in [
-        "### T-115: Add Golden Asset Source Handoff contract enforcement",
         "### T-116: Add reviewed Top-500 candidate manifest workflow contracts",
         "### T-117: Execute handoff-gated official-source acquisition for golden assets",
         "### T-118: Prove local fresh-data ingest-to-render smoke path",
@@ -558,7 +557,7 @@ def test_tasks_general_mvp_roadmap_marks_t114_current_with_fresh_data_backlog():
     assert "T-109 established frontend API-backed search, pending states, and dynamic asset-page rendering" in roadmap
     assert "T-110 established persisted end-to-end comparison, chat, source, glossary, Weekly News, and export verification" in roadmap
     assert "T-111 established local durable repository execution with in-memory fallback" in roadmap
-    assert "The current promoted MVP blocker is deterministic launch pre-cache expansion and an MVP readiness regression matrix" in roadmap
+    assert "The current promoted MVP blocker is Golden Asset Source Handoff contract enforcement" in roadmap
     assert "The updated PRD/TDS/proposal make Golden Asset Source Handoff a blocker" in roadmap
     assert "monthly IWB/SPY/IVV/VOO candidate generation" in roadmap
     assert "| Provider source-use/export enforcement hardening | Completed | T-099 |" in roadmap
@@ -576,8 +575,8 @@ def test_tasks_general_mvp_roadmap_marks_t114_current_with_fresh_data_backlog():
     assert "| Local durable repository execution with in-memory fallback | Completed | T-111 |" in roadmap
     assert "| Opt-in live SEC and ETF issuer golden acquisition | Completed | T-112 |" in roadmap
     assert "| Official-source Weekly News live acquisition for golden assets | Completed | T-113 |" in roadmap
-    assert "| Launch pre-cache expansion and MVP readiness regression matrix | Current | T-114 |" in roadmap
-    assert "| Golden Asset Source Handoff contract enforcement | Backlog | T-115 |" in roadmap
+    assert "| Launch pre-cache expansion and MVP readiness regression matrix | Completed | T-114 |" in roadmap
+    assert "| Golden Asset Source Handoff contract enforcement | Current | T-115 |" in roadmap
     assert "| Reviewed Top-500 candidate manifest workflow contracts | Backlog | T-116 |" in roadmap
     assert "| Handoff-gated official-source acquisition execution for golden assets | Backlog | T-117 |" in roadmap
     assert "| Local fresh-data ingest-to-render runbook and smoke coverage | Backlog | T-118 |" in roadmap

@@ -1,11 +1,22 @@
 from pathlib import Path
 
-from backend.models import SourceAllowlistStatus, SourcePolicyDecisionState, SourceUsePolicy
+from backend.models import (
+    FreshnessState,
+    SourceAllowlistStatus,
+    SourceExportRights,
+    SourceParserStatus,
+    SourcePolicyDecisionState,
+    SourceQuality,
+    SourceReviewStatus,
+    SourceStorageRights,
+    SourceUsePolicy,
+)
 from backend.source_policy import (
     DEFAULT_SOURCE_ALLOWLIST_PATH,
     REQUIRED_SOURCE_USE_POLICIES,
     SourcePolicyAction,
     classify_source_policy_actions,
+    source_handoff_fields_from_policy,
     source_can_cache_input_checksum,
     source_can_export_source_metadata,
     source_can_feed_generated_output_cache,
@@ -14,6 +25,7 @@ from backend.source_policy import (
     resolve_source_policy,
     source_can_export_excerpt,
     source_can_support_generated_output,
+    validate_source_handoff,
     validate_source_allowlist,
 )
 from backend.weekly_news_repository import (
@@ -188,3 +200,69 @@ def test_source_policy_action_contract_covers_all_tiers_and_export_rights():
     assert decisions_by_policy[SourceUsePolicy.rejected][
         SourcePolicyAction.diagnostics
     ].sanitized_diagnostics_only is True
+
+
+def test_golden_asset_source_handoff_requires_approval_parser_rights_and_freshness_metadata():
+    approved = resolve_source_policy(url="https://www.sec.gov/Archives/example")
+    source = {
+        **source_handoff_fields_from_policy(approved, source_identity="https://www.sec.gov/Archives/example"),
+        "source_document_id": "src_sec_fixture",
+        "source_type": "sec_filing",
+        "is_official": True,
+        "source_quality": SourceQuality.official,
+        "allowlist_status": approved.allowlist_status,
+        "source_use_policy": approved.source_use_policy,
+        "permitted_operations": approved.permitted_operations,
+        "freshness_state": FreshnessState.fresh,
+        "as_of_date": "2026-04-01",
+        "retrieved_at": "2026-04-25T00:00:00Z",
+    }
+
+    assert validate_source_handoff(source, action=SourcePolicyAction.generated_claim_support).allowed is True
+
+    missing = validate_source_handoff({}, action=SourcePolicyAction.generated_claim_support)
+    assert missing.allowed is False
+    assert {
+        "missing_source_identity",
+        "missing_source_type",
+        "missing_official_source_status",
+        "missing_approval_rationale",
+        "review_pending_review",
+        "parser_pending_review",
+        "storage_rights_unknown",
+        "export_rights_unknown",
+        "missing_freshness_as_of_metadata",
+    } <= set(missing.reason_codes)
+
+    parser_failed = validate_source_handoff(
+        {**source, "parser_status": SourceParserStatus.failed, "parser_failure_diagnostics": "fixture parse failed"},
+        action=SourcePolicyAction.generated_claim_support,
+    )
+    assert parser_failed.allowed is False
+    assert "parser_failed" in parser_failed.reason_codes
+
+    pending_review = validate_source_handoff(
+        {**source, "review_status": SourceReviewStatus.pending_review},
+        action=SourcePolicyAction.generated_claim_support,
+    )
+    assert pending_review.allowed is False
+    assert "review_pending_review" in pending_review.reason_codes
+
+    hidden = validate_source_handoff(
+        {**source, "source_identity": "private://internal/source", "source_type": "internal_feed"},
+        action=SourcePolicyAction.generated_claim_support,
+    )
+    assert hidden.allowed is False
+    assert "hidden_or_internal_source" in hidden.reason_codes
+
+    metadata_only = validate_source_handoff(
+        {
+            **source,
+            "source_use_policy": SourceUsePolicy.metadata_only,
+            "storage_rights": SourceStorageRights.metadata_only,
+            "export_rights": SourceExportRights.metadata_only,
+        },
+        action=SourcePolicyAction.generated_claim_support,
+    )
+    assert metadata_only.allowed is False
+    assert "metadata_only_content_omitted" in metadata_only.reason_codes
