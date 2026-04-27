@@ -413,6 +413,116 @@ def test_backend_mvp_runtime_gap_audit_tracks_required_areas_without_runtime_wir
         assert forbidden.lower() not in audit_lower
 
 
+def test_t114_mvp_launch_readiness_docs_cover_regression_matrix_and_go_no_go_without_runtime_wiring():
+    matrix = read_file("docs/mvp_launch_readiness_regression_matrix.md")
+    checklist = read_file("docs/mvp_go_no_go_checklist.md")
+    combined = f"{matrix}\n{checklist}"
+    combined_lower = combined.lower()
+
+    assert "Task: T-114" in matrix
+    assert "Task: T-114" in checklist
+
+    for marker in [
+        "Home remains a single supported stock or ETF search first",
+        "Comparison remains a separate connected `/compare` workflow",
+        "Glossary remains contextual help",
+        "mobile bottom-sheet or full-screen behavior markers",
+        "single-company-vs-ETF-basket structure",
+        "Weekly News Focus renders only the evidence-backed set",
+        "data/universes/us_common_stocks_top500.current.json",
+        "candidate Top-500 refresh work is a later reviewed workflow",
+        "Golden Asset Source Handoff remains the approval gate",
+    ]:
+        assert marker in matrix, f"matrix should preserve T-114 scope marker: {marker}"
+
+    for marker in [
+        "`AAPL`, `VOO`, and `QQQ`",
+        "`MSFT`, `NVDA`, `SPY`, `VTI`, `IVV`, `IWM`, `DIA`, `VGT`, `XLK`, `SOXX`, `SMH`, `XLF`, and `XLV`",
+        "Crypto, leveraged ETFs, inverse ETFs, fixed-income ETFs, commodity ETFs, active ETFs, multi-asset ETFs",
+        "`GME` and `VXX`",
+        "Unknown/no-result copy says facts are not invented",
+    ]:
+        assert marker in matrix, f"matrix should document launch coverage marker: {marker}"
+
+    for marker in [
+        "`/api/search`",
+        "`/api/assets/{ticker}/overview`",
+        "`/api/assets/{ticker}/weekly-news`",
+        "`/api/compare`",
+        "`/api/assets/{ticker}/chat`",
+        "`/api/assets/{ticker}/sources`",
+        "`/api/assets/{ticker}/glossary`",
+        "Export endpoints",
+        "Ingestion and pre-cache routes",
+    ]:
+        assert marker in matrix, f"matrix should cover route surface: {marker}"
+
+    for marker in [
+        "Non-allowlisted",
+        "Unclear rights",
+        "Parser-invalid",
+        "Hidden/internal",
+        "Pending review",
+        "Rejected",
+        "Generated-output cache",
+        "Export",
+    ]:
+        assert marker in matrix, f"matrix should cover source-use state: {marker}"
+
+    for marker in [
+        "Production admin auth",
+        "Rate limiting",
+        "Deployment environment validation",
+        "Private object storage",
+        "Database migration execution",
+        "Cloud Run API settings",
+        "Cloud Run Job settings",
+        "Recurring job decisions",
+        "Source allowlist review",
+        "Live-provider opt-in",
+        "Monitoring and alerting",
+        "Rollback",
+        "Cost controls",
+        "Launch support",
+        "Legal/compliance review",
+        "Current T-114 decision: **No-go for production deployment**",
+    ]:
+        assert marker in checklist, f"checklist should record go/no-go risk: {marker}"
+
+    for command in [
+        "npm test",
+        "npm run typecheck",
+        "npm run build",
+        "python3 -m pytest tests/integration/test_backend_api.py -q",
+        "python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_ingestion_jobs.py tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q",
+        "python3 -m pytest tests -q",
+        "python3 evals/run_static_evals.py",
+        "bash scripts/run_quality_gate.sh",
+        "git diff --check",
+    ]:
+        assert command in matrix, f"matrix should list required command: {command}"
+
+    for forbidden in [
+        "import requests",
+        "import httpx",
+        "urllib.request",
+        "from socket import",
+        "os.environ",
+        "api_key",
+        "OPENROUTER_API_KEY",
+        "FMP_API_KEY",
+        "ALPHA_VANTAGE_API_KEY",
+        "FINNHUB_API_KEY",
+        "TIINGO_API_KEY",
+        "EODHD_API_KEY",
+        "BEGIN PRIVATE KEY",
+        "sk-",
+        "xoxb-",
+        "ghp_",
+    ]:
+        assert forbidden.lower() not in combined_lower
+
+
 def test_tasks_general_mvp_roadmap_marks_t114_current_with_fresh_data_backlog():
     tasks = read_file("TASKS.md")
     current_task = tasks.split("## Current task", 1)[1].split("## Completed", 1)[0]

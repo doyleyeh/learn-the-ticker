@@ -770,6 +770,20 @@ includes("lib/search.ts", "/compare\\?left=");
 includes("lib/search.ts", "VOO, QQQ, AAPL, NVDA, and SOXX");
 includes("lib/search.ts", "We found this ticker, but it is not supported in v1.");
 includes("lib/search.ts", "Learn the Ticker currently supports U.S.-listed common stocks and non-leveraged U.S.-listed equity ETFs.");
+for (const blockedFallbackMarker of [
+  "ARKK",
+  "BND",
+  "GLD",
+  "AOR",
+  "VXX",
+  "active_etf",
+  "fixed_income_etf",
+  "commodity_etf",
+  "multi_asset_etf",
+  "etf_like_product_scope"
+]) {
+  includes("lib/search.ts", blockedFallbackMarker);
+}
 includes("components/FreshnessLabel.tsx", "data-freshness-state");
 includes("components/GlossaryPopover.tsx", "data-glossary-term");
 includes("components/GlossaryPopover.tsx", "data-glossary-visible-label");
