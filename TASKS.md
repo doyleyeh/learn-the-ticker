@@ -1,40 +1,48 @@
 ## Current task
 
-### T-116: Add reviewed Top-500 candidate manifest workflow contracts
+### T-117: Execute handoff-gated official-source acquisition for golden assets
 
 Goal:
-Add a deterministic reviewed candidate-manifest workflow for monthly Top-500 stock universe refreshes without changing runtime coverage or overwriting the approved current manifest.
+Turn the existing opt-in official-source readiness boundaries into a mocked-HTTP execution path for golden SEC stock, ETF issuer, and Weekly News acquisition that writes only handoff-approved records.
 
 Task-scope paragraph:
-Create candidate manifest generation and validation contracts using mocked official IWB holdings as the primary source input and mocked official SPY, IVV, and VOO holdings as fallback-only inputs. Preserve source provenance, source snapshot date, source checksum, rank, rank basis, CIK, exchange, validation status, and warnings. Add deterministic SEC `company_tickers_exchange.json` and Nasdaq symbol-directory validation fixtures, a diff-report output contract, and tests proving manual approval is required before promotion. Do not edit `data/universes/us_common_stocks_top500.current.json`; runtime search/support classification must continue to read only the approved current manifest.
+Add injected HTTP/fetch boundaries and parser adapters for the golden SEC stock, ETF issuer, and official Weekly News source acquisition paths. Tests must use mocked responses only. The ingestion worker should route fetched records through Golden Asset Source Handoff before source snapshot, parsed artifact, normalized knowledge-pack, Weekly News evidence, and generated-output cache writes. Fail closed when parser validity, approval metadata, source binding, source-use policy, freshness/as-of metadata, or writer readiness is missing. Keep the frontend workflow stable: home remains single stock/ETF search first, comparison remains separate and connected, glossary stays contextual, source/glossary/chat mobile surfaces remain bottom-sheet or full-screen as appropriate, stock-vs-ETF comparison keeps relationship badges, and Weekly News Focus shows fewer or empty states when evidence is thin.
 
 Roadmap alignment:
 
-- Follows T-115, which added deterministic Golden Asset Source Handoff validation across source policy, source snapshots, knowledge packs, Weekly News evidence, citations, generated-output cache records, source drawer responses, and exports.
-- Closes the next Top-500 runtime-coverage gap before handoff-gated official-source acquisition execution, local fresh-data ingest-to-render verification, or production deployment work.
-- Keeps Frontend Design and Workflow v0.4 stable: home remains single stock/ETF search first, comparison remains a separate connected workflow, glossary remains contextual, mobile source/glossary/chat surfaces remain bottom-sheet or full-screen where appropriate, stock-vs-ETF comparison badges and structure are unchanged, and Weekly News Focus shows fewer or empty states when evidence is thin.
-- Keeps the updated PRD/TDS/proposal Top-500 rule visible: candidate generation may use reviewed official-source inputs, but runtime stock support remains manifest-owned by `data/universes/us_common_stocks_top500.current.json` until a separate manual approval task replaces it.
+- Follows T-116, which added deterministic Top-500 candidate manifest generation, SEC/Nasdaq validation fixtures, diff reporting, and manual-promotion gates without changing the approved runtime manifest.
+- Builds on T-112 and T-113 readiness boundaries by proving mocked official-source execution can pass through Golden Asset Source Handoff and existing repository writer boundaries.
+- Moves the system toward local fresh-data ingest-to-render verification while keeping normal CI deterministic and free of live provider, market-data, news, storage, database, Redis, or LLM calls.
+- Preserves PRD/TDS-first authority after safety rules, source-use rights, citation requirements, freshness/unknown/stale/unavailable/partial handling, and educational no-advice framing.
 
 General MVP alignment:
-T-116 creates the reviewable candidate workflow needed to move from the small fixture Top-500 current manifest toward a real launch universe without making live runtime coverage decisions. It does not approve or promote a new current manifest, enable live source retrieval, add scheduled automation, execute production persistence, broaden provider integrations, or change frontend workflows.
+T-117 proves the mocked execution layer between opt-in live acquisition readiness and persisted evidence records for golden assets. It does not broaden coverage, add production persistence, enable real network execution in CI, approve new sources, promote Top-500 candidates, add scheduled automation, alter public route contracts, or redesign frontend workflows.
 
 Roadmap contract refinement:
-T-116 may update focused roadmap contract expectations only if they are stale after this promotion, but edits must stay within the allowed files. Do not update operational control docs other than the required journal note unless a test explicitly depends on it.
+T-117 may update focused roadmap contract expectations only if they are stale after this promotion, but edits must stay within the allowed files. Do not update operational control docs other than the required journal note unless a test explicitly depends on it.
 
 Allowed files:
 
-- `backend/models.py` only for Top-500 candidate manifest, holding input, validation, review, and diff-report contract models/enums
-- `backend/data.py` only for narrow Top-500 current-manifest validation helpers or reusable manifest constants; runtime current-manifest behavior must stay unchanged
-- `backend/top500_candidate_manifest.py` or another focused new backend module for deterministic candidate generation, validation, diff-report shaping, and promotion-gate helpers
-- `backend/source_policy.py` only if T-115 handoff metadata needs a narrow reusable validation helper for official-source provenance inputs
-- `backend/provider_adapters/etf_issuer.py` only if existing deterministic ETF issuer attribution helpers need to be reused for mocked IWB/SPY/IVV/VOO input provenance; do not add live HTTP
-- `scripts/generate_top500_candidate_manifest.py` only as a local deterministic script entrypoint backed by fixtures and explicit output paths; do not add scheduled automation
-- `data/universes/us_common_stocks_top500.candidate.*.json` only for deterministic candidate output fixtures
-- `data/universes/us_common_stocks_top500.diff.*.json` or `data/universes/us_common_stocks_top500.diff.*.md` only for deterministic diff-report fixtures
-- `tests/fixtures/top500_refresh/**` only for mocked official IWB, SPY, IVV, VOO, SEC, and Nasdaq validation inputs
-- `tests/unit/test_top500_candidate_manifest.py`
-- `tests/unit/test_search_classification.py`
+- `backend/models.py` only for narrow acquisition execution, parser diagnostic, source snapshot, knowledge-pack, Weekly News, or cache metadata contract fields needed by mocked official-source execution
+- `backend/settings.py` only for disabled-by-default acquisition execution readiness flags or sanitized diagnostics that do not expose secrets, URLs, credentials, raw provider payloads, or source text
+- `backend/provider_adapters/sec_stock.py` for injected mocked SEC EDGAR fetch/execution and parser adapters for golden stock assets
+- `backend/provider_adapters/etf_issuer.py` for injected mocked ETF issuer fetch/execution and parser adapters for golden ETF assets
+- `backend/repositories/weekly_news.py` or `backend/weekly_news_repository.py` only for official Weekly News mocked acquisition execution and repository validation integration
+- `backend/ingestion_worker.py` for worker routing through readiness checks, mocked fetch/parser execution, Golden Asset Source Handoff, and existing writer boundaries
+- `backend/source_policy.py` only for narrow reusable Golden Asset Source Handoff validation helpers required by official-source execution
+- `backend/repositories/source_snapshots.py`, `backend/repositories/knowledge_packs.py`, and `backend/repositories/generated_outputs.py` only if existing writer validation boundaries need narrow metadata compatibility with parser outcomes
+- `tests/fixtures/sec_stock/**` or `tests/fixtures/provider_adapters/**` only for mocked SEC golden-source responses
+- `tests/fixtures/etf_issuer/**` or `tests/fixtures/provider_adapters/**` only for mocked issuer golden-source responses
+- `tests/fixtures/weekly_news/**` only for mocked official Weekly News source responses
+- `tests/unit/test_provider_adapters.py`
+- `tests/unit/test_ingestion_worker.py`
+- `tests/unit/test_ingestion_jobs.py`
+- `tests/unit/test_weekly_news.py`
 - `tests/unit/test_source_policy.py`
+- `tests/unit/test_source_snapshot_repository.py`
+- `tests/unit/test_knowledge_pack_repository.py`
+- `tests/unit/test_cache_contracts.py`
+- `tests/integration/test_backend_api.py`
 - `tests/unit/test_safety_guardrails.py`
 - `tests/unit/test_repo_contract.py`
 - `docs/agent-journal/*.md`
@@ -42,12 +50,14 @@ Allowed files:
 Do not change:
 
 - No edits to `data/universes/us_common_stocks_top500.current.json` or `data/universes/us_equity_etfs.current.json`.
-- No public FastAPI route paths, HTTP status behavior, `/health` behavior, or live-provider behavior changes. Avoid breaking public response schemas.
+- No edits to `data/universes/us_common_stocks_top500.candidate.*.json` or `data/universes/us_common_stocks_top500.diff.*` unless a focused test fixture must be adjusted for the existing T-116 contract; do not promote any candidate.
+- No public FastAPI route paths, HTTP status behavior, `/health` behavior, or browser-facing response schema changes.
 - No runtime search/support-classification change that reads a candidate manifest, live ETF holdings file, market-data response, provider rank query, or generated diff report as coverage truth.
 - No automatic candidate promotion, no approved-current manifest replacement, and no approval timestamp that implies a candidate is production-approved.
 - No frontend workflow redesign: home stays single stock/ETF search first; comparison stays a separate connected `/compare` workflow; glossary stays contextual; source drawer, glossary, and chat preserve mobile bottom-sheet or full-screen behavior; stock-vs-ETF comparison keeps relationship badges and the single-company-vs-ETF-basket structure.
-- No live OpenRouter, LLM, market-data, broad news provider, RSS, web fetch, Redis, Cloud Run Job, scheduler, admin auth enforcement, rate-limiting, external analytics, telemetry vendor, monitoring vendor, rollback tooling, or deployment wiring.
-- No default live SEC, issuer, ETF, market-data, news, Weekly News, RSS, or source-provider execution in tests, public routes, browser code, normal local runs, or CI.
+- No frontend app edits unless an existing test proves a static no-live-call marker must be updated; avoid UI work in this task.
+- No real live OpenRouter, LLM, market-data, broad news provider, RSS, web fetch, Redis, Cloud Run Job, scheduler, admin auth enforcement, rate-limiting, external analytics, telemetry vendor, monitoring vendor, rollback tooling, or deployment wiring.
+- No default live SEC, issuer, ETF, market-data, news, Weekly News, RSS, or source-provider execution in tests, public routes, browser code, normal local runs, or CI. Mocked HTTP/fetch responses only.
 - No production database, production object-storage, production bucket, signed URL, public storage URL, Cloud Run, Neon, GCS, Secret Manager, or Docker-required execution path.
 - No import-time database, object-storage, network, provider, Redis, or credential validation connections.
 - No browser calls to source providers, LLM providers, market-data/news providers, RSS feeds, admin ingestion secrets, object storage, signed URLs, or provider endpoints. Browser code may call only the configured backend API base and local deterministic fallback helpers.
@@ -61,38 +71,68 @@ Do not change:
 
 Acceptance criteria:
 
-- Candidate manifest output path is `data/universes/us_common_stocks_top500.candidate.YYYY-MM.json`, and deterministic tests validate that candidates are separate from the approved runtime manifest.
-- Official IWB mocked holdings are the primary ranking input with `rank_basis = "iwb_weight_proxy"`.
-- Official SPY, IVV, and VOO mocked holdings are fallback-only inputs with `rank_basis = "sp500_etf_weight_proxy_fallback"` and an explicit fallback reason when IWB is stale, parser-invalid, unavailable, or below validation threshold.
-- All source inputs pass Golden Asset Source Handoff metadata checks before they can provide candidate provenance, ranking basis, source dates, checksums, or diff-report evidence.
-- Candidate rows preserve ticker, name, asset type, security type, CIK when available, exchange, rank, rank basis, source provenance, source snapshot date, source checksum, validation status, and warnings.
-- Normalization standardizes class-share formats such as `BRK.B` and `BRK-B` and rejects or warns on cash, futures, options, swaps, index rows, ETFs, preferred shares, warrants, rights, units, funds, and other non-common-stock rows before ranking.
-- SEC fixture validation attaches or confirms ticker, CIK, name, and exchange using deterministic `company_tickers_exchange.json`-style fields.
-- Nasdaq fixture validation rejects or flags rows with disqualifying symbol-directory fields such as `ETF = Y` or `Test Issue = Y`.
-- Candidate manifest generation caps candidates at the declared rank limit and produces deterministic ranking, tie-break, checksum, and warning output.
-- Diff report includes added tickers, removed tickers, rank changes, missing CIKs, Nasdaq validation failures, source used, source dates, source checksum, fallback usage, stale/parser warnings, and manual-review triggers.
-- Manual approval is required before promotion when fallback sources are used, source snapshots are stale or unparseable, validation coverage is below threshold, many tickers change, top-ranked names disappear, or material warnings exist.
-- Runtime search/support classification still reads only `data/universes/us_common_stocks_top500.current.json`; candidate manifests and diff reports must not change `AAPL`, `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `META`, `TSLA`, `BRK.B`, `JPM`, `UNH`, `GME`, or ETF search behavior unless the approved current manifest is separately changed later.
-- Candidate manifests and diff reports use educational/operational language only and contain no buy/sell/hold, allocation, tax, brokerage, price-target, recommendation, model-portfolio, or endorsement language.
-- No live provider, storage, database, news, market-data, RSS, web fetch, Redis, LLM, GitHub Actions, Cloud Run, Cloud Scheduler, or production job execution is required in normal CI.
+- Live acquisition execution remains explicitly opt-in, server-side only, disabled by default, and visible through sanitized diagnostics that do not expose secrets, credentials, database URLs, storage URLs, provider URLs with tokens, raw source text, or unrestricted payloads.
+- Mocked SEC and issuer fetchers prove source retrieval does not approve evidence by itself; Golden Asset Source Handoff approval is required before fetched records can support source snapshots, parsed artifacts, knowledge-pack records, Weekly News evidence, citations, source drawer output, exports, or generated-output cache metadata.
+- Mocked official Weekly News acquisition uses only official filings, investor-relations releases, ETF issuer announcements, prospectus updates, or fact-sheet changes and preserves the last completed Monday-Sunday market week plus current week-to-date through yesterday using U.S. Eastern dates.
+- Parser diagnostics distinguish parsed, partial, failed, pending-review, stale, unknown, unavailable, and insufficient-evidence states where applicable.
+- Approved mocked SEC records can write source snapshots, normalized knowledge packs, source checksums, and validated generated-output cache metadata through existing writer boundaries for golden stock assets.
+- Approved mocked ETF issuer records can write source snapshots, normalized knowledge packs, source checksums, and validated generated-output cache metadata through existing writer boundaries for golden ETF assets.
+- Approved mocked official Weekly News records can write evidence records through existing Weekly News repository boundaries, with source-use policy, event/source/retrieved dates, selected-item limits, dedupe behavior, and AI Comprehensive Analysis suppression below the two-item threshold preserved.
+- Blocked records with missing approval metadata, pending-review or rejected status, parser failure, parser-invalid diagnostics, wrong-asset binding, hidden/internal source identity, unclear rights, rejected source-use policy, stale/unavailable source state without an explicit label, or missing writer readiness fail closed before evidence persistence or cache writes.
+- Blocked records do not create generated pages, generated chat answers, generated comparisons, risk summaries, citations, source drawer excerpts, exports, source-list entries, generated-output cache entries, or Weekly News Focus selected items.
+- Ingestion worker metadata records retrieval, parser, handoff, and writer outcomes without storing raw full source text, unrestricted provider payloads, hidden prompts, raw model reasoning, raw user text, transcripts, credentials, signed URLs, public storage URLs, or frontend-readable storage paths.
+- Runtime search/support classification still reads only `data/universes/us_common_stocks_top500.current.json`; T-117 must not change `AAPL`, `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `META`, `TSLA`, `BRK.B`, `JPM`, `UNH`, `GME`, or ETF search behavior except through existing deterministic route fixtures if a test explicitly requires compatibility.
+- Frontend Design and Workflow v0.4 remains unchanged: home has one primary stock/ETF search, `A vs B` searches route to comparison, comparison is separate and connected, glossary is contextual, source/glossary/chat mobile behavior remains bottom-sheet or full-screen, and stock-vs-ETF comparison keeps relationship badges.
+- Candidate manifests and diff reports from T-116 remain review artifacts only and are not used as runtime coverage truth.
+- All new and changed copy, diagnostics, fixtures, and journal notes use educational/operational language only and contain no buy/sell/hold, allocation, tax, brokerage, price-target, recommendation, model-portfolio, or endorsement language.
+- Normal CI has no real network, provider, storage, database, news, market-data, RSS, Redis, LLM, GitHub Actions, Cloud Run, Cloud Scheduler, or production job execution.
 - No real provider data, raw restricted source text, credentials, signed URLs, public storage URLs, secrets, hidden prompts, raw model reasoning, raw user text, raw transcripts, or unrestricted source payloads are committed, logged, exported, or stored in fixtures.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_top500_candidate_manifest.py tests/unit/test_search_classification.py tests/unit/test_source_policy.py tests/unit/test_repo_contract.py -q
+python3 -m pytest tests/unit/test_provider_adapters.py tests/unit/test_ingestion_worker.py tests/unit/test_ingestion_jobs.py tests/unit/test_weekly_news.py tests/unit/test_source_policy.py -q
+python3 -m pytest tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_cache_contracts.py tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
+python3 -m pytest tests/integration/test_backend_api.py -q
 python3 -m pytest tests -q
-npm test
 python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
 git diff --check
 ```
 
 Iteration budget:
-One agent-loop cycle. Stop after candidate workflow contracts, deterministic mocked validation fixtures, diff-report output, and tests. If current-manifest promotion, live source retrieval, scheduled automation, production persistence execution, production deployment, prompt rewrites, or frontend workflow redesign are needed, record the follow-up and stop.
+One agent-loop cycle. Stop after mocked official-source execution, parser diagnostics, handoff-gated writer routing, and deterministic tests. If broad live ingestion, production database/object-storage execution, scheduled jobs, Top-500 promotion, source allowlist expansion, prompt rewrites, frontend redesign, production deployment, or real provider execution are needed, record the follow-up and stop.
 
 
 ## Completed
+
+### T-116: Add reviewed Top-500 candidate manifest workflow contracts
+
+Goal:
+Add a deterministic reviewed candidate-manifest workflow for monthly Top-500 stock universe refreshes without changing runtime coverage or overwriting the approved current manifest.
+
+Completed details:
+
+- Implementation commit `b7637e5 feat(T-116): add reviewed Top-500 candidate manifest workflow contracts` updated `backend/models.py`, added `backend/top500_candidate_manifest.py`, added `scripts/generate_top500_candidate_manifest.py`, created deterministic candidate and diff fixtures under `data/universes/`, added Top-500 refresh fixtures under `tests/fixtures/top500_refresh/`, and updated focused unit tests plus `docs/agent-journal/20260427T052312Z.md`.
+- Merged branch `agent/T-116-20260427T052312Z` into `main` with local merge commit `4d2f2a7 chore(T-116): merge reviewed Top-500 candidate manifest workflow contracts`.
+- `backend/models.py` added Top-500 candidate workflow contract models for official holdings inputs, validation status, review triggers, candidate rows, candidate manifests, and diff reports.
+- `backend/top500_candidate_manifest.py` added deterministic candidate generation, mocked official IWB primary ranking, official SPY/IVV/VOO fallback handling, source handoff validation, common-stock filtering, class-share ticker normalization, SEC/Nasdaq validation, ranking/tie-break behavior, candidate checksum generation, diff-report shaping, and manual-promotion gate helpers.
+- `scripts/generate_top500_candidate_manifest.py` added a deterministic local script entrypoint backed by fixtures and explicit candidate/diff output paths.
+- `data/universes/us_common_stocks_top500.candidate.2026-04.json` and `data/universes/us_common_stocks_top500.diff.2026-04.json` were added as reviewed-output fixtures; `data/universes/us_common_stocks_top500.current.json` was not edited.
+- `tests/fixtures/top500_refresh/` added mocked official IWB, SPY, IVV, and VOO holdings plus SEC `company_tickers_exchange.json`-style and Nasdaq symbol-directory validation fixtures.
+- `tests/unit/test_top500_candidate_manifest.py` added coverage for primary IWB ranking, fallback source behavior, source handoff requirements, non-common-stock filtering, class-share normalization, SEC/Nasdaq validation warnings, deterministic checksums, diff-report content, and manual-review triggers.
+- `tests/unit/test_search_classification.py` added coverage proving runtime search/support classification still reads only the approved current manifest and ignores candidate/diff artifacts for coverage truth.
+- `tests/unit/test_source_policy.py` added coverage for official-source provenance handoff metadata used by the candidate workflow, and `tests/unit/test_repo_contract.py` was updated for the new roadmap/task contract markers.
+- `docs/agent-journal/20260427T052312Z.md` records these checks: `python3 -m pytest tests/unit/test_top500_candidate_manifest.py tests/unit/test_search_classification.py tests/unit/test_source_policy.py tests/unit/test_repo_contract.py -q` passed with 43 tests; `python3 -m pytest tests -q` passed with 428 tests; `npm test` passed; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed; `git diff --check` passed.
+- Remaining risks from the journal:
+  - T-116 is deterministic contract and fixture work only. It does not fetch live IWB/SPY/IVV/VOO holdings, schedule refreshes, promote a candidate, or replace `data/universes/us_common_stocks_top500.current.json`.
+  - The generated candidate fixture uses mocked official-source inputs and a small declared rank limit for regression coverage; a real monthly candidate still needs handoff-gated source acquisition and manual review before promotion.
+  - Runtime search/support classification remains tied to the approved current manifest; candidate and diff files are not runtime coverage truth.
+
+Completion commits:
+
+- `b7637e5 feat(T-116): add reviewed Top-500 candidate manifest workflow contracts`
+- `4d2f2a7 chore(T-116): merge reviewed Top-500 candidate manifest workflow contracts`
 
 ### T-115: Add Golden Asset Source Handoff contract enforcement
 
@@ -3138,37 +3178,7 @@ Completion commits:
 
 ## Backlog
 
-The next local agent-loop cycle should run the promoted Current task above first. The queued tasks below are sequential and should not be started until T-116 passes its required checks.
-
-### T-117: Execute handoff-gated official-source acquisition for golden assets
-
-Goal:
-Turn the existing opt-in official-source readiness boundaries into a mocked-HTTP execution path for golden SEC stock, ETF issuer, and Weekly News acquisition that writes only handoff-approved records.
-
-Task-scope paragraph:
-Add injected HTTP/fetch boundaries and parser adapters for AAPL/NVDA-style SEC sources, VOO/QQQ/SOXX-style issuer sources, and official Weekly News source candidates. Tests must use mocked responses only. The worker should route fetched records through Golden Asset Source Handoff before source snapshot, parsed artifact, normalized knowledge-pack, Weekly News evidence, and generated-output cache writes. Fail closed when parser validity, approval metadata, source binding, source-use policy, freshness, or writer readiness is missing.
-
-Acceptance criteria:
-
-- Live acquisition remains explicitly opt-in and server-side only.
-- Mocked SEC and issuer fetchers prove source retrieval does not approve evidence by itself.
-- Parser diagnostics distinguish parsed, partial, failed, pending-review, and unavailable states.
-- Approved records can write source snapshots, normalized knowledge packs, Weekly News evidence, and validated generated-output cache records through existing writer boundaries.
-- Blocked records do not create generated pages, generated chat answers, generated comparisons, citations, cache entries, exports, or source drawer excerpts.
-- CI has no real network, provider, storage, database, news, market-data, or LLM calls.
-
-Required commands:
-
-```bash
-python3 -m pytest tests/unit/test_provider_adapters.py tests/unit/test_ingestion_worker.py tests/unit/test_ingestion_jobs.py tests/unit/test_weekly_news.py tests/unit/test_source_policy.py -q
-python3 -m pytest tests/integration/test_backend_api.py -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-git diff --check
-```
-
-Iteration budget:
-One agent-loop cycle. Stop after mocked execution and persistence verification; do not enable broad live ingestion or production jobs.
+The next local agent-loop cycle should run the promoted Current task above first. The queued task below should not be started until T-117 passes its required checks.
 
 ### T-118: Prove local fresh-data ingest-to-render smoke path
 
@@ -3214,8 +3224,8 @@ Current runtime snapshot:
 - The current runtime is still not end-to-end fresh-data functional: official-source acquisition is mocked/golden-path, source snapshots, normalized knowledge packs, Weekly News evidence, and generated-output cache records can be routed through deterministic in-memory/mocked boundaries or explicitly configured local durable repository factories, and production persistence/storage is not the normal path.
 - The frontend renders the main learning surfaces with deterministic fixtures and selected backend adapters; T-109 added API-backed home search and dynamic asset-page rendering with deterministic fixture fallback.
 - The updated PRD/TDS/proposal make Golden Asset Source Handoff a blocker before retrieved sources can become evidence for storage, generation, citation, cache, source drawer, or export behavior.
-- The updated Top-500 workflow keeps runtime stock support tied to the approved current manifest; monthly IWB/SPY/IVV/VOO candidate generation, SEC/Nasdaq validation, diff reporting, and approval are not implemented yet.
-- The current promoted MVP blocker is the reviewed Top-500 candidate-manifest workflow before handoff-gated official-source acquisition execution, local fresh-data verification, or production deployment work.
+- The updated Top-500 workflow keeps runtime stock support tied to the approved current manifest; T-116 added deterministic monthly IWB/SPY/IVV/VOO candidate generation, SEC/Nasdaq validation, diff reporting, and manual-promotion gates, but no candidate has been approved or promoted to the current manifest.
+- The current promoted MVP blocker is handoff-gated official-source acquisition execution for golden assets before local fresh-data verification or production deployment work.
 - The next fully functional milestone is local fresh-data ingest-to-render: handoff-approved official source retrieval, parser diagnostics, source snapshots, normalized packs, Weekly News evidence, generated-output cache validation, backend route reads, frontend rendering, source drawers, exports, and safety/source-use checks all verified locally before production hardening.
 
 Operational defaults for general MVP roadmap tasks:
@@ -3260,8 +3270,8 @@ Operational defaults for general MVP roadmap tasks:
 - T-113 established opt-in official-source Weekly News live acquisition readiness for golden assets. It is completed and must not be reintroduced as runnable backlog.
 - T-114 established deterministic launch pre-cache expansion and the MVP readiness regression matrix. It is completed and must not be reintroduced as runnable backlog.
 - T-115 established Golden Asset Source Handoff contract enforcement. It is completed and must not be reintroduced as runnable backlog.
-- T-116 is the current promoted task for reviewed Top-500 candidate manifest workflow contracts.
-- T-117 is queued for handoff-gated mocked official-source acquisition execution for golden assets.
+- T-116 established reviewed Top-500 candidate manifest workflow contracts. It is completed and must not be reintroduced as runnable backlog.
+- T-117 is the current promoted task for handoff-gated mocked official-source acquisition execution for golden assets.
 - T-118 is queued for local fresh-data ingest-to-render runbook and smoke coverage.
 - Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until Golden Asset Source Handoff enforcement, reviewed Top-500 candidate workflow, handoff-gated official-source acquisition execution, local fresh-data verification, and launch readiness work pass deterministic CI coverage.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
@@ -3311,8 +3321,8 @@ Roadmap integration tracker:
 | Official-source Weekly News live acquisition for golden assets | Completed | T-113 |
 | Launch pre-cache expansion and MVP readiness regression matrix | Completed | T-114 |
 | Golden Asset Source Handoff contract enforcement | Completed | T-115 |
-| Reviewed Top-500 candidate manifest workflow contracts | Current | T-116 |
-| Handoff-gated official-source acquisition execution for golden assets | Backlog | T-117 |
+| Reviewed Top-500 candidate manifest workflow contracts | Completed | T-116 |
+| Handoff-gated official-source acquisition execution for golden assets | Current | T-117 |
 | Local fresh-data ingest-to-render runbook and smoke coverage | Backlog | T-118 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
