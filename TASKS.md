@@ -1,64 +1,64 @@
 ## Current task
 
-### T-117: Execute handoff-gated official-source acquisition for golden assets
+### T-118: Prove local fresh-data ingest-to-render smoke path
 
 Goal:
-Turn the existing opt-in official-source readiness boundaries into a mocked-HTTP execution path for golden SEC stock, ETF issuer, and Weekly News acquisition that writes only handoff-approved records.
+Document and test the local MVP path for manually ingesting a golden asset into configured durable repositories or deterministic in-memory equivalents, reading it through backend APIs, and rendering it in the frontend before production deployment work.
 
 Task-scope paragraph:
-Add injected HTTP/fetch boundaries and parser adapters for the golden SEC stock, ETF issuer, and official Weekly News source acquisition paths. Tests must use mocked responses only. The ingestion worker should route fetched records through Golden Asset Source Handoff before source snapshot, parsed artifact, normalized knowledge-pack, Weekly News evidence, and generated-output cache writes. Fail closed when parser validity, approval metadata, source binding, source-use policy, freshness/as-of metadata, or writer readiness is missing. Keep the frontend workflow stable: home remains single stock/ETF search first, comparison remains separate and connected, glossary stays contextual, source/glossary/chat mobile surfaces remain bottom-sheet or full-screen as appropriate, stock-vs-ETF comparison keeps relationship badges, and Weekly News Focus shows fewer or empty states when evidence is thin.
+Add a local runbook and deterministic smoke coverage for the golden fresh-data path from manual ingestion trigger through source handoff, source snapshots, normalized knowledge packs, Weekly News evidence, generated-output cache validation, backend route reads, and frontend API rendering. Tests must use mocked official-source acquisition or existing deterministic fixtures only. Live local runs may be documented as opt-in operator steps, but normal CI must remain fixture-backed and must not require real SEC, issuer, market-data, news, storage, database, Redis, RSS, or LLM calls. Keep the frontend workflow stable: home remains single stock/ETF search first, comparison remains separate and connected through `/compare`, glossary stays contextual, source/glossary/chat mobile surfaces remain bottom-sheet or full-screen as appropriate, stock-vs-ETF comparison keeps relationship badges, and Weekly News Focus shows fewer or empty states when evidence is thin.
 
 Roadmap alignment:
 
-- Follows T-116, which added deterministic Top-500 candidate manifest generation, SEC/Nasdaq validation fixtures, diff reporting, and manual-promotion gates without changing the approved runtime manifest.
-- Builds on T-112 and T-113 readiness boundaries by proving mocked official-source execution can pass through Golden Asset Source Handoff and existing repository writer boundaries.
-- Moves the system toward local fresh-data ingest-to-render verification while keeping normal CI deterministic and free of live provider, market-data, news, storage, database, Redis, or LLM calls.
+- Follows T-117, which added mocked HTTP/fetch and parser execution helpers for golden SEC stock, ETF issuer, and official Weekly News acquisition, with Golden Asset Source Handoff required before writer routing.
+- Builds on T-111 through T-117 repository, handoff, acquisition, cache, and route-read boundaries by proving the local fresh-data path is understandable and regression-covered before production hardening.
+- Moves the system toward manual local fresh-data verification while keeping normal CI deterministic and free of live provider, market-data, news, storage, database, Redis, RSS, or LLM calls.
 - Preserves PRD/TDS-first authority after safety rules, source-use rights, citation requirements, freshness/unknown/stale/unavailable/partial handling, and educational no-advice framing.
 
 General MVP alignment:
-T-117 proves the mocked execution layer between opt-in live acquisition readiness and persisted evidence records for golden assets. It does not broaden coverage, add production persistence, enable real network execution in CI, approve new sources, promote Top-500 candidates, add scheduled automation, alter public route contracts, or redesign frontend workflows.
+T-118 proves the local operator path and deterministic smoke coverage for fresh-data ingest-to-render before production deployment expansion. It does not broaden coverage, enable real network execution in CI, approve new sources, promote Top-500 candidates, add scheduled automation, alter public route contracts, add production persistence, add admin auth/rate limiting, or redesign frontend workflows.
 
 Roadmap contract refinement:
-T-117 may update focused roadmap contract expectations only if they are stale after this promotion, but edits must stay within the allowed files. Do not update operational control docs other than the required journal note unless a test explicitly depends on it.
+T-118 may update focused roadmap contract expectations only if they are stale after this promotion, but edits must stay within the allowed files. Do not update operational control docs other than the required journal note unless a test explicitly depends on it.
 
 Allowed files:
 
-- `backend/models.py` only for narrow acquisition execution, parser diagnostic, source snapshot, knowledge-pack, Weekly News, or cache metadata contract fields needed by mocked official-source execution
-- `backend/settings.py` only for disabled-by-default acquisition execution readiness flags or sanitized diagnostics that do not expose secrets, URLs, credentials, raw provider payloads, or source text
-- `backend/provider_adapters/sec_stock.py` for injected mocked SEC EDGAR fetch/execution and parser adapters for golden stock assets
-- `backend/provider_adapters/etf_issuer.py` for injected mocked ETF issuer fetch/execution and parser adapters for golden ETF assets
-- `backend/repositories/weekly_news.py` or `backend/weekly_news_repository.py` only for official Weekly News mocked acquisition execution and repository validation integration
-- `backend/ingestion_worker.py` for worker routing through readiness checks, mocked fetch/parser execution, Golden Asset Source Handoff, and existing writer boundaries
-- `backend/source_policy.py` only for narrow reusable Golden Asset Source Handoff validation helpers required by official-source execution
-- `backend/repositories/source_snapshots.py`, `backend/repositories/knowledge_packs.py`, and `backend/repositories/generated_outputs.py` only if existing writer validation boundaries need narrow metadata compatibility with parser outcomes
-- `tests/fixtures/sec_stock/**` or `tests/fixtures/provider_adapters/**` only for mocked SEC golden-source responses
-- `tests/fixtures/etf_issuer/**` or `tests/fixtures/provider_adapters/**` only for mocked issuer golden-source responses
-- `tests/fixtures/weekly_news/**` only for mocked official Weekly News source responses
-- `tests/unit/test_provider_adapters.py`
-- `tests/unit/test_ingestion_worker.py`
-- `tests/unit/test_ingestion_jobs.py`
-- `tests/unit/test_weekly_news.py`
-- `tests/unit/test_source_policy.py`
-- `tests/unit/test_source_snapshot_repository.py`
-- `tests/unit/test_knowledge_pack_repository.py`
-- `tests/unit/test_cache_contracts.py`
+- `docs/local_fresh_data_ingest_to_render_runbook.md` for the local manual runbook
+- `backend/settings.py` only for sanitized local fresh-data diagnostics or disabled-by-default runbook-visible configuration flags that do not expose secrets, URLs, credentials, raw provider payloads, or source text
+- `backend/persistence.py` only for local durable repository factory/read-dependency wiring needed by deterministic smoke coverage
+- `backend/main.py` only for existing dependency-injection compatibility needed to prove persisted golden data is read before fixture fallback
+- `backend/ingestion_worker.py` only for narrow orchestration or metadata needed to run the mocked golden ingest-to-render path through existing writer boundaries
+- `backend/provider_adapters/sec_stock.py`, `backend/provider_adapters/etf_issuer.py`, `backend/repositories/weekly_news.py`, or `backend/weekly_news_repository.py` only if focused tests expose a narrow compatibility gap in the T-117 mocked acquisition execution helpers
+- `backend/repositories/source_snapshots.py`, `backend/repositories/knowledge_packs.py`, `backend/repositories/generated_outputs.py`, and `backend/repositories/weekly_news.py` only for narrow local smoke-path read/write compatibility with already-approved handoff metadata
+- `backend/cache.py`, `backend/source_drawer.py`, `backend/exports.py`, `backend/glossary.py`, `backend/chat.py`, `backend/comparison.py`, or `backend/overview.py` only if deterministic smoke coverage proves an existing persisted-read path does not prefer validated fresh records before fixture fallback
+- `apps/web/lib/search.ts`, `apps/web/lib/assetOverview.ts`, `apps/web/app/assets/[ticker]/page.tsx`, `apps/web/app/assets/[ticker]/sources/page.tsx`, or `apps/web/components/SearchBox.tsx` only for narrow API-rendering compatibility if frontend smoke proves persisted backend data cannot render through the existing v0.4 workflow
 - `tests/integration/test_backend_api.py`
+- `tests/unit/test_ingestion_worker.py`
+- `tests/unit/test_source_policy.py`
+- `tests/unit/test_exports.py`
+- `tests/unit/test_source_drawer.py`
+- `tests/unit/test_weekly_news.py`
+- `tests/unit/test_cache_contracts.py`
+- `tests/unit/test_knowledge_pack_repository.py`
+- `tests/unit/test_source_snapshot_repository.py`
 - `tests/unit/test_safety_guardrails.py`
 - `tests/unit/test_repo_contract.py`
+- `tests/frontend/smoke.mjs`
+- `tests/fixtures/**` only for deterministic local fresh-data smoke fixtures that contain no real provider payloads, raw restricted source text, secrets, signed URLs, public storage URLs, or unrestricted article text
 - `docs/agent-journal/*.md`
 
 Do not change:
 
 - No edits to `data/universes/us_common_stocks_top500.current.json` or `data/universes/us_equity_etfs.current.json`.
-- No edits to `data/universes/us_common_stocks_top500.candidate.*.json` or `data/universes/us_common_stocks_top500.diff.*` unless a focused test fixture must be adjusted for the existing T-116 contract; do not promote any candidate.
+- No edits to `data/universes/us_common_stocks_top500.candidate.*.json` or `data/universes/us_common_stocks_top500.diff.*`; do not promote any candidate.
 - No public FastAPI route paths, HTTP status behavior, `/health` behavior, or browser-facing response schema changes.
 - No runtime search/support-classification change that reads a candidate manifest, live ETF holdings file, market-data response, provider rank query, or generated diff report as coverage truth.
 - No automatic candidate promotion, no approved-current manifest replacement, and no approval timestamp that implies a candidate is production-approved.
 - No frontend workflow redesign: home stays single stock/ETF search first; comparison stays a separate connected `/compare` workflow; glossary stays contextual; source drawer, glossary, and chat preserve mobile bottom-sheet or full-screen behavior; stock-vs-ETF comparison keeps relationship badges and the single-company-vs-ETF-basket structure.
-- No frontend app edits unless an existing test proves a static no-live-call marker must be updated; avoid UI work in this task.
-- No real live OpenRouter, LLM, market-data, broad news provider, RSS, web fetch, Redis, Cloud Run Job, scheduler, admin auth enforcement, rate-limiting, external analytics, telemetry vendor, monitoring vendor, rollback tooling, or deployment wiring.
+- No frontend app edits unless existing smoke coverage proves a narrow API-rendering compatibility issue; avoid UI redesign in this task.
+- No real live OpenRouter, LLM, market-data, broad news provider, RSS, web fetch, Redis, Cloud Run Job, scheduler, admin auth enforcement, rate-limiting, external analytics, telemetry vendor, monitoring vendor, rollback tooling, or deployment wiring in normal tests.
 - No default live SEC, issuer, ETF, market-data, news, Weekly News, RSS, or source-provider execution in tests, public routes, browser code, normal local runs, or CI. Mocked HTTP/fetch responses only.
-- No production database, production object-storage, production bucket, signed URL, public storage URL, Cloud Run, Neon, GCS, Secret Manager, or Docker-required execution path.
+- No production database, production object-storage, production bucket, signed URL, public storage URL, Cloud Run, Neon, GCS, Secret Manager, or Docker-required execution path. The runbook may describe optional local-only setup with placeholders.
 - No import-time database, object-storage, network, provider, Redis, or credential validation connections.
 - No browser calls to source providers, LLM providers, market-data/news providers, RSS feeds, admin ingestion secrets, object storage, signed URLs, or provider endpoints. Browser code may call only the configured backend API base and local deterministic fallback helpers.
 - No new `NEXT_PUBLIC_*` provider variables, no provider keys in browser code, no `/health` secret exposure, no docs/env examples containing real secrets, and no logging or diagnostics that include API key values, database URLs, storage URLs, or provider credentials.
@@ -71,29 +71,33 @@ Do not change:
 
 Acceptance criteria:
 
-- Live acquisition execution remains explicitly opt-in, server-side only, disabled by default, and visible through sanitized diagnostics that do not expose secrets, credentials, database URLs, storage URLs, provider URLs with tokens, raw source text, or unrestricted payloads.
-- Mocked SEC and issuer fetchers prove source retrieval does not approve evidence by itself; Golden Asset Source Handoff approval is required before fetched records can support source snapshots, parsed artifacts, knowledge-pack records, Weekly News evidence, citations, source drawer output, exports, or generated-output cache metadata.
-- Mocked official Weekly News acquisition uses only official filings, investor-relations releases, ETF issuer announcements, prospectus updates, or fact-sheet changes and preserves the last completed Monday-Sunday market week plus current week-to-date through yesterday using U.S. Eastern dates.
-- Parser diagnostics distinguish parsed, partial, failed, pending-review, stale, unknown, unavailable, and insufficient-evidence states where applicable.
-- Approved mocked SEC records can write source snapshots, normalized knowledge packs, source checksums, and validated generated-output cache metadata through existing writer boundaries for golden stock assets.
-- Approved mocked ETF issuer records can write source snapshots, normalized knowledge packs, source checksums, and validated generated-output cache metadata through existing writer boundaries for golden ETF assets.
-- Approved mocked official Weekly News records can write evidence records through existing Weekly News repository boundaries, with source-use policy, event/source/retrieved dates, selected-item limits, dedupe behavior, and AI Comprehensive Analysis suppression below the two-item threshold preserved.
-- Blocked records with missing approval metadata, pending-review or rejected status, parser failure, parser-invalid diagnostics, wrong-asset binding, hidden/internal source identity, unclear rights, rejected source-use policy, stale/unavailable source state without an explicit label, or missing writer readiness fail closed before evidence persistence or cache writes.
-- Blocked records do not create generated pages, generated chat answers, generated comparisons, risk summaries, citations, source drawer excerpts, exports, source-list entries, generated-output cache entries, or Weekly News Focus selected items.
-- Ingestion worker metadata records retrieval, parser, handoff, and writer outcomes without storing raw full source text, unrestricted provider payloads, hidden prompts, raw model reasoning, raw user text, transcripts, credentials, signed URLs, public storage URLs, or frontend-readable storage paths.
-- Runtime search/support classification still reads only `data/universes/us_common_stocks_top500.current.json`; T-117 must not change `AAPL`, `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `META`, `TSLA`, `BRK.B`, `JPM`, `UNH`, `GME`, or ETF search behavior except through existing deterministic route fixtures if a test explicitly requires compatibility.
+- Runbook explains local setup, placeholder-only environment variables, manual ingestion trigger, durable-repository or in-memory-equivalent mode, backend route verification, frontend dev-server verification, expected fresh/partial/blocked states, cleanup, and troubleshooting without printing or requesting real secret values.
+- Runbook distinguishes operator-only opt-in live local experimentation from normal deterministic CI, and says fetching alone is retrieval, not evidence approval.
+- Deterministic tests cover the equivalent mocked path end to end: ingestion job request, mocked official-source acquisition, parser diagnostics, Golden Asset Source Handoff, source snapshot writes, normalized knowledge-pack writes, Weekly News evidence writes, generated-output cache validation, backend route reads, and frontend API rendering markers where applicable.
+- Backend APIs prefer validated persisted golden asset records before fixture fallback for overview, sources/source drawer, Weekly News Focus, glossary, grounded chat, comparison/export behavior, and generated-output cache-backed responses where the existing API supports those surfaces.
+- Frontend smoke coverage verifies API-backed rendering of the persisted golden asset path while preserving deterministic fallback when the API is unavailable or returns invalid data.
+- Frontend pages continue to show citations, freshness/as-of labels, source drawer metadata, source-use policy, allowed excerpts only, Weekly News evidence limits, AI Comprehensive Analysis suppression below two high-signal Weekly News items, grounded chat citations, and export restrictions.
+- Unsupported, out-of-scope, pending-ingestion, partial, stale, unknown, unavailable, pending-review, rejected-source, parser-invalid, wrong-asset, hidden/internal, unclear-rights, and insufficient-evidence states remain visible, blocked, or labeled according to section behavior.
+- Source drawer, citation, export, generated-output cache, and knowledge-pack records expose only approved source metadata and allowed excerpts; no raw restricted source text, unrestricted provider payloads, hidden prompts, raw model reasoning, raw user text, transcripts, signed URLs, public storage URLs, or secrets are stored, logged, exported, or committed.
+- Weekly News Focus preserves official-source priority, dedupe, event/source/retrieved dates, source-use policy, selected-item limits, and the last completed Monday-Sunday market week plus current week-to-date through yesterday using U.S. Eastern dates.
+- Weekly News Focus shows the configured maximum only when enough evidence supports it; smaller verified sets or empty states are accepted and must not be padded.
+- AI Comprehensive Analysis remains suppressed unless at least two high-signal Weekly News Focus items exist and, when present, cites selected Weekly News Focus evidence and canonical facts only.
+- Runtime search/support classification still reads only `data/universes/us_common_stocks_top500.current.json`; T-118 must not change `AAPL`, `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `META`, `TSLA`, `BRK.B`, `JPM`, `UNH`, `GME`, or ETF search behavior except through existing deterministic route fixtures if a test explicitly requires compatibility.
 - Frontend Design and Workflow v0.4 remains unchanged: home has one primary stock/ETF search, `A vs B` searches route to comparison, comparison is separate and connected, glossary is contextual, source/glossary/chat mobile behavior remains bottom-sheet or full-screen, and stock-vs-ETF comparison keeps relationship badges.
 - Candidate manifests and diff reports from T-116 remain review artifacts only and are not used as runtime coverage truth.
-- All new and changed copy, diagnostics, fixtures, and journal notes use educational/operational language only and contain no buy/sell/hold, allocation, tax, brokerage, price-target, recommendation, model-portfolio, or endorsement language.
+- All new and changed copy, diagnostics, fixtures, runbook text, and journal notes use educational/operational language only and contain no buy/sell/hold, allocation, tax, brokerage, price-target, recommendation, model-portfolio, or endorsement language.
 - Normal CI has no real network, provider, storage, database, news, market-data, RSS, Redis, LLM, GitHub Actions, Cloud Run, Cloud Scheduler, or production job execution.
 - No real provider data, raw restricted source text, credentials, signed URLs, public storage URLs, secrets, hidden prompts, raw model reasoning, raw user text, raw transcripts, or unrestricted source payloads are committed, logged, exported, or stored in fixtures.
+- Production deployment, recurring jobs, admin auth enforcement, rate limiting, monitoring, rollback, broad provider expansion, source allowlist expansion, prompt rewrites, and post-MVP features stay unpromoted.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests/unit/test_provider_adapters.py tests/unit/test_ingestion_worker.py tests/unit/test_ingestion_jobs.py tests/unit/test_weekly_news.py tests/unit/test_source_policy.py -q
-python3 -m pytest tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_cache_contracts.py tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q
+npm test
+npm run typecheck
+npm run build
 python3 -m pytest tests/integration/test_backend_api.py -q
+python3 -m pytest tests/unit/test_ingestion_worker.py tests/unit/test_source_policy.py tests/unit/test_exports.py tests/unit/test_repo_contract.py -q
 python3 -m pytest tests -q
 python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
@@ -101,10 +105,34 @@ git diff --check
 ```
 
 Iteration budget:
-One agent-loop cycle. Stop after mocked official-source execution, parser diagnostics, handoff-gated writer routing, and deterministic tests. If broad live ingestion, production database/object-storage execution, scheduled jobs, Top-500 promotion, source allowlist expansion, prompt rewrites, frontend redesign, production deployment, or real provider execution are needed, record the follow-up and stop.
+One agent-loop cycle. Stop after local fresh-data runbook and deterministic smoke coverage. If production deployment, production database/object-storage execution, scheduled jobs, Top-500 promotion, source allowlist expansion, prompt rewrites, frontend redesign, admin auth/rate limiting, monitoring, rollback, broad live ingestion, or real provider execution is needed, record the follow-up and stop.
 
 
 ## Completed
+
+### T-117: Execute handoff-gated official-source acquisition for golden assets
+
+Goal:
+Turn the existing opt-in official-source readiness boundaries into a mocked-HTTP execution path for golden SEC stock, ETF issuer, and Weekly News acquisition that writes only handoff-approved records.
+
+Completed details:
+
+- Implementation commit `32f1abf feat(T-117): execute handoff-gated official-source acquisition for golden assets` updated `backend/provider_adapters/sec_stock.py`, `backend/provider_adapters/etf_issuer.py`, `backend/repositories/weekly_news.py`, `backend/weekly_news_repository.py`, `backend/ingestion_worker.py`, focused unit tests, roadmap contract tests, and `docs/agent-journal/20260427T053609Z.md`.
+- Merged branch `agent/T-117-20260427T053609Z` into `main` with local merge commit `0c0cf0f chore(T-117): merge execute handoff-gated official-source acquisition for golden assets`.
+- Added mocked HTTP/fetch and parser adapter boundaries for golden SEC stock and ETF issuer official-source acquisition.
+- Added handoff-gated execution helpers that validate parser outcomes and Golden Asset Source Handoff before records can feed source snapshots, knowledge packs, or downstream cache metadata.
+- Extended official Weekly News mocked acquisition with fetch/parser/handoff diagnostics and counts while preserving official-source filtering, dedupe, selected-item limits, and AI Comprehensive Analysis suppression below two selected items.
+- Added ingestion worker fail-closed enforcement so live-attempted writer routing requires explicit official-source handoff approval metadata.
+- `docs/agent-journal/20260427T053609Z.md` records these checks: `python3 -m pytest tests/unit/test_provider_adapters.py tests/unit/test_ingestion_worker.py tests/unit/test_weekly_news.py tests/unit/test_source_policy.py -q` passed with 82 tests; `python3 -m pytest tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_cache_contracts.py tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q` passed with 90 tests; `python3 -m pytest tests/integration/test_backend_api.py -q` passed with 36 tests; `python3 -m pytest tests -q` passed with 435 tests; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed; `git diff --check` passed.
+- Remaining risks from the journal:
+  - T-117 remains mocked and golden-asset scoped. No real SEC, issuer, Weekly News, RSS, provider, storage, database, Redis, or LLM calls were added.
+  - The new execution helpers prove ingest-to-persist writer routing, but they do not yet provide a local fresh-data ingest-to-render smoke path from persisted records through public routes.
+  - Production source allowlist review, broad parser maintenance, scheduled jobs, and deployment wiring remain outside this task.
+
+Completion commits:
+
+- `32f1abf feat(T-117): execute handoff-gated official-source acquisition for golden assets`
+- `0c0cf0f chore(T-117): merge execute handoff-gated official-source acquisition for golden assets`
 
 ### T-116: Add reviewed Top-500 candidate manifest workflow contracts
 
@@ -3178,41 +3206,7 @@ Completion commits:
 
 ## Backlog
 
-The next local agent-loop cycle should run the promoted Current task above first. The queued task below should not be started until T-117 passes its required checks.
-
-### T-118: Prove local fresh-data ingest-to-render smoke path
-
-Goal:
-Document and test the local MVP path for manually ingesting a golden asset into configured durable repositories, reading it through backend APIs, and rendering it in the frontend before production deployment work.
-
-Task-scope paragraph:
-Add a local runbook and deterministic smoke coverage for manual ingestion with local durable repositories or in-memory equivalents. Verify the path from ingestion job request to source handoff, source snapshots, normalized knowledge pack, Weekly News evidence, generated-output cache validation, asset overview, source drawer, comparison/chat/export behavior, and frontend API rendering. Keep CI mocked and deterministic; live local runs may be documented as opt-in only and must not expose secrets.
-
-Acceptance criteria:
-
-- Runbook explains local setup, env placeholders, manual ingestion, route verification, frontend dev server verification, expected states, cleanup, and troubleshooting without printing secrets.
-- Tests cover the equivalent mocked path end to end.
-- Backend APIs render persisted golden asset data before falling back to fixtures.
-- Frontend pages show fresh persisted data with citations, freshness labels, source drawer metadata, Weekly News evidence limits, AI Comprehensive Analysis thresholds, chat grounding, and export restrictions.
-- Unsupported, out-of-scope, pending-ingestion, partial, stale, unknown, unavailable, pending-review, and rejected-source states remain visible and blocked correctly.
-- Production deployment, recurring jobs, admin auth enforcement, rate limiting, monitoring, rollback, broad provider expansion, and post-MVP features stay unpromoted.
-
-Required commands:
-
-```bash
-npm test
-npm run typecheck
-npm run build
-python3 -m pytest tests/integration/test_backend_api.py -q
-python3 -m pytest tests/unit/test_ingestion_worker.py tests/unit/test_source_policy.py tests/unit/test_exports.py tests/unit/test_repo_contract.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-git diff --check
-```
-
-Iteration budget:
-One agent-loop cycle. Stop after local fresh-data runbook and deterministic smoke coverage; production deployment remains later.
+No backlog task is prepared. The backlog is empty after promoting T-118 into Current task.
 
 ## General MVP Roadmap
 
@@ -3225,7 +3219,7 @@ Current runtime snapshot:
 - The frontend renders the main learning surfaces with deterministic fixtures and selected backend adapters; T-109 added API-backed home search and dynamic asset-page rendering with deterministic fixture fallback.
 - The updated PRD/TDS/proposal make Golden Asset Source Handoff a blocker before retrieved sources can become evidence for storage, generation, citation, cache, source drawer, or export behavior.
 - The updated Top-500 workflow keeps runtime stock support tied to the approved current manifest; T-116 added deterministic monthly IWB/SPY/IVV/VOO candidate generation, SEC/Nasdaq validation, diff reporting, and manual-promotion gates, but no candidate has been approved or promoted to the current manifest.
-- The current promoted MVP blocker is handoff-gated official-source acquisition execution for golden assets before local fresh-data verification or production deployment work.
+- The current promoted MVP blocker is local fresh-data ingest-to-render verification before production deployment work.
 - The next fully functional milestone is local fresh-data ingest-to-render: handoff-approved official source retrieval, parser diagnostics, source snapshots, normalized packs, Weekly News evidence, generated-output cache validation, backend route reads, frontend rendering, source drawers, exports, and safety/source-use checks all verified locally before production hardening.
 
 Operational defaults for general MVP roadmap tasks:
@@ -3271,8 +3265,8 @@ Operational defaults for general MVP roadmap tasks:
 - T-114 established deterministic launch pre-cache expansion and the MVP readiness regression matrix. It is completed and must not be reintroduced as runnable backlog.
 - T-115 established Golden Asset Source Handoff contract enforcement. It is completed and must not be reintroduced as runnable backlog.
 - T-116 established reviewed Top-500 candidate manifest workflow contracts. It is completed and must not be reintroduced as runnable backlog.
-- T-117 is the current promoted task for handoff-gated mocked official-source acquisition execution for golden assets.
-- T-118 is queued for local fresh-data ingest-to-render runbook and smoke coverage.
+- T-117 established handoff-gated mocked official-source acquisition execution for golden assets. It is completed and must not be reintroduced as runnable backlog.
+- T-118 is the current promoted task for local fresh-data ingest-to-render runbook and smoke coverage.
 - Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until Golden Asset Source Handoff enforcement, reviewed Top-500 candidate workflow, handoff-gated official-source acquisition execution, local fresh-data verification, and launch readiness work pass deterministic CI coverage.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted task should run the relevant EVALS.md checks, `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, `bash scripts/run_quality_gate.sh`, and `git diff --check`.
@@ -3322,8 +3316,8 @@ Roadmap integration tracker:
 | Launch pre-cache expansion and MVP readiness regression matrix | Completed | T-114 |
 | Golden Asset Source Handoff contract enforcement | Completed | T-115 |
 | Reviewed Top-500 candidate manifest workflow contracts | Completed | T-116 |
-| Handoff-gated official-source acquisition execution for golden assets | Current | T-117 |
-| Local fresh-data ingest-to-render runbook and smoke coverage | Backlog | T-118 |
+| Handoff-gated official-source acquisition execution for golden assets | Completed | T-117 |
+| Local fresh-data ingest-to-render runbook and smoke coverage | Current | T-118 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
 Remaining unpromoted general MVP sequence:
