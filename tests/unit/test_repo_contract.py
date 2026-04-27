@@ -245,6 +245,8 @@ def test_weekly_news_event_evidence_repository_contract_is_dormant_metadata_only
     assert "weekly-news-event-evidence-repository-contract-v1" in combined
     assert "weekly-news-live-acquisition-readiness-boundary-v1" in combined
     assert "weekly-news-official-source-mocked-acquisition-boundary-v1" in combined
+    assert "weekly-news-official-source-mocked-fetch-boundary-v1" in combined
+    assert "weekly-news-official-source-parser-adapter-boundary-v1" in combined
     assert "weekly_news_market_week_windows" in combined
     assert "weekly_news_event_candidates" in combined
     assert "weekly_news_selected_events" in combined
@@ -523,7 +525,7 @@ def test_t114_mvp_launch_readiness_docs_cover_regression_matrix_and_go_no_go_wit
         assert forbidden.lower() not in combined_lower
 
 
-def test_tasks_general_mvp_roadmap_marks_t116_current_with_fresh_data_backlog():
+def test_tasks_general_mvp_roadmap_marks_t117_current_with_fresh_data_backlog():
     tasks = read_file("TASKS.md")
     current_task = tasks.split("## Current task", 1)[1].split("## Completed", 1)[0]
     backlog = tasks.split("## Backlog", 1)[1].split("## General MVP Roadmap", 1)[0]
@@ -532,15 +534,14 @@ def test_tasks_general_mvp_roadmap_marks_t116_current_with_fresh_data_backlog():
     assert "## MVP Backend Roadmap" not in tasks
     assert "No backlog tasks are currently prepared" not in backlog
     assert "General MVP alignment:" in current_task
-    assert "T-116 creates the reviewable candidate workflow" in current_task
-    assert "IWB" in current_task
-    assert "SPY, IVV, and VOO" in current_task
+    assert "T-117 proves the mocked execution layer" in current_task
+    assert "Golden Asset Source Handoff" in current_task
+    assert "mocked official-source execution" in current_task
     assert "data/universes/us_common_stocks_top500.current.json" in current_task
     assert "Roadmap contract refinement:" in current_task
-    assert "Stop after candidate workflow contracts" in current_task
+    assert "Stop after mocked official-source execution" in current_task
 
     for task_marker in [
-        "### T-117: Execute handoff-gated official-source acquisition for golden assets",
         "### T-118: Prove local fresh-data ingest-to-render smoke path",
     ]:
         assert task_marker in backlog, f"Backlog should include {task_marker}"
@@ -558,7 +559,7 @@ def test_tasks_general_mvp_roadmap_marks_t116_current_with_fresh_data_backlog():
     assert "T-110 established persisted end-to-end comparison, chat, source, glossary, Weekly News, and export verification" in roadmap
     assert "T-111 established local durable repository execution with in-memory fallback" in roadmap
     assert "T-115 established Golden Asset Source Handoff contract enforcement" in roadmap
-    assert "T-116 is the current promoted task for reviewed Top-500 candidate manifest workflow contracts" in roadmap
+    assert "T-117 is the current promoted task for handoff-gated mocked official-source acquisition execution for golden assets" in roadmap
     assert "monthly IWB/SPY/IVV/VOO candidate generation" in roadmap
     assert "| Provider source-use/export enforcement hardening | Completed | T-099 |" in roadmap
     assert "| Backend fresh-data MVP runtime gap tracker | Completed | T-100 |" in roadmap
@@ -577,8 +578,8 @@ def test_tasks_general_mvp_roadmap_marks_t116_current_with_fresh_data_backlog():
     assert "| Official-source Weekly News live acquisition for golden assets | Completed | T-113 |" in roadmap
     assert "| Launch pre-cache expansion and MVP readiness regression matrix | Completed | T-114 |" in roadmap
     assert "| Golden Asset Source Handoff contract enforcement | Completed | T-115 |" in roadmap
-    assert "| Reviewed Top-500 candidate manifest workflow contracts | Current | T-116 |" in roadmap
-    assert "| Handoff-gated official-source acquisition execution for golden assets | Backlog | T-117 |" in roadmap
+    assert "| Reviewed Top-500 candidate manifest workflow contracts | Completed | T-116 |" in roadmap
+    assert "| Handoff-gated official-source acquisition execution for golden assets | Current | T-117 |" in roadmap
     assert "| Local fresh-data ingest-to-render runbook and smoke coverage | Backlog | T-118 |" in roadmap
     assert "| Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |" in roadmap
 
@@ -589,8 +590,12 @@ def test_sec_stock_acquisition_contract_is_backend_only_fixture_backed_and_sanit
     combined = f"{adapter}\n{worker}"
 
     assert "sec-stock-acquisition-boundary-v1" in adapter
+    assert "sec-stock-mocked-http-fetch-boundary-v1" in adapter
+    assert "sec-stock-parser-adapter-boundary-v1" in adapter
+    assert "sec-stock-handoff-gated-execution-boundary-v1" in adapter
     assert "SecStockConfigurationReadiness" in adapter
     assert "build_sec_stock_acquisition_result" in adapter
+    assert "execute_sec_stock_handoff_gated_official_source_acquisition" in adapter
     assert "user_agent_configured" in adapter
     assert "rate_limit_ready" in adapter
     assert "live_call_disabled" in adapter
@@ -622,8 +627,12 @@ def test_etf_issuer_acquisition_contract_is_backend_only_fixture_backed_and_sani
     combined = f"{adapter}\n{worker}"
 
     assert "etf-issuer-acquisition-boundary-v1" in adapter
+    assert "etf-issuer-mocked-http-fetch-boundary-v1" in adapter
+    assert "etf-issuer-parser-adapter-boundary-v1" in adapter
+    assert "etf-issuer-handoff-gated-execution-boundary-v1" in adapter
     assert "EtfIssuerConfigurationReadiness" in adapter
     assert "build_etf_issuer_acquisition_result" in adapter
+    assert "execute_etf_issuer_handoff_gated_official_source_acquisition" in adapter
     assert "issuer_source_configured" in adapter
     assert "rate_limit_ready" in adapter
     assert "live_call_disabled" in adapter

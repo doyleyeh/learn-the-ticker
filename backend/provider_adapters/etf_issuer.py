@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Protocol
 
 from backend.data import (
@@ -29,15 +29,22 @@ from backend.models import (
     ProviderSourceAttribution,
     ProviderSourceUsage,
     SourceAllowlistStatus,
+    SourceExportRights,
+    SourceParserStatus,
     SourceQuality,
+    SourceReviewStatus,
+    SourceStorageRights,
     SourceUsePolicy,
 )
-from backend.source_policy import resolve_source_policy, source_can_support_generated_output
+from backend.source_policy import SourcePolicyAction, resolve_source_policy, source_can_support_generated_output, validate_source_handoff
 
 
 ETF_ISSUER_FIXTURE_CONTRACT_VERSION = "etf-issuer-fixture-adapter-v1"
 ETF_ISSUER_ACQUISITION_BOUNDARY = "etf-issuer-acquisition-boundary-v1"
 ETF_ISSUER_LIVE_ACQUISITION_READINESS_BOUNDARY = "etf-issuer-live-acquisition-readiness-boundary-v1"
+ETF_ISSUER_MOCK_HTTP_FETCH_BOUNDARY = "etf-issuer-mocked-http-fetch-boundary-v1"
+ETF_ISSUER_PARSER_ADAPTER_BOUNDARY = "etf-issuer-parser-adapter-boundary-v1"
+ETF_ISSUER_HANDOFF_GATED_EXECUTION_BOUNDARY = "etf-issuer-handoff-gated-execution-boundary-v1"
 ETF_ISSUER_SOURCE_POLICY_REF = "source-use-policy-v1"
 
 
@@ -49,6 +56,109 @@ class EtfIssuerAdapterLike(Protocol):
     provider_name: str
     provider_kind: ProviderKind
     capability: ProviderCapability
+
+
+class EtfIssuerOfficialSourceFetcherLike(Protocol):
+    def fetch(self, request: "EtfIssuerMockFetchRequest") -> "EtfIssuerMockFetchResponse":
+        ...
+
+
+class EtfIssuerParserAdapterLike(Protocol):
+    def parse(
+        self,
+        response: "EtfIssuerMockFetchResponse",
+        source: "EtfSourceFixture",
+    ) -> "EtfIssuerParserDiagnostic":
+        ...
+
+
+@dataclass(frozen=True)
+class EtfIssuerMockFetchRequest:
+    boundary: str
+    ticker: str
+    source_document_id: str
+    source_type: str
+    url: str
+    expected_checksum: str
+    no_live_external_calls: bool = True
+
+
+@dataclass(frozen=True)
+class EtfIssuerMockFetchResponse:
+    boundary: str
+    ticker: str
+    source_document_id: str
+    source_type: str
+    status: str
+    checksum: str
+    retrieved_at: str
+    content_kind: str
+    content_length: int = 0
+    no_live_external_calls: bool = True
+    stores_raw_source_text: bool = False
+    stores_raw_provider_payload: bool = False
+    stores_secret: bool = False
+
+
+@dataclass(frozen=True)
+class EtfIssuerParserDiagnostic:
+    boundary: str
+    source_document_id: str
+    parser_status: SourceParserStatus
+    evidence_state: EvidenceState
+    freshness_state: FreshnessState
+    code: str
+    message: str
+    parser_failure_diagnostics: str | None = None
+    no_live_external_calls: bool = True
+    stores_raw_source_text: bool = False
+    stores_raw_provider_payload: bool = False
+    stores_secret: bool = False
+
+
+@dataclass(frozen=True)
+class MockEtfIssuerOfficialSourceFetcher:
+    def fetch(self, request: EtfIssuerMockFetchRequest) -> EtfIssuerMockFetchResponse:
+        return EtfIssuerMockFetchResponse(
+            boundary=ETF_ISSUER_MOCK_HTTP_FETCH_BOUNDARY,
+            ticker=request.ticker,
+            source_document_id=request.source_document_id,
+            source_type=request.source_type,
+            status="fetched",
+            checksum=request.expected_checksum,
+            retrieved_at=STUB_TIMESTAMP,
+            content_kind=_content_kind_for_source_type(request.source_type),
+        )
+
+
+@dataclass(frozen=True)
+class EtfIssuerParserAdapter:
+    def parse(
+        self,
+        response: EtfIssuerMockFetchResponse,
+        source: "EtfSourceFixture",
+    ) -> EtfIssuerParserDiagnostic:
+        expected = _source_checksum(source.source_document_id)
+        if response.checksum != expected:
+            return EtfIssuerParserDiagnostic(
+                boundary=ETF_ISSUER_PARSER_ADAPTER_BOUNDARY,
+                source_document_id=source.source_document_id,
+                parser_status=SourceParserStatus.failed,
+                evidence_state=EvidenceState.unavailable,
+                freshness_state=FreshnessState.unavailable,
+                code="etf_issuer_parser_checksum_mismatch",
+                message="Mocked ETF issuer parser rejected source metadata before evidence use.",
+                parser_failure_diagnostics="checksum_mismatch",
+            )
+        return EtfIssuerParserDiagnostic(
+            boundary=ETF_ISSUER_PARSER_ADAPTER_BOUNDARY,
+            source_document_id=source.source_document_id,
+            parser_status=SourceParserStatus.parsed,
+            evidence_state=EvidenceState.supported,
+            freshness_state=source.freshness_state,
+            code="etf_issuer_parser_parsed",
+            message="Mocked ETF issuer parser produced source metadata for handoff validation.",
+        )
 
 
 @dataclass(frozen=True)
@@ -186,6 +296,12 @@ class EtfIssuerAcquisitionResult:
     evidence_gap_states: dict[str, str]
     checksum: str | None
     source_policy_ref: str = ETF_ISSUER_SOURCE_POLICY_REF
+    mocked_fetch_boundary: str | None = None
+    parser_adapter_boundary: str | None = None
+    fetched_source_count: int = 0
+    parser_diagnostic_count: int = 0
+    handoff_approved_source_count: int = 0
+    handoff_blocked_source_count: int = 0
     no_live_external_calls: bool = True
     opened_database_connection: bool = False
     wrote_source_snapshot: bool = False
@@ -483,6 +599,118 @@ def build_etf_issuer_acquisition_result(
         diagnostics=diagnostics,
         evidence_gap_states=evidence_gap_states,
         checksum=_combined_checksum(source_records),
+    )
+
+
+def execute_etf_issuer_handoff_gated_official_source_acquisition(
+    adapter: EtfIssuerAdapterLike,
+    request: ProviderRequestMetadata,
+    licensing: ProviderLicensing,
+    *,
+    fetcher: EtfIssuerOfficialSourceFetcherLike | None = None,
+    parser: EtfIssuerParserAdapterLike | None = None,
+) -> EtfIssuerAcquisitionResult:
+    """Run mocked issuer retrieval, parser diagnostics, and handoff before evidence use."""
+
+    acquisition = build_etf_issuer_acquisition_result(adapter, request, licensing)
+    if acquisition.provider_response is None or acquisition.response_state is not ProviderResponseState.supported:
+        return acquisition
+
+    ticker = acquisition.ticker
+    fixture = etf_issuer_fixture_for_ticker(ticker)
+    if fixture is None:
+        return _contract_error_acquisition_result(ticker, "missing ETF issuer fixture for handoff execution")
+
+    source_by_id = {source.source_document_id: source for source in fixture.sources}
+    fetch_boundary = fetcher or MockEtfIssuerOfficialSourceFetcher()
+    parser_boundary = parser or EtfIssuerParserAdapter()
+    parser_diagnostics: list[EtfIssuerAcquisitionDiagnostic] = []
+    approved_sources: list[ProviderSourceAttribution] = []
+    blocked_count = 0
+
+    for source in acquisition.provider_response.source_attributions:
+        fixture_source = source_by_id.get(source.source_document_id)
+        if fixture_source is None:
+            return _contract_error_acquisition_result(ticker, "missing ETF issuer source fixture binding")
+        fetched = fetch_boundary.fetch(
+            EtfIssuerMockFetchRequest(
+                boundary=ETF_ISSUER_MOCK_HTTP_FETCH_BOUNDARY,
+                ticker=ticker,
+                source_document_id=fixture_source.source_document_id,
+                source_type=fixture_source.source_type,
+                url=fixture_source.url,
+                expected_checksum=_source_checksum(fixture_source.source_document_id),
+            )
+        )
+        parsed = parser_boundary.parse(fetched, fixture_source)
+        parser_diagnostics.append(
+            EtfIssuerAcquisitionDiagnostic(
+                code=parsed.code,
+                message=parsed.message,
+                evidence_state=parsed.evidence_state,
+                freshness_state=parsed.freshness_state,
+                retryable=parsed.parser_status in {SourceParserStatus.failed, SourceParserStatus.pending_review},
+                stores_raw_source_text=parsed.stores_raw_source_text,
+                stores_raw_provider_payload=parsed.stores_raw_provider_payload,
+                stores_secret=parsed.stores_secret,
+            )
+        )
+        approved_source = source.model_copy(
+            update={
+                "source_identity": source.url or source.source_document_id,
+                "storage_rights": _storage_rights_for_policy(source.source_use_policy),
+                "export_rights": _export_rights_for_policy(source.source_use_policy),
+                "review_status": SourceReviewStatus.approved,
+                "approval_rationale": "Mocked ETF issuer official-source retrieval and parser metadata passed handoff review.",
+                "parser_status": parsed.parser_status,
+                "parser_failure_diagnostics": parsed.parser_failure_diagnostics,
+            },
+            deep=True,
+        )
+        handoff = validate_source_handoff(approved_source, action=SourcePolicyAction.generated_claim_support)
+        if not handoff.allowed:
+            blocked_count += 1
+            return replace(
+                acquisition,
+                boundary=ETF_ISSUER_HANDOFF_GATED_EXECUTION_BOUNDARY,
+                response_state=ProviderResponseState.permission_limited,
+                provider_response=None,
+                source_records=(),
+                diagnostics=(
+                    *acquisition.diagnostics,
+                    *parser_diagnostics,
+                    EtfIssuerAcquisitionDiagnostic(
+                        code="etf_issuer_source_handoff_failed",
+                        message="Mocked ETF issuer source failed Golden Asset Source Handoff before persistence.",
+                        evidence_state=EvidenceState.unavailable,
+                        freshness_state=FreshnessState.unavailable,
+                    ),
+                ),
+                checksum=None,
+                mocked_fetch_boundary=ETF_ISSUER_MOCK_HTTP_FETCH_BOUNDARY,
+                parser_adapter_boundary=ETF_ISSUER_PARSER_ADAPTER_BOUNDARY,
+                fetched_source_count=len(parser_diagnostics),
+                parser_diagnostic_count=len(parser_diagnostics),
+                handoff_approved_source_count=len(approved_sources),
+                handoff_blocked_source_count=blocked_count,
+            )
+        approved_sources.append(approved_source)
+
+    response = acquisition.provider_response.model_copy(update={"source_attributions": approved_sources}, deep=True)
+    source_records = tuple(_acquisition_source_record(source) for source in response.source_attributions)
+    return replace(
+        acquisition,
+        boundary=ETF_ISSUER_HANDOFF_GATED_EXECUTION_BOUNDARY,
+        provider_response=response,
+        source_records=source_records,
+        diagnostics=(*acquisition.diagnostics, *parser_diagnostics),
+        checksum=_combined_checksum(source_records),
+        mocked_fetch_boundary=ETF_ISSUER_MOCK_HTTP_FETCH_BOUNDARY,
+        parser_adapter_boundary=ETF_ISSUER_PARSER_ADAPTER_BOUNDARY,
+        fetched_source_count=len(source_records),
+        parser_diagnostic_count=len(parser_diagnostics),
+        handoff_approved_source_count=len(source_records),
+        handoff_blocked_source_count=0,
     )
 
 
@@ -829,6 +1057,36 @@ def _combined_checksum(source_records: tuple[EtfIssuerAcquisitionSourceRecord, .
     return f"sha256:etf-issuer-acquisition:{checksums}"
 
 
+def _content_kind_for_source_type(source_type: str) -> str:
+    if source_type in {"issuer_holdings_file", "issuer_exposure_file"}:
+        return "csv_metadata"
+    if source_type == "summary_prospectus":
+        return "pdf_metadata"
+    return "html_metadata"
+
+
+def _storage_rights_for_policy(policy: SourceUsePolicy) -> SourceStorageRights:
+    if policy is SourceUsePolicy.full_text_allowed:
+        return SourceStorageRights.raw_snapshot_allowed
+    if policy is SourceUsePolicy.summary_allowed:
+        return SourceStorageRights.summary_allowed
+    if policy is SourceUsePolicy.metadata_only:
+        return SourceStorageRights.metadata_only
+    if policy is SourceUsePolicy.link_only:
+        return SourceStorageRights.link_only
+    return SourceStorageRights.rejected
+
+
+def _export_rights_for_policy(policy: SourceUsePolicy) -> SourceExportRights:
+    if policy in {SourceUsePolicy.full_text_allowed, SourceUsePolicy.summary_allowed}:
+        return SourceExportRights.excerpts_allowed
+    if policy is SourceUsePolicy.metadata_only:
+        return SourceExportRights.metadata_only
+    if policy is SourceUsePolicy.link_only:
+        return SourceExportRights.link_only
+    return SourceExportRights.rejected
+
+
 def _source_attribution(
     adapter: EtfIssuerAdapterLike,
     source: EtfSourceFixture,
@@ -871,6 +1129,12 @@ def _source_attribution(
         allowlist_status=decision.allowlist_status,
         source_use_policy=decision.source_use_policy,
         permitted_operations=decision.permitted_operations,
+        source_identity=source.url,
+        storage_rights=_storage_rights_for_policy(decision.source_use_policy),
+        export_rights=_export_rights_for_policy(decision.source_use_policy),
+        review_status=SourceReviewStatus.approved,
+        approval_rationale="Deterministic ETF issuer fixture source passed local source-use policy review.",
+        parser_status=SourceParserStatus.parsed,
     )
 
 

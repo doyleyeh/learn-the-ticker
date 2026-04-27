@@ -8,6 +8,7 @@ from backend.models import (
     EvidenceState,
     FreshnessState,
     SourceAllowlistStatus,
+    SourceParserStatus,
     SourceQuality,
     SourceUsePolicy,
     WeeklyNewsContractState,
@@ -30,6 +31,8 @@ from backend.weekly_news_repository import (
     WEEKLY_NEWS_FIXTURE_ACQUISITION_BOUNDARY,
     WEEKLY_NEWS_LIVE_ACQUISITION_READINESS_BOUNDARY,
     WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_ACQUISITION_BOUNDARY,
+    WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_FETCH_BOUNDARY,
+    WEEKLY_NEWS_OFFICIAL_SOURCE_PARSER_ADAPTER_BOUNDARY,
     WEEKLY_NEWS_EVENT_EVIDENCE_TABLES,
     WeeklyNewsAIThresholdRow,
     WeeklyNewsDedupeGroupRow,
@@ -45,6 +48,8 @@ from backend.weekly_news_repository import (
     WeeklyNewsSourceRankTier,
     WeeklyNewsValidationStatusRow,
     WeeklyNewsFixtureAcquisitionBoundary,
+    WeeklyNewsOfficialSourceParserAdapter,
+    WeeklyNewsOfficialSourceParserDiagnostic,
     InMemoryWeeklyNewsEventEvidenceRepository,
     acquire_weekly_news_event_evidence_from_official_sources,
     acquire_weekly_news_event_evidence_from_fixtures,
@@ -585,12 +590,56 @@ def test_weekly_news_official_source_live_acquisition_uses_mocked_golden_paths_o
     assert result.records.evidence_states[0].configured_max_item_count == 8
     assert result.records.ai_thresholds[0].analysis_allowed is True
     assert result.records.diagnostics[0].compact_metadata["selected_count"] == 2
+    assert result.mocked_fetch_boundary == WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_FETCH_BOUNDARY
+    assert result.parser_adapter_boundary == WEEKLY_NEWS_OFFICIAL_SOURCE_PARSER_ADAPTER_BOUNDARY
+    assert result.fetched_source_count == 6
+    assert result.parser_diagnostic_count == 6
+    assert result.handoff_approved_source_count == 5
+    assert result.handoff_blocked_source_count == 1
     suppressed = {row.candidate_event_id: row.suppression_reason_codes for row in result.records.candidates if row.candidate_decision == "suppressed"}
     assert "duplicate" in suppressed["duplicate"]
     assert "promotional" in suppressed["promotional"]
     assert "source_policy_blocked" in suppressed["metadata_only"]
     assert "outside_market_week_window" in suppressed["outside_window"]
     assert "https://" not in repr(result.sanitized_diagnostics).lower()
+
+
+class FailingWeeklyNewsOfficialParser(WeeklyNewsOfficialSourceParserAdapter):
+    def parse(self, response, candidate):
+        return WeeklyNewsOfficialSourceParserDiagnostic(
+            boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_PARSER_ADAPTER_BOUNDARY,
+            candidate_event_id=candidate.candidate_event_id,
+            source_document_id=candidate.source_document_id,
+            parser_status=SourceParserStatus.failed,
+            evidence_state=EvidenceState.unavailable,
+            freshness_state=FreshnessState.unavailable,
+            code="weekly_news_parser_forced_failure",
+            parser_failure_diagnostics="forced_failure",
+        )
+
+
+def test_weekly_news_official_source_live_acquisition_blocks_parser_failed_handoff():
+    result = acquire_weekly_news_event_evidence_from_official_sources(
+        asset_ticker="QQQ",
+        as_of="2026-04-23",
+        created_at="2026-04-23T12:00:00Z",
+        candidates=[_repository_candidate("official_filing", tier=WeeklyNewsSourceRankTier.official_filing)],
+        opt_in_enabled=True,
+        official_source_configured=True,
+        rate_limit_ready=True,
+        repository_writer_ready=True,
+        parser=FailingWeeklyNewsOfficialParser(),
+    )
+
+    assert result.status == "blocked"
+    assert result.records is None
+    assert result.mocked_fetch_boundary == WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_FETCH_BOUNDARY
+    assert result.parser_adapter_boundary == WEEKLY_NEWS_OFFICIAL_SOURCE_PARSER_ADAPTER_BOUNDARY
+    assert result.fetched_source_count == 1
+    assert result.parser_diagnostic_count == 1
+    assert result.handoff_approved_source_count == 0
+    assert result.handoff_blocked_source_count == 1
+    assert result.sanitized_diagnostics["blocked_reason"] == "weekly_news_source_handoff_failed"
 
 
 def test_weekly_news_official_source_live_acquisition_covers_aapl_voo_and_qqq_states():

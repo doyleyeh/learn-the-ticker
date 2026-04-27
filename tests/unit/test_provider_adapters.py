@@ -16,6 +16,7 @@ from backend.models import (
     ProviderResponseState,
     ProviderSourceUsage,
     SourceAllowlistStatus,
+    SourceParserStatus,
     SourcePolicyDecision,
     SourcePolicyDecisionState,
     SourceQuality,
@@ -26,23 +27,37 @@ from backend.provider_adapters import etf_issuer as etf_issuer_module
 from backend.provider_adapters.etf_issuer import (
     ETF_ISSUER_ACQUISITION_BOUNDARY,
     ETF_ISSUER_FIXTURE_CONTRACT_VERSION,
+    ETF_ISSUER_HANDOFF_GATED_EXECUTION_BOUNDARY,
     ETF_ISSUER_LIVE_ACQUISITION_READINESS_BOUNDARY,
+    ETF_ISSUER_MOCK_HTTP_FETCH_BOUNDARY,
+    ETF_ISSUER_PARSER_ADAPTER_BOUNDARY,
     ETF_ISSUER_FIXTURES,
     EtfIssuerFixtureContractError,
+    EtfIssuerMockFetchResponse,
+    EtfIssuerParserAdapter,
+    EtfIssuerParserDiagnostic,
     build_etf_issuer_acquisition_result,
     build_etf_issuer_provider_response,
     evaluate_etf_issuer_live_acquisition_readiness,
+    execute_etf_issuer_handoff_gated_official_source_acquisition,
     etf_issuer_fixture_for_ticker,
 )
 from backend.provider_adapters.sec_stock import (
     SEC_STOCK_ACQUISITION_BOUNDARY,
     SEC_STOCK_FIXTURE_CONTRACT_VERSION,
+    SEC_STOCK_HANDOFF_GATED_EXECUTION_BOUNDARY,
     SEC_STOCK_LIVE_ACQUISITION_READINESS_BOUNDARY,
+    SEC_STOCK_MOCK_HTTP_FETCH_BOUNDARY,
+    SEC_STOCK_PARSER_ADAPTER_BOUNDARY,
     SEC_STOCK_FIXTURES,
     SecStockFixtureContractError,
+    SecStockMockFetchResponse,
+    SecStockParserAdapter,
+    SecStockParserDiagnostic,
     build_sec_stock_acquisition_result,
     build_sec_stock_provider_response,
     evaluate_sec_stock_live_acquisition_readiness,
+    execute_sec_stock_handoff_gated_official_source_acquisition,
     sec_stock_fixture_for_ticker,
 )
 from backend.providers import (
@@ -226,6 +241,74 @@ def test_sec_stock_acquisition_boundary_exposes_readiness_checksums_and_gap_stat
     assert acquisition.diagnostics[0].stores_raw_provider_payload is False
     assert acquisition.diagnostics[0].stores_secret is False
     _assert_no_generated_outputs(acquisition.provider_response)
+
+
+def test_sec_stock_handoff_gated_execution_runs_mocked_fetch_parser_and_handoff():
+    adapter = mock_sec_stock_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.sec, "AAPL").licensing
+
+    acquisition = execute_sec_stock_handoff_gated_official_source_acquisition(
+        adapter,
+        adapter.request("AAPL"),
+        licensing,
+    )
+
+    assert acquisition.boundary == SEC_STOCK_HANDOFF_GATED_EXECUTION_BOUNDARY
+    assert acquisition.mocked_fetch_boundary == SEC_STOCK_MOCK_HTTP_FETCH_BOUNDARY
+    assert acquisition.parser_adapter_boundary == SEC_STOCK_PARSER_ADAPTER_BOUNDARY
+    assert acquisition.response_state is ProviderResponseState.supported
+    assert acquisition.provider_response is not None
+    assert acquisition.fetched_source_count == 3
+    assert acquisition.parser_diagnostic_count >= 3
+    assert acquisition.handoff_approved_source_count == 3
+    assert acquisition.handoff_blocked_source_count == 0
+    assert all(source.parser_status is SourceParserStatus.parsed for source in acquisition.provider_response.source_attributions)
+    assert all(source.source_identity for source in acquisition.provider_response.source_attributions)
+    assert any(diagnostic.code == "sec_parser_parsed" for diagnostic in acquisition.diagnostics)
+    assert all(diagnostic.stores_raw_source_text is False for diagnostic in acquisition.diagnostics)
+    assert all(diagnostic.stores_raw_provider_payload is False for diagnostic in acquisition.diagnostics)
+
+
+class FailingSecParser(SecStockParserAdapter):
+    def parse(self, response, source):
+        return SecStockParserDiagnostic(
+            boundary=SEC_STOCK_PARSER_ADAPTER_BOUNDARY,
+            source_document_id=source.source_document_id,
+            parser_status=SourceParserStatus.failed,
+            evidence_state=EvidenceState.unavailable,
+            freshness_state=FreshnessState.unavailable,
+            code="sec_parser_forced_failure",
+            message="Mocked SEC parser failed closed before evidence use.",
+            parser_failure_diagnostics="forced_failure",
+        )
+
+
+def test_sec_stock_handoff_gated_execution_blocks_parser_failed_sources_before_persistence():
+    adapter = mock_sec_stock_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.sec, "AAPL").licensing
+
+    acquisition = execute_sec_stock_handoff_gated_official_source_acquisition(
+        adapter,
+        adapter.request("AAPL"),
+        licensing,
+        parser=FailingSecParser(),
+    )
+
+    assert acquisition.boundary == SEC_STOCK_HANDOFF_GATED_EXECUTION_BOUNDARY
+    assert acquisition.response_state is ProviderResponseState.permission_limited
+    assert acquisition.provider_response is None
+    assert acquisition.source_records == ()
+    assert acquisition.checksum is None
+    assert acquisition.handoff_blocked_source_count == 1
+    assert acquisition.handoff_approved_source_count == 0
+    assert {diagnostic.code for diagnostic in acquisition.diagnostics} >= {
+        "sec_parser_forced_failure",
+        "sec_source_handoff_failed",
+    }
+    assert acquisition.created_generated_asset_page is False
+    assert acquisition.wrote_source_snapshot is False
+    assert acquisition.wrote_knowledge_pack is False
+    assert acquisition.wrote_generated_output_cache is False
 
 
 def test_sec_stock_fixture_contract_rejects_wrong_ticker_and_policy_blocked_sources(monkeypatch):
@@ -533,6 +616,72 @@ def test_etf_issuer_acquisition_boundary_exposes_readiness_checksums_and_gap_sta
         assert acquisition.diagnostics[0].stores_raw_provider_payload is False
         assert acquisition.diagnostics[0].stores_secret is False
         _assert_no_generated_outputs(acquisition.provider_response)
+
+
+def test_etf_issuer_handoff_gated_execution_runs_mocked_fetch_parser_and_handoff():
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.etf_issuer, "VOO").licensing
+
+    acquisition = execute_etf_issuer_handoff_gated_official_source_acquisition(
+        adapter,
+        adapter.request("VOO"),
+        licensing,
+    )
+
+    assert acquisition.boundary == ETF_ISSUER_HANDOFF_GATED_EXECUTION_BOUNDARY
+    assert acquisition.mocked_fetch_boundary == ETF_ISSUER_MOCK_HTTP_FETCH_BOUNDARY
+    assert acquisition.parser_adapter_boundary == ETF_ISSUER_PARSER_ADAPTER_BOUNDARY
+    assert acquisition.response_state is ProviderResponseState.supported
+    assert acquisition.provider_response is not None
+    assert acquisition.fetched_source_count == 4
+    assert acquisition.parser_diagnostic_count >= 4
+    assert acquisition.handoff_approved_source_count == 4
+    assert acquisition.handoff_blocked_source_count == 0
+    assert all(source.parser_status is SourceParserStatus.parsed for source in acquisition.provider_response.source_attributions)
+    assert all(source.source_identity for source in acquisition.provider_response.source_attributions)
+    assert any(diagnostic.code == "etf_issuer_parser_parsed" for diagnostic in acquisition.diagnostics)
+
+
+class FailingEtfIssuerParser(EtfIssuerParserAdapter):
+    def parse(self, response, source):
+        return EtfIssuerParserDiagnostic(
+            boundary=ETF_ISSUER_PARSER_ADAPTER_BOUNDARY,
+            source_document_id=source.source_document_id,
+            parser_status=SourceParserStatus.failed,
+            evidence_state=EvidenceState.unavailable,
+            freshness_state=FreshnessState.unavailable,
+            code="etf_issuer_parser_forced_failure",
+            message="Mocked ETF issuer parser failed closed before evidence use.",
+            parser_failure_diagnostics="forced_failure",
+        )
+
+
+def test_etf_issuer_handoff_gated_execution_blocks_parser_failed_sources_before_persistence():
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.etf_issuer, "VOO").licensing
+
+    acquisition = execute_etf_issuer_handoff_gated_official_source_acquisition(
+        adapter,
+        adapter.request("VOO"),
+        licensing,
+        parser=FailingEtfIssuerParser(),
+    )
+
+    assert acquisition.boundary == ETF_ISSUER_HANDOFF_GATED_EXECUTION_BOUNDARY
+    assert acquisition.response_state is ProviderResponseState.permission_limited
+    assert acquisition.provider_response is None
+    assert acquisition.source_records == ()
+    assert acquisition.checksum is None
+    assert acquisition.handoff_blocked_source_count == 1
+    assert acquisition.handoff_approved_source_count == 0
+    assert {diagnostic.code for diagnostic in acquisition.diagnostics} >= {
+        "etf_issuer_parser_forced_failure",
+        "etf_issuer_source_handoff_failed",
+    }
+    assert acquisition.created_generated_asset_page is False
+    assert acquisition.wrote_source_snapshot is False
+    assert acquisition.wrote_knowledge_pack is False
+    assert acquisition.wrote_generated_output_cache is False
 
 
 def test_etf_issuer_fixture_contract_rejects_wrong_ticker_issuer_blocked_classes_and_policy(monkeypatch):

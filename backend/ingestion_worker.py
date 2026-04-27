@@ -93,6 +93,10 @@ class IngestionWorkerFixtureOutcome(BaseModel):
     live_acquisition_attempted: bool = False
     live_acquisition_readiness_passed: bool = False
     live_repository_writers_required: bool = False
+    official_source_handoff_passed: bool | None = None
+    retrieval_outcome: str | None = None
+    parser_outcome: str | None = None
+    source_handoff_outcome: str | None = None
 
     @field_validator("terminal_state")
     @classmethod
@@ -334,6 +338,14 @@ def _apply_terminal_outcome(
         metadata["live_acquisition_attempted"] = True
         metadata["live_acquisition_readiness_passed"] = outcome.live_acquisition_readiness_passed
         metadata["live_repository_writers_required"] = outcome.live_repository_writers_required
+    if outcome.official_source_handoff_passed is not None:
+        metadata["official_source_handoff_passed"] = outcome.official_source_handoff_passed
+    if outcome.retrieval_outcome:
+        metadata["retrieval_outcome"] = outcome.retrieval_outcome
+    if outcome.parser_outcome:
+        metadata["parser_outcome"] = outcome.parser_outcome
+    if outcome.source_handoff_outcome:
+        metadata["source_handoff_outcome"] = outcome.source_handoff_outcome
 
     ledger = records.ledger.model_copy(
         update={
@@ -466,6 +478,17 @@ def _should_fail_closed_live_acquisition(
     if outcome is None or not outcome.live_acquisition_attempted:
         return False
     if not outcome.live_acquisition_readiness_passed:
+        return True
+    has_evidence_records = any(
+        record is not None
+        for record in (
+            outcome.source_snapshot_records,
+            outcome.knowledge_pack_records,
+            outcome.weekly_news_records,
+            outcome.generated_output_cache_records,
+        )
+    )
+    if has_evidence_records and outcome.official_source_handoff_passed is not True:
         return True
     if not outcome.live_repository_writers_required:
         return False

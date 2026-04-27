@@ -26,8 +26,14 @@ from backend.models import (
     WeeklyNewsEventType,
 )
 from backend.overview import generate_asset_overview
-from backend.provider_adapters.etf_issuer import build_etf_issuer_acquisition_result
-from backend.provider_adapters.sec_stock import build_sec_stock_acquisition_result
+from backend.provider_adapters.etf_issuer import (
+    build_etf_issuer_acquisition_result,
+    execute_etf_issuer_handoff_gated_official_source_acquisition,
+)
+from backend.provider_adapters.sec_stock import (
+    build_sec_stock_acquisition_result,
+    execute_sec_stock_handoff_gated_official_source_acquisition,
+)
 from backend.providers import fetch_mock_provider_response, mock_etf_issuer_adapter, mock_sec_stock_adapter
 from backend.knowledge_pack_repository import (
     InMemoryAssetKnowledgePackRepository,
@@ -46,6 +52,7 @@ from backend.weekly_news_repository import (
     WeeklyNewsEventEvidenceContractError,
     WeeklyNewsSourceRankTier,
     acquire_weekly_news_event_evidence_from_fixtures,
+    acquire_weekly_news_event_evidence_from_official_sources,
 )
 
 
@@ -420,6 +427,7 @@ def test_worker_routes_ready_live_acquisition_records_through_existing_mocked_wr
                 live_acquisition_attempted=True,
                 live_acquisition_readiness_passed=True,
                 live_repository_writers_required=True,
+                official_source_handoff_passed=True,
             )
         },
     )
@@ -435,6 +443,122 @@ def test_worker_routes_ready_live_acquisition_records_through_existing_mocked_wr
     assert result.records.ledger.compact_metadata["live_acquisition_readiness_passed"] is True
     assert result.records.ledger.compact_metadata["source_snapshot_persistence_configured"] is True
     assert result.records.ledger.compact_metadata["knowledge_pack_persistence_configured"] is True
+
+
+def test_worker_requires_handoff_gated_official_source_execution_before_live_writes():
+    adapter = mock_sec_stock_adapter()
+    licensing = fetch_mock_provider_response(adapter.provider_kind, "AAPL").licensing
+    acquisition = execute_sec_stock_handoff_gated_official_source_acquisition(
+        adapter,
+        adapter.request("AAPL"),
+        licensing,
+    )
+    snapshot_records = source_snapshot_records_from_acquisition_result(
+        acquisition,
+        ingestion_job_id="pre-cache-launch-aapl",
+    )
+    knowledge_pack_records = knowledge_pack_records_from_acquisition_result(acquisition, snapshot_records)
+    response = get_pre_cache_job_status("pre-cache-launch-aapl").model_copy(
+        update={
+            "job_state": IngestionLedgerJobState.pending,
+            "worker_status": None,
+            "generated_route": None,
+            "generated_output_available": False,
+            "capabilities": IngestionCapabilities(),
+            "citation_ids": [],
+            "source_document_ids": [],
+        }
+    )
+    records = serialize_ingestion_job_response(response)
+    worker = DeterministicIngestionWorker(
+        ledger_boundary=InMemoryIngestionWorkerLedger.from_records([records]),
+        source_snapshot_repository=InMemorySourceSnapshotArtifactRepository(),
+        knowledge_pack_repository=InMemoryAssetKnowledgePackRepository(),
+        fixture_outcomes={
+            "pre-cache-launch-aapl": IngestionWorkerFixtureOutcome(
+                terminal_state=IngestionLedgerJobState.succeeded,
+                source_policy_ref=acquisition.source_policy_ref,
+                checksum=acquisition.checksum,
+                source_snapshot_records=snapshot_records,
+                knowledge_pack_records=knowledge_pack_records,
+                live_acquisition_attempted=True,
+                live_acquisition_readiness_passed=True,
+                live_repository_writers_required=True,
+                retrieval_outcome="mocked_fetch_completed",
+                parser_outcome="parsed",
+                source_handoff_outcome="approved",
+            )
+        },
+    )
+
+    result = worker.execute("pre-cache-launch-aapl")
+
+    assert result.summary.terminal_state == "failed"
+    assert result.records.diagnostics[0].error_code == "live_acquisition_readiness_failed"
+    assert result.records.ledger.generated_output_available is False
+    assert result.records.ledger.raw_provider_payload_stored is False
+    assert result.records.ledger.unrestricted_source_text_stored is False
+
+
+def test_worker_persists_handoff_gated_sec_stock_records_with_retrieval_parser_metadata():
+    adapter = mock_sec_stock_adapter()
+    licensing = fetch_mock_provider_response(adapter.provider_kind, "AAPL").licensing
+    acquisition = execute_sec_stock_handoff_gated_official_source_acquisition(
+        adapter,
+        adapter.request("AAPL"),
+        licensing,
+    )
+    snapshot_records = source_snapshot_records_from_acquisition_result(
+        acquisition,
+        ingestion_job_id="pre-cache-launch-aapl",
+    )
+    knowledge_pack_records = knowledge_pack_records_from_acquisition_result(acquisition, snapshot_records)
+    response = get_pre_cache_job_status("pre-cache-launch-aapl").model_copy(
+        update={
+            "job_state": IngestionLedgerJobState.pending,
+            "worker_status": None,
+            "generated_route": None,
+            "generated_output_available": False,
+            "capabilities": IngestionCapabilities(),
+            "citation_ids": [],
+            "source_document_ids": [],
+        }
+    )
+    records = serialize_ingestion_job_response(response)
+    snapshot_repository = InMemorySourceSnapshotArtifactRepository()
+    knowledge_pack_repository = InMemoryAssetKnowledgePackRepository()
+    worker = DeterministicIngestionWorker(
+        ledger_boundary=InMemoryIngestionWorkerLedger.from_records([records]),
+        source_snapshot_repository=snapshot_repository,
+        knowledge_pack_repository=knowledge_pack_repository,
+        fixture_outcomes={
+            "pre-cache-launch-aapl": IngestionWorkerFixtureOutcome(
+                terminal_state=IngestionLedgerJobState.succeeded,
+                source_policy_ref=acquisition.source_policy_ref,
+                checksum=acquisition.checksum,
+                source_snapshot_records=snapshot_records,
+                knowledge_pack_records=knowledge_pack_records,
+                live_acquisition_attempted=True,
+                live_acquisition_readiness_passed=True,
+                live_repository_writers_required=True,
+                official_source_handoff_passed=True,
+                retrieval_outcome="mocked_fetch_completed",
+                parser_outcome="parsed",
+                source_handoff_outcome="approved",
+            )
+        },
+    )
+
+    result = worker.execute("pre-cache-launch-aapl")
+
+    assert result.summary.terminal_state == "succeeded"
+    assert snapshot_repository.records().artifacts
+    assert knowledge_pack_repository.read_knowledge_pack_records("AAPL") is not None
+    metadata = result.records.ledger.compact_metadata
+    assert metadata["official_source_handoff_passed"] is True
+    assert metadata["retrieval_outcome"] == "mocked_fetch_completed"
+    assert metadata["parser_outcome"] == "parsed"
+    assert metadata["source_handoff_outcome"] == "approved"
 
 
 def test_worker_persists_golden_knowledge_pack_through_injected_mocked_writer_only():
@@ -575,6 +699,7 @@ def test_worker_blocks_ready_live_weekly_news_acquisition_without_weekly_writer(
                 live_acquisition_attempted=True,
                 live_acquisition_readiness_passed=True,
                 live_repository_writers_required=True,
+                official_source_handoff_passed=True,
             )
         },
     )
@@ -623,6 +748,7 @@ def test_worker_routes_ready_live_weekly_news_acquisition_through_mocked_writer(
                 live_acquisition_attempted=True,
                 live_acquisition_readiness_passed=True,
                 live_repository_writers_required=True,
+                official_source_handoff_passed=True,
             )
         },
     )

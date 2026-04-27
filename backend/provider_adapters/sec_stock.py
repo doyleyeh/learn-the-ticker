@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Protocol
 
 from backend.data import (
@@ -28,15 +28,22 @@ from backend.models import (
     ProviderSourceAttribution,
     ProviderSourceUsage,
     SourceAllowlistStatus,
+    SourceParserStatus,
     SourceQuality,
+    SourceReviewStatus,
+    SourceStorageRights,
+    SourceExportRights,
     SourceUsePolicy,
 )
-from backend.source_policy import resolve_source_policy, source_can_support_generated_output
+from backend.source_policy import SourcePolicyAction, resolve_source_policy, source_can_support_generated_output, validate_source_handoff
 
 
 SEC_STOCK_FIXTURE_CONTRACT_VERSION = "sec-stock-fixture-adapter-v1"
 SEC_STOCK_ACQUISITION_BOUNDARY = "sec-stock-acquisition-boundary-v1"
 SEC_STOCK_LIVE_ACQUISITION_READINESS_BOUNDARY = "sec-stock-live-acquisition-readiness-boundary-v1"
+SEC_STOCK_MOCK_HTTP_FETCH_BOUNDARY = "sec-stock-mocked-http-fetch-boundary-v1"
+SEC_STOCK_PARSER_ADAPTER_BOUNDARY = "sec-stock-parser-adapter-boundary-v1"
+SEC_STOCK_HANDOFF_GATED_EXECUTION_BOUNDARY = "sec-stock-handoff-gated-execution-boundary-v1"
 SEC_STOCK_SOURCE_POLICY_REF = "source-use-policy-v1"
 
 
@@ -48,6 +55,108 @@ class SecProviderAdapterLike(Protocol):
     provider_name: str
     provider_kind: ProviderKind
     capability: ProviderCapability
+
+
+class SecStockOfficialSourceFetcherLike(Protocol):
+    def fetch(self, request: "SecStockMockFetchRequest") -> "SecStockMockFetchResponse":
+        ...
+
+
+class SecStockParserAdapterLike(Protocol):
+    def parse(
+        self,
+        response: "SecStockMockFetchResponse",
+        source: "SecStockSourceFixture",
+    ) -> "SecStockParserDiagnostic":
+        ...
+
+
+@dataclass(frozen=True)
+class SecStockMockFetchRequest:
+    boundary: str
+    ticker: str
+    source_document_id: str
+    source_type: str
+    url: str
+    expected_checksum: str
+    no_live_external_calls: bool = True
+
+
+@dataclass(frozen=True)
+class SecStockMockFetchResponse:
+    boundary: str
+    ticker: str
+    source_document_id: str
+    source_type: str
+    status: str
+    checksum: str
+    retrieved_at: str
+    content_kind: str
+    content_length: int = 0
+    no_live_external_calls: bool = True
+    stores_raw_source_text: bool = False
+    stores_raw_provider_payload: bool = False
+    stores_secret: bool = False
+
+
+@dataclass(frozen=True)
+class SecStockParserDiagnostic:
+    boundary: str
+    source_document_id: str
+    parser_status: SourceParserStatus
+    evidence_state: EvidenceState
+    freshness_state: FreshnessState
+    code: str
+    message: str
+    parser_failure_diagnostics: str | None = None
+    no_live_external_calls: bool = True
+    stores_raw_source_text: bool = False
+    stores_raw_provider_payload: bool = False
+    stores_secret: bool = False
+
+
+@dataclass(frozen=True)
+class MockSecStockOfficialSourceFetcher:
+    def fetch(self, request: SecStockMockFetchRequest) -> SecStockMockFetchResponse:
+        return SecStockMockFetchResponse(
+            boundary=SEC_STOCK_MOCK_HTTP_FETCH_BOUNDARY,
+            ticker=request.ticker,
+            source_document_id=request.source_document_id,
+            source_type=request.source_type,
+            status="fetched",
+            checksum=request.expected_checksum,
+            retrieved_at=STUB_TIMESTAMP,
+            content_kind=_content_kind_for_source_type(request.source_type),
+        )
+
+
+@dataclass(frozen=True)
+class SecStockParserAdapter:
+    def parse(
+        self,
+        response: SecStockMockFetchResponse,
+        source: "SecStockSourceFixture",
+    ) -> SecStockParserDiagnostic:
+        if response.checksum != source.checksum:
+            return SecStockParserDiagnostic(
+                boundary=SEC_STOCK_PARSER_ADAPTER_BOUNDARY,
+                source_document_id=source.source_document_id,
+                parser_status=SourceParserStatus.failed,
+                evidence_state=EvidenceState.unavailable,
+                freshness_state=FreshnessState.unavailable,
+                code="sec_parser_checksum_mismatch",
+                message="Mocked SEC parser rejected source metadata before evidence use.",
+                parser_failure_diagnostics="checksum_mismatch",
+            )
+        return SecStockParserDiagnostic(
+            boundary=SEC_STOCK_PARSER_ADAPTER_BOUNDARY,
+            source_document_id=source.source_document_id,
+            parser_status=SourceParserStatus.parsed,
+            evidence_state=EvidenceState.supported,
+            freshness_state=source.freshness_state,
+            code="sec_parser_parsed",
+            message="Mocked SEC parser produced source metadata for handoff validation.",
+        )
 
 
 @dataclass(frozen=True)
@@ -169,6 +278,12 @@ class SecStockAcquisitionResult:
     evidence_gap_states: dict[str, str]
     checksum: str | None
     source_policy_ref: str = SEC_STOCK_SOURCE_POLICY_REF
+    mocked_fetch_boundary: str | None = None
+    parser_adapter_boundary: str | None = None
+    fetched_source_count: int = 0
+    parser_diagnostic_count: int = 0
+    handoff_approved_source_count: int = 0
+    handoff_blocked_source_count: int = 0
     no_live_external_calls: bool = True
     opened_database_connection: bool = False
     wrote_source_snapshot: bool = False
@@ -337,6 +452,118 @@ def build_sec_stock_acquisition_result(
         diagnostics=diagnostics,
         evidence_gap_states=evidence_gap_states,
         checksum=_combined_checksum(source_records),
+    )
+
+
+def execute_sec_stock_handoff_gated_official_source_acquisition(
+    adapter: SecProviderAdapterLike,
+    request: ProviderRequestMetadata,
+    licensing: ProviderLicensing,
+    *,
+    fetcher: SecStockOfficialSourceFetcherLike | None = None,
+    parser: SecStockParserAdapterLike | None = None,
+) -> SecStockAcquisitionResult:
+    """Run mocked SEC retrieval, parser diagnostics, and handoff before evidence use."""
+
+    acquisition = build_sec_stock_acquisition_result(adapter, request, licensing)
+    if acquisition.provider_response is None or acquisition.response_state is not ProviderResponseState.supported:
+        return acquisition
+
+    ticker = acquisition.ticker
+    fixture = sec_stock_fixture_for_ticker(ticker)
+    if fixture is None:
+        return _contract_error_acquisition_result(ticker, "missing SEC fixture for handoff execution")
+
+    source_by_id = {source.source_document_id: source for source in fixture.sources}
+    fetch_boundary = fetcher or MockSecStockOfficialSourceFetcher()
+    parser_boundary = parser or SecStockParserAdapter()
+    parser_diagnostics: list[SecStockAcquisitionDiagnostic] = []
+    approved_sources: list[ProviderSourceAttribution] = []
+    blocked_count = 0
+
+    for source in acquisition.provider_response.source_attributions:
+        fixture_source = source_by_id.get(source.source_document_id)
+        if fixture_source is None:
+            return _contract_error_acquisition_result(ticker, "missing SEC source fixture binding")
+        fetched = fetch_boundary.fetch(
+            SecStockMockFetchRequest(
+                boundary=SEC_STOCK_MOCK_HTTP_FETCH_BOUNDARY,
+                ticker=ticker,
+                source_document_id=fixture_source.source_document_id,
+                source_type=fixture_source.source_type,
+                url=fixture_source.url,
+                expected_checksum=fixture_source.checksum,
+            )
+        )
+        parsed = parser_boundary.parse(fetched, fixture_source)
+        parser_diagnostics.append(
+            SecStockAcquisitionDiagnostic(
+                code=parsed.code,
+                message=parsed.message,
+                evidence_state=parsed.evidence_state,
+                freshness_state=parsed.freshness_state,
+                retryable=parsed.parser_status in {SourceParserStatus.failed, SourceParserStatus.pending_review},
+                stores_raw_source_text=parsed.stores_raw_source_text,
+                stores_raw_provider_payload=parsed.stores_raw_provider_payload,
+                stores_secret=parsed.stores_secret,
+            )
+        )
+        approved_source = source.model_copy(
+            update={
+                "source_identity": source.url or source.source_document_id,
+                "storage_rights": _storage_rights_for_policy(source.source_use_policy),
+                "export_rights": _export_rights_for_policy(source.source_use_policy),
+                "review_status": SourceReviewStatus.approved,
+                "approval_rationale": "Mocked SEC official-source retrieval and parser metadata passed handoff review.",
+                "parser_status": parsed.parser_status,
+                "parser_failure_diagnostics": parsed.parser_failure_diagnostics,
+            },
+            deep=True,
+        )
+        handoff = validate_source_handoff(approved_source, action=SourcePolicyAction.generated_claim_support)
+        if not handoff.allowed:
+            blocked_count += 1
+            return replace(
+                acquisition,
+                boundary=SEC_STOCK_HANDOFF_GATED_EXECUTION_BOUNDARY,
+                response_state=ProviderResponseState.permission_limited,
+                provider_response=None,
+                source_records=(),
+                diagnostics=(
+                    *acquisition.diagnostics,
+                    *parser_diagnostics,
+                    SecStockAcquisitionDiagnostic(
+                        code="sec_source_handoff_failed",
+                        message="Mocked SEC source failed Golden Asset Source Handoff before persistence.",
+                        evidence_state=EvidenceState.unavailable,
+                        freshness_state=FreshnessState.unavailable,
+                    ),
+                ),
+                checksum=None,
+                mocked_fetch_boundary=SEC_STOCK_MOCK_HTTP_FETCH_BOUNDARY,
+                parser_adapter_boundary=SEC_STOCK_PARSER_ADAPTER_BOUNDARY,
+                fetched_source_count=len(parser_diagnostics),
+                parser_diagnostic_count=len(parser_diagnostics),
+                handoff_approved_source_count=len(approved_sources),
+                handoff_blocked_source_count=blocked_count,
+            )
+        approved_sources.append(approved_source)
+
+    response = acquisition.provider_response.model_copy(update={"source_attributions": approved_sources}, deep=True)
+    source_records = tuple(_acquisition_source_record(source) for source in response.source_attributions)
+    return replace(
+        acquisition,
+        boundary=SEC_STOCK_HANDOFF_GATED_EXECUTION_BOUNDARY,
+        provider_response=response,
+        source_records=source_records,
+        diagnostics=(*acquisition.diagnostics, *parser_diagnostics),
+        checksum=_combined_checksum(source_records),
+        mocked_fetch_boundary=SEC_STOCK_MOCK_HTTP_FETCH_BOUNDARY,
+        parser_adapter_boundary=SEC_STOCK_PARSER_ADAPTER_BOUNDARY,
+        fetched_source_count=len(source_records),
+        parser_diagnostic_count=len(parser_diagnostics),
+        handoff_approved_source_count=len(source_records),
+        handoff_blocked_source_count=0,
     )
 
 
@@ -678,6 +905,36 @@ def _combined_checksum(source_records: tuple[SecStockAcquisitionSourceRecord, ..
     return f"sha256:sec-acquisition:{checksums}"
 
 
+def _content_kind_for_source_type(source_type: str) -> str:
+    if source_type == "sec_filing":
+        return "html"
+    if source_type == "sec_xbrl_company_facts":
+        return "json"
+    return "metadata_json"
+
+
+def _storage_rights_for_policy(policy: SourceUsePolicy) -> SourceStorageRights:
+    if policy is SourceUsePolicy.full_text_allowed:
+        return SourceStorageRights.raw_snapshot_allowed
+    if policy is SourceUsePolicy.summary_allowed:
+        return SourceStorageRights.summary_allowed
+    if policy is SourceUsePolicy.metadata_only:
+        return SourceStorageRights.metadata_only
+    if policy is SourceUsePolicy.link_only:
+        return SourceStorageRights.link_only
+    return SourceStorageRights.rejected
+
+
+def _export_rights_for_policy(policy: SourceUsePolicy) -> SourceExportRights:
+    if policy in {SourceUsePolicy.full_text_allowed, SourceUsePolicy.summary_allowed}:
+        return SourceExportRights.excerpts_allowed
+    if policy is SourceUsePolicy.metadata_only:
+        return SourceExportRights.metadata_only
+    if policy is SourceUsePolicy.link_only:
+        return SourceExportRights.link_only
+    return SourceExportRights.rejected
+
+
 def _source_attribution(
     adapter: SecProviderAdapterLike,
     data_category: ProviderDataCategory,
@@ -721,6 +978,12 @@ def _source_attribution(
         allowlist_status=decision.allowlist_status,
         source_use_policy=decision.source_use_policy,
         permitted_operations=decision.permitted_operations,
+        source_identity=source.url,
+        storage_rights=_storage_rights_for_policy(decision.source_use_policy),
+        export_rights=_export_rights_for_policy(decision.source_use_policy),
+        review_status=SourceReviewStatus.approved,
+        approval_rationale="Deterministic SEC fixture source passed local source-use policy review.",
+        parser_status=SourceParserStatus.parsed,
     )
 
 
