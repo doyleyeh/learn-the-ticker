@@ -420,6 +420,26 @@ includes("lib/assetOverview.ts", "sections: BackendOverviewSection\\[\\]");
 includes("lib/assetOverview.ts", "toOverviewSection");
 includes("lib/assetOverview.ts", "stockSections: backendSections");
 includes("lib/assetOverview.ts", "etfSections: backendSections");
+includesAll("app/assets/[ticker]/page.tsx", [
+  "data-asset-overview-rendering={overviewRendering}",
+  "data-asset-details-rendering={detailsRendering}",
+  "data-asset-weekly-news-rendering={weeklyNewsRendering}",
+  "data-asset-source-drawer-rendering={sourceDrawerRendering}",
+  "data-asset-glossary-rendering={glossaryRendering}",
+  "backend_contract",
+  "local_fixture"
+], "T-118 frontend API-backed rendering markers with deterministic fallback");
+includesAll("lib/assetOverview.ts", [
+  "isSupportedAssetOverviewResponse",
+  "mergeAssetFixtureWithOverview",
+  "Asset overview response did not match the expected backend response contract."
+], "T-118 overview API contract validation");
+includesAll("lib/sourceDrawer.ts", [
+  "isAssetSourceDrawerResponse",
+  "toSourceDrawerContractData",
+  "allowedExcerptNote",
+  "Source drawer response did not match the expected backend response contract."
+], "T-118 source drawer API contract validation");
 includes("lib/assetDetails.ts", "/api/assets/");
 includes("lib/assetDetails.ts", "/details");
 includes("lib/assetDetails.ts", "No API base URL is configured for supported asset detail fetches.");

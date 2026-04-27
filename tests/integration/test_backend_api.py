@@ -6,15 +6,23 @@ from backend.main import app
 from backend.chat import generate_asset_chat
 from backend.comparison import generate_comparison
 from backend.generated_output_cache_repository import InMemoryGeneratedOutputCacheRepository
-from backend.ingestion import execute_ingestion_job_through_ledger
-from backend.ingestion_worker import InMemoryIngestionWorkerLedger
-from backend.knowledge_pack_repository import AssetKnowledgePackRepository, InMemoryAssetKnowledgePackRepository
+from backend.ingestion import execute_ingestion_job_through_ledger, get_pre_cache_job_status
+from backend.ingestion_worker import DeterministicIngestionWorker, InMemoryIngestionWorkerLedger, IngestionWorkerFixtureOutcome
+from backend.knowledge_pack_repository import (
+    AssetKnowledgePackRepository,
+    InMemoryAssetKnowledgePackRepository,
+    knowledge_pack_records_from_acquisition_result,
+)
 from backend.models import FreshnessState, SourceAllowlistStatus, SourceQuality, SourceUsePolicy, WeeklyNewsEventType
 from backend.overview import generate_asset_overview
 from backend.persistence import BackendReadDependencies, configure_backend_read_dependencies
+from backend.provider_adapters.etf_issuer import execute_etf_issuer_handoff_gated_official_source_acquisition
+from backend.providers import fetch_mock_provider_response, mock_etf_issuer_adapter
 from backend.retrieval import build_asset_knowledge_pack, build_asset_knowledge_pack_result
 from backend.safety import find_forbidden_output_phrases
+from backend.source_snapshot_repository import InMemorySourceSnapshotArtifactRepository, source_snapshot_records_from_acquisition_result
 from backend.testing import TestClient
+from backend.repositories.ingestion_jobs import IngestionLedgerJobState, serialize_ingestion_job_response
 from backend.weekly_news_repository import (
     InMemoryWeeklyNewsEventEvidenceRepository,
     WeeklyNewsEventCandidateRow,
@@ -111,13 +119,15 @@ def _without_session(payload: dict) -> dict:
     return stripped
 
 
-def _persist_fixture_knowledge_pack(repository: InMemoryAssetKnowledgePackRepository, ticker: str) -> None:
-    repository.persist(
-        AssetKnowledgePackRepository().serialize(
-            build_asset_knowledge_pack_result(ticker),
-            retrieval_pack=build_asset_knowledge_pack(ticker),
-        )
+def _fixture_knowledge_pack_records(ticker: str):
+    return AssetKnowledgePackRepository().serialize(
+        build_asset_knowledge_pack_result(ticker),
+        retrieval_pack=build_asset_knowledge_pack(ticker),
     )
+
+
+def _persist_fixture_knowledge_pack(repository: InMemoryAssetKnowledgePackRepository, ticker: str) -> None:
+    repository.persist(_fixture_knowledge_pack_records(ticker))
 
 
 def _weekly_candidate(ticker: str, event_id: str) -> WeeklyNewsEventCandidateRow:
@@ -372,6 +382,177 @@ def test_configured_ingestion_ledger_is_route_wired_with_fixture_fallback():
     assert completed["capabilities"]["can_open_generated_page"] is False
     assert pre_cache["job_id"] == "pre-cache-launch-spy"
     assert pre_cache_status["job_id"] == "pre-cache-launch-spy"
+
+
+def test_t118_local_fresh_data_ingest_to_render_smoke_path_is_deterministic():
+    ledger = InMemoryIngestionWorkerLedger()
+    source_snapshot_repo = InMemorySourceSnapshotArtifactRepository()
+    knowledge_repo = RecordingKnowledgePackRepository()
+    generated_repo = RecordingGeneratedOutputRepository()
+    weekly_repo = RecordingWeeklyNewsRepository()
+
+    configure_backend_read_dependencies(
+        app,
+        BackendReadDependencies(
+            persisted_reads_enabled=True,
+            ingestion_job_ledger=ledger,
+            source_snapshot_repository=source_snapshot_repo,
+        ),
+    )
+    try:
+        requested = client.post("/api/admin/pre-cache/VOO").json()
+    finally:
+        configure_backend_read_dependencies(app, None)
+
+    pending_records = serialize_ingestion_job_response(get_pre_cache_job_status("pre-cache-launch-voo"))
+    pending_records = pending_records.model_copy(
+        update={
+            "ledger": pending_records.ledger.model_copy(
+                update={
+                    "job_state": IngestionLedgerJobState.pending.value,
+                    "worker_status": None,
+                    "started_at": None,
+                    "finished_at": None,
+                }
+            )
+        }
+    )
+    ledger.save(pending_records)
+
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(adapter.provider_kind, "VOO").licensing
+    acquisition = execute_etf_issuer_handoff_gated_official_source_acquisition(
+        adapter,
+        adapter.request("VOO"),
+        licensing,
+    )
+    snapshot_records = source_snapshot_records_from_acquisition_result(
+        acquisition,
+        ingestion_job_id="pre-cache-launch-voo",
+    )
+    acquisition_pack_records = knowledge_pack_records_from_acquisition_result(acquisition, snapshot_records)
+    fixture_pack_records = _fixture_knowledge_pack_records("VOO")
+    weekly_records = acquire_weekly_news_event_evidence_from_fixtures(
+        asset_ticker="VOO",
+        as_of="2026-04-23",
+        created_at="2026-04-23T12:00:00Z",
+        candidates=[
+            _weekly_candidate("VOO", "issuer_announcement"),
+            _weekly_candidate("VOO", "fact_sheet_change"),
+        ],
+    )
+    generate_asset_overview("VOO", generated_output_cache_writer=generated_repo)
+    generated_overview_records = generated_repo.read_asset_overview_records("VOO")
+    assert generated_overview_records is not None
+    generate_asset_chat("VOO", "What does it hold?", generated_output_cache_writer=generated_repo)
+    _persist_fixture_knowledge_pack(knowledge_repo, "QQQ")
+    generate_comparison("VOO", "QQQ", generated_output_cache_writer=generated_repo)
+
+    worker = DeterministicIngestionWorker(
+        ledger_boundary=ledger,
+        source_snapshot_repository=source_snapshot_repo,
+        knowledge_pack_repository=knowledge_repo,
+        weekly_news_repository=weekly_repo,
+        generated_output_cache_repository=generated_repo,
+        fixture_outcomes={
+            "pre-cache-launch-voo": IngestionWorkerFixtureOutcome(
+                terminal_state=IngestionLedgerJobState.succeeded,
+                source_policy_ref=acquisition.source_policy_ref,
+                checksum=acquisition.checksum,
+                source_snapshot_records=snapshot_records,
+                knowledge_pack_records=fixture_pack_records,
+                weekly_news_records=weekly_records,
+                generated_output_cache_records=generated_overview_records,
+                live_acquisition_attempted=True,
+                live_acquisition_readiness_passed=True,
+                live_repository_writers_required=True,
+                official_source_handoff_passed=True,
+                retrieval_outcome="mocked_official_fetch_completed",
+                parser_outcome="parsed",
+                source_handoff_outcome="approved",
+            )
+        },
+    )
+
+    result = worker.execute("pre-cache-launch-voo")
+    assert requested["job_id"] == "pre-cache-launch-voo"
+    assert result.summary.transitions == ["pending", "running", "succeeded"]
+    assert result.summary.no_live_external_calls is True
+    assert result.summary.opened_database_connection is False
+    assert result.summary.called_live_provider is False
+    assert result.summary.generated_output_cacheable is True
+    metadata = result.records.ledger.compact_metadata
+    assert metadata["source_snapshot_persistence_configured"] is True
+    assert metadata["knowledge_pack_persistence_configured"] is True
+    assert metadata["weekly_news_persistence_configured"] is True
+    assert metadata["generated_output_cache_persistence_configured"] is True
+    assert metadata["official_source_handoff_passed"] is True
+    assert metadata["retrieval_outcome"] == "mocked_official_fetch_completed"
+    assert metadata["parser_outcome"] == "parsed"
+    assert metadata["source_handoff_outcome"] == "approved"
+
+    persisted_snapshots = source_snapshot_repo.records()
+    persisted_acquisition_pack = acquisition_pack_records
+    assert persisted_snapshots.artifacts
+    assert persisted_acquisition_pack.normalized_facts
+    assert persisted_acquisition_pack.envelope.generated_output_available is False
+    assert all(artifact.raw_provider_payload_stored is False for artifact in persisted_snapshots.artifacts)
+    assert all(artifact.secrets_stored is False for artifact in persisted_snapshots.artifacts)
+    assert knowledge_repo.read_knowledge_pack_records("VOO") is not None
+    assert weekly_repo.read_weekly_news_event_evidence_records("VOO") is not None
+    assert generated_repo.read_asset_overview_records("VOO") is not None
+
+    configure_backend_read_dependencies(
+        app,
+        BackendReadDependencies(
+            persisted_reads_enabled=True,
+            knowledge_pack_reader=knowledge_repo,
+            generated_output_cache_reader=generated_repo,
+            weekly_news_reader=weekly_repo,
+            ingestion_job_ledger=ledger,
+            source_snapshot_repository=source_snapshot_repo,
+        ),
+    )
+    try:
+        completed = client.get("/api/admin/pre-cache/jobs/pre-cache-launch-voo").json()
+        overview = client.get("/api/assets/VOO/overview").json()
+        weekly = client.get("/api/assets/VOO/weekly-news").json()
+        sources = client.get("/api/assets/VOO/sources").json()
+        knowledge_pack = client.get("/api/assets/VOO/knowledge-pack").json()
+        glossary = client.get("/api/assets/VOO/glossary", params={"term": "expense ratio"}).json()
+        chat = client.post("/api/assets/VOO/chat", json={"question": "What does it hold?"}).json()
+        comparison_export = client.get(
+            "/api/compare/export",
+            params={"left_ticker": "VOO", "right_ticker": "QQQ", "export_format": "json"},
+        ).json()
+        asset_export = client.get("/api/assets/VOO/export", params={"export_format": "json"}).json()
+    finally:
+        configure_backend_read_dependencies(app, None)
+
+    assert completed["job_state"] == "succeeded"
+    assert completed["generated_output_available"] is True
+    assert overview["asset"]["ticker"] == "VOO"
+    assert overview["weekly_news_focus"]["selected_item_count"] == 2
+    assert overview["weekly_news_focus"]["evidence_limited_state"] == "limited_verified_set"
+    assert overview["ai_comprehensive_analysis"]["analysis_available"] is True
+    assert weekly["weekly_news_focus"] == overview["weekly_news_focus"]
+    assert sources["drawer_state"] == "available"
+    assert all(group["allowlist_status"] == "allowed" for group in sources["source_groups"])
+    assert all(group["allowed_excerpts"] for group in sources["source_groups"])
+    assert knowledge_pack["ticker"] == "VOO"
+    assert knowledge_pack["build_state"] == "available"
+    assert glossary["glossary_state"] == "available"
+    assert chat["asset"]["ticker"] == "VOO"
+    assert chat["citations"]
+    assert asset_export["export_state"] == "available"
+    assert comparison_export["export_state"] == "available"
+    assert "raw_model_reasoning" not in str(asset_export).lower()
+    assert "openrouter" not in str(asset_export).lower()
+    assert {"VOO", "QQQ"} <= set(knowledge_repo.calls)
+    assert "VOO" in weekly_repo.calls
+    assert ("asset_overview", ("VOO",)) in generated_repo.calls
+    assert ("chat_answer", ("VOO",)) in generated_repo.calls
+    assert ("comparison", ("VOO", "QQQ")) in generated_repo.calls
 
 
 def test_health_endpoint_available():
