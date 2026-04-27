@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import pytest
 
 from backend.data import (
@@ -19,6 +22,7 @@ from backend.etf_universe import (
 )
 from backend.models import ETFUniverseSupportState
 from backend.models import SearchResponse
+from backend.models import Top500CandidateManifest
 from backend.search import search_assets
 
 
@@ -226,6 +230,25 @@ def test_top500_manifest_backs_cached_and_eligible_not_cached_stocks_only():
         response = search_assets(ticker)
         assert response.results[0].asset_type.value == "stock"
         assert response.results[0].support_classification.value in {"cached_supported", "eligible_not_cached"}
+
+
+def test_candidate_manifest_and_diff_do_not_change_runtime_stock_or_etf_classification():
+    with Path("data/universes/us_common_stocks_top500.candidate.2026-04.json").open("r", encoding="utf-8") as handle:
+        candidate = Top500CandidateManifest.model_validate(json.load(handle))
+
+    assert candidate.local_path == "data/universes/us_common_stocks_top500.candidate.2026-04.json"
+    assert candidate.approved_current_manifest_path == "data/universes/us_common_stocks_top500.current.json"
+    assert candidate.manual_approval_required is True
+
+    for ticker in ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "BRK.B", "JPM", "UNH"]:
+        assert search_assets(ticker).results[0].support_classification.value in {
+            "cached_supported",
+            "eligible_not_cached",
+        }
+    assert search_assets("GME").state.support_classification.value == "out_of_scope"
+    assert search_assets("VOO").state.support_classification.value == "cached_supported"
+    assert search_assets("SPY").state.support_classification.value == "eligible_not_cached"
+    assert search_assets("TQQQ").state.support_classification.value == "recognized_unsupported"
 
 
 def test_etf_universe_manifest_contract_distinguishes_cached_eligible_blocked_and_gap_states():

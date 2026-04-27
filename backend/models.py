@@ -432,6 +432,113 @@ class Top500StockUniverseManifest(BaseModel):
     entries: list[Top500StockUniverseEntry]
 
 
+class Top500CandidateRankBasis(str, Enum):
+    iwb_weight_proxy = "iwb_weight_proxy"
+    sp500_etf_weight_proxy_fallback = "sp500_etf_weight_proxy_fallback"
+
+
+class Top500CandidateSourceRole(str, Enum):
+    primary = "primary"
+    fallback = "fallback"
+
+
+class Top500CandidateValidationStatus(str, Enum):
+    validated = "validated"
+    warning = "warning"
+    rejected = "rejected"
+
+
+class Top500CandidateSourceInput(BaseModel):
+    source_id: str
+    ticker: str
+    source_role: Top500CandidateSourceRole
+    title: str
+    publisher: str
+    source_type: str
+    source_identity: str
+    source_snapshot_date: str
+    source_checksum: str
+    retrieved_at: str
+    freshness_state: FreshnessState
+    is_official: bool
+    parser_status: SourceParserStatus = SourceParserStatus.parsed
+    parser_failure_diagnostics: str | None = None
+
+
+class Top500CandidateHoldingInput(BaseModel):
+    source_id: str
+    ticker: str
+    name: str
+    weight: float
+    asset_type: str = "stock"
+    security_type: str = "common_stock"
+    exchange: str | None = None
+
+
+class Top500CandidateRow(BaseModel):
+    ticker: str
+    name: str
+    asset_type: Literal["stock"] = "stock"
+    security_type: Literal["us_listed_common_stock"] = "us_listed_common_stock"
+    cik: str | None = None
+    exchange: str
+    rank: int
+    rank_basis: Top500CandidateRankBasis
+    source_provenance: str
+    source_snapshot_date: str
+    source_checksum: str
+    validation_status: Top500CandidateValidationStatus
+    warnings: list[str] = Field(default_factory=list)
+    checksum_input: str
+    generated_checksum: str
+
+
+class Top500CandidateManifest(BaseModel):
+    schema_version: Literal["top500-us-common-stock-candidate-v1"]
+    manifest_id: str
+    universe_name: str
+    local_path: str
+    approved_current_manifest_path: str
+    candidate_month: str
+    generated_at: str
+    rank_limit: int
+    rank_basis: Top500CandidateRankBasis
+    source_used: list[str]
+    source_dates: dict[str, str]
+    source_checksums: dict[str, str]
+    fallback_used: bool
+    fallback_reason: str | None = None
+    validation_coverage: float
+    manual_approval_required: bool
+    manual_review_triggers: list[str]
+    diff_report_path: str
+    manifest_checksum_input: str
+    generated_checksum: str
+    entries: list[Top500CandidateRow]
+
+
+class Top500CandidateDiffReport(BaseModel):
+    schema_version: Literal["top500-candidate-diff-v1"]
+    candidate_manifest_path: str
+    approved_current_manifest_path: str
+    candidate_month: str
+    generated_at: str
+    source_used: list[str]
+    source_dates: dict[str, str]
+    source_checksums: dict[str, str]
+    fallback_used: bool
+    fallback_reason: str | None = None
+    added_tickers: list[str]
+    removed_tickers: list[str]
+    rank_changes: list[dict[str, int | str]]
+    missing_ciks: list[str]
+    nasdaq_validation_failures: list[dict[str, str]]
+    source_warnings: list[str]
+    manual_approval_required: bool
+    manual_review_triggers: list[str]
+    generated_checksum: str
+
+
 class ETFUniverseSupportState(str, Enum):
     cached_supported = "cached_supported"
     eligible_not_cached = "eligible_not_cached"

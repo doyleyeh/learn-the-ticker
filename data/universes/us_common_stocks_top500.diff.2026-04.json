@@ -1,0 +1,31 @@
+{
+  "added_tickers": [],
+  "approved_current_manifest_path": "data/universes/us_common_stocks_top500.current.json",
+  "candidate_manifest_path": "data/universes/us_common_stocks_top500.candidate.2026-04.json",
+  "candidate_month": "2026-04",
+  "fallback_reason": null,
+  "fallback_used": false,
+  "generated_at": "2026-04-27T00:00:00Z",
+  "generated_checksum": "sha256:16cb7f17710042fc5893202d5aa45ff4fb02052435f99ded18b47a8a88c15793",
+  "manual_approval_required": true,
+  "manual_review_triggers": [
+    "manual_review_required_before_current_manifest_replacement"
+  ],
+  "missing_ciks": [],
+  "nasdaq_validation_failures": [],
+  "rank_changes": [],
+  "removed_tickers": [],
+  "schema_version": "top500-candidate-diff-v1",
+  "source_checksums": {
+    "IWB": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "source_dates": {
+    "IWB": "2026-04-01"
+  },
+  "source_used": [
+    "IWB"
+  ],
+  "source_warnings": [
+    "normalized_ticker_from_BRK-B"
+  ]
+}

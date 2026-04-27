@@ -1,0 +1,23 @@
+{
+  "source": {
+    "source_id": "official_spy_holdings_2026_04_fixture",
+    "ticker": "SPY",
+    "source_role": "fallback",
+    "title": "SPDR S&P 500 ETF mocked official holdings",
+    "publisher": "State Street SPDR",
+    "source_type": "official_issuer_holdings",
+    "source_identity": "local://fixtures/top500_refresh/official_spy_holdings",
+    "source_snapshot_date": "2026-04-01",
+    "source_checksum": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "retrieved_at": "2026-04-27T00:00:00Z",
+    "freshness_state": "fresh",
+    "is_official": true,
+    "parser_status": "parsed"
+  },
+  "holdings": [
+    {"source_id": "official_spy_holdings_2026_04_fixture", "ticker": "AAPL", "name": "Apple Inc.", "weight": 7.0, "asset_type": "stock", "security_type": "common_stock", "exchange": "NASDAQ"},
+    {"source_id": "official_spy_holdings_2026_04_fixture", "ticker": "MSFT", "name": "Microsoft Corporation", "weight": 6.0, "asset_type": "stock", "security_type": "common_stock", "exchange": "NASDAQ"},
+    {"source_id": "official_spy_holdings_2026_04_fixture", "ticker": "NVDA", "name": "NVIDIA Corporation", "weight": 5.0, "asset_type": "stock", "security_type": "common_stock", "exchange": "NASDAQ"},
+    {"source_id": "official_spy_holdings_2026_04_fixture", "ticker": "BRK-B", "name": "Berkshire Hathaway Inc. Class B", "weight": 2.3, "asset_type": "stock", "security_type": "common_stock", "exchange": "NYSE"}
+  ]
+}
