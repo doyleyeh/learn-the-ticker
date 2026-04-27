@@ -386,6 +386,46 @@ const UNSUPPORTED_CANDIDATES: SearchCandidate[] = [
     support_classification: "recognized_unsupported",
     message: "Inverse ETFs are outside the current plain-vanilla ETF scope.",
     aliases: ["inverse qqq", "short qqq", "inverse etf"]
+  },
+  {
+    ticker: "ARKK",
+    name: "ARK Innovation ETF",
+    asset_type: "unsupported",
+    exchange: null,
+    issuer: "ARK Invest",
+    support_classification: "recognized_unsupported",
+    message: "Active ETFs are outside the current non-leveraged U.S. equity ETF scope.",
+    aliases: ["ark innovation", "active etf"]
+  },
+  {
+    ticker: "BND",
+    name: "Vanguard Total Bond Market ETF",
+    asset_type: "unsupported",
+    exchange: null,
+    issuer: "Vanguard",
+    support_classification: "recognized_unsupported",
+    message: "Fixed-income ETFs are outside the current non-leveraged U.S. equity ETF scope.",
+    aliases: ["bond etf", "fixed income etf"]
+  },
+  {
+    ticker: "GLD",
+    name: "SPDR Gold Shares",
+    asset_type: "unsupported",
+    exchange: null,
+    issuer: "State Street Global Advisors",
+    support_classification: "recognized_unsupported",
+    message: "Commodity ETFs are outside the current non-leveraged U.S. equity ETF scope.",
+    aliases: ["gold etf", "commodity etf"]
+  },
+  {
+    ticker: "AOR",
+    name: "iShares Core Growth Allocation ETF",
+    asset_type: "unsupported",
+    exchange: null,
+    issuer: "iShares",
+    support_classification: "recognized_unsupported",
+    message: "Multi-asset ETFs are outside the current non-leveraged U.S. equity ETF scope.",
+    aliases: ["allocation etf", "multi asset etf"]
   }
 ];
 
@@ -400,6 +440,16 @@ const OUT_OF_SCOPE_CANDIDATES: SearchCandidate[] = [
     message:
       "Recognized U.S.-listed common stock outside the local Top-500 manifest; out of scope for generated outputs unless explicitly approved for on-demand ingestion later.",
     aliases: ["gamestop", "gamestop corp", "common stock"]
+  },
+  {
+    ticker: "VXX",
+    name: "iPath Series B S&P 500 VIX Short-Term Futures ETN",
+    asset_type: "etf",
+    exchange: "Cboe BZX",
+    issuer: "Barclays",
+    support_classification: "out_of_scope",
+    message: "ETNs are outside the current non-leveraged U.S. equity ETF scope.",
+    aliases: ["etn", "vix etn", "volatility etn"]
   }
 ];
 
@@ -697,11 +747,16 @@ function isSearchSupportClassification(value: unknown): value is SearchSupportCl
 function blockedExplanationForResult(result: LocalSearchResult): LocalSearchBlockedExplanation | null {
   if (result.support_classification === "recognized_unsupported") {
     const explanation_category =
-      result.ticker === "BTC" || result.ticker === "ETH"
-        ? "crypto_assets"
-        : result.ticker === "TQQQ"
-          ? "leveraged_etf"
-          : "inverse_etf";
+      {
+        BTC: "crypto_assets",
+        ETH: "crypto_assets",
+        TQQQ: "leveraged_etf",
+        SQQQ: "inverse_etf",
+        ARKK: "active_etf",
+        BND: "fixed_income_etf",
+        GLD: "commodity_etf",
+        AOR: "multi_asset_etf"
+      }[result.ticker] ?? "unsupported_etf_like_product";
 
     return {
       schema_version: "search-blocked-explanation-v1",
@@ -720,13 +775,19 @@ function blockedExplanationForResult(result: LocalSearchResult): LocalSearchBloc
   }
 
   if (result.support_classification === "out_of_scope") {
+    const explanation_category = result.ticker === "VXX" ? "etf_like_product_scope" : "top500_manifest_scope";
+    const summary =
+      result.ticker === "VXX"
+        ? "We found this ticker, but it is outside the current supported MVP ETF scope."
+        : `${result.ticker} is recognized, but it is outside the current Top-500 manifest-backed supported MVP stock coverage.`;
+
     return {
       schema_version: "search-blocked-explanation-v1",
       status: "out_of_scope",
       support_classification: "out_of_scope",
       explanation_kind: "scope_blocked_search_result",
-      explanation_category: "top500_manifest_scope",
-      summary: `${result.ticker} is recognized, but it is outside the current Top-500 manifest-backed supported MVP stock coverage.`,
+      explanation_category,
+      summary,
       scope_rationale:
         result.message ??
         "Recognized U.S.-listed common stock outside the current Top-500 manifest-backed MVP scope.",
