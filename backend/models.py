@@ -220,6 +220,37 @@ class SourcePolicyDecisionState(str, Enum):
     not_allowlisted = "not_allowlisted"
 
 
+class SourceReviewStatus(str, Enum):
+    approved = "approved"
+    pending_review = "pending_review"
+    rejected = "rejected"
+
+
+class SourceParserStatus(str, Enum):
+    parsed = "parsed"
+    partial = "partial"
+    failed = "failed"
+    not_applicable = "not_applicable"
+    pending_review = "pending_review"
+
+
+class SourceStorageRights(str, Enum):
+    raw_snapshot_allowed = "raw_snapshot_allowed"
+    summary_allowed = "summary_allowed"
+    metadata_only = "metadata_only"
+    link_only = "link_only"
+    rejected = "rejected"
+    unknown = "unknown"
+
+
+class SourceExportRights(str, Enum):
+    excerpts_allowed = "excerpts_allowed"
+    metadata_only = "metadata_only"
+    link_only = "link_only"
+    rejected = "rejected"
+    unknown = "unknown"
+
+
 class SourceOperationPermissions(BaseModel):
     can_store_metadata: bool
     can_store_raw_text: bool = False
@@ -711,6 +742,13 @@ class ProviderSourceAttribution(BaseModel):
     allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
     source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
     permitted_operations: SourceOperationPermissions = Field(default_factory=lambda: DEFAULT_ALLOWED_SOURCE_OPERATIONS.model_copy())
+    source_identity: str | None = None
+    storage_rights: SourceStorageRights = SourceStorageRights.raw_snapshot_allowed
+    export_rights: SourceExportRights = SourceExportRights.excerpts_allowed
+    review_status: SourceReviewStatus = SourceReviewStatus.approved
+    approval_rationale: str = "Deterministic fixture source passed local source-use policy review."
+    parser_status: SourceParserStatus = SourceParserStatus.parsed
+    parser_failure_diagnostics: str | None = None
 
 
 class ProviderFact(BaseModel):
@@ -1151,6 +1189,15 @@ class SourceChecksumInput(BaseModel):
     redistribution_allowed: bool = False
     allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
     source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
+    source_identity: str | None = None
+    is_official: bool | None = False
+    source_quality: SourceQuality = SourceQuality.fixture
+    storage_rights: SourceStorageRights = SourceStorageRights.raw_snapshot_allowed
+    export_rights: SourceExportRights = SourceExportRights.excerpts_allowed
+    review_status: SourceReviewStatus = SourceReviewStatus.approved
+    approval_rationale: str = "Deterministic fixture source passed local source-use policy review."
+    parser_status: SourceParserStatus = SourceParserStatus.parsed
+    parser_failure_diagnostics: str | None = None
 
 
 class SourceChecksumRecord(BaseModel):
@@ -1164,6 +1211,18 @@ class SourceChecksumRecord(BaseModel):
     source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
     source_type: str
     source_rank: int | None = None
+    source_identity: str | None = None
+    retrieved_at: str | None = None
+    as_of_date: str | None = None
+    published_at: str | None = None
+    is_official: bool | None = False
+    source_quality: SourceQuality = SourceQuality.fixture
+    storage_rights: SourceStorageRights = SourceStorageRights.raw_snapshot_allowed
+    export_rights: SourceExportRights = SourceExportRights.excerpts_allowed
+    review_status: SourceReviewStatus = SourceReviewStatus.approved
+    approval_rationale: str = "Deterministic fixture source passed local source-use policy review."
+    parser_status: SourceParserStatus = SourceParserStatus.parsed
+    parser_failure_diagnostics: str | None = None
     citation_ids: list[str] = Field(default_factory=list)
     fact_bindings: list[str] = Field(default_factory=list)
     recent_event_bindings: list[str] = Field(default_factory=list)
@@ -1313,6 +1372,13 @@ class KnowledgePackSourceMetadata(BaseModel):
     allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
     source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
     permitted_operations: SourceOperationPermissions = Field(default_factory=lambda: DEFAULT_ALLOWED_SOURCE_OPERATIONS.model_copy())
+    source_identity: str | None = None
+    storage_rights: SourceStorageRights = SourceStorageRights.raw_snapshot_allowed
+    export_rights: SourceExportRights = SourceExportRights.excerpts_allowed
+    review_status: SourceReviewStatus = SourceReviewStatus.approved
+    approval_rationale: str = "Deterministic fixture source passed local source-use policy review."
+    parser_status: SourceParserStatus = SourceParserStatus.parsed
+    parser_failure_diagnostics: str | None = None
     citation_ids: list[str] = Field(default_factory=list)
     fact_ids: list[str] = Field(default_factory=list)
     recent_event_ids: list[str] = Field(default_factory=list)
@@ -1586,6 +1652,13 @@ class SourceDocument(BaseModel):
     allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
     source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
     permitted_operations: SourceOperationPermissions = Field(default_factory=lambda: DEFAULT_ALLOWED_SOURCE_OPERATIONS.model_copy())
+    source_identity: str | None = None
+    storage_rights: SourceStorageRights = SourceStorageRights.raw_snapshot_allowed
+    export_rights: SourceExportRights = SourceExportRights.excerpts_allowed
+    review_status: SourceReviewStatus = SourceReviewStatus.approved
+    approval_rationale: str = "Deterministic fixture source passed local source-use policy review."
+    parser_status: SourceParserStatus = SourceParserStatus.parsed
+    parser_failure_diagnostics: str | None = None
 
 
 class SourceDrawerState(str, Enum):
@@ -1673,6 +1746,13 @@ class SourceDrawerSourceGroup(BaseModel):
     allowlist_status: SourceAllowlistStatus
     source_use_policy: SourceUsePolicy
     permitted_operations: SourceOperationPermissions
+    source_identity: str | None = None
+    storage_rights: SourceStorageRights = SourceStorageRights.raw_snapshot_allowed
+    export_rights: SourceExportRights = SourceExportRights.excerpts_allowed
+    review_status: SourceReviewStatus = SourceReviewStatus.approved
+    approval_rationale: str = "Deterministic fixture source passed local source-use policy review."
+    parser_status: SourceParserStatus = SourceParserStatus.parsed
+    parser_failure_diagnostics: str | None = None
     citation_ids: list[str] = Field(default_factory=list)
     related_claim_ids: list[str] = Field(default_factory=list)
     section_ids: list[str] = Field(default_factory=list)
@@ -2399,6 +2479,13 @@ class ChatSourceDocument(BaseModel):
     allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
     source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
     permitted_operations: SourceOperationPermissions = Field(default_factory=lambda: DEFAULT_ALLOWED_SOURCE_OPERATIONS.model_copy())
+    source_identity: str | None = None
+    storage_rights: SourceStorageRights = SourceStorageRights.raw_snapshot_allowed
+    export_rights: SourceExportRights = SourceExportRights.excerpts_allowed
+    review_status: SourceReviewStatus = SourceReviewStatus.approved
+    approval_rationale: str = "Deterministic fixture source passed local source-use policy review."
+    parser_status: SourceParserStatus = SourceParserStatus.parsed
+    parser_failure_diagnostics: str | None = None
 
 
 class ChatCompareRouteDiagnostics(BaseModel):
@@ -2526,6 +2613,13 @@ class ExportSourceMetadata(BaseModel):
     allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
     source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
     permitted_operations: SourceOperationPermissions = Field(default_factory=lambda: DEFAULT_ALLOWED_SOURCE_OPERATIONS.model_copy())
+    source_identity: str | None = None
+    storage_rights: SourceStorageRights = SourceStorageRights.raw_snapshot_allowed
+    export_rights: SourceExportRights = SourceExportRights.excerpts_allowed
+    review_status: SourceReviewStatus = SourceReviewStatus.approved
+    approval_rationale: str = "Deterministic fixture source passed local source-use policy review."
+    parser_status: SourceParserStatus = SourceParserStatus.parsed
+    parser_failure_diagnostics: str | None = None
     allowed_excerpt: ExportExcerpt | None = None
 
 

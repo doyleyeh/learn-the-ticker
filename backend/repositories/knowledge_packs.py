@@ -26,12 +26,17 @@ from backend.models import (
     KnowledgePackSourceMetadata,
     SectionFreshnessInput,
     SourceAllowlistStatus,
+    SourceExportRights,
     SourceChecksumRecord,
     SourceOperationPermissions,
+    SourceParserStatus,
     SourceQuality,
+    SourceReviewStatus,
+    SourceStorageRights,
     SourceUsePolicy,
     StateMessage,
 )
+from backend.source_policy import SourcePolicyAction, validate_source_handoff
 
 
 KNOWLEDGE_PACK_REPOSITORY_BOUNDARY = "asset-knowledge-pack-repository-contract-v1"
@@ -136,6 +141,13 @@ class KnowledgePackSourceDocumentRow(StrictRow):
     allowlist_status: str
     source_use_policy: str
     permitted_operations: dict[str, Any]
+    source_identity: str | None = None
+    storage_rights: str = SourceStorageRights.raw_snapshot_allowed.value
+    export_rights: str = SourceExportRights.excerpts_allowed.value
+    review_status: str = SourceReviewStatus.approved.value
+    approval_rationale: str = "Deterministic fixture source passed local source-use policy review."
+    parser_status: str = SourceParserStatus.parsed.value
+    parser_failure_diagnostics: str | None = None
     citation_ids: list[str] = Field(default_factory=list)
     fact_ids: list[str] = Field(default_factory=list)
     recent_event_ids: list[str] = Field(default_factory=list)
@@ -225,6 +237,18 @@ class KnowledgePackSourceChecksumRow(StrictRow):
     source_use_policy: str
     source_type: str
     source_rank: int | None = None
+    source_identity: str | None = None
+    retrieved_at: str | None = None
+    as_of_date: str | None = None
+    published_at: str | None = None
+    is_official: bool | None = False
+    source_quality: str = SourceQuality.fixture.value
+    storage_rights: str = SourceStorageRights.raw_snapshot_allowed.value
+    export_rights: str = SourceExportRights.excerpts_allowed.value
+    review_status: str = SourceReviewStatus.approved.value
+    approval_rationale: str = "Deterministic fixture source passed local source-use policy review."
+    parser_status: str = SourceParserStatus.parsed.value
+    parser_failure_diagnostics: str | None = None
     citation_ids: list[str] = Field(default_factory=list)
     fact_bindings: list[str] = Field(default_factory=list)
     recent_event_bindings: list[str] = Field(default_factory=list)
@@ -757,6 +781,17 @@ def _source_row_from_provider(ticker: str, source: Any) -> KnowledgePackSourceDo
         allowlist_status=source.allowlist_status.value,
         source_use_policy=source.source_use_policy.value,
         permitted_operations=source.permitted_operations.model_dump(mode="json"),
+        source_identity=getattr(source, "source_identity", None) or source.url or source.source_document_id,
+        storage_rights=getattr(source, "storage_rights", SourceStorageRights.raw_snapshot_allowed).value,
+        export_rights=getattr(source, "export_rights", SourceExportRights.excerpts_allowed).value,
+        review_status=getattr(source, "review_status", SourceReviewStatus.approved).value,
+        approval_rationale=getattr(
+            source,
+            "approval_rationale",
+            "Deterministic fixture source passed local source-use policy review.",
+        ),
+        parser_status=getattr(source, "parser_status", SourceParserStatus.parsed).value,
+        parser_failure_diagnostics=getattr(source, "parser_failure_diagnostics", None),
     )
 
 
@@ -773,6 +808,22 @@ def _checksum_row_from_acquisition_source(ticker: str, source: Any, source_recor
         source_use_policy=source.source_use_policy.value,
         source_type=source.source_type,
         source_rank=source.source_rank,
+        source_identity=getattr(source, "source_identity", None) or source.url or source.source_document_id,
+        retrieved_at=source.retrieved_at,
+        as_of_date=source.as_of_date,
+        published_at=source.published_at,
+        is_official=source.is_official,
+        source_quality=source.source_quality.value,
+        storage_rights=getattr(source, "storage_rights", SourceStorageRights.raw_snapshot_allowed).value,
+        export_rights=getattr(source, "export_rights", SourceExportRights.excerpts_allowed).value,
+        review_status=getattr(source, "review_status", SourceReviewStatus.approved).value,
+        approval_rationale=getattr(
+            source,
+            "approval_rationale",
+            "Deterministic fixture source passed local source-use policy review.",
+        ),
+        parser_status=getattr(source, "parser_status", SourceParserStatus.parsed).value,
+        parser_failure_diagnostics=getattr(source, "parser_failure_diagnostics", None),
     )
 
 
@@ -1185,6 +1236,13 @@ def _source_row(pack_id: str, source: KnowledgePackSourceMetadata) -> KnowledgeP
         allowlist_status=source.allowlist_status.value,
         source_use_policy=source.source_use_policy.value,
         permitted_operations=source.permitted_operations.model_dump(mode="json"),
+        source_identity=source.source_identity,
+        storage_rights=source.storage_rights.value,
+        export_rights=source.export_rights.value,
+        review_status=source.review_status.value,
+        approval_rationale=source.approval_rationale,
+        parser_status=source.parser_status.value,
+        parser_failure_diagnostics=source.parser_failure_diagnostics,
         citation_ids=source.citation_ids,
         fact_ids=source.fact_ids,
         recent_event_ids=source.recent_event_ids,
@@ -1299,6 +1357,18 @@ def _checksum_row(pack_id: str, checksum: SourceChecksumRecord) -> KnowledgePack
         source_use_policy=checksum.source_use_policy.value,
         source_type=checksum.source_type,
         source_rank=checksum.source_rank,
+        source_identity=checksum.source_identity or checksum.source_document_id,
+        retrieved_at=checksum.retrieved_at,
+        as_of_date=checksum.as_of_date,
+        published_at=checksum.published_at,
+        is_official=checksum.is_official,
+        source_quality=checksum.source_quality.value,
+        storage_rights=checksum.storage_rights.value,
+        export_rights=checksum.export_rights.value,
+        review_status=checksum.review_status.value,
+        approval_rationale=checksum.approval_rationale,
+        parser_status=checksum.parser_status.value,
+        parser_failure_diagnostics=checksum.parser_failure_diagnostics,
         citation_ids=checksum.citation_ids,
         fact_bindings=checksum.fact_bindings,
         recent_event_bindings=checksum.recent_event_bindings,
@@ -1323,6 +1393,13 @@ def _source_model(row: KnowledgePackSourceDocumentRow) -> KnowledgePackSourceMet
         allowlist_status=SourceAllowlistStatus(row.allowlist_status),
         source_use_policy=SourceUsePolicy(row.source_use_policy),
         permitted_operations=SourceOperationPermissions.model_validate(row.permitted_operations),
+        source_identity=row.source_identity,
+        storage_rights=SourceStorageRights(row.storage_rights),
+        export_rights=SourceExportRights(row.export_rights),
+        review_status=SourceReviewStatus(row.review_status),
+        approval_rationale=row.approval_rationale,
+        parser_status=SourceParserStatus(row.parser_status),
+        parser_failure_diagnostics=row.parser_failure_diagnostics,
         citation_ids=row.citation_ids,
         fact_ids=row.fact_ids,
         recent_event_ids=row.recent_event_ids,
@@ -1399,6 +1476,18 @@ def _checksum_model(row: KnowledgePackSourceChecksumRow) -> SourceChecksumRecord
         source_use_policy=SourceUsePolicy(row.source_use_policy),
         source_type=row.source_type,
         source_rank=row.source_rank,
+        source_identity=row.source_identity,
+        retrieved_at=row.retrieved_at,
+        as_of_date=row.as_of_date,
+        published_at=row.published_at,
+        is_official=row.is_official,
+        source_quality=SourceQuality(row.source_quality),
+        storage_rights=SourceStorageRights(row.storage_rights),
+        export_rights=SourceExportRights(row.export_rights),
+        review_status=SourceReviewStatus(row.review_status),
+        approval_rationale=row.approval_rationale,
+        parser_status=SourceParserStatus(row.parser_status),
+        parser_failure_diagnostics=row.parser_failure_diagnostics,
         citation_ids=row.citation_ids,
         fact_bindings=row.fact_bindings,
         recent_event_bindings=row.recent_event_bindings,
@@ -1465,6 +1554,11 @@ def _validate_records(records: KnowledgePackRepositoryRecords) -> None:
     chunk_ids = {chunk.chunk_id for chunk in records.source_chunks}
     citation_ids = set(records.envelope.citation_ids)
 
+    for source in records.source_documents:
+        _require_same_asset(ticker, source.asset_ticker, source.source_document_id)
+        if source.source_type.lower() in {"hidden", "internal", "hidden_internal"}:
+            raise KnowledgePackRepositoryContractError("Hidden/internal sources cannot create knowledge-pack evidence.")
+
     if records.envelope.generated_output_available:
         for source in records.source_documents:
             if source.allowlist_status != SourceAllowlistStatus.allowed.value:
@@ -1483,9 +1577,12 @@ def _validate_records(records: KnowledgePackRepositoryRecords) -> None:
                 raise KnowledgePackRepositoryContractError(
                     f"Source {source.source_document_id} lacks generated-output permission."
                 )
-
-    for source in records.source_documents:
-        _require_same_asset(ticker, source.asset_ticker, source.source_document_id)
+            handoff = validate_source_handoff(source, action=SourcePolicyAction.generated_claim_support)
+            if not handoff.allowed:
+                raise KnowledgePackRepositoryContractError(
+                    f"Source {source.source_document_id} failed Golden Asset Source Handoff: "
+                    + ", ".join(handoff.reason_codes)
+                )
 
     for chunk in records.source_chunks:
         _require_same_asset(ticker, chunk.asset_ticker, chunk.chunk_id)
@@ -1524,6 +1621,12 @@ def _validate_records(records: KnowledgePackRepositoryRecords) -> None:
         if checksum.source_document_id not in source_ids:
             raise KnowledgePackRepositoryContractError(
                 f"Checksum {checksum.source_document_id} references unknown source."
+            )
+        handoff = validate_source_handoff(checksum, action=SourcePolicyAction.cacheable_generated_output)
+        if records.envelope.generated_output_available and not handoff.allowed:
+            raise KnowledgePackRepositoryContractError(
+                f"Checksum {checksum.source_document_id} failed Golden Asset Source Handoff: "
+                + ", ".join(handoff.reason_codes)
             )
 
 
