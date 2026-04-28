@@ -228,6 +228,12 @@ npm test
 bash scripts/run_quality_gate.sh
 ```
 
+For the local fresh-data MVP rehearsal command, also run:
+
+```bash
+TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json
+```
+
 Also run when available:
 
 ```bash
@@ -248,6 +254,7 @@ Verify:
 - PRD/TDS/proposal are treated as the current baseline after safety rules
 - root npm scripts delegate to `apps/web`
 - local web/API smoke instructions cover `NEXT_PUBLIC_API_BASE_URL`, `API_BASE_URL`, `CORS_ALLOWED_ORIGINS`, and the Next `/api/:path*` rewrite behavior
+- local fresh-data rehearsal output distinguishes `pass`, `skipped`, and `blocked` states while keeping deterministic defaults fixture-backed and optional browser, durable repository, official-source retrieval, and live-AI modes explicitly gated
 - Docker Compose scaffolding remains local-only and is not required for CI
 - env examples use placeholders only and contain no real secrets
 - docs do not contradict safety, citation, freshness, source-use, secret-handling, or no-live-calls rules

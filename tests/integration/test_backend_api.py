@@ -40,6 +40,7 @@ from backend.weekly_news_repository import (
     WeeklyNewsSourceRankTier,
     acquire_weekly_news_event_evidence_from_fixtures,
 )
+from scripts.run_local_fresh_data_rehearsal import run_rehearsal
 
 
 client = TestClient(app)
@@ -607,6 +608,26 @@ def test_t118_local_fresh_data_ingest_to_render_smoke_path_is_deterministic():
     assert ("asset_overview", ("VOO",)) in generated_repo.calls
     assert ("chat_answer", ("VOO",)) in generated_repo.calls
     assert ("comparison", ("VOO", "QQQ")) in generated_repo.calls
+
+
+def test_t130_local_fresh_data_mvp_rehearsal_ties_governed_path_to_render_surfaces():
+    result = run_rehearsal(env={})
+    checks = {check["check_id"]: check for check in result["checks"]}
+
+    assert result["status"] == "pass"
+    assert result["normal_ci_requires_live_calls"] is False
+    assert result["production_services_started"] is False
+    assert result["sources_approved_by_rehearsal"] is False
+    assert checks["source_handoff_approval_gate"]["status"] == "pass"
+    assert checks["governed_golden_api_rendering"]["status"] == "pass"
+    assert checks["governed_golden_api_rendering"]["details"]["blocked_search_cases"] == [
+        "out_of_scope",
+        "pending_ingestion",
+        "unknown",
+        "unsupported",
+    ]
+    assert checks["launch_manifest_review_packets"]["status"] == "pass"
+    assert checks["frontend_v04_smoke_markers"]["status"] == "pass"
 
 
 def test_health_endpoint_available():
