@@ -33,7 +33,7 @@ This checklist records production-readiness gates. It does not approve deploymen
 | Cloud Run Job settings | Review manual job trigger, service account scope, job timeout, retries, rate limits, and repository writer readiness. |
 | Recurring job decisions | Defer scheduler setup until manual jobs are reliable and source-use review is complete. |
 | Source allowlist review | Review every production source domain, source type, official-source status, storage rights, export rights, parser status, source-use policy, and rationale. |
-| Live-provider opt-in | Keep live generation disabled by default until server-side keys, budget, validation, fallback, logging, cache gates, and local live-AI review are complete. |
+| Live-provider opt-in | T-127 adds `TMPDIR=/tmp python3 scripts/run_live_ai_validation_smoke.py --json` as an operator-only local smoke. Keep live generation disabled by default until server-side keys, budget, validation, fallback, logging, cache gates, and local live-AI review pass without exposing secrets, prompts, source text, model reasoning, transcripts, or generated live responses. |
 | Paid or broad provider expansion | Defer paid market/reference/news providers until licensing, display, caching, attribution, export, and cost risks are reviewed. |
 | Monitoring and alerting | Add operational logging, error reporting, budget alerts, and trust-metric monitoring without raw user text, transcripts, source text, prompts, reasoning, or secrets. |
 | Rollback | Define rollback for frontend, API, worker, migrations, generated-output cache, and source snapshot writes. |
