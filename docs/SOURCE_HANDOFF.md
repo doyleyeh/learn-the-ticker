@@ -10,13 +10,13 @@ Implemented in the current repo:
 
 - source policy registry at `config/source_allowlist.yaml`;
 - deterministic source-policy resolution and Golden Asset Source Handoff validation in `backend/source_policy.py`;
+- repo-native governed-source manifest inspection and finalization smoke tooling at `scripts/inspect_source_handoff_manifest.py`;
 - SEC stock, ETF issuer, and Weekly News acquisition boundaries under `backend/provider_adapters/` and `backend/repositories/weekly_news.py`;
 - deterministic worker, source snapshot, knowledge-pack, Weekly News evidence, generated-output cache, source drawer, citation, and export contract tests;
 - optional local browser and durable smoke paths that keep normal CI fixture-safe.
 
 Still missing for MVP:
 
-- repo-native finalized governed-source manifest inspection and finalization tooling;
 - governed source artifacts for the full golden set;
 - proof that governed evidence, rather than fixture fallback, drives golden API responses and frontend rendering end to end;
 - deployed or automated worker execution;
@@ -51,9 +51,74 @@ Only approved sources with compatible storage/export rights, non-rejected source
 
 ## Current Repo-Native Checks
 
+Use the repo-native manifest smoke tool to inspect a reviewed governed-source packet:
+
+```bash
+TMPDIR=/tmp python3 scripts/inspect_source_handoff_manifest.py inspect path/to/source-handoff.json
+```
+
+Use strict inspection when a packet is expected to be evidence-ready. Strict mode exits non-zero if any source is blocked from generated claim support, generated-output cache use, or Markdown/JSON section export:
+
+```bash
+TMPDIR=/tmp python3 scripts/inspect_source_handoff_manifest.py inspect path/to/source-handoff.json --strict
+```
+
+Finalize only packets that pass strict handoff validation:
+
+```bash
+TMPDIR=/tmp python3 scripts/inspect_source_handoff_manifest.py finalize path/to/source-handoff.json --output path/to/source-handoff.finalized.json --finalized-at 2026-04-28T19:43:57Z
+```
+
+The manifest shape is intentionally small and repo-native:
+
+```json
+{
+  "schema_version": "source-handoff-manifest-v1",
+  "manifest_id": "aapl-governed-sources-2026-04",
+  "manifest_status": "draft",
+  "sources": [
+    {
+      "source_id": "sec-aapl-10k",
+      "source_identity": "https://www.sec.gov/Archives/edgar/data/320193/example.htm",
+      "source_type": "sec_filing",
+      "is_official": true,
+      "source_quality": "official",
+      "allowlist_status": "allowed",
+      "source_use_policy": "full_text_allowed",
+      "permitted_operations": {
+        "can_store_metadata": true,
+        "can_store_raw_text": true,
+        "can_display_metadata": true,
+        "can_display_excerpt": true,
+        "can_summarize": true,
+        "can_cache": true,
+        "can_export_metadata": true,
+        "can_export_excerpt": true,
+        "can_export_full_text": false,
+        "can_support_generated_output": true,
+        "can_support_citations": true,
+        "can_support_canonical_facts": true,
+        "can_support_recent_developments": true
+      },
+      "storage_rights": "raw_snapshot_allowed",
+      "export_rights": "excerpts_allowed",
+      "review_status": "approved",
+      "approval_rationale": "Reviewed SEC filing source for canonical stock evidence.",
+      "parser_status": "parsed",
+      "freshness_state": "fresh",
+      "as_of_date": "2026-04-01",
+      "retrieved_at": "2026-04-25T00:00:00Z"
+    }
+  ]
+}
+```
+
+Inspection covers draft, finalized, approved, pending-review, rejected, parser-invalid, missing-freshness, unclear-rights, and hidden/internal source cases. Finalization refuses any source that cannot pass Golden Asset Source Handoff for evidence, cache, and export use.
+
 Use these existing deterministic commands to validate the current handoff layer:
 
 ```bash
+TMPDIR=/tmp python3 -m pytest tests/unit/test_source_policy.py tests/unit/test_ingestion_worker.py tests/unit/test_repo_contract.py -q
 TMPDIR=/tmp python3 -m pytest tests/unit/test_source_policy.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_cache_contracts.py tests/unit/test_exports.py -q
 TMPDIR=/tmp python3 -m pytest tests/unit/test_provider_adapters.py tests/unit/test_ingestion_worker.py tests/unit/test_weekly_news.py -q
 TMPDIR=/tmp python3 -m pytest tests/integration/test_backend_api.py::test_t118_local_fresh_data_ingest_to_render_smoke_path_is_deterministic -q
@@ -67,19 +132,17 @@ TMPDIR=/tmp bash scripts/run_quality_gate.sh
 
 These checks do not fetch live sources, create production jobs, write production storage, or call live models.
 
-## Operator Workflow Until T-126
-
-Until repo-native governed-source manifest tooling exists, operators should treat reviewed source packets as external review artifacts and keep them out of committed fixtures unless their rights allow storage.
+## Operator Workflow
 
 For local implementation work:
 
-1. Use deterministic golden fixtures and source policy records to validate behavior.
-2. Keep source discovery, source review, and source approval separate from evidence use.
-3. Add or update source policy records only when domain/source identity, source type, official-source status, storage rights, export rights, source-use policy, rationale, validation tests, and development-log rationale move together.
-4. Route approved evidence through existing repository boundaries before generated output, citations, source drawer records, cache entries, or exports can use it.
-5. Keep canonical source facts separate from Weekly News Focus event records.
-
-T-126 should add repo-native manifest inspection/finalization smoke tooling or an accurately scoped equivalent. That future task should avoid adopting commands from another repository layout and should integrate with the existing `backend/`, `scripts/`, `tests/`, and `config/` structure.
+1. Inspect reviewed governed-source packets with `scripts/inspect_source_handoff_manifest.py inspect`.
+2. Use `--strict` before treating a packet as evidence-ready.
+3. Finalize only packets that pass strict handoff validation.
+4. Keep source discovery, source review, and source approval separate from evidence use.
+5. Add or update source policy records only when domain/source identity, source type, official-source status, storage rights, export rights, source-use policy, rationale, validation tests, and development-log rationale move together.
+6. Route approved evidence through existing repository boundaries before generated output, citations, source drawer records, cache entries, or exports can use it.
+7. Keep canonical source facts separate from Weekly News Focus event records.
 
 ## Asset-Specific Handoff Notes
 

@@ -394,10 +394,13 @@ def test_v06_handoff_docs_use_repo_native_commands_and_future_boundaries():
     for marker in [
         "backend/source_policy.py",
         "config/source_allowlist.yaml",
+        "scripts/inspect_source_handoff_manifest.py",
+        "source-handoff-manifest-v1",
+        "TMPDIR=/tmp python3 scripts/inspect_source_handoff_manifest.py inspect",
+        "TMPDIR=/tmp python3 scripts/inspect_source_handoff_manifest.py finalize",
         "scripts/generate_top500_candidate_manifest.py",
         "backend/etf_universe.py",
         "TMPDIR=/tmp bash scripts/run_quality_gate.sh",
-        "T-126 should add repo-native manifest inspection/finalization smoke tooling",
         "EQUITY_ETF_UNIVERSE_MANIFEST_URI",
         "The current repo does not yet include that workflow",
     ]:
