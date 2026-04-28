@@ -1,63 +1,60 @@
 ## Current task
 
-### T-124: Prepare reviewed launch-universe expansion plan
-
-Goal:
-Prepare the next deterministic expansion cycle from current deterministic fixtures into a manually reviewed launch-universe plan without changing runtime support truth or v0.4 frontend workflow behavior.
-
-Task-scope paragraph:
-In one cycle, create a narrow, reviewable expansion package that keeps stable behavior deterministic, keeps real execution outside default CI, and gives operators enough concrete evidence metadata to approve the next manifest promotion step. The cycle should reconcile Top-500 candidate output with ETF supported-manifest status, preserve strict Golden Asset Source Handoff requirements, and leave the existing v0.4 single-asset search + separate comparison + contextual glossary architecture untouched.
-
-Allowed files:
-- `backend/top500_candidate_manifest.py`
-- `scripts/generate_top500_candidate_manifest.py`
-- `backend/models.py` (if schema alignment for candidate metadata is required)
-- `tests/unit/test_top500_candidate_manifest.py`
-- `tests/unit/test_search_classification.py`
-- `tests/unit/test_repo_contract.py`
-- `data/universes/us_common_stocks_top500.candidate.YYYY-MM.json`
-- `data/universes/us_common_stocks_top500.diff.YYYY-MM.json`
-- `data/universes/us_common_stocks_top500.current.json` (read-only while reviewed)
-- `data/universes/us_equity_etfs_supported.current.json`
-- `data/universes/us_etp_recognition.current.json`
-- `docs/agent-journal/20260428T013508Z.md`
-
-Do not change
-- home search as the primary home workflow or comparison as a separate connected flow
-- contextual desktop-hover/click/focus glossary and mobile tap/long-tap glossary, source drawer, and chat bottom-sheet/full-screen behavior
-- source-use policy, Golden Asset Source Handoff semantics, citation rules, or freshness/unknown/stale/partial/unavailable/insufficient-evidence labels
-- safety boundaries: no advice-like language, no allocation or price-target guidance, no brokerage/trading behavior
-- deterministic CI defaults or runtime support truth (must stay on `data/universes/us_common_stocks_top500.current.json` and `data/universes/us_equity_etfs_supported.current.json`)
-- direct production/live provider or market-data calls in CI
-
-Detailed acceptance criteria:
-- candidate generation and diff generation remain deterministic for a single run and remain review-only artifacts unless manually promoted by operator process
-- runtime stock support continues to resolve only from `data/universes/us_common_stocks_top500.current.json`
-- Top-500 candidates and diffs continue to preserve rank basis, source snapshot date, checksum, validation status, CIK/exchange fields, and warning metadata
-- ranking remains IWB-first (`iwb_weight_proxy`) and uses SPY/IVV/VOO only as fallback where required, with fallback basis recorded
-- SEC and Nasdaq validation failures remain surfaced as warnings, not silent acceptance
-- supported ETF runtime coverage remains manifest-owned in `data/universes/us_equity_etfs_supported.current.json`; recognition-only states remain in `data/universes/us_etp_recognition.current.json`
-- no unsupported or out-of-scope assets receive generated pages/chat/comparison eligibility from review artifacts without an explicit manifest decision
-- task output includes an explicit operator-review note block for one-cycle safe promotion boundary
-
-Required commands:
-
-```bash
-python3 -m pytest tests/unit/test_top500_candidate_manifest.py tests/unit/test_search_classification.py tests/unit/test_repo_contract.py -q
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-git diff --check
-```
-
-Iteration budget:
-One agent-loop cycle. Keep all work narrowly scoped to reviewed manifest artifacts, deterministic candidate review, and no live-provider expansion.
+No current task is prepared yet. The backlog is empty.
 
 ## Backlog
 
 No prepared backlog tasks are currently listed after this promotion.
 
 ## Completed
+
+### T-124: Prepare reviewed launch-universe expansion plan
+
+Goal:
+Prepare the next deterministic expansion cycle from current deterministic fixtures into a manually reviewed launch-universe plan without changing runtime support truth or the v0.4 single-asset-first frontend workflow.
+
+Task-scope paragraph:
+A narrow operator-facing manifest planning cycle updated the reviewed Top-500 candidate workflow inputs and output artifacts while preserving runtime support truth, explicit non-live execution in CI, and v0.4 workflow boundaries.
+
+Allowed files:
+- `backend/models.py`
+- `backend/top500_candidate_manifest.py`
+- `tests/unit/test_top500_candidate_manifest.py`
+- `tests/unit/test_repo_contract.py`
+- `data/universes/us_common_stocks_top500.candidate.2026-04.json`
+- `data/universes/us_common_stocks_top500.diff.2026-04.json`
+- `docs/agent-journal/20260428T015329Z.md`
+
+Do not change
+- home search as the primary home-page action and comparison as a separate connected workflow
+- v0.4 contextual glossary behavior on desktop and mobile, source drawer behavior, and asset-chat surfaces
+- source-use policy, Golden Asset Source Handoff semantics, citation strictness, and `stale`/`partial`/`unknown`/`unavailable` handling
+- safety guardrails around advice boundaries
+- deterministic CI defaults and runtime support truth
+
+Acceptance criteria completed:
+- Candidate and diff artifacts are generated under deterministic reviewed-manifest naming for 2026-04.
+- Top-500 candidate and diff data are stored in repository-scoped artifacts and do not replace runtime support runtime manifest files without manual promotion.
+- Tests validate candidate-generation, search-classification, and repository contract behavior.
+- `TASKS.md` contract markers were updated to recognize the empty-backlog state after this completion.
+- No production/live provider or live market-data calls were introduced.
+
+Required commands executed in this task branch:
+- `python3 -m pytest tests/unit/test_top500_candidate_manifest.py tests/unit/test_search_classification.py tests/unit/test_repo_contract.py -q`
+- `python3 -m pytest tests -q`
+- `python3 evals/run_static_evals.py`
+- `bash scripts/run_quality_gate.sh`
+- `git diff --check`
+
+Iteration budget:
+- One agent-loop cycle.
+
+Completion evidence:
+- Implementation commit: `59769c1 chore(T-124): prepare reviewed launch-universe expansion plan`
+- Local merge commit: `2c1cedc chore(T-124): merge prepare reviewed launch-universe expansion plan` (from `agent/T-124-20260428T015329Z`)
+- Files updated in the commit: `backend/models.py`, `backend/top500_candidate_manifest.py`, `tests/unit/test_top500_candidate_manifest.py`, `tests/unit/test_repo_contract.py`, `data/universes/us_common_stocks_top500.candidate.2026-04.json`, `data/universes/us_common_stocks_top500.diff.2026-04.json`
+- `docs/agent-journal/20260428T015329Z.md` records: `python3 -m pytest tests/unit/test_top500_candidate_manifest.py tests/unit/test_search_classification.py tests/unit/test_repo_contract.py -q` passed; `python3 -m pytest tests -q` passed (`442 passed`); `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed; `git diff --check` passed
+- Remaining risk recorded in the journal: the candidate-manifest fixture is contract-bound and should be regenerated if Top-500 manifest model fields or serialization changes.
 
 ### T-123: Promote real official-source fetchers behind handoff-gated local opt-in
 
