@@ -21,7 +21,7 @@ Completed capabilities:
 - T-123 is complete: SEC stock, ETF issuer, and Weekly News official-source fetcher boundaries are promoted behind explicit local opt-in and Golden Asset Source Handoff gates.
 - T-124 is complete: Top-500 candidate/diff artifacts and reviewed launch-universe planning are present without promoting fixture candidates into runtime truth.
 - Golden Asset Source Handoff enforcement exists across source policy, source snapshots, knowledge packs, citations, generated-output cache metadata, source drawer output, and exports.
-- LLM runtime diagnostics and OpenRouter transport contracts are present, with deterministic mocks as the default and live network calls blocked unless explicitly gated.
+- LLM runtime diagnostics, OpenRouter transport contracts, and the T-127 local live-AI validation smoke are present, with deterministic mocks as the default and live network calls blocked unless explicitly gated.
 - Normal CI remains deterministic and does not require live provider, news, market-data, storage, database, browser services, or LLM calls.
 
 ## Current Misalignments
@@ -41,14 +41,14 @@ The project is not yet a fully functional fresh-data MVP. Remaining blockers:
 1. Launch-sized manifests are not approved.
    The current Top-500 stock manifest and supported ETF manifest are deterministic fixtures. Public v1 still needs the full approved Top-500 stock manifest, a launch-sized supported ETF manifest, private production mirrors, and review packets.
 
-2. Repo-native source-handoff tooling is incomplete.
-   Source policy and handoff validation exist, but the operator-facing finalized governed-source manifest inspection/finalization workflow is not implemented as repo-native CLI/script tooling.
+2. Repo-native source-handoff tooling is available for local reviewed packets.
+   T-126 added source-handoff manifest inspection/finalization smoke tooling, but launch-sized governed source artifacts still need review before public production use.
 
 3. Governed golden evidence does not yet prove full render authority.
    The repo needs an end-to-end proof that approved governed sources for golden assets can flow through source persistence, normalized facts, generated-output cache validation, backend route reads, and frontend rendering.
 
-4. Local live-AI validation is not yet exercised.
-   v0.6 expects operator-only local review of grounded chat and AI Comprehensive Analysis when evidence thresholds are met. That smoke must remain opt-in and must not become a normal CI requirement.
+4. Local live-AI validation is operator-smoke covered, not launch-approved.
+   T-127 adds an opt-in local smoke for grounded chat and AI Comprehensive Analysis when evidence thresholds are met. It remains disabled by default, validation-first, and separate from source approval or Golden Asset Source Handoff.
 
 5. Third-party/news governance needs updated regression coverage.
    The v0.6 source policy allows approved reputable third-party/news metadata and beginner summaries, while full article text remains rights-gated. Weekly News Focus and export tests need to preserve those distinctions.
@@ -61,11 +61,11 @@ The project is not yet a fully functional fresh-data MVP. Remaining blockers:
 Current task state:
 
 - T-125 completed v0.6 docs, handoff guides, MVP gap review, and repo-contract test alignment.
-- T-126: add repo-native source-handoff manifest inspection/finalization smoke tooling or accurately scoped equivalents. This is the current promoted task.
+- T-126 completed repo-native source-handoff manifest inspection/finalization smoke tooling.
+- T-127 completed the opt-in local live-AI validation smoke for grounded chat and AI Comprehensive Analysis.
 
 Runnable near-term backlog:
 
-- T-127: add opt-in local live-AI validation smoke for grounded chat and AI Comprehensive Analysis, with CI-safe mocks.
 - T-128: prove governed golden evidence drives backend API and frontend rendering for the golden set.
 - T-129: add launch-manifest operator automation parity for Top-500 and supported ETF review packets without promoting runtime manifests.
 - T-130: add a local fresh-data MVP rehearsal command or command sequence that ties the governed golden path into one operator-facing pre-production check.
@@ -73,8 +73,7 @@ Runnable near-term backlog:
 Sequencing rationale:
 
 - Align docs first so the agent loop does not follow commands from a different repository layout.
-- Add repo-native source-handoff tooling before proving governed evidence can drive rendered output.
-- Add live-AI local validation as an opt-in operator smoke with CI-safe mocks before broader governed-evidence render proof expands the blast radius.
+- T-126 source-handoff tooling and T-127 live-AI local validation now exist before the governed-evidence render proof expands the blast radius.
 - Keep launch-manifest automation review-only until promotion gates and private mirrors are ready.
 - Add the local fresh-data rehearsal only after the source, evidence, AI, and manifest gates exist, so it verifies the integrated local MVP path instead of masking missing pieces.
 

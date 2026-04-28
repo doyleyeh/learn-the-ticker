@@ -1,4 +1,6 @@
 from pathlib import Path
+import importlib.util
+import sys
 
 from backend.cache import (
     build_generated_output_freshness_input,
@@ -45,6 +47,16 @@ from backend.cache import build_knowledge_pack_freshness_input
 
 
 ROOT = Path(__file__).resolve().parents[2]
+LIVE_AI_SMOKE = ROOT / "scripts" / "run_live_ai_validation_smoke.py"
+
+
+def _load_live_ai_smoke_module():
+    spec = importlib.util.spec_from_file_location("run_live_ai_validation_smoke", LIVE_AI_SMOKE)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def _request() -> LlmGenerationRequestMetadata:
@@ -110,6 +122,50 @@ def _ready_openrouter_runtime():
     return build_llm_runtime_config(default_openrouter_settings(), server_side_key_present=True)
 
 
+def _live_ai_smoke_transport_factory(*, invalid_analysis: bool = False):
+    def factory(case_id, prompt_payload):
+        def transport(request):
+            if case_id == "grounded_chat_supported_golden_asset":
+                content = {
+                    "direct_answer": "VOO is described from the selected approved knowledge pack.",
+                    "why_it_matters": "The answer stays educational and cites the selected asset evidence.",
+                    "citation_ids": [prompt_payload["allowed_citation_ids"][0]],
+                    "freshness_state": "fresh",
+                }
+            else:
+                weekly_citation = prompt_payload["allowed_weekly_citation_ids"][0]
+                canonical_citation = prompt_payload["canonical_fact_citation_ids"][0]
+                section_order = (
+                    ["market_context", "what_changed_this_week", "business_or_fund_context", "risk_context"]
+                    if invalid_analysis
+                    else prompt_payload["required_section_order"]
+                )
+                content = {
+                    "sections": [
+                        {
+                            "section_id": section_id,
+                            "analysis": "Educational weekly context from selected evidence.",
+                            "citation_ids": [weekly_citation],
+                        }
+                        for section_id in section_order
+                    ],
+                    "canonical_fact_citation_ids": [canonical_citation],
+                }
+            return {
+                "status_code": 200,
+                "latency_ms": 3,
+                "json": {
+                    "model": DEFAULT_OPENROUTER_FREE_MODEL_ORDER[0],
+                    "choices": [{"message": {"content": __import__("json").dumps(content)}, "finish_reason": "stop"}],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+                },
+            }
+
+        return transport
+
+    return factory
+
+
 def test_default_runtime_is_deterministic_mock_without_live_gate_or_credentials():
     config = build_llm_runtime_config()
 
@@ -165,6 +221,98 @@ def test_openrouter_gate_requires_flag_key_presence_and_endpoint_model_settings(
     assert enabled.paid_fallback_model.model_name == DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL
     assert enabled.paid_fallback_model.tier is LlmModelTier.paid
     assert enabled.paid_fallback_model.order == 5
+
+
+def test_local_live_ai_validation_smoke_defaults_to_sanitized_skip_without_live_calls():
+    smoke = _load_live_ai_smoke_module()
+
+    result = smoke.run_live_ai_validation_smoke(env={})
+
+    assert result["schema_version"] == "local-live-ai-validation-smoke-v1"
+    assert result["status"] == "skipped"
+    assert result["readiness_status"] == "disabled_by_default"
+    assert all(case["status"] == "skipped" for case in result["cases"])
+    assert all(case["live_call_attempted"] is False for case in result["cases"])
+    assert result["sanitized_diagnostics"]["normal_ci_requires_live_calls"] is False
+    serialized = str(result)
+    for forbidden in [
+        "raw user",
+        "raw prompt",
+        "source text",
+        "reasoning_details",
+        "raw transcript data",
+        "sk-",
+        "Bearer ",
+    ]:
+        assert forbidden not in serialized
+
+
+def test_local_live_ai_validation_smoke_blocks_without_server_side_key_readiness():
+    smoke = _load_live_ai_smoke_module()
+
+    result = smoke.run_live_ai_validation_smoke(
+        env={
+            "LTT_LIVE_AI_SMOKE_ENABLED": "true",
+            "LLM_PROVIDER": "openrouter",
+            "LLM_LIVE_GENERATION_ENABLED": "true",
+        },
+        transport_factory=_live_ai_smoke_transport_factory(),
+    )
+
+    assert result["status"] == "blocked"
+    assert result["server_side_key_present"] is False
+    assert all(case["status"] == "blocked" for case in result["cases"])
+    assert {case["reason_code"] for case in result["cases"]} == {"server_side_key_missing"}
+    assert all(case["live_call_attempted"] is False for case in result["cases"])
+
+
+def test_local_live_ai_validation_smoke_passes_with_mocked_live_transport_and_validation_gates():
+    smoke = _load_live_ai_smoke_module()
+
+    result = smoke.run_live_ai_validation_smoke(
+        env={
+            "LTT_LIVE_AI_SMOKE_ENABLED": "true",
+            "LLM_PROVIDER": "openrouter",
+            "LLM_LIVE_GENERATION_ENABLED": "true",
+            "OPENROUTER_API_KEY": "placeholder-local-key",
+        },
+        transport_factory=_live_ai_smoke_transport_factory(),
+    )
+
+    assert result["status"] == "pass"
+    assert result["readiness_status"] == "ready_for_explicit_live_call"
+    assert result["server_side_key_present"] is True
+    assert {case["case_id"]: case["status"] for case in result["cases"]} == {
+        "grounded_chat_supported_golden_asset": "pass",
+        "ai_comprehensive_analysis_threshold_case": "pass",
+    }
+    assert all(case["validation_status"] == "valid" for case in result["cases"])
+    assert all(case["cacheable"] is True for case in result["cases"])
+    assert all(case["live_call_attempted"] is True for case in result["cases"])
+    analysis_case = next(case for case in result["cases"] if case["case_id"] == "ai_comprehensive_analysis_threshold_case")
+    assert analysis_case["selected_item_count"] == 2
+
+
+def test_local_live_ai_validation_smoke_blocks_invalid_analysis_before_cache_use():
+    smoke = _load_live_ai_smoke_module()
+
+    result = smoke.run_live_ai_validation_smoke(
+        env={
+            "LTT_LIVE_AI_SMOKE_ENABLED": "true",
+            "LLM_PROVIDER": "openrouter",
+            "LLM_LIVE_GENERATION_ENABLED": "true",
+            "OPENROUTER_API_KEY": "placeholder-local-key",
+        },
+        transport_factory=_live_ai_smoke_transport_factory(invalid_analysis=True),
+    )
+
+    analysis_case = next(case for case in result["cases"] if case["case_id"] == "ai_comprehensive_analysis_threshold_case")
+
+    assert result["status"] == "blocked"
+    assert analysis_case["status"] == "blocked"
+    assert analysis_case["validation_status"] == "invalid_schema"
+    assert analysis_case["cacheable"] is False
+    assert analysis_case["reason_code"] == "validation_invalid_schema"
 
 
 def test_openrouter_readiness_distinguishes_missing_endpoint_models_and_validation_gates():

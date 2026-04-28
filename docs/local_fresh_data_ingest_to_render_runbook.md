@@ -16,6 +16,42 @@ Use one of these local modes:
 - `local_durable`: optional operator-only local repository mode. Use placeholder-only local connection settings and never print credential values. This mode is for manual inspection only and is not required by CI.
 - `operator_live_experiment`: optional local experiment mode. Keep it disabled by default. Any real retrieval or live-AI review must still pass source handoff, citation, source-use, freshness, and safety validation before evidence or generated output can be used. Do not commit fetched payloads, generated answers, logs, or diagnostics from this mode.
 
+## Local Live-AI Validation Smoke
+
+Task: T-127.
+
+The local live-AI validation smoke is operator-only and disabled by default. It validates one supported golden grounded-chat case and one AI Comprehensive Analysis case where two high-signal Weekly News Focus items are available. It does not approve sources, does not relax Golden Asset Source Handoff, does not write generated-output cache records, and does not print raw user text, prompts, source text, model reasoning, transcripts, generated live responses, or secret values.
+
+Prerequisites:
+
+- a server-side live provider key is already present in the operator shell
+- local opt-in is intentional for this shell only
+- live generation is explicitly enabled for this one command
+- source evidence remains fixture-safe or already handoff-approved
+
+Command:
+
+```bash
+LTT_LIVE_AI_SMOKE_ENABLED=true \
+LLM_PROVIDER=<server-side-live-provider> \
+LLM_LIVE_GENERATION_ENABLED=true \
+TMPDIR=/tmp python3 scripts/run_live_ai_validation_smoke.py --json
+```
+
+Expected results:
+
+- without `LTT_LIVE_AI_SMOKE_ENABLED=true`, both smoke cases report `skipped`
+- without live-generation readiness or a server-side key, both smoke cases report `blocked`
+- with readiness and valid output, cases report `pass`
+- failed schema, citation, source-use, freshness, safety, evidence-threshold, or cache-eligibility checks report `blocked`
+
+Stop conditions:
+
+- any blocked validation result
+- fewer than two high-signal Weekly News Focus items for the AI Comprehensive Analysis case
+- any diagnostic or log path that would expose raw user text, prompts, source text, generated live responses, model reasoning, transcripts, unrestricted provider payloads, or secret values
+- any attempt to treat local live-AI review as source approval or a Golden Asset Source Handoff override
+
 Suggested placeholder-only environment for local frontend/API rendering:
 
 ```bash
