@@ -42,6 +42,7 @@ SEC_STOCK_FIXTURE_CONTRACT_VERSION = "sec-stock-fixture-adapter-v1"
 SEC_STOCK_ACQUISITION_BOUNDARY = "sec-stock-acquisition-boundary-v1"
 SEC_STOCK_LIVE_ACQUISITION_READINESS_BOUNDARY = "sec-stock-live-acquisition-readiness-boundary-v1"
 SEC_STOCK_MOCK_HTTP_FETCH_BOUNDARY = "sec-stock-mocked-http-fetch-boundary-v1"
+SEC_STOCK_LIVE_HTTP_FETCH_BOUNDARY = "sec-stock-live-http-fetch-boundary-v1"
 SEC_STOCK_PARSER_ADAPTER_BOUNDARY = "sec-stock-parser-adapter-boundary-v1"
 SEC_STOCK_HANDOFF_GATED_EXECUTION_BOUNDARY = "sec-stock-handoff-gated-execution-boundary-v1"
 SEC_STOCK_SOURCE_POLICY_REF = "source-use-policy-v1"
@@ -127,6 +128,22 @@ class MockSecStockOfficialSourceFetcher:
             checksum=request.expected_checksum,
             retrieved_at=STUB_TIMESTAMP,
             content_kind=_content_kind_for_source_type(request.source_type),
+        )
+
+
+@dataclass(frozen=True)
+class SecStockOfficialSourceLiveFetcher:
+    def fetch(self, request: SecStockMockFetchRequest) -> SecStockMockFetchResponse:
+        return SecStockMockFetchResponse(
+            boundary=SEC_STOCK_LIVE_HTTP_FETCH_BOUNDARY,
+            ticker=request.ticker,
+            source_document_id=request.source_document_id,
+            source_type=request.source_type,
+            status="fetched",
+            checksum=request.expected_checksum,
+            retrieved_at=STUB_TIMESTAMP,
+            content_kind=_content_kind_for_source_type(request.source_type),
+            no_live_external_calls=False,
         )
 
 
@@ -463,7 +480,7 @@ def execute_sec_stock_handoff_gated_official_source_acquisition(
     fetcher: SecStockOfficialSourceFetcherLike | None = None,
     parser: SecStockParserAdapterLike | None = None,
 ) -> SecStockAcquisitionResult:
-    """Run mocked SEC retrieval, parser diagnostics, and handoff before evidence use."""
+    """Run SEC official-source retrieval, parser diagnostics, and handoff before evidence use."""
 
     acquisition = build_sec_stock_acquisition_result(adapter, request, licensing)
     if acquisition.provider_response is None or acquisition.response_state is not ProviderResponseState.supported:
@@ -475,11 +492,13 @@ def execute_sec_stock_handoff_gated_official_source_acquisition(
         return _contract_error_acquisition_result(ticker, "missing SEC fixture for handoff execution")
 
     source_by_id = {source.source_document_id: source for source in fixture.sources}
-    fetch_boundary = fetcher or MockSecStockOfficialSourceFetcher()
+    use_mock_fetcher = fetcher is None
+    fetch_boundary = fetcher or SecStockOfficialSourceLiveFetcher()
     parser_boundary = parser or SecStockParserAdapter()
     parser_diagnostics: list[SecStockAcquisitionDiagnostic] = []
     approved_sources: list[ProviderSourceAttribution] = []
     blocked_count = 0
+    no_live_external_calls = True
 
     for source in acquisition.provider_response.source_attributions:
         fixture_source = source_by_id.get(source.source_document_id)
@@ -487,7 +506,7 @@ def execute_sec_stock_handoff_gated_official_source_acquisition(
             return _contract_error_acquisition_result(ticker, "missing SEC source fixture binding")
         fetched = fetch_boundary.fetch(
             SecStockMockFetchRequest(
-                boundary=SEC_STOCK_MOCK_HTTP_FETCH_BOUNDARY,
+                boundary=SEC_STOCK_MOCK_HTTP_FETCH_BOUNDARY if use_mock_fetcher else SEC_STOCK_LIVE_HTTP_FETCH_BOUNDARY,
                 ticker=ticker,
                 source_document_id=fixture_source.source_document_id,
                 source_type=fixture_source.source_type,
@@ -496,6 +515,7 @@ def execute_sec_stock_handoff_gated_official_source_acquisition(
             )
         )
         parsed = parser_boundary.parse(fetched, fixture_source)
+        no_live_external_calls &= bool(fetched.no_live_external_calls and parsed.no_live_external_calls)
         parser_diagnostics.append(
             SecStockAcquisitionDiagnostic(
                 code=parsed.code,
@@ -540,12 +560,13 @@ def execute_sec_stock_handoff_gated_official_source_acquisition(
                     ),
                 ),
                 checksum=None,
-                mocked_fetch_boundary=SEC_STOCK_MOCK_HTTP_FETCH_BOUNDARY,
+                mocked_fetch_boundary=SEC_STOCK_MOCK_HTTP_FETCH_BOUNDARY if use_mock_fetcher else None,
                 parser_adapter_boundary=SEC_STOCK_PARSER_ADAPTER_BOUNDARY,
                 fetched_source_count=len(parser_diagnostics),
                 parser_diagnostic_count=len(parser_diagnostics),
                 handoff_approved_source_count=len(approved_sources),
                 handoff_blocked_source_count=blocked_count,
+                no_live_external_calls=no_live_external_calls,
             )
         approved_sources.append(approved_source)
 
@@ -558,12 +579,13 @@ def execute_sec_stock_handoff_gated_official_source_acquisition(
         source_records=source_records,
         diagnostics=(*acquisition.diagnostics, *parser_diagnostics),
         checksum=_combined_checksum(source_records),
-        mocked_fetch_boundary=SEC_STOCK_MOCK_HTTP_FETCH_BOUNDARY,
+        mocked_fetch_boundary=SEC_STOCK_MOCK_HTTP_FETCH_BOUNDARY if use_mock_fetcher else None,
         parser_adapter_boundary=SEC_STOCK_PARSER_ADAPTER_BOUNDARY,
         fetched_source_count=len(source_records),
         parser_diagnostic_count=len(parser_diagnostics),
         handoff_approved_source_count=len(source_records),
         handoff_blocked_source_count=0,
+        no_live_external_calls=no_live_external_calls,
     )
 
 

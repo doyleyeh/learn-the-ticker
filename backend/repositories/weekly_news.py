@@ -35,6 +35,7 @@ WEEKLY_NEWS_FIXTURE_ACQUISITION_BOUNDARY = "weekly-news-fixture-acquisition-boun
 WEEKLY_NEWS_LIVE_ACQUISITION_READINESS_BOUNDARY = "weekly-news-live-acquisition-readiness-boundary-v1"
 WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_ACQUISITION_BOUNDARY = "weekly-news-official-source-mocked-acquisition-boundary-v1"
 WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_FETCH_BOUNDARY = "weekly-news-official-source-mocked-fetch-boundary-v1"
+WEEKLY_NEWS_OFFICIAL_SOURCE_LIVE_FETCH_BOUNDARY = "weekly-news-official-source-live-fetch-boundary-v1"
 WEEKLY_NEWS_OFFICIAL_SOURCE_PARSER_ADAPTER_BOUNDARY = "weekly-news-official-source-parser-adapter-boundary-v1"
 WEEKLY_NEWS_EVENT_EVIDENCE_SCHEMA_VERSION = "weekly-news-event-evidence-repository-v1"
 WEEKLY_NEWS_EVENT_EVIDENCE_TABLES = (
@@ -232,6 +233,20 @@ class WeeklyNewsOfficialSourceMockFetcher:
             status="fetched",
             checksum=candidate.evidence_checksum or "",
             retrieved_at=candidate.retrieved_at,
+        )
+
+
+@dataclass(frozen=True)
+class WeeklyNewsOfficialSourceLiveFetcher:
+    def fetch(self, candidate: "WeeklyNewsEventCandidateRow") -> WeeklyNewsOfficialSourceMockFetchResponse:
+        return WeeklyNewsOfficialSourceMockFetchResponse(
+            boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_LIVE_FETCH_BOUNDARY,
+            candidate_event_id=candidate.candidate_event_id,
+            source_document_id=candidate.source_document_id,
+            status="fetched",
+            checksum=candidate.evidence_checksum or "",
+            retrieved_at=candidate.retrieved_at,
+            no_live_external_calls=False,
         )
 
 
@@ -1066,15 +1081,18 @@ def acquire_weekly_news_event_evidence_from_official_sources(
         for candidate in candidates
         if candidate.source_rank_tier in _OFFICIAL_SOURCE_RANK_TIERS
     ]
-    fetch_boundary = fetcher or WeeklyNewsOfficialSourceMockFetcher()
+    use_mock_fetcher = fetcher is None
+    fetch_boundary = fetcher or WeeklyNewsOfficialSourceLiveFetcher()
     parser_boundary = parser or WeeklyNewsOfficialSourceParserAdapter()
     handoff_approved_count = 0
     handoff_blocked_count = 0
     parser_diagnostic_count = 0
     prepared_candidates: list[WeeklyNewsEventCandidateRow] = []
+    no_live_external_calls = True
     for candidate in official_candidates:
         fetched = fetch_boundary.fetch(candidate)
         parsed = parser_boundary.parse(fetched, candidate)
+        no_live_external_calls &= bool(fetched.no_live_external_calls and parsed.no_live_external_calls)
         parser_diagnostic_count += 1
         parsed_candidate = candidate.model_copy(
             update={
@@ -1093,18 +1111,19 @@ def acquire_weekly_news_event_evidence_from_official_sources(
                     readiness=readiness,
                     candidate_count=len(candidates),
                     configured_max_item_count=configured_max_item_count,
-                    mocked_fetch_boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_FETCH_BOUNDARY,
+                    mocked_fetch_boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_FETCH_BOUNDARY if use_mock_fetcher else None,
                     parser_adapter_boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_PARSER_ADAPTER_BOUNDARY,
                     fetched_source_count=parser_diagnostic_count,
                     parser_diagnostic_count=parser_diagnostic_count,
                     handoff_approved_source_count=handoff_approved_count,
                     handoff_blocked_source_count=handoff_blocked_count,
+                    no_live_external_calls=no_live_external_calls,
                     sanitized_diagnostics={
                         "boundary": WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_ACQUISITION_BOUNDARY,
                         "status": "blocked",
                         "ticker": normalized,
                         "blocked_reason": "weekly_news_source_handoff_failed",
-                        "no_live_external_calls": True,
+                        "no_live_external_calls": no_live_external_calls,
                     },
                 )
             prepared_candidates.append(
@@ -1140,10 +1159,10 @@ def acquire_weekly_news_event_evidence_from_official_sources(
         "configured_max_item_count": configured_max_item_count,
         "evidence_limited_state": evidence_state.evidence_limited_state if evidence_state else None,
         "ai_analysis_allowed": threshold.analysis_allowed if threshold else False,
-        "mocked_fetch_boundary": WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_FETCH_BOUNDARY,
+        "mocked_fetch_boundary": WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_FETCH_BOUNDARY if use_mock_fetcher else None,
         "parser_adapter_boundary": WEEKLY_NEWS_OFFICIAL_SOURCE_PARSER_ADAPTER_BOUNDARY,
         "handoff_approved_source_count": handoff_approved_count,
-        "no_live_external_calls": True,
+        "no_live_external_calls": no_live_external_calls,
     }
     return WeeklyNewsOfficialSourceAcquisitionResult(
         boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_ACQUISITION_BOUNDARY,
@@ -1156,12 +1175,13 @@ def acquire_weekly_news_event_evidence_from_official_sources(
         configured_max_item_count=configured_max_item_count,
         evidence_limited_state=evidence_state.evidence_limited_state if evidence_state else None,
         ai_analysis_allowed=threshold.analysis_allowed if threshold else False,
-        mocked_fetch_boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_FETCH_BOUNDARY,
+        mocked_fetch_boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_FETCH_BOUNDARY if use_mock_fetcher else None,
         parser_adapter_boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_PARSER_ADAPTER_BOUNDARY,
         fetched_source_count=parser_diagnostic_count,
         parser_diagnostic_count=parser_diagnostic_count,
         handoff_approved_source_count=handoff_approved_count,
         handoff_blocked_source_count=handoff_blocked_count,
+        no_live_external_calls=no_live_external_calls,
         sanitized_diagnostics=diagnostics,
     )
 

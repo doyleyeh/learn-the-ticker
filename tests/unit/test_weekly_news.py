@@ -32,6 +32,7 @@ from backend.weekly_news_repository import (
     WEEKLY_NEWS_LIVE_ACQUISITION_READINESS_BOUNDARY,
     WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_ACQUISITION_BOUNDARY,
     WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_FETCH_BOUNDARY,
+    WEEKLY_NEWS_OFFICIAL_SOURCE_LIVE_FETCH_BOUNDARY,
     WEEKLY_NEWS_OFFICIAL_SOURCE_PARSER_ADAPTER_BOUNDARY,
     WEEKLY_NEWS_EVENT_EVIDENCE_TABLES,
     WeeklyNewsAIThresholdRow,
@@ -49,6 +50,7 @@ from backend.weekly_news_repository import (
     WeeklyNewsValidationStatusRow,
     WeeklyNewsFixtureAcquisitionBoundary,
     WeeklyNewsOfficialSourceParserAdapter,
+    WeeklyNewsOfficialSourceMockFetchResponse,
     WeeklyNewsOfficialSourceParserDiagnostic,
     InMemoryWeeklyNewsEventEvidenceRepository,
     acquire_weekly_news_event_evidence_from_official_sources,
@@ -602,6 +604,54 @@ def test_weekly_news_official_source_live_acquisition_uses_mocked_golden_paths_o
     assert "source_policy_blocked" in suppressed["metadata_only"]
     assert "outside_market_week_window" in suppressed["outside_window"]
     assert "https://" not in repr(result.sanitized_diagnostics).lower()
+
+
+class LiveWeeklyNewsFetcher:
+    def fetch(self, candidate):
+        return WeeklyNewsOfficialSourceMockFetchResponse(
+            boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_LIVE_FETCH_BOUNDARY,
+            candidate_event_id=candidate.candidate_event_id,
+            source_document_id=candidate.source_document_id,
+            status="fetched",
+            checksum=candidate.evidence_checksum or "",
+            retrieved_at=candidate.retrieved_at,
+            no_live_external_calls=False,
+            stores_raw_article_text=False,
+            stores_raw_provider_payload=False,
+            stores_secret=False,
+        )
+
+
+def test_weekly_news_official_source_live_acquisition_respects_injected_live_fetcher():
+    candidates = [
+        _repository_candidate("official_filing", tier=WeeklyNewsSourceRankTier.official_filing, source_rank=1),
+        _repository_candidate("investor_relations", tier=WeeklyNewsSourceRankTier.investor_relations_release, source_rank=2),
+    ]
+
+    result = acquire_weekly_news_event_evidence_from_official_sources(
+        asset_ticker="QQQ",
+        as_of="2026-04-23",
+        created_at="2026-04-23T12:00:00Z",
+        candidates=candidates,
+        opt_in_enabled=True,
+        official_source_configured=True,
+        rate_limit_ready=True,
+        repository_writer_ready=True,
+        fetcher=LiveWeeklyNewsFetcher(),
+    )
+
+    assert result.boundary == WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_ACQUISITION_BOUNDARY
+    assert result.status == "acquired"
+    assert result.readiness.can_attempt_live_acquisition is True
+    assert result.mocked_fetch_boundary is None
+    assert result.no_live_external_calls is False
+    assert result.fetched_source_count == 2
+    assert result.parser_diagnostic_count == 2
+    assert result.handoff_approved_source_count == 2
+    assert result.handoff_blocked_source_count == 0
+    assert result.sanitized_diagnostics["no_live_external_calls"] is False
+    assert [row.candidate_event_id for row in result.records.selected_events] == ["official_filing", "investor_relations"]
+    assert result.selected_event_count == 2
 
 
 class FailingWeeklyNewsOfficialParser(WeeklyNewsOfficialSourceParserAdapter):

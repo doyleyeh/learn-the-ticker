@@ -30,6 +30,7 @@ from backend.provider_adapters.etf_issuer import (
     ETF_ISSUER_HANDOFF_GATED_EXECUTION_BOUNDARY,
     ETF_ISSUER_LIVE_ACQUISITION_READINESS_BOUNDARY,
     ETF_ISSUER_MOCK_HTTP_FETCH_BOUNDARY,
+    ETF_ISSUER_LIVE_HTTP_FETCH_BOUNDARY,
     ETF_ISSUER_PARSER_ADAPTER_BOUNDARY,
     ETF_ISSUER_FIXTURES,
     EtfIssuerFixtureContractError,
@@ -47,6 +48,7 @@ from backend.provider_adapters.sec_stock import (
     SEC_STOCK_FIXTURE_CONTRACT_VERSION,
     SEC_STOCK_HANDOFF_GATED_EXECUTION_BOUNDARY,
     SEC_STOCK_LIVE_ACQUISITION_READINESS_BOUNDARY,
+    SEC_STOCK_LIVE_HTTP_FETCH_BOUNDARY,
     SEC_STOCK_MOCK_HTTP_FETCH_BOUNDARY,
     SEC_STOCK_PARSER_ADAPTER_BOUNDARY,
     SEC_STOCK_FIXTURES,
@@ -267,6 +269,40 @@ def test_sec_stock_handoff_gated_execution_runs_mocked_fetch_parser_and_handoff(
     assert any(diagnostic.code == "sec_parser_parsed" for diagnostic in acquisition.diagnostics)
     assert all(diagnostic.stores_raw_source_text is False for diagnostic in acquisition.diagnostics)
     assert all(diagnostic.stores_raw_provider_payload is False for diagnostic in acquisition.diagnostics)
+
+
+class LiveSecFetcher:
+    def fetch(self, request: sec_stock_module.SecStockMockFetchRequest) -> SecStockMockFetchResponse:
+        return SecStockMockFetchResponse(
+            boundary=SEC_STOCK_LIVE_HTTP_FETCH_BOUNDARY,
+            ticker=request.ticker,
+            source_document_id=request.source_document_id,
+            source_type=request.source_type,
+            status="fetched",
+            checksum=request.expected_checksum,
+            retrieved_at=sec_stock_module.STUB_TIMESTAMP,
+            content_kind=request.source_type,
+            no_live_external_calls=False,
+        )
+
+
+def test_sec_stock_handoff_gated_execution_runs_injected_live_fetcher():
+    adapter = mock_sec_stock_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.sec, "AAPL").licensing
+
+    acquisition = execute_sec_stock_handoff_gated_official_source_acquisition(
+        adapter,
+        adapter.request("AAPL"),
+        licensing,
+        fetcher=LiveSecFetcher(),
+    )
+
+    assert acquisition.boundary == SEC_STOCK_HANDOFF_GATED_EXECUTION_BOUNDARY
+    assert acquisition.mocked_fetch_boundary is None
+    assert acquisition.no_live_external_calls is False
+    assert acquisition.response_state is ProviderResponseState.supported
+    assert acquisition.handoff_approved_source_count == 3
+    assert acquisition.handoff_blocked_source_count == 0
 
 
 class FailingSecParser(SecStockParserAdapter):
@@ -640,6 +676,40 @@ def test_etf_issuer_handoff_gated_execution_runs_mocked_fetch_parser_and_handoff
     assert all(source.parser_status is SourceParserStatus.parsed for source in acquisition.provider_response.source_attributions)
     assert all(source.source_identity for source in acquisition.provider_response.source_attributions)
     assert any(diagnostic.code == "etf_issuer_parser_parsed" for diagnostic in acquisition.diagnostics)
+
+
+class LiveEtfIssuerFetcher:
+    def fetch(self, request: etf_issuer_module.EtfIssuerMockFetchRequest) -> EtfIssuerMockFetchResponse:
+        return EtfIssuerMockFetchResponse(
+            boundary=ETF_ISSUER_LIVE_HTTP_FETCH_BOUNDARY,
+            ticker=request.ticker,
+            source_document_id=request.source_document_id,
+            source_type=request.source_type,
+            status="fetched",
+            checksum=request.expected_checksum,
+            retrieved_at=etf_issuer_module.STUB_TIMESTAMP,
+            content_kind=request.source_type,
+            no_live_external_calls=False,
+        )
+
+
+def test_etf_issuer_handoff_gated_execution_runs_injected_live_fetcher():
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.etf_issuer, "VOO").licensing
+
+    acquisition = execute_etf_issuer_handoff_gated_official_source_acquisition(
+        adapter,
+        adapter.request("VOO"),
+        licensing,
+        fetcher=LiveEtfIssuerFetcher(),
+    )
+
+    assert acquisition.boundary == ETF_ISSUER_HANDOFF_GATED_EXECUTION_BOUNDARY
+    assert acquisition.mocked_fetch_boundary is None
+    assert acquisition.no_live_external_calls is False
+    assert acquisition.response_state is ProviderResponseState.supported
+    assert acquisition.handoff_approved_source_count == 4
+    assert acquisition.handoff_blocked_source_count == 0
 
 
 class FailingEtfIssuerParser(EtfIssuerParserAdapter):

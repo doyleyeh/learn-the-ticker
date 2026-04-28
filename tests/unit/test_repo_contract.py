@@ -489,7 +489,7 @@ def test_t114_mvp_launch_readiness_docs_cover_regression_matrix_and_go_no_go_wit
         assert forbidden.lower() not in combined_lower
 
 
-def test_tasks_general_mvp_roadmap_marks_t122_current_with_prepared_backlog():
+def test_tasks_general_mvp_roadmap_marks_t123_current_with_prepared_backlog():
     tasks = read_file("TASKS.md")
     current_task = tasks.split("## Current task", 1)[1].split("## Completed", 1)[0]
     backlog = tasks.split("## Backlog", 1)[1].split("## Completed", 1)[0]
@@ -497,13 +497,11 @@ def test_tasks_general_mvp_roadmap_marks_t122_current_with_prepared_backlog():
     roadmap = tasks.split("## General MVP Roadmap", 1)[1]
 
     assert "## MVP Backend Roadmap" not in tasks
-    assert "### T-122: Prove local durable repository smoke with API proxy enabled" in current_task
-    assert "The smoke validates all existing API-backed checks" in current_task
-    assert "Local smoke remains deterministic by default and opt-in to local durable execution" in current_task
-    assert "/compare?left=VOO&right=QQQ" in current_task
+    assert "### T-123: Promote real official-source fetchers behind handoff-gated local opt-in" in current_task
+    assert "operator-only official-source fetch execution for golden assets" in current_task
+    assert "Operator-local real fetchers are explicitly opt-in" in current_task
     assert "One agent-loop cycle" in current_task
     for task_marker in [
-        "### T-123: Promote real official-source fetchers behind handoff-gated local opt-in",
         "### T-124: Prepare reviewed launch-universe expansion plan",
     ]:
         assert task_marker in backlog
