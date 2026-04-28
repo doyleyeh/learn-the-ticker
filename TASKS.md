@@ -1,32 +1,47 @@
 ## Current task
 
-### T-120: Implement v0.5 ETF manifest split contracts
+### T-121: Add browser E2E local smoke for API-backed MVP flows
 
 Goal:
-Replace the legacy combined ETF universe contract with separate v0.5 manifests for supported ETF generated-output coverage and ETF/ETP recognition-only blocked search states, without enabling live provider calls or generated output for recognition-only rows.
+Add a deterministic local browser smoke path that validates API-backed asset pages, chat exports, source and glossary surfaces, comparison routing, and CORS/proxy behavior while preserving the v0.4 workflow.
+
+Task-scope:
+Implement an optional script or marker set for localhost-only browser smoke that exercises existing API-backed surfaces from the current deterministic baseline (no API or provider schema changes), and confirms the separation between single-asset home search and the separate comparison workflow.
+
+Allowed files:
+- tests/frontend/smoke.mjs
+- tests/frontend/smoke.mjs:task-board references if needed
+- package.json scripts in the repository root and apps/web
+- docs/agent-journal/2026*.md
+
+Do not change:
+- Backend API contracts, schema contracts, or source-use/citation policy logic.
+- Live-provider/network calls in tests and in CI execution.
+- Search, support classification rules, or the v0.4 frontend workflow itself.
+- Golden Asset Source Handoff enforcement and v0.5 coverage-split behavior.
 
 Acceptance criteria:
-
-- Add or generate deterministic fixture manifests at `data/universes/us_equity_etfs_supported.current.json` and `data/universes/us_etp_recognition.current.json`.
-- Update `backend/etf_universe.py`, search classification, frontend fallback copy, and tests so generated ETF pages/chat/comparisons/Weekly News/AI analysis/exports are allowed only from the supported ETF manifest.
-- Recognition rows can produce `unsupported`, `out_of_scope`, `pending_review`, `unavailable`, or `pending_ingestion` search states, but cannot unlock generated output.
-- Preserve current cached golden ETF behavior for `VOO` and `QQQ` where supported-manifest entries and validated fixture source packs exist.
-- Keep normal CI deterministic and free of live exchange, issuer, provider, market-data, news, or LLM calls.
+- Local browser smoke path exists and can be skipped unless local web/API servers are explicitly available.
+- Smoke verifies `POST /api/assets/VOO/chat`, asset/source-list export links, `/compare?left=VOO&right=QQQ`, and source/glossary markers.
+- Smoke fails if API-backed chat, export, and compare paths resolve to Next 404s.
+- Smoke records console/network errors and test failures.
+- Smoke confirms `A vs B` path behavior through API-backed compare routing rather than a home-page comparison builder.
+- No raw user text, secrets, or provider tokens are persisted during the run.
+- The smoke remains localhost-only and deterministic from fixtures when local durable services are absent.
 
 Required commands:
 
 ```bash
-python3 -m pytest tests -q
 npm test
 npm run typecheck
-python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_provider_adapters.py tests/unit/test_repo_contract.py -q
-python3 evals/run_static_evals.py
+npm run build
+python3 -m pytest tests -q
 bash scripts/run_quality_gate.sh
 git diff --check
 ```
 
 Iteration budget:
-One agent-loop cycle. Do not promote broad ETF support beyond deterministic fixture manifests.
+One agent-loop cycle. Keep the smoke optional in CI unless local servers are explicitly provided.
 
 ## Backlog
 
@@ -134,6 +149,38 @@ One agent-loop cycle. Do not promote a candidate manifest without manual approva
 
 
 ## Completed
+
+### T-120: Implement v0.5 ETF manifest split contracts
+
+Goal:
+Replace the legacy combined ETF universe contract with separate v0.5 manifests for supported ETF generated-output coverage and ETF/ETP recognition-only blocked search states.
+
+Completed details:
+- Implementation commit `ae6b8b9 feat(T-120): implement v0.5 ETF manifest split contracts`.
+- Merge commit `fc3fc0d chore(T-120): merge v0.5 ETF manifest split contracts` from branch `agent/T-120-20260428T011703Z`.
+- `backend/etf_universe.py` now resolves generated ETF support from `data/universes/us_equity_etfs_supported.current.json` and recognition rows from `data/universes/us_etp_recognition.current.json`.
+- `data/universes/us_equity_etfs_supported.current.json` and `data/universes/us_etp_recognition.current.json` were updated for deterministic split-manifest runtime authority.
+- `tests/unit/test_search_classification.py` and `tests/unit/test_provider_adapters.py` were updated to enforce support-state behavior from the split manifests.
+- `docs/agent-journal/20260428T011703Z.md` captures checks and remaining risks.
+- Required commands executed and passed:
+
+```bash
+python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_provider_adapters.py tests/unit/test_repo_contract.py -q
+python3 -m pytest tests -q
+npm test
+npm run typecheck
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+git diff --check
+```
+- `docs/agent-journal/20260428T011703Z.md` records all required commands passing for this task branch.
+- Remaining risks:
+  - Legacy `data/universes/us_equity_etfs.current.json` remains for repo continuity while runtime now reads split manifests.
+  - Documentation in `docs/mvp_functional_gap_review.md` still describes the split as pending and needs follow-up update.
+
+Completion summary:
+- Task moved to Completed with no production or live-provider changes.
+- Coverage for v0.5 split enforcement is now backed by deterministic fixtures and repository contract tests.
 
 ### T-119: Wire local frontend API access and backend CORS
 
