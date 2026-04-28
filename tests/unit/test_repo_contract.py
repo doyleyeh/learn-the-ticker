@@ -354,11 +354,11 @@ def test_mvp_functional_gap_review_tracks_v06_progress_and_next_tasks():
         "data/universes/us_etp_recognition.current.json",
         "Launch-sized manifests are not approved",
         "Repo-native source-handoff tooling is available for local reviewed packets",
-        "Governed golden evidence does not yet prove full render authority",
+        "Governed golden evidence now has deterministic render proof for the golden path",
         "Local live-AI validation is operator-smoke covered, not launch-approved",
         "T-126 completed repo-native source-handoff manifest inspection/finalization smoke tooling",
         "T-127 completed the opt-in local live-AI validation smoke",
-        "T-128: prove governed golden evidence drives backend API and frontend rendering",
+        "T-128 adds deterministic governed golden API/frontend rendering proof",
         "T-129: add launch-manifest operator automation parity",
         "T-130: add a local fresh-data MVP rehearsal command",
         "Normal CI remains deterministic",
@@ -527,7 +527,7 @@ def test_t114_mvp_launch_readiness_docs_cover_regression_matrix_and_go_no_go_wit
         assert forbidden.lower() not in combined_lower
 
 
-def test_tasks_general_mvp_roadmap_marks_t127_current_and_backlog_state():
+def test_tasks_general_mvp_roadmap_marks_t128_current_and_backlog_state():
     tasks = read_file("TASKS.md")
     current_task = tasks.split("## Current task", 1)[1].split("## Completed", 1)[0]
     backlog = tasks.split("## Backlog", 1)[1].split("## Completed", 1)[0]
@@ -535,12 +535,11 @@ def test_tasks_general_mvp_roadmap_marks_t127_current_and_backlog_state():
     roadmap = tasks.split("## General MVP Roadmap", 1)[1]
 
     assert "## MVP Backend Roadmap" not in tasks
-    assert "### T-127: Add opt-in local live-AI validation smoke" in current_task
-    assert "one supported golden grounded-chat case" in current_task
-    assert "evidence-threshold AI Comprehensive Analysis case" in current_task
+    assert "### T-128: Prove governed golden evidence drives API and frontend rendering" in current_task
+    assert "source snapshot and knowledge-pack persistence" in current_task
+    assert "generated-output cache validation" in current_task
     assert "One agent-loop cycle" in current_task
     for marker in [
-        "### T-128: Prove governed golden evidence drives API and frontend rendering",
         "### T-129: Add launch-manifest operator automation parity",
         "### T-130: Add local fresh-data MVP rehearsal command",
     ]:
@@ -565,7 +564,7 @@ def test_tasks_general_mvp_roadmap_marks_t127_current_and_backlog_state():
     assert "T-119 closed the local frontend/API plumbing blockers" in roadmap
     assert "T-125 completed the v0.6 handoff-doc and MVP-backlog alignment pass" in roadmap
     assert "T-126 established repo-native source-handoff manifest smoke tooling" in roadmap
-    assert "The current promoted task is T-127" in roadmap
+    assert "The current promoted task is T-128" in roadmap
 
     assert "T-099 established deterministic provider content export-rights hardening" in roadmap
     assert "T-100 established the backend MVP runtime gap audit and roadmap tracker" in roadmap
@@ -588,7 +587,7 @@ def test_tasks_general_mvp_roadmap_marks_t127_current_and_backlog_state():
     assert "T-120 established the v0.5 split between supported ETF generated-output coverage" in roadmap
     assert "T-124 established reviewed launch-universe expansion planning" in roadmap
     assert "T-125 established v0.6 docs, handoff docs, and backlog alignment" in roadmap
-    assert "T-128 through T-130" in roadmap
+    assert "T-129 through T-130" in roadmap
     assert "| Provider source-use/export enforcement hardening | Completed | T-099 |" in roadmap
     assert "| Backend fresh-data MVP runtime gap tracker | Completed | T-100 |" in roadmap
     assert "| Configured persisted-reader route wiring | Completed | T-101 |" in roadmap
@@ -617,8 +616,8 @@ def test_tasks_general_mvp_roadmap_marks_t127_current_and_backlog_state():
     assert "| Reviewed launch-universe expansion planning | Completed | T-124 |" in roadmap
     assert "| v0.6 docs, handoff docs, and backlog alignment | Completed | T-125 |" in roadmap
     assert "| Repo-native source-handoff manifest smoke tooling | Completed | T-126 |" in roadmap
-    assert "| Opt-in local live-AI validation smoke | Current | T-127 |" in roadmap
-    assert "| Governed golden evidence API/frontend rendering proof | Prepared | T-128 |" in roadmap
+    assert "| Opt-in local live-AI validation smoke | Completed | T-127 |" in roadmap
+    assert "| Governed golden evidence API/frontend rendering proof | Current | T-128 |" in roadmap
     assert "| Launch-manifest operator automation parity | Prepared | T-129 |" in roadmap
     assert "| Local fresh-data MVP rehearsal command | Prepared | T-130 |" in roadmap
     assert "| Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |" in roadmap
@@ -658,6 +657,7 @@ def test_t118_local_fresh_data_runbook_covers_deterministic_smoke_without_live_r
         "scripts/run_live_ai_validation_smoke.py --json",
         "both smoke cases report `skipped`",
         "both smoke cases report `blocked`",
+        "T-128 proves deterministic governed golden source snapshots",
         "does not approve sources",
         "does not relax Golden Asset Source Handoff",
     ]:

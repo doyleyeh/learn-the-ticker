@@ -12,7 +12,7 @@ This checklist records production-readiness gates. It does not approve deploymen
 | Deterministic CI | Regression-covered | Required commands pass without live provider, market-data, news, database, object-storage, Redis, or LLM calls. |
 | Search and support states | Regression-covered | Search preserves stock-vs-ETF identity, support-state chips, exact unsupported/no-result behavior, Top-500 manifest-backed stock support, and `A vs B` compare routing. |
 | Launch pre-cache readiness | Regression-covered | Cached supported assets render from existing fixtures; eligible-not-cached launch assets remain pending/non-generated until validated source packs exist. |
-| Golden Asset Source Handoff | Partially covered, follow-up required | Full enforcement must block unapproved, unclear-rights, parser-invalid, hidden/internal, pending-review, and rejected sources across evidence storage, generation, citations, source drawer, cache, and exports. |
+| Golden Asset Source Handoff | Regression-covered for governed golden path | T-128 proves configured golden API rendering can require approved private source snapshots, normalized knowledge-pack records, and validated generated-output cache records. Launch-sized source approval remains separate. |
 | Top-500 runtime coverage | Regression-covered for fixture manifest | Runtime reads `data/universes/us_common_stocks_top500.current.json`; monthly candidate refresh and promotion workflow remains follow-up. |
 | Weekly News Focus | Regression-covered | Official-source priority, U.S. Eastern market-week windows, evidence limits, no padding, and empty states remain covered. |
 | AI Comprehensive Analysis | Regression-covered | Suppressed unless at least two high-signal Weekly News items and required canonical citations are available; section order remains fixed when present. |
@@ -28,6 +28,7 @@ This checklist records production-readiness gates. It does not approve deploymen
 | Deployment environment validation | Validate Cloud Run, Vercel, Neon, storage, production CORS origins, and server-only secret configuration without exposing secret values. T-119 covers local CORS/proxy plumbing only. |
 | ETF launch manifest coverage | T-120 split implemented; launch expansion required | Keep supported ETF and ETF/ETP recognition manifests separate. Before production launch, replace fixture-sized ETF coverage with reviewed launch manifests and private mirrors. Recognition-only rows must not unlock generated output. |
 | Private object storage | Prove private snapshot/artifact storage behavior and safe object namespace validation before production source snapshots or generated artifacts are written. |
+| Governed evidence launch coverage | T-128 covers deterministic golden assets only | Expand reviewed source packets and operator rehearsal before treating governed rendering as launch coverage. |
 | Database migration execution | Run and verify production migration strategy, rollback approach, connection pooling, and read/write permissions. |
 | Cloud Run API settings | Review region, `PORT`, min instances, max instances, CORS origins, budget guardrails, logging, and error handling. |
 | Cloud Run Job settings | Review manual job trigger, service account scope, job timeout, retries, rate limits, and repository writer readiness. |

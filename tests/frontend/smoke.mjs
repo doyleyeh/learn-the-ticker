@@ -210,6 +210,7 @@ includesAll("app/assets/[ticker]/sources/page.tsx", [
 ], "source-list route boundaries and source-use markers");
 includesAll("components/SourceDrawer.tsx", [
   "data-source-drawer-mobile-presentation=\"bottom-sheet\"",
+  "data-governed-golden-source-drawer=\"api-backed-source-groups\"",
   "data-source-drawer-close-control=\"native-details-summary\"",
   "data-source-use-policy",
   "data-source-allowlist-status",
@@ -218,6 +219,24 @@ includesAll("components/SourceDrawer.tsx", [
   "Supporting passage",
   "Related claim context"
 ], "source drawer citation metadata and mobile behavior markers");
+includesAll("components/CitationChip.tsx", [
+  "data-governed-golden-citation-binding=\"same-asset-source\""
+], "governed golden citation binding marker");
+includesAll("components/FreshnessLabel.tsx", [
+  "data-governed-golden-freshness-label=\"api-backed-section-state\""
+], "governed golden freshness marker");
+includesAll("lib/assetOverview.ts", [
+  "GOVERNED_GOLDEN_OVERVIEW_RENDERING_PROOF",
+  "persisted knowledge-pack records plus generated-output cache validation"
+], "governed golden overview API proof marker");
+includesAll("lib/sourceDrawer.ts", [
+  "GOVERNED_GOLDEN_SOURCE_DRAWER_RENDERING_PROOF",
+  "allowed excerpts, and source-use policies"
+], "governed golden source drawer API proof marker");
+includesAll("lib/exportControls.ts", [
+  "GOVERNED_GOLDEN_EXPORT_RENDERING_PROOF",
+  "citations, source metadata, allowed excerpts, freshness labels, and disclaimers"
+], "governed golden export API proof marker");
 includesAll("components/GlossaryPopover.tsx", [
   "data-glossary-desktop-interaction=\"hover-click-focus-escape\"",
   "data-glossary-mobile-presentation=\"bottom-sheet\"",

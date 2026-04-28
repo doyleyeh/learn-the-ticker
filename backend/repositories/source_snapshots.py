@@ -235,6 +235,12 @@ class SourceSnapshotArtifactRepository:
         records = raw if isinstance(raw, SourceSnapshotRepositoryRecords) else SourceSnapshotRepositoryRecords.model_validate(raw)
         return validate_source_snapshot_records(records)
 
+    def read_source_snapshot_records(self, ticker: str) -> SourceSnapshotRepositoryRecords | None:
+        records = self.records()
+        if records is None:
+            return None
+        return _filter_records_for_asset(records, ticker)
+
 
 @dataclass
 class InMemorySourceSnapshotArtifactRepository:
@@ -254,6 +260,9 @@ class InMemorySourceSnapshotArtifactRepository:
             artifacts=list(self.artifacts_by_id.values()),
             diagnostics=list(self.diagnostics_by_id.values()),
         )
+
+    def read_source_snapshot_records(self, ticker: str) -> SourceSnapshotRepositoryRecords | None:
+        return _filter_records_for_asset(self.records(), ticker)
 
 
 def source_snapshot_records_from_acquisition_result(
@@ -449,6 +458,22 @@ def validate_source_snapshot_records(records: SourceSnapshotRepositoryRecords) -
         _validate_diagnostic(diagnostic, artifact_ids)
 
     return records
+
+
+def _filter_records_for_asset(records: SourceSnapshotRepositoryRecords, ticker: str) -> SourceSnapshotRepositoryRecords | None:
+    normalized = ticker.strip().upper()
+    filtered = SourceSnapshotRepositoryRecords(
+        artifacts=[artifact for artifact in records.artifacts if artifact.asset_ticker == normalized],
+        diagnostics=[
+            diagnostic
+            for diagnostic in records.diagnostics
+            if diagnostic.compact_metadata.get("asset_ticker") == normalized
+            or diagnostic.compact_metadata.get("ticker") == normalized
+        ],
+    )
+    if not filtered.artifacts and not filtered.diagnostics:
+        return None
+    return validate_source_snapshot_records(filtered)
 
 
 def records_to_row_list(records: SourceSnapshotRepositoryRecords) -> list[StrictRow]:

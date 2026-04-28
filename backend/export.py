@@ -87,6 +87,7 @@ def export_asset_page(
     *,
     persisted_pack_reader: Any | None = None,
     generated_output_cache_reader: Any | None = None,
+    source_snapshot_reader: Any | None = None,
     generated_output_cache_writer: Any | None = None,
     persisted_weekly_news_reader: Any | None = None,
 ) -> ExportResponse:
@@ -100,6 +101,7 @@ def export_asset_page(
         ticker,
         persisted_pack_reader=persisted_pack_reader,
         generated_output_cache_reader=generated_output_cache_reader,
+        source_snapshot_reader=source_snapshot_reader,
         persisted_weekly_news_reader=persisted_weekly_news_reader,
     )
     if not overview.asset.supported:
@@ -142,6 +144,7 @@ def export_asset_source_list(
     *,
     persisted_pack_reader: Any | None = None,
     generated_output_cache_reader: Any | None = None,
+    source_snapshot_reader: Any | None = None,
     generated_output_cache_writer: Any | None = None,
     persisted_weekly_news_reader: Any | None = None,
 ) -> ExportResponse:
@@ -155,6 +158,7 @@ def export_asset_source_list(
         ticker,
         persisted_pack_reader=persisted_pack_reader,
         generated_output_cache_reader=generated_output_cache_reader,
+        source_snapshot_reader=source_snapshot_reader,
         persisted_weekly_news_reader=persisted_weekly_news_reader,
     )
     if not overview.asset.supported:

@@ -17,7 +17,11 @@ export function FreshnessLabel({ label, value, state }: FreshnessLabelProps) {
   }[state];
 
   return (
-    <span className={`freshness-label freshness-${state}`} data-freshness-state={state}>
+    <span
+      className={`freshness-label freshness-${state}`}
+      data-freshness-state={state}
+      data-governed-golden-freshness-label="api-backed-section-state"
+    >
       <span>{label}</span>
       <strong>{value ?? "Unknown"}</strong>
       <em>{freshnessLabel ?? state}</em>

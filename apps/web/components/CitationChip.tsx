@@ -14,6 +14,7 @@ export function CitationChip({ citation, label }: CitationChipProps) {
       data-citation-id={citation.citationId}
       data-source-document-id={citation.sourceDocumentId}
       data-freshness-state={citation.freshnessState}
+      data-governed-golden-citation-binding="same-asset-source"
     >
       [{label ?? citation.citationId}]
     </a>

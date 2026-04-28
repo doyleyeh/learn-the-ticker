@@ -189,6 +189,7 @@ export function SourceDrawer({
       data-source-freshness-state={source.freshness_state}
       data-source-drawer-state={drawerState}
       data-source-drawer-mobile-presentation="bottom-sheet"
+      data-governed-golden-source-drawer="api-backed-source-groups"
       data-source-use-policy={source.source_use_policy}
       data-source-allowlist-status={source.allowlist_status}
       data-trust-metric-schema-version={trustMetricDescriptor.schemaVersion}
