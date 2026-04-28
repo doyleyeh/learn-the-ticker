@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from backend.models import (
@@ -28,6 +29,7 @@ from backend.source_policy import (
     validate_source_handoff,
     validate_source_allowlist,
 )
+from scripts.inspect_source_handoff_manifest import finalized_manifest, inspect_manifest, main as inspect_handoff_main
 from backend.weekly_news_repository import (
     WeeklyNewsSourceRankTier,
     source_policy_allows_weekly_news_selection,
@@ -37,6 +39,54 @@ from tests.unit.test_weekly_news import _repository_candidate
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _source_handoff_manifest_source(**updates):
+    source = {
+        "source_id": "sec-aapl-10k",
+        "source_identity": "https://www.sec.gov/Archives/edgar/data/320193/aapl-20240928.htm",
+        "source_document_id": "sec-aapl-10k",
+        "source_type": "sec_filing",
+        "is_official": True,
+        "source_quality": "official",
+        "allowlist_status": "allowed",
+        "source_use_policy": "full_text_allowed",
+        "permitted_operations": {
+            "can_store_metadata": True,
+            "can_store_raw_text": True,
+            "can_display_metadata": True,
+            "can_display_excerpt": True,
+            "can_summarize": True,
+            "can_cache": True,
+            "can_export_metadata": True,
+            "can_export_excerpt": True,
+            "can_export_full_text": False,
+            "can_support_generated_output": True,
+            "can_support_citations": True,
+            "can_support_canonical_facts": True,
+            "can_support_recent_developments": True,
+        },
+        "storage_rights": "raw_snapshot_allowed",
+        "export_rights": "excerpts_allowed",
+        "review_status": "approved",
+        "approval_rationale": "Reviewed SEC filing source for canonical stock evidence.",
+        "parser_status": "parsed",
+        "parser_failure_diagnostics": None,
+        "freshness_state": "fresh",
+        "as_of_date": "2026-04-01",
+        "retrieved_at": "2026-04-25T00:00:00Z",
+    }
+    source.update(updates)
+    return source
+
+
+def _source_handoff_manifest(*sources, status="draft"):
+    return {
+        "schema_version": "source-handoff-manifest-v1",
+        "manifest_id": "aapl-governed-sources-2026-04",
+        "manifest_status": status,
+        "sources": list(sources),
+    }
 
 
 def test_source_allowlist_loads_required_schema_and_policy_tiers():
@@ -266,6 +316,121 @@ def test_golden_asset_source_handoff_requires_approval_parser_rights_and_freshne
     )
     assert metadata_only.allowed is False
     assert "metadata_only_content_omitted" in metadata_only.reason_codes
+
+
+def test_source_handoff_manifest_smoke_inspects_draft_and_finalized_packets():
+    approved = _source_handoff_manifest_source()
+
+    draft_inspection = inspect_manifest(_source_handoff_manifest(approved, status="draft"))
+    finalized_inspection = inspect_manifest(_source_handoff_manifest(approved, status="finalized"))
+
+    assert draft_inspection["finalizable"] is True
+    assert finalized_inspection["finalizable"] is True
+    assert draft_inspection["source_count"] == 1
+    assert draft_inspection["blocking_source_count"] == 0
+    assert draft_inspection["sources"][0]["actions"]["generated_claim_support"]["allowed"] is True
+    assert draft_inspection["sources"][0]["actions"]["cacheable_generated_output"]["allowed"] is True
+    assert draft_inspection["sources"][0]["actions"]["markdown_json_section_export"]["allowed"] is True
+
+    finalized = finalized_manifest(
+        _source_handoff_manifest(approved),
+        finalized_at="2026-04-28T19:43:57Z",
+    )
+    assert finalized["manifest_status"] == "finalized"
+    assert finalized["finalized_at"] == "2026-04-28T19:43:57Z"
+    assert finalized["inspection"]["finalizable"] is True
+    assert finalized["inspection"]["validated_actions"] == [
+        "generated_claim_support",
+        "cacheable_generated_output",
+        "markdown_json_section_export",
+    ]
+
+
+def test_source_handoff_manifest_smoke_blocks_non_approved_and_invalid_packets():
+    cases = {
+        "pending-review": (
+            _source_handoff_manifest_source(review_status="pending_review"),
+            "review_pending_review",
+        ),
+        "rejected": (
+            _source_handoff_manifest_source(
+                allowlist_status="rejected",
+                source_quality="rejected",
+                source_use_policy="rejected",
+                storage_rights="rejected",
+                export_rights="rejected",
+                review_status="rejected",
+            ),
+            "source_rejected",
+        ),
+        "parser-invalid": (
+            _source_handoff_manifest_source(
+                parser_status="failed",
+                parser_failure_diagnostics="fixture parser failed",
+            ),
+            "parser_failed",
+        ),
+        "missing-freshness": (
+            _source_handoff_manifest_source(as_of_date=None, published_at=None, retrieved_at=None),
+            "missing_freshness_as_of_metadata",
+        ),
+        "unclear-rights": (
+            _source_handoff_manifest_source(storage_rights="unknown", export_rights="unknown"),
+            "storage_rights_unknown",
+        ),
+        "hidden-internal": (
+            _source_handoff_manifest_source(source_identity="private://internal/sec/aapl", source_type="internal_feed"),
+            "hidden_or_internal_source",
+        ),
+    }
+
+    for label, (source, expected_reason) in cases.items():
+        inspection = inspect_manifest(_source_handoff_manifest(source))
+        assert inspection["finalizable"] is False, label
+        assert inspection["blocking_source_count"] == 1, label
+        assert expected_reason in inspection["sources"][0]["reason_codes"], label
+
+
+def test_source_handoff_manifest_cli_is_repo_native_and_fixture_safe(tmp_path):
+    approved_manifest_path = tmp_path / "approved-source-handoff.json"
+    blocked_manifest_path = tmp_path / "blocked-source-handoff.json"
+    finalized_manifest_path = tmp_path / "finalized-source-handoff.json"
+
+    approved_manifest_path.write_text(
+        json.dumps(_source_handoff_manifest(_source_handoff_manifest_source())),
+        encoding="utf-8",
+    )
+    blocked_manifest_path.write_text(
+        json.dumps(
+            _source_handoff_manifest(
+                _source_handoff_manifest_source(
+                    source_id="blocked-source",
+                    parser_status="failed",
+                    parser_failure_diagnostics="fixture parser failed",
+                )
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    assert inspect_handoff_main(["inspect", str(approved_manifest_path), "--strict"]) == 0
+    assert inspect_handoff_main(["inspect", str(blocked_manifest_path)]) == 0
+    assert inspect_handoff_main(["inspect", str(blocked_manifest_path), "--strict"]) == 1
+    assert (
+        inspect_handoff_main(
+            [
+                "finalize",
+                str(approved_manifest_path),
+                "--output",
+                str(finalized_manifest_path),
+                "--finalized-at",
+                "2026-04-28T19:43:57Z",
+            ]
+        )
+        == 0
+    )
+    assert json.loads(finalized_manifest_path.read_text(encoding="utf-8"))["manifest_status"] == "finalized"
+    assert inspect_handoff_main(["finalize", str(blocked_manifest_path), "--output", str(tmp_path / "blocked.json")]) == 2
 
 
 def test_top500_refresh_mocked_official_fixture_inputs_pass_handoff_metadata_contract():
