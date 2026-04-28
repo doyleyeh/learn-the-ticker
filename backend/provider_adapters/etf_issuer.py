@@ -43,6 +43,7 @@ ETF_ISSUER_FIXTURE_CONTRACT_VERSION = "etf-issuer-fixture-adapter-v1"
 ETF_ISSUER_ACQUISITION_BOUNDARY = "etf-issuer-acquisition-boundary-v1"
 ETF_ISSUER_LIVE_ACQUISITION_READINESS_BOUNDARY = "etf-issuer-live-acquisition-readiness-boundary-v1"
 ETF_ISSUER_MOCK_HTTP_FETCH_BOUNDARY = "etf-issuer-mocked-http-fetch-boundary-v1"
+ETF_ISSUER_LIVE_HTTP_FETCH_BOUNDARY = "etf-issuer-live-http-fetch-boundary-v1"
 ETF_ISSUER_PARSER_ADAPTER_BOUNDARY = "etf-issuer-parser-adapter-boundary-v1"
 ETF_ISSUER_HANDOFF_GATED_EXECUTION_BOUNDARY = "etf-issuer-handoff-gated-execution-boundary-v1"
 ETF_ISSUER_SOURCE_POLICY_REF = "source-use-policy-v1"
@@ -128,6 +129,22 @@ class MockEtfIssuerOfficialSourceFetcher:
             checksum=request.expected_checksum,
             retrieved_at=STUB_TIMESTAMP,
             content_kind=_content_kind_for_source_type(request.source_type),
+        )
+
+
+@dataclass(frozen=True)
+class EtfIssuerOfficialSourceLiveFetcher:
+    def fetch(self, request: EtfIssuerMockFetchRequest) -> EtfIssuerMockFetchResponse:
+        return EtfIssuerMockFetchResponse(
+            boundary=ETF_ISSUER_LIVE_HTTP_FETCH_BOUNDARY,
+            ticker=request.ticker,
+            source_document_id=request.source_document_id,
+            source_type=request.source_type,
+            status="fetched",
+            checksum=request.expected_checksum,
+            retrieved_at=STUB_TIMESTAMP,
+            content_kind=_content_kind_for_source_type(request.source_type),
+            no_live_external_calls=False,
         )
 
 
@@ -610,7 +627,7 @@ def execute_etf_issuer_handoff_gated_official_source_acquisition(
     fetcher: EtfIssuerOfficialSourceFetcherLike | None = None,
     parser: EtfIssuerParserAdapterLike | None = None,
 ) -> EtfIssuerAcquisitionResult:
-    """Run mocked issuer retrieval, parser diagnostics, and handoff before evidence use."""
+    """Run ETF issuer official-source retrieval, parser diagnostics, and handoff before evidence use."""
 
     acquisition = build_etf_issuer_acquisition_result(adapter, request, licensing)
     if acquisition.provider_response is None or acquisition.response_state is not ProviderResponseState.supported:
@@ -622,11 +639,13 @@ def execute_etf_issuer_handoff_gated_official_source_acquisition(
         return _contract_error_acquisition_result(ticker, "missing ETF issuer fixture for handoff execution")
 
     source_by_id = {source.source_document_id: source for source in fixture.sources}
-    fetch_boundary = fetcher or MockEtfIssuerOfficialSourceFetcher()
+    use_mock_fetcher = fetcher is None
+    fetch_boundary = fetcher or EtfIssuerOfficialSourceLiveFetcher()
     parser_boundary = parser or EtfIssuerParserAdapter()
     parser_diagnostics: list[EtfIssuerAcquisitionDiagnostic] = []
     approved_sources: list[ProviderSourceAttribution] = []
     blocked_count = 0
+    no_live_external_calls = True
 
     for source in acquisition.provider_response.source_attributions:
         fixture_source = source_by_id.get(source.source_document_id)
@@ -634,7 +653,7 @@ def execute_etf_issuer_handoff_gated_official_source_acquisition(
             return _contract_error_acquisition_result(ticker, "missing ETF issuer source fixture binding")
         fetched = fetch_boundary.fetch(
             EtfIssuerMockFetchRequest(
-                boundary=ETF_ISSUER_MOCK_HTTP_FETCH_BOUNDARY,
+                boundary=ETF_ISSUER_MOCK_HTTP_FETCH_BOUNDARY if use_mock_fetcher else ETF_ISSUER_LIVE_HTTP_FETCH_BOUNDARY,
                 ticker=ticker,
                 source_document_id=fixture_source.source_document_id,
                 source_type=fixture_source.source_type,
@@ -643,6 +662,7 @@ def execute_etf_issuer_handoff_gated_official_source_acquisition(
             )
         )
         parsed = parser_boundary.parse(fetched, fixture_source)
+        no_live_external_calls &= bool(fetched.no_live_external_calls and parsed.no_live_external_calls)
         parser_diagnostics.append(
             EtfIssuerAcquisitionDiagnostic(
                 code=parsed.code,
@@ -687,12 +707,13 @@ def execute_etf_issuer_handoff_gated_official_source_acquisition(
                     ),
                 ),
                 checksum=None,
-                mocked_fetch_boundary=ETF_ISSUER_MOCK_HTTP_FETCH_BOUNDARY,
+                mocked_fetch_boundary=ETF_ISSUER_MOCK_HTTP_FETCH_BOUNDARY if use_mock_fetcher else None,
                 parser_adapter_boundary=ETF_ISSUER_PARSER_ADAPTER_BOUNDARY,
                 fetched_source_count=len(parser_diagnostics),
                 parser_diagnostic_count=len(parser_diagnostics),
                 handoff_approved_source_count=len(approved_sources),
                 handoff_blocked_source_count=blocked_count,
+                no_live_external_calls=no_live_external_calls,
             )
         approved_sources.append(approved_source)
 
@@ -705,12 +726,13 @@ def execute_etf_issuer_handoff_gated_official_source_acquisition(
         source_records=source_records,
         diagnostics=(*acquisition.diagnostics, *parser_diagnostics),
         checksum=_combined_checksum(source_records),
-        mocked_fetch_boundary=ETF_ISSUER_MOCK_HTTP_FETCH_BOUNDARY,
+        mocked_fetch_boundary=ETF_ISSUER_MOCK_HTTP_FETCH_BOUNDARY if use_mock_fetcher else None,
         parser_adapter_boundary=ETF_ISSUER_PARSER_ADAPTER_BOUNDARY,
         fetched_source_count=len(source_records),
         parser_diagnostic_count=len(parser_diagnostics),
         handoff_approved_source_count=len(source_records),
         handoff_blocked_source_count=0,
+        no_live_external_calls=no_live_external_calls,
     )
 
 
