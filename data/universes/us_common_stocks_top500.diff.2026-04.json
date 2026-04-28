@@ -27,5 +27,11 @@
   ],
   "source_warnings": [
     "normalized_ticker_from_BRK-B"
+  ],
+  "operator_review_note_block": [
+    "One-cycle safe-promotion boundary: this candidate output is review-only and must not auto-promote runtime coverage.",
+    "Do not replace data/universes/us_common_stocks_top500.current.json until an operator manually approves this 2026-04 Top-500 refresh.",
+    "Before approval, validate source provenance, source checksums, and source snapshot dates for IWB.",
+    "Current rank method: iwb_weight_proxy."
   ]
 }

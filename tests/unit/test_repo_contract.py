@@ -489,7 +489,7 @@ def test_t114_mvp_launch_readiness_docs_cover_regression_matrix_and_go_no_go_wit
         assert forbidden.lower() not in combined_lower
 
 
-def test_tasks_general_mvp_roadmap_marks_t123_current_with_prepared_backlog():
+def test_tasks_general_mvp_roadmap_marks_t124_current_and_backlog_state():
     tasks = read_file("TASKS.md")
     current_task = tasks.split("## Current task", 1)[1].split("## Completed", 1)[0]
     backlog = tasks.split("## Backlog", 1)[1].split("## Completed", 1)[0]
@@ -497,17 +497,13 @@ def test_tasks_general_mvp_roadmap_marks_t123_current_with_prepared_backlog():
     roadmap = tasks.split("## General MVP Roadmap", 1)[1]
 
     assert "## MVP Backend Roadmap" not in tasks
-    assert "### T-123: Promote real official-source fetchers behind handoff-gated local opt-in" in current_task
-    assert "operator-only official-source fetch execution for golden assets" in current_task
-    assert "Operator-local real fetchers are explicitly opt-in" in current_task
+    assert "### T-124: Prepare reviewed launch-universe expansion plan" in current_task
+    assert "one-cycle safe promotion boundary" in current_task.lower()
     assert "One agent-loop cycle" in current_task
-    for task_marker in [
-        "### T-124: Prepare reviewed launch-universe expansion plan",
-    ]:
-        assert task_marker in backlog
-    assert "Acceptance criteria" in backlog
-    assert "Required commands" in backlog
-    assert "Iteration budget" in backlog
+    assert "No prepared backlog tasks are currently listed after this promotion." in backlog
+    assert "Detailed acceptance criteria" in current_task
+    assert "Required commands" in current_task
+    assert "Iteration budget" in current_task
     assert "### T-119: Wire local frontend API access and backend CORS" in completed
     assert "Next.js rewrite" in completed
     assert "build_cors_settings" in completed
@@ -536,10 +532,10 @@ def test_tasks_general_mvp_roadmap_marks_t123_current_with_prepared_backlog():
     assert "T-115 established Golden Asset Source Handoff contract enforcement" in roadmap
     assert "T-116 established reviewed Top-500 candidate manifest workflow contracts" in roadmap
     assert "T-117 established handoff-gated mocked official-source acquisition execution for golden assets" in roadmap
-    assert "T-119 established local frontend API access and backend CORS" in roadmap
-    assert "V0.5 ETF manifest split after T-119" in roadmap
     assert "T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path" in roadmap
     assert "T-118 established the local fresh-data ingest-to-render runbook and deterministic smoke coverage" in roadmap
+    assert "T-119 established local frontend API access and backend CORS" in roadmap
+    assert "V0.5 ETF manifest split after T-119" in roadmap
     assert "monthly IWB/SPY/IVV/VOO candidate generation" in roadmap
     assert "| Provider source-use/export enforcement hardening | Completed | T-099 |" in roadmap
     assert "| Backend fresh-data MVP runtime gap tracker | Completed | T-100 |" in roadmap

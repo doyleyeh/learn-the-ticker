@@ -511,6 +511,7 @@ class Top500CandidateManifest(BaseModel):
     validation_coverage: float
     manual_approval_required: bool
     manual_review_triggers: list[str]
+    operator_review_note_block: list[str] = Field(default_factory=list)
     diff_report_path: str
     manifest_checksum_input: str
     generated_checksum: str
@@ -536,6 +537,7 @@ class Top500CandidateDiffReport(BaseModel):
     source_warnings: list[str]
     manual_approval_required: bool
     manual_review_triggers: list[str]
+    operator_review_note_block: list[str] = Field(default_factory=list)
     generated_checksum: str
 
 

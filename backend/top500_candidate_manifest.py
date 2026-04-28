@@ -169,6 +169,12 @@ def generate_top500_candidate_manifest(
         rejected_rows=rejected_rows,
         source_warnings=source_warnings,
     )
+    operator_review_note_block = _operator_review_note_block(
+        candidate_month=candidate_month,
+        approved_current_manifest_path=TOP500_APPROVED_CURRENT_MANIFEST_PATH,
+        source_used=source_used,
+        rank_basis=rank_basis.value,
+    )
 
     manifest_without_checksum = {
         "schema_version": TOP500_CANDIDATE_SCHEMA_VERSION,
@@ -188,6 +194,7 @@ def generate_top500_candidate_manifest(
         "validation_coverage": validation_coverage,
         "manual_approval_required": True,
         "manual_review_triggers": manual_triggers,
+        "operator_review_note_block": operator_review_note_block,
         "diff_report_path": diff_path,
         "manifest_checksum_input": "",
         "generated_checksum": "",
@@ -206,6 +213,7 @@ def generate_top500_candidate_manifest(
         rejected_rows=rejected_rows,
         source_warnings=source_warnings,
         generated_at=generated_at,
+        operator_review_note_block=operator_review_note_block,
     )
     validate_top500_candidate_manifest(candidate_manifest)
     return Top500CandidateGenerationResult(
@@ -245,6 +253,8 @@ def validate_top500_candidate_manifest(manifest: Top500CandidateManifest) -> Top
         raise Top500CandidateManifestContractError("Candidate manifest entries contain advice-like language.")
     if _contains_advice_language(_canonical_json(manifest.model_dump(mode="json"))):
         raise Top500CandidateManifestContractError("Candidate manifest contains advice-like language.")
+    if not manifest.operator_review_note_block:
+        raise Top500CandidateManifestContractError("Candidate manifest must include an operator review note block.")
     return manifest
 
 
@@ -253,6 +263,7 @@ def build_top500_candidate_diff_report(
     candidate_manifest: Top500CandidateManifest,
     rejected_rows: list[dict[str, str]],
     source_warnings: list[str],
+    operator_review_note_block: list[str],
     generated_at: str,
 ) -> Top500CandidateDiffReport:
     current_manifest = load_top500_stock_universe_manifest()
@@ -293,6 +304,7 @@ def build_top500_candidate_diff_report(
         "source_warnings": source_warnings,
         "manual_approval_required": True,
         "manual_review_triggers": candidate_manifest.manual_review_triggers,
+        "operator_review_note_block": operator_review_note_block,
     }
     diff_json = _canonical_json(diff_payload)
     return Top500CandidateDiffReport.model_validate({**diff_payload, "generated_checksum": _sha256(diff_json)})
@@ -564,6 +576,21 @@ def _manual_review_triggers(
     if changed_count >= 5:
         triggers.append("many_tickers_changed")
     return list(dict.fromkeys(triggers))
+
+
+def _operator_review_note_block(
+    *,
+    candidate_month: str,
+    approved_current_manifest_path: str,
+    source_used: list[str],
+    rank_basis: str,
+) -> list[str]:
+    return [
+        "One-cycle safe-promotion boundary: this candidate output is review-only and must not auto-promote runtime coverage.",
+        f"Do not replace {approved_current_manifest_path} until an operator manually approves this {candidate_month} Top-500 refresh.",
+        f"Before approval, validate source provenance, source checksums, and source snapshot dates for {', '.join(source_used)}.",
+        f"Current rank method: {rank_basis}.",
+    ]
 
 
 def _validation_coverage(rows: list[Top500CandidateRow]) -> float:

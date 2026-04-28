@@ -53,6 +53,9 @@ def test_iwb_primary_candidate_manifest_preserves_review_contract_and_never_poin
     assert manifest.fallback_used is False
     assert manifest.manual_approval_required is True
     assert manifest.generated_checksum.startswith("sha256:")
+    assert any(
+        "one-cycle safe-promotion boundary" in note.lower() for note in manifest.operator_review_note_block
+    )
     assert len(manifest.entries) == 10
     assert [entry.rank for entry in manifest.entries] == list(range(1, 11))
     assert {entry.ticker for entry in manifest.entries} == {
@@ -85,6 +88,7 @@ def test_iwb_primary_candidate_manifest_preserves_review_contract_and_never_poin
     assert diff.missing_ciks == []
     assert diff.nasdaq_validation_failures == []
     assert diff.manual_approval_required is True
+    assert any("one-cycle safe-promotion boundary" in note.lower() for note in diff.operator_review_note_block)
 
 
 def test_fixture_candidate_file_matches_generation_contract_and_remains_candidate_only():
