@@ -11,6 +11,7 @@
     "build": "npm --workspace apps/web run build",
     "start": "npm --workspace apps/web run start",
     "test": "node tests/frontend/smoke.mjs",
+    "test:browser-smoke": "LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 node tests/frontend/smoke.mjs",
     "typecheck": "npm --workspace apps/web run typecheck"
   }
 }

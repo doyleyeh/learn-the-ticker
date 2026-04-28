@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "test": "cd ../.. && node tests/frontend/smoke.mjs",
+    "test:browser-smoke": "cd ../.. && LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 node tests/frontend/smoke.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

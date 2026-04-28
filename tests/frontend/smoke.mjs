@@ -1438,4 +1438,221 @@ for (const marker of [
   assert.ok(backendMain.includes(marker), `Backend export contract route should remain present: ${marker}`);
 }
 
+function toBool(value) {
+  return ["1", "true", "yes", "on"].includes(String(value).toLowerCase());
+}
+
+function makeTimeout(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizeSmokeBase(value, fallbackPort) {
+  if (!value) {
+    return `http://127.0.0.1:${fallbackPort}`;
+  }
+  try {
+    const parsed = value.includes("://") ? new URL(value) : new URL(`http://${value}`);
+    const normalizedPort = parsed.port || fallbackPort;
+    return `${parsed.protocol}//${parsed.hostname}:${normalizedPort}`;
+  } catch {
+    return `http://127.0.0.1:${fallbackPort}`;
+  }
+}
+
+const localBrowserSmokeEnabled = toBool(process.env.LEARN_TICKER_LOCAL_BROWSER_SMOKE);
+if (localBrowserSmokeEnabled) {
+  const webBase = normalizeSmokeBase(
+    process.env.LEARN_TICKER_LOCAL_WEB_BASE || process.env.WEB_BASE,
+    "3000"
+  );
+  const apiBase = normalizeSmokeBase(
+    process.env.LEARN_TICKER_LOCAL_API_BASE || process.env.API_BASE,
+    "8000"
+  );
+  const smokeFailures = [];
+  const networkEvents = [];
+
+  const requestWithLog = async (method, target, options = {}) => {
+    const url = new URL(target);
+    const headers = { ...options.headers };
+    try {
+      const response = await Promise.race([
+        fetch(url, { method, ...options, headers }),
+        makeTimeout(7000).then(() => {
+          throw new Error(`Request timeout after 7000ms for ${method} ${target}`);
+        }),
+      ]);
+      networkEvents.push({
+        method,
+        target: url.toString(),
+        status: response.status,
+        redirected: response.redirected,
+      });
+      return response;
+    } catch (error) {
+      networkEvents.push({
+        method,
+        target: url.toString(),
+        error: String(error),
+      });
+      throw error;
+    }
+  };
+
+  const assertPathMarkers = (html, markers, label) => {
+    for (const marker of markers) {
+      assert.equal(html.includes(marker), true, `${label} should include ${marker}`);
+    }
+  };
+
+  const runOptionalBrowserSmoke = async () => {
+    try {
+      const [homeResponse, homeBody] = await requestWithLog("GET", `${webBase}/`).then(async (response) => [
+        response,
+        await response.text(),
+      ]);
+      assert.equal(homeResponse.ok, true, `Home page should be reachable via ${webBase}`);
+      assert.equal(homeBody.includes("data-home-workflow-baseline"), true, "Home page should render the single-asset home markers");
+    } catch (error) {
+      smokeFailures.push(`Home page smoke request failed: ${error}`);
+    }
+
+    try {
+      const [searchViaFrontend, searchViaFrontendBody] = await requestWithLog(
+        "GET",
+        `${webBase}/api/search?q=VOO`
+      ).then(async (response) => [response, await response.text()]);
+      assert.equal(searchViaFrontend.status, 200, `Frontend-backed search should resolve on ${webBase}/api/search`);
+      assert.match(searchViaFrontendBody, /comparison_route|search_results|can_compare/, `Search response should expose backend search routing fields`);
+
+      const searchViaBackend = await requestWithLog(
+        "GET",
+        `${apiBase}/api/search?q=VOO%20vs%20QQQ`
+      );
+      assert.equal(searchViaBackend.status, 200, `Backend search should resolve VOO vs QQQ query`);
+      const backendSearchBody = await searchViaBackend.text();
+      assert.match(backendSearchBody, /\"can_compare\"|comparison_route/, "Backend comparison-route behavior should be present for VOO vs QQQ");
+    } catch (error) {
+      smokeFailures.push(`Search/comparison route smoke failed: ${error}`);
+    }
+
+    try {
+      const assetResponse = await requestWithLog("GET", `${webBase}/assets/VOO`);
+      const assetBody = await assetResponse.text();
+      assert.equal(assetResponse.status, 200, "VOO asset page should be reachable from local web server");
+      assertPathMarkers(
+        assetBody,
+        [
+          "data-prd-section=\"beginner_summary\"",
+          "data-prd-section=\"top_risks\"",
+          "data-asset-source-list-link",
+          "data-source-drawer-mobile-presentation=\"bottom-sheet\"",
+          "data-glossary-desktop-interaction=\"hover-click-focus-escape\"",
+          "data-glossary-mobile-presentation=\"bottom-sheet\"",
+        ],
+        "VOO asset page"
+      );
+
+      const [chatResponse, chatBody] = await requestWithLog(
+        "POST",
+        `${webBase}/api/assets/VOO/chat`,
+        {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: "What does VOO track?" }),
+        }
+      ).then(async (response) => [response, await response.text()]);
+      assert.equal(chatResponse.status, 200, "VOO chat endpoint should stay API-backed and not Next 404");
+      assert.equal(chatBody.includes("<!DOCTYPE html>"), false, "VOO chat should return JSON response");
+      assert.equal(chatBody.length > 0, true, "VOO chat should return response payload");
+
+      const [assetExportResponse, assetExportBody] = await requestWithLog(
+        "GET",
+        `${webBase}/api/assets/VOO/export?export_format=markdown`
+      ).then(async (response) => [response, await response.text()]);
+      assert.equal(assetExportResponse.status, 200, "VOO export endpoint should stay API-backed and not Next 404");
+      assert.equal(assetExportBody.includes("<!DOCTYPE html>"), false, "VOO asset export should return JSON/structured payload");
+
+      const [sourceExportResponse, sourceExportBody] = await requestWithLog(
+        "GET",
+        `${webBase}/api/assets/VOO/sources/export?export_format=json`
+      ).then(async (response) => [response, await response.text()]);
+      assert.equal(sourceExportResponse.status, 200, "VOO source-list export endpoint should stay API-backed and not Next 404");
+      assert.equal(sourceExportBody.includes("<!DOCTYPE html>"), false, "VOO source-list export should return JSON/structured payload");
+
+      const sourcePageResponse = await requestWithLog("GET", `${webBase}/assets/VOO/sources`);
+      const sourcePageBody = await sourcePageResponse.text();
+      assert.equal(sourcePageResponse.status, 200, "VOO source list page should be reachable from local web server");
+      assertPathMarkers(
+        sourcePageBody,
+        [
+          "supported-source-list-inspection-flow-v1",
+          "data-source-list-state",
+          "data-source-list-source-use-policies",
+          "data-source-list-source-count",
+        ],
+        "VOO source-list page"
+      );
+    } catch (error) {
+      smokeFailures.push(`API-backed asset/chat/export/source smoke failed: ${error}`);
+    }
+
+    try {
+      const compareResponse = await requestWithLog("GET", `${webBase}/compare?left=VOO&right=QQQ`);
+      const compareBody = await compareResponse.text();
+      assert.equal(compareResponse.status, 200, "Compare route should render for VOO vs QQQ");
+      assertPathMarkers(
+        compareBody,
+        [
+          "separate-comparison-workflow-v1",
+          "data-prd-compare-result-layout=\"source-backed-deterministic-pack\"",
+          "data-stock-etf-relationship-schema",
+          "data-stock-etf-basket-structure=\"single-company-vs-etf-basket\"",
+        ],
+        "Compare route page"
+      );
+
+      const compareExportResponse = await requestWithLog(
+        "GET",
+        `${webBase}/api/compare/export?left=VOO&right=QQQ&export_format=markdown`
+      );
+      assert.equal(compareExportResponse.status, 200, "Compare export endpoint should be reachable through API path");
+
+      const corsProbeResponse = await requestWithLog(
+        "GET",
+        `${apiBase}/api/search?q=VOO`,
+        { headers: { Origin: webBase } }
+      );
+      assert.equal(corsProbeResponse.ok, true, "Backend CORS probe should succeed");
+      const corsHeader = corsProbeResponse.headers.get("access-control-allow-origin") || "";
+      assert.equal(
+        corsHeader === "*" || corsHeader.includes("127.0.0.1") || corsHeader.includes("localhost"),
+        true,
+        "Backend CORS headers should allow local web origin"
+      );
+    } catch (error) {
+      smokeFailures.push(`Compare/API route smoke failed: ${error}`);
+    }
+
+    if (smokeFailures.length > 0) {
+      console.error("Local browser smoke detected API/path failures:");
+      for (const item of smokeFailures) {
+        console.error(`- ${item}`);
+      }
+      console.error("Network events:");
+      for (const event of networkEvents) {
+        console.error(JSON.stringify(event));
+      }
+      process.exit(1);
+    }
+    console.log(`Local browser smoke checks passed for web=${webBase}, api=${apiBase}.`);
+    console.log(`Local browser smoke recorded ${networkEvents.length} network events.`);
+  };
+
+  await runOptionalBrowserSmoke();
+} else {
+  console.log(
+    "Local browser smoke is skipped by default. Set LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 and optionally LEARN_TICKER_LOCAL_WEB_BASE/API_BASE to run localhost-only browser/API checks."
+  );
+}
+
 console.log("Frontend smoke checks passed.");
