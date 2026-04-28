@@ -523,7 +523,7 @@ def test_t114_mvp_launch_readiness_docs_cover_regression_matrix_and_go_no_go_wit
         assert forbidden.lower() not in combined_lower
 
 
-def test_tasks_general_mvp_roadmap_marks_t125_current_and_backlog_state():
+def test_tasks_general_mvp_roadmap_marks_t126_current_and_backlog_state():
     tasks = read_file("TASKS.md")
     current_task = tasks.split("## Current task", 1)[1].split("## Completed", 1)[0]
     backlog = tasks.split("## Backlog", 1)[1].split("## Completed", 1)[0]
@@ -531,11 +531,10 @@ def test_tasks_general_mvp_roadmap_marks_t125_current_and_backlog_state():
     roadmap = tasks.split("## General MVP Roadmap", 1)[1]
 
     assert "## MVP Backend Roadmap" not in tasks
-    assert "### T-125: Align v0.6 handoff docs and MVP backlog" in current_task
-    assert "docs/control-doc alignment cycle" in current_task
+    assert "### T-126: Add repo-native source-handoff manifest smoke tooling" in current_task
+    assert "source-handoff manifest inspection/finalization smoke tooling" in current_task
     assert "One agent-loop cycle" in current_task
     for marker in [
-        "### T-126: Add repo-native source-handoff manifest smoke tooling",
         "### T-127: Add opt-in local live-AI validation smoke",
         "### T-128: Prove governed golden evidence drives API and frontend rendering",
         "### T-129: Add launch-manifest operator automation parity",
@@ -547,6 +546,8 @@ def test_tasks_general_mvp_roadmap_marks_t125_current_and_backlog_state():
     assert "### T-119: Wire local frontend API access and backend CORS" in completed
     assert "Next.js rewrite" in completed
     assert "build_cors_settings" in completed
+    assert "### T-125: Align v0.6 handoff docs and MVP backlog" in completed
+    assert "Completed in commit `70d404e docs(T-125): align v0.6 handoff docs and MVP backlog`" in completed
     assert "### T-124: Prepare reviewed launch-universe expansion plan" in completed
     assert "### T-120: Implement v0.5 ETF manifest split contracts" in completed
     assert "### T-118: Prove local fresh-data ingest-to-render smoke path" in completed
@@ -556,7 +557,8 @@ def test_tasks_general_mvp_roadmap_marks_t125_current_and_backlog_state():
     assert "Golden Asset Source Handoff" in completed
     assert "Production deployment, production durable storage, scheduled jobs" in completed
     assert "T-119 closed the local frontend/API plumbing blockers" in roadmap
-    assert "The current promoted task is T-125" in roadmap
+    assert "T-125 completed the v0.6 handoff-doc and MVP-backlog alignment pass" in roadmap
+    assert "The current promoted task is T-126" in roadmap
 
     assert "T-099 established deterministic provider content export-rights hardening" in roadmap
     assert "T-100 established the backend MVP runtime gap audit and roadmap tracker" in roadmap
@@ -578,7 +580,8 @@ def test_tasks_general_mvp_roadmap_marks_t125_current_and_backlog_state():
     assert "T-119 established local frontend API access and backend CORS" in roadmap
     assert "T-120 established the v0.5 split between supported ETF generated-output coverage" in roadmap
     assert "T-124 established reviewed launch-universe expansion planning" in roadmap
-    assert "T-126 through T-129" in roadmap
+    assert "T-125 established v0.6 docs, handoff docs, and backlog alignment" in roadmap
+    assert "T-127 through T-129" in roadmap
     assert "| Provider source-use/export enforcement hardening | Completed | T-099 |" in roadmap
     assert "| Backend fresh-data MVP runtime gap tracker | Completed | T-100 |" in roadmap
     assert "| Configured persisted-reader route wiring | Completed | T-101 |" in roadmap
@@ -605,8 +608,8 @@ def test_tasks_general_mvp_roadmap_marks_t125_current_and_backlog_state():
     assert "| Optional local durable API proxy smoke | Completed | T-122 |" in roadmap
     assert "| Handoff-gated official-source fetcher boundaries | Completed | T-123 |" in roadmap
     assert "| Reviewed launch-universe expansion planning | Completed | T-124 |" in roadmap
-    assert "| v0.6 docs, handoff docs, and backlog alignment | Current | T-125 |" in roadmap
-    assert "| Repo-native source-handoff manifest smoke tooling | Prepared | T-126 |" in roadmap
+    assert "| v0.6 docs, handoff docs, and backlog alignment | Completed | T-125 |" in roadmap
+    assert "| Repo-native source-handoff manifest smoke tooling | Current | T-126 |" in roadmap
     assert "| Opt-in local live-AI validation smoke | Prepared | T-127 |" in roadmap
     assert "| Governed golden evidence API/frontend rendering proof | Prepared | T-128 |" in roadmap
     assert "| Launch-manifest operator automation parity | Prepared | T-129 |" in roadmap

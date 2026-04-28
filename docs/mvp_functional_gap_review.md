@@ -1,6 +1,6 @@
 # MVP Functional Gap Review
 
-Task: 2026-04-28 v0.6 doc alignment and fresh-data MVP review.
+Task: 2026-04-28 v0.6 doc alignment and fresh-data MVP review, updated after T-125 completion.
 
 Purpose: summarize current implementation progress, align the operational plan with the v0.6 PRD/TDS refresh, and define the next narrow tasks needed before the project is a locally functional MVP that can use fresh approved data and show it correctly in the frontend.
 
@@ -30,9 +30,9 @@ The v0.6 docs intentionally move execution details out of the proposal and into 
 
 Doc/runtime mismatches addressed by T-125:
 
-- `docs/SOURCE_HANDOFF.md`, `docs/TOP500_MANIFEST_HANDOFF.md`, and `docs/ETF_MANIFEST_HANDOFF.md` need command examples aligned to this repo's `backend/`, `scripts/`, `tests/`, and `config/` layout.
-- `docs/README.md`, `SPEC.md`, the runbook, readiness matrix, and go/no-go checklist still contain stale language describing the ETF split and T-121 through T-124 follow-ups as pending.
-- `TASKS.md` is finalized after T-124, while repo-contract tests need to track T-125 as the current active task.
+- `docs/SOURCE_HANDOFF.md`, `docs/TOP500_MANIFEST_HANDOFF.md`, and `docs/ETF_MANIFEST_HANDOFF.md` now use repo-native command examples or explicitly label missing tooling as future T-126 work.
+- `docs/README.md`, `SPEC.md`, the runbook, readiness matrix, and go/no-go checklist now describe the ETF split and T-121 through T-124 as completed deterministic/operator-scoped work.
+- `TASKS.md` and repo-contract tests now mark T-125 complete and promote T-126 as the current active agent-loop task.
 
 ## MVP Fresh-Data Gaps
 
@@ -60,11 +60,11 @@ The project is not yet a fully functional fresh-data MVP. Remaining blockers:
 
 Current task state:
 
-- T-125 should align v0.6 docs, handoff guides, MVP gap review, and repo-contract tests.
+- T-125 completed v0.6 docs, handoff guides, MVP gap review, and repo-contract test alignment.
+- T-126: add repo-native source-handoff manifest inspection/finalization smoke tooling or accurately scoped equivalents. This is the current promoted task.
 
 Runnable near-term backlog:
 
-- T-126: add repo-native source-handoff manifest inspection/finalization smoke tooling or accurately scoped equivalents.
 - T-127: add opt-in local live-AI validation smoke for grounded chat and AI Comprehensive Analysis, with CI-safe mocks.
 - T-128: prove governed golden evidence drives backend API and frontend rendering for the golden set.
 - T-129: add launch-manifest operator automation parity for Top-500 and supported ETF review packets without promoting runtime manifests.
@@ -73,7 +73,7 @@ Sequencing rationale:
 
 - Align docs first so the agent loop does not follow commands from a different repository layout.
 - Add repo-native source-handoff tooling before proving governed evidence can drive rendered output.
-- Add live-AI local validation after governed evidence and deterministic API/browser smokes are reliable.
+- Add live-AI local validation as an opt-in operator smoke with CI-safe mocks before broader governed-evidence render proof expands the blast radius.
 - Keep launch-manifest automation review-only until promotion gates and private mirrors are ready.
 
 ## Non-Goals For The Next Tasks
