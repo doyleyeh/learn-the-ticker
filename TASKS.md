@@ -1,84 +1,87 @@
 ## Current task
 
-### T-123: Promote real official-source fetchers behind handoff-gated local opt-in
-
-Goal:
-Promote local operator-only official-source fetch execution for golden assets from readiness-only mocks to handoff-gated execution, while preserving deterministic default behavior and strict Golden Asset Source Handoff gates.
-
-Task-scope paragraph:
-In one cycle, update the golden-asset fetcher execution path so that retrieval from SEC/issuer/weekly-sources only proceeds when explicitly enabled by local operator settings, and persists only through approved parser and handoff metadata to source snapshots, knowledge packs, generated-output cache records, citations, source drawers, and exports. Keep all checks deterministic-by-default in CI, keep local execution narrow and opt-in, and do not alter v0.4 frontend workflow or top-level coverage authority rules.
-
-Allowed files:
-- `backend/provider_adapters/sec_stock.py`
-- `backend/provider_adapters/etf_issuer.py`
-- `backend/repositories/weekly_news.py`
-- `backend/weekly_news_repository.py`
-- `backend/ingestion_worker.py`
-- `backend/settings.py`
-- `backend/main.py`
-- `backend/models.py` (if handoff metadata handling needs schema alignment)
-- `tests/unit/test_provider_adapters.py`
-- `tests/unit/test_ingestion_worker.py`
-- `tests/unit/test_source_policy.py`
-- `tests/unit/test_repo_contract.py`
-- `docs/local_fresh_data_ingest_to_render_runbook.md` (operator runbook updates only)
-
-Do not change:
-- investment-advice copy, safety boundaries, or educational framing rules
-- source-use/citation policy, Golden Asset Source Handoff enforcement semantics, or v0.5 manifest-owned support classification
-- live provider/news/market-data/LLM calls in normal CI
-- v0.4 home/compare workflow separation, contextual glossary behavior, or mobile bottom-sheet conventions
-- direct unsupported behavior for non-approved ETF/ETP rows and Top-500 scope rules
-- freshness labels and existing unknown/stale/partial/unavailable handling behavior
-
-Acceptance criteria:
-- Operator-local real fetchers are explicitly opt-in and do not run as part of default CI or fixture-only smoke paths.
-- Retrieved official-source payloads cannot influence persisted source snapshots, knowledge packs, generated-output cache records, citation claims, source drawer content, or exports until source handoff validation succeeds.
-- Hand off validation blocks malformed or unapproved sources (missing identity/type/official status/rationale/freshness metadata, parser failure, non-allowed rights, pending-review, or rejected statuses).
-- Parser diagnostics, as-of/freshness fields, source checksums, and handoff status are persisted and surfaced where expected.
-- No secret values, unrestricted raw source text, raw provider payloads, or raw model reasoning are written to committed outputs.
-
-Required commands:
-
-```bash
-python3 -m pytest tests -q
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-git diff --check
-```
-
-Iteration budget:
-One agent-loop cycle. Keep execution opt-in and deterministic; do not broaden beyond golden official-source fetch paths.
-
-## Backlog
-
 ### T-124: Prepare reviewed launch-universe expansion plan
 
 Goal:
-Prepare the next deterministic step from the current small fixture stock manifest and legacy ETF fixture coverage toward a reviewed top-500 launch manifest plus supported ETF launch pack, without changing runtime coverage truth or promoting unreviewed candidates.
+Prepare the next deterministic expansion cycle from current deterministic fixtures into a manually reviewed launch-universe plan without changing runtime support truth or v0.4 frontend workflow behavior.
 
-Acceptance criteria:
+Task-scope paragraph:
+In one cycle, create a narrow, reviewable expansion package that keeps stable behavior deterministic, keeps real execution outside default CI, and gives operators enough concrete evidence metadata to approve the next manifest promotion step. The cycle should reconcile Top-500 candidate output with ETF supported-manifest status, preserve strict Golden Asset Source Handoff requirements, and leave the existing v0.4 single-asset search + separate comparison + contextual glossary architecture untouched.
 
-- Candidate stock generation still writes `data/universes/us_common_stocks_top500.candidate.YYYY-MM.json` and a diff report only.
-- Runtime stock support remains tied to `data/universes/us_common_stocks_top500.current.json`.
-- Supported ETF launch-pack expansion stays reviewed metadata-only and does not use recognition rows, live holdings, exchange listings, or provider ETF flags as runtime support truth.
-- Source provenance, source snapshot dates, checksums, rank basis, SEC/Nasdaq validation status, ETF wrapper classification, issuer source-pack status, and warnings are documented for review.
+Allowed files:
+- `backend/top500_candidate_manifest.py`
+- `scripts/generate_top500_candidate_manifest.py`
+- `backend/models.py` (if schema alignment for candidate metadata is required)
+- `tests/unit/test_top500_candidate_manifest.py`
+- `tests/unit/test_search_classification.py`
+- `tests/unit/test_repo_contract.py`
+- `data/universes/us_common_stocks_top500.candidate.YYYY-MM.json`
+- `data/universes/us_common_stocks_top500.diff.YYYY-MM.json`
+- `data/universes/us_common_stocks_top500.current.json` (read-only while reviewed)
+- `data/universes/us_equity_etfs_supported.current.json`
+- `data/universes/us_etp_recognition.current.json`
+- `docs/agent-journal/20260428T013508Z.md`
+
+Do not change
+- home search as the primary home workflow or comparison as a separate connected flow
+- contextual desktop-hover/click/focus glossary and mobile tap/long-tap glossary, source drawer, and chat bottom-sheet/full-screen behavior
+- source-use policy, Golden Asset Source Handoff semantics, citation rules, or freshness/unknown/stale/partial/unavailable/insufficient-evidence labels
+- safety boundaries: no advice-like language, no allocation or price-target guidance, no brokerage/trading behavior
+- deterministic CI defaults or runtime support truth (must stay on `data/universes/us_common_stocks_top500.current.json` and `data/universes/us_equity_etfs_supported.current.json`)
+- direct production/live provider or market-data calls in CI
+
+Detailed acceptance criteria:
+- candidate generation and diff generation remain deterministic for a single run and remain review-only artifacts unless manually promoted by operator process
+- runtime stock support continues to resolve only from `data/universes/us_common_stocks_top500.current.json`
+- Top-500 candidates and diffs continue to preserve rank basis, source snapshot date, checksum, validation status, CIK/exchange fields, and warning metadata
+- ranking remains IWB-first (`iwb_weight_proxy`) and uses SPY/IVV/VOO only as fallback where required, with fallback basis recorded
+- SEC and Nasdaq validation failures remain surfaced as warnings, not silent acceptance
+- supported ETF runtime coverage remains manifest-owned in `data/universes/us_equity_etfs_supported.current.json`; recognition-only states remain in `data/universes/us_etp_recognition.current.json`
+- no unsupported or out-of-scope assets receive generated pages/chat/comparison eligibility from review artifacts without an explicit manifest decision
+- task output includes an explicit operator-review note block for one-cycle safe promotion boundary
 
 Required commands:
 
 ```bash
+python3 -m pytest tests/unit/test_top500_candidate_manifest.py tests/unit/test_search_classification.py tests/unit/test_repo_contract.py -q
 python3 -m pytest tests -q
-npm test
 python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
 git diff --check
 ```
 
 Iteration budget:
-One agent-loop cycle. Do not promote a candidate manifest without manual approval.
+One agent-loop cycle. Keep all work narrowly scoped to reviewed manifest artifacts, deterministic candidate review, and no live-provider expansion.
 
+## Backlog
+
+No prepared backlog tasks are currently listed after this promotion.
 
 ## Completed
+
+### T-123: Promote real official-source fetchers behind handoff-gated local opt-in
+
+Goal:
+Promote local operator-only official-source execution for golden assets from retrieval-only readiness to handoff-gated execution while preserving deterministic defaults and strict source evidence gates.
+
+Completion details:
+- Implementation commit: `b7bce2b feat(T-123): promote real official-source fetchers behind handoff-gated local opt-in`
+- Local merge commit: `6f7e7fc chore(T-123): merge promote real official-source fetchers behind handoff-gated local opt-in` from branch `agent/T-123-20260428T013508Z`
+- Files changed in implementation:
+  - `backend/provider_adapters/sec_stock.py`
+  - `backend/provider_adapters/etf_issuer.py`
+  - `backend/repositories/weekly_news.py`
+  - `backend/weekly_news_repository.py`
+  - `tests/unit/test_provider_adapters.py`
+  - `tests/unit/test_weekly_news.py`
+  - `tests/unit/test_repo_contract.py`
+- Validation updates in this cycle also covered task-state contract assertions in `tests/unit/test_repo_contract.py`.
+- `docs/agent-journal/20260428T013508Z.md` records:
+  - `python3 -m pytest tests -q` — pass (`442` tests)
+  - `python3 evals/run_static_evals.py` — pass
+  - `bash scripts/run_quality_gate.sh` — pass
+  - `git diff --check` — pass
+- Remaining risk recorded in journal: live fetch execution remains explicit local operator opt-in; no automatic production/live execution was introduced.
 
 ### T-122: Prove local durable repository smoke with API proxy enabled
 
