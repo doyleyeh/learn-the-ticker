@@ -17,7 +17,9 @@ from backend.etf_universe import (
     can_generate_output_for_etf_entry,
     eligible_not_cached_etf_entries,
     etf_universe_entry,
+    load_recognition_etf_universe_manifest,
     load_etf_universe_manifest,
+    load_supported_etf_universe_manifest,
     validate_etf_universe_manifest,
 )
 from backend.models import ETFUniverseSupportState
@@ -252,15 +254,21 @@ def test_candidate_manifest_and_diff_do_not_change_runtime_stock_or_etf_classifi
 
 
 def test_etf_universe_manifest_contract_distinguishes_cached_eligible_blocked_and_gap_states():
-    manifest = load_etf_universe_manifest()
+    manifest = load_supported_etf_universe_manifest()
+    recognition_manifest = load_recognition_etf_universe_manifest()
     entries = {entry.ticker: entry for entry in manifest.entries}
+    recognition_entries = {entry.ticker: entry for entry in recognition_manifest.entries}
 
     assert manifest.schema_version == "us-equity-etf-universe-v1"
-    assert manifest.local_path == "data/universes/us_equity_etfs.current.json"
+    assert manifest.local_path == "data/universes/us_equity_etfs_supported.current.json"
+    assert recognition_manifest.local_path == "data/universes/us_etp_recognition.current.json"
     assert manifest.production_mirror_env_var == "EQUITY_ETF_UNIVERSE_MANIFEST_URI"
+    assert recognition_manifest.production_mirror_env_var == "EQUITY_ETF_UNIVERSE_MANIFEST_URI"
     assert "not a recommendation" in manifest.policy_note
     assert manifest.checksum_input
     assert manifest.generated_checksum.startswith("sha256:")
+    assert recognition_manifest.checksum_input
+    assert recognition_manifest.generated_checksum.startswith("sha256:")
 
     assert set(cached_supported_etf_entries()) == {"VOO", "QQQ"}
     assert {entry.support_state for entry in cached_supported_etf_entries().values()} == {
@@ -295,10 +303,12 @@ def test_etf_universe_manifest_contract_distinguishes_cached_eligible_blocked_an
         assert getattr(entry.exclusion_flags, flag_name) is True
         assert can_generate_output_for_etf_entry(entry) is False
 
-    assert entries["LTTU"].support_state.value == "unknown"
-    assert entries["LTTU"].evidence.evidence_state.value == "unknown"
-    assert entries["LTTX"].support_state.value == "unavailable"
-    assert entries["LTTX"].evidence.unavailable_reason
+    assert recognition_entries["LTTU"].support_state.value == "unknown"
+    assert recognition_entries["LTTU"].evidence.evidence_state.value == "unknown"
+    assert recognition_entries["LTTX"].support_state.value == "unavailable"
+    assert recognition_entries["LTTX"].evidence.unavailable_reason
+
+    assert load_etf_universe_manifest().local_path == "data/universes/us_equity_etfs_supported.current.json"
 
 
 def test_etf_universe_lookup_normalizes_tickers_and_preserves_current_search_behavior():
