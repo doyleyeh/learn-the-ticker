@@ -1,47 +1,49 @@
 ## Current task
 
-### T-121: Add browser E2E local smoke for API-backed MVP flows
+### T-122: Prove local durable repository smoke with API proxy enabled
 
 Goal:
-Add a deterministic local browser smoke path that validates API-backed asset pages, chat exports, source and glossary surfaces, comparison routing, and CORS/proxy behavior while preserving the v0.4 workflow.
+Prove and document a local durable repository smoke path that validates API-backed browser surfaces through the `/api` proxy and deterministic APIs, while staying within the v0.4 frontend workflow.
 
-Task-scope:
-Implement an optional script or marker set for localhost-only browser smoke that exercises existing API-backed surfaces from the current deterministic baseline (no API or provider schema changes), and confirms the separation between single-asset home search and the separate comparison workflow.
+Task scope:
+In one cycle, add or refresh the local-durable smoke execution path so that it validates the same MVP API-backed surface checks already covered for frontend rendering, chat, exports, source-list, comparison, and CORS when local durable services are available, while preserving deterministic fallback behavior and keeping the route and workflow guards that block unsupported/out-of-scope assets.
 
 Allowed files:
-- tests/frontend/smoke.mjs
-- tests/frontend/smoke.mjs:task-board references if needed
-- package.json scripts in the repository root and apps/web
-- docs/agent-journal/2026*.md
+- `tests/frontend/smoke.mjs`
+- `tests/integration/test_backend_api.py`
+- `tests/unit/test_repo_contract.py`
+- `docs/local_durable_smoke.md` (or existing local smoke runbook)
+- environment/example files only for local variable wiring
 
 Do not change:
-- Backend API contracts, schema contracts, or source-use/citation policy logic.
-- Live-provider/network calls in tests and in CI execution.
-- Search, support classification rules, or the v0.4 frontend workflow itself.
-- Golden Asset Source Handoff enforcement and v0.5 coverage-split behavior.
+- investment-advice copy, safety boundaries, or educational framing rules
+- source-use/citation policy, Golden Asset Source Handoff enforcement, or v0.5 manifest-owned support classification
+- live provider/news/market-data/LLM calls in CI
+- v0.4 home/compare workflow separation, contextual glossary behavior, or mobile bottom-sheet conventions
+- direct unsupported behavior for non-approved ETF/ETP rows and Top-500 scope rules
 
 Acceptance criteria:
-- Local browser smoke path exists and can be skipped unless local web/API servers are explicitly available.
-- Smoke verifies `POST /api/assets/VOO/chat`, asset/source-list export links, `/compare?left=VOO&right=QQQ`, and source/glossary markers.
-- Smoke fails if API-backed chat, export, and compare paths resolve to Next 404s.
-- Smoke records console/network errors and test failures.
-- Smoke confirms `A vs B` path behavior through API-backed compare routing rather than a home-page comparison builder.
-- No raw user text, secrets, or provider tokens are persisted during the run.
-- The smoke remains localhost-only and deterministic from fixtures when local durable services are absent.
+- Local smoke remains deterministic by default and opt-in to local durable execution (including explicit environment checks/flags for local-durable prerequisites).
+- Durable execution does not run or weaken CI when Docker/postgres/object-storage substitutes are unavailable; it must report the blocker and keep existing fixture-backed smoke paths unaffected.
+- The smoke validates all existing API-backed checks for: VOO asset render, API chat endpoints, asset export, source export, source-list page structure, `/compare?left=...&right=...`, compare export, and Next-to-FastAPI API proxy behavior.
+- CORS behavior remains explicit and validated in the smoke path.
+- Source drawer/glossary/chat marker checks remain aligned with v0.4 mobile/desktop behavior and with stale/unknown/unavailable handling where surfaced by fixtures.
+- No provider tokens, raw user prompts, or provider payloads are persisted.
+- Product guardrails remain intact: no advice-like recommendations, no live external calls in normal checks, and freshness/unknown/stale/unavailable/partial labels are not bypassed.
 
 Required commands:
 
 ```bash
+python3 -m pytest tests -q
 npm test
 npm run typecheck
-npm run build
-python3 -m pytest tests -q
+python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
 git diff --check
 ```
 
 Iteration budget:
-One agent-loop cycle. Keep the smoke optional in CI unless local servers are explicitly provided.
+One agent-loop cycle. Keep the execution opt-in and local-only.
 
 ## Backlog
 
@@ -70,33 +72,6 @@ git diff --check
 
 Iteration budget:
 One agent-loop cycle. Keep it deterministic and localhost-only.
-
-### T-122: Prove local durable repository smoke with API proxy enabled
-
-Goal:
-Run and document a local `local_durable` smoke path, when Docker/Postgres/object-storage substitutes are available, that verifies the same API-backed browser surfaces covered by T-118, T-119, T-120, and T-121 without making live provider, news, market-data, or LLM calls.
-
-Acceptance criteria:
-
-- Local durable configuration remains opt-in and placeholder-only.
-- Backend route reads prefer configured durable repositories and fall back safely when local durable services are unavailable.
-- Frontend `/api` proxy, direct API base helpers, FastAPI CORS, and v0.5 ETF manifest split checks are included in the local smoke checklist.
-- Source drawer, chat, comparison, and exports render from approved source metadata only.
-- If Docker is unavailable, the task records that blocker without weakening CI expectations.
-
-Required commands:
-
-```bash
-python3 -m pytest tests -q
-npm test
-npm run typecheck
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-git diff --check
-```
-
-Iteration budget:
-One agent-loop cycle. Do not add production storage, live provider fetches, credentials, or recurring jobs.
 
 ### T-123: Promote real official-source fetchers behind handoff-gated local opt-in
 
@@ -149,6 +124,29 @@ One agent-loop cycle. Do not promote a candidate manifest without manual approva
 
 
 ## Completed
+
+### T-121: Add browser E2E local smoke for API-backed MVP flows
+
+Goal:
+Validate API-backed MVP browser endpoints with a localhost-only smoke path while keeping the v0.4 single-asset search and separate comparison workflow baseline.
+
+Completion details:
+- Implementation commit `1f4b96a feat(T-121): add browser E2E local smoke for API-backed MVP flows`.
+- Local merge commit `45202d9 chore(T-121): merge browser E2E local smoke for API-backed MVP flows` from branch `agent/T-121-20260428T012309Z`.
+- `tests/frontend/smoke.mjs` now adds an opt-in browser smoke path gated by `LEARN_TICKER_LOCAL_BROWSER_SMOKE` that normalizes web/API base URLs from `LEARN_TICKER_LOCAL_WEB_BASE` / `LEARN_TICKER_LOCAL_API_BASE`, applies request timeouts and network-event logging, validates `POST /api/assets/VOO/chat`, `/api/assets/VOO/export`, `/api/assets/VOO/sources/export`, `/compare?left=VOO&right=QQQ`, compare-export API, and backend CORS, and asserts required home/search/asset/source/glossary/compare/source-list markers before failing with logged path/network diagnostics.
+- `package.json` and `apps/web/package.json` gained `test:browser-smoke` scripts using `LEARN_TICKER_LOCAL_BROWSER_SMOKE=1`.
+- `tests/unit/test_repo_contract.py` updated to keep roadmap markers aligned with current-task preparation.
+- `docs/agent-journal/20260428T012309Z.md` confirms the required checks passed for this task branch:
+  - `npm test`
+  - `npm run typecheck`
+  - `npm run build`
+  - `python3 -m pytest tests -q` (`439 passed`)
+  - `bash scripts/run_quality_gate.sh`
+  - `git diff --check`
+- Result: all required commands passed; no commit to source-use policy, v0.5 split, or core safety model was introduced.
+
+Remaining risks:
+- Browser smoke remains optional and requires operator-started local web/API services; it does not auto-start services.
 
 ### T-120: Implement v0.5 ETF manifest split contracts
 
