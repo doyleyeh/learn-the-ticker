@@ -18,6 +18,7 @@ This checklist records production-readiness gates. It does not approve deploymen
 | AI Comprehensive Analysis | Regression-covered | Suppressed unless at least two high-signal Weekly News items and required canonical citations are available; section order remains fixed when present. |
 | Frontend v0.4 workflow | Regression-covered | Home single search, separate comparison workflow, contextual glossary, mobile source/glossary/chat surfaces, and stock-vs-ETF relationship structure remain intact. |
 | Exports | Regression-covered | Markdown/JSON exports include citations, freshness, uncertainty, source-use metadata, and disclaimer while excluding restricted raw content. |
+| Local fresh-data MVP rehearsal | Regression-covered locally | T-130 adds `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` as the deterministic, review-only command that ties source handoff, governed golden API reads, launch-manifest review packets, frontend markers, and opt-in local readiness checks together. |
 
 ## No-Go Until Resolved
 
@@ -30,6 +31,7 @@ This checklist records production-readiness gates. It does not approve deploymen
 | Launch-manifest operator review | T-129 review-only tooling added | Use `TMPDIR=/tmp python3 scripts/review_launch_manifests.py top500 generate`, `TMPDIR=/tmp python3 scripts/review_launch_manifests.py top500 inspect`, and `TMPDIR=/tmp python3 scripts/review_launch_manifests.py etf inspect` for deterministic review packets. These commands do not approve sources or promote runtime manifests. |
 | Private object storage | Prove private snapshot/artifact storage behavior and safe object namespace validation before production source snapshots or generated artifacts are written. |
 | Governed evidence launch coverage | T-128 covers deterministic golden assets only | Expand reviewed source packets and operator rehearsal before treating governed rendering as launch coverage. |
+| Local rehearsal blockers | T-130 command added | Treat any `blocked` required rehearsal check as a stop condition. Optional browser, durable repository, official-source retrieval, and live-AI review modes require explicit rehearsal flags and may be skipped when not part of the local run. |
 | Database migration execution | Run and verify production migration strategy, rollback approach, connection pooling, and read/write permissions. |
 | Cloud Run API settings | Review region, `PORT`, min instances, max instances, CORS origins, budget guardrails, logging, and error handling. |
 | Cloud Run Job settings | Review manual job trigger, service account scope, job timeout, retries, rate limits, and repository writer readiness. |

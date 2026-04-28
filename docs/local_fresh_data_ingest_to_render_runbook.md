@@ -1,6 +1,6 @@
 # Local Fresh-Data Ingest-To-Render Runbook
 
-Task: T-118, updated by T-119 through T-125 local API, manifest, durable-smoke, and v0.6 handoff alignment
+Task: T-118, updated by T-119 through T-130 local API, manifest, durable-smoke, v0.6 handoff alignment, and the local MVP rehearsal command
 
 This runbook describes the local golden-asset smoke path before production deployment work. Normal CI uses deterministic fixtures, mocked official-source acquisition, and in-memory repositories. It must not require real SEC, issuer, market-data, broad news, storage, database, Redis, RSS, or LLM calls.
 
@@ -15,6 +15,43 @@ Use one of these local modes:
 - `in_memory`: deterministic smoke mode. Uses injected in-memory ledgers and repositories. This is the CI-safe path.
 - `local_durable`: optional operator-only local repository mode. Use placeholder-only local connection settings and never print credential values. This mode is for manual inspection only and is not required by CI.
 - `operator_live_experiment`: optional local experiment mode. Keep it disabled by default. Any real retrieval or live-AI review must still pass source handoff, citation, source-use, freshness, and safety validation before evidence or generated output can be used. Do not commit fetched payloads, generated answers, logs, or diagnostics from this mode.
+
+## One-Command MVP Rehearsal
+
+Task: T-130.
+
+Use the local rehearsal before production hardening work:
+
+```bash
+TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json
+```
+
+The default rehearsal is deterministic and fixture-backed. It checks:
+
+- Golden Asset Source Handoff approval and blocked states before evidence use.
+- governed golden API reads for overview, source drawer, exports, comparison, chat, Weekly News Focus, and AI Comprehensive Analysis threshold suppression.
+- unsupported, out-of-scope, pending-ingestion, and unknown asset blocking.
+- launch-manifest review packets without promotion or launch approval.
+- v0.4 frontend smoke markers for single-asset home search, separate comparison, contextual glossary, mobile source/glossary/chat surfaces, stock-vs-ETF relationship structure, citation/source export scope, and evidence-limited Weekly News Focus.
+
+The JSON output reports each check as `pass`, `skipped`, or `blocked`. Optional checks are skipped unless their rehearsal flag is set:
+
+```bash
+LTT_REHEARSAL_BROWSER_SERVICES_ENABLED=true \
+LTT_REHEARSAL_DURABLE_REPOSITORIES_ENABLED=true \
+LTT_REHEARSAL_OFFICIAL_SOURCE_RETRIEVAL_ENABLED=true \
+LTT_REHEARSAL_LIVE_AI_REVIEW_ENABLED=true \
+TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json
+```
+
+Optional-mode meanings:
+
+- browser services: checks already-running localhost web/API services and local CORS/proxy behavior.
+- durable repositories: checks local durable repository prerequisites and reports sanitized blockers when the local DSN or private object namespace is missing or unsafe.
+- official-source retrieval: checks live acquisition readiness flags only; it does not execute retrieval or approve sources.
+- live-AI review: delegates to the operator-only live-AI validation smoke and reports sanitized pass or blocker states.
+
+Stop when any required deterministic check is `blocked`, or when an opted-in optional check is `blocked`. The rehearsal does not start production services, approve sources, promote manifests, write production storage, require live calls by default, or make fixture-sized/local-only data launch-approved.
 
 ## Local Live-AI Validation Smoke
 

@@ -368,8 +368,9 @@ def test_mvp_functional_gap_review_copy_is_advice_safe_and_sanitized():
         "T-126 completed repo-native source-handoff manifest inspection/finalization smoke tooling",
         "T-127 completed the opt-in local live-AI validation smoke",
         "T-128: prove governed golden evidence drives backend API and frontend rendering",
-        "T-129: add launch-manifest operator automation parity",
-        "T-130: add a local fresh-data MVP rehearsal command",
+        "T-129 completed review-only launch-manifest operator automation parity",
+        "T-130 completed the local fresh-data MVP rehearsal command",
+        "scripts/run_local_fresh_data_rehearsal.py --json",
         "Normal CI remains deterministic",
     ]
 

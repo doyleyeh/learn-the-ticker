@@ -1,6 +1,6 @@
 # MVP Functional Gap Review
 
-Task: 2026-04-28 v0.6 doc alignment and fresh-data MVP review, updated during T-129.
+Task: 2026-04-28 v0.6 doc alignment and fresh-data MVP review, updated during T-130.
 
 Purpose: summarize current implementation progress, align the operational plan with the v0.6 PRD/TDS refresh, and define the next narrow tasks needed before the project is a locally functional MVP that can use fresh approved data and show it correctly in the frontend.
 
@@ -24,6 +24,7 @@ Completed capabilities:
 - LLM runtime diagnostics, OpenRouter transport contracts, and the T-127 local live-AI validation smoke are present, with deterministic mocks as the default and live network calls blocked unless explicitly gated.
 - T-128 adds a deterministic governed golden rendering proof: configured API reads can validate private same-asset source snapshot artifacts, normalized knowledge-pack records, and generated-output cache records before serving overview, source drawer, and export output.
 - T-129 adds repo-native review-only launch-manifest packet automation for Top-500 candidate/diff/review summaries and split ETF supported/recognition manifest inspection without promoting runtime manifests.
+- T-130 adds a repo-native local fresh-data MVP rehearsal command that ties source-handoff gates, governed golden API reads, source drawer/export surfaces, comparison/chat paths, frontend smoke markers, launch-manifest review packets, and opt-in readiness checks into one review-oriented local command.
 - Normal CI remains deterministic and does not require live provider, news, market-data, storage, database, browser services, or LLM calls.
 
 ## Current Misalignments
@@ -52,10 +53,13 @@ The project is not yet a fully functional fresh-data MVP. Remaining blockers:
 4. Local live-AI validation is operator-smoke covered, not launch-approved.
    T-127 adds an opt-in local smoke for grounded chat and AI Comprehensive Analysis when evidence thresholds are met. It remains disabled by default, validation-first, and separate from source approval or Golden Asset Source Handoff.
 
-5. Third-party/news governance needs updated regression coverage.
+5. Local MVP rehearsal is now available, but not launch approval.
+   T-130 adds `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` for deterministic local review. The command reports `pass`, `skipped`, and `blocked` checks, skips optional browser/durable/retrieval/live-AI modes unless explicitly enabled, and does not approve sources, promote manifests, start production services, require live calls by default, or make fixture-sized/local-only data launch-approved.
+
+6. Third-party/news governance needs updated regression coverage.
    The v0.6 source policy allows approved reputable third-party/news metadata and beginner summaries, while full article text remains rights-gated. Weekly News Focus and export tests need to preserve those distinctions.
 
-6. Production readiness remains later.
+7. Production readiness remains later.
    Admin auth, rate limiting, production CORS review, private object storage, database migrations, Cloud Run service/job settings, monitoring, rollback, cost controls, launch support, and legal/compliance review remain open.
 
 ## Refined Agent Track
@@ -70,17 +74,18 @@ Current task state:
 - T-128 adds deterministic governed golden API/frontend rendering proof for the golden set and remains limited to deterministic golden assets.
 - T-129 completed review-only launch-manifest operator automation parity for Top-500 and supported ETF review packets.
 - T-129: add launch-manifest operator automation parity is now implemented as deterministic review-only operator tooling, not as launch approval or manifest promotion.
+- T-130 completed the local fresh-data MVP rehearsal command as a deterministic, fixture-backed review layer with explicit optional modes.
 
 Runnable near-term backlog:
 
-- T-130: add a local fresh-data MVP rehearsal command or command sequence that ties the governed golden path into one operator-facing pre-production check.
+- No runnable backlog task is currently prepared after T-130.
 
 Sequencing rationale:
 
 - Align docs first so the agent loop does not follow commands from a different repository layout.
 - T-126 source-handoff tooling and T-127 live-AI local validation now exist before the governed-evidence render proof expands the blast radius.
 - Keep launch-manifest automation review-only until promotion gates and private mirrors are ready.
-- Add the local fresh-data rehearsal only after the source, evidence, AI, and manifest gates exist, so it verifies the integrated local MVP path instead of masking missing pieces.
+- T-130 is intentionally review-oriented: it verifies the integrated local MVP path after source, evidence, AI, and manifest gates exist, but it does not replace source approval, manifest promotion, or production readiness review.
 
 ## Non-Goals For The Next Tasks
 
@@ -102,6 +107,7 @@ For doc/control changes, run:
 git diff --check
 TMPDIR=/tmp python3 -m pytest tests/unit/test_repo_contract.py tests/unit/test_safety_guardrails.py -q
 TMPDIR=/tmp python3 evals/run_static_evals.py
+TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json
 npm test
 npm run typecheck
 npm run build

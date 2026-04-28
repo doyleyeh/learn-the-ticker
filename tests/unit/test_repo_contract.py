@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from scripts.run_local_fresh_data_rehearsal import run_rehearsal
+
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -359,8 +361,9 @@ def test_mvp_functional_gap_review_tracks_v06_progress_and_next_tasks():
         "T-126 completed repo-native source-handoff manifest inspection/finalization smoke tooling",
         "T-127 completed the opt-in local live-AI validation smoke",
         "T-128 adds deterministic governed golden API/frontend rendering proof",
-        "T-129: add launch-manifest operator automation parity",
-        "T-130: add a local fresh-data MVP rehearsal command",
+        "T-129 completed review-only launch-manifest operator automation parity",
+        "T-130 completed the local fresh-data MVP rehearsal command",
+        "scripts/run_local_fresh_data_rehearsal.py --json",
         "Normal CI remains deterministic",
     ]:
         assert marker in review, f"functional review should include marker: {marker}"
@@ -531,7 +534,7 @@ def test_t114_mvp_launch_readiness_docs_cover_regression_matrix_and_go_no_go_wit
         assert forbidden.lower() not in combined_lower
 
 
-def test_tasks_general_mvp_roadmap_marks_t129_current_and_backlog_state():
+def test_tasks_general_mvp_roadmap_marks_t130_current_and_no_backlog_state():
     tasks = read_file("TASKS.md")
     current_task = tasks.split("## Current task", 1)[1].split("## Completed", 1)[0]
     backlog = tasks.split("## Backlog", 1)[1].split("## Completed", 1)[0]
@@ -539,11 +542,11 @@ def test_tasks_general_mvp_roadmap_marks_t129_current_and_backlog_state():
     roadmap = tasks.split("## General MVP Roadmap", 1)[1]
 
     assert "## MVP Backend Roadmap" not in tasks
-    assert "### T-129: Add launch-manifest operator automation parity" in current_task
-    assert "review-only operator automation parity" in current_task
-    assert "supported ETF manifest workflow" in current_task
+    assert "### T-130: Add local fresh-data MVP rehearsal command" in current_task
+    assert "local fresh-data MVP rehearsal command" in current_task
+    assert "governed source packet/state through backend route reads" in current_task
     assert "One agent-loop cycle" in current_task
-    assert "### T-130: Add local fresh-data MVP rehearsal command" in backlog
+    assert "No backlog tasks are currently prepared." in backlog
     for marker in [
         "Detailed acceptance criteria",
         "Required commands",
@@ -553,10 +556,11 @@ def test_tasks_general_mvp_roadmap_marks_t129_current_and_backlog_state():
     for marker in [
         "### T-128: Prove governed golden evidence drives API and frontend rendering",
         "Added source-snapshot validation to the persisted overview read path",
+        "### T-129: Add launch-manifest operator automation parity",
+        "review-only operator automation parity",
     ]:
         assert marker in completed
-    assert "T-129: Add launch-manifest operator automation parity" in current_task
-    assert "T-130: Add local fresh-data MVP rehearsal command" in backlog
+    assert "T-130: Add local fresh-data MVP rehearsal command" in current_task
     assert "### T-119: Wire local frontend API access and backend CORS" in completed
     assert "Next.js rewrite" in completed
     assert "build_cors_settings" in completed
@@ -631,6 +635,46 @@ def test_tasks_general_mvp_roadmap_marks_t129_current_and_backlog_state():
     assert "| Launch-manifest operator automation parity | Current | T-129 |" in roadmap
     assert "| Local fresh-data MVP rehearsal command | Prepared | T-130 |" in roadmap
     assert "| Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |" in roadmap
+
+
+def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
+    result = run_rehearsal(env={})
+
+    assert result["schema_version"] == "local-fresh-data-mvp-rehearsal-v1"
+    assert result["status"] == "pass"
+    assert result["normal_ci_requires_live_calls"] is False
+    assert result["production_services_started"] is False
+    assert result["manifests_promoted"] is False
+    assert result["sources_approved_by_rehearsal"] is False
+    statuses = {check["check_id"]: check["status"] for check in result["checks"]}
+    assert statuses["deterministic_default_boundary"] == "pass"
+    assert statuses["source_handoff_approval_gate"] == "pass"
+    assert statuses["governed_golden_api_rendering"] == "pass"
+    assert statuses["launch_manifest_review_packets"] == "pass"
+    assert statuses["frontend_v04_smoke_markers"] == "pass"
+    assert statuses["optional_browser_services"] == "skipped"
+    assert statuses["optional_local_durable_repositories"] == "skipped"
+    assert statuses["optional_official_source_retrieval"] == "skipped"
+    assert statuses["optional_live_ai_review"] == "skipped"
+
+
+def test_local_fresh_data_rehearsal_optional_modes_report_blockers_without_secrets():
+    result = run_rehearsal(
+        env={
+            "LTT_REHEARSAL_DURABLE_REPOSITORIES_ENABLED": "true",
+            "LTT_REHEARSAL_OFFICIAL_SOURCE_RETRIEVAL_ENABLED": "true",
+            "LTT_REHEARSAL_LIVE_AI_REVIEW_ENABLED": "true",
+        }
+    )
+
+    assert result["status"] == "blocked"
+    checks = {check["check_id"]: check for check in result["checks"]}
+    assert checks["optional_local_durable_repositories"]["status"] == "blocked"
+    assert checks["optional_official_source_retrieval"]["status"] == "blocked"
+    assert checks["optional_live_ai_review"]["status"] == "blocked"
+    serialized = str(result)
+    for forbidden in ["postgresql://", "Bearer ", "Authorization", "BEGIN PRIVATE KEY", "sk-"]:
+        assert forbidden not in serialized
 
 
 def test_t118_local_fresh_data_runbook_covers_deterministic_smoke_without_live_requirements():
