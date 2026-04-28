@@ -1,42 +1,54 @@
 ## Current task
 
-### T-126: Add repo-native source-handoff manifest smoke tooling
+### T-127: Add opt-in local live-AI validation smoke
 
 Goal:
-Add repo-native source-handoff manifest inspection/finalization smoke tooling or accurately scoped equivalents so operators can validate reviewed governed-source packets without relying on commands from another repository layout.
+Add an operator-only local live-AI validation smoke for grounded chat and AI Comprehensive Analysis while keeping deterministic mocks as the CI and ordinary local default.
 
 Task-scope paragraph:
-Add a narrow repo-native smoke path for inspecting and validating governed source-handoff manifest packets before those packets can support evidence, citations, cache entries, exports, or rendered output. The cycle should replace any leftover cross-repo command assumptions with scripts/tests that actually exist here, or add small scripts in this repo when that is the least risky path.
+Add a narrow local smoke path that lets an operator intentionally validate live LLM output quality for one supported golden grounded-chat case and one evidence-threshold AI Comprehensive Analysis case. The implementation must stay server-side, opt-in, fixture-safe by default, and validation-first: schema, citations, source-use policy, freshness labels, safety, and cache eligibility must pass before live output is treated as usable. Missing opt-in flags, missing server-side key configuration, unavailable evidence, or failed validation should report skipped or blocked status without logging raw user text, prompts, source text, model reasoning, transcripts, or secret values.
 
 Allowed files:
-- `backend/models.py`
-- `backend/source_policy.py`
-- `backend/source_snapshot_repository.py`
-- `backend/ingestion_worker.py`
-- `config/source_allowlist.yaml`
+- `backend/settings.py`
+- `backend/llm.py`
+- `backend/llm_transport.py`
+- `backend/chat.py`
+- `backend/weekly_news.py`
+- `backend/weekly_news_repository.py`
+- `backend/generated_output_cache_repository.py`
+- `backend/safety.py`
 - `scripts/`
-- `tests/unit/test_source_policy.py`
-- `tests/unit/test_ingestion_worker.py`
+- `tests/unit/test_llm_provider.py`
+- `tests/unit/test_chat_generation.py`
+- `tests/unit/test_weekly_news.py`
+- `tests/unit/test_safety_guardrails.py`
+- `tests/unit/test_cache_contracts.py`
 - `tests/unit/test_repo_contract.py`
-- `docs/SOURCE_HANDOFF.md`
-- `docs/TOP500_MANIFEST_HANDOFF.md`
-- `docs/ETF_MANIFEST_HANDOFF.md`
+- `docs/local_fresh_data_ingest_to_render_runbook.md`
+- `docs/mvp_go_no_go_checklist.md`
+- `docs/mvp_functional_gap_review.md`
 
 Do not change:
-- public API route behavior, frontend UI behavior, or generated-output wording
+- public API schemas, frontend UI behavior, or v0.4 workflow boundaries
 - runtime stock or ETF manifest contents
-- source-use policy safety semantics, except to add missing validation coverage for already-defined states
-- deterministic CI defaults or any live provider, news, market-data, database, storage, or LLM requirements
+- source-use policy approval semantics, Golden Asset Source Handoff enforcement, citation strictness, or freshness/unknown/stale/unavailable/partial handling
+- deterministic CI defaults or `scripts/run_quality_gate.sh` behavior to require live provider, news, market-data, database, storage, browser, or LLM services
+- browser-side provider access, `NEXT_PUBLIC_*` secrets, `/health` secret exposure, docs/log secret exposure, or committed env files
+- buy/sell/hold, allocation, price-target, tax, brokerage, or personalized recommendation behavior
 - PRD/TDS/proposal product direction
 
 Detailed acceptance criteria:
-- Tooling lives in the current repo layout under `backend/`, `scripts/`, `tests/`, or `config/`.
-- Draft, finalized, approved, pending-review, rejected, parser-invalid, missing-freshness, unclear-rights, and hidden/internal source cases are covered.
-- Normal CI remains fixture-safe and performs no live network calls.
-- `docs/SOURCE_HANDOFF.md` documents the implemented commands.
+- Live-AI smoke is disabled by default and requires explicit local opt-in plus server-side key/readiness checks before any live model call can be attempted.
+- The smoke validates grounded chat for a supported golden asset using the selected asset knowledge pack, same-asset citations, source-use-approved evidence, freshness labels, educational framing, and advice-boundary enforcement.
+- The smoke validates an AI Comprehensive Analysis case only when at least two high-signal Weekly News Focus items exist; below-threshold evidence must remain suppressed or reported as insufficient evidence.
+- Live output is rejected, suppressed, or marked unavailable when schema validation, citation binding, source-use policy, freshness labeling, safety validation, or cache-eligibility checks fail.
+- Smoke diagnostics distinguish pass, skipped, and blocked states for missing opt-in flags, missing server-side key readiness, insufficient evidence, validation failure, and cache-ineligible output without printing secret values.
+- The implementation does not log or commit raw user text, prompts, full source text, model reasoning, raw transcripts, unrestricted provider payloads, or generated live responses.
+- Normal CI, static evals, and `TMPDIR=/tmp bash scripts/run_quality_gate.sh` remain deterministic and do not require live external calls.
+- Documentation records the opt-in command, prerequisites, stop conditions, and the fact that local live-AI review does not approve sources or relax Golden Asset Source Handoff.
 
 Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_source_policy.py tests/unit/test_ingestion_worker.py tests/unit/test_repo_contract.py -q`
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_llm_provider.py tests/unit/test_chat_generation.py tests/unit/test_weekly_news.py tests/unit/test_safety_guardrails.py tests/unit/test_cache_contracts.py tests/unit/test_repo_contract.py -q`
 - `TMPDIR=/tmp python3 evals/run_static_evals.py`
 - `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
 - `git diff --check`
@@ -45,26 +57,6 @@ Iteration budget:
 - One agent-loop cycle.
 
 ## Backlog
-
-### T-127: Add opt-in local live-AI validation smoke
-
-Goal:
-Add an operator-only local live-AI validation smoke for grounded chat and AI Comprehensive Analysis while keeping deterministic mocks as the CI and ordinary local default.
-
-Acceptance criteria:
-- Live-AI smoke is gated by explicit local opt-in flags and server-side key-presence checks.
-- The smoke validates schema, citations, source-use policy, freshness labels, safety, and cache eligibility without logging raw user text, prompts, source text, model reasoning, or secret values.
-- The smoke includes an evidence-threshold case for AI Comprehensive Analysis and a grounded chat case for a supported golden asset.
-- CI and `bash scripts/run_quality_gate.sh` do not require live model calls.
-
-Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_llm_provider.py tests/unit/test_chat_generation.py tests/unit/test_weekly_news.py tests/unit/test_safety_guardrails.py -q`
-- `TMPDIR=/tmp python3 evals/run_static_evals.py`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
-- `git diff --check`
-
-Iteration budget:
-- One agent-loop cycle.
 
 ### T-128: Prove governed golden evidence drives API and frontend rendering
 
@@ -153,6 +145,31 @@ Iteration budget:
 - One agent-loop cycle.
 
 ## Completed
+
+### T-126: Add repo-native source-handoff manifest smoke tooling
+
+Goal:
+Add repo-native source-handoff manifest inspection/finalization smoke tooling or accurately scoped equivalents so operators can validate reviewed governed-source packets without relying on commands from another repository layout.
+
+Completion details:
+- Implementation commit: `901fe9d feat(T-126): add repo-native source-handoff manifest smoke tooling`
+- Local merge commit: `89c9e23 chore(T-126): merge repo-native source-handoff manifest smoke tooling` from branch `agent/T-126-20260428T194357Z`
+- Added `scripts/inspect_source_handoff_manifest.py`, a repo-native JSON manifest tool for `source-handoff-manifest-v1` packets with `inspect` and `finalize` commands.
+- The tool validates manifest shape, source counts, finalizable status, and source-level blockers across generated-claim support, generated-output cache eligibility, and Markdown/JSON section export actions.
+- Finalization is limited to draft or already-finalized manifests, writes `manifest_status: finalized`, `finalized_at`, and an inspection summary, and refuses blocked packets with source-level reason codes.
+- `tests/unit/test_source_policy.py` now covers approved/finalizable manifests plus pending-review, rejected, parser-invalid, missing-freshness, unclear-rights, hidden/internal, rejected-manifest, malformed-manifest, strict-inspect, and finalize behaviors.
+- `tests/unit/test_repo_contract.py` was updated to require the new repo-native source-handoff tool and documented commands.
+- `docs/SOURCE_HANDOFF.md` now documents the current enforcement status, manifest shape, `inspect`, `inspect --strict`, and `finalize` commands, safety boundaries, operator workflow, and stop conditions.
+
+Required commands executed in this task branch:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_source_policy.py tests/unit/test_ingestion_worker.py tests/unit/test_repo_contract.py -q` - pass (`55 passed`)
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass (`446 passed`, static evals passed, frontend smoke/typecheck/build passed, backend checks passed)
+- `git diff --check` - pass
+
+Remaining risks:
+- The smoke tool validates reviewed JSON handoff packets and can finalize them locally, but the repo still does not include governed source artifacts for the full golden set.
+- T-126 did not prove finalized governed evidence drives backend API or frontend rendering; that remains a follow-up backlog item.
 
 ### T-125: Align v0.6 handoff docs and MVP backlog
 
@@ -3497,7 +3514,8 @@ Current runtime snapshot:
 - T-119 closed the local frontend/API plumbing blockers found during manual smoke testing: chat POSTs, export URLs, comparison fetches, and browser direct backend calls now have a documented API-base/proxy/CORS strategy.
 - T-120 through T-124 are completed: ETF manifest split contracts, localhost browser E2E smoke, optional local durable smoke, handoff-gated official-source fetcher boundaries, and reviewed launch-universe expansion planning.
 - T-125 completed the v0.6 handoff-doc and MVP-backlog alignment pass.
-- The current promoted task is T-126, and the prepared backlog is T-127 through T-130: opt-in local live-AI validation, governed golden evidence driving API/frontend rendering, launch-manifest operator automation parity, and local fresh-data MVP rehearsal.
+- T-126 completed repo-native source-handoff manifest inspection/finalization smoke tooling for reviewed governed-source packets.
+- The current promoted task is T-127, and the prepared backlog is T-128 through T-130: governed golden evidence driving API/frontend rendering, launch-manifest operator automation parity, and local fresh-data MVP rehearsal.
 - T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, full governed source artifacts, admin auth/rate limiting, broader live ingestion, and launch-sized reviewed manifests remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:
@@ -3552,7 +3570,8 @@ Operational defaults for general MVP roadmap tasks:
 - T-123 established handoff-gated official-source fetcher boundaries behind local opt-in. It is completed and must not be reintroduced as runnable backlog.
 - T-124 established reviewed launch-universe expansion planning. It is completed and must not be reintroduced as runnable backlog.
 - T-125 established v0.6 docs, handoff docs, and backlog alignment. It is completed and must not be reintroduced as runnable backlog.
-- Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until repo-native source-handoff tooling, opt-in local live-AI validation, governed golden evidence rendering, launch-manifest operator automation parity, local fresh-data MVP rehearsal, and launch readiness work pass deterministic CI coverage.
+- T-126 established repo-native source-handoff manifest smoke tooling. It is completed and must not be reintroduced as runnable backlog.
+- Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until opt-in local live-AI validation, governed golden evidence rendering, launch-manifest operator automation parity, local fresh-data MVP rehearsal, and launch readiness work pass deterministic CI coverage.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted task should run the relevant EVALS.md checks, `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, `bash scripts/run_quality_gate.sh`, and `git diff --check`.
 
@@ -3610,8 +3629,8 @@ Roadmap integration tracker:
 | Handoff-gated official-source fetcher boundaries | Completed | T-123 |
 | Reviewed launch-universe expansion planning | Completed | T-124 |
 | v0.6 docs, handoff docs, and backlog alignment | Completed | T-125 |
-| Repo-native source-handoff manifest smoke tooling | Current | T-126 |
-| Opt-in local live-AI validation smoke | Prepared | T-127 |
+| Repo-native source-handoff manifest smoke tooling | Completed | T-126 |
+| Opt-in local live-AI validation smoke | Current | T-127 |
 | Governed golden evidence API/frontend rendering proof | Prepared | T-128 |
 | Launch-manifest operator automation parity | Prepared | T-129 |
 | Local fresh-data MVP rehearsal command | Prepared | T-130 |
@@ -3619,7 +3638,6 @@ Roadmap integration tracker:
 
 Remaining unpromoted general MVP sequence:
 
-- Repo-native source-handoff manifest smoke tooling, so operators can inspect and finalize governed-source packets in the current repo layout.
 - Opt-in local live-AI validation, so grounded chat and AI Comprehensive Analysis can be reviewed locally without making live calls part of normal CI.
 - Governed golden evidence rendering proof, so source-backed evidence can drive API responses and frontend rendering rather than fixture fallback alone.
 - Launch-manifest operator automation parity, so Top-500 and supported ETF review packets can be generated or inspected without promoting runtime manifests automatically.
