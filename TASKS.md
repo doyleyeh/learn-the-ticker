@@ -1,71 +1,12 @@
 ## Current task
 
-### T-129: Add launch-manifest operator automation parity
-
-Goal:
-Add review-only operator automation parity for Top-500 stock and supported ETF launch-manifest packets without promoting runtime manifests automatically.
-
-Task-scope paragraph:
-Add narrow repo-native operator commands or command modes that let a local operator generate or inspect review packets for both the Top-500 stock launch manifest workflow and the supported ETF manifest workflow. The work is review-only: it may create or inspect candidate, diff, or review artifacts, but it must not automatically replace `data/universes/us_common_stocks_top500.current.json`, `data/universes/us_equity_etfs_supported.current.json`, or `data/universes/us_etp_recognition.current.json`. Keep the implementation deterministic and fixture-backed by default, preserve Golden Asset Source Handoff and source-use rights, and keep it aligned with the v0.4 frontend workflow before live-provider or deployment expansion.
-
-Allowed files:
-- `backend/models.py`
-- `backend/top500_candidate_manifest.py`
-- `backend/etf_universe.py`
-- `scripts/generate_top500_candidate_manifest.py`
-- `scripts/`
-- `tests/fixtures/top500_refresh/`
-- `tests/unit/test_top500_candidate_manifest.py`
-- `tests/unit/test_search_classification.py`
-- `tests/unit/test_provider_adapters.py`
-- `tests/unit/test_repo_contract.py`
-- `docs/TOP500_MANIFEST_HANDOFF.md`
-- `docs/ETF_MANIFEST_HANDOFF.md`
-- `docs/mvp_go_no_go_checklist.md`
-- `docs/mvp_functional_gap_review.md`
-
-Do not change:
-- frontend routes, visual design, home-page workflow, comparison workflow, glossary behavior, source drawer behavior, asset chat behavior, or stock-vs-ETF relationship badges
-- public API schemas or generated-output copy
-- runtime stock or ETF manifest contents, including `data/universes/us_common_stocks_top500.current.json`, `data/universes/us_equity_etfs_supported.current.json`, and `data/universes/us_etp_recognition.current.json`
-- ETF support classification semantics: supported ETF generated-output coverage must still come only from `data/universes/us_equity_etfs_supported.current.json`, and ETF/ETP recognition-only blocked states must still come from `data/universes/us_etp_recognition.current.json`
-- Top-500 runtime support semantics: runtime stock support must still read `data/universes/us_common_stocks_top500.current.json`, never a candidate, diff, rank query, live ETF holdings file, provider response, or review packet
-- source-use policy approval semantics, Golden Asset Source Handoff enforcement, citation strictness, or freshness/unknown/stale/unavailable/partial/insufficient-evidence handling
-- deterministic CI defaults or `scripts/run_quality_gate.sh` behavior to require live provider, news, market-data, production database, storage, browser, or LLM services
-- browser-side provider access, `NEXT_PUBLIC_*` secrets, `/health` secret exposure, docs/log secret exposure, committed env files, raw source text, raw model reasoning, or unrestricted provider payload exports
-- buy/sell/hold, allocation, price-target, tax, brokerage, or personalized recommendation behavior
-- PRD/TDS/proposal product direction, deployment configuration, or broad provider integration
-
-Detailed acceptance criteria:
-- A repo-native command or command mode can generate or inspect the Top-500 candidate manifest, diff report, and operator review summary using deterministic fixture-backed official-source inputs.
-- A repo-native command or command mode can inspect the supported ETF manifest and ETF/ETP recognition manifest as launch-review packets, including support-state, wrapper/scope, exclusion flags, source provenance, checksum, approval, parser/handoff metadata where available, and blocked-state reasons.
-- Top-500 review output preserves candidate path naming, approved-current-manifest separation, source provenance, source snapshot dates, checksums, rank basis, SEC/Nasdaq validation status, warnings, manual-review triggers, and manual-promotion requirements.
-- Supported ETF review output preserves the v0.5 split: supported ETF generated-output coverage comes only from `data/universes/us_equity_etfs_supported.current.json`, recognition-only rows remain blocked, and unsupported/out-of-scope/pending-review/unavailable products cannot unlock generated pages, chat, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, or generated risk summaries.
-- Candidate, diff, inspection, and review artifacts never overwrite approved runtime manifests automatically. Any promotion path must be manual, explicit, reviewed, and outside this task's default command behavior.
-- Launch-sized fixture/provenance guards distinguish deterministic fixture contracts from public launch approval; fixture-sized, mock, test, local-only, unreviewed, parser-invalid, hidden/internal, unclear-rights, pending-review, rejected, or rights-disallowed sources cannot be described as launch-approved.
-- Golden Asset Source Handoff remains the approval layer before retrieved source evidence can be stored as evidence, cited, summarized, generated from, cached, or exported. This task must not approve new sources or relax source-use rights.
-- Operator output includes clear pass/blocked/review-needed states and stop conditions for stale, partial, unknown, unavailable, insufficient-evidence, validation-warning, fallback-source, low-validation-coverage, missing-golden-ticker, missing-review, and checksum-mismatch cases.
-- Handoff docs record the implemented repo-native commands, review-only status, required manual approval, non-advice framing, deterministic/default no-live-call behavior, and stop conditions for both Top-500 and supported ETF launch-review packets.
-- Normal CI, static evals, and the quality gate remain deterministic and do not require live external calls, production databases, production storage, browser services, or live LLM providers.
-
-Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_top500_candidate_manifest.py tests/unit/test_search_classification.py tests/unit/test_provider_adapters.py tests/unit/test_repo_contract.py -q`
-- `TMPDIR=/tmp python3 evals/run_static_evals.py`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
-- `git diff --check`
-
-Iteration budget:
-- One agent-loop cycle.
-
-## Backlog
-
 ### T-130: Add local fresh-data MVP rehearsal command
 
 Goal:
 Add an operator-facing local fresh-data MVP rehearsal command or accurately scoped command sequence that verifies the golden path from governed source approval through API/frontend rendering without requiring production services.
 
 Task-scope paragraph:
-After source-handoff tooling, live-AI validation smoke, governed evidence rendering proof, and launch-manifest operator automation parity are in place, add a repo-native rehearsal layer that ties those pieces into one local pre-production confidence check. The rehearsal should have a deterministic default mode for CI-safe validation and explicit opt-in modes for already-running localhost services, local durable repositories, official-source retrieval, and live AI review.
+After source-handoff tooling, live-AI validation smoke, governed evidence rendering proof, and launch-manifest operator automation parity are in place, add a narrow repo-native rehearsal layer that ties those pieces into one local pre-production confidence check. The rehearsal must have a deterministic default mode for CI-safe validation and explicit opt-in modes for already-running localhost services, local durable repositories, official-source retrieval, and live AI review. Keep the command review-oriented and local: it should verify readiness, blockers, and skip states without approving sources, changing manifests, starting production services, requiring live external calls by default, or expanding deployment scope.
 
 Allowed files:
 - `scripts/`
@@ -80,18 +21,31 @@ Allowed files:
 
 Do not change:
 - public API schemas, generated-output copy, frontend visual design, or v0.4 workflow boundaries
-- runtime stock or ETF manifest contents
-- source-use policy approval semantics or Golden Asset Source Handoff enforcement
-- default CI behavior to require live provider, news, market-data, database, storage, browser, or LLM services
-- production deployment settings or real secret handling
+- home search as the primary home-page action, comparison as a separate connected workflow, contextual glossary behavior, source drawer behavior, asset-chat surfaces, or stock-vs-ETF relationship badges
+- runtime stock or ETF manifest contents, including `data/universes/us_common_stocks_top500.current.json`, `data/universes/us_equity_etfs_supported.current.json`, and `data/universes/us_etp_recognition.current.json`
+- ETF support classification semantics: supported ETF generated-output coverage must still come only from `data/universes/us_equity_etfs_supported.current.json`, and ETF/ETP recognition-only blocked states must still come from `data/universes/us_etp_recognition.current.json`
+- Top-500 runtime support semantics: runtime stock support must still read `data/universes/us_common_stocks_top500.current.json`, never a candidate, diff, rank query, live ETF holdings file, provider response, or review packet
+- source-use policy approval semantics, Golden Asset Source Handoff enforcement, citation strictness, or freshness/unknown/stale/unavailable/partial/insufficient-evidence handling
+- deterministic CI defaults or `scripts/run_quality_gate.sh` behavior to require live provider, news, market-data, production database, storage, browser, or LLM services
+- production deployment settings, production auth, broad provider integrations, scheduled jobs, private mirror writes, or real secret handling
+- browser-side provider access, `NEXT_PUBLIC_*` secrets, `/health` secret exposure, docs/log secret exposure, committed env files, raw source text, raw model reasoning, or unrestricted provider payload exports
+- buy/sell/hold, allocation, price-target, tax, brokerage, or personalized recommendation behavior
+- PRD/TDS/proposal product direction or MVP scope
 
-Acceptance criteria:
+Detailed acceptance criteria:
 - A repo-native command or documented command sequence checks the local golden fresh-data path from governed source packet/state through backend route reads, source drawer/export outputs, comparison/chat API surfaces, and frontend smoke markers.
-- The default rehearsal mode is deterministic and safe for normal local/CI checks.
-- Optional local modes require explicit env flags for browser services, durable repositories, official-source retrieval, and live AI, and they skip or report blockers when prerequisites are missing.
-- Rehearsal output distinguishes pass, skipped, and blocked states for missing Docker, missing localhost services, missing source-handoff approvals, stale/partial/unavailable evidence, and absent live-AI keys without printing secrets.
-- The rehearsal preserves T-119 API-base/proxy/CORS regressions and the v0.4 single-asset-first frontend workflow.
-- The runbook and go/no-go checklist point operators to the implemented local rehearsal.
+- The default rehearsal mode is deterministic, fixture-backed or mock-backed, safe for normal local/CI checks, and makes no live external provider, news, market-data, browser-service, production database, production storage, or live LLM calls.
+- Optional local modes require explicit env flags for browser services, durable repositories, official-source retrieval, and live AI review, and they skip or report blockers when prerequisites are missing.
+- Rehearsal output distinguishes `pass`, `skipped`, and `blocked` states for missing Docker, missing localhost web/API services, missing source-handoff approvals, stale/partial/unknown/unavailable/insufficient-evidence records, missing launch-manifest review packets, absent live-AI readiness, and missing optional keys without printing secrets.
+- The command or command sequence preserves T-119 API-base/proxy/CORS regressions and the v0.4 single-asset-first frontend workflow: home search remains the primary action, clear `A vs B` search redirects remain comparison-only, glossary remains contextual, and source drawer/glossary/chat mobile markers remain bottom-sheet or full-screen appropriate.
+- The rehearsal verifies that governed golden evidence can drive API/frontend rendering without treating fixture-sized or local-only data as launch approval.
+- The rehearsal checks that Golden Asset Source Handoff remains the approval layer before source snapshots, normalized knowledge packs, citations, generated-output cache entries, source drawer metadata, exports, Weekly News Focus, AI Comprehensive Analysis, or chat answers can use retrieved evidence.
+- The rehearsal checks that unsupported, out-of-scope, recognition-only, pending-review, unavailable, unknown, or pending-ingestion assets cannot unlock generated pages, generated chat answers, generated comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, or generated risk summaries.
+- The rehearsal preserves the evidence-limited Weekly News Focus behavior: configured maximum is shown only when enough approved evidence supports it, smaller verified sets are allowed, and empty states remain valid when evidence is thin.
+- The rehearsal preserves AI Comprehensive Analysis suppression unless at least two high-signal Weekly News Focus items exist and citations bind to Weekly News items plus canonical facts.
+- The rehearsal validates source drawer/export output for citation IDs, source-use policy, freshness/as-of metadata, allowed excerpts only, educational disclaimers, and no raw model reasoning, hidden prompts, raw transcript analytics, unrestricted provider payloads, or secrets.
+- The runbook, go/no-go checklist, functional gap review, and eval guidance point operators to the implemented local rehearsal, its deterministic default, opt-in modes, prerequisites, skip/block meanings, and stop conditions.
+- Normal CI, static evals, and the quality gate remain deterministic and do not require live external calls, production databases, production storage, browser services, or live LLM providers.
 
 Required commands:
 - `TMPDIR=/tmp python3 -m pytest tests/integration/test_backend_api.py tests/unit/test_repo_contract.py tests/unit/test_safety_guardrails.py -q`
@@ -105,7 +59,38 @@ Required commands:
 Iteration budget:
 - One agent-loop cycle.
 
+## Backlog
+
+No backlog tasks are currently prepared.
+
 ## Completed
+
+### T-129: Add launch-manifest operator automation parity
+
+Goal:
+Add review-only operator automation parity for Top-500 stock and supported ETF launch-manifest packets without promoting runtime manifests automatically.
+
+Completion details:
+- Implementation commit: `622c914 feat(T-129): add launch-manifest operator automation parity`
+- Local merge commit: `1b58178 chore(T-129): merge launch-manifest operator automation parity` from branch `agent/T-129-20260428T202241Z`
+- Added `scripts/review_launch_manifests.py`, a repo-native review-only command with `top500 generate`, `top500 inspect`, and `etf inspect` modes.
+- Extended `backend/top500_candidate_manifest.py` with Top-500 launch review summary generation/inspection, review summary output paths, checksum validation, manual-promotion requirements, launch-approval stop conditions, and blocked/review-needed/pass status reporting.
+- Extended `backend/etf_universe.py` with ETF launch review packet generation for the supported ETF manifest and ETF/ETP recognition manifest, including support-state counts, checksum checks, generated-output eligibility, blocked-state reasons, wrapper/scope metadata, parser/handoff metadata where available, and stop conditions for fixture/local-only, unknown, unavailable, stale, partial, insufficient-evidence, source-quality, and checksum states.
+- Added deterministic test coverage for Top-500 operator review summaries, checksum mismatch blocking, written review artifacts, ETF supported-vs-recognition review packets, blocked recognition-only products, and repo-contract markers for the new commands.
+- Updated `docs/TOP500_MANIFEST_HANDOFF.md` and `docs/ETF_MANIFEST_HANDOFF.md` with repo-native review-only commands, manual-promotion requirements, no-live-call defaults, non-advice framing, and launch stop conditions.
+- Updated `docs/mvp_functional_gap_review.md` and `docs/mvp_go_no_go_checklist.md` to record the T-129 launch-manifest automation parity status.
+
+Required commands executed in this task branch:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_top500_candidate_manifest.py tests/unit/test_search_classification.py tests/unit/test_provider_adapters.py tests/unit/test_repo_contract.py -q` - pass (`68 passed`)
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_safety_guardrails.py::test_mvp_functional_gap_review_copy_is_advice_safe_and_sanitized -q` - pass (`1 passed`)
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass (`453 passed`; static evals, frontend smoke, typecheck, build, and backend checks passed)
+- `git diff --check` - pass
+
+Remaining risks:
+- The launch-manifest commands are deterministic review-only tooling. They do not approve launch-sized manifests, source packs, private mirrors, or production deployment.
+- Current Top-500 and ETF manifests remain fixture-sized/local metadata and are explicitly reported as not launch-approved.
+- ETF review output exposes parser and handoff metadata only where current manifest fields provide it; full issuer source-pack parser and Golden Asset Source Handoff approval remains future launch work.
 
 ### T-128: Prove governed golden evidence drives API and frontend rendering
 
