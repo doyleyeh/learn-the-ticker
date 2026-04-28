@@ -1,6 +1,6 @@
 # Local Fresh-Data Ingest-To-Render Runbook
 
-Task: T-118, updated by T-119 and the v0.5 documentation alignment
+Task: T-118, updated by T-119, T-121, and T-122 local-durable API proxy smoke
 
 This runbook describes the local golden-asset smoke path before production deployment work. Normal CI uses deterministic fixtures, mocked official-source acquisition, and in-memory repositories. It must not require real SEC, issuer, market-data, broad news, storage, database, Redis, RSS, or LLM calls.
 
@@ -24,6 +24,18 @@ export LTT_LOCAL_SOURCE_MODE=mocked_official_sources
 export API_BASE_URL=http://127.0.0.1:8000
 export NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
 export CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+```
+
+For optional T-122 local-durable smoke, run with the same API/base wiring and these prerequisite flags:
+
+```bash
+export DATABASE_URL=<local durable repository DSN, placeholder-only>
+export LOCAL_DURABLE_REPOSITORIES_ENABLED=true
+export LOCAL_DURABLE_OBJECT_NAMESPACE=ticker-smoke
+export LEARN_TICKER_LOCAL_DURABLE_SMOKE=1
+export LEARN_TICKER_LOCAL_BROWSER_SMOKE=1
+export LEARN_TICKER_LOCAL_WEB_BASE=http://127.0.0.1:3000
+export LEARN_TICKER_LOCAL_API_BASE=http://127.0.0.1:8000
 ```
 
 Do not add provider credentials, production storage paths, signed links, public bucket links, raw provider payloads, raw source text, hidden prompts, raw model reasoning, raw user text, or transcript text to environment examples, fixtures, logs, diagnostics, or committed files.
@@ -101,7 +113,31 @@ curl -s -D - -o /dev/null http://127.0.0.1:8000/api/search?q=VOO \
 
 Expected result: chat, export, and compare return backend payloads instead of Next 404s, and the Origin request includes an `Access-Control-Allow-Origin` header for the configured local origin.
 
-7. Verify frontend rendering with the API base configured:
+7. Optional local-durable smoke (T-122): run the browser smoke with durable prereqs set.
+
+```bash
+LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 \
+LEARN_TICKER_LOCAL_DURABLE_SMOKE=1 \
+LEARN_TICKER_LOCAL_WEB_BASE=http://127.0.0.1:3000 \
+LEARN_TICKER_LOCAL_API_BASE=http://127.0.0.1:8000 \
+npm run test:browser-smoke
+```
+
+When durable prereqs are present, this optional run validates:
+
+- VOO asset render through API-backed pages
+- `/api/assets/VOO/chat`
+- `/api/assets/VOO/export`
+- `/api/assets/VOO/sources/export`
+- `/assets/VOO/sources`
+- `/compare?left=VOO&right=QQQ`
+- `/api/compare/export`
+- CORS behavior from `/api/search?q=VOO` using the local web origin
+- out-of-scope/unknown search blocking behavior under API proxy
+
+If any durable prerequisites are missing, the smoke should print blockers and report that durable smoke is skipped.
+
+8. Verify frontend rendering with the API base configured:
 
 ```bash
 npm run dev

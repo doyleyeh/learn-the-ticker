@@ -1446,6 +1446,44 @@ function makeTimeout(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function localDurablePrereqStatus() {
+  const databaseUrl = (process.env.DATABASE_URL || "").trim();
+  const namespace = (process.env.LOCAL_DURABLE_OBJECT_NAMESPACE || "").trim();
+  const enabled = toBool(process.env.LOCAL_DURABLE_REPOSITORIES_ENABLED);
+  const blockers = [];
+
+  if (!enabled) {
+    blockers.push("Set LOCAL_DURABLE_REPOSITORIES_ENABLED=true");
+  }
+  if (!databaseUrl) {
+    blockers.push("Set DATABASE_URL to a local durable repository DSN");
+  }
+  if (!namespace) {
+    blockers.push("Set LOCAL_DURABLE_OBJECT_NAMESPACE");
+  }
+
+  const unsafeNamespace = [
+    "://",
+    "signed",
+    "signature=",
+    "token=",
+    "secret",
+    "password",
+    "public/",
+    "/public/",
+  ];
+  if (namespace && unsafeNamespace.some((marker) => namespace.toLowerCase().includes(marker))) {
+    blockers.push("Use a placeholder-only non-public LOCAL_DURABLE_OBJECT_NAMESPACE");
+  }
+
+  return {
+    enabled,
+    databaseUrlConfigured: Boolean(databaseUrl),
+    namespaceConfigured: Boolean(namespace),
+    blockers,
+  };
+}
+
 function normalizeSmokeBase(value, fallbackPort) {
   if (!value) {
     return `http://127.0.0.1:${fallbackPort}`;
@@ -1460,6 +1498,152 @@ function normalizeSmokeBase(value, fallbackPort) {
 }
 
 const localBrowserSmokeEnabled = toBool(process.env.LEARN_TICKER_LOCAL_BROWSER_SMOKE);
+const localDurableBrowserSmokeEnabled = toBool(process.env.LEARN_TICKER_LOCAL_DURABLE_SMOKE);
+
+const runOptionalLocalDurableSmoke = async () => {
+  const prereqs = localDurablePrereqStatus();
+  if (prereqs.blockers.length > 0) {
+    console.log("Local durable browser smoke is blocked by missing prerequisites:");
+    for (const blocker of prereqs.blockers) {
+      console.log(`- ${blocker}`);
+    }
+    console.log(
+      "Start web/API with local-durable connection settings to run local-durable smoke checks."
+    );
+    return;
+  }
+
+  const durableSmokeFailures = [];
+  try {
+    const durableAssetResponse = await requestWithLog("GET", `${webBase}/assets/VOO`);
+    const durableAssetBody = await durableAssetResponse.text();
+    assert.equal(durableAssetResponse.status, 200, "Local durable VOO asset page should be reachable");
+    assert.equal(
+      durableAssetBody.includes("data-prd-section=\"beginner_summary\""),
+      true,
+      "Local durable VOO asset page should keep stable beginner markers"
+    );
+    assert.equal(
+      durableAssetBody.includes("data-asset-source-list-link"),
+      true,
+      "Local durable VOO page should expose source-list route"
+    );
+
+    const [durableChatResponse, durableChatBody] = await requestWithLog(
+      "POST",
+      `${webBase}/api/assets/VOO/chat`,
+      {
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: "How does this fund track risk?" }),
+      }
+    ).then(async (response) => [response, await response.text()]);
+    assert.equal(durableChatResponse.status, 200, "Local durable VOO chat should route through API proxy");
+    assert.equal(durableChatBody.includes("<!DOCTYPE html>"), false, "Local durable chat endpoint should return JSON");
+
+    const [durableAssetExportResponse, durableAssetExportBody] = await requestWithLog(
+      "GET",
+      `${webBase}/api/assets/VOO/export?export_format=json`
+    ).then(async (response) => [response, await response.text()]);
+    assert.equal(durableAssetExportResponse.status, 200, "Local durable asset export should route through API proxy");
+    assert.equal(
+      durableAssetExportBody.includes("<!DOCTYPE html>"),
+      false,
+      "Local durable asset export should return JSON/structured payload"
+    );
+
+    const [durableSourceExportResponse, durableSourceExportBody] = await requestWithLog(
+      "GET",
+      `${webBase}/api/assets/VOO/sources/export?export_format=json`
+    ).then(async (response) => [response, await response.text()]);
+    assert.equal(durableSourceExportResponse.status, 200, "Local durable source export should route through API proxy");
+    assert.equal(
+      durableSourceExportBody.includes("<!DOCTYPE html>"),
+      false,
+      "Local durable source export should return JSON/structured payload"
+    );
+
+    const durableSourceListResponse = await requestWithLog("GET", `${webBase}/assets/VOO/sources`);
+    const durableSourceListBody = await durableSourceListResponse.text();
+    assert.equal(durableSourceListResponse.status, 200, "Local durable source list route should be reachable");
+    assert.equal(
+      durableSourceListBody.includes("supported-source-list-inspection-flow-v1"),
+      true,
+      "Local durable source list page should keep required markers"
+    );
+
+    const durableCompareResponse = await requestWithLog("GET", `${webBase}/compare?left=VOO&right=QQQ`);
+    const durableCompareBody = await durableCompareResponse.text();
+    assert.equal(durableCompareResponse.status, 200, "Local durable compare route should render");
+    assert.equal(
+      durableCompareBody.includes("data-stock-etf-basket-structure=\"single-company-vs-etf-basket\""),
+      true,
+      "Local durable compare page should keep relationship-badge structure"
+    );
+
+    const durableCompareExportResponse = await requestWithLog(
+      "GET",
+      `${webBase}/api/compare/export?left=VOO&right=QQQ&export_format=json`
+    );
+    assert.equal(durableCompareExportResponse.status, 200, "Local durable compare export should route through API path");
+
+    const durableCorsResponse = await requestWithLog(
+      "GET",
+      `${apiBase}/api/search?q=VOO`,
+      { headers: { Origin: webBase } }
+    );
+    assert.equal(durableCorsResponse.ok, true, "Local durable CORS probe should succeed");
+    const durableCorsHeader = durableCorsResponse.headers.get("access-control-allow-origin") || "";
+    assert.equal(
+      durableCorsHeader === "*" || durableCorsHeader.includes("127.0.0.1") || durableCorsHeader.includes("localhost"),
+      true,
+      "Local durable API response should allow local origin"
+    );
+
+    const outOfScopeResponse = await requestWithLog("GET", `${webBase}/api/search?q=GME`);
+    assert.equal(outOfScopeResponse.status, 200, "Out-of-scope search should resolve through API proxy");
+    const outOfScopeBody = await outOfScopeResponse.json();
+    assert.equal(outOfScopeBody.state.status, "out_of_scope", "Out-of-scope assets should remain blocked");
+    assert.equal(outOfScopeBody.results[0].can_open_generated_page, false, "Blocked out-of-scope assets cannot open generated pages");
+    assert.equal(outOfScopeBody.results[0].can_answer_chat, false, "Blocked out-of-scope assets cannot open chat");
+    assert.equal(outOfScopeBody.results[0].can_compare, false, "Blocked out-of-scope assets cannot compare");
+
+    const unknownResponse = await requestWithLog("GET", `${webBase}/api/search?q=ZZZZ`);
+    assert.equal(unknownResponse.status, 200, "Unknown search should resolve through API proxy");
+    const unknownBody = await unknownResponse.json();
+    assert.equal(unknownBody.state.status, "unknown", "Unknown tickers should remain unknown");
+    assert.equal(unknownBody.results[0].can_open_generated_page, false, "Unknown tickers cannot open generated pages");
+    assert.equal(unknownBody.results[0].can_answer_chat, false, "Unknown tickers cannot open chat");
+
+    const knownSearchResponse = await requestWithLog(
+      "GET",
+      `${webBase}/api/search?q=VOO%20vs%20QQQ`
+    );
+    const knownSearchBody = await knownSearchResponse.json();
+    assert.equal(knownSearchResponse.status, 200, "Backend comparison search should resolve");
+    assert.match(
+      JSON.stringify(knownSearchBody),
+      /comparison_route|\"can_compare\":true/,
+      "Comparison-style local search should remain routed as comparison-capable"
+    );
+  } catch (error) {
+    durableSmokeFailures.push(`Local durable smoke checks failed: ${error}`);
+  }
+
+  if (durableSmokeFailures.length > 0) {
+    console.error("Local durable smoke blockers were not resolvable with current environment:");
+    for (const item of durableSmokeFailures) {
+      console.error(`- ${item}`);
+    }
+    process.exit(1);
+  }
+  console.log("Local durable browser smoke checks passed.");
+  console.log(
+    `Local durable smoke prereqs: DATABASE_URL=${prereqs.databaseUrlConfigured ? "set" : "missing"}, `
+    + `LOCAL_DURABLE_OBJECT_NAMESPACE=${prereqs.namespaceConfigured ? "set" : "missing"}, `
+    + `LOCAL_DURABLE_REPOSITORIES_ENABLED=${prereqs.enabled ? "true" : "false"}`
+  );
+};
+
 if (localBrowserSmokeEnabled) {
   const webBase = normalizeSmokeBase(
     process.env.LEARN_TICKER_LOCAL_WEB_BASE || process.env.WEB_BASE,
@@ -1646,6 +1830,10 @@ if (localBrowserSmokeEnabled) {
     }
     console.log(`Local browser smoke checks passed for web=${webBase}, api=${apiBase}.`);
     console.log(`Local browser smoke recorded ${networkEvents.length} network events.`);
+
+    if (localDurableBrowserSmokeEnabled) {
+      await runOptionalLocalDurableSmoke();
+    }
   };
 
   await runOptionalBrowserSmoke();
