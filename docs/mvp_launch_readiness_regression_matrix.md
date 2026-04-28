@@ -37,9 +37,9 @@ This matrix is the deterministic launch-readiness regression layer before produc
 | `/api/assets/{ticker}/sources` | available, unsupported, out of scope, unknown, eligible-not-cached | Source drawer returns approved metadata and allowed excerpts only; blocked states return no unrestricted text. |
 | `/api/assets/{ticker}/glossary` | generic context, asset-specific context, unavailable term | Asset-specific context is same-asset cited; generic definitions do not invent asset facts. |
 
-T-119 local web/API plumbing note: local browser smoke should verify that chat POSTs, export URLs, and comparison requests reach FastAPI through either `NEXT_PUBLIC_API_BASE_URL`/`API_BASE_URL` or the Next `/api/:path*` rewrite, and that direct browser calls are covered by `CORS_ALLOWED_ORIGINS`.
+T-119 local web/API plumbing note: local browser smoke verifies that chat POSTs, export URLs, and comparison requests reach FastAPI through either `NEXT_PUBLIC_API_BASE_URL`/`API_BASE_URL` or the Next `/api/:path*` rewrite, and that direct browser calls are covered by `CORS_ALLOWED_ORIGINS`.
 
-V0.5 ETF manifest note: launch-readiness checks should next distinguish `data/universes/us_equity_etfs_supported.current.json` from `data/universes/us_etp_recognition.current.json`. The current implementation still uses the older combined ETF fixture manifest, so this is tracked as T-120 before further fresh-data expansion.
+ETF split note: T-120 implemented the split between `data/universes/us_equity_etfs_supported.current.json` and `data/universes/us_etp_recognition.current.json`. Launch-readiness checks must preserve that recognition-only rows never unlock generated ETF pages, chat, comparisons, Weekly News Focus, AI Comprehensive Analysis, or exports.
 | Export endpoints | asset page, source list, comparison, chat transcript, blocked/unavailable | Markdown and JSON exports include disclaimer, citations, freshness, uncertainty, source-use policy, and no restricted raw content. |
 | Ingestion and pre-cache routes | pending, running, succeeded, failed, unsupported, out of scope, unknown, unavailable | Deterministic jobs do not create provider calls, source facts, citations, generated pages, generated chat, generated comparisons, risk summaries, or generated-output cache records unless an existing validated fixture already provides them. |
 
@@ -61,7 +61,7 @@ V0.5 ETF manifest note: launch-readiness checks should next distinguish `data/un
 | Source state | Evidence storage | Generated output | Citation/source drawer | Generated-output cache | Export |
 | --- | --- | --- | --- | --- | --- |
 | Approved official or allowed fixture with compatible policy | Allowed according to storage rights | Allowed when parser/freshness/citation checks pass | Allowed metadata and permitted excerpt only | Allowed after validation | Allowed metadata and permitted excerpt only |
-| Non-allowlisted | Blocked | Blocked | Blocked | Blocked | Blocked |
+| Unapproved or not-governed | Blocked | Blocked | Blocked | Blocked | Blocked |
 | Unclear rights | Blocked or pending review | Blocked | Metadata only if explicitly safe | Blocked | Blocked except safe metadata when policy permits |
 | Parser-invalid | Blocked as evidence | Blocked | Diagnostics only when safe | Blocked | Blocked |
 | Hidden/internal | Blocked | Blocked | Blocked | Blocked | Blocked |
@@ -75,7 +75,7 @@ V0.5 ETF manifest note: launch-readiness checks should next distinguish `data/un
 | Enough high-signal selected Weekly News items | Show up to the configured maximum, cite selected items, and allow AI Comprehensive Analysis only when threshold and canonical citations pass. |
 | One selected item | Show the single verified item, label the limited set, and suppress AI Comprehensive Analysis as insufficient evidence. |
 | Zero selected items | Show the normal empty state and suppress AI Comprehensive Analysis. |
-| Duplicate, promotional, wrong-asset, weak, non-allowlisted, rejected, or license-disallowed items | Exclude from selected Weekly News Focus and from AI Comprehensive Analysis inputs. |
+| Duplicate, promotional, wrong-asset, weak, unapproved, rejected, or rights-disallowed items | Exclude from selected Weekly News Focus and from AI Comprehensive Analysis inputs. |
 | Recent news conflicts with canonical facts | Keep Weekly News Focus visually and structurally separate; do not let it redefine stable asset identity. |
 
 ## Required Regression Commands

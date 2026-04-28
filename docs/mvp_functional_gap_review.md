@@ -1,86 +1,80 @@
 # MVP Functional Gap Review
 
-Task: 2026-04-27 v0.5 doc alignment and fresh-data MVP review.
+Task: 2026-04-28 v0.6 doc alignment and fresh-data MVP review.
 
-Purpose: summarize current development progress, remove stale planning ambiguity, and define the next narrow implementation tasks needed before the project is locally functional as an MVP that can fetch fresh approved data and show it correctly in the frontend.
+Purpose: summarize current implementation progress, align the operational plan with the v0.6 PRD/TDS refresh, and define the next narrow tasks needed before the project is a locally functional MVP that can use fresh approved data and show it correctly in the frontend.
 
-This is an operational planning artifact. It does not enable live providers, production deployment, production persistence, broad source coverage, recurring jobs, or generated advice.
+This is an operational planning artifact. It does not enable production deployment, production persistence, broad source coverage, recurring jobs, unrestricted provider calls, generated advice, or default live model execution.
 
 ## Current Progress
 
-The repo is no longer planning-only. It is a deterministic, fixture-backed MVP scaffold with substantial backend and frontend behavior in place.
+The repo is no longer planning-only. It is a deterministic, fixture-backed MVP scaffold with substantial backend, frontend, source-governance, and local-smoke behavior in place.
 
 Completed capabilities:
 
 - Next.js app under `apps/web` with single-asset home search, asset pages, comparison, source list, contextual glossary, asset chat, and export controls.
-- FastAPI backend under `backend` with route contracts for search, overview, details, Weekly News Focus, comparison, chat, glossary, sources, exports, ingestion/pre-cache state, trust metrics, and runtime diagnostics.
-- Golden Asset Source Handoff enforcement across source policy, source snapshots, knowledge packs, citations, generated-output cache metadata, source drawer output, and exports.
-- Deterministic Top-500 candidate manifest workflow contracts using official IWB first and SPY/IVV/VOO fallback fixtures, SEC/Nasdaq validation, checksums, warnings, and diff reports.
-- Mocked official-source acquisition execution for golden SEC stock, ETF issuer, and Weekly News paths.
-- Deterministic local fresh-data ingest-to-render smoke coverage for a golden asset through backend routes and frontend contract markers.
-- T-119 local API plumbing: frontend helpers prefer the configured backend base URL, Next can rewrite `/api/:path*`, and FastAPI CORS is wired from configured origins.
-- Normal CI remains deterministic and does not require live provider, news, market-data, storage, database, or LLM calls.
+- FastAPI backend under `backend` with route contracts for search, overview/details, Weekly News Focus, comparison, chat, glossary, sources, exports, ingestion/pre-cache state, trust metrics, LLM runtime diagnostics, and CORS diagnostics.
+- T-119 is complete: chat, export, and comparison frontend paths use the configured backend base or Next `/api` rewrite, and FastAPI CORS is wired from configured origins.
+- T-120 is complete: supported ETF generated-output coverage reads `data/universes/us_equity_etfs_supported.current.json`, while ETF/ETP recognition-only blocked states read `data/universes/us_etp_recognition.current.json`.
+- T-121 is complete: optional localhost browser/API smoke covers API-backed MVP flows when local web/API services are already running.
+- T-122 is complete: optional local durable smoke documents and checks API proxy/CORS behavior with durable prerequisites while preserving fixture-safe default tests.
+- T-123 is complete: SEC stock, ETF issuer, and Weekly News official-source fetcher boundaries are promoted behind explicit local opt-in and Golden Asset Source Handoff gates.
+- T-124 is complete: Top-500 candidate/diff artifacts and reviewed launch-universe planning are present without promoting fixture candidates into runtime truth.
+- Golden Asset Source Handoff enforcement exists across source policy, source snapshots, knowledge packs, citations, generated-output cache metadata, source drawer output, and exports.
+- LLM runtime diagnostics and OpenRouter transport contracts are present, with deterministic mocks as the default and live network calls blocked unless explicitly gated.
+- Normal CI remains deterministic and does not require live provider, news, market-data, storage, database, browser services, or LLM calls.
 
 ## Current Misalignments
 
-The v0.5 PRD/TDS add a stricter ETF policy:
+The v0.6 docs intentionally move execution details out of the proposal and into specialized handoff docs. Those new handoff docs need repo-native command alignment.
 
-- supported ETF runtime authority: `data/universes/us_equity_etfs_supported.current.json`
-- ETF/ETP recognition authority: `data/universes/us_etp_recognition.current.json`
+Doc/runtime mismatches addressed by T-125:
 
-The implementation still uses the older combined ETF manifest:
-
-- `data/universes/us_equity_etfs.current.json`
-- `backend/etf_universe.py`
-- search and tests that refer to a single combined eligible ETF universe
-
-This is the highest-priority doc-to-code alignment gap. Until it is fixed, ETF support is operationally narrower than the v0.5 docs require and agents could accidentally treat recognition metadata as support metadata.
+- `docs/SOURCE_HANDOFF.md`, `docs/TOP500_MANIFEST_HANDOFF.md`, and `docs/ETF_MANIFEST_HANDOFF.md` need command examples aligned to this repo's `backend/`, `scripts/`, `tests/`, and `config/` layout.
+- `docs/README.md`, `SPEC.md`, the runbook, readiness matrix, and go/no-go checklist still contain stale language describing the ETF split and T-121 through T-124 follow-ups as pending.
+- `TASKS.md` is finalized after T-124, while repo-contract tests need to track T-125 as the current active task.
 
 ## MVP Fresh-Data Gaps
 
 The project is not yet a fully functional fresh-data MVP. Remaining blockers:
 
-1. Split ETF manifests are not implemented.
-   The supported ETF manifest and recognition manifest do not exist yet. Runtime ETF support still reads the legacy combined manifest.
+1. Launch-sized manifests are not approved.
+   The current Top-500 stock manifest and supported ETF manifest are deterministic fixtures. Public v1 still needs the full approved Top-500 stock manifest, a launch-sized supported ETF manifest, private production mirrors, and review packets.
 
-2. Local durable fresh-data smoke is not proven.
-   T-118 proves deterministic in-memory/mocked ingest-to-render behavior. It does not prove a local durable Postgres/object-storage run.
+2. Repo-native source-handoff tooling is incomplete.
+   Source policy and handoff validation exist, but the operator-facing finalized governed-source manifest inspection/finalization workflow is not implemented as repo-native CLI/script tooling.
 
-3. Automated localhost browser E2E is missing.
-   T-119 manual smoke confirmed chat, exports, comparison, asset page rendering, and CORS over local servers, but there is no repeatable optional browser/HTTP smoke script yet.
+3. Governed golden evidence does not yet prove full render authority.
+   The repo needs an end-to-end proof that approved governed sources for golden assets can flow through source persistence, normalized facts, generated-output cache validation, backend route reads, and frontend rendering.
 
-4. Real official-source fetchers are not the normal local path.
-   Existing acquisition execution is mocked and golden-asset scoped. Real SEC/issuer/Weekly News retrieval must stay opt-in and must fail closed unless Golden Asset Source Handoff approves evidence use.
+4. Local live-AI validation is not yet exercised.
+   v0.6 expects operator-only local review of grounded chat and AI Comprehensive Analysis when evidence thresholds are met. That smoke must remain opt-in and must not become a normal CI requirement.
 
-5. Real fresh-source-to-render flow is not complete.
-   A real retrieved source still needs to pass fetcher, parser diagnostics, source handoff, private snapshot rules, normalized fact writes, Weekly News evidence writes, generated-output cache validation, backend route reads, and frontend rendering.
+5. Third-party/news governance needs updated regression coverage.
+   The v0.6 source policy allows approved reputable third-party/news metadata and beginner summaries, while full article text remains rights-gated. Weekly News Focus and export tests need to preserve those distinctions.
 
-6. Launch coverage remains fixture-sized.
-   The current stock manifest is a small fixture manifest, not a reviewed 500-name launch manifest. The supported ETF launch manifest is not yet materialized under the v0.5 split.
-
-7. Production readiness remains later.
-   Admin auth, rate limiting, production CORS review, private object storage, database migrations, Cloud Run service/job settings, monitoring, rollback, cost controls, and legal/compliance review remain open.
+6. Production readiness remains later.
+   Admin auth, rate limiting, production CORS review, private object storage, database migrations, Cloud Run service/job settings, monitoring, rollback, cost controls, launch support, and legal/compliance review remain open.
 
 ## Refined Agent Track
 
 Current task state:
 
-- T-119 is completed. The next task should start from the v0.5 ETF manifest split.
+- T-125 should align v0.6 docs, handoff guides, MVP gap review, and repo-contract tests.
 
 Runnable near-term backlog:
 
-- T-120: implement v0.5 ETF manifest split contracts.
-- T-121: add optional localhost browser/API E2E smoke.
-- T-122: prove optional local durable repository smoke with API proxy/CORS enabled.
-- T-123: promote real official-source fetchers behind handoff-gated local opt-in for golden assets.
-- T-124: prepare reviewed launch-universe expansion plan for the Top-500 stock manifest and supported ETF launch pack.
+- T-126: add repo-native source-handoff manifest inspection/finalization smoke tooling or accurately scoped equivalents.
+- T-127: add opt-in local live-AI validation smoke for grounded chat and AI Comprehensive Analysis, with CI-safe mocks.
+- T-128: prove governed golden evidence drives backend API and frontend rendering for the golden set.
+- T-129: add launch-manifest operator automation parity for Top-500 and supported ETF review packets without promoting runtime manifests.
 
 Sequencing rationale:
 
-- Do the ETF manifest split first so the new PRD/TDS policy is represented in runtime support classification before more smoke tests or real fetchers are added.
-- Add browser E2E before local durable and real fetcher work so API proxy/CORS/chat/export/compare regressions are caught immediately.
-- Prove local durable execution before real fetchers so fresh data has a safe local persistence path.
-- Add real fetchers only after handoff, browser/API plumbing, and local persistence smoke are reliable.
+- Align docs first so the agent loop does not follow commands from a different repository layout.
+- Add repo-native source-handoff tooling before proving governed evidence can drive rendered output.
+- Add live-AI local validation after governed evidence and deterministic API/browser smokes are reliable.
+- Keep launch-manifest automation review-only until promotion gates and private mirrors are ready.
 
 ## Non-Goals For The Next Tasks
 
@@ -99,15 +93,13 @@ The next agent-loop tasks must not add:
 For doc/control changes, run:
 
 ```bash
-python3 -m pytest tests/unit/test_repo_contract.py tests/unit/test_safety_guardrails.py -q
-npm test
-bash scripts/run_quality_gate.sh
 git diff --check
+TMPDIR=/tmp python3 -m pytest tests/unit/test_repo_contract.py tests/unit/test_safety_guardrails.py -q
+TMPDIR=/tmp python3 evals/run_static_evals.py
+npm test
+npm run typecheck
+npm run build
+TMPDIR=/tmp bash scripts/run_quality_gate.sh
 ```
 
-For ETF manifest split work, also run:
-
-```bash
-python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_provider_adapters.py -q
-python3 evals/run_static_evals.py
-```
+Run `docker compose config` when Docker is available; otherwise record the local Docker-unavailable blocker.

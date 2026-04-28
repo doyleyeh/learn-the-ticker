@@ -60,20 +60,22 @@ Current implementation stage:
 - backend contracts exist for search, overview/details, Weekly News Focus, AI Comprehensive Analysis, comparison, grounded chat, glossary, exports, ingestion states, provider adapters, trust metrics, generated-output cache writes, local durable repository reads/writes, and LLM runtime diagnostics
 - frontend routes and components exist for home search, API-backed asset pages with deterministic fallback, comparison, chat, source metadata, glossary, and export controls
 - local frontend/API plumbing exists for MVP smoke testing: browser helpers prefer the configured FastAPI base URL, the Next app can rewrite `/api/:path*` to the local backend, and FastAPI CORS is wired from `CORS_ALLOWED_ORIGINS`
-- local durable repository execution has in-memory fallback and configured reader boundaries, but normal CI remains fixture-backed
-- v0.5 ETF manifest policy is documented, but implementation still uses the older combined `data/universes/us_equity_etfs.current.json`; splitting this into supported ETF and ETF/ETP recognition manifests is the next alignment task
-- opt-in official-source acquisition readiness exists for SEC stock, ETF issuer, and Weekly News golden paths, but the current readiness paths are still mocked and golden-asset scoped
+- local durable repository execution has in-memory fallback, configured reader boundaries, and optional browser/API smoke coverage, but normal CI remains fixture-backed
+- v0.5 ETF manifest split contracts are implemented: supported ETF generated-output coverage reads `data/universes/us_equity_etfs_supported.current.json`, while recognition-only blocked states read `data/universes/us_etp_recognition.current.json`; the legacy combined ETF fixture remains only for repo continuity
+- opt-in official-source acquisition readiness exists for SEC stock, ETF issuer, and Weekly News golden paths, but full repo-native governed source manifests and proof that governed evidence drives golden API/frontend output remain MVP gaps
+- v0.6 local validation now expects operator-only live-AI review for grounded chat and AI Comprehensive Analysis when evidence thresholds are met, while CI and ordinary local tests remain deterministic mocks
 - CI and local checks are deterministic and fixture-backed; normal quality gates do not depend on live provider, market-data, news, or LLM calls
 
 Near-term implementation priority order:
 
 1. preserve the deterministic launch-readiness regression layer for search, support states, asset pages, comparison, source drawer, contextual glossary, grounded chat, exports, Weekly News Focus, AI Comprehensive Analysis, and mobile workflow markers
-2. implement the v0.5 ETF manifest split so supported ETF generated-output coverage is separate from ETF/ETP recognition-only blocked search states
+2. preserve the implemented v0.5 ETF manifest split so supported ETF generated-output coverage stays separate from ETF/ETP recognition-only blocked search states
 3. preserve Golden Asset Source Handoff enforcement across source allowlist records, source snapshots, knowledge packs, citations, generated-output cache entries, source drawer output, and exports
 4. preserve the reviewed Top-500 candidate-manifest refresh workflow that uses official IWB holdings first, official SPY/IVV/VOO holdings only as fallback inputs, SEC/Nasdaq validation, checksums, and a diff report before current-manifest promotion
-5. prove browser E2E and local durable smoke for golden assets using the API-base/proxy/CORS path before production deployment work
-6. implement real official-source fetcher execution behind explicit local opt-in and Golden Asset Source Handoff for golden assets, while preserving mocked deterministic CI
-7. defer production deployment hardening, recurring jobs, broad paid-provider integrations, and post-MVP features until the local fresh-data path passes strict quality gates
+5. preserve optional browser E2E and local durable smoke for golden assets using the API-base/proxy/CORS path before production deployment work
+6. implement repo-native source-handoff manifest tooling and prove governed golden evidence can flow through source persistence, generated-output cache validation, API routes, and frontend rendering
+7. add opt-in live-AI local validation for chat and AI Comprehensive Analysis without making live LLM calls part of normal CI
+8. defer production deployment hardening, recurring jobs, broad paid-provider integrations, and post-MVP features until the local fresh-data path passes strict quality gates
 
 When choosing the next task, prefer improving PRD/TDS alignment of the current deterministic scaffold over adding new domains or speculative infrastructure.
 The local agent-loop harness should default to `gpt-5.5` with `high` reasoning effort, while allowing explicit per-run overrides such as `gpt-5.3-codex-spark` when the operator requests it.
@@ -87,19 +89,19 @@ Provider hierarchy for MVP planning:
 - stock canonical facts: SEC EDGAR submissions, SEC XBRL company facts, SEC filings, then company investor relations
 - ETF canonical facts: issuer pages, fact sheets, prospectuses, shareholder reports, holdings files, and exposure files
 - structured enrichment: free-first reference data and optional provider adapters only where licensing, rate limits, caching, display, and export rights allow
-- Weekly News Focus: official filings, investor-relations releases, issuer announcements, prospectus changes, fact-sheet changes, then license-compatible allowlisted news
+- Weekly News Focus: official filings, investor-relations releases, issuer announcements, prospectus changes, fact-sheet changes, then approved reputable third-party/news sources where rights permit
 
 Weekly News Focus must use the last completed Monday-Sunday market week plus current week-to-date through yesterday, using U.S. Eastern dates. It should show the configured maximum only when enough quality evidence exists, fewer items when evidence is limited, and a clear empty state when no major Weekly News Focus items exist.
 
 AI Comprehensive Analysis must be suppressed unless at least two high-signal Weekly News Focus items exist. When present, it starts with What Changed This Week, then Market Context, Business/Fund Context, and Risk Context. It must cite underlying Weekly News Focus items and canonical facts.
 
-Source-use policy wins over scoring. Rejected or license-disallowed sources must not display, summarize, cache, or export. Raw source text storage is rights-tiered across `full_text_allowed`, `summary_allowed`, `metadata_only`, `link_only`, and `rejected`.
+Source-use policy wins over scoring. Rejected or rights-disallowed sources must not display, summarize, cache, or export. Raw source text storage is rights-tiered across `full_text_allowed`, `summary_allowed`, `metadata_only`, `link_only`, and `rejected`.
 
 Golden Asset Source Handoff is the approval layer between retrieval and evidence use. Fetching from SEC, issuer sites, ETF holdings files, APIs, or provider adapters does not approve evidence by itself. Before evidence can be stored as evidence, cited, summarized, generated from, cached, or exported, the source must have approved domain/source identity, source type, official-source status, storage rights, export rights, source-use policy, approval rationale, parser status, freshness/as-of metadata, and review status.
 
 Top-500 stock coverage must be manifest-owned. The approved runtime manifest is `data/universes/us_common_stocks_top500.current.json`; monthly refresh work produces a candidate manifest and diff report before review. Official IWB holdings are the primary source input; official SPY, IVV, and VOO holdings are fallback inputs only. Live holdings or provider responses may inform candidates, but they must never become runtime coverage truth directly.
 
-ETF coverage must be manifest-owned. The target v0.5 runtime authority for generated ETF output is `data/universes/us_equity_etfs_supported.current.json`; the target recognition-only authority for blocked ETF/ETP search states is `data/universes/us_etp_recognition.current.json`. Until T-120 lands, the legacy combined manifest remains an implementation gap, not a reason to weaken the v0.5 policy.
+ETF coverage must be manifest-owned. The implemented v0.5 runtime authority for generated ETF output is `data/universes/us_equity_etfs_supported.current.json`; the recognition-only authority for blocked ETF/ETP search states is `data/universes/us_etp_recognition.current.json`. Recognition rows, live listings, provider flags, and issuer search results must not unlock generated output.
 
 ## Hard Product Rules
 
@@ -168,7 +170,7 @@ MVP is ready when:
 - unsupported and out-of-scope assets show clear blocked states
 - top-500 stock scope is driven by the versioned manifest, not live runtime provider queries
 - Top-500 candidate refreshes produce reviewed candidate files, source provenance, checksums, validation warnings, and diff reports before promotion
-- Golden Asset Source Handoff blocks non-allowlisted, unclear-rights, parser-invalid, hidden/internal, pending-review, and rejected sources from evidence storage, generation, citation, cache, and export paths
+- Golden Asset Source Handoff blocks unapproved, unclear-rights, parser-invalid, hidden/internal, pending-review, and rejected sources from evidence storage, generation, citation, cache, and export paths
 - stock and ETF pages render beginner summaries from source-backed evidence
 - stock pages cover business overview, products/services, strengths, financial quality, risks, valuation context, Weekly News Focus, AI Comprehensive Analysis, and educational suitability
 - ETF pages cover role, holdings/exposure, construction, cost/trading context, risks, comparison/overlap, Weekly News Focus, AI Comprehensive Analysis, and educational suitability

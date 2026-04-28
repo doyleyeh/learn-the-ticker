@@ -1,10 +1,144 @@
 ## Current task
 
-No current task is prepared yet. The backlog is empty.
+### T-125: Align v0.6 handoff docs and MVP backlog
+
+Goal:
+Align the v0.6 proposal/PRD/TDS refresh with operational docs, handoff guides, repo-contract tests, and the next agent-loop backlog without changing public API routes or frontend behavior.
+
+Task-scope paragraph:
+This is a docs/control-doc alignment cycle. It preserves user-authored v0.6 source-document updates, removes redundant Windows sidecar files, updates stale T-120-through-T-124 status language, aligns handoff guides to this repo's actual `backend/`, `scripts/`, `tests/`, and `config/` layout, and prepares the next narrow tasks for source-handoff tooling, live-AI local validation, governed evidence rendering, and launch-manifest automation parity.
+
+Allowed files:
+- `.gitignore`
+- `AGENTS.md`
+- `SPEC.md`
+- `TASKS.md`
+- `EVALS.md`
+- `docs/README.md`
+- `docs/mvp_functional_gap_review.md`
+- `docs/local_fresh_data_ingest_to_render_runbook.md`
+- `docs/mvp_launch_readiness_regression_matrix.md`
+- `docs/mvp_go_no_go_checklist.md`
+- `docs/SOURCE_HANDOFF.md`
+- `docs/TOP500_MANIFEST_HANDOFF.md`
+- `docs/ETF_MANIFEST_HANDOFF.md`
+- `docs/learn-the-ticker_proposal.md`
+- `docs/learn_the_ticker_PRD.md`
+- `docs/learn_the_ticker_technical_design_spec.md`
+- `tests/unit/test_repo_contract.py`
+- `tests/unit/test_safety_guardrails.py`
+
+Do not change:
+- backend route behavior, API schemas, frontend UI, or generated output behavior
+- runtime stock or ETF manifest content
+- source-use policy semantics or Golden Asset Source Handoff enforcement
+- safety guardrails around advice boundaries
+- deterministic CI defaults
+- user-authored v0.6 proposal/PRD/TDS direction
+
+Detailed acceptance criteria:
+- `docs/README.md` lists the new handoff docs and no longer says the ETF split is pending.
+- `docs/mvp_functional_gap_review.md` records T-119 through T-124 as complete and names the remaining fresh-data MVP blockers.
+- `docs/SOURCE_HANDOFF.md`, `docs/TOP500_MANIFEST_HANDOFF.md`, and `docs/ETF_MANIFEST_HANDOFF.md` use repo-native commands or explicitly label missing tooling as future work.
+- `SPEC.md`, runbook, regression matrix, go/no-go checklist, `AGENTS.md`, and `EVALS.md` use v0.6 source governance language where applicable.
+- `TASKS.md` prepares T-126 through T-129 as the next runnable backlog.
+- Repo-contract and safety tests are updated to validate the finalized T-124 state, current T-125 task, v0.6 docs, and new handoff docs.
+- No `*:Zone.Identifier` files remain untracked, and `.gitignore` prevents reintroducing them.
+
+Required commands:
+- `git diff --check`
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_repo_contract.py tests/unit/test_safety_guardrails.py -q`
+- `TMPDIR=/tmp python3 evals/run_static_evals.py`
+- `npm test`
+- `npm run typecheck`
+- `npm run build`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+- `docker compose config` when Docker is available; otherwise record the WSL Docker-unavailable blocker.
+
+Iteration budget:
+- One agent-loop cycle.
 
 ## Backlog
 
-No prepared backlog tasks are currently listed after this promotion.
+### T-126: Add repo-native source-handoff manifest smoke tooling
+
+Goal:
+Add repo-native source-handoff manifest inspection/finalization smoke tooling or accurately scoped equivalents so operators can validate reviewed governed-source packets without relying on commands from another repository layout.
+
+Acceptance criteria:
+- Tooling lives in the current repo layout under `backend/`, `scripts/`, `tests/`, or `config/`.
+- Draft, finalized, approved, pending-review, rejected, parser-invalid, missing-freshness, unclear-rights, and hidden/internal source cases are covered.
+- Normal CI remains fixture-safe and performs no live network calls.
+- `docs/SOURCE_HANDOFF.md` documents the implemented commands.
+
+Required commands:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_source_policy.py tests/unit/test_ingestion_worker.py tests/unit/test_repo_contract.py -q`
+- `TMPDIR=/tmp python3 evals/run_static_evals.py`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+- `git diff --check`
+
+Iteration budget:
+- One agent-loop cycle.
+
+### T-127: Add opt-in local live-AI validation smoke
+
+Goal:
+Add an operator-only local live-AI validation smoke for grounded chat and AI Comprehensive Analysis while keeping deterministic mocks as the CI and ordinary local default.
+
+Acceptance criteria:
+- Live-AI smoke is gated by explicit local opt-in flags and server-side key-presence checks.
+- The smoke validates schema, citations, source-use policy, freshness labels, safety, and cache eligibility without logging raw user text, prompts, source text, model reasoning, or secret values.
+- The smoke includes an evidence-threshold case for AI Comprehensive Analysis and a grounded chat case for a supported golden asset.
+- CI and `bash scripts/run_quality_gate.sh` do not require live model calls.
+
+Required commands:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_llm_provider.py tests/unit/test_chat_generation.py tests/unit/test_weekly_news.py tests/unit/test_safety_guardrails.py -q`
+- `TMPDIR=/tmp python3 evals/run_static_evals.py`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+- `git diff --check`
+
+Iteration budget:
+- One agent-loop cycle.
+
+### T-128: Prove governed golden evidence drives API and frontend rendering
+
+Goal:
+Prove that approved governed source evidence for the golden set can drive backend API responses and frontend rendering instead of relying only on fixture fallback.
+
+Acceptance criteria:
+- Golden governed evidence flows through source persistence, normalized facts, generated-output cache validation, backend route reads, source drawer output, exports, and frontend smoke markers.
+- Unsupported, out-of-scope, recognition-only ETF/ETP, pending-review, rejected, parser-invalid, wrong-asset, stale, unknown, unavailable, and insufficient-evidence states remain blocked or labeled.
+- No production storage, live provider, or live LLM calls are required in normal CI.
+
+Required commands:
+- `TMPDIR=/tmp python3 -m pytest tests/integration/test_backend_api.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_cache_contracts.py tests/unit/test_exports.py -q`
+- `npm test`
+- `TMPDIR=/tmp python3 evals/run_static_evals.py`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+- `git diff --check`
+
+Iteration budget:
+- One agent-loop cycle.
+
+### T-129: Add launch-manifest operator automation parity
+
+Goal:
+Add review-only operator automation parity for Top-500 stock and supported ETF launch-manifest packets without promoting runtime manifests automatically.
+
+Acceptance criteria:
+- Top-500 and supported ETF review packets can be generated or inspected through repo-native scripts.
+- Candidate/diff/review artifacts never overwrite current runtime manifests without manual approval.
+- Launch-sized fixture/provenance guards remain distinct from public launch approval.
+- Handoff docs record the implemented commands and stop conditions.
+
+Required commands:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_top500_candidate_manifest.py tests/unit/test_search_classification.py tests/unit/test_provider_adapters.py tests/unit/test_repo_contract.py -q`
+- `TMPDIR=/tmp python3 evals/run_static_evals.py`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+- `git diff --check`
+
+Iteration budget:
+- One agent-loop cycle.
 
 ## Completed
 
@@ -3320,10 +3454,11 @@ Current runtime snapshot:
 - The current runtime has deterministic local fresh-data ingest-to-render smoke coverage for a golden asset. Official-source acquisition remains mocked/golden-path, source snapshots, normalized knowledge packs, Weekly News evidence, and generated-output cache records can be routed through deterministic in-memory/mocked boundaries or explicitly configured local durable repository factories, and production persistence/storage is not the normal path.
 - The frontend renders the main learning surfaces with deterministic fixtures and selected backend adapters; T-109 added API-backed home search and dynamic asset-page rendering with deterministic fixture fallback, and T-119 wired local chat, export, and comparison API access through configured backend URLs plus a Next `/api` rewrite fallback.
 - The updated PRD/TDS/proposal make Golden Asset Source Handoff a blocker before retrieved sources can become evidence for storage, generation, citation, cache, source drawer, or export behavior.
-- The updated Top-500 workflow keeps runtime stock support tied to the approved current manifest; T-116 added deterministic monthly IWB/SPY/IVV/VOO candidate generation, SEC/Nasdaq validation, diff reporting, and manual-promotion gates, but no candidate has been approved or promoted to the current manifest.
+- The updated Top-500 workflow keeps runtime stock support tied to the approved current manifest; T-116/T-124 added deterministic IWB/SPY/IVV/VOO candidate generation, SEC/Nasdaq validation, diff reporting, and manual-promotion gates, but no launch-sized candidate has been approved or promoted to the current manifest.
 - T-119 closed the local frontend/API plumbing blockers found during manual smoke testing: chat POSTs, export URLs, comparison fetches, and browser direct backend calls now have a documented API-base/proxy/CORS strategy.
-- The current promoted task is T-120, and the prepared backlog is T-121 through T-124: localhost browser E2E smoke, optional local durable smoke, handoff-gated real official-source fetchers for golden assets, and reviewed launch-universe expansion planning.
-- T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, source allowlist expansion, admin auth/rate limiting, broader live ingestion, and real provider execution remain unpromoted.
+- T-120 through T-124 are completed: ETF manifest split contracts, localhost browser E2E smoke, optional local durable smoke, handoff-gated official-source fetcher boundaries, and reviewed launch-universe expansion planning.
+- The current promoted task is T-125, and the prepared backlog is T-126 through T-129: repo-native source-handoff manifest smoke tooling, opt-in local live-AI validation, governed golden evidence driving API/frontend rendering, and launch-manifest operator automation parity.
+- T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, full governed source artifacts, admin auth/rate limiting, broader live ingestion, and launch-sized reviewed manifests remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:
 
@@ -3371,7 +3506,12 @@ Operational defaults for general MVP roadmap tasks:
 - T-117 established handoff-gated mocked official-source acquisition execution for golden assets. It is completed and must not be reintroduced as runnable backlog.
 - T-118 established the local fresh-data ingest-to-render runbook and deterministic smoke coverage. It is completed and must not be reintroduced as runnable backlog.
 - T-119 established local frontend API access and backend CORS for chat, exports, comparison, and direct browser API calls. It is completed and must not be reintroduced as runnable backlog.
-- Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until the ETF manifest split, browser E2E smoke, local durable smoke, handoff-gated real official-source fetchers, reviewed launch-universe expansion planning, and launch readiness work pass deterministic CI coverage.
+- T-120 established the v0.5 split between supported ETF generated-output coverage and ETF/ETP recognition-only blocked states. It is completed and must not be reintroduced as runnable backlog.
+- T-121 established optional localhost browser/API E2E smoke. It is completed and must not be reintroduced as runnable backlog.
+- T-122 established optional local durable repository smoke with API proxy/CORS enabled. It is completed and must not be reintroduced as runnable backlog.
+- T-123 established handoff-gated official-source fetcher boundaries behind local opt-in. It is completed and must not be reintroduced as runnable backlog.
+- T-124 established reviewed launch-universe expansion planning. It is completed and must not be reintroduced as runnable backlog.
+- Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until repo-native source-handoff tooling, opt-in local live-AI validation, governed golden evidence rendering, launch-manifest operator automation parity, and launch readiness work pass deterministic CI coverage.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted task should run the relevant EVALS.md checks, `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, `bash scripts/run_quality_gate.sh`, and `git diff --check`.
 
@@ -3423,15 +3563,24 @@ Roadmap integration tracker:
 | Handoff-gated official-source acquisition execution for golden assets | Completed | T-117 |
 | Local fresh-data ingest-to-render runbook and smoke coverage | Completed | T-118 |
 | Local frontend API access and backend CORS | Completed | T-119 |
+| Split supported ETF and recognition manifests | Completed | T-120 |
+| Optional localhost browser/API smoke | Completed | T-121 |
+| Optional local durable API proxy smoke | Completed | T-122 |
+| Handoff-gated official-source fetcher boundaries | Completed | T-123 |
+| Reviewed launch-universe expansion planning | Completed | T-124 |
+| v0.6 docs, handoff docs, and backlog alignment | Current | T-125 |
+| Repo-native source-handoff manifest smoke tooling | Prepared | T-126 |
+| Opt-in local live-AI validation smoke | Prepared | T-127 |
+| Governed golden evidence API/frontend rendering proof | Prepared | T-128 |
+| Launch-manifest operator automation parity | Prepared | T-129 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
 Remaining unpromoted general MVP sequence:
 
-- V0.5 ETF manifest split after T-119, so runtime support classification distinguishes supported ETF generated-output coverage from ETF/ETP recognition-only blocked search states.
-- Browser E2E smoke after the ETF split, so dev-server testing can catch API proxy, CORS, chat, comparison, source drawer, glossary, export, and supported-vs-recognition ETF regressions before production deployment work.
-- Local durable repository smoke after browser E2E, so fresh-data persistence can be verified through the same web/API path.
-- Handoff-gated real official-source fetcher execution for golden assets after local smoke coverage, while normal CI remains mocked and deterministic.
-- Reviewed launch-universe expansion planning before any promotion of a real top-500 current manifest or supported ETF launch pack.
+- Repo-native source-handoff manifest smoke tooling, so operators can inspect and finalize governed-source packets in the current repo layout.
+- Opt-in local live-AI validation, so grounded chat and AI Comprehensive Analysis can be reviewed locally without making live calls part of normal CI.
+- Governed golden evidence rendering proof, so source-backed evidence can drive API responses and frontend rendering rather than fixture fallback alone.
+- Launch-manifest operator automation parity, so Top-500 and supported ETF review packets can be generated or inspected without promoting runtime manifests automatically.
 - Full production deployment after those local MVP gaps: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
 - Recurring production jobs only after manual official-source acquisition, Top-500 candidate refresh review, and local fresh-data behavior are stable.
 - Broad paid-provider or news-provider integrations only after provider licensing/source-use review, no-secret-exposure tests, mocked CI fixtures, source-rights validation, and export/display constraints are documented.

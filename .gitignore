@@ -12,3 +12,4 @@ dist/
 build/
 .agent-runs/
 .codex
+*:Zone.Identifier

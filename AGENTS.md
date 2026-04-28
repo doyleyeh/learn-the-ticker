@@ -155,10 +155,10 @@ Weekly News Focus and AI Comprehensive Analysis are timely context layers. They 
 Weekly News Focus must:
 
 - use the last completed Monday-Sunday market week plus current week-to-date through yesterday, based on U.S. Eastern dates
-- prefer official filings, investor-relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes before allowlisted news
+- prefer official filings, investor-relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes before approved reputable third-party/news sources
 - include only high-signal, deduplicated, license-compatible items
 - show the configured maximum only when enough evidence supports it, and show fewer items or an empty state when evidence is thin
-- never pad with weak, promotional, duplicate, non-allowlisted, or license-disallowed items
+- never pad with weak, promotional, duplicate, unapproved, or rights-disallowed items
 
 AI Comprehensive Analysis must:
 
@@ -182,13 +182,13 @@ A citation is valid only if:
 
 If evidence is missing, say unknown, stale, mixed evidence, unavailable, partial, or insufficient evidence.
 
-Stable facts should use official and structured sources before news. Source-use policy wins over scoring: `rejected` or license-disallowed sources must not feed generated output, rendered summaries, caches, or exports.
+Stable facts should use official and structured sources before news. Source-use policy wins over scoring: `rejected` or rights-disallowed sources must not feed generated output, rendered summaries, caches, or exports.
 
 Golden Asset Source Handoff is required between retrieval and evidence use. Fetching a filing, issuer page, holdings file, API payload, or provider response is only retrieval. It is not approval to store the source as evidence, cite it, summarize it, generate from it, cache it, or export it.
 
 Golden Asset Source Handoff approval requires:
 
-- allowlisted or explicitly reviewed domain/source identity
+- approved, allowlisted, or explicitly reviewed domain/source identity
 - source type and official-source status
 - storage rights and export rights
 - source-use policy and approval rationale
@@ -241,7 +241,7 @@ When touching Top-500 manifest workflow or Golden Asset Source Handoff behavior,
 - runtime stock support still reads `data/universes/us_common_stocks_top500.current.json`
 - candidate manifests do not overwrite the approved current manifest without review
 - manifest refresh inputs are official-source inputs that pass source handoff before being used as evidence or provenance
-- non-allowlisted, unclear-rights, parser-invalid, hidden/internal, pending-review, and rejected sources cannot feed persistence-as-evidence, generation, citation, cache, or export paths
+- unapproved, not-allowlisted, unclear-rights, parser-invalid, hidden/internal, pending-review, and rejected sources cannot feed persistence-as-evidence, generation, citation, cache, or export paths
 - source drawer, citation, export, generated-output cache, and knowledge-pack records expose only approved source metadata and allowed excerpts
 
 When touching frontend UI, verify:

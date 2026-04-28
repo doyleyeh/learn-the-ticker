@@ -1,10 +1,10 @@
 # PRD: Learn the Ticker - Citation-First Beginner U.S. Stock & ETF Research Assistant
 
-**Document version:** v0.5 ETF manifest policy update
-**Date:** 2026-04-27
+**Document version:** v0.6 product decision refresh
+**Date:** 2026-04-28
 **Product stage:** Side-project MVP / v1 planning  
 **Primary audience:** Product, design, engineering, data/LLM, and compliance reviewers
-**Source basis:** Original proposal, PRD v0.1, technical design spec v0.1, and resolved product decisions from current review.
+**Source basis:** Original proposal, PRD v0.1, technical design spec v0.1, ETF manifest policy update, and resolved product decisions from current review.
 **Documentation role:** Product source of truth. The proposal provides narrative vision; the technical design spec translates this PRD into implementation details.
 
 ---
@@ -59,18 +59,19 @@ This version resolves the previous open questions and makes the MVP direction ex
 | Unsupported assets       | Block unsupported and out-of-scope assets from generated pages, chat, and comparisons. Search may show a recognized-but-unsupported or recognized-but-out-of-scope result with a clear explanation.                                                                                                                                                |
 | Market/reference data    | Use a free-first approach: SEC EDGAR/XBRL, official issuer materials, free/reference metadata where available, provider adapters, deterministic mocks, and fixtures for tests. No paid provider keys are assumed for v1; paid market/reference providers may be added later behind adapters after licensing and export-rights review.                 |
 | Golden Asset Source Handoff | Treat source handoff as the approval layer and API fetching as only the retrieval layer. A fetched API payload, endpoint, issuer page, or filing URL is not approved evidence until domain, source type, official-source status, storage rights, export rights, source-use policy, rationale, parser validity, freshness/as-of metadata, and review status are approved. |
-| Weekly News Focus and analysis | Use a fixed Monday-Sunday market-week model plus current week-to-date through yesterday, based on U.S. Eastern dates. Use official filings, company investor relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes first. Use tiered allowlisted sources only when source-use rights allow the intended display, storage, summary, and export behavior. AI Comprehensive Analysis starts with What Changed This Week and then Market Context, Business/Fund Context, and Risk Context. |
-| Grounded chat timing     | Include limited asset-specific grounded chat in MVP as a beta feature. Do not ship a general finance chatbot.                                                                                                                                                                                                                                                                                                 |
+| Weekly News Focus and analysis | Use a fixed Monday-Sunday market-week model plus current week-to-date through yesterday, based on U.S. Eastern dates. Use official filings, company investor relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes first, then broaden coverage with reputable third-party/news sources when source governance permits. Clearly label source type and official-vs-third-party status. AI Comprehensive Analysis starts with What Changed This Week and then Market Context, Business/Fund Context, and Risk Context, and appears only when at least two high-signal approved items exist. |
+| Grounded chat timing     | Include asset-specific grounded chat in MVP as a beta feature. Local testing should exercise live AI chat fully so the operator can review quality. Public v1 keeps chat beta-limited, asset-bounded, citation-aware, and not a general finance chatbot.                                                                                                                                                                                                                                                                                                 |
 | Citation strictness      | Require citations for important factual claims, not every sentence. Generic educational explanations do not require citations unless they include asset-specific facts.                                                                                                                                                                                                                                       |
 | Frontend workflow        | The home page is single-asset search first. Comparison lives on `/compare` and is reachable from global navigation, asset pages, suggested comparisons, chat compare redirects, and natural `A vs B` search patterns. Glossary is contextual help in reading flows, not a primary home-page workflow for MVP. |
 | Glossary depth           | Use a hybrid glossary: curated static definitions for core terms, plus optional asset-specific context grounded in the selected asset's data. In MVP, glossary appears primarily through inline contextual term cards on asset pages, comparison pages, and chat answers, not through one large standalone glossary section on an asset page. |
-| User accounts            | Keep v1 accountless. Store anonymous chat sessions with random IDs for grounded follow-ups and user-requested export. Browser local storage keeps only conversation metadata. Server-side chat TTL is 7 days from last activity, with user-delete support.                                                                                                                                  |
+| User accounts            | Keep v1 fully accountless. Local/private testing is limited-user local operator testing, not an in-product account or auth surface. Store anonymous chat sessions with random IDs for grounded follow-ups and user-requested export. Browser local storage keeps only conversation metadata. Server-side chat TTL is 7 days from last activity, with user-delete support.                                                                                                                                  |
 | Compliance stance        | Add persistent educational disclaimers and inline redirects for advice-like questions. Avoid buy/sell/hold, allocation, price-target, tax, and personalized recommendation language.                                                                                                                                                                                                                          |
 | Mobile priority          | Build responsive web from v1. Mobile should prioritize Beginner Summary, Top 3 Risks, Key Facts, Weekly News Focus, AI Comprehensive Analysis, contextual glossary cards, chat, and source access. Source, glossary, and chat surfaces open as bottom sheets or full-screen panels where appropriate. |
 | Deployment target        | Use a free-tier-oriented personal side-project deployment path: Vercel Hobby for the frontend, Google Cloud Run in `us-central1` for the API with request-based billing and `min-instances=0`, Cloud Run Jobs for manual ingestion first, Neon Free Postgres, private Google Cloud Storage, no production queue service beyond Postgres `ingestion_jobs`, and Google Cloud Logging/Error Reporting. |
-| LLM runtime provider     | Keep deterministic mocks as the default for local tests and CI. First deployment may enable live OpenRouter behind `LLM_LIVE_GENERATION_ENABLED=true` with an explicit free-model chain and automatic DeepSeek V3.2 paid fallback; the browser must never call OpenRouter directly or receive the key. |
+| LLM runtime provider     | Keep deterministic mocks as the default for CI and ordinary local tests. Local fresh-data review should exercise live OpenRouter for generated features, especially grounded chat and AI Comprehensive Analysis when evidence thresholds are met. First deployment may enable live OpenRouter behind `LLM_LIVE_GENERATION_ENABLED=true` with an explicit free-model chain and DeepSeek V3.2 paid fallback only when paid fallback is enabled and OpenRouter platform budget controls are configured; the browser must never call OpenRouter directly or receive the key. |
 | Local provider secrets  | For local live-provider runs, `OPENROUTER_API_KEY`, `FMP_API_KEY`, `ALPHA_VANTAGE_API_KEY`, `FINNHUB_API_KEY`, `TIINGO_API_KEY`, and `EODHD_API_KEY` are expected to exist in the developer's WSL Bash environment. Key values must not be committed, copied into docs, exposed in frontend env vars, returned from APIs, or printed in logs. |
 | MVP readiness            | Full MVP remains the v1 target. Implementation may be phased internally, but v1 is not ready until compare, limited grounded chat beta, exports, freshness, citations, glossary, and on-demand ingestion states pass the MVP acceptance checklist and strict quality gates.                                                                         |
+| Public launch path       | Keep the current MVP/v1 structure. Before public deployment, validate locally with fresh data, live AI for generated features, and limited local users. Public v1 still requires the approved top-500 stock manifest, approved supported ETF manifest, source-backed golden assets, and launch/deploy smoke. |
 
 ---
 
@@ -85,7 +86,7 @@ The MVP should optimize for a small personal side-project audience before scale.
 - Storage production default: private Google Cloud Storage bucket in `us-central1`.
 - Queue production default: no Redis, Pub/Sub, or paid queue; use the existing Postgres `ingestion_jobs` table.
 - Monitoring production default: Google Cloud Logging and Error Reporting; Sentry Developer plan is optional later.
-- OpenRouter production default: disabled unless server-side env vars, a usage budget, and validation gates are configured. Mock provider remains the default for CI and local tests.
+- OpenRouter production default: disabled unless server-side env vars, platform budget controls, and validation gates are configured. Mock provider remains the default for CI and ordinary local tests, while local operator review may intentionally enable live AI.
 - Retrieval production default: keyword and metadata retrieval first, with embeddings and pgvector vector indexes disabled until citation quality justifies semantic retrieval.
 
 OpenRouter first-deployment model chain:
@@ -98,7 +99,7 @@ OpenRouter first-deployment model chain:
 | Free fallback | 4 | `meta-llama/llama-3.3-70b-instruct:free` |
 | Paid safety net | 5 | `deepseek/deepseek-v3.2` |
 
-Flow: free model chain, schema/citation/safety validation, one repair retry, DeepSeek fallback, validation again, then cache only validated output. Paid fallback is automatic when live generation is enabled. Raw model reasoning is never stored or shown; the product may show only a short cited `reasoning_summary`.
+Flow: free model chain, schema/citation/safety validation, one repair retry, DeepSeek fallback when paid fallback is enabled and platform budget controls are set, validation again, then cache only validated output. Raw model reasoning is never stored or shown; the product may show only a short cited `reasoning_summary`.
 
 These deployment choices do not relax product safety. Generated and exported output remains educational only and must preserve citation, freshness, uncertainty, and no-advice guardrails.
 
@@ -117,6 +118,7 @@ The authoritative source for the top-500 stock universe is a versioned manifest,
 - Refresh cadence is monthly by default. Ad hoc refreshes require a development-log entry explaining source, checksum, and reason.
 - The manifest is operational coverage metadata, not an endorsement, recommendation, or model portfolio.
 - Stocks outside the manifest return `out_of_scope` unless explicitly added to the approved on-demand ingestion queue.
+- Local validation may use golden assets and smaller reviewed test manifests, but public v1 requires the full approved top-500 manifest and private production mirror.
 
 Monthly refresh workflow:
 
@@ -788,6 +790,8 @@ This section provides timely context but remains separate from stable asset fact
 | RD-15 | Asset pages place Weekly News Focus after stable facts and before AI Comprehensive Analysis. Stable facts remain canonical.        | P0       |
 | RD-16 | Each Weekly News Focus item shows event title/headline, source or publisher, published date, one-sentence beginner summary, event type, period bucket, freshness, source quality/source-use metadata where useful, and citation/source link. | P0       |
 | RD-17 | AI Comprehensive Analysis appears directly after Weekly News Focus and is suppressed unless the backend returns sufficient evidence. | P0       |
+| RD-18 | Reputable third-party/news items are allowed when approved, but the UI labels them as third-party reporting and shows publisher, URL, published date, retrieved date, source type, event classification, and citation link. | P0       |
+| RD-19 | Full third-party article text is not displayed, exported, or stored as public evidence unless the source policy explicitly permits full text use. | P0       |
 
 Acceptance criteria:
 
@@ -795,8 +799,9 @@ Acceptance criteria:
 - Each Weekly News Focus item has at least one citation or source link.
 - AI analysis factual claims have citations or uncertainty labels.
 - The AI analysis labels are educational UI labels, not claims that the system is a real advisor or person.
-- Weekly News Focus items come only from official sources or license-compatible allowlisted sources; unrecognized sources are rejected by default.
-- Low-quality, duplicate, promotional, irrelevant, non-allowlisted, and license-disallowed news is excluded.
+- Weekly News Focus items come from official sources first, then approved reputable third-party/news sources when source governance and rights policy permit the intended metadata, summary, storage, display, and export behavior.
+- Third-party/news items are clearly labeled as non-official reporting in the section and source drawer.
+- Low-quality, duplicate, promotional, irrelevant, unapproved, and rights-disallowed news is excluded.
 - The section can say "No major Weekly News Focus items found for this window" when appropriate, and this is normal for many broad ETFs.
 - Weekly News Focus appears as timely context after stable facts, not above or inside the canonical asset basics.
 
@@ -841,10 +846,11 @@ Acceptance criteria:
 - Asking "What does this company actually sell?" returns a cited answer.
 - Asking "Should I buy this?" redirects to educational framing.
 - Asking "How much should I put in this?" avoids position sizing and explains learning factors instead.
-- Asking "What happened recently?" answers from the Weekly News Focus layer when sufficient allowlisted evidence exists.
+- Asking "What happened recently?" answers from the Weekly News Focus layer when sufficient approved evidence exists.
 - Asking `Why is QQQ different from VOO?` inside single-asset chat returns a compare redirect instead of a multi-asset answer.
 - Chat responses do not invent facts when sources are missing.
 - Compare redirects show copy such as "This is a comparison question. Open the comparison page so both assets can be grounded in their own source packs" plus a CTA to `/compare?left=...&right=...`.
+- Local fresh-data testing should exercise live AI chat for supported golden assets so the operator can review answer quality before public deployment.
 
 #### Accountless chat privacy
 
@@ -1264,7 +1270,7 @@ The model must not become the source of truth.
 2. Company investor relations pages
 3. Earnings releases and presentations
 4. Free/reference metadata or approved provider enrichment
-5. Official and allowlisted reputable sources for Weekly News Focus
+5. Official sources and approved reputable third-party/news sources for Weekly News Focus
 
 #### For ETFs
 
@@ -1273,7 +1279,7 @@ The model must not become the source of truth.
 3. Summary prospectus and full prospectus
 4. Shareholder reports
 5. Issuer holdings files, exposure files, and official ETF website disclosures
-6. Sponsor announcements and official or allowlisted sources for Weekly News Focus
+6. Sponsor announcements, official sources, and approved reputable third-party/news sources for Weekly News Focus
 7. Free/reference metadata or approved provider enrichment
 
 ### 13.3 Recommended market/reference data stack
@@ -1309,10 +1315,10 @@ Provider-selection requirements:
 Recommended MVP stack:
 
 1. **Official first:** SEC filings, company IR releases, ETF issuer announcements, prospectus updates, fact-sheet updates, and sponsor notices.
-2. **Tiered allowlisted free/RSS/news sources:** curated reputable sources with source metadata, dates, categories, ticker/entity matching, published timestamps, and source-use rights.
+2. **Approved reputable third-party/news sources:** curated sources with source metadata, dates, categories, ticker/entity matching, published timestamps, official-vs-third-party labels, and source-use rights. These sources broaden coverage but must not be presented as official.
 3. **Weekly News Focus selection:** deduplicate, score, and select up to the configured maximum for the selected asset's Weekly News Focus pack; show fewer items or an empty state when evidence is thin.
-4. **License-gated general news:** Reuters/AP-style and similar publishers are not assumed to be free full-content sources; they require licensing review before storage, summarization, rendering, or export beyond permitted metadata/link use.
-5. **Rejected by default:** unrecognized free-news sources should not be used for Weekly News Focus until added to the allowlist.
+4. **Rights-gated full text:** reputable news reputation does not automatically approve full article text. Full text storage, display, or export requires `full_text_allowed` or explicit reviewed rights.
+5. **Rejected by default:** unrecognized or low-quality sources should not be used for Weekly News Focus until added to the allowlist.
 6. **Paid future option:** ticker-tagged news APIs or premium news providers may be added later when budget and licensing justify them.
 
 Source-use categories:
@@ -1342,7 +1348,9 @@ Operational source rule:
 - Store according to source-use policy.
 - Generate only from approved evidence.
 - Export only what the policy permits.
-- Mark missing, unclear, hidden/internal, parser-invalid, or non-allowlisted sources as `pending_review` or `rejected` instead of using them as evidence.
+- Always allow approved source metadata needed for attribution: headline/title, publisher, URL, published date, retrieved date, source type, official-vs-third-party label, topic/event classification, and citation link.
+- Allow beginner summaries of approved reputable third-party/news items, but avoid reproducing full article text unless the source policy permits full text.
+- Mark missing, unclear, hidden/internal, parser-invalid, or unapproved sources as `pending_review` or `rejected` instead of using them as evidence.
 
 Weekly News Focus items should be filtered for:
 
@@ -1368,7 +1376,7 @@ importance_score =
 
 | Scoring field | Defaults |
 | --- | --- |
-| `source_quality_weight` | official `5`; allowlisted_reputable `3`; provider_metadata_only `1` |
+| `source_quality_weight` | official `5`; approved_reputable_third_party `3`; provider_metadata_only `1` |
 | `event_type_weight` | earnings `5`; guidance `5`; fee_change `5`; methodology_change `5`; routine_press_release `1` |
 | `recency_weight` | current_week_to_date `3`; previous_market_week `2`; older_but_relevant `1` |
 | `asset_relevance_weight` | exact ticker/CIK/issuer match `3`; strong fund/company match `2`; sector/theme context only `1` |
@@ -1378,16 +1386,18 @@ Thresholds:
 
 - `minimum_display_score = 7`
 - `minimum_ai_analysis_items = 2`
-- Source-use policy wins over score: rejected or license-disallowed sources never display, regardless of `importance_score`.
+- Source-use policy wins over score: rejected or rights-disallowed sources never display, regardless of `importance_score`.
 
 AI Comprehensive Analysis should be generated only from the selected asset's Weekly News Focus pack and cited canonical facts. It requires at least two high-signal Weekly News Focus items, starts with What Changed This Week, then uses Market Context, Business/Fund Context, and Risk Context. It should not introduce uncited market predictions or recommendation language.
+
+Local fresh-data validation should include assets and time windows where at least two high-signal approved Weekly News Focus items exist so the operator can review live AI Comprehensive Analysis quality before public deployment.
 
 ### 13.5 Raw source text policy
 
 The MVP uses a rights-tiered raw source text policy.
 
-- Official filings, issuer materials, and `full_text_allowed` sources may store raw text, parsed text, chunks, checksums, and source snapshots.
-- `summary_allowed` sources may store metadata, checksums, links, and limited excerpts needed to support summaries.
+- Official filings, issuer materials, and reviewed `full_text_allowed` sources may store raw text, parsed text, chunks, checksums, and source snapshots.
+- `summary_allowed` sources may store metadata, checksums, links, source-provided snippets, generated summaries, and limited excerpts needed to support summaries.
 - `metadata_only` and `link_only` sources may store metadata, hashes, canonical URLs, timestamps, and source-use diagnostics, but not full article text.
 - `rejected` sources are not used for generated output and should keep only rejection diagnostics when needed for debugging.
 - Exports and citation drawers must honor the same policy and never reveal unrestricted restricted text.
@@ -1461,7 +1471,7 @@ Recommended top-level routes:
 Optional post-MVP route:
 
 ```text
-/glossary/[term]
+/glossary/[term]                   Optional post-MVP full glossary detail page
 ```
 
 Recommended desktop navigation:
@@ -1890,6 +1900,8 @@ Objective: Ship a credible, source-grounded, accountless beginner explainer for 
 
 The phases below describe MVP scope and delivery milestones. They do not relax the acceptance checklist or safety, citation, source-use, freshness, and no-advice requirements.
 
+Before public deployment, the operator should validate the full product locally with fresh data, the approved golden assets, live AI enabled for generated features, and a small number of limited local users. This is a local/private-test practice, not an in-product account system or release stage. Public v1 remains fully accountless and requires the full approved top-500 stock manifest plus approved supported ETF manifest.
+
 Included:
 
 - Search and entity resolution
@@ -1972,6 +1984,7 @@ Potential additions:
 The MVP is ready when:
 
 - User can search a supported top-500 U.S.-listed common stock or a manifest-approved supported U.S. equity ETF.
+- Public v1 uses a full approved top-500 stock manifest; smaller golden or local reviewed test sets are acceptable only for local validation.
 - ETF support is controlled by `data/universes/us_equity_etfs_supported.current.json`; `data/universes/us_etp_recognition.current.json` can identify unsupported ETPs for blocked search states only.
 - Home page has one primary action: search one stock or ETF.
 - Home page does not present comparison or Glossary as a primary workflow.
@@ -1980,7 +1993,7 @@ The MVP is ready when:
 - System resolves the asset correctly.
 - Unsupported assets are blocked clearly.
 - Exact recognized-but-unsupported ticker searches show a blocked state rather than generated content.
-- Golden Asset Source Handoff blocks non-allowlisted, unclear-rights, parser-invalid, hidden/internal, and rejected sources from storage as evidence, generation, citation, and export.
+- Golden Asset Source Handoff blocks unapproved, unclear-rights, parser-invalid, hidden/internal, and rejected sources from storage as evidence, generation, citation, and export.
 - User lands on the correct stock or ETF page.
 - Asset pages show the Beginner Summary first.
 - Exactly three top risks are shown first.
@@ -2001,8 +2014,10 @@ The MVP is ready when:
 - Single-asset chat redirects second-ticker questions to the comparison page.
 - User can export page, comparison, source list, and chat transcript.
 - Product analytics track aggregate citation coverage, unsupported claims, glossary usage, comparison usage, source drawer usage, export usage, safety redirects, and freshness accuracy without raw chat transcript content.
-- Weekly News Focus renders the configured maximum only when enough high-quality allowlisted evidence exists, fewer when evidence is limited, and zero when no major Weekly News Focus items exist.
+- Weekly News Focus renders the configured maximum only when enough high-quality approved evidence exists, fewer when evidence is limited, and zero when no major Weekly News Focus items exist.
+- Weekly News Focus labels official and third-party/news sources distinctly and exposes publisher, URL, dates, source type, event classification, and citation details.
 - AI Comprehensive Analysis includes What Changed This Week, Market Context, Business/Fund Context, and Risk Context with citations or uncertainty labels when at least two high-signal weekly items exist.
+- Live AI generation for grounded chat and AI Comprehensive Analysis has been validated locally against fresh data before public deployment.
 - Mobile layouts are readable and use bottom sheets for sources, glossary, and chat where appropriate.
 - Exports support Markdown and JSON and include disclaimer, citations, freshness metadata, uncertainty labels, source list, Weekly News Focus, and AI Comprehensive Analysis when present.
 - Accountless chat sessions use random IDs, 7-day TTL, user deletion, and no chat-message analytics, training, or model-evaluation use in MVP.
@@ -2014,7 +2029,8 @@ Strict MVP quality gates:
 - Cached search, asset pages, comparison pages, source drawer, and chat meet the performance targets in the technical design spec.
 - CI includes unit, integration, schema, citation validation, safety, export, and golden asset tests.
 - Golden tests verify that `AAPL` and `NVDA` canonical facts prefer SEC EDGAR/XBRL/filing documents, while supported golden ETF canonical facts prefer the supported ETF manifest plus issuer materials.
-- Golden tests verify that duplicate, promotional, irrelevant, non-allowlisted, and license-disallowed news is excluded from Weekly News Focus.
+- Golden tests verify that duplicate, promotional, irrelevant, unapproved, and rights-disallowed news is excluded from Weekly News Focus.
+- Golden tests verify that reputable third-party/news items can appear when approved, clearly labeled, summarized safely, and not exported as full article text unless `full_text_allowed`.
 - Golden tests verify Monday-Sunday plus current week-to-date through yesterday windowing.
 - Golden tests verify prompt-injection, source-sanitization, SSRF-defense, chat privacy, rate-limit, many-citation, fact-versioning, and stock-vs-ETF comparison scenarios.
 - Documentation hygiene scans verify no mojibake, private-use corruption, stale AI labels, duplicate requirement IDs, or stale weekly-window language remains.
@@ -2105,7 +2121,7 @@ Provider role summary:
 - Official ETF issuer materials are the primary source for ETF identity, holdings, fees, methodology, exposures, and fund risks.
 - The supported ETF manifest is the primary runtime policy for ETF coverage; issuer materials are the primary evidence source after manifest approval.
 - Financial Modeling Prep, Finnhub, Tiingo, Alpha Vantage, EODHD, yfinance, and similar providers may be used only as enrichment where licensing, rate limits, attribution, display, caching, and export rights allow; unclear rights restrict usage to internal diagnostics, enrichment, or metadata-only use.
-- Official filings, company investor relations, ETF issuer updates, and license-compatible allowlisted sources should feed Weekly News Focus before general news APIs.
+- Official filings, company investor relations, ETF issuer updates, and approved reputable third-party/news sources should feed Weekly News Focus before general news APIs.
 - yfinance is a local-development and emergency fallback tool only, not production truth.
 
 1. SEC EDGAR APIs provide JSON APIs for submissions history and XBRL financial-statement data, do not require authentication or API keys, and are updated throughout the day as submissions are disseminated.

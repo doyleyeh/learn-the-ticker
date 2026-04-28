@@ -1,12 +1,12 @@
 # Local Fresh-Data Ingest-To-Render Runbook
 
-Task: T-118, updated by T-119, T-121, and T-122 local-durable API proxy smoke
+Task: T-118, updated by T-119 through T-125 local API, manifest, durable-smoke, and v0.6 handoff alignment
 
 This runbook describes the local golden-asset smoke path before production deployment work. Normal CI uses deterministic fixtures, mocked official-source acquisition, and in-memory repositories. It must not require real SEC, issuer, market-data, broad news, storage, database, Redis, RSS, or LLM calls.
 
 Fetching alone is retrieval, not evidence approval. A retrieved source can support snapshots, normalized facts, citations, generated-output cache records, exports, or rendered UI only after Golden Asset Source Handoff approves source identity, source type, official-source status, storage rights, export rights, source-use policy, parser status, freshness/as-of metadata, and review status.
 
-ETF support note: the v0.5 PRD/TDS target separates supported ETF generated-output coverage from ETF/ETP recognition. Until T-120 lands, the repo still uses the legacy combined ETF fixture manifest, so local smoke should treat ETF manifest split behavior as an open gap rather than an implemented guarantee.
+ETF support note: T-120 implemented the split between supported ETF generated-output coverage and ETF/ETP recognition-only blocked states. Local smoke should verify supported ETF output comes from `data/universes/us_equity_etfs_supported.current.json` and recognition-only rows from `data/universes/us_etp_recognition.current.json` never unlock generated output.
 
 ## Local Modes
 
@@ -14,7 +14,7 @@ Use one of these local modes:
 
 - `in_memory`: deterministic smoke mode. Uses injected in-memory ledgers and repositories. This is the CI-safe path.
 - `local_durable`: optional operator-only local repository mode. Use placeholder-only local connection settings and never print credential values. This mode is for manual inspection only and is not required by CI.
-- `operator_live_experiment`: optional local experiment mode. Keep it disabled by default. Any real retrieval must still pass source handoff before evidence use and must not be committed as fixtures or logs.
+- `operator_live_experiment`: optional local experiment mode. Keep it disabled by default. Any real retrieval or live-AI review must still pass source handoff, citation, source-use, freshness, and safety validation before evidence or generated output can be used. Do not commit fetched payloads, generated answers, logs, or diagnostics from this mode.
 
 Suggested placeholder-only environment for local frontend/API rendering:
 
@@ -168,4 +168,4 @@ For optional `local_durable`, remove only local throwaway data created for the s
 - If chat or export links return frontend 404s, confirm the web dev server was started after setting `NEXT_PUBLIC_API_BASE_URL` or that the Next `/api/:path*` rewrite can reach the local FastAPI backend.
 - If browser direct API calls fail, confirm `CORS_ALLOWED_ORIGINS` includes the exact local web origin, including hostname and port.
 
-The deterministic regression for this runbook is `test_t118_local_fresh_data_ingest_to_render_smoke_path_is_deterministic` in `tests/integration/test_backend_api.py`. T-119 adds static coverage for the frontend API helper, Next rewrite, and CORS settings; a future task should add optional localhost browser E2E smoke.
+The deterministic regression for this runbook is `test_t118_local_fresh_data_ingest_to_render_smoke_path_is_deterministic` in `tests/integration/test_backend_api.py`. T-119 added static coverage for the frontend API helper, Next rewrite, and CORS settings. T-121/T-122 added optional localhost browser and durable smoke paths. T-125 keeps this runbook aligned with the v0.6 handoff docs; future work should prove governed golden evidence and opt-in live-AI validation end to end.

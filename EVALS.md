@@ -112,9 +112,9 @@ Verify:
 
 - Golden Asset Source Handoff treats fetching as retrieval only, not approval
 - evidence use requires approved domain/source identity, source type, official-source status, storage rights, export rights, source-use policy, rationale, parser status, freshness/as-of metadata, and review status
-- non-allowlisted, unclear-rights, parser-invalid, hidden/internal, pending-review, rejected, duplicate, promotional, irrelevant, and license-disallowed sources cannot feed evidence storage, generation, citation, cache, export, Weekly News Focus, or AI Comprehensive Analysis
+- unapproved, not-allowlisted, unclear-rights, parser-invalid, hidden/internal, pending-review, rejected, duplicate, promotional, irrelevant, and rights-disallowed sources cannot feed evidence storage, generation, citation, cache, export, Weekly News Focus, or AI Comprehensive Analysis
 - Weekly News Focus uses the last completed Monday-Sunday market week plus current week-to-date through yesterday in U.S. Eastern dates
-- official filings, investor-relations releases, issuer announcements, prospectus updates, and fact-sheet changes rank before allowlisted news
+- official filings, investor-relations releases, issuer announcements, prospectus updates, and fact-sheet changes rank before approved reputable third-party/news sources
 - Weekly News Focus shows the configured maximum only when evidence supports it, otherwise a smaller verified set or empty state
 - source-use policy values cover `metadata_only`, `link_only`, `summary_allowed`, `full_text_allowed`, and `rejected`
 - source-use policy wins over score
@@ -239,7 +239,7 @@ Verify:
 - task instructions are narrow enough for one agent-loop cycle
 - `TASKS.md` has a current task or backlog when continuous agent work is expected
 - backlog headings are small, sequential, and aligned with MVP scope
-- near-term task sequencing preserves Frontend Design and Workflow v0.4, implements the v0.5 ETF manifest split, then closes browser E2E, local durable fresh-data, real-source fetcher, and launch-universe expansion gaps before production deployment expansion
+- near-term task sequencing preserves the single-asset-first frontend workflow, keeps the implemented ETF manifest split intact, then closes repo-native handoff tooling, local live-AI validation, governed golden evidence, and launch-manifest automation gaps before production deployment expansion
 - agent prompts keep the v0.4 baseline visible: single-asset home search, separate comparison workflow, contextual glossary, mobile source/glossary/chat bottom sheets, stock-vs-ETF relationship badges, and evidence-backed Weekly News Focus limits
 - agent prompts keep the manifest-owned Top-500 rule and Golden Asset Source Handoff rule visible
 - agent prompts keep the supported ETF manifest and ETF/ETP recognition manifest split visible
