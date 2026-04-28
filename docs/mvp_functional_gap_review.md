@@ -68,6 +68,7 @@ Runnable near-term backlog:
 - T-127: add opt-in local live-AI validation smoke for grounded chat and AI Comprehensive Analysis, with CI-safe mocks.
 - T-128: prove governed golden evidence drives backend API and frontend rendering for the golden set.
 - T-129: add launch-manifest operator automation parity for Top-500 and supported ETF review packets without promoting runtime manifests.
+- T-130: add a local fresh-data MVP rehearsal command or command sequence that ties the governed golden path into one operator-facing pre-production check.
 
 Sequencing rationale:
 
@@ -75,6 +76,7 @@ Sequencing rationale:
 - Add repo-native source-handoff tooling before proving governed evidence can drive rendered output.
 - Add live-AI local validation as an opt-in operator smoke with CI-safe mocks before broader governed-evidence render proof expands the blast radius.
 - Keep launch-manifest automation review-only until promotion gates and private mirrors are ready.
+- Add the local fresh-data rehearsal only after the source, evidence, AI, and manifest gates exist, so it verifies the integrated local MVP path instead of masking missing pieces.
 
 ## Non-Goals For The Next Tasks
 

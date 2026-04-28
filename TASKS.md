@@ -106,6 +106,52 @@ Required commands:
 Iteration budget:
 - One agent-loop cycle.
 
+### T-130: Add local fresh-data MVP rehearsal command
+
+Goal:
+Add an operator-facing local fresh-data MVP rehearsal command or accurately scoped command sequence that verifies the golden path from governed source approval through API/frontend rendering without requiring production services.
+
+Task-scope paragraph:
+After source-handoff tooling, live-AI validation smoke, governed evidence rendering proof, and launch-manifest operator automation parity are in place, add a repo-native rehearsal layer that ties those pieces into one local pre-production confidence check. The rehearsal should have a deterministic default mode for CI-safe validation and explicit opt-in modes for already-running localhost services, local durable repositories, official-source retrieval, and live AI review.
+
+Allowed files:
+- `scripts/`
+- `tests/frontend/smoke.mjs`
+- `tests/integration/test_backend_api.py`
+- `tests/unit/test_repo_contract.py`
+- `tests/unit/test_safety_guardrails.py`
+- `docs/local_fresh_data_ingest_to_render_runbook.md`
+- `docs/mvp_go_no_go_checklist.md`
+- `docs/mvp_functional_gap_review.md`
+- `EVALS.md`
+
+Do not change:
+- public API schemas, generated-output copy, frontend visual design, or v0.4 workflow boundaries
+- runtime stock or ETF manifest contents
+- source-use policy approval semantics or Golden Asset Source Handoff enforcement
+- default CI behavior to require live provider, news, market-data, database, storage, browser, or LLM services
+- production deployment settings or real secret handling
+
+Acceptance criteria:
+- A repo-native command or documented command sequence checks the local golden fresh-data path from governed source packet/state through backend route reads, source drawer/export outputs, comparison/chat API surfaces, and frontend smoke markers.
+- The default rehearsal mode is deterministic and safe for normal local/CI checks.
+- Optional local modes require explicit env flags for browser services, durable repositories, official-source retrieval, and live AI, and they skip or report blockers when prerequisites are missing.
+- Rehearsal output distinguishes pass, skipped, and blocked states for missing Docker, missing localhost services, missing source-handoff approvals, stale/partial/unavailable evidence, and absent live-AI keys without printing secrets.
+- The rehearsal preserves T-119 API-base/proxy/CORS regressions and the v0.4 single-asset-first frontend workflow.
+- The runbook and go/no-go checklist point operators to the implemented local rehearsal.
+
+Required commands:
+- `TMPDIR=/tmp python3 -m pytest tests/integration/test_backend_api.py tests/unit/test_repo_contract.py tests/unit/test_safety_guardrails.py -q`
+- `npm test`
+- `npm run typecheck`
+- `npm run build`
+- `TMPDIR=/tmp python3 evals/run_static_evals.py`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+- `git diff --check`
+
+Iteration budget:
+- One agent-loop cycle.
+
 ## Completed
 
 ### T-125: Align v0.6 handoff docs and MVP backlog
@@ -3451,7 +3497,7 @@ Current runtime snapshot:
 - T-119 closed the local frontend/API plumbing blockers found during manual smoke testing: chat POSTs, export URLs, comparison fetches, and browser direct backend calls now have a documented API-base/proxy/CORS strategy.
 - T-120 through T-124 are completed: ETF manifest split contracts, localhost browser E2E smoke, optional local durable smoke, handoff-gated official-source fetcher boundaries, and reviewed launch-universe expansion planning.
 - T-125 completed the v0.6 handoff-doc and MVP-backlog alignment pass.
-- The current promoted task is T-126, and the prepared backlog is T-127 through T-129: opt-in local live-AI validation, governed golden evidence driving API/frontend rendering, and launch-manifest operator automation parity.
+- The current promoted task is T-126, and the prepared backlog is T-127 through T-130: opt-in local live-AI validation, governed golden evidence driving API/frontend rendering, launch-manifest operator automation parity, and local fresh-data MVP rehearsal.
 - T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, full governed source artifacts, admin auth/rate limiting, broader live ingestion, and launch-sized reviewed manifests remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:
@@ -3506,7 +3552,7 @@ Operational defaults for general MVP roadmap tasks:
 - T-123 established handoff-gated official-source fetcher boundaries behind local opt-in. It is completed and must not be reintroduced as runnable backlog.
 - T-124 established reviewed launch-universe expansion planning. It is completed and must not be reintroduced as runnable backlog.
 - T-125 established v0.6 docs, handoff docs, and backlog alignment. It is completed and must not be reintroduced as runnable backlog.
-- Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until repo-native source-handoff tooling, opt-in local live-AI validation, governed golden evidence rendering, launch-manifest operator automation parity, and launch readiness work pass deterministic CI coverage.
+- Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until repo-native source-handoff tooling, opt-in local live-AI validation, governed golden evidence rendering, launch-manifest operator automation parity, local fresh-data MVP rehearsal, and launch readiness work pass deterministic CI coverage.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted task should run the relevant EVALS.md checks, `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, `bash scripts/run_quality_gate.sh`, and `git diff --check`.
 
@@ -3568,6 +3614,7 @@ Roadmap integration tracker:
 | Opt-in local live-AI validation smoke | Prepared | T-127 |
 | Governed golden evidence API/frontend rendering proof | Prepared | T-128 |
 | Launch-manifest operator automation parity | Prepared | T-129 |
+| Local fresh-data MVP rehearsal command | Prepared | T-130 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
 Remaining unpromoted general MVP sequence:
@@ -3576,6 +3623,7 @@ Remaining unpromoted general MVP sequence:
 - Opt-in local live-AI validation, so grounded chat and AI Comprehensive Analysis can be reviewed locally without making live calls part of normal CI.
 - Governed golden evidence rendering proof, so source-backed evidence can drive API responses and frontend rendering rather than fixture fallback alone.
 - Launch-manifest operator automation parity, so Top-500 and supported ETF review packets can be generated or inspected without promoting runtime manifests automatically.
+- Local fresh-data MVP rehearsal command, so operators can verify the governed golden path locally before production hardening.
 - Full production deployment after those local MVP gaps: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
 - Recurring production jobs only after manual official-source acquisition, Top-500 candidate refresh review, and local fresh-data behavior are stable.
 - Broad paid-provider or news-provider integrations only after provider licensing/source-use review, no-secret-exposure tests, mocked CI fixtures, source-rights validation, and export/display constraints are documented.

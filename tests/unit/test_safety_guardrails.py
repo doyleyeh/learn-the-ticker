@@ -369,6 +369,7 @@ def test_mvp_functional_gap_review_copy_is_advice_safe_and_sanitized():
         "T-127: add opt-in local live-AI validation smoke",
         "T-128: prove governed golden evidence drives backend API and frontend rendering",
         "T-129: add launch-manifest operator automation parity",
+        "T-130: add a local fresh-data MVP rehearsal command",
         "Normal CI remains deterministic",
     ]
 

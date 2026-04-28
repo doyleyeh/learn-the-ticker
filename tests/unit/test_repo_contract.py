@@ -360,6 +360,7 @@ def test_mvp_functional_gap_review_tracks_v06_progress_and_next_tasks():
         "T-127: add opt-in local live-AI validation smoke",
         "T-128: prove governed golden evidence drives backend API and frontend rendering",
         "T-129: add launch-manifest operator automation parity",
+        "T-130: add a local fresh-data MVP rehearsal command",
         "Normal CI remains deterministic",
     ]:
         assert marker in review, f"functional review should include marker: {marker}"
@@ -538,6 +539,7 @@ def test_tasks_general_mvp_roadmap_marks_t126_current_and_backlog_state():
         "### T-127: Add opt-in local live-AI validation smoke",
         "### T-128: Prove governed golden evidence drives API and frontend rendering",
         "### T-129: Add launch-manifest operator automation parity",
+        "### T-130: Add local fresh-data MVP rehearsal command",
     ]:
         assert marker in backlog
     assert "Detailed acceptance criteria" in current_task
@@ -581,7 +583,7 @@ def test_tasks_general_mvp_roadmap_marks_t126_current_and_backlog_state():
     assert "T-120 established the v0.5 split between supported ETF generated-output coverage" in roadmap
     assert "T-124 established reviewed launch-universe expansion planning" in roadmap
     assert "T-125 established v0.6 docs, handoff docs, and backlog alignment" in roadmap
-    assert "T-127 through T-129" in roadmap
+    assert "T-127 through T-130" in roadmap
     assert "| Provider source-use/export enforcement hardening | Completed | T-099 |" in roadmap
     assert "| Backend fresh-data MVP runtime gap tracker | Completed | T-100 |" in roadmap
     assert "| Configured persisted-reader route wiring | Completed | T-101 |" in roadmap
@@ -613,6 +615,7 @@ def test_tasks_general_mvp_roadmap_marks_t126_current_and_backlog_state():
     assert "| Opt-in local live-AI validation smoke | Prepared | T-127 |" in roadmap
     assert "| Governed golden evidence API/frontend rendering proof | Prepared | T-128 |" in roadmap
     assert "| Launch-manifest operator automation parity | Prepared | T-129 |" in roadmap
+    assert "| Local fresh-data MVP rehearsal command | Prepared | T-130 |" in roadmap
     assert "| Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |" in roadmap
 
 
