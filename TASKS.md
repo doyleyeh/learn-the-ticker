@@ -1,54 +1,80 @@
 ## Current task
 
-### T-127: Add opt-in local live-AI validation smoke
+### T-128: Prove governed golden evidence drives API and frontend rendering
 
 Goal:
-Add an operator-only local live-AI validation smoke for grounded chat and AI Comprehensive Analysis while keeping deterministic mocks as the CI and ordinary local default.
+Prove that approved governed source evidence for the golden set can drive backend API responses and frontend rendering instead of relying only on fixture fallback.
 
 Task-scope paragraph:
-Add a narrow local smoke path that lets an operator intentionally validate live LLM output quality for one supported golden grounded-chat case and one evidence-threshold AI Comprehensive Analysis case. The implementation must stay server-side, opt-in, fixture-safe by default, and validation-first: schema, citations, source-use policy, freshness labels, safety, and cache eligibility must pass before live output is treated as usable. Missing opt-in flags, missing server-side key configuration, unavailable evidence, or failed validation should report skipped or blocked status without logging raw user text, prompts, source text, model reasoning, transcripts, or secret values.
+Add a narrow deterministic proof path for one or more supported golden assets showing that governed source records can flow from source snapshot and knowledge-pack persistence into generated-output cache validation, backend route reads, source drawer output, exports, and frontend smoke markers. The proof must preserve the v0.4 frontend workflow: home remains single-stock/ETF search first, comparison remains a separate connected `/compare` workflow, glossary remains contextual, source/glossary/chat mobile surfaces remain bottom-sheet or full-screen appropriate, and stock-vs-ETF comparison keeps relationship badges and the single-company-vs-ETF-basket structure. Normal CI must remain fixture-backed and must not require live provider, news, market-data, database, storage, browser, or LLM calls.
 
 Allowed files:
-- `backend/settings.py`
-- `backend/llm.py`
-- `backend/llm_transport.py`
+- `backend/main.py`
+- `backend/testing.py`
+- `backend/overview.py`
+- `backend/sources.py`
+- `backend/export.py`
+- `backend/comparison.py`
 - `backend/chat.py`
-- `backend/weekly_news.py`
-- `backend/weekly_news_repository.py`
+- `backend/retrieval.py`
+- `backend/source_policy.py`
+- `backend/source_snapshot_repository.py`
+- `backend/knowledge_pack_repository.py`
 - `backend/generated_output_cache_repository.py`
-- `backend/safety.py`
-- `scripts/`
-- `tests/unit/test_llm_provider.py`
-- `tests/unit/test_chat_generation.py`
-- `tests/unit/test_weekly_news.py`
-- `tests/unit/test_safety_guardrails.py`
+- `backend/retrieval_repository.py`
+- `backend/repositories/source_snapshots.py`
+- `backend/repositories/knowledge_packs.py`
+- `backend/repositories/generated_outputs.py`
+- `apps/web/lib/assetOverview.ts`
+- `apps/web/lib/assetDetails.ts`
+- `apps/web/lib/sourceDrawer.ts`
+- `apps/web/lib/exportControls.ts`
+- `apps/web/lib/assetChat.ts`
+- `apps/web/lib/compare.ts`
+- `apps/web/components/SourceDrawer.tsx`
+- `apps/web/components/CitationChip.tsx`
+- `apps/web/components/FreshnessLabel.tsx`
+- `tests/integration/test_backend_api.py`
+- `tests/frontend/smoke.mjs`
+- `tests/unit/test_source_snapshot_repository.py`
+- `tests/unit/test_knowledge_pack_repository.py`
 - `tests/unit/test_cache_contracts.py`
+- `tests/unit/test_exports.py`
+- `tests/unit/test_source_drawer.py`
+- `tests/unit/test_citation_validation.py`
+- `tests/unit/test_safety_guardrails.py`
 - `tests/unit/test_repo_contract.py`
 - `docs/local_fresh_data_ingest_to_render_runbook.md`
 - `docs/mvp_go_no_go_checklist.md`
 - `docs/mvp_functional_gap_review.md`
 
 Do not change:
-- public API schemas, frontend UI behavior, or v0.4 workflow boundaries
+- public API schemas unless a test fixture already requires the field and the change stays backward-compatible
+- v0.4 workflow boundaries: single-asset-first home, separate connected comparison, contextual glossary, mobile source/glossary/chat sheets or full-screen panels, and stock-vs-ETF relationship badges
 - runtime stock or ETF manifest contents
-- source-use policy approval semantics, Golden Asset Source Handoff enforcement, citation strictness, or freshness/unknown/stale/unavailable/partial handling
-- deterministic CI defaults or `scripts/run_quality_gate.sh` behavior to require live provider, news, market-data, database, storage, browser, or LLM services
-- browser-side provider access, `NEXT_PUBLIC_*` secrets, `/health` secret exposure, docs/log secret exposure, or committed env files
+- source-use policy approval semantics, Golden Asset Source Handoff enforcement, citation strictness, or freshness/unknown/stale/unavailable/partial/insufficient-evidence handling
+- deterministic CI defaults or `scripts/run_quality_gate.sh` behavior to require live provider, news, market-data, production database, storage, browser, or LLM services
+- browser-side provider access, `NEXT_PUBLIC_*` secrets, `/health` secret exposure, docs/log secret exposure, committed env files, raw source text, raw model reasoning, or unrestricted provider payload exports
 - buy/sell/hold, allocation, price-target, tax, brokerage, or personalized recommendation behavior
-- PRD/TDS/proposal product direction
+- PRD/TDS/proposal product direction, deployment configuration, or broad provider integration
 
 Detailed acceptance criteria:
-- Live-AI smoke is disabled by default and requires explicit local opt-in plus server-side key/readiness checks before any live model call can be attempted.
-- The smoke validates grounded chat for a supported golden asset using the selected asset knowledge pack, same-asset citations, source-use-approved evidence, freshness labels, educational framing, and advice-boundary enforcement.
-- The smoke validates an AI Comprehensive Analysis case only when at least two high-signal Weekly News Focus items exist; below-threshold evidence must remain suppressed or reported as insufficient evidence.
-- Live output is rejected, suppressed, or marked unavailable when schema validation, citation binding, source-use policy, freshness labeling, safety validation, or cache-eligibility checks fail.
-- Smoke diagnostics distinguish pass, skipped, and blocked states for missing opt-in flags, missing server-side key readiness, insufficient evidence, validation failure, and cache-ineligible output without printing secret values.
-- The implementation does not log or commit raw user text, prompts, full source text, model reasoning, raw transcripts, unrestricted provider payloads, or generated live responses.
-- Normal CI, static evals, and `TMPDIR=/tmp bash scripts/run_quality_gate.sh` remain deterministic and do not require live external calls.
-- Documentation records the opt-in command, prerequisites, stop conditions, and the fact that local live-AI review does not approve sources or relax Golden Asset Source Handoff.
+- At least one supported golden asset API path can be populated from approved governed source snapshots, normalized knowledge-pack records, and generated-output cache records rather than fixture-only fallback.
+- Backend overview/details/source/export routes expose governed source metadata, source-use policy, freshness/as-of labels, citation bindings, allowed excerpts, and uncertainty states without exposing raw restricted source text or unrestricted provider payloads.
+- Source drawer and export output include only approved source metadata and allowed excerpts; pending-review, rejected, parser-invalid, unclear-rights, hidden/internal, wrong-asset, rights-disallowed, and cache-ineligible records cannot support rendered claims or exported generated output.
+- Generated-output cache validation proves schema, same-asset or same-comparison-pack citations, source-use policy, freshness labels, safety, and educational disclaimer requirements before cached content is served.
+- Unsupported, out-of-scope, recognition-only ETF/ETP, pending-review, rejected, parser-invalid, wrong-asset, stale, unknown, unavailable, partial, and insufficient-evidence states remain blocked, suppressed, or clearly labeled.
+- Frontend smoke or tests prove rendered asset/source/export markers are API-backed for the governed golden path while preserving deterministic fixture fallback for ordinary local development.
+- Comparison, chat, source drawer, glossary, Weekly News Focus, AI Comprehensive Analysis, and export surfaces keep existing safety and citation behavior; the task must not broaden generated-output coverage or add live calls.
+- Home search remains the primary home-page action for one supported stock or ETF; `A vs B` patterns continue to route to `/compare`; glossary remains contextual and not a primary home-page workflow.
+- Normal CI, static evals, and the quality gate remain deterministic and do not require live external calls, production databases, production storage, browser services, or live LLM providers.
+- Documentation updates, if needed, state that governed rendering proof does not approve new sources and does not relax Golden Asset Source Handoff.
 
 Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_llm_provider.py tests/unit/test_chat_generation.py tests/unit/test_weekly_news.py tests/unit/test_safety_guardrails.py tests/unit/test_cache_contracts.py tests/unit/test_repo_contract.py -q`
+- `TMPDIR=/tmp python3 -m pytest tests/integration/test_backend_api.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_cache_contracts.py tests/unit/test_exports.py tests/unit/test_source_drawer.py tests/unit/test_citation_validation.py tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q`
+- `npm test`
+- `npm run typecheck`
+- `npm run build`
 - `TMPDIR=/tmp python3 evals/run_static_evals.py`
 - `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
 - `git diff --check`
@@ -57,26 +83,6 @@ Iteration budget:
 - One agent-loop cycle.
 
 ## Backlog
-
-### T-128: Prove governed golden evidence drives API and frontend rendering
-
-Goal:
-Prove that approved governed source evidence for the golden set can drive backend API responses and frontend rendering instead of relying only on fixture fallback.
-
-Acceptance criteria:
-- Golden governed evidence flows through source persistence, normalized facts, generated-output cache validation, backend route reads, source drawer output, exports, and frontend smoke markers.
-- Unsupported, out-of-scope, recognition-only ETF/ETP, pending-review, rejected, parser-invalid, wrong-asset, stale, unknown, unavailable, and insufficient-evidence states remain blocked or labeled.
-- No production storage, live provider, or live LLM calls are required in normal CI.
-
-Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/integration/test_backend_api.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_cache_contracts.py tests/unit/test_exports.py -q`
-- `npm test`
-- `TMPDIR=/tmp python3 evals/run_static_evals.py`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
-- `git diff --check`
-
-Iteration budget:
-- One agent-loop cycle.
 
 ### T-129: Add launch-manifest operator automation parity
 
@@ -145,6 +151,34 @@ Iteration budget:
 - One agent-loop cycle.
 
 ## Completed
+
+### T-127: Add opt-in local live-AI validation smoke
+
+Goal:
+Add an operator-only local live-AI validation smoke for grounded chat and AI Comprehensive Analysis while keeping deterministic mocks as the CI and ordinary local default.
+
+Completion details:
+- Implementation commit: `0b836a7 feat(T-127): add opt-in local live-AI validation smoke`
+- Local merge commit: `c174d1c chore(T-127): merge opt-in local live-AI validation smoke` from branch `agent/T-127-20260428T195337Z`
+- Added `scripts/run_live_ai_validation_smoke.py`, an operator-only local smoke command with sanitized JSON diagnostics for one supported golden grounded-chat case (`VOO`) and one AI Comprehensive Analysis threshold case (`QQQ`).
+- The smoke is disabled by default through `LTT_LIVE_AI_SMOKE_ENABLED`, requires live-generation readiness and server-side key presence before attempting provider transport, and reports `skipped`, `blocked`, or `pass` states.
+- The smoke validates schema, citation IDs, same-asset evidence, source-use policy, freshness state, safety classification, Weekly News Focus evidence threshold, and cache eligibility before live output is treated as usable.
+- The implementation records sanitized diagnostics only: it does not store or print raw user text, prompts, source text, model reasoning, raw transcripts, generated live responses, or secret values.
+- `tests/unit/test_llm_provider.py` now covers disabled-by-default behavior, missing readiness/key blocked states, deterministic mocked-transport pass paths for grounded chat and AI Comprehensive Analysis, validation failure blocking, cache-ineligible output blocking, and sanitized diagnostics.
+- `docs/local_fresh_data_ingest_to_render_runbook.md` documents the opt-in command, prerequisites, expected skipped/blocked/pass results, and stop conditions.
+- `docs/mvp_go_no_go_checklist.md` and `docs/mvp_functional_gap_review.md` now record T-127 as operator-smoke coverage only, not source approval or launch approval.
+
+Required commands executed in this task branch:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_llm_provider.py -q` - pass
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_repo_contract.py -q` - pass
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_llm_provider.py tests/unit/test_chat_generation.py tests/unit/test_weekly_news.py tests/unit/test_safety_guardrails.py tests/unit/test_cache_contracts.py tests/unit/test_repo_contract.py -q` - pass (`131 passed`)
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass (`450 passed`, static evals passed, frontend smoke/typecheck/build passed, backend checks passed)
+- `git diff --check` - pass
+
+Remaining risks:
+- The live-AI smoke was verified with deterministic mocked transport in tests; no real provider call was attempted in the CI-safe run.
+- The smoke validates live output eligibility but intentionally does not approve sources, relax Golden Asset Source Handoff, or write generated-output cache records.
 
 ### T-126: Add repo-native source-handoff manifest smoke tooling
 
@@ -3498,7 +3532,7 @@ Completion commits:
 
 ## Historical Backlog Note
 
-This older scaffold note is retained only for history. The active runnable task is T-120, and the active runnable backlog at the top of this file now starts with T-121 after T-120 promotion.
+This older scaffold note is retained only for history. The active runnable task is T-128, and the active runnable backlog at the top of this file now starts with T-129 after T-128 promotion.
 
 ## General MVP Roadmap
 
@@ -3515,7 +3549,8 @@ Current runtime snapshot:
 - T-120 through T-124 are completed: ETF manifest split contracts, localhost browser E2E smoke, optional local durable smoke, handoff-gated official-source fetcher boundaries, and reviewed launch-universe expansion planning.
 - T-125 completed the v0.6 handoff-doc and MVP-backlog alignment pass.
 - T-126 completed repo-native source-handoff manifest inspection/finalization smoke tooling for reviewed governed-source packets.
-- The current promoted task is T-127, and the prepared backlog is T-128 through T-130: governed golden evidence driving API/frontend rendering, launch-manifest operator automation parity, and local fresh-data MVP rehearsal.
+- T-127 completed the opt-in local live-AI validation smoke for grounded chat and AI Comprehensive Analysis.
+- The current promoted task is T-128, and the prepared backlog is T-129 through T-130: launch-manifest operator automation parity and local fresh-data MVP rehearsal.
 - T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, full governed source artifacts, admin auth/rate limiting, broader live ingestion, and launch-sized reviewed manifests remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:
@@ -3571,7 +3606,8 @@ Operational defaults for general MVP roadmap tasks:
 - T-124 established reviewed launch-universe expansion planning. It is completed and must not be reintroduced as runnable backlog.
 - T-125 established v0.6 docs, handoff docs, and backlog alignment. It is completed and must not be reintroduced as runnable backlog.
 - T-126 established repo-native source-handoff manifest smoke tooling. It is completed and must not be reintroduced as runnable backlog.
-- Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until opt-in local live-AI validation, governed golden evidence rendering, launch-manifest operator automation parity, local fresh-data MVP rehearsal, and launch readiness work pass deterministic CI coverage.
+- T-127 established opt-in local live-AI validation smoke. It is completed and must not be reintroduced as runnable backlog.
+- Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until governed golden evidence rendering, launch-manifest operator automation parity, local fresh-data MVP rehearsal, and launch readiness work pass deterministic CI coverage.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted task should run the relevant EVALS.md checks, `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, `bash scripts/run_quality_gate.sh`, and `git diff --check`.
 
@@ -3630,15 +3666,14 @@ Roadmap integration tracker:
 | Reviewed launch-universe expansion planning | Completed | T-124 |
 | v0.6 docs, handoff docs, and backlog alignment | Completed | T-125 |
 | Repo-native source-handoff manifest smoke tooling | Completed | T-126 |
-| Opt-in local live-AI validation smoke | Current | T-127 |
-| Governed golden evidence API/frontend rendering proof | Prepared | T-128 |
+| Opt-in local live-AI validation smoke | Completed | T-127 |
+| Governed golden evidence API/frontend rendering proof | Current | T-128 |
 | Launch-manifest operator automation parity | Prepared | T-129 |
 | Local fresh-data MVP rehearsal command | Prepared | T-130 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
 Remaining unpromoted general MVP sequence:
 
-- Opt-in local live-AI validation, so grounded chat and AI Comprehensive Analysis can be reviewed locally without making live calls part of normal CI.
 - Governed golden evidence rendering proof, so source-backed evidence can drive API responses and frontend rendering rather than fixture fallback alone.
 - Launch-manifest operator automation parity, so Top-500 and supported ETF review packets can be generated or inspected without promoting runtime manifests automatically.
 - Local fresh-data MVP rehearsal command, so operators can verify the governed golden path locally before production hardening.
