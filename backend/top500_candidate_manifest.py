@@ -32,10 +32,13 @@ from backend.source_policy import (
 
 TOP500_CANDIDATE_SCHEMA_VERSION = "top500-us-common-stock-candidate-v1"
 TOP500_CANDIDATE_DIFF_SCHEMA_VERSION = "top500-candidate-diff-v1"
+TOP500_OPERATOR_REVIEW_SCHEMA_VERSION = "top500-launch-review-summary-v1"
 TOP500_APPROVED_CURRENT_MANIFEST_PATH = "data/universes/us_common_stocks_top500.current.json"
 TOP500_CANDIDATE_OUTPUT_TEMPLATE = "data/universes/us_common_stocks_top500.candidate.{candidate_month}.json"
 TOP500_DIFF_OUTPUT_TEMPLATE = "data/universes/us_common_stocks_top500.diff.{candidate_month}.json"
+TOP500_REVIEW_OUTPUT_TEMPLATE = "data/universes/us_common_stocks_top500.review.{candidate_month}.json"
 TOP500_REFRESH_BOUNDARY = "top500-reviewed-candidate-refresh-v1"
+TOP500_OPERATOR_REVIEW_BOUNDARY = "top500-launch-manifest-review-only-v1"
 
 _NON_COMMON_STOCK_MARKERS = {
     "cash",
@@ -310,6 +313,85 @@ def build_top500_candidate_diff_report(
     return Top500CandidateDiffReport.model_validate({**diff_payload, "generated_checksum": _sha256(diff_json)})
 
 
+def build_top500_operator_review_summary(result: Top500CandidateGenerationResult) -> dict[str, Any]:
+    return inspect_top500_candidate_review_packet(
+        candidate_manifest=result.candidate_manifest,
+        diff_report=result.diff_report,
+        rejected_row_count=len(result.rejected_rows),
+    )
+
+
+def inspect_top500_candidate_review_packet(
+    *,
+    candidate_manifest: Top500CandidateManifest,
+    diff_report: Top500CandidateDiffReport,
+    rejected_row_count: int = 0,
+) -> dict[str, Any]:
+    validate_top500_candidate_manifest(candidate_manifest)
+    candidate_checksum_matches = _candidate_checksum_matches(candidate_manifest)
+    diff_checksum_matches = _diff_checksum_matches(diff_report)
+    golden_tickers = {"AAPL", "MSFT", "NVDA"}
+    candidate_tickers = {entry.ticker for entry in candidate_manifest.entries}
+    missing_golden_tickers = sorted(golden_tickers - candidate_tickers)
+    warning_tickers = sorted(
+        entry.ticker
+        for entry in candidate_manifest.entries
+        if entry.validation_status is Top500CandidateValidationStatus.warning or entry.warnings
+    )
+    fixture_or_local_only = _top500_packet_uses_fixture_or_local_only_provenance(candidate_manifest)
+    stop_conditions = _top500_review_stop_conditions(
+        candidate_manifest=candidate_manifest,
+        diff_report=diff_report,
+        candidate_checksum_matches=candidate_checksum_matches,
+        diff_checksum_matches=diff_checksum_matches,
+        missing_golden_tickers=missing_golden_tickers,
+        warning_tickers=warning_tickers,
+        fixture_or_local_only=fixture_or_local_only,
+    )
+    review_status = "blocked" if any("checksum_mismatch" in condition for condition in stop_conditions) else (
+        "review_needed" if stop_conditions else "pass"
+    )
+    return {
+        "schema_version": TOP500_OPERATOR_REVIEW_SCHEMA_VERSION,
+        "boundary": TOP500_OPERATOR_REVIEW_BOUNDARY,
+        "review_only": True,
+        "no_live_external_calls": True,
+        "candidate_manifest_path": candidate_manifest.local_path,
+        "diff_report_path": candidate_manifest.diff_report_path,
+        "review_summary_path": TOP500_REVIEW_OUTPUT_TEMPLATE.format(candidate_month=candidate_manifest.candidate_month),
+        "approved_current_manifest_path": TOP500_APPROVED_CURRENT_MANIFEST_PATH,
+        "candidate_month": candidate_manifest.candidate_month,
+        "rank_basis": candidate_manifest.rank_basis.value,
+        "entry_count": len(candidate_manifest.entries),
+        "rank_limit": candidate_manifest.rank_limit,
+        "source_used": candidate_manifest.source_used,
+        "source_dates": candidate_manifest.source_dates,
+        "source_checksums": candidate_manifest.source_checksums,
+        "fallback_used": candidate_manifest.fallback_used,
+        "fallback_reason": candidate_manifest.fallback_reason,
+        "validation_coverage": candidate_manifest.validation_coverage,
+        "manual_approval_required": candidate_manifest.manual_approval_required,
+        "manual_review_triggers": candidate_manifest.manual_review_triggers,
+        "candidate_checksum": candidate_manifest.generated_checksum,
+        "candidate_checksum_matches": candidate_checksum_matches,
+        "diff_checksum": diff_report.generated_checksum,
+        "diff_checksum_matches": diff_checksum_matches,
+        "missing_golden_tickers": missing_golden_tickers,
+        "validation_warning_tickers": warning_tickers,
+        "rejected_row_count": rejected_row_count,
+        "fixture_or_local_only_contract": fixture_or_local_only,
+        "launch_approved": False,
+        "review_status": review_status,
+        "stop_conditions": stop_conditions,
+        "manual_promotion_required": True,
+        "operator_review_note_block": candidate_manifest.operator_review_note_block,
+        "non_advice_framing": (
+            "This packet is operational coverage metadata only; it is not an endorsement, recommendation, "
+            "model portfolio, allocation, price target, or trading instruction."
+        ),
+    }
+
+
 def promotion_requires_manual_approval(manifest: Top500CandidateManifest) -> bool:
     validate_top500_candidate_manifest(manifest)
     return manifest.manual_approval_required
@@ -335,6 +417,14 @@ def write_candidate_outputs(
     candidate_path.write_text(_pretty_json(result.candidate_manifest.model_dump(mode="json")), encoding="utf-8")
     diff_path.write_text(_pretty_json(result.diff_report.model_dump(mode="json")), encoding="utf-8")
     return candidate_path, diff_path
+
+
+def write_top500_review_summary(summary: dict[str, Any], *, root: str | Path) -> Path:
+    root_path = Path(root)
+    summary_path = root_path / str(summary["review_summary_path"])
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_path.write_text(_pretty_json(summary), encoding="utf-8")
+    return summary_path
 
 
 def normalize_candidate_ticker(ticker: str) -> str:
@@ -635,6 +725,62 @@ def _contains_advice_language(text: str) -> bool:
         "tax advice",
     )
     return any(phrase in lowered for phrase in forbidden)
+
+
+def _candidate_checksum_matches(manifest: Top500CandidateManifest) -> bool:
+    return manifest.generated_checksum == _sha256(manifest.manifest_checksum_input)
+
+
+def _diff_checksum_matches(diff_report: Top500CandidateDiffReport) -> bool:
+    payload = diff_report.model_dump(mode="json")
+    generated_checksum = payload.pop("generated_checksum")
+    return generated_checksum == _sha256(_canonical_json(payload))
+
+
+def _top500_packet_uses_fixture_or_local_only_provenance(manifest: Top500CandidateManifest) -> bool:
+    text = _canonical_json(manifest.model_dump(mode="json")).lower()
+    return any(marker in text for marker in ("fixture", "mock", "local-only", "mocked"))
+
+
+def _top500_review_stop_conditions(
+    *,
+    candidate_manifest: Top500CandidateManifest,
+    diff_report: Top500CandidateDiffReport,
+    candidate_checksum_matches: bool,
+    diff_checksum_matches: bool,
+    missing_golden_tickers: list[str],
+    warning_tickers: list[str],
+    fixture_or_local_only: bool,
+) -> list[str]:
+    stop_conditions = ["missing_manual_review_or_approval"]
+    if not candidate_checksum_matches:
+        stop_conditions.append("candidate_checksum_mismatch")
+    if not diff_checksum_matches:
+        stop_conditions.append("diff_checksum_mismatch")
+    if len(candidate_manifest.entries) < 500:
+        stop_conditions.append("fixture_sized_candidate_not_launch_approved")
+    if fixture_or_local_only:
+        stop_conditions.append("fixture_or_local_only_provenance_not_launch_approved")
+    if candidate_manifest.fallback_used:
+        stop_conditions.append("fallback_source_requires_manual_review")
+    if candidate_manifest.validation_coverage < 0.95:
+        stop_conditions.append("low_validation_coverage")
+    if missing_golden_tickers:
+        stop_conditions.append("missing_golden_ticker")
+    if warning_tickers or diff_report.nasdaq_validation_failures:
+        stop_conditions.append("validation_warning")
+    source_warning_text = " ".join(diff_report.source_warnings).lower()
+    if "stale" in source_warning_text:
+        stop_conditions.append("stale_source_snapshot")
+    if "partial" in source_warning_text:
+        stop_conditions.append("partial_source_snapshot")
+    if "unknown" in source_warning_text:
+        stop_conditions.append("unknown_source_state")
+    if "unavailable" in source_warning_text:
+        stop_conditions.append("unavailable_source_state")
+    if "insufficient" in source_warning_text or not candidate_manifest.entries:
+        stop_conditions.append("insufficient_evidence")
+    return list(dict.fromkeys(stop_conditions))
 
 
 def _sha256(value: str) -> str:

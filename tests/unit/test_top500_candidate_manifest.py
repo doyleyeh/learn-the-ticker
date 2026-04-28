@@ -10,8 +10,10 @@ from backend.top500_candidate_manifest import (
     TOP500_APPROVED_CURRENT_MANIFEST_PATH,
     Top500CandidateManifestContractError,
     assert_manual_approval_for_promotion,
+    build_top500_operator_review_summary,
     generate_top500_candidate_manifest,
     generate_top500_candidate_manifest_from_fixture_paths,
+    inspect_top500_candidate_review_packet,
     promotion_requires_manual_approval,
     validate_top500_candidate_manifest,
 )
@@ -89,6 +91,48 @@ def test_iwb_primary_candidate_manifest_preserves_review_contract_and_never_poin
     assert diff.nasdaq_validation_failures == []
     assert diff.manual_approval_required is True
     assert any("one-cycle safe-promotion boundary" in note.lower() for note in diff.operator_review_note_block)
+
+
+def test_top500_operator_review_summary_is_review_only_and_not_launch_approval():
+    result = _primary_result()
+    summary = build_top500_operator_review_summary(result)
+
+    assert summary["schema_version"] == "top500-launch-review-summary-v1"
+    assert summary["boundary"] == "top500-launch-manifest-review-only-v1"
+    assert summary["review_only"] is True
+    assert summary["no_live_external_calls"] is True
+    assert summary["approved_current_manifest_path"] == TOP500_APPROVED_CURRENT_MANIFEST_PATH
+    assert summary["candidate_manifest_path"].endswith(".candidate.2026-04.json")
+    assert summary["diff_report_path"].endswith(".diff.2026-04.json")
+    assert summary["review_summary_path"].endswith(".review.2026-04.json")
+    assert summary["manual_promotion_required"] is True
+    assert summary["launch_approved"] is False
+    assert summary["review_status"] == "review_needed"
+    assert summary["candidate_checksum_matches"] is True
+    assert summary["diff_checksum_matches"] is True
+    assert summary["source_used"] == ["IWB"]
+    assert summary["rank_basis"] == "iwb_weight_proxy"
+    assert summary["entry_count"] == 10
+    assert "fixture_sized_candidate_not_launch_approved" in summary["stop_conditions"]
+    assert "fixture_or_local_only_provenance_not_launch_approved" in summary["stop_conditions"]
+    assert "missing_manual_review_or_approval" in summary["stop_conditions"]
+    assert "recommendation" in summary["non_advice_framing"]
+
+
+def test_top500_operator_review_inspection_reports_checksum_stop_condition():
+    result = _primary_result()
+    payload = result.candidate_manifest.model_dump(mode="json")
+    payload["generated_checksum"] = "sha256:bad"
+    tampered_manifest = Top500CandidateManifest.model_validate(payload)
+
+    summary = inspect_top500_candidate_review_packet(
+        candidate_manifest=tampered_manifest,
+        diff_report=result.diff_report,
+    )
+
+    assert summary["review_status"] == "blocked"
+    assert summary["candidate_checksum_matches"] is False
+    assert "candidate_checksum_mismatch" in summary["stop_conditions"]
 
 
 def test_fixture_candidate_file_matches_generation_contract_and_remains_candidate_only():

@@ -399,10 +399,14 @@ def test_v06_handoff_docs_use_repo_native_commands_and_future_boundaries():
         "TMPDIR=/tmp python3 scripts/inspect_source_handoff_manifest.py inspect",
         "TMPDIR=/tmp python3 scripts/inspect_source_handoff_manifest.py finalize",
         "scripts/generate_top500_candidate_manifest.py",
+        "scripts/review_launch_manifests.py",
+        "TMPDIR=/tmp python3 scripts/review_launch_manifests.py top500 generate",
+        "TMPDIR=/tmp python3 scripts/review_launch_manifests.py top500 inspect",
+        "TMPDIR=/tmp python3 scripts/review_launch_manifests.py etf inspect",
         "backend/etf_universe.py",
         "TMPDIR=/tmp bash scripts/run_quality_gate.sh",
         "EQUITY_ETF_UNIVERSE_MANIFEST_URI",
-        "The current repo does not yet include that workflow",
+        "review-only",
     ]:
         assert marker in combined
 
@@ -527,7 +531,7 @@ def test_t114_mvp_launch_readiness_docs_cover_regression_matrix_and_go_no_go_wit
         assert forbidden.lower() not in combined_lower
 
 
-def test_tasks_general_mvp_roadmap_marks_t128_current_and_backlog_state():
+def test_tasks_general_mvp_roadmap_marks_t129_current_and_backlog_state():
     tasks = read_file("TASKS.md")
     current_task = tasks.split("## Current task", 1)[1].split("## Completed", 1)[0]
     backlog = tasks.split("## Backlog", 1)[1].split("## Completed", 1)[0]
@@ -535,18 +539,24 @@ def test_tasks_general_mvp_roadmap_marks_t128_current_and_backlog_state():
     roadmap = tasks.split("## General MVP Roadmap", 1)[1]
 
     assert "## MVP Backend Roadmap" not in tasks
-    assert "### T-128: Prove governed golden evidence drives API and frontend rendering" in current_task
-    assert "source snapshot and knowledge-pack persistence" in current_task
-    assert "generated-output cache validation" in current_task
+    assert "### T-129: Add launch-manifest operator automation parity" in current_task
+    assert "review-only operator automation parity" in current_task
+    assert "supported ETF manifest workflow" in current_task
     assert "One agent-loop cycle" in current_task
+    assert "### T-130: Add local fresh-data MVP rehearsal command" in backlog
     for marker in [
-        "### T-129: Add launch-manifest operator automation parity",
-        "### T-130: Add local fresh-data MVP rehearsal command",
+        "Detailed acceptance criteria",
+        "Required commands",
+        "Iteration budget",
     ]:
-        assert marker in backlog
-    assert "Detailed acceptance criteria" in current_task
-    assert "Required commands" in current_task
-    assert "Iteration budget" in current_task
+        assert marker in current_task
+    for marker in [
+        "### T-128: Prove governed golden evidence drives API and frontend rendering",
+        "Added source-snapshot validation to the persisted overview read path",
+    ]:
+        assert marker in completed
+    assert "T-129: Add launch-manifest operator automation parity" in current_task
+    assert "T-130: Add local fresh-data MVP rehearsal command" in backlog
     assert "### T-119: Wire local frontend API access and backend CORS" in completed
     assert "Next.js rewrite" in completed
     assert "build_cors_settings" in completed
@@ -564,7 +574,7 @@ def test_tasks_general_mvp_roadmap_marks_t128_current_and_backlog_state():
     assert "T-119 closed the local frontend/API plumbing blockers" in roadmap
     assert "T-125 completed the v0.6 handoff-doc and MVP-backlog alignment pass" in roadmap
     assert "T-126 established repo-native source-handoff manifest smoke tooling" in roadmap
-    assert "The current promoted task is T-128" in roadmap
+    assert "The current promoted task is T-129" in roadmap
 
     assert "T-099 established deterministic provider content export-rights hardening" in roadmap
     assert "T-100 established the backend MVP runtime gap audit and roadmap tracker" in roadmap
@@ -587,7 +597,7 @@ def test_tasks_general_mvp_roadmap_marks_t128_current_and_backlog_state():
     assert "T-120 established the v0.5 split between supported ETF generated-output coverage" in roadmap
     assert "T-124 established reviewed launch-universe expansion planning" in roadmap
     assert "T-125 established v0.6 docs, handoff docs, and backlog alignment" in roadmap
-    assert "T-129 through T-130" in roadmap
+    assert "T-130" in roadmap
     assert "| Provider source-use/export enforcement hardening | Completed | T-099 |" in roadmap
     assert "| Backend fresh-data MVP runtime gap tracker | Completed | T-100 |" in roadmap
     assert "| Configured persisted-reader route wiring | Completed | T-101 |" in roadmap
@@ -617,8 +627,8 @@ def test_tasks_general_mvp_roadmap_marks_t128_current_and_backlog_state():
     assert "| v0.6 docs, handoff docs, and backlog alignment | Completed | T-125 |" in roadmap
     assert "| Repo-native source-handoff manifest smoke tooling | Completed | T-126 |" in roadmap
     assert "| Opt-in local live-AI validation smoke | Completed | T-127 |" in roadmap
-    assert "| Governed golden evidence API/frontend rendering proof | Current | T-128 |" in roadmap
-    assert "| Launch-manifest operator automation parity | Prepared | T-129 |" in roadmap
+    assert "| Governed golden evidence API/frontend rendering proof | Completed | T-128 |" in roadmap
+    assert "| Launch-manifest operator automation parity | Current | T-129 |" in roadmap
     assert "| Local fresh-data MVP rehearsal command | Prepared | T-130 |" in roadmap
     assert "| Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |" in roadmap
 

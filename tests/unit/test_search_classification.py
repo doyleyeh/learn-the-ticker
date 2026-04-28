@@ -13,6 +13,7 @@ from backend.data import (
 from backend.etf_universe import (
     ETFUniverseContractError,
     blocked_etf_entries,
+    build_etf_launch_review_packet,
     cached_supported_etf_entries,
     can_generate_output_for_etf_entry,
     eligible_not_cached_etf_entries,
@@ -120,6 +121,42 @@ def test_recognized_unsupported_assets_are_blocked_from_generated_outputs():
         assert result.blocked_explanation.diagnostics.includes_source_documents is False
         assert result.blocked_explanation.diagnostics.includes_freshness is False
         assert result.blocked_explanation.diagnostics.uses_live_calls is False
+
+
+def test_etf_launch_review_packet_preserves_supported_and_recognition_split():
+    packet = build_etf_launch_review_packet()
+
+    assert packet["schema_version"] == "etf-launch-review-packet-v1"
+    assert packet["boundary"] == "etf-launch-manifest-review-only-v1"
+    assert packet["review_only"] is True
+    assert packet["no_live_external_calls"] is True
+    assert packet["launch_approved"] is False
+    assert packet["manual_promotion_required"] is True
+    assert packet["review_status"] == "review_needed"
+    assert packet["supported_runtime_authority"] == "data/universes/us_equity_etfs_supported.current.json"
+    assert packet["recognition_runtime_authority"] == "data/universes/us_etp_recognition.current.json"
+    assert packet["recognition_rows_unlock_generated_output"] is False
+    assert "fixture_or_local_only_provenance_not_launch_approved" in packet["stop_conditions"]
+    assert "fixture_source_quality_not_launch_approved" in packet["stop_conditions"]
+
+    supported = packet["supported_manifest"]
+    recognition = packet["recognition_manifest"]
+    assert supported["local_path"] == "data/universes/us_equity_etfs_supported.current.json"
+    assert recognition["local_path"] == "data/universes/us_etp_recognition.current.json"
+    assert supported["checksum_matches"] is True
+    assert recognition["checksum_matches"] is True
+    assert supported["support_state_counts"]["cached_supported"] == 2
+    assert supported["support_state_counts"]["eligible_not_cached"] == 11
+    assert recognition["support_state_counts"]["recognized_unsupported"] >= 1
+    assert "missing_golden_ticker" in packet["stop_conditions"]
+
+    supported_rows = {entry["ticker"]: entry for entry in packet["supported_entries"]}
+    recognition_rows = {entry["ticker"]: entry for entry in packet["recognition_entries"]}
+    assert supported_rows["VOO"]["generated_output_eligible"] is True
+    assert supported_rows["SPY"]["blocked_state_reason"] == "supported_but_not_cached_pending_ingestion"
+    assert recognition_rows["TQQQ"]["generated_output_eligible"] is False
+    assert recognition_rows["TQQQ"]["blocked_state_reason"] == "blocked_by_exclusion_flags:leveraged"
+    assert recognition_rows["TQQQ"]["handoff_status"] == "fixture_metadata_only_review_needed"
 
 
 def test_unknown_search_returns_no_generated_route_or_invented_asset_facts():

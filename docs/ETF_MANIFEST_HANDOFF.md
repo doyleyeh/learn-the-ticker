@@ -38,6 +38,8 @@ The local runtime now includes fixture-backed split ETF manifest loaders and cla
 
 - `backend/etf_universe.py` loads `data/universes/us_equity_etfs_supported.current.json` for generated-output support.
 - `backend/etf_universe.py` loads `data/universes/us_etp_recognition.current.json` for blocked or pending recognition states.
+- `backend/etf_universe.py` builds review-only launch packet summaries for the supported and recognition manifests without promoting runtime manifests.
+- `scripts/review_launch_manifests.py` exposes the repo-native ETF manifest inspection command.
 - The current implementation uses `EQUITY_ETF_UNIVERSE_MANIFEST_URI` as the production mirror metadata field for ETF manifest records. Future work may split this into separate supported and recognition mirror variables, but the current code does not yet do that.
 - Backend search merges persisted assets, reviewed classifications, supported ETF rows, Top-500 stock rows, recognition-only blocked ETF/ETP rows, and exact unknowns without letting recognition-only rows unlock generated output.
 - Persisted ETF rows marked supported are blocked unless their ticker is present in the supported ETF manifest.
@@ -50,6 +52,16 @@ Repo-native validation commands:
 TMPDIR=/tmp python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_provider_adapters.py tests/unit/test_repo_contract.py -q
 TMPDIR=/tmp python3 evals/run_static_evals.py
 ```
+
+Repo-native review-only inspection command:
+
+```bash
+TMPDIR=/tmp python3 scripts/review_launch_manifests.py etf inspect
+```
+
+The command inspects `data/universes/us_equity_etfs_supported.current.json` and `data/universes/us_etp_recognition.current.json` as separate launch-review packets. It reports support-state, wrapper/scope, exclusion flags, source provenance, generated checksums, approval timestamps, evidence/freshness/source-use metadata, parser or handoff metadata where available, blocked-state reasons, and explicit `pass`, `review_needed`, or `blocked` status.
+
+The command is deterministic by default and makes no live provider, issuer, market-data, news, database, storage, browser, or LLM calls. It does not write or promote runtime manifests.
 
 Run the full deterministic gate before relying on a manifest change:
 
@@ -110,12 +122,25 @@ Do not promote an ETF to `us_equity_etfs_supported.current.json` unless every ga
 - Any ETF expansion beyond the v1 supported scope requires a named product decision with new source requirements, risk templates, parser coverage, and acceptance tests.
 - Do not commit raw restricted source text, provider payloads with unclear rights, service credentials, access tokens, or provider keys.
 
+## Review Packet Stop Conditions
+
+Stop and do not promote ETF manifests when the review packet reports any of these conditions:
+
+- fixture-sized, fixture, mock, test, local-only, unreviewed, pending-review, rejected, or unclear-rights source provenance;
+- parser-invalid, hidden/internal, stale, partial, unknown, unavailable, or insufficient-evidence source states;
+- supported ETF launch tickers missing from the supported manifest;
+- generated checksum mismatch in either manifest;
+- recognition-only rows attempting to unlock generated pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, or generated risk summaries;
+- unsupported/out-of-scope products lacking blocked-state reasons or exclusion flags;
+- missing manual review or missing source-pack Golden Asset Source Handoff approval.
+
+Golden Asset Source Handoff remains the approval layer before any retrieved ETF issuer evidence can be stored as evidence, cited, summarized, generated from, cached, or exported. This review command does not approve new sources or relax source-use rights.
+
 ## Remaining Implementation
 
 Future tasks should add:
 
 - launch-sized operator manifests once official issuer source packs and Golden Asset Source Handoff evidence are available;
-- repo-native candidate generation and inspection scripts for supported ETF and recognition manifests;
 - private mirror validation for launch-sized manifests;
 - tests that preserve official-vs-third-party Weekly News labels and rights-gated full-text behavior.
 

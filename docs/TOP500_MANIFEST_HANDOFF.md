@@ -12,13 +12,14 @@ Implemented support includes:
 - runtime search/support classification from the approved current manifest only;
 - deterministic candidate and diff contract generation in `backend/top500_candidate_manifest.py`;
 - fixture-backed script entrypoint at `scripts/generate_top500_candidate_manifest.py`;
+- review-only operator packet generation and inspection at `scripts/review_launch_manifests.py`;
 - candidate and diff fixtures at `data/universes/us_common_stocks_top500.candidate.2026-04.json` and `data/universes/us_common_stocks_top500.diff.2026-04.json`;
 - tests proving candidate/diff artifacts do not replace runtime support truth.
 
 Still missing for MVP:
 
 - an operator-reviewed 500-entry candidate manifest from reviewed official source snapshots;
-- repo-native launch validator and inspection commands for production-sized manifests;
+- production-sized reviewed source snapshots and private mirror validation;
 - private mirror validation against the approved 500-entry manifest;
 - scheduled or manually dispatched candidate-generation PR automation;
 - source-backed ingestion coverage for the launch universe after manifest approval.
@@ -75,6 +76,30 @@ The current script is fixture-backed and review-only. It is useful for testing t
 ```bash
 python3 scripts/generate_top500_candidate_manifest.py --candidate-month 2026-04 --rank-limit 10
 ```
+
+The launch review packet command writes the candidate manifest, diff report, and operator review summary without touching the approved current manifest:
+
+```bash
+TMPDIR=/tmp python3 scripts/review_launch_manifests.py top500 generate --candidate-month 2026-04 --rank-limit 10
+```
+
+To inspect an existing candidate and diff packet without regenerating fixture inputs:
+
+```bash
+TMPDIR=/tmp python3 scripts/review_launch_manifests.py top500 inspect \
+  --candidate-path data/universes/us_common_stocks_top500.candidate.2026-04.json \
+  --diff-path data/universes/us_common_stocks_top500.diff.2026-04.json
+```
+
+Both commands are deterministic by default, make no live provider calls, and report `pass`, `review_needed`, or `blocked` states. Fixture-sized, mock, local-only, unreviewed, parser-invalid, hidden/internal, unclear-rights, pending-review, rejected, stale, partial, unknown, unavailable, insufficient-evidence, fallback-source, low-validation-coverage, missing-golden-ticker, missing-review, and checksum-mismatch conditions are stop conditions for launch approval.
+
+The generated operator review summary path follows:
+
+```text
+data/universes/us_common_stocks_top500.review.YYYY-MM.json
+```
+
+This summary is an operator artifact only. It is not a promotion path and is not investment advice.
 
 Focused validation:
 
