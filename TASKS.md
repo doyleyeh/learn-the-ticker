@@ -1,10 +1,5 @@
 ## Current task
 
-Ready for next task selection after T-119 and the v0.5 documentation refresh. Keep the next promoted task narrow and deterministic.
-
-
-## Backlog
-
 ### T-120: Implement v0.5 ETF manifest split contracts
 
 Goal:
@@ -32,6 +27,8 @@ git diff --check
 
 Iteration budget:
 One agent-loop cycle. Do not promote broad ETF support beyond deterministic fixture manifests.
+
+## Backlog
 
 ### T-121: Add browser E2E local smoke for API-backed MVP flows
 
@@ -3281,7 +3278,7 @@ Completion commits:
 
 ## Historical Backlog Note
 
-This older scaffold note is retained only for history. The active runnable backlog is at the top of this file and now starts with T-120 after T-119.
+This older scaffold note is retained only for history. The active runnable task is T-120, and the active runnable backlog at the top of this file now starts with T-121 after T-120 promotion.
 
 ## General MVP Roadmap
 
@@ -3295,7 +3292,7 @@ Current runtime snapshot:
 - The updated PRD/TDS/proposal make Golden Asset Source Handoff a blocker before retrieved sources can become evidence for storage, generation, citation, cache, source drawer, or export behavior.
 - The updated Top-500 workflow keeps runtime stock support tied to the approved current manifest; T-116 added deterministic monthly IWB/SPY/IVV/VOO candidate generation, SEC/Nasdaq validation, diff reporting, and manual-promotion gates, but no candidate has been approved or promoted to the current manifest.
 - T-119 closed the local frontend/API plumbing blockers found during manual smoke testing: chat POSTs, export URLs, comparison fetches, and browser direct backend calls now have a documented API-base/proxy/CORS strategy.
-- The prepared backlog is T-120 through T-124: v0.5 ETF manifest split, localhost browser E2E smoke, optional local durable smoke, handoff-gated real official-source fetchers for golden assets, and reviewed launch-universe expansion planning.
+- The current promoted task is T-120, and the prepared backlog is T-121 through T-124: localhost browser E2E smoke, optional local durable smoke, handoff-gated real official-source fetchers for golden assets, and reviewed launch-universe expansion planning.
 - T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, source allowlist expansion, admin auth/rate limiting, broader live ingestion, and real provider execution remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:

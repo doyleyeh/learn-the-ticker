@@ -489,7 +489,7 @@ def test_t114_mvp_launch_readiness_docs_cover_regression_matrix_and_go_no_go_wit
         assert forbidden.lower() not in combined_lower
 
 
-def test_tasks_general_mvp_roadmap_marks_t119_completed_with_prepared_backlog():
+def test_tasks_general_mvp_roadmap_marks_t120_current_with_prepared_backlog():
     tasks = read_file("TASKS.md")
     current_task = tasks.split("## Current task", 1)[1].split("## Completed", 1)[0]
     backlog = tasks.split("## Backlog", 1)[1].split("## Completed", 1)[0]
@@ -497,9 +497,11 @@ def test_tasks_general_mvp_roadmap_marks_t119_completed_with_prepared_backlog():
     roadmap = tasks.split("## General MVP Roadmap", 1)[1]
 
     assert "## MVP Backend Roadmap" not in tasks
-    assert "Ready for next task selection after T-119" in current_task
+    assert "### T-120: Implement v0.5 ETF manifest split contracts" in current_task
+    assert "data/universes/us_equity_etfs_supported.current.json" in current_task
+    assert "data/universes/us_etp_recognition.current.json" in current_task
+    assert "One agent-loop cycle" in current_task
     for task_marker in [
-        "### T-120: Implement v0.5 ETF manifest split contracts",
         "### T-121: Add browser E2E local smoke for API-backed MVP flows",
         "### T-122: Prove local durable repository smoke with API proxy enabled",
         "### T-123: Promote real official-source fetchers behind handoff-gated local opt-in",
@@ -520,6 +522,7 @@ def test_tasks_general_mvp_roadmap_marks_t119_completed_with_prepared_backlog():
     assert "Golden Asset Source Handoff" in completed
     assert "Production deployment, production durable storage, scheduled jobs" in completed
     assert "T-119 closed the local frontend/API plumbing blockers" in roadmap
+    assert "The current promoted task is T-120" in roadmap
 
     assert "T-099 established deterministic provider content export-rights hardening" in roadmap
     assert "T-100 established the backend MVP runtime gap audit and roadmap tracker" in roadmap
