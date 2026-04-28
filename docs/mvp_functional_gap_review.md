@@ -1,6 +1,6 @@
 # MVP Functional Gap Review
 
-Task: 2026-04-28 v0.6 doc alignment and fresh-data MVP review, updated during T-128.
+Task: 2026-04-28 v0.6 doc alignment and fresh-data MVP review, updated during T-129.
 
 Purpose: summarize current implementation progress, align the operational plan with the v0.6 PRD/TDS refresh, and define the next narrow tasks needed before the project is a locally functional MVP that can use fresh approved data and show it correctly in the frontend.
 
@@ -23,6 +23,7 @@ Completed capabilities:
 - Golden Asset Source Handoff enforcement exists across source policy, source snapshots, knowledge packs, citations, generated-output cache metadata, source drawer output, and exports.
 - LLM runtime diagnostics, OpenRouter transport contracts, and the T-127 local live-AI validation smoke are present, with deterministic mocks as the default and live network calls blocked unless explicitly gated.
 - T-128 adds a deterministic governed golden rendering proof: configured API reads can validate private same-asset source snapshot artifacts, normalized knowledge-pack records, and generated-output cache records before serving overview, source drawer, and export output.
+- T-129 adds repo-native review-only launch-manifest packet automation for Top-500 candidate/diff/review summaries and split ETF supported/recognition manifest inspection without promoting runtime manifests.
 - Normal CI remains deterministic and does not require live provider, news, market-data, storage, database, browser services, or LLM calls.
 
 ## Current Misalignments
@@ -40,7 +41,7 @@ Doc/runtime mismatches addressed by T-125:
 The project is not yet a fully functional fresh-data MVP. Remaining blockers:
 
 1. Launch-sized manifests are not approved.
-   The current Top-500 stock manifest and supported ETF manifest are deterministic fixtures. Public v1 still needs the full approved Top-500 stock manifest, a launch-sized supported ETF manifest, private production mirrors, and review packets.
+   The current Top-500 stock manifest and supported ETF manifest are deterministic fixtures. T-129 adds review-only packet automation, but public v1 still needs the full approved Top-500 stock manifest, a launch-sized supported ETF manifest, private production mirrors, and manual approvals.
 
 2. Repo-native source-handoff tooling is available for local reviewed packets.
    T-126 added source-handoff manifest inspection/finalization smoke tooling, but launch-sized governed source artifacts still need review before public production use.
@@ -64,12 +65,14 @@ Current task state:
 - T-125 completed v0.6 docs, handoff guides, MVP gap review, and repo-contract test alignment.
 - T-126 completed repo-native source-handoff manifest inspection/finalization smoke tooling.
 - T-127 completed the opt-in local live-AI validation smoke for grounded chat and AI Comprehensive Analysis.
-- T-128: prove governed golden evidence drives backend API and frontend rendering.
-- T-128 adds deterministic governed golden API/frontend rendering proof for the golden set.
+- T-128 completed deterministic governed golden API/frontend rendering proof for the golden set.
+- T-128: prove governed golden evidence drives backend API and frontend rendering remains completed and limited to deterministic golden assets.
+- T-128 adds deterministic governed golden API/frontend rendering proof for the golden set and remains limited to deterministic golden assets.
+- T-129 completed review-only launch-manifest operator automation parity for Top-500 and supported ETF review packets.
+- T-129: add launch-manifest operator automation parity is now implemented as deterministic review-only operator tooling, not as launch approval or manifest promotion.
 
 Runnable near-term backlog:
 
-- T-129: add launch-manifest operator automation parity for Top-500 and supported ETF review packets without promoting runtime manifests.
 - T-130: add a local fresh-data MVP rehearsal command or command sequence that ties the governed golden path into one operator-facing pre-production check.
 
 Sequencing rationale:
