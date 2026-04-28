@@ -17,6 +17,8 @@ def test_core_agent_files_exist():
         "docs/learn-the-ticker_proposal.md",
         "docs/learn_the_ticker_PRD.md",
         "docs/learn_the_ticker_technical_design_spec.md",
+        "docs/README.md",
+        "docs/mvp_functional_gap_review.md",
         "data/universes/us_equity_etfs.current.json",
     ]
 
@@ -331,68 +333,31 @@ def test_control_docs_cover_new_mvp_operating_rules():
         assert marker in combined, f"control docs should mention {marker}"
 
 
-def test_backend_mvp_runtime_gap_audit_tracks_required_areas_without_runtime_wiring():
-    audit = read_file("docs/backend_mvp_runtime_gap_audit.md")
-    audit_lower = audit.lower()
+def test_mvp_functional_gap_review_tracks_v05_progress_and_next_tasks():
+    review = read_file("docs/mvp_functional_gap_review.md")
+    review_lower = review.lower()
 
-    assert "Task: 2026-04-27 control-doc refresh" in audit
-    for status in [
-        "contract_complete",
-        "deterministic_complete",
-        "runtime_gap",
-        "local_runtime_gap",
-        "production_gap",
-        "current",
-        "backlog",
-        "later",
+    assert "Task: 2026-04-27 v0.5 doc alignment and fresh-data MVP review" in review
+    for marker in [
+        "The repo is no longer planning-only",
+        "Golden Asset Source Handoff enforcement",
+        "T-119 local API plumbing",
+        "data/universes/us_equity_etfs_supported.current.json",
+        "data/universes/us_etp_recognition.current.json",
+        "data/universes/us_equity_etfs.current.json",
+        "Split ETF manifests are not implemented",
+        "Local durable fresh-data smoke is not proven",
+        "Automated localhost browser E2E is missing",
+        "Real official-source fetchers are not the normal local path",
+        "Launch coverage remains fixture-sized",
+        "T-120: implement v0.5 ETF manifest split contracts",
+        "T-121: add optional localhost browser/API E2E smoke",
+        "T-122: prove optional local durable repository smoke",
+        "T-123: promote real official-source fetchers",
+        "T-124: prepare reviewed launch-universe expansion plan",
+        "Normal CI remains deterministic",
     ]:
-        assert f"`{status}`" in audit, f"audit should define status {status}"
-
-    required_areas = [
-        "Route contracts and fixture fallback",
-        "Ingestion ledger and worker",
-        "Source snapshot storage",
-        "Normalized knowledge-pack persistence",
-        "Generated-output cache writes",
-        "Weekly News Focus evidence",
-        "Golden Asset Source Handoff",
-        "Top-500 current manifest",
-        "Top-500 candidate refresh",
-        "Frontend API rendering",
-        "Launch pre-cache readiness",
-        "Production hardening",
-    ]
-    for area in required_areas:
-        assert area in audit, f"audit should cover {area}"
-
-    required_gap_markers = [
-        "official-source acquisition readiness is mocked and golden-asset scoped",
-        "local browser verification is still manual curl/dev-server smoke",
-        "a newly fetched real official source cannot yet be run through handoff-gated local fetcher execution",
-        "Current file is a small fixture manifest",
-        "Real official fetch and parser outcomes are not yet the normal path",
-    ]
-    for marker in required_gap_markers:
-        assert marker in audit, f"audit should explicitly record gap: {marker}"
-
-    for task_marker in [
-        "T-119 is complete",
-        "T-120: prove optional local durable repository smoke",
-        "T-121: add automated localhost browser E2E smoke",
-        "T-122: promote real official-source fetchers",
-        "T-123: prepare reviewed launch-universe expansion",
-    ]:
-        assert task_marker in audit, f"audit should map next task {task_marker}"
-
-    for workflow_marker in [
-        "home page single-asset stock or ETF search first",
-        "comparison as a separate connected workflow",
-        "glossary as contextual help",
-        "mobile source, glossary, and chat surfaces",
-        "stock-vs-ETF comparison relationship badges",
-        "Weekly News Focus showing only the evidence-backed set",
-    ]:
-        assert workflow_marker in audit, f"audit should preserve v0.4 marker {workflow_marker}"
+        assert marker in review, f"functional review should include marker: {marker}"
 
     for forbidden in [
         "import requests",
@@ -411,7 +376,7 @@ def test_backend_mvp_runtime_gap_audit_tracks_required_areas_without_runtime_wir
         "signed url",
         "public storage url",
     ]:
-        assert forbidden.lower() not in audit_lower
+        assert forbidden.lower() not in review_lower
 
 
 def test_t114_mvp_launch_readiness_docs_cover_regression_matrix_and_go_no_go_without_runtime_wiring():
@@ -534,10 +499,11 @@ def test_tasks_general_mvp_roadmap_marks_t119_completed_with_prepared_backlog():
     assert "## MVP Backend Roadmap" not in tasks
     assert "Ready for next task selection after T-119" in current_task
     for task_marker in [
-        "### T-120: Prove local durable repository smoke with API proxy enabled",
+        "### T-120: Implement v0.5 ETF manifest split contracts",
         "### T-121: Add browser E2E local smoke for API-backed MVP flows",
-        "### T-122: Promote real official-source fetchers behind handoff-gated local opt-in",
-        "### T-123: Prepare reviewed launch-universe expansion plan",
+        "### T-122: Prove local durable repository smoke with API proxy enabled",
+        "### T-123: Promote real official-source fetchers behind handoff-gated local opt-in",
+        "### T-124: Prepare reviewed launch-universe expansion plan",
     ]:
         assert task_marker in backlog
     assert "Acceptance criteria" in backlog
@@ -546,6 +512,7 @@ def test_tasks_general_mvp_roadmap_marks_t119_completed_with_prepared_backlog():
     assert "### T-119: Wire local frontend API access and backend CORS" in completed
     assert "Next.js rewrite" in completed
     assert "build_cors_settings" in completed
+    assert "v0.5 ETF supported-manifest and recognition-manifest split remains T-120" in completed
     assert "### T-118: Prove local fresh-data ingest-to-render smoke path" in completed
     assert "The runbook explicitly states that fetching alone is retrieval, not evidence approval" in completed
     assert "deterministic integration smoke coverage for the VOO golden path" in completed
@@ -570,6 +537,7 @@ def test_tasks_general_mvp_roadmap_marks_t119_completed_with_prepared_backlog():
     assert "T-116 established reviewed Top-500 candidate manifest workflow contracts" in roadmap
     assert "T-117 established handoff-gated mocked official-source acquisition execution for golden assets" in roadmap
     assert "T-119 established local frontend API access and backend CORS" in roadmap
+    assert "V0.5 ETF manifest split after T-119" in roadmap
     assert "T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path" in roadmap
     assert "T-118 established the local fresh-data ingest-to-render runbook and deterministic smoke coverage" in roadmap
     assert "monthly IWB/SPY/IVV/VOO candidate generation" in roadmap

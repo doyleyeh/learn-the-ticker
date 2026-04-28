@@ -1,17 +1,17 @@
 # Technical Design Spec: Learn the Ticker - Citation-First Beginner U.S. Stock & ETF Research Assistant
 
-**Document version:** v0.4 frontend/workflow update
-**Date:** 2026-04-24
+**Document version:** v0.5 ETF manifest policy update
+**Date:** 2026-04-27
 **Product stage:** MVP / v1 planning  
-**Related doc:** PRD v0.4 frontend/workflow update
-**Source basis:** Current project proposal, PRD v0.4, and resolved implementation-readiness decisions.
-**Documentation role:** Engineering source of truth for implementation. The PRD remains the product source of truth, and this repo is currently planning-only.
+**Related doc:** PRD v0.5 ETF manifest policy update
+**Source basis:** Current project proposal, PRD v0.5, and resolved implementation-readiness decisions.
+**Documentation role:** Engineering source of truth for implementation. The PRD remains the product source of truth. The repo currently contains a deterministic fixture-backed MVP scaffold, so this spec describes both target architecture and gaps between the v0.5 target and current implementation.
 
 ---
 
 ## 1. Executive summary
 
-This system is an accountless web app that lets a beginner search one U.S.-listed common stock or non-leveraged U.S.-listed equity index, sector, or thematic ETF, then returns a source-grounded educational page with beginner explanations, cited facts, Weekly News Focus, AI Comprehensive Analysis, contextual glossary help, limited asset-specific grounded chat, connected comparison workflows, and exportable learning outputs.
+This system is an accountless web app that lets a beginner search one U.S.-listed common stock or manifest-approved U.S.-listed passive/index-based U.S. equity ETF, then returns a source-grounded educational page with beginner explanations, cited facts, Weekly News Focus, AI Comprehensive Analysis, contextual glossary help, limited asset-specific grounded chat, connected comparison workflows, and exportable learning outputs.
 
 The core technical challenge is not simply generating good prose. The system must reliably separate:
 
@@ -19,7 +19,7 @@ The core technical challenge is not simply generating good prose. The system mus
 2. **Timely context** - Weekly News Focus, filings, fee changes, earnings, or methodology updates.
 3. **Teaching layer** - AI-written plain-English explanation and chat answers.
 
-That three-layer knowledge architecture comes directly from the proposal and remains the backbone of this design. PRD v0.4 adds frontend workflow direction: home is single-asset search first; comparison is a separate connected workflow; glossary is contextual help; mobile source, glossary, and chat surfaces use bottom sheets where appropriate; and all frontend data must flow through the FastAPI backend.
+That three-layer knowledge architecture comes directly from the proposal and remains the backbone of this design. The v0.4 frontend workflow remains the UI baseline: home is single-asset search first; comparison is a separate connected workflow; glossary is contextual help; mobile source, glossary, and chat surfaces use bottom sheets where appropriate. PRD v0.5 adds the supported ETF manifest and ETF/ETP recognition split. Frontend data must flow through the FastAPI backend or a documented local Next `/api` proxy to that backend.
 
 ---
 
@@ -42,7 +42,7 @@ That three-layer knowledge architecture comes directly from the proposal and rem
 
 ### 2.2 Non-goals for v1
 
-The system will not support brokerage trading, tax advice, options, crypto, international equities, portfolio optimization, leveraged ETFs, inverse ETFs, ETNs, fixed income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, preferred stocks, warrants, rights, complex exchange-traded products, user accounts, saved watchlists, saved assets, PDF exports, or personalized position sizing.
+The system will not support brokerage trading, tax advice, options, crypto, international equities, portfolio optimization, leveraged ETFs, inverse ETFs, ETNs, fixed income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, single-stock ETFs, option-income/buffer ETFs, preferred stocks, warrants, rights, complex exchange-traded products, user accounts, saved watchlists, saved assets, PDF exports, or personalized position sizing.
 
 ---
 
@@ -62,7 +62,7 @@ The system will not support brokerage trading, tax advice, options, crypto, inte
 | Structured generation | JSON-schema outputs where provider supports it | Produces predictable UI-renderable output and supports server-side validation. |
 | Retrieval | Keyword and metadata retrieval first; embeddings later | Self-managed keyword-first retrieval gives stricter control over citation binding and freshness metadata before adding model cost. |
 | Source freshness | Section-level freshness hashes | Summaries are invalidated when underlying facts, chunks, or Weekly News Focus event records change. |
-| Coverage model | Top-500-first U.S. common stock manifest plus supported ETFs and explicit ingestion states | Improves launch reliability while keeping future expansion queue-backed and source-aware. |
+| Coverage model | Top-500-first U.S. common stock manifest plus supported ETF manifest, ETP recognition manifest, and explicit ingestion states | Improves launch reliability while keeping future expansion queue-backed, source-aware, and blocked for complex ETF/ETP products. |
 | User model | Accountless MVP | Defers identity, saved assets, and watchlists while preserving export/download workflows. |
 | Export model | Server-shaped Markdown and JSON summaries and source lists | Lets users save learning outputs while respecting citation, freshness, uncertainty labels, and licensing constraints. |
 
@@ -281,7 +281,7 @@ SEC EDGAR, SEC XBRL company facts, and SEC filing documents are the canonical ba
 | Free/reference metadata or configured provider adapter | delayed or best-effort quote, AUM, average volume, spread data, ETF reference metadata where available | P0 |
 | Sponsor press releases / allowlisted free/RSS/news sources | fee cuts, methodology changes, mergers, liquidations | P1 |
 
-ETF issuer materials are the canonical backbone for ETFs such as `VOO`, `QQQ`, and `SOXX`: issuer page, fact sheet, prospectus, shareholder reports, holdings files, exposure files, and sponsor announcements. ETF issuer websites are especially important because ETF disclosure includes investor-facing items such as holdings, premium/discount information, and bid-ask spread disclosures. V1 should support non-leveraged U.S.-listed equity index, sector, and thematic ETFs first. Paid ETF data providers are optional future adapters and must be validated against issuer sources before production use.
+ETF issuer materials are the canonical evidence backbone for ETFs such as `VOO`, `QQQ`, and `SOXX`: issuer page, fact sheet, prospectus, shareholder reports, holdings files, exposure files, and sponsor announcements. ETF issuer websites are especially important because ETF disclosure includes investor-facing items such as holdings, premium/discount information, and bid-ask spread disclosures. V1 should support only manifest-approved U.S.-listed, active, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs. Paid ETF data providers are optional future adapters and must be validated against issuer sources before production use.
 
 News and RSS sources use a tiered allowlist. Official sources have the highest rank. Reuters/AP-style and similar publishers are license-gated: the source registry must record whether each source is `metadata_only`, `link_only`, `summary_allowed`, `full_text_allowed`, or `rejected` before ingestion output can be displayed, summarized, stored, or exported.
 
@@ -313,6 +313,21 @@ Automation model:
 
 - V1 automation should be a GitHub Actions scheduled monthly workflow with `workflow_dispatch` for manual reruns. It should generate only the candidate manifest and diff report, run manifest validation, and open a pull request for review.
 - V1.1 automation may move candidate generation into a Cloud Scheduler-triggered Cloud Run Job once manual Cloud Run Jobs and the GitHub Actions PR workflow are proven useful. This later path should still produce a candidate manifest and require review before promotion.
+
+### 6.3.1 ETF recognition and supported ETF manifests
+
+Implementation note: as of T-119, the repo still has a legacy combined deterministic ETF manifest at `data/universes/us_equity_etfs.current.json`. The v0.5 target below is not yet implemented and is the next operational alignment task.
+
+ETF coverage uses two manifests with different runtime authority.
+
+- `data/universes/us_etp_recognition.current.json` recognizes real ETFs and broader exchange-traded products for search safety, including unsupported products.
+- `data/universes/us_equity_etfs_supported.current.json` is the only runtime authority for ETF-generated asset pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, and exports.
+- Recognition manifest rows can produce blocked search states such as `unsupported`, `out_of_scope`, `pending_review`, `unavailable`, or `pending_ingestion`, but cannot unlock generated ETF experiences.
+- Supported ETF rows must represent U.S.-listed, active, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs.
+- Supported ETF row metadata should include ticker, fund name, issuer, exchange, wrapper type, support scope, passive/index flag, leverage/inverse flags, asset class, primary geographic exposure, benchmark/index, issuer source-pack references, parser validation status, Golden Asset Source Handoff status, snapshot date, generated checksum, approval timestamp, and review notes.
+- Initial supported ETF entries should be `VOO`, `SPY`, `VTI`, `IVV`, `QQQ`, `IWM`, `DIA`, `VGT`, `XLK`, `SOXX`, `SMH`, `XLF`, `XLV`, and `XLE`.
+
+Candidate discovery may use official exchange and regulatory inputs, including Nasdaq Trader symbol-directory `ETF` and `Test Issue` fields, Nasdaq-listed ETP `Type`, `Bucket Label`, and `Investment Strategy Group`, NYSE ETF/ETV/ETN/CEF distinctions, Cboe ETF/ETP listings, and SEC ETF website disclosure requirements. These inputs are candidate and recognition evidence only. Promotion to supported requires issuer source-pack validation, Golden Asset Source Handoff approval, and manual review.
 
 ### 6.4 Source allowlist governance and raw text policy
 
@@ -748,7 +763,7 @@ pgvector can remain installed for future migration compatibility, but vector ind
 ### 9.1 Universal ingestion flow
 
 ```text
-1. Resolve asset using SEC/issuer metadata and the top-500 manifest.
+1. Resolve asset using SEC/issuer metadata, the top-500 stock manifest, the ETF/ETP recognition manifest, and the supported ETF manifest.
 2. Classify asset as supported, unsupported, out-of-scope, `pending_ingestion`, partial, stale, unknown, or unavailable.
 3. Fetch source documents for supported assets only from allowlisted retrieval paths.
 4. Run Golden Asset Source Handoff.
@@ -766,7 +781,7 @@ pgvector can remain installed for future migration compatibility, but vector ind
 16. Update shared cache entries and freshness hashes.
 ```
 
-MVP should support pre-cache ingestion for the top-500-first launch universe and explicit `pending_ingestion` states for approved on-demand assets outside that universe. Unsupported and out-of-scope assets should return a recognized-but-unsupported or recognized-but-out-of-scope state from search and must not trigger generated pages, generated chat, or generated comparisons. Supported assets with incomplete evidence should return partial pages instead of invented content.
+MVP should support pre-cache ingestion for the top-500-first stock launch universe, pre-cache ingestion for the initial supported ETF manifest, and explicit `pending_ingestion` states for approved on-demand assets outside ready source packs. Unsupported and out-of-scope assets should return a recognized-but-unsupported or recognized-but-out-of-scope state from search and must not trigger generated pages, generated chat, generated comparisons, Weekly News Focus, AI Comprehensive Analysis, or exports. Supported assets with incomplete evidence should return partial pages instead of invented content.
 
 ### 9.1.1 Deterministic asset classification
 
@@ -778,12 +793,13 @@ Rules:
 - If `inverse_flag == true`, return `unsupported`.
 - If `asset_class != equity`, return `unsupported`.
 - If `strategy == active`, return `unsupported`.
-- If the asset is outside U.S. common stock or non-leveraged U.S.-listed passive equity ETF scope, return `unsupported` or `out_of_scope`.
+- If an ETF is absent from `data/universes/us_equity_etfs_supported.current.json`, return `unsupported`, `out_of_scope`, `pending_review`, `unavailable`, or `pending_ingestion` based on deterministic recognition and review state.
+- If the asset is outside U.S. common stock or manifest-approved U.S.-listed passive/index-based U.S. equity ETF scope, return `unsupported` or `out_of_scope`.
 - If a stock is outside the top-500 MVP universe, return `out_of_scope` unless it has been explicitly added to the approved on-demand ingestion queue.
 - If an asset passes deterministic classification but lacks an asset pack, return `pending_ingestion`.
 - If an asset has verified facts but missing sections, return `partial`, `stale`, or `unavailable` section states rather than generating unsupported claims.
 
-Classification inputs should come from SEC metadata, the top-500 manifest, issuer/provider metadata, and normalized fund fields. If a required field is missing, classify conservatively and record parser diagnostics.
+Classification inputs should come from SEC metadata, the top-500 manifest, ETF/ETP recognition manifest, supported ETF manifest, issuer/provider metadata, and normalized fund fields. If a required field is missing, classify conservatively and record parser diagnostics.
 
 ### 9.2 Stock ingestion flow
 
@@ -890,11 +906,15 @@ Output:
   "asset_type": "etf",
   "issuer": "Vanguard",
   "category": "Large Blend",
-  "supported_scope": "non_leveraged_equity_etf"
+  "supported_scope": "supported_us_equity_index_etf",
+  "classification_source": "supported_etf_manifest",
+  "generated_output_eligible": true
 }
 ```
 
-ETF resolution must reject or mark out of scope fixed income, commodity, active, multi-asset, leveraged, inverse, ETN, and other complex products before generated pages, chat, or comparison run.
+ETF resolution is two-layered. `data/universes/us_etp_recognition.current.json` may identify real ETFs and ETPs for blocked search states, while `data/universes/us_equity_etfs_supported.current.json` is the only source that can set `generated_output_eligible=true` for ETF-generated experiences.
+
+ETF resolution must reject or mark out of scope fixed income, commodity, active, multi-asset, single-stock, option-income/buffer, leveraged, inverse, ETN, international equity, and other complex products before generated pages, chat, comparison, Weekly News Focus, AI Comprehensive Analysis, or exports run.
 
 #### Step 2: Fetch official ETF sources
 
@@ -1568,11 +1588,11 @@ GET /api/search?q=vo
 }
 ```
 
-Allowed `status` values are `supported`, `unsupported`, `out_of_scope`, `pending_ingestion`, `partial`, `stale`, `unavailable`, and `unknown`.
+Allowed `status` values are `supported`, `unsupported`, `out_of_scope`, `pending_review`, `pending_ingestion`, `partial`, `stale`, `unavailable`, and `unknown`.
 
 Autocomplete clients should render each row with ticker, name, asset type, exchange or issuer/provider, and a status chip. The backend may return grouped or groupable results for ETFs and stocks. Clear comparison patterns such as `VOO vs QQQ` may be detected by the frontend and routed to `/compare?left=VOO&right=QQQ`; the home page still remains a single-asset search surface.
 
-Recognized unsupported and out-of-scope results must carry disabled generated-page/chat/comparison capability flags. Unknown results must not be treated as recognized unsupported assets.
+Recognized unsupported, out-of-scope, pending-review, unavailable, and pending-ingestion ETF/ETP results must carry disabled generated-page/chat/comparison/Weekly News Focus/AI Comprehensive Analysis/export capability flags unless and until the ticker is approved in `data/universes/us_equity_etfs_supported.current.json` and has a safe source-pack state. Unknown results must not be treated as recognized unsupported assets.
 
 ### 14.2 Citation resolution
 
@@ -1872,7 +1892,7 @@ Home page copy:
 
 ```text
 Understand a stock or ETF in plain English
-Search a U.S. stock or non-leveraged U.S. equity ETF to see beginner-friendly explanations, source citations, top risks, recent context, and grounded follow-up answers.
+Search a U.S. stock or manifest-approved U.S. equity ETF to see beginner-friendly explanations, source citations, top risks, recent context, and grounded follow-up answers.
 Search a ticker or name, like VOO, QQQ, or Apple
 ```
 
@@ -2218,7 +2238,7 @@ For each golden asset, maintain expected checks:
 - QQQ vs VOO opens comparison, while the same question inside single-asset chat returns a compare redirect
 - NVDA vs SOXX uses the stock-vs-ETF template and explains structural differences
 - missing ETF holdings or stale sources produce partial-page states
-- leveraged ETF, inverse ETF, ETN, fixed income ETF, and crypto searches return unsupported or out-of-scope states
+- leveraged ETF, inverse ETF, ETN, fixed income ETF, active ETF, single-stock ETF, option-income/buffer ETF, and crypto searches return unsupported or out-of-scope states
 - free-news sources outside the allowlist are rejected
 - anonymous chat sessions continue via `conversation_id`, expire after TTL, delete correctly, and never put raw transcript text in analytics
 - claims can resolve multiple citations through `claim_citations`
@@ -2471,14 +2491,15 @@ Saved assets, saved comparisons, watchlists, learning paths, and user accounts a
 
 MVP is technically ready when:
 
-- Search resolves supported stocks and ETFs.
+- Search resolves supported stocks and ETFs through approved stock and supported ETF manifests.
+- ETF support is controlled by `data/universes/us_equity_etfs_supported.current.json`; `data/universes/us_etp_recognition.current.json` can identify unsupported ETPs for blocked search states only.
 - Home page has one primary action: search one stock or ETF.
 - Home page does not present comparison or Glossary as a primary workflow.
 - Search autocomplete supports partial ticker/name/issuer matches, status chips, exact unsupported states, and unknown/no-result states.
 - Natural `A vs B` searches route to the comparison workflow.
 - Unsupported and out-of-scope assets return clear blocked states.
 - Stock pages render from normalized SEC and reference data.
-- Equity ETF pages render from official issuer and free-first evidence where available.
+- Equity ETF pages render only for supported-manifest ETFs and use official issuer and free-first evidence where available.
 - Partial pages render verified sections only and label missing evidence as unavailable, stale, unknown, or partial.
 - Every page shows freshness labels.
 - Every important claim has a citation or uncertainty note.
@@ -2523,7 +2544,7 @@ MVP is technically ready when:
 7. Markdown/JSON export/download is the v1 save-for-later workflow; exported output must include citations, freshness metadata, uncertainty labels, and the educational disclaimer while respecting provider licensing.
 8. Server-side caching, source-document checksums, generated-summary freshness hashes, and pre-cached knowledge packs should reduce provider and LLM calls.
 9. ETF issuer parser maintenance remains an implementation risk; parsers should store raw snapshots, checksums, and parser diagnostics.
-10. Leveraged ETFs, inverse ETFs, ETNs, fixed income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, crypto, options, international equities, preferred stocks, warrants, rights, and complex products are unsupported or out of scope for generated pages, chat, and comparisons unless explicitly added later.
+10. Leveraged ETFs, inverse ETFs, ETNs, fixed income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, single-stock ETFs, option-income/buffer ETFs, crypto, options, international equities, preferred stocks, warrants, rights, and complex products are unsupported or out of scope for generated pages, chat, and comparisons unless explicitly added later through a named scope expansion with its own manifest, source requirements, risk templates, parser coverage, and acceptance tests.
 11. Local implementation should start with Docker Compose for Next.js, FastAPI, PostgreSQL with pgvector, Redis, and S3-compatible object storage.
 12. LLM integration should be adapter-first with deterministic mocks for tests and a feature-flagged explicit OpenRouter free-model chain plus automatic DeepSeek V3.2 paid fallback for the first live deployment.
 13. Weekly News Focus is an asset-page feature with a fixed Monday-Sunday market-week window plus current week-to-date through yesterday; it is not a separate market brief page.

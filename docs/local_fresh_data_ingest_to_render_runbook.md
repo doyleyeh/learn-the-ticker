@@ -1,10 +1,12 @@
 # Local Fresh-Data Ingest-To-Render Runbook
 
-Task: T-118, updated by T-119
+Task: T-118, updated by T-119 and the v0.5 documentation alignment
 
 This runbook describes the local golden-asset smoke path before production deployment work. Normal CI uses deterministic fixtures, mocked official-source acquisition, and in-memory repositories. It must not require real SEC, issuer, market-data, broad news, storage, database, Redis, RSS, or LLM calls.
 
 Fetching alone is retrieval, not evidence approval. A retrieved source can support snapshots, normalized facts, citations, generated-output cache records, exports, or rendered UI only after Golden Asset Source Handoff approves source identity, source type, official-source status, storage rights, export rights, source-use policy, parser status, freshness/as-of metadata, and review status.
+
+ETF support note: the v0.5 PRD/TDS target separates supported ETF generated-output coverage from ETF/ETP recognition. Until T-120 lands, the repo still uses the legacy combined ETF fixture manifest, so local smoke should treat ETF manifest split behavior as an open gap rather than an implemented guarantee.
 
 ## Local Modes
 

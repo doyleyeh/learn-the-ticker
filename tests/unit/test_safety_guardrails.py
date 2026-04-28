@@ -351,20 +351,20 @@ def test_weekly_news_event_evidence_contract_copy_is_advice_safe():
     assert_no_forbidden_phrases("weekly news event evidence contract", combined)
 
 
-def test_backend_runtime_gap_audit_copy_is_advice_safe_and_sanitized():
-    text = (ROOT / "docs" / "backend_mvp_runtime_gap_audit.md").read_text(encoding="utf-8")
+def test_mvp_functional_gap_review_copy_is_advice_safe_and_sanitized():
+    text = (ROOT / "docs" / "mvp_functional_gap_review.md").read_text(encoding="utf-8")
 
     markers = [
-        "MVP Fresh-Data Runtime Gap Audit",
-        "runtime_gap",
+        "MVP Functional Gap Review",
         "Golden Asset Source Handoff",
-        "Top-500 candidate refresh",
+        "data/universes/us_equity_etfs_supported.current.json",
+        "data/universes/us_etp_recognition.current.json",
         "T-119 is complete",
-        "T-120: prove optional local durable repository smoke",
-        "T-121: add automated localhost browser E2E smoke",
-        "T-122: promote real official-source fetchers",
-        "T-123: prepare reviewed launch-universe expansion",
-        "Weekly News Focus showing only the evidence-backed set",
+        "T-120: implement v0.5 ETF manifest split contracts",
+        "T-121: add optional localhost browser/API E2E smoke",
+        "T-122: prove optional local durable repository smoke",
+        "T-123: promote real official-source fetchers",
+        "T-124: prepare reviewed launch-universe expansion plan",
         "Normal CI remains deterministic",
     ]
 
@@ -388,4 +388,4 @@ def test_backend_runtime_gap_audit_copy_is_advice_safe_and_sanitized():
     ]:
         assert forbidden not in text
 
-    assert_no_forbidden_phrases("backend runtime gap audit", text)
+    assert_no_forbidden_phrases("mvp functional gap review", text)

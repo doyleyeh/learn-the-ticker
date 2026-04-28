@@ -1,22 +1,22 @@
 ## Current task
 
-Ready for next task selection after T-119. Keep the next promoted task narrow and deterministic.
+Ready for next task selection after T-119 and the v0.5 documentation refresh. Keep the next promoted task narrow and deterministic.
 
 
 ## Backlog
 
-### T-120: Prove local durable repository smoke with API proxy enabled
+### T-120: Implement v0.5 ETF manifest split contracts
 
 Goal:
-Run and document a local `local_durable` smoke path, when Docker/Postgres/object-storage substitutes are available, that verifies the same API-backed browser surfaces covered by T-118 and T-119 without making live provider, news, market-data, or LLM calls.
+Replace the legacy combined ETF universe contract with separate v0.5 manifests for supported ETF generated-output coverage and ETF/ETP recognition-only blocked search states, without enabling live provider calls or generated output for recognition-only rows.
 
 Acceptance criteria:
 
-- Local durable configuration remains opt-in and placeholder-only.
-- Backend route reads prefer configured durable repositories and fall back safely when local durable services are unavailable.
-- Frontend `/api` proxy, direct API base helpers, and FastAPI CORS are included in the local browser smoke checklist.
-- Source drawer, chat, comparison, and exports render from approved source metadata only.
-- If Docker is unavailable, the task records that blocker without weakening CI expectations.
+- Add or generate deterministic fixture manifests at `data/universes/us_equity_etfs_supported.current.json` and `data/universes/us_etp_recognition.current.json`.
+- Update `backend/etf_universe.py`, search classification, frontend fallback copy, and tests so generated ETF pages/chat/comparisons/Weekly News/AI analysis/exports are allowed only from the supported ETF manifest.
+- Recognition rows can produce `unsupported`, `out_of_scope`, `pending_review`, `unavailable`, or `pending_ingestion` search states, but cannot unlock generated output.
+- Preserve current cached golden ETF behavior for `VOO` and `QQQ` where supported-manifest entries and validated fixture source packs exist.
+- Keep normal CI deterministic and free of live exchange, issuer, provider, market-data, news, or LLM calls.
 
 Required commands:
 
@@ -24,13 +24,14 @@ Required commands:
 python3 -m pytest tests -q
 npm test
 npm run typecheck
+python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_provider_adapters.py tests/unit/test_repo_contract.py -q
 python3 evals/run_static_evals.py
 bash scripts/run_quality_gate.sh
 git diff --check
 ```
 
 Iteration budget:
-One agent-loop cycle. Do not add production storage, live provider fetches, credentials, or recurring jobs.
+One agent-loop cycle. Do not promote broad ETF support beyond deterministic fixture manifests.
 
 ### T-121: Add browser E2E local smoke for API-backed MVP flows
 
@@ -58,7 +59,34 @@ git diff --check
 Iteration budget:
 One agent-loop cycle. Keep it deterministic and localhost-only.
 
-### T-122: Promote real official-source fetchers behind handoff-gated local opt-in
+### T-122: Prove local durable repository smoke with API proxy enabled
+
+Goal:
+Run and document a local `local_durable` smoke path, when Docker/Postgres/object-storage substitutes are available, that verifies the same API-backed browser surfaces covered by T-118, T-119, T-120, and T-121 without making live provider, news, market-data, or LLM calls.
+
+Acceptance criteria:
+
+- Local durable configuration remains opt-in and placeholder-only.
+- Backend route reads prefer configured durable repositories and fall back safely when local durable services are unavailable.
+- Frontend `/api` proxy, direct API base helpers, FastAPI CORS, and v0.5 ETF manifest split checks are included in the local smoke checklist.
+- Source drawer, chat, comparison, and exports render from approved source metadata only.
+- If Docker is unavailable, the task records that blocker without weakening CI expectations.
+
+Required commands:
+
+```bash
+python3 -m pytest tests -q
+npm test
+npm run typecheck
+python3 evals/run_static_evals.py
+bash scripts/run_quality_gate.sh
+git diff --check
+```
+
+Iteration budget:
+One agent-loop cycle. Do not add production storage, live provider fetches, credentials, or recurring jobs.
+
+### T-123: Promote real official-source fetchers behind handoff-gated local opt-in
 
 Goal:
 Replace the current mocked official-source acquisition readiness for a golden stock and ETF with explicit operator-only local fetcher execution, keeping normal CI mocked and requiring Golden Asset Source Handoff before evidence use.
@@ -82,17 +110,17 @@ git diff --check
 Iteration budget:
 One agent-loop cycle. Do not broaden beyond golden assets.
 
-### T-123: Prepare reviewed launch-universe expansion plan
+### T-124: Prepare reviewed launch-universe expansion plan
 
 Goal:
-Prepare the next deterministic step from the current small fixture manifest toward a reviewed top-500 launch manifest and launch ETF pack without changing runtime coverage truth or promoting unreviewed candidates.
+Prepare the next deterministic step from the current small fixture stock manifest and legacy ETF fixture coverage toward a reviewed top-500 launch manifest plus supported ETF launch pack, without changing runtime coverage truth or promoting unreviewed candidates.
 
 Acceptance criteria:
 
-- Candidate generation still writes `data/universes/us_common_stocks_top500.candidate.YYYY-MM.json` and a diff report only.
+- Candidate stock generation still writes `data/universes/us_common_stocks_top500.candidate.YYYY-MM.json` and a diff report only.
 - Runtime stock support remains tied to `data/universes/us_common_stocks_top500.current.json`.
-- ETF launch-pack expansion stays reviewed metadata-only and does not use live holdings as runtime support truth.
-- Source provenance, source snapshot dates, checksums, rank basis, SEC/Nasdaq validation status, and warnings are documented for review.
+- Supported ETF launch-pack expansion stays reviewed metadata-only and does not use recognition rows, live holdings, exchange listings, or provider ETF flags as runtime support truth.
+- Source provenance, source snapshot dates, checksums, rank basis, SEC/Nasdaq validation status, ETF wrapper classification, issuer source-pack status, and warnings are documented for review.
 
 Required commands:
 
@@ -130,6 +158,7 @@ Remaining risks:
 - This task wires local browser/API plumbing and deterministic tests. It does not add production auth, rate limiting, production deployment, broad live provider execution, or a full reviewed 500-name launch manifest.
 - Real official-source acquisition remains opt-in and golden-asset scoped until a future task promotes handoff-gated fetcher execution.
 - Local browser E2E is still manual curl/dev-server smoke in this task; an automated localhost browser smoke remains T-121.
+- The v0.5 ETF supported-manifest and recognition-manifest split remains T-120.
 
 ### T-118: Prove local fresh-data ingest-to-render smoke path
 
@@ -3266,7 +3295,7 @@ Current runtime snapshot:
 - The updated PRD/TDS/proposal make Golden Asset Source Handoff a blocker before retrieved sources can become evidence for storage, generation, citation, cache, source drawer, or export behavior.
 - The updated Top-500 workflow keeps runtime stock support tied to the approved current manifest; T-116 added deterministic monthly IWB/SPY/IVV/VOO candidate generation, SEC/Nasdaq validation, diff reporting, and manual-promotion gates, but no candidate has been approved or promoted to the current manifest.
 - T-119 closed the local frontend/API plumbing blockers found during manual smoke testing: chat POSTs, export URLs, comparison fetches, and browser direct backend calls now have a documented API-base/proxy/CORS strategy.
-- The prepared backlog is T-120 through T-123: optional local durable smoke, localhost browser E2E smoke, handoff-gated real official-source fetchers for golden assets, and reviewed launch-universe expansion planning.
+- The prepared backlog is T-120 through T-124: v0.5 ETF manifest split, localhost browser E2E smoke, optional local durable smoke, handoff-gated real official-source fetchers for golden assets, and reviewed launch-universe expansion planning.
 - T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, source allowlist expansion, admin auth/rate limiting, broader live ingestion, and real provider execution remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:
@@ -3315,7 +3344,7 @@ Operational defaults for general MVP roadmap tasks:
 - T-117 established handoff-gated mocked official-source acquisition execution for golden assets. It is completed and must not be reintroduced as runnable backlog.
 - T-118 established the local fresh-data ingest-to-render runbook and deterministic smoke coverage. It is completed and must not be reintroduced as runnable backlog.
 - T-119 established local frontend API access and backend CORS for chat, exports, comparison, and direct browser API calls. It is completed and must not be reintroduced as runnable backlog.
-- Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until local durable smoke, browser E2E smoke, handoff-gated real official-source fetchers, reviewed launch-universe expansion planning, and launch readiness work pass deterministic CI coverage.
+- Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until the ETF manifest split, browser E2E smoke, local durable smoke, handoff-gated real official-source fetchers, reviewed launch-universe expansion planning, and launch readiness work pass deterministic CI coverage.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted task should run the relevant EVALS.md checks, `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, `bash scripts/run_quality_gate.sh`, and `git diff --check`.
 
@@ -3371,9 +3400,11 @@ Roadmap integration tracker:
 
 Remaining unpromoted general MVP sequence:
 
-- Local durable repository smoke and browser E2E smoke after T-119, so dev-server testing can catch API proxy, CORS, chat, comparison, source drawer, glossary, and export regressions before production deployment work.
+- V0.5 ETF manifest split after T-119, so runtime support classification distinguishes supported ETF generated-output coverage from ETF/ETP recognition-only blocked search states.
+- Browser E2E smoke after the ETF split, so dev-server testing can catch API proxy, CORS, chat, comparison, source drawer, glossary, export, and supported-vs-recognition ETF regressions before production deployment work.
+- Local durable repository smoke after browser E2E, so fresh-data persistence can be verified through the same web/API path.
 - Handoff-gated real official-source fetcher execution for golden assets after local smoke coverage, while normal CI remains mocked and deterministic.
-- Reviewed launch-universe expansion planning before any promotion of a real top-500 current manifest or broader ETF launch pack.
+- Reviewed launch-universe expansion planning before any promotion of a real top-500 current manifest or supported ETF launch pack.
 - Full production deployment after those local MVP gaps: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
 - Recurring production jobs only after manual official-source acquisition, Top-500 candidate refresh review, and local fresh-data behavior are stable.
 - Broad paid-provider or news-provider integrations only after provider licensing/source-use review, no-secret-exposure tests, mocked CI fixtures, source-rights validation, and export/display constraints are documented.

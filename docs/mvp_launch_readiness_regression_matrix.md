@@ -38,6 +38,8 @@ This matrix is the deterministic launch-readiness regression layer before produc
 | `/api/assets/{ticker}/glossary` | generic context, asset-specific context, unavailable term | Asset-specific context is same-asset cited; generic definitions do not invent asset facts. |
 
 T-119 local web/API plumbing note: local browser smoke should verify that chat POSTs, export URLs, and comparison requests reach FastAPI through either `NEXT_PUBLIC_API_BASE_URL`/`API_BASE_URL` or the Next `/api/:path*` rewrite, and that direct browser calls are covered by `CORS_ALLOWED_ORIGINS`.
+
+V0.5 ETF manifest note: launch-readiness checks should next distinguish `data/universes/us_equity_etfs_supported.current.json` from `data/universes/us_etp_recognition.current.json`. The current implementation still uses the older combined ETF fixture manifest, so this is tracked as T-120 before further fresh-data expansion.
 | Export endpoints | asset page, source list, comparison, chat transcript, blocked/unavailable | Markdown and JSON exports include disclaimer, citations, freshness, uncertainty, source-use policy, and no restricted raw content. |
 | Ingestion and pre-cache routes | pending, running, succeeded, failed, unsupported, out of scope, unknown, unavailable | Deterministic jobs do not create provider calls, source facts, citations, generated pages, generated chat, generated comparisons, risk summaries, or generated-output cache records unless an existing validated fixture already provides them. |
 

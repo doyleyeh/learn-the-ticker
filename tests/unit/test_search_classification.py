@@ -400,7 +400,7 @@ def test_recognized_common_stock_outside_manifest_is_out_of_scope_not_eligible()
     assert "Top-500 manifest-backed" in result.blocked_explanation.summary
     assert "supported MVP" in result.blocked_explanation.summary
     assert result.blocked_explanation.scope_rationale == result.message
-    assert "non-leveraged U.S.-listed equity ETFs" in result.blocked_explanation.supported_v1_scope
+    assert "approved supported ETF manifest" in result.blocked_explanation.supported_v1_scope
     assert result.blocked_explanation.blocked_capabilities.can_open_generated_page is False
     assert result.blocked_explanation.blocked_capabilities.can_answer_chat is False
     assert result.blocked_explanation.blocked_capabilities.can_compare is False

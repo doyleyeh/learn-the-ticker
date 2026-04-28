@@ -161,7 +161,8 @@ bash scripts/run_quality_gate.sh
 
 Verify:
 
-- supported U.S.-listed common stocks and non-leveraged U.S.-listed equity ETFs resolve by exact ticker, partial ticker, asset name, and issuer/provider where useful
+- supported U.S.-listed common stocks and manifest-approved supported U.S. equity ETFs resolve by exact ticker, partial ticker, asset name, and issuer/provider where useful
+- supported ETF generated-output coverage reads only `data/universes/us_equity_etfs_supported.current.json`, while broader ETF/ETP recognition reads only `data/universes/us_etp_recognition.current.json`
 - clear comparison queries such as `VOO vs QQQ` show a comparison-route result instead of turning home search into a comparison builder
 - top-500 stock support comes from `data/universes/us_common_stocks_top500.current.json`, not a live provider query at request time
 - Top-500 refresh work writes reviewed candidates to `data/universes/us_common_stocks_top500.candidate.YYYY-MM.json` and never overwrites the approved current manifest without review
@@ -238,9 +239,10 @@ Verify:
 - task instructions are narrow enough for one agent-loop cycle
 - `TASKS.md` has a current task or backlog when continuous agent work is expected
 - backlog headings are small, sequential, and aligned with MVP scope
-- near-term task sequencing preserves Frontend Design and Workflow v0.4, then closes Golden Asset Source Handoff, Top-500 candidate refresh, and local fresh-data ingest-to-render gaps before production deployment expansion
+- near-term task sequencing preserves Frontend Design and Workflow v0.4, implements the v0.5 ETF manifest split, then closes browser E2E, local durable fresh-data, real-source fetcher, and launch-universe expansion gaps before production deployment expansion
 - agent prompts keep the v0.4 baseline visible: single-asset home search, separate comparison workflow, contextual glossary, mobile source/glossary/chat bottom sheets, stock-vs-ETF relationship badges, and evidence-backed Weekly News Focus limits
 - agent prompts keep the manifest-owned Top-500 rule and Golden Asset Source Handoff rule visible
+- agent prompts keep the supported ETF manifest and ETF/ETP recognition manifest split visible
 - Bash and PowerShell agent loops default to `gpt-5.5` with `high` reasoning effort, and allow explicit script-argument overrides such as `gpt-5.3-codex-spark`
 - agent prompts read proposal, PRD, technical design, SPEC, TASKS, and EVALS
 - PRD/TDS/proposal are treated as the current baseline after safety rules

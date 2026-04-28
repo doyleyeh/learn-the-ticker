@@ -1,8 +1,8 @@
 # Learn the Ticker: Citation-First Beginner U.S. Stock & ETF Research Assistant
 
 **Document type:** Detailed product proposal  
-**Version:** v0.4 frontend/workflow update
-**Last updated:** 2026-04-24
+**Version:** v0.5 ETF manifest policy update
+**Last updated:** 2026-04-27
 **Project stage:** Side-project MVP / v1 planning
 **Documentation role:** Narrative product vision. The PRD is the product source of truth, and the technical design spec is the implementation source of truth.
 
@@ -54,6 +54,8 @@ A user can search one ticker or asset name such as `VOO`, `QQQ`, `Apple`, or `AA
 The product should use official and structured sources as the factual backbone. The language model should not be treated as the source of truth. Instead, the model should translate verified facts, filings, prospectuses, holdings data, and other source-backed material into simple explanations for beginners.
 
 Fetching a filing, issuer document, API endpoint, or provider payload is only retrieval. It is not evidence approval. Golden Asset Source Handoff is the approval layer that decides whether a retrieved source may be stored, summarized, cited, generated from, or exported.
+
+ETF support is also a runtime coverage decision, not a descriptive product phrase. V1 ETF coverage must come from a reviewed supported ETF manifest plus deterministic rules, while broader ETF/ETP recognition may help search identify real but unsupported products.
 
 The result should feel like a calm learning product with receipts: easy to understand, visibly sourced, and careful about the difference between education and investment advice. The home page should lead with single-asset search. Comparison should be easy to enter, but it should live in its own workflow rather than replacing the main search experience.
 
@@ -201,7 +203,7 @@ Important facts must come from official or structured sources before the model w
 
 For stocks such as `AAPL` and `NVDA`, that means SEC EDGAR, SEC XBRL company facts, and SEC filing documents form the canonical backbone. Company investor relations pages, earnings releases, and presentations can be official secondary sources for recent context and management explanations.
 
-For ETFs such as `VOO`, `QQQ`, and `SOXX`, that means issuer materials form the canonical backbone: the official issuer page, fact sheet, prospectus, shareholder reports, holdings files, exposure files, and sponsor announcements.
+For ETFs such as `VOO`, `QQQ`, and `SOXX`, that means two gates must pass before the product can generate output: the ETF must be in the approved supported ETF manifest, and issuer materials must form the canonical evidence backbone. Issuer evidence includes the official issuer page, fact sheet, prospectus, shareholder reports, holdings files, exposure files, and sponsor announcements.
 
 Market/reference APIs and other provider payloads are retrieval and enrichment tools, not automatic evidence. Before any source can support product output, Golden Asset Source Handoff must approve its domain, source type, official-source status, storage rights, export rights, source-use policy, rationale, parser validity, and review status.
 
@@ -312,7 +314,7 @@ The first version should stay narrow and credible while still targeting the full
 The v1 product should support:
 
 - the top 500 U.S.-listed common stocks first;
-- non-leveraged U.S.-listed equity index, sector, and thematic ETFs;
+- U.S.-listed, active, non-leveraged, non-inverse, passive/index-based equity ETFs with primary U.S. equity exposure and validated issuer source packs;
 - home-page single-asset ticker/name search;
 - search and entity resolution;
 - stock asset pages;
@@ -351,6 +353,39 @@ The monthly refresh should use official ETF holdings as source inputs, then prod
 - Validate candidates against SEC `company_tickers_exchange.json` and Nasdaq Trader symbol-directory fields such as `ETF` and `Test Issue`. Rows that cannot be validated should be flagged for review instead of silently included.
 - Generate a diff report before approval, including added tickers, removed tickers, rank changes, missing CIKs, Nasdaq validation failures, source used, source dates, and checksum.
 - Require manual approval when fallback sources are used, source snapshots are stale or unparseable, validation coverage is below threshold, many tickers change, or top-ranked names disappear.
+
+### 8.1.2 ETF Supported Universe Definition
+
+The exact supported ETF universe should come from a versioned manifest, not from live provider lookup, issuer search results, exchange directory rows, or whatever an API currently classifies as an ETF.
+
+- Supported ETF source of truth: `data/universes/us_equity_etfs_supported.current.json`.
+- ETF/ETP recognition source of truth: `data/universes/us_etp_recognition.current.json`.
+- Production mirrors: private GCS objects configured through future ETF manifest URIs, following the same private-runtime posture as the top-500 stock manifest.
+- The supported ETF manifest includes only U.S.-listed, active, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs.
+- The ETF/ETP recognition universe may include real exchange-traded products that are unsupported, out of scope, pending review, unavailable, or pending ingestion. It exists so search can say "recognized but unsupported" instead of "unknown."
+- Runtime ETF-generated experiences must read the approved supported ETF manifest. Live exchange listings, Nasdaq ETF data, provider ETF flags, issuer search pages, and recognition rows may inform candidates or blocked search states, but they must not unlock ETF pages, chat, comparisons, Weekly News Focus, AI Comprehensive Analysis, or exports.
+- Supported ETF manifest entries should include ticker, fund name, issuer, primary exchange, wrapper type, support scope, passive/index flag, leverage/inverse flags, asset class, primary geographic exposure, benchmark/index when available, required issuer source-pack references, parser validation status, Golden Asset Source Handoff approval status, snapshot date, generated checksum, approval timestamp, and review notes.
+- The manifest is operational coverage metadata only. It is not an ETF recommendation list, model portfolio, or statement that a supported ETF is suitable for any user.
+
+Candidate discovery may use official exchange and regulatory inputs, but support requires issuer evidence and manual review. Nasdaq Trader symbol-directory fields such as `ETF` and `Test Issue` are useful for ticker validation and test-issue rejection.[10] Nasdaq-listed ETP data exposes type, bucket label, and investment strategy group fields that can identify single-stock and derivatives-strategy products before they reach generation.[11] NYSE separates exchange-traded funds from exchange-traded vehicles, exchange-traded notes, and closed-end funds, supporting the recognition-vs-support split.[12] NYSE Regulation also describes product-specific approval paths for exchange-traded products, so listing context remains review input rather than runtime approval.[14] Cboe's ETF listing materials similarly cover ETFs, ETNs, CEFs, and other exchange-traded products, so listing recognition cannot equal product support.[13] SEC ETF website disclosure guidance supports requiring official issuer holdings and trading-context disclosures before an ETF is supported.[2]
+
+The v1 supported ETF manifest should start with the golden ETF set from the PRD:
+
+- Broad ETFs: `VOO`, `SPY`, `VTI`, `IVV`, `QQQ`, `IWM`, `DIA`.
+- Sector/theme ETFs: `VGT`, `XLK`, `SOXX`, `SMH`, `XLF`, `XLV`, `XLE`.
+
+An ETF candidate should not be promoted to supported until every gate passes:
+
+- correct ETF wrapper, not ETN, ETV, CEF, fund closed to creation, or another unsupported exchange-traded product;
+- U.S. listing and active trading status, with no test-issue flag;
+- primary U.S. equity exposure;
+- passive/index-based strategy;
+- no leverage, inverse exposure, single-stock structure, derivatives-first strategy, option-income/buffer structure, fixed income, commodity, crypto, international equity, active, or multi-asset scope;
+- official issuer source pack available and approved through Golden Asset Source Handoff;
+- parser validation for the minimum issuer page, fact sheet, holdings, exposure or sector data when available, risk/methodology source, and freshness/as-of metadata;
+- manual approval recorded with source dates, checksums, exclusions, warnings, and review notes.
+
+Recognized ETFs or ETPs outside the supported manifest may appear in search as `unsupported`, `out_of_scope`, `pending_review`, `unavailable`, or `pending_ingestion`, but they must not generate educational pages, chat answers, comparison output, Weekly News Focus, AI Comprehensive Analysis, or exports.
 
 ### 8.2 Out of scope for v1
 
@@ -396,7 +431,7 @@ Recommended home headline:
 
 Recommended supporting copy:
 
-> Search a U.S. stock or non-leveraged U.S. equity ETF to see beginner-friendly explanations, source citations, top risks, recent context, and grounded follow-up answers.
+> Search a U.S. stock or supported U.S. equity ETF to see beginner-friendly explanations, source citations, top risks, recent context, and grounded follow-up answers.
 
 The user enters a ticker or name such as:
 
@@ -958,12 +993,13 @@ For stocks, the source priority should be:
 
 For ETFs, the source priority should be:
 
-1. ETF issuer official page;
-2. ETF fact sheet;
-3. summary prospectus and full prospectus;
-4. shareholder reports;
-5. issuer holdings files, exposure files, and official ETF website disclosures;
-6. sponsor announcements and allowlisted reputable free news sources for Weekly News Focus context.
+1. approved supported ETF manifest entry;
+2. ETF issuer official page;
+3. ETF fact sheet;
+4. summary prospectus and full prospectus;
+5. shareholder reports;
+6. issuer holdings files, exposure files, and official ETF website disclosures;
+7. sponsor announcements and allowlisted reputable free news sources for Weekly News Focus context.
 
 ## 12.3 Source use by content type
 
@@ -1096,12 +1132,15 @@ Generate:
 
 Map ticker to:
 
+- supported ETF manifest entry or recognized ETF/ETP blocked state;
 - issuer;
 - fund name;
 - equity ETF category;
 - exchange;
 - asset class;
 - supported asset status.
+
+ETF identity resolution is two-layered. The broad recognition universe can identify real ETFs, ETNs, ETVs, CEFs, single-stock funds, option-income/buffer funds, active ETFs, fixed income funds, commodity funds, crypto products, and other ETP wrappers for search safety. The supported ETF manifest is narrower and is the only source that can unlock generated ETF experiences.
 
 ### Step 2: Official source retrieval
 
@@ -1941,3 +1980,7 @@ The product should help users understand what they are looking at before they ma
 [8]: https://institutional.vanguard.com/assets/corp/fund_communications/pdf_publish/us-products/fact-sheet/F0968.pdf "Vanguard S&P 500 ETF fact sheet"
 [9]: https://www.sec.gov/file/company-tickers-exchange "SEC Company Tickers Exchange"
 [10]: https://www.nasdaqtrader.com/trader.aspx?id=symboldirdefs "Nasdaq Trader Symbol Directory Definitions"
+[11]: https://www.nasdaqtrader.com/Trader.aspx?id=etf_definitions "NASDAQ-Listed Exchange Traded Products Data Definitions"
+[12]: https://www.nyse.com/listings_directory/etf "NYSE Listings Directory - ETFs"
+[13]: https://www.cboe.com/listings/us/etf/ "Cboe U.S. ETF Listings"
+[14]: https://www.nyse.com/regulation/exchange-traded-products "NYSE Regulation - Exchange Traded Products"

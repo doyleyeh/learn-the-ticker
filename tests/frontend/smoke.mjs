@@ -794,7 +794,7 @@ includes("lib/search.ts", "comparison_route");
 includes("lib/search.ts", "/compare\\?left=");
 includes("lib/search.ts", "VOO, QQQ, AAPL, NVDA, and SOXX");
 includes("lib/search.ts", "We found this ticker, but it is not supported in v1.");
-includes("lib/search.ts", "Learn the Ticker currently supports U.S.-listed common stocks and non-leveraged U.S.-listed equity ETFs.");
+includes("lib/search.ts", "Learn the Ticker currently supports U.S.-listed common stocks in the Top-500 manifest and ETFs in the approved supported ETF manifest.");
 for (const blockedFallbackMarker of [
   "ARKK",
   "BND",

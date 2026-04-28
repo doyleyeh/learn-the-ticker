@@ -116,7 +116,7 @@ export type LocalSearchResponse = {
 };
 
 const SUPPORTED_V1_SCOPE_REMINDER =
-  "Learn the Ticker currently supports U.S.-listed common stocks and non-leveraged U.S.-listed equity ETFs.";
+  "Learn the Ticker currently supports U.S.-listed common stocks in the Top-500 manifest and ETFs in the approved supported ETF manifest.";
 
 const EMPTY_BLOCKED_CAPABILITIES: SearchBlockedCapabilityFlags = {
   can_open_generated_page: false,

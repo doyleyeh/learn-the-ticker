@@ -4,7 +4,7 @@
 
 This project is a citation-first beginner U.S. stock and ETF learning assistant.
 
-The product helps beginners understand U.S.-listed common stocks and non-leveraged U.S.-listed equity ETFs using:
+The product helps beginners understand U.S.-listed common stocks and manifest-approved U.S.-listed passive/index-based U.S. equity ETFs using:
 
 - official or structured sources first
 - plain-English explanations
@@ -123,11 +123,17 @@ V1 is accountless and English-first.
 Supported MVP coverage is:
 
 - top-500-first U.S.-listed common stocks from `data/universes/us_common_stocks_top500.current.json`
-- non-leveraged U.S.-listed equity index, sector, and thematic ETFs
+- manifest-approved U.S.-listed, active, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs
 - pre-cached high-demand assets for reliable launch behavior
 - explicit `pending_ingestion` only for eligible supported assets that are approved for on-demand ingestion
 
-The top-500 manifest is the runtime source of truth for stock coverage. Runtime support classification must never be resolved directly from a live ETF holdings file, provider holdings file, market-data response, or rank query.
+The top-500 manifest is the runtime source of truth for stock coverage. The supported ETF manifest is the runtime source of truth for ETF generated-output coverage. Runtime support classification must never be resolved directly from a live ETF holdings file, provider holdings file, market-data response, exchange listing, issuer search result, recognition-only ETP row, or rank query.
+
+ETF support work must preserve the v0.5 split:
+
+- supported ETF generated-output coverage comes only from `data/universes/us_equity_etfs_supported.current.json`
+- broader ETF/ETP recognition for blocked search states comes from `data/universes/us_etp_recognition.current.json`
+- recognition rows may identify unsupported, out-of-scope, pending-review, unavailable, or pending-ingestion products, but must not unlock asset pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, or exports
 
 Top-500 refresh work must:
 
@@ -138,7 +144,7 @@ Top-500 refresh work must:
 - preserve source provenance, source snapshot dates, checksums, rank basis, validation status, and warnings
 - generate a diff report and require manual approval before replacing `data/universes/us_common_stocks_top500.current.json`
 
-Unsupported or out-of-scope assets include options, crypto, international equities, leveraged ETFs, inverse ETFs, ETNs, fixed income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, preferred stocks, warrants, rights, and other complex products unless explicitly added later. Recognized-but-unsupported and out-of-scope assets may appear in search, but must not receive generated pages, generated chat answers, generated comparisons, or generated risk summaries.
+Unsupported or out-of-scope assets include options, crypto, international equities, leveraged ETFs, inverse ETFs, ETNs, fixed income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, single-stock ETFs, option-income or buffer ETFs, preferred stocks, warrants, rights, and other complex products unless explicitly added later. Recognized-but-unsupported and out-of-scope assets may appear in search, but must not receive generated pages, generated chat answers, generated comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, or generated risk summaries.
 
 Partial evidence is acceptable. If sources cannot verify a section, render verified sections only and label missing pieces as `partial`, `stale`, `unknown`, `unavailable`, or `insufficient_evidence`.
 
@@ -265,6 +271,7 @@ When touching agent-loop, environment, or workspace layout, verify:
 
 - root npm scripts still work
 - `apps/web` workspace scripts work
+- v0.5 ETF support classification stays split between the supported ETF manifest and the ETF/ETP recognition manifest
 - Bash and PowerShell agent prompts stay aligned
 - placeholder env files contain no real secrets
 - Docker scaffolding validates when Docker is available

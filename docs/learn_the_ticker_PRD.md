@@ -1,7 +1,7 @@
 # PRD: Learn the Ticker - Citation-First Beginner U.S. Stock & ETF Research Assistant
 
-**Document version:** v0.4 frontend/workflow update
-**Date:** 2026-04-24
+**Document version:** v0.5 ETF manifest policy update
+**Date:** 2026-04-27
 **Product stage:** Side-project MVP / v1 planning  
 **Primary audience:** Product, design, engineering, data/LLM, and compliance reviewers
 **Source basis:** Original proposal, PRD v0.1, technical design spec v0.1, and resolved product decisions from current review.
@@ -11,7 +11,7 @@
 
 ## 1. Executive summary
 
-Learn the Ticker is a web-based educational research assistant that helps beginner investors understand U.S.-listed common stocks and non-leveraged U.S.-listed equity index, sector, and thematic ETFs in plain English.
+Learn the Ticker is a web-based educational research assistant that helps beginner investors understand U.S.-listed common stocks and a manifest-approved set of U.S.-listed, active, non-leveraged, non-inverse, passive/index-based U.S. equity ETFs in plain English.
 
 A user can search one ticker or asset name such as `VOO`, `QQQ`, `Apple`, or `AAPL` and receive a source-grounded explanation of:
 
@@ -55,7 +55,7 @@ This version resolves the previous open questions and makes the MVP direction ex
 
 | Area                     | Decision                                                                                                                                                                                                                                                                                                                                                                                                      |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Coverage universe        | Support a top-500-first U.S.-listed common stock universe plus non-leveraged U.S.-listed equity index, sector, and thematic ETFs. Pre-cache the existing curated high-demand universe for speed, testing, and reliability. Treat stocks outside the top 500 as future expansion unless explicitly added to an allowlisted on-demand ingestion queue.                                                                                                                     |
+| Coverage universe        | Support a top-500-first U.S.-listed common stock universe plus a manifest-approved supported ETF universe. Supported ETF coverage is limited to U.S.-listed, active, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs. Pre-cache the existing curated high-demand universe for speed, testing, and reliability. Treat stocks outside the top 500 and ETFs outside the supported ETF manifest as future expansion unless explicitly approved. |
 | Unsupported assets       | Block unsupported and out-of-scope assets from generated pages, chat, and comparisons. Search may show a recognized-but-unsupported or recognized-but-out-of-scope result with a clear explanation.                                                                                                                                                |
 | Market/reference data    | Use a free-first approach: SEC EDGAR/XBRL, official issuer materials, free/reference metadata where available, provider adapters, deterministic mocks, and fixtures for tests. No paid provider keys are assumed for v1; paid market/reference providers may be added later behind adapters after licensing and export-rights review.                 |
 | Golden Asset Source Handoff | Treat source handoff as the approval layer and API fetching as only the retrieval layer. A fetched API payload, endpoint, issuer page, or filing URL is not approved evidence until domain, source type, official-source status, storage rights, export rights, source-use policy, rationale, parser validity, freshness/as-of metadata, and review status are approved. |
@@ -128,6 +128,26 @@ Monthly refresh workflow:
 - Validate candidate rows against SEC `company_tickers_exchange.json` and Nasdaq Trader symbol-directory fields such as `ETF` and `Test Issue`. Rows that cannot be validated are review warnings, not silent inclusions.
 - Produce a diff report before approval with added tickers, removed tickers, rank changes, missing CIKs, Nasdaq validation failures, source used, source dates, and checksum.
 - Require manual approval when fallback sources are used, source snapshots are stale or unparseable, validation coverage is below threshold, many tickers change, or top-ranked names disappear.
+
+### 2.3 ETF Supported Universe Definition
+
+The authoritative source for v1 supported ETF coverage is a versioned manifest, not live provider lookup, exchange directory search, issuer search results, or a generic ETF flag.
+
+- Supported ETF manifest path: `data/universes/us_equity_etfs_supported.current.json`.
+- ETF/ETP recognition manifest path: `data/universes/us_etp_recognition.current.json`.
+- The recognition manifest helps search identify real exchange-traded products, including unsupported ETFs, ETNs, ETVs, closed-end funds, commodity products, active ETFs, single-stock funds, option-income/buffer products, leveraged funds, inverse funds, and other complex wrappers.
+- The supported ETF manifest is the only ETF runtime authority for generated asset pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, and exports.
+- Supported ETF entries must be U.S.-listed, active, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs.
+- Issuer source packs must pass Golden Asset Source Handoff and parser validation before an ETF is marked supported.
+- Search may display recognized ETFs or ETPs outside the supported manifest as `unsupported`, `out_of_scope`, `pending_review`, `unavailable`, or `pending_ingestion`, but those states must block generated output.
+- The supported ETF manifest is operational coverage metadata, not an endorsement, recommendation, model portfolio, or statement of suitability.
+
+The launch supported ETF set should start with:
+
+- Broad ETFs: `VOO`, `SPY`, `VTI`, `IVV`, `QQQ`, `IWM`, `DIA`.
+- Sector/theme ETFs: `VGT`, `XLK`, `SOXX`, `SMH`, `XLF`, `XLV`, `XLE`.
+
+ETF support expansion requires a reviewed candidate packet with exchange or regulatory recognition evidence, issuer source-pack references, source dates, checksums, wrapper classification, leverage/inverse flags, asset-class and geographic-exposure checks, passive/index validation, parser results, Golden Asset Source Handoff approval, exclusions, warnings, and manual approval notes.
 
 ## 3. Product positioning
 
@@ -301,7 +321,7 @@ Primary needs:
 #### Asset coverage
 
 - Top 500 U.S.-listed common stocks first, based on a deterministic launch universe maintained by ingestion configuration
-- Non-leveraged U.S.-listed equity index, sector, and thematic ETFs
+- Manifest-approved U.S.-listed, active, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs
 - Pre-cached high-demand stocks and ETFs for launch performance
 - Limited on-demand ingestion only for assets that pass deterministic classification and are explicitly added to the supported queue
 
@@ -335,7 +355,7 @@ Primary needs:
 - User accounts
 - Personalized investment recommendations
 - Tax advice
-- Options, crypto, international equities, leveraged ETFs, inverse ETFs, ETNs, fixed income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, preferred stocks, warrants, rights, and other complex products
+- Options, crypto, international equities, leveraged ETFs, inverse ETFs, ETNs, fixed income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, single-stock ETFs, option-income/buffer ETFs, preferred stocks, warrants, rights, and other complex products
 - Native iOS or Android app
 - Read-aloud, text-to-speech, or generated audio for news and analysis
 - Traditional Chinese localization
@@ -410,14 +430,14 @@ Success outcome: the user understands the company's business model and main risk
 
 ### 10.4 Handle an unsupported ETF
 
-1. User searches a leveraged ETF, inverse ETF, ETN, or complex exchange-traded product.
+1. User searches a leveraged ETF, inverse ETF, ETN, active ETF, commodity product, fixed income ETF, single-stock ETF, option-income/buffer ETF, international equity ETF, or complex exchange-traded product.
 2. System recognizes the ticker when possible.
 3. System does not generate a full page, chat answer, or comparison.
 4. System shows a recognized-but-unsupported state.
 
 Suggested copy:
 
-> We found this ticker, but it is not supported in v1 because it appears to be leveraged, inverse, fixed income, commodity, active, multi-asset, an ETN, or another complex or out-of-scope product. Learn the Ticker currently supports U.S.-listed common stocks and non-leveraged U.S.-listed equity ETFs only.
+> We found this ticker, but it is not supported in v1 because it appears to be leveraged, inverse, fixed income, commodity, active, multi-asset, international, single-stock, option-income/buffer, an ETN, or another complex or out-of-scope exchange-traded product. Learn the Ticker currently supports a top-500-first U.S. common-stock universe and a reviewed manifest of U.S.-listed passive/index-based U.S. equity ETFs only.
 
 Success outcome: the product avoids explaining complex products in a way that could mislead beginners.
 
@@ -459,7 +479,7 @@ Understand a stock or ETF in plain English
 Supporting copy:
 
 ```text
-Search a U.S. stock or non-leveraged U.S. equity ETF to see beginner-friendly explanations, source citations, top risks, recent context, and grounded follow-up answers.
+Search a U.S. stock or supported U.S. equity ETF to see beginner-friendly explanations, source citations, top risks, recent context, and grounded follow-up answers.
 ```
 
 Primary search placeholder:
@@ -479,7 +499,7 @@ The home page should not show two comparison inputs as the primary experience. I
 | SR-3 | System resolves canonical ticker, name, asset type, exchange, issuer/provider/company, and relevant identifiers.                  | P0       |
 | SR-4 | System distinguishes supported, unsupported, out-of-scope, pending ingestion, partial, stale, and unavailable states before page routing.   | P0       |
 | SR-5 | System handles ambiguous names with a disambiguation state.                                                                       | P1       |
-| SR-6 | System supports the top 500 U.S.-listed common stocks first and non-leveraged U.S.-listed equity ETFs through search and ingestion.    | P0       |
+| SR-6 | System supports the top 500 U.S.-listed common stocks first and supported ETFs only through the approved stock and ETF manifests.    | P0       |
 | SR-7 | System pre-caches a high-demand universe and labels out-of-cache supported assets as pending ingestion instead of pretending content is ready.                                                       | P0       |
 | SR-8 | Autocomplete supports partial ticker, partial name, and issuer/provider matching where useful.                                    | P0       |
 | SR-9 | Search result rows show ticker, name, asset type, exchange or issuer/provider, and support status.                               | P0       |
@@ -489,8 +509,9 @@ The home page should not show two comparison inputs as the primary experience. I
 Acceptance criteria:
 
 - Searching `AAPL` opens Apple's stock page.
-- Searching `VOO` opens Vanguard S&P 500 ETF's ETF page.
+- Searching `VOO` opens Vanguard S&P 500 ETF's ETF page only when `VOO` is in `data/universes/us_equity_etfs_supported.current.json` and has a validated source pack or safe ingestion state.
 - Searching an unsupported crypto ticker, option, leveraged ETF, inverse ETF, ETN, fixed income ETF, commodity ETF, active ETF, multi-asset ETF, or international equity shows an unsupported or out-of-scope state.
+- Searching a recognized ETF or ETP outside `data/universes/us_equity_etfs_supported.current.json` shows a blocked state rather than generated ETF content.
 - Ambiguous name searches show likely matches instead of guessing silently.
 - Exact recognized-but-unsupported ticker searches show "We found this ticker, but it is not supported in v1" and do not show generated summary, top risks, chat, comparison CTA, Weekly News Focus, or AI Comprehensive Analysis.
 - No-result searches show "No supported stock or ETF found for `{query}`" and do not treat unknown searches as recognized unsupported assets.
@@ -516,6 +537,8 @@ Blocked asset types for v1 include:
 - commodity ETFs
 - active ETFs
 - multi-asset ETFs
+- single-stock ETFs
+- option-income or buffer ETFs
 - options
 - crypto assets
 - international equities
@@ -528,7 +551,8 @@ Deterministic classification rules:
 - If `inverse_flag == true`, mark the asset `unsupported`.
 - If `asset_class != equity`, mark the asset `unsupported`.
 - If `strategy == active`, mark the asset `unsupported`.
-- If an asset is not a U.S.-listed common stock in the top-500 launch universe or a non-leveraged U.S.-listed passive equity ETF, mark it `unsupported` or `out_of_scope` for MVP.
+- If an ETF is not present in `data/universes/us_equity_etfs_supported.current.json`, mark it `unsupported`, `out_of_scope`, `pending_review`, `unavailable`, or `pending_ingestion` based on deterministic recognition and review state.
+- If an asset is not a U.S.-listed common stock in the top-500 launch universe or a manifest-approved U.S.-listed passive/index-based U.S. equity ETF, mark it `unsupported` or `out_of_scope` for MVP.
 - If a supported asset passes classification but has not been ingested yet, return `pending_ingestion` and create or reuse a queued ingestion job.
 - other complex or unsupported exchange-traded products
 
@@ -537,7 +561,7 @@ Required blocked-state copy:
 ```text
 We found this ticker, but it is not supported in v1.
 
-Learn the Ticker currently supports U.S.-listed common stocks and non-leveraged U.S.-listed equity ETFs.
+Learn the Ticker currently supports a top-500-first U.S. common-stock universe and ETFs listed in the approved supported ETF manifest.
 ```
 
 For out-of-scope stocks:
@@ -545,7 +569,7 @@ For out-of-scope stocks:
 ```text
 This stock is outside the current v1 coverage universe.
 
-Learn the Ticker currently supports a top-500-first U.S. common stock universe and supported non-leveraged U.S. equity ETFs.
+Learn the Ticker currently supports a top-500-first U.S. common stock universe and ETFs in the approved supported ETF manifest.
 ```
 
 For pending ingestion:
@@ -649,6 +673,8 @@ Acceptance criteria:
 
 The ETF page explains what the fund is trying to do, what it holds, how it is constructed, its costs, trading context, risks, and comparison context. ETF role language is educational classification, not personalized portfolio advice.
 
+ETF pages are generated only for ETFs in `data/universes/us_equity_etfs_supported.current.json`. Recognition rows from `data/universes/us_etp_recognition.current.json`, live provider ETF flags, exchange listings, or issuer search results cannot unlock ETF page generation without supported-manifest approval and a validated issuer source pack.
+
 | ID     | Requirement                                                                                                                                 | Priority |
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
 | ETF-1  | Show ETF snapshot: name, ticker, issuer/provider, category, asset class, passive/active, benchmark/index, expense ratio, AUM, last updated. | P0       |
@@ -679,6 +705,7 @@ Acceptance criteria:
 - User can see cost, concentration, and trading-context tradeoffs.
 - User can compare the ETF with simpler alternatives.
 - ETF role copy avoids personalized allocation advice. Safe language says a fund is broader or narrower because of what it tracks or holds; unsafe language assigns a personalized portfolio role to the user.
+- ETFs outside the supported ETF manifest never render generated summaries, risks, chat, comparison CTA output, Weekly News Focus, AI Comprehensive Analysis, or exports.
 
 ### 11.6 Comparison page
 
@@ -1273,7 +1300,7 @@ Provider-selection requirements:
 - Must support commercial use needed by the app before production use.
 - Must permit the required display, caching, and export behavior.
 - Must provide clear data freshness or as-of fields.
-- Must support U.S.-listed stocks and non-leveraged equity ETFs at MVP scale.
+- Must support U.S.-listed stocks and manifest-approved supported U.S. equity ETFs at MVP scale.
 - Must have documented rate limits and reliable API behavior.
 - Must allow attribution/source labeling where required.
 
@@ -1859,7 +1886,7 @@ Weekly News Focus checked: Apr 22, 2026
 
 ### 19.1 MVP / v1
 
-Objective: Ship a credible, source-grounded, accountless beginner explainer for the top 500 U.S.-listed common stocks first and non-leveraged U.S.-listed equity ETFs.
+Objective: Ship a credible, source-grounded, accountless beginner explainer for the top 500 U.S.-listed common stocks first and the manifest-approved supported U.S. equity ETF universe.
 
 The phases below describe MVP scope and delivery milestones. They do not relax the acceptance checklist or safety, citation, source-use, freshness, and no-advice requirements.
 
@@ -1944,7 +1971,8 @@ Potential additions:
 
 The MVP is ready when:
 
-- User can search a supported top-500 U.S.-listed common stock or non-leveraged U.S.-listed equity ETF.
+- User can search a supported top-500 U.S.-listed common stock or a manifest-approved supported U.S. equity ETF.
+- ETF support is controlled by `data/universes/us_equity_etfs_supported.current.json`; `data/universes/us_etp_recognition.current.json` can identify unsupported ETPs for blocked search states only.
 - Home page has one primary action: search one stock or ETF.
 - Home page does not present comparison or Glossary as a primary workflow.
 - Search autocomplete supports partial ticker/name/issuer matches and support-state chips.
@@ -1985,7 +2013,7 @@ Strict MVP quality gates:
 - Zero known buy/sell/hold, allocation, tax, guaranteed-return, or unsupported price-target violations in golden tests.
 - Cached search, asset pages, comparison pages, source drawer, and chat meet the performance targets in the technical design spec.
 - CI includes unit, integration, schema, citation validation, safety, export, and golden asset tests.
-- Golden tests verify that `AAPL` and `NVDA` canonical facts prefer SEC EDGAR/XBRL/filing documents, while `VOO`, `QQQ`, and `SOXX` canonical facts prefer issuer materials.
+- Golden tests verify that `AAPL` and `NVDA` canonical facts prefer SEC EDGAR/XBRL/filing documents, while supported golden ETF canonical facts prefer the supported ETF manifest plus issuer materials.
 - Golden tests verify that duplicate, promotional, irrelevant, non-allowlisted, and license-disallowed news is excluded from Weekly News Focus.
 - Golden tests verify Monday-Sunday plus current week-to-date through yesterday windowing.
 - Golden tests verify prompt-injection, source-sanitization, SSRF-defense, chat privacy, rate-limit, many-citation, fact-versioning, and stock-vs-ETF comparison scenarios.
@@ -2060,7 +2088,7 @@ Risk: the product could become a trading, portfolio, or advice product.
 
 Mitigation:
 
-- Keep v1 focused on education for stocks and non-leveraged equity ETFs.
+- Keep v1 focused on education for stocks and manifest-approved supported U.S. equity ETFs.
 - Block unsupported products.
 - Defer user accounts and portfolio features.
 - Evaluate every feature against the core promise: help beginners understand what they are looking at.
@@ -2075,6 +2103,7 @@ Provider role summary:
 
 - SEC EDGAR, SEC XBRL company facts, and SEC filing documents are the primary official sources for stock identity, filings history, filing-derived business descriptions, financial facts, and risk extraction.
 - Official ETF issuer materials are the primary source for ETF identity, holdings, fees, methodology, exposures, and fund risks.
+- The supported ETF manifest is the primary runtime policy for ETF coverage; issuer materials are the primary evidence source after manifest approval.
 - Financial Modeling Prep, Finnhub, Tiingo, Alpha Vantage, EODHD, yfinance, and similar providers may be used only as enrichment where licensing, rate limits, attribution, display, caching, and export rights allow; unclear rights restrict usage to internal diagnostics, enrichment, or metadata-only use.
 - Official filings, company investor relations, ETF issuer updates, and license-compatible allowlisted sources should feed Weekly News Focus before general news APIs.
 - yfinance is a local-development and emergency fallback tool only, not production truth.
@@ -2102,6 +2131,21 @@ Provider role summary:
 
 8. SEC ETF website disclosure guidance includes daily holdings and market information requirements, including portfolio holdings used for NAV calculation and related ETF website disclosures.
    Reference: https://www.sec.gov/about/divisions-offices/division-investment-management/accounting-disclosure-information/adi-2025-15-website-posting-requirements
+
+8a. NYSE's listings directory distinguishes exchange-traded funds from exchange-traded vehicles, exchange-traded notes, and closed-end funds. This supports keeping broad ETP recognition separate from supported ETF generation.
+    Reference: https://www.nyse.com/listings_directory/etf
+
+8b. NYSE Regulation describes exchange-traded product oversight for ETFs and ETNs and notes product-specific approvals. This supports treating exchange listing evidence as recognition and review input, not runtime support by itself.
+    Reference: https://www.nyse.com/regulation/exchange-traded-products
+
+8c. Nasdaq Trader symbol-directory definitions include fields such as `ETF` and `Test Issue`, useful for validation and test-issue rejection.
+    Reference: https://www.nasdaqtrader.com/trader.aspx?id=symboldirdefs
+
+8d. Nasdaq-listed exchange-traded product data includes `Type`, `Bucket Label`, and `Investment Strategy Group`, which can help identify single-stock and derivatives-strategy products before support review.
+    Reference: https://www.nasdaqtrader.com/Trader.aspx?id=etf_definitions
+
+8e. Cboe describes U.S. ETF listings as part of broader exchange-traded product listings, including ETFs, ETNs, CEFs, and other innovative investment vehicles. This supports recognition without automatic support.
+    Reference: https://www.cboe.com/listings/us/etf/
 
 9. FINRA describes Regulation Best Interest as establishing a best-interest standard for broker-dealers when making recommendations to retail customers about securities transactions or investment strategies. This supports the product's conservative boundary against recommendations.
    Reference: https://www.finra.org/rules-guidance/key-topics/regulation-best-interest
@@ -2179,7 +2223,7 @@ Provider role summary:
 
 ## 23. Appendix B: Suggested first pre-cached universe
 
-The product supports the top 500 U.S.-listed common stocks first and non-leveraged U.S.-listed equity ETFs. Launch reliability improves if a smaller high-demand universe is pre-cached.
+The product supports the top 500 U.S.-listed common stocks first and the manifest-approved supported ETF universe. Launch reliability improves if a smaller high-demand universe is pre-cached.
 
 Suggested MVP pre-cache set:
 

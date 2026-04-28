@@ -2,7 +2,7 @@
 
 ## Product Success
 
-Learn the Ticker helps beginners understand U.S.-listed common stocks and non-leveraged U.S.-listed equity ETFs through plain-English, source-backed explanations.
+Learn the Ticker helps beginners understand U.S.-listed common stocks and manifest-approved U.S.-listed passive/index-based U.S. equity ETFs through plain-English, source-backed explanations.
 
 A successful answer or asset page helps the user understand:
 
@@ -36,7 +36,7 @@ MVP direction:
 MVP product scope:
 
 - top-500-first U.S.-listed common stocks from `data/universes/us_common_stocks_top500.current.json`
-- non-leveraged U.S.-listed equity index, sector, and thematic ETFs
+- manifest-approved U.S.-listed, active, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs
 - pre-cached high-demand launch universe for reliability and latency
 - explicit `pending_ingestion` states only for approved eligible supported assets outside the pre-cache set
 - home page single-asset search first, with natural `A vs B` queries redirecting to comparison instead of turning home into a comparison builder
@@ -61,17 +61,19 @@ Current implementation stage:
 - frontend routes and components exist for home search, API-backed asset pages with deterministic fallback, comparison, chat, source metadata, glossary, and export controls
 - local frontend/API plumbing exists for MVP smoke testing: browser helpers prefer the configured FastAPI base URL, the Next app can rewrite `/api/:path*` to the local backend, and FastAPI CORS is wired from `CORS_ALLOWED_ORIGINS`
 - local durable repository execution has in-memory fallback and configured reader boundaries, but normal CI remains fixture-backed
+- v0.5 ETF manifest policy is documented, but implementation still uses the older combined `data/universes/us_equity_etfs.current.json`; splitting this into supported ETF and ETF/ETP recognition manifests is the next alignment task
 - opt-in official-source acquisition readiness exists for SEC stock, ETF issuer, and Weekly News golden paths, but the current readiness paths are still mocked and golden-asset scoped
 - CI and local checks are deterministic and fixture-backed; normal quality gates do not depend on live provider, market-data, news, or LLM calls
 
 Near-term implementation priority order:
 
 1. preserve the deterministic launch-readiness regression layer for search, support states, asset pages, comparison, source drawer, contextual glossary, grounded chat, exports, Weekly News Focus, AI Comprehensive Analysis, and mobile workflow markers
-2. harden Golden Asset Source Handoff across source allowlist records, source snapshots, knowledge packs, citations, generated-output cache entries, source drawer output, and exports
-3. add a reviewed Top-500 candidate-manifest refresh workflow that uses official IWB holdings first, official SPY/IVV/VOO holdings only as fallback inputs, SEC/Nasdaq validation, checksums, and a diff report before current-manifest promotion
-4. prove local durable and browser E2E smoke for golden assets using the API-base/proxy/CORS path before production deployment work
-5. implement real official-source fetcher execution behind explicit local opt-in and Golden Asset Source Handoff for golden assets, while preserving mocked deterministic CI
-6. defer production deployment hardening, recurring jobs, broad paid-provider integrations, and post-MVP features until the local fresh-data path passes strict quality gates
+2. implement the v0.5 ETF manifest split so supported ETF generated-output coverage is separate from ETF/ETP recognition-only blocked search states
+3. preserve Golden Asset Source Handoff enforcement across source allowlist records, source snapshots, knowledge packs, citations, generated-output cache entries, source drawer output, and exports
+4. preserve the reviewed Top-500 candidate-manifest refresh workflow that uses official IWB holdings first, official SPY/IVV/VOO holdings only as fallback inputs, SEC/Nasdaq validation, checksums, and a diff report before current-manifest promotion
+5. prove browser E2E and local durable smoke for golden assets using the API-base/proxy/CORS path before production deployment work
+6. implement real official-source fetcher execution behind explicit local opt-in and Golden Asset Source Handoff for golden assets, while preserving mocked deterministic CI
+7. defer production deployment hardening, recurring jobs, broad paid-provider integrations, and post-MVP features until the local fresh-data path passes strict quality gates
 
 When choosing the next task, prefer improving PRD/TDS alignment of the current deterministic scaffold over adding new domains or speculative infrastructure.
 The local agent-loop harness should default to `gpt-5.5` with `high` reasoning effort, while allowing explicit per-run overrides such as `gpt-5.3-codex-spark` when the operator requests it.
@@ -96,6 +98,8 @@ Source-use policy wins over scoring. Rejected or license-disallowed sources must
 Golden Asset Source Handoff is the approval layer between retrieval and evidence use. Fetching from SEC, issuer sites, ETF holdings files, APIs, or provider adapters does not approve evidence by itself. Before evidence can be stored as evidence, cited, summarized, generated from, cached, or exported, the source must have approved domain/source identity, source type, official-source status, storage rights, export rights, source-use policy, approval rationale, parser status, freshness/as-of metadata, and review status.
 
 Top-500 stock coverage must be manifest-owned. The approved runtime manifest is `data/universes/us_common_stocks_top500.current.json`; monthly refresh work produces a candidate manifest and diff report before review. Official IWB holdings are the primary source input; official SPY, IVV, and VOO holdings are fallback inputs only. Live holdings or provider responses may inform candidates, but they must never become runtime coverage truth directly.
+
+ETF coverage must be manifest-owned. The target v0.5 runtime authority for generated ETF output is `data/universes/us_equity_etfs_supported.current.json`; the target recognition-only authority for blocked ETF/ETP search states is `data/universes/us_etp_recognition.current.json`. Until T-120 lands, the legacy combined manifest remains an implementation gap, not a reason to weaken the v0.5 policy.
 
 ## Hard Product Rules
 

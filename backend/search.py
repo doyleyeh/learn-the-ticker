@@ -43,7 +43,7 @@ class SearchCandidate:
 
 SUPPORTED_V1_SCOPE_REMINDER = (
     "Supported MVP coverage is limited to U.S.-listed common stocks in the current Top-500 manifest "
-    "and non-leveraged U.S.-listed equity ETFs."
+    "and ETFs in the approved supported ETF manifest."
 )
 
 UNSUPPORTED_EXPLANATION_CATEGORY_LABELS = {
