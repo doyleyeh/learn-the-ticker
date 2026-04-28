@@ -1,89 +1,42 @@
 ## Current task
 
-### T-122: Prove local durable repository smoke with API proxy enabled
-
-Goal:
-Prove and document a local durable repository smoke path that validates API-backed browser surfaces through the `/api` proxy and deterministic APIs, while staying within the v0.4 frontend workflow.
-
-Task scope:
-In one cycle, add or refresh the local-durable smoke execution path so that it validates the same MVP API-backed surface checks already covered for frontend rendering, chat, exports, source-list, comparison, and CORS when local durable services are available, while preserving deterministic fallback behavior and keeping the route and workflow guards that block unsupported/out-of-scope assets.
-
-Allowed files:
-- `tests/frontend/smoke.mjs`
-- `tests/integration/test_backend_api.py`
-- `tests/unit/test_repo_contract.py`
-- `docs/local_durable_smoke.md` (or existing local smoke runbook)
-- environment/example files only for local variable wiring
-
-Do not change:
-- investment-advice copy, safety boundaries, or educational framing rules
-- source-use/citation policy, Golden Asset Source Handoff enforcement, or v0.5 manifest-owned support classification
-- live provider/news/market-data/LLM calls in CI
-- v0.4 home/compare workflow separation, contextual glossary behavior, or mobile bottom-sheet conventions
-- direct unsupported behavior for non-approved ETF/ETP rows and Top-500 scope rules
-
-Acceptance criteria:
-- Local smoke remains deterministic by default and opt-in to local durable execution (including explicit environment checks/flags for local-durable prerequisites).
-- Durable execution does not run or weaken CI when Docker/postgres/object-storage substitutes are unavailable; it must report the blocker and keep existing fixture-backed smoke paths unaffected.
-- The smoke validates all existing API-backed checks for: VOO asset render, API chat endpoints, asset export, source export, source-list page structure, `/compare?left=...&right=...`, compare export, and Next-to-FastAPI API proxy behavior.
-- CORS behavior remains explicit and validated in the smoke path.
-- Source drawer/glossary/chat marker checks remain aligned with v0.4 mobile/desktop behavior and with stale/unknown/unavailable handling where surfaced by fixtures.
-- No provider tokens, raw user prompts, or provider payloads are persisted.
-- Product guardrails remain intact: no advice-like recommendations, no live external calls in normal checks, and freshness/unknown/stale/unavailable/partial labels are not bypassed.
-
-Required commands:
-
-```bash
-python3 -m pytest tests -q
-npm test
-npm run typecheck
-python3 evals/run_static_evals.py
-bash scripts/run_quality_gate.sh
-git diff --check
-```
-
-Iteration budget:
-One agent-loop cycle. Keep the execution opt-in and local-only.
-
-## Backlog
-
-### T-121: Add browser E2E local smoke for API-backed MVP flows
-
-Goal:
-Add an optional local browser smoke script that starts or targets the web and API dev servers, then verifies asset page rendering, chat POST, export links, comparison rendering, source drawer access, and CORS headers through real HTTP.
-
-Acceptance criteria:
-
-- The smoke can be skipped in CI unless local servers are explicitly provided.
-- It checks `POST /api/assets/VOO/chat`, asset/source-list export URLs, `/compare?left=VOO&right=QQQ`, and source/glossary markers.
-- It fails on frontend 404s for API-backed chat/export/compare paths.
-- It records console/network failures without storing raw user text or secrets.
-
-Required commands:
-
-```bash
-npm test
-npm run typecheck
-npm run build
-python3 -m pytest tests -q
-bash scripts/run_quality_gate.sh
-git diff --check
-```
-
-Iteration budget:
-One agent-loop cycle. Keep it deterministic and localhost-only.
-
 ### T-123: Promote real official-source fetchers behind handoff-gated local opt-in
 
 Goal:
-Replace the current mocked official-source acquisition readiness for a golden stock and ETF with explicit operator-only local fetcher execution, keeping normal CI mocked and requiring Golden Asset Source Handoff before evidence use.
+Promote local operator-only official-source fetch execution for golden assets from readiness-only mocks to handoff-gated execution, while preserving deterministic default behavior and strict Golden Asset Source Handoff gates.
+
+Task-scope paragraph:
+In one cycle, update the golden-asset fetcher execution path so that retrieval from SEC/issuer/weekly-sources only proceeds when explicitly enabled by local operator settings, and persists only through approved parser and handoff metadata to source snapshots, knowledge packs, generated-output cache records, citations, source drawers, and exports. Keep all checks deterministic-by-default in CI, keep local execution narrow and opt-in, and do not alter v0.4 frontend workflow or top-level coverage authority rules.
+
+Allowed files:
+- `backend/provider_adapters/sec_stock.py`
+- `backend/provider_adapters/etf_issuer.py`
+- `backend/repositories/weekly_news.py`
+- `backend/weekly_news_repository.py`
+- `backend/ingestion_worker.py`
+- `backend/settings.py`
+- `backend/main.py`
+- `backend/models.py` (if handoff metadata handling needs schema alignment)
+- `tests/unit/test_provider_adapters.py`
+- `tests/unit/test_ingestion_worker.py`
+- `tests/unit/test_source_policy.py`
+- `tests/unit/test_repo_contract.py`
+- `docs/local_fresh_data_ingest_to_render_runbook.md` (operator runbook updates only)
+
+Do not change:
+- investment-advice copy, safety boundaries, or educational framing rules
+- source-use/citation policy, Golden Asset Source Handoff enforcement semantics, or v0.5 manifest-owned support classification
+- live provider/news/market-data/LLM calls in normal CI
+- v0.4 home/compare workflow separation, contextual glossary behavior, or mobile bottom-sheet conventions
+- direct unsupported behavior for non-approved ETF/ETP rows and Top-500 scope rules
+- freshness labels and existing unknown/stale/partial/unavailable handling behavior
 
 Acceptance criteria:
-
-- Real retrieval is disabled by default and never required by CI.
-- Retrieved SEC/issuer payloads cannot become source snapshots, normalized facts, citations, generated-output cache records, source drawer excerpts, or exports until handoff approval is present.
-- Parser diagnostics, freshness/as-of metadata, rights tier, source-use policy, checksums, and review status are persisted or blocked fail-closed.
-- No secret values, unrestricted raw text, or raw provider payloads appear in committed logs or fixtures.
+- Operator-local real fetchers are explicitly opt-in and do not run as part of default CI or fixture-only smoke paths.
+- Retrieved official-source payloads cannot influence persisted source snapshots, knowledge packs, generated-output cache records, citation claims, source drawer content, or exports until source handoff validation succeeds.
+- Hand off validation blocks malformed or unapproved sources (missing identity/type/official status/rationale/freshness metadata, parser failure, non-allowed rights, pending-review, or rejected statuses).
+- Parser diagnostics, as-of/freshness fields, source checksums, and handoff status are persisted and surfaced where expected.
+- No secret values, unrestricted raw source text, raw provider payloads, or raw model reasoning are written to committed outputs.
 
 Required commands:
 
@@ -95,7 +48,9 @@ git diff --check
 ```
 
 Iteration budget:
-One agent-loop cycle. Do not broaden beyond golden assets.
+One agent-loop cycle. Keep execution opt-in and deterministic; do not broaden beyond golden official-source fetch paths.
+
+## Backlog
 
 ### T-124: Prepare reviewed launch-universe expansion plan
 
@@ -124,6 +79,36 @@ One agent-loop cycle. Do not promote a candidate manifest without manual approva
 
 
 ## Completed
+
+### T-122: Prove local durable repository smoke with API proxy enabled
+
+Goal:
+Prove and document a local durable repository smoke path that validates API-backed browser surfaces through the `/api` proxy and deterministic APIs, while staying within the v0.4 frontend workflow.
+
+Completion details:
+- Local implementation branch commit: `00d4bfe feat(T-122): prove local durable repository smoke with API proxy enabled`
+- Local merge commit: `e18b039 chore(T-122): merge prove local durable repository smoke with API proxy enabled` from `agent/T-122-20260428T012934Z`
+- Files changed: `tests/frontend/smoke.mjs`, `tests/unit/test_repo_contract.py`, `docs/local_fresh_data_ingest_to_render_runbook.md`, `docs/agent-journal/20260428T012934Z.md`
+- The updated smoke path now includes:
+  - local durable smoke enablement and prerequisite checks (`LEARN_TICKER_LOCAL_DURABLE_SMOKE`, local web/API base wiring)
+  - durable route assertions for VOO asset render, API chat, asset export, source export, source-list route, compare route, compare export, and `/api/search` CORS behavior
+  - explicit blocker output when durable prerequisites are missing
+  - preservation of deterministic, non-durable smoke behavior when local durable mode is not available
+- `docs/local_fresh_data_ingest_to_render_runbook.md` now documents:
+  - local-durable prerequisite env wiring (`DATABASE_URL`, durable repository mode flags, web/API base URLs)
+  - optional local-durable browser smoke command with explicit flags
+  - v0.4 workflow and marker expectations for smoke checkpoints
+- Journal-recorded checks passed:
+  - `python3 -m pytest tests -q` (`439` passed)
+  - `npm test`
+  - `npm run typecheck`
+  - `python3 evals/run_static_evals.py`
+  - `bash scripts/run_quality_gate.sh`
+  - `git diff --check`
+- T-122 was marked pass in `docs/agent-journal/20260428T012934Z.md`.
+
+Remaining risks:
+- `tests/unit/test_repo_contract.py` still carries historical markers for pre-`T-122` behavior and is expected to be recycled as those legacy markers deprecate.
 
 ### T-121: Add browser E2E local smoke for API-backed MVP flows
 
