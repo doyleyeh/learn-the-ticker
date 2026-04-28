@@ -10,6 +10,26 @@ def read_file(name: str) -> str:
     return (ROOT / name).read_text(encoding="utf-8")
 
 
+def markdown_section(text: str, heading: str, next_headings: tuple[str, ...] = ("## ",)) -> str:
+    start_marker = f"{heading}\n"
+    start = text.index(start_marker) + len(start_marker)
+    end = len(text)
+    for marker in next_headings:
+        found = text.find(f"\n{marker}", start)
+        if found != -1:
+            end = min(end, found)
+    return text[start:end]
+
+
+def task_sections() -> tuple[str, str, str, str]:
+    tasks = read_file("TASKS.md")
+    current = markdown_section(tasks, "## Current task")
+    backlog = markdown_section(tasks, "## Backlog")
+    completed = tasks.split("## Completed", 1)[1].split("## Historical Backlog Note", 1)[0]
+    roadmap = tasks.split("## General MVP Roadmap", 1)[1]
+    return current, backlog, completed, roadmap
+
+
 def test_core_agent_files_exist():
     required = [
         "AGENTS.md",
@@ -51,18 +71,20 @@ def test_spec_contains_financial_safety_boundaries():
 
 
 def test_tasks_has_current_task_and_acceptance_criteria():
-    tasks = read_file("TASKS.md").lower()
+    current_task, backlog, _, _ = task_sections()
+    current_lower = current_task.lower()
+    backlog_lower = backlog.lower()
 
-    assert "current task" in tasks
-    if "no current task is prepared" in tasks:
-        assert "## backlog" in tasks
-        backlog = tasks.split("## backlog", 1)[1]
-        assert "### t-" not in backlog
+    if "no current task is prepared" in current_lower:
+        assert "no backlog tasks are currently prepared" in backlog_lower
+        assert "### t-" not in current_lower
+        assert "### t-" not in backlog_lower
         return
 
-    assert "acceptance criteria" in tasks
-    assert "required commands" in tasks
-    assert "iteration budget" in tasks
+    assert "### t-" in current_lower
+    assert "acceptance criteria" in current_lower
+    assert "required commands" in current_lower
+    assert "iteration budget" in current_lower
 
 
 def test_agents_contains_git_safety_rules():
@@ -355,14 +377,19 @@ def test_mvp_functional_gap_review_tracks_v06_progress_and_next_tasks():
         "data/universes/us_equity_etfs_supported.current.json",
         "data/universes/us_etp_recognition.current.json",
         "Launch-sized manifests are not approved",
-        "Repo-native source-handoff tooling is available for local reviewed packets",
-        "Governed golden evidence now has deterministic render proof for the golden path",
+        "ETF eligible-universe implementation is not complete",
+        "Launch-sized governed source artifacts are absent",
         "Local live-AI validation is operator-smoke covered, not launch-approved",
         "T-126 completed repo-native source-handoff manifest inspection/finalization smoke tooling",
         "T-127 completed the opt-in local live-AI validation smoke",
-        "T-128 adds deterministic governed golden API/frontend rendering proof",
+        "T-128 completed deterministic governed golden API/frontend rendering proof",
         "T-129 completed review-only launch-manifest operator automation parity",
         "T-130 completed the local fresh-data MVP rehearsal command",
+        "T-131 adds ETF eligible-universe review packet contracts",
+        "T-132 adds stock SEC source-pack readiness packet contracts",
+        "T-133 adds ETF issuer source-pack readiness packet contracts",
+        "T-134 adds local fresh-data MVP readiness thresholds",
+        "T-135 adds a batchable local ingestion priority planner",
         "scripts/run_local_fresh_data_rehearsal.py --json",
         "Normal CI remains deterministic",
     ]:
@@ -448,7 +475,7 @@ def test_t114_mvp_launch_readiness_docs_cover_regression_matrix_and_go_no_go_wit
 
     for marker in [
         "`AAPL`, `VOO`, and `QQQ`",
-        "`MSFT`, `NVDA`, `SPY`, `VTI`, `IVV`, `IWM`, `DIA`, `VGT`, `XLK`, `SOXX`, `SMH`, `XLF`, and `XLV`",
+        "broader eligible ETF categories and reference tickers such as `XLE` need reviewed source-pack readiness",
         "Crypto, leveraged ETFs, inverse ETFs, fixed-income ETFs, commodity ETFs, active ETFs, multi-asset ETFs",
         "`GME` and `VXX`",
         "Unknown/no-result copy says facts are not invented",
@@ -534,107 +561,131 @@ def test_t114_mvp_launch_readiness_docs_cover_regression_matrix_and_go_no_go_wit
         assert forbidden.lower() not in combined_lower
 
 
-def test_tasks_general_mvp_roadmap_marks_t130_current_and_no_backlog_state():
+def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
     tasks = read_file("TASKS.md")
-    current_task = tasks.split("## Current task", 1)[1].split("## Completed", 1)[0]
-    backlog = tasks.split("## Backlog", 1)[1].split("## Completed", 1)[0]
-    completed = tasks.split("## Completed", 1)[1].split("## Historical Backlog Note", 1)[0]
-    roadmap = tasks.split("## General MVP Roadmap", 1)[1]
+    current_task, backlog, completed, roadmap = task_sections()
+    active_sections = f"{current_task}\n{backlog}"
 
     assert "## MVP Backend Roadmap" not in tasks
-    assert "### T-130: Add local fresh-data MVP rehearsal command" in current_task
-    assert "local fresh-data MVP rehearsal command" in current_task
-    assert "governed source packet/state through backend route reads" in current_task
-    assert "One agent-loop cycle" in current_task
-    assert "No backlog tasks are currently prepared." in backlog
+    assert "### T-131: Add ETF eligible-universe review packet contracts" in current_task
     for marker in [
-        "Detailed acceptance criteria",
+        "Acceptance criteria",
         "Required commands",
         "Iteration budget",
+        "### T-132: Add stock SEC source-pack readiness packet contracts",
+        "### T-133: Add ETF issuer source-pack readiness packet contracts",
+        "### T-134: Add local fresh-data MVP readiness thresholds",
+        "### T-135: Add batchable local ingestion priority planner",
     ]:
-        assert marker in current_task
+        assert marker in active_sections
+
     for marker in [
+        "### T-118: Prove local fresh-data ingest-to-render smoke path",
+        "### T-119: Wire local frontend API access and backend CORS",
+        "### T-120: Implement v0.5 ETF manifest split contracts",
+        "### T-125: Align v0.6 handoff docs and MVP backlog",
+        "### T-126: Add repo-native source-handoff manifest smoke tooling",
+        "### T-127: Add opt-in local live-AI validation smoke",
         "### T-128: Prove governed golden evidence drives API and frontend rendering",
-        "Added source-snapshot validation to the persisted overview read path",
         "### T-129: Add launch-manifest operator automation parity",
+        "### T-130: Add local fresh-data MVP rehearsal command",
+        "The runbook explicitly states that fetching alone is retrieval, not evidence approval",
+        "deterministic integration smoke coverage for the VOO golden path",
+        "mocked official-source acquisition",
+        "Golden Asset Source Handoff",
+        "Production deployment, production durable storage, scheduled jobs",
+        "Next.js rewrite",
+        "build_cors_settings",
         "review-only operator automation parity",
+        "Added source-snapshot validation to the persisted overview read path",
     ]:
         assert marker in completed
-    assert "T-130: Add local fresh-data MVP rehearsal command" in current_task
-    assert "### T-119: Wire local frontend API access and backend CORS" in completed
-    assert "Next.js rewrite" in completed
-    assert "build_cors_settings" in completed
-    assert "### T-125: Align v0.6 handoff docs and MVP backlog" in completed
-    assert "### T-126: Add repo-native source-handoff manifest smoke tooling" in completed
-    assert "Completed in commit `70d404e docs(T-125): align v0.6 handoff docs and MVP backlog`" in completed
-    assert "### T-124: Prepare reviewed launch-universe expansion plan" in completed
-    assert "### T-120: Implement v0.5 ETF manifest split contracts" in completed
-    assert "### T-118: Prove local fresh-data ingest-to-render smoke path" in completed
-    assert "The runbook explicitly states that fetching alone is retrieval, not evidence approval" in completed
-    assert "deterministic integration smoke coverage for the VOO golden path" in completed
-    assert "mocked official-source acquisition" in completed
-    assert "Golden Asset Source Handoff" in completed
-    assert "Production deployment, production durable storage, scheduled jobs" in completed
-    assert "T-119 closed the local frontend/API plumbing blockers" in roadmap
-    assert "T-125 completed the v0.6 handoff-doc and MVP-backlog alignment pass" in roadmap
-    assert "T-126 established repo-native source-handoff manifest smoke tooling" in roadmap
-    assert "The current promoted task is T-129" in roadmap
 
-    assert "T-099 established deterministic provider content export-rights hardening" in roadmap
-    assert "T-100 established the backend MVP runtime gap audit and roadmap tracker" in roadmap
-    assert "T-101 established configured persisted-reader route wiring with fixture fallback" in roadmap
-    assert "T-102 established executable local ingestion ledger and mocked worker transitions" in roadmap
-    assert "T-103 established mocked SEC EDGAR stock golden-path acquisition" in roadmap
-    assert "T-104 established mocked official ETF issuer golden-path acquisition" in roadmap
-    assert "T-106 established deterministic normalized knowledge-pack writes from acquisition outputs" in roadmap
-    assert "T-107 established deterministic persisted Weekly News Focus event evidence for golden assets" in roadmap
-    assert "T-108 established deterministic generated-output cache writes and freshness invalidation" in roadmap
-    assert "T-109 established frontend API-backed search, pending states, and dynamic asset-page rendering" in roadmap
-    assert "T-110 established persisted end-to-end comparison, chat, source, glossary, Weekly News, and export verification" in roadmap
-    assert "T-111 established local durable repository execution with in-memory fallback" in roadmap
-    assert "T-115 established Golden Asset Source Handoff contract enforcement" in roadmap
-    assert "T-116 established reviewed Top-500 candidate manifest workflow contracts" in roadmap
-    assert "T-117 established handoff-gated mocked official-source acquisition execution for golden assets" in roadmap
-    assert "T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path" in roadmap
-    assert "T-118 established the local fresh-data ingest-to-render runbook and deterministic smoke coverage" in roadmap
-    assert "T-119 established local frontend API access and backend CORS" in roadmap
-    assert "T-120 established the v0.5 split between supported ETF generated-output coverage" in roadmap
-    assert "T-124 established reviewed launch-universe expansion planning" in roadmap
-    assert "T-125 established v0.6 docs, handoff docs, and backlog alignment" in roadmap
-    assert "T-130" in roadmap
-    assert "| Provider source-use/export enforcement hardening | Completed | T-099 |" in roadmap
-    assert "| Backend fresh-data MVP runtime gap tracker | Completed | T-100 |" in roadmap
-    assert "| Configured persisted-reader route wiring | Completed | T-101 |" in roadmap
-    assert "| Executable local ingestion ledger and mocked worker path | Completed | T-102 |" in roadmap
-    assert "| SEC EDGAR stock golden-path acquisition | Completed | T-103 |" in roadmap
-    assert "| Official ETF issuer golden-path acquisition | Completed | T-104 |" in roadmap
-    assert "| Source snapshot and parsed acquisition artifact persistence | Completed | T-105 |" in roadmap
-    assert "| Normalized knowledge-pack writes from ingestion | Completed | T-106 |" in roadmap
-    assert "| Weekly News Focus official-source event evidence persistence | Completed | T-107 |" in roadmap
-    assert "| Generated-output cache writes and invalidation | Completed | T-108 |" in roadmap
-    assert "| Frontend API-backed search, pending states, and asset rendering | Completed | T-109 |" in roadmap
-    assert "| Persisted comparison/chat/source/glossary/export end-to-end verification | Completed | T-110 |" in roadmap
-    assert "| Local durable repository execution with in-memory fallback | Completed | T-111 |" in roadmap
-    assert "| Opt-in live SEC and ETF issuer golden acquisition | Completed | T-112 |" in roadmap
-    assert "| Official-source Weekly News live acquisition for golden assets | Completed | T-113 |" in roadmap
-    assert "| Launch pre-cache expansion and MVP readiness regression matrix | Completed | T-114 |" in roadmap
-    assert "| Golden Asset Source Handoff contract enforcement | Completed | T-115 |" in roadmap
-    assert "| Reviewed Top-500 candidate manifest workflow contracts | Completed | T-116 |" in roadmap
-    assert "| Handoff-gated official-source acquisition execution for golden assets | Completed | T-117 |" in roadmap
-    assert "| Local fresh-data ingest-to-render runbook and smoke coverage | Completed | T-118 |" in roadmap
-    assert "| Local frontend API access and backend CORS | Completed | T-119 |" in roadmap
-    assert "| Split supported ETF and recognition manifests | Completed | T-120 |" in roadmap
-    assert "| Optional localhost browser/API smoke | Completed | T-121 |" in roadmap
-    assert "| Optional local durable API proxy smoke | Completed | T-122 |" in roadmap
-    assert "| Handoff-gated official-source fetcher boundaries | Completed | T-123 |" in roadmap
-    assert "| Reviewed launch-universe expansion planning | Completed | T-124 |" in roadmap
-    assert "| v0.6 docs, handoff docs, and backlog alignment | Completed | T-125 |" in roadmap
-    assert "| Repo-native source-handoff manifest smoke tooling | Completed | T-126 |" in roadmap
-    assert "| Opt-in local live-AI validation smoke | Completed | T-127 |" in roadmap
-    assert "| Governed golden evidence API/frontend rendering proof | Completed | T-128 |" in roadmap
-    assert "| Launch-manifest operator automation parity | Current | T-129 |" in roadmap
-    assert "| Local fresh-data MVP rehearsal command | Prepared | T-130 |" in roadmap
-    assert "| Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |" in roadmap
+    for marker in [
+        "T-119 closed the local frontend/API plumbing blockers",
+        "T-125 completed the v0.6 handoff-doc and MVP-backlog alignment pass",
+        "T-126 completed repo-native source-handoff manifest inspection/finalization smoke tooling",
+        "T-127 completed the opt-in local live-AI validation smoke",
+        "T-128 completed deterministic governed golden API/frontend rendering proof",
+        "T-129 completed launch-manifest operator automation parity",
+        "T-130 completed the deterministic local fresh-data MVP rehearsal command",
+        "T-131 through T-135 are active/prepared local fresh-data MVP work",
+        "T-099 established deterministic provider content export-rights hardening",
+        "T-100 established the backend MVP runtime gap audit and roadmap tracker",
+        "T-101 established configured persisted-reader route wiring with fixture fallback",
+        "T-102 established executable local ingestion ledger and mocked worker transitions",
+        "T-103 established mocked SEC EDGAR stock golden-path acquisition",
+        "T-104 established mocked official ETF issuer golden-path acquisition",
+        "T-106 established deterministic normalized knowledge-pack writes from acquisition outputs",
+        "T-107 established deterministic persisted Weekly News Focus event evidence for golden assets",
+        "T-108 established deterministic generated-output cache writes and freshness invalidation",
+        "T-109 established frontend API-backed search, pending states, and dynamic asset-page rendering",
+        "T-110 established persisted end-to-end comparison, chat, source, glossary, Weekly News, and export verification",
+        "T-111 established local durable repository execution with in-memory fallback",
+        "T-115 established Golden Asset Source Handoff contract enforcement",
+        "T-116 established reviewed Top-500 candidate manifest workflow contracts",
+        "T-117 established handoff-gated mocked official-source acquisition execution for golden assets",
+        "T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path",
+        "T-118 established the local fresh-data ingest-to-render runbook and deterministic smoke coverage",
+        "T-119 established local frontend API access and backend CORS",
+        "T-120 established the v0.5 split between supported ETF generated-output coverage",
+        "T-124 established reviewed launch-universe expansion planning",
+        "T-125 established v0.6 docs, handoff docs, and backlog alignment",
+        "Full production deployment, recurring production jobs, broad paid-provider integrations",
+    ]:
+        assert marker in roadmap
+
+    completed_rows = [
+        "| Provider source-use/export enforcement hardening | Completed | T-099 |",
+        "| Backend fresh-data MVP runtime gap tracker | Completed | T-100 |",
+        "| Configured persisted-reader route wiring | Completed | T-101 |",
+        "| Executable local ingestion ledger and mocked worker path | Completed | T-102 |",
+        "| SEC EDGAR stock golden-path acquisition | Completed | T-103 |",
+        "| Official ETF issuer golden-path acquisition | Completed | T-104 |",
+        "| Source snapshot and parsed acquisition artifact persistence | Completed | T-105 |",
+        "| Normalized knowledge-pack writes from ingestion | Completed | T-106 |",
+        "| Weekly News Focus official-source event evidence persistence | Completed | T-107 |",
+        "| Generated-output cache writes and invalidation | Completed | T-108 |",
+        "| Frontend API-backed search, pending states, and asset rendering | Completed | T-109 |",
+        "| Persisted comparison/chat/source/glossary/export end-to-end verification | Completed | T-110 |",
+        "| Local durable repository execution with in-memory fallback | Completed | T-111 |",
+        "| Opt-in live SEC and ETF issuer golden acquisition | Completed | T-112 |",
+        "| Official-source Weekly News live acquisition for golden assets | Completed | T-113 |",
+        "| Launch pre-cache expansion and MVP readiness regression matrix | Completed | T-114 |",
+        "| Golden Asset Source Handoff contract enforcement | Completed | T-115 |",
+        "| Reviewed Top-500 candidate manifest workflow contracts | Completed | T-116 |",
+        "| Handoff-gated official-source acquisition execution for golden assets | Completed | T-117 |",
+        "| Local fresh-data ingest-to-render runbook and smoke coverage | Completed | T-118 |",
+        "| Local frontend API access and backend CORS | Completed | T-119 |",
+        "| Split supported ETF and recognition manifests | Completed | T-120 |",
+        "| Optional localhost browser/API smoke | Completed | T-121 |",
+        "| Optional local durable API proxy smoke | Completed | T-122 |",
+        "| Handoff-gated official-source fetcher boundaries | Completed | T-123 |",
+        "| Reviewed launch-universe expansion planning | Completed | T-124 |",
+        "| v0.6 docs, handoff docs, and backlog alignment | Completed | T-125 |",
+        "| Repo-native source-handoff manifest smoke tooling | Completed | T-126 |",
+        "| Opt-in local live-AI validation smoke | Completed | T-127 |",
+        "| Governed golden evidence API/frontend rendering proof | Completed | T-128 |",
+        "| Launch-manifest operator automation parity | Completed | T-129 |",
+        "| Local fresh-data MVP rehearsal command | Completed | T-130 |",
+        "| ETF eligible-universe review packet contracts | Current | T-131 |",
+        "| Stock SEC source-pack readiness packets | Prepared | T-132 |",
+        "| ETF issuer source-pack readiness packets | Prepared | T-133 |",
+        "| Local fresh-data MVP readiness thresholds | Prepared | T-134 |",
+        "| Batchable local ingestion priority planner | Prepared | T-135 |",
+        "| Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |",
+    ]
+    for row in completed_rows:
+        assert row in roadmap
+
+    for stale_status in [
+        "| Launch-manifest operator automation parity | Current | T-129 |",
+        "| Local fresh-data MVP rehearsal command | Prepared | T-130 |",
+        "The current promoted task is T-129",
+        "No current task is prepared",
+        "No backlog tasks are currently prepared",
+    ]:
+        assert stale_status not in roadmap
 
 
 def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():

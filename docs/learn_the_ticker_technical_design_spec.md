@@ -58,7 +58,7 @@ The system will not support brokerage trading, tax advice, options, crypto, inte
 | Vector search | pgvector extension may be installed, but vector indexes and embedding jobs stay disabled by default | Keeps semantic retrieval available later without making embeddings a blocker for the first deterministic implementation. |
 | Cache / queues | Local Redis; production Postgres `ingestion_jobs` first | Avoids always-on queue cost for the first deployment. Redis can return later when scale requires it. |
 | Object storage | Local MinIO; production private Google Cloud Storage | Stores raw filings, PDF snapshots, HTML snapshots, parsed text, and generated artifacts. |
-| LLM access | Adapter-first provider abstraction with deterministic mocks and feature-flagged OpenRouter fallback chain | Allows local operator review and deployment to use explicit free models plus DeepSeek fallback only when paid fallback is enabled and OpenRouter platform budget controls are configured, while CI and ordinary local tests stay mock-safe. |
+| LLM access | Adapter-first provider abstraction with deterministic mocks and feature-flagged OpenRouter fallback chain | Allows local operator review and deployment to use explicit free models plus DeepSeek fallback only when paid fallback is enabled and OpenRouter platform/API-key limits are configured; the repo does not enforce a separate spend cap, while CI and ordinary local tests stay mock-safe. |
 | Structured generation | JSON-schema outputs where provider supports it | Produces predictable UI-renderable output and supports server-side validation. |
 | Retrieval | Keyword and metadata retrieval first; embeddings later | Self-managed keyword-first retrieval gives stricter control over citation binding and freshness metadata before adding model cost. |
 | Source freshness | Section-level freshness hashes | Summaries are invalidated when underlying facts, chunks, or Weekly News Focus event records change. |
@@ -193,7 +193,7 @@ Runtime feature defaults:
 - `RETRIEVAL_MODE=keyword`
 - `EMBEDDINGS_ENABLED=false`
 - `RAW_SOURCE_TEXT_POLICY=rights_tiered`
-- `LLM_LIVE_GENERATION_ENABLED=false` for CI and ordinary local tests; local operator review should intentionally set it to `true` for fresh-data/live-AI validation before public deployment. First deployment may set it to `true` with the explicit OpenRouter free-model chain and DeepSeek fallback only when paid fallback is enabled, platform budget controls are configured, and validation gates are satisfied.
+- `LLM_LIVE_GENERATION_ENABLED=false` for CI and ordinary local tests; local operator review should intentionally set it to `true` for fresh-data/live-AI validation before public deployment. First deployment may set it to `true` with the explicit OpenRouter free-model chain and DeepSeek fallback only when paid fallback is enabled, OpenRouter platform/API-key limits are configured, and validation gates are satisfied.
 - `LLM_VALIDATION_RETRY_COUNT=1`
 - `LLM_REASONING_SUMMARY_ONLY=true`
 
@@ -281,7 +281,7 @@ SEC EDGAR, SEC XBRL company facts, and SEC filing documents are the canonical ba
 | Free/reference metadata or configured provider adapter | delayed or best-effort quote, AUM, average volume, spread data, ETF reference metadata where available | P0 |
 | Sponsor press releases / approved reputable third-party/news sources | fee cuts, methodology changes, mergers, liquidations | P1 |
 
-ETF issuer materials are the canonical evidence backbone for ETFs such as `VOO`, `QQQ`, and `SOXX`: issuer page, fact sheet, prospectus, shareholder reports, holdings files, exposure files, and sponsor announcements. ETF issuer websites are especially important because ETF disclosure includes investor-facing items such as holdings, premium/discount information, and bid-ask spread disclosures. V1 should support only manifest-approved U.S.-listed, active, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs. Paid ETF data providers are optional future adapters and must be validated against issuer sources before production use.
+ETF issuer materials are the canonical evidence backbone for ETFs such as `VOO`, `QQQ`, and `SOXX`: issuer page, fact sheet, prospectus, shareholder reports, holdings files, exposure files, and sponsor announcements. ETF issuer websites are especially important because ETF disclosure includes investor-facing items such as holdings, premium/discount information, and bid-ask spread disclosures. V1 should support only manifest-approved, currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs. Paid ETF data providers are optional future adapters and must be validated against issuer sources before production use.
 
 News and RSS sources use a tiered allowlist. Official sources have the highest rank. Reuters/AP-style and similar publishers are license-gated: the source registry must record whether each source is `metadata_only`, `link_only`, `summary_allowed`, `full_text_allowed`, or `rejected` before ingestion output can be displayed, summarized, stored, or exported.
 
@@ -321,9 +321,9 @@ ETF coverage uses two manifests with different runtime authority.
 - `data/universes/us_etp_recognition.current.json` recognizes real ETFs and broader exchange-traded products for search safety, including unsupported products.
 - `data/universes/us_equity_etfs_supported.current.json` is the only runtime authority for ETF-generated asset pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, and exports.
 - Recognition manifest rows can produce blocked search states such as `unsupported`, `out_of_scope`, `pending_review`, `unavailable`, or `pending_ingestion`, but cannot unlock generated ETF experiences.
-- Supported ETF rows must represent U.S.-listed, active, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs.
+- Supported ETF rows must represent currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs.
 - Supported ETF row metadata should include ticker, fund name, issuer, exchange, wrapper type, support scope, passive/index flag, leverage/inverse flags, asset class, primary geographic exposure, benchmark/index, issuer source-pack references, parser validation status, Golden Asset Source Handoff status, snapshot date, generated checksum, approval timestamp, and review notes.
-- Initial supported ETF entries should be `VOO`, `SPY`, `VTI`, `IVV`, `QQQ`, `IWM`, `DIA`, `VGT`, `XLK`, `SOXX`, `SMH`, `XLF`, `XLV`, and `XLE`.
+- Golden ETF entries such as `VOO`, `QQQ`, and other regression/reference tickers are pre-cache and test assets only. They are not the ETF coverage ceiling. The supported ETF manifest may include every reviewed eligible U.S.-listed, passive/index-based, primary-U.S.-equity ETF across broad index, total-market/large-cap, size/style, sector, industry/theme, dividend, value/growth, quality, momentum, low-volatility, equal-weight, and ESG index categories after source-pack validation.
 
 Candidate discovery may use official exchange and regulatory inputs, including Nasdaq Trader symbol-directory `ETF` and `Test Issue` fields, Nasdaq-listed ETP `Type`, `Bucket Label`, and `Investment Strategy Group`, NYSE ETF/ETV/ETN/CEF distinctions, Cboe ETF/ETP listings, and SEC ETF website disclosure requirements. These inputs are candidate and recognition evidence only. Promotion to supported requires issuer source-pack validation, Golden Asset Source Handoff approval, and manual review.
 
@@ -343,7 +343,7 @@ The raw source text policy is rights-tiered:
 
 - Official filings, issuer materials, and reviewed `full_text_allowed` sources may store raw text, parsed text, chunks, checksums, and private snapshots.
 - Approved reputable third-party/news sources may contribute metadata and beginner summaries when source governance permits; they must be labeled as third-party reporting in API/UI contracts.
-- `summary_allowed` sources may store metadata, checksums, links, source-provided snippets, generated summaries, and limited excerpts needed to support summaries.
+- `summary_allowed` sources may store metadata, checksums, links, source-provided snippets, generated summaries, and limited excerpts needed to support summaries. Third-party/news excerpts are capped at 90 words only when source-use policy permits excerpts; full text is never approved by length alone.
 - `metadata_only` and `link_only` sources may store metadata, hashes, canonical URLs, timestamps, and diagnostics, but not full article text.
 - `rejected` sources must not feed generated output and should retain only rejection diagnostics when needed.
 - Full article text for third-party/news sources must not be displayed, exported, or stored as public evidence unless source policy is `full_text_allowed` or equivalent reviewed rights exist.
@@ -772,7 +772,7 @@ pgvector can remain installed for future migration compatibility, but vector ind
 7. Chunk parsed text only for approved evidence.
 8. Run keyword/metadata indexing; generate embeddings only when `EMBEDDINGS_ENABLED=true`.
 9. Extract normalized facts.
-10. Retrieve high-signal Weekly News Focus events from official or allowlisted sources.
+10. Retrieve approved Weekly News Focus events from official or allowlisted sources.
 11. Mark section-level evidence states for partial pages.
 12. Build or refresh asset knowledge pack from approved evidence.
 13. Generate or invalidate summaries.
@@ -994,7 +994,7 @@ The Weekly News Focus pipeline should prefer official sources, then broaden cove
 4. Assign each event to `previous_market_week` or `current_week_to_date`.
 5. Select up to the configured maximum only when enough high-quality evidence exists.
 6. Generate one-sentence beginner-friendly summaries for selected items.
-7. Generate AI Comprehensive Analysis only when at least two high-signal Weekly News Focus items exist.
+7. Generate AI Comprehensive Analysis only when at least two approved Weekly News Focus items exist.
 8. Validate citations, safety, source allowlist status, source-use policy, and freshness labels.
 ```
 
@@ -1056,7 +1056,7 @@ Thresholds:
 - `minimum_ai_analysis_items = 2`
 - Source-use policy wins over score: rejected or rights-disallowed sources never display.
 
-Only events above a configured threshold should appear on the asset page. If fewer than 5 valid items exist, return the smaller verified set with an evidence note. Do not pad with weak news to reach a target count. If no valid items exist, show a "No major Weekly News Focus items found for this window" empty state. Suppress AI Comprehensive Analysis unless at least two high-signal Weekly News Focus items exist. Local fresh-data validation should include at least one asset/window with enough approved evidence to exercise live AI Comprehensive Analysis before public deployment.
+Only approved events above the configured source-use and relevance threshold should appear on the asset page. If fewer than 5 valid items exist, return the smaller verified set with an evidence note. Do not pad with weak news to reach a target count. If no valid items exist, show a "No major Weekly News Focus items found for this window" empty state. Suppress AI Comprehensive Analysis unless at least two approved Weekly News Focus items exist. Local fresh-data validation should include at least one asset/window with enough approved evidence to exercise live AI Comprehensive Analysis before public deployment.
 
 #### AI Comprehensive Analysis sections
 
@@ -1215,7 +1215,7 @@ OpenRouter runtime configuration:
 - `OPENROUTER_SITE_URL`
 - `OPENROUTER_APP_TITLE=Learn the Ticker`
 
-The OpenRouter API key must stay server-side. The web app should call the FastAPI backend, not OpenRouter. Local live testing may read `OPENROUTER_API_KEY` from the developer's WSL Bash environment when the API or worker is launched from WSL. The key value must not be committed, copied into `.env.example`, exposed through `NEXT_PUBLIC_*`, returned from `/health`, or printed in logs. `/health` may report `llm_provider=openrouter` but must not expose secret values. Paid fallback should run only when `OPENROUTER_PAID_FALLBACK_ENABLED=true` and external platform budget controls are configured.
+The OpenRouter API key must stay server-side. The web app should call the FastAPI backend, not OpenRouter. Local live testing may read `OPENROUTER_API_KEY` from the developer's WSL Bash environment when the API or worker is launched from WSL. The key value must not be committed, copied into `.env.example`, exposed through `NEXT_PUBLIC_*`, returned from `/health`, or printed in logs. `/health` may report `llm_provider=openrouter` but must not expose secret values. Paid fallback should run only when `OPENROUTER_PAID_FALLBACK_ENABLED=true` and external OpenRouter platform/API-key limits are configured. The repo does not define a hard spend cap.
 
 Default live flow:
 
@@ -1223,7 +1223,7 @@ Default live flow:
 Free model chain
   -> schema/citation/safety validation
   -> one repair retry
-  -> DeepSeek V3.2 paid fallback only when enabled and budget-gated
+  -> DeepSeek V3.2 paid fallback only when enabled and constrained by OpenRouter platform/API-key limits
   -> validation again
   -> cache only validated output
 ```
@@ -1235,7 +1235,7 @@ OpenRouter requests should use the `models` array for the free chain in this ord
 3. `qwen/qwen3-next-80b-a3b-instruct:free`
 4. `meta-llama/llama-3.3-70b-instruct:free`
 
-If the free chain errors, rate-limits, cannot satisfy strict structured output, or fails validation after one repair retry, the API may fall back to `deepseek/deepseek-v3.2` only when paid fallback is enabled and the operator has configured external budget controls. Persist selected model, tier `free|paid|mock`, usage, cost, latency, validation result, and attempt count when available. Raw model reasoning, `reasoning_details`, hidden prompts, unrestricted source text, and failed raw responses must not be stored or shown. Public responses may expose only a short cited `reasoning_summary`.
+If the free chain errors, rate-limits, cannot satisfy strict structured output, or fails validation after one repair retry, the API may fall back to `deepseek/deepseek-v3.2` only when paid fallback is enabled and the operator has configured external OpenRouter platform/API-key limits. Persist selected model, tier `free|paid|mock`, usage, cost, latency, validation result, and attempt count when available. Raw model reasoning, `reasoning_details`, hidden prompts, unrestricted source text, and failed raw responses must not be stored or shown. Public responses may expose only a short cited `reasoning_summary`.
 
 `openrouter/free` remains an optional manual override for experiments, not the default production strategy.
 
@@ -2060,7 +2060,7 @@ Cache keys should include the asset or comparison pack, section, source freshnes
 | ETF holdings | daily on market days | holdings date changes |
 | ETF fact sheet | daily or weekly | checksum change |
 | ETF prospectus | weekly or monthly | checksum change |
-| Weekly News Focus events | 1-6 hours where sources permit | new high-signal event or source checksum change |
+| Weekly News Focus events | 1-6 hours where sources permit | new approved event or source checksum change |
 | LLM summaries | on input hash change | freshness hash mismatch |
 
 For v1, the Weekly News Focus cadence applies only to official sources and approved reputable third-party/news sources. Unrecognized news-like sources are rejected by default until reviewed and approved.
@@ -2210,7 +2210,7 @@ For each generated output, log:
 
 ### 19.3 Golden asset tests
 
-Use the launch pre-cache universe as the golden asset set:
+Use the launch pre-cache universe as the golden regression asset set. This set is not the full ETF coverage limit:
 
 ```text
 Broad ETFs: VOO, SPY, VTI, IVV, QQQ, IWM, DIA
@@ -2232,7 +2232,7 @@ For each golden asset, maintain expected checks:
 - Weekly News Focus renders for `AAPL`, `VOO`, and `QQQ` when approved evidence exists
 - Weekly News Focus shows the configured maximum only when enough high-quality items exist, fewer when evidence is limited, and zero when no major Weekly News Focus items exist
 - Weekly News Focus uses last Monday-Sunday plus current week-to-date through yesterday
-- AI Comprehensive Analysis includes What Changed This Week, Market Context, Business/Fund Context, and Risk Context sections when at least two high-signal items exist
+- AI Comprehensive Analysis includes What Changed This Week, Market Context, Business/Fund Context, and Risk Context sections when at least two approved Weekly News Focus items exist
 - every AI-analysis factual claim has citations or an uncertainty label
 - duplicate, promotional, irrelevant, unapproved, and rights-disallowed news is excluded
 - QQQ vs VOO opens comparison, while the same question inside single-asset chat returns a compare redirect
@@ -2349,7 +2349,7 @@ Local development should use Docker Compose with:
 | Cache / queue | No production Redis or Pub/Sub at first; use Postgres `ingestion_jobs` |
 | Object storage | Private Google Cloud Storage regional bucket in `us-central1` |
 | Monitoring | Google Cloud Logging and Error Reporting; optional Sentry Developer plan later |
-| LLM runtime | Feature-flagged explicit OpenRouter free-model chain with DeepSeek V3.2 paid fallback only when enabled and budget-gated; deterministic mock for CI and ordinary local tests |
+| LLM runtime | Feature-flagged explicit OpenRouter free-model chain with DeepSeek V3.2 paid fallback only when enabled and constrained by OpenRouter platform/API-key limits; deterministic mock for CI and ordinary local tests |
 | CI/CD | GitHub Actions quality gates first; manual deploy commands before deploy automation |
 
 Cloud Run API requirements:
@@ -2378,7 +2378,7 @@ OpenRouter requirements:
 - Require `LLM_LIVE_GENERATION_ENABLED=true` before making live model calls.
 - Capture selected model, tier, usage/cost metadata, latency, validation result, and attempt count where available without logging raw chat transcripts.
 - Keep deterministic mocks for CI and tests.
-- Run one repair retry after free-model validation failure, then use DeepSeek fallback only when paid fallback is enabled and OpenRouter platform budget controls are configured. Fall back to partial/unavailable generated sections when all attempts fail schema/citation/safety validation.
+- Run one repair retry after free-model validation failure, then use DeepSeek fallback only when paid fallback is enabled and OpenRouter platform/API-key limits are configured. Fall back to deterministic source-backed partial/unavailable generated sections when all attempts fail schema/citation/safety validation.
 - Never store or show raw model reasoning; expose only cited `reasoning_summary`.
 
 ### 21.3 Environments
@@ -2511,7 +2511,7 @@ MVP is technically ready when:
 - Weekly News Focus returns the configured maximum only when enough high-quality approved evidence exists, fewer when evidence is limited, and zero with a clear empty state when no major Weekly News Focus items exist.
 - Weekly News Focus API/UI contracts distinguish official sources from reputable third-party/news sources and expose publisher, URL, published date, retrieved date, source type, event classification, source-use policy, and citation link.
 - Weekly News Focus uses the last completed Monday-Sunday market week plus current week-to-date through yesterday.
-- AI Comprehensive Analysis includes What Changed This Week, Market Context, Business/Fund Context, and Risk Context when at least two high-signal weekly items exist.
+- AI Comprehensive Analysis includes What Changed This Week, Market Context, Business/Fund Context, and Risk Context when at least two approved Weekly News Focus items exist.
 - Local fresh-data validation exercises live AI generation for grounded chat and for AI Comprehensive Analysis when the evidence threshold is met.
 - Comparison works for ETF-vs-ETF, stock-vs-stock, and stock-vs-ETF.
 - Stock-vs-ETF uses the special single-company-vs-ETF-basket template and relationship badges.
@@ -2549,7 +2549,7 @@ MVP is technically ready when:
 9. ETF issuer parser maintenance remains an implementation risk; parsers should store raw snapshots, checksums, and parser diagnostics.
 10. Leveraged ETFs, inverse ETFs, ETNs, fixed income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, single-stock ETFs, option-income/buffer ETFs, crypto, options, international equities, preferred stocks, warrants, rights, and complex products are unsupported or out of scope for generated pages, chat, and comparisons unless explicitly added later through a named scope expansion with its own manifest, source requirements, risk templates, parser coverage, and acceptance tests.
 11. Local implementation should start with Docker Compose for Next.js, FastAPI, PostgreSQL with pgvector, Redis, and S3-compatible object storage.
-12. LLM integration should be adapter-first with deterministic mocks for CI and ordinary local tests, plus feature-flagged OpenRouter live generation for local operator review and deployment. The explicit free-model chain may use DeepSeek V3.2 paid fallback only when enabled and external platform budget controls are configured.
+12. LLM integration should be adapter-first with deterministic mocks for CI and ordinary local tests, plus feature-flagged OpenRouter live generation for local operator review and deployment. The explicit free-model chain may use DeepSeek V3.2 paid fallback only when enabled and external OpenRouter platform/API-key limits are configured; the repo does not enforce a separate spend cap.
 13. Weekly News Focus is an asset-page feature with a fixed Monday-Sunday market-week window plus current week-to-date through yesterday; it is not a separate market brief page.
 14. Source allowlist changes use config-only review with validation and a development-log rationale; scoring never auto-approves a new source.
 15. Golden Asset Source Handoff is the approval layer; API fetching is only retrieval and does not approve evidence use.

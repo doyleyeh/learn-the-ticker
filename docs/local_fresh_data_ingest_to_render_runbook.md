@@ -53,11 +53,23 @@ Optional-mode meanings:
 
 Stop when any required deterministic check is `blocked`, or when an opted-in optional check is `blocked`. The rehearsal does not start production services, approve sources, promote manifests, write production storage, require live calls by default, or make fixture-sized/local-only data launch-approved.
 
+## Current Local MVP Gap Track
+
+The deterministic rehearsal can pass today, but that is not the same as a fully functional local fresh-data MVP. The next agent-loop work should follow this order:
+
+1. Expand ETF review packets toward the full manifest-defined eligible universe while keeping golden/pre-cache ETFs as regression assets only.
+2. Add stock SEC source-pack readiness for submissions, latest 10-K, latest 10-Q where available, and XBRL company facts.
+3. Add ETF issuer source-pack readiness for issuer page, fact sheet, prospectus or summary prospectus, holdings, exposures, methodology/shareholder/risk sources, and sponsor announcements where relevant.
+4. Add explicit local MVP thresholds for failed/unavailable assets and deterministic source-backed partial sections when live generation fails validation.
+5. Add batchable, resumable local ingestion priority planning for high-demand assets first, then supported ETFs and Top-500 stocks by review priority.
+
+All five steps remain deterministic by default and must not approve sources, promote manifests, start production services, expose secrets, or make live provider/news/market-data/LLM calls in normal CI.
+
 ## Local Live-AI Validation Smoke
 
 Task: T-127.
 
-The local live-AI validation smoke is operator-only and disabled by default. It validates one supported golden grounded-chat case and one AI Comprehensive Analysis case where two high-signal Weekly News Focus items are available. It does not approve sources, does not relax Golden Asset Source Handoff, does not write generated-output cache records, and does not print raw user text, prompts, source text, model reasoning, transcripts, generated live responses, or secret values.
+The local live-AI validation smoke is operator-only and disabled by default. It validates one supported golden grounded-chat case and one AI Comprehensive Analysis case where two approved Weekly News Focus items are available. Approved reputable third-party items may count only when source governance permits them and the item is labeled as third-party reporting. It does not approve sources, does not relax Golden Asset Source Handoff, does not write generated-output cache records, and does not print raw user text, prompts, source text, model reasoning, transcripts, generated live responses, or secret values.
 
 Prerequisites:
 
@@ -85,7 +97,7 @@ Expected results:
 Stop conditions:
 
 - any blocked validation result
-- fewer than two high-signal Weekly News Focus items for the AI Comprehensive Analysis case
+- fewer than two approved Weekly News Focus items for the AI Comprehensive Analysis case
 - any diagnostic or log path that would expose raw user text, prompts, source text, generated live responses, model reasoning, transcripts, unrestricted provider payloads, or secret values
 - any attempt to treat local live-AI review as source approval or a Golden Asset Source Handoff override
 
@@ -154,7 +166,7 @@ Expected result:
 - overview, sources, glossary, and exports use validated persisted records before fixture fallback where that surface supports persisted reads
 - citation chips and source drawer metadata expose approved source metadata and allowed excerpts only
 - Weekly News Focus shows the evidence-backed item count and may show fewer than the configured maximum
-- AI Comprehensive Analysis is suppressed below two high-signal Weekly News Focus items and available only when the threshold is met
+- AI Comprehensive Analysis is suppressed below two approved Weekly News Focus items and available only when the threshold is met
 - unsupported, out-of-scope, pending-ingestion, partial, stale, unknown, unavailable, pending-review, rejected-source, parser-invalid, wrong-asset, hidden/internal, unclear-rights, and insufficient-evidence states stay blocked or labeled according to section behavior
 
 6. Verify local frontend/API plumbing.

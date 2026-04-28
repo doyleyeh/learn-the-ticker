@@ -123,7 +123,8 @@ V1 is accountless and English-first.
 Supported MVP coverage is:
 
 - top-500-first U.S.-listed common stocks from `data/universes/us_common_stocks_top500.current.json`
-- manifest-approved U.S.-listed, active, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs
+- manifest-approved, currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs
+- ETF coverage may include broad U.S. index, total-market/large-cap, size/style, sector, industry/theme, dividend, value/growth, quality, momentum, low-volatility, equal-weight, and ESG index ETFs when all source-pack gates validate
 - pre-cached high-demand assets for reliable launch behavior
 - explicit `pending_ingestion` only for eligible supported assets that are approved for on-demand ingestion
 
@@ -156,13 +157,13 @@ Weekly News Focus must:
 
 - use the last completed Monday-Sunday market week plus current week-to-date through yesterday, based on U.S. Eastern dates
 - prefer official filings, investor-relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes before approved reputable third-party/news sources
-- include only high-signal, deduplicated, license-compatible items
+- include only approved, deduplicated, license-compatible items; reputable third-party/news items must be labeled as third-party reporting
 - show the configured maximum only when enough evidence supports it, and show fewer items or an empty state when evidence is thin
 - never pad with weak, promotional, duplicate, unapproved, or rights-disallowed items
 
 AI Comprehensive Analysis must:
 
-- be generated only when at least two high-signal Weekly News Focus items exist
+- be generated only when at least two approved Weekly News Focus items exist
 - start with What Changed This Week, then Market Context, Business/Fund Context, and Risk Context
 - cite underlying Weekly News Focus items and canonical facts
 - avoid predictions, recommendation language, and uncited claims
@@ -215,6 +216,7 @@ OpenRouter and market/reference providers are runtime options only:
 
 - `LLM_LIVE_GENERATION_ENABLED` must be `true` before live model calls are allowed
 - deterministic mocks remain the default for CI and local tests
+- repo code does not enforce a separate OpenRouter spend cap; operator limits live on the OpenRouter platform/API key
 - OpenRouter keys stay server-side only and must never appear in browser code, `NEXT_PUBLIC_*`, `/health`, docs, logs, or committed env files
 - optional provider keys such as `FMP_API_KEY`, `ALPHA_VANTAGE_API_KEY`, `FINNHUB_API_KEY`, `TIINGO_API_KEY`, and `EODHD_API_KEY` are configuration readiness only until licensing, caching, display, and export rights are reviewed
 

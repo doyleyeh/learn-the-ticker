@@ -31,6 +31,59 @@ ETF_UNIVERSE_MANIFEST_PATHS = {
     "data/universes/us_etp_recognition.current.json",
     "data/universes/us_equity_etfs.current.json",
 }
+ETF_GOLDEN_PRECACHE_TICKERS = frozenset({"VOO", "QQQ"})
+ETF_REGRESSION_REFERENCE_TICKERS = frozenset(
+    {"VOO", "SPY", "VTI", "IVV", "QQQ", "IWM", "DIA", "VGT", "XLK", "SOXX", "SMH", "XLF", "XLV", "XLE"}
+)
+ETF_ELIGIBLE_UNIVERSE_POLICY = {
+    "coverage_authority": "data/universes/us_equity_etfs_supported.current.json",
+    "coverage_limit": "manifest_defined_reviewed_eligible_universe",
+    "golden_set_is_coverage_limit": False,
+    "required_listing": "currently_us_listed_etf",
+    "required_strategy": "passive_or_index_based",
+    "required_primary_exposure": "primary_us_equity",
+    "required_exposure_flags": ["non_leveraged", "non_inverse"],
+    "included_categories": [
+        "broad_us_index",
+        "total_market_or_large_cap",
+        "size_style",
+        "sector",
+        "industry_or_theme",
+        "factor_style",
+    ],
+    "included_factor_styles": [
+        "dividend",
+        "value_growth",
+        "quality",
+        "momentum",
+        "low_volatility",
+        "equal_weight",
+        "esg_index",
+    ],
+    "excluded_products": [
+        "active_etf",
+        "leveraged_etf",
+        "inverse_etf",
+        "etn",
+        "fixed_income_etf",
+        "commodity_etf",
+        "crypto_product",
+        "option_income_or_buffer_etf",
+        "single_stock_etf",
+        "multi_asset_etf",
+        "international_or_global_primary_exposure",
+        "unclear_or_pending_review_product",
+    ],
+}
+ETF_REQUIRED_ISSUER_SOURCE_PACK = [
+    "issuer_page",
+    "fact_sheet",
+    "prospectus_or_summary_prospectus",
+    "holdings",
+    "exposures_or_sector_breakdown",
+    "shareholder_or_methodology_or_risk_source",
+    "sponsor_announcements_when_relevant",
+]
 
 SUPPORTED_SCOPE_ETF_CATEGORIES = {
     ETFUniverseCategory.us_equity_index_etf,
@@ -196,6 +249,35 @@ def build_etf_launch_review_packet(
         "supported_runtime_authority": "data/universes/us_equity_etfs_supported.current.json",
         "recognition_runtime_authority": "data/universes/us_etp_recognition.current.json",
         "recognition_rows_unlock_generated_output": False,
+        "eligible_universe_policy": ETF_ELIGIBLE_UNIVERSE_POLICY,
+        "required_issuer_source_pack": ETF_REQUIRED_ISSUER_SOURCE_PACK,
+        "golden_precache_tickers": sorted(ETF_GOLDEN_PRECACHE_TICKERS),
+        "regression_reference_tickers": sorted(ETF_REGRESSION_REFERENCE_TICKERS),
+        "golden_set_is_coverage_limit": False,
+        "eligible_supported_entry_count": len(supported_entries),
+        "generated_output_eligible_count": sum(1 for entry in supported_entries if entry["generated_output_eligible"]),
+        "pending_ingestion_count": sum(
+            1 for entry in supported_entries if entry["support_state"] == ETFUniverseSupportState.eligible_not_cached.value
+        ),
+        "excluded_product_count": sum(
+            1
+            for entry in recognition_entries
+            if str(entry["support_state"])
+            in {
+                ETFUniverseSupportState.recognized_unsupported.value,
+                ETFUniverseSupportState.out_of_scope.value,
+            }
+        ),
+        "pending_review_tickers": sorted(
+            {
+                str(entry["ticker"])
+                for entry in supported_entries + recognition_entries
+                if str(entry["support_state"]) in {"unknown", "unavailable"}
+                or str(entry["handoff_status"]).endswith("review_needed")
+                or str(entry["freshness_state"]) in {"stale", "unknown", "unavailable"}
+                or str(entry["evidence_state"]) in {"partial", "unknown", "unavailable", "insufficient_evidence"}
+            }
+        ),
         "review_status": review_status,
         "stop_conditions": stop_conditions,
         "supported_manifest": _manifest_review_summary(supported, supported_entries),
@@ -391,6 +473,18 @@ def _manifest_review_summary(manifest: ETFUniverseManifest, entries: list[dict[s
         "support_state_counts": _count_values(str(entry["support_state"]) for entry in entries),
         "wrapper_or_scope_counts": _count_values(str(entry["wrapper_or_scope"]) for entry in entries),
         "source_quality_counts": _count_values(str(entry["source_quality"]) for entry in entries),
+        "generated_output_eligible_count": sum(1 for entry in entries if entry["generated_output_eligible"]),
+        "pending_ingestion_count": sum(
+            1 for entry in entries if entry["support_state"] == ETFUniverseSupportState.eligible_not_cached.value
+        ),
+        "pending_review_count": sum(
+            1
+            for entry in entries
+            if str(entry["support_state"]) in {"unknown", "unavailable"}
+            or str(entry["handoff_status"]).endswith("review_needed")
+            or str(entry["freshness_state"]) in {"stale", "unknown", "unavailable"}
+            or str(entry["evidence_state"]) in {"partial", "unknown", "unavailable", "insufficient_evidence"}
+        ),
         "tickers": [str(entry["ticker"]) for entry in entries],
     }
 
@@ -407,14 +501,20 @@ def _etf_review_stop_conditions(
         stop_conditions.append("supported_manifest_checksum_mismatch")
     if not _manifest_checksum_matches(recognition):
         stop_conditions.append("recognition_manifest_checksum_mismatch")
-    expected_supported = {"VOO", "SPY", "VTI", "IVV", "QQQ", "IWM", "DIA", "VGT", "XLK", "SOXX", "SMH", "XLF", "XLV", "XLE"}
     supported_tickers = {entry.ticker for entry in supported.entries}
-    if expected_supported - supported_tickers:
-        stop_conditions.append("missing_golden_ticker")
+    if ETF_GOLDEN_PRECACHE_TICKERS - supported_tickers:
+        stop_conditions.append("missing_golden_precache_ticker")
+    supported_rows_by_ticker = {str(entry["ticker"]): entry for entry in supported_entries}
+    if any(
+        not supported_rows_by_ticker.get(ticker, {}).get("generated_output_eligible")
+        for ticker in ETF_GOLDEN_PRECACHE_TICKERS
+        if ticker in supported_tickers
+    ):
+        stop_conditions.append("golden_precache_ticker_not_generated_output_eligible")
     if _manifest_uses_fixture_or_local_only_provenance(supported) or _manifest_uses_fixture_or_local_only_provenance(recognition):
         stop_conditions.append("fixture_or_local_only_provenance_not_launch_approved")
-    if len(supported.entries) < len(expected_supported):
-        stop_conditions.append("fixture_sized_supported_manifest_not_launch_approved")
+    if any(entry["handoff_status"] != "handoff_metadata_available" for entry in supported_entries):
+        stop_conditions.append("issuer_source_pack_review_not_complete")
     if any(entry["manifest_kind"] == "recognition" and entry["generated_output_eligible"] for entry in recognition_entries):
         stop_conditions.append("recognition_generated_output_unlock_attempt")
     if any(str(entry["support_state"]) in {"unknown", "unavailable"} for entry in supported_entries + recognition_entries):

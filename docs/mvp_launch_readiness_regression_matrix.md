@@ -13,6 +13,7 @@ This matrix is the deterministic launch-readiness regression layer before produc
 - Stock-vs-ETF comparison preserves relationship badges and the single-company-vs-ETF-basket structure.
 - Weekly News Focus renders only the evidence-backed set, including smaller verified sets and empty states.
 - Runtime stock support reads `data/universes/us_common_stocks_top500.current.json`; candidate Top-500 refresh work is a later reviewed workflow and must not replace the approved current manifest automatically.
+- Supported ETF generated-output coverage reads `data/universes/us_equity_etfs_supported.current.json`; golden/pre-cache ETF tickers are regression assets only, and the manifest-defined eligible universe may expand across broad index, total-market/large-cap, size/style, sector, industry/theme, and factor-style ETFs after source-pack validation.
 - Golden Asset Source Handoff remains the approval gate between retrieval and evidence use. Fetching a source is not permission to store it as evidence, cite it, summarize it, cache it, export it, or generate from it.
 
 ## Launch Pre-Cache Coverage
@@ -20,7 +21,7 @@ This matrix is the deterministic launch-readiness regression layer before produc
 | Area | Deterministic coverage | Required regression checks | Follow-up boundary |
 | --- | --- | --- | --- |
 | Cached supported assets | `AAPL`, `VOO`, and `QQQ` have existing local knowledge packs and generated-output availability. | Search returns `cached_supported`; asset pages can render; chat, comparison, source drawer, glossary, and exports use fixture-backed approved metadata. | Broader generated content requires handoff-gated persisted source packs. |
-| Eligible launch assets | Top-500 fixture stocks outside local packs and non-leveraged U.S. equity ETFs such as `MSFT`, `NVDA`, `SPY`, `VTI`, `IVV`, `IWM`, `DIA`, `VGT`, `XLK`, `SOXX`, `SMH`, `XLF`, and `XLV` are `eligible_not_cached`. | Search and ingestion expose pending/running/failed pre-cache states with no generated page, chat answer, comparison, citations, source documents, or generated-output cache hit. | On-demand or pre-cache generation remains blocked until validated source packs exist. |
+| Eligible launch assets | Top-500 fixture stocks outside local packs and current supported-manifest ETFs such as `MSFT`, `NVDA`, `SPY`, `VTI`, `IVV`, `IWM`, `DIA`, `VGT`, `XLK`, `SOXX`, `SMH`, `XLF`, and `XLV` are `eligible_not_cached`; broader eligible ETF categories and reference tickers such as `XLE` need reviewed source-pack readiness before runtime support. | Search and ingestion expose pending/running/failed pre-cache states with no generated page, chat answer, comparison, citations, source documents, or generated-output cache hit. | On-demand or pre-cache generation remains blocked until validated source packs exist. |
 | Unsupported assets | Crypto, leveraged ETFs, inverse ETFs, fixed-income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, and similar blocked products are recognized where fixture metadata exists. | Search, ingestion, pre-cache, chat, comparison, exports, and source drawer paths expose blocked capabilities and no generated output. | Adding a new supported asset class is out of scope for MVP readiness. |
 | Out-of-scope assets | U.S. common stocks outside the current Top-500 manifest and ETN-style products are recognized as out of scope where fixture metadata exists. | `GME` and `VXX` remain blocked from generated pages, generated chat, generated comparisons, risk summaries, and source exports. | Top-500 monthly candidate refresh is reviewed later and does not change runtime truth. |
 | Unknown or unavailable assets | Unknown tickers and unavailable fixture states return non-generated states. | Unknown/no-result copy says facts are not invented; unavailable pre-cache job status stays non-generated. | No live lookup is performed in normal CI. |
@@ -72,7 +73,7 @@ ETF split note: T-120 implemented the split between `data/universes/us_equity_et
 
 | Case | Expected behavior |
 | --- | --- |
-| Enough high-signal selected Weekly News items | Show up to the configured maximum, cite selected items, and allow AI Comprehensive Analysis only when threshold and canonical citations pass. |
+| Enough approved selected Weekly News items | Show up to the configured maximum, cite selected items, label reputable third-party reporting, and allow AI Comprehensive Analysis only when threshold and canonical citations pass. |
 | One selected item | Show the single verified item, label the limited set, and suppress AI Comprehensive Analysis as insufficient evidence. |
 | Zero selected items | Show the normal empty state and suppress AI Comprehensive Analysis. |
 | Duplicate, promotional, wrong-asset, weak, unapproved, rejected, or rights-disallowed items | Exclude from selected Weekly News Focus and from AI Comprehensive Analysis inputs. |

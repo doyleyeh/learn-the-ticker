@@ -316,7 +316,7 @@ Local validation may use a smaller reviewed test set and the golden assets, but 
 The v1 product should support:
 
 - the top 500 U.S.-listed common stocks first;
-- U.S.-listed, active, non-leveraged, non-inverse, passive/index-based equity ETFs with primary U.S. equity exposure and validated issuer source packs;
+- currently U.S.-listed, non-leveraged, non-inverse, passive/index-based equity ETFs with primary U.S. equity exposure and validated issuer source packs;
 - home-page single-asset ticker/name search;
 - search and entity resolution;
 - stock asset pages;
@@ -345,7 +345,7 @@ The PRD owns the coverage requirement. The technical design spec owns manifest f
 
 The exact supported ETF universe should come from a reviewed, versioned supported ETF manifest. A separate ETF/ETP recognition universe may help search identify real but unsupported exchange-traded products, but recognition is not support.
 
-The proposal-level product rule is that v1 generated ETF experiences are unlocked only for reviewed U.S.-listed, active, non-leveraged, non-inverse, passive/index-based U.S. equity ETFs with validated issuer source packs. Live provider ETF flags, exchange listings, issuer search results, and recognition-only rows may help candidate discovery or blocked search states, but they must not unlock ETF pages, chat, comparison output, Weekly News Focus, AI Comprehensive Analysis, or exports.
+The proposal-level product rule is that v1 generated ETF experiences are unlocked only for reviewed, currently U.S.-listed, non-leveraged, non-inverse, passive/index-based U.S. equity ETFs with validated issuer source packs. Live provider ETF flags, exchange listings, issuer search results, and recognition-only rows may help candidate discovery or blocked search states, but they must not unlock ETF pages, chat, comparison output, Weekly News Focus, AI Comprehensive Analysis, or exports.
 
 The v1 supported ETF manifest should start with the golden ETF set from the PRD:
 
@@ -560,7 +560,7 @@ Every asset page should include a clearly labeled Weekly News Focus module. This
 1. **Weekly News Focus**;
 2. **AI Comprehensive Analysis**.
 
-The Weekly News Focus should show a source-grounded weekly list of high-signal items for the selected asset. The default window should use the last completed Monday-Sunday market week plus the current week-to-date through yesterday, using U.S. Eastern dates. For example, if today is Wednesday, the module should include last Monday through Sunday plus this Monday and Tuesday.
+The Weekly News Focus should show a source-grounded weekly list of approved items for the selected asset. The default window should use the last completed Monday-Sunday market week plus the current week-to-date through yesterday, using U.S. Eastern dates. For example, if today is Wednesday, the module should include last Monday through Sunday plus this Monday and Tuesday.
 
 It should show the configured maximum only when enough high-quality evidence exists. Fewer items are acceptable when the evidence set is limited, and many broad ETFs may legitimately show "No major Weekly News Focus items found for this window." The product should never pad the list with weak, duplicative, promotional, irrelevant, non-reviewed, or rights-disallowed items just to reach a target count.
 
@@ -576,7 +576,7 @@ Each Weekly News Focus item should include:
 - official-vs-third-party source label;
 - freshness and source-quality metadata.
 
-The AI Comprehensive Analysis should synthesize the Weekly News Focus into educational context. It should appear only when at least two high-signal Weekly News Focus items exist. The module should begin with **What Changed This Week**, then use three safer context sections:
+The AI Comprehensive Analysis should synthesize the Weekly News Focus into educational context. It should appear only when at least two approved Weekly News Focus items exist. Approved reputable third-party items may count when source governance permits them and the UI labels them as third-party reporting. The module should begin with **What Changed This Week**, then use three safer context sections:
 
 - **Market Context**;
 - **Business/Fund Context**;
@@ -605,7 +605,7 @@ For ETFs, Weekly News Focus items may include:
 - fund liquidations;
 - meaningful sponsor updates.
 
-This section should include high-signal events only. It should be treated as context, not the core definition of the asset. If no high-signal Weekly News Focus items exist, the UI should show a clear empty state and suppress AI Comprehensive Analysis. If only one high-signal item exists, the UI should show the item but mark AI Comprehensive Analysis as insufficient evidence.
+This section should include approved events only. It should be treated as context, not the core definition of the asset. If no approved Weekly News Focus items exist, the UI should show a clear empty state and suppress AI Comprehensive Analysis. If only one approved item exists, the UI should show the item but mark AI Comprehensive Analysis as insufficient evidence.
 
 AI Comprehensive Analysis should be reviewed with live AI during local testing when the evidence threshold is met. If live generation fails schema, citation, source-use, or safety validation, the generated section should be suppressed or marked unavailable rather than replaced with uncited text.
 
@@ -1269,7 +1269,7 @@ Examples:
 - "We could not verify this from an official source."
 - "Holdings data may be stale."
 - "Weekly News Focus evidence is mixed."
-- "No high-signal Weekly News Focus items found."
+- "No major Weekly News Focus items found."
 ---
 
 ## 20. Safety and Product Guardrails

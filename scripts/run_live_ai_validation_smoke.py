@@ -233,7 +233,7 @@ def _run_analysis_case(
         as_of="2026-04-23",
     )
     if focus.selected_item_count < 2:
-        return _skipped(ANALYSIS_CASE_ID, "insufficient_high_signal_weekly_news_evidence", selected_item_count=focus.selected_item_count)
+        return _skipped(ANALYSIS_CASE_ID, "insufficient_approved_weekly_news_evidence", selected_item_count=focus.selected_item_count)
 
     canonical_fact_citation_ids = ["c_fact_qqq_asset_identity"]
     analysis = build_ai_comprehensive_analysis(
@@ -439,7 +439,7 @@ def _analysis_candidate(
         asset_ticker=ANALYSIS_TICKER,
         event_type=event_type,
         title=f"{event_type.value.replace('_', ' ').title()} fixture",
-        summary=f"Approved high-signal {event_type.value.replace('_', ' ')} metadata for {ANALYSIS_TICKER}.",
+        summary=f"Approved {event_type.value.replace('_', ' ')} metadata for {ANALYSIS_TICKER}.",
         event_date="2026-04-21",
         published_at="2026-04-21T12:00:00Z",
         retrieved_at="2026-04-21T13:00:00Z",

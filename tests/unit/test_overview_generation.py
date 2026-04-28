@@ -10,7 +10,6 @@ from backend.models import (
     SourceAllowlistStatus,
     SourceQuality,
     SourceUsePolicy,
-    WeeklyNewsContractState,
     WeeklyNewsEventType,
 )
 from backend.cache import (
@@ -204,25 +203,22 @@ def test_overview_uses_injected_persisted_weekly_news_and_ai_threshold_metadata(
     assert freshness_by_id["weekly_news_focus"].validation_outcome.value in {"validated", "validated_with_limitations"}
     assert freshness_by_id["ai_comprehensive_analysis"].validation_outcome.value in {"validated", "validated_with_limitations"}
 
-    suppressed_threshold = records.ai_thresholds[0].model_copy(
-        update={
-            "high_signal_selected_item_count": 1,
-            "analysis_allowed": False,
-            "analysis_state": WeeklyNewsContractState.suppressed.value,
-            "suppression_reason_code": "fewer_than_two_high_signal_items",
-        }
+    one_item_records = acquire_weekly_news_event_evidence_from_fixtures(
+        asset_ticker="QQQ",
+        as_of="2026-04-23",
+        created_at="2026-04-23T12:00:00Z",
+        candidates=[_weekly_candidate("official_filing", tier=WeeklyNewsSourceRankTier.official_filing)],
     )
-    suppressed_records = records.model_copy(update={"ai_thresholds": [suppressed_threshold]})
     suppressed = generate_asset_overview(
         "QQQ",
-        persisted_weekly_news_reader=FakeWeeklyNewsReader({"QQQ": suppressed_records}),
+        persisted_weekly_news_reader=FakeWeeklyNewsReader({"QQQ": one_item_records}),
     )
 
     assert suppressed.weekly_news_focus is not None
-    assert suppressed.weekly_news_focus.selected_item_count == 2
+    assert suppressed.weekly_news_focus.selected_item_count == 1
     assert suppressed.ai_comprehensive_analysis.analysis_available is False
-    assert suppressed.ai_comprehensive_analysis.weekly_news_selected_item_count == 2
-    assert "fewer than two high-signal" in suppressed.ai_comprehensive_analysis.suppression_reason
+    assert suppressed.ai_comprehensive_analysis.weekly_news_selected_item_count == 1
+    assert "fewer than two approved" in suppressed.ai_comprehensive_analysis.suppression_reason
 
 
 def test_persisted_overview_falls_back_on_unconfigured_missing_and_failing_readers():

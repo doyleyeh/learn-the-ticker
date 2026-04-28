@@ -327,6 +327,11 @@ def _check_launch_manifest_review_packets(root: Path) -> RehearsalCheck:
             "top500_fixture_or_local_only": top500["fixture_or_local_only_contract"],
             "etf_supported_authority": etf["supported_runtime_authority"],
             "etf_recognition_authority": etf["recognition_runtime_authority"],
+            "etf_golden_set_is_coverage_limit": etf["golden_set_is_coverage_limit"],
+            "etf_eligible_supported_entry_count": etf["eligible_supported_entry_count"],
+            "etf_generated_output_eligible_count": etf["generated_output_eligible_count"],
+            "etf_pending_ingestion_count": etf["pending_ingestion_count"],
+            "etf_excluded_product_count": etf["excluded_product_count"],
         },
     )
 

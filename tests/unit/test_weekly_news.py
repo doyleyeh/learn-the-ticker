@@ -145,7 +145,7 @@ def test_fixture_packs_render_clear_empty_weekly_news_state_without_padding():
         assert analysis.minimum_weekly_news_item_count == 2
         assert analysis.weekly_news_selected_item_count == 0
         assert analysis.sections == []
-        assert "fewer than two high-signal" in analysis.suppression_reason
+        assert "fewer than two approved" in analysis.suppression_reason
 
 
 def test_weekly_news_selection_prioritizes_official_sources_and_excludes_disallowed_items():
@@ -174,6 +174,8 @@ def test_weekly_news_selection_prioritizes_official_sources_and_excludes_disallo
     assert focus.evidence_state is EvidenceState.partial
     assert focus.evidence_limited_state.value == "limited_verified_set"
     assert focus.items[0].source.source_quality is SourceQuality.issuer
+    assert focus.items[1].source.is_official is False
+    assert focus.items[1].source.source_quality is SourceQuality.allowlisted
     assert focus.items[0].selection_rationale.total_score > focus.items[1].selection_rationale.total_score
     assert focus.items[0].period_bucket.value == "current_week_to_date"
     assert all(item.source.allowlist_status is SourceAllowlistStatus.allowed for item in focus.items)
@@ -182,7 +184,7 @@ def test_weekly_news_selection_prioritizes_official_sources_and_excludes_disallo
     assert focus.empty_state is None
 
 
-def test_ai_comprehensive_analysis_requires_two_high_signal_items_and_preserves_section_order():
+def test_ai_comprehensive_analysis_requires_two_approved_items_and_preserves_section_order():
     asset = build_asset_knowledge_pack("QQQ").asset
     one_item = select_weekly_news_focus(
         asset,
@@ -421,7 +423,13 @@ def test_persisted_weekly_news_rejects_disconnected_threshold_and_sanitizes_diag
 
 def test_fixture_acquisition_boundary_selects_ranked_deduped_weekly_news_evidence():
     candidates = [
-        _repository_candidate("allowlisted_context", tier=WeeklyNewsSourceRankTier.allowlisted_news, source_rank=20, source_quality=SourceQuality.allowlisted),
+        _repository_candidate(
+            "allowlisted_context",
+            tier=WeeklyNewsSourceRankTier.allowlisted_news,
+            source_rank=20,
+            source_quality=SourceQuality.allowlisted,
+            high_signal=False,
+        ),
         _repository_candidate("official_filing", tier=WeeklyNewsSourceRankTier.official_filing, source_rank=1),
         _repository_candidate(
             "duplicate_context",
@@ -497,7 +505,7 @@ def test_fixture_acquisition_boundary_supports_empty_limited_and_ai_threshold_st
     assert empty.evidence_states[0].empty_state_valid is True
     assert empty.evidence_states[0].evidence_limited_state == "empty"
     assert empty.ai_thresholds[0].analysis_allowed is False
-    assert empty.ai_thresholds[0].suppression_reason_code == "fewer_than_two_high_signal_items"
+    assert empty.ai_thresholds[0].suppression_reason_code == "fewer_than_two_approved_items"
 
     one_item = acquire_weekly_news_event_evidence_from_fixtures(
         asset_ticker="QQQ",
@@ -857,7 +865,7 @@ def test_weekly_news_event_evidence_contract_supports_empty_state_without_paddin
                 high_signal_selected_item_count=0,
                 analysis_allowed=False,
                 analysis_state=WeeklyNewsContractState.suppressed.value,
-                suppression_reason_code="fewer_than_two_high_signal_items",
+                suppression_reason_code="fewer_than_two_approved_items",
                 created_at="2026-04-23T12:00:00Z",
             )
         ],
@@ -1001,6 +1009,7 @@ def _repository_candidate(
     evidence_state: EvidenceState = EvidenceState.supported,
     event_date: str = "2026-04-21",
     duplicate_group_id: str | None = None,
+    high_signal: bool = True,
     promotional: bool = False,
     irrelevant: bool = False,
     suppression_reason_codes: list[str] | None = None,
@@ -1028,6 +1037,7 @@ def _repository_candidate(
         freshness_state=freshness_state.value,
         evidence_state=evidence_state.value,
         importance_score=10,
+        high_signal=high_signal,
         promotional=promotional,
         irrelevant=irrelevant,
         duplicate_group_id=duplicate_group_id or event_id,
@@ -1141,7 +1151,7 @@ def _repository_records(
                 high_signal_selected_item_count=selected_count,
                 analysis_allowed=selected_count >= 2,
                 analysis_state=WeeklyNewsContractState.available.value if selected_count >= 2 else WeeklyNewsContractState.suppressed.value,
-                suppression_reason_code=None if selected_count >= 2 else "fewer_than_two_high_signal_items",
+                suppression_reason_code=None if selected_count >= 2 else "fewer_than_two_approved_items",
                 selected_event_ids=[row.selected_event_id for row in selected_events],
                 created_at="2026-04-23T12:00:00Z",
             )

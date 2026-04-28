@@ -678,7 +678,7 @@ def generate_overview_from_pack(
         canonical_fact_citation_ids=canonical_citation_ids,
         canonical_source_document_ids=[identity_fact.source_document.source_document_id],
         minimum_weekly_news_item_count=weekly_news_read.minimum_ai_analysis_item_count,
-        high_signal_weekly_news_item_count=(
+        approved_weekly_news_item_count=(
             weekly_news_read.high_signal_selected_item_count if weekly_news_read.found else None
         ),
     )

@@ -136,8 +136,23 @@ def test_etf_launch_review_packet_preserves_supported_and_recognition_split():
     assert packet["supported_runtime_authority"] == "data/universes/us_equity_etfs_supported.current.json"
     assert packet["recognition_runtime_authority"] == "data/universes/us_etp_recognition.current.json"
     assert packet["recognition_rows_unlock_generated_output"] is False
+    assert packet["golden_set_is_coverage_limit"] is False
+    assert packet["golden_precache_tickers"] == ["QQQ", "VOO"]
+    assert "XLE" in packet["regression_reference_tickers"]
+    assert packet["eligible_universe_policy"]["coverage_limit"] == "manifest_defined_reviewed_eligible_universe"
+    assert "factor_style" in packet["eligible_universe_policy"]["included_categories"]
+    assert "low_volatility" in packet["eligible_universe_policy"]["included_factor_styles"]
+    assert "international_or_global_primary_exposure" in packet["eligible_universe_policy"]["excluded_products"]
+    assert "issuer_page" in packet["required_issuer_source_pack"]
+    assert packet["eligible_supported_entry_count"] == 13
+    assert packet["generated_output_eligible_count"] == 2
+    assert packet["pending_ingestion_count"] == 11
+    assert packet["excluded_product_count"] >= 1
     assert "fixture_or_local_only_provenance_not_launch_approved" in packet["stop_conditions"]
     assert "fixture_source_quality_not_launch_approved" in packet["stop_conditions"]
+    assert "issuer_source_pack_review_not_complete" in packet["stop_conditions"]
+    assert "missing_golden_ticker" not in packet["stop_conditions"]
+    assert "fixture_sized_supported_manifest_not_launch_approved" not in packet["stop_conditions"]
 
     supported = packet["supported_manifest"]
     recognition = packet["recognition_manifest"]
@@ -147,8 +162,10 @@ def test_etf_launch_review_packet_preserves_supported_and_recognition_split():
     assert recognition["checksum_matches"] is True
     assert supported["support_state_counts"]["cached_supported"] == 2
     assert supported["support_state_counts"]["eligible_not_cached"] == 11
+    assert supported["generated_output_eligible_count"] == 2
+    assert supported["pending_ingestion_count"] == 11
+    assert supported["pending_review_count"] == 13
     assert recognition["support_state_counts"]["recognized_unsupported"] >= 1
-    assert "missing_golden_ticker" in packet["stop_conditions"]
 
     supported_rows = {entry["ticker"]: entry for entry in packet["supported_entries"]}
     recognition_rows = {entry["ticker"]: entry for entry in packet["recognition_entries"]}

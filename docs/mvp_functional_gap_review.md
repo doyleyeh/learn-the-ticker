@@ -22,70 +22,74 @@ Completed capabilities:
 - T-124 is complete: Top-500 candidate/diff artifacts and reviewed launch-universe planning are present without promoting fixture candidates into runtime truth.
 - Golden Asset Source Handoff enforcement exists across source policy, source snapshots, knowledge packs, citations, generated-output cache metadata, source drawer output, and exports.
 - LLM runtime diagnostics, OpenRouter transport contracts, and the T-127 local live-AI validation smoke are present, with deterministic mocks as the default and live network calls blocked unless explicitly gated.
-- T-128 adds a deterministic governed golden rendering proof: configured API reads can validate private same-asset source snapshot artifacts, normalized knowledge-pack records, and generated-output cache records before serving overview, source drawer, and export output.
+- T-128: prove governed golden evidence drives backend API and frontend rendering. This is now completed as a deterministic governed golden rendering proof: configured API reads can validate private same-asset source snapshot artifacts, normalized knowledge-pack records, and generated-output cache records before serving overview, source drawer, and export output.
 - T-129 adds repo-native review-only launch-manifest packet automation for Top-500 candidate/diff/review summaries and split ETF supported/recognition manifest inspection without promoting runtime manifests.
 - T-130 adds a repo-native local fresh-data MVP rehearsal command that ties source-handoff gates, governed golden API reads, source drawer/export surfaces, comparison/chat paths, frontend smoke markers, launch-manifest review packets, and opt-in readiness checks into one review-oriented local command.
 - Normal CI remains deterministic and does not require live provider, news, market-data, storage, database, browser services, or LLM calls.
 
-## Current Misalignments
+## Current Implementation-Doc Alignment
 
-The v0.6 docs intentionally move execution details out of the proposal and into specialized handoff docs. Those new handoff docs need repo-native command alignment.
+The implementation-facing docs now treat T-126 through T-130 as completed deterministic/operator-safe layers, not future blockers:
 
-Doc/runtime mismatches addressed by T-125:
+- source-handoff packet inspection/finalization tooling exists;
+- operator-only live-AI validation smoke exists and remains disabled by default;
+- governed golden evidence can drive API/frontend rendering for `AAPL`, `VOO`, and `QQQ`;
+- Top-500 and ETF launch-manifest review packets exist and remain review-only;
+- the local fresh-data MVP rehearsal command exists and remains deterministic by default.
 
-- `docs/SOURCE_HANDOFF.md`, `docs/TOP500_MANIFEST_HANDOFF.md`, and `docs/ETF_MANIFEST_HANDOFF.md` now use repo-native command examples or explicitly label missing tooling as future T-126 work.
-- `docs/README.md`, `SPEC.md`, the runbook, readiness matrix, and go/no-go checklist now describe the ETF split and T-121 through T-124 as completed deterministic/operator-scoped work.
-- `TASKS.md` and repo-contract tests now mark T-125 complete and promote T-126 as the current active agent-loop task.
+The agent-loop control docs now need runnable tasks that move from review-only/golden proof toward a fully functional local fresh-data MVP without jumping to production deployment.
 
 ## MVP Fresh-Data Gaps
 
 The project is not yet a fully functional fresh-data MVP. Remaining blockers:
 
 1. Launch-sized manifests are not approved.
-   The current Top-500 stock manifest and supported ETF manifest are deterministic fixtures. T-129 adds review-only packet automation, but public v1 still needs the full approved Top-500 stock manifest, a launch-sized supported ETF manifest, private production mirrors, and manual approvals.
+   The current Top-500 stock manifest and supported ETF manifest are deterministic fixtures. T-129 adds review-only packet automation, but the local fully functional MVP still needs reviewed Top-500 and ETF source-pack readiness, broader eligible ETF review outputs, private mirror readiness, and manual approval gates before treating full coverage as fresh-data ready.
 
-2. Repo-native source-handoff tooling is available for local reviewed packets.
-   T-126 added source-handoff manifest inspection/finalization smoke tooling, but launch-sized governed source artifacts still need review before public production use.
+2. ETF eligible-universe implementation is not complete.
+   The product decision now requires manifest-defined coverage across broad U.S. index, total-market/large-cap, size/style, sector, industry/theme, dividend, value/growth, quality, momentum, low-volatility, equal-weight, and ESG index ETFs when source packs validate. The current supported manifest and review packet are still fixture-sized/local metadata; golden/pre-cache tickers are regression assets only, not the coverage ceiling.
 
-3. Governed golden evidence now has deterministic render proof for the golden path.
-   T-128 proves that approved governed sources for golden assets can flow through private source snapshot metadata, normalized facts, generated-output cache validation, backend route reads, source drawer output, exports, and frontend smoke markers. This proof does not approve new sources, launch-sized manifests, production storage, or broader generated-output coverage.
+3. Launch-sized governed source artifacts are absent.
+   T-126 added source-handoff manifest tooling and T-128 proved governed golden evidence rendering. The next local MVP gap is expanding readiness packets for SEC stock source packs and ETF issuer source packs without approving unreviewed sources or enabling generated output for failed assets.
 
 4. Local live-AI validation is operator-smoke covered, not launch-approved.
-   T-127 adds an opt-in local smoke for grounded chat and AI Comprehensive Analysis when evidence thresholds are met. It remains disabled by default, validation-first, and separate from source approval or Golden Asset Source Handoff.
+   T-127 adds an opt-in local smoke for grounded chat and AI Comprehensive Analysis when evidence thresholds are met. It remains disabled by default, validation-first, and separate from source approval or Golden Asset Source Handoff. Repo code relies on OpenRouter platform/API-key limits rather than a separate spend cap.
 
 5. Local MVP rehearsal is now available, but not launch approval.
-   T-130 adds `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` for deterministic local review. The command reports `pass`, `skipped`, and `blocked` checks, skips optional browser/durable/retrieval/live-AI modes unless explicitly enabled, and does not approve sources, promote manifests, start production services, require live calls by default, or make fixture-sized/local-only data launch-approved.
+   T-130 adds `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` for deterministic local review. The command reports `pass`, `skipped`, and `blocked` checks, skips optional browser/durable/retrieval/live-AI modes unless explicitly enabled, and does not approve sources, promote manifests, start production services, require live calls by default, or make fixture-sized/local-only data launch-approved. It still needs explicit local-MVP thresholds for failed/unavailable assets and optional-mode blockers.
 
-6. Third-party/news governance needs updated regression coverage.
-   The v0.6 source policy allows approved reputable third-party/news metadata and beginner summaries, while full article text remains rights-gated. Weekly News Focus and export tests need to preserve those distinctions.
+6. Batchable fresh-data ingestion planning is not yet actionable for the full local MVP.
+   The repo has deterministic ingestion state contracts, but it still needs an operator-safe planner that prioritizes high-demand pre-cache assets first, then supported ETFs and Top-500 stocks by review/source-pack priority, with resumable pending/running/succeeded/failed states.
 
 7. Production readiness remains later.
    Admin auth, rate limiting, production CORS review, private object storage, database migrations, Cloud Run service/job settings, monitoring, rollback, cost controls, launch support, and legal/compliance review remain open.
 
 ## Refined Agent Track
 
-Current task state:
+Current task state for the next agent-loop pass:
 
-- T-125 completed v0.6 docs, handoff guides, MVP gap review, and repo-contract test alignment.
 - T-126 completed repo-native source-handoff manifest inspection/finalization smoke tooling.
 - T-127 completed the opt-in local live-AI validation smoke for grounded chat and AI Comprehensive Analysis.
-- T-128 completed deterministic governed golden API/frontend rendering proof for the golden set.
-- T-128: prove governed golden evidence drives backend API and frontend rendering remains completed and limited to deterministic golden assets.
-- T-128 adds deterministic governed golden API/frontend rendering proof for the golden set and remains limited to deterministic golden assets.
+- T-128 completed deterministic governed golden API/frontend rendering proof for the golden set and remains limited to deterministic golden assets.
 - T-129 completed review-only launch-manifest operator automation parity for Top-500 and supported ETF review packets.
 - T-129: add launch-manifest operator automation parity is now implemented as deterministic review-only operator tooling, not as launch approval or manifest promotion.
 - T-130 completed the local fresh-data MVP rehearsal command as a deterministic, fixture-backed review layer with explicit optional modes.
 
 Runnable near-term backlog:
 
-- No runnable backlog task is currently prepared after T-130.
+- T-131 adds ETF eligible-universe review packet contracts.
+- T-132 adds stock SEC source-pack readiness packet contracts.
+- T-133 adds ETF issuer source-pack readiness packet contracts.
+- T-134 adds local fresh-data MVP readiness thresholds.
+- T-135 adds a batchable local ingestion priority planner.
 
 Sequencing rationale:
 
 - Align docs first so the agent loop does not follow commands from a different repository layout.
-- T-126 source-handoff tooling and T-127 live-AI local validation now exist before the governed-evidence render proof expands the blast radius.
-- Keep launch-manifest automation review-only until promotion gates and private mirrors are ready.
-- T-130 is intentionally review-oriented: it verifies the integrated local MVP path after source, evidence, AI, and manifest gates exist, but it does not replace source approval, manifest promotion, or production readiness review.
+- Start with ETF eligible-universe review because the latest product decision makes golden ETFs a regression subset, not the coverage ceiling.
+- Add stock and ETF source-pack readiness before changing generated-output unlock behavior.
+- Add local MVP thresholds before broadening ingestion so failed/unavailable assets cannot leak generated claims.
+- Add batch planning after the readiness packets exist, keeping all work deterministic and review-only until source approvals and manifest promotion are explicit.
 
 ## Non-Goals For The Next Tasks
 

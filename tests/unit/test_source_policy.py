@@ -138,6 +138,7 @@ def test_source_policy_resolution_by_domain_fixture_provider_and_unknown():
     assert recent.recent_context_only is True
     assert recent.permitted_operations.can_support_canonical_facts is False
     assert source_can_export_excerpt(recent) is True
+    assert 0 < recent.allowed_excerpt.max_words <= 90
 
     assert provider.decision is SourcePolicyDecisionState.allowed
     assert provider.source_use_policy is SourceUsePolicy.metadata_only

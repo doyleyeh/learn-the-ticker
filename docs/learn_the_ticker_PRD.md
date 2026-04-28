@@ -11,7 +11,7 @@
 
 ## 1. Executive summary
 
-Learn the Ticker is a web-based educational research assistant that helps beginner investors understand U.S.-listed common stocks and a manifest-approved set of U.S.-listed, active, non-leveraged, non-inverse, passive/index-based U.S. equity ETFs in plain English.
+Learn the Ticker is a web-based educational research assistant that helps beginner investors understand U.S.-listed common stocks and a manifest-approved set of currently U.S.-listed, non-leveraged, non-inverse, passive/index-based U.S. equity ETFs in plain English.
 
 A user can search one ticker or asset name such as `VOO`, `QQQ`, `Apple`, or `AAPL` and receive a source-grounded explanation of:
 
@@ -55,11 +55,11 @@ This version resolves the previous open questions and makes the MVP direction ex
 
 | Area                     | Decision                                                                                                                                                                                                                                                                                                                                                                                                      |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Coverage universe        | Support a top-500-first U.S.-listed common stock universe plus a manifest-approved supported ETF universe. Supported ETF coverage is limited to U.S.-listed, active, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs. Pre-cache the existing curated high-demand universe for speed, testing, and reliability. Treat stocks outside the top 500 and ETFs outside the supported ETF manifest as future expansion unless explicitly approved. |
+| Coverage universe        | Support a top-500-first U.S.-listed common stock universe plus a manifest-approved supported ETF universe. Supported ETF coverage is limited to currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs. Pre-cache the existing curated high-demand universe for speed, testing, and reliability. Treat stocks outside the top 500 and ETFs outside the supported ETF manifest as future expansion unless explicitly approved. |
 | Unsupported assets       | Block unsupported and out-of-scope assets from generated pages, chat, and comparisons. Search may show a recognized-but-unsupported or recognized-but-out-of-scope result with a clear explanation.                                                                                                                                                |
 | Market/reference data    | Use a free-first approach: SEC EDGAR/XBRL, official issuer materials, free/reference metadata where available, provider adapters, deterministic mocks, and fixtures for tests. No paid provider keys are assumed for v1; paid market/reference providers may be added later behind adapters after licensing and export-rights review.                 |
 | Golden Asset Source Handoff | Treat source handoff as the approval layer and API fetching as only the retrieval layer. A fetched API payload, endpoint, issuer page, or filing URL is not approved evidence until domain, source type, official-source status, storage rights, export rights, source-use policy, rationale, parser validity, freshness/as-of metadata, and review status are approved. |
-| Weekly News Focus and analysis | Use a fixed Monday-Sunday market-week model plus current week-to-date through yesterday, based on U.S. Eastern dates. Use official filings, company investor relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes first, then broaden coverage with reputable third-party/news sources when source governance permits. Clearly label source type and official-vs-third-party status. AI Comprehensive Analysis starts with What Changed This Week and then Market Context, Business/Fund Context, and Risk Context, and appears only when at least two high-signal approved items exist. |
+| Weekly News Focus and analysis | Use a fixed Monday-Sunday market-week model plus current week-to-date through yesterday, based on U.S. Eastern dates. Use official filings, company investor relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes first, then broaden coverage with reputable third-party/news sources when source governance permits. Clearly label source type and official-vs-third-party status. AI Comprehensive Analysis starts with What Changed This Week and then Market Context, Business/Fund Context, and Risk Context, and appears only when at least two approved Weekly News Focus items exist. |
 | Grounded chat timing     | Include asset-specific grounded chat in MVP as a beta feature. Local testing should exercise live AI chat fully so the operator can review quality. Public v1 keeps chat beta-limited, asset-bounded, citation-aware, and not a general finance chatbot.                                                                                                                                                                                                                                                                                                 |
 | Citation strictness      | Require citations for important factual claims, not every sentence. Generic educational explanations do not require citations unless they include asset-specific facts.                                                                                                                                                                                                                                       |
 | Frontend workflow        | The home page is single-asset search first. Comparison lives on `/compare` and is reachable from global navigation, asset pages, suggested comparisons, chat compare redirects, and natural `A vs B` search patterns. Glossary is contextual help in reading flows, not a primary home-page workflow for MVP. |
@@ -68,7 +68,7 @@ This version resolves the previous open questions and makes the MVP direction ex
 | Compliance stance        | Add persistent educational disclaimers and inline redirects for advice-like questions. Avoid buy/sell/hold, allocation, price-target, tax, and personalized recommendation language.                                                                                                                                                                                                                          |
 | Mobile priority          | Build responsive web from v1. Mobile should prioritize Beginner Summary, Top 3 Risks, Key Facts, Weekly News Focus, AI Comprehensive Analysis, contextual glossary cards, chat, and source access. Source, glossary, and chat surfaces open as bottom sheets or full-screen panels where appropriate. |
 | Deployment target        | Use a free-tier-oriented personal side-project deployment path: Vercel Hobby for the frontend, Google Cloud Run in `us-central1` for the API with request-based billing and `min-instances=0`, Cloud Run Jobs for manual ingestion first, Neon Free Postgres, private Google Cloud Storage, no production queue service beyond Postgres `ingestion_jobs`, and Google Cloud Logging/Error Reporting. |
-| LLM runtime provider     | Keep deterministic mocks as the default for CI and ordinary local tests. Local fresh-data review should exercise live OpenRouter for generated features, especially grounded chat and AI Comprehensive Analysis when evidence thresholds are met. First deployment may enable live OpenRouter behind `LLM_LIVE_GENERATION_ENABLED=true` with an explicit free-model chain and DeepSeek V3.2 paid fallback only when paid fallback is enabled and OpenRouter platform budget controls are configured; the browser must never call OpenRouter directly or receive the key. |
+| LLM runtime provider     | Keep deterministic mocks as the default for CI and ordinary local tests. Local fresh-data review should exercise live OpenRouter for generated features, especially grounded chat and AI Comprehensive Analysis when evidence thresholds are met. First deployment may enable live OpenRouter behind `LLM_LIVE_GENERATION_ENABLED=true` with an explicit free-model chain and DeepSeek V3.2 paid fallback only when paid fallback is enabled and the operator has configured OpenRouter platform/API-key limits; the repo does not enforce a separate spend cap. The browser must never call OpenRouter directly or receive the key. |
 | Local provider secrets  | For local live-provider runs, `OPENROUTER_API_KEY`, `FMP_API_KEY`, `ALPHA_VANTAGE_API_KEY`, `FINNHUB_API_KEY`, `TIINGO_API_KEY`, and `EODHD_API_KEY` are expected to exist in the developer's WSL Bash environment. Key values must not be committed, copied into docs, exposed in frontend env vars, returned from APIs, or printed in logs. |
 | MVP readiness            | Full MVP remains the v1 target. Implementation may be phased internally, but v1 is not ready until compare, limited grounded chat beta, exports, freshness, citations, glossary, and on-demand ingestion states pass the MVP acceptance checklist and strict quality gates.                                                                         |
 | Public launch path       | Keep the current MVP/v1 structure. Before public deployment, validate locally with fresh data, live AI for generated features, and limited local users. Public v1 still requires the approved top-500 stock manifest, approved supported ETF manifest, source-backed golden assets, and launch/deploy smoke. |
@@ -86,7 +86,7 @@ The MVP should optimize for a small personal side-project audience before scale.
 - Storage production default: private Google Cloud Storage bucket in `us-central1`.
 - Queue production default: no Redis, Pub/Sub, or paid queue; use the existing Postgres `ingestion_jobs` table.
 - Monitoring production default: Google Cloud Logging and Error Reporting; Sentry Developer plan is optional later.
-- OpenRouter production default: disabled unless server-side env vars, platform budget controls, and validation gates are configured. Mock provider remains the default for CI and ordinary local tests, while local operator review may intentionally enable live AI.
+- OpenRouter production default: disabled unless server-side env vars, OpenRouter platform/API-key limits, and validation gates are configured. Mock provider remains the default for CI and ordinary local tests, while local operator review may intentionally enable live AI.
 - Retrieval production default: keyword and metadata retrieval first, with embeddings and pgvector vector indexes disabled until citation quality justifies semantic retrieval.
 
 OpenRouter first-deployment model chain:
@@ -99,7 +99,7 @@ OpenRouter first-deployment model chain:
 | Free fallback | 4 | `meta-llama/llama-3.3-70b-instruct:free` |
 | Paid safety net | 5 | `deepseek/deepseek-v3.2` |
 
-Flow: free model chain, schema/citation/safety validation, one repair retry, DeepSeek fallback when paid fallback is enabled and platform budget controls are set, validation again, then cache only validated output. Raw model reasoning is never stored or shown; the product may show only a short cited `reasoning_summary`.
+Flow: free model chain, schema/citation/safety validation, one repair retry, DeepSeek fallback when paid fallback is enabled and OpenRouter platform/API-key limits are set, validation again, then cache only validated output. Raw model reasoning is never stored or shown; the product may show only a short cited `reasoning_summary`.
 
 These deployment choices do not relax product safety. Generated and exported output remains educational only and must preserve citation, freshness, uncertainty, and no-advice guardrails.
 
@@ -139,15 +139,12 @@ The authoritative source for v1 supported ETF coverage is a versioned manifest, 
 - ETF/ETP recognition manifest path: `data/universes/us_etp_recognition.current.json`.
 - The recognition manifest helps search identify real exchange-traded products, including unsupported ETFs, ETNs, ETVs, closed-end funds, commodity products, active ETFs, single-stock funds, option-income/buffer products, leveraged funds, inverse funds, and other complex wrappers.
 - The supported ETF manifest is the only ETF runtime authority for generated asset pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, and exports.
-- Supported ETF entries must be U.S.-listed, active, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs.
+- Supported ETF entries must be currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs.
 - Issuer source packs must pass Golden Asset Source Handoff and parser validation before an ETF is marked supported.
 - Search may display recognized ETFs or ETPs outside the supported manifest as `unsupported`, `out_of_scope`, `pending_review`, `unavailable`, or `pending_ingestion`, but those states must block generated output.
 - The supported ETF manifest is operational coverage metadata, not an endorsement, recommendation, model portfolio, or statement of suitability.
 
-The launch supported ETF set should start with:
-
-- Broad ETFs: `VOO`, `SPY`, `VTI`, `IVV`, `QQQ`, `IWM`, `DIA`.
-- Sector/theme ETFs: `VGT`, `XLK`, `SOXX`, `SMH`, `XLF`, `XLV`, `XLE`.
+The supported ETF manifest should cover the reviewed eligible universe, not only a fixed launch list. Eligible scope includes broad U.S. index, total-market/large-cap, size/style, sector, industry/theme, dividend, value/growth, quality, momentum, low-volatility, equal-weight, and ESG index ETFs when they are U.S.-listed, non-leveraged, non-inverse, passive/index-based, primary U.S. equity funds with validated issuer source packs. Golden ETF tickers are pre-cache and regression assets only, not the full coverage limit.
 
 ETF support expansion requires a reviewed candidate packet with exchange or regulatory recognition evidence, issuer source-pack references, source dates, checksums, wrapper classification, leverage/inverse flags, asset-class and geographic-exposure checks, passive/index validation, parser results, Golden Asset Source Handoff approval, exclusions, warnings, and manual approval notes.
 
@@ -323,7 +320,7 @@ Primary needs:
 #### Asset coverage
 
 - Top 500 U.S.-listed common stocks first, based on a deterministic launch universe maintained by ingestion configuration
-- Manifest-approved U.S.-listed, active, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs
+- Manifest-approved, currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs
 - Pre-cached high-demand stocks and ETFs for launch performance
 - Limited on-demand ingestion only for assets that pass deterministic classification and are explicitly added to the supported queue
 
@@ -784,7 +781,7 @@ This section provides timely context but remains separate from stable asset fact
 | RD-9  | Weekly event records include event type, freshness state, source-quality metadata, source-use rights, allowlist status, and citation links. | P0       |
 | RD-10 | AI Comprehensive Analysis includes What Changed This Week, Market Context, Business/Fund Context, and Risk Context.                 | P0       |
 | RD-11 | Each AI context section uses a compact paragraph plus bullets and cites underlying Weekly News Focus items and canonical facts.            | P0       |
-| RD-12 | AI Comprehensive Analysis is suppressed unless at least two high-signal weekly items exist.                                         | P0       |
+| RD-12 | AI Comprehensive Analysis is suppressed unless at least two approved Weekly News Focus items exist.                              | P0       |
 | RD-13 | "No major Weekly News Focus items found" is a normal empty state for slow-moving assets, especially broad ETFs.                                  | P0       |
 | RD-14 | V1 news and analysis content is English-first; Traditional Chinese localization, read-aloud, TTS, and generated audio are post-MVP. | P0       |
 | RD-15 | Asset pages place Weekly News Focus after stable facts and before AI Comprehensive Analysis. Stable facts remain canonical.        | P0       |
@@ -1388,16 +1385,16 @@ Thresholds:
 - `minimum_ai_analysis_items = 2`
 - Source-use policy wins over score: rejected or rights-disallowed sources never display, regardless of `importance_score`.
 
-AI Comprehensive Analysis should be generated only from the selected asset's Weekly News Focus pack and cited canonical facts. It requires at least two high-signal Weekly News Focus items, starts with What Changed This Week, then uses Market Context, Business/Fund Context, and Risk Context. It should not introduce uncited market predictions or recommendation language.
+AI Comprehensive Analysis should be generated only from the selected asset's Weekly News Focus pack and cited canonical facts. It requires at least two approved Weekly News Focus items, starts with What Changed This Week, then uses Market Context, Business/Fund Context, and Risk Context. It should not introduce uncited market predictions or recommendation language.
 
-Local fresh-data validation should include assets and time windows where at least two high-signal approved Weekly News Focus items exist so the operator can review live AI Comprehensive Analysis quality before public deployment.
+Local fresh-data validation should include assets and time windows where at least two approved Weekly News Focus items exist so the operator can review live AI Comprehensive Analysis quality before public deployment.
 
 ### 13.5 Raw source text policy
 
 The MVP uses a rights-tiered raw source text policy.
 
 - Official filings, issuer materials, and reviewed `full_text_allowed` sources may store raw text, parsed text, chunks, checksums, and source snapshots.
-- `summary_allowed` sources may store metadata, checksums, links, source-provided snippets, generated summaries, and limited excerpts needed to support summaries.
+- `summary_allowed` sources may store metadata, checksums, links, source-provided snippets, generated summaries, and limited excerpts needed to support summaries. Third-party/news excerpts are capped at 90 words only when the source-use policy permits excerpts; length alone never approves full text.
 - `metadata_only` and `link_only` sources may store metadata, hashes, canonical URLs, timestamps, and source-use diagnostics, but not full article text.
 - `rejected` sources are not used for generated output and should keep only rejection diagnostics when needed for debugging.
 - Exports and citation drawers must honor the same policy and never reveal unrestricted restricted text.
@@ -2016,7 +2013,7 @@ The MVP is ready when:
 - Product analytics track aggregate citation coverage, unsupported claims, glossary usage, comparison usage, source drawer usage, export usage, safety redirects, and freshness accuracy without raw chat transcript content.
 - Weekly News Focus renders the configured maximum only when enough high-quality approved evidence exists, fewer when evidence is limited, and zero when no major Weekly News Focus items exist.
 - Weekly News Focus labels official and third-party/news sources distinctly and exposes publisher, URL, dates, source type, event classification, and citation details.
-- AI Comprehensive Analysis includes What Changed This Week, Market Context, Business/Fund Context, and Risk Context with citations or uncertainty labels when at least two high-signal weekly items exist.
+- AI Comprehensive Analysis includes What Changed This Week, Market Context, Business/Fund Context, and Risk Context with citations or uncertainty labels when at least two approved Weekly News Focus items exist.
 - Live AI generation for grounded chat and AI Comprehensive Analysis has been validated locally against fresh data before public deployment.
 - Mobile layouts are readable and use bottom sheets for sources, glossary, and chat where appropriate.
 - Exports support Markdown and JSON and include disclaimer, citations, freshness metadata, uncertainty labels, source list, Weekly News Focus, and AI Comprehensive Analysis when present.
@@ -2030,7 +2027,7 @@ Strict MVP quality gates:
 - CI includes unit, integration, schema, citation validation, safety, export, and golden asset tests.
 - Golden tests verify that `AAPL` and `NVDA` canonical facts prefer SEC EDGAR/XBRL/filing documents, while supported golden ETF canonical facts prefer the supported ETF manifest plus issuer materials.
 - Golden tests verify that duplicate, promotional, irrelevant, unapproved, and rights-disallowed news is excluded from Weekly News Focus.
-- Golden tests verify that reputable third-party/news items can appear when approved, clearly labeled, summarized safely, and not exported as full article text unless `full_text_allowed`.
+- Golden tests verify that reputable third-party/news items can appear when approved, clearly labeled, summarized safely, and not exported as full article text unless `full_text_allowed`. Permitted excerpts remain bounded, with a maximum of 90 words for third-party/news sources.
 - Golden tests verify Monday-Sunday plus current week-to-date through yesterday windowing.
 - Golden tests verify prompt-injection, source-sanitization, SSRF-defense, chat privacy, rate-limit, many-citation, fact-versioning, and stock-vs-ETF comparison scenarios.
 - Documentation hygiene scans verify no mojibake, private-use corruption, stale AI labels, duplicate requirement IDs, or stale weekly-window language remains.

@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -60,7 +60,7 @@ def finalized_manifest(
     output = dict(manifest)
     output["schema_version"] = SCHEMA_VERSION
     output["manifest_status"] = "finalized"
-    output["finalized_at"] = finalized_at or datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    output["finalized_at"] = finalized_at or datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     output["inspection"] = {
         "source_count": inspection["source_count"],
         "blocking_source_count": inspection["blocking_source_count"],

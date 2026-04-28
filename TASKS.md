@@ -1,10 +1,119 @@
 ## Current task
 
-No current task is prepared and the backlog is empty.
+### T-131: Add ETF eligible-universe review packet contracts
+
+Goal:
+Extend the current ETF launch-review packet from fixture-sized support counts into a deterministic eligible-universe review contract that reports category coverage, exclusions, source-pack readiness, pending-review rows, generated-output eligibility, and golden/pre-cache regression status without treating the golden ETF set as the coverage limit.
+
+Do not change:
+- runtime ETF generated-output authority: `data/universes/us_equity_etfs_supported.current.json`
+- ETF/ETP recognition authority: `data/universes/us_etp_recognition.current.json`
+- generated output for unsupported, recognition-only, pending-review, unavailable, or pending-ingestion products
+- normal CI defaults; no live provider, issuer, exchange, market-data, news, browser-service, database, storage, or LLM calls
+- source-use, citation, freshness, safety, and Golden Asset Source Handoff semantics
+
+Acceptance criteria:
+- ETF review packets expose manifest-defined eligible universe scope across broad U.S. index, total-market/large-cap, size/style, sector, industry/theme, dividend, value/growth, quality, momentum, low-volatility, equal-weight, and ESG index categories.
+- Review output distinguishes golden/pre-cache regression tickers from the full eligible ETF universe and proves the golden set is not a coverage ceiling.
+- Supported, recognition-only, excluded, pending-review, unavailable, pending-ingestion, source-pack-ready, and generated-output-eligible counts are deterministic and covered by tests.
+- Fixture/local-only manifests remain review-needed, not launch-approved.
+- The local fresh-data rehearsal reports the new ETF readiness fields without promoting manifests.
+
+Required commands:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_repo_contract.py -q`
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
+- `TMPDIR=/tmp python3 evals/run_static_evals.py`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+- `git diff --check`
+
+Iteration budget:
+- One agent-loop cycle.
 
 ## Backlog
 
-No backlog tasks are currently prepared.
+### T-132: Add stock SEC source-pack readiness packet contracts
+
+Goal:
+Add deterministic stock source-pack readiness reporting for the local fresh-data MVP so Top-500 stocks can prove whether SEC submissions, latest 10-K, latest 10-Q when available, and XBRL company facts are present, parser-valid, same-asset, approved for evidence use, and sufficient for source-backed partial rendering.
+
+Acceptance criteria:
+- Readiness output covers current Top-500 runtime manifest rows and reviewed candidate rows without promoting the current manifest.
+- SEC submissions, latest annual filing, latest quarterly filing when available, and company-facts requirements are reported with freshness, parser, source-use, citation, and handoff status.
+- Missing or parser-invalid SEC evidence produces deterministic `partial`, `unavailable`, or `insufficient_evidence` states and cannot unlock generated claims.
+- Tests prove source readiness is review-only, no-live-call, and safe for failed/unavailable assets.
+
+Required commands:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_top500_candidate_manifest.py tests/unit/test_overview_generation.py tests/unit/test_repo_contract.py -q`
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
+- `TMPDIR=/tmp python3 evals/run_static_evals.py`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+- `git diff --check`
+
+Iteration budget:
+- One agent-loop cycle.
+
+### T-133: Add ETF issuer source-pack readiness packet contracts
+
+Goal:
+Add deterministic ETF issuer source-pack readiness reporting for supported-manifest ETFs, covering issuer page, fact sheet, prospectus or summary prospectus, holdings, exposures, methodology/shareholder/risk sources, and sponsor announcements where relevant.
+
+Acceptance criteria:
+- ETF source-pack readiness is keyed only from the supported ETF manifest, not recognition rows or live provider flags.
+- Each required issuer source type reports official-source status, source-use rights, parser status, freshness/as-of metadata, citation readiness, and Golden Asset Source Handoff status.
+- Source-pack failures render deterministic partial/unavailable states and cannot feed generated output, Weekly News Focus, AI Comprehensive Analysis, exports, or cache entries.
+- Tests cover cached golden ETFs, eligible-not-cached supported ETFs, and blocked recognition-only products.
+
+Required commands:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_provider_adapters.py tests/unit/test_search_classification.py tests/unit/test_source_policy.py tests/unit/test_repo_contract.py -q`
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
+- `TMPDIR=/tmp python3 evals/run_static_evals.py`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+- `git diff --check`
+
+Iteration budget:
+- One agent-loop cycle.
+
+### T-134: Add local fresh-data MVP readiness thresholds
+
+Goal:
+Extend the local rehearsal/status layer with explicit fully functional local-MVP thresholds for deterministic fresh-data testing, including allowed failed/unavailable asset counts, no generated claims for failed assets, optional-mode blockers, and deterministic source-backed partial fallback when live generation fails validation.
+
+Acceptance criteria:
+- Rehearsal output separates deterministic pass, optional skipped modes, required blockers, failed-asset counts, unavailable-asset counts, and launch approval status.
+- Failed or unavailable assets never expose generated claims, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, generated risk summaries, exports, or generated-output cache entries.
+- AI Comprehensive Analysis is suppressed below two approved Weekly News Focus items and deterministic partial sections render only from source-backed evidence when live generation fails.
+- Tests prove threshold behavior without live provider, news, market-data, browser-service, storage, database, or LLM calls.
+
+Required commands:
+- `TMPDIR=/tmp python3 -m pytest tests/integration/test_backend_api.py tests/unit/test_weekly_news.py tests/unit/test_llm_provider.py tests/unit/test_repo_contract.py -q`
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
+- `TMPDIR=/tmp python3 evals/run_static_evals.py`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+- `git diff --check`
+
+Iteration budget:
+- One agent-loop cycle.
+
+### T-135: Add batchable local ingestion priority planner
+
+Goal:
+Add a deterministic planner for local fresh-data ingestion order that prioritizes high-demand pre-cache assets first, then approved supported ETFs and Top-500 stocks by manifest/review priority, while preserving resumable pending/running/succeeded/failed states and review-only source approval.
+
+Acceptance criteria:
+- Planner output is deterministic, batchable, resumable, and safe to inspect without live calls or credentials.
+- Priority order starts with high-demand golden/pre-cache assets, then supported ETFs by source-pack readiness and category coverage, then Top-500 stocks by manifest/review priority.
+- State transitions preserve `pending`, `running`, `succeeded`, `failed`, `unsupported`, `out_of_scope`, `unknown`, `unavailable`, `partial`, and `insufficient_evidence` behavior.
+- Rehearsal output can include planner diagnostics without starting ingestion or approving sources.
+
+Required commands:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_ingestion_worker.py tests/unit/test_ingestion_jobs.py tests/unit/test_search_classification.py tests/unit/test_repo_contract.py -q`
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
+- `TMPDIR=/tmp python3 evals/run_static_evals.py`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+- `git diff --check`
+
+Iteration budget:
+- One agent-loop cycle.
 
 ## Completed
 
@@ -985,7 +1094,7 @@ Completed details:
 - Valid same-asset persisted records are mapped into the existing `WeeklyNewsFocusResponse` schema with event type, period bucket, citation/source references, event or published dates where available, retrieved timestamp, source quality, source-use tier, freshness state, selected-vs-configured counts, suppressed candidate counts, and empty/limited state metadata.
 - The read path preserves deterministic fixture fallback when no reader is injected, a reader misses, a reader fails, records fail validation, no matching same-asset window exists, or AI threshold metadata is disconnected from selected events.
 - Persisted event display text is metadata-derived because the repository contract intentionally avoids raw article text and unrestricted source passages.
-- `backend/overview.py` routes overview generation through the injected Weekly News reader only when explicitly supplied and reads validated AI threshold metadata so persisted selected items with fewer than two high-signal events suppress AI Comprehensive Analysis instead of inventing analysis.
+- `backend/overview.py` routes overview generation through the injected Weekly News reader only when explicitly supplied and reads validated AI threshold metadata so persisted selected items with fewer than two approved Weekly News Focus events suppress AI Comprehensive Analysis instead of inventing analysis.
 - Tests were expanded for persisted-first Weekly News reads, fallback on miss/failure/invalid/wrong-asset records, empty and limited states without padding, disconnected threshold rejection, sanitized diagnostics, source-use tiers, overview integration with injected Weekly News records, and AI Comprehensive Analysis threshold availability/suppression.
 - The implementation did not add live database execution, provider calls, cache writes, acquisition worker scheduling, source allowlist changes, frontend changes, generated-output cache integration, or public route behavior changes.
 - `docs/agent-journal/20260426T031547Z.md` records these checks: `python3 -m pytest tests/unit/test_weekly_news.py -q` passed; `python3 -m pytest tests/unit/test_overview_generation.py -q` passed; `python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_overview_generation.py tests/unit/test_source_policy.py -q` passed; `python3 -m pytest tests/integration/test_backend_api.py -q` passed; `python3 -m pytest tests -q` passed; `python3 evals/run_static_evals.py` passed; `bash scripts/run_quality_gate.sh` passed; `git diff --check` passed.
@@ -1675,13 +1784,13 @@ Completion commits:
 ### T-068: Tighten Weekly News Focus evidence-limited states
 
 Goal:
-Make Weekly News Focus contract and UI behavior explicit when the selected evidence set is smaller than the configured maximum or empty, so the product never pads timely context with weak items and AI Comprehensive Analysis stays suppressed unless enough high-signal evidence exists.
+Make Weekly News Focus contract and UI behavior explicit when the selected evidence set is smaller than the configured maximum or empty, so the product never pads timely context with weak items and AI Comprehensive Analysis stays suppressed unless enough approved evidence exists.
 
 Completed details:
 
 - Implementation commit `6a37299 feat(T-068): tighten Weekly News Focus evidence-limited states` added deterministic Weekly News Focus metadata for configured maximum item count, selected item count, suppressed candidate count, evidence state, and evidence-limited state across `backend/models.py`, `backend/weekly_news.py`, and `backend/overview.py`.
 - `apps/web/lib/assetWeeklyNews.ts`, `apps/web/lib/fixtures.ts`, `apps/web/components/WeeklyNewsPanel.tsx`, and `apps/web/components/AIComprehensiveAnalysisPanel.tsx` now carry/render frontend markers for limited verified sets, empty `no_high_signal` states, selected-vs-configured counts, suppressed candidate counts, and AI Comprehensive Analysis threshold availability or suppression.
-- The backend and frontend changes preserve the evidence-limited Weekly News Focus rule: show fewer items when only a smaller verified set passes selection, show explicit empty states when no high-signal evidence exists, and keep AI Comprehensive Analysis suppressed unless at least two high-signal Weekly News Focus items exist.
+- The backend and frontend changes preserve the evidence-limited Weekly News Focus rule: show fewer items when only a smaller verified set passes selection, show explicit empty states when no high-signal evidence exists, and keep AI Comprehensive Analysis suppressed unless at least two approved Weekly News Focus items exist.
 - `tests/unit/test_weekly_news.py`, `tests/unit/test_overview_generation.py`, `tests/integration/test_backend_api.py`, `tests/frontend/smoke.mjs`, `evals/weekly_news_eval_cases.yaml`, and `evals/run_static_evals.py` added coverage for configured-vs-selected counts, limited/empty states, AI analysis threshold metadata, and deterministic UI/eval markers.
 - `docs/agent-journal/20260424T200434Z.md` records these checks: `git status --short` passed; `python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_overview_generation.py tests/unit/test_safety_guardrails.py -q` passed with 27 tests; `python3 -m pytest tests/integration/test_backend_api.py -q` passed with 33 tests; `python3 evals/run_static_evals.py` passed; `npm test` passed; `npm run typecheck` initially failed because `.next/types` had not been generated while `npm run build` was running in parallel, then passed after build completed; `npm run build` passed; `bash scripts/run_quality_gate.sh` passed, including 197 Python tests, static evals, frontend smoke, typecheck, build, and backend checks.
 - Remaining risks from the journal:
@@ -3475,7 +3584,7 @@ Completion commits:
 
 ## Historical Backlog Note
 
-This older scaffold note is retained only for history. No active runnable task or backlog task is currently prepared at the top of this file after T-130 completion.
+This older scaffold note is retained only for history. Active runnable local fresh-data MVP tasks are prepared at the top of this file after the 2026-04-28 implementation-doc rebaseline.
 
 ## General MVP Roadmap
 
@@ -3496,6 +3605,7 @@ Current runtime snapshot:
 - T-128 completed deterministic governed golden API/frontend rendering proof for the golden set.
 - T-129 completed launch-manifest operator automation parity for Top-500 stock and supported ETF launch-manifest packets.
 - T-130 completed the deterministic local fresh-data MVP rehearsal command.
+- T-131 through T-135 are the prepared local fully functional fresh-data MVP track: ETF eligible-universe review packets, stock SEC source-pack readiness, ETF issuer source-pack readiness, local MVP readiness thresholds, and batchable ingestion priority planning.
 - T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, full governed source artifacts, admin auth/rate limiting, broader live ingestion, and launch-sized reviewed manifests remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:
@@ -3555,6 +3665,7 @@ Operational defaults for general MVP roadmap tasks:
 - T-128 established deterministic governed golden evidence API/frontend rendering proof. It is completed and must not be reintroduced as runnable backlog.
 - T-129 established launch-manifest operator automation parity. It is completed and must not be reintroduced as runnable backlog.
 - T-130 established the local fresh-data MVP rehearsal command. It is completed and must not be reintroduced as runnable backlog.
+- T-131 through T-135 are active/prepared local fresh-data MVP work and should be run before production-hardening tasks.
 - Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until explicit launch readiness work is promoted into a narrow task and passes deterministic CI coverage.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted task should run the relevant EVALS.md checks, `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, `bash scripts/run_quality_gate.sh`, and `git diff --check`.
@@ -3618,10 +3729,16 @@ Roadmap integration tracker:
 | Governed golden evidence API/frontend rendering proof | Completed | T-128 |
 | Launch-manifest operator automation parity | Completed | T-129 |
 | Local fresh-data MVP rehearsal command | Completed | T-130 |
+| ETF eligible-universe review packet contracts | Current | T-131 |
+| Stock SEC source-pack readiness packets | Prepared | T-132 |
+| ETF issuer source-pack readiness packets | Prepared | T-133 |
+| Local fresh-data MVP readiness thresholds | Prepared | T-134 |
+| Batchable local ingestion priority planner | Prepared | T-135 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
 Remaining unpromoted general MVP sequence:
 
+- Finish the local fully functional fresh-data MVP track prepared as T-131 through T-135 before production deployment hardening.
 - Full production deployment after those local MVP gaps: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
 - Recurring production jobs only after manual official-source acquisition, Top-500 candidate refresh review, and local fresh-data behavior are stable.
 - Broad paid-provider or news-provider integrations only after provider licensing/source-use review, no-secret-exposure tests, mocked CI fixtures, source-rights validation, and export/display constraints are documented.

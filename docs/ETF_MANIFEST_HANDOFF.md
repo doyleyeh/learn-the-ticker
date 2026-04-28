@@ -25,10 +25,9 @@ V1 supported ETFs must be:
 - backed by an official issuer source pack that passed Golden Asset Source Handoff;
 - parser-validated for the minimum required facts, citations, freshness, and section states.
 
-The initial supported ETF set should be:
+The supported ETF manifest should be an eligible-universe workflow, not a fixed launch list. It may include reviewed U.S.-listed passive/index-based primary-U.S.-equity ETFs across broad U.S. index, total-market/large-cap, size/style, sector, industry/theme, dividend, value/growth, quality, momentum, low-volatility, equal-weight, and ESG index categories once issuer source packs validate.
 
-- Broad ETFs: `VOO`, `SPY`, `VTI`, `IVV`, `QQQ`, `IWM`, `DIA`.
-- Sector/theme ETFs: `VGT`, `XLK`, `SOXX`, `SMH`, `XLF`, `XLV`, `XLE`.
+Golden/pre-cache tickers such as `VOO`, `QQQ`, and the broader regression reference set are only reliability and regression assets. They are not the ETF coverage ceiling.
 
 The manifest is operational coverage metadata only. It is not an endorsement, recommendation, model portfolio, allocation, or statement of suitability.
 
@@ -59,7 +58,7 @@ Repo-native review-only inspection command:
 TMPDIR=/tmp python3 scripts/review_launch_manifests.py etf inspect
 ```
 
-The command inspects `data/universes/us_equity_etfs_supported.current.json` and `data/universes/us_etp_recognition.current.json` as separate launch-review packets. It reports support-state, wrapper/scope, exclusion flags, source provenance, generated checksums, approval timestamps, evidence/freshness/source-use metadata, parser or handoff metadata where available, blocked-state reasons, and explicit `pass`, `review_needed`, or `blocked` status.
+The command inspects `data/universes/us_equity_etfs_supported.current.json` and `data/universes/us_etp_recognition.current.json` as separate launch-review packets. It reports support-state, wrapper/scope, exclusion flags, eligible category coverage, excluded product counts, pending-review rows, source-pack readiness, source provenance, generated checksums, approval timestamps, evidence/freshness/source-use metadata, parser or handoff metadata where available, blocked-state reasons, and explicit `pass`, `review_needed`, or `blocked` status.
 
 The command is deterministic by default and makes no live provider, issuer, market-data, news, database, storage, browser, or LLM calls. It does not write or promote runtime manifests.
 
@@ -107,7 +106,7 @@ Do not promote an ETF to `us_equity_etfs_supported.current.json` unless every ga
 
 1. Exchange or regulatory recognition confirms the ticker is real and not a test issue.
 2. Wrapper review confirms the product is an ETF and not an ETN, ETV, CEF, fund closed to creation, or other unsupported wrapper.
-3. Product review confirms U.S.-listed, active, passive/index-based, primary U.S. equity exposure.
+3. Product review confirms currently U.S.-listed, passive/index-based, primary U.S. equity exposure.
 4. Disqualifier review rejects leverage, inverse exposure, single-stock structure, derivatives-first strategy, option-income/buffer strategy, fixed income, commodity, crypto, active, multi-asset, international equity, or other unsupported scope.
 5. Issuer source pack includes official issuer page, fact sheet, prospectus or summary prospectus, holdings file, exposure or sector data when available, risk/methodology source, and sponsor announcements where relevant.
 6. Golden Asset Source Handoff approves source identity, source type, official-source status, storage rights, export rights, source-use policy, rationale, parser validity, freshness/as-of metadata, and review status.

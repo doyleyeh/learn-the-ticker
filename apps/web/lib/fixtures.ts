@@ -379,7 +379,7 @@ function buildSuppressedAIComprehensiveAnalysis(
     minimumWeeklyNewsItemCount: 2,
     weeklyNewsSelectedItemCount: 0,
     suppressionReason:
-      "AI Comprehensive Analysis is suppressed because fewer than two high-signal Weekly News Focus items are available.",
+      "AI Comprehensive Analysis is suppressed because fewer than two approved Weekly News Focus items are available.",
     sections: [],
     citationIds: [],
     sourceDocumentIds: [],

@@ -1391,18 +1391,18 @@ def _ai_threshold_row(
     selected_candidates: list[WeeklyNewsEventCandidateRow],
     created_at: str,
 ) -> WeeklyNewsAIThresholdRow:
-    high_signal_count = len([candidate for candidate in selected_candidates if candidate.high_signal])
-    analysis_allowed = high_signal_count >= window.minimum_ai_analysis_item_count
+    approved_selected_count = len(selected_candidates)
+    analysis_allowed = approved_selected_count >= window.minimum_ai_analysis_item_count
     return WeeklyNewsAIThresholdRow(
         threshold_id=f"threshold:{window.window_id}",
         window_id=window.window_id,
         asset_ticker=window.asset_ticker,
         minimum_weekly_news_item_count=window.minimum_ai_analysis_item_count,
         selected_item_count=len(selected_events),
-        high_signal_selected_item_count=high_signal_count,
+        high_signal_selected_item_count=approved_selected_count,
         analysis_allowed=analysis_allowed,
         analysis_state=WeeklyNewsContractState.available.value if analysis_allowed else WeeklyNewsContractState.suppressed.value,
-        suppression_reason_code=None if analysis_allowed else "fewer_than_two_high_signal_items",
+        suppression_reason_code=None if analysis_allowed else "fewer_than_two_approved_items",
         selected_event_ids=[event.selected_event_id for event in selected_events],
         created_at=created_at,
     )
@@ -1724,7 +1724,7 @@ def _validate_ai_threshold(row: WeeklyNewsAIThresholdRow, selected_events: list[
         raise WeeklyNewsEventEvidenceContractError("AI threshold metadata must reference selected Weekly News Focus events only.")
     if row.selected_item_count != len(selected_ids) or row.high_signal_selected_item_count > row.selected_item_count:
         raise WeeklyNewsEventEvidenceContractError("AI threshold selected item counts are malformed.")
-    enough_evidence = row.high_signal_selected_item_count >= row.minimum_weekly_news_item_count
+    enough_evidence = row.selected_item_count >= row.minimum_weekly_news_item_count
     if row.analysis_allowed != enough_evidence:
         raise WeeklyNewsEventEvidenceContractError("AI Comprehensive Analysis threshold metadata must enforce the two-item rule.")
     if not enough_evidence and (row.analysis_state != WeeklyNewsContractState.suppressed.value or not row.suppression_reason_code):

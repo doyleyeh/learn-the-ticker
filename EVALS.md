@@ -118,7 +118,7 @@ Verify:
 - Weekly News Focus shows the configured maximum only when evidence supports it, otherwise a smaller verified set or empty state
 - source-use policy values cover `metadata_only`, `link_only`, `summary_allowed`, `full_text_allowed`, and `rejected`
 - source-use policy wins over score
-- AI Comprehensive Analysis is suppressed unless at least two high-signal weekly items exist
+- AI Comprehensive Analysis is suppressed unless at least two approved Weekly News Focus items exist; approved reputable third-party items may count when labeled and source-governed
 - generated analysis cites selected Weekly News Focus items and canonical facts only
 
 ### Ingestion, Provider, Caching, And Freshness Tasks

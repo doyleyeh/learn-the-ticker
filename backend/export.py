@@ -1192,7 +1192,7 @@ def _asset_page_sections(overview: OverviewResponse) -> list[ExportedSection]:
             title="AI Comprehensive Analysis",
             section_type=OverviewSectionType.ai_comprehensive_analysis,
             text=(
-                "AI Comprehensive Analysis is suppressed unless at least two high-signal Weekly News Focus items exist."
+                "AI Comprehensive Analysis is suppressed unless at least two approved Weekly News Focus items exist."
                 if overview.ai_comprehensive_analysis and not overview.ai_comprehensive_analysis.analysis_available
                 else "AI Comprehensive Analysis is exported as cited timely context separate from stable facts."
             ),

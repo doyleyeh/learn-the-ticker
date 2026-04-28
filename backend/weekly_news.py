@@ -486,25 +486,27 @@ def build_ai_comprehensive_analysis(
     canonical_fact_citation_ids: list[str] | None = None,
     canonical_source_document_ids: list[str] | None = None,
     minimum_weekly_news_item_count: int = MINIMUM_AI_ANALYSIS_ITEMS,
+    approved_weekly_news_item_count: int | None = None,
     high_signal_weekly_news_item_count: int | None = None,
 ) -> AIComprehensiveAnalysisResponse:
     canonical_fact_citation_ids = sorted(set(canonical_fact_citation_ids or []))
     canonical_source_document_ids = sorted(set(canonical_source_document_ids or []))
 
-    high_signal_count = (
-        len(weekly_news_focus.items)
-        if high_signal_weekly_news_item_count is None
-        else high_signal_weekly_news_item_count
-    )
+    if approved_weekly_news_item_count is not None:
+        approved_item_count = approved_weekly_news_item_count
+    elif high_signal_weekly_news_item_count is not None:
+        approved_item_count = high_signal_weekly_news_item_count
+    else:
+        approved_item_count = len(weekly_news_focus.items)
 
-    if high_signal_count < minimum_weekly_news_item_count:
+    if approved_item_count < minimum_weekly_news_item_count:
         return AIComprehensiveAnalysisResponse(
             asset=asset,
             state=WeeklyNewsContractState.suppressed,
             analysis_available=False,
             minimum_weekly_news_item_count=minimum_weekly_news_item_count,
             weekly_news_selected_item_count=weekly_news_focus.selected_item_count,
-            suppression_reason="AI Comprehensive Analysis is suppressed because fewer than two high-signal Weekly News Focus items are available.",
+            suppression_reason="AI Comprehensive Analysis is suppressed because fewer than two approved Weekly News Focus items are available.",
             canonical_fact_citation_ids=canonical_fact_citation_ids,
         )
 
@@ -524,7 +526,7 @@ def build_ai_comprehensive_analysis(
         AIComprehensiveAnalysisSection(
             section_id="what_changed_this_week",
             label="What Changed This Week",
-            analysis=f"The local Weekly News Focus pack selected these high-signal items for {asset.ticker}: {first_titles}.",
+            analysis=f"The local Weekly News Focus pack selected these approved items for {asset.ticker}: {first_titles}.",
             bullets=["The analysis is limited to selected Weekly News Focus items and cited canonical facts."],
             citation_ids=all_citations,
             uncertainty=["This is deterministic fixture context, not live news coverage."],
@@ -551,7 +553,7 @@ def build_ai_comprehensive_analysis(
             analysis="The items can highlight what to review next, but they do not predict returns or provide a personal decision.",
             bullets=["Use this context to inspect risks and source evidence, not as a trading instruction."],
             citation_ids=weekly_citations,
-            uncertainty=["The fixture may omit other high-signal items that are not represented locally."],
+            uncertainty=["The fixture may omit other approved items that are not represented locally."],
         ),
     ]
     response = AIComprehensiveAnalysisResponse(

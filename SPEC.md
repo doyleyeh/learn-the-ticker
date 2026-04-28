@@ -36,7 +36,7 @@ MVP direction:
 MVP product scope:
 
 - top-500-first U.S.-listed common stocks from `data/universes/us_common_stocks_top500.current.json`
-- manifest-approved U.S.-listed, active, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs
+- manifest-approved, currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs
 - pre-cached high-demand launch universe for reliability and latency
 - explicit `pending_ingestion` states only for approved eligible supported assets outside the pre-cache set
 - home page single-asset search first, with natural `A vs B` queries redirecting to comparison instead of turning home into a comparison builder
@@ -62,8 +62,9 @@ Current implementation stage:
 - local frontend/API plumbing exists for MVP smoke testing: browser helpers prefer the configured FastAPI base URL, the Next app can rewrite `/api/:path*` to the local backend, and FastAPI CORS is wired from `CORS_ALLOWED_ORIGINS`
 - local durable repository execution has in-memory fallback, configured reader boundaries, and optional browser/API smoke coverage, but normal CI remains fixture-backed
 - v0.5 ETF manifest split contracts are implemented: supported ETF generated-output coverage reads `data/universes/us_equity_etfs_supported.current.json`, while recognition-only blocked states read `data/universes/us_etp_recognition.current.json`; the legacy combined ETF fixture remains only for repo continuity
-- opt-in official-source acquisition readiness exists for SEC stock, ETF issuer, and Weekly News golden paths, but full repo-native governed source manifests and proof that governed evidence drives golden API/frontend output remain MVP gaps
-- v0.6 local validation now expects operator-only live-AI review for grounded chat and AI Comprehensive Analysis when evidence thresholds are met, while CI and ordinary local tests remain deterministic mocks
+- repo-native source-handoff manifest tooling, governed golden API/frontend rendering proof, launch-manifest review packets, and the deterministic local fresh-data MVP rehearsal command are implemented as review-only/operator-safe layers
+- opt-in official-source acquisition readiness exists for SEC stock, ETF issuer, and Weekly News golden paths, but launch-sized governed source artifacts and full-universe source-pack approvals remain MVP gaps
+- v0.6 local validation expects operator-only live-AI review for grounded chat and AI Comprehensive Analysis when evidence thresholds are met, while CI and ordinary local tests remain deterministic mocks
 - CI and local checks are deterministic and fixture-backed; normal quality gates do not depend on live provider, market-data, news, or LLM calls
 
 Near-term implementation priority order:
@@ -73,9 +74,10 @@ Near-term implementation priority order:
 3. preserve Golden Asset Source Handoff enforcement across source allowlist records, source snapshots, knowledge packs, citations, generated-output cache entries, source drawer output, and exports
 4. preserve the reviewed Top-500 candidate-manifest refresh workflow that uses official IWB holdings first, official SPY/IVV/VOO holdings only as fallback inputs, SEC/Nasdaq validation, checksums, and a diff report before current-manifest promotion
 5. preserve optional browser E2E and local durable smoke for golden assets using the API-base/proxy/CORS path before production deployment work
-6. implement repo-native source-handoff manifest tooling and prove governed golden evidence can flow through source persistence, generated-output cache validation, API routes, and frontend rendering
-7. add opt-in live-AI local validation for chat and AI Comprehensive Analysis without making live LLM calls part of normal CI
-8. defer production deployment hardening, recurring jobs, broad paid-provider integrations, and post-MVP features until the local fresh-data path passes strict quality gates
+6. expand ETF eligible-universe review outputs from the current fixture-sized packet into category, exclusion, source-pack, and generated-output eligibility packets for the full reviewed local MVP scope
+7. add stock and ETF source-pack readiness packets that prove SEC core stock evidence and issuer ETF evidence can unlock only source-backed sections with deterministic partial/failure states
+8. add batchable, resumable local ingestion planning so high-demand assets run first, then supported ETFs and top-500 stocks by review priority, while normal CI remains deterministic
+9. defer production deployment hardening, recurring jobs, broad paid-provider integrations, and post-MVP features until the local fresh-data path passes strict quality gates
 
 When choosing the next task, prefer improving PRD/TDS alignment of the current deterministic scaffold over adding new domains or speculative infrastructure.
 The local agent-loop harness should default to `gpt-5.5` with `high` reasoning effort, while allowing explicit per-run overrides such as `gpt-5.3-codex-spark` when the operator requests it.
@@ -93,7 +95,7 @@ Provider hierarchy for MVP planning:
 
 Weekly News Focus must use the last completed Monday-Sunday market week plus current week-to-date through yesterday, using U.S. Eastern dates. It should show the configured maximum only when enough quality evidence exists, fewer items when evidence is limited, and a clear empty state when no major Weekly News Focus items exist.
 
-AI Comprehensive Analysis must be suppressed unless at least two high-signal Weekly News Focus items exist. When present, it starts with What Changed This Week, then Market Context, Business/Fund Context, and Risk Context. It must cite underlying Weekly News Focus items and canonical facts.
+AI Comprehensive Analysis must be suppressed unless at least two approved Weekly News Focus items exist. Approved reputable third-party items may count when source governance permits them and they are clearly labeled as third-party reporting. When present, the analysis starts with What Changed This Week, then Market Context, Business/Fund Context, and Risk Context. It must cite underlying Weekly News Focus items and canonical facts.
 
 Source-use policy wins over scoring. Rejected or rights-disallowed sources must not display, summarize, cache, or export. Raw source text storage is rights-tiered across `full_text_allowed`, `summary_allowed`, `metadata_only`, `link_only`, and `rejected`.
 
