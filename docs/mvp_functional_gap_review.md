@@ -1,6 +1,6 @@
 # MVP Functional Gap Review
 
-Task: 2026-04-28 v0.6 doc alignment and fresh-data MVP review, updated after T-125 completion.
+Task: 2026-04-28 v0.6 doc alignment and fresh-data MVP review, updated during T-128.
 
 Purpose: summarize current implementation progress, align the operational plan with the v0.6 PRD/TDS refresh, and define the next narrow tasks needed before the project is a locally functional MVP that can use fresh approved data and show it correctly in the frontend.
 
@@ -22,6 +22,7 @@ Completed capabilities:
 - T-124 is complete: Top-500 candidate/diff artifacts and reviewed launch-universe planning are present without promoting fixture candidates into runtime truth.
 - Golden Asset Source Handoff enforcement exists across source policy, source snapshots, knowledge packs, citations, generated-output cache metadata, source drawer output, and exports.
 - LLM runtime diagnostics, OpenRouter transport contracts, and the T-127 local live-AI validation smoke are present, with deterministic mocks as the default and live network calls blocked unless explicitly gated.
+- T-128 adds a deterministic governed golden rendering proof: configured API reads can validate private same-asset source snapshot artifacts, normalized knowledge-pack records, and generated-output cache records before serving overview, source drawer, and export output.
 - Normal CI remains deterministic and does not require live provider, news, market-data, storage, database, browser services, or LLM calls.
 
 ## Current Misalignments
@@ -44,8 +45,8 @@ The project is not yet a fully functional fresh-data MVP. Remaining blockers:
 2. Repo-native source-handoff tooling is available for local reviewed packets.
    T-126 added source-handoff manifest inspection/finalization smoke tooling, but launch-sized governed source artifacts still need review before public production use.
 
-3. Governed golden evidence does not yet prove full render authority.
-   The repo needs an end-to-end proof that approved governed sources for golden assets can flow through source persistence, normalized facts, generated-output cache validation, backend route reads, and frontend rendering.
+3. Governed golden evidence now has deterministic render proof for the golden path.
+   T-128 proves that approved governed sources for golden assets can flow through private source snapshot metadata, normalized facts, generated-output cache validation, backend route reads, source drawer output, exports, and frontend smoke markers. This proof does not approve new sources, launch-sized manifests, production storage, or broader generated-output coverage.
 
 4. Local live-AI validation is operator-smoke covered, not launch-approved.
    T-127 adds an opt-in local smoke for grounded chat and AI Comprehensive Analysis when evidence thresholds are met. It remains disabled by default, validation-first, and separate from source approval or Golden Asset Source Handoff.
@@ -63,10 +64,11 @@ Current task state:
 - T-125 completed v0.6 docs, handoff guides, MVP gap review, and repo-contract test alignment.
 - T-126 completed repo-native source-handoff manifest inspection/finalization smoke tooling.
 - T-127 completed the opt-in local live-AI validation smoke for grounded chat and AI Comprehensive Analysis.
+- T-128: prove governed golden evidence drives backend API and frontend rendering.
+- T-128 adds deterministic governed golden API/frontend rendering proof for the golden set.
 
 Runnable near-term backlog:
 
-- T-128: prove governed golden evidence drives backend API and frontend rendering for the golden set.
 - T-129: add launch-manifest operator automation parity for Top-500 and supported ETF review packets without promoting runtime manifests.
 - T-130: add a local fresh-data MVP rehearsal command or command sequence that ties the governed golden path into one operator-facing pre-production check.
 

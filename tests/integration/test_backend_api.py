@@ -14,13 +14,24 @@ from backend.knowledge_pack_repository import (
     knowledge_pack_records_from_acquisition_result,
 )
 from backend.models import FreshnessState, SourceAllowlistStatus, SourceQuality, SourceUsePolicy, WeeklyNewsEventType
-from backend.overview import generate_asset_overview
+from backend.overview import (
+    _asset_knowledge_pack_from_repository_records,
+    _maybe_write_overview_generated_output_cache,
+    generate_asset_overview,
+    generate_overview_from_pack,
+)
 from backend.persistence import BackendReadDependencies, configure_backend_read_dependencies
 from backend.provider_adapters.etf_issuer import execute_etf_issuer_handoff_gated_official_source_acquisition
 from backend.providers import fetch_mock_provider_response, mock_etf_issuer_adapter
 from backend.retrieval import build_asset_knowledge_pack, build_asset_knowledge_pack_result
 from backend.safety import find_forbidden_output_phrases
-from backend.source_snapshot_repository import InMemorySourceSnapshotArtifactRepository, source_snapshot_records_from_acquisition_result
+from backend.source_snapshot_repository import (
+    InMemorySourceSnapshotArtifactRepository,
+    SourceSnapshotArtifactCategory,
+    SourceSnapshotRepositoryRecords,
+    artifact_from_knowledge_pack_source,
+    source_snapshot_records_from_acquisition_result,
+)
 from backend.testing import TestClient
 from backend.repositories.ingestion_jobs import IngestionLedgerJobState, serialize_ingestion_job_response
 from backend.weekly_news_repository import (
@@ -113,6 +124,16 @@ class RecordingWeeklyNewsRepository(InMemoryWeeklyNewsEventEvidenceRepository):
         return super().read_weekly_news_event_evidence_records(ticker)
 
 
+class RecordingSourceSnapshotRepository(InMemorySourceSnapshotArtifactRepository):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls: list[str] = []
+
+    def read_source_snapshot_records(self, ticker: str):
+        self.calls.append(ticker.strip().upper())
+        return super().read_source_snapshot_records(ticker)
+
+
 def _without_session(payload: dict) -> dict:
     stripped = dict(payload)
     stripped.pop("session", None)
@@ -128,6 +149,31 @@ def _fixture_knowledge_pack_records(ticker: str):
 
 def _persist_fixture_knowledge_pack(repository: InMemoryAssetKnowledgePackRepository, ticker: str) -> None:
     repository.persist(_fixture_knowledge_pack_records(ticker))
+
+
+def _persist_fixture_source_snapshots(repository: InMemorySourceSnapshotArtifactRepository, ticker: str) -> None:
+    response = build_asset_knowledge_pack_result(ticker)
+    records = SourceSnapshotRepositoryRecords(
+        artifacts=[
+            artifact_from_knowledge_pack_source(
+                source,
+                artifact_id=f"governed-golden-{ticker.lower()}-{source.source_document_id}",
+                artifact_category=(
+                    SourceSnapshotArtifactCategory.raw_source
+                    if source.source_use_policy is SourceUsePolicy.full_text_allowed
+                    else SourceSnapshotArtifactCategory.summary
+                ),
+                checksum=f"sha256:governed-golden:{ticker.lower()}:{source.source_document_id}",
+                byte_size=0,
+                content_type="text/plain",
+                created_at="2026-04-25T18:04:25Z",
+                storage_key=f"snapshots/governed-golden/{ticker.lower()}/{source.source_document_id}.json",
+                ingestion_job_id=f"pre-cache-launch-{ticker.lower()}",
+            )
+            for source in response.source_documents
+        ]
+    )
+    repository.persist(records)
 
 
 def _weekly_candidate(ticker: str, event_id: str) -> WeeklyNewsEventCandidateRow:
@@ -180,10 +226,14 @@ def _configured_golden_repositories():
     knowledge_repo = RecordingKnowledgePackRepository()
     generated_repo = RecordingGeneratedOutputRepository()
     weekly_repo = RecordingWeeklyNewsRepository()
+    source_snapshot_repo = RecordingSourceSnapshotRepository()
 
     for ticker in ["AAPL", "VOO", "QQQ"]:
         _persist_fixture_knowledge_pack(knowledge_repo, ticker)
-        generate_asset_overview(ticker, generated_output_cache_writer=generated_repo)
+        _persist_fixture_source_snapshots(source_snapshot_repo, ticker)
+        persisted_pack = _asset_knowledge_pack_from_repository_records(knowledge_repo.read_knowledge_pack_records(ticker))
+        persisted_overview = generate_overview_from_pack(persisted_pack)
+        _maybe_write_overview_generated_output_cache(persisted_overview, persisted_pack, generated_repo)
         generate_asset_chat(ticker, "What is this fund?", generated_output_cache_writer=generated_repo)
         _persist_weekly_news(
             weekly_repo,
@@ -192,7 +242,7 @@ def _configured_golden_repositories():
         )
 
     generate_comparison("VOO", "QQQ", generated_output_cache_writer=generated_repo)
-    return knowledge_repo, generated_repo, weekly_repo
+    return knowledge_repo, generated_repo, weekly_repo, source_snapshot_repo
 
 
 def test_configured_backend_readers_are_route_wired_with_fixture_fallback():
@@ -241,8 +291,8 @@ def test_configured_backend_readers_are_route_wired_with_fixture_fallback():
     assert ("chat_session", ("missing-session",)) in spy.calls
 
 
-def test_configured_persisted_golden_records_drive_learning_surfaces_end_to_end():
-    knowledge_repo, generated_repo, weekly_repo = _configured_golden_repositories()
+def test_configured_governed_golden_records_drive_learning_surfaces_end_to_end():
+    knowledge_repo, generated_repo, weekly_repo, source_snapshot_repo = _configured_golden_repositories()
     configure_backend_read_dependencies(
         app,
         BackendReadDependencies(
@@ -250,6 +300,7 @@ def test_configured_persisted_golden_records_drive_learning_surfaces_end_to_end(
             knowledge_pack_reader=knowledge_repo,
             generated_output_cache_reader=generated_repo,
             weekly_news_reader=weekly_repo,
+            source_snapshot_repository=source_snapshot_repo,
         ),
     )
     try:
@@ -353,6 +404,9 @@ def test_configured_persisted_golden_records_drive_learning_surfaces_end_to_end(
     assert ("generic", ("QQQ",)) in generated_repo.calls
     assert ("chat_answer", ("VOO",)) in generated_repo.calls
     assert ("comparison", ("VOO", "QQQ")) in generated_repo.calls
+    assert {"AAPL", "VOO", "QQQ"} <= set(source_snapshot_repo.calls)
+    assert all(artifact.no_public_snapshot_access for artifact in source_snapshot_repo.records().artifacts)
+    assert all(artifact.can_feed_generated_output for artifact in source_snapshot_repo.records().artifacts)
 
 
 def test_configured_ingestion_ledger_is_route_wired_with_fixture_fallback():

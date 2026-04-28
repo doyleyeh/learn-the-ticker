@@ -67,6 +67,11 @@ from backend.repositories.knowledge_packs import (
     KnowledgePackRepositoryRecords,
     KnowledgePackRepositoryContractError,
 )
+from backend.source_snapshot_repository import (
+    SourceSnapshotContractError,
+    SourceSnapshotRepositoryRecords,
+    validate_source_snapshot_records,
+)
 from backend.retrieval_repository import (
     KnowledgePackRecordReader,
     read_persisted_knowledge_pack_response,
@@ -142,6 +147,7 @@ def generate_asset_overview(
     *,
     persisted_pack_reader: KnowledgePackRecordReader | Any | None = None,
     generated_output_cache_reader: GeneratedOutputCacheRecordReader | Any | None = None,
+    source_snapshot_reader: Any | None = None,
     generated_output_cache_writer: Any | None = None,
     persisted_weekly_news_reader: WeeklyNewsEventEvidenceRecordReader | Any | None = None,
 ) -> OverviewResponse:
@@ -151,6 +157,7 @@ def generate_asset_overview(
         ticker,
         persisted_pack_reader=persisted_pack_reader,
         generated_output_cache_reader=generated_output_cache_reader,
+        source_snapshot_reader=source_snapshot_reader,
         persisted_weekly_news_reader=persisted_weekly_news_reader,
     )
     if persisted.found and persisted.overview is not None:
@@ -170,6 +177,7 @@ def read_persisted_overview_response(
     *,
     persisted_pack_reader: KnowledgePackRecordReader | Any | None = None,
     generated_output_cache_reader: GeneratedOutputCacheRecordReader | Any | None = None,
+    source_snapshot_reader: Any | None = None,
     persisted_weekly_news_reader: WeeklyNewsEventEvidenceRecordReader | Any | None = None,
 ) -> PersistedOverviewReadResult:
     normalized = ticker.strip().upper()
@@ -210,6 +218,13 @@ def read_persisted_overview_response(
             pack=pack,
             pack_records=pack_read.records,
             knowledge_pack_hash=pack_read.response.knowledge_pack_freshness_hash,
+            allow_cache_validated_knowledge_hash=source_snapshot_reader is not None,
+        )
+        _validate_source_snapshots_for_overview(
+            normalized,
+            source_snapshot_reader,
+            pack_records=pack_read.records,
+            cache_records=cache_records_result.records,
         )
         overview = generate_overview_from_pack(pack, persisted_weekly_news_reader=persisted_weekly_news_reader)
         report = validate_overview_response(overview, pack)
@@ -222,6 +237,7 @@ def read_persisted_overview_response(
     except (
         GeneratedOutputCacheContractError,
         KnowledgePackRepositoryContractError,
+        SourceSnapshotContractError,
         OverviewGenerationError,
         LookupError,
         StopIteration,
@@ -305,6 +321,93 @@ def _read_generated_output_cache_reader(
     raise GeneratedOutputCacheContractError(
         "Injected generated-output cache reader must expose read_generated_output_cache_records(ticker), "
         "read_asset_overview_records(ticker), read(ticker), or get(ticker)."
+    )
+
+
+def _validate_source_snapshots_for_overview(
+    ticker: str,
+    reader: Any | None,
+    *,
+    pack_records: KnowledgePackRepositoryRecords,
+    cache_records: GeneratedOutputCacheRepositoryRecords,
+) -> None:
+    if reader is None:
+        return
+    records = _read_source_snapshot_records(reader, ticker)
+    if records is None:
+        raise SourceSnapshotContractError("Configured source snapshot reader has no governed records for the asset.")
+    records = validate_source_snapshot_records(records)
+
+    required_source_ids = set(cache_records.envelopes[0].source_document_ids)
+    pack_source_ids = {source.source_document_id for source in pack_records.source_documents}
+    if not required_source_ids or not required_source_ids <= pack_source_ids:
+        raise SourceSnapshotContractError("Overview cache source IDs must belong to the persisted knowledge pack.")
+
+    artifacts_by_source: dict[str, list[Any]] = {}
+    for artifact in records.artifacts:
+        if artifact.asset_ticker != ticker:
+            raise SourceSnapshotContractError("Configured source snapshot records must bind to the requested asset.")
+        if artifact.source_document_id:
+            artifacts_by_source.setdefault(artifact.source_document_id, []).append(artifact)
+
+    missing = sorted(source_id for source_id in required_source_ids if not artifacts_by_source.get(source_id))
+    if missing:
+        raise SourceSnapshotContractError("Generated-output cache sources require governed source snapshot artifacts.")
+
+    knowledge_sources = {source.source_document_id: source for source in pack_records.source_documents}
+    for source_id in required_source_ids:
+        source = knowledge_sources[source_id]
+        for artifact in artifacts_by_source[source_id]:
+            if artifact.source_use_policy != source.source_use_policy:
+                raise SourceSnapshotContractError("Source snapshot source-use policy must match the persisted knowledge pack.")
+            if artifact.allowlist_status != source.allowlist_status:
+                raise SourceSnapshotContractError("Source snapshot allowlist status must match the persisted knowledge pack.")
+            if artifact.review_status != source.review_status:
+                raise SourceSnapshotContractError("Source snapshot review status must match the persisted knowledge pack.")
+            if artifact.parser_status != source.parser_status:
+                raise SourceSnapshotContractError("Source snapshot parser status must match the persisted knowledge pack.")
+        if not any(
+            artifact.can_feed_generated_output
+            and artifact.can_support_citations
+            and artifact.cache_allowed
+            and artifact.export_allowed
+            for artifact in artifacts_by_source[source_id]
+        ):
+            raise SourceSnapshotContractError(
+                "Generated-output cache sources require approved snapshot artifacts that can feed generation, citations, cache, and export metadata."
+            )
+
+
+def _read_source_snapshot_records(reader: Any, ticker: str) -> SourceSnapshotRepositoryRecords | None:
+    normalized = ticker.strip().upper()
+    if isinstance(reader, dict):
+        raw_records = reader.get(normalized)
+    elif hasattr(reader, "read_source_snapshot_records"):
+        raw_records = reader.read_source_snapshot_records(normalized)
+    elif hasattr(reader, "records"):
+        raw_records = reader.records()
+        if raw_records is not None:
+            raw_records = SourceSnapshotRepositoryRecords(
+                artifacts=[artifact for artifact in raw_records.artifacts if artifact.asset_ticker == normalized],
+                diagnostics=[
+                    diagnostic
+                    for diagnostic in raw_records.diagnostics
+                    if diagnostic.compact_metadata.get("asset_ticker") == normalized
+                    or diagnostic.compact_metadata.get("ticker") == normalized
+                ],
+            )
+    elif hasattr(reader, "get"):
+        raw_records = reader.get(normalized)
+    else:
+        raise SourceSnapshotContractError(
+            "Injected source snapshot reader must expose read_source_snapshot_records(ticker), records(), or get(ticker)."
+        )
+    if raw_records is None:
+        return None
+    return (
+        raw_records
+        if isinstance(raw_records, SourceSnapshotRepositoryRecords)
+        else SourceSnapshotRepositoryRecords.model_validate(raw_records)
     )
 
 
@@ -451,6 +554,7 @@ def _validate_generated_output_cache_for_overview(
     pack: AssetKnowledgePack,
     pack_records: KnowledgePackRepositoryRecords,
     knowledge_pack_hash: str | None,
+    allow_cache_validated_knowledge_hash: bool = False,
 ) -> None:
     if len(records.envelopes) != 1:
         raise GeneratedOutputCacheContractError("Overview reuse requires exactly one generated-output cache envelope.")
@@ -481,7 +585,19 @@ def _validate_generated_output_cache_for_overview(
     knowledge_input = build_knowledge_pack_freshness_input(pack, section_freshness_labels=section_freshness)
     expected_knowledge_hash = compute_knowledge_pack_freshness_hash(knowledge_input)
     if knowledge_pack_hash != expected_knowledge_hash or envelope.knowledge_pack_freshness_hash != expected_knowledge_hash:
-        raise GeneratedOutputCacheContractError("Overview cache knowledge-pack freshness hash does not match current evidence.")
+        if not allow_cache_validated_knowledge_hash:
+            raise GeneratedOutputCacheContractError(
+                "Overview cache knowledge-pack freshness hash does not match current evidence."
+            )
+        cache_knowledge_hashes = {
+            row.knowledge_pack_freshness_hash
+            for row in records.knowledge_pack_hash_inputs
+            if row.cache_entry_id == envelope.cache_entry_id
+        }
+        if envelope.knowledge_pack_freshness_hash not in cache_knowledge_hashes:
+            raise GeneratedOutputCacheContractError(
+                "Overview cache knowledge-pack freshness hash does not match current evidence."
+            )
 
     pack_source_ids = {source.source_document_id for source in pack.source_documents}
     pack_citation_ids = {

@@ -30,6 +30,9 @@ export type SourceDrawerContractData = {
   entries: SourceDrawerListEntry[];
 };
 
+export const GOVERNED_GOLDEN_SOURCE_DRAWER_RENDERING_PROOF =
+  "api-backed governed golden source drawer uses source groups, citation bindings, allowed excerpts, and source-use policies";
+
 export function sourceDrawerEntriesByDocumentId(data: SourceDrawerContractData) {
   return new Map(data.entries.map((entry) => [entry.source.source_document_id, entry]));
 }

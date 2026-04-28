@@ -42,6 +42,7 @@ def build_asset_source_drawer_response(
     source_document_id: str | None = None,
     persisted_pack_reader: object | None = None,
     generated_output_cache_reader: object | None = None,
+    source_snapshot_reader: object | None = None,
     persisted_weekly_news_reader: object | None = None,
 ) -> SourcesResponse:
     """Shape existing local overview evidence into the source drawer API contract."""
@@ -63,6 +64,7 @@ def build_asset_source_drawer_response(
         normalized,
         persisted_pack_reader=persisted_pack_reader,
         generated_output_cache_reader=generated_output_cache_reader,
+        source_snapshot_reader=source_snapshot_reader,
         persisted_weekly_news_reader=persisted_weekly_news_reader,
     )
     source_fixture_by_id = {source.source_document_id: source for source in pack.source_documents}

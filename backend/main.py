@@ -211,6 +211,7 @@ def asset_overview(ticker: str, mode: str = "beginner") -> OverviewResponse:
         ticker,
         persisted_pack_reader=readers.reader("knowledge_pack_reader"),
         generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+        source_snapshot_reader=readers.reader("source_snapshot_repository"),
         persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
     )
 
@@ -256,6 +257,7 @@ def asset_sources(
         source_document_id=source_document_id,
         persisted_pack_reader=readers.reader("knowledge_pack_reader"),
         generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+        source_snapshot_reader=readers.reader("source_snapshot_repository"),
         persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
     )
 
@@ -274,6 +276,7 @@ def asset_page_export(ticker: str, export_format: ExportFormat = ExportFormat.ma
         export_format,
         persisted_pack_reader=readers.reader("knowledge_pack_reader"),
         generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+        source_snapshot_reader=readers.reader("source_snapshot_repository"),
         persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
     )
 
@@ -286,6 +289,7 @@ def asset_sources_export(ticker: str, export_format: ExportFormat = ExportFormat
         export_format,
         persisted_pack_reader=readers.reader("knowledge_pack_reader"),
         generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+        source_snapshot_reader=readers.reader("source_snapshot_repository"),
         persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
     )
 
@@ -297,6 +301,7 @@ def asset_recent(ticker: str) -> RecentResponse:
         ticker,
         persisted_pack_reader=readers.reader("knowledge_pack_reader"),
         generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+        source_snapshot_reader=readers.reader("source_snapshot_repository"),
         persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
     )
     return RecentResponse(
@@ -314,6 +319,7 @@ def asset_weekly_news(ticker: str) -> WeeklyNewsResponse:
         ticker,
         persisted_pack_reader=readers.reader("knowledge_pack_reader"),
         generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+        source_snapshot_reader=readers.reader("source_snapshot_repository"),
         persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
     )
     return WeeklyNewsResponse(

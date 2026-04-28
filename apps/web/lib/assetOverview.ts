@@ -166,6 +166,9 @@ export async function fetchSupportedAssetOverview(
   return mergeAssetFixtureWithOverview(fallbackAsset, payload);
 }
 
+export const GOVERNED_GOLDEN_OVERVIEW_RENDERING_PROOF =
+  "api-backed governed golden overview uses persisted knowledge-pack records plus generated-output cache validation";
+
 function assetOverviewEndpoint(ticker: string) {
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || process.env.API_BASE_URL?.trim();
   if (!apiBaseUrl) {

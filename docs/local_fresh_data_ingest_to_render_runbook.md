@@ -196,12 +196,12 @@ For optional `local_durable`, remove only local throwaway data created for the s
 
 ## Troubleshooting
 
-- If an overview falls back to fixtures, check that both the persisted knowledge-pack reader and generated-output cache reader are configured.
-- If generated-output cache reuse is rejected, check freshness hashes, same-asset citation bindings, source-use policy, parser status, and handoff metadata.
+- If an overview falls back to fixtures, check that persisted knowledge-pack, generated-output cache, and source snapshot readers are configured for the governed path.
+- If generated-output cache reuse is rejected, check freshness hashes, same-asset citation bindings, source-use policy, parser status, private source snapshot artifacts, and handoff metadata.
 - If Weekly News Focus has fewer items than expected, treat that as valid when evidence is thin. Do not pad the section.
 - If source drawer or export output is empty, verify that sources are allowlisted, parser-valid, same-asset, and excerpt-allowed.
 - If frontend rendering uses local fallback, confirm `NEXT_PUBLIC_API_BASE_URL` or `API_BASE_URL` points to the local backend.
 - If chat or export links return frontend 404s, confirm the web dev server was started after setting `NEXT_PUBLIC_API_BASE_URL` or that the Next `/api/:path*` rewrite can reach the local FastAPI backend.
 - If browser direct API calls fail, confirm `CORS_ALLOWED_ORIGINS` includes the exact local web origin, including hostname and port.
 
-The deterministic regression for this runbook is `test_t118_local_fresh_data_ingest_to_render_smoke_path_is_deterministic` in `tests/integration/test_backend_api.py`. T-119 added static coverage for the frontend API helper, Next rewrite, and CORS settings. T-121/T-122 added optional localhost browser and durable smoke paths. T-125 keeps this runbook aligned with the v0.6 handoff docs; future work should prove governed golden evidence and opt-in live-AI validation end to end.
+The deterministic regression for this runbook is `test_t118_local_fresh_data_ingest_to_render_smoke_path_is_deterministic` in `tests/integration/test_backend_api.py`. T-119 added static coverage for the frontend API helper, Next rewrite, and CORS settings. T-121/T-122 added optional localhost browser and durable smoke paths. T-125 keeps this runbook aligned with the v0.6 handoff docs. T-127 covers operator-only live-AI validation smoke, and T-128 proves deterministic governed golden source snapshots, knowledge-pack records, and generated-output cache records can drive API and frontend-rendering markers without approving new sources or adding live calls.

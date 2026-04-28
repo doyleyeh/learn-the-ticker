@@ -49,6 +49,9 @@ export const EXPORT_TRUST_CONTEXT =
 export const EXPORT_LICENSING_CONTEXT =
   "Export controls request Markdown-shaped payloads only; full source documents, restricted provider payloads, raw model reasoning, hidden prompts, credentials, and live external download URLs are not exported.";
 
+export const GOVERNED_GOLDEN_EXPORT_RENDERING_PROOF =
+  "api-backed governed golden exports preserve citations, source metadata, allowed excerpts, freshness labels, and disclaimers";
+
 export function assetPageExportUrl(ticker: string, exportFormat: ExportFormat = EXPORT_FORMAT): string {
   const encodedTicker = encodeTicker(ticker);
   return publicApiEndpoint(`/api/assets/${encodedTicker}/export?export_format=${exportFormat}`);
