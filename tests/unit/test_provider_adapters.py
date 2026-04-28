@@ -941,7 +941,7 @@ def test_market_reference_adapter_covers_supported_and_eligible_not_cached_with_
 
     manifest_eligible_etfs = eligible_not_cached_etf_entries()
     assert set(manifest_eligible_etfs) <= set(ELIGIBLE_NOT_CACHED_ASSETS)
-    assert load_etf_universe_manifest().local_path == "data/universes/us_equity_etfs.current.json"
+    assert load_etf_universe_manifest().local_path == "data/universes/us_equity_etfs_supported.current.json"
     for ticker, entry in manifest_eligible_etfs.items():
         response = adapter.fetch(adapter.request(ticker, ProviderDataCategory.asset_resolution))
         assert response.state is ProviderResponseState.eligible_not_cached

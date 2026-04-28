@@ -14,11 +14,19 @@ from backend.models import (
 )
 
 
-ETF_UNIVERSE_MANIFEST_PATH = (
-    Path(__file__).resolve().parents[1] / "data" / "universes" / "us_equity_etfs.current.json"
+SUPPORTED_ETF_UNIVERSE_MANIFEST_PATH = (
+    Path(__file__).resolve().parents[1] / "data" / "universes" / "us_equity_etfs_supported.current.json"
+)
+RECOGNITION_ETF_UNIVERSE_MANIFEST_PATH = (
+    Path(__file__).resolve().parents[1] / "data" / "universes" / "us_etp_recognition.current.json"
 )
 ETF_UNIVERSE_SCHEMA_VERSION = "us-equity-etf-universe-v1"
 ETF_UNIVERSE_PRODUCTION_MIRROR_ENV_VAR = "EQUITY_ETF_UNIVERSE_MANIFEST_URI"
+ETF_UNIVERSE_MANIFEST_PATHS = {
+    "data/universes/us_equity_etfs_supported.current.json",
+    "data/universes/us_etp_recognition.current.json",
+    "data/universes/us_equity_etfs.current.json",
+}
 
 SUPPORTED_SCOPE_ETF_CATEGORIES = {
     ETFUniverseCategory.us_equity_index_etf,
@@ -62,7 +70,7 @@ def normalize_etf_ticker(ticker: str) -> str:
 def validate_etf_universe_manifest(manifest: ETFUniverseManifest) -> ETFUniverseManifest:
     if manifest.schema_version != ETF_UNIVERSE_SCHEMA_VERSION:
         raise ETFUniverseContractError(f"Unsupported ETF universe schema version: {manifest.schema_version}")
-    if manifest.local_path != "data/universes/us_equity_etfs.current.json":
+    if manifest.local_path not in ETF_UNIVERSE_MANIFEST_PATHS:
         raise ETFUniverseContractError("ETF manifest local_path must point to the runtime local manifest path.")
     if manifest.production_mirror_env_var != ETF_UNIVERSE_PRODUCTION_MIRROR_ENV_VAR:
         raise ETFUniverseContractError("ETF manifest must declare the private production mirror env var.")
@@ -80,14 +88,29 @@ def validate_etf_universe_manifest(manifest: ETFUniverseManifest) -> ETFUniverse
 
 
 @lru_cache(maxsize=1)
-def load_etf_universe_manifest() -> ETFUniverseManifest:
-    with ETF_UNIVERSE_MANIFEST_PATH.open("r", encoding="utf-8") as handle:
+def load_supported_etf_universe_manifest() -> ETFUniverseManifest:
+    with SUPPORTED_ETF_UNIVERSE_MANIFEST_PATH.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
     return validate_etf_universe_manifest(ETFUniverseManifest.model_validate(payload))
 
 
+@lru_cache(maxsize=1)
+def load_recognition_etf_universe_manifest() -> ETFUniverseManifest:
+    with RECOGNITION_ETF_UNIVERSE_MANIFEST_PATH.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    return validate_etf_universe_manifest(ETFUniverseManifest.model_validate(payload))
+
+@lru_cache(maxsize=1)
+def load_etf_universe_manifest() -> ETFUniverseManifest:
+    # Backward-compatible alias for callers that have not been migrated to explicit
+    # supported/recognition split loading.
+    return load_supported_etf_universe_manifest()
+
+
 def etf_universe_entries_by_ticker() -> dict[str, ETFUniverseEntry]:
-    return {entry.ticker: entry for entry in load_etf_universe_manifest().entries}
+    supported = {entry.ticker: entry for entry in load_supported_etf_universe_manifest().entries}
+    recognition = {entry.ticker: entry for entry in load_recognition_etf_universe_manifest().entries}
+    return {**supported, **recognition}
 
 
 def etf_universe_entry(ticker: str) -> ETFUniverseEntry | None:
@@ -97,7 +120,7 @@ def etf_universe_entry(ticker: str) -> ETFUniverseEntry | None:
 def cached_supported_etf_entries() -> dict[str, ETFUniverseEntry]:
     return {
         entry.ticker: entry
-        for entry in load_etf_universe_manifest().entries
+        for entry in load_supported_etf_universe_manifest().entries
         if entry.support_state is ETFUniverseSupportState.cached_supported
     }
 
@@ -105,7 +128,7 @@ def cached_supported_etf_entries() -> dict[str, ETFUniverseEntry]:
 def eligible_not_cached_etf_entries() -> dict[str, ETFUniverseEntry]:
     return {
         entry.ticker: entry
-        for entry in load_etf_universe_manifest().entries
+        for entry in load_supported_etf_universe_manifest().entries
         if entry.support_state is ETFUniverseSupportState.eligible_not_cached
     }
 
@@ -113,7 +136,7 @@ def eligible_not_cached_etf_entries() -> dict[str, ETFUniverseEntry]:
 def blocked_etf_entries() -> dict[str, ETFUniverseEntry]:
     return {
         entry.ticker: entry
-        for entry in load_etf_universe_manifest().entries
+        for entry in load_recognition_etf_universe_manifest().entries
         if entry.support_state
         in {
             ETFUniverseSupportState.recognized_unsupported,
@@ -143,7 +166,7 @@ def legacy_eligible_not_cached_etf_metadata() -> dict[str, dict[str, str | list[
             "issuer": entry.issuer,
             "aliases": entry.aliases,
             "launch_group": _legacy_launch_group(entry),
-            "manifest_id": load_etf_universe_manifest().manifest_id,
+            "manifest_id": load_supported_etf_universe_manifest().manifest_id,
             "etf_category": entry.etf_category.value,
             "support_state": entry.support_state.value,
             "launch_cache_state": entry.launch_cache_state.value,
