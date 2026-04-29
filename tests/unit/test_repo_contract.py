@@ -707,6 +707,17 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert statuses["optional_local_durable_repositories"] == "skipped"
     assert statuses["optional_official_source_retrieval"] == "skipped"
     assert statuses["optional_live_ai_review"] == "skipped"
+    launch_details = next(
+        check["details"] for check in result["checks"] if check["check_id"] == "launch_manifest_review_packets"
+    )
+    assert launch_details["etf_eligible_universe_scope_version"] == "etf-eligible-universe-review-scope-v1"
+    assert launch_details["etf_readiness_counts"]["supported"] == 13
+    assert launch_details["etf_readiness_counts"]["recognition_only"] == 9
+    assert launch_details["etf_readiness_counts"]["source_pack_ready"] == 0
+    assert launch_details["etf_readiness_counts"]["generated_output_eligible"] == 2
+    assert launch_details["etf_full_eligible_universe_count"] == 13
+    assert launch_details["etf_non_golden_eligible_supported_count"] == 11
+    assert "sector" in launch_details["etf_represented_categories_beyond_golden"]
 
 
 def test_local_fresh_data_rehearsal_optional_modes_report_blockers_without_secrets():
