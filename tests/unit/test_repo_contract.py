@@ -622,10 +622,10 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
         "T-129 completed launch-manifest operator automation parity",
         "T-130 completed the deterministic local fresh-data MVP rehearsal command",
         "T-131 through T-135 completed the ETF eligible-universe, stock SEC source-pack readiness, ETF issuer source-pack readiness, local MVP readiness-threshold packets, and batchable local ingestion priority planner",
-        "The ETF-500 scope update is documented across the product and handoff docs; T-136 is currently promoted to turn that scope into deterministic candidate manifest review contracts.",
-        "T-137 through T-139 are prepared as the next local fresh-data gap sequence after T-136",
-        "T-134 and T-135 are completed. T-136 is currently promoted as the next local fresh-data MVP task before production-hardening tasks.",
-        "T-137 through T-139 are prepared follow-up tasks, not completed work",
+        "The ETF-500 scope update is documented across the product and handoff docs; T-136 completed deterministic ETF-500 candidate manifest review contracts, and T-137 completed ETF-500 issuer source-pack batch planning contracts.",
+        "T-138 is currently promoted for Top-500 SEC source-pack batch planning. T-139 remains prepared as the local manual fresh-data readiness gate after T-138.",
+        "T-134 through T-137 are completed. T-138 is currently promoted as the next local fresh-data MVP task before the manual readiness gate and production-hardening tasks.",
+        "T-139 is a prepared follow-up task, not completed work: the manual fresh-data readiness gate.",
         "T-099 established deterministic provider content export-rights hardening",
         "T-100 established the backend MVP runtime gap audit and roadmap tracker",
         "T-101 established configured persisted-reader route wiring with fixture fallback",
@@ -689,9 +689,9 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
         "| ETF issuer source-pack readiness packets | Completed | T-133 |",
         "| Local fresh-data MVP readiness thresholds | Completed | T-134 |",
         "| Batchable local ingestion priority planner | Completed | T-135 |",
-        "| ETF-500 candidate manifest review contracts | Current | T-136 |",
-        "| ETF-500 issuer source-pack batch planning | Prepared | T-137 |",
-        "| Top-500 SEC source-pack batch planning | Prepared | T-138 |",
+        "| ETF-500 candidate manifest review contracts | Completed | T-136 |",
+        "| ETF-500 issuer source-pack batch planning | Completed | T-137 |",
+        "| Top-500 SEC source-pack batch planning | Current | T-138 |",
         "| Local manual fresh-data readiness gate | Prepared | T-139 |",
         "| Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |",
     ]
@@ -706,8 +706,9 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
         "| Local fresh-data MVP readiness thresholds | Current | T-134 |",
         "| Batchable local ingestion priority planner | Prepared | T-135 |",
         "| Batchable local ingestion priority planner | Current | T-135 |",
+        "| ETF-500 candidate manifest review contracts | Current | T-136 |",
         "| ETF-500 issuer source-pack batch planning | Current | T-137 |",
-        "| Top-500 SEC source-pack batch planning | Current | T-138 |",
+        "| Top-500 SEC source-pack batch planning | Prepared | T-138 |",
         "| Local manual fresh-data readiness gate | Current | T-139 |",
         "The current promoted task is T-129",
         "No current local fully functional fresh-data MVP task is prepared",
@@ -835,6 +836,45 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert stock_sec_details["readiness_counts"]["partial"] == 2
     assert stock_sec_details["readiness_counts"]["insufficient_evidence"] == 18
     assert stock_sec_details["readiness_counts"]["review_packet_unlocks_generated_output"] == 0
+    top500_planning = stock_sec_details["top500_sec_source_pack_batch_planning"]
+    assert top500_planning["schema_version"] == "top500-sec-source-pack-batch-plan-v1"
+    assert top500_planning["boundary"] == "top500-sec-source-pack-batch-planning-review-only-v1"
+    assert top500_planning["current_manifest_path"] == "data/universes/us_common_stocks_top500.current.json"
+    assert top500_planning["support_resolved_from_current_manifest_only"] is True
+    assert top500_planning["candidate_or_priority_data_resolves_runtime_support"] is False
+    assert top500_planning["live_provider_or_exchange_data_resolves_runtime_support"] is False
+    assert top500_planning["candidate_relationship_diagnostics"]["candidate_artifacts_available"] is True
+    assert top500_planning["candidate_relationship_diagnostics"]["candidate_data_used_for_runtime_support"] is False
+    assert top500_planning["planning_summary"] == {
+        "planned_row_count": 10,
+        "batch_count": 5,
+        "high_demand_pre_cache_count": 1,
+        "top500_review_count": 9,
+        "source_backed_partial_ready_count": 1,
+        "insufficient_evidence_count": 9,
+        "blocked_generated_surface_count": 9,
+    }
+    assert top500_planning["manifest_rank_ordering"][:3] == [
+        {"rank": 1, "ticker": "AAPL"},
+        {"rank": 2, "ticker": "MSFT"},
+        {"rank": 3, "ticker": "NVDA"},
+    ]
+    top500_batches = {group["batch_name"]: group for group in top500_planning["batch_groups"]}
+    assert top500_batches["high-demand-pre-cache"]["tickers"] == ["AAPL"]
+    assert top500_batches["TOP500-50"]["planned_row_count"] == 9
+    top500_priorities = {
+        group["readiness_priority"]: group["planned_row_count"]
+        for group in top500_planning["readiness_priority_groups"]
+    }
+    assert top500_priorities == {
+        "approved_partial_ready_needs_quarterly_or_full_review": 1,
+        "missing_required_sec_sources": 9,
+    }
+    assert top500_planning["source_handoff_readiness"]["approved_component_count"] == 3
+    assert top500_planning["parser_readiness"]["parser_status_counts"]["pending_review"] == 37
+    assert top500_planning["freshness_as_of_checksum_placeholder_status"]["checksum_present_count"] == 0
+    assert "candidate_artifacts_are_diagnostic_only" in top500_planning["stop_conditions"]
+    assert "generated_pages" in top500_planning["blocked_generated_surfaces"]
     assert "generated_chat_answers" in stock_sec_details["blocked_generated_surfaces"]
     etf_readiness_details = next(
         check["details"] for check in result["checks"] if check["check_id"] == "etf_issuer_source_pack_readiness"
