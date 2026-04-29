@@ -66,6 +66,7 @@ Current implementation stage:
 - opt-in official-source acquisition readiness exists for SEC stock, ETF issuer, and Weekly News golden paths, but launch-sized governed source artifacts and ETF-500 source-pack approvals remain MVP gaps
 - v0.6 local validation expects operator-only live-AI review for grounded chat and AI Comprehensive Analysis when evidence thresholds are met, while CI and ordinary local tests remain deterministic mocks
 - CI and local checks are deterministic and fixture-backed; normal quality gates do not depend on live provider, market-data, news, or LLM calls
+- the local manual fresh-data readiness gate is review-only and reports `agent_work_remaining` until deterministic ETF-500 candidate review, ETF issuer source-pack planning, Top-500 SEC source-pack planning, local MVP thresholds, ingestion priority planning, governed golden rendering, frontend workflow markers, parser readiness, Golden Asset Source Handoff readiness, freshness/as-of metadata, and checksums are ready; it reports `manual_test_ready` only when the next action is explicit operator-run browser/API, durable repository, official-source retrieval, or live-AI validation, without starting services, fetching live sources, approving sources, promoting manifests, exposing secrets, or unlocking generated output
 
 Near-term implementation priority order:
 

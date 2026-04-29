@@ -129,6 +129,7 @@ def run_rehearsal(env: dict[str, str] | None = None, *, root: Path = ROOT) -> di
         _guarded("optional_live_ai_review", lambda: _check_optional_live_ai_review(source_env)),
     ]
     threshold_summary = _build_local_mvp_threshold_summary(checks)
+    manual_readiness_gate = _build_manual_fresh_data_readiness_gate(checks, threshold_summary)
     return {
         "schema_version": SCHEMA_VERSION,
         "status": _rollup_status(checks),
@@ -138,6 +139,7 @@ def run_rehearsal(env: dict[str, str] | None = None, *, root: Path = ROOT) -> di
         "manifests_promoted": False,
         "sources_approved_by_rehearsal": False,
         "local_mvp_threshold_summary": threshold_summary,
+        "manual_fresh_data_readiness_gate": manual_readiness_gate,
         "checks": [check.to_dict() for check in checks],
     }
 
@@ -1019,6 +1021,395 @@ def _build_local_mvp_threshold_summary(checks: list[RehearsalCheck]) -> dict[str
             "source_backed_partial_ready_count": asset_state_summary["source_backed_partial_ready_count"],
         },
     }
+
+
+def _build_manual_fresh_data_readiness_gate(
+    checks: list[RehearsalCheck],
+    threshold_summary: dict[str, Any],
+) -> dict[str, Any]:
+    check_by_id = {check.check_id: check for check in checks}
+    stop_conditions = _manual_readiness_stop_conditions(check_by_id, threshold_summary)
+    decision = "agent_work_remaining" if stop_conditions else "manual_test_ready"
+    return {
+        "schema_version": "local-manual-fresh-data-readiness-gate-v1",
+        "decision": decision,
+        "task_ready_vs_manual_test_ready_decision": decision,
+        "task_ready_for_manual_testing": decision == "manual_test_ready",
+        "manual_test_ready": decision == "manual_test_ready",
+        "agent_work_remaining": decision == "agent_work_remaining",
+        "next_operator_action": (
+            "finish_deterministic_agent_work_before_manual_fresh_data_testing"
+            if stop_conditions
+            else "run_manual_local_fresh_data_testing_with_explicit_opt_ins"
+        ),
+        "sanitized_operator_report": True,
+        "review_only": True,
+        "production_services_started": False,
+        "live_sources_fetched": False,
+        "live_llms_called": False,
+        "sources_approved": False,
+        "manifests_promoted": False,
+        "ingestion_started": False,
+        "generated_output_cache_entries_written": False,
+        "generated_output_unlocked_for_unsupported_or_incomplete_assets": False,
+        "prerequisite_summaries": _manual_readiness_prerequisite_summaries(check_by_id, threshold_summary),
+        "stop_conditions": stop_conditions,
+        "optional_mode_statuses": [
+            _threshold_check_summary(check_by_id[check_id]) for check_id in OPTIONAL_THRESHOLD_CHECK_IDS
+        ],
+        "no_secret_diagnostics": {
+            "secret_values_reported": False,
+            "secret_values_requested": False,
+            "safe_diagnostics_only": True,
+            "opt_in_env_names_reported_without_values": [
+                BROWSER_OPT_IN_ENV,
+                DURABLE_OPT_IN_ENV,
+                OFFICIAL_RETRIEVAL_OPT_IN_ENV,
+                LIVE_AI_OPT_IN_ENV,
+                WEB_BASE_ENV,
+                API_BASE_ENV,
+            ],
+        },
+        "blocked_generated_surfaces": threshold_summary["asset_state_summary"]["blocked_generated_surfaces"],
+        "manual_test_checklist": _manual_fresh_data_test_checklist(),
+        "decision_boundary": {
+            "agent_work_remaining_when": [
+                "required deterministic checks are absent or blocked",
+                "ETF-500 review remains fixture-only or below reviewed target coverage",
+                "ETF issuer source packs are incomplete or parser/handoff readiness is not clear",
+                "Top-500 SEC source packs are incomplete, parser-not-ready, handoff-not-ready, or checksum-missing",
+                "local ingestion priority planning still reports blocked or not-ready assets",
+                "optional modes are explicitly enabled but blocked by safe prerequisite diagnostics",
+                "unsupported, recognition-only, or incomplete assets expose any generated-output surface",
+            ],
+            "manual_test_ready_when": [
+                "all deterministic prerequisite checks pass",
+                "review packets and batch plans no longer report fixture-only or incomplete source-pack state",
+                "parser, Golden Asset Source Handoff, freshness/as-of, and checksum prerequisites are ready",
+                "generated-output blocking remains enforced for unsupported, recognition-only, and incomplete assets",
+                "manual local browser/API testing is the next explicit operator action",
+            ],
+        },
+    }
+
+
+def _manual_readiness_prerequisite_summaries(
+    check_by_id: dict[str, RehearsalCheck],
+    threshold_summary: dict[str, Any],
+) -> list[dict[str, Any]]:
+    launch = check_by_id["launch_manifest_review_packets"].details
+    stock = check_by_id["stock_sec_source_pack_readiness"].details
+    stock_plan = stock.get("top500_sec_source_pack_batch_planning", {})
+    etf = check_by_id["etf_issuer_source_pack_readiness"].details
+    etf_plan = etf.get("etf500_source_pack_batch_planning", {})
+    ingestion = check_by_id["local_ingestion_priority_planner"].details
+    frontend = check_by_id["frontend_v04_smoke_markers"]
+    golden = check_by_id["governed_golden_api_rendering"]
+    return [
+        {
+            "prerequisite_id": "t136_etf500_candidate_review",
+            "check_id": "launch_manifest_review_packets",
+            "status": check_by_id["launch_manifest_review_packets"].status,
+            "review_status": launch.get("etf_review_status"),
+            "fixture_only": launch.get("etf500_current_fixture_not_launch_coverage"),
+            "category_gap_count": launch.get("etf500_category_coverage_gap_count"),
+            "source_pack_readiness": launch.get("etf500_source_pack_readiness"),
+            "parser_handoff_readiness": launch.get("etf500_parser_handoff_readiness"),
+            "checksum_status": launch.get("etf500_checksum_status"),
+        },
+        {
+            "prerequisite_id": "t137_etf_source_pack_batch_planning",
+            "check_id": "etf_issuer_source_pack_readiness",
+            "status": check_by_id["etf_issuer_source_pack_readiness"].status,
+            "review_status": etf.get("review_status"),
+            "readiness_counts": etf.get("readiness_counts"),
+            "candidate_artifacts_available": etf_plan.get("candidate_artifacts_available"),
+            "fallback_not_launch_coverage": etf_plan.get("fallback_not_launch_coverage"),
+            "planning_summary": etf_plan.get("planning_summary"),
+        },
+        {
+            "prerequisite_id": "t138_top500_sec_source_pack_batch_planning",
+            "check_id": "stock_sec_source_pack_readiness",
+            "status": check_by_id["stock_sec_source_pack_readiness"].status,
+            "review_status": stock.get("review_status"),
+            "readiness_counts": stock.get("readiness_counts"),
+            "planning_summary": stock_plan.get("planning_summary"),
+            "source_handoff_readiness": stock_plan.get("source_handoff_readiness"),
+            "parser_readiness": stock_plan.get("parser_readiness"),
+            "freshness_as_of_checksum_placeholder_status": stock_plan.get(
+                "freshness_as_of_checksum_placeholder_status"
+            ),
+        },
+        {
+            "prerequisite_id": "local_mvp_thresholds",
+            "status": threshold_summary["overall_local_approval_status"],
+            "threshold_blocker_count": len(threshold_summary["threshold_blockers"]),
+            "asset_state_summary": threshold_summary["asset_state_summary"],
+        },
+        {
+            "prerequisite_id": "local_ingestion_priority_planning",
+            "check_id": "local_ingestion_priority_planner",
+            "status": check_by_id["local_ingestion_priority_planner"].status,
+            "summary": ingestion.get("summary"),
+            "state_diagnostics": ingestion.get("state_diagnostics"),
+        },
+        {
+            "prerequisite_id": "governed_golden_rendering",
+            "check_id": "governed_golden_api_rendering",
+            "status": golden.status,
+            "reason_code": golden.reason_code,
+            "blocked_search_cases": golden.details.get("blocked_search_cases", []),
+        },
+        {
+            "prerequisite_id": "frontend_workflow_smoke_markers",
+            "check_id": "frontend_v04_smoke_markers",
+            "status": frontend.status,
+            "reason_code": frontend.reason_code,
+            "checked_file_count": frontend.details.get("checked_file_count"),
+        },
+    ]
+
+
+def _manual_readiness_stop_conditions(
+    check_by_id: dict[str, RehearsalCheck],
+    threshold_summary: dict[str, Any],
+) -> list[dict[str, Any]]:
+    stop_conditions: list[dict[str, Any]] = []
+    for check in check_by_id.values():
+        if check.check_id in OPTIONAL_THRESHOLD_CHECK_IDS:
+            continue
+        if check.status != "pass":
+            stop_conditions.append(
+                {
+                    "reason_code": "required_deterministic_check_not_passed",
+                    "check_id": check.check_id,
+                    "status": check.status,
+                    "check_reason_code": check.reason_code,
+                }
+            )
+    for blocker in threshold_summary["threshold_blockers"]:
+        stop_conditions.append({"reason_code": blocker["reason_code"], "details": blocker})
+
+    launch = check_by_id["launch_manifest_review_packets"].details
+    _append_if(
+        stop_conditions,
+        bool(launch.get("etf500_current_fixture_not_launch_coverage")),
+        "etf500_review_fixture_only_not_launch_coverage",
+        "launch_manifest_review_packets",
+        {"current_fixture_not_launch_coverage": launch.get("etf500_current_fixture_not_launch_coverage")},
+    )
+    _append_if(
+        stop_conditions,
+        int(launch.get("etf500_category_coverage_gap_count") or 0) > 0,
+        "etf500_category_review_gaps_remaining",
+        "launch_manifest_review_packets",
+        {"category_coverage_gap_count": launch.get("etf500_category_coverage_gap_count")},
+    )
+    etf500_source_pack = launch.get("etf500_source_pack_readiness", {})
+    _append_if(
+        stop_conditions,
+        int(etf500_source_pack.get("incomplete_count") or 0) > 0 or int(etf500_source_pack.get("ready_count") or 0) == 0,
+        "etf500_source_pack_incomplete",
+        "launch_manifest_review_packets",
+        etf500_source_pack,
+    )
+    etf500_parser_handoff = launch.get("etf500_parser_handoff_readiness", {})
+    _append_if(
+        stop_conditions,
+        int(etf500_parser_handoff.get("handoff_not_ready_count") or 0) > 0
+        or int(etf500_parser_handoff.get("unclear_rights_count") or 0) > 0,
+        "etf500_handoff_not_ready_or_unclear_rights",
+        "launch_manifest_review_packets",
+        etf500_parser_handoff,
+    )
+    _append_if(
+        stop_conditions,
+        int(etf500_parser_handoff.get("parser_invalid_count") or 0) > 0,
+        "etf500_parser_invalid",
+        "launch_manifest_review_packets",
+        etf500_parser_handoff,
+    )
+    etf500_checksums = launch.get("etf500_checksum_status", {})
+    _append_if(
+        stop_conditions,
+        not all(bool(value) for value in etf500_checksums.values()),
+        "etf500_checksum_missing_or_mismatched",
+        "launch_manifest_review_packets",
+        etf500_checksums,
+    )
+
+    etf = check_by_id["etf_issuer_source_pack_readiness"].details
+    etf_plan = etf.get("etf500_source_pack_batch_planning", {})
+    etf_plan_summary = etf_plan.get("planning_summary", {})
+    _append_if(
+        stop_conditions,
+        not bool(etf_plan.get("candidate_artifacts_available")) or bool(etf_plan.get("fallback_not_launch_coverage")),
+        "etf500_source_pack_batch_uses_fixture_fallback",
+        "etf_issuer_source_pack_readiness",
+        {
+            "candidate_artifacts_available": etf_plan.get("candidate_artifacts_available"),
+            "fallback_not_launch_coverage": etf_plan.get("fallback_not_launch_coverage"),
+        },
+    )
+    _append_if(
+        stop_conditions,
+        int(etf_plan_summary.get("source_pack_incomplete_count") or 0) > 0
+        or int(etf_plan_summary.get("source_pack_ready_count") or 0) == 0,
+        "etf500_issuer_source_pack_batch_incomplete",
+        "etf_issuer_source_pack_readiness",
+        etf_plan_summary,
+    )
+
+    stock = check_by_id["stock_sec_source_pack_readiness"].details
+    stock_counts = stock.get("readiness_counts", {})
+    stock_plan = stock.get("top500_sec_source_pack_batch_planning", {})
+    stock_plan_summary = stock_plan.get("planning_summary", {})
+    _append_if(
+        stop_conditions,
+        int(stock_counts.get("insufficient_evidence") or 0) > 0
+        or int(stock_plan_summary.get("insufficient_evidence_count") or 0) > 0,
+        "top500_sec_source_pack_insufficient_evidence",
+        "stock_sec_source_pack_readiness",
+        {"readiness_counts": stock_counts, "planning_summary": stock_plan_summary},
+    )
+    stock_handoff = stock_plan.get("source_handoff_readiness", {})
+    _append_if(
+        stop_conditions,
+        int(stock_handoff.get("pending_or_missing_component_count") or 0) > 0
+        or int(stock_handoff.get("rejected_or_unclear_rights_component_count") or 0) > 0
+        or int(stock_handoff.get("wrong_asset_component_count") or 0) > 0,
+        "top500_sec_source_handoff_not_ready",
+        "stock_sec_source_pack_readiness",
+        stock_handoff,
+    )
+    stock_parser = stock_plan.get("parser_readiness", {})
+    _append_if(
+        stop_conditions,
+        int(stock_parser.get("parser_not_ready_component_count") or 0) > 0,
+        "top500_sec_parser_not_ready",
+        "stock_sec_source_pack_readiness",
+        stock_parser,
+    )
+    stock_freshness = stock_plan.get("freshness_as_of_checksum_placeholder_status", {})
+    checksum_required = int(stock_freshness.get("checksum_required_count") or 0)
+    checksum_present = int(stock_freshness.get("checksum_present_count") or 0)
+    _append_if(
+        stop_conditions,
+        bool(stock_freshness.get("freshness_as_of_checksum_review_required"))
+        or checksum_present < checksum_required,
+        "top500_sec_freshness_or_checksum_not_ready",
+        "stock_sec_source_pack_readiness",
+        stock_freshness,
+    )
+
+    ingestion = check_by_id["local_ingestion_priority_planner"].details
+    ingestion_summary = ingestion.get("summary", {})
+    _append_if(
+        stop_conditions,
+        int(ingestion_summary.get("blocked_or_not_ready_count") or 0) > 0,
+        "local_ingestion_priority_plan_has_blocked_or_not_ready_assets",
+        "local_ingestion_priority_planner",
+        ingestion_summary,
+    )
+
+    for optional in threshold_summary["optional_blockers"]:
+        stop_conditions.append(
+            {
+                "reason_code": "optional_mode_blocked_after_explicit_opt_in",
+                "check_id": optional["check_id"],
+                "status": optional["status"],
+                "check_reason_code": optional["reason_code"],
+            }
+        )
+    return stop_conditions
+
+
+def _append_if(
+    stop_conditions: list[dict[str, Any]],
+    condition: bool,
+    reason_code: str,
+    check_id: str,
+    details: dict[str, Any],
+) -> None:
+    if condition:
+        stop_conditions.append({"reason_code": reason_code, "check_id": check_id, "details": details})
+
+
+def _manual_fresh_data_test_checklist() -> list[dict[str, str]]:
+    return [
+        {
+            "check_id": "local_web_api_startup",
+            "guidance": "Start the local web and FastAPI services manually; this gate does not start services.",
+        },
+        {
+            "check_id": "api_base_proxy_cors",
+            "guidance": "Verify NEXT_PUBLIC_API_BASE_URL, API_BASE_URL, CORS_ALLOWED_ORIGINS, and the Next /api/:path* rewrite path.",
+        },
+        {
+            "check_id": "home_single_asset_search",
+            "guidance": "Verify home remains one primary search for a single supported stock or ETF.",
+        },
+        {
+            "check_id": "a_vs_b_compare_redirect",
+            "guidance": "Verify clear A vs B searches route to /compare instead of turning home into a comparison builder.",
+        },
+        {
+            "check_id": "source_drawer",
+            "guidance": "Verify source drawer metadata on desktop and mobile bottom-sheet behavior.",
+        },
+        {
+            "check_id": "citation_chips",
+            "guidance": "Verify citation chips remain visible near supported factual claims.",
+        },
+        {
+            "check_id": "freshness_labels",
+            "guidance": "Verify freshness, stale, unknown, unavailable, partial, and insufficient-evidence labels.",
+        },
+        {
+            "check_id": "exports",
+            "guidance": "Verify Markdown and JSON exports include citations, source metadata, freshness, uncertainty labels, and the educational disclaimer.",
+        },
+        {
+            "check_id": "comparison",
+            "guidance": "Verify supported comparison flows for stock-vs-stock, ETF-vs-ETF, and stock-vs-ETF pairs.",
+        },
+        {
+            "check_id": "stock_etf_relationship_badges",
+            "guidance": "Verify stock-vs-ETF relationship badges and the single-company-vs-ETF-basket structure.",
+        },
+        {
+            "check_id": "contextual_glossary",
+            "guidance": "Verify desktop glossary hover/click/focus popovers and mobile tap bottom-sheet behavior.",
+        },
+        {
+            "check_id": "asset_chat_mobile_behavior",
+            "guidance": "Verify asset chat stays grounded and uses mobile bottom-sheet or full-screen behavior.",
+        },
+        {
+            "check_id": "weekly_news_focus_limited_empty_states",
+            "guidance": "Verify Weekly News Focus renders a smaller verified set or empty state when evidence is thin.",
+        },
+        {
+            "check_id": "ai_comprehensive_analysis_threshold",
+            "guidance": "Verify AI Comprehensive Analysis appears only when at least two approved Weekly News Focus items exist.",
+        },
+        {
+            "check_id": "unsupported_recognition_only_blocking",
+            "guidance": "Verify unsupported, out-of-scope, recognition-only, and incomplete assets cannot open generated pages, chat, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, or generated-output cache entries.",
+        },
+        {
+            "check_id": "optional_durable_repositories",
+            "guidance": "If explicitly opted in, validate local durable repository reads/writes using safe diagnostics only.",
+        },
+        {
+            "check_id": "optional_official_source_retrieval",
+            "guidance": "If explicitly opted in, validate official-source retrieval readiness without treating retrieval as evidence approval.",
+        },
+        {
+            "check_id": "optional_live_ai_validation",
+            "guidance": "If explicitly opted in, validate live AI with server-side configuration and sanitized diagnostics only.",
+        },
+    ]
 
 
 def _threshold_check_summary(check: RehearsalCheck) -> dict[str, Any]:
