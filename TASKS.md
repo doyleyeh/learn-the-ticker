@@ -1,44 +1,34 @@
 ## Current task
 
-### T-136: Add ETF-500 candidate manifest review contracts
-
-Goal:
-Add deterministic, review-only ETF-500 candidate manifest review contracts so supported ETF and ETF/ETP recognition candidate manifests can be inspected against the ETF-500 target range, category bucket targets, batch milestones, source-pack/parser gates, and generated-output blocking rules without promoting runtime manifests, broadening supported coverage, or making live calls.
-
-Acceptance criteria:
-- ETF review output exposes ETF-500 target metadata: practical supported-row range `475-525`, batch milestones `ETF-50`, `ETF-150`, `ETF-300`, and `ETF-500`, candidate artifact path conventions, and the category target buckets from `docs/ETF_MANIFEST_HANDOFF.md`.
-- Repo-native inspection distinguishes the current fixture-sized supported ETF manifest from ETF-500 launch coverage, while preserving `data/universes/us_equity_etfs_supported.current.json` as the only generated-output authority and `data/universes/us_etp_recognition.current.json` as recognition-only authority.
-- Candidate/review diagnostics report supported-row counts, category coverage gaps, disqualifier counts, pending-review rows, source-pack readiness, parser/handoff readiness, checksum status, and explicit no-padding stop conditions for leveraged, inverse, active, fixed income, commodity, crypto, single-stock, option-income/buffer, ETN, ETV, CEF, international equity, or unclear products.
-- Recognition-only rows, candidate rows that fail ETF-500 scope gates, pending-review rows, unavailable rows, parser-invalid rows, unclear-rights rows, and source-pack-incomplete rows remain blocked from generated pages, chat, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, and generated-output cache writes.
-- `scripts/review_launch_manifests.py etf inspect` and `scripts/run_local_fresh_data_rehearsal.py --json` surface the ETF-500 review metadata without approving sources, promoting manifests, starting ingestion, or requiring external services.
-- Tests cover ETF-500 target metadata, category bucket targets, current-fixture-not-launch status, recognition-only blocking, disqualifier/no-padding behavior, rehearsal output, and repo-control doc markers.
-
-Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_repo_contract.py -q`
-- `TMPDIR=/tmp python3 scripts/review_launch_manifests.py etf inspect`
-- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
-- `TMPDIR=/tmp python3 evals/run_static_evals.py`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
-- `git diff --check`
-
-Iteration budget:
-- Keep this to one local agent-loop cycle. If candidate-file CLI generation becomes too large, stop after ETF-500 review packet schema/output, rehearsal surfacing, and deterministic tests, then record a follow-up task.
-- Do not edit or promote current ETF manifests, approve sources, fetch live issuer/provider data, inspect secrets, write generated-output cache records, add production dependencies, or change generated ETF support behavior.
-
-## Backlog
-
 ### T-137: Add ETF-500 issuer source-pack batch planning contracts
 
 Goal:
 Add deterministic, review-only ETF-500 issuer source-pack batch planning so ETF-500 candidate rows can be grouped by batch, issuer, category, and missing official issuer evidence before any retrieval, source approval, manifest promotion, or generated-output unlock happens.
+
+Task scope:
+Build on the T-136 ETF-500 candidate manifest review contract and current fixture-sized ETF review/readiness packets to add a repo-native source-pack planning layer. The work should produce deterministic planning metadata for ETF batch milestones, issuer/category grouping, required issuer source components, source-handoff/parser/freshness/checksum placeholders, and blocked generated-output surfaces. This task is planning only: it must not fetch issuer/provider data, approve source evidence, promote ETF manifests, start ingestion, or broaden runtime supported coverage.
+
+Allowed files:
+- `backend/etf_universe.py`
+- `scripts/run_local_fresh_data_rehearsal.py`
+- `tests/unit/test_search_classification.py`
+- `tests/unit/test_repo_contract.py`
+- `docs/agent-journal/<run-id>.md`
+
+Do not change:
+- Do not edit `data/universes/us_equity_etfs_supported.current.json`, `data/universes/us_etp_recognition.current.json`, or any candidate/promotion manifest.
+- Do not edit frontend UI, deployment files, provider adapters, source allowlists, production dependency files, or docs other than the task journal.
+- Do not fetch live issuer/provider data, inspect or print secrets, approve sources, write source snapshots, write generated-output cache records, start ingestion, or change generated ETF support behavior.
+- Do not weaken advice boundaries, citation/source-use rights, Golden Asset Source Handoff, freshness/unknown/stale/unavailable/partial handling, or the v0.4 frontend workflow baseline.
 
 Acceptance criteria:
 - ETF-500 source-pack planning consumes the T-136 ETF-500 candidate/review metadata when available and falls back to current fixture-sized review metadata when candidate artifacts are absent, while clearly reporting that fallback as not launch coverage.
 - Planning output groups rows by `ETF-50`, `ETF-150`, `ETF-300`, and `ETF-500`, ETF category bucket, issuer, support/review state, and source-pack readiness priority without changing `data/universes/us_equity_etfs_supported.current.json` or `data/universes/us_etp_recognition.current.json`.
 - Each planned ETF row reports required issuer source components: issuer page, fact sheet, prospectus or summary prospectus, holdings, exposure or sector data when available, methodology/risk/shareholder source where relevant, and sponsor announcements where relevant.
 - Diagnostics expose same-fund checks, official-source/source-identity requirements, source-use policy needs, storage/export-rights needs, parser readiness, freshness/as-of/checksum placeholders, Golden Asset Source Handoff action, and blocked generated-output surfaces for incomplete or pending-review rows.
+- The plan reports ETF-500 target context from T-136: practical supported-row range `475-525`, batch milestones, category target buckets, category gaps, current fixture-not-launch status, source-pack readiness, parser/handoff readiness, checksum status, and no-padding stop conditions.
 - Disqualified, recognition-only, unavailable, pending-review, source-pack-incomplete, parser-invalid, unclear-rights, and out-of-scope products remain blocked from generated pages, chat, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, and generated-output cache writes.
-- `scripts/run_local_fresh_data_rehearsal.py --json` surfaces the ETF-500 source-pack batch planning summary without approving sources, fetching live issuer/provider data, promoting manifests, starting ingestion, or requiring external services.
+- `scripts/run_local_fresh_data_rehearsal.py --json` surfaces the ETF-500 source-pack batch planning summary without approving sources, fetching live issuer/provider data, promoting manifests, starting ingestion, requiring external services, or changing runtime support authorities.
 - Tests cover batch grouping, category/issuer diagnostics, required component plans, fallback-not-launch status, blocked generated-output surfaces, rehearsal output, and repo-control doc markers.
 
 Required commands:
@@ -51,6 +41,8 @@ Required commands:
 Iteration budget:
 - Keep this to one local agent-loop cycle. If generating concrete source-handoff seed files becomes too large, stop after the deterministic source-pack batch planning schema/output, rehearsal surfacing, and tests, then record a follow-up task.
 - Do not fetch live issuer/provider data, approve sources, promote ETF manifests, inspect secrets, write generated-output cache records, add production dependencies, or change generated ETF support behavior.
+
+## Backlog
 
 ### T-138: Add Top-500 SEC source-pack batch planning contracts
 
@@ -102,6 +94,38 @@ Iteration budget:
 - Do not run live providers, inspect secrets, promote manifests, approve launch, add auth/accounts, or convert manual local testing into a product feature.
 
 ## Completed
+
+### T-136: Add ETF-500 candidate manifest review contracts
+
+Goal:
+Add deterministic, review-only ETF-500 candidate manifest review contracts so supported ETF and ETF/ETP recognition candidate manifests can be inspected against the ETF-500 target range, category bucket targets, batch milestones, source-pack/parser gates, and generated-output blocking rules without promoting runtime manifests, broadening supported coverage, or making live calls.
+
+Completion details:
+- Implementation commit: `17f7808 feat(T-136): add ETF-500 candidate manifest review contracts`
+- Local merge commit: `486cda8 chore(T-136): merge ETF-500 candidate manifest review contracts` from branch `agent/T-136-20260429T172950Z`
+- Added ETF-500 review metadata in `backend/etf_universe.py` with contract version `etf500-candidate-manifest-review-contract-v1`.
+- Added target metadata for practical supported-row range `475-525`, candidate artifact path conventions, batch milestones `ETF-50`, `ETF-150`, `ETF-300`, and `ETF-500`, and seven category target buckets sourced to `docs/ETF_MANIFEST_HANDOFF.md`.
+- Extended `build_etf_launch_review_packet` to include `etf500_review_contract`, `etf500_target_metadata`, and `current_fixture_not_launch_coverage`.
+- Current deterministic ETF diagnostics report 13 supported-manifest rows, 9 recognition rows, 7 category coverage gaps, 13 source-pack-incomplete rows, 0 source-pack-ready rows, 22 pending-review rows, 1 unavailable row, 0 parser-invalid rows, 22 handoff-not-ready rows, 22 unclear-rights rows, and matching supported/recognition checksums.
+- Category diagnostics report current fixture counts of 7 broad/core U.S. equity beta rows, 7 market-cap and size/style rows, 4 sector ETF rows, 2 industry/theme rows, and 0 current rows for dividend/shareholder-yield, factor/smart-beta/equal-weight, and ESG/values-screened buckets.
+- Disqualifier diagnostics report leveraged, inverse, active, fixed income, commodity, ETN, multi-asset, and unclear/pending-review products while preserving explicit no-padding stop conditions for leveraged, inverse, active, fixed income, commodity, crypto, single-stock, option-income/buffer, multi-asset, ETN, ETV, CEF, international equity, and unclear products.
+- Generated-output blocking rules keep recognition-only rows, scope-gate failures, pending-review rows, unavailable rows, parser-invalid rows, unclear-rights rows, and source-pack-incomplete rows blocked from generated pages, generated claims, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, and generated-output cache entries.
+- `scripts/run_local_fresh_data_rehearsal.py` now surfaces ETF-500 target metadata, category gaps, disqualifier counts, source-pack readiness, parser/handoff readiness, checksum status, no-padding stop conditions, current-fixture-not-launch status, and generated-output blocking rules in the launch-manifest review check.
+- Added tests in `tests/unit/test_search_classification.py` and `tests/unit/test_repo_contract.py` for ETF-500 target metadata, category bucket targets, fixture-not-launch status, category/disqualifier diagnostics, source-pack/parser/handoff/checksum diagnostics, rehearsal output, and generated-output blocking.
+- `docs/agent-journal/20260429T172950Z.md` records the files changed, tests/evals run, pass status, and remaining risks.
+
+Required commands executed in this task branch:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_repo_contract.py -q` - pass (`37 passed`)
+- `TMPDIR=/tmp python3 scripts/review_launch_manifests.py etf inspect` - pass
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` - pass
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass (`461 passed` in Python test phases; frontend and backend checks passed)
+- `git diff --check` - pass
+
+Remaining risks:
+- The ETF-500 contract is deterministic and review-only; it does not create candidate manifests, approve sources, promote manifests, start ingestion, write generated-output cache entries, or unlock generated output.
+- Current supported ETF manifest remains fixture-sized, below the ETF-500 target range, and explicitly marked as not launch coverage.
+- Source-pack readiness remains incomplete for all current supported ETF rows until issuer source packs and Golden Asset Source Handoff review are completed.
 
 ### T-135: Add batchable local ingestion priority planner
 
