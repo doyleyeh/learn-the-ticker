@@ -1,5 +1,6 @@
 from backend.data import ASSETS, ELIGIBLE_NOT_CACHED_ASSETS
 from backend.ingestion import (
+    build_local_ingestion_priority_plan,
     execute_ingestion_job_through_ledger,
     get_ingestion_job_status,
     get_pre_cache_job_status,
@@ -297,6 +298,73 @@ def test_launch_universe_pre_cache_batch_is_deterministic_and_covers_control_set
         assert job.job_id == f"pre-cache-launch-{ticker.lower()}"
         assert job.status_url == f"/api/admin/pre-cache/jobs/pre-cache-launch-{ticker.lower()}"
         assert job.launch_group
+
+
+def test_local_ingestion_priority_plan_is_review_only_batchable_and_manifest_ordered():
+    first = build_local_ingestion_priority_plan(batch_size=5)
+    second = build_local_ingestion_priority_plan(batch_size=5)
+
+    assert first == second
+    assert first["schema_version"] == "local-ingestion-priority-plan-v1"
+    assert first["boundary"] == "local-ingestion-priority-planner-review-only-v1"
+    assert first["review_only"] is True
+    assert first["deterministic"] is True
+    assert first["batchable"] is True
+    assert first["resumable"] is True
+    assert first["no_live_external_calls"] is True
+    assert first["planner_started_ingestion"] is False
+    assert first["sources_approved_by_planner"] is False
+    assert first["manifests_promoted"] is False
+    assert first["generated_output_cache_entries_written"] is False
+    assert first["generated_output_unlocked_for_blocked_assets"] is False
+    assert first["supported_etf_runtime_authority"] == "data/universes/us_equity_etfs_supported.current.json"
+    assert first["recognition_manifest_used_for_priority_order"] is False
+    assert first["recognition_rows_unlock_generated_output"] is False
+    assert first["top500_runtime_authority"] == "data/universes/us_common_stocks_top500.current.json"
+
+    planned_tickers = [row["ticker"] for batch in first["batches"] for row in batch["items"]]
+    assert planned_tickers[:3] == ["AAPL", "VOO", "QQQ"]
+    assert planned_tickers[3:8] == ["SPY", "VGT", "SOXX", "VTI", "IVV"]
+    assert planned_tickers[-9:] == ["MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "BRK.B", "JPM", "UNH"]
+    assert "TQQQ" not in planned_tickers
+
+    assert first["summary"] == {
+        "planned_asset_count": 23,
+        "batch_count": 6,
+        "ready_to_inspect_count": 3,
+        "blocked_or_not_ready_count": 20,
+        "high_demand_pre_cache_count": 3,
+        "supported_etf_manifest_count": 11,
+        "top500_stock_manifest_count": 9,
+        "blocked_diagnostic_count": 4,
+    }
+    ready_tickers = [row["ticker"] for row in first["ready_to_inspect"]]
+    assert ready_tickers == ["AAPL", "VOO", "QQQ"]
+    assert all(row["generated_output_unlocked_by_planner"] is False for row in first["blocked_or_not_ready"])
+    assert all(batch["review_only"] is True and batch["can_start_ingestion"] is False for batch in first["batches"])
+    assert {row["state"] for row in first["blocked_diagnostic_rows"]} == {
+        "unsupported",
+        "out_of_scope",
+        "unknown",
+        "unavailable",
+    }
+    state_counts = first["state_diagnostics"]["states"]
+    for state in [
+        "pending",
+        "running",
+        "succeeded",
+        "failed",
+        "unsupported",
+        "out_of_scope",
+        "unknown",
+        "unavailable",
+        "partial",
+        "stale",
+        "insufficient_evidence",
+    ]:
+        assert state in state_counts
+    assert state_counts["stale"] == 0
+    assert state_counts["insufficient_evidence"] == 20
 
 
 def test_pre_cache_cached_assets_preserve_existing_generated_capabilities_only():

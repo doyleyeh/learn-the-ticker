@@ -567,12 +567,12 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
     active_sections = f"{current_task}\n{backlog}"
 
     assert "## MVP Backend Roadmap" not in tasks
-    assert "### T-134: Add local fresh-data MVP readiness thresholds" in current_task
+    assert "### T-135: Add batchable local ingestion priority planner" in current_task
     for marker in [
         "Acceptance criteria",
         "Required commands",
         "Iteration budget",
-        "### T-135: Add batchable local ingestion priority planner",
+        "No backlog task is currently prepared after promoting T-135.",
     ]:
         assert marker in active_sections
 
@@ -587,6 +587,7 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
         "### T-129: Add launch-manifest operator automation parity",
         "### T-130: Add local fresh-data MVP rehearsal command",
         "### T-133: Add ETF issuer source-pack readiness packet contracts",
+        "### T-134: Add local fresh-data MVP readiness thresholds",
         "The runbook explicitly states that fetching alone is retrieval, not evidence approval",
         "deterministic integration smoke coverage for the VOO golden path",
         "mocked official-source acquisition",
@@ -607,7 +608,7 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
         "T-128 completed deterministic governed golden API/frontend rendering proof",
         "T-129 completed launch-manifest operator automation parity",
         "T-130 completed the deterministic local fresh-data MVP rehearsal command",
-        "T-131 through T-133 completed the ETF eligible-universe, stock SEC source-pack readiness, and ETF issuer source-pack readiness packets",
+        "T-131 through T-134 completed the ETF eligible-universe, stock SEC source-pack readiness, ETF issuer source-pack readiness, and local MVP readiness-threshold packets",
         "T-099 established deterministic provider content export-rights hardening",
         "T-100 established the backend MVP runtime gap audit and roadmap tracker",
         "T-101 established configured persisted-reader route wiring with fixture fallback",
@@ -669,8 +670,8 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
         "| ETF eligible-universe review packet contracts | Completed | T-131 |",
         "| Stock SEC source-pack readiness packets | Completed | T-132 |",
         "| ETF issuer source-pack readiness packets | Completed | T-133 |",
-        "| Local fresh-data MVP readiness thresholds | Current | T-134 |",
-        "| Batchable local ingestion priority planner | Prepared | T-135 |",
+        "| Local fresh-data MVP readiness thresholds | Completed | T-134 |",
+        "| Batchable local ingestion priority planner | Current | T-135 |",
         "| Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |",
     ]
     for row in completed_rows:
@@ -681,6 +682,8 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
         "| Local fresh-data MVP rehearsal command | Prepared | T-130 |",
         "| ETF issuer source-pack readiness packets | Current | T-133 |",
         "| Local fresh-data MVP readiness thresholds | Prepared | T-134 |",
+        "| Local fresh-data MVP readiness thresholds | Current | T-134 |",
+        "| Batchable local ingestion priority planner | Prepared | T-135 |",
         "The current promoted task is T-129",
         "No current task is prepared",
         "No backlog tasks are currently prepared",
@@ -705,7 +708,7 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert threshold["launch_or_public_deployment_approved"] is False
     assert threshold["required_blockers"] == []
     assert threshold["optional_blockers"] == []
-    assert len(threshold["required_checks"]) == 7
+    assert len(threshold["required_checks"]) == 8
     assert all(check["status"] == "pass" for check in threshold["required_checks"])
     assert len(threshold["optional_skipped_modes"]) == 4
     assert threshold["thresholds"] == {
@@ -731,6 +734,7 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert statuses["governed_golden_api_rendering"] == "pass"
     assert statuses["launch_manifest_review_packets"] == "pass"
     assert statuses["stock_sec_source_pack_readiness"] == "pass"
+    assert statuses["local_ingestion_priority_planner"] == "pass"
     assert statuses["frontend_v04_smoke_markers"] == "pass"
     assert statuses["optional_browser_services"] == "skipped"
     assert statuses["optional_local_durable_repositories"] == "skipped"
@@ -767,6 +771,38 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert stock_sec_details["readiness_counts"]["insufficient_evidence"] == 18
     assert stock_sec_details["readiness_counts"]["review_packet_unlocks_generated_output"] == 0
     assert "generated_chat_answers" in stock_sec_details["blocked_generated_surfaces"]
+    planner_details = next(
+        check["details"] for check in result["checks"] if check["check_id"] == "local_ingestion_priority_planner"
+    )
+    assert planner_details["schema_version"] == "local-ingestion-priority-plan-v1"
+    assert planner_details["boundary"] == "local-ingestion-priority-planner-review-only-v1"
+    assert planner_details["summary"] == {
+        "planned_asset_count": 23,
+        "batch_count": 6,
+        "ready_to_inspect_count": 3,
+        "blocked_or_not_ready_count": 20,
+        "high_demand_pre_cache_count": 3,
+        "supported_etf_manifest_count": 11,
+        "top500_stock_manifest_count": 9,
+        "blocked_diagnostic_count": 4,
+    }
+    assert planner_details["first_batch_tickers"] == ["AAPL", "VOO", "QQQ"]
+    assert planner_details["supported_etf_runtime_authority"] == "data/universes/us_equity_etfs_supported.current.json"
+    assert planner_details["recognition_manifest_used_for_priority_order"] is False
+    assert planner_details["recognition_rows_unlock_generated_output"] is False
+    assert planner_details["top500_runtime_authority"] == "data/universes/us_common_stocks_top500.current.json"
+    assert planner_details["state_diagnostics"]["states"]["pending"] == 18
+    assert planner_details["state_diagnostics"]["states"]["running"] == 1
+    assert planner_details["state_diagnostics"]["states"]["succeeded"] == 3
+    assert planner_details["state_diagnostics"]["states"]["failed"] == 1
+    assert planner_details["state_diagnostics"]["states"]["unsupported"] == 1
+    assert planner_details["state_diagnostics"]["states"]["out_of_scope"] == 1
+    assert planner_details["state_diagnostics"]["states"]["unknown"] == 1
+    assert planner_details["state_diagnostics"]["states"]["unavailable"] == 1
+    assert planner_details["state_diagnostics"]["states"]["partial"] == 3
+    assert planner_details["state_diagnostics"]["states"]["stale"] == 0
+    assert planner_details["state_diagnostics"]["states"]["insufficient_evidence"] == 20
+    assert "generated_output_cache_entries" in planner_details["blocked_generated_surfaces"]
     asset_summary = threshold["asset_state_summary"]
     assert asset_summary["failed_asset_count"] == 1
     assert asset_summary["unavailable_asset_count"] == 1

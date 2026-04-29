@@ -22,7 +22,7 @@ from backend.chat import generate_asset_chat
 from backend.comparison import generate_comparison
 from backend.etf_universe import build_etf_issuer_source_pack_readiness_packet, build_etf_launch_review_packet
 from backend.generated_output_cache_repository import InMemoryGeneratedOutputCacheRepository
-from backend.ingestion import get_pre_cache_job_status
+from backend.ingestion import build_local_ingestion_priority_plan, get_pre_cache_job_status
 from backend.knowledge_pack_repository import AssetKnowledgePackRepository, InMemoryAssetKnowledgePackRepository
 from backend.main import app
 from backend.models import (
@@ -76,6 +76,7 @@ REQUIRED_THRESHOLD_CHECK_IDS = (
     "launch_manifest_review_packets",
     "stock_sec_source_pack_readiness",
     "etf_issuer_source_pack_readiness",
+    "local_ingestion_priority_planner",
     "frontend_v04_smoke_markers",
 )
 OPTIONAL_THRESHOLD_CHECK_IDS = (
@@ -115,6 +116,7 @@ def run_rehearsal(env: dict[str, str] | None = None, *, root: Path = ROOT) -> di
         _guarded("launch_manifest_review_packets", lambda: _check_launch_manifest_review_packets(root)),
         _guarded("stock_sec_source_pack_readiness", lambda: _check_stock_sec_source_pack_readiness(root)),
         _guarded("etf_issuer_source_pack_readiness", _check_etf_issuer_source_pack_readiness),
+        _guarded("local_ingestion_priority_planner", lambda: _check_local_ingestion_priority_planner(root)),
         _guarded("frontend_v04_smoke_markers", lambda: _check_frontend_markers(root)),
         _guarded("optional_browser_services", lambda: _check_optional_browser_services(source_env)),
         _guarded("optional_local_durable_repositories", lambda: _check_optional_durable_repositories(source_env)),
@@ -459,6 +461,87 @@ def _check_etf_issuer_source_pack_readiness() -> RehearsalCheck:
             "required_issuer_source_components": packet["required_issuer_source_components"],
             "readiness_counts": counts,
             "blocked_generated_surfaces": packet["blocked_generated_surfaces"],
+        },
+    )
+
+
+def _check_local_ingestion_priority_planner(root: Path) -> RehearsalCheck:
+    plan = build_local_ingestion_priority_plan(root=str(root))
+    if plan["schema_version"] != "local-ingestion-priority-plan-v1":
+        return _blocked("local_ingestion_priority_planner", "local_ingestion_priority_plan_schema_invalid")
+    for boundary_key in (
+        "review_only",
+        "deterministic",
+        "batchable",
+        "resumable",
+        "no_live_external_calls",
+    ):
+        if plan[boundary_key] is not True:
+            return _blocked(
+                "local_ingestion_priority_planner",
+                "local_ingestion_priority_plan_boundary_invalid",
+                {"boundary_key": boundary_key, "value": plan[boundary_key]},
+            )
+    for mutation_key in (
+        "planner_started_ingestion",
+        "sources_approved_by_planner",
+        "manifests_promoted",
+        "generated_output_cache_entries_written",
+        "generated_output_unlocked_for_blocked_assets",
+        "recognition_manifest_used_for_priority_order",
+        "recognition_rows_unlock_generated_output",
+    ):
+        if plan[mutation_key] is not False:
+            return _blocked(
+                "local_ingestion_priority_planner",
+                "local_ingestion_priority_plan_mutated_state",
+                {"mutation_key": mutation_key, "value": plan[mutation_key]},
+            )
+    first_batch = plan["batches"][0]  # type: ignore[index]
+    first_tickers = [row["ticker"] for row in first_batch["items"]]  # type: ignore[index]
+    if first_tickers != ["AAPL", "VOO", "QQQ"]:
+        return _blocked(
+            "local_ingestion_priority_planner",
+            "local_ingestion_priority_plan_high_demand_order_invalid",
+            {"first_tickers": first_tickers},
+        )
+    state_keys = set(plan["state_diagnostics"]["states"])  # type: ignore[index]
+    required_states = {
+        "pending",
+        "running",
+        "succeeded",
+        "failed",
+        "unsupported",
+        "out_of_scope",
+        "unknown",
+        "unavailable",
+        "partial",
+        "stale",
+        "insufficient_evidence",
+    }
+    if not required_states.issubset(state_keys):
+        return _blocked(
+            "local_ingestion_priority_planner",
+            "local_ingestion_priority_plan_state_keys_missing",
+            {"state_keys": sorted(state_keys)},
+        )
+    if any(row["generated_output_unlocked_by_planner"] for row in plan["blocked_or_not_ready"]):  # type: ignore[index]
+        return _blocked("local_ingestion_priority_planner", "local_ingestion_priority_plan_unlocked_blocked_output")
+    return _pass(
+        "local_ingestion_priority_planner",
+        "local_ingestion_priority_plan_is_review_only_and_resumable",
+        {
+            "schema_version": plan["schema_version"],
+            "boundary": plan["boundary"],
+            "summary": plan["summary"],
+            "first_batch_tickers": first_tickers,
+            "state_diagnostics": plan["state_diagnostics"],
+            "supported_etf_runtime_authority": plan["supported_etf_runtime_authority"],
+            "recognition_runtime_authority": plan["recognition_runtime_authority"],
+            "recognition_manifest_used_for_priority_order": plan["recognition_manifest_used_for_priority_order"],
+            "recognition_rows_unlock_generated_output": plan["recognition_rows_unlock_generated_output"],
+            "top500_runtime_authority": plan["top500_runtime_authority"],
+            "blocked_generated_surfaces": plan["blocked_generated_surfaces"],
         },
     )
 
