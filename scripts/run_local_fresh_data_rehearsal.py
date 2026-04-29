@@ -20,7 +20,11 @@ os.environ.setdefault("LTT_FORCE_COMPAT_FASTAPI", "1")
 
 from backend.chat import generate_asset_chat
 from backend.comparison import generate_comparison
-from backend.etf_universe import build_etf_issuer_source_pack_readiness_packet, build_etf_launch_review_packet
+from backend.etf_universe import (
+    build_etf500_issuer_source_pack_batch_plan,
+    build_etf_issuer_source_pack_readiness_packet,
+    build_etf_launch_review_packet,
+)
 from backend.generated_output_cache_repository import InMemoryGeneratedOutputCacheRepository
 from backend.ingestion import build_local_ingestion_priority_plan, get_pre_cache_job_status
 from backend.knowledge_pack_repository import AssetKnowledgePackRepository, InMemoryAssetKnowledgePackRepository
@@ -453,6 +457,7 @@ def _check_stock_sec_source_pack_readiness(root: Path) -> RehearsalCheck:
 
 def _check_etf_issuer_source_pack_readiness() -> RehearsalCheck:
     packet = build_etf_issuer_source_pack_readiness_packet()
+    planning = build_etf500_issuer_source_pack_batch_plan(issuer_readiness_packet=packet)
     counts = packet["readiness_counts"]
     if packet["manifests_promoted"] or packet["sources_approved_by_packet"] or packet["launch_approved"]:
         return _blocked("etf_issuer_source_pack_readiness", "etf_issuer_readiness_improperly_approved")
@@ -474,6 +479,24 @@ def _check_etf_issuer_source_pack_readiness() -> RehearsalCheck:
             "etf_issuer_readiness_status_invalid",
             {"review_status": packet["review_status"]},
         )
+    if not planning["review_only"] or not planning["fallback_not_launch_coverage"]:
+        return _blocked(
+            "etf_issuer_source_pack_readiness",
+            "etf500_source_pack_batch_plan_boundary_invalid",
+            {
+                "review_only": planning["review_only"],
+                "fallback_not_launch_coverage": planning["fallback_not_launch_coverage"],
+            },
+        )
+    if planning["generated_output_unlocked_by_plan"] or planning["sources_approved_by_plan"]:
+        return _blocked(
+            "etf_issuer_source_pack_readiness",
+            "etf500_source_pack_batch_plan_mutated_state",
+            {
+                "generated_output_unlocked_by_plan": planning["generated_output_unlocked_by_plan"],
+                "sources_approved_by_plan": planning["sources_approved_by_plan"],
+            },
+        )
     return _pass(
         "etf_issuer_source_pack_readiness",
         "etf_issuer_readiness_packet_is_review_only",
@@ -484,6 +507,24 @@ def _check_etf_issuer_source_pack_readiness() -> RehearsalCheck:
             "required_issuer_source_components": packet["required_issuer_source_components"],
             "readiness_counts": counts,
             "blocked_generated_surfaces": packet["blocked_generated_surfaces"],
+            "etf500_source_pack_batch_planning": {
+                "schema_version": planning["schema_version"],
+                "boundary": planning["boundary"],
+                "candidate_review_metadata_consumed": planning["candidate_review_metadata_consumed"],
+                "candidate_artifacts_available": planning["candidate_artifacts_available"],
+                "fallback_to_current_fixture_review_metadata": planning[
+                    "fallback_to_current_fixture_review_metadata"
+                ],
+                "fallback_not_launch_coverage": planning["fallback_not_launch_coverage"],
+                "planning_summary": planning["planning_summary"],
+                "batch_groups": planning["batch_groups"],
+                "category_bucket_groups": planning["category_bucket_groups"],
+                "issuer_groups": planning["issuer_groups"],
+                "support_review_state_groups": planning["support_review_state_groups"],
+                "source_pack_readiness_priority_groups": planning["source_pack_readiness_priority_groups"],
+                "target_context": planning["target_context"],
+                "blocked_generated_surfaces": planning["blocked_generated_surfaces"],
+            },
         },
     )
 

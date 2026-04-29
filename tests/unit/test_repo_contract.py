@@ -836,6 +836,49 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert stock_sec_details["readiness_counts"]["insufficient_evidence"] == 18
     assert stock_sec_details["readiness_counts"]["review_packet_unlocks_generated_output"] == 0
     assert "generated_chat_answers" in stock_sec_details["blocked_generated_surfaces"]
+    etf_readiness_details = next(
+        check["details"] for check in result["checks"] if check["check_id"] == "etf_issuer_source_pack_readiness"
+    )
+    etf500_planning = etf_readiness_details["etf500_source_pack_batch_planning"]
+    assert etf500_planning["schema_version"] == "etf500-issuer-source-pack-batch-plan-v1"
+    assert etf500_planning["boundary"] == "etf500-issuer-source-pack-batch-planning-review-only-v1"
+    assert etf500_planning["candidate_review_metadata_consumed"] is True
+    assert etf500_planning["candidate_artifacts_available"] is False
+    assert etf500_planning["fallback_to_current_fixture_review_metadata"] is True
+    assert etf500_planning["fallback_not_launch_coverage"] is True
+    assert etf500_planning["planning_summary"] == {
+        "planned_row_count": 13,
+        "batch_count": 4,
+        "issuer_count": 5,
+        "category_bucket_count": 7,
+        "source_pack_ready_count": 0,
+        "source_pack_partial_count": 2,
+        "source_pack_incomplete_count": 11,
+        "blocked_generated_surface_count": 9,
+    }
+    assert [group["batch"] for group in etf500_planning["batch_groups"]] == [
+        "ETF-50",
+        "ETF-150",
+        "ETF-300",
+        "ETF-500",
+    ]
+    assert etf500_planning["batch_groups"][0]["planned_row_count"] == 13
+    assert etf500_planning["batch_groups"][1]["planned_row_count"] == 0
+    planning_priorities = {
+        group["source_pack_readiness_priority"]: group["planned_row_count"]
+        for group in etf500_planning["source_pack_readiness_priority_groups"]
+    }
+    assert planning_priorities == {
+        "missing_required_issuer_sources": 11,
+        "source_backed_partial_review": 2,
+    }
+    category_groups = {group["bucket_id"]: group for group in etf500_planning["category_bucket_groups"]}
+    assert category_groups["broad_core_us_equity_beta"]["planned_row_count"] == 7
+    assert category_groups["sector_etfs"]["planned_row_count"] == 4
+    assert category_groups["dividend_and_shareholder_yield_index"]["planned_row_count"] == 0
+    assert etf500_planning["target_context"]["practical_supported_row_range"] == {"minimum": 475, "maximum": 525}
+    assert etf500_planning["target_context"]["current_fixture_not_launch_coverage"] is True
+    assert "generated_output_cache_entries" in etf500_planning["blocked_generated_surfaces"]
     planner_details = next(
         check["details"] for check in result["checks"] if check["check_id"] == "local_ingestion_priority_planner"
     )

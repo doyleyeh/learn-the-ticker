@@ -34,6 +34,8 @@ ETF_UNIVERSE_SCHEMA_VERSION = "us-equity-etf-universe-v1"
 ETF_LAUNCH_REVIEW_PACKET_SCHEMA_VERSION = "etf-launch-review-packet-v1"
 ETF_LAUNCH_REVIEW_BOUNDARY = "etf-launch-manifest-review-only-v1"
 ETF500_REVIEW_CONTRACT_VERSION = "etf500-candidate-manifest-review-contract-v1"
+ETF500_SOURCE_PACK_BATCH_PLAN_SCHEMA_VERSION = "etf500-issuer-source-pack-batch-plan-v1"
+ETF500_SOURCE_PACK_BATCH_PLAN_BOUNDARY = "etf500-issuer-source-pack-batch-planning-review-only-v1"
 ETF_ISSUER_READINESS_SCHEMA_VERSION = "etf-issuer-source-pack-readiness-v1"
 ETF_ISSUER_READINESS_BOUNDARY = "etf-issuer-source-pack-readiness-review-only-v1"
 ETF_ISSUER_READINESS_RETRIEVED_AT = "2026-04-20T00:00:00Z"
@@ -611,6 +613,104 @@ def build_etf_issuer_source_pack_readiness_packet(
     }
 
 
+def build_etf500_issuer_source_pack_batch_plan(
+    *,
+    launch_review_packet: dict[str, object] | None = None,
+    issuer_readiness_packet: dict[str, object] | None = None,
+    generated_at: str = "2026-04-29T00:00:00Z",
+) -> dict[str, object]:
+    """Build deterministic ETF-500 issuer source-pack batch planning metadata.
+
+    This is a planning contract only. It composes existing launch review and
+    issuer-readiness metadata without fetching sources, approving evidence,
+    promoting manifests, starting ingestion, or unlocking generated output.
+    """
+
+    launch_packet = launch_review_packet or build_etf_launch_review_packet()
+    readiness_packet = issuer_readiness_packet or build_etf_issuer_source_pack_readiness_packet()
+    review_contract = launch_packet["etf500_review_contract"]  # type: ignore[index]
+    target_metadata = launch_packet["etf500_target_metadata"]  # type: ignore[index]
+    supported_rows = list(readiness_packet["supported_rows"])  # type: ignore[index]
+    candidate_artifact_paths = list(target_metadata["candidate_artifact_path_conventions"])  # type: ignore[index]
+    candidate_artifacts_found = [
+        path
+        for path in candidate_artifact_paths
+        if (Path(__file__).resolve().parents[1] / path).exists()
+    ]
+    planned_rows = [
+        _etf500_source_pack_planning_row(
+            row=row,
+            launch_entry=_launch_review_entry_for_ticker(launch_packet, str(row["ticker"])),
+            ordinal=ordinal,
+        )
+        for ordinal, row in enumerate(supported_rows, start=1)
+    ]
+    planning_summary = {
+        "planned_row_count": len(planned_rows),
+        "batch_count": len(target_metadata["batch_milestones"]),  # type: ignore[index]
+        "issuer_count": len({str(row["issuer"]) for row in planned_rows}),
+        "category_bucket_count": len(target_metadata["category_target_buckets"]),  # type: ignore[index]
+        "source_pack_ready_count": sum(1 for row in planned_rows if row["source_pack_readiness_priority"] == "ready"),
+        "source_pack_partial_count": sum(
+            1 for row in planned_rows if row["source_pack_readiness_priority"] == "source_backed_partial_review"
+        ),
+        "source_pack_incomplete_count": sum(
+            1 for row in planned_rows if row["source_pack_readiness_priority"] == "missing_required_issuer_sources"
+        ),
+        "blocked_generated_surface_count": len(ETF_ISSUER_BLOCKED_GENERATED_SURFACES),
+    }
+    return {
+        "schema_version": ETF500_SOURCE_PACK_BATCH_PLAN_SCHEMA_VERSION,
+        "boundary": ETF500_SOURCE_PACK_BATCH_PLAN_BOUNDARY,
+        "review_only": True,
+        "deterministic": True,
+        "no_live_external_calls": True,
+        "generated_at": generated_at,
+        "candidate_review_metadata_consumed": review_contract["contract_version"] == ETF500_REVIEW_CONTRACT_VERSION,
+        "candidate_artifacts_available": bool(candidate_artifacts_found),
+        "candidate_artifact_path_conventions": candidate_artifact_paths,
+        "candidate_artifacts_found": candidate_artifacts_found,
+        "fallback_to_current_fixture_review_metadata": not bool(candidate_artifacts_found),
+        "fallback_not_launch_coverage": bool(launch_packet["current_fixture_not_launch_coverage"]),
+        "sources_approved_by_plan": False,
+        "manifests_promoted": False,
+        "planner_started_ingestion": False,
+        "generated_output_unlocked_by_plan": False,
+        "generated_output_cache_entries_written": False,
+        "supported_runtime_authority": launch_packet["supported_runtime_authority"],
+        "recognition_runtime_authority": launch_packet["recognition_runtime_authority"],
+        "recognition_rows_unlock_generated_output": False,
+        "target_context": {
+            "target_name": target_metadata["target_name"],  # type: ignore[index]
+            "practical_supported_row_range": target_metadata["practical_supported_row_range"],  # type: ignore[index]
+            "batch_milestones": target_metadata["batch_milestones"],  # type: ignore[index]
+            "category_target_buckets": target_metadata["category_target_buckets"],  # type: ignore[index]
+            "category_gaps": review_contract["diagnostics"]["category_coverage_gaps"],  # type: ignore[index]
+            "current_fixture_not_launch_coverage": launch_packet["current_fixture_not_launch_coverage"],
+            "source_pack_readiness": review_contract["diagnostics"]["source_pack_readiness"],  # type: ignore[index]
+            "parser_handoff_readiness": review_contract["diagnostics"]["parser_handoff_readiness"],  # type: ignore[index]
+            "checksum_status": review_contract["diagnostics"]["checksum_status"],  # type: ignore[index]
+            "no_padding_stop_conditions": review_contract["no_padding_stop_conditions"],  # type: ignore[index]
+        },
+        "planning_summary": planning_summary,
+        "batch_groups": _etf500_batch_groups(planned_rows, target_metadata["batch_milestones"]),  # type: ignore[index]
+        "category_bucket_groups": _etf500_category_bucket_groups(
+            planned_rows,
+            target_metadata["category_target_buckets"],  # type: ignore[index]
+        ),
+        "issuer_groups": _etf500_value_groups(planned_rows, "issuer"),
+        "support_review_state_groups": _etf500_value_groups(planned_rows, "support_review_state"),
+        "source_pack_readiness_priority_groups": _etf500_value_groups(planned_rows, "source_pack_readiness_priority"),
+        "blocked_generated_surfaces": list(ETF_ISSUER_BLOCKED_GENERATED_SURFACES),
+        "generated_output_blocking_rules": review_contract["generated_output_blocking_rules"],  # type: ignore[index]
+        "planned_rows": planned_rows,
+        "non_advice_framing": (
+            "ETF-500 issuer source-pack batch planning is operational review metadata only; it is not an "
+            "endorsement, recommendation, model portfolio, allocation, price target, or trading instruction."
+        ),
+    }
+
+
 def legacy_eligible_not_cached_etf_metadata() -> dict[str, dict[str, str | list[str] | None]]:
     metadata: dict[str, dict[str, str | list[str] | None]] = {}
     for entry in eligible_not_cached_etf_entries().values():
@@ -995,6 +1095,247 @@ def _etf_issuer_readiness_stop_conditions(
     if any(row["generated_output_eligible"] for row in recognition_rows):
         stop_conditions.append("recognition_generated_output_unlock_attempt")
     return list(dict.fromkeys(stop_conditions))
+
+
+def _launch_review_entry_for_ticker(launch_packet: dict[str, object], ticker: str) -> dict[str, object]:
+    for row in launch_packet["supported_entries"]:  # type: ignore[index]
+        if str(row["ticker"]) == ticker:
+            return dict(row)
+    return {}
+
+
+def _etf500_source_pack_planning_row(
+    *,
+    row: dict[str, object],
+    launch_entry: dict[str, object],
+    ordinal: int,
+) -> dict[str, object]:
+    required_components = _etf500_required_component_plan(row)
+    source_pack_status = str(row["source_pack_status"])
+    readiness_priority = _etf500_source_pack_readiness_priority(row)
+    support_review_state = _etf500_support_review_state(row, launch_entry)
+    missing_required = [
+        str(component["component_id"])
+        for component in required_components
+        if component["required"] and component["component_status"] != "pass"
+    ]
+    return {
+        "ticker": row["ticker"],
+        "fund_name": row["fund_name"],
+        "issuer": row["issuer"],
+        "exchange": row["exchange"],
+        "plan_row_number": ordinal,
+        "batch_milestone": _etf500_batch_for_ordinal(ordinal),
+        "category_buckets": _etf500_category_buckets_for_entry(launch_entry),
+        "eligible_universe_categories": launch_entry.get("eligible_universe_categories", []),
+        "support_state": row["support_state"],
+        "launch_cache_state": row["launch_cache_state"],
+        "support_review_state": support_review_state,
+        "source_pack_status": source_pack_status,
+        "source_pack_readiness_priority": readiness_priority,
+        "source_backed_partial_rendering_ready": row["source_backed_partial_rendering_ready"],
+        "generated_output_eligible_from_manifest_cache": row["generated_output_eligible_from_manifest_cache"],
+        "plan_unlocks_generated_output": False,
+        "missing_required_components": missing_required,
+        "required_issuer_source_components": required_components,
+        "diagnostics": {
+            "same_fund_checks_required": True,
+            "official_source_identity_required": True,
+            "source_use_policy_required": "full_text_allowed_or_summary_allowed_for_intended_use",
+            "storage_rights_required": "raw_snapshot_allowed_or_reviewed_summary_storage",
+            "export_rights_required": "excerpts_allowed_or_metadata_only_export",
+            "parser_readiness_required": "parsed_or_reviewed_partial_parser_output",
+            "freshness_as_of_required": True,
+            "checksum_required_before_source_approval": True,
+            "freshness_as_of_checksum_placeholders": {
+                "freshness_state": "required_before_source_approval",
+                "as_of_date": "required_before_source_approval",
+                "source_checksum": "required_before_source_approval",
+            },
+            "golden_asset_source_handoff_action": "review_or_confirm_handoff_before_evidence_use",
+            "plan_approves_sources": False,
+            "blocked_generated_surfaces": list(ETF_ISSUER_BLOCKED_GENERATED_SURFACES)
+            if support_review_state != "source_pack_ready"
+            else [],
+        },
+        "blocked_generated_surfaces": list(ETF_ISSUER_BLOCKED_GENERATED_SURFACES)
+        if support_review_state != "source_pack_ready"
+        else [],
+    }
+
+
+def _etf500_required_component_plan(row: dict[str, object]) -> list[dict[str, object]]:
+    components = {str(component["component_id"]): component for component in row["components"]}  # type: ignore[index]
+    component_labels = {
+        "issuer_page": "issuer page",
+        "fact_sheet": "fact sheet",
+        "prospectus_or_summary_prospectus": "prospectus or summary prospectus",
+        "holdings": "holdings",
+        "exposures": "exposure or sector data when available",
+        "methodology_shareholder_or_risk_source": "methodology, risk, or shareholder source where relevant",
+        "sponsor_announcements_when_relevant": "sponsor announcements where relevant",
+    }
+    planned: list[dict[str, object]] = []
+    for component in ETF_ISSUER_SOURCE_COMPONENTS:
+        component_id = str(component["component_id"])
+        actual = components.get(component_id, _missing_etf_issuer_component(
+            component_id,
+            required=bool(component["required"]),
+            reason_code=f"{component_id}_planning_metadata_missing",
+        ))
+        parser_status = str(actual["parser_status"])
+        freshness_state = str(actual["freshness_state"])
+        handoff_status = str(actual["golden_asset_source_handoff_status"])
+        planned.append(
+            {
+                "component_id": component_id,
+                "label": component_labels[component_id],
+                "required": bool(component["required"]),
+                "source_types": list(component["source_types"]),  # type: ignore[arg-type]
+                "component_status": actual["status"],
+                "evidence_state": actual["evidence_state"],
+                "reason_codes": actual["reason_codes"],
+                "same_fund_check": {
+                    "required": True,
+                    "passed": actual["same_asset_or_same_fund_validation"],
+                },
+                "official_source_identity": {
+                    "required": True,
+                    "is_official": actual["official_source_status"],
+                    "source_identity": actual["source_identity"],
+                    "source_document_id": actual["source_document_id"],
+                    "source_type": actual["source_type"],
+                },
+                "source_use_policy_need": {
+                    "required": True,
+                    "current_policy": actual["source_use_policy"],
+                    "allowlist_status": actual["allowlist_status"],
+                    "review_status": actual["review_status"],
+                },
+                "storage_export_rights_need": {
+                    "storage_rights": actual["storage_rights"],
+                    "export_rights": actual["export_rights"],
+                    "must_be_reviewed_before_export": True,
+                },
+                "parser_readiness": {
+                    "parser_status": parser_status,
+                    "parser_ready": parser_status == SourceParserStatus.parsed.value,
+                    "parser_failure_diagnostics": actual["parser_failure_diagnostics"],
+                },
+                "freshness_as_of_checksum_placeholders": {
+                    "freshness_state": freshness_state,
+                    "as_of_date": actual["as_of_date"],
+                    "published_at": actual["published_at"],
+                    "retrieved_at": actual["retrieved_at"],
+                    "source_checksum": "required_before_source_approval",
+                },
+                "golden_asset_source_handoff": {
+                    "metadata_status": handoff_status,
+                    "action": "review_or_confirm_handoff_before_evidence_use",
+                    "reason_codes": actual["golden_asset_source_handoff_reason_codes"],
+                    "plan_approves_handoff": False,
+                },
+                "blocked_generated_surfaces": list(ETF_ISSUER_BLOCKED_GENERATED_SURFACES)
+                if actual["status"] != "pass"
+                else [],
+            }
+        )
+    return planned
+
+
+def _etf500_source_pack_readiness_priority(row: dict[str, object]) -> str:
+    status = str(row["source_pack_status"])
+    if status == "pass":
+        return "ready"
+    if row["source_backed_partial_rendering_ready"]:
+        return "source_backed_partial_review"
+    if status in {"blocked", "stale", "unknown", "unavailable"}:
+        return f"blocked_{status}"
+    return "missing_required_issuer_sources"
+
+
+def _etf500_support_review_state(row: dict[str, object], launch_entry: dict[str, object]) -> str:
+    if str(row["source_pack_status"]) == "pass":
+        return "source_pack_ready"
+    if str(row["support_state"]) == ETFUniverseSupportState.eligible_not_cached.value:
+        return "pending_ingestion_source_pack_incomplete"
+    if row["source_backed_partial_rendering_ready"]:
+        return "pending_review_source_backed_partial"
+    if launch_entry.get("handoff_status") != "handoff_metadata_available":
+        return "pending_review_handoff_or_rights"
+    return "pending_review_source_pack_incomplete"
+
+
+def _etf500_batch_for_ordinal(ordinal: int) -> str:
+    if ordinal <= 50:
+        return "ETF-50"
+    if ordinal <= 150:
+        return "ETF-150"
+    if ordinal <= 300:
+        return "ETF-300"
+    return "ETF-500"
+
+
+def _etf500_category_buckets_for_entry(launch_entry: dict[str, object]) -> list[str]:
+    categories = {str(category) for category in launch_entry.get("eligible_universe_categories", [])}
+    buckets: list[str] = []
+    for bucket in ETF500_TARGET_METADATA["category_target_buckets"]:  # type: ignore[index]
+        if categories.intersection({str(category) for category in bucket["eligible_universe_categories"]}):  # type: ignore[index]
+            buckets.append(str(bucket["bucket_id"]))
+    return buckets
+
+
+def _etf500_batch_groups(
+    planned_rows: list[dict[str, object]],
+    milestones: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    return [
+        {
+            "batch": str(milestone["batch"]),
+            "target_supported_count": milestone["target_supported_count"],
+            "purpose": milestone["purpose"],
+            "planned_row_count": sum(1 for row in planned_rows if row["batch_milestone"] == milestone["batch"]),
+            "tickers": [str(row["ticker"]) for row in planned_rows if row["batch_milestone"] == milestone["batch"]],
+        }
+        for milestone in milestones
+    ]
+
+
+def _etf500_category_bucket_groups(
+    planned_rows: list[dict[str, object]],
+    buckets: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    grouped: list[dict[str, object]] = []
+    for bucket in buckets:
+        bucket_id = str(bucket["bucket_id"])
+        rows = [row for row in planned_rows if bucket_id in row["category_buckets"]]
+        grouped.append(
+            {
+                "bucket_id": bucket_id,
+                "label": bucket["label"],
+                "target_count": bucket["target_count"],
+                "planned_row_count": len(rows),
+                "gap_to_target": max(int(bucket["target_count"]) - len(rows), 0),
+                "issuers": _count_values(str(row["issuer"]) for row in rows),
+                "source_pack_readiness_priorities": _count_values(
+                    str(row["source_pack_readiness_priority"]) for row in rows
+                ),
+                "tickers": [str(row["ticker"]) for row in rows],
+            }
+        )
+    return grouped
+
+
+def _etf500_value_groups(planned_rows: list[dict[str, object]], key: str) -> list[dict[str, object]]:
+    values = sorted({str(row[key]) for row in planned_rows})
+    return [
+        {
+            key: value,
+            "planned_row_count": sum(1 for row in planned_rows if str(row[key]) == value),
+            "tickers": [str(row["ticker"]) for row in planned_rows if str(row[key]) == value],
+        }
+        for value in values
+    ]
 
 
 def _enum_value(value: Any) -> Any:

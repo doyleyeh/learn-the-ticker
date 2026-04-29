@@ -14,6 +14,7 @@ from backend.data import (
 from backend.etf_universe import (
     ETFUniverseContractError,
     blocked_etf_entries,
+    build_etf500_issuer_source_pack_batch_plan,
     build_etf_issuer_source_pack_readiness_packet,
     build_etf_launch_review_packet,
     cached_supported_etf_entries,
@@ -452,6 +453,119 @@ def test_etf_issuer_source_pack_readiness_reports_stale_parser_failed_and_wrong_
         for component in wrong_fund_voo["components"]
         if component["source_document_id"]
     )
+
+
+def test_etf500_issuer_source_pack_batch_plan_groups_fixture_rows_without_unlocking_output():
+    plan = build_etf500_issuer_source_pack_batch_plan()
+
+    assert plan["schema_version"] == "etf500-issuer-source-pack-batch-plan-v1"
+    assert plan["boundary"] == "etf500-issuer-source-pack-batch-planning-review-only-v1"
+    assert plan["review_only"] is True
+    assert plan["deterministic"] is True
+    assert plan["no_live_external_calls"] is True
+    assert plan["candidate_review_metadata_consumed"] is True
+    assert plan["candidate_artifacts_available"] is False
+    assert plan["fallback_to_current_fixture_review_metadata"] is True
+    assert plan["fallback_not_launch_coverage"] is True
+    assert plan["sources_approved_by_plan"] is False
+    assert plan["manifests_promoted"] is False
+    assert plan["planner_started_ingestion"] is False
+    assert plan["generated_output_unlocked_by_plan"] is False
+    assert plan["generated_output_cache_entries_written"] is False
+    assert plan["supported_runtime_authority"] == "data/universes/us_equity_etfs_supported.current.json"
+    assert plan["recognition_runtime_authority"] == "data/universes/us_etp_recognition.current.json"
+    assert plan["recognition_rows_unlock_generated_output"] is False
+
+    target = plan["target_context"]
+    assert target["target_name"] == "ETF-500"
+    assert target["practical_supported_row_range"] == {"minimum": 475, "maximum": 525}
+    assert [milestone["batch"] for milestone in target["batch_milestones"]] == [
+        "ETF-50",
+        "ETF-150",
+        "ETF-300",
+        "ETF-500",
+    ]
+    assert len(target["category_target_buckets"]) == 7
+    assert len(target["category_gaps"]) == 7
+    assert target["current_fixture_not_launch_coverage"] is True
+    assert target["source_pack_readiness"]["incomplete_count"] == 13
+    assert target["parser_handoff_readiness"]["handoff_not_ready_count"] >= 13
+    assert target["checksum_status"] == {
+        "supported_checksum_matches": True,
+        "recognition_checksum_matches": True,
+    }
+    assert "do_not_pad_with_leveraged_etf" in target["no_padding_stop_conditions"]
+
+    assert plan["planning_summary"] == {
+        "planned_row_count": 13,
+        "batch_count": 4,
+        "issuer_count": 5,
+        "category_bucket_count": 7,
+        "source_pack_ready_count": 0,
+        "source_pack_partial_count": 2,
+        "source_pack_incomplete_count": 11,
+        "blocked_generated_surface_count": 9,
+    }
+    batch_groups = {group["batch"]: group for group in plan["batch_groups"]}
+    assert batch_groups["ETF-50"]["planned_row_count"] == 13
+    assert batch_groups["ETF-150"]["planned_row_count"] == 0
+    assert batch_groups["ETF-300"]["planned_row_count"] == 0
+    assert batch_groups["ETF-500"]["planned_row_count"] == 0
+
+    issuers = {group["issuer"]: group["planned_row_count"] for group in plan["issuer_groups"]}
+    assert issuers["Vanguard"] == 3
+    assert issuers["iShares"] == 3
+    assert issuers["State Street Global Advisors"] == 5
+
+    priorities = {
+        group["source_pack_readiness_priority"]: group["planned_row_count"]
+        for group in plan["source_pack_readiness_priority_groups"]
+    }
+    assert priorities == {
+        "missing_required_issuer_sources": 11,
+        "source_backed_partial_review": 2,
+    }
+    support_states = {
+        group["support_review_state"]: group["planned_row_count"]
+        for group in plan["support_review_state_groups"]
+    }
+    assert support_states["pending_review_source_backed_partial"] == 2
+    assert support_states["pending_ingestion_source_pack_incomplete"] == 11
+
+    category_groups = {group["bucket_id"]: group for group in plan["category_bucket_groups"]}
+    assert category_groups["broad_core_us_equity_beta"]["planned_row_count"] == 7
+    assert category_groups["market_cap_and_size_style"]["planned_row_count"] == 7
+    assert category_groups["sector_etfs"]["planned_row_count"] == 4
+    assert category_groups["industry_theme_passive_us_equity"]["planned_row_count"] == 2
+    assert category_groups["dividend_and_shareholder_yield_index"]["planned_row_count"] == 0
+
+    rows = {row["ticker"]: row for row in plan["planned_rows"]}
+    voo = rows["VOO"]
+    assert voo["batch_milestone"] == "ETF-50"
+    assert "broad_core_us_equity_beta" in voo["category_buckets"]
+    assert voo["source_pack_readiness_priority"] == "source_backed_partial_review"
+    assert voo["plan_unlocks_generated_output"] is False
+    assert voo["missing_required_components"] == []
+    voo_components = {component["component_id"]: component for component in voo["required_issuer_source_components"]}
+    assert voo_components["issuer_page"]["label"] == "issuer page"
+    assert voo_components["fact_sheet"]["component_status"] == "pass"
+    assert voo_components["methodology_shareholder_or_risk_source"]["component_status"] == "partial"
+    assert voo_components["fact_sheet"]["same_fund_check"] == {"required": True, "passed": True}
+    assert voo_components["fact_sheet"]["source_use_policy_need"]["current_policy"] == "full_text_allowed"
+    assert voo_components["fact_sheet"]["storage_export_rights_need"]["storage_rights"] == "raw_snapshot_allowed"
+    assert voo_components["fact_sheet"]["storage_export_rights_need"]["export_rights"] == "excerpts_allowed"
+    assert voo_components["fact_sheet"]["parser_readiness"]["parser_ready"] is True
+    assert voo_components["fact_sheet"]["freshness_as_of_checksum_placeholders"]["source_checksum"] == (
+        "required_before_source_approval"
+    )
+    assert voo_components["fact_sheet"]["golden_asset_source_handoff"]["plan_approves_handoff"] is False
+
+    spy = rows["SPY"]
+    assert spy["source_pack_readiness_priority"] == "missing_required_issuer_sources"
+    assert spy["support_review_state"] == "pending_ingestion_source_pack_incomplete"
+    assert "issuer_page" in spy["missing_required_components"]
+    assert "generated_output_cache_entries" in spy["blocked_generated_surfaces"]
+    assert "generated_chat_answers" in spy["diagnostics"]["blocked_generated_surfaces"]
 
 
 def test_unknown_search_returns_no_generated_route_or_invented_asset_facts():
