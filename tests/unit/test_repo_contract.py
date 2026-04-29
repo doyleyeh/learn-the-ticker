@@ -775,6 +775,47 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert launch_details["etf_full_eligible_universe_count"] == 13
     assert launch_details["etf_non_golden_eligible_supported_count"] == 11
     assert "sector" in launch_details["etf_represented_categories_beyond_golden"]
+    assert launch_details["etf500_review_contract_version"] == "etf500-candidate-manifest-review-contract-v1"
+    assert launch_details["etf500_practical_supported_row_range"] == {"minimum": 475, "maximum": 525}
+    assert [milestone["batch"] for milestone in launch_details["etf500_batch_milestones"]] == [
+        "ETF-50",
+        "ETF-150",
+        "ETF-300",
+        "ETF-500",
+    ]
+    assert launch_details["etf500_candidate_artifact_path_conventions"] == [
+        "data/universes/us_equity_etfs_supported.candidate.YYYY-MM.etf500.json",
+        "data/universes/us_etp_recognition.candidate.YYYY-MM.json",
+        "data/universes/us_equity_etfs.candidate.YYYY-MM.etf500.promotion-packet.json",
+    ]
+    target_buckets = {bucket["bucket_id"]: bucket for bucket in launch_details["etf500_category_target_buckets"]}
+    assert target_buckets["broad_core_us_equity_beta"]["target_count"] == 45
+    assert target_buckets["market_cap_and_size_style"]["target_count"] == 95
+    assert target_buckets["sector_etfs"]["target_count"] == 120
+    assert target_buckets["industry_theme_passive_us_equity"]["target_count"] == 105
+    assert target_buckets["dividend_and_shareholder_yield_index"]["target_count"] == 55
+    assert target_buckets["factor_smart_beta_and_equal_weight"]["target_count"] == 60
+    assert target_buckets["esg_values_screened_us_equity_index"]["target_count"] == 20
+    assert launch_details["etf500_current_fixture_not_launch_coverage"] is True
+    assert launch_details["etf500_category_coverage_gap_count"] == 7
+    assert launch_details["etf500_disqualifier_counts"]["leveraged_etf"] >= 1
+    assert launch_details["etf500_disqualifier_counts"]["option_income_or_buffer_etf"] == 0
+    assert launch_details["etf500_source_pack_readiness"]["ready_count"] == 0
+    assert launch_details["etf500_source_pack_readiness"]["incomplete_count"] == 13
+    assert launch_details["etf500_parser_handoff_readiness"]["handoff_not_ready_count"] >= 13
+    assert launch_details["etf500_checksum_status"] == {
+        "supported_checksum_matches": True,
+        "recognition_checksum_matches": True,
+    }
+    assert "do_not_pad_with_leveraged_etf" in launch_details["etf500_no_padding_stop_conditions"]
+    assert "do_not_pad_with_option_income_or_buffer_etf" in launch_details["etf500_no_padding_stop_conditions"]
+    assert "do_not_pad_with_cef" in launch_details["etf500_no_padding_stop_conditions"]
+    assert launch_details["etf500_generated_output_blocking_rules"][
+        "recognition_only_rows_unlock_generated_output"
+    ] is False
+    assert "generated_output_cache_entries" in launch_details["etf500_generated_output_blocking_rules"][
+        "blocked_generated_surfaces"
+    ]
     stock_sec_details = next(
         check["details"] for check in result["checks"] if check["check_id"] == "stock_sec_source_pack_readiness"
     )

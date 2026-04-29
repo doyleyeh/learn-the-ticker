@@ -33,6 +33,7 @@ RECOGNITION_ETF_UNIVERSE_MANIFEST_PATH = (
 ETF_UNIVERSE_SCHEMA_VERSION = "us-equity-etf-universe-v1"
 ETF_LAUNCH_REVIEW_PACKET_SCHEMA_VERSION = "etf-launch-review-packet-v1"
 ETF_LAUNCH_REVIEW_BOUNDARY = "etf-launch-manifest-review-only-v1"
+ETF500_REVIEW_CONTRACT_VERSION = "etf500-candidate-manifest-review-contract-v1"
 ETF_ISSUER_READINESS_SCHEMA_VERSION = "etf-issuer-source-pack-readiness-v1"
 ETF_ISSUER_READINESS_BOUNDARY = "etf-issuer-source-pack-readiness-review-only-v1"
 ETF_ISSUER_READINESS_RETRIEVED_AT = "2026-04-20T00:00:00Z"
@@ -149,6 +150,90 @@ ETF_ELIGIBLE_UNIVERSE_REVIEW_CATEGORIES = [
         "description": "ESG-screened passive U.S. equity index exposure.",
     },
 ]
+ETF500_TARGET_METADATA = {
+    "contract_version": ETF500_REVIEW_CONTRACT_VERSION,
+    "target_name": "ETF-500",
+    "practical_supported_row_range": {"minimum": 475, "maximum": 525},
+    "candidate_artifact_path_conventions": [
+        "data/universes/us_equity_etfs_supported.candidate.YYYY-MM.etf500.json",
+        "data/universes/us_etp_recognition.candidate.YYYY-MM.json",
+        "data/universes/us_equity_etfs.candidate.YYYY-MM.etf500.promotion-packet.json",
+    ],
+    "batch_milestones": [
+        {"batch": "ETF-50", "target_supported_count": 50, "purpose": "Core parser validation across major issuers and categories"},
+        {"batch": "ETF-150", "target_supported_count": 150, "purpose": "Local support beyond golden ETFs"},
+        {"batch": "ETF-300", "target_supported_count": 300, "purpose": "Category-complete local coverage"},
+        {"batch": "ETF-500", "target_supported_count": "475-525", "purpose": "Full reviewed ETF-500 target"},
+    ],
+    "category_target_buckets": [
+        {
+            "bucket_id": "broad_core_us_equity_beta",
+            "label": "Broad/core U.S. equity beta",
+            "target_count": 45,
+            "selection_intent": "S&P 500, total market, Russell-style, Nasdaq-100, Dow, and broad equal-weight exposure",
+            "eligible_universe_categories": ["broad_us_index"],
+        },
+        {
+            "bucket_id": "market_cap_and_size_style",
+            "label": "Market-cap and size/style",
+            "target_count": 95,
+            "selection_intent": "Large/mid/small, growth/value/blend, Russell/S&P/CRSP-style exposures",
+            "eligible_universe_categories": ["total_market_or_large_cap", "size_style"],
+        },
+        {
+            "bucket_id": "sector_etfs",
+            "label": "Sector ETFs",
+            "target_count": 120,
+            "selection_intent": "Multiple issuer families across the main U.S. equity sectors",
+            "eligible_universe_categories": ["sector"],
+        },
+        {
+            "bucket_id": "industry_theme_passive_us_equity",
+            "label": "Industry/theme passive U.S. equity",
+            "target_count": 105,
+            "selection_intent": "Semiconductors, biotech, banks, homebuilders, software, cybersecurity, transportation, and similar passive U.S.-equity-primary themes",
+            "eligible_universe_categories": ["industry_or_theme"],
+        },
+        {
+            "bucket_id": "dividend_and_shareholder_yield_index",
+            "label": "Dividend and shareholder-yield index ETFs",
+            "target_count": 55,
+            "selection_intent": "Dividend growth, high dividend, quality dividend, aristocrats-style, and shareholder-yield index funds",
+            "eligible_universe_categories": ["dividend"],
+        },
+        {
+            "bucket_id": "factor_smart_beta_and_equal_weight",
+            "label": "Factor, smart beta, and equal-weight",
+            "target_count": 60,
+            "selection_intent": "Quality, momentum, value, low/minimum volatility, multifactor, equal-weight, and fundamental index exposure",
+            "eligible_universe_categories": ["value_growth", "quality", "momentum", "low_volatility", "equal_weight"],
+        },
+        {
+            "bucket_id": "esg_values_screened_us_equity_index",
+            "label": "ESG / values-screened U.S. equity index",
+            "target_count": 20,
+            "selection_intent": "Broad U.S. equity ESG or values-screened passive funds with clear methodology",
+            "eligible_universe_categories": ["esg_index"],
+        },
+    ],
+    "source_document": "docs/ETF_MANIFEST_HANDOFF.md",
+}
+ETF500_NO_PADDING_DISQUALIFIERS = (
+    "leveraged_etf",
+    "inverse_etf",
+    "active_etf",
+    "fixed_income_etf",
+    "commodity_etf",
+    "crypto_product",
+    "single_stock_etf",
+    "option_income_or_buffer_etf",
+    "multi_asset_etf",
+    "etn",
+    "etv",
+    "cef",
+    "international_equity",
+    "unclear_or_pending_review_product",
+)
 ETF_REQUIRED_ISSUER_SOURCE_PACK = [
     "issuer_page",
     "fact_sheet",
@@ -203,6 +288,7 @@ ETF_ISSUER_SOURCE_COMPONENTS = (
     },
 )
 ETF_ISSUER_BLOCKED_GENERATED_SURFACES = (
+    "generated_pages",
     "generated_claims",
     "generated_chat_answers",
     "generated_comparisons",
@@ -365,6 +451,14 @@ def build_etf_launch_review_packet(
         recognition_entries=recognition_entries,
         golden_regression=golden_regression,
     )
+    etf500_review = _etf500_candidate_review_contract(
+        supported=supported,
+        recognition=recognition,
+        supported_entries=supported_entries,
+        recognition_entries=recognition_entries,
+        eligible_universe_scope=eligible_universe_scope,
+        readiness_counts=readiness_counts,
+    )
     stop_conditions = _etf_review_stop_conditions(
         supported=supported,
         recognition=recognition,
@@ -389,6 +483,11 @@ def build_etf_launch_review_packet(
         "golden_precache_tickers": sorted(ETF_GOLDEN_PRECACHE_TICKERS),
         "regression_reference_tickers": sorted(ETF_REGRESSION_REFERENCE_TICKERS),
         "golden_set_is_coverage_limit": False,
+        "etf500_review_contract": etf500_review,
+        "etf500_target_metadata": etf500_review["target_metadata"],
+        "current_fixture_not_launch_coverage": etf500_review["current_manifest_status"][
+            "current_fixture_not_launch_coverage"
+        ],
         "fixture_or_local_only_contract": _manifest_uses_fixture_or_local_only_provenance(supported)
         or _manifest_uses_fixture_or_local_only_provenance(recognition),
         "eligible_universe_scope": eligible_universe_scope,
@@ -432,6 +531,7 @@ def build_etf_launch_review_packet(
             "AI Comprehensive Analysis",
             "exports",
             "generated_risk_summaries",
+            "generated_output_cache_entries",
         ],
         "non_advice_framing": (
             "ETF manifest review is operational coverage metadata only; it is not an endorsement, recommendation, "
@@ -1040,6 +1140,214 @@ def _entry_review_row(entry: ETFUniverseEntry, *, manifest_kind: str) -> dict[st
         "generated_checksum": entry.generated_checksum,
         "non_advice_framing": entry.non_advice_framing,
     }
+
+
+def _etf500_candidate_review_contract(
+    *,
+    supported: ETFUniverseManifest,
+    recognition: ETFUniverseManifest,
+    supported_entries: list[dict[str, object]],
+    recognition_entries: list[dict[str, object]],
+    eligible_universe_scope: dict[str, object],
+    readiness_counts: dict[str, int],
+) -> dict[str, object]:
+    supported_row_count = len(supported_entries)
+    target_range = ETF500_TARGET_METADATA["practical_supported_row_range"]  # type: ignore[index]
+    minimum = int(target_range["minimum"])  # type: ignore[index]
+    maximum = int(target_range["maximum"])  # type: ignore[index]
+    category_bucket_diagnostics = _etf500_category_bucket_diagnostics(
+        supported_entries=supported_entries,
+        eligible_universe_scope=eligible_universe_scope,
+    )
+    disqualifier_counts = _etf500_disqualifier_counts(recognition_entries)
+    source_pack_incomplete_count = sum(1 for entry in supported_entries if not entry["source_pack_ready"])
+    parser_invalid_count = sum(1 for entry in supported_entries + recognition_entries if entry["parser_status"] == "failed")
+    unclear_rights_count = sum(
+        1
+        for entry in supported_entries + recognition_entries
+        if str(entry["source_use_policy"]) in {"metadata_only", "link_only", "rejected"}
+    )
+    pending_review_count = _pending_review_count(supported_entries + recognition_entries)
+    unavailable_count = sum(
+        1
+        for entry in supported_entries + recognition_entries
+        if str(entry["support_state"]) == ETFUniverseSupportState.unavailable.value
+        or str(entry["freshness_state"]) == "unavailable"
+        or str(entry["evidence_state"]) == "unavailable"
+    )
+    blocked_statuses = (
+        "recognition_only",
+        "scope_gate_failed",
+        "pending_review",
+        "unavailable",
+        "parser_invalid",
+        "unclear_rights",
+        "source_pack_incomplete",
+    )
+    return {
+        "contract_version": ETF500_REVIEW_CONTRACT_VERSION,
+        "review_only": True,
+        "target_metadata": ETF500_TARGET_METADATA,
+        "current_manifest_status": {
+            "supported_row_count": supported_row_count,
+            "target_minimum": minimum,
+            "target_maximum": maximum,
+            "within_etf500_practical_range": minimum <= supported_row_count <= maximum,
+            "current_fixture_not_launch_coverage": supported_row_count < minimum
+            or _manifest_uses_fixture_or_local_only_provenance(supported),
+            "fixture_or_local_only_contract": _manifest_uses_fixture_or_local_only_provenance(supported)
+            or _manifest_uses_fixture_or_local_only_provenance(recognition),
+            "runtime_supported_authority_preserved": supported.local_path
+            == "data/universes/us_equity_etfs_supported.current.json",
+            "runtime_recognition_authority_preserved": recognition.local_path
+            == "data/universes/us_etp_recognition.current.json",
+            "supported_manifest_promoted": False,
+            "recognition_manifest_promoted": False,
+        },
+        "diagnostics": {
+            "supported_row_count": supported_row_count,
+            "recognition_row_count": len(recognition_entries),
+            "category_bucket_diagnostics": category_bucket_diagnostics,
+            "category_coverage_gaps": [
+                {
+                    "bucket_id": row["bucket_id"],
+                    "label": row["label"],
+                    "target_count": row["target_count"],
+                    "current_supported_count": row["current_supported_count"],
+                    "gap_to_target": row["gap_to_target"],
+                }
+                for row in category_bucket_diagnostics
+                if int(row["gap_to_target"]) > 0
+            ],
+            "disqualifier_counts": disqualifier_counts,
+            "pending_review_row_count": pending_review_count,
+            "unavailable_row_count": unavailable_count,
+            "source_pack_readiness": {
+                "ready_count": readiness_counts["source_pack_ready"],
+                "incomplete_count": source_pack_incomplete_count,
+                "required_components": ETF_REQUIRED_ISSUER_SOURCE_PACK,
+            },
+            "parser_handoff_readiness": {
+                "parser_valid_count": sum(
+                    1
+                    for entry in supported_entries + recognition_entries
+                    if str(entry["parser_status"]) != "failed"
+                ),
+                "parser_invalid_count": parser_invalid_count,
+                "handoff_ready_count": sum(
+                    1
+                    for entry in supported_entries + recognition_entries
+                    if entry["handoff_status"] == "handoff_metadata_available"
+                ),
+                "handoff_not_ready_count": sum(
+                    1
+                    for entry in supported_entries + recognition_entries
+                    if entry["handoff_status"] != "handoff_metadata_available"
+                ),
+                "unclear_rights_count": unclear_rights_count,
+            },
+            "checksum_status": {
+                "supported_checksum_matches": _manifest_checksum_matches(supported),
+                "recognition_checksum_matches": _manifest_checksum_matches(recognition),
+            },
+            "blocked_statuses": blocked_statuses,
+            "blocked_generated_surfaces": list(ETF_ISSUER_BLOCKED_GENERATED_SURFACES),
+        },
+        "generated_output_blocking_rules": {
+            "blocked_statuses": blocked_statuses,
+            "blocked_generated_surfaces": list(ETF_ISSUER_BLOCKED_GENERATED_SURFACES),
+            "recognition_only_rows_unlock_generated_output": False,
+            "candidate_rows_that_fail_scope_gates_unlock_generated_output": False,
+            "pending_review_rows_unlock_generated_output": False,
+            "unavailable_rows_unlock_generated_output": False,
+            "parser_invalid_rows_unlock_generated_output": False,
+            "unclear_rights_rows_unlock_generated_output": False,
+            "source_pack_incomplete_rows_unlock_generated_output": False,
+        },
+        "no_padding_stop_conditions": [
+            f"do_not_pad_with_{disqualifier}" for disqualifier in ETF500_NO_PADDING_DISQUALIFIERS
+        ],
+    }
+
+
+def _etf500_category_bucket_diagnostics(
+    *,
+    supported_entries: list[dict[str, object]],
+    eligible_universe_scope: dict[str, object],
+) -> list[dict[str, object]]:
+    scope_rows = {
+        str(row["category"]): row
+        for row in eligible_universe_scope["required_categories"]  # type: ignore[index]
+    }
+    diagnostics: list[dict[str, object]] = []
+    for bucket in ETF500_TARGET_METADATA["category_target_buckets"]:  # type: ignore[index]
+        categories = [str(category) for category in bucket["eligible_universe_categories"]]  # type: ignore[index]
+        tickers = sorted(
+            {
+                str(ticker)
+                for category in categories
+                for ticker in scope_rows.get(category, {}).get("tickers", [])  # type: ignore[union-attr]
+            }
+        )
+        target_count = int(bucket["target_count"])  # type: ignore[arg-type]
+        current_supported_count = len(tickers)
+        diagnostics.append(
+            {
+                "bucket_id": str(bucket["bucket_id"]),
+                "label": str(bucket["label"]),
+                "target_count": target_count,
+                "current_supported_count": current_supported_count,
+                "gap_to_target": max(target_count - current_supported_count, 0),
+                "coverage_status": "represented_below_target"
+                if current_supported_count
+                else "target_bucket_has_no_current_manifest_rows",
+                "eligible_universe_categories": categories,
+                "tickers": tickers,
+                "source_pack_ready_count": sum(
+                    1
+                    for entry in supported_entries
+                    if set(categories).intersection(
+                        {str(value) for value in entry["eligible_universe_categories"]}  # type: ignore[index]
+                    )
+                    and entry["source_pack_ready"]
+                ),
+            }
+        )
+    return diagnostics
+
+
+def _etf500_disqualifier_counts(recognition_entries: list[dict[str, object]]) -> dict[str, int]:
+    counts = {disqualifier: 0 for disqualifier in ETF500_NO_PADDING_DISQUALIFIERS}
+    category_map = {
+        "leveraged_etf": "leveraged_etf",
+        "inverse_etf": "inverse_etf",
+        "active_etf": "active_etf",
+        "fixed_income_etf": "fixed_income_etf",
+        "commodity_etf": "commodity_etf",
+        "etn": "etn",
+        "multi_asset_etf": "multi_asset_etf",
+    }
+    flag_map = {
+        "leveraged": "leveraged_etf",
+        "inverse": "inverse_etf",
+        "active": "active_etf",
+        "fixed_income": "fixed_income_etf",
+        "commodity": "commodity_etf",
+        "crypto": "crypto_product",
+        "international": "international_equity",
+        "etn": "etn",
+        "other_unsupported": "unclear_or_pending_review_product",
+    }
+    for entry in recognition_entries:
+        category = str(entry["wrapper_or_scope"])
+        if category in category_map:
+            counts[category_map[category]] += 1
+        for flag, value in dict(entry["exclusion_flags"]).items():  # type: ignore[arg-type]
+            if value and flag in flag_map:
+                counts[flag_map[flag]] += 1
+        if str(entry["support_state"]) in {"unknown", "unavailable"}:
+            counts["unclear_or_pending_review_product"] += 1
+    return counts
 
 
 def _manifest_review_summary(manifest: ETFUniverseManifest, entries: list[dict[str, object]]) -> dict[str, object]:

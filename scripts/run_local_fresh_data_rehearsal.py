@@ -347,6 +347,8 @@ def _check_launch_manifest_review_packets(root: Path) -> RehearsalCheck:
     readiness_counts = etf["readiness_counts"]
     eligible_scope = etf["eligible_universe_scope"]
     golden_regression = etf["golden_precache_regression"]
+    etf500_review = etf["etf500_review_contract"]
+    etf500_diagnostics = etf500_review["diagnostics"]
     required_categories = set(eligible_scope["required_category_names"])
     expected_categories = {
         "broad_us_index",
@@ -372,6 +374,10 @@ def _check_launch_manifest_review_packets(root: Path) -> RehearsalCheck:
         return _blocked("launch_manifest_review_packets", "etf_golden_set_treated_as_coverage_limit")
     if readiness_counts["source_pack_ready"] != 0 or etf["review_status"] != "review_needed":
         return _blocked("launch_manifest_review_packets", "etf_fixture_manifest_improperly_marked_source_ready")
+    if not etf["current_fixture_not_launch_coverage"]:
+        return _blocked("launch_manifest_review_packets", "etf_current_fixture_improperly_marked_launch_coverage")
+    if etf500_review["generated_output_blocking_rules"]["recognition_only_rows_unlock_generated_output"]:
+        return _blocked("launch_manifest_review_packets", "etf500_recognition_only_rows_unblocked_generated_output")
     return _pass(
         "launch_manifest_review_packets",
         "manifest_packets_are_review_only",
@@ -393,6 +399,23 @@ def _check_launch_manifest_review_packets(root: Path) -> RehearsalCheck:
             "etf_full_eligible_universe_count": golden_regression["full_eligible_universe_count"],
             "etf_non_golden_eligible_supported_count": golden_regression["non_golden_eligible_supported_count"],
             "etf_represented_categories_beyond_golden": golden_regression["represented_categories_beyond_golden"],
+            "etf500_review_contract_version": etf500_review["contract_version"],
+            "etf500_practical_supported_row_range": etf["etf500_target_metadata"][
+                "practical_supported_row_range"
+            ],
+            "etf500_batch_milestones": etf["etf500_target_metadata"]["batch_milestones"],
+            "etf500_candidate_artifact_path_conventions": etf["etf500_target_metadata"][
+                "candidate_artifact_path_conventions"
+            ],
+            "etf500_category_target_buckets": etf["etf500_target_metadata"]["category_target_buckets"],
+            "etf500_current_fixture_not_launch_coverage": etf["current_fixture_not_launch_coverage"],
+            "etf500_category_coverage_gap_count": len(etf500_diagnostics["category_coverage_gaps"]),
+            "etf500_disqualifier_counts": etf500_diagnostics["disqualifier_counts"],
+            "etf500_source_pack_readiness": etf500_diagnostics["source_pack_readiness"],
+            "etf500_parser_handoff_readiness": etf500_diagnostics["parser_handoff_readiness"],
+            "etf500_checksum_status": etf500_diagnostics["checksum_status"],
+            "etf500_no_padding_stop_conditions": etf500_review["no_padding_stop_conditions"],
+            "etf500_generated_output_blocking_rules": etf500_review["generated_output_blocking_rules"],
         },
     )
 

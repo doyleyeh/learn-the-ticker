@@ -141,6 +141,7 @@ def test_etf_launch_review_packet_preserves_supported_and_recognition_split():
     assert packet["recognition_runtime_authority"] == "data/universes/us_etp_recognition.current.json"
     assert packet["recognition_rows_unlock_generated_output"] is False
     assert packet["golden_set_is_coverage_limit"] is False
+    assert packet["current_fixture_not_launch_coverage"] is True
     assert packet["golden_precache_tickers"] == ["QQQ", "VOO"]
     assert "XLE" in packet["regression_reference_tickers"]
     assert packet["eligible_universe_policy"]["coverage_limit"] == "manifest_defined_reviewed_eligible_universe"
@@ -178,6 +179,79 @@ def test_etf_launch_review_packet_preserves_supported_and_recognition_split():
     assert "issuer_source_pack_review_not_complete" in packet["stop_conditions"]
     assert "missing_golden_ticker" not in packet["stop_conditions"]
     assert "fixture_sized_supported_manifest_not_launch_approved" not in packet["stop_conditions"]
+
+    target = packet["etf500_target_metadata"]
+    assert target["contract_version"] == "etf500-candidate-manifest-review-contract-v1"
+    assert target["practical_supported_row_range"] == {"minimum": 475, "maximum": 525}
+    assert [milestone["batch"] for milestone in target["batch_milestones"]] == [
+        "ETF-50",
+        "ETF-150",
+        "ETF-300",
+        "ETF-500",
+    ]
+    assert target["candidate_artifact_path_conventions"] == [
+        "data/universes/us_equity_etfs_supported.candidate.YYYY-MM.etf500.json",
+        "data/universes/us_etp_recognition.candidate.YYYY-MM.json",
+        "data/universes/us_equity_etfs.candidate.YYYY-MM.etf500.promotion-packet.json",
+    ]
+    buckets = {bucket["bucket_id"]: bucket for bucket in target["category_target_buckets"]}
+    assert buckets["broad_core_us_equity_beta"]["target_count"] == 45
+    assert buckets["market_cap_and_size_style"]["target_count"] == 95
+    assert buckets["sector_etfs"]["target_count"] == 120
+    assert buckets["industry_theme_passive_us_equity"]["target_count"] == 105
+    assert buckets["dividend_and_shareholder_yield_index"]["target_count"] == 55
+    assert buckets["factor_smart_beta_and_equal_weight"]["target_count"] == 60
+    assert buckets["esg_values_screened_us_equity_index"]["target_count"] == 20
+
+    etf500 = packet["etf500_review_contract"]
+    assert etf500["review_only"] is True
+    assert etf500["current_manifest_status"]["supported_row_count"] == 13
+    assert etf500["current_manifest_status"]["within_etf500_practical_range"] is False
+    assert etf500["current_manifest_status"]["current_fixture_not_launch_coverage"] is True
+    assert etf500["current_manifest_status"]["runtime_supported_authority_preserved"] is True
+    assert etf500["current_manifest_status"]["runtime_recognition_authority_preserved"] is True
+    diagnostics = etf500["diagnostics"]
+    assert diagnostics["supported_row_count"] == 13
+    assert diagnostics["recognition_row_count"] == 9
+    assert diagnostics["pending_review_row_count"] >= 13
+    assert diagnostics["source_pack_readiness"]["ready_count"] == 0
+    assert diagnostics["source_pack_readiness"]["incomplete_count"] == 13
+    assert diagnostics["parser_handoff_readiness"]["handoff_not_ready_count"] >= 13
+    assert diagnostics["checksum_status"] == {
+        "supported_checksum_matches": True,
+        "recognition_checksum_matches": True,
+    }
+    assert diagnostics["disqualifier_counts"]["leveraged_etf"] >= 1
+    assert diagnostics["disqualifier_counts"]["inverse_etf"] >= 1
+    assert diagnostics["disqualifier_counts"]["active_etf"] >= 1
+    assert diagnostics["disqualifier_counts"]["fixed_income_etf"] >= 1
+    assert diagnostics["disqualifier_counts"]["commodity_etf"] >= 1
+    assert diagnostics["disqualifier_counts"]["crypto_product"] == 0
+    assert diagnostics["disqualifier_counts"]["single_stock_etf"] == 0
+    assert diagnostics["disqualifier_counts"]["option_income_or_buffer_etf"] == 0
+    assert diagnostics["disqualifier_counts"]["etn"] >= 1
+    assert diagnostics["disqualifier_counts"]["etv"] == 0
+    assert diagnostics["disqualifier_counts"]["cef"] == 0
+    assert diagnostics["disqualifier_counts"]["international_equity"] == 0
+    assert diagnostics["category_coverage_gaps"]
+    bucket_diagnostics = {row["bucket_id"]: row for row in diagnostics["category_bucket_diagnostics"]}
+    assert bucket_diagnostics["broad_core_us_equity_beta"]["current_supported_count"] == 7
+    assert bucket_diagnostics["market_cap_and_size_style"]["current_supported_count"] == 7
+    assert bucket_diagnostics["sector_etfs"]["current_supported_count"] == 4
+    assert bucket_diagnostics["industry_theme_passive_us_equity"]["current_supported_count"] == 2
+    assert bucket_diagnostics["dividend_and_shareholder_yield_index"]["current_supported_count"] == 0
+    blocking = etf500["generated_output_blocking_rules"]
+    assert blocking["recognition_only_rows_unlock_generated_output"] is False
+    assert blocking["candidate_rows_that_fail_scope_gates_unlock_generated_output"] is False
+    assert blocking["pending_review_rows_unlock_generated_output"] is False
+    assert blocking["unavailable_rows_unlock_generated_output"] is False
+    assert blocking["parser_invalid_rows_unlock_generated_output"] is False
+    assert blocking["unclear_rights_rows_unlock_generated_output"] is False
+    assert blocking["source_pack_incomplete_rows_unlock_generated_output"] is False
+    assert "generated_output_cache_entries" in blocking["blocked_generated_surfaces"]
+    assert "do_not_pad_with_leveraged_etf" in etf500["no_padding_stop_conditions"]
+    assert "do_not_pad_with_option_income_or_buffer_etf" in etf500["no_padding_stop_conditions"]
+    assert "do_not_pad_with_cef" in etf500["no_padding_stop_conditions"]
 
     eligible_scope = packet["eligible_universe_scope"]
     assert eligible_scope["scope_version"] == "etf-eligible-universe-review-scope-v1"
