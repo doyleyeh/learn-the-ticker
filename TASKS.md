@@ -1,23 +1,22 @@
 ## Current task
 
-### T-132: Add stock SEC source-pack readiness packet contracts
+### T-133: Add ETF issuer source-pack readiness packet contracts
 
 Goal:
-Add deterministic stock source-pack readiness reporting for the local fresh-data MVP so Top-500 stocks can prove whether SEC submissions, latest 10-K, latest 10-Q when available, and XBRL company facts are present, parser-valid, same-asset, approved for evidence use, and sufficient for source-backed partial rendering.
+Add deterministic ETF issuer source-pack readiness reporting for supported-manifest ETFs, covering issuer page, fact sheet, prospectus or summary prospectus, holdings, exposures, methodology/shareholder/risk sources, and sponsor announcements where relevant.
 
 Task scope:
-Extend the existing review-only local readiness/rehearsal contracts for stock SEC evidence. The task should report readiness for the approved current Top-500 runtime manifest and any reviewed candidate-manifest rows without promoting or replacing `data/universes/us_common_stocks_top500.current.json`. Keep the implementation deterministic and fixture/local-only by default, with no live SEC, provider, browser-service, database, storage, news, market-data, or LLM calls in normal tests. Readiness output must preserve the Golden Asset Source Handoff boundary: retrieved SEC data is not usable evidence unless source identity, source type, official-source status, rights, parser status, freshness/as-of metadata, source-use policy, rationale, and review status allow it.
+Extend the existing review-only local readiness/rehearsal contracts for ETF issuer evidence. Readiness must be keyed only from `data/universes/us_equity_etfs_supported.current.json`; broader ETF/ETP recognition rows may be reported only as blocked/non-authoritative search recognition and must never unlock ETF generated-output coverage. Keep the implementation deterministic and fixture/local-only by default, with no live issuer, provider, browser-service, database, storage, news, market-data, or LLM calls in normal tests. Readiness output must preserve the Golden Asset Source Handoff boundary: retrieved issuer materials are not usable evidence unless source identity, source type, official-source status, rights, parser status, freshness/as-of metadata, source-use policy, rationale, and review status allow them.
 
 Allowed files:
-- `backend/top500_candidate_manifest.py`
-- `backend/overview.py`
-- `backend/sources.py`
-- `backend/export.py`
-- `backend/repositories/*`
+- `backend/etf_universe.py`
+- `backend/provider_adapters.py`
+- `backend/source_policy.py`
 - `scripts/run_local_fresh_data_rehearsal.py`
 - `scripts/review_launch_manifests.py`
-- `tests/unit/test_top500_candidate_manifest.py`
-- `tests/unit/test_overview_generation.py`
+- `tests/unit/test_provider_adapters.py`
+- `tests/unit/test_search_classification.py`
+- `tests/unit/test_source_policy.py`
 - `tests/unit/test_repo_contract.py`
 - tightly scoped supporting backend test fixtures if needed
 
@@ -32,37 +31,15 @@ Do not change:
 - normal CI defaults; no live provider, SEC, issuer, exchange, market-data, news, browser-service, database, storage, or LLM calls
 
 Acceptance criteria:
-- Readiness output covers rows from the current Top-500 runtime manifest and reviewed candidate manifests, but never promotes a candidate or overwrites the approved current manifest.
-- Each stock readiness row reports SEC submissions, latest annual filing, latest quarterly filing when available, and XBRL company-facts requirements with deterministic status fields.
-- Each required SEC source component reports same-asset validation, official-source/source identity, source-use rights, parser status, freshness/as-of metadata, citation readiness, and Golden Asset Source Handoff status.
-- Missing, stale, parser-invalid, wrong-asset, unclear-rights, pending-review, rejected, unavailable, or insufficient SEC evidence produces deterministic `partial`, `stale`, `unknown`, `unavailable`, or `insufficient_evidence` states as appropriate.
-- Readiness failures cannot unlock generated claims, generated chat answers, generated comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, or generated-output cache entries.
-- The local fresh-data rehearsal reports the stock SEC readiness packet with deterministic `pass`, `review_needed`, `blocked`, or equivalent review-only status without promoting manifests or approving sources.
-- Tests prove source readiness is review-only, no-live-call, and safe for failed, unavailable, partial, stale, and insufficient-evidence assets.
+- ETF source-pack readiness is keyed only from the supported ETF manifest, not recognition rows, live provider flags, issuer search results, exchange listings, or holdings files at runtime.
+- Each supported ETF readiness row reports issuer page, fact sheet, prospectus or summary prospectus, holdings, exposures, and any methodology/shareholder/risk/sponsor-announcement source requirements that are present in the local contract.
+- Each required issuer source component reports same-asset or same-fund validation, official-source/source identity, source type, storage rights, export rights, source-use policy, parser status, freshness/as-of metadata, citation readiness, Golden Asset Source Handoff status, and review rationale where available.
+- Cached golden ETFs, eligible-not-cached supported ETFs, and blocked recognition-only products have deterministic readiness outcomes that preserve the supported-manifest versus recognition-manifest split.
+- Missing, stale, parser-invalid, wrong-fund, unclear-rights, pending-review, rejected, unavailable, or insufficient issuer evidence produces deterministic `partial`, `stale`, `unknown`, `unavailable`, or `insufficient_evidence` states as appropriate.
+- Source-pack failures cannot unlock generated claims, generated chat answers, generated comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, or generated-output cache entries.
+- The local fresh-data rehearsal reports the ETF issuer readiness packet with deterministic `pass`, `review_needed`, `blocked`, or equivalent review-only status without promoting manifests or approving sources.
+- Tests prove ETF source readiness is review-only, no-live-call, and safe for failed, unavailable, partial, stale, and insufficient-evidence assets.
 - Important factual claims added by the task are cited or expressed as readiness metadata; no implementation text introduces buy/sell/hold, allocation, price-target, tax, brokerage, or personalized advice language.
-
-Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_top500_candidate_manifest.py tests/unit/test_overview_generation.py tests/unit/test_repo_contract.py -q`
-- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
-- `TMPDIR=/tmp python3 evals/run_static_evals.py`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
-- `git diff --check`
-
-Iteration budget:
-- One agent-loop cycle.
-
-## Backlog
-
-### T-133: Add ETF issuer source-pack readiness packet contracts
-
-Goal:
-Add deterministic ETF issuer source-pack readiness reporting for supported-manifest ETFs, covering issuer page, fact sheet, prospectus or summary prospectus, holdings, exposures, methodology/shareholder/risk sources, and sponsor announcements where relevant.
-
-Acceptance criteria:
-- ETF source-pack readiness is keyed only from the supported ETF manifest, not recognition rows or live provider flags.
-- Each required issuer source type reports official-source status, source-use rights, parser status, freshness/as-of metadata, citation readiness, and Golden Asset Source Handoff status.
-- Source-pack failures render deterministic partial/unavailable states and cannot feed generated output, Weekly News Focus, AI Comprehensive Analysis, exports, or cache entries.
-- Tests cover cached golden ETFs, eligible-not-cached supported ETFs, and blocked recognition-only products.
 
 Required commands:
 - `TMPDIR=/tmp python3 -m pytest tests/unit/test_provider_adapters.py tests/unit/test_search_classification.py tests/unit/test_source_policy.py tests/unit/test_repo_contract.py -q`
@@ -73,6 +50,8 @@ Required commands:
 
 Iteration budget:
 - One agent-loop cycle.
+
+## Backlog
 
 ### T-134: Add local fresh-data MVP readiness thresholds
 
@@ -117,6 +96,32 @@ Iteration budget:
 - One agent-loop cycle.
 
 ## Completed
+
+### T-132: Add stock SEC source-pack readiness packet contracts
+
+Goal:
+Add deterministic stock source-pack readiness reporting for the local fresh-data MVP so Top-500 stocks can prove whether SEC submissions, latest 10-K, latest 10-Q when available, and XBRL company facts are present, parser-valid, same-asset, approved for evidence use, and sufficient for source-backed partial rendering.
+
+Completion details:
+- Implementation commit: `476fdcd feat(T-132): add stock SEC source-pack readiness packet contracts`
+- Local merge commit: `f800f7b chore(T-132): merge stock SEC source-pack readiness packet contracts` from branch `agent/T-132-20260429T012241Z`
+- Added deterministic, review-only stock SEC source-pack readiness reporting in `backend/top500_candidate_manifest.py` for current Top-500 manifest rows and reviewed candidate rows.
+- Readiness now reports SEC component status for submissions, annual filing, quarterly filing, and XBRL company facts with source-handoff, parser, freshness, rights, citation-readiness, and evidence-readiness metadata.
+- Added the stock SEC readiness packet to `scripts/run_local_fresh_data_rehearsal.py` without promoting manifests, approving sources, starting live calls, or unlocking generated output.
+- Added unit and repo-contract coverage in `tests/unit/test_top500_candidate_manifest.py` and `tests/unit/test_repo_contract.py` for deterministic readiness status, review-only behavior, and source-backed partial/failure states.
+- Preserved Top-500 manifest promotion controls; the task did not replace `data/universes/us_common_stocks_top500.current.json`.
+
+Required commands executed in this task branch:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_top500_candidate_manifest.py tests/unit/test_overview_generation.py tests/unit/test_repo_contract.py -q` - pass (`50 passed`)
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` - pass
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass (`458 passed`)
+- `git diff --check` - pass
+
+Remaining risks:
+- Current stock SEC readiness is fixture/local-only and is not launch approval.
+- Only `AAPL` has deterministic SEC fixture coverage today; other Top-500 fixture rows report `insufficient_evidence`.
+- `AAPL` is source-backed partial-ready, but the latest 10-Q component remains `partial` because no deterministic quarterly filing fixture is present.
 
 ### T-131: Add ETF eligible-universe review packet contracts
 
@@ -3635,7 +3640,7 @@ Current runtime snapshot:
 - T-128 completed deterministic governed golden API/frontend rendering proof for the golden set.
 - T-129 completed launch-manifest operator automation parity for Top-500 stock and supported ETF launch-manifest packets.
 - T-130 completed the deterministic local fresh-data MVP rehearsal command.
-- T-131 through T-135 are the prepared local fully functional fresh-data MVP track: ETF eligible-universe review packets, stock SEC source-pack readiness, ETF issuer source-pack readiness, local MVP readiness thresholds, and batchable ingestion priority planning.
+- T-131 and T-132 completed the ETF eligible-universe and stock SEC source-pack readiness packets; T-133 through T-135 remain as the prepared local fully functional fresh-data MVP track: ETF issuer source-pack readiness, local MVP readiness thresholds, and batchable ingestion priority planning.
 - T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, full governed source artifacts, admin auth/rate limiting, broader live ingestion, and launch-sized reviewed manifests remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:
@@ -3695,7 +3700,7 @@ Operational defaults for general MVP roadmap tasks:
 - T-128 established deterministic governed golden evidence API/frontend rendering proof. It is completed and must not be reintroduced as runnable backlog.
 - T-129 established launch-manifest operator automation parity. It is completed and must not be reintroduced as runnable backlog.
 - T-130 established the local fresh-data MVP rehearsal command. It is completed and must not be reintroduced as runnable backlog.
-- T-131 through T-135 are active/prepared local fresh-data MVP work and should be run before production-hardening tasks.
+- T-133 through T-135 are the remaining active/prepared local fresh-data MVP work and should be run before production-hardening tasks.
 - Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until explicit launch readiness work is promoted into a narrow task and passes deterministic CI coverage.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted task should run the relevant EVALS.md checks, `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, `bash scripts/run_quality_gate.sh`, and `git diff --check`.
@@ -3759,16 +3764,16 @@ Roadmap integration tracker:
 | Governed golden evidence API/frontend rendering proof | Completed | T-128 |
 | Launch-manifest operator automation parity | Completed | T-129 |
 | Local fresh-data MVP rehearsal command | Completed | T-130 |
-| ETF eligible-universe review packet contracts | Current | T-131 |
-| Stock SEC source-pack readiness packets | Prepared | T-132 |
-| ETF issuer source-pack readiness packets | Prepared | T-133 |
+| ETF eligible-universe review packet contracts | Completed | T-131 |
+| Stock SEC source-pack readiness packets | Completed | T-132 |
+| ETF issuer source-pack readiness packets | Current | T-133 |
 | Local fresh-data MVP readiness thresholds | Prepared | T-134 |
 | Batchable local ingestion priority planner | Prepared | T-135 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
 Remaining unpromoted general MVP sequence:
 
-- Finish the local fully functional fresh-data MVP track prepared as T-131 through T-135 before production deployment hardening.
+- Finish the local fully functional fresh-data MVP track prepared as T-133 through T-135 before production deployment hardening.
 - Full production deployment after those local MVP gaps: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
 - Recurring production jobs only after manual official-source acquisition, Top-500 candidate refresh review, and local fresh-data behavior are stable.
 - Broad paid-provider or news-provider integrations only after provider licensing/source-use review, no-secret-exposure tests, mocked CI fixtures, source-rights validation, and export/display constraints are documented.
