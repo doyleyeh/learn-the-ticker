@@ -11,7 +11,7 @@
 
 ## 1. Executive summary
 
-This system is an accountless web app that lets a beginner search one U.S.-listed common stock or manifest-approved U.S.-listed passive/index-based U.S. equity ETF, then returns a source-grounded educational page with beginner explanations, cited facts, Weekly News Focus, AI Comprehensive Analysis, contextual glossary help, limited asset-specific grounded chat, connected comparison workflows, and exportable learning outputs.
+This system is an accountless web app that lets a beginner search one U.S.-listed common stock or manifest-approved ETF-500 scope U.S.-listed passive/index-based U.S. equity ETF, then returns a source-grounded educational page with beginner explanations, cited facts, Weekly News Focus, AI Comprehensive Analysis, contextual glossary help, limited asset-specific grounded chat, connected comparison workflows, and exportable learning outputs.
 
 The core technical challenge is not simply generating good prose. The system must reliably separate:
 
@@ -62,7 +62,7 @@ The system will not support brokerage trading, tax advice, options, crypto, inte
 | Structured generation | JSON-schema outputs where provider supports it | Produces predictable UI-renderable output and supports server-side validation. |
 | Retrieval | Keyword and metadata retrieval first; embeddings later | Self-managed keyword-first retrieval gives stricter control over citation binding and freshness metadata before adding model cost. |
 | Source freshness | Section-level freshness hashes | Summaries are invalidated when underlying facts, chunks, or Weekly News Focus event records change. |
-| Coverage model | Top-500-first U.S. common stock manifest plus supported ETF manifest, ETP recognition manifest, and explicit ingestion states | Improves launch reliability while keeping future expansion queue-backed, source-aware, and blocked for complex ETF/ETP products. |
+| Coverage model | Top-500-first U.S. common stock manifest plus ETF-500 supported ETF manifest, ETP recognition manifest, and explicit ingestion states | Improves launch reliability while keeping future expansion queue-backed, source-aware, and blocked for complex ETF/ETP products. |
 | User model | Accountless MVP | Defers identity, saved assets, and watchlists while preserving export/download workflows. |
 | Export model | Server-shaped Markdown and JSON summaries and source lists | Lets users save learning outputs while respecting citation, freshness, uncertainty labels, and licensing constraints. |
 
@@ -211,7 +211,7 @@ Runtime feature defaults:
 - Chunk approved source text.
 - Generate embeddings when the embedding adapter is enabled.
 - Refresh stale assets.
-- Support pre-cache jobs for the top-500-first launch universe and explicit `pending_ingestion` states for approved on-demand assets outside it.
+- Support pre-cache jobs for the top-500-first stock universe, pre-cache jobs for high-demand ETF-500 entries, and explicit `pending_ingestion` states for approved on-demand assets outside the pre-cache set.
 - Track ingestion job status.
 
 **Recommended queue model**
@@ -281,7 +281,7 @@ SEC EDGAR, SEC XBRL company facts, and SEC filing documents are the canonical ba
 | Free/reference metadata or configured provider adapter | delayed or best-effort quote, AUM, average volume, spread data, ETF reference metadata where available | P0 |
 | Sponsor press releases / approved reputable third-party/news sources | fee cuts, methodology changes, mergers, liquidations | P1 |
 
-ETF issuer materials are the canonical evidence backbone for ETFs such as `VOO`, `QQQ`, and `SOXX`: issuer page, fact sheet, prospectus, shareholder reports, holdings files, exposure files, and sponsor announcements. ETF issuer websites are especially important because ETF disclosure includes investor-facing items such as holdings, premium/discount information, and bid-ask spread disclosures. V1 should support only manifest-approved, currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs. Paid ETF data providers are optional future adapters and must be validated against issuer sources before production use.
+ETF issuer materials are the canonical evidence backbone for ETFs such as `VOO`, `QQQ`, and `SOXX`: issuer page, fact sheet, prospectus, shareholder reports, holdings files, exposure files, and sponsor announcements. ETF issuer websites are especially important because ETF disclosure includes investor-facing items such as holdings, premium/discount information, and bid-ask spread disclosures. V1 should support only manifest-approved ETF-500 scope, currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs. Paid ETF data providers are optional future adapters and must be validated against issuer sources before production use.
 
 News and RSS sources use a tiered allowlist. Official sources have the highest rank. Reuters/AP-style and similar publishers are license-gated: the source registry must record whether each source is `metadata_only`, `link_only`, `summary_allowed`, `full_text_allowed`, or `rejected` before ingestion output can be displayed, summarized, stored, or exported.
 
@@ -323,7 +323,8 @@ ETF coverage uses two manifests with different runtime authority.
 - Recognition manifest rows can produce blocked search states such as `unsupported`, `out_of_scope`, `pending_review`, `unavailable`, or `pending_ingestion`, but cannot unlock generated ETF experiences.
 - Supported ETF rows must represent currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs.
 - Supported ETF row metadata should include ticker, fund name, issuer, exchange, wrapper type, support scope, passive/index flag, leverage/inverse flags, asset class, primary geographic exposure, benchmark/index, issuer source-pack references, parser validation status, Golden Asset Source Handoff status, snapshot date, generated checksum, approval timestamp, and review notes.
-- Golden ETF entries such as `VOO`, `QQQ`, and other regression/reference tickers are pre-cache and test assets only. They are not the ETF coverage ceiling. The supported ETF manifest may include every reviewed eligible U.S.-listed, passive/index-based, primary-U.S.-equity ETF across broad index, total-market/large-cap, size/style, sector, industry/theme, dividend, value/growth, quality, momentum, low-volatility, equal-weight, and ESG index categories after source-pack validation.
+- The named v1 ETF target is ETF-500: around 500 reviewed supported ETF rows, with 475-525 accepted after review quality gates. A high candidate score cannot override scope disqualifiers or failed source-pack/parser gates.
+- Golden ETF entries such as `VOO`, `QQQ`, and other regression/reference tickers are pre-cache and test assets only. They are not the ETF coverage ceiling. The supported ETF manifest should cover reviewed eligible U.S.-listed, passive/index-based, primary-U.S.-equity ETFs across broad/core beta, market-cap and size/style, sector, industry/theme, dividend/shareholder-yield, factor/smart-beta/equal-weight, and ESG or values-screened categories after source-pack validation.
 
 Candidate discovery may use official exchange and regulatory inputs, including Nasdaq Trader symbol-directory `ETF` and `Test Issue` fields, Nasdaq-listed ETP `Type`, `Bucket Label`, and `Investment Strategy Group`, NYSE ETF/ETV/ETN/CEF distinctions, Cboe ETF/ETP listings, and SEC ETF website disclosure requirements. These inputs are candidate and recognition evidence only. Promotion to supported requires issuer source-pack validation, Golden Asset Source Handoff approval, and manual review.
 
@@ -781,7 +782,7 @@ pgvector can remain installed for future migration compatibility, but vector ind
 16. Update shared cache entries and freshness hashes.
 ```
 
-MVP should support pre-cache ingestion for the top-500-first stock launch universe, pre-cache ingestion for the supported ETF manifest, and explicit `pending_ingestion` states for approved on-demand assets outside ready source packs. Unsupported and out-of-scope assets should return a recognized-but-unsupported or recognized-but-out-of-scope state from search and must not trigger generated pages, generated chat, generated comparisons, Weekly News Focus, AI Comprehensive Analysis, or exports. Supported assets with incomplete evidence should return partial pages instead of invented content.
+MVP should support pre-cache ingestion for the top-500-first stock launch universe, pre-cache ingestion for high-demand ETF-500 supported entries, and explicit `pending_ingestion` states for approved supported assets outside ready source packs. Unsupported and out-of-scope assets should return a recognized-but-unsupported or recognized-but-out-of-scope state from search and must not trigger generated pages, generated chat, generated comparisons, Weekly News Focus, AI Comprehensive Analysis, or exports. Supported assets with incomplete evidence should return partial pages instead of invented content.
 
 ### 9.1.1 Deterministic asset classification
 
@@ -2210,7 +2211,7 @@ For each generated output, log:
 
 ### 19.3 Golden asset tests
 
-Use the launch pre-cache universe as the golden regression asset set. This set is not the full ETF coverage limit:
+Use the high-demand pre-cache universe as the golden regression asset set. This set is not the full ETF-500 coverage limit:
 
 ```text
 Broad ETFs: VOO, SPY, VTI, IVV, QQQ, IWM, DIA
@@ -2246,6 +2247,8 @@ For each golden asset, maintain expected checks:
 - Markdown and JSON exports include disclaimer, citations, freshness, and uncertainty metadata
 - AAPL and NVDA canonical facts prefer SEC EDGAR/XBRL/filing evidence over provider enrichment
 - VOO, QQQ, and SOXX canonical facts prefer issuer page, fact sheet, prospectus, shareholder report, holdings, and exposure evidence over provider enrichment
+
+Golden asset tests are regression proof, not ETF launch-coverage proof. ETF-500 validation must also inspect the full promoted `data/universes/us_equity_etfs_supported.current.json` manifest, verify every supported row passes deterministic scope/source-pack/parser/freshness gates, and prove recognition-only ETF/ETP rows cannot unlock generated experiences.
 
 ### 19.4 LLM evaluation tests
 
@@ -2478,7 +2481,7 @@ These phases describe implementation order only. Full MVP remains the v1 target 
 
 - Add Markdown/JSON export/download flows for asset pages, comparisons, source lists, and chat transcripts.
 - Add cache and freshness-hash invalidation.
-- Add pre-cache orchestration for the high-demand launch universe.
+- Add pre-cache orchestration for the high-demand stock launch universe and high-demand ETF-500 entries.
 - Add on-demand ingestion job states for eligible supported assets outside the pre-cache set.
 - Add hybrid glossary baseline with inline term triggers first; optional full glossary detail pages can follow after contextual inline glossary behavior is stable.
 - Add evaluation dashboard.
@@ -2492,8 +2495,8 @@ Saved assets, saved comparisons, watchlists, learning paths, and user accounts a
 MVP is technically ready when:
 
 - Search resolves supported stocks and ETFs through approved stock and supported ETF manifests.
-- Public v1 uses the full approved top-500 stock manifest; smaller golden or local reviewed test sets are allowed only for local validation.
-- ETF support is controlled by `data/universes/us_equity_etfs_supported.current.json`; `data/universes/us_etp_recognition.current.json` can identify unsupported ETPs for blocked search states only.
+- Public v1 uses the full approved top-500 stock manifest and the approved ETF-500 supported ETF manifest; smaller golden or local reviewed test sets are regression aids only.
+- ETF support is controlled by `data/universes/us_equity_etfs_supported.current.json`; `data/universes/us_etp_recognition.current.json` can identify unsupported ETPs for blocked search states only, and recognition rows cannot unlock generated output.
 - Home page has one primary action: search one stock or ETF.
 - Home page does not present comparison or Glossary as a primary workflow.
 - Search autocomplete supports partial ticker/name/issuer matches, status chips, exact unsupported states, and unknown/no-result states.
@@ -2531,6 +2534,7 @@ MVP is technically ready when:
 - 100% of important factual claims in golden-path generated outputs have valid citations or explicit uncertainty/unavailable labels.
 - Zero known advice-boundary violations remain in golden tests.
 - CI includes unit, integration, schema, citation validation, safety, export, and golden asset tests.
+- CI or operator smoke validates ETF-500 manifest coverage once promoted: supported rows resolve through the same runtime path, and recognition-only rows stay blocked.
 - CI covers many-citation claims, fact/summary versioning, chat privacy, rate limits, and `NVDA` vs `SOXX` stock-vs-ETF comparison.
 - Cached search, asset pages, comparison pages, source drawer, and chat meet the performance targets in this spec.
 
@@ -2539,7 +2543,7 @@ MVP is technically ready when:
 ## 25. Resolved MVP planning assumptions
 
 1. Market/reference data should use free-first official and public sources first. No paid provider keys are assumed for v1; paid market, ETF, or news providers are optional future adapters after validation and licensing review.
-2. MVP should pre-cache a top-500-first high-demand launch universe from `data/universes/us_common_stocks_top500.current.json`, mirror it through `TOP500_UNIVERSE_MANIFEST_URI`, and support explicit `pending_ingestion` states only for approved eligible supported assets outside it.
+2. MVP should pre-cache a top-500-first high-demand stock universe from `data/universes/us_common_stocks_top500.current.json` and a high-demand subset of the ETF-500 supported universe, mirror approved manifests through `TOP500_UNIVERSE_MANIFEST_URI` and the current ETF manifest mirror metadata field, `EQUITY_ETF_UNIVERSE_MANIFEST_URI`, and support explicit `pending_ingestion` states only for approved eligible supported assets outside the pre-cache set.
 3. Retrieval should remain keyword/metadata first so citation binding, source freshness, and asset filters stay under application control. Embeddings and pgvector retrieval are optional behind adapters until stable.
 4. Citation strictness is per important factual claim, not per sentence.
 5. Weekly News Focus should prefer official filings, company investor-relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes before approved reputable third-party/news sources. Reputable third-party/news items must be labeled as non-official reporting, and full article text requires source-use rights review.

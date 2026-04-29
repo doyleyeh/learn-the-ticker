@@ -30,9 +30,9 @@ This directory is organized around one source-of-truth chain and a small set of 
 
 ## Current Alignment Note
 
-The v0.6 PRD/TDS define a split ETF universe model:
+The v0.6 PRD/TDS define ETF-500 as the v1 supported ETF target and preserve the split ETF universe model:
 
 - `data/universes/us_equity_etfs_supported.current.json`
 - `data/universes/us_etp_recognition.current.json`
 
-The runtime now reads the split manifests. The older combined deterministic ETF manifest at `data/universes/us_equity_etfs.current.json` remains only for repository continuity and historical tests. Current MVP gaps are launch-sized reviewed manifests, repo-native source-handoff tooling, governed golden evidence driving API/frontend output, opt-in live-AI local validation, and production readiness.
+The runtime now reads the split manifests. The older combined deterministic ETF manifest at `data/universes/us_equity_etfs.current.json` remains only for repository continuity and historical tests. Golden/pre-cache ETFs are regression assets, not the ETF coverage ceiling. Current MVP gaps are launch-sized reviewed manifests, ETF-500 source-pack approval, governed evidence beyond golden assets, opt-in live-AI local validation, and production readiness.

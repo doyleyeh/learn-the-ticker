@@ -203,7 +203,7 @@ Important facts must come from official or structured sources before the model w
 
 For stocks such as `AAPL` and `NVDA`, that means SEC EDGAR, SEC XBRL company facts, and SEC filing documents form the canonical backbone. Company investor relations pages, earnings releases, and presentations can be official secondary sources for recent context and management explanations.
 
-For ETFs such as `VOO`, `QQQ`, and `SOXX`, that means two gates must pass before the product can generate output: the ETF must be in the approved supported ETF manifest, and issuer materials must form the canonical evidence backbone. Issuer evidence includes the official issuer page, fact sheet, prospectus, shareholder reports, holdings files, exposure files, and sponsor announcements.
+For every supported ETF, including examples such as `VOO`, `QQQ`, and `SOXX`, two gates must pass before the product can generate output: the ETF must be in the approved ETF-500 supported ETF manifest, and issuer materials must form the canonical evidence backbone. Issuer evidence includes the official issuer page, fact sheet, prospectus, shareholder reports, holdings files, exposure files, and sponsor announcements.
 
 Market/reference APIs and other provider payloads are retrieval and enrichment tools, not automatic evidence. Before any source can support product output, Golden Asset Source Handoff must approve its domain, source type, official-source status, storage rights, export rights, source-use policy, rationale, parser validity, and review status.
 
@@ -309,14 +309,14 @@ This user needs:
 
 The first version should stay narrow and credible while still targeting the full MVP experience. Implementation may happen in phases, but v1 is not considered ready until the MVP acceptance checklist in the PRD and technical design spec passes.
 
-Local validation may use a smaller reviewed test set and the golden assets, but public v1 still requires the full approved top-500 stock manifest, approved supported ETF manifest, fresh-data validation, and deployment smoke. Private testing before public launch is a local operator exercise with limited users in the developer's local environment; it should not add product accounts, login flows, or a private-auth product surface.
+Local validation may keep golden assets for source-backed regression and smoke proof, but ETF coverage validation must exercise the promoted supported ETF manifest once the ETF-500 universe is approved. Public v1 still requires the full approved top-500 stock manifest, the approved ETF-500 supported ETF manifest, fresh-data validation, and deployment smoke. Private testing before public launch is a local operator exercise with limited users in the developer's local environment; it should not add product accounts, login flows, or a private-auth product surface.
 
 ### 8.1 In scope
 
 The v1 product should support:
 
 - the top 500 U.S.-listed common stocks first;
-- currently U.S.-listed, non-leveraged, non-inverse, passive/index-based equity ETFs with primary U.S. equity exposure and validated issuer source packs;
+- around 500 reviewed, currently U.S.-listed, non-leveraged, non-inverse, passive/index-based equity ETFs with primary U.S. equity exposure and validated issuer source packs;
 - home-page single-asset ticker/name search;
 - search and entity resolution;
 - stock asset pages;
@@ -345,11 +345,13 @@ The PRD owns the coverage requirement. The technical design spec owns manifest f
 
 The exact supported ETF universe should come from a reviewed, versioned supported ETF manifest. A separate ETF/ETP recognition universe may help search identify real but unsupported exchange-traded products, but recognition is not support.
 
+The named v1 coverage target is **ETF-500**: around 500 reviewed, currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs. The practical acceptance range is 475-525 approved supported ETF rows after review quality gates. The product must not pad the manifest with leveraged, inverse, active, fixed income, commodity, crypto, single-stock, option-income/buffer, ETN, ETV, CEF, international equity, or unclear products just to reach a count.
+
 The proposal-level product rule is that v1 generated ETF experiences are unlocked only for reviewed, currently U.S.-listed, non-leveraged, non-inverse, passive/index-based U.S. equity ETFs with validated issuer source packs. Live provider ETF flags, exchange listings, issuer search results, and recognition-only rows may help candidate discovery or blocked search states, but they must not unlock ETF pages, chat, comparison output, Weekly News Focus, AI Comprehensive Analysis, or exports.
 
-The v1 supported ETF manifest is an eligible-universe workflow rather than a fixed launch list. It may include reviewed, currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure across broad index, total-market and large-cap, size/style, sector, industry/theme, dividend, value/growth, quality, momentum, low-volatility, equal-weight, and ESG index categories after issuer source packs validate.
+The v1 supported ETF manifest is an eligible-universe workflow rather than a fixed launch list. ETF-500 should intentionally cover broad/core U.S. equity beta, market-cap and size/style exposures, sector ETFs, industry/theme passive U.S. equity ETFs, dividend and shareholder-yield index ETFs, factor/smart-beta/equal-weight ETFs, and ESG or values-screened U.S. equity index ETFs after issuer source packs validate.
 
-Golden and pre-cache ETFs such as `VOO`, `QQQ`, and `SOXX` are local proof and regression assets. They are not the ETF coverage ceiling.
+Golden and pre-cache ETFs such as `VOO`, `QQQ`, and `SOXX` are local proof and regression assets. They are not the ETF coverage ceiling, and local ETF-500 readiness must prove the full promoted supported manifest resolves through the same runtime path rather than only golden examples.
 
 The PRD owns the supported ETF product scope. The technical design spec owns ETF support and recognition manifest fields, validators, and runtime authority. `docs/ETF_MANIFEST_HANDOFF.md` owns candidate packet, source-pack, parser-validation, and manual-promotion workflow details.
 
@@ -947,7 +949,7 @@ For stocks, the source priority should be:
 
 For ETFs, the source priority should be:
 
-1. approved supported ETF manifest entry;
+1. approved ETF-500 supported ETF manifest entry;
 2. ETF issuer official page;
 3. ETF fact sheet;
 4. summary prospectus and full prospectus;
@@ -1404,7 +1406,7 @@ Phase 4 should include:
 
 - export/download flows for Markdown and JSON;
 - cache and freshness-hash invalidation;
-- pre-cache orchestration for the launch universe;
+- pre-cache orchestration for the top-500 stock universe and ETF-500 supported universe;
 - learning paths;
 - beginner lessons tied to asset pages;
 - broader research workflows.

@@ -565,16 +565,22 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
     tasks = read_file("TASKS.md")
     current_task, backlog, completed, roadmap = task_sections()
     active_sections = f"{current_task}\n{backlog}"
+    current_lower = current_task.lower()
+    backlog_lower = backlog.lower()
 
     assert "## MVP Backend Roadmap" not in tasks
-    assert "### T-135: Add batchable local ingestion priority planner" in current_task
-    for marker in [
-        "Acceptance criteria",
-        "Required commands",
-        "Iteration budget",
-        "No backlog task is currently prepared after promoting T-135.",
-    ]:
-        assert marker in active_sections
+    if "no current task is prepared" in current_lower:
+        assert "no backlog tasks are currently prepared" in backlog_lower
+        assert "### T-" not in active_sections
+        assert "No current local fully functional fresh-data MVP task is prepared" in roadmap
+    else:
+        for marker in [
+            "### T-",
+            "Acceptance criteria",
+            "Required commands",
+            "Iteration budget",
+        ]:
+            assert marker in current_task
 
     for marker in [
         "### T-118: Prove local fresh-data ingest-to-render smoke path",
@@ -586,8 +592,11 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
         "### T-128: Prove governed golden evidence drives API and frontend rendering",
         "### T-129: Add launch-manifest operator automation parity",
         "### T-130: Add local fresh-data MVP rehearsal command",
+        "### T-131: Add ETF eligible-universe review packet contracts",
+        "### T-132: Add stock SEC source-pack readiness packet contracts",
         "### T-133: Add ETF issuer source-pack readiness packet contracts",
         "### T-134: Add local fresh-data MVP readiness thresholds",
+        "### T-135: Add batchable local ingestion priority planner",
         "The runbook explicitly states that fetching alone is retrieval, not evidence approval",
         "deterministic integration smoke coverage for the VOO golden path",
         "mocked official-source acquisition",
@@ -608,7 +617,8 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
         "T-128 completed deterministic governed golden API/frontend rendering proof",
         "T-129 completed launch-manifest operator automation parity",
         "T-130 completed the deterministic local fresh-data MVP rehearsal command",
-        "T-131 through T-134 completed the ETF eligible-universe, stock SEC source-pack readiness, ETF issuer source-pack readiness, and local MVP readiness-threshold packets",
+        "T-131 through T-135 completed the ETF eligible-universe, stock SEC source-pack readiness, ETF issuer source-pack readiness, local MVP readiness-threshold packets, and batchable local ingestion priority planner",
+        "T-134 and T-135 are completed. No active local fresh-data MVP task is currently prepared before production-hardening tasks.",
         "T-099 established deterministic provider content export-rights hardening",
         "T-100 established the backend MVP runtime gap audit and roadmap tracker",
         "T-101 established configured persisted-reader route wiring with fixture fallback",
@@ -671,7 +681,7 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
         "| Stock SEC source-pack readiness packets | Completed | T-132 |",
         "| ETF issuer source-pack readiness packets | Completed | T-133 |",
         "| Local fresh-data MVP readiness thresholds | Completed | T-134 |",
-        "| Batchable local ingestion priority planner | Current | T-135 |",
+        "| Batchable local ingestion priority planner | Completed | T-135 |",
         "| Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |",
     ]
     for row in completed_rows:
@@ -684,9 +694,8 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
         "| Local fresh-data MVP readiness thresholds | Prepared | T-134 |",
         "| Local fresh-data MVP readiness thresholds | Current | T-134 |",
         "| Batchable local ingestion priority planner | Prepared | T-135 |",
+        "| Batchable local ingestion priority planner | Current | T-135 |",
         "The current promoted task is T-129",
-        "No current task is prepared",
-        "No backlog tasks are currently prepared",
     ]:
         assert stale_status not in roadmap
 

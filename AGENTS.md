@@ -4,7 +4,7 @@
 
 This project is a citation-first beginner U.S. stock and ETF learning assistant.
 
-The product helps beginners understand U.S.-listed common stocks and manifest-approved U.S.-listed passive/index-based U.S. equity ETFs using:
+The product helps beginners understand U.S.-listed common stocks and manifest-approved ETF-500 scope U.S.-listed passive/index-based U.S. equity ETFs using:
 
 - official or structured sources first
 - plain-English explanations
@@ -123,12 +123,12 @@ V1 is accountless and English-first.
 Supported MVP coverage is:
 
 - top-500-first U.S.-listed common stocks from `data/universes/us_common_stocks_top500.current.json`
-- manifest-approved, currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs
-- ETF coverage may include broad U.S. index, total-market/large-cap, size/style, sector, industry/theme, dividend, value/growth, quality, momentum, low-volatility, equal-weight, and ESG index ETFs when all source-pack gates validate
-- pre-cached high-demand assets for reliable launch behavior
+- manifest-approved ETF-500 scope: around 500 reviewed, currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs
+- ETF coverage may include broad/core U.S. equity beta, market-cap and size/style, sector, industry/theme passive U.S. equity, dividend/shareholder-yield, factor/smart-beta/equal-weight, and ESG or values-screened U.S. equity index ETFs when all source-pack gates validate
+- pre-cached high-demand assets for reliable launch behavior, without treating golden/pre-cache ETFs as the coverage ceiling
 - explicit `pending_ingestion` only for eligible supported assets that are approved for on-demand ingestion
 
-The top-500 manifest is the runtime source of truth for stock coverage. The supported ETF manifest is the runtime source of truth for ETF generated-output coverage. Runtime support classification must never be resolved directly from a live ETF holdings file, provider holdings file, market-data response, exchange listing, issuer search result, recognition-only ETP row, or rank query.
+The top-500 manifest is the runtime source of truth for stock coverage. The supported ETF manifest is the runtime source of truth for ETF-500 generated-output coverage. Runtime support classification must never be resolved directly from a live ETF holdings file, provider holdings file, market-data response, exchange listing, issuer search result, recognition-only ETP row, or rank query.
 
 ETF support work must preserve the v0.5 split:
 

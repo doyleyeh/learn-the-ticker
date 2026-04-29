@@ -6,7 +6,7 @@ This runbook describes the local golden-asset smoke path before production deplo
 
 Fetching alone is retrieval, not evidence approval. A retrieved source can support snapshots, normalized facts, citations, generated-output cache records, exports, or rendered UI only after Golden Asset Source Handoff approves source identity, source type, official-source status, storage rights, export rights, source-use policy, parser status, freshness/as-of metadata, and review status.
 
-ETF support note: T-120 implemented the split between supported ETF generated-output coverage and ETF/ETP recognition-only blocked states. Local smoke should verify supported ETF output comes from `data/universes/us_equity_etfs_supported.current.json` and recognition-only rows from `data/universes/us_etp_recognition.current.json` never unlock generated output.
+ETF support note: T-120 implemented the split between supported ETF generated-output coverage and ETF/ETP recognition-only blocked states. ETF-500 is the v1 supported ETF target, while golden/pre-cache ETFs remain regression assets. Local smoke should verify supported ETF output comes from `data/universes/us_equity_etfs_supported.current.json` and recognition-only rows from `data/universes/us_etp_recognition.current.json` never unlock generated output.
 
 ## Local Modes
 
@@ -57,7 +57,7 @@ Stop when any required deterministic check is `blocked`, or when an opted-in opt
 
 The deterministic rehearsal can pass today, but that is not the same as a fully functional local fresh-data MVP. The next agent-loop work should follow this order:
 
-1. Expand ETF review packets toward the full manifest-defined eligible universe while keeping golden/pre-cache ETFs as regression assets only.
+1. Expand ETF review packets toward ETF-500 while keeping golden/pre-cache ETFs as regression assets only.
 2. Add stock SEC source-pack readiness for submissions, latest 10-K, latest 10-Q where available, and XBRL company facts.
 3. Add ETF issuer source-pack readiness for issuer page, fact sheet, prospectus or summary prospectus, holdings, exposures, methodology/shareholder/risk sources, and sponsor announcements where relevant.
 4. Add explicit local MVP thresholds for failed/unavailable assets and deterministic source-backed partial sections when live generation fails validation.

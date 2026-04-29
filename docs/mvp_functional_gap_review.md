@@ -44,10 +44,10 @@ The agent-loop control docs now need runnable tasks that move from review-only/g
 The project is not yet a fully functional fresh-data MVP. Remaining blockers:
 
 1. Launch-sized manifests are not approved.
-   The current Top-500 stock manifest and supported ETF manifest are deterministic fixtures. T-129 adds review-only packet automation, but the local fully functional MVP still needs reviewed Top-500 and ETF source-pack readiness, broader eligible ETF review outputs, private mirror readiness, and manual approval gates before treating full coverage as fresh-data ready.
+   The current Top-500 stock manifest and supported ETF manifest are deterministic fixtures. T-129 adds review-only packet automation, but the local fully functional MVP still needs reviewed Top-500 and ETF-500 source-pack readiness, full supported ETF manifest smoke, private mirror readiness, and manual approval gates before treating full coverage as fresh-data ready.
 
 2. ETF eligible-universe implementation is not complete.
-   The product decision now requires manifest-defined coverage across broad U.S. index, total-market/large-cap, size/style, sector, industry/theme, dividend, value/growth, quality, momentum, low-volatility, equal-weight, and ESG index ETFs when source packs validate. The current supported manifest and review packet are still fixture-sized/local metadata; golden/pre-cache tickers are regression assets only, not the coverage ceiling.
+   The product decision now names ETF-500 as the v1 supported ETF target: around 500 reviewed, currently U.S.-listed, non-leveraged, non-inverse, passive/index-based U.S. equity ETFs, with 475-525 accepted after review quality gates. Coverage should span broad/core beta, market-cap and size/style, sector, industry/theme, dividend/shareholder-yield, factor/smart-beta/equal-weight, and ESG or values-screened ETFs when source packs validate. The current supported manifest and review packet are still fixture-sized/local metadata; golden/pre-cache tickers are regression assets only, not the coverage ceiling.
 
 3. Launch-sized governed source artifacts are absent.
    T-126 added source-handoff manifest tooling and T-128 proved governed golden evidence rendering. The next local MVP gap is expanding readiness packets for SEC stock source packs and ETF issuer source packs without approving unreviewed sources or enabling generated output for failed assets.
@@ -86,7 +86,7 @@ Runnable near-term backlog:
 Sequencing rationale:
 
 - Align docs first so the agent loop does not follow commands from a different repository layout.
-- Start with ETF eligible-universe review because the latest product decision makes golden ETFs a regression subset, not the coverage ceiling.
+- Start with ETF eligible-universe review because the latest product decision makes ETF-500 the supported ETF target and golden ETFs a regression subset, not the coverage ceiling.
 - Add stock and ETF source-pack readiness before changing generated-output unlock behavior.
 - Add local MVP thresholds before broadening ingestion so failed/unavailable assets cannot leak generated claims.
 - Add batch planning after the readiness packets exist, keeping all work deterministic and review-only until source approvals and manifest promotion are explicit.

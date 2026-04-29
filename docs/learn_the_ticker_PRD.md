@@ -11,7 +11,7 @@
 
 ## 1. Executive summary
 
-Learn the Ticker is a web-based educational research assistant that helps beginner investors understand U.S.-listed common stocks and a manifest-approved set of currently U.S.-listed, non-leveraged, non-inverse, passive/index-based U.S. equity ETFs in plain English.
+Learn the Ticker is a web-based educational research assistant that helps beginner investors understand U.S.-listed common stocks and a manifest-approved ETF-500 target of currently U.S.-listed, non-leveraged, non-inverse, passive/index-based U.S. equity ETFs in plain English.
 
 A user can search one ticker or asset name such as `VOO`, `QQQ`, `Apple`, or `AAPL` and receive a source-grounded explanation of:
 
@@ -55,7 +55,7 @@ This version resolves the previous open questions and makes the MVP direction ex
 
 | Area                     | Decision                                                                                                                                                                                                                                                                                                                                                                                                      |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Coverage universe        | Support a top-500-first U.S.-listed common stock universe plus a manifest-approved supported ETF universe. Supported ETF coverage is limited to currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs. Pre-cache the existing curated high-demand universe for speed, testing, and reliability. Treat stocks outside the top 500 and ETFs outside the supported ETF manifest as future expansion unless explicitly approved. |
+| Coverage universe        | Support a top-500-first U.S.-listed common stock universe plus an ETF-500 reviewed supported ETF universe. ETF-500 targets around 500 approved supported ETF rows, with a practical reviewed range of 475-525, limited to currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs. Pre-cache the existing curated high-demand universe for speed and regression reliability, but do not treat golden ETFs as the coverage ceiling. Treat stocks outside the top 500 and ETFs outside the supported ETF manifest as future expansion unless explicitly approved. |
 | Unsupported assets       | Block unsupported and out-of-scope assets from generated pages, chat, and comparisons. Search may show a recognized-but-unsupported or recognized-but-out-of-scope result with a clear explanation.                                                                                                                                                |
 | Market/reference data    | Use a free-first approach: SEC EDGAR/XBRL, official issuer materials, free/reference metadata where available, provider adapters, deterministic mocks, and fixtures for tests. No paid provider keys are assumed for v1; paid market/reference providers may be added later behind adapters after licensing and export-rights review.                 |
 | Golden Asset Source Handoff | Treat source handoff as the approval layer and API fetching as only the retrieval layer. A fetched API payload, endpoint, issuer page, or filing URL is not approved evidence until domain, source type, official-source status, storage rights, export rights, source-use policy, rationale, parser validity, freshness/as-of metadata, and review status are approved. |
@@ -71,7 +71,7 @@ This version resolves the previous open questions and makes the MVP direction ex
 | LLM runtime provider     | Keep deterministic mocks as the default for CI and ordinary local tests. Local fresh-data review should exercise live OpenRouter for generated features, especially grounded chat and AI Comprehensive Analysis when evidence thresholds are met. First deployment may enable live OpenRouter behind `LLM_LIVE_GENERATION_ENABLED=true` with an explicit free-model chain and DeepSeek V3.2 paid fallback only when paid fallback is enabled and the operator has configured OpenRouter platform/API-key limits; the repo does not enforce a separate spend cap. The browser must never call OpenRouter directly or receive the key. |
 | Local provider secrets  | For local live-provider runs, `OPENROUTER_API_KEY`, `FMP_API_KEY`, `ALPHA_VANTAGE_API_KEY`, `FINNHUB_API_KEY`, `TIINGO_API_KEY`, and `EODHD_API_KEY` are expected to exist in the developer's WSL Bash environment. Key values must not be committed, copied into docs, exposed in frontend env vars, returned from APIs, or printed in logs. |
 | MVP readiness            | Full MVP remains the v1 target. Implementation may be phased internally, but v1 is not ready until compare, limited grounded chat beta, exports, freshness, citations, glossary, and on-demand ingestion states pass the MVP acceptance checklist and strict quality gates.                                                                         |
-| Public launch path       | Keep the current MVP/v1 structure. Before public deployment, validate locally with fresh data, live AI for generated features, and limited local users. Public v1 still requires the approved top-500 stock manifest, approved supported ETF manifest, source-backed golden assets, and launch/deploy smoke. |
+| Public launch path       | Keep the current MVP/v1 structure. Before public deployment, validate locally with fresh data, live AI for generated features, and limited local users. Public v1 still requires the approved top-500 stock manifest, approved ETF-500 supported ETF manifest, source-backed golden assets, full-manifest ETF support smoke, and launch/deploy smoke. |
 
 ---
 
@@ -118,7 +118,7 @@ The authoritative source for the top-500 stock universe is a versioned manifest,
 - Refresh cadence is monthly by default. Ad hoc refreshes require a development-log entry explaining source, checksum, and reason.
 - The manifest is operational coverage metadata, not an endorsement, recommendation, or model portfolio.
 - Stocks outside the manifest return `out_of_scope` unless explicitly added to the approved on-demand ingestion queue.
-- Local validation may use golden assets and smaller reviewed test manifests, but public v1 requires the full approved top-500 manifest and private production mirror.
+- Local stock validation may use golden assets and smaller reviewed test manifests for regression, but public v1 requires the full approved top-500 manifest and private production mirror.
 
 Monthly refresh workflow:
 
@@ -144,7 +144,9 @@ The authoritative source for v1 supported ETF coverage is a versioned manifest, 
 - Search may display recognized ETFs or ETPs outside the supported manifest as `unsupported`, `out_of_scope`, `pending_review`, `unavailable`, or `pending_ingestion`, but those states must block generated output.
 - The supported ETF manifest is operational coverage metadata, not an endorsement, recommendation, model portfolio, or statement of suitability.
 
-The supported ETF manifest should cover the reviewed eligible universe, not only a fixed launch list. Eligible scope includes broad U.S. index, total-market/large-cap, size/style, sector, industry/theme, dividend, value/growth, quality, momentum, low-volatility, equal-weight, and ESG index ETFs when they are U.S.-listed, non-leveraged, non-inverse, passive/index-based, primary U.S. equity funds with validated issuer source packs. Golden ETF tickers are pre-cache and regression assets only, not the full coverage limit.
+ETF-500 is the named v1 supported ETF target: around 500 reviewed rows, with 475-525 accepted after review quality gates. The manifest must never be padded with leveraged, inverse, active, fixed income, commodity, crypto, single-stock, option-income/buffer, ETN, ETV, CEF, international equity, or unclear products just to reach a count.
+
+The supported ETF manifest should cover the reviewed eligible universe, not only a fixed launch list. Target coverage should be category-complete across broad/core U.S. equity beta, market-cap and size/style, sector ETFs, industry/theme passive U.S. equity ETFs, dividend and shareholder-yield index ETFs, factor/smart-beta/equal-weight ETFs, and ESG or values-screened U.S. equity index ETFs when they are U.S.-listed, non-leveraged, non-inverse, passive/index-based, primary U.S. equity funds with validated issuer source packs. Golden ETF tickers are pre-cache and regression assets only, not the full coverage limit.
 
 ETF support expansion requires a reviewed candidate packet with exchange or regulatory recognition evidence, issuer source-pack references, source dates, checksums, wrapper classification, leverage/inverse flags, asset-class and geographic-exposure checks, passive/index validation, parser results, Golden Asset Source Handoff approval, exclusions, warnings, and manual approval notes.
 
@@ -320,7 +322,7 @@ Primary needs:
 #### Asset coverage
 
 - Top 500 U.S.-listed common stocks first, based on a deterministic launch universe maintained by ingestion configuration
-- Manifest-approved, currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs
+- Manifest-approved ETF-500 scope: currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs
 - Pre-cached high-demand stocks and ETFs for launch performance
 - Limited on-demand ingestion only for assets that pass deterministic classification and are explicitly added to the supported queue
 
@@ -551,7 +553,7 @@ Deterministic classification rules:
 - If `asset_class != equity`, mark the asset `unsupported`.
 - If `strategy == active`, mark the asset `unsupported`.
 - If an ETF is not present in `data/universes/us_equity_etfs_supported.current.json`, mark it `unsupported`, `out_of_scope`, `pending_review`, `unavailable`, or `pending_ingestion` based on deterministic recognition and review state.
-- If an asset is not a U.S.-listed common stock in the top-500 launch universe or a manifest-approved U.S.-listed passive/index-based U.S. equity ETF, mark it `unsupported` or `out_of_scope` for MVP.
+- If an asset is not a U.S.-listed common stock in the top-500 launch universe or a manifest-approved ETF-500 scope U.S.-listed passive/index-based U.S. equity ETF, mark it `unsupported` or `out_of_scope` for MVP.
 - If a supported asset passes classification but has not been ingested yet, return `pending_ingestion` and create or reuse a queued ingestion job.
 - other complex or unsupported exchange-traded products
 
@@ -560,7 +562,7 @@ Required blocked-state copy:
 ```text
 We found this ticker, but it is not supported in v1.
 
-Learn the Ticker currently supports a top-500-first U.S. common-stock universe and ETFs listed in the approved supported ETF manifest.
+Learn the Ticker currently supports a top-500-first U.S. common-stock universe and ETFs listed in the approved ETF-500 supported ETF manifest.
 ```
 
 For out-of-scope stocks:
@@ -568,7 +570,7 @@ For out-of-scope stocks:
 ```text
 This stock is outside the current v1 coverage universe.
 
-Learn the Ticker currently supports a top-500-first U.S. common stock universe and ETFs in the approved supported ETF manifest.
+Learn the Ticker currently supports a top-500-first U.S. common stock universe and ETFs in the approved ETF-500 supported ETF manifest.
 ```
 
 For pending ingestion:
@@ -847,7 +849,7 @@ Acceptance criteria:
 - Asking `Why is QQQ different from VOO?` inside single-asset chat returns a compare redirect instead of a multi-asset answer.
 - Chat responses do not invent facts when sources are missing.
 - Compare redirects show copy such as "This is a comparison question. Open the comparison page so both assets can be grounded in their own source packs" plus a CTA to `/compare?left=...&right=...`.
-- Local fresh-data testing should exercise live AI chat for supported golden assets so the operator can review answer quality before public deployment.
+- Local fresh-data testing should exercise live AI chat for supported golden assets so the operator can review answer quality before public deployment, and ETF-500 readiness should separately prove full-manifest supported/blocked ETF behavior once the ETF-500 manifest is promoted.
 
 #### Accountless chat privacy
 
@@ -1893,11 +1895,11 @@ Weekly News Focus checked: Apr 22, 2026
 
 ### 19.1 MVP / v1
 
-Objective: Ship a credible, source-grounded, accountless beginner explainer for the top 500 U.S.-listed common stocks first and the manifest-approved supported U.S. equity ETF universe.
+Objective: Ship a credible, source-grounded, accountless beginner explainer for the top 500 U.S.-listed common stocks first and the ETF-500 manifest-approved supported U.S. equity ETF universe.
 
 The phases below describe MVP scope and delivery milestones. They do not relax the acceptance checklist or safety, citation, source-use, freshness, and no-advice requirements.
 
-Before public deployment, the operator should validate the full product locally with fresh data, the approved golden assets, live AI enabled for generated features, and a small number of limited local users. This is a local/private-test practice, not an in-product account system or release stage. Public v1 remains fully accountless and requires the full approved top-500 stock manifest plus approved supported ETF manifest.
+Before public deployment, the operator should validate the full product locally with fresh data, the approved golden assets, live AI enabled for generated features, full ETF-500 manifest support/blocked-state checks, and a small number of limited local users. This is a local/private-test practice, not an in-product account system or release stage. Public v1 remains fully accountless and requires the full approved top-500 stock manifest plus approved ETF-500 supported ETF manifest.
 
 Included:
 
@@ -1981,8 +1983,8 @@ Potential additions:
 The MVP is ready when:
 
 - User can search a supported top-500 U.S.-listed common stock or a manifest-approved supported U.S. equity ETF.
-- Public v1 uses a full approved top-500 stock manifest; smaller golden or local reviewed test sets are acceptable only for local validation.
-- ETF support is controlled by `data/universes/us_equity_etfs_supported.current.json`; `data/universes/us_etp_recognition.current.json` can identify unsupported ETPs for blocked search states only.
+- Public v1 uses a full approved top-500 stock manifest and an approved ETF-500 supported ETF manifest; smaller golden or local reviewed test sets are regression aids only.
+- ETF support is controlled by `data/universes/us_equity_etfs_supported.current.json`; `data/universes/us_etp_recognition.current.json` can identify unsupported ETPs for blocked search states only, and recognition rows cannot unlock generated output.
 - Home page has one primary action: search one stock or ETF.
 - Home page does not present comparison or Glossary as a primary workflow.
 - Search autocomplete supports partial ticker/name/issuer matches and support-state chips.
@@ -2026,6 +2028,7 @@ Strict MVP quality gates:
 - Cached search, asset pages, comparison pages, source drawer, and chat meet the performance targets in the technical design spec.
 - CI includes unit, integration, schema, citation validation, safety, export, and golden asset tests.
 - Golden tests verify that `AAPL` and `NVDA` canonical facts prefer SEC EDGAR/XBRL/filing documents, while supported golden ETF canonical facts prefer the supported ETF manifest plus issuer materials.
+- ETF-500 tests verify that every promoted supported ETF row resolves through the runtime supported-manifest path, while recognition-only and out-of-scope ETP rows stay blocked from generated pages, chat, comparisons, Weekly News Focus, AI Comprehensive Analysis, and exports.
 - Golden tests verify that duplicate, promotional, irrelevant, unapproved, and rights-disallowed news is excluded from Weekly News Focus.
 - Golden tests verify that reputable third-party/news items can appear when approved, clearly labeled, summarized safely, and not exported as full article text unless `full_text_allowed`. Permitted excerpts remain bounded, with a maximum of 90 words for third-party/news sources.
 - Golden tests verify Monday-Sunday plus current week-to-date through yesterday windowing.
@@ -2236,7 +2239,7 @@ Provider role summary:
 
 ## 23. Appendix B: Suggested first pre-cached universe
 
-The product supports the top 500 U.S.-listed common stocks first and the manifest-approved supported ETF universe. Launch reliability improves if a smaller high-demand universe is pre-cached.
+The product supports the top 500 U.S.-listed common stocks first and the ETF-500 manifest-approved supported ETF universe. Launch reliability improves if a smaller high-demand universe is pre-cached, but pre-cache is not the ETF coverage limit.
 
 Suggested MVP pre-cache set:
 
@@ -2245,7 +2248,7 @@ Suggested MVP pre-cache set:
 - Large stocks: `AAPL`, `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `META`, `TSLA`, `BRK.B`, `JPM`, `UNH`
 - Common comparison pairs: `VOO/SPY`, `VTI/VOO`, `QQQ/VOO`, `QQQ/VGT`, `VGT/SOXX`, `AAPL/MSFT`, `NVDA/SOXX`
 
-This list is not a recommendation list. It is an operational pre-cache list for product testing and latency control.
+This list is not a recommendation list. It is an operational pre-cache list for product testing and latency control. ETF-500 local readiness must also validate the full promoted supported ETF manifest, not only these examples.
 
 ---
 

@@ -17,7 +17,7 @@ The supported ETF manifest unlocks generated ETF asset pages, chat answers, comp
 
 V1 supported ETFs must be:
 
-- U.S.-listed and active;
+- currently U.S.-listed and active as exchange-traded listings;
 - non-leveraged and non-inverse;
 - passive/index-based;
 - primary U.S. equity exposure;
@@ -31,9 +31,42 @@ Golden/pre-cache tickers such as `VOO`, `QQQ`, and the broader regression refere
 
 The manifest is operational coverage metadata only. It is not an endorsement, recommendation, model portfolio, allocation, or statement of suitability.
 
+## ETF-500 Coverage Target
+
+The named public-v1 ETF target is ETF-500: around 500 reviewed, currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs. The practical acceptance range is 475-525 approved supported ETF rows after review quality gates. If only 470 ETFs pass all gates in a cycle, promote 470 and leave the rest as recognition-only, pending-review, unsupported, unavailable, or out-of-scope rows rather than padding the supported manifest.
+
+ETF-500 should be category-complete enough for beginner comparison workflows:
+
+| ETF bucket | Target count | Selection intent |
+| --- | ---: | --- |
+| Broad/core U.S. equity beta | 45 | S&P 500, total market, Russell-style, Nasdaq-100, Dow, and broad equal-weight exposure |
+| Market-cap and size/style | 95 | Large/mid/small, growth/value/blend, Russell/S&P/CRSP-style exposures |
+| Sector ETFs | 120 | Multiple issuer families across the main U.S. equity sectors |
+| Industry/theme passive U.S. equity | 105 | Semiconductors, biotech, banks, homebuilders, software, cybersecurity, transportation, and similar passive U.S.-equity-primary themes |
+| Dividend and shareholder-yield index ETFs | 55 | Dividend growth, high dividend, quality dividend, aristocrats-style, and shareholder-yield index funds |
+| Factor, smart beta, and equal-weight | 60 | Quality, momentum, value, low/minimum volatility, multifactor, equal-weight, and fundamental index exposure |
+| ESG / values-screened U.S. equity index | 20 | Broad U.S. equity ESG or values-screened passive funds with clear methodology |
+
+ETF-500 candidate artifacts should use the following named paths:
+
+```text
+data/universes/us_equity_etfs_supported.candidate.YYYY-MM.etf500.json
+data/universes/us_etp_recognition.candidate.YYYY-MM.json
+data/universes/us_equity_etfs.candidate.YYYY-MM.etf500.promotion-packet.json
+```
+
+Promote in batches so review defects surface early:
+
+| Batch | Target supported count | Purpose |
+| --- | ---: | --- |
+| ETF-50 | 50 | Core parser validation across major issuers and categories |
+| ETF-150 | 150 | Local support beyond golden ETFs |
+| ETF-300 | 300 | Category-complete local coverage |
+| ETF-500 | 475-525 | Full reviewed ETF-500 target |
+
 ## Current Runtime Implementation
 
-The local runtime now includes fixture-backed split ETF manifest loaders and classification enforcement:
+The local runtime now includes fixture-backed split ETF manifest loaders and classification enforcement. The current committed supported ETF manifest is a golden fixture, not ETF-500 launch coverage:
 
 - `backend/etf_universe.py` loads `data/universes/us_equity_etfs_supported.current.json` for generated-output support.
 - `backend/etf_universe.py` loads `data/universes/us_etp_recognition.current.json` for blocked or pending recognition states.
@@ -141,6 +174,7 @@ Future tasks should add:
 
 - launch-sized operator manifests once official issuer source packs and Golden Asset Source Handoff evidence are available;
 - private mirror validation for launch-sized manifests;
+- full-manifest local tests proving supported rows resolve through the supported ETF loader and recognition-only rows stay generated-output-ineligible;
 - tests that preserve official-vs-third-party Weekly News labels and rights-gated full-text behavior.
 
 ## References

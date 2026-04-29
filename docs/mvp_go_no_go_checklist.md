@@ -27,7 +27,7 @@ This checklist records production-readiness gates. It does not approve deploymen
 | Production admin auth | Add and verify admin ingestion/pre-cache protection before exposing admin routes outside a controlled environment. |
 | Rate limiting | Enforce configured search, chat, and ingestion limits before expensive provider, retrieval, ingestion, or LLM work begins. |
 | Deployment environment validation | Validate Cloud Run, Vercel, Neon, storage, production CORS origins, and server-only secret configuration without exposing secret values. T-119 covers local CORS/proxy plumbing only. |
-| ETF launch manifest coverage | Keep supported ETF and ETF/ETP recognition manifests separate. Before a fully functional local fresh-data MVP, expand review packets toward the manifest-defined eligible ETF universe and keep golden/pre-cache ETFs as regression assets only. Recognition-only rows must not unlock generated output. |
+| ETF launch manifest coverage | Keep supported ETF and ETF/ETP recognition manifests separate. Before a fully functional local fresh-data MVP, expand review packets toward ETF-500, validate the full promoted supported ETF manifest, and keep golden/pre-cache ETFs as regression assets only. Recognition-only rows must not unlock generated output. |
 | Launch-manifest operator review | Use `TMPDIR=/tmp python3 scripts/review_launch_manifests.py top500 generate`, `TMPDIR=/tmp python3 scripts/review_launch_manifests.py top500 inspect`, and `TMPDIR=/tmp python3 scripts/review_launch_manifests.py etf inspect` for deterministic review packets. These commands do not approve sources or promote runtime manifests. |
 | Private object storage | Prove private snapshot/artifact storage behavior and safe object namespace validation before production source snapshots or generated artifacts are written. |
 | Governed evidence launch coverage | T-128 covers deterministic golden assets only | Expand reviewed source packets and operator rehearsal before treating governed rendering as launch coverage. |
@@ -49,7 +49,7 @@ This checklist records production-readiness gates. It does not approve deploymen
 
 Current T-114 decision: **No-go for production deployment**.
 
-Reason: deterministic MVP regression coverage can pass, but launch-sized manifests, full eligible ETF universe readiness, launch-sized governed source artifacts, local fresh-data readiness thresholds, batchable ingestion planning, production admin auth, rate limiting, deployment environment validation, private object storage, database migration execution, Cloud Run service settings, Cloud Run Job settings, recurring job policy, full source governance review, live-provider opt-in, monitoring, rollback, cost controls, launch support, and legal/compliance review remain open.
+Reason: deterministic MVP regression coverage can pass, but launch-sized manifests, ETF-500 readiness, launch-sized governed source artifacts, local fresh-data readiness thresholds, batchable ingestion planning, production admin auth, rate limiting, deployment environment validation, private object storage, database migration execution, Cloud Run service settings, Cloud Run Job settings, recurring job policy, full source governance review, live-provider opt-in, monitoring, rollback, cost controls, launch support, and legal/compliance review remain open.
 
 ## Explicit Non-Actions In T-114
 

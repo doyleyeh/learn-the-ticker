@@ -2,7 +2,7 @@
 
 ## Product Success
 
-Learn the Ticker helps beginners understand U.S.-listed common stocks and manifest-approved U.S.-listed passive/index-based U.S. equity ETFs through plain-English, source-backed explanations.
+Learn the Ticker helps beginners understand U.S.-listed common stocks and manifest-approved ETF-500 scope U.S.-listed passive/index-based U.S. equity ETFs through plain-English, source-backed explanations.
 
 A successful answer or asset page helps the user understand:
 
@@ -36,8 +36,8 @@ MVP direction:
 MVP product scope:
 
 - top-500-first U.S.-listed common stocks from `data/universes/us_common_stocks_top500.current.json`
-- manifest-approved, currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs
-- pre-cached high-demand launch universe for reliability and latency
+- manifest-approved ETF-500 scope: around 500 reviewed, currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs
+- pre-cached high-demand stocks and ETF-500 entries for reliability and latency, without treating the pre-cache set as the ETF coverage ceiling
 - explicit `pending_ingestion` states only for approved eligible supported assets outside the pre-cache set
 - home page single-asset search first, with natural `A vs B` queries redirecting to comparison instead of turning home into a comparison builder
 - stock and ETF asset pages with Beginner section first and Deep-Dive section available
@@ -63,7 +63,7 @@ Current implementation stage:
 - local durable repository execution has in-memory fallback, configured reader boundaries, and optional browser/API smoke coverage, but normal CI remains fixture-backed
 - v0.5 ETF manifest split contracts are implemented: supported ETF generated-output coverage reads `data/universes/us_equity_etfs_supported.current.json`, while recognition-only blocked states read `data/universes/us_etp_recognition.current.json`; the legacy combined ETF fixture remains only for repo continuity
 - repo-native source-handoff manifest tooling, governed golden API/frontend rendering proof, launch-manifest review packets, and the deterministic local fresh-data MVP rehearsal command are implemented as review-only/operator-safe layers
-- opt-in official-source acquisition readiness exists for SEC stock, ETF issuer, and Weekly News golden paths, but launch-sized governed source artifacts and full-universe source-pack approvals remain MVP gaps
+- opt-in official-source acquisition readiness exists for SEC stock, ETF issuer, and Weekly News golden paths, but launch-sized governed source artifacts and ETF-500 source-pack approvals remain MVP gaps
 - v0.6 local validation expects operator-only live-AI review for grounded chat and AI Comprehensive Analysis when evidence thresholds are met, while CI and ordinary local tests remain deterministic mocks
 - CI and local checks are deterministic and fixture-backed; normal quality gates do not depend on live provider, market-data, news, or LLM calls
 
@@ -74,7 +74,7 @@ Near-term implementation priority order:
 3. preserve Golden Asset Source Handoff enforcement across source allowlist records, source snapshots, knowledge packs, citations, generated-output cache entries, source drawer output, and exports
 4. preserve the reviewed Top-500 candidate-manifest refresh workflow that uses official IWB holdings first, official SPY/IVV/VOO holdings only as fallback inputs, SEC/Nasdaq validation, checksums, and a diff report before current-manifest promotion
 5. preserve optional browser E2E and local durable smoke for golden assets using the API-base/proxy/CORS path before production deployment work
-6. expand ETF eligible-universe review outputs from the current fixture-sized packet into category, exclusion, source-pack, and generated-output eligibility packets for the full reviewed local MVP scope
+6. expand ETF eligible-universe review outputs from the current fixture-sized packet into category, exclusion, source-pack, and generated-output eligibility packets for the ETF-500 reviewed local MVP scope
 7. add stock and ETF source-pack readiness packets that prove SEC core stock evidence and issuer ETF evidence can unlock only source-backed sections with deterministic partial/failure states
 8. add batchable, resumable local ingestion planning so high-demand assets run first, then supported ETFs and top-500 stocks by review priority, while normal CI remains deterministic
 9. defer production deployment hardening, recurring jobs, broad paid-provider integrations, and post-MVP features until the local fresh-data path passes strict quality gates
@@ -103,7 +103,7 @@ Golden Asset Source Handoff is the approval layer between retrieval and evidence
 
 Top-500 stock coverage must be manifest-owned. The approved runtime manifest is `data/universes/us_common_stocks_top500.current.json`; monthly refresh work produces a candidate manifest and diff report before review. Official IWB holdings are the primary source input; official SPY, IVV, and VOO holdings are fallback inputs only. Live holdings or provider responses may inform candidates, but they must never become runtime coverage truth directly.
 
-ETF coverage must be manifest-owned. The implemented v0.5 runtime authority for generated ETF output is `data/universes/us_equity_etfs_supported.current.json`; the recognition-only authority for blocked ETF/ETP search states is `data/universes/us_etp_recognition.current.json`. Recognition rows, live listings, provider flags, and issuer search results must not unlock generated output.
+ETF coverage must be manifest-owned. The implemented v0.5 runtime authority for generated ETF output is `data/universes/us_equity_etfs_supported.current.json`; the recognition-only authority for blocked ETF/ETP search states is `data/universes/us_etp_recognition.current.json`. ETF-500 is the named v1 supported ETF target, but only reviewed supported-manifest rows with validated issuer source packs unlock generated output. Recognition rows, live listings, provider flags, and issuer search results must not unlock generated output.
 
 ## Hard Product Rules
 
@@ -172,6 +172,7 @@ MVP is ready when:
 - unsupported and out-of-scope assets show clear blocked states
 - top-500 stock scope is driven by the versioned manifest, not live runtime provider queries
 - Top-500 candidate refreshes produce reviewed candidate files, source provenance, checksums, validation warnings, and diff reports before promotion
+- ETF-500 supported ETF scope is driven by the supported ETF manifest, while ETF/ETP recognition rows remain blocked from generated pages, chat, comparisons, Weekly News Focus, AI Comprehensive Analysis, and exports
 - Golden Asset Source Handoff blocks unapproved, unclear-rights, parser-invalid, hidden/internal, pending-review, and rejected sources from evidence storage, generation, citation, cache, and export paths
 - stock and ETF pages render beginner summaries from source-backed evidence
 - stock pages cover business overview, products/services, strengths, financial quality, risks, valuation context, Weekly News Focus, AI Comprehensive Analysis, and educational suitability
