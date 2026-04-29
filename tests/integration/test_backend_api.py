@@ -618,6 +618,9 @@ def test_t130_local_fresh_data_mvp_rehearsal_ties_governed_path_to_render_surfac
     assert result["normal_ci_requires_live_calls"] is False
     assert result["production_services_started"] is False
     assert result["sources_approved_by_rehearsal"] is False
+    assert result["local_mvp_threshold_summary"]["overall_local_approval_status"] == "ready_for_local_operator_review"
+    assert result["local_mvp_threshold_summary"]["launch_or_public_deployment_approved"] is False
+    assert result["local_mvp_threshold_summary"]["asset_state_summary"]["generated_surface_violation_count"] == 0
     assert checks["source_handoff_approval_gate"]["status"] == "pass"
     assert checks["governed_golden_api_rendering"]["status"] == "pass"
     assert checks["governed_golden_api_rendering"]["details"]["blocked_search_cases"] == [

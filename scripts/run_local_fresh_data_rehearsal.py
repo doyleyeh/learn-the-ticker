@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import sys
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -21,6 +22,7 @@ from backend.chat import generate_asset_chat
 from backend.comparison import generate_comparison
 from backend.etf_universe import build_etf_issuer_source_pack_readiness_packet, build_etf_launch_review_packet
 from backend.generated_output_cache_repository import InMemoryGeneratedOutputCacheRepository
+from backend.ingestion import get_pre_cache_job_status
 from backend.knowledge_pack_repository import AssetKnowledgePackRepository, InMemoryAssetKnowledgePackRepository
 from backend.main import app
 from backend.models import (
@@ -67,6 +69,23 @@ OFFICIAL_RETRIEVAL_OPT_IN_ENV = "LTT_REHEARSAL_OFFICIAL_SOURCE_RETRIEVAL_ENABLED
 LIVE_AI_OPT_IN_ENV = "LTT_REHEARSAL_LIVE_AI_REVIEW_ENABLED"
 WEB_BASE_ENV = "LEARN_TICKER_LOCAL_WEB_BASE"
 API_BASE_ENV = "LEARN_TICKER_LOCAL_API_BASE"
+REQUIRED_THRESHOLD_CHECK_IDS = (
+    "deterministic_default_boundary",
+    "source_handoff_approval_gate",
+    "governed_golden_api_rendering",
+    "launch_manifest_review_packets",
+    "stock_sec_source_pack_readiness",
+    "etf_issuer_source_pack_readiness",
+    "frontend_v04_smoke_markers",
+)
+OPTIONAL_THRESHOLD_CHECK_IDS = (
+    "optional_browser_services",
+    "optional_local_durable_repositories",
+    "optional_official_source_retrieval",
+    "optional_live_ai_review",
+)
+ALLOWED_FAILED_ASSET_COUNT = 1
+ALLOWED_UNAVAILABLE_ASSET_COUNT = 1
 
 
 @dataclass(frozen=True)
@@ -102,6 +121,7 @@ def run_rehearsal(env: dict[str, str] | None = None, *, root: Path = ROOT) -> di
         _guarded("optional_official_source_retrieval", lambda: _check_optional_official_source_retrieval(source_env)),
         _guarded("optional_live_ai_review", lambda: _check_optional_live_ai_review(source_env)),
     ]
+    threshold_summary = _build_local_mvp_threshold_summary(checks)
     return {
         "schema_version": SCHEMA_VERSION,
         "status": _rollup_status(checks),
@@ -110,6 +130,7 @@ def run_rehearsal(env: dict[str, str] | None = None, *, root: Path = ROOT) -> di
         "production_services_started": False,
         "manifests_promoted": False,
         "sources_approved_by_rehearsal": False,
+        "local_mvp_threshold_summary": threshold_summary,
         "checks": [check.to_dict() for check in checks],
     }
 
@@ -697,6 +718,209 @@ def _scrub_live_ai_result(result: dict[str, Any]) -> dict[str, Any]:
         "cases": result.get("cases", []),
         "sanitized_diagnostics": result.get("sanitized_diagnostics", {}),
     }
+
+
+def _build_local_mvp_threshold_summary(checks: list[RehearsalCheck]) -> dict[str, Any]:
+    check_by_id = {check.check_id: check for check in checks}
+    required_checks = [_threshold_check_summary(check_by_id[check_id]) for check_id in REQUIRED_THRESHOLD_CHECK_IDS]
+    optional_checks = [_threshold_check_summary(check_by_id[check_id]) for check_id in OPTIONAL_THRESHOLD_CHECK_IDS]
+    required_blockers = [check for check in required_checks if check["status"] != "pass"]
+    optional_skipped_modes = [check for check in optional_checks if check["status"] == "skipped"]
+    optional_blockers = [check for check in optional_checks if check["status"] == "blocked"]
+    asset_state_summary = _build_threshold_asset_state_summary(check_by_id)
+
+    threshold_blockers: list[dict[str, Any]] = []
+    if required_blockers:
+        threshold_blockers.append(
+            {
+                "reason_code": "required_check_blocked",
+                "count": len(required_blockers),
+                "check_ids": [check["check_id"] for check in required_blockers],
+            }
+        )
+    if optional_blockers:
+        threshold_blockers.append(
+            {
+                "reason_code": "optional_mode_blocked_after_explicit_opt_in",
+                "count": len(optional_blockers),
+                "check_ids": [check["check_id"] for check in optional_blockers],
+            }
+        )
+    if asset_state_summary["failed_asset_count"] > ALLOWED_FAILED_ASSET_COUNT:
+        threshold_blockers.append(
+            {
+                "reason_code": "failed_asset_count_exceeds_local_threshold",
+                "count": asset_state_summary["failed_asset_count"],
+                "allowed_count": ALLOWED_FAILED_ASSET_COUNT,
+            }
+        )
+    if asset_state_summary["unavailable_asset_count"] > ALLOWED_UNAVAILABLE_ASSET_COUNT:
+        threshold_blockers.append(
+            {
+                "reason_code": "unavailable_asset_count_exceeds_local_threshold",
+                "count": asset_state_summary["unavailable_asset_count"],
+                "allowed_count": ALLOWED_UNAVAILABLE_ASSET_COUNT,
+            }
+        )
+    if asset_state_summary["generated_surface_violation_count"]:
+        threshold_blockers.append(
+            {
+                "reason_code": "non_generated_asset_exposed_generated_surface",
+                "count": asset_state_summary["generated_surface_violation_count"],
+            }
+        )
+
+    local_status = "blocked_for_local_operator_review" if threshold_blockers else "ready_for_local_operator_review"
+    return {
+        "schema_version": "local-fresh-data-mvp-threshold-summary-v1",
+        "threshold_contract": "review_only_no_launch_approval_v1",
+        "overall_local_approval_status": local_status,
+        "local_operator_review_ready": not threshold_blockers,
+        "launch_or_public_deployment_approved": False,
+        "required_checks": required_checks,
+        "required_blockers": required_blockers,
+        "optional_skipped_modes": optional_skipped_modes,
+        "optional_blockers": optional_blockers,
+        "threshold_blockers": threshold_blockers,
+        "thresholds": {
+            "required_blockers_allowed": 0,
+            "optional_blockers_allowed": 0,
+            "failed_assets_allowed": ALLOWED_FAILED_ASSET_COUNT,
+            "unavailable_assets_allowed": ALLOWED_UNAVAILABLE_ASSET_COUNT,
+            "generated_surface_violations_allowed": 0,
+        },
+        "asset_state_summary": asset_state_summary,
+        "review_only_boundaries": {
+            "sources_approved": False,
+            "top500_manifest_promoted": False,
+            "etf_supported_manifest_promoted": False,
+            "etp_recognition_manifest_promoted": False,
+            "ingestion_started": False,
+            "generated_output_cache_entries_written": False,
+            "production_services_started": False,
+            "normal_ci_requires_live_calls": False,
+        },
+        "live_generation_validation_failure_fallback": {
+            "generated_claims_allowed_after_failed_validation": False,
+            "generated_chat_answers_allowed_after_failed_validation": False,
+            "generated_comparisons_allowed_after_failed_validation": False,
+            "weekly_news_focus_allowed_after_failed_validation": False,
+            "ai_comprehensive_analysis_allowed_after_failed_validation": False,
+            "exports_allowed_after_failed_validation": False,
+            "generated_output_cache_entries_allowed_after_failed_validation": False,
+            "fallback_section_states": [
+                "partial",
+                "stale",
+                "unknown",
+                "unavailable",
+                "insufficient_evidence",
+            ],
+            "source_backed_partial_ready_count": asset_state_summary["source_backed_partial_ready_count"],
+        },
+    }
+
+
+def _threshold_check_summary(check: RehearsalCheck) -> dict[str, Any]:
+    return {
+        "check_id": check.check_id,
+        "status": check.status,
+        "reason_code": check.reason_code,
+    }
+
+
+def _build_threshold_asset_state_summary(check_by_id: dict[str, RehearsalCheck]) -> dict[str, Any]:
+    non_generated_assets = _non_generated_asset_threshold_rows()
+    job_state_counts = Counter(row["state"] for row in non_generated_assets)
+    reason_codes_by_state: dict[str, list[str]] = {}
+    for row in non_generated_assets:
+        reason_codes_by_state.setdefault(row["state"], [])
+        if row["reason_code"] not in reason_codes_by_state[row["state"]]:
+            reason_codes_by_state[row["state"]].append(row["reason_code"])
+
+    readiness_counts = _combined_readiness_counts(check_by_id)
+    generated_surface_violations = [row for row in non_generated_assets if row["generated_surface_exposed"]]
+    blocked_surfaces = _combined_blocked_generated_surfaces(check_by_id)
+    return {
+        "failed_asset_count": job_state_counts.get("failed", 0),
+        "unavailable_asset_count": job_state_counts.get("unavailable", 0),
+        "partial_count": readiness_counts.get("partial", 0),
+        "stale_count": readiness_counts.get("stale", 0),
+        "unknown_count": readiness_counts.get("unknown", 0) + job_state_counts.get("unknown", 0),
+        "insufficient_evidence_count": readiness_counts.get("insufficient_evidence", 0),
+        "source_backed_partial_ready_count": readiness_counts.get("source_backed_partial_rendering_ready", 0),
+        "generated_surface_violation_count": len(generated_surface_violations),
+        "reason_codes_by_state": {key: sorted(value) for key, value in sorted(reason_codes_by_state.items())},
+        "non_generated_assets": non_generated_assets,
+        "blocked_generated_surfaces": blocked_surfaces,
+        "readiness_packet_counts": readiness_counts,
+    }
+
+
+def _non_generated_asset_threshold_rows() -> list[dict[str, Any]]:
+    cases = (
+        ("pre-cache-launch-spy", "pending_ingestion_supported_etf"),
+        ("pre-cache-launch-nvda", "pending_ingestion_supported_stock"),
+        ("pre-cache-launch-msft", "running_pre_cache_fixture"),
+        ("pre-cache-launch-amzn", "failed_pre_cache_fixture"),
+        ("pre-cache-unsupported-tqqq", "unsupported_complex_etf"),
+        ("pre-cache-out-of-scope-gme", "out_of_scope_stock"),
+        ("pre-cache-unknown-zzzz", "unknown_asset"),
+        ("missing-pre-cache-job", "unavailable_job_fixture"),
+    )
+    rows: list[dict[str, Any]] = []
+    for job_id, case_id in cases:
+        job = get_pre_cache_job_status(job_id)
+        reason_code = job.error_metadata.code if job.error_metadata else job.job_state.value
+        capabilities = job.capabilities
+        generated_surface_exposed = bool(
+            job.generated_route
+            or job.generated_output_available
+            or job.citation_ids
+            or job.source_document_ids
+            or capabilities.can_open_generated_page
+            or capabilities.can_answer_chat
+            or capabilities.can_compare
+        )
+        rows.append(
+            {
+                "case_id": case_id,
+                "ticker": job.ticker,
+                "asset_type": job.asset_type.value,
+                "state": job.job_state.value,
+                "reason_code": reason_code,
+                "generated_surface_exposed": generated_surface_exposed,
+                "generated_route": job.generated_route,
+                "generated_output_available": job.generated_output_available,
+                "citation_count": len(job.citation_ids),
+                "source_document_count": len(job.source_document_ids),
+                "can_open_generated_page": capabilities.can_open_generated_page,
+                "can_answer_chat": capabilities.can_answer_chat,
+                "can_compare": capabilities.can_compare,
+            }
+        )
+    return rows
+
+
+def _combined_readiness_counts(check_by_id: dict[str, RehearsalCheck]) -> dict[str, int]:
+    combined: Counter[str] = Counter()
+    for check_id in ("stock_sec_source_pack_readiness", "etf_issuer_source_pack_readiness"):
+        readiness = check_by_id[check_id].details.get("readiness_counts", {})
+        for key in (
+            "partial",
+            "stale",
+            "unknown",
+            "insufficient_evidence",
+            "source_backed_partial_rendering_ready",
+        ):
+            combined[key] += int(readiness.get(key, 0) or 0)
+    return dict(sorted(combined.items()))
+
+
+def _combined_blocked_generated_surfaces(check_by_id: dict[str, RehearsalCheck]) -> list[str]:
+    surfaces: set[str] = set()
+    for check_id in ("stock_sec_source_pack_readiness", "etf_issuer_source_pack_readiness"):
+        surfaces.update(check_by_id[check_id].details.get("blocked_generated_surfaces", []))
+    return sorted(surfaces)
 
 
 def _guarded(check_id: str, fn: Callable[[], RehearsalCheck]) -> RehearsalCheck:
