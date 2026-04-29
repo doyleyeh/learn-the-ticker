@@ -14,6 +14,7 @@ from backend.top500_candidate_manifest import (
     Top500CandidateManifestContractError,
     assert_manual_approval_for_promotion,
     build_stock_sec_source_pack_readiness_packet,
+    build_top500_sec_source_pack_batch_plan,
     build_top500_operator_review_summary,
     generate_top500_candidate_manifest,
     generate_top500_candidate_manifest_from_fixture_paths,
@@ -230,6 +231,117 @@ def test_stock_sec_source_pack_readiness_reports_stale_parser_failed_and_wrong_a
         "wrong_asset_sec_source" in component["reason_codes"]
         for component in wrong_asset_aapl["components"]
         if component["source_document_id"]
+    )
+
+
+def test_top500_sec_source_pack_batch_plan_is_review_only_and_current_manifest_authoritative():
+    plan = build_top500_sec_source_pack_batch_plan()
+
+    assert plan["schema_version"] == "top500-sec-source-pack-batch-plan-v1"
+    assert plan["boundary"] == "top500-sec-source-pack-batch-planning-review-only-v1"
+    assert plan["review_only"] is True
+    assert plan["deterministic"] is True
+    assert plan["no_live_external_calls"] is True
+    assert plan["runtime_manifest_authority"] == TOP500_APPROVED_CURRENT_MANIFEST_PATH
+    assert plan["current_manifest_path"] == TOP500_APPROVED_CURRENT_MANIFEST_PATH
+    assert plan["current_manifest_entry_count"] == 10
+    assert plan["current_manifest_rows_planned"] == 10
+    assert plan["support_resolved_from_current_manifest_only"] is True
+    assert plan["candidate_or_priority_data_resolves_runtime_support"] is False
+    assert plan["live_provider_or_exchange_data_resolves_runtime_support"] is False
+    assert plan["planner_started_ingestion"] is False
+    assert plan["sources_approved_by_plan"] is False
+    assert plan["top500_manifest_promoted"] is False
+    assert plan["generated_output_cache_entries_written"] is False
+    assert plan["generated_output_unlocked_by_plan"] is False
+    assert "generated_pages" in plan["blocked_generated_surfaces"]
+    assert "generated_risk_summaries" in plan["blocked_generated_surfaces"]
+
+    relationship = plan["candidate_relationship_diagnostics"]
+    assert relationship["candidate_artifacts_available"] is True
+    assert relationship["candidate_data_used_for_runtime_support"] is False
+    assert relationship["candidate_only_rows_unlock_generated_output"] is False
+    assert relationship["candidate_manifest_paths"] == ["data/universes/us_common_stocks_top500.candidate.2026-04.json"]
+    assert relationship["shared_current_candidate_ticker_count"] == 10
+
+    assert plan["planning_summary"] == {
+        "planned_row_count": 10,
+        "batch_count": 5,
+        "high_demand_pre_cache_count": 1,
+        "top500_review_count": 9,
+        "source_backed_partial_ready_count": 1,
+        "insufficient_evidence_count": 9,
+        "blocked_generated_surface_count": 9,
+    }
+    assert plan["manifest_rank_ordering"] == [
+        {"rank": 1, "ticker": "AAPL"},
+        {"rank": 2, "ticker": "MSFT"},
+        {"rank": 3, "ticker": "NVDA"},
+        {"rank": 4, "ticker": "AMZN"},
+        {"rank": 5, "ticker": "GOOGL"},
+        {"rank": 6, "ticker": "META"},
+        {"rank": 7, "ticker": "TSLA"},
+        {"rank": 8, "ticker": "BRK.B"},
+        {"rank": 9, "ticker": "JPM"},
+        {"rank": 10, "ticker": "UNH"},
+    ]
+    batch_groups = {group["batch_name"]: group for group in plan["batch_groups"]}
+    assert batch_groups["high-demand-pre-cache"]["tickers"] == ["AAPL"]
+    assert batch_groups["TOP500-50"]["tickers"] == ["MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "BRK.B", "JPM", "UNH"]
+    assert batch_groups["TOP500-150"]["planned_row_count"] == 0
+
+    status_groups = {group["source_pack_status"]: group for group in plan["source_pack_status_groups"]}
+    assert status_groups["partial"]["tickers"] == ["AAPL"]
+    assert status_groups["insufficient_evidence"]["planned_row_count"] == 9
+    priority_groups = {
+        group["readiness_priority"]: group["planned_row_count"]
+        for group in plan["readiness_priority_groups"]
+    }
+    assert priority_groups == {
+        "approved_partial_ready_needs_quarterly_or_full_review": 1,
+        "missing_required_sec_sources": 9,
+    }
+    assert plan["source_handoff_readiness"]["approved_component_count"] == 3
+    assert plan["source_handoff_readiness"]["pending_review_component_count"] == 37
+    assert plan["source_handoff_readiness"]["rejected_or_unclear_rights_component_count"] == 37
+    assert plan["parser_readiness"]["parser_status_counts"] == {
+        "parsed": 3,
+        "partial": 0,
+        "pending_review": 37,
+        "failed": 0,
+    }
+    assert plan["freshness_as_of_checksum_placeholder_status"]["freshness_state_counts"] == {
+        "fresh": 3,
+        "stale": 0,
+        "unknown": 0,
+        "unavailable": 37,
+    }
+    assert plan["freshness_as_of_checksum_placeholder_status"]["checksum_required_count"] == 3
+    assert plan["freshness_as_of_checksum_placeholder_status"]["checksum_present_count"] == 0
+    assert "candidate_artifacts_are_diagnostic_only" in plan["stop_conditions"]
+
+    aapl = next(row for row in plan["planned_rows"] if row["ticker"] == "AAPL")
+    assert aapl["manifest_rank"] == 1
+    assert aapl["batch_name"] == "high-demand-pre-cache"
+    assert aapl["high_demand_pre_cache"] is True
+    assert aapl["source_pack_status"] == "partial"
+    assert aapl["source_backed_partial_rendering_ready"] is True
+    assert aapl["fallback_state"] == "source_backed_partial"
+    assert aapl["generated_output_unlocked_by_plan"] is False
+    components = {component["component_id"]: component for component in aapl["required_sec_source_components"]}
+    assert components["sec_submissions"]["source_snapshot_requirement"] == "required_before_evidence_use"
+    assert components["sec_submissions"]["checksum_status"] == "placeholder_required"
+    assert components["sec_submissions"]["golden_asset_source_handoff_action"] == "approved"
+    assert components["latest_quarterly_filing_when_available"]["status"] == "partial"
+    assert components["latest_quarterly_filing_when_available"]["partial_or_unavailable_fallback_state"] == "partial"
+
+    msft = next(row for row in plan["planned_rows"] if row["ticker"] == "MSFT")
+    assert msft["batch_name"] == "TOP500-50"
+    assert msft["source_pack_status"] == "insufficient_evidence"
+    assert msft["fallback_state"] == "insufficient_evidence"
+    assert all(
+        component["source_snapshot_requirement"] == "blocked_until_source_available"
+        for component in msft["required_sec_source_components"]
     )
 
 

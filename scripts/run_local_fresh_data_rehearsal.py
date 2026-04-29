@@ -58,6 +58,7 @@ from backend.source_snapshot_repository import (
 from backend.testing import TestClient
 from backend.top500_candidate_manifest import inspect_top500_candidate_review_packet
 from backend.top500_candidate_manifest import build_stock_sec_source_pack_readiness_packet
+from backend.top500_candidate_manifest import build_top500_sec_source_pack_batch_plan
 from backend.weekly_news_repository import (
     InMemoryWeeklyNewsEventEvidenceRepository,
     WeeklyNewsEventCandidateRow,
@@ -426,6 +427,7 @@ def _check_launch_manifest_review_packets(root: Path) -> RehearsalCheck:
 
 def _check_stock_sec_source_pack_readiness(root: Path) -> RehearsalCheck:
     packet = build_stock_sec_source_pack_readiness_packet(root=root)
+    planning = build_top500_sec_source_pack_batch_plan(root=root, stock_readiness_packet=packet)
     counts = packet["readiness_counts"]
     if packet["manifests_promoted"] or packet["sources_approved_by_packet"] or packet["launch_approved"]:
         return _blocked("stock_sec_source_pack_readiness", "stock_sec_readiness_improperly_approved")
@@ -441,6 +443,31 @@ def _check_stock_sec_source_pack_readiness(root: Path) -> RehearsalCheck:
             "stock_sec_readiness_status_invalid",
             {"review_status": packet["review_status"]},
         )
+    if not planning["review_only"] or planning["runtime_manifest_authority"] != packet["runtime_manifest_authority"]:
+        return _blocked(
+            "stock_sec_source_pack_readiness",
+            "top500_sec_batch_plan_boundary_invalid",
+            {
+                "review_only": planning["review_only"],
+                "runtime_manifest_authority": planning["runtime_manifest_authority"],
+            },
+        )
+    if (
+        planning["generated_output_unlocked_by_plan"]
+        or planning["sources_approved_by_plan"]
+        or planning["planner_started_ingestion"]
+        or planning["top500_manifest_promoted"]
+    ):
+        return _blocked(
+            "stock_sec_source_pack_readiness",
+            "top500_sec_batch_plan_mutated_state",
+            {
+                "generated_output_unlocked_by_plan": planning["generated_output_unlocked_by_plan"],
+                "sources_approved_by_plan": planning["sources_approved_by_plan"],
+                "planner_started_ingestion": planning["planner_started_ingestion"],
+                "top500_manifest_promoted": planning["top500_manifest_promoted"],
+            },
+        )
     return _pass(
         "stock_sec_source_pack_readiness",
         "stock_sec_readiness_packet_is_review_only",
@@ -451,6 +478,33 @@ def _check_stock_sec_source_pack_readiness(root: Path) -> RehearsalCheck:
             "required_sec_components": packet["required_sec_components"],
             "readiness_counts": counts,
             "blocked_generated_surfaces": packet["blocked_generated_surfaces"],
+            "top500_sec_source_pack_batch_planning": {
+                "schema_version": planning["schema_version"],
+                "boundary": planning["boundary"],
+                "current_manifest_path": planning["current_manifest_path"],
+                "support_resolved_from_current_manifest_only": planning[
+                    "support_resolved_from_current_manifest_only"
+                ],
+                "candidate_or_priority_data_resolves_runtime_support": planning[
+                    "candidate_or_priority_data_resolves_runtime_support"
+                ],
+                "live_provider_or_exchange_data_resolves_runtime_support": planning[
+                    "live_provider_or_exchange_data_resolves_runtime_support"
+                ],
+                "candidate_relationship_diagnostics": planning["candidate_relationship_diagnostics"],
+                "planning_summary": planning["planning_summary"],
+                "manifest_rank_ordering": planning["manifest_rank_ordering"],
+                "batch_groups": planning["batch_groups"],
+                "source_pack_status_groups": planning["source_pack_status_groups"],
+                "readiness_priority_groups": planning["readiness_priority_groups"],
+                "source_handoff_readiness": planning["source_handoff_readiness"],
+                "parser_readiness": planning["parser_readiness"],
+                "freshness_as_of_checksum_placeholder_status": planning[
+                    "freshness_as_of_checksum_placeholder_status"
+                ],
+                "stop_conditions": planning["stop_conditions"],
+                "blocked_generated_surfaces": planning["blocked_generated_surfaces"],
+            },
         },
     )
 

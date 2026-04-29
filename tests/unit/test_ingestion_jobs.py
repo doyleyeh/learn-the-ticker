@@ -11,6 +11,7 @@ from backend.ingestion import (
 from backend.ingestion_worker import InMemoryIngestionWorkerLedger
 from backend.models import IngestionJobResponse, PreCacheBatchResponse, PreCacheJobResponse
 from backend.repositories.ingestion_jobs import IngestionJobLedgerRecords, serialize_ingestion_job_response
+from backend.top500_candidate_manifest import build_top500_sec_source_pack_batch_plan
 
 
 class FailingLedger:
@@ -365,6 +366,29 @@ def test_local_ingestion_priority_plan_is_review_only_batchable_and_manifest_ord
         assert state in state_counts
     assert state_counts["stale"] == 0
     assert state_counts["insufficient_evidence"] == 20
+
+
+def test_top500_sec_batch_plan_uses_local_ingestion_priority_metadata_without_starting_jobs():
+    ingestion_plan = build_local_ingestion_priority_plan(batch_size=5)
+    top500_plan = build_top500_sec_source_pack_batch_plan(local_ingestion_priority_plan=ingestion_plan)
+
+    assert top500_plan["local_ingestion_priority_schema_version"] == "local-ingestion-priority-plan-v1"
+    assert top500_plan["local_ingestion_priority_boundary"] == "local-ingestion-priority-planner-review-only-v1"
+    assert top500_plan["planner_started_ingestion"] is False
+    assert top500_plan["generated_output_unlocked_by_plan"] is False
+    assert top500_plan["top500_manifest_promoted"] is False
+
+    aapl = next(row for row in top500_plan["planned_rows"] if row["ticker"] == "AAPL")
+    assert aapl["local_ingestion_priority_rank"] == 1
+    assert aapl["local_ingestion_priority_band"] == "high_demand_pre_cache"
+    assert aapl["local_ingestion_state"] == "succeeded"
+    assert aapl["local_ingestion_ready_to_inspect"] is True
+
+    msft = next(row for row in top500_plan["planned_rows"] if row["ticker"] == "MSFT")
+    assert msft["local_ingestion_priority_band"] == "top500_stock_manifest"
+    assert msft["local_ingestion_priority_rank"] > aapl["local_ingestion_priority_rank"]
+    assert msft["local_ingestion_ready_to_inspect"] is False
+    assert msft["generated_output_unlocked_by_plan"] is False
 
 
 def test_pre_cache_cached_assets_preserve_existing_generated_capabilities_only():
