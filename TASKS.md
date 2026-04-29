@@ -1,53 +1,45 @@
 ## Current task
 
+No current task is prepared. The backlog is empty.
+
+## Backlog
+
+No backlog tasks are currently prepared after T-139.
+
+## Completed
+
 ### T-139: Add local manual fresh-data readiness gate
 
 Goal:
 Add a deterministic local readiness gate that can tell the operator whether more agent-loop work remains before manual fresh-data testing, or whether the next step is manual local testing with explicit browser, durable repository, official-source retrieval, and live-AI opt-in checks.
 
-Task scope:
-Build on the deterministic local fresh-data rehearsal, local MVP threshold summary, governed golden rendering proof, ingestion priority planner, ETF-500 candidate/source-pack planning, and Top-500 SEC source-pack planning contracts to add one operator-facing readiness gate. The gate should aggregate existing deterministic status into a sanitized report that distinguishes `agent_work_remaining` from `manual_test_ready`, lists exact stop conditions, and gives manual-test guidance for local browser/API validation and optional modes. This task is a readiness/reporting contract only: it must not run live providers, start services, approve sources, promote manifests, write production storage, or unlock generated output.
+Completion details:
+- Implementation commit: `2df5b12 feat(T-139): add local manual fresh-data readiness gate`
+- Local merge commit: `650b061 chore(T-139): merge local manual fresh-data readiness gate` from branch `agent/T-139-20260429T175733Z`
+- Added `manual_fresh_data_readiness_gate` to `scripts/run_local_fresh_data_rehearsal.py --json` with schema `local-manual-fresh-data-readiness-gate-v1`.
+- The gate reports a clear task-ready versus manual-test-ready decision through `decision`, `task_ready_vs_manual_test_ready_decision`, `task_ready_for_manual_testing`, `manual_test_ready`, `agent_work_remaining`, and `next_operator_action`.
+- The gate aggregates prerequisite summaries for T-136 ETF-500 candidate review, T-137 ETF source-pack batch planning, T-138 Top-500 SEC source-pack batch planning, local MVP thresholds, local ingestion priority planning, governed golden rendering, and frontend v0.4 smoke markers.
+- Current deterministic output reports `agent_work_remaining` because ETF-500 review remains fixture-only with category/source-pack gaps, ETF issuer source-pack batch planning still uses fixture fallback and incomplete source packs, Top-500 SEC planning still has insufficient-evidence, parser, handoff, freshness/as-of, and checksum blockers, and local ingestion planning still has blocked or not-ready assets.
+- Added stop-condition reporting for required deterministic check failures, local-threshold blockers, ETF-500 fixture-only review, ETF-500 category gaps, ETF source-pack incompleteness, ETF handoff/rights/parser/checksum blockers, ETF source-pack batch fixture fallback, Top-500 SEC insufficient evidence, Top-500 handoff/parser/freshness/checksum blockers, ingestion-priority blocked assets, and explicitly enabled optional-mode blockers.
+- Added sanitized no-secret diagnostics that report only opt-in environment variable names, not values, for browser services, durable repositories, official-source retrieval, live-AI review, local web base, and local API base.
+- Added review-only boundary fields showing the gate does not start production services, fetch live sources, call live LLMs, approve sources, promote manifests, start ingestion, write generated-output cache entries, or unlock generated output for unsupported or incomplete assets.
+- Added a manual-test checklist covering local web/API startup, API-base/proxy/CORS, home single-asset search, `A vs B` compare redirects, source drawer, citation chips, freshness labels, Markdown/JSON exports, comparison, stock-vs-ETF relationship badges, contextual glossary desktop/mobile behavior, asset chat mobile behavior, Weekly News Focus smaller/empty states, AI Comprehensive Analysis threshold behavior, unsupported/recognition-only blocking, optional durable repositories, optional official-source retrieval, and optional live-AI validation.
+- Added unit coverage for the default `agent_work_remaining` path, optional-mode blocker behavior without secret leakage, and a synthetic all-clear `manual_test_ready` path.
+- Updated `SPEC.md` to record the local manual fresh-data readiness gate as review-only, deterministic, and blocked from approving sources, promoting manifests, fetching live sources, exposing secrets, or unlocking generated output.
+- `docs/agent-journal/20260429T175733Z.md` records the files changed, tests/evals run, pass status, and remaining risks.
 
-Allowed files:
-- `scripts/run_local_fresh_data_rehearsal.py`
-- `tests/unit/test_repo_contract.py`
-- `tests/integration/test_backend_api.py`
-- `SPEC.md`
-- `docs/agent-journal/<run-id>.md`
+Required commands executed in this task branch:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_repo_contract.py::test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only tests/unit/test_repo_contract.py::test_local_fresh_data_rehearsal_optional_modes_report_blockers_without_secrets tests/unit/test_repo_contract.py::test_manual_fresh_data_readiness_gate_can_report_manual_test_ready_when_blockers_clear -q` - pass (`3 passed`)
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_repo_contract.py tests/integration/test_backend_api.py -q` - pass (`60 passed`)
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` - pass
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass (`465 passed` in Python phases; frontend and backend checks passed)
+- `git diff --check` - pass
 
-Do not change:
-- Do not edit frontend UI, app routes, API runtime behavior, data manifests, candidate artifacts, source allowlists, provider adapters, deployment files, production dependency files, or generated-output cache fixtures.
-- Do not fetch live SEC, issuer, provider, market-data, news, or LLM data; do not start local web/API services; do not inspect, print, request, or document secret values.
-- Do not approve sources, promote stock or ETF manifests, approve launch, write production storage, start ingestion, broaden runtime support classification, or unlock generated pages, chat, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, or generated-output cache entries.
-- Do not weaken advice boundaries, citation/source-use rights, Golden Asset Source Handoff, PRD/TDS-first authority after safety, freshness/unknown/stale/unavailable/partial handling, unsupported/recognition-only blocking, or the v0.4 frontend workflow baseline.
-
-Acceptance criteria:
-- The readiness gate summarizes T-136 ETF-500 candidate review status, T-137 ETF source-pack batch planning status, T-138 Top-500 SEC source-pack batch planning status, local MVP threshold status, ingestion priority planning status, governed golden rendering status, deterministic frontend workflow smoke markers, and optional-mode blockers in one sanitized operator-facing report.
-- The gate returns `agent_work_remaining` while required deterministic planning or review checks are absent, blocked, stale, fixture-only, source-pack-incomplete, parser-not-ready, handoff-not-ready, checksum-missing, or otherwise not ready for manual fresh-data testing.
-- The gate returns `manual_test_ready` only when deterministic prerequisites are present, required blockers are clear, generated-output blocking remains enforced for unsupported or incomplete assets, and manual local testing is the next explicit operator action.
-- Manual-test guidance covers local web/API startup, API-base/proxy/CORS checks, home single-asset search, `A vs B` compare redirects, source drawer, citation chips, freshness labels, exports, comparison, stock-vs-ETF relationship badges, contextual glossary popovers/bottom sheets, asset chat mobile behavior, Weekly News Focus smaller/empty states, AI Comprehensive Analysis threshold behavior, unsupported/recognition-only blocking, optional durable repositories, optional official-source retrieval, and optional live-AI validation without exposing or requesting secret values.
-- The gate is review-only: it does not approve sources, promote stock or ETF manifests, start ingestion, start production services, fetch live sources, call live LLMs, write production storage, or write generated-output cache entries.
-- The gate preserves source-use rights and Golden Asset Source Handoff: retrieval remains separate from evidence approval, unapproved or unclear-rights sources remain blocked, and important factual claims in operator-facing docs or report text use citations only where supported by existing repo docs/contracts.
-- `scripts/run_local_fresh_data_rehearsal.py --json` includes the readiness-gate schema, overall status, prerequisite summaries, stop conditions, optional-mode statuses, no-secret diagnostics, blocked generated surfaces, manual-test checklist, and a clear task-ready versus manual-test-ready decision.
-- `SPEC.md` or the rehearsal output documents the same decision boundary without adding production deployment scope, live-provider execution, accounts/auth, or post-MVP features.
-- Tests cover `agent_work_remaining`, `manual_test_ready`, optional blocker, no-secret diagnostics, generated-output blocking, manual-test checklist coverage, rehearsal output, and repo-control doc markers.
-
-Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_repo_contract.py tests/integration/test_backend_api.py -q`
-- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
-- `TMPDIR=/tmp python3 evals/run_static_evals.py`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
-- `git diff --check`
-
-Iteration budget:
-- Keep this to one local agent-loop cycle. If browser automation, live optional-mode execution, launch approval, production deployment, or broad docs restructuring becomes too large, stop after the deterministic readiness-gate report, rehearsal surfacing, repo-control markers, and tests, then record manual/live execution as operator-only follow-up.
-- Do not run live providers, inspect secrets, promote manifests, approve launch, add auth/accounts, add production dependencies, or convert manual local testing into a product feature.
-
-## Backlog
-
-No backlog task is currently prepared after T-139.
-
-## Completed
+Remaining risks:
+- The readiness gate is deterministic and review-only; it does not run browser automation, start services, fetch live official sources, call live AI, approve sources, promote manifests, write production storage, start ingestion, or unlock generated output.
+- Current deterministic output still reports `agent_work_remaining`; real manual readiness depends on future reviewed source packs, parser readiness, Golden Asset Source Handoff approval, freshness/as-of metadata, and checksums.
+- The `manual_test_ready` state is covered by a synthetic all-clear unit path only; it is not evidence that the current repository state is ready for manual fresh-data testing.
 
 ### T-138: Add Top-500 SEC source-pack batch planning contracts
 
@@ -3786,7 +3778,7 @@ Current runtime snapshot:
 - T-130 completed the deterministic local fresh-data MVP rehearsal command.
 - T-131 through T-135 completed the ETF eligible-universe, stock SEC source-pack readiness, ETF issuer source-pack readiness, local MVP readiness-threshold packets, and batchable local ingestion priority planner.
 - The ETF-500 scope update is documented across the product and handoff docs; T-136 completed deterministic ETF-500 candidate manifest review contracts, and T-137 completed ETF-500 issuer source-pack batch planning contracts.
-- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts. T-139 is currently promoted as the local manual fresh-data readiness gate.
+- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, and T-139 completed the local manual fresh-data readiness gate. No current local fully functional fresh-data MVP task is prepared.
 - T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, full governed source artifacts, admin auth/rate limiting, broader live ingestion, and launch-sized reviewed manifests remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:
@@ -3846,8 +3838,8 @@ Operational defaults for general MVP roadmap tasks:
 - T-128 established deterministic governed golden evidence API/frontend rendering proof. It is completed and must not be reintroduced as runnable backlog.
 - T-129 established launch-manifest operator automation parity. It is completed and must not be reintroduced as runnable backlog.
 - T-130 established the local fresh-data MVP rehearsal command. It is completed and must not be reintroduced as runnable backlog.
-- T-134 through T-138 are completed. T-139 is currently promoted as the next local fresh-data MVP task before manual local testing or production-hardening tasks.
-- No additional backlog task is currently prepared after T-139; production hardening remains unpromoted until manual-readiness status is explicit.
+- T-134 through T-139 are completed. No current local fully functional fresh-data MVP task is prepared.
+- No additional backlog task is currently prepared after T-139; production hardening remains unpromoted until a new narrow launch-readiness task is explicitly prepared.
 - Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until explicit launch readiness work is promoted into a narrow task and passes deterministic CI coverage.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted task should run the relevant EVALS.md checks, `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, `bash scripts/run_quality_gate.sh`, and `git diff --check`.
@@ -3919,12 +3911,12 @@ Roadmap integration tracker:
 | ETF-500 candidate manifest review contracts | Completed | T-136 |
 | ETF-500 issuer source-pack batch planning | Completed | T-137 |
 | Top-500 SEC source-pack batch planning | Completed | T-138 |
-| Local manual fresh-data readiness gate | Current | T-139 |
+| Local manual fresh-data readiness gate | Completed | T-139 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
 Remaining unpromoted general MVP sequence:
 
-- T-139 should produce a deterministic readiness gate that says whether more agent-loop work remains or whether manual local fresh-data testing is the next step.
+- T-139 produced a deterministic readiness gate that says whether more agent-loop work remains or whether manual local fresh-data testing is the next step.
 - No follow-up backlog task is prepared after T-139; add a new narrow task only after the readiness gate reports the next explicit blocker or operator handoff.
 - Full production deployment remains unpromoted until a narrow launch-readiness task is added: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
 - Recurring production jobs only after manual official-source acquisition, Top-500 candidate refresh review, and local fresh-data behavior are stable.
