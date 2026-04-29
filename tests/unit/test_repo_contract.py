@@ -1,6 +1,7 @@
+from copy import deepcopy
 from pathlib import Path
 
-from scripts.run_local_fresh_data_rehearsal import run_rehearsal
+from scripts.run_local_fresh_data_rehearsal import RehearsalCheck, _build_manual_fresh_data_readiness_gate, run_rehearsal
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -8,6 +9,18 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def read_file(name: str) -> str:
     return (ROOT / name).read_text(encoding="utf-8")
+
+
+def checks_from_result(result: dict) -> list[RehearsalCheck]:
+    return [
+        RehearsalCheck(
+            check_id=check["check_id"],
+            status=check["status"],
+            reason_code=check["reason_code"],
+            details=deepcopy(check.get("details", {})),
+        )
+        for check in result["checks"]
+    ]
 
 
 def markdown_section(text: str, heading: str, next_headings: tuple[str, ...] = ("## ",)) -> str:
@@ -623,9 +636,8 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
         "T-130 completed the deterministic local fresh-data MVP rehearsal command",
         "T-131 through T-135 completed the ETF eligible-universe, stock SEC source-pack readiness, ETF issuer source-pack readiness, local MVP readiness-threshold packets, and batchable local ingestion priority planner",
         "The ETF-500 scope update is documented across the product and handoff docs; T-136 completed deterministic ETF-500 candidate manifest review contracts, and T-137 completed ETF-500 issuer source-pack batch planning contracts.",
-        "T-138 is currently promoted for Top-500 SEC source-pack batch planning. T-139 remains prepared as the local manual fresh-data readiness gate after T-138.",
-        "T-134 through T-137 are completed. T-138 is currently promoted as the next local fresh-data MVP task before the manual readiness gate and production-hardening tasks.",
-        "T-139 is a prepared follow-up task, not completed work: the manual fresh-data readiness gate.",
+        "T-138 completed deterministic Top-500 SEC source-pack batch planning contracts. T-139 is currently promoted as the local manual fresh-data readiness gate.",
+        "T-134 through T-138 are completed. T-139 is currently promoted as the next local fresh-data MVP task before manual local testing or production-hardening tasks.",
         "T-099 established deterministic provider content export-rights hardening",
         "T-100 established the backend MVP runtime gap audit and roadmap tracker",
         "T-101 established configured persisted-reader route wiring with fixture fallback",
@@ -691,8 +703,8 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
         "| Batchable local ingestion priority planner | Completed | T-135 |",
         "| ETF-500 candidate manifest review contracts | Completed | T-136 |",
         "| ETF-500 issuer source-pack batch planning | Completed | T-137 |",
-        "| Top-500 SEC source-pack batch planning | Current | T-138 |",
-        "| Local manual fresh-data readiness gate | Prepared | T-139 |",
+        "| Top-500 SEC source-pack batch planning | Completed | T-138 |",
+        "| Local manual fresh-data readiness gate | Current | T-139 |",
         "| Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |",
     ]
     for row in completed_rows:
@@ -709,7 +721,8 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
         "| ETF-500 candidate manifest review contracts | Current | T-136 |",
         "| ETF-500 issuer source-pack batch planning | Current | T-137 |",
         "| Top-500 SEC source-pack batch planning | Prepared | T-138 |",
-        "| Local manual fresh-data readiness gate | Current | T-139 |",
+        "| Local manual fresh-data readiness gate | Prepared | T-139 |",
+        "| Top-500 SEC source-pack batch planning | Current | T-138 |",
         "The current promoted task is T-129",
         "No current local fully functional fresh-data MVP task is prepared",
     ]:
@@ -990,6 +1003,83 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
         "unavailable",
         "insufficient_evidence",
     ]
+    gate = result["manual_fresh_data_readiness_gate"]
+    assert gate["schema_version"] == "local-manual-fresh-data-readiness-gate-v1"
+    assert gate["decision"] == "agent_work_remaining"
+    assert gate["task_ready_vs_manual_test_ready_decision"] == "agent_work_remaining"
+    assert gate["task_ready_for_manual_testing"] is False
+    assert gate["manual_test_ready"] is False
+    assert gate["agent_work_remaining"] is True
+    assert gate["next_operator_action"] == "finish_deterministic_agent_work_before_manual_fresh_data_testing"
+    assert gate["sanitized_operator_report"] is True
+    assert gate["review_only"] is True
+    assert gate["production_services_started"] is False
+    assert gate["live_sources_fetched"] is False
+    assert gate["live_llms_called"] is False
+    assert gate["sources_approved"] is False
+    assert gate["manifests_promoted"] is False
+    assert gate["ingestion_started"] is False
+    assert gate["generated_output_cache_entries_written"] is False
+    assert gate["generated_output_unlocked_for_unsupported_or_incomplete_assets"] is False
+    stop_reasons = {condition["reason_code"] for condition in gate["stop_conditions"]}
+    assert {
+        "etf500_review_fixture_only_not_launch_coverage",
+        "etf500_source_pack_incomplete",
+        "etf500_handoff_not_ready_or_unclear_rights",
+        "etf500_source_pack_batch_uses_fixture_fallback",
+        "etf500_issuer_source_pack_batch_incomplete",
+        "top500_sec_source_pack_insufficient_evidence",
+        "top500_sec_source_handoff_not_ready",
+        "top500_sec_parser_not_ready",
+        "top500_sec_freshness_or_checksum_not_ready",
+        "local_ingestion_priority_plan_has_blocked_or_not_ready_assets",
+    } <= stop_reasons
+    prerequisite_ids = {item["prerequisite_id"] for item in gate["prerequisite_summaries"]}
+    assert {
+        "t136_etf500_candidate_review",
+        "t137_etf_source_pack_batch_planning",
+        "t138_top500_sec_source_pack_batch_planning",
+        "local_mvp_thresholds",
+        "local_ingestion_priority_planning",
+        "governed_golden_rendering",
+        "frontend_workflow_smoke_markers",
+    } == prerequisite_ids
+    assert [mode["status"] for mode in gate["optional_mode_statuses"]] == ["skipped"] * 4
+    assert gate["no_secret_diagnostics"] == {
+        "secret_values_reported": False,
+        "secret_values_requested": False,
+        "safe_diagnostics_only": True,
+        "opt_in_env_names_reported_without_values": [
+            "LTT_REHEARSAL_BROWSER_SERVICES_ENABLED",
+            "LTT_REHEARSAL_DURABLE_REPOSITORIES_ENABLED",
+            "LTT_REHEARSAL_OFFICIAL_SOURCE_RETRIEVAL_ENABLED",
+            "LTT_REHEARSAL_LIVE_AI_REVIEW_ENABLED",
+            "LEARN_TICKER_LOCAL_WEB_BASE",
+            "LEARN_TICKER_LOCAL_API_BASE",
+        ],
+    }
+    assert "generated_output_cache_entries" in gate["blocked_generated_surfaces"]
+    checklist_ids = {item["check_id"] for item in gate["manual_test_checklist"]}
+    assert {
+        "local_web_api_startup",
+        "api_base_proxy_cors",
+        "home_single_asset_search",
+        "a_vs_b_compare_redirect",
+        "source_drawer",
+        "citation_chips",
+        "freshness_labels",
+        "exports",
+        "comparison",
+        "stock_etf_relationship_badges",
+        "contextual_glossary",
+        "asset_chat_mobile_behavior",
+        "weekly_news_focus_limited_empty_states",
+        "ai_comprehensive_analysis_threshold",
+        "unsupported_recognition_only_blocking",
+        "optional_durable_repositories",
+        "optional_official_source_retrieval",
+        "optional_live_ai_validation",
+    } == checklist_ids
 
 
 def test_local_fresh_data_rehearsal_optional_modes_report_blockers_without_secrets():
@@ -1026,9 +1116,78 @@ def test_local_fresh_data_rehearsal_optional_modes_report_blockers_without_secre
             ],
         }
     ]
+    gate = result["manual_fresh_data_readiness_gate"]
+    assert gate["decision"] == "agent_work_remaining"
+    gate_optional_blockers = [
+        condition
+        for condition in gate["stop_conditions"]
+        if condition["reason_code"] == "optional_mode_blocked_after_explicit_opt_in" and "check_id" in condition
+    ]
+    assert [condition["check_id"] for condition in gate_optional_blockers] == [
+        "optional_local_durable_repositories",
+        "optional_official_source_retrieval",
+        "optional_live_ai_review",
+    ]
+    assert gate["no_secret_diagnostics"]["secret_values_reported"] is False
+    assert gate["no_secret_diagnostics"]["secret_values_requested"] is False
     serialized = str(result)
     for forbidden in ["postgresql://", "Bearer ", "Authorization", "BEGIN PRIVATE KEY", "sk-"]:
         assert forbidden not in serialized
+
+
+def test_manual_fresh_data_readiness_gate_can_report_manual_test_ready_when_blockers_clear():
+    result = run_rehearsal(env={})
+    checks = checks_from_result(result)
+    check_by_id = {check.check_id: check for check in checks}
+    threshold = deepcopy(result["local_mvp_threshold_summary"])
+
+    launch = check_by_id["launch_manifest_review_packets"].details
+    launch["etf500_current_fixture_not_launch_coverage"] = False
+    launch["etf500_category_coverage_gap_count"] = 0
+    launch["etf500_source_pack_readiness"]["ready_count"] = 500
+    launch["etf500_source_pack_readiness"]["incomplete_count"] = 0
+    launch["etf500_parser_handoff_readiness"]["handoff_ready_count"] = 500
+    launch["etf500_parser_handoff_readiness"]["handoff_not_ready_count"] = 0
+    launch["etf500_parser_handoff_readiness"]["unclear_rights_count"] = 0
+    launch["etf500_parser_handoff_readiness"]["parser_invalid_count"] = 0
+    launch["etf_readiness_counts"]["source_pack_ready"] = 500
+    launch["etf_readiness_counts"]["pending_review"] = 0
+    launch["etf_readiness_counts"]["unavailable"] = 0
+
+    etf_plan = check_by_id["etf_issuer_source_pack_readiness"].details["etf500_source_pack_batch_planning"]
+    etf_plan["candidate_artifacts_available"] = True
+    etf_plan["fallback_not_launch_coverage"] = False
+    etf_plan["planning_summary"]["source_pack_ready_count"] = 500
+    etf_plan["planning_summary"]["source_pack_incomplete_count"] = 0
+
+    stock = check_by_id["stock_sec_source_pack_readiness"].details
+    stock["readiness_counts"]["insufficient_evidence"] = 0
+    stock["readiness_counts"]["pass"] = 500
+    stock_plan = stock["top500_sec_source_pack_batch_planning"]
+    stock_plan["planning_summary"]["insufficient_evidence_count"] = 0
+    stock_plan["source_handoff_readiness"]["pending_or_missing_component_count"] = 0
+    stock_plan["source_handoff_readiness"]["pending_review_component_count"] = 0
+    stock_plan["source_handoff_readiness"]["rejected_or_unclear_rights_component_count"] = 0
+    stock_plan["source_handoff_readiness"]["wrong_asset_component_count"] = 0
+    stock_plan["parser_readiness"]["parser_not_ready_component_count"] = 0
+    stock_plan["freshness_as_of_checksum_placeholder_status"]["freshness_as_of_checksum_review_required"] = False
+    stock_plan["freshness_as_of_checksum_placeholder_status"]["checksum_required_count"] = 3
+    stock_plan["freshness_as_of_checksum_placeholder_status"]["checksum_present_count"] = 3
+
+    ingestion = check_by_id["local_ingestion_priority_planner"].details
+    ingestion["summary"]["blocked_or_not_ready_count"] = 0
+
+    gate = _build_manual_fresh_data_readiness_gate(checks, threshold)
+
+    assert gate["decision"] == "manual_test_ready"
+    assert gate["task_ready_vs_manual_test_ready_decision"] == "manual_test_ready"
+    assert gate["task_ready_for_manual_testing"] is True
+    assert gate["manual_test_ready"] is True
+    assert gate["agent_work_remaining"] is False
+    assert gate["next_operator_action"] == "run_manual_local_fresh_data_testing_with_explicit_opt_ins"
+    assert gate["stop_conditions"] == []
+    assert gate["generated_output_unlocked_for_unsupported_or_incomplete_assets"] is False
+    assert "generated_output_cache_entries" in gate["blocked_generated_surfaces"]
 
 
 def test_t118_local_fresh_data_runbook_covers_deterministic_smoke_without_live_requirements():
