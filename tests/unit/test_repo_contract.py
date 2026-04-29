@@ -618,7 +618,8 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
         "T-129 completed launch-manifest operator automation parity",
         "T-130 completed the deterministic local fresh-data MVP rehearsal command",
         "T-131 through T-135 completed the ETF eligible-universe, stock SEC source-pack readiness, ETF issuer source-pack readiness, local MVP readiness-threshold packets, and batchable local ingestion priority planner",
-        "T-134 and T-135 are completed. No active local fresh-data MVP task is currently prepared before production-hardening tasks.",
+        "The ETF-500 scope update is documented across the product and handoff docs; T-136 is currently promoted to turn that scope into deterministic candidate manifest review contracts.",
+        "T-134 and T-135 are completed. T-136 is currently promoted as the next local fresh-data MVP task before production-hardening tasks.",
         "T-099 established deterministic provider content export-rights hardening",
         "T-100 established the backend MVP runtime gap audit and roadmap tracker",
         "T-101 established configured persisted-reader route wiring with fixture fallback",
@@ -682,6 +683,7 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
         "| ETF issuer source-pack readiness packets | Completed | T-133 |",
         "| Local fresh-data MVP readiness thresholds | Completed | T-134 |",
         "| Batchable local ingestion priority planner | Completed | T-135 |",
+        "| ETF-500 candidate manifest review contracts | Current | T-136 |",
         "| Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |",
     ]
     for row in completed_rows:
@@ -696,6 +698,7 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
         "| Batchable local ingestion priority planner | Prepared | T-135 |",
         "| Batchable local ingestion priority planner | Current | T-135 |",
         "The current promoted task is T-129",
+        "No current local fully functional fresh-data MVP task is prepared",
     ]:
         assert stale_status not in roadmap
 

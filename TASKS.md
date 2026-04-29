@@ -1,10 +1,33 @@
 ## Current task
 
-No current task is prepared for the next local agent-loop cycle. The backlog is empty, so do not invent or run a new task until a new task contract is added.
+### T-136: Add ETF-500 candidate manifest review contracts
+
+Goal:
+Add deterministic, review-only ETF-500 candidate manifest review contracts so supported ETF and ETF/ETP recognition candidate manifests can be inspected against the ETF-500 target range, category bucket targets, batch milestones, source-pack/parser gates, and generated-output blocking rules without promoting runtime manifests, broadening supported coverage, or making live calls.
+
+Acceptance criteria:
+- ETF review output exposes ETF-500 target metadata: practical supported-row range `475-525`, batch milestones `ETF-50`, `ETF-150`, `ETF-300`, and `ETF-500`, candidate artifact path conventions, and the category target buckets from `docs/ETF_MANIFEST_HANDOFF.md`.
+- Repo-native inspection distinguishes the current fixture-sized supported ETF manifest from ETF-500 launch coverage, while preserving `data/universes/us_equity_etfs_supported.current.json` as the only generated-output authority and `data/universes/us_etp_recognition.current.json` as recognition-only authority.
+- Candidate/review diagnostics report supported-row counts, category coverage gaps, disqualifier counts, pending-review rows, source-pack readiness, parser/handoff readiness, checksum status, and explicit no-padding stop conditions for leveraged, inverse, active, fixed income, commodity, crypto, single-stock, option-income/buffer, ETN, ETV, CEF, international equity, or unclear products.
+- Recognition-only rows, candidate rows that fail ETF-500 scope gates, pending-review rows, unavailable rows, parser-invalid rows, unclear-rights rows, and source-pack-incomplete rows remain blocked from generated pages, chat, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, and generated-output cache writes.
+- `scripts/review_launch_manifests.py etf inspect` and `scripts/run_local_fresh_data_rehearsal.py --json` surface the ETF-500 review metadata without approving sources, promoting manifests, starting ingestion, or requiring external services.
+- Tests cover ETF-500 target metadata, category bucket targets, current-fixture-not-launch status, recognition-only blocking, disqualifier/no-padding behavior, rehearsal output, and repo-control doc markers.
+
+Required commands:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_repo_contract.py -q`
+- `TMPDIR=/tmp python3 scripts/review_launch_manifests.py etf inspect`
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
+- `TMPDIR=/tmp python3 evals/run_static_evals.py`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+- `git diff --check`
+
+Iteration budget:
+- Keep this to one local agent-loop cycle. If candidate-file CLI generation becomes too large, stop after ETF-500 review packet schema/output, rehearsal surfacing, and deterministic tests, then record a follow-up task.
+- Do not edit or promote current ETF manifests, approve sources, fetch live issuer/provider data, inspect secrets, write generated-output cache records, add production dependencies, or change generated ETF support behavior.
 
 ## Backlog
 
-No backlog tasks are currently prepared.
+No backlog tasks are currently prepared after T-136. Do not invent T-137 until T-136 is completed, explicitly replaced, or split because it exceeds the iteration budget.
 
 ## Completed
 
@@ -3643,6 +3666,7 @@ Current runtime snapshot:
 - T-129 completed launch-manifest operator automation parity for Top-500 stock and supported ETF launch-manifest packets.
 - T-130 completed the deterministic local fresh-data MVP rehearsal command.
 - T-131 through T-135 completed the ETF eligible-universe, stock SEC source-pack readiness, ETF issuer source-pack readiness, local MVP readiness-threshold packets, and batchable local ingestion priority planner.
+- The ETF-500 scope update is documented across the product and handoff docs; T-136 is currently promoted to turn that scope into deterministic candidate manifest review contracts.
 - T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, full governed source artifacts, admin auth/rate limiting, broader live ingestion, and launch-sized reviewed manifests remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:
@@ -3702,7 +3726,7 @@ Operational defaults for general MVP roadmap tasks:
 - T-128 established deterministic governed golden evidence API/frontend rendering proof. It is completed and must not be reintroduced as runnable backlog.
 - T-129 established launch-manifest operator automation parity. It is completed and must not be reintroduced as runnable backlog.
 - T-130 established the local fresh-data MVP rehearsal command. It is completed and must not be reintroduced as runnable backlog.
-- T-134 and T-135 are completed. No active local fresh-data MVP task is currently prepared before production-hardening tasks.
+- T-134 and T-135 are completed. T-136 is currently promoted as the next local fresh-data MVP task before production-hardening tasks.
 - Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until explicit launch readiness work is promoted into a narrow task and passes deterministic CI coverage.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted task should run the relevant EVALS.md checks, `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, `bash scripts/run_quality_gate.sh`, and `git diff --check`.
@@ -3771,11 +3795,12 @@ Roadmap integration tracker:
 | ETF issuer source-pack readiness packets | Completed | T-133 |
 | Local fresh-data MVP readiness thresholds | Completed | T-134 |
 | Batchable local ingestion priority planner | Completed | T-135 |
+| ETF-500 candidate manifest review contracts | Current | T-136 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
 Remaining unpromoted general MVP sequence:
 
-- No current local fully functional fresh-data MVP task is prepared. Add a narrow task contract before starting production deployment hardening or any new local fresh-data expansion.
+- After T-136, add a narrow follow-up task contract before starting production deployment hardening or any new local fresh-data expansion.
 - Full production deployment remains unpromoted until a narrow launch-readiness task is added: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
 - Recurring production jobs only after manual official-source acquisition, Top-500 candidate refresh review, and local fresh-data behavior are stable.
 - Broad paid-provider or news-provider integrations only after provider licensing/source-use review, no-secret-exposure tests, mocked CI fixtures, source-rights validation, and export/display constraints are documented.
