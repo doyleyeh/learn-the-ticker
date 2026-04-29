@@ -1,6 +1,6 @@
 # Local Fresh-Data Ingest-To-Render Runbook
 
-Task: T-118, updated by T-119 through T-130 local API, manifest, durable-smoke, v0.6 handoff alignment, and the local MVP rehearsal command
+Task: T-118, updated by T-119 through T-135 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, and ingestion priority planning
 
 This runbook describes the local golden-asset smoke path before production deployment work. Normal CI uses deterministic fixtures, mocked official-source acquisition, and in-memory repositories. It must not require real SEC, issuer, market-data, broad news, storage, database, Redis, RSS, or LLM calls.
 
@@ -55,15 +55,14 @@ Stop when any required deterministic check is `blocked`, or when an opted-in opt
 
 ## Current Local MVP Gap Track
 
-The deterministic rehearsal can pass today, but that is not the same as a fully functional local fresh-data MVP. The next agent-loop work should follow this order:
+The deterministic rehearsal can pass today, but that is not the same as a fully functional local fresh-data MVP. T-131 through T-135 added ETF eligible-universe review, stock and ETF source-pack readiness packets, local MVP thresholds, and batchable ingestion priority planning. The next agent-loop work should follow this order before the project can honestly become manual-test-only:
 
-1. Expand ETF review packets toward ETF-500 while keeping golden/pre-cache ETFs as regression assets only.
-2. Add stock SEC source-pack readiness for submissions, latest 10-K, latest 10-Q where available, and XBRL company facts.
-3. Add ETF issuer source-pack readiness for issuer page, fact sheet, prospectus or summary prospectus, holdings, exposures, methodology/shareholder/risk sources, and sponsor announcements where relevant.
-4. Add explicit local MVP thresholds for failed/unavailable assets and deterministic source-backed partial sections when live generation fails validation.
-5. Add batchable, resumable local ingestion priority planning for high-demand assets first, then supported ETFs and Top-500 stocks by review priority.
+1. Finish T-136 ETF-500 candidate manifest review contracts while keeping golden/pre-cache ETFs as regression assets only.
+2. Add T-137 ETF-500 issuer source-pack batch planning for required issuer pages, fact sheets, prospectus or summary prospectus documents, holdings, exposures, methodology/risk/shareholder sources, and sponsor announcements where relevant.
+3. Add T-138 Top-500 SEC source-pack batch planning for submissions, latest 10-K, latest 10-Q where available, XBRL company facts, parser readiness, checksums, and Golden Asset Source Handoff actions.
+4. Add T-139 local manual fresh-data readiness gate so the rehearsal can say `agent_work_remaining` while deterministic prerequisites are missing and `manual_test_ready` only when the next step is operator local testing.
 
-All five steps remain deterministic by default and must not approve sources, promote manifests, start production services, expose secrets, or make live provider/news/market-data/LLM calls in normal CI.
+All steps remain deterministic by default and must not approve sources, promote manifests, start production services, expose secrets, or make live provider/news/market-data/LLM calls in normal CI.
 
 ## Local Live-AI Validation Smoke
 

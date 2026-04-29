@@ -1,6 +1,6 @@
 # MVP Functional Gap Review
 
-Task: 2026-04-28 v0.6 doc alignment and fresh-data MVP review, updated during T-130.
+Task: 2026-04-28 v0.6 doc alignment and fresh-data MVP review, updated after T-135 and T-136 task preparation.
 
 Purpose: summarize current implementation progress, align the operational plan with the v0.6 PRD/TDS refresh, and define the next narrow tasks needed before the project is a locally functional MVP that can use fresh approved data and show it correctly in the frontend.
 
@@ -25,6 +25,8 @@ Completed capabilities:
 - T-128: prove governed golden evidence drives backend API and frontend rendering. This is now completed as a deterministic governed golden rendering proof: configured API reads can validate private same-asset source snapshot artifacts, normalized knowledge-pack records, and generated-output cache records before serving overview, source drawer, and export output.
 - T-129 adds repo-native review-only launch-manifest packet automation for Top-500 candidate/diff/review summaries and split ETF supported/recognition manifest inspection without promoting runtime manifests.
 - T-130 adds a repo-native local fresh-data MVP rehearsal command that ties source-handoff gates, governed golden API reads, source drawer/export surfaces, comparison/chat paths, frontend smoke markers, launch-manifest review packets, and opt-in readiness checks into one review-oriented local command.
+- T-131 through T-135 add ETF eligible-universe review packets, stock SEC source-pack readiness, ETF issuer source-pack readiness, local MVP readiness thresholds, and batchable local ingestion priority planning.
+- T-136 is promoted as the current ETF-500 candidate manifest review-contract task. T-137 through T-139 are prepared follow-up tasks for ETF-500 issuer source-pack batch planning, Top-500 SEC source-pack batch planning, and the local manual fresh-data readiness gate.
 - Normal CI remains deterministic and does not require live provider, news, market-data, storage, database, browser services, or LLM calls.
 
 ## Current Implementation-Doc Alignment
@@ -55,18 +57,18 @@ The project is not yet a fully functional fresh-data MVP. Remaining blockers:
 4. Local live-AI validation is operator-smoke covered, not launch-approved.
    T-127 adds an opt-in local smoke for grounded chat and AI Comprehensive Analysis when evidence thresholds are met. It remains disabled by default, validation-first, and separate from source approval or Golden Asset Source Handoff. Repo code relies on OpenRouter platform/API-key limits rather than a separate spend cap.
 
-5. Local MVP rehearsal is now available, but not launch approval.
-   T-130 adds `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` for deterministic local review. The command reports `pass`, `skipped`, and `blocked` checks, skips optional browser/durable/retrieval/live-AI modes unless explicitly enabled, and does not approve sources, promote manifests, start production services, require live calls by default, or make fixture-sized/local-only data launch-approved. It still needs explicit local-MVP thresholds for failed/unavailable assets and optional-mode blockers.
+5. Local MVP rehearsal is available, but not launch approval.
+   T-130 adds `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` for deterministic local review. T-134 adds local-MVP threshold reporting, and T-135 adds batchable ingestion priority planning. The rehearsal still needs a final manual-readiness gate that can distinguish more agent-loop work from manual-test-only handoff after the ETF-500 and Top-500 batch planning gaps are explicit.
 
-6. Batchable fresh-data ingestion planning is not yet actionable for the full local MVP.
-   The repo has deterministic ingestion state contracts, but it still needs an operator-safe planner that prioritizes high-demand pre-cache assets first, then supported ETFs and Top-500 stocks by review/source-pack priority, with resumable pending/running/succeeded/failed states.
+6. Batchable fresh-data ingestion planning is present, but launch-sized source-pack planning is still missing.
+   T-135 prioritizes high-demand pre-cache assets first, then supported ETFs and Top-500 stocks by review/source-pack priority. The next gap is making ETF-500 issuer source-pack batch plans and Top-500 SEC source-pack batch plans explicit so operators can review what fresh source evidence is still missing before manual local testing.
 
 7. Production readiness remains later.
    Admin auth, rate limiting, production CORS review, private object storage, database migrations, Cloud Run service/job settings, monitoring, rollback, cost controls, launch support, and legal/compliance review remain open.
 
 ## Refined Agent Track
 
-Current task state for the next agent-loop pass:
+Current task state for the next agent-loop passes:
 
 - T-126 completed repo-native source-handoff manifest inspection/finalization smoke tooling.
 - T-127 completed the opt-in local live-AI validation smoke for grounded chat and AI Comprehensive Analysis.
@@ -74,22 +76,25 @@ Current task state for the next agent-loop pass:
 - T-129 completed review-only launch-manifest operator automation parity for Top-500 and supported ETF review packets.
 - T-129: add launch-manifest operator automation parity is now implemented as deterministic review-only operator tooling, not as launch approval or manifest promotion.
 - T-130 completed the local fresh-data MVP rehearsal command as a deterministic, fixture-backed review layer with explicit optional modes.
+- T-131 completed ETF eligible-universe review packet contracts.
+- T-132 completed stock SEC source-pack readiness packet contracts.
+- T-133 completed ETF issuer source-pack readiness packet contracts.
+- T-134 completed local fresh-data MVP readiness thresholds.
+- T-135 completed batchable local ingestion priority planning.
+- T-136 is current: add ETF-500 candidate manifest review contracts.
 
 Runnable near-term backlog:
 
-- T-131 adds ETF eligible-universe review packet contracts.
-- T-132 adds stock SEC source-pack readiness packet contracts.
-- T-133 adds ETF issuer source-pack readiness packet contracts.
-- T-134 adds local fresh-data MVP readiness thresholds.
-- T-135 adds a batchable local ingestion priority planner.
+- T-137 adds ETF-500 issuer source-pack batch planning contracts.
+- T-138 adds Top-500 SEC source-pack batch planning contracts.
+- T-139 adds a local manual fresh-data readiness gate.
 
 Sequencing rationale:
 
 - Align docs first so the agent loop does not follow commands from a different repository layout.
-- Start with ETF eligible-universe review because the latest product decision makes ETF-500 the supported ETF target and golden ETFs a regression subset, not the coverage ceiling.
-- Add stock and ETF source-pack readiness before changing generated-output unlock behavior.
-- Add local MVP thresholds before broadening ingestion so failed/unavailable assets cannot leak generated claims.
-- Add batch planning after the readiness packets exist, keeping all work deterministic and review-only until source approvals and manifest promotion are explicit.
+- Finish ETF-500 candidate review contracts first because the latest product decision makes ETF-500 the supported ETF target and golden ETFs a regression subset, not the coverage ceiling.
+- Add ETF-500 and Top-500 source-pack batch planning before manual local fresh-data testing so operators can see the missing official evidence and Golden Asset Source Handoff actions without live calls.
+- Add the manual fresh-data readiness gate only after those planning outputs exist, so the project can accurately report whether more agent-loop work remains or whether manual local testing is the next step.
 
 ## Non-Goals For The Next Tasks
 

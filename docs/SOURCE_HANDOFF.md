@@ -13,14 +13,16 @@ Implemented in the current repo:
 - repo-native governed-source manifest inspection and finalization smoke tooling at `scripts/inspect_source_handoff_manifest.py`;
 - SEC stock, ETF issuer, and Weekly News acquisition boundaries under `backend/provider_adapters/` and `backend/repositories/weekly_news.py`;
 - deterministic worker, source snapshot, knowledge-pack, Weekly News evidence, generated-output cache, source drawer, citation, and export contract tests;
-- optional local browser and durable smoke paths that keep normal CI fixture-safe.
+- optional local browser and durable smoke paths that keep normal CI fixture-safe;
+- deterministic governed golden API/frontend rendering proof for `AAPL`, `VOO`, and `QQQ`;
+- operator-only local live-AI validation smoke for grounded chat and AI Comprehensive Analysis, disabled by default.
 
 Still missing for MVP:
 
-- governed source artifacts for the full golden set;
-- proof that governed evidence, rather than fixture fallback, drives golden API responses and frontend rendering end to end;
+- launch-sized governed source artifacts and source-handoff packets for the Top-500 stock manifest and ETF-500 supported ETF manifest;
+- ETF-500 and Top-500 source-pack batch plans that show which official source components still need review before local manual testing;
 - deployed or automated worker execution;
-- local live-AI validation for grounded chat and AI Comprehensive Analysis when evidence thresholds are met.
+- a deterministic manual-readiness gate that can distinguish remaining agent-loop work from manual-test-only local validation.
 
 ## Safety Boundaries
 
