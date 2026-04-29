@@ -75,6 +75,69 @@ ETF_ELIGIBLE_UNIVERSE_POLICY = {
         "unclear_or_pending_review_product",
     ],
 }
+ETF_ELIGIBLE_UNIVERSE_SCOPE_VERSION = "etf-eligible-universe-review-scope-v1"
+ETF_ELIGIBLE_UNIVERSE_REVIEW_CATEGORIES = [
+    {
+        "category": "broad_us_index",
+        "label": "Broad U.S. index",
+        "description": "U.S. equity index ETFs with broad benchmark-style exposure.",
+    },
+    {
+        "category": "total_market_or_large_cap",
+        "label": "Total-market or large-cap",
+        "description": "Total U.S. market or large-company U.S. equity index exposure.",
+    },
+    {
+        "category": "size_style",
+        "label": "Size/style",
+        "description": "Market-cap, size, or style-slice U.S. equity index exposure.",
+    },
+    {
+        "category": "sector",
+        "label": "Sector",
+        "description": "U.S. equity sector index exposure.",
+    },
+    {
+        "category": "industry_or_theme",
+        "label": "Industry/theme",
+        "description": "U.S. equity industry or theme index exposure.",
+    },
+    {
+        "category": "dividend",
+        "label": "Dividend",
+        "description": "Dividend-focused passive U.S. equity exposure.",
+    },
+    {
+        "category": "value_growth",
+        "label": "Value/growth",
+        "description": "Value or growth passive U.S. equity exposure.",
+    },
+    {
+        "category": "quality",
+        "label": "Quality",
+        "description": "Quality-factor passive U.S. equity exposure.",
+    },
+    {
+        "category": "momentum",
+        "label": "Momentum",
+        "description": "Momentum-factor passive U.S. equity exposure.",
+    },
+    {
+        "category": "low_volatility",
+        "label": "Low-volatility",
+        "description": "Low-volatility passive U.S. equity exposure.",
+    },
+    {
+        "category": "equal_weight",
+        "label": "Equal-weight",
+        "description": "Equal-weighted U.S. equity index exposure.",
+    },
+    {
+        "category": "esg_index",
+        "label": "ESG index",
+        "description": "ESG-screened passive U.S. equity index exposure.",
+    },
+]
 ETF_REQUIRED_ISSUER_SOURCE_PACK = [
     "issuer_page",
     "fact_sheet",
@@ -230,6 +293,13 @@ def build_etf_launch_review_packet(
     validate_etf_universe_manifest(recognition)
     supported_entries = [_entry_review_row(entry, manifest_kind="supported") for entry in supported.entries]
     recognition_entries = [_entry_review_row(entry, manifest_kind="recognition") for entry in recognition.entries]
+    eligible_universe_scope = _eligible_universe_scope(supported_entries)
+    golden_regression = _golden_precache_regression_summary(supported_entries, eligible_universe_scope)
+    readiness_counts = _etf_readiness_counts(
+        supported_entries=supported_entries,
+        recognition_entries=recognition_entries,
+        golden_regression=golden_regression,
+    )
     stop_conditions = _etf_review_stop_conditions(
         supported=supported,
         recognition=recognition,
@@ -254,6 +324,11 @@ def build_etf_launch_review_packet(
         "golden_precache_tickers": sorted(ETF_GOLDEN_PRECACHE_TICKERS),
         "regression_reference_tickers": sorted(ETF_REGRESSION_REFERENCE_TICKERS),
         "golden_set_is_coverage_limit": False,
+        "fixture_or_local_only_contract": _manifest_uses_fixture_or_local_only_provenance(supported)
+        or _manifest_uses_fixture_or_local_only_provenance(recognition),
+        "eligible_universe_scope": eligible_universe_scope,
+        "golden_precache_regression": golden_regression,
+        "readiness_counts": readiness_counts,
         "eligible_supported_entry_count": len(supported_entries),
         "generated_output_eligible_count": sum(1 for entry in supported_entries if entry["generated_output_eligible"]),
         "pending_ingestion_count": sum(
@@ -438,9 +513,11 @@ def _entry_review_row(entry: ETFUniverseEntry, *, manifest_kind: str) -> dict[st
         "exchange": entry.exchange,
         "listing_country": entry.listing_country,
         "wrapper_or_scope": entry.etf_category.value,
+        "eligible_universe_categories": _eligible_universe_categories_for_entry(entry),
         "support_state": entry.support_state.value,
         "launch_cache_state": entry.launch_cache_state.value,
         "generated_output_eligible": generated_output_eligible,
+        "source_pack_ready": _source_pack_ready(entry),
         "blocked_state_reason": _blocked_state_reason(entry, generated_output_eligible=generated_output_eligible),
         "exclusion_flags": exclusion_flags,
         "evidence_state": entry.evidence.evidence_state.value,
@@ -474,6 +551,7 @@ def _manifest_review_summary(manifest: ETFUniverseManifest, entries: list[dict[s
         "wrapper_or_scope_counts": _count_values(str(entry["wrapper_or_scope"]) for entry in entries),
         "source_quality_counts": _count_values(str(entry["source_quality"]) for entry in entries),
         "generated_output_eligible_count": sum(1 for entry in entries if entry["generated_output_eligible"]),
+        "source_pack_ready_count": sum(1 for entry in entries if entry["source_pack_ready"]),
         "pending_ingestion_count": sum(
             1 for entry in entries if entry["support_state"] == ETFUniverseSupportState.eligible_not_cached.value
         ),
@@ -487,6 +565,122 @@ def _manifest_review_summary(manifest: ETFUniverseManifest, entries: list[dict[s
         ),
         "tickers": [str(entry["ticker"]) for entry in entries],
     }
+
+
+def _eligible_universe_scope(supported_entries: list[dict[str, object]]) -> dict[str, object]:
+    rows: list[dict[str, object]] = []
+    for category in ETF_ELIGIBLE_UNIVERSE_REVIEW_CATEGORIES:
+        category_id = str(category["category"])
+        entries = [
+            entry
+            for entry in supported_entries
+            if category_id in [str(value) for value in entry["eligible_universe_categories"]]  # type: ignore[index]
+        ]
+        rows.append(
+            {
+                **category,
+                "supported_ticker_count": len(entries),
+                "source_pack_ready_count": sum(1 for entry in entries if entry["source_pack_ready"]),
+                "pending_ingestion_count": sum(
+                    1 for entry in entries if entry["support_state"] == ETFUniverseSupportState.eligible_not_cached.value
+                ),
+                "pending_review_count": _pending_review_count(entries),
+                "generated_output_eligible_count": sum(1 for entry in entries if entry["generated_output_eligible"]),
+                "tickers": [str(entry["ticker"]) for entry in entries],
+                "coverage_status": "represented_in_current_manifest"
+                if entries
+                else "scope_defined_no_current_manifest_rows",
+            }
+        )
+
+    return {
+        "scope_version": ETF_ELIGIBLE_UNIVERSE_SCOPE_VERSION,
+        "coverage_authority": "data/universes/us_equity_etfs_supported.current.json",
+        "review_contract": "manifest_defined_eligible_universe_not_golden_ceiling",
+        "required_categories": rows,
+        "required_category_names": [str(category["category"]) for category in ETF_ELIGIBLE_UNIVERSE_REVIEW_CATEGORIES],
+        "represented_category_count": sum(1 for row in rows if row["supported_ticker_count"]),
+        "scope_defined_no_current_rows_count": sum(1 for row in rows if not row["supported_ticker_count"]),
+        "scope_defined_no_current_rows": [
+            str(row["category"]) for row in rows if not row["supported_ticker_count"]
+        ],
+    }
+
+
+def _golden_precache_regression_summary(
+    supported_entries: list[dict[str, object]], eligible_universe_scope: dict[str, object]
+) -> dict[str, object]:
+    supported_tickers = [str(entry["ticker"]) for entry in supported_entries]
+    supported_set = set(supported_tickers)
+    golden_tickers = sorted(ETF_GOLDEN_PRECACHE_TICKERS)
+    non_golden = sorted(supported_set - ETF_GOLDEN_PRECACHE_TICKERS)
+    represented_beyond_golden = sorted(
+        {
+            str(category["category"])
+            for category in eligible_universe_scope["required_categories"]  # type: ignore[index]
+            if set(category["tickers"]) - ETF_GOLDEN_PRECACHE_TICKERS  # type: ignore[index]
+        }
+    )
+    return {
+        "golden_precache_tickers": golden_tickers,
+        "regression_reference_tickers": sorted(ETF_REGRESSION_REFERENCE_TICKERS),
+        "full_eligible_universe_tickers": sorted(supported_tickers),
+        "eligible_supported_non_golden_tickers": non_golden,
+        "golden_precache_count": len(golden_tickers),
+        "full_eligible_universe_count": len(supported_tickers),
+        "non_golden_eligible_supported_count": len(non_golden),
+        "golden_set_is_coverage_limit": False,
+        "eligible_supported_count_exceeds_golden_precache_count": len(supported_tickers) > len(golden_tickers),
+        "represented_categories_beyond_golden": represented_beyond_golden,
+    }
+
+
+def _etf_readiness_counts(
+    *,
+    supported_entries: list[dict[str, object]],
+    recognition_entries: list[dict[str, object]],
+    golden_regression: dict[str, object],
+) -> dict[str, int]:
+    all_entries = supported_entries + recognition_entries
+    return {
+        "supported": len(supported_entries),
+        "recognition_only": len(recognition_entries),
+        "excluded": sum(
+            1
+            for entry in recognition_entries
+            if str(entry["support_state"])
+            in {
+                ETFUniverseSupportState.recognized_unsupported.value,
+                ETFUniverseSupportState.out_of_scope.value,
+            }
+        ),
+        "pending_review": _pending_review_count(all_entries),
+        "unavailable": sum(
+            1
+            for entry in all_entries
+            if str(entry["support_state"]) == ETFUniverseSupportState.unavailable.value
+            or str(entry["evidence_state"]) == "unavailable"
+            or str(entry["freshness_state"]) == "unavailable"
+        ),
+        "pending_ingestion": sum(
+            1 for entry in supported_entries if entry["support_state"] == ETFUniverseSupportState.eligible_not_cached.value
+        ),
+        "source_pack_ready": sum(1 for entry in supported_entries if entry["source_pack_ready"]),
+        "generated_output_eligible": sum(1 for entry in supported_entries if entry["generated_output_eligible"]),
+        "golden_precache_regression": int(golden_regression["golden_precache_count"]),
+        "full_eligible_universe": int(golden_regression["full_eligible_universe_count"]),
+    }
+
+
+def _pending_review_count(entries: list[dict[str, object]]) -> int:
+    return sum(
+        1
+        for entry in entries
+        if str(entry["support_state"]) in {"unknown", "unavailable"}
+        or str(entry["handoff_status"]).endswith("review_needed")
+        or str(entry["freshness_state"]) in {"stale", "unknown", "unavailable"}
+        or str(entry["evidence_state"]) in {"partial", "unknown", "unavailable", "insufficient_evidence"}
+    )
 
 
 def _etf_review_stop_conditions(
@@ -565,6 +759,34 @@ def _handoff_status_for_entry(entry: ETFUniverseEntry) -> str:
     if entry.evidence.freshness_state in {FreshnessState.stale, FreshnessState.unknown, FreshnessState.unavailable}:
         return "freshness_review_needed"
     return "handoff_metadata_available"
+
+
+def _source_pack_ready(entry: ETFUniverseEntry) -> bool:
+    return (
+        entry.support_state in {ETFUniverseSupportState.cached_supported, ETFUniverseSupportState.eligible_not_cached}
+        and entry.evidence.evidence_state.value == "supported"
+        and entry.evidence.freshness_state is FreshnessState.fresh
+        and entry.evidence.source_quality is not SourceQuality.fixture
+        and _handoff_status_for_entry(entry) == "handoff_metadata_available"
+    )
+
+
+def _eligible_universe_categories_for_entry(entry: ETFUniverseEntry) -> list[str]:
+    if entry.support_state not in {ETFUniverseSupportState.cached_supported, ETFUniverseSupportState.eligible_not_cached}:
+        return []
+    ticker = entry.ticker
+    categories: list[str] = []
+    if entry.etf_category is ETFUniverseCategory.us_equity_index_etf:
+        categories.append("broad_us_index")
+        if ticker in {"VOO", "QQQ", "SPY", "VTI", "IVV", "DIA"}:
+            categories.append("total_market_or_large_cap")
+        if ticker in {"IWM"}:
+            categories.append("size_style")
+    if entry.etf_category is ETFUniverseCategory.us_equity_sector_etf:
+        categories.append("sector")
+    if entry.etf_category is ETFUniverseCategory.us_equity_thematic_etf:
+        categories.append("industry_or_theme")
+    return categories
 
 
 def _count_values(values) -> dict[str, int]:

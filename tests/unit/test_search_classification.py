@@ -144,15 +144,62 @@ def test_etf_launch_review_packet_preserves_supported_and_recognition_split():
     assert "low_volatility" in packet["eligible_universe_policy"]["included_factor_styles"]
     assert "international_or_global_primary_exposure" in packet["eligible_universe_policy"]["excluded_products"]
     assert "issuer_page" in packet["required_issuer_source_pack"]
+    assert packet["fixture_or_local_only_contract"] is True
     assert packet["eligible_supported_entry_count"] == 13
     assert packet["generated_output_eligible_count"] == 2
     assert packet["pending_ingestion_count"] == 11
     assert packet["excluded_product_count"] >= 1
+    assert packet["readiness_counts"] == {
+        "supported": 13,
+        "recognition_only": 9,
+        "excluded": 7,
+        "pending_review": 22,
+        "unavailable": 1,
+        "pending_ingestion": 11,
+        "source_pack_ready": 0,
+        "generated_output_eligible": 2,
+        "golden_precache_regression": 2,
+        "full_eligible_universe": 13,
+    }
+    golden_regression = packet["golden_precache_regression"]
+    assert golden_regression["golden_precache_tickers"] == ["QQQ", "VOO"]
+    assert golden_regression["full_eligible_universe_count"] == 13
+    assert golden_regression["non_golden_eligible_supported_count"] == 11
+    assert golden_regression["eligible_supported_count_exceeds_golden_precache_count"] is True
+    assert golden_regression["golden_set_is_coverage_limit"] is False
+    assert "sector" in golden_regression["represented_categories_beyond_golden"]
+    assert "industry_or_theme" in golden_regression["represented_categories_beyond_golden"]
     assert "fixture_or_local_only_provenance_not_launch_approved" in packet["stop_conditions"]
     assert "fixture_source_quality_not_launch_approved" in packet["stop_conditions"]
     assert "issuer_source_pack_review_not_complete" in packet["stop_conditions"]
     assert "missing_golden_ticker" not in packet["stop_conditions"]
     assert "fixture_sized_supported_manifest_not_launch_approved" not in packet["stop_conditions"]
+
+    eligible_scope = packet["eligible_universe_scope"]
+    assert eligible_scope["scope_version"] == "etf-eligible-universe-review-scope-v1"
+    assert eligible_scope["review_contract"] == "manifest_defined_eligible_universe_not_golden_ceiling"
+    assert eligible_scope["represented_category_count"] == 5
+    assert set(eligible_scope["required_category_names"]) == {
+        "broad_us_index",
+        "total_market_or_large_cap",
+        "size_style",
+        "sector",
+        "industry_or_theme",
+        "dividend",
+        "value_growth",
+        "quality",
+        "momentum",
+        "low_volatility",
+        "equal_weight",
+        "esg_index",
+    }
+    scope_rows = {row["category"]: row for row in eligible_scope["required_categories"]}
+    assert scope_rows["broad_us_index"]["supported_ticker_count"] == 7
+    assert scope_rows["total_market_or_large_cap"]["supported_ticker_count"] == 6
+    assert scope_rows["size_style"]["tickers"] == ["IWM"]
+    assert scope_rows["sector"]["supported_ticker_count"] == 4
+    assert scope_rows["industry_or_theme"]["tickers"] == ["SOXX", "SMH"]
+    assert scope_rows["dividend"]["coverage_status"] == "scope_defined_no_current_manifest_rows"
 
     supported = packet["supported_manifest"]
     recognition = packet["recognition_manifest"]
@@ -163,15 +210,22 @@ def test_etf_launch_review_packet_preserves_supported_and_recognition_split():
     assert supported["support_state_counts"]["cached_supported"] == 2
     assert supported["support_state_counts"]["eligible_not_cached"] == 11
     assert supported["generated_output_eligible_count"] == 2
+    assert supported["source_pack_ready_count"] == 0
     assert supported["pending_ingestion_count"] == 11
     assert supported["pending_review_count"] == 13
     assert recognition["support_state_counts"]["recognized_unsupported"] >= 1
+    assert recognition["source_pack_ready_count"] == 0
 
     supported_rows = {entry["ticker"]: entry for entry in packet["supported_entries"]}
     recognition_rows = {entry["ticker"]: entry for entry in packet["recognition_entries"]}
     assert supported_rows["VOO"]["generated_output_eligible"] is True
+    assert supported_rows["VOO"]["source_pack_ready"] is False
+    assert supported_rows["VOO"]["eligible_universe_categories"] == ["broad_us_index", "total_market_or_large_cap"]
     assert supported_rows["SPY"]["blocked_state_reason"] == "supported_but_not_cached_pending_ingestion"
+    assert supported_rows["SPY"]["source_pack_ready"] is False
     assert recognition_rows["TQQQ"]["generated_output_eligible"] is False
+    assert recognition_rows["TQQQ"]["source_pack_ready"] is False
+    assert recognition_rows["TQQQ"]["eligible_universe_categories"] == []
     assert recognition_rows["TQQQ"]["blocked_state_reason"] == "blocked_by_exclusion_flags:leveraged"
     assert recognition_rows["TQQQ"]["handoff_status"] == "fixture_metadata_only_review_needed"
 

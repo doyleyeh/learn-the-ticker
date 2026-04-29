@@ -318,6 +318,34 @@ def _check_launch_manifest_review_packets(root: Path) -> RehearsalCheck:
         return _blocked("launch_manifest_review_packets", "etf_packet_improperly_launch_approved")
     if etf["recognition_rows_unlock_generated_output"]:
         return _blocked("launch_manifest_review_packets", "recognition_rows_unlock_generated_output")
+    readiness_counts = etf["readiness_counts"]
+    eligible_scope = etf["eligible_universe_scope"]
+    golden_regression = etf["golden_precache_regression"]
+    required_categories = set(eligible_scope["required_category_names"])
+    expected_categories = {
+        "broad_us_index",
+        "total_market_or_large_cap",
+        "size_style",
+        "sector",
+        "industry_or_theme",
+        "dividend",
+        "value_growth",
+        "quality",
+        "momentum",
+        "low_volatility",
+        "equal_weight",
+        "esg_index",
+    }
+    if required_categories != expected_categories:
+        return _blocked(
+            "launch_manifest_review_packets",
+            "etf_eligible_universe_scope_categories_incomplete",
+            {"required_categories": sorted(required_categories)},
+        )
+    if not golden_regression["eligible_supported_count_exceeds_golden_precache_count"]:
+        return _blocked("launch_manifest_review_packets", "etf_golden_set_treated_as_coverage_limit")
+    if readiness_counts["source_pack_ready"] != 0 or etf["review_status"] != "review_needed":
+        return _blocked("launch_manifest_review_packets", "etf_fixture_manifest_improperly_marked_source_ready")
     return _pass(
         "launch_manifest_review_packets",
         "manifest_packets_are_review_only",
@@ -332,6 +360,13 @@ def _check_launch_manifest_review_packets(root: Path) -> RehearsalCheck:
             "etf_generated_output_eligible_count": etf["generated_output_eligible_count"],
             "etf_pending_ingestion_count": etf["pending_ingestion_count"],
             "etf_excluded_product_count": etf["excluded_product_count"],
+            "etf_readiness_counts": readiness_counts,
+            "etf_eligible_universe_scope_version": eligible_scope["scope_version"],
+            "etf_represented_eligible_category_count": eligible_scope["represented_category_count"],
+            "etf_scope_defined_no_current_rows": eligible_scope["scope_defined_no_current_rows"],
+            "etf_full_eligible_universe_count": golden_regression["full_eligible_universe_count"],
+            "etf_non_golden_eligible_supported_count": golden_regression["non_golden_eligible_supported_count"],
+            "etf_represented_categories_beyond_golden": golden_regression["represented_categories_beyond_golden"],
         },
     )
 
