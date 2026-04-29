@@ -567,12 +567,11 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
     active_sections = f"{current_task}\n{backlog}"
 
     assert "## MVP Backend Roadmap" not in tasks
-    assert "### T-131: Add ETF eligible-universe review packet contracts" in current_task
+    assert "### T-132: Add stock SEC source-pack readiness packet contracts" in current_task
     for marker in [
         "Acceptance criteria",
         "Required commands",
         "Iteration budget",
-        "### T-132: Add stock SEC source-pack readiness packet contracts",
         "### T-133: Add ETF issuer source-pack readiness packet contracts",
         "### T-134: Add local fresh-data MVP readiness thresholds",
         "### T-135: Add batchable local ingestion priority planner",
@@ -702,6 +701,7 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert statuses["source_handoff_approval_gate"] == "pass"
     assert statuses["governed_golden_api_rendering"] == "pass"
     assert statuses["launch_manifest_review_packets"] == "pass"
+    assert statuses["stock_sec_source_pack_readiness"] == "pass"
     assert statuses["frontend_v04_smoke_markers"] == "pass"
     assert statuses["optional_browser_services"] == "skipped"
     assert statuses["optional_local_durable_repositories"] == "skipped"
@@ -718,6 +718,26 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert launch_details["etf_full_eligible_universe_count"] == 13
     assert launch_details["etf_non_golden_eligible_supported_count"] == 11
     assert "sector" in launch_details["etf_represented_categories_beyond_golden"]
+    stock_sec_details = next(
+        check["details"] for check in result["checks"] if check["check_id"] == "stock_sec_source_pack_readiness"
+    )
+    assert stock_sec_details["review_status"] == "review_needed"
+    assert stock_sec_details["runtime_manifest_authority"] == "data/universes/us_common_stocks_top500.current.json"
+    assert stock_sec_details["candidate_manifest_paths"] == [
+        "data/universes/us_common_stocks_top500.candidate.2026-04.json"
+    ]
+    assert stock_sec_details["required_sec_components"] == [
+        "sec_submissions",
+        "latest_annual_filing",
+        "latest_quarterly_filing_when_available",
+        "xbrl_company_facts",
+    ]
+    assert stock_sec_details["readiness_counts"]["current_manifest_rows"] == 10
+    assert stock_sec_details["readiness_counts"]["candidate_manifest_rows"] == 10
+    assert stock_sec_details["readiness_counts"]["partial"] == 2
+    assert stock_sec_details["readiness_counts"]["insufficient_evidence"] == 18
+    assert stock_sec_details["readiness_counts"]["review_packet_unlocks_generated_output"] == 0
+    assert "generated_chat_answers" in stock_sec_details["blocked_generated_surfaces"]
 
 
 def test_local_fresh_data_rehearsal_optional_modes_report_blockers_without_secrets():

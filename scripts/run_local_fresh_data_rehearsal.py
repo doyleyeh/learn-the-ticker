@@ -51,6 +51,7 @@ from backend.source_snapshot_repository import (
 )
 from backend.testing import TestClient
 from backend.top500_candidate_manifest import inspect_top500_candidate_review_packet
+from backend.top500_candidate_manifest import build_stock_sec_source_pack_readiness_packet
 from backend.weekly_news_repository import (
     InMemoryWeeklyNewsEventEvidenceRepository,
     WeeklyNewsEventCandidateRow,
@@ -93,6 +94,7 @@ def run_rehearsal(env: dict[str, str] | None = None, *, root: Path = ROOT) -> di
         _guarded("source_handoff_approval_gate", _check_source_handoff_approval_gate),
         _guarded("governed_golden_api_rendering", _check_governed_golden_api_rendering),
         _guarded("launch_manifest_review_packets", lambda: _check_launch_manifest_review_packets(root)),
+        _guarded("stock_sec_source_pack_readiness", lambda: _check_stock_sec_source_pack_readiness(root)),
         _guarded("frontend_v04_smoke_markers", lambda: _check_frontend_markers(root)),
         _guarded("optional_browser_services", lambda: _check_optional_browser_services(source_env)),
         _guarded("optional_local_durable_repositories", lambda: _check_optional_durable_repositories(source_env)),
@@ -367,6 +369,37 @@ def _check_launch_manifest_review_packets(root: Path) -> RehearsalCheck:
             "etf_full_eligible_universe_count": golden_regression["full_eligible_universe_count"],
             "etf_non_golden_eligible_supported_count": golden_regression["non_golden_eligible_supported_count"],
             "etf_represented_categories_beyond_golden": golden_regression["represented_categories_beyond_golden"],
+        },
+    )
+
+
+def _check_stock_sec_source_pack_readiness(root: Path) -> RehearsalCheck:
+    packet = build_stock_sec_source_pack_readiness_packet(root=root)
+    counts = packet["readiness_counts"]
+    if packet["manifests_promoted"] or packet["sources_approved_by_packet"] or packet["launch_approved"]:
+        return _blocked("stock_sec_source_pack_readiness", "stock_sec_readiness_improperly_approved")
+    if counts["review_packet_unlocks_generated_output"]:
+        return _blocked("stock_sec_source_pack_readiness", "stock_sec_readiness_unlocked_generated_output")
+    if counts["current_manifest_rows"] == 0 or counts["candidate_manifest_rows"] == 0:
+        return _blocked("stock_sec_source_pack_readiness", "stock_sec_readiness_manifest_rows_missing", counts)
+    if counts["source_backed_partial_rendering_ready"] == 0:
+        return _blocked("stock_sec_source_pack_readiness", "stock_sec_partial_rendering_ready_row_missing", counts)
+    if packet["review_status"] not in {"pass", "review_needed", "blocked"}:
+        return _blocked(
+            "stock_sec_source_pack_readiness",
+            "stock_sec_readiness_status_invalid",
+            {"review_status": packet["review_status"]},
+        )
+    return _pass(
+        "stock_sec_source_pack_readiness",
+        "stock_sec_readiness_packet_is_review_only",
+        {
+            "review_status": packet["review_status"],
+            "runtime_manifest_authority": packet["runtime_manifest_authority"],
+            "candidate_manifest_paths": packet["candidate_manifest_paths"],
+            "required_sec_components": packet["required_sec_components"],
+            "readiness_counts": counts,
+            "blocked_generated_surfaces": packet["blocked_generated_surfaces"],
         },
     )
 
