@@ -1,46 +1,45 @@
 ## Current task
 
-### T-131: Add ETF eligible-universe review packet contracts
-
-Goal:
-Extend the current ETF launch-review packet from fixture-sized support counts into a deterministic eligible-universe review contract that reports category coverage, exclusions, source-pack readiness, pending-review rows, generated-output eligibility, and golden/pre-cache regression status without treating the golden ETF set as the coverage limit.
-
-Do not change:
-- runtime ETF generated-output authority: `data/universes/us_equity_etfs_supported.current.json`
-- ETF/ETP recognition authority: `data/universes/us_etp_recognition.current.json`
-- generated output for unsupported, recognition-only, pending-review, unavailable, or pending-ingestion products
-- normal CI defaults; no live provider, issuer, exchange, market-data, news, browser-service, database, storage, or LLM calls
-- source-use, citation, freshness, safety, and Golden Asset Source Handoff semantics
-
-Acceptance criteria:
-- ETF review packets expose manifest-defined eligible universe scope across broad U.S. index, total-market/large-cap, size/style, sector, industry/theme, dividend, value/growth, quality, momentum, low-volatility, equal-weight, and ESG index categories.
-- Review output distinguishes golden/pre-cache regression tickers from the full eligible ETF universe and proves the golden set is not a coverage ceiling.
-- Supported, recognition-only, excluded, pending-review, unavailable, pending-ingestion, source-pack-ready, and generated-output-eligible counts are deterministic and covered by tests.
-- Fixture/local-only manifests remain review-needed, not launch-approved.
-- The local fresh-data rehearsal reports the new ETF readiness fields without promoting manifests.
-
-Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_repo_contract.py -q`
-- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
-- `TMPDIR=/tmp python3 evals/run_static_evals.py`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
-- `git diff --check`
-
-Iteration budget:
-- One agent-loop cycle.
-
-## Backlog
-
 ### T-132: Add stock SEC source-pack readiness packet contracts
 
 Goal:
 Add deterministic stock source-pack readiness reporting for the local fresh-data MVP so Top-500 stocks can prove whether SEC submissions, latest 10-K, latest 10-Q when available, and XBRL company facts are present, parser-valid, same-asset, approved for evidence use, and sufficient for source-backed partial rendering.
 
+Task scope:
+Extend the existing review-only local readiness/rehearsal contracts for stock SEC evidence. The task should report readiness for the approved current Top-500 runtime manifest and any reviewed candidate-manifest rows without promoting or replacing `data/universes/us_common_stocks_top500.current.json`. Keep the implementation deterministic and fixture/local-only by default, with no live SEC, provider, browser-service, database, storage, news, market-data, or LLM calls in normal tests. Readiness output must preserve the Golden Asset Source Handoff boundary: retrieved SEC data is not usable evidence unless source identity, source type, official-source status, rights, parser status, freshness/as-of metadata, source-use policy, rationale, and review status allow it.
+
+Allowed files:
+- `backend/top500_candidate_manifest.py`
+- `backend/overview.py`
+- `backend/sources.py`
+- `backend/export.py`
+- `backend/repositories/*`
+- `scripts/run_local_fresh_data_rehearsal.py`
+- `scripts/review_launch_manifests.py`
+- `tests/unit/test_top500_candidate_manifest.py`
+- `tests/unit/test_overview_generation.py`
+- `tests/unit/test_repo_contract.py`
+- tightly scoped supporting backend test fixtures if needed
+
+Do not change:
+- `data/universes/us_common_stocks_top500.current.json`
+- `data/universes/us_common_stocks_top500.candidate.*.json` promotion behavior
+- ETF generated-output authority: `data/universes/us_equity_etfs_supported.current.json`
+- ETF/ETP recognition authority: `data/universes/us_etp_recognition.current.json`
+- generated output for unsupported, out-of-scope, pending-review, unavailable, pending-ingestion, or failed assets
+- source-use, citation, freshness, safety, Golden Asset Source Handoff, export-rights, or cache-eligibility semantics
+- frontend workflow baseline: home remains single stock/ETF search first; comparison stays separate; glossary remains contextual
+- normal CI defaults; no live provider, SEC, issuer, exchange, market-data, news, browser-service, database, storage, or LLM calls
+
 Acceptance criteria:
-- Readiness output covers current Top-500 runtime manifest rows and reviewed candidate rows without promoting the current manifest.
-- SEC submissions, latest annual filing, latest quarterly filing when available, and company-facts requirements are reported with freshness, parser, source-use, citation, and handoff status.
-- Missing or parser-invalid SEC evidence produces deterministic `partial`, `unavailable`, or `insufficient_evidence` states and cannot unlock generated claims.
-- Tests prove source readiness is review-only, no-live-call, and safe for failed/unavailable assets.
+- Readiness output covers rows from the current Top-500 runtime manifest and reviewed candidate manifests, but never promotes a candidate or overwrites the approved current manifest.
+- Each stock readiness row reports SEC submissions, latest annual filing, latest quarterly filing when available, and XBRL company-facts requirements with deterministic status fields.
+- Each required SEC source component reports same-asset validation, official-source/source identity, source-use rights, parser status, freshness/as-of metadata, citation readiness, and Golden Asset Source Handoff status.
+- Missing, stale, parser-invalid, wrong-asset, unclear-rights, pending-review, rejected, unavailable, or insufficient SEC evidence produces deterministic `partial`, `stale`, `unknown`, `unavailable`, or `insufficient_evidence` states as appropriate.
+- Readiness failures cannot unlock generated claims, generated chat answers, generated comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, or generated-output cache entries.
+- The local fresh-data rehearsal reports the stock SEC readiness packet with deterministic `pass`, `review_needed`, `blocked`, or equivalent review-only status without promoting manifests or approving sources.
+- Tests prove source readiness is review-only, no-live-call, and safe for failed, unavailable, partial, stale, and insufficient-evidence assets.
+- Important factual claims added by the task are cited or expressed as readiness metadata; no implementation text introduces buy/sell/hold, allocation, price-target, tax, brokerage, or personalized advice language.
 
 Required commands:
 - `TMPDIR=/tmp python3 -m pytest tests/unit/test_top500_candidate_manifest.py tests/unit/test_overview_generation.py tests/unit/test_repo_contract.py -q`
@@ -51,6 +50,8 @@ Required commands:
 
 Iteration budget:
 - One agent-loop cycle.
+
+## Backlog
 
 ### T-133: Add ETF issuer source-pack readiness packet contracts
 
@@ -116,6 +117,35 @@ Iteration budget:
 - One agent-loop cycle.
 
 ## Completed
+
+### T-131: Add ETF eligible-universe review packet contracts
+
+Goal:
+Extend the current ETF launch-review packet from fixture-sized support counts into a deterministic eligible-universe review contract that reports category coverage, exclusions, source-pack readiness, pending-review rows, generated-output eligibility, and golden/pre-cache regression status without treating the golden ETF set as the coverage limit.
+
+Completion details:
+- Implementation commits:
+  - `f49cca2 feat(T-131): align fresh-data MVP readiness contracts`
+  - `9447b44 docs(T-131): align ETF proposal docs`
+  - `b3d221d feat(T-131): add ETF eligible-universe review packet contracts`
+- Local merge commit: `2e81a24 chore(T-131): merge ETF eligible-universe review packet contracts` from branch `agent/T-131-20260429T011520Z`
+- Extended `backend/etf_universe.py` with deterministic ETF eligible-universe review reporting for scope categories, exclusions, support states, source-pack readiness, generated-output eligibility, and golden/pre-cache regression status.
+- Added local rehearsal reporting for the new ETF readiness fields in `scripts/run_local_fresh_data_rehearsal.py` while keeping ETF manifests unpromoted and review-only.
+- Added unit and repo-contract coverage in `tests/unit/test_search_classification.py` and `tests/unit/test_repo_contract.py` for category scope, readiness counts, golden/pre-cache distinction, and local rehearsal contract markers.
+- Aligned ETF proposal and handoff documentation in the task branch so golden ETF tickers remain pre-cache/regression assets, not the full ETF coverage ceiling.
+- Preserved the supported ETF manifest and ETF/ETP recognition manifest split; recognition-only, unsupported, pending-review, unavailable, and pending-ingestion products remain blocked from generated output.
+
+Required commands executed in this task branch:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_repo_contract.py -q` - pass
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` - pass
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass
+- `git diff --check` - pass
+
+Remaining risks:
+- Current ETF manifests remain fixture/local-only review metadata and are not launch-approved.
+- `source_pack_ready` is intentionally zero until reviewed issuer source packs and Golden Asset Source Handoff metadata are available.
+- Generated-output eligibility remains limited to existing cached deterministic ETF fixtures and does not unlock recognition-only, unsupported, pending-review, unavailable, or pending-ingestion products.
 
 ### T-130: Add local fresh-data MVP rehearsal command
 
