@@ -1,62 +1,37 @@
 ## Current task
 
-### T-137: Add ETF-500 issuer source-pack batch planning contracts
+### T-138: Add Top-500 SEC source-pack batch planning contracts
 
 Goal:
-Add deterministic, review-only ETF-500 issuer source-pack batch planning so ETF-500 candidate rows can be grouped by batch, issuer, category, and missing official issuer evidence before any retrieval, source approval, manifest promotion, or generated-output unlock happens.
+Add deterministic, review-only Top-500 stock SEC source-pack batch planning so current-manifest rows can be prioritized for SEC source review by rank, source component gaps, parser readiness, and local fresh-data coverage needs before any live retrieval, source approval, manifest promotion, or generated-output unlock happens.
 
 Task scope:
-Build on the T-136 ETF-500 candidate manifest review contract and current fixture-sized ETF review/readiness packets to add a repo-native source-pack planning layer. The work should produce deterministic planning metadata for ETF batch milestones, issuer/category grouping, required issuer source components, source-handoff/parser/freshness/checksum placeholders, and blocked generated-output surfaces. This task is planning only: it must not fetch issuer/provider data, approve source evidence, promote ETF manifests, start ingestion, or broaden runtime supported coverage.
+Build on the T-132 stock SEC source-pack readiness packet, the T-135 local ingestion priority planner, and the current Top-500 candidate/current-manifest review contracts to add a repo-native SEC source-pack planning layer. The work should produce deterministic planning metadata for high-demand and Top-500 review batches, manifest rank ordering, required SEC source components, parser/freshness/checksum/source-handoff placeholders, partial or failure-state diagnostics, and blocked generated-output surfaces. This task is planning only: it must not fetch SEC/provider data, approve source evidence, promote Top-500 manifests, start ingestion, or broaden runtime stock support behavior.
 
 Allowed files:
-- `backend/etf_universe.py`
+- `backend/top500_candidate_manifest.py`
+- `backend/ingestion.py`
 - `scripts/run_local_fresh_data_rehearsal.py`
-- `tests/unit/test_search_classification.py`
+- `tests/unit/test_top500_candidate_manifest.py`
+- `tests/unit/test_ingestion_jobs.py`
 - `tests/unit/test_repo_contract.py`
 - `docs/agent-journal/<run-id>.md`
 
 Do not change:
-- Do not edit `data/universes/us_equity_etfs_supported.current.json`, `data/universes/us_etp_recognition.current.json`, or any candidate/promotion manifest.
-- Do not edit frontend UI, deployment files, provider adapters, source allowlists, production dependency files, or docs other than the task journal.
-- Do not fetch live issuer/provider data, inspect or print secrets, approve sources, write source snapshots, write generated-output cache records, start ingestion, or change generated ETF support behavior.
+- Do not edit `data/universes/us_common_stocks_top500.current.json`, any Top-500 candidate manifest, any diff report, or any promotion/approval artifact.
+- Do not edit frontend UI, ETF manifests, deployment files, provider adapters, source allowlists, production dependency files, or docs other than the task journal.
+- Do not fetch live SEC/provider data, inspect or print secrets, approve sources, write source snapshots, write generated-output cache records, start ingestion, or change runtime stock support behavior.
 - Do not weaken advice boundaries, citation/source-use rights, Golden Asset Source Handoff, freshness/unknown/stale/unavailable/partial handling, or the v0.4 frontend workflow baseline.
 
 Acceptance criteria:
-- ETF-500 source-pack planning consumes the T-136 ETF-500 candidate/review metadata when available and falls back to current fixture-sized review metadata when candidate artifacts are absent, while clearly reporting that fallback as not launch coverage.
-- Planning output groups rows by `ETF-50`, `ETF-150`, `ETF-300`, and `ETF-500`, ETF category bucket, issuer, support/review state, and source-pack readiness priority without changing `data/universes/us_equity_etfs_supported.current.json` or `data/universes/us_etp_recognition.current.json`.
-- Each planned ETF row reports required issuer source components: issuer page, fact sheet, prospectus or summary prospectus, holdings, exposure or sector data when available, methodology/risk/shareholder source where relevant, and sponsor announcements where relevant.
-- Diagnostics expose same-fund checks, official-source/source-identity requirements, source-use policy needs, storage/export-rights needs, parser readiness, freshness/as-of/checksum placeholders, Golden Asset Source Handoff action, and blocked generated-output surfaces for incomplete or pending-review rows.
-- The plan reports ETF-500 target context from T-136: practical supported-row range `475-525`, batch milestones, category target buckets, category gaps, current fixture-not-launch status, source-pack readiness, parser/handoff readiness, checksum status, and no-padding stop conditions.
-- Disqualified, recognition-only, unavailable, pending-review, source-pack-incomplete, parser-invalid, unclear-rights, and out-of-scope products remain blocked from generated pages, chat, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, and generated-output cache writes.
-- `scripts/run_local_fresh_data_rehearsal.py --json` surfaces the ETF-500 source-pack batch planning summary without approving sources, fetching live issuer/provider data, promoting manifests, starting ingestion, requiring external services, or changing runtime support authorities.
-- Tests cover batch grouping, category/issuer diagnostics, required component plans, fallback-not-launch status, blocked generated-output surfaces, rehearsal output, and repo-control doc markers.
-
-Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_repo_contract.py -q`
-- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
-- `TMPDIR=/tmp python3 evals/run_static_evals.py`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
-- `git diff --check`
-
-Iteration budget:
-- Keep this to one local agent-loop cycle. If generating concrete source-handoff seed files becomes too large, stop after the deterministic source-pack batch planning schema/output, rehearsal surfacing, and tests, then record a follow-up task.
-- Do not fetch live issuer/provider data, approve sources, promote ETF manifests, inspect secrets, write generated-output cache records, add production dependencies, or change generated ETF support behavior.
-
-## Backlog
-
-### T-138: Add Top-500 SEC source-pack batch planning contracts
-
-Goal:
-Add deterministic, review-only Top-500 stock source-pack batch planning so current-manifest rows can be prioritized for SEC source review by rank, source component gaps, parser readiness, and local fresh-data coverage needs before any live retrieval, source approval, manifest promotion, or generated-output unlock happens.
-
-Acceptance criteria:
-- Top-500 planning reads `data/universes/us_common_stocks_top500.current.json` as the runtime stock authority and never resolves support from live provider, exchange, rank, or search-query data.
-- Planning output groups stock rows into high-demand pre-cache and Top-500 review batches using current-manifest rank, existing readiness packets, local ingestion priority metadata, and source-pack status without modifying or replacing the approved current manifest.
-- Each planned stock row reports required SEC components: SEC submissions identity, latest annual filing, latest quarterly filing when available, SEC XBRL company facts, parser status, source snapshot/checksum requirements, freshness/as-of metadata, Golden Asset Source Handoff action, and partial/unavailable fallback state.
+- Top-500 planning reads `data/universes/us_common_stocks_top500.current.json` as the runtime stock authority and never resolves support from live provider, exchange, rank-query, search-query, candidate-only, or ingestion-priority data.
+- Planning output groups current-manifest stock rows into high-demand pre-cache and Top-500 review batches using current-manifest rank, existing SEC readiness packets, local ingestion priority metadata, and source-pack status without modifying or replacing the approved current manifest.
+- Each planned stock row reports required SEC source components: SEC submissions identity, latest annual filing, latest quarterly filing when available, SEC XBRL company facts, parser status, source snapshot/checksum requirements, freshness/as-of metadata, Golden Asset Source Handoff action, and partial/unavailable fallback state.
 - Diagnostics distinguish approved partial-ready rows from `insufficient_evidence`, `partial`, `stale`, `unknown`, `unavailable`, parser-invalid, pending-review, rejected, hidden/internal, unclear-rights, and wrong-asset evidence states.
-- Planned rows with incomplete or unapproved source packs remain blocked from generated pages, chat, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, and generated-output cache writes.
-- `scripts/run_local_fresh_data_rehearsal.py --json` surfaces the Top-500 SEC source-pack batch planning summary without fetching SEC data, approving sources, promoting manifests, starting ingestion, or requiring external services.
-- Tests cover current-manifest authority, rank/batch ordering, required SEC component plans, source-handoff blockers, partial/failure states, rehearsal output, and repo-control doc markers.
+- Planning summary reports manifest rank ordering, batch names/counts, high-demand/pre-cache context, candidate/current-manifest relationship diagnostics when available, readiness priority groups, source-handoff readiness, parser readiness, freshness/as-of/checksum placeholder status, and stop conditions.
+- Planned rows with incomplete, unapproved, stale, parser-invalid, unclear-rights, wrong-asset, rejected, hidden/internal, or insufficient source packs remain blocked from generated pages, generated claims, chat, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, and generated-output cache writes.
+- `scripts/run_local_fresh_data_rehearsal.py --json` surfaces the Top-500 SEC source-pack batch planning summary without fetching SEC data, approving sources, promoting manifests, starting ingestion, requiring external services, or changing runtime support authorities.
+- Tests cover current-manifest authority, rank/batch ordering, required SEC component plans, source-handoff blockers, parser/freshness/checksum placeholders, partial/failure states, generated-output blocking, rehearsal output, and repo-control doc markers.
 
 Required commands:
 - `TMPDIR=/tmp python3 -m pytest tests/unit/test_top500_candidate_manifest.py tests/unit/test_ingestion_jobs.py tests/unit/test_repo_contract.py -q`
@@ -66,8 +41,10 @@ Required commands:
 - `git diff --check`
 
 Iteration budget:
-- Keep this to one local agent-loop cycle. If source-handoff seed-file generation or live acquisition orchestration becomes too large, stop after deterministic Top-500 source-pack batch planning, rehearsal surfacing, and tests, then record a follow-up task.
+- Keep this to one local agent-loop cycle. If source-handoff seed-file generation, live SEC acquisition orchestration, or broad ingestion-worker changes become too large, stop after deterministic Top-500 source-pack batch planning, rehearsal surfacing, and tests, then record a follow-up task.
 - Do not fetch live SEC/provider data, approve sources, promote Top-500 manifests, inspect secrets, write generated-output cache records, add production dependencies, or change runtime stock support behavior.
+
+## Backlog
 
 ### T-139: Add local manual fresh-data readiness gate
 
@@ -94,6 +71,40 @@ Iteration budget:
 - Do not run live providers, inspect secrets, promote manifests, approve launch, add auth/accounts, or convert manual local testing into a product feature.
 
 ## Completed
+
+### T-137: Add ETF-500 issuer source-pack batch planning contracts
+
+Goal:
+Add deterministic, review-only ETF-500 issuer source-pack batch planning so ETF-500 candidate rows can be grouped by batch, issuer, category, and missing official issuer evidence before any retrieval, source approval, manifest promotion, or generated-output unlock happens.
+
+Completion details:
+- Implementation commit: `29548ea feat(T-137): add ETF-500 issuer source-pack batch planning contracts`
+- Local merge commit: `a300cc3 chore(T-137): merge ETF-500 issuer source-pack batch planning contracts` from branch `agent/T-137-20260429T173727Z`
+- Added `build_etf500_issuer_source_pack_batch_plan` in `backend/etf_universe.py` with schema `etf500-issuer-source-pack-batch-plan-v1` and boundary `etf500-issuer-source-pack-batch-planning-review-only-v1`.
+- The planner composes the T-136 ETF-500 launch review contract and T-133 issuer source-pack readiness packet without fetching issuer/provider data, approving sources, promoting manifests, starting ingestion, writing generated-output cache entries, or unlocking generated output.
+- Candidate review metadata is consumed from the ETF-500 review contract, but no ETF-500 candidate artifacts are currently present; the planner falls back to current fixture-sized review metadata and explicitly marks the fallback as not launch coverage.
+- Current deterministic planning reports 13 planned ETF rows, 4 batch groups, 5 issuers, 7 category buckets, 0 source-pack-ready rows, 2 source-backed partial-review rows, 11 missing-required-issuer-source rows, and 9 blocked generated surfaces.
+- Batch groups include `ETF-50`, `ETF-150`, `ETF-300`, and `ETF-500`; the current fixture rows all land in `ETF-50`, with later launch-sized milestone groups empty until candidate artifacts exist.
+- Category bucket diagnostics report 7 broad/core U.S. equity beta rows, 7 market-cap and size/style rows, 4 sector ETF rows, 2 industry/theme passive U.S. equity rows, and 0 rows for dividend/shareholder-yield, factor/smart-beta/equal-weight, and ESG/values-screened buckets.
+- Issuer/source-pack priority diagnostics report Vanguard, iShares, State Street Global Advisors, Invesco, and VanEck grouping, with 2 `source_backed_partial_review` rows and 11 `missing_required_issuer_sources` rows.
+- Each planned ETF row reports required issuer source components, including issuer page, fact sheet, prospectus or summary prospectus, holdings, exposures, methodology/shareholder/risk source, and sponsor announcements when relevant.
+- Component planning diagnostics include same-fund checks, official-source identity, source-use policy needs, storage/export-rights needs, parser readiness, freshness/as-of/checksum placeholders, Golden Asset Source Handoff action, and blocked generated surfaces.
+- Target context carries the ETF-500 practical supported-row range `475-525`, batch milestones, category target buckets, category gaps, current-fixture-not-launch status, source-pack readiness, parser/handoff readiness, checksum status, and no-padding stop conditions from T-136.
+- `scripts/run_local_fresh_data_rehearsal.py` now surfaces the ETF-500 source-pack batch planning summary under the ETF issuer source-pack readiness check while preserving review-only, deterministic behavior.
+- Added unit/repo-contract coverage in `tests/unit/test_search_classification.py` and `tests/unit/test_repo_contract.py` for planning boundaries, fallback-not-launch status, batch/category/issuer grouping, readiness priorities, component diagnostics, generated-output blocking, and rehearsal output.
+- `docs/agent-journal/20260429T173727Z.md` records the files changed, tests/evals run, pass status, and remaining risks.
+
+Required commands executed in this task branch:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_repo_contract.py -q` - pass (`38 passed`)
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` - pass
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass (`462 passed` in Python phases; frontend and backend checks passed)
+- `git diff --check` - pass
+
+Remaining risks:
+- ETF-500 issuer source-pack batch planning is deterministic and review-only; it does not fetch issuer/provider data, approve sources, promote manifests, start ingestion, write generated-output cache entries, or unlock generated output.
+- Current ETF planning falls back to fixture-sized current review metadata because no ETF-500 candidate artifacts are present, and it is explicitly marked as not launch coverage.
+- Supported ETF source-pack readiness remains incomplete for all non-golden current rows until issuer source packs, parser outputs, freshness/as-of metadata, checksums, and Golden Asset Source Handoff review are completed.
 
 ### T-136: Add ETF-500 candidate manifest review contracts
 
@@ -3762,8 +3773,8 @@ Current runtime snapshot:
 - T-129 completed launch-manifest operator automation parity for Top-500 stock and supported ETF launch-manifest packets.
 - T-130 completed the deterministic local fresh-data MVP rehearsal command.
 - T-131 through T-135 completed the ETF eligible-universe, stock SEC source-pack readiness, ETF issuer source-pack readiness, local MVP readiness-threshold packets, and batchable local ingestion priority planner.
-- The ETF-500 scope update is documented across the product and handoff docs; T-136 is currently promoted to turn that scope into deterministic candidate manifest review contracts.
-- T-137 through T-139 are prepared as the next local fresh-data gap sequence after T-136: ETF-500 issuer source-pack batch planning, Top-500 SEC source-pack batch planning, and a local manual fresh-data readiness gate.
+- The ETF-500 scope update is documented across the product and handoff docs; T-136 completed deterministic ETF-500 candidate manifest review contracts, and T-137 completed ETF-500 issuer source-pack batch planning contracts.
+- T-138 is currently promoted for Top-500 SEC source-pack batch planning. T-139 remains prepared as the local manual fresh-data readiness gate after T-138.
 - T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, full governed source artifacts, admin auth/rate limiting, broader live ingestion, and launch-sized reviewed manifests remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:
@@ -3823,8 +3834,8 @@ Operational defaults for general MVP roadmap tasks:
 - T-128 established deterministic governed golden evidence API/frontend rendering proof. It is completed and must not be reintroduced as runnable backlog.
 - T-129 established launch-manifest operator automation parity. It is completed and must not be reintroduced as runnable backlog.
 - T-130 established the local fresh-data MVP rehearsal command. It is completed and must not be reintroduced as runnable backlog.
-- T-134 and T-135 are completed. T-136 is currently promoted as the next local fresh-data MVP task before production-hardening tasks.
-- T-137 through T-139 are prepared follow-up tasks, not completed work: ETF-500 issuer source-pack batch planning, Top-500 SEC source-pack batch planning, and the manual fresh-data readiness gate.
+- T-134 through T-137 are completed. T-138 is currently promoted as the next local fresh-data MVP task before the manual readiness gate and production-hardening tasks.
+- T-139 is a prepared follow-up task, not completed work: the manual fresh-data readiness gate.
 - Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until explicit launch readiness work is promoted into a narrow task and passes deterministic CI coverage.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted task should run the relevant EVALS.md checks, `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, `bash scripts/run_quality_gate.sh`, and `git diff --check`.
@@ -3893,16 +3904,16 @@ Roadmap integration tracker:
 | ETF issuer source-pack readiness packets | Completed | T-133 |
 | Local fresh-data MVP readiness thresholds | Completed | T-134 |
 | Batchable local ingestion priority planner | Completed | T-135 |
-| ETF-500 candidate manifest review contracts | Current | T-136 |
-| ETF-500 issuer source-pack batch planning | Prepared | T-137 |
-| Top-500 SEC source-pack batch planning | Prepared | T-138 |
+| ETF-500 candidate manifest review contracts | Completed | T-136 |
+| ETF-500 issuer source-pack batch planning | Completed | T-137 |
+| Top-500 SEC source-pack batch planning | Current | T-138 |
 | Local manual fresh-data readiness gate | Prepared | T-139 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
 Remaining unpromoted general MVP sequence:
 
-- After T-136, run T-137 and T-138 to make launch-sized ETF and stock source-pack review planning explicit before any manual-test-only handoff.
-- After T-137 and T-138, run T-139 to produce a deterministic readiness gate that says whether more agent-loop work remains or whether manual local fresh-data testing is the next step.
+- After T-137, run T-138 to make launch-sized stock source-pack review planning explicit before any manual-test-only handoff.
+- After T-138, run T-139 to produce a deterministic readiness gate that says whether more agent-loop work remains or whether manual local fresh-data testing is the next step.
 - Full production deployment remains unpromoted until a narrow launch-readiness task is added: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
 - Recurring production jobs only after manual official-source acquisition, Top-500 candidate refresh review, and local fresh-data behavior are stable.
 - Broad paid-provider or news-provider integrations only after provider licensing/source-use review, no-secret-exposure tests, mocked CI fixtures, source-rights validation, and export/display constraints are documented.
