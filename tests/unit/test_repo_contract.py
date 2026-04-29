@@ -567,12 +567,11 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
     active_sections = f"{current_task}\n{backlog}"
 
     assert "## MVP Backend Roadmap" not in tasks
-    assert "### T-133: Add ETF issuer source-pack readiness packet contracts" in current_task
+    assert "### T-134: Add local fresh-data MVP readiness thresholds" in current_task
     for marker in [
         "Acceptance criteria",
         "Required commands",
         "Iteration budget",
-        "### T-134: Add local fresh-data MVP readiness thresholds",
         "### T-135: Add batchable local ingestion priority planner",
     ]:
         assert marker in active_sections
@@ -587,6 +586,7 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
         "### T-128: Prove governed golden evidence drives API and frontend rendering",
         "### T-129: Add launch-manifest operator automation parity",
         "### T-130: Add local fresh-data MVP rehearsal command",
+        "### T-133: Add ETF issuer source-pack readiness packet contracts",
         "The runbook explicitly states that fetching alone is retrieval, not evidence approval",
         "deterministic integration smoke coverage for the VOO golden path",
         "mocked official-source acquisition",
@@ -607,7 +607,7 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
         "T-128 completed deterministic governed golden API/frontend rendering proof",
         "T-129 completed launch-manifest operator automation parity",
         "T-130 completed the deterministic local fresh-data MVP rehearsal command",
-        "T-131 and T-132 completed the ETF eligible-universe and stock SEC source-pack readiness packets",
+        "T-131 through T-133 completed the ETF eligible-universe, stock SEC source-pack readiness, and ETF issuer source-pack readiness packets",
         "T-099 established deterministic provider content export-rights hardening",
         "T-100 established the backend MVP runtime gap audit and roadmap tracker",
         "T-101 established configured persisted-reader route wiring with fixture fallback",
@@ -668,8 +668,8 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
         "| Local fresh-data MVP rehearsal command | Completed | T-130 |",
         "| ETF eligible-universe review packet contracts | Completed | T-131 |",
         "| Stock SEC source-pack readiness packets | Completed | T-132 |",
-        "| ETF issuer source-pack readiness packets | Current | T-133 |",
-        "| Local fresh-data MVP readiness thresholds | Prepared | T-134 |",
+        "| ETF issuer source-pack readiness packets | Completed | T-133 |",
+        "| Local fresh-data MVP readiness thresholds | Current | T-134 |",
         "| Batchable local ingestion priority planner | Prepared | T-135 |",
         "| Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |",
     ]
@@ -679,6 +679,8 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
     for stale_status in [
         "| Launch-manifest operator automation parity | Current | T-129 |",
         "| Local fresh-data MVP rehearsal command | Prepared | T-130 |",
+        "| ETF issuer source-pack readiness packets | Current | T-133 |",
+        "| Local fresh-data MVP readiness thresholds | Prepared | T-134 |",
         "The current promoted task is T-129",
         "No current task is prepared",
         "No backlog tasks are currently prepared",
@@ -695,6 +697,34 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert result["production_services_started"] is False
     assert result["manifests_promoted"] is False
     assert result["sources_approved_by_rehearsal"] is False
+    threshold = result["local_mvp_threshold_summary"]
+    assert threshold["schema_version"] == "local-fresh-data-mvp-threshold-summary-v1"
+    assert threshold["threshold_contract"] == "review_only_no_launch_approval_v1"
+    assert threshold["overall_local_approval_status"] == "ready_for_local_operator_review"
+    assert threshold["local_operator_review_ready"] is True
+    assert threshold["launch_or_public_deployment_approved"] is False
+    assert threshold["required_blockers"] == []
+    assert threshold["optional_blockers"] == []
+    assert len(threshold["required_checks"]) == 7
+    assert all(check["status"] == "pass" for check in threshold["required_checks"])
+    assert len(threshold["optional_skipped_modes"]) == 4
+    assert threshold["thresholds"] == {
+        "required_blockers_allowed": 0,
+        "optional_blockers_allowed": 0,
+        "failed_assets_allowed": 1,
+        "unavailable_assets_allowed": 1,
+        "generated_surface_violations_allowed": 0,
+    }
+    assert threshold["review_only_boundaries"] == {
+        "sources_approved": False,
+        "top500_manifest_promoted": False,
+        "etf_supported_manifest_promoted": False,
+        "etp_recognition_manifest_promoted": False,
+        "ingestion_started": False,
+        "generated_output_cache_entries_written": False,
+        "production_services_started": False,
+        "normal_ci_requires_live_calls": False,
+    }
     statuses = {check["check_id"]: check["status"] for check in result["checks"]}
     assert statuses["deterministic_default_boundary"] == "pass"
     assert statuses["source_handoff_approval_gate"] == "pass"
@@ -737,6 +767,45 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert stock_sec_details["readiness_counts"]["insufficient_evidence"] == 18
     assert stock_sec_details["readiness_counts"]["review_packet_unlocks_generated_output"] == 0
     assert "generated_chat_answers" in stock_sec_details["blocked_generated_surfaces"]
+    asset_summary = threshold["asset_state_summary"]
+    assert asset_summary["failed_asset_count"] == 1
+    assert asset_summary["unavailable_asset_count"] == 1
+    assert asset_summary["partial_count"] == 4
+    assert asset_summary["stale_count"] == 0
+    assert asset_summary["unknown_count"] == 1
+    assert asset_summary["insufficient_evidence_count"] == 29
+    assert asset_summary["source_backed_partial_ready_count"] == 4
+    assert asset_summary["generated_surface_violation_count"] == 0
+    assert asset_summary["reason_codes_by_state"]["failed"] == ["fixture_pre_cache_failed"]
+    assert asset_summary["reason_codes_by_state"]["unavailable"] == ["unavailable"]
+    assert all(not row["generated_surface_exposed"] for row in asset_summary["non_generated_assets"])
+    assert all(row["citation_count"] == 0 and row["source_document_count"] == 0 for row in asset_summary["non_generated_assets"])
+    for surface in [
+        "generated_claims",
+        "generated_chat_answers",
+        "generated_comparisons",
+        "weekly_news_focus",
+        "ai_comprehensive_analysis",
+        "exports",
+        "generated_risk_summaries",
+        "generated_output_cache_entries",
+    ]:
+        assert surface in asset_summary["blocked_generated_surfaces"]
+    fallback = threshold["live_generation_validation_failure_fallback"]
+    assert fallback["generated_claims_allowed_after_failed_validation"] is False
+    assert fallback["generated_chat_answers_allowed_after_failed_validation"] is False
+    assert fallback["generated_comparisons_allowed_after_failed_validation"] is False
+    assert fallback["weekly_news_focus_allowed_after_failed_validation"] is False
+    assert fallback["ai_comprehensive_analysis_allowed_after_failed_validation"] is False
+    assert fallback["exports_allowed_after_failed_validation"] is False
+    assert fallback["generated_output_cache_entries_allowed_after_failed_validation"] is False
+    assert fallback["fallback_section_states"] == [
+        "partial",
+        "stale",
+        "unknown",
+        "unavailable",
+        "insufficient_evidence",
+    ]
 
 
 def test_local_fresh_data_rehearsal_optional_modes_report_blockers_without_secrets():
@@ -753,6 +822,26 @@ def test_local_fresh_data_rehearsal_optional_modes_report_blockers_without_secre
     assert checks["optional_local_durable_repositories"]["status"] == "blocked"
     assert checks["optional_official_source_retrieval"]["status"] == "blocked"
     assert checks["optional_live_ai_review"]["status"] == "blocked"
+    threshold = result["local_mvp_threshold_summary"]
+    assert threshold["overall_local_approval_status"] == "blocked_for_local_operator_review"
+    assert threshold["local_operator_review_ready"] is False
+    assert threshold["required_blockers"] == []
+    assert [check["check_id"] for check in threshold["optional_blockers"]] == [
+        "optional_local_durable_repositories",
+        "optional_official_source_retrieval",
+        "optional_live_ai_review",
+    ]
+    assert threshold["threshold_blockers"] == [
+        {
+            "reason_code": "optional_mode_blocked_after_explicit_opt_in",
+            "count": 3,
+            "check_ids": [
+                "optional_local_durable_repositories",
+                "optional_official_source_retrieval",
+                "optional_live_ai_review",
+            ],
+        }
+    ]
     serialized = str(result)
     for forbidden in ["postgresql://", "Bearer ", "Authorization", "BEGIN PRIVATE KEY", "sk-"]:
         assert forbidden not in serialized
