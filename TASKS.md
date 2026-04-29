@@ -1,66 +1,44 @@
 ## Current task
 
+No current task is prepared for the next local agent-loop cycle. The backlog is empty, so do not invent or run a new task until a new task contract is added.
+
+## Backlog
+
+No backlog tasks are currently prepared.
+
+## Completed
+
 ### T-135: Add batchable local ingestion priority planner
 
 Goal:
 Add a deterministic planner for local fresh-data ingestion order that prioritizes high-demand pre-cache assets first, then approved supported ETFs and Top-500 stocks by manifest/review priority, while preserving resumable pending/running/succeeded/failed states and review-only source approval.
 
-Task scope:
-Add a narrow, review-only local ingestion priority planner that can be inspected in deterministic CI and included in the local fresh-data rehearsal output. The planner should order existing eligible local MVP ingestion work without starting ingestion, approving sources, promoting manifests, writing generated-output cache records, or treating fixture/golden assets as the full supported universe. It must preserve the v0.4 frontend workflow baseline, supported ETF manifest versus recognition manifest split, Top-500 current-manifest authority, Golden Asset Source Handoff, source-use rights, citation/freshness requirements, and deterministic CI defaults.
+Completion details:
+- Implementation commit: `03cc7d6 feat(T-135): add batchable local ingestion priority planner`
+- Local merge commit: `74c68c4 chore(T-135): merge batchable local ingestion priority planner` from branch `agent/T-135-20260429T015215Z`
+- Added `build_local_ingestion_priority_plan` in `backend/ingestion.py` with schema `local-ingestion-priority-plan-v1` and boundary `local-ingestion-priority-planner-review-only-v1`.
+- The planner is deterministic, batchable, resumable, review-only, and marked as making no live external calls in normal CI.
+- Planner ordering starts with high-demand golden/pre-cache assets `AAPL`, `VOO`, and `QQQ`, then supported ETFs from `data/universes/us_equity_etfs_supported.current.json` by source-pack readiness and represented category coverage, then Top-500 stocks from `data/universes/us_common_stocks_top500.current.json` by current-manifest rank.
+- The planner reports 23 planned assets in 6 batches: 3 high-demand pre-cache assets, 11 supported ETF-manifest assets, and 9 additional Top-500 stock-manifest assets, with 3 ready-to-inspect rows and 20 blocked-or-not-ready rows in the current deterministic fixtures.
+- Planner diagnostics include `pending`, `running`, `succeeded`, `failed`, `unsupported`, `out_of_scope`, `unknown`, `unavailable`, `partial`, `stale`, and `insufficient_evidence` state keys.
+- The planner keeps recognition-only ETF/ETP rows diagnostic only: `data/universes/us_etp_recognition.current.json` is not used for priority order and recognition rows do not unlock generated output.
+- Planner safety boundaries explicitly report no ingestion start, no source approval, no manifest promotion, no generated-output cache writes, and no generated-output unlock for blocked assets.
+- `scripts/run_local_fresh_data_rehearsal.py` now includes the local ingestion priority planner check and surfaces its summary, first-batch tickers, state diagnostics, runtime authorities, recognition-manifest boundaries, and blocked generated surfaces.
+- Added unit/repo-contract coverage in `tests/unit/test_ingestion_jobs.py` and `tests/unit/test_repo_contract.py` for deterministic ordering, review-only boundaries, manifest authorities, blocked-state diagnostics, rehearsal integration, and generated-output blocking.
+- `docs/agent-journal/20260429T015215Z.md` records the files changed, tests/evals run, pass status, and remaining risks.
 
-Allowed files:
-- `scripts/run_local_fresh_data_rehearsal.py`
-- `backend/ingestion.py`
-- `backend/ingestion_worker.py`
-- `backend/ingestion_job_repository.py`
-- `backend/etf_universe.py`
-- `backend/top500_candidate_manifest.py`
-- `backend/models.py`
-- `tests/unit/test_ingestion_worker.py`
-- `tests/unit/test_ingestion_jobs.py`
-- `tests/unit/test_search_classification.py`
-- `tests/unit/test_repo_contract.py`
-- tightly scoped deterministic unit fixtures if needed
+Required commands executed in this task branch:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_ingestion_jobs.py tests/unit/test_repo_contract.py -q` - pass (`38 passed`)
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` - pass
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_ingestion_worker.py tests/unit/test_ingestion_jobs.py tests/unit/test_search_classification.py tests/unit/test_repo_contract.py -q` - pass (`80 passed`)
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass (`461 passed`)
+- `git diff --check` - pass
 
-Do not change:
-- `data/universes/us_common_stocks_top500.current.json`
-- `data/universes/us_common_stocks_top500.candidate.*.json` promotion behavior
-- ETF generated-output authority: `data/universes/us_equity_etfs_supported.current.json`
-- ETF/ETP recognition authority: `data/universes/us_etp_recognition.current.json`
-- generated output for unsupported, out-of-scope, pending-review, unavailable, pending-ingestion, failed, partial, stale, unknown, or insufficient-evidence assets
-- source-use, citation, freshness, safety, Golden Asset Source Handoff, export-rights, cache-eligibility, or generated-output validation semantics
-- frontend workflow baseline: home remains single stock/ETF search first; comparison stays separate; glossary remains contextual
-- normal CI defaults; no live provider, SEC, issuer, exchange, market-data, news, browser-service, database, storage, or LLM calls
-- public route shapes unless an existing route already exposes planner diagnostics safely and tests prove it
-
-Acceptance criteria:
-- Planner output uses a stable schema/version marker and is deterministic, batchable, resumable, and safe to inspect without live calls, credentials, production services, browser services, durable storage, or provider/LLM calls.
-- Priority order starts with high-demand golden/pre-cache assets, then supported ETFs from `data/universes/us_equity_etfs_supported.current.json` by source-pack readiness and represented eligible-category coverage, then Top-500 stocks from `data/universes/us_common_stocks_top500.current.json` by manifest/review priority.
-- The planner never uses `data/universes/us_etp_recognition.current.json`, live ETF holdings, provider holdings, exchange listings, issuer search results, or market-data responses to unlock generated ETF output.
-- The planner reports resumable job/state diagnostics for `pending`, `running`, `succeeded`, `failed`, `unsupported`, `out_of_scope`, `unknown`, `unavailable`, `partial`, `stale`, and `insufficient_evidence` where current fixtures or readiness packets expose those states.
-- The planner separates assets that are ready to inspect from assets blocked by unsupported scope, out-of-scope classification, unavailable jobs, failed jobs, missing source packs, pending review, stale evidence, unknown evidence, partial evidence, or insufficient evidence.
-- Planned batches are review-only and cannot start ingestion, approve sources, promote Top-500 or ETF manifests, write generated-output cache entries, mark launch/public deployment approved, or expose generated claims for blocked assets.
-- Rehearsal output includes planner diagnostics and keeps optional browser, durable repository, official-source retrieval, and live-AI modes as explicit opt-ins with skipped or blocked status separate from required deterministic checks.
-- Generated output, generated chat answers, generated comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, and generated-output cache entries remain blocked for unsupported, out-of-scope, recognition-only, pending-review, unavailable, pending-ingestion, failed, parser-invalid, rights-disallowed, and insufficient-evidence assets.
-- Golden Asset Source Handoff remains required before any retrieved source can become evidence for generated output, citations, source drawer, exports, cache entries, Weekly News Focus, AI Comprehensive Analysis, or planner readiness claims.
-- Tests prove planner behavior without live provider, news, market-data, browser-service, storage, database, SEC, issuer, exchange, or LLM calls.
-- Important factual claims added by the task are cited, derived from manifest/review metadata, or expressed as readiness metadata; no implementation text introduces buy/sell/hold, allocation, price-target, tax, brokerage, or personalized advice language.
-
-Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_ingestion_worker.py tests/unit/test_ingestion_jobs.py tests/unit/test_search_classification.py tests/unit/test_repo_contract.py -q`
-- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
-- `TMPDIR=/tmp python3 evals/run_static_evals.py`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
-- `git diff --check`
-
-Iteration budget:
-- One agent-loop cycle.
-
-## Backlog
-
-No backlog task is currently prepared after promoting T-135.
-
-## Completed
+Remaining risks:
+- The planner is deterministic and review-only; it does not start ingestion, approve sources, promote manifests, write generated-output cache entries, or approve launch/public deployment.
+- Planner ordering reflects the current local fixtures and manifest review metadata, including source-pack readiness gaps for non-golden ETFs and most Top-500 stocks.
+- Recognition-only ETF/ETP rows remain diagnostic/blocking metadata only and do not unlock generated output.
 
 ### T-134: Add local fresh-data MVP readiness thresholds
 
@@ -3664,7 +3642,7 @@ Current runtime snapshot:
 - T-128 completed deterministic governed golden API/frontend rendering proof for the golden set.
 - T-129 completed launch-manifest operator automation parity for Top-500 stock and supported ETF launch-manifest packets.
 - T-130 completed the deterministic local fresh-data MVP rehearsal command.
-- T-131 through T-134 completed the ETF eligible-universe, stock SEC source-pack readiness, ETF issuer source-pack readiness, and local MVP readiness-threshold packets; T-135 remains as the current local fully functional fresh-data MVP task for batchable ingestion priority planning.
+- T-131 through T-135 completed the ETF eligible-universe, stock SEC source-pack readiness, ETF issuer source-pack readiness, local MVP readiness-threshold packets, and batchable local ingestion priority planner.
 - T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, full governed source artifacts, admin auth/rate limiting, broader live ingestion, and launch-sized reviewed manifests remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:
@@ -3724,7 +3702,7 @@ Operational defaults for general MVP roadmap tasks:
 - T-128 established deterministic governed golden evidence API/frontend rendering proof. It is completed and must not be reintroduced as runnable backlog.
 - T-129 established launch-manifest operator automation parity. It is completed and must not be reintroduced as runnable backlog.
 - T-130 established the local fresh-data MVP rehearsal command. It is completed and must not be reintroduced as runnable backlog.
-- T-134 is completed, and T-135 is the remaining active local fresh-data MVP work that should run before production-hardening tasks.
+- T-134 and T-135 are completed. No active local fresh-data MVP task is currently prepared before production-hardening tasks.
 - Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until explicit launch readiness work is promoted into a narrow task and passes deterministic CI coverage.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted task should run the relevant EVALS.md checks, `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, `bash scripts/run_quality_gate.sh`, and `git diff --check`.
@@ -3792,13 +3770,13 @@ Roadmap integration tracker:
 | Stock SEC source-pack readiness packets | Completed | T-132 |
 | ETF issuer source-pack readiness packets | Completed | T-133 |
 | Local fresh-data MVP readiness thresholds | Completed | T-134 |
-| Batchable local ingestion priority planner | Current | T-135 |
+| Batchable local ingestion priority planner | Completed | T-135 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
 Remaining unpromoted general MVP sequence:
 
-- Finish the remaining local fully functional fresh-data MVP track task, T-135, before production deployment hardening.
-- Full production deployment after those local MVP gaps: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
+- No current local fully functional fresh-data MVP task is prepared. Add a narrow task contract before starting production deployment hardening or any new local fresh-data expansion.
+- Full production deployment remains unpromoted until a narrow launch-readiness task is added: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
 - Recurring production jobs only after manual official-source acquisition, Top-500 candidate refresh review, and local fresh-data behavior are stable.
 - Broad paid-provider or news-provider integrations only after provider licensing/source-use review, no-secret-exposure tests, mocked CI fixtures, source-rights validation, and export/display constraints are documented.
 - Post-MVP features such as accounts, saved assets, watchlists, PDF exports, localization, richer analytics dashboards, and broad provider enrichment remain out of the fully functional MVP stage.
