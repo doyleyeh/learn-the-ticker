@@ -4,6 +4,7 @@ import hashlib
 import json
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from backend.models import (
     ETFUniverseCategory,
@@ -12,7 +13,14 @@ from backend.models import (
     ETFUniverseManifest,
     ETFUniverseSupportState,
     FreshnessState,
+    SourceParserStatus,
     SourceQuality,
+)
+from backend.source_policy import (
+    SourcePolicyAction,
+    resolve_source_policy,
+    source_handoff_fields_from_policy,
+    validate_source_handoff,
 )
 
 
@@ -25,6 +33,9 @@ RECOGNITION_ETF_UNIVERSE_MANIFEST_PATH = (
 ETF_UNIVERSE_SCHEMA_VERSION = "us-equity-etf-universe-v1"
 ETF_LAUNCH_REVIEW_PACKET_SCHEMA_VERSION = "etf-launch-review-packet-v1"
 ETF_LAUNCH_REVIEW_BOUNDARY = "etf-launch-manifest-review-only-v1"
+ETF_ISSUER_READINESS_SCHEMA_VERSION = "etf-issuer-source-pack-readiness-v1"
+ETF_ISSUER_READINESS_BOUNDARY = "etf-issuer-source-pack-readiness-review-only-v1"
+ETF_ISSUER_READINESS_RETRIEVED_AT = "2026-04-20T00:00:00Z"
 ETF_UNIVERSE_PRODUCTION_MIRROR_ENV_VAR = "EQUITY_ETF_UNIVERSE_MANIFEST_URI"
 ETF_UNIVERSE_MANIFEST_PATHS = {
     "data/universes/us_equity_etfs_supported.current.json",
@@ -147,6 +158,60 @@ ETF_REQUIRED_ISSUER_SOURCE_PACK = [
     "shareholder_or_methodology_or_risk_source",
     "sponsor_announcements_when_relevant",
 ]
+ETF_ISSUER_SOURCE_COMPONENTS = (
+    {
+        "component_id": "issuer_page",
+        "required": True,
+        "source_types": ("issuer_page", "issuer_fact_sheet"),
+        "citation_field": "fact_sheet",
+    },
+    {
+        "component_id": "fact_sheet",
+        "required": True,
+        "source_types": ("issuer_fact_sheet",),
+        "citation_field": "fact_sheet",
+    },
+    {
+        "component_id": "prospectus_or_summary_prospectus",
+        "required": True,
+        "source_types": ("summary_prospectus", "prospectus"),
+        "citation_field": "prospectus",
+    },
+    {
+        "component_id": "holdings",
+        "required": True,
+        "source_types": ("issuer_holdings_file",),
+        "citation_field": "holdings",
+    },
+    {
+        "component_id": "exposures",
+        "required": True,
+        "source_types": ("issuer_exposure_file",),
+        "citation_field": "exposures",
+    },
+    {
+        "component_id": "methodology_shareholder_or_risk_source",
+        "required": False,
+        "source_types": ("issuer_methodology", "shareholder_report", "risk_source"),
+        "citation_field": None,
+    },
+    {
+        "component_id": "sponsor_announcements_when_relevant",
+        "required": False,
+        "source_types": ("sponsor_announcement",),
+        "citation_field": None,
+    },
+)
+ETF_ISSUER_BLOCKED_GENERATED_SURFACES = (
+    "generated_claims",
+    "generated_chat_answers",
+    "generated_comparisons",
+    "weekly_news_focus",
+    "ai_comprehensive_analysis",
+    "exports",
+    "generated_risk_summaries",
+    "generated_output_cache_entries",
+)
 
 SUPPORTED_SCOPE_ETF_CATEGORIES = {
     ETFUniverseCategory.us_equity_index_etf,
@@ -375,6 +440,77 @@ def build_etf_launch_review_packet(
     }
 
 
+def build_etf_issuer_source_pack_readiness_packet(
+    *,
+    supported_manifest: ETFUniverseManifest | None = None,
+    recognition_manifest: ETFUniverseManifest | None = None,
+    issuer_fixture_by_ticker: dict[str, Any] | None = None,
+    parser_status_by_source_document_id: dict[str, SourceParserStatus | str] | None = None,
+    generated_at: str = "2026-04-29T00:00:00Z",
+) -> dict[str, object]:
+    """Build deterministic review-only issuer source-pack readiness for supported-manifest ETFs."""
+
+    from backend.provider_adapters.etf_issuer import ETF_ISSUER_FIXTURES
+
+    supported = supported_manifest or load_supported_etf_universe_manifest()
+    recognition = recognition_manifest or load_recognition_etf_universe_manifest()
+    validate_etf_universe_manifest(supported)
+    validate_etf_universe_manifest(recognition)
+    fixture_map = {
+        normalize_etf_ticker(ticker): fixture
+        for ticker, fixture in (issuer_fixture_by_ticker or ETF_ISSUER_FIXTURES).items()
+    }
+    parser_overrides = {
+        source_id: SourceParserStatus(status)
+        for source_id, status in (parser_status_by_source_document_id or {}).items()
+    }
+
+    supported_rows = [
+        _etf_issuer_readiness_row(entry, fixture_map=fixture_map, parser_overrides=parser_overrides)
+        for entry in supported.entries
+    ]
+    recognition_rows = [_etf_recognition_only_readiness_row(entry) for entry in recognition.entries]
+    readiness_counts = _etf_issuer_readiness_counts(
+        supported_rows=supported_rows,
+        recognition_rows=recognition_rows,
+    )
+    stop_conditions = _etf_issuer_readiness_stop_conditions(supported_rows, recognition_rows)
+    review_status = "blocked" if readiness_counts["blocked"] else ("review_needed" if stop_conditions else "pass")
+    return {
+        "schema_version": ETF_ISSUER_READINESS_SCHEMA_VERSION,
+        "boundary": ETF_ISSUER_READINESS_BOUNDARY,
+        "review_only": True,
+        "no_live_external_calls": True,
+        "generated_at": generated_at,
+        "supported_runtime_authority": "data/universes/us_equity_etfs_supported.current.json",
+        "recognition_runtime_authority": "data/universes/us_etp_recognition.current.json",
+        "readiness_keyed_from_supported_manifest_only": True,
+        "recognition_rows_unlock_generated_output": False,
+        "retrieval_alone_approves_evidence": False,
+        "sources_approved_by_packet": False,
+        "launch_approved": False,
+        "manifests_promoted": False,
+        "required_issuer_source_components": [
+            {
+                "component_id": str(component["component_id"]),
+                "required": bool(component["required"]),
+                "source_types": list(component["source_types"]),  # type: ignore[arg-type]
+            }
+            for component in ETF_ISSUER_SOURCE_COMPONENTS
+        ],
+        "readiness_counts": readiness_counts,
+        "review_status": review_status,
+        "stop_conditions": stop_conditions,
+        "blocked_generated_surfaces": list(ETF_ISSUER_BLOCKED_GENERATED_SURFACES),
+        "supported_rows": supported_rows,
+        "recognition_only_rows": recognition_rows,
+        "non_advice_framing": (
+            "ETF issuer source-pack readiness is operational evidence metadata only; it is not an endorsement, "
+            "recommendation, model portfolio, allocation, price target, or trading instruction."
+        ),
+    }
+
+
 def legacy_eligible_not_cached_etf_metadata() -> dict[str, dict[str, str | list[str] | None]]:
     metadata: dict[str, dict[str, str | list[str] | None]] = {}
     for entry in eligible_not_cached_etf_entries().values():
@@ -394,6 +530,375 @@ def legacy_eligible_not_cached_etf_metadata() -> dict[str, dict[str, str | list[
             "approval_timestamp": entry.approval_timestamp,
         }
     return metadata
+
+
+def _etf_issuer_readiness_row(
+    entry: ETFUniverseEntry,
+    *,
+    fixture_map: dict[str, Any],
+    parser_overrides: dict[str, SourceParserStatus],
+) -> dict[str, object]:
+    fixture = fixture_map.get(entry.ticker)
+    if fixture is None:
+        components = [
+            _missing_etf_issuer_component(
+                str(component["component_id"]),
+                required=bool(component["required"]),
+                reason_code=f"{component['component_id']}_fixture_missing",
+            )
+            for component in ETF_ISSUER_SOURCE_COMPONENTS
+        ]
+    else:
+        components = _etf_issuer_components_for_fixture(
+            entry=entry,
+            fixture=fixture,
+            parser_overrides=parser_overrides,
+        )
+    source_pack_status = _etf_issuer_row_status(components)
+    source_backed_partial_ready = _etf_issuer_source_backed_partial_ready(components)
+    return {
+        "ticker": entry.ticker,
+        "fund_name": entry.fund_name,
+        "issuer": entry.issuer,
+        "exchange": entry.exchange,
+        "manifest_kind": "supported",
+        "support_state": entry.support_state.value,
+        "launch_cache_state": entry.launch_cache_state.value,
+        "source_pack_status": source_pack_status,
+        "source_backed_partial_rendering_ready": source_backed_partial_ready,
+        "generated_output_eligible_from_manifest_cache": can_generate_output_for_etf_entry(entry),
+        "readiness_packet_unlocks_generated_output": False,
+        "source_pack_failures_unlock_generated_output": False,
+        "blocked_generated_surfaces": list(ETF_ISSUER_BLOCKED_GENERATED_SURFACES),
+        "components": components,
+    }
+
+
+def _etf_recognition_only_readiness_row(entry: ETFUniverseEntry) -> dict[str, object]:
+    return {
+        "ticker": entry.ticker,
+        "fund_name": entry.fund_name,
+        "issuer": entry.issuer,
+        "exchange": entry.exchange,
+        "manifest_kind": "recognition_only",
+        "support_state": entry.support_state.value,
+        "launch_cache_state": entry.launch_cache_state.value,
+        "source_pack_status": "blocked",
+        "authoritative_for_generated_output": False,
+        "generated_output_eligible": False,
+        "readiness_keyed_from_supported_manifest": False,
+        "recognition_only_non_authoritative": True,
+        "blocked_state_reason": _blocked_state_reason(entry, generated_output_eligible=False),
+        "blocked_generated_surfaces": list(ETF_ISSUER_BLOCKED_GENERATED_SURFACES),
+    }
+
+
+def _etf_issuer_components_for_fixture(
+    *,
+    entry: ETFUniverseEntry,
+    fixture: Any,
+    parser_overrides: dict[str, SourceParserStatus],
+) -> list[dict[str, object]]:
+    return [
+        _etf_issuer_component_from_fixture(
+            component=component,
+            entry=entry,
+            fixture=fixture,
+            parser_overrides=parser_overrides,
+        )
+        for component in ETF_ISSUER_SOURCE_COMPONENTS
+    ]
+
+
+def _etf_issuer_component_from_fixture(
+    *,
+    component: dict[str, object],
+    entry: ETFUniverseEntry,
+    fixture: Any,
+    parser_overrides: dict[str, SourceParserStatus],
+) -> dict[str, object]:
+    component_id = str(component["component_id"])
+    required = bool(component["required"])
+    source = _etf_issuer_source_for_component(fixture, tuple(component["source_types"]))  # type: ignore[arg-type]
+    if source is None:
+        return _missing_etf_issuer_component(
+            component_id,
+            required=required,
+            reason_code=f"{component_id}_source_missing",
+        )
+
+    parser_status = parser_overrides.get(source.source_document_id, SourceParserStatus.parsed)
+    decision = resolve_source_policy(url=source.url)
+    handoff_payload = {
+        **source_handoff_fields_from_policy(
+            decision,
+            source_identity=source.url,
+            parser_status=parser_status,
+            approval_rationale=(
+                "Deterministic ETF issuer source-pack readiness metadata; retrieval alone does not approve evidence use."
+            ),
+        ),
+        "source_document_id": source.source_document_id,
+        "source_type": source.source_type,
+        "is_official": True,
+        "source_quality": decision.source_quality if decision.source_quality is not SourceQuality.unknown else SourceQuality.issuer,
+        "allowlist_status": decision.allowlist_status,
+        "source_use_policy": decision.source_use_policy,
+        "permitted_operations": decision.permitted_operations,
+        "freshness_state": source.freshness_state,
+        "as_of_date": source.as_of_date,
+        "published_at": source.published_at,
+        "retrieved_at": ETF_ISSUER_READINESS_RETRIEVED_AT,
+        "parser_failure_diagnostics": "deterministic_parser_failure" if parser_status is SourceParserStatus.failed else None,
+    }
+    action_results = {
+        action.value: validate_source_handoff(handoff_payload, action=action)
+        for action in (
+            SourcePolicyAction.generated_claim_support,
+            SourcePolicyAction.cacheable_generated_output,
+            SourcePolicyAction.markdown_json_section_export,
+        )
+    }
+    generated_claim_handoff = action_results[SourcePolicyAction.generated_claim_support.value]
+    same_fund = _etf_issuer_same_fund(entry=entry, fixture=fixture, source=source)
+    status, evidence_state, reason_codes = _etf_issuer_component_status(
+        required=required,
+        same_fund=same_fund,
+        freshness_state=source.freshness_state,
+        parser_status=parser_status,
+        handoff_allowed=generated_claim_handoff.allowed,
+        handoff_reason_codes=list(generated_claim_handoff.reason_codes),
+    )
+    citation_ids = _etf_issuer_citation_ids(component_id=component_id, source=source, fixture=fixture)
+    return {
+        "component_id": component_id,
+        "required": required,
+        "status": status,
+        "evidence_state": evidence_state,
+        "reason_codes": reason_codes,
+        "same_asset_or_same_fund_validation": same_fund,
+        "official_source_status": True,
+        "source_identity": source.url,
+        "source_document_id": source.source_document_id,
+        "source_type": source.source_type,
+        "source_quality": _enum_value(handoff_payload["source_quality"]),
+        "allowlist_status": _enum_value(handoff_payload["allowlist_status"]),
+        "source_use_policy": _enum_value(handoff_payload["source_use_policy"]),
+        "storage_rights": _enum_value(handoff_payload["storage_rights"]),
+        "export_rights": _enum_value(handoff_payload["export_rights"]),
+        "review_status": _enum_value(handoff_payload["review_status"]),
+        "review_rationale": handoff_payload["approval_rationale"],
+        "parser_status": parser_status.value,
+        "parser_failure_diagnostics": handoff_payload["parser_failure_diagnostics"],
+        "freshness_state": source.freshness_state.value,
+        "as_of_date": source.as_of_date,
+        "published_at": source.published_at,
+        "retrieved_at": ETF_ISSUER_READINESS_RETRIEVED_AT,
+        "citation_ids": citation_ids,
+        "citation_ready": bool(citation_ids) and same_fund and generated_claim_handoff.allowed and parser_status is SourceParserStatus.parsed,
+        "source_can_support_citations": same_fund and generated_claim_handoff.allowed and parser_status is SourceParserStatus.parsed,
+        "golden_asset_source_handoff_status": "approved" if generated_claim_handoff.allowed else "blocked",
+        "golden_asset_source_handoff_reason_codes": list(generated_claim_handoff.reason_codes),
+        "action_readiness": {
+            action: {
+                "allowed": result.allowed,
+                "reason_codes": list(result.reason_codes),
+            }
+            for action, result in action_results.items()
+        },
+    }
+
+
+def _missing_etf_issuer_component(component_id: str, *, required: bool, reason_code: str) -> dict[str, object]:
+    status = "insufficient_evidence" if required else "partial"
+    evidence_state = "insufficient_evidence" if required else "partial"
+    return {
+        "component_id": component_id,
+        "required": required,
+        "status": status,
+        "evidence_state": evidence_state,
+        "reason_codes": [reason_code],
+        "same_asset_or_same_fund_validation": False,
+        "official_source_status": False,
+        "source_identity": None,
+        "source_document_id": None,
+        "source_type": None,
+        "source_quality": "unknown",
+        "allowlist_status": "not_allowlisted",
+        "source_use_policy": "rejected",
+        "storage_rights": "unknown",
+        "export_rights": "unknown",
+        "review_status": "pending_review",
+        "review_rationale": None,
+        "parser_status": "pending_review",
+        "parser_failure_diagnostics": None,
+        "freshness_state": "unavailable",
+        "as_of_date": None,
+        "published_at": None,
+        "retrieved_at": None,
+        "citation_ids": [],
+        "citation_ready": False,
+        "source_can_support_citations": False,
+        "golden_asset_source_handoff_status": "not_evaluated_missing_source",
+        "golden_asset_source_handoff_reason_codes": [reason_code],
+        "action_readiness": {
+            action.value: {"allowed": False, "reason_codes": [reason_code]}
+            for action in (
+                SourcePolicyAction.generated_claim_support,
+                SourcePolicyAction.cacheable_generated_output,
+                SourcePolicyAction.markdown_json_section_export,
+            )
+        },
+    }
+
+
+def _etf_issuer_source_for_component(fixture: Any, source_types: tuple[str, ...]) -> Any | None:
+    for source_type in source_types:
+        for source in fixture.sources:
+            if source.source_type == source_type:
+                return source
+    return None
+
+
+def _etf_issuer_same_fund(*, entry: ETFUniverseEntry, fixture: Any, source: Any) -> bool:
+    identity = fixture.identity
+    return (
+        identity.ticker == entry.ticker
+        and identity.fund_name == entry.fund_name
+        and identity.issuer == entry.issuer
+        and identity.exchange == entry.exchange
+        and source.publisher == entry.issuer
+    )
+
+
+def _etf_issuer_component_status(
+    *,
+    required: bool,
+    same_fund: bool,
+    freshness_state: FreshnessState,
+    parser_status: SourceParserStatus,
+    handoff_allowed: bool,
+    handoff_reason_codes: list[str],
+) -> tuple[str, str, list[str]]:
+    reason_codes: list[str] = []
+    if not same_fund:
+        reason_codes.append("wrong_fund_issuer_source")
+    if parser_status in {SourceParserStatus.failed, SourceParserStatus.pending_review}:
+        reason_codes.append(f"parser_{parser_status.value}")
+    if not handoff_allowed:
+        reason_codes.extend(handoff_reason_codes)
+    if not same_fund or parser_status in {SourceParserStatus.failed, SourceParserStatus.pending_review} or not handoff_allowed:
+        return "blocked", "unavailable", list(dict.fromkeys(reason_codes))
+    if freshness_state is FreshnessState.stale:
+        return "stale", "stale", ["stale_issuer_source"]
+    if freshness_state in {FreshnessState.unknown, FreshnessState.unavailable}:
+        return freshness_state.value, freshness_state.value, [f"{freshness_state.value}_issuer_source"]
+    if parser_status is SourceParserStatus.partial:
+        return "partial", "partial", ["parser_partial"]
+    return "pass", "supported", []
+
+
+def _etf_issuer_citation_ids(*, component_id: str, source: Any, fixture: Any) -> list[str]:
+    if source.source_document_id == fixture.fact_sheet.source_document_id:
+        return [fixture.fact_sheet.citation_id]
+    if source.source_document_id == fixture.prospectus.source_document_id:
+        return [fixture.prospectus.citation_id]
+    citations = [
+        item.citation_id
+        for item in fixture.holdings_or_exposures
+        if item.source_document_id == source.source_document_id
+    ]
+    return list(dict.fromkeys(citations))
+
+
+def _etf_issuer_row_status(components: list[dict[str, object]]) -> str:
+    required_components = [component for component in components if component["required"]]
+    if any(component["status"] == "blocked" for component in required_components):
+        return "blocked"
+    if any(component["status"] == "insufficient_evidence" for component in required_components):
+        return "insufficient_evidence"
+    if any(component["status"] == "stale" for component in required_components):
+        return "stale"
+    if any(component["status"] in {"unknown", "unavailable"} for component in required_components):
+        return "unavailable"
+    if any(component["status"] == "partial" for component in components):
+        return "partial"
+    return "pass"
+
+
+def _etf_issuer_source_backed_partial_ready(components: list[dict[str, object]]) -> bool:
+    component_by_id = {str(component["component_id"]): component for component in components}
+    return all(
+        component_by_id.get(component_id, {}).get("status") == "pass"
+        for component_id in (
+            "issuer_page",
+            "fact_sheet",
+            "prospectus_or_summary_prospectus",
+            "holdings",
+            "exposures",
+        )
+    )
+
+
+def _etf_issuer_readiness_counts(
+    *,
+    supported_rows: list[dict[str, object]],
+    recognition_rows: list[dict[str, object]],
+) -> dict[str, int]:
+    statuses = [str(row["source_pack_status"]) for row in supported_rows]
+    return {
+        "supported_manifest_rows": len(supported_rows),
+        "recognition_only_rows": len(recognition_rows),
+        "cached_golden_supported": sum(
+            1 for row in supported_rows if row["support_state"] == ETFUniverseSupportState.cached_supported.value
+        ),
+        "eligible_not_cached_supported": sum(
+            1 for row in supported_rows if row["support_state"] == ETFUniverseSupportState.eligible_not_cached.value
+        ),
+        "pass": statuses.count("pass"),
+        "partial": statuses.count("partial"),
+        "stale": statuses.count("stale"),
+        "unknown": statuses.count("unknown"),
+        "unavailable": statuses.count("unavailable"),
+        "insufficient_evidence": statuses.count("insufficient_evidence"),
+        "blocked": statuses.count("blocked"),
+        "source_backed_partial_rendering_ready": sum(
+            1 for row in supported_rows if row["source_backed_partial_rendering_ready"]
+        ),
+        "blocked_recognition_only": sum(1 for row in recognition_rows if row["source_pack_status"] == "blocked"),
+        "readiness_packet_unlocks_generated_output": sum(
+            1 for row in supported_rows if row["readiness_packet_unlocks_generated_output"]
+        ),
+    }
+
+
+def _etf_issuer_readiness_stop_conditions(
+    supported_rows: list[dict[str, object]],
+    recognition_rows: list[dict[str, object]],
+) -> list[str]:
+    stop_conditions = ["missing_manual_review_or_approval", "etf_issuer_source_pack_review_not_complete"]
+    statuses = {str(row["source_pack_status"]) for row in supported_rows}
+    if "blocked" in statuses:
+        stop_conditions.append("blocked_issuer_source_pack")
+    if "insufficient_evidence" in statuses:
+        stop_conditions.append("insufficient_issuer_evidence")
+    if "partial" in statuses:
+        stop_conditions.append("partial_issuer_source_pack")
+    if "stale" in statuses:
+        stop_conditions.append("stale_issuer_source_pack")
+    if "unknown" in statuses:
+        stop_conditions.append("unknown_issuer_source_pack")
+    if "unavailable" in statuses:
+        stop_conditions.append("unavailable_issuer_source_pack")
+    if any(row["readiness_packet_unlocks_generated_output"] for row in supported_rows):
+        stop_conditions.append("readiness_packet_generated_output_unlock_attempt")
+    if any(row["generated_output_eligible"] for row in recognition_rows):
+        stop_conditions.append("recognition_generated_output_unlock_attempt")
+    return list(dict.fromkeys(stop_conditions))
+
+
+def _enum_value(value: Any) -> Any:
+    return getattr(value, "value", value)
 
 
 def _validate_entry(manifest: ETFUniverseManifest, entry: ETFUniverseEntry) -> None:

@@ -567,12 +567,11 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
     active_sections = f"{current_task}\n{backlog}"
 
     assert "## MVP Backend Roadmap" not in tasks
-    assert "### T-132: Add stock SEC source-pack readiness packet contracts" in current_task
+    assert "### T-133: Add ETF issuer source-pack readiness packet contracts" in current_task
     for marker in [
         "Acceptance criteria",
         "Required commands",
         "Iteration budget",
-        "### T-133: Add ETF issuer source-pack readiness packet contracts",
         "### T-134: Add local fresh-data MVP readiness thresholds",
         "### T-135: Add batchable local ingestion priority planner",
     ]:
@@ -608,7 +607,7 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
         "T-128 completed deterministic governed golden API/frontend rendering proof",
         "T-129 completed launch-manifest operator automation parity",
         "T-130 completed the deterministic local fresh-data MVP rehearsal command",
-        "T-131 through T-135 are active/prepared local fresh-data MVP work",
+        "T-131 and T-132 completed the ETF eligible-universe and stock SEC source-pack readiness packets",
         "T-099 established deterministic provider content export-rights hardening",
         "T-100 established the backend MVP runtime gap audit and roadmap tracker",
         "T-101 established configured persisted-reader route wiring with fixture fallback",
@@ -667,9 +666,9 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
         "| Governed golden evidence API/frontend rendering proof | Completed | T-128 |",
         "| Launch-manifest operator automation parity | Completed | T-129 |",
         "| Local fresh-data MVP rehearsal command | Completed | T-130 |",
-        "| ETF eligible-universe review packet contracts | Current | T-131 |",
-        "| Stock SEC source-pack readiness packets | Prepared | T-132 |",
-        "| ETF issuer source-pack readiness packets | Prepared | T-133 |",
+        "| ETF eligible-universe review packet contracts | Completed | T-131 |",
+        "| Stock SEC source-pack readiness packets | Completed | T-132 |",
+        "| ETF issuer source-pack readiness packets | Current | T-133 |",
         "| Local fresh-data MVP readiness thresholds | Prepared | T-134 |",
         "| Batchable local ingestion priority planner | Prepared | T-135 |",
         "| Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |",

@@ -19,7 +19,7 @@ os.environ.setdefault("LTT_FORCE_COMPAT_FASTAPI", "1")
 
 from backend.chat import generate_asset_chat
 from backend.comparison import generate_comparison
-from backend.etf_universe import build_etf_launch_review_packet
+from backend.etf_universe import build_etf_issuer_source_pack_readiness_packet, build_etf_launch_review_packet
 from backend.generated_output_cache_repository import InMemoryGeneratedOutputCacheRepository
 from backend.knowledge_pack_repository import AssetKnowledgePackRepository, InMemoryAssetKnowledgePackRepository
 from backend.main import app
@@ -95,6 +95,7 @@ def run_rehearsal(env: dict[str, str] | None = None, *, root: Path = ROOT) -> di
         _guarded("governed_golden_api_rendering", _check_governed_golden_api_rendering),
         _guarded("launch_manifest_review_packets", lambda: _check_launch_manifest_review_packets(root)),
         _guarded("stock_sec_source_pack_readiness", lambda: _check_stock_sec_source_pack_readiness(root)),
+        _guarded("etf_issuer_source_pack_readiness", _check_etf_issuer_source_pack_readiness),
         _guarded("frontend_v04_smoke_markers", lambda: _check_frontend_markers(root)),
         _guarded("optional_browser_services", lambda: _check_optional_browser_services(source_env)),
         _guarded("optional_local_durable_repositories", lambda: _check_optional_durable_repositories(source_env)),
@@ -398,6 +399,43 @@ def _check_stock_sec_source_pack_readiness(root: Path) -> RehearsalCheck:
             "runtime_manifest_authority": packet["runtime_manifest_authority"],
             "candidate_manifest_paths": packet["candidate_manifest_paths"],
             "required_sec_components": packet["required_sec_components"],
+            "readiness_counts": counts,
+            "blocked_generated_surfaces": packet["blocked_generated_surfaces"],
+        },
+    )
+
+
+def _check_etf_issuer_source_pack_readiness() -> RehearsalCheck:
+    packet = build_etf_issuer_source_pack_readiness_packet()
+    counts = packet["readiness_counts"]
+    if packet["manifests_promoted"] or packet["sources_approved_by_packet"] or packet["launch_approved"]:
+        return _blocked("etf_issuer_source_pack_readiness", "etf_issuer_readiness_improperly_approved")
+    if counts["readiness_packet_unlocks_generated_output"]:
+        return _blocked("etf_issuer_source_pack_readiness", "etf_issuer_readiness_unlocked_generated_output")
+    if packet["recognition_rows_unlock_generated_output"]:
+        return _blocked("etf_issuer_source_pack_readiness", "etf_recognition_rows_unlocked_generated_output")
+    if not packet["readiness_keyed_from_supported_manifest_only"]:
+        return _blocked("etf_issuer_source_pack_readiness", "etf_readiness_not_keyed_from_supported_manifest")
+    if counts["supported_manifest_rows"] == 0 or counts["recognition_only_rows"] == 0:
+        return _blocked("etf_issuer_source_pack_readiness", "etf_readiness_rows_missing", counts)
+    if counts["source_backed_partial_rendering_ready"] == 0:
+        return _blocked("etf_issuer_source_pack_readiness", "etf_source_backed_partial_ready_row_missing", counts)
+    if counts["blocked_recognition_only"] != counts["recognition_only_rows"]:
+        return _blocked("etf_issuer_source_pack_readiness", "etf_recognition_only_rows_not_blocked", counts)
+    if packet["review_status"] not in {"pass", "review_needed", "blocked"}:
+        return _blocked(
+            "etf_issuer_source_pack_readiness",
+            "etf_issuer_readiness_status_invalid",
+            {"review_status": packet["review_status"]},
+        )
+    return _pass(
+        "etf_issuer_source_pack_readiness",
+        "etf_issuer_readiness_packet_is_review_only",
+        {
+            "review_status": packet["review_status"],
+            "supported_runtime_authority": packet["supported_runtime_authority"],
+            "recognition_runtime_authority": packet["recognition_runtime_authority"],
+            "required_issuer_source_components": packet["required_issuer_source_components"],
             "readiness_counts": counts,
             "blocked_generated_surfaces": packet["blocked_generated_surfaces"],
         },

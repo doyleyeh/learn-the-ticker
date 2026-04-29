@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,7 @@ from backend.data import (
 from backend.etf_universe import (
     ETFUniverseContractError,
     blocked_etf_entries,
+    build_etf_issuer_source_pack_readiness_packet,
     build_etf_launch_review_packet,
     cached_supported_etf_entries,
     can_generate_output_for_etf_entry,
@@ -24,8 +26,10 @@ from backend.etf_universe import (
     validate_etf_universe_manifest,
 )
 from backend.models import ETFUniverseSupportState
+from backend.models import FreshnessState, SourceParserStatus
 from backend.models import SearchResponse
 from backend.models import Top500CandidateManifest
+from backend.provider_adapters.etf_issuer import ETF_ISSUER_FIXTURES
 from backend.search import search_assets
 
 
@@ -228,6 +232,152 @@ def test_etf_launch_review_packet_preserves_supported_and_recognition_split():
     assert recognition_rows["TQQQ"]["eligible_universe_categories"] == []
     assert recognition_rows["TQQQ"]["blocked_state_reason"] == "blocked_by_exclusion_flags:leveraged"
     assert recognition_rows["TQQQ"]["handoff_status"] == "fixture_metadata_only_review_needed"
+
+
+def test_etf_issuer_source_pack_readiness_packet_is_supported_manifest_keyed_and_review_only():
+    packet = build_etf_issuer_source_pack_readiness_packet()
+
+    assert packet["schema_version"] == "etf-issuer-source-pack-readiness-v1"
+    assert packet["boundary"] == "etf-issuer-source-pack-readiness-review-only-v1"
+    assert packet["review_only"] is True
+    assert packet["no_live_external_calls"] is True
+    assert packet["supported_runtime_authority"] == "data/universes/us_equity_etfs_supported.current.json"
+    assert packet["recognition_runtime_authority"] == "data/universes/us_etp_recognition.current.json"
+    assert packet["readiness_keyed_from_supported_manifest_only"] is True
+    assert packet["recognition_rows_unlock_generated_output"] is False
+    assert packet["retrieval_alone_approves_evidence"] is False
+    assert packet["sources_approved_by_packet"] is False
+    assert packet["launch_approved"] is False
+    assert packet["manifests_promoted"] is False
+    assert packet["review_status"] == "review_needed"
+    assert "etf_issuer_source_pack_review_not_complete" in packet["stop_conditions"]
+    assert "partial_issuer_source_pack" in packet["stop_conditions"]
+    assert "insufficient_issuer_evidence" in packet["stop_conditions"]
+
+    component_ids = [component["component_id"] for component in packet["required_issuer_source_components"]]
+    assert component_ids == [
+        "issuer_page",
+        "fact_sheet",
+        "prospectus_or_summary_prospectus",
+        "holdings",
+        "exposures",
+        "methodology_shareholder_or_risk_source",
+        "sponsor_announcements_when_relevant",
+    ]
+
+    counts = packet["readiness_counts"]
+    assert counts == {
+        "supported_manifest_rows": 13,
+        "recognition_only_rows": 9,
+        "cached_golden_supported": 2,
+        "eligible_not_cached_supported": 11,
+        "pass": 0,
+        "partial": 2,
+        "stale": 0,
+        "unknown": 0,
+        "unavailable": 0,
+        "insufficient_evidence": 11,
+        "blocked": 0,
+        "source_backed_partial_rendering_ready": 2,
+        "blocked_recognition_only": 9,
+        "readiness_packet_unlocks_generated_output": 0,
+    }
+
+    supported_rows = {row["ticker"]: row for row in packet["supported_rows"]}
+    recognition_rows = {row["ticker"]: row for row in packet["recognition_only_rows"]}
+
+    voo = supported_rows["VOO"]
+    assert voo["source_pack_status"] == "partial"
+    assert voo["source_backed_partial_rendering_ready"] is True
+    assert voo["readiness_packet_unlocks_generated_output"] is False
+    components = {component["component_id"]: component for component in voo["components"]}
+    for component_id in [
+        "issuer_page",
+        "fact_sheet",
+        "prospectus_or_summary_prospectus",
+        "holdings",
+        "exposures",
+    ]:
+        component = components[component_id]
+        assert component["status"] == "pass"
+        assert component["same_asset_or_same_fund_validation"] is True
+        assert component["official_source_status"] is True
+        assert component["source_quality"] == "issuer"
+        assert component["source_use_policy"] == "full_text_allowed"
+        assert component["storage_rights"] == "raw_snapshot_allowed"
+        assert component["export_rights"] == "excerpts_allowed"
+        assert component["parser_status"] == "parsed"
+        assert component["freshness_state"] == "fresh"
+        assert component["citation_ready"] is True
+        assert component["golden_asset_source_handoff_status"] == "approved"
+        assert component["action_readiness"]["generated_claim_support"]["allowed"] is True
+        assert component["action_readiness"]["cacheable_generated_output"]["allowed"] is True
+        assert component["action_readiness"]["markdown_json_section_export"]["allowed"] is True
+    assert components["methodology_shareholder_or_risk_source"]["status"] == "partial"
+    assert components["sponsor_announcements_when_relevant"]["status"] == "partial"
+
+    spy = supported_rows["SPY"]
+    assert spy["support_state"] == "eligible_not_cached"
+    assert spy["source_pack_status"] == "insufficient_evidence"
+    assert spy["source_backed_partial_rendering_ready"] is False
+    assert all(component["citation_ready"] is False for component in spy["components"])
+    assert all(component["golden_asset_source_handoff_status"] != "approved" for component in spy["components"])
+
+    tqqq = recognition_rows["TQQQ"]
+    assert tqqq["manifest_kind"] == "recognition_only"
+    assert tqqq["source_pack_status"] == "blocked"
+    assert tqqq["authoritative_for_generated_output"] is False
+    assert tqqq["generated_output_eligible"] is False
+    assert tqqq["readiness_keyed_from_supported_manifest"] is False
+    assert tqqq["recognition_only_non_authoritative"] is True
+    assert tqqq["blocked_state_reason"] == "blocked_by_exclusion_flags:leveraged"
+
+
+def test_etf_issuer_source_pack_readiness_reports_stale_parser_failed_and_wrong_fund_states():
+    fixture = ETF_ISSUER_FIXTURES["VOO"]
+    stale_sources = tuple(
+        replace(source, freshness_state=FreshnessState.stale)
+        if source.source_document_id == "provider_issuer_voo_holdings_2026"
+        else source
+        for source in fixture.sources
+    )
+    stale_packet = build_etf_issuer_source_pack_readiness_packet(
+        issuer_fixture_by_ticker={"VOO": replace(fixture, sources=stale_sources)}
+    )
+    stale_voo = next(row for row in stale_packet["supported_rows"] if row["ticker"] == "VOO")
+    stale_components = {component["component_id"]: component for component in stale_voo["components"]}
+    assert stale_voo["source_pack_status"] == "stale"
+    assert stale_components["holdings"]["status"] == "stale"
+    assert stale_components["holdings"]["evidence_state"] == "stale"
+
+    parser_failed_packet = build_etf_issuer_source_pack_readiness_packet(
+        parser_status_by_source_document_id={"provider_issuer_voo_exposure_2026": SourceParserStatus.failed}
+    )
+    parser_failed_voo = next(row for row in parser_failed_packet["supported_rows"] if row["ticker"] == "VOO")
+    parser_failed_exposures = next(
+        component for component in parser_failed_voo["components"] if component["component_id"] == "exposures"
+    )
+    assert parser_failed_voo["source_pack_status"] == "blocked"
+    assert parser_failed_exposures["status"] == "blocked"
+    assert "parser_failed" in parser_failed_exposures["reason_codes"]
+    assert parser_failed_exposures["golden_asset_source_handoff_status"] == "blocked"
+
+    wrong_identity = replace(fixture.identity, ticker="QQQ", fund_name="Invesco QQQ Trust", issuer="Invesco")
+    wrong_fund_packet = build_etf_issuer_source_pack_readiness_packet(
+        issuer_fixture_by_ticker={"VOO": replace(fixture, identity=wrong_identity)}
+    )
+    wrong_fund_voo = next(row for row in wrong_fund_packet["supported_rows"] if row["ticker"] == "VOO")
+    assert wrong_fund_voo["source_pack_status"] == "blocked"
+    assert all(
+        component["same_asset_or_same_fund_validation"] is False
+        for component in wrong_fund_voo["components"]
+        if component["source_document_id"]
+    )
+    assert all(
+        "wrong_fund_issuer_source" in component["reason_codes"]
+        for component in wrong_fund_voo["components"]
+        if component["source_document_id"]
+    )
 
 
 def test_unknown_search_returns_no_generated_route_or_invented_asset_facts():
