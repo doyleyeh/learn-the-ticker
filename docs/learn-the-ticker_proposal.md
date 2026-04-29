@@ -347,10 +347,9 @@ The exact supported ETF universe should come from a reviewed, versioned supporte
 
 The proposal-level product rule is that v1 generated ETF experiences are unlocked only for reviewed, currently U.S.-listed, non-leveraged, non-inverse, passive/index-based U.S. equity ETFs with validated issuer source packs. Live provider ETF flags, exchange listings, issuer search results, and recognition-only rows may help candidate discovery or blocked search states, but they must not unlock ETF pages, chat, comparison output, Weekly News Focus, AI Comprehensive Analysis, or exports.
 
-The v1 supported ETF manifest should start with the golden ETF set from the PRD:
+The v1 supported ETF manifest is an eligible-universe workflow rather than a fixed launch list. It may include reviewed, currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure across broad index, total-market and large-cap, size/style, sector, industry/theme, dividend, value/growth, quality, momentum, low-volatility, equal-weight, and ESG index categories after issuer source packs validate.
 
-- Broad ETFs: `VOO`, `SPY`, `VTI`, `IVV`, `QQQ`, `IWM`, `DIA`.
-- Sector/theme ETFs: `VGT`, `XLK`, `SOXX`, `SMH`, `XLF`, `XLV`, `XLE`.
+Golden and pre-cache ETFs such as `VOO`, `QQQ`, and `SOXX` are local proof and regression assets. They are not the ETF coverage ceiling.
 
 The PRD owns the supported ETF product scope. The technical design spec owns ETF support and recognition manifest fields, validators, and runtime authority. `docs/ETF_MANIFEST_HANDOFF.md` owns candidate packet, source-pack, parser-validation, and manual-promotion workflow details.
 

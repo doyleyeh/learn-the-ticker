@@ -141,7 +141,7 @@ The browser must call the FastAPI backend only. It must never call LLM providers
 Optional post-MVP route:
 
 ```text
-/glossary/[term]                   Full glossary detail page
+/glossary/[term]                   Optional post-MVP full glossary detail page
 ```
 
 ### 5.2 API layer
@@ -781,7 +781,7 @@ pgvector can remain installed for future migration compatibility, but vector ind
 16. Update shared cache entries and freshness hashes.
 ```
 
-MVP should support pre-cache ingestion for the top-500-first stock launch universe, pre-cache ingestion for the initial supported ETF manifest, and explicit `pending_ingestion` states for approved on-demand assets outside ready source packs. Unsupported and out-of-scope assets should return a recognized-but-unsupported or recognized-but-out-of-scope state from search and must not trigger generated pages, generated chat, generated comparisons, Weekly News Focus, AI Comprehensive Analysis, or exports. Supported assets with incomplete evidence should return partial pages instead of invented content.
+MVP should support pre-cache ingestion for the top-500-first stock launch universe, pre-cache ingestion for the supported ETF manifest, and explicit `pending_ingestion` states for approved on-demand assets outside ready source packs. Unsupported and out-of-scope assets should return a recognized-but-unsupported or recognized-but-out-of-scope state from search and must not trigger generated pages, generated chat, generated comparisons, Weekly News Focus, AI Comprehensive Analysis, or exports. Supported assets with incomplete evidence should return partial pages instead of invented content.
 
 ### 9.1.1 Deterministic asset classification
 

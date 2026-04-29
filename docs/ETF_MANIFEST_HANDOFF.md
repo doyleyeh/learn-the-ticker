@@ -116,8 +116,8 @@ Do not promote an ETF to `us_equity_etfs_supported.current.json` unless every ga
 ## Promotion Rules
 
 - Candidate manifests are review artifacts only. They must not replace runtime manifests automatically.
-- Promotion to `data/universes/us_equity_etfs_supported.current.json` is manual and should later be mirrored to a private production object.
-- Promotion to `data/universes/us_etp_recognition.current.json` can broaden search recognition, but it cannot unlock generated ETF experiences.
+- Promotion to `data/universes/us_equity_etfs_supported.current.json` is manual and should later be mirrored to the private production object recorded in manifest metadata as `EQUITY_ETF_UNIVERSE_MANIFEST_URI`.
+- Promotion to `data/universes/us_etp_recognition.current.json` can broaden search recognition, but it cannot unlock generated ETF experiences. Production recognition promotion should use the current ETF manifest mirror metadata field, `EQUITY_ETF_UNIVERSE_MANIFEST_URI`, unless a future implementation explicitly splits the mirror variables.
 - Any ETF expansion beyond the v1 supported scope requires a named product decision with new source requirements, risk templates, parser coverage, and acceptance tests.
 - Do not commit raw restricted source text, provider payloads with unclear rights, service credentials, access tokens, or provider keys.
 
@@ -127,7 +127,7 @@ Stop and do not promote ETF manifests when the review packet reports any of thes
 
 - fixture-sized, fixture, mock, test, local-only, unreviewed, pending-review, rejected, or unclear-rights source provenance;
 - parser-invalid, hidden/internal, stale, partial, unknown, unavailable, or insufficient-evidence source states;
-- supported ETF launch tickers missing from the supported manifest;
+- intended supported ETF candidate tickers missing from the supported manifest;
 - generated checksum mismatch in either manifest;
 - recognition-only rows attempting to unlock generated pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, or generated risk summaries;
 - unsupported/out-of-scope products lacking blocked-state reasons or exclusion flags;
