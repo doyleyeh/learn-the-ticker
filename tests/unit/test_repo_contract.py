@@ -1,4 +1,5 @@
 from copy import deepcopy
+import re
 from pathlib import Path
 
 from scripts.run_local_fresh_data_rehearsal import RehearsalCheck, _build_manual_fresh_data_readiness_gate, run_rehearsal
@@ -41,6 +42,22 @@ def task_sections() -> tuple[str, str, str, str]:
     completed = tasks.split("## Completed", 1)[1].split("## Historical Backlog Note", 1)[0]
     roadmap = tasks.split("## General MVP Roadmap", 1)[1]
     return current, backlog, completed, roadmap
+
+
+def task_headings(section: str) -> dict[str, str]:
+    return dict(re.findall(r"^### (T-\d+): (.+)$", section, flags=re.MULTILINE))
+
+
+def roadmap_task_rows(roadmap: str) -> dict[str, str]:
+    rows: dict[str, str] = {}
+    for area, status, task in re.findall(
+        r"^\| ([^|]+?) \| ([^|]+?) \| (T-\d+|Unpromoted) \|$",
+        roadmap,
+        flags=re.MULTILINE,
+    ):
+        if task.startswith("T-"):
+            rows[task] = status
+    return rows
 
 
 def test_core_agent_files_exist():
@@ -403,10 +420,6 @@ def test_mvp_functional_gap_review_tracks_v06_progress_and_next_tasks():
         "T-133 completed ETF issuer source-pack readiness packet contracts",
         "T-134 completed local fresh-data MVP readiness thresholds",
         "T-135 completed batchable local ingestion priority planning",
-        "T-136 is current: add ETF-500 candidate manifest review contracts",
-        "T-137 adds ETF-500 issuer source-pack batch planning contracts",
-        "T-138 adds Top-500 SEC source-pack batch planning contracts",
-        "T-139 adds a local manual fresh-data readiness gate",
         "scripts/run_local_fresh_data_rehearsal.py --json",
         "Normal CI remains deterministic",
     ]:
@@ -584,20 +597,52 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
     active_sections = f"{current_task}\n{backlog}"
     current_lower = current_task.lower()
     backlog_lower = backlog.lower()
+    current_tasks = task_headings(current_task)
+    backlog_tasks = task_headings(backlog)
+    completed_tasks = task_headings(completed)
+    roadmap_rows = roadmap_task_rows(roadmap)
 
     assert "## MVP Backend Roadmap" not in tasks
     if "no current task is prepared" in current_lower:
         assert "no backlog tasks are currently prepared" in backlog_lower
-        assert "### T-" not in active_sections
-        assert "No current local fully functional fresh-data MVP task is prepared" in roadmap
+        assert not current_tasks
+        assert not backlog_tasks
     else:
+        assert len(current_tasks) == 1
         for marker in [
-            "### T-",
             "Acceptance criteria",
             "Required commands",
             "Iteration budget",
         ]:
             assert marker in current_task
+    if "no backlog tasks" in backlog_lower:
+        assert not backlog_tasks
+
+    assert completed_tasks
+    assert "Full production deployment, recurring jobs, and broad paid-provider integrations" in roadmap
+    assert "| Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |" in roadmap
+
+    for task_id in current_tasks:
+        assert task_id not in completed_tasks
+        if task_id in roadmap_rows:
+            assert roadmap_rows[task_id] == "Current"
+
+    for task_id in backlog_tasks:
+        assert task_id not in completed_tasks
+        if task_id in roadmap_rows:
+            assert roadmap_rows[task_id] == "Prepared"
+
+    for task_id in completed_tasks:
+        if task_id in roadmap_rows:
+            assert roadmap_rows[task_id] == "Completed", f"{task_id} should be Completed in roadmap"
+
+    for task_id, status in roadmap_rows.items():
+        if status == "Current":
+            assert task_id in current_tasks, f"{task_id} is Current in roadmap but not current task"
+        if status == "Prepared":
+            assert task_id in backlog_tasks, f"{task_id} is Prepared in roadmap but not backlog"
+        if status == "Completed":
+            assert task_id in completed_tasks, f"{task_id} is Completed in roadmap but not completed section"
 
     for marker in [
         "### T-118: Prove local fresh-data ingest-to-render smoke path",
@@ -634,10 +679,6 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
         "T-128 completed deterministic governed golden API/frontend rendering proof",
         "T-129 completed launch-manifest operator automation parity",
         "T-130 completed the deterministic local fresh-data MVP rehearsal command",
-        "T-131 through T-135 completed the ETF eligible-universe, stock SEC source-pack readiness, ETF issuer source-pack readiness, local MVP readiness-threshold packets, and batchable local ingestion priority planner",
-        "The ETF-500 scope update is documented across the product and handoff docs; T-136 completed deterministic ETF-500 candidate manifest review contracts, and T-137 completed ETF-500 issuer source-pack batch planning contracts.",
-        "T-138 completed deterministic Top-500 SEC source-pack batch planning contracts. T-139 is currently promoted as the local manual fresh-data readiness gate.",
-        "T-134 through T-138 are completed. T-139 is currently promoted as the next local fresh-data MVP task before manual local testing or production-hardening tasks.",
         "T-099 established deterministic provider content export-rights hardening",
         "T-100 established the backend MVP runtime gap audit and roadmap tracker",
         "T-101 established configured persisted-reader route wiring with fixture fallback",
@@ -662,71 +703,6 @@ def test_tasks_general_mvp_roadmap_tracks_stable_completed_milestones():
         "Full production deployment, recurring production jobs, broad paid-provider integrations",
     ]:
         assert marker in roadmap
-
-    completed_rows = [
-        "| Provider source-use/export enforcement hardening | Completed | T-099 |",
-        "| Backend fresh-data MVP runtime gap tracker | Completed | T-100 |",
-        "| Configured persisted-reader route wiring | Completed | T-101 |",
-        "| Executable local ingestion ledger and mocked worker path | Completed | T-102 |",
-        "| SEC EDGAR stock golden-path acquisition | Completed | T-103 |",
-        "| Official ETF issuer golden-path acquisition | Completed | T-104 |",
-        "| Source snapshot and parsed acquisition artifact persistence | Completed | T-105 |",
-        "| Normalized knowledge-pack writes from ingestion | Completed | T-106 |",
-        "| Weekly News Focus official-source event evidence persistence | Completed | T-107 |",
-        "| Generated-output cache writes and invalidation | Completed | T-108 |",
-        "| Frontend API-backed search, pending states, and asset rendering | Completed | T-109 |",
-        "| Persisted comparison/chat/source/glossary/export end-to-end verification | Completed | T-110 |",
-        "| Local durable repository execution with in-memory fallback | Completed | T-111 |",
-        "| Opt-in live SEC and ETF issuer golden acquisition | Completed | T-112 |",
-        "| Official-source Weekly News live acquisition for golden assets | Completed | T-113 |",
-        "| Launch pre-cache expansion and MVP readiness regression matrix | Completed | T-114 |",
-        "| Golden Asset Source Handoff contract enforcement | Completed | T-115 |",
-        "| Reviewed Top-500 candidate manifest workflow contracts | Completed | T-116 |",
-        "| Handoff-gated official-source acquisition execution for golden assets | Completed | T-117 |",
-        "| Local fresh-data ingest-to-render runbook and smoke coverage | Completed | T-118 |",
-        "| Local frontend API access and backend CORS | Completed | T-119 |",
-        "| Split supported ETF and recognition manifests | Completed | T-120 |",
-        "| Optional localhost browser/API smoke | Completed | T-121 |",
-        "| Optional local durable API proxy smoke | Completed | T-122 |",
-        "| Handoff-gated official-source fetcher boundaries | Completed | T-123 |",
-        "| Reviewed launch-universe expansion planning | Completed | T-124 |",
-        "| v0.6 docs, handoff docs, and backlog alignment | Completed | T-125 |",
-        "| Repo-native source-handoff manifest smoke tooling | Completed | T-126 |",
-        "| Opt-in local live-AI validation smoke | Completed | T-127 |",
-        "| Governed golden evidence API/frontend rendering proof | Completed | T-128 |",
-        "| Launch-manifest operator automation parity | Completed | T-129 |",
-        "| Local fresh-data MVP rehearsal command | Completed | T-130 |",
-        "| ETF eligible-universe review packet contracts | Completed | T-131 |",
-        "| Stock SEC source-pack readiness packets | Completed | T-132 |",
-        "| ETF issuer source-pack readiness packets | Completed | T-133 |",
-        "| Local fresh-data MVP readiness thresholds | Completed | T-134 |",
-        "| Batchable local ingestion priority planner | Completed | T-135 |",
-        "| ETF-500 candidate manifest review contracts | Completed | T-136 |",
-        "| ETF-500 issuer source-pack batch planning | Completed | T-137 |",
-        "| Top-500 SEC source-pack batch planning | Completed | T-138 |",
-        "| Local manual fresh-data readiness gate | Current | T-139 |",
-        "| Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |",
-    ]
-    for row in completed_rows:
-        assert row in roadmap
-
-    for stale_status in [
-        "| Launch-manifest operator automation parity | Current | T-129 |",
-        "| Local fresh-data MVP rehearsal command | Prepared | T-130 |",
-        "| ETF issuer source-pack readiness packets | Current | T-133 |",
-        "| Local fresh-data MVP readiness thresholds | Prepared | T-134 |",
-        "| Local fresh-data MVP readiness thresholds | Current | T-134 |",
-        "| Batchable local ingestion priority planner | Prepared | T-135 |",
-        "| Batchable local ingestion priority planner | Current | T-135 |",
-        "| ETF-500 candidate manifest review contracts | Current | T-136 |",
-        "| ETF-500 issuer source-pack batch planning | Current | T-137 |",
-        "| Top-500 SEC source-pack batch planning | Prepared | T-138 |",
-        "| Local manual fresh-data readiness gate | Prepared | T-139 |",
-        "| Top-500 SEC source-pack batch planning | Current | T-138 |",
-        "The current promoted task is T-129",
-        "No current local fully functional fresh-data MVP task is prepared",
-    ]:
-        assert stale_status not in roadmap
 
 
 def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
