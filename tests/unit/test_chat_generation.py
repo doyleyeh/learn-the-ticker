@@ -382,7 +382,7 @@ def test_chat_comparison_questions_redirect_to_compare_workflow_without_multi_as
         ("VOO", "How is VOO different from QQQ?", "VOO", "QQQ", "available"),
         ("VOO", "How is QQQ different from VOO?", "QQQ", "VOO", "available"),
         ("QQQ", "Why is this more concentrated than VOO?", "QQQ", "VOO", "available"),
-        ("VOO", "AAPL vs VOO", "AAPL", "VOO", "no_local_pack"),
+        ("VOO", "AAPL vs VOO", "AAPL", "VOO", "available"),
         ("VOO", "VOO vs SPY", "VOO", "SPY", "eligible_not_cached"),
         ("VOO", "VOO vs BTC", "VOO", "BTC", "unsupported"),
         ("VOO", "VOO vs GME", "VOO", "GME", "out_of_scope"),

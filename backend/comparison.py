@@ -44,6 +44,9 @@ from backend.models import (
     SourceDocument,
     SourceUsePolicy,
     StateMessage,
+    StockEtfBasketStructure,
+    StockEtfRelationshipBadge,
+    StockEtfRelationshipModel,
     CacheEntryKind,
     CacheScope,
     Freshness,
@@ -135,6 +138,14 @@ COMPARISON_FACT_FIELDS_BY_DIMENSION = {
     "Breadth": ["holdings_count"],
     "Educational role": ["beginner_role"],
 }
+
+STOCK_ETF_COMPARISON_DIMENSIONS = [
+    "Structure",
+    "Basket membership",
+    "Breadth",
+    "Cost model",
+    "Educational role",
+]
 
 
 def generate_comparison(
@@ -592,6 +603,8 @@ def _validate_comparison_cache_covers_response(
 def generate_comparison_from_pack(pack: ComparisonKnowledgePack) -> CompareResponse:
     if not pack.left_asset_pack.asset.supported or not pack.right_asset_pack.asset.supported:
         return _unavailable_comparison(pack.left_asset_pack, pack.right_asset_pack)
+    if _is_stock_vs_etf(pack):
+        return _generate_stock_vs_etf_comparison_from_pack(pack)
 
     bindings = _ComparisonCitationRegistry(pack)
     left_facts = _supported_facts_by_field(pack.left_asset_pack)
@@ -638,6 +651,257 @@ def generate_comparison_from_pack(pack: ComparisonKnowledgePack) -> CompareRespo
     )
     _assert_safe_copy(response)
     return response
+
+
+def _generate_stock_vs_etf_comparison_from_pack(pack: ComparisonKnowledgePack) -> CompareResponse:
+    bindings = _ComparisonCitationRegistry(pack)
+    left_facts = _supported_facts_by_field(pack.left_asset_pack)
+    right_facts = _supported_facts_by_field(pack.right_asset_pack)
+    stock_pack, etf_pack = _stock_etf_asset_packs(pack)
+    stock_facts = left_facts if stock_pack.asset.ticker == pack.left_asset_pack.asset.ticker else right_facts
+    etf_facts = left_facts if etf_pack.asset.ticker == pack.left_asset_pack.asset.ticker else right_facts
+    required_assets = [pack.left_asset_pack.asset.ticker, pack.right_asset_pack.asset.ticker]
+
+    key_differences = _stock_etf_key_differences(pack, stock_facts, etf_facts, bindings)
+    bottom_line = _stock_etf_bottom_line(pack, stock_facts, etf_facts, bindings)
+    planned_claims = _planned_claims(key_differences, bottom_line, required_assets)
+
+    report = validate_generated_comparison_claims(pack, planned_claims, bindings.evidence())
+    if not report.valid:
+        first_issue = report.issues[0]
+        raise ComparisonGenerationError(
+            f"Generated stock-vs-ETF citation validation failed for {pack.comparison_pack_id}: "
+            f"{first_issue.status.value} on {first_issue.claim_id}"
+        )
+
+    response = CompareResponse(
+        left_asset=pack.left_asset_pack.asset,
+        right_asset=pack.right_asset_pack.asset,
+        state=StateMessage(
+            status=AssetStatus.supported,
+            message="Stock-vs-ETF comparison is supported by deterministic local retrieval fixtures.",
+        ),
+        comparison_type="stock_vs_etf",
+        key_differences=key_differences,
+        bottom_line_for_beginners=bottom_line,
+        citations=bindings.citations(),
+        source_documents=bindings.source_documents(),
+        stock_etf_relationship=_stock_etf_relationship_model(stock_pack, etf_pack, stock_facts, etf_facts, bindings),
+    )
+    response.evidence_availability = _available_stock_etf_evidence_availability(
+        response=response,
+        pack=pack,
+        bindings=bindings,
+        stock_pack=stock_pack,
+        etf_pack=etf_pack,
+        stock_facts=stock_facts,
+        etf_facts=etf_facts,
+    )
+    _assert_safe_copy(response)
+    return response
+
+
+def _stock_etf_key_differences(
+    pack: ComparisonKnowledgePack,
+    stock_facts: dict[str, RetrievedFact],
+    etf_facts: dict[str, RetrievedFact],
+    bindings: _ComparisonCitationRegistry,
+) -> list[KeyDifference]:
+    for dimension in STOCK_ETF_COMPARISON_DIMENSIONS:
+        _require_difference(pack, dimension)
+
+    stock_identity = _require_fact(stock_facts, "canonical_asset_identity")
+    stock_business = _require_fact(stock_facts, "primary_business")
+    etf_benchmark = _require_fact(etf_facts, "benchmark")
+    etf_holdings = _require_fact(etf_facts, "holdings_exposure_detail")
+    etf_holdings_count = _require_fact(etf_facts, "holdings_count")
+    etf_expense = _require_fact(etf_facts, "expense_ratio")
+    etf_role = _require_fact(etf_facts, "beginner_role")
+
+    stock_ticker = stock_identity.fact.asset_ticker
+    etf_ticker = etf_benchmark.fact.asset_ticker
+
+    return [
+        KeyDifference(
+            dimension="Structure",
+            plain_english_summary=(
+                f"{stock_ticker} is represented by the local filing fixture as one operating company, while "
+                f"{etf_ticker} is represented by issuer fixtures as an ETF basket that tracks the {etf_benchmark.fact.value}."
+            ),
+            citation_ids=[
+                bindings.for_fact(stock_business).citation.citation_id,
+                bindings.for_fact(etf_benchmark).citation.citation_id,
+            ],
+        ),
+        KeyDifference(
+            dimension="Basket membership",
+            plain_english_summary=(
+                f"{etf_ticker}'s local holdings fixture lists Apple among top holdings, but this deterministic pack "
+                "does not verify a precise holding weight, sector exposure, top-10 concentration, or full overlap calculation."
+            ),
+            citation_ids=[
+                bindings.for_fact(stock_identity).citation.citation_id,
+                bindings.for_fact(etf_holdings).citation.citation_id,
+            ],
+        ),
+        KeyDifference(
+            dimension="Breadth",
+            plain_english_summary=(
+                f"{stock_ticker} is one company in this comparison, while the local facts list {etf_ticker} "
+                f"with about {_format_metric(etf_holdings_count.fact.value, etf_holdings_count.fact.unit)}."
+            ),
+            citation_ids=[
+                bindings.for_fact(stock_identity).citation.citation_id,
+                bindings.for_fact(etf_holdings_count).citation.citation_id,
+            ],
+        ),
+        KeyDifference(
+            dimension="Cost model",
+            plain_english_summary=(
+                f"{etf_ticker} has an ETF expense-ratio fact in the local issuer fixture; {stock_ticker} is a common "
+                "stock in this pack, so an ETF expense ratio is not the matching comparison field."
+            ),
+            citation_ids=[
+                bindings.for_fact(stock_identity).citation.citation_id,
+                bindings.for_fact(etf_expense).citation.citation_id,
+            ],
+        ),
+        KeyDifference(
+            dimension="Educational role",
+            plain_english_summary=(
+                f"This stock-vs-ETF view separates learning about {stock_ticker}'s single business from learning "
+                f"about {etf_ticker}'s basket exposure and {_role_phrase(etf_role.fact.value)} role."
+            ),
+            citation_ids=[
+                bindings.for_fact(stock_business).citation.citation_id,
+                bindings.for_fact(etf_role).citation.citation_id,
+                bindings.for_fact(etf_holdings).citation.citation_id,
+            ],
+        ),
+    ]
+
+
+def _stock_etf_bottom_line(
+    pack: ComparisonKnowledgePack,
+    stock_facts: dict[str, RetrievedFact],
+    etf_facts: dict[str, RetrievedFact],
+    bindings: _ComparisonCitationRegistry,
+) -> BeginnerBottomLine:
+    stock_identity = _require_fact(stock_facts, "canonical_asset_identity")
+    stock_business = _require_fact(stock_facts, "primary_business")
+    etf_benchmark = _require_fact(etf_facts, "benchmark")
+    etf_holdings = _require_fact(etf_facts, "holdings_exposure_detail")
+    etf_holdings_count = _require_fact(etf_facts, "holdings_count")
+
+    stock_ticker = stock_identity.fact.asset_ticker
+    etf_ticker = etf_benchmark.fact.asset_ticker
+    return BeginnerBottomLine(
+        summary=(
+            f"{stock_ticker} and {etf_ticker} are different structures: one is a single company, and the other "
+            "is an ETF basket. The local evidence verifies that Apple appears in the VOO holdings fixture, but "
+            "it does not verify a precise holding weight or full overlap calculation, so this comparison treats "
+            "the relationship as partial educational context."
+        ),
+        citation_ids=[
+            bindings.for_fact(stock_identity).citation.citation_id,
+            bindings.for_fact(stock_business).citation.citation_id,
+            bindings.for_fact(etf_benchmark).citation.citation_id,
+            bindings.for_fact(etf_holdings).citation.citation_id,
+            bindings.for_fact(etf_holdings_count).citation.citation_id,
+        ],
+    )
+
+
+def _stock_etf_relationship_model(
+    stock_pack: AssetKnowledgePack,
+    etf_pack: AssetKnowledgePack,
+    stock_facts: dict[str, RetrievedFact],
+    etf_facts: dict[str, RetrievedFact],
+    bindings: _ComparisonCitationRegistry,
+) -> StockEtfRelationshipModel:
+    stock_identity = _require_fact(stock_facts, "canonical_asset_identity")
+    stock_business = _require_fact(stock_facts, "primary_business")
+    etf_benchmark = _require_fact(etf_facts, "benchmark")
+    etf_holdings = _require_fact(etf_facts, "holdings_exposure_detail")
+    etf_holdings_count = _require_fact(etf_facts, "holdings_count")
+
+    stock_citation = bindings.for_fact(stock_business).citation.citation_id
+    stock_identity_citation = bindings.for_fact(stock_identity).citation.citation_id
+    etf_profile_citation = bindings.for_fact(etf_benchmark).citation.citation_id
+    etf_holdings_citation = bindings.for_fact(etf_holdings).citation.citation_id
+    etf_holdings_count_citation = bindings.for_fact(etf_holdings_count).citation.citation_id
+
+    stock_ticker = stock_pack.asset.ticker
+    etf_ticker = etf_pack.asset.ticker
+    return StockEtfRelationshipModel(
+        stock_ticker=stock_ticker,
+        etf_ticker=etf_ticker,
+        relationship_state="direct_holding",
+        evidence_state=EvidenceState.partial,
+        badges=[
+            StockEtfRelationshipBadge(
+                label="Comparison type",
+                value="Stock vs ETF",
+                marker="comparison_type",
+                relationship_state="direct_holding",
+                evidence_state=EvidenceState.supported,
+                citation_ids=[stock_citation, etf_profile_citation],
+            ),
+            StockEtfRelationshipBadge(
+                label="Stock ticker",
+                value=stock_ticker,
+                marker="stock_ticker",
+                relationship_state="direct_holding",
+                evidence_state=EvidenceState.supported,
+                citation_ids=[stock_identity_citation],
+            ),
+            StockEtfRelationshipBadge(
+                label="ETF ticker",
+                value=etf_ticker,
+                marker="etf_ticker",
+                relationship_state="direct_holding",
+                evidence_state=EvidenceState.supported,
+                citation_ids=[etf_profile_citation],
+            ),
+            StockEtfRelationshipBadge(
+                label="Relationship state",
+                value="Direct holding listed; exact weight unavailable",
+                marker="relationship_state",
+                relationship_state="direct_holding",
+                evidence_state=EvidenceState.partial,
+                citation_ids=[stock_identity_citation, etf_holdings_citation],
+            ),
+            StockEtfRelationshipBadge(
+                label="Evidence boundary",
+                value="Same comparison pack only",
+                marker="evidence_boundary",
+                relationship_state="direct_holding",
+                evidence_state=EvidenceState.supported,
+                citation_ids=[stock_citation, etf_profile_citation, etf_holdings_citation],
+            ),
+        ],
+        basket_structure=StockEtfBasketStructure(
+            stock_ticker=stock_ticker,
+            etf_ticker=etf_ticker,
+            stock_role_summary=f"{stock_ticker} is shown as a single company with products, services, and company-specific risks.",
+            etf_basket_summary=(
+                f"{etf_ticker} is shown as an ETF basket with about "
+                f"{_format_metric(etf_holdings_count.fact.value, etf_holdings_count.fact.unit)} in the local fixture."
+            ),
+            relationship_summary=(
+                "The local VOO holdings fixture lists Apple among top holdings. The pack does not include exact "
+                "holding weight, sector exposure, top-10 concentration, or full overlap evidence, so the "
+                "relationship is labeled partial."
+            ),
+            overlap_or_membership_state="direct_holding",
+            evidence_state=EvidenceState.partial,
+            unavailable_detail=(
+                "Exact holding weight, top-10 concentration, sector exposure, and full overlap are unavailable "
+                "in this deterministic pack."
+            ),
+            citation_ids=[stock_identity_citation, stock_citation, etf_profile_citation, etf_holdings_citation, etf_holdings_count_citation],
+        ),
+    )
 
 
 def validate_comparison_response(
@@ -1197,6 +1461,164 @@ def _available_evidence_availability(
     )
 
 
+def _available_stock_etf_evidence_availability(
+    response: CompareResponse,
+    pack: ComparisonKnowledgePack,
+    bindings: _ComparisonCitationRegistry,
+    stock_pack: AssetKnowledgePack,
+    etf_pack: AssetKnowledgePack,
+    stock_facts: dict[str, RetrievedFact],
+    etf_facts: dict[str, RetrievedFact],
+) -> ComparisonEvidenceAvailability:
+    evidence_items: list[ComparisonEvidenceItem] = []
+    dimensions: list[ComparisonEvidenceDimension] = []
+    claim_bindings: list[ComparisonEvidenceClaimBinding] = []
+    citation_bindings: list[ComparisonEvidenceCitationBinding] = []
+    evidence_item_ids_by_dimension: dict[str, list[str]] = {}
+
+    dimension_facts = _stock_etf_dimension_facts(stock_facts, etf_facts)
+    for dimension in STOCK_ETF_COMPARISON_DIMENSIONS:
+        dimension_items: list[ComparisonEvidenceItem] = []
+        for fact in dimension_facts[dimension]:
+            citation_binding = bindings.for_fact(fact)
+            side = _side_for_asset(
+                fact.fact.asset_ticker,
+                pack.left_asset_pack.asset.ticker,
+                pack.right_asset_pack.asset.ticker,
+            )
+            side_role = _side_role_for_asset(
+                fact.fact.asset_ticker,
+                pack.left_asset_pack.asset.ticker,
+                pack.right_asset_pack.asset.ticker,
+            )
+            item = _evidence_item_for_fact(dimension, side, side_role, fact, citation_binding)
+            dimension_items.append(item)
+            evidence_items.append(item)
+
+        item_ids = [item.evidence_item_id for item in dimension_items]
+        citation_ids = sorted({citation_id for item in dimension_items for citation_id in item.citation_ids})
+        source_document_ids = sorted(
+            {source_id for item in dimension_items for source_id in [item.source_document_id] if source_id is not None}
+        )
+        evidence_item_ids_by_dimension[dimension] = item_ids
+        dimensions.append(
+            ComparisonEvidenceDimension(
+                dimension=dimension,
+                availability_state=ComparisonEvidenceAvailabilityState.available,
+                evidence_state=EvidenceState.partial if dimension == "Basket membership" else EvidenceState.supported,
+                freshness_state=_combined_freshness([item.freshness_state for item in dimension_items]),
+                left_evidence_item_ids=[
+                    item.evidence_item_id for item in dimension_items if item.side is ComparisonEvidenceSide.left
+                ],
+                right_evidence_item_ids=[
+                    item.evidence_item_id for item in dimension_items if item.side is ComparisonEvidenceSide.right
+                ],
+                shared_evidence_item_ids=[],
+                citation_ids=citation_ids,
+                source_document_ids=source_document_ids,
+                generated_claim_ids=[f"claim_comparison_{_claim_slug(dimension)}"],
+                unavailable_reason=(
+                    "AAPL membership in VOO is verified from the local holdings fixture, but exact weight, "
+                    "sector exposure, top-10 concentration, and full overlap are unavailable."
+                    if dimension == "Basket membership"
+                    else None
+                ),
+            )
+        )
+
+    for difference in response.key_differences:
+        claim_id = f"claim_comparison_{_claim_slug(difference.dimension)}"
+        claim_bindings.append(
+            ComparisonEvidenceClaimBinding(
+                claim_id=claim_id,
+                claim_kind="key_difference",
+                dimension=difference.dimension,
+                side_role=ComparisonEvidenceSideRole.shared_comparison_support,
+                citation_ids=difference.citation_ids,
+                source_document_ids=_source_document_ids_for_citations(difference.citation_ids, bindings),
+                evidence_item_ids=evidence_item_ids_by_dimension.get(difference.dimension, []),
+                availability_state=ComparisonEvidenceAvailabilityState.available,
+            )
+        )
+        citation_bindings.extend(
+            _citation_bindings_for_claim(
+                claim_id=claim_id,
+                dimension=difference.dimension,
+                citation_ids=difference.citation_ids,
+                bindings=bindings,
+                left_ticker=pack.left_asset_pack.asset.ticker,
+                right_ticker=pack.right_asset_pack.asset.ticker,
+            )
+        )
+
+    if response.bottom_line_for_beginners is not None:
+        bottom_line_citation_ids = response.bottom_line_for_beginners.citation_ids
+        claim_bindings.append(
+            ComparisonEvidenceClaimBinding(
+                claim_id="claim_comparison_bottom_line",
+                claim_kind="beginner_bottom_line",
+                dimension="Beginner bottom line",
+                side_role=ComparisonEvidenceSideRole.shared_comparison_support,
+                citation_ids=bottom_line_citation_ids,
+                source_document_ids=_source_document_ids_for_citations(bottom_line_citation_ids, bindings),
+                evidence_item_ids=sorted({item.evidence_item_id for item in evidence_items}),
+                availability_state=ComparisonEvidenceAvailabilityState.available,
+            )
+        )
+        citation_bindings.extend(
+            _citation_bindings_for_claim(
+                claim_id="claim_comparison_bottom_line",
+                dimension="Beginner bottom line",
+                citation_ids=bottom_line_citation_ids,
+                bindings=bindings,
+                left_ticker=pack.left_asset_pack.asset.ticker,
+                right_ticker=pack.right_asset_pack.asset.ticker,
+            )
+        )
+
+    return ComparisonEvidenceAvailability(
+        comparison_id=_comparison_id(pack.left_asset_pack.asset.ticker, pack.right_asset_pack.asset.ticker),
+        comparison_type=response.comparison_type,
+        left_asset=response.left_asset,
+        right_asset=response.right_asset,
+        availability_state=ComparisonEvidenceAvailabilityState.available,
+        required_dimensions=STOCK_ETF_COMPARISON_DIMENSIONS,
+        required_evidence_dimensions=dimensions,
+        evidence_items=evidence_items,
+        claim_bindings=claim_bindings,
+        citation_bindings=sorted(citation_bindings, key=lambda item: item.binding_id),
+        source_references=[
+            _source_reference_from_fixture(source)
+            for source in sorted(pack.comparison_sources, key=lambda source: source.source_document_id)
+            if source.source_document_id in {source.source_document_id for source in response.source_documents}
+        ],
+        diagnostics=ComparisonEvidenceDiagnostics(
+            generated_comparison_available=True,
+            unavailable_reasons=[],
+        ),
+    )
+
+
+def _stock_etf_dimension_facts(
+    stock_facts: dict[str, RetrievedFact],
+    etf_facts: dict[str, RetrievedFact],
+) -> dict[str, list[RetrievedFact]]:
+    stock_identity = _require_fact(stock_facts, "canonical_asset_identity")
+    stock_business = _require_fact(stock_facts, "primary_business")
+    etf_benchmark = _require_fact(etf_facts, "benchmark")
+    etf_holdings = _require_fact(etf_facts, "holdings_exposure_detail")
+    etf_holdings_count = _require_fact(etf_facts, "holdings_count")
+    etf_expense = _require_fact(etf_facts, "expense_ratio")
+    etf_role = _require_fact(etf_facts, "beginner_role")
+    return {
+        "Structure": [stock_business, etf_benchmark],
+        "Basket membership": [stock_identity, etf_holdings],
+        "Breadth": [stock_identity, etf_holdings_count],
+        "Cost model": [stock_identity, etf_expense],
+        "Educational role": [stock_business, etf_role, etf_holdings],
+    }
+
+
 def _non_generated_evidence_availability(
     left_pack: AssetKnowledgePack,
     right_pack: AssetKnowledgePack,
@@ -1415,6 +1837,33 @@ def _side_role_for_asset(
     if asset_ticker == right_ticker:
         return ComparisonEvidenceSideRole.right_side_support
     return ComparisonEvidenceSideRole.shared_comparison_support
+
+
+def _side_for_asset(
+    asset_ticker: str,
+    left_ticker: str,
+    right_ticker: str,
+) -> ComparisonEvidenceSide:
+    if asset_ticker == left_ticker:
+        return ComparisonEvidenceSide.left
+    if asset_ticker == right_ticker:
+        return ComparisonEvidenceSide.right
+    return ComparisonEvidenceSide.shared
+
+
+def _is_stock_vs_etf(pack: ComparisonKnowledgePack) -> bool:
+    return {pack.left_asset_pack.asset.asset_type, pack.right_asset_pack.asset.asset_type} == {
+        AssetType.stock,
+        AssetType.etf,
+    }
+
+
+def _stock_etf_asset_packs(pack: ComparisonKnowledgePack) -> tuple[AssetKnowledgePack, AssetKnowledgePack]:
+    if pack.left_asset_pack.asset.asset_type is AssetType.stock and pack.right_asset_pack.asset.asset_type is AssetType.etf:
+        return pack.left_asset_pack, pack.right_asset_pack
+    if pack.left_asset_pack.asset.asset_type is AssetType.etf and pack.right_asset_pack.asset.asset_type is AssetType.stock:
+        return pack.right_asset_pack, pack.left_asset_pack
+    raise ComparisonGenerationError("Expected one stock asset and one ETF asset for stock-vs-ETF generation.")
 
 
 def _combined_freshness(states: list[FreshnessState]) -> FreshnessState:

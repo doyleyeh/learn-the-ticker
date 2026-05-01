@@ -286,6 +286,39 @@ def test_comparison_exports_preserve_pack_citations_sources_and_reverse_order():
         assert not find_forbidden_output_phrases(_flatten_text(export.model_dump(mode="json")))
 
 
+def test_stock_etf_comparison_export_preserves_relationship_context_and_sources():
+    for left, right in [("AAPL", "VOO"), ("VOO", "AAPL")]:
+        export = export_comparison(ComparisonExportRequest(left_ticker=left, right_ticker=right))
+        section_ids = [section.section_id for section in export.sections]
+
+        assert export.content_type is ExportContentType.comparison
+        assert export.export_state is ExportState.available
+        assert export.left_asset is not None
+        assert export.right_asset is not None
+        assert export.left_asset.ticker == left
+        assert export.right_asset.ticker == right
+        assert export.metadata["comparison_type"] == "stock_vs_etf"
+        assert "stock_etf_relationship_context" in section_ids
+        assert _section(export, "stock_etf_relationship_context").evidence_state.value == "partial"
+        assert "exact holding weight" in (_section(export, "stock_etf_relationship_context").limitations or "").lower()
+        assert _section(export, "key_differences").items
+        assert _section(export, "beginner_bottom_line").citation_ids
+        assert export.citations
+        assert export.source_documents
+        assert {source.source_document_id for source in export.source_documents} == {
+            "src_aapl_10k_fixture",
+            "src_voo_fact_sheet_fixture",
+            "src_voo_holdings_fixture",
+        }
+        assert export.export_validation is not None
+        assert export.export_validation.binding_scope is ExportValidationBindingScope.same_comparison_pack
+        assert export.export_validation.diagnostics.same_comparison_pack_citation_bindings_only is True
+        assert export.export_validation.diagnostics.same_comparison_pack_source_bindings_only is True
+        assert _validation_section(export, "stock_etf_relationship_context").validation_outcome is ExportValidationOutcome.validated_with_limitations
+        assert "Educational Disclaimer" in export.rendered_markdown
+        assert not find_forbidden_output_phrases(_flatten_text(export.model_dump(mode="json")))
+
+
 def test_chat_transcript_exports_preserve_answer_safety_uncertainty_and_sources():
     grounded = export_chat_transcript("QQQ", ChatTranscriptExportRequest(question="What is this fund?"))
     advice = export_chat_transcript("VOO", ChatTranscriptExportRequest(question="Should I buy VOO today?"))
@@ -342,7 +375,7 @@ def test_unsupported_unknown_unavailable_and_eligible_not_cached_exports_do_not_
         export_asset_page("SPY"),
         export_asset_source_list("TQQQ"),
         export_comparison(ComparisonExportRequest(left_ticker="VOO", right_ticker="BTC")),
-        export_comparison(ComparisonExportRequest(left_ticker="AAPL", right_ticker="VOO")),
+        export_comparison(ComparisonExportRequest(left_ticker="AAPL", right_ticker="QQQ")),
         export_chat_transcript("BTC", ChatTranscriptExportRequest(question="What is this?")),
         export_chat_transcript("SPY", ChatTranscriptExportRequest(question="What is this?")),
     ]

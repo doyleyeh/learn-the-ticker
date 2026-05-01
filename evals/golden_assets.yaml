@@ -185,6 +185,12 @@ local_generated_comparison_pairs:
     expected_generated_output: true
     expected_citations: true
     expected_source_documents: true
+  - left: AAPL
+    right: VOO
+    expected_state: supported
+    expected_generated_output: true
+    expected_citations: true
+    expected_source_documents: true
 
 eligible_not_cached_expected_capabilities:
   expected_generated_route: null

@@ -339,6 +339,35 @@ def export_comparison(
             evidence_state=EvidenceState.supported,
         ),
     ]
+    relationship = getattr(comparison, "stock_etf_relationship", None)
+    if relationship is not None:
+        relationship_citation_ids = sorted(set(relationship.basket_structure.citation_ids))
+        sections.insert(
+            2,
+            ExportedSection(
+                section_id="stock_etf_relationship_context",
+                title="Stock-vs-ETF Relationship Context",
+                section_type=ExportContentType.comparison,
+                text=_with_citations(relationship.basket_structure.relationship_summary, relationship_citation_ids),
+                items=[
+                    ExportedItem(
+                        item_id=f"relationship_badge_{_slug(badge.marker)}",
+                        title=badge.label,
+                        text=_with_citations(badge.value, badge.citation_ids),
+                        citation_ids=badge.citation_ids,
+                        source_document_ids=_source_ids_for_citation_ids(badge.citation_ids, comparison.citations),
+                        freshness_state=_freshness_for_citation_ids(badge.citation_ids, comparison.citations),
+                        evidence_state=badge.evidence_state,
+                    )
+                    for badge in relationship.badges
+                ],
+                citation_ids=relationship_citation_ids,
+                source_document_ids=_source_ids_for_citation_ids(relationship_citation_ids, comparison.citations),
+                freshness_state=_freshness_for_citation_ids(relationship_citation_ids, comparison.citations),
+                evidence_state=relationship.evidence_state,
+                limitations=relationship.basket_structure.unavailable_detail,
+            ),
+        )
     markdown = _render_markdown(title, sections, comparison.source_documents, None)
 
     response = ExportResponse(

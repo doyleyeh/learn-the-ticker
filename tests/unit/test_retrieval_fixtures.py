@@ -115,6 +115,33 @@ def test_comparison_pack_is_bounded_to_voo_and_qqq():
     assert fact_assets == allowed
 
 
+def test_stock_etf_comparison_pack_is_bounded_to_aapl_and_voo():
+    for left, right in [("AAPL", "VOO"), ("VOO", "AAPL")]:
+        pack = build_comparison_knowledge_pack(left, right)
+        allowed = {"AAPL", "VOO"}
+
+        assert pack.comparison_pack_id == "AAPL_vs_VOO"
+        assert pack.left_asset_pack.asset.ticker == left
+        assert pack.right_asset_pack.asset.ticker == right
+        assert pack.left_asset_pack.asset.asset_type.value != pack.right_asset_pack.asset.asset_type.value
+        assert {pack.left_asset_pack.asset.ticker, pack.right_asset_pack.asset.ticker} == allowed
+        assert {difference.dimension for difference in pack.computed_differences} == {
+            "Structure",
+            "Basket membership",
+            "Breadth",
+            "Cost model",
+            "Educational role",
+        }
+        assert {source.asset_ticker for source in pack.comparison_sources} <= allowed
+
+        fact_assets = {
+            fact.fact.asset_ticker
+            for asset_pack in [pack.left_asset_pack, pack.right_asset_pack]
+            for fact in asset_pack.normalized_facts
+        }
+        assert fact_assets == allowed
+
+
 def test_missing_stale_unsupported_and_insufficient_evidence_are_explicit():
     aapl = build_asset_knowledge_pack("AAPL")
     voo = build_asset_knowledge_pack("VOO")
