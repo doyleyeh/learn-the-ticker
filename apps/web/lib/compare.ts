@@ -7,7 +7,7 @@ type Fetcher = typeof fetch;
 type CompareAssetType = "stock" | "etf" | "unsupported" | "unknown";
 type CompareStateStatus = "supported" | "unsupported" | "unknown";
 type ComparisonFactKind = "benchmark" | "expense_ratio" | "holdings_count" | "beginner_role";
-type ComparisonEvidenceAvailabilityState =
+export type ComparisonEvidenceAvailabilityState =
   | "available"
   | "unsupported"
   | "out_of_scope"
@@ -35,7 +35,12 @@ type ComparisonEvidenceSideRole = "left_side_support" | "right_side_support" | "
 type ComparisonClaimKind = "key_difference" | "beginner_bottom_line";
 type ComparisonRequiredDimension = "Benchmark" | "Expense ratio" | "Holdings count" | "Breadth" | "Educational role";
 type StockEtfRequiredDimension = "Structure" | "Basket membership" | "Breadth" | "Cost model" | "Educational role";
-type StockEtfRelationshipState = "holding_verified" | "unknown" | "insufficient_evidence";
+type StockEtfRelationshipState =
+  | "direct_holding"
+  | "sector_or_theme"
+  | "broad_market_context"
+  | "weak_relationship"
+  | "unknown";
 type SearchSupportClassification =
   | "cached_supported"
   | "eligible_not_cached"
@@ -83,6 +88,9 @@ function isCompareResponsePayload(value: unknown): value is ComparePageFixture {
   }
 
   const candidate = value as Partial<ComparePageFixture>;
+  const hasValidStockEtfRelationship =
+    candidate.stock_etf_relationship == null || isStockEtfRelationshipModel(candidate.stock_etf_relationship);
+
   return (
     typeof candidate.left_asset === "object" &&
     candidate.left_asset !== null &&
@@ -106,7 +114,44 @@ function isCompareResponsePayload(value: unknown): value is ComparePageFixture {
     Array.isArray(candidate.key_differences) &&
     Array.isArray(candidate.citations) &&
     Array.isArray(candidate.source_documents) &&
-    (candidate.evidence_availability == null || typeof candidate.evidence_availability === "object")
+    (candidate.evidence_availability == null || typeof candidate.evidence_availability === "object") &&
+    hasValidStockEtfRelationship
+  );
+}
+
+function isStockEtfRelationshipState(value: unknown): value is StockEtfRelationshipState {
+  return (
+    value === "direct_holding" ||
+    value === "sector_or_theme" ||
+    value === "broad_market_context" ||
+    value === "weak_relationship" ||
+    value === "unknown"
+  );
+}
+
+function isStockEtfRelationshipModel(value: unknown): value is StockEtfRelationshipModel {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<StockEtfRelationshipModel>;
+  const basketStructure = candidate.basket_structure as Partial<StockEtfBasketStructure> | undefined;
+
+  return (
+    candidate.schema_version === "stock-etf-relationship-v1" &&
+    candidate.comparison_type === "stock_vs_etf" &&
+    typeof candidate.stock_ticker === "string" &&
+    typeof candidate.etf_ticker === "string" &&
+    isStockEtfRelationshipState(candidate.relationship_state) &&
+    Array.isArray(candidate.badges) &&
+    candidate.badges.every(
+      (badge) =>
+        Boolean(badge) &&
+        typeof badge === "object" &&
+        isStockEtfRelationshipState((badge as Partial<StockEtfRelationshipBadge>).relationship_state)
+    ) &&
+    Boolean(basketStructure) &&
+    isStockEtfRelationshipState(basketStructure?.overlap_or_membership_state)
   );
 }
 
@@ -682,14 +727,14 @@ function buildSupportedStockEtfComparison(left: "AAPL" | "VOO", right: "AAPL" | 
       comparison_type: "stock_vs_etf",
       stock_ticker: stockTicker,
       etf_ticker: etfTicker,
-      relationship_state: "holding_verified",
+      relationship_state: "direct_holding",
       evidence_state: "partial",
       badges: [
         {
           label: "Comparison type",
           value: "Stock vs ETF",
           marker: "comparison_type",
-          relationship_state: "holding_verified",
+          relationship_state: "direct_holding",
           evidence_state: "supported",
           citation_ids: [stockCitation, etfProfileCitation]
         },
@@ -697,7 +742,7 @@ function buildSupportedStockEtfComparison(left: "AAPL" | "VOO", right: "AAPL" | 
           label: "Stock ticker",
           value: stockTicker,
           marker: "stock_ticker",
-          relationship_state: "holding_verified",
+          relationship_state: "direct_holding",
           evidence_state: "supported",
           citation_ids: [stockCitation]
         },
@@ -705,7 +750,7 @@ function buildSupportedStockEtfComparison(left: "AAPL" | "VOO", right: "AAPL" | 
           label: "ETF ticker",
           value: etfTicker,
           marker: "etf_ticker",
-          relationship_state: "holding_verified",
+          relationship_state: "direct_holding",
           evidence_state: "supported",
           citation_ids: [etfProfileCitation]
         },
@@ -713,7 +758,7 @@ function buildSupportedStockEtfComparison(left: "AAPL" | "VOO", right: "AAPL" | 
           label: "Relationship state",
           value: "Top-holding membership verified; exact overlap weight unavailable",
           marker: "relationship_state",
-          relationship_state: "holding_verified",
+          relationship_state: "direct_holding",
           evidence_state: "partial",
           citation_ids: [etfHoldingsCitation]
         },
@@ -721,7 +766,7 @@ function buildSupportedStockEtfComparison(left: "AAPL" | "VOO", right: "AAPL" | 
           label: "Evidence boundary",
           value: "Same comparison pack only",
           marker: "evidence_boundary",
-          relationship_state: "holding_verified",
+          relationship_state: "direct_holding",
           evidence_state: "supported",
           citation_ids: [stockCitation, etfProfileCitation, etfHoldingsCitation]
         }
@@ -733,7 +778,7 @@ function buildSupportedStockEtfComparison(left: "AAPL" | "VOO", right: "AAPL" | 
         etf_basket_summary: `${etfTicker} is shown as an ETF basket with about 500 holdings in the local fixture.`,
         relationship_summary:
           "The local VOO holdings fixture lists Apple among top holdings. The pack does not include exact holding weight or full overlap evidence, so the relationship is labeled partial.",
-        overlap_or_membership_state: "holding_verified",
+        overlap_or_membership_state: "direct_holding",
         evidence_state: "partial",
         unavailable_detail: "Exact holding weight, top-10 concentration, sector exposure, and full overlap are unavailable in this deterministic pack.",
         citation_ids: [stockCitation, etfProfileCitation, etfHoldingsCitation, etfHoldingsCountCitation]

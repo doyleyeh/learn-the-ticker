@@ -11,6 +11,7 @@ import {
   fetchComparisonResponse,
   type CompareAssetIdentity,
   type ComparisonCitation,
+  type ComparisonEvidenceAvailabilityState,
   type StockEtfRelationshipModel
 } from "../../lib/compare";
 import { getAssetComparisonSuggestions, getComparePageSuggestions } from "../../lib/compareSuggestions";
@@ -50,7 +51,11 @@ export default async function ComparePage({ searchParams }: ComparePageProps) {
   const availabilityState = getComparisonAvailabilityState(comparison);
   const leftFixture = getAssetFixture(comparison.left_asset.ticker);
   const rightFixture = getAssetFixture(comparison.right_asset.ticker);
-  const comparisonSuggestions = getComparePageSuggestions(comparison.left_asset.ticker, comparison.right_asset.ticker);
+  const comparisonSuggestions = getComparePageSuggestions(
+    comparison.left_asset.ticker,
+    comparison.right_asset.ticker,
+    comparison
+  );
   const { citations_by_id, contexts_by_source_document_id } = getComparisonCitationMetadata(comparison);
   const bottomLine = comparison.bottom_line_for_beginners;
   const stockEtfRelationship =
@@ -137,8 +142,16 @@ export default async function ComparePage({ searchParams }: ComparePageProps) {
             </>
           ) : (
             <>
-              <FreshnessLabel label="Comparison availability" value={availabilityState.replace(/_/g, " ")} state="unavailable" />
-              <FreshnessLabel label="Generated comparison output" value="Not rendered for this state" state="unavailable" />
+              <FreshnessLabel
+                label="Comparison availability"
+                value={availabilityState.replace(/_/g, " ")}
+                state={freshnessStateForAvailability(availabilityState)}
+              />
+              <FreshnessLabel
+                label="Generated comparison output"
+                value="Not rendered for this state"
+                state={freshnessStateForAvailability(availabilityState)}
+              />
             </>
           )}
         </div>
@@ -272,7 +285,7 @@ export default async function ComparePage({ searchParams }: ComparePageProps) {
             <FreshnessLabel
               label="Comparison source pack"
               value={availabilityState.replace(/_/g, " ")}
-              state="unavailable"
+              state={freshnessStateForAvailability(availabilityState)}
             />
             <p>{comparison.state.message}</p>
             <p className="notice-text">
@@ -588,7 +601,7 @@ function normalizeCompareParam(value?: string) {
   return normalized ? normalized : null;
 }
 
-function compareEyebrowForAvailability(availabilityState: string) {
+function compareEyebrowForAvailability(availabilityState: ComparisonEvidenceAvailabilityState) {
   if (availabilityState === "available") {
     return "Backend-aligned deterministic comparison";
   }
@@ -607,10 +620,19 @@ function compareEyebrowForAvailability(availabilityState: string) {
   if (availabilityState === "unknown") {
     return "Unknown comparison";
   }
+  if (availabilityState === "partial") {
+    return "Partial comparison evidence";
+  }
+  if (availabilityState === "stale") {
+    return "Stale comparison evidence";
+  }
+  if (availabilityState === "insufficient_evidence") {
+    return "Insufficient comparison evidence";
+  }
   return "Comparison unavailable";
 }
 
-function unavailableSummaryForAvailability(availabilityState: string) {
+function unavailableSummaryForAvailability(availabilityState: ComparisonEvidenceAvailabilityState) {
   if (availabilityState === "unsupported") {
     return "The requested pair includes an unsupported asset category, so no generated comparison claims, citation chips, source drawers, or export controls are rendered.";
   }
@@ -623,10 +645,22 @@ function unavailableSummaryForAvailability(availabilityState: string) {
   if (availabilityState === "no_local_pack") {
     return "Both assets are supported individually, but no deterministic local comparison pack exists for this pair yet, so generated comparison output stays hidden.";
   }
+  if (availabilityState === "partial") {
+    return "The backend returned partial comparison evidence, so this page keeps the limited state visible instead of replacing it with richer local fixture facts.";
+  }
+  if (availabilityState === "stale") {
+    return "The backend marked the comparison evidence stale, so this page keeps the stale state visible and does not render generated comparison claims.";
+  }
+  if (availabilityState === "insufficient_evidence") {
+    return "The backend found insufficient evidence for this comparison, so no generated comparison claims, citation chips, source drawers, or export controls are rendered.";
+  }
+  if (availabilityState === "unavailable") {
+    return "The backend marked this comparison unavailable, so this page does not replace that response with local source-backed fixture output.";
+  }
   return "The requested pair is unavailable in deterministic local compare data, so this page avoids invented facts and renders only the blocked-state explanation.";
 }
 
-function unavailableDetailForAvailability(availabilityState: string) {
+function unavailableDetailForAvailability(availabilityState: ComparisonEvidenceAvailabilityState) {
   if (availabilityState === "unsupported") {
     return "No factual citation chips or source drawers are shown because unsupported assets must stay blocked from generated comparison output.";
   }
@@ -639,7 +673,35 @@ function unavailableDetailForAvailability(availabilityState: string) {
   if (availabilityState === "no_local_pack") {
     return "No factual citation chips or source drawers are shown because this requested supported pair has no deterministic local comparison pack yet.";
   }
+  if (availabilityState === "partial") {
+    return "No richer local fallback is used because the backend response is the authority for this requested pair's limited evidence state.";
+  }
+  if (availabilityState === "stale") {
+    return "No factual citation chips or source drawers are shown because stale comparison evidence must be refreshed or explicitly labeled before generated output is rendered.";
+  }
+  if (availabilityState === "insufficient_evidence") {
+    return "No factual citation chips or source drawers are shown because the backend did not return enough approved evidence for generated comparison output.";
+  }
+  if (availabilityState === "unavailable") {
+    return "No factual citation chips or source drawers are shown because the backend unavailable state is preserved for this request.";
+  }
   return "No factual citation chips or source drawers are shown because this local compare request has no source-backed comparison pack for the requested pair.";
+}
+
+function freshnessStateForAvailability(availabilityState: ComparisonEvidenceAvailabilityState) {
+  if (availabilityState === "stale") {
+    return "stale";
+  }
+  if (availabilityState === "partial") {
+    return "partial";
+  }
+  if (availabilityState === "insufficient_evidence") {
+    return "insufficient_evidence";
+  }
+  if (availabilityState === "unknown") {
+    return "unknown";
+  }
+  return "unavailable";
 }
 
 function unsupportedAssetSummary(asset: CompareAssetIdentity) {

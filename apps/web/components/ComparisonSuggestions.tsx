@@ -63,10 +63,14 @@ export function ComparisonSuggestions({ model }: ComparisonSuggestionsProps) {
               data-comparison-suggestion-left={suggestion.leftTicker}
               data-comparison-suggestion-right={suggestion.rightTicker}
               data-comparison-suggestion-url={suggestion.compareUrl}
+              data-comparison-suggestion-availability-state={suggestion.availabilityState}
+              data-comparison-suggestion-availability-source={suggestion.availabilitySource}
+              data-comparison-suggestion-example-only={suggestion.exampleOnly ? "true" : "false"}
               aria-label={suggestion.accessibleName}
             >
               <strong>{suggestion.title}</strong>
               <span>{suggestion.description}</span>
+              <small>{suggestion.exampleOnly ? "Fixture example, not the requested pair" : "Backend-aligned local availability"}</small>
             </a>
           ))}
         </div>
