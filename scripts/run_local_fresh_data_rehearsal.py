@@ -46,6 +46,7 @@ from backend.overview import (
 )
 from backend.persistence import BackendReadDependencies, configure_backend_read_dependencies
 from backend.retrieval import build_asset_knowledge_pack, build_asset_knowledge_pack_result
+from backend.safety import find_forbidden_output_phrases
 from backend.settings import build_live_acquisition_settings, build_local_durable_repository_settings
 from backend.source_policy import SourcePolicyAction, source_handoff_fields_from_policy, validate_source_handoff
 from backend.source_policy import resolve_source_policy
@@ -78,6 +79,7 @@ REQUIRED_THRESHOLD_CHECK_IDS = (
     "deterministic_default_boundary",
     "source_handoff_approval_gate",
     "governed_golden_api_rendering",
+    "stock_vs_etf_comparison_readiness",
     "launch_manifest_review_packets",
     "stock_sec_source_pack_readiness",
     "etf_issuer_source_pack_readiness",
@@ -118,6 +120,7 @@ def run_rehearsal(env: dict[str, str] | None = None, *, root: Path = ROOT) -> di
         _guarded("deterministic_default_boundary", lambda: _check_default_boundary(source_env)),
         _guarded("source_handoff_approval_gate", _check_source_handoff_approval_gate),
         _guarded("governed_golden_api_rendering", _check_governed_golden_api_rendering),
+        _guarded("stock_vs_etf_comparison_readiness", lambda: _check_stock_vs_etf_comparison_readiness(root)),
         _guarded("launch_manifest_review_packets", lambda: _check_launch_manifest_review_packets(root)),
         _guarded("stock_sec_source_pack_readiness", lambda: _check_stock_sec_source_pack_readiness(root)),
         _guarded("etf_issuer_source_pack_readiness", _check_etf_issuer_source_pack_readiness),
@@ -336,6 +339,516 @@ def _check_governed_golden_api_rendering() -> RehearsalCheck:
             "export_surfaces": ["asset", "source_list", "comparison", "chat"],
         },
     )
+
+
+def _check_stock_vs_etf_comparison_readiness(root: Path) -> RehearsalCheck:
+    check_id = "stock_vs_etf_comparison_readiness"
+    client = TestClient(app)
+
+    compare_response = client.post("/api/compare", json={"left_ticker": "AAPL", "right_ticker": "VOO"})
+    if compare_response.status_code != 200:
+        return _blocked(
+            check_id,
+            "no_local_pack",
+            {"endpoint": "POST /api/compare", "status_code": compare_response.status_code},
+        )
+    comparison = compare_response.json()
+    blocker = _stock_vs_etf_compare_payload_blocker(comparison)
+    if blocker:
+        return _blocked(check_id, blocker["reason_code"], blocker)
+
+    export_response = client.get(
+        "/api/compare/export",
+        params={"left_ticker": "AAPL", "right_ticker": "VOO", "export_format": "json"},
+    )
+    if export_response.status_code != 200:
+        return _blocked(
+            check_id,
+            "unavailable_export",
+            {"endpoint": "GET /api/compare/export", "status_code": export_response.status_code},
+        )
+    comparison_export = export_response.json()
+    blocker = _stock_vs_etf_export_payload_blocker(comparison_export)
+    if blocker:
+        return _blocked(check_id, blocker["reason_code"], blocker)
+
+    chat_response = client.post("/api/assets/VOO/chat", json={"question": "AAPL vs VOO"})
+    if chat_response.status_code != 200:
+        return _blocked(
+            check_id,
+            "chat_redirect_mismatch",
+            {"endpoint": "POST /api/assets/VOO/chat", "status_code": chat_response.status_code},
+        )
+    chat = chat_response.json()
+    blocker = _stock_vs_etf_chat_redirect_blocker(chat)
+    if blocker:
+        return _blocked(check_id, blocker["reason_code"], blocker)
+
+    blocked_case_summaries: list[dict[str, Any]] = []
+    for left, right, expected_state in (
+        ("VOO", "BTC", "unsupported"),
+        ("VOO", "GME", "out_of_scope"),
+        ("VOO", "SPY", "eligible_not_cached"),
+        ("VOO", "ZZZZ", "unknown"),
+        ("AAPL", "QQQ", "no_local_pack"),
+    ):
+        blocked_response = client.post("/api/compare", json={"left_ticker": left, "right_ticker": right})
+        if blocked_response.status_code != 200:
+            reason_code = "no_local_pack" if expected_state == "no_local_pack" else "unsupported_state_regression"
+            return _blocked(
+                check_id,
+                reason_code,
+                {
+                    "case_id": f"{left}_{right}",
+                    "expected_availability_state": expected_state,
+                    "status_code": blocked_response.status_code,
+                },
+            )
+        blocked_payload = blocked_response.json()
+        blocker = _blocked_comparison_case_regression(left, right, expected_state, blocked_payload)
+        if blocker:
+            return _blocked(check_id, blocker["reason_code"], blocker)
+        blocked_case_summaries.append(
+            {
+                "left_ticker": left,
+                "right_ticker": right,
+                "availability_state": blocked_payload["evidence_availability"]["availability_state"],
+                "generated_output_blocked": True,
+            }
+        )
+
+    etf_baseline = client.post("/api/compare", json={"left_ticker": "VOO", "right_ticker": "QQQ"}).json()
+    if (
+        etf_baseline.get("comparison_type") != "etf_vs_etf"
+        or etf_baseline.get("evidence_availability", {}).get("availability_state") != "available"
+        or not etf_baseline.get("citations")
+        or not etf_baseline.get("source_documents")
+    ):
+        return _blocked(
+            check_id,
+            "unsupported_state_regression",
+            {
+                "case_id": "VOO_QQQ_etf_vs_etf_baseline",
+                "comparison_type": etf_baseline.get("comparison_type"),
+                "availability_state": etf_baseline.get("evidence_availability", {}).get("availability_state"),
+            },
+        )
+
+    frontend_alignment = _stock_vs_etf_frontend_alignment(root)
+    if frontend_alignment.get("blocked"):
+        return _blocked(check_id, frontend_alignment["reason_code"], frontend_alignment)
+
+    comparison_evidence = comparison["evidence_availability"]
+    relationship = comparison["stock_etf_relationship"]
+    export_validation = comparison_export["export_validation"]
+    chat_route = chat["compare_route_suggestion"]
+    return _pass(
+        check_id,
+        "aapl_voo_stock_vs_etf_comparison_ready",
+        {
+            "schema_version": "stock-vs-etf-comparison-readiness-v1",
+            "boundary": "review_only_fixture_backed_no_services_no_live_calls_v1",
+            "deterministic_pairs": {
+                "stock_vs_etf": ["AAPL", "VOO"],
+                "etf_vs_etf_baseline": ["VOO", "QQQ"],
+                "broad_coverage_proven": False,
+            },
+            "backend_compare": {
+                "endpoint": "POST /api/compare",
+                "state_status": comparison["state"]["status"],
+                "comparison_type": comparison["comparison_type"],
+                "availability_state": comparison_evidence["availability_state"],
+                "relationship_schema_version": relationship["schema_version"],
+                "relationship_state": relationship["relationship_state"],
+                "basket_structure": "single-company-vs-etf-basket",
+                "badge_markers": sorted({badge["marker"] for badge in relationship["badges"]}),
+                "citation_count": len(comparison["citations"]),
+                "source_document_count": len(comparison["source_documents"]),
+                "source_reference_assets": sorted(
+                    {reference["asset_ticker"] for reference in comparison_evidence["source_references"]}
+                ),
+                "old_frontend_only_holding_verified_present": False,
+            },
+            "comparison_export": {
+                "endpoint": "GET /api/compare/export",
+                "export_state": comparison_export["export_state"],
+                "comparison_type": comparison_export["metadata"]["comparison_type"],
+                "binding_scope": export_validation["binding_scope"],
+                "same_comparison_pack_citation_bindings_only": export_validation["diagnostics"][
+                    "same_comparison_pack_citation_bindings_only"
+                ],
+                "same_comparison_pack_source_bindings_only": export_validation["diagnostics"][
+                    "same_comparison_pack_source_bindings_only"
+                ],
+                "relationship_context_section_present": True,
+                "citation_count": len(comparison_export["citations"]),
+                "source_document_count": len(comparison_export["source_documents"]),
+                "educational_disclaimer_present": True,
+                "forbidden_advice_phrase_hits": [],
+            },
+            "chat_compare_redirect": {
+                "endpoint": "POST /api/assets/VOO/chat",
+                "safety_classification": chat["safety_classification"],
+                "comparison_availability_state": chat_route["comparison_availability_state"],
+                "route": chat_route["route"],
+                "generated_multi_asset_chat_answer": chat_route["diagnostics"]["generated_multi_asset_chat_answer"],
+                "factual_citation_count": len(chat["citations"]),
+                "factual_source_document_count": len(chat["source_documents"]),
+            },
+            "frontend_api_alignment": frontend_alignment,
+            "unsupported_blocking_cases": blocked_case_summaries,
+            "etf_vs_etf_baseline": {
+                "left_ticker": "VOO",
+                "right_ticker": "QQQ",
+                "comparison_type": etf_baseline["comparison_type"],
+                "availability_state": etf_baseline["evidence_availability"]["availability_state"],
+                "independent_of_stock_vs_etf_markers": True,
+            },
+            "blocker_reason_code_catalog": [
+                "no_local_pack",
+                "missing_backend_relationship_schema",
+                "frontend_only_fallback",
+                "unavailable_export",
+                "chat_redirect_mismatch",
+                "missing_source_citation_metadata",
+                "missing_local_smoke_instructions",
+                "unsupported_state_regression",
+                "live_call_requirement",
+            ],
+            "review_only_boundaries": {
+                "services_started": False,
+                "live_provider_calls": False,
+                "live_news_calls": False,
+                "live_market_data_calls": False,
+                "live_llm_calls": False,
+                "sources_approved": False,
+                "manifests_promoted": False,
+                "generated_output_cache_entries_written": False,
+                "comparison_coverage_broadened": False,
+            },
+        },
+    )
+
+
+def _stock_vs_etf_compare_payload_blocker(payload: dict[str, Any]) -> dict[str, Any] | None:
+    evidence = payload.get("evidence_availability") or {}
+    diagnostics = evidence.get("diagnostics") or {}
+    if diagnostics.get("live_provider_calls_attempted") or diagnostics.get("live_llm_calls_attempted"):
+        return {
+            "reason_code": "live_call_requirement",
+            "surface": "compare",
+            "diagnostics": diagnostics,
+        }
+    if (
+        payload.get("state", {}).get("status") != "supported"
+        or payload.get("comparison_type") != "stock_vs_etf"
+        or evidence.get("availability_state") != "available"
+    ):
+        return {
+            "reason_code": "no_local_pack",
+            "surface": "compare",
+            "state_status": payload.get("state", {}).get("status"),
+            "comparison_type": payload.get("comparison_type"),
+            "availability_state": evidence.get("availability_state"),
+        }
+    relationship = payload.get("stock_etf_relationship")
+    if not isinstance(relationship, dict):
+        return {"reason_code": "missing_backend_relationship_schema", "surface": "compare"}
+    if "holding_verified" in json.dumps(relationship, sort_keys=True):
+        return {"reason_code": "frontend_only_fallback", "surface": "compare"}
+    badges = relationship.get("badges") or []
+    badge_markers = {badge.get("marker") for badge in badges if isinstance(badge, dict)}
+    basket = relationship.get("basket_structure") or {}
+    expected_dimensions = {"Structure", "Basket membership", "Breadth", "Cost model", "Educational role"}
+    basket_dimension = next(
+        (
+            dimension
+            for dimension in evidence.get("required_evidence_dimensions", [])
+            if dimension.get("dimension") == "Basket membership"
+        ),
+        {},
+    )
+    relationship_contract_ok = (
+        relationship.get("schema_version") == "stock-etf-relationship-v1"
+        and relationship.get("comparison_type") == "stock_vs_etf"
+        and relationship.get("stock_ticker") == "AAPL"
+        and relationship.get("etf_ticker") == "VOO"
+        and relationship.get("relationship_state") == "direct_holding"
+        and {"relationship_state", "evidence_boundary"} <= badge_markers
+        and basket.get("stock_ticker") == "AAPL"
+        and basket.get("etf_ticker") == "VOO"
+        and basket.get("overlap_or_membership_state") == "direct_holding"
+        and basket.get("evidence_state") == "partial"
+        and set(evidence.get("required_dimensions") or []) == expected_dimensions
+        and basket_dimension.get("evidence_state") == "partial"
+    )
+    if not relationship_contract_ok:
+        return {
+            "reason_code": "missing_backend_relationship_schema",
+            "surface": "compare",
+            "relationship": {
+                "schema_version": relationship.get("schema_version"),
+                "comparison_type": relationship.get("comparison_type"),
+                "relationship_state": relationship.get("relationship_state"),
+                "badge_markers": sorted(marker for marker in badge_markers if marker),
+                "basket_overlap_state": basket.get("overlap_or_membership_state"),
+                "required_dimensions": evidence.get("required_dimensions"),
+            },
+        }
+    citation_ids = {citation.get("citation_id") for citation in payload.get("citations", [])}
+    source_document_ids = {source.get("source_document_id") for source in payload.get("source_documents", [])}
+    source_reference_assets = {reference.get("asset_ticker") for reference in evidence.get("source_references", [])}
+    citation_binding_assets = {binding.get("asset_ticker") for binding in evidence.get("citation_bindings", [])}
+    source_metadata_ok = (
+        bool(citation_ids)
+        and bool(source_document_ids)
+        and {"AAPL", "VOO"} <= source_reference_assets
+        and {"AAPL", "VOO"} <= citation_binding_assets
+        and diagnostics.get("same_comparison_pack_sources_only") is True
+        and all(
+            source.get("url") and source.get("source_use_policy") and source.get("supporting_passage")
+            for source in payload.get("source_documents", [])
+        )
+        and all(
+            reference.get("url") and reference.get("source_use_policy") and reference.get("permitted_operations")
+            for reference in evidence.get("source_references", [])
+        )
+    )
+    if not source_metadata_ok:
+        return {
+            "reason_code": "missing_source_citation_metadata",
+            "surface": "compare",
+            "citation_count": len(citation_ids),
+            "source_document_count": len(source_document_ids),
+            "source_reference_assets": sorted(asset for asset in source_reference_assets if asset),
+            "citation_binding_assets": sorted(asset for asset in citation_binding_assets if asset),
+        }
+    return None
+
+
+def _stock_vs_etf_export_payload_blocker(payload: dict[str, Any]) -> dict[str, Any] | None:
+    validation = payload.get("export_validation") or {}
+    diagnostics = validation.get("diagnostics") or {}
+    if diagnostics.get("no_live_external_calls") is not True:
+        return {"reason_code": "live_call_requirement", "surface": "export", "diagnostics": diagnostics}
+    section_ids = {section.get("section_id") for section in payload.get("sections", [])}
+    disclaimer = payload.get("disclaimer") or ""
+    forbidden_hits = find_forbidden_output_phrases(json.dumps(payload, sort_keys=True))
+    export_ok = (
+        payload.get("content_type") == "comparison"
+        and payload.get("export_state") == "available"
+        and payload.get("left_asset", {}).get("ticker") == "AAPL"
+        and payload.get("right_asset", {}).get("ticker") == "VOO"
+        and payload.get("metadata", {}).get("comparison_type") == "stock_vs_etf"
+        and validation.get("binding_scope") == "same_comparison_pack"
+        and diagnostics.get("same_comparison_pack_citation_bindings_only") is True
+        and diagnostics.get("same_comparison_pack_source_bindings_only") is True
+        and "stock_etf_relationship_context" in section_ids
+        and bool(payload.get("citations"))
+        and bool(payload.get("source_documents"))
+        and bool(validation.get("citation_bindings"))
+        and bool(validation.get("source_bindings"))
+        and "not investment, financial, legal, or tax advice" in disclaimer.lower()
+        and "not a recommendation to buy, sell, or hold" in disclaimer.lower()
+        and not forbidden_hits
+        and all(
+            source.get("url")
+            and source.get("source_use_policy")
+            and source.get("retrieved_at")
+            and source.get("freshness_state")
+            and source.get("allowed_excerpt", {}).get("text")
+            for source in payload.get("source_documents", [])
+        )
+    )
+    if not export_ok:
+        return {
+            "reason_code": "unavailable_export",
+            "surface": "export",
+            "export_state": payload.get("export_state"),
+            "comparison_type": payload.get("metadata", {}).get("comparison_type"),
+            "binding_scope": validation.get("binding_scope"),
+            "section_ids": sorted(section_id for section_id in section_ids if section_id),
+            "citation_count": len(payload.get("citations", [])),
+            "source_document_count": len(payload.get("source_documents", [])),
+            "forbidden_advice_phrase_hits": forbidden_hits,
+        }
+    return None
+
+
+def _stock_vs_etf_chat_redirect_blocker(payload: dict[str, Any]) -> dict[str, Any] | None:
+    route = payload.get("compare_route_suggestion") or {}
+    diagnostics = route.get("diagnostics") or {}
+    redirect_ok = (
+        payload.get("safety_classification") == "compare_route_redirect"
+        and route.get("schema_version") == "chat-compare-route-v1"
+        and route.get("left_ticker") == "AAPL"
+        and route.get("right_ticker") == "VOO"
+        and route.get("route") == "/compare?left=AAPL&right=VOO"
+        and route.get("comparison_availability_state") == "available"
+        and diagnostics.get("generated_multi_asset_chat_answer") is False
+        and payload.get("citations") == []
+        and payload.get("source_documents") == []
+        and not find_forbidden_output_phrases(json.dumps(payload, sort_keys=True))
+    )
+    if not redirect_ok:
+        return {
+            "reason_code": "chat_redirect_mismatch",
+            "surface": "chat",
+            "safety_classification": payload.get("safety_classification"),
+            "route": route.get("route"),
+            "comparison_availability_state": route.get("comparison_availability_state"),
+            "generated_multi_asset_chat_answer": diagnostics.get("generated_multi_asset_chat_answer"),
+            "citation_count": len(payload.get("citations", [])),
+            "source_document_count": len(payload.get("source_documents", [])),
+        }
+    return None
+
+
+def _blocked_comparison_case_regression(
+    left: str,
+    right: str,
+    expected_state: str,
+    payload: dict[str, Any],
+) -> dict[str, Any] | None:
+    evidence = payload.get("evidence_availability") or {}
+    generated_output_present = bool(
+        payload.get("key_differences")
+        or payload.get("bottom_line_for_beginners")
+        or payload.get("citations")
+        or payload.get("source_documents")
+        or evidence.get("evidence_items")
+        or evidence.get("claim_bindings")
+        or evidence.get("citation_bindings")
+        or evidence.get("source_references")
+    )
+    if (
+        payload.get("comparison_type") != "unavailable"
+        or evidence.get("availability_state") != expected_state
+        or generated_output_present
+    ):
+        reason_code = "no_local_pack" if expected_state == "no_local_pack" else "unsupported_state_regression"
+        return {
+            "reason_code": reason_code,
+            "case_id": f"{left}_{right}",
+            "expected_availability_state": expected_state,
+            "actual_availability_state": evidence.get("availability_state"),
+            "comparison_type": payload.get("comparison_type"),
+            "generated_output_present": generated_output_present,
+        }
+    return None
+
+
+def _stock_vs_etf_frontend_alignment(root: Path) -> dict[str, Any]:
+    source_markers = {
+        "apps/web/app/page.tsx": [
+            "data-home-primary-workflow=\"single-supported-stock-or-etf-search\"",
+            "data-home-workflow-card=\"separate-comparison\"",
+        ],
+        "apps/web/components/SearchBox.tsx": [
+            "data-search-comparison-route",
+            "data-search-open-comparison-route",
+        ],
+        "apps/web/app/compare/page.tsx": [
+            "separate-comparison-workflow-v1",
+            "data-compare-comparison-type",
+            "data-stock-etf-relationship-schema",
+            "data-stock-etf-relationship-state",
+            "data-relationship-badge",
+            "data-stock-etf-basket-structure=\"single-company-vs-etf-basket\"",
+        ],
+        "apps/web/components/ComparisonSourceDetails.tsx": [
+            "data-comparison-source-asset",
+        ],
+        "apps/web/next.config.mjs": [
+            "NEXT_PUBLIC_API_BASE_URL",
+            "API_BASE_URL",
+            "source: \"/api/:path*\"",
+            "destination: `${apiBaseUrl}/api/:path*`",
+        ],
+    }
+    smoke_markers = {
+        "tests/frontend/smoke.mjs": [
+            "AAPL vs VOO search pattern routes to compare without changing home into a comparison builder",
+            "assertAaplVooComparePayload",
+            "assertAaplVooExportPayload",
+            "assertAaplVooChatRedirectPayload",
+            "LEARN_TICKER_LOCAL_BROWSER_SMOKE",
+            "LEARN_TICKER_LOCAL_WEB_BASE",
+            "LEARN_TICKER_LOCAL_API_BASE",
+            "NEXT_PUBLIC_API_BASE_URL",
+            "API_BASE_URL",
+            "/api/:path*",
+            "/compare?left=AAPL&right=VOO",
+            "stock-etf-relationship-v1",
+            "direct_holding",
+            "single-company-vs-etf-basket",
+        ],
+        "docs/local_fresh_data_ingest_to_render_runbook.md": [
+            "LEARN_TICKER_LOCAL_BROWSER_SMOKE=1",
+            "LEARN_TICKER_LOCAL_WEB_BASE=http://127.0.0.1:3000",
+            "LEARN_TICKER_LOCAL_API_BASE=http://127.0.0.1:8000",
+            "NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000",
+            "API_BASE_URL=http://127.0.0.1:8000",
+            "CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000",
+            "Next `/api/:path*`",
+            "`AAPL` vs `VOO` returns `comparison_type = stock_vs_etf`",
+            "`POST /api/assets/VOO/chat` with `AAPL vs VOO` redirects",
+            "existing `VOO` vs `QQQ` ETF-vs-ETF comparison behavior remains available",
+        ],
+    }
+    missing_source_markers = _missing_text_markers(root, source_markers)
+    if missing_source_markers:
+        return {
+            "blocked": True,
+            "reason_code": "frontend_only_fallback",
+            "missing": missing_source_markers,
+        }
+
+    frontend_payload_sources = [
+        (root / "apps/web/app/compare/page.tsx").read_text(encoding="utf-8"),
+        (root / "apps/web/lib/compare.ts").read_text(encoding="utf-8"),
+    ]
+    if any("holding_verified" in source for source in frontend_payload_sources):
+        return {
+            "blocked": True,
+            "reason_code": "frontend_only_fallback",
+            "legacy_marker": "holding_verified",
+        }
+
+    missing_smoke_markers = _missing_text_markers(root, smoke_markers)
+    if missing_smoke_markers:
+        return {
+            "blocked": True,
+            "reason_code": "missing_local_smoke_instructions",
+            "missing": missing_smoke_markers,
+        }
+
+    return {
+        "blocked": False,
+        "source_marker_file_count": len(source_markers),
+        "local_smoke_marker_file_count": len(smoke_markers),
+        "a_vs_b_search_routes_to_separate_compare_workflow": True,
+        "aapl_voo_opt_in_smoke_covered": True,
+        "next_api_proxy_documented": True,
+        "operator_local_env_vars_documented": [
+            "LEARN_TICKER_LOCAL_BROWSER_SMOKE",
+            "LEARN_TICKER_LOCAL_WEB_BASE",
+            "LEARN_TICKER_LOCAL_API_BASE",
+            "NEXT_PUBLIC_API_BASE_URL",
+            "API_BASE_URL",
+            "CORS_ALLOWED_ORIGINS",
+        ],
+    }
+
+
+def _missing_text_markers(root: Path, markers_by_path: dict[str, list[str]]) -> list[str]:
+    missing: list[str] = []
+    for relative, markers in markers_by_path.items():
+        text = (root / relative).read_text(encoding="utf-8")
+        for marker in markers:
+            if marker not in text:
+                missing.append(f"{relative}:{marker}")
+    return missing
 
 
 def _check_launch_manifest_review_packets(root: Path) -> RehearsalCheck:
@@ -1105,6 +1618,7 @@ def _manual_readiness_prerequisite_summaries(
     ingestion = check_by_id["local_ingestion_priority_planner"].details
     frontend = check_by_id["frontend_v04_smoke_markers"]
     golden = check_by_id["governed_golden_api_rendering"]
+    stock_vs_etf = check_by_id["stock_vs_etf_comparison_readiness"]
     return [
         {
             "prerequisite_id": "t136_etf500_candidate_review",
@@ -1159,6 +1673,18 @@ def _manual_readiness_prerequisite_summaries(
             "status": golden.status,
             "reason_code": golden.reason_code,
             "blocked_search_cases": golden.details.get("blocked_search_cases", []),
+        },
+        {
+            "prerequisite_id": "stock_vs_etf_comparison_readiness",
+            "check_id": "stock_vs_etf_comparison_readiness",
+            "status": stock_vs_etf.status,
+            "reason_code": stock_vs_etf.reason_code,
+            "deterministic_pairs": stock_vs_etf.details.get("deterministic_pairs"),
+            "backend_compare": stock_vs_etf.details.get("backend_compare"),
+            "comparison_export": stock_vs_etf.details.get("comparison_export"),
+            "chat_compare_redirect": stock_vs_etf.details.get("chat_compare_redirect"),
+            "frontend_api_alignment": stock_vs_etf.details.get("frontend_api_alignment"),
+            "unsupported_blocking_cases": stock_vs_etf.details.get("unsupported_blocking_cases"),
         },
         {
             "prerequisite_id": "frontend_workflow_smoke_markers",

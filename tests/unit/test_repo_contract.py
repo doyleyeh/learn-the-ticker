@@ -722,7 +722,7 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert threshold["launch_or_public_deployment_approved"] is False
     assert threshold["required_blockers"] == []
     assert threshold["optional_blockers"] == []
-    assert len(threshold["required_checks"]) == 8
+    assert len(threshold["required_checks"]) == 9
     assert all(check["status"] == "pass" for check in threshold["required_checks"])
     assert len(threshold["optional_skipped_modes"]) == 4
     assert threshold["thresholds"] == {
@@ -746,6 +746,7 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert statuses["deterministic_default_boundary"] == "pass"
     assert statuses["source_handoff_approval_gate"] == "pass"
     assert statuses["governed_golden_api_rendering"] == "pass"
+    assert statuses["stock_vs_etf_comparison_readiness"] == "pass"
     assert statuses["launch_manifest_review_packets"] == "pass"
     assert statuses["stock_sec_source_pack_readiness"] == "pass"
     assert statuses["local_ingestion_priority_planner"] == "pass"
@@ -940,6 +941,78 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert planner_details["state_diagnostics"]["states"]["stale"] == 0
     assert planner_details["state_diagnostics"]["states"]["insufficient_evidence"] == 20
     assert "generated_output_cache_entries" in planner_details["blocked_generated_surfaces"]
+    stock_vs_etf_details = next(
+        check["details"] for check in result["checks"] if check["check_id"] == "stock_vs_etf_comparison_readiness"
+    )
+    assert stock_vs_etf_details["schema_version"] == "stock-vs-etf-comparison-readiness-v1"
+    assert stock_vs_etf_details["boundary"] == "review_only_fixture_backed_no_services_no_live_calls_v1"
+    assert stock_vs_etf_details["deterministic_pairs"] == {
+        "stock_vs_etf": ["AAPL", "VOO"],
+        "etf_vs_etf_baseline": ["VOO", "QQQ"],
+        "broad_coverage_proven": False,
+    }
+    assert stock_vs_etf_details["backend_compare"]["state_status"] == "supported"
+    assert stock_vs_etf_details["backend_compare"]["comparison_type"] == "stock_vs_etf"
+    assert stock_vs_etf_details["backend_compare"]["availability_state"] == "available"
+    assert stock_vs_etf_details["backend_compare"]["relationship_schema_version"] == "stock-etf-relationship-v1"
+    assert stock_vs_etf_details["backend_compare"]["relationship_state"] == "direct_holding"
+    assert stock_vs_etf_details["backend_compare"]["basket_structure"] == "single-company-vs-etf-basket"
+    assert stock_vs_etf_details["backend_compare"]["source_reference_assets"] == ["AAPL", "VOO"]
+    assert stock_vs_etf_details["backend_compare"]["old_frontend_only_holding_verified_present"] is False
+    assert {"relationship_state", "evidence_boundary"} <= set(
+        stock_vs_etf_details["backend_compare"]["badge_markers"]
+    )
+    assert stock_vs_etf_details["comparison_export"]["export_state"] == "available"
+    assert stock_vs_etf_details["comparison_export"]["comparison_type"] == "stock_vs_etf"
+    assert stock_vs_etf_details["comparison_export"]["binding_scope"] == "same_comparison_pack"
+    assert stock_vs_etf_details["comparison_export"]["same_comparison_pack_citation_bindings_only"] is True
+    assert stock_vs_etf_details["comparison_export"]["same_comparison_pack_source_bindings_only"] is True
+    assert stock_vs_etf_details["comparison_export"]["relationship_context_section_present"] is True
+    assert stock_vs_etf_details["comparison_export"]["educational_disclaimer_present"] is True
+    assert stock_vs_etf_details["comparison_export"]["forbidden_advice_phrase_hits"] == []
+    assert stock_vs_etf_details["chat_compare_redirect"] == {
+        "endpoint": "POST /api/assets/VOO/chat",
+        "safety_classification": "compare_route_redirect",
+        "comparison_availability_state": "available",
+        "route": "/compare?left=AAPL&right=VOO",
+        "generated_multi_asset_chat_answer": False,
+        "factual_citation_count": 0,
+        "factual_source_document_count": 0,
+    }
+    assert stock_vs_etf_details["frontend_api_alignment"]["a_vs_b_search_routes_to_separate_compare_workflow"] is True
+    assert stock_vs_etf_details["frontend_api_alignment"]["aapl_voo_opt_in_smoke_covered"] is True
+    assert stock_vs_etf_details["frontend_api_alignment"]["next_api_proxy_documented"] is True
+    assert {
+        (case["left_ticker"], case["right_ticker"], case["availability_state"])
+        for case in stock_vs_etf_details["unsupported_blocking_cases"]
+    } == {
+        ("VOO", "BTC", "unsupported"),
+        ("VOO", "GME", "out_of_scope"),
+        ("VOO", "SPY", "eligible_not_cached"),
+        ("VOO", "ZZZZ", "unknown"),
+        ("AAPL", "QQQ", "no_local_pack"),
+    }
+    assert stock_vs_etf_details["etf_vs_etf_baseline"] == {
+        "left_ticker": "VOO",
+        "right_ticker": "QQQ",
+        "comparison_type": "etf_vs_etf",
+        "availability_state": "available",
+        "independent_of_stock_vs_etf_markers": True,
+    }
+    assert {
+        "no_local_pack",
+        "missing_backend_relationship_schema",
+        "frontend_only_fallback",
+        "unavailable_export",
+        "chat_redirect_mismatch",
+        "missing_source_citation_metadata",
+        "missing_local_smoke_instructions",
+        "unsupported_state_regression",
+        "live_call_requirement",
+    } == set(stock_vs_etf_details["blocker_reason_code_catalog"])
+    assert stock_vs_etf_details["review_only_boundaries"]["services_started"] is False
+    assert stock_vs_etf_details["review_only_boundaries"]["live_llm_calls"] is False
+    assert stock_vs_etf_details["review_only_boundaries"]["comparison_coverage_broadened"] is False
     asset_summary = threshold["asset_state_summary"]
     assert asset_summary["failed_asset_count"] == 1
     assert asset_summary["unavailable_asset_count"] == 1
@@ -1018,6 +1091,7 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
         "local_mvp_thresholds",
         "local_ingestion_priority_planning",
         "governed_golden_rendering",
+        "stock_vs_etf_comparison_readiness",
         "frontend_workflow_smoke_markers",
     } == prerequisite_ids
     assert [mode["status"] for mode in gate["optional_mode_statuses"]] == ["skipped"] * 4
@@ -1203,6 +1277,10 @@ def test_t118_local_fresh_data_runbook_covers_deterministic_smoke_without_live_r
         "T-128 proves deterministic governed golden source snapshots",
         "does not approve sources",
         "does not relax Golden Asset Source Handoff",
+        "stock_vs_etf_comparison_readiness",
+        "backend comparison pack, API-aligned frontend markers, comparison export, asset-chat compare redirect",
+        "does not mean broad stock-vs-ETF coverage",
+        "unsupported, out-of-scope, eligible-not-cached, unknown, or missing-pack pairs",
     ]:
         assert marker in runbook, f"T-118 runbook should include marker: {marker}"
 
