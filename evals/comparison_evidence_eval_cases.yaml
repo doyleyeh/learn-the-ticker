@@ -44,7 +44,7 @@ non_generated_cases:
     right: ZZZZ
     expected_state: unknown
   - left: AAPL
-    right: VOO
+    right: QQQ
     expected_state: no_local_pack
 required_non_generated_states:
   - unsupported

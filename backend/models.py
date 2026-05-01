@@ -2544,6 +2544,50 @@ class ComparisonEvidenceAvailability(BaseModel):
     diagnostics: ComparisonEvidenceDiagnostics = Field(default_factory=ComparisonEvidenceDiagnostics)
 
 
+class StockEtfRelationshipBadge(BaseModel):
+    label: str
+    value: str
+    marker: Literal["comparison_type", "stock_ticker", "etf_ticker", "relationship_state", "evidence_boundary"]
+    relationship_state: Literal["direct_holding", "sector_or_theme", "broad_market_context", "weak_relationship", "unknown"]
+    evidence_state: EvidenceState
+    citation_ids: list[str] = Field(default_factory=list)
+
+
+class StockEtfBasketStructure(BaseModel):
+    stock_ticker: str
+    etf_ticker: str
+    stock_role_summary: str
+    etf_basket_summary: str
+    relationship_summary: str
+    overlap_or_membership_state: Literal[
+        "direct_holding",
+        "sector_or_theme",
+        "broad_market_context",
+        "weak_relationship",
+        "unknown",
+    ]
+    evidence_state: EvidenceState
+    unavailable_detail: str | None = None
+    citation_ids: list[str] = Field(default_factory=list)
+
+
+class StockEtfRelationshipModel(BaseModel):
+    schema_version: Literal["stock-etf-relationship-v1"] = "stock-etf-relationship-v1"
+    comparison_type: Literal["stock_vs_etf"] = "stock_vs_etf"
+    stock_ticker: str
+    etf_ticker: str
+    relationship_state: Literal[
+        "direct_holding",
+        "sector_or_theme",
+        "broad_market_context",
+        "weak_relationship",
+        "unknown",
+    ]
+    evidence_state: EvidenceState
+    badges: list[StockEtfRelationshipBadge] = Field(default_factory=list)
+    basket_structure: StockEtfBasketStructure
+
+
 class CompareResponse(BaseModel):
     left_asset: AssetIdentity
     right_asset: AssetIdentity
@@ -2554,6 +2598,7 @@ class CompareResponse(BaseModel):
     citations: list[Citation] = Field(default_factory=list)
     source_documents: list[SourceDocument] = Field(default_factory=list)
     evidence_availability: ComparisonEvidenceAvailability | None = None
+    stock_etf_relationship: StockEtfRelationshipModel | None = None
 
 
 class ChatRequest(BaseModel):

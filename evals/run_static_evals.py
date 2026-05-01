@@ -1675,7 +1675,26 @@ def test_generated_comparison_contract():
     assert {citation.source_document_id for citation in reverse.citations} <= reverse_source_ids
     assert validate_comparison_response(reverse, reverse_pack).valid
 
-    for pair in [("VOO", "BTC"), ("VOO", "ZZZZ"), ("AAPL", "VOO")]:
+    stock_etf = generate_comparison("AAPL", "VOO")
+    stock_etf_pack = build_comparison_knowledge_pack("AAPL", "VOO")
+    assert stock_etf.state.status.value == "supported"
+    assert stock_etf.comparison_type == "stock_vs_etf"
+    assert stock_etf.evidence_availability is not None
+    assert stock_etf.evidence_availability.availability_state.value == "available"
+    assert set(stock_etf.evidence_availability.required_dimensions) == {
+        "Structure",
+        "Basket membership",
+        "Breadth",
+        "Cost model",
+        "Educational role",
+    }
+    assert stock_etf.stock_etf_relationship is not None
+    assert stock_etf.stock_etf_relationship.relationship_state == "direct_holding"
+    assert stock_etf.stock_etf_relationship.evidence_state is EvidenceState.partial
+    assert "Exact holding weight" in (stock_etf.stock_etf_relationship.basket_structure.unavailable_detail or "")
+    assert validate_comparison_response(stock_etf, stock_etf_pack).valid
+
+    for pair in [("VOO", "BTC"), ("VOO", "ZZZZ"), ("AAPL", "QQQ")]:
         unavailable = generate_comparison(*pair)
         assert unavailable.comparison_type == "unavailable"
         assert unavailable.key_differences == []
@@ -1966,7 +1985,7 @@ def test_generated_chat_contract():
         ("VOO", "How is VOO different from QQQ?", "VOO", "QQQ", "available"),
         ("VOO", "How is QQQ different from VOO?", "QQQ", "VOO", "available"),
         ("QQQ", "Why is this more concentrated than VOO?", "QQQ", "VOO", "available"),
-        ("VOO", "AAPL vs VOO", "AAPL", "VOO", "no_local_pack"),
+        ("VOO", "AAPL vs VOO", "AAPL", "VOO", "available"),
         ("VOO", "VOO vs SPY", "VOO", "SPY", "eligible_not_cached"),
         ("VOO", "VOO vs BTC", "VOO", "BTC", "unsupported"),
         ("VOO", "VOO vs GME", "VOO", "GME", "out_of_scope"),

@@ -110,7 +110,7 @@
           "token_count": 16,
           "char_start": 0,
           "char_end": 126,
-          "supported_claim_types": ["factual", "interpretation"]
+          "supported_claim_types": ["factual", "comparison", "interpretation"]
         },
         {
           "chunk_id": "chk_aapl_products_001",
@@ -1088,6 +1088,48 @@
           "summary": "VOO is represented as broad large-company ETF exposure, while QQQ is represented as narrower growth-oriented ETF exposure.",
           "fact_ids": ["fact_voo_role", "fact_qqq_role"],
           "source_chunk_ids": ["chk_voo_profile_001", "chk_qqq_profile_001"]
+        }
+      ]
+    },
+    {
+      "comparison_pack_id": "AAPL_vs_VOO",
+      "left_ticker": "AAPL",
+      "right_ticker": "VOO",
+      "computed_differences": [
+        {
+          "difference_id": "diff_aapl_voo_structure",
+          "dimension": "Structure",
+          "summary": "AAPL is a single operating company, while VOO is an ETF basket tracking the S&P 500 Index.",
+          "fact_ids": ["fact_aapl_primary_business", "fact_voo_benchmark"],
+          "source_chunk_ids": ["chk_aapl_business_001", "chk_voo_profile_001"]
+        },
+        {
+          "difference_id": "diff_aapl_voo_membership",
+          "dimension": "Basket membership",
+          "summary": "The VOO holdings fixture lists Apple among top holdings, but does not verify exact weight or full overlap.",
+          "fact_ids": ["fact_aapl_asset_identity", "fact_voo_holdings_exposure_detail"],
+          "source_chunk_ids": ["chk_aapl_business_001", "chk_voo_holdings_exposure_001"]
+        },
+        {
+          "difference_id": "diff_aapl_voo_breadth",
+          "dimension": "Breadth",
+          "summary": "AAPL is one company, while VOO is represented as about 500 holdings.",
+          "fact_ids": ["fact_aapl_asset_identity", "fact_voo_holdings_count"],
+          "source_chunk_ids": ["chk_aapl_business_001", "chk_voo_cost_holdings_001"]
+        },
+        {
+          "difference_id": "diff_aapl_voo_cost_model",
+          "dimension": "Cost model",
+          "summary": "VOO has an ETF expense-ratio fact, while AAPL is a common stock rather than a fund expense-ratio subject.",
+          "fact_ids": ["fact_aapl_asset_identity", "fact_voo_expense_ratio"],
+          "source_chunk_ids": ["chk_aapl_business_001", "chk_voo_cost_holdings_001"]
+        },
+        {
+          "difference_id": "diff_aapl_voo_educational_role",
+          "dimension": "Educational role",
+          "summary": "The comparison separates learning about Apple's business from learning about VOO's basket exposure.",
+          "fact_ids": ["fact_aapl_primary_business", "fact_voo_role", "fact_voo_holdings_exposure_detail"],
+          "source_chunk_ids": ["chk_aapl_business_001", "chk_voo_profile_001", "chk_voo_holdings_exposure_001"]
         }
       ]
     }
