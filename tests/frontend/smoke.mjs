@@ -837,6 +837,27 @@ includesAll("lib/apiEndpoints.ts", [
   "publicApiEndpoint",
   "requiredApiEndpoint"
 ], "local browser API helpers prefer configured FastAPI and keep a relative fallback");
+const searchRouteSource = read("lib/search.ts");
+assert.ok(
+  searchRouteSource.indexOf("function comparisonRouteResult") < searchRouteSource.indexOf("export async function resolveSearchResponse"),
+  "A vs B search routing should be defined before backend-preferred search resolution"
+);
+assert.ok(
+  searchRouteSource.indexOf("const comparison = comparisonRouteResult(raw_query)") <
+    searchRouteSource.indexOf("return await fetchBackendSearchResponse"),
+  "A vs B search patterns should route to the separate comparison workflow before backend search"
+);
+includesAll("lib/search.ts", [
+  "comparisonTickerFromToken",
+  "status: \"comparison\"",
+  "support_classification: \"comparison_route\"",
+  "comparison_route: route",
+  "comparison_left_ticker: left",
+  "comparison_right_ticker: right",
+  "can_open_generated_page: false",
+  "can_answer_chat: false",
+  "Comparison is a separate workflow. Open the comparison page"
+], "AAPL vs VOO search pattern routes to compare without changing home into a comparison builder");
 includesAll("next.config.mjs", [
   "NEXT_PUBLIC_API_BASE_URL",
   "API_BASE_URL",
@@ -1541,7 +1562,7 @@ function normalizeSmokeBase(value, fallbackPort) {
 const localBrowserSmokeEnabled = toBool(process.env.LEARN_TICKER_LOCAL_BROWSER_SMOKE);
 const localDurableBrowserSmokeEnabled = toBool(process.env.LEARN_TICKER_LOCAL_DURABLE_SMOKE);
 
-const runOptionalLocalDurableSmoke = async () => {
+const runOptionalLocalDurableSmoke = async ({ webBase, apiBase, requestWithLog }) => {
   const prereqs = localDurablePrereqStatus();
   if (prereqs.blockers.length > 0) {
     console.log("Local durable browser smoke is blocked by missing prerequisites:");
@@ -1634,12 +1655,17 @@ const runOptionalLocalDurableSmoke = async () => {
       true,
       "Local durable stock-vs-ETF compare page should keep relationship-badge structure"
     );
+    assert.equal(
+      durableStockEtfCompareBody.includes("data-stock-etf-relationship-state=\"direct_holding\""),
+      true,
+      "Local durable stock-vs-ETF compare page should keep the direct holding relationship state"
+    );
 
     const durableCompareExportResponse = await requestWithLog(
       "GET",
-      `${webBase}/api/compare/export?left=VOO&right=QQQ&export_format=json`
+      `${webBase}/api/compare/export?left_ticker=AAPL&right_ticker=VOO&export_format=json`
     );
-    assert.equal(durableCompareExportResponse.status, 200, "Local durable compare export should route through API path");
+    assert.equal(durableCompareExportResponse.status, 200, "Local durable stock-vs-ETF compare export should route through API path");
 
     const durableCorsResponse = await requestWithLog(
       "GET",
@@ -1744,6 +1770,153 @@ if (localBrowserSmokeEnabled) {
     }
   };
 
+  const assertNoHtmlFallback = (body, label) => {
+    assert.equal(body.includes("<!DOCTYPE html>"), false, `${label} should return backend JSON, not a Next HTML fallback`);
+  };
+
+  const assertNoPersonalAdviceText = (body, label) => {
+    const normalized = body.toLowerCase();
+    for (const forbidden of [
+      "you should buy",
+      "you should sell",
+      "you should hold",
+      "buy now",
+      "sell now",
+      "price target is",
+      "allocate 20%",
+      "put 50%"
+    ]) {
+      assert.equal(normalized.includes(forbidden), false, `${label} should not include advice phrase: ${forbidden}`);
+    }
+  };
+
+  const requestJsonWithLog = async (method, target, options = {}, label = target) => {
+    const response = await requestWithLog(method, target, options);
+    const body = await response.text();
+    assertNoHtmlFallback(body, label);
+    const contentType = response.headers.get("content-type") || "";
+    assert.match(contentType, /application\/json/i, `${label} should return JSON content`);
+
+    let payload;
+    try {
+      payload = JSON.parse(body);
+    } catch (error) {
+      throw new Error(`${label} returned non-JSON payload: ${error}`);
+    }
+    return [response, payload, body];
+  };
+
+  const assertCorsAllowsLocalWebOrigin = (response, label) => {
+    const corsHeader = response.headers.get("access-control-allow-origin") || "";
+    assert.equal(
+      corsHeader === "*" || corsHeader === webBase || corsHeader.includes("127.0.0.1") || corsHeader.includes("localhost"),
+      true,
+      `${label} should allow the configured local web origin`
+    );
+  };
+
+  const assertAaplVooComparePayload = (payload, label) => {
+    assert.equal(payload?.left_asset?.ticker, "AAPL", `${label} should keep AAPL as the left asset`);
+    assert.equal(payload?.right_asset?.ticker, "VOO", `${label} should keep VOO as the right asset`);
+    assert.equal(payload?.state?.status, "supported", `${label} should be supported`);
+    assert.equal(payload?.comparison_type, "stock_vs_etf", `${label} should be stock-vs-ETF`);
+    assert.equal(
+      payload?.evidence_availability?.schema_version,
+      "comparison-evidence-availability-v1",
+      `${label} should include evidence availability metadata`
+    );
+    assert.equal(
+      payload?.evidence_availability?.availability_state,
+      "available",
+      `${label} should be evidence-backed and available`
+    );
+    assert.equal(
+      payload?.stock_etf_relationship?.schema_version,
+      "stock-etf-relationship-v1",
+      `${label} should include the stock-vs-ETF relationship schema`
+    );
+    assert.equal(
+      payload?.stock_etf_relationship?.relationship_state,
+      "direct_holding",
+      `${label} should verify direct holding membership`
+    );
+    assert.equal(
+      payload?.stock_etf_relationship?.basket_structure?.overlap_or_membership_state,
+      "direct_holding",
+      `${label} should keep the single-company-vs-ETF-basket direct holding state`
+    );
+    assert.ok(
+      payload?.stock_etf_relationship?.badges?.some((badge) => badge.marker === "relationship_state" && badge.relationship_state === "direct_holding"),
+      `${label} should include a direct-holding relationship badge`
+    );
+    assert.ok(
+      payload?.stock_etf_relationship?.badges?.some((badge) => badge.marker === "evidence_boundary"),
+      `${label} should include an evidence-boundary relationship badge`
+    );
+    assert.ok(Array.isArray(payload?.citations) && payload.citations.length > 0, `${label} should include citations`);
+    assert.ok(Array.isArray(payload?.source_documents) && payload.source_documents.length > 0, `${label} should include source documents`);
+    assert.ok(
+      payload.source_documents.every((source) => source.source_use_policy && source.url && source.supporting_passage),
+      `${label} source documents should expose source-use policy, URL, and allowed supporting passage metadata`
+    );
+    const sourceReferenceAssets = new Set(
+      (payload?.evidence_availability?.source_references ?? []).map((sourceReference) => sourceReference.asset_ticker)
+    );
+    assert.equal(sourceReferenceAssets.has("AAPL"), true, `${label} should include AAPL source-reference metadata`);
+    assert.equal(sourceReferenceAssets.has("VOO"), true, `${label} should include VOO source-reference metadata`);
+    assert.equal(JSON.stringify(payload).includes("holding_verified"), false, `${label} should not expose the old frontend-only holding_verified state`);
+  };
+
+  const assertAaplVooExportPayload = (payload, label) => {
+    assert.equal(payload?.content_type, "comparison", `${label} should be a comparison export`);
+    assert.equal(payload?.export_state, "available", `${label} should be available`);
+    assert.equal(payload?.left_asset?.ticker, "AAPL", `${label} should keep AAPL as the left export asset`);
+    assert.equal(payload?.right_asset?.ticker, "VOO", `${label} should keep VOO as the right export asset`);
+    assert.equal(payload?.metadata?.comparison_type, "stock_vs_etf", `${label} should preserve stock-vs-ETF metadata`);
+    assert.equal(payload?.export_validation?.binding_scope, "same_comparison_pack", `${label} should validate same-pack bindings`);
+    assert.equal(
+      payload?.export_validation?.diagnostics?.same_comparison_pack_citation_bindings_only,
+      true,
+      `${label} should bind citations to the same comparison pack`
+    );
+    assert.equal(
+      payload?.export_validation?.diagnostics?.same_comparison_pack_source_bindings_only,
+      true,
+      `${label} should bind sources to the same comparison pack`
+    );
+    assert.ok(Array.isArray(payload?.citations) && payload.citations.length > 0, `${label} should include citations`);
+    assert.ok(Array.isArray(payload?.source_documents) && payload.source_documents.length > 0, `${label} should include sources`);
+    assert.ok(
+      (payload?.sections ?? []).some((section) => section.section_id === "stock_etf_relationship_context"),
+      `${label} should include stock-vs-ETF relationship context`
+    );
+    assert.match(payload?.disclaimer ?? "", /not investment, financial, legal, or tax advice/i, `${label} should preserve the educational disclaimer`);
+    assert.match(payload?.disclaimer ?? "", /not a recommendation to buy, sell, or hold/i, `${label} should preserve no-advice framing`);
+    assertNoPersonalAdviceText(`${payload?.rendered_markdown ?? ""}\n${payload?.disclaimer ?? ""}`, label);
+  };
+
+  const assertAaplVooChatRedirectPayload = (payload, label) => {
+    assert.equal(payload?.safety_classification, "compare_route_redirect", `${label} should be a compare-route redirect`);
+    assert.equal(payload?.compare_route_suggestion?.schema_version, "chat-compare-route-v1", `${label} should include compare-route metadata`);
+    assert.equal(payload?.compare_route_suggestion?.left_ticker, "AAPL", `${label} should preserve the submitted left ticker`);
+    assert.equal(payload?.compare_route_suggestion?.right_ticker, "VOO", `${label} should preserve the submitted right ticker`);
+    assert.equal(payload?.compare_route_suggestion?.route, "/compare?left=AAPL&right=VOO", `${label} should route to the comparison page`);
+    assert.equal(
+      payload?.compare_route_suggestion?.comparison_availability_state,
+      "available",
+      `${label} should report available comparison evidence`
+    );
+    assert.equal(
+      payload?.compare_route_suggestion?.diagnostics?.generated_multi_asset_chat_answer,
+      false,
+      `${label} should not generate a multi-asset factual chat answer`
+    );
+    assert.deepEqual(payload?.citations ?? [], [], `${label} should not include factual citations in the redirect body`);
+    assert.deepEqual(payload?.source_documents ?? [], [], `${label} should not include factual source documents in the redirect body`);
+    assert.match(payload?.direct_answer ?? "", /comparison workflow/i, `${label} should direct the user to comparison workflow`);
+    assertNoPersonalAdviceText(JSON.stringify(payload), label);
+  };
+
   const runOptionalBrowserSmoke = async () => {
     try {
       const [homeResponse, homeBody] = await requestWithLog("GET", `${webBase}/`).then(async (response) => [
@@ -1752,6 +1925,12 @@ if (localBrowserSmokeEnabled) {
       ]);
       assert.equal(homeResponse.ok, true, `Home page should be reachable via ${webBase}`);
       assert.equal(homeBody.includes("data-home-workflow-baseline"), true, "Home page should render the single-asset home markers");
+      assert.equal(homeBody.includes("data-home-primary-workflow=\"single-supported-stock-or-etf-search\""), true, "Home page should keep one primary single-asset search action");
+      assert.equal(
+        homeBody.includes("name=\"left\"") || homeBody.includes("name=\"right\""),
+        false,
+        "Home page should not render two comparison-builder inputs"
+      );
     } catch (error) {
       smokeFailures.push(`Home page smoke request failed: ${error}`);
     }
@@ -1860,17 +2039,96 @@ if (localBrowserSmokeEnabled) {
       assertPathMarkers(
         stockEtfCompareBody,
         [
+          "data-compare-availability-state=\"available\"",
           "data-compare-comparison-type=\"stock_vs_etf\"",
           "data-stock-etf-relationship-schema=\"stock-etf-relationship-v1\"",
           "data-stock-etf-relationship-state=\"direct_holding\"",
+          "data-stock-etf-overlap-state=\"direct_holding\"",
+          "data-relationship-badge=\"relationship_state\"",
+          "data-relationship-badge=\"evidence_boundary\"",
           "data-stock-etf-basket-structure=\"single-company-vs-etf-basket\"",
+          "data-comparison-source-document-id",
+          "data-comparison-source-use-policy",
+          "data-comparison-source-asset=\"AAPL\"",
+          "data-comparison-source-asset=\"VOO\"",
+          "data-governed-golden-citation-binding",
         ],
         "Stock-vs-ETF compare route page"
       );
+      assert.equal(
+        stockEtfCompareBody.includes("data-compare-unavailable-state") ||
+          stockEtfCompareBody.includes("No local comparison pack") ||
+          stockEtfCompareBody.includes("Comparison evidence unavailable"),
+        false,
+        "AAPL vs VOO page should not render unsupported, unavailable, or no-local-pack copy"
+      );
+
+      const [stockEtfCompareApiResponse, stockEtfCompareApiPayload] = await requestJsonWithLog(
+        "POST",
+        `${webBase}/api/compare`,
+        {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ left_ticker: "AAPL", right_ticker: "VOO" }),
+        },
+        "AAPL vs VOO frontend proxy compare API"
+      );
+      assert.equal(stockEtfCompareApiResponse.status, 200, "AAPL vs VOO compare API should route through the frontend proxy");
+      assertAaplVooComparePayload(stockEtfCompareApiPayload, "AAPL vs VOO frontend proxy compare API");
+
+      const compareCorsPreflightResponse = await requestWithLog(
+        "OPTIONS",
+        `${apiBase}/api/compare`,
+        {
+          headers: {
+            Origin: webBase,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+          },
+        }
+      );
+      assert.ok(
+        [200, 204].includes(compareCorsPreflightResponse.status),
+        "AAPL vs VOO compare CORS preflight should be allowed for the local web origin"
+      );
+      assertCorsAllowsLocalWebOrigin(compareCorsPreflightResponse, "AAPL vs VOO compare CORS preflight");
+
+      const [stockEtfCompareDirectApiResponse, stockEtfCompareDirectApiPayload] = await requestJsonWithLog(
+        "POST",
+        `${apiBase}/api/compare`,
+        {
+          headers: { "Content-Type": "application/json", Origin: webBase },
+          body: JSON.stringify({ left_ticker: "AAPL", right_ticker: "VOO" }),
+        },
+        "AAPL vs VOO direct FastAPI compare API"
+      );
+      assert.equal(stockEtfCompareDirectApiResponse.status, 200, "AAPL vs VOO direct compare API should return JSON");
+      assertCorsAllowsLocalWebOrigin(stockEtfCompareDirectApiResponse, "AAPL vs VOO direct FastAPI compare API");
+      assertAaplVooComparePayload(stockEtfCompareDirectApiPayload, "AAPL vs VOO direct FastAPI compare API");
+
+      const [stockEtfExportResponse, stockEtfExportPayload] = await requestJsonWithLog(
+        "GET",
+        `${webBase}/api/compare/export?left_ticker=AAPL&right_ticker=VOO&export_format=json`,
+        {},
+        "AAPL vs VOO comparison export API"
+      );
+      assert.equal(stockEtfExportResponse.status, 200, "AAPL vs VOO comparison export should route through API path");
+      assertAaplVooExportPayload(stockEtfExportPayload, "AAPL vs VOO comparison export API");
+
+      const [chatCompareResponse, chatComparePayload] = await requestJsonWithLog(
+        "POST",
+        `${webBase}/api/assets/VOO/chat`,
+        {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: "AAPL vs VOO" }),
+        },
+        "AAPL vs VOO asset-chat compare redirect"
+      );
+      assert.equal(chatCompareResponse.status, 200, "AAPL vs VOO chat compare redirect should route through API path");
+      assertAaplVooChatRedirectPayload(chatComparePayload, "AAPL vs VOO asset-chat compare redirect");
 
       const compareExportResponse = await requestWithLog(
         "GET",
-        `${webBase}/api/compare/export?left=VOO&right=QQQ&export_format=markdown`
+        `${webBase}/api/compare/export?left_ticker=VOO&right_ticker=QQQ&export_format=markdown`
       );
       assert.equal(compareExportResponse.status, 200, "Compare export endpoint should be reachable through API path");
 
@@ -1905,7 +2163,7 @@ if (localBrowserSmokeEnabled) {
     console.log(`Local browser smoke recorded ${networkEvents.length} network events.`);
 
     if (localDurableBrowserSmokeEnabled) {
-      await runOptionalLocalDurableSmoke();
+      await runOptionalLocalDurableSmoke({ webBase, apiBase, requestWithLog });
     }
   };
 
