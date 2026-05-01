@@ -1,62 +1,47 @@
 ## Current task
 
+No current task is prepared; the backlog is empty.
+
+## Backlog
+
+No backlog tasks are currently prepared.
+
+## Completed
+
 ### T-143: Add stock-vs-ETF comparison readiness gate
 
 Goal:
 Add a deterministic stock-vs-ETF comparison readiness signal to the local rehearsal/control-doc layer so the repo can report whether the `AAPL` vs `VOO` feature is locally functional or which exact blocker remains.
 
-Task scope:
-This is a deterministic rehearsal/readiness slice after T-142. Add a no-service, no-live-call readiness check for the existing local `AAPL` vs `VOO` stock-vs-ETF pack that proves backend/API availability, source-backed export availability, chat compare-route parity, frontend/API marker alignment, optional localhost-smoke documentation, and unsupported-state blocking. Keep the check review-only and fixture-backed: it must not start API/web services, run the opt-in browser smoke, fetch live sources, call live models, approve sources, promote manifests, write generated-output cache entries, or broaden comparison coverage beyond the existing deterministic `AAPL`/`VOO` and `VOO`/`QQQ` packs.
+Completion details:
+- Implementation commit: `4e5d41a feat(T-143): add stock-vs-ETF comparison readiness gate`
+- Local merge commit: `7dfb3ad chore(T-143): merge stock-vs-ETF comparison readiness gate` from branch `agent/T-143-20260501T065703Z`
+- `scripts/run_local_fresh_data_rehearsal.py` now adds a deterministic `stock_vs_etf_comparison_readiness` required check with schema `stock-vs-etf-comparison-readiness-v1` and review-only boundary `review_only_fixture_backed_no_services_no_live_calls_v1`.
+- The readiness check validates the local `AAPL`/`VOO` backend comparison payload: `state.status = supported`, `comparison_type = stock_vs_etf`, `availability_state = available`, `stock-etf-relationship-v1`, `relationship_state = direct_holding`, relationship badges, `single-company-vs-etf-basket`, AAPL/VOO source-reference assets, same-comparison-pack citations/source documents, and absence of the old frontend-only `holding_verified` state.
+- The check validates the `AAPL`/`VOO` comparison export as available, same-comparison-pack bound, citation/source backed, carrying `stock_etf_relationship_context`, preserving the educational disclaimer, and containing no forbidden advice phrases detected by `find_forbidden_output_phrases`.
+- The check validates the asset-chat compare redirect for `POST /api/assets/VOO/chat` with `AAPL vs VOO`: `safety_classification = compare_route_redirect`, `comparison_availability_state = available`, route `/compare?left=AAPL&right=VOO`, no generated multi-asset factual chat answer, and zero factual citations/source documents in the redirect body.
+- The check inspects existing frontend/runbook markers rather than starting localhost services: `A vs B` search remains a separate comparison workflow, the `AAPL`/`VOO` opt-in smoke markers are documented, the Next `/api/:path*` proxy is documented, and the required local API/web environment variables remain documented for operator runs.
+- Existing `VOO` vs `QQQ` ETF-vs-ETF readiness remains available and independent of stock-vs-ETF markers.
+- Unsupported or missing-pack comparison cases remain blocked in deterministic coverage for `VOO`/`BTC`, `VOO`/`GME`, `VOO`/`SPY`, `VOO`/`ZZZZ`, and `AAPL`/`QQQ`.
+- The check publishes blocker reason-code catalog entries for `no_local_pack`, `missing_backend_relationship_schema`, `frontend_only_fallback`, `unavailable_export`, `chat_redirect_mismatch`, `missing_source_citation_metadata`, `missing_local_smoke_instructions`, `unsupported_state_regression`, and `live_call_requirement`.
+- The readiness check is wired into required threshold checks and the manual-readiness prerequisite summaries, but a passing stock-vs-ETF readiness check does not make the repo manually ready by itself.
+- `docs/local_fresh_data_ingest_to_render_runbook.md` documents stock-vs-ETF local functional readiness as narrow fixture-backed readiness for backend pack, API-aligned frontend markers, export/chat parity, optional localhost smoke instructions, and blocked unsupported/no-local-pack states. It explicitly does not prove broad stock-vs-ETF coverage, live-provider readiness, deployment readiness, production launch readiness, source approval, manifest promotion, generated-output cache writes, or unsupported generated-output unlocks.
+- `tests/unit/test_repo_contract.py` now covers the readiness details, required threshold summary, manual-readiness prerequisite summary, blocker catalog, runbook markers, and review-only/no-live/no-service boundaries.
+- `docs/agent-journal/20260501T065703Z.md` records the files changed, tests/evals run, pass status, and remaining risks.
 
-Allowed files:
-- `scripts/run_local_fresh_data_rehearsal.py`
-- `tests/unit/test_repo_contract.py`
-- `docs/local_fresh_data_ingest_to_render_runbook.md`
-- `docs/mvp_launch_readiness_regression_matrix.md` only if an existing local readiness/regression index needs a narrow marker
-- `SPEC.md` only if the stock-vs-ETF local readiness definition needs a concise implementation-direction note
+Required commands executed in this task branch:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_repo_contract.py -q` - pass (`22 passed`)
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_repo_contract.py tests/integration/test_backend_api.py -q` - pass (`60 passed`)
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` - pass
+- `npm test` - pass
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass (`468 passed` in Python phases; static evals, frontend smoke/typecheck/build, and backend checks passed)
+- `git diff --check` - pass
 
-Do not change:
-- Backend comparison generation, retrieval fixtures, generated comparison facts, export generation, chat generation, API schemas, frontend UI behavior, frontend smoke assertions, source-use policy, universe manifests, source allowlists, or Golden Asset Source Handoff logic.
-- `backend/*`, `apps/web/*`, `data/universes/*`, `data/retrieval_fixtures.json`, `evals/*`, `AGENTS.md`, `EVALS.md`, provider adapters, deployment config, env examples, or package manifests.
-- Home-page primary workflow: it remains single stock/ETF search first. Clear `A vs B` patterns may route to `/compare`, but the home page must not become a comparison builder.
-- Contextual glossary, source drawer, mobile bottom-sheet/full-screen behavior, Weekly News Focus, AI Comprehensive Analysis, and asset-chat factual-answer behavior except where existing markers or API responses are read by the readiness check.
-- Live-provider, live-news, live-market-data, live-LLM, durable repository, browser-service startup, Docker, env-secret, or production config behavior.
-
-Acceptance criteria:
-- `scripts/run_local_fresh_data_rehearsal.py --json` includes a `stock_vs_etf_comparison_readiness` check or equivalent top-level deterministic check detail that reports `pass`, `blocked`, or `skipped` without starting services or making live provider/news/market-data/LLM calls.
-- The readiness check is part of the deterministic rehearsal contract and manual-readiness prerequisite summary. A blocked stock-vs-ETF readiness check must surface as agent work remaining, while a passing check must not mark the repo manually ready by itself.
-- The default deterministic check passes only when `POST /api/compare` for `AAPL` and `VOO` returns local API evidence with `state.status = supported`, `comparison_type = stock_vs_etf`, `evidence_availability.availability_state = available`, `stock_etf_relationship.schema_version = stock-etf-relationship-v1`, `relationship_state = direct_holding`, relationship badges, `single-company-vs-etf-basket` basket structure, AAPL and VOO source-reference metadata, citations, source documents, source-use policy metadata, URLs, and allowed supporting passages.
-- The check verifies the old frontend-only `holding_verified` state is not present in the serialized API relationship payload.
-- The check verifies `/api/compare/export` for `AAPL` and `VOO` returns an available comparison export with `metadata.comparison_type = stock_vs_etf`, same-comparison-pack citation/source binding diagnostics, citations, source documents, `stock_etf_relationship_context`, freshness/source metadata where present, the educational disclaimer, and no buy/sell/hold, allocation, price-target, tax, brokerage, or personalized recommendation language.
-- The check verifies an asset-chat compare question such as `AAPL vs VOO` returns `safety_classification = compare_route_redirect`, `comparison_availability_state = available`, route `/compare?left=AAPL&right=VOO`, no generated multi-asset factual chat answer, and no factual citations or source documents in the redirect body.
-- The check verifies frontend/API alignment without rendering localhost pages by inspecting existing source markers from the T-142 smoke and runbook: `A vs B` search routing remains a separate comparison workflow, `/compare?left=AAPL&right=VOO` stock-vs-ETF markers are covered by the opt-in smoke, the Next `/api/:path*` proxy path is documented, and `LEARN_TICKER_LOCAL_BROWSER_SMOKE`, `LEARN_TICKER_LOCAL_WEB_BASE`, `LEARN_TICKER_LOCAL_API_BASE`, `NEXT_PUBLIC_API_BASE_URL`, `API_BASE_URL`, and `CORS_ALLOWED_ORIGINS` remain documented for operator-local runs.
-- Existing `VOO` vs `QQQ` ETF-vs-ETF readiness remains available and is not made dependent on stock-vs-ETF markers.
-- Unsupported, out-of-scope, eligible-not-cached, unknown, and missing-pack pairs remain blocked from generated comparisons in the readiness check; include deterministic cases such as `VOO`/`BTC`, `VOO`/`GME`, `VOO`/`SPY`, `VOO`/`ZZZZ`, and `AAPL`/`QQQ` where current fixtures support them.
-- The check reports precise blocker reason codes for `no_local_pack`, missing backend relationship schema, frontend-only fallback, unavailable export, chat redirect mismatch, missing source/citation metadata, missing local-smoke instructions, unsupported-state regression, or live-call requirement.
-- A control document (`docs/local_fresh_data_ingest_to_render_runbook.md`, `docs/mvp_launch_readiness_regression_matrix.md`, or `SPEC.md`) records that stock-vs-ETF local functional readiness means backend pack plus API-aligned UI markers plus export/chat parity plus optional localhost smoke coverage, not broad stock-vs-ETF coverage, live-provider readiness, deployment readiness, or production launch readiness.
-- Important factual comparison claims checked by the readiness gate remain tied to same-comparison-pack citations/source metadata or explicit uncertainty labels. Missing, stale, unavailable, partial, unknown, and insufficient-evidence states remain honest and are not made to look source-backed.
-- No live external calls, real provider keys, raw secret values, manifest promotions, source approvals, generated-output cache writes, unsupported generated-output unlocks, or changes to source-use rights are introduced.
-
-Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_repo_contract.py tests/integration/test_backend_api.py -q`
-- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
-- `npm test`
-- `TMPDIR=/tmp python3 evals/run_static_evals.py`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
-- `git diff --check`
-
-Iteration budget:
-One agent-loop cycle. Keep the implementation focused on deterministic readiness reporting and tests. If the check exposes a real mismatch in the existing `AAPL`/`VOO` API/export/chat evidence or T-142 smoke/runbook markers, report the precise blocker and stop unless the fix is inside the allowed rehearsal/control-doc surface; do not broaden into backend generation, frontend implementation, live-provider work, durable repositories, deployment, or production config.
-
-## Backlog
-
-Stock-vs-ETF comparison feature gap review:
-- Already present: `/compare` route, comparison UI, backend comparison contract, deterministic `VOO` vs `QQQ` ETF-vs-ETF pack, backend/API-backed `AAPL` vs `VOO` stock-vs-ETF pack, source-backed comparison export, chat redirect availability parity, asset/chat/search entry points, and frontend API-compatible stock-vs-ETF rendering/suggestions.
-- Missing for full local functionality: a deterministic readiness signal that stops future tasks from reintroducing frontend-only availability.
-- Ordered agent-loop sequence: T-140 added the backend pack, T-141 aligned frontend/API behavior, T-142 added local browser/API smoke paths, and T-143 is current for a deterministic stock-vs-ETF readiness gate for future local testing and regression review.
-- No additional backlog task is prepared after T-143.
-
-## Completed
+Remaining risks:
+- The readiness gate proves only deterministic local `AAPL`/`VOO` stock-vs-ETF and existing `VOO`/`QQQ` ETF-vs-ETF behavior; it does not prove broad comparison coverage.
+- Optional localhost browser/API smoke remains operator-run and was not started by the deterministic rehearsal.
+- Manual fresh-data readiness still reports `agent_work_remaining` because broader ETF-500 and Top-500 source-pack, parser, handoff, freshness/as-of, and checksum blockers remain.
 
 ### T-142: Add local AAPL-vs-VOO browser/API smoke coverage
 
@@ -3927,7 +3912,7 @@ Current runtime snapshot:
 - T-130 completed the deterministic local fresh-data MVP rehearsal command.
 - T-131 through T-135 completed the ETF eligible-universe, stock SEC source-pack readiness, ETF issuer source-pack readiness, local MVP readiness-threshold packets, and batchable local ingestion priority planner.
 - The ETF-500 scope update is documented across the product and handoff docs; T-136 completed deterministic ETF-500 candidate manifest review contracts, and T-137 completed ETF-500 issuer source-pack batch planning contracts.
-- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, T-139 completed the local manual fresh-data readiness gate, T-140 completed the backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack, T-141 aligned frontend/API comparison availability, and T-142 completed local browser/API smoke coverage. T-143 is current to add the deterministic readiness-reporting gap before broader fresh-data or production-hardening work resumes.
+- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, T-139 completed the local manual fresh-data readiness gate, T-140 completed the backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack, T-141 aligned frontend/API comparison availability, T-142 completed local browser/API smoke coverage, and T-143 completed the deterministic stock-vs-ETF readiness-reporting gate. No new runnable local agent-loop task is currently prepared; broader fresh-data and production-hardening work remains unpromoted.
 - T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, full governed source artifacts, admin auth/rate limiting, broader live ingestion, and launch-sized reviewed manifests remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:
@@ -3987,8 +3972,8 @@ Operational defaults for general MVP roadmap tasks:
 - T-128 established deterministic governed golden evidence API/frontend rendering proof. It is completed and must not be reintroduced as runnable backlog.
 - T-129 established launch-manifest operator automation parity. It is completed and must not be reintroduced as runnable backlog.
 - T-130 established the local fresh-data MVP rehearsal command. It is completed and must not be reintroduced as runnable backlog.
-- T-134 through T-142 are completed. T-143 is the current stock-vs-ETF comparison readiness-gate task.
-- Production hardening remains unpromoted until these comparison-contract tasks are complete and a new narrow launch-readiness task is explicitly prepared.
+- T-134 through T-143 are completed. No current runnable task is prepared.
+- Production hardening remains unpromoted until a new narrow launch-readiness task is explicitly prepared.
 - Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until explicit launch readiness work is promoted into a narrow task and passes deterministic CI coverage.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
 - Each promoted task should run the relevant EVALS.md checks, `python3 -m pytest tests -q`, `python3 evals/run_static_evals.py`, `bash scripts/run_quality_gate.sh`, and `git diff --check`.
@@ -4064,13 +4049,13 @@ Roadmap integration tracker:
 | Backend AAPL-vs-VOO stock-vs-ETF comparison pack | Completed | T-140 |
 | Frontend comparison suggestions API-availability alignment | Completed | T-141 |
 | Local AAPL-vs-VOO browser/API smoke coverage | Completed | T-142 |
-| Stock-vs-ETF comparison readiness gate | Current | T-143 |
+| Stock-vs-ETF comparison readiness gate | Completed | T-143 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
 Remaining unpromoted general MVP sequence:
 
 - T-139 produced a deterministic readiness gate that says whether more agent-loop work remains or whether manual local fresh-data testing is the next step.
-- The current promoted work is the stock-vs-ETF comparison feature-completion sequence's final prepared step: T-141 aligned frontend suggestions/fallback with API availability, T-142 added optional localhost browser/API smoke coverage, and T-143 adds the deterministic readiness signal.
+- The stock-vs-ETF comparison feature-completion sequence is complete through the final prepared step: T-141 aligned frontend suggestions/fallback with API availability, T-142 added optional localhost browser/API smoke coverage, and T-143 added the deterministic readiness signal. No next promoted task is prepared.
 - Full production deployment remains unpromoted until a narrow launch-readiness task is added: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
 - Recurring production jobs only after manual official-source acquisition, Top-500 candidate refresh review, and local fresh-data behavior are stable.
 - Broad paid-provider or news-provider integrations only after provider licensing/source-use review, no-secret-exposure tests, mocked CI fixtures, source-rights validation, and export/display constraints are documented.
