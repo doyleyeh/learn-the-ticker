@@ -644,12 +644,14 @@ includes("components/ComparisonSuggestions.tsx", "data-comparison-suggestion-sel
 includes("components/ComparisonSuggestions.tsx", "data-comparison-suggestion-state");
 includes("components/ComparisonSuggestions.tsx", "data-comparison-suggestion-target");
 includes("components/ComparisonSuggestions.tsx", "data-comparison-suggestion-url");
+includes("components/ComparisonSuggestions.tsx", "data-comparison-suggestion-availability-source");
+includes("components/ComparisonSuggestions.tsx", "data-comparison-suggestion-example-only");
 includes("components/ComparisonSuggestions.tsx", "data-comparison-no-local-pack");
 includes("components/ComparisonSuggestions.tsx", "data-comparison-requested-availability-state");
 includes("lib/compareSuggestions.ts", "localComparisonPairs");
 includes("lib/compareSuggestions.ts", "VOO");
 includes("lib/compareSuggestions.ts", "QQQ");
-includes("lib/compareSuggestions.ts", "buildSuggestion\\(rightTicker, leftTicker\\)");
+includes("lib/compareSuggestions.ts", "buildSuggestion\\(rightTicker, leftTicker, \\{ exampleOnly: false \\}\\)");
 includes("lib/compareSuggestions.ts", "No local source-backed comparison pack");
 includes("lib/compareSuggestions.ts", "not facts about the requested pair");
 includes("lib/compareSuggestions.ts", "requestedAvailabilityState");
@@ -1375,6 +1377,10 @@ assert.match(compareSource, /No factual citation chips or source drawers/, "Unav
 
 for (const marker of [
   "stock-etf-relationship-v1",
+  "direct_holding",
+  "sector_or_theme",
+  "broad_market_context",
+  "weak_relationship",
   "data-stock-etf-comparison-type",
   "data-stock-etf-stock-ticker",
   "data-stock-etf-etf-ticker",
@@ -1395,6 +1401,17 @@ for (const marker of [
 ]) {
   assert.ok(compareSource.includes(marker), `Stock-vs-ETF comparison should include ${marker}`);
 }
+assert.equal(
+  compareSource.includes("holding_verified"),
+  false,
+  "Frontend comparison rendering should not expose the old frontend-only holding_verified relationship state"
+);
+assert.ok(
+  read("app/compare/page.tsx").includes(
+    "getComparePageSuggestions(\n    comparison.left_asset.ticker,\n    comparison.right_asset.ticker,\n    comparison\n  )"
+  ),
+  "Compare page suggestions should use the actual fetched comparison response availability"
+);
 
 const comparisonSuggestionSource = read("components/ComparisonSuggestions.tsx") + read("lib/compareSuggestions.ts");
 for (const marker of [
@@ -1407,6 +1424,11 @@ for (const marker of [
   "local_comparison_available",
   "no_local_comparison_pack",
   "unavailable_with_fixture_examples",
+  "data-comparison-suggestion-availability-source",
+  "data-comparison-suggestion-example-only",
+  "backend_aligned_local_contract",
+  "Backend-aligned comparison available",
+  "Fixture example, not the requested pair",
   "benchmark, cost, holdings breadth, and beginner role",
   "peer list, citation chips, source documents",
   "not facts about the requested pair"
@@ -1420,12 +1442,12 @@ assert.match(
 );
 assert.match(
   comparisonSuggestionSource,
-  /buildSuggestion\(leftTicker, rightTicker\)/,
+  /buildSuggestion\(leftTicker, rightTicker, \{ exampleOnly: false \}\)/,
   "VOO should keep the VOO to QQQ relative comparison direction"
 );
 assert.match(
   comparisonSuggestionSource,
-  /buildSuggestion\(rightTicker, leftTicker\)/,
+  /buildSuggestion\(rightTicker, leftTicker, \{ exampleOnly: false \}\)/,
   "QQQ should keep the QQQ to VOO relative comparison direction"
 );
 assert.ok(
@@ -1594,9 +1616,23 @@ const runOptionalLocalDurableSmoke = async () => {
     const durableCompareBody = await durableCompareResponse.text();
     assert.equal(durableCompareResponse.status, 200, "Local durable compare route should render");
     assert.equal(
-      durableCompareBody.includes("data-stock-etf-basket-structure=\"single-company-vs-etf-basket\""),
+      durableCompareBody.includes("data-compare-comparison-type=\"etf_vs_etf\""),
       true,
-      "Local durable compare page should keep relationship-badge structure"
+      "Local durable ETF-vs-ETF compare page should keep ETF comparison type"
+    );
+    assert.equal(
+      durableCompareBody.includes("data-stock-etf-basket-structure=\"single-company-vs-etf-basket\""),
+      false,
+      "Local durable ETF-vs-ETF compare page should not show stock-vs-ETF relationship structure"
+    );
+
+    const durableStockEtfCompareResponse = await requestWithLog("GET", `${webBase}/compare?left=AAPL&right=VOO`);
+    const durableStockEtfCompareBody = await durableStockEtfCompareResponse.text();
+    assert.equal(durableStockEtfCompareResponse.status, 200, "Local durable stock-vs-ETF compare route should render");
+    assert.equal(
+      durableStockEtfCompareBody.includes("data-stock-etf-basket-structure=\"single-company-vs-etf-basket\""),
+      true,
+      "Local durable stock-vs-ETF compare page should keep relationship-badge structure"
     );
 
     const durableCompareExportResponse = await requestWithLog(
@@ -1808,10 +1844,28 @@ if (localBrowserSmokeEnabled) {
         [
           "separate-comparison-workflow-v1",
           "data-prd-compare-result-layout=\"source-backed-deterministic-pack\"",
-          "data-stock-etf-relationship-schema",
+          "data-compare-comparison-type=\"etf_vs_etf\"",
+        ],
+        "ETF-vs-ETF compare route page"
+      );
+      assert.equal(
+        compareBody.includes("data-stock-etf-basket-structure=\"single-company-vs-etf-basket\""),
+        false,
+        "ETF-vs-ETF compare route should not render stock-vs-ETF basket structure"
+      );
+
+      const stockEtfCompareResponse = await requestWithLog("GET", `${webBase}/compare?left=AAPL&right=VOO`);
+      const stockEtfCompareBody = await stockEtfCompareResponse.text();
+      assert.equal(stockEtfCompareResponse.status, 200, "Compare route should render for AAPL vs VOO");
+      assertPathMarkers(
+        stockEtfCompareBody,
+        [
+          "data-compare-comparison-type=\"stock_vs_etf\"",
+          "data-stock-etf-relationship-schema=\"stock-etf-relationship-v1\"",
+          "data-stock-etf-relationship-state=\"direct_holding\"",
           "data-stock-etf-basket-structure=\"single-company-vs-etf-basket\"",
         ],
-        "Compare route page"
+        "Stock-vs-ETF compare route page"
       );
 
       const compareExportResponse = await requestWithLog(

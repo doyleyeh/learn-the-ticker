@@ -1,4 +1,10 @@
-import { getComparePageFixture, getComparisonAvailabilityState, isComparisonAvailable } from "./compare";
+import {
+  getComparePageFixture,
+  getComparisonAvailabilityState,
+  isComparisonAvailable,
+  type ComparePageFixture,
+  type ComparisonEvidenceAvailabilityState
+} from "./compare";
 import { getAssetFixture, normalizeTicker } from "./fixtures";
 
 export type ComparisonSuggestionState =
@@ -14,6 +20,9 @@ export type ComparisonSuggestion = {
   title: string;
   description: string;
   accessibleName: string;
+  availabilityState: ComparisonEvidenceAvailabilityState;
+  availabilitySource: "backend_aligned_local_contract";
+  exampleOnly: boolean;
 };
 
 export type ComparisonSuggestionsModel = {
@@ -66,24 +75,33 @@ export function getAssetComparisonSuggestions(ticker: string): ComparisonSuggest
   };
 }
 
-export function getComparePageSuggestions(leftTicker: string, rightTicker: string): ComparisonSuggestionsModel {
+export function getComparePageSuggestions(
+  leftTicker: string,
+  rightTicker: string,
+  requestedComparison?: ComparePageFixture
+): ComparisonSuggestionsModel {
   const requestedLeftTicker = normalizeTicker(leftTicker);
   const requestedRightTicker = normalizeTicker(rightTicker);
-  const requestedComparison = getComparePageFixture(requestedLeftTicker, requestedRightTicker);
-  const requestedAvailabilityState = getComparisonAvailabilityState(requestedComparison);
+  const comparisonFromContract = requestedComparison ?? getComparePageFixture(requestedLeftTicker, requestedRightTicker);
+  const requestedAvailabilityState = getComparisonAvailabilityState(comparisonFromContract);
 
-  if (isComparisonAvailable(requestedComparison)) {
+  if (isComparisonAvailable(comparisonFromContract)) {
     return {
       scope: "compare",
       selectedTicker: `${requestedLeftTicker}-${requestedRightTicker}`,
       state: "local_comparison_available",
-      heading: "Local comparison examples",
+      heading: "Backend-aligned comparison available",
       body:
-        "This requested pair has a local source-backed comparison pack. The suggestion links use the same relative in-app comparison route.",
+        "This requested pair has a local source-backed comparison pack under the backend-aligned availability contract. The suggestion link uses the same relative in-app comparison route.",
       requestedLeftTicker,
       requestedRightTicker,
       requestedAvailabilityState,
-      suggestions: [buildSuggestion(requestedLeftTicker, requestedRightTicker)]
+      suggestions: [
+        buildSuggestion(requestedLeftTicker, requestedRightTicker, {
+          exampleOnly: false,
+          comparison: comparisonFromContract
+        })
+      ]
     };
   }
 
@@ -103,11 +121,11 @@ export function getComparePageSuggestions(leftTicker: string, rightTicker: strin
 function availableSuggestionsForAsset(selectedTicker: string) {
   return localComparisonPairs.flatMap(([leftTicker, rightTicker]) => {
     if (selectedTicker === leftTicker && isLocalComparisonAvailable(leftTicker, rightTicker)) {
-      return [buildSuggestion(leftTicker, rightTicker)];
+      return [buildSuggestion(leftTicker, rightTicker, { exampleOnly: false })];
     }
 
     if (selectedTicker === rightTicker && isLocalComparisonAvailable(rightTicker, leftTicker)) {
-      return [buildSuggestion(rightTicker, leftTicker)];
+      return [buildSuggestion(rightTicker, leftTicker, { exampleOnly: false })];
     }
 
     return [];
@@ -117,7 +135,7 @@ function availableSuggestionsForAsset(selectedTicker: string) {
 function availableFixtureExamples() {
   return localComparisonPairs
     .filter(([leftTicker, rightTicker]) => isLocalComparisonAvailable(leftTicker, rightTicker))
-    .map(([leftTicker, rightTicker]) => buildSuggestion(leftTicker, rightTicker));
+    .map(([leftTicker, rightTicker]) => buildSuggestion(leftTicker, rightTicker, { exampleOnly: true }));
 }
 
 function isLocalComparisonAvailable(leftTicker: string, rightTicker: string) {
@@ -125,12 +143,17 @@ function isLocalComparisonAvailable(leftTicker: string, rightTicker: string) {
   return isComparisonAvailable(comparison);
 }
 
-function buildSuggestion(leftTicker: string, rightTicker: string): ComparisonSuggestion {
+function buildSuggestion(
+  leftTicker: string,
+  rightTicker: string,
+  { exampleOnly, comparison: comparisonFromContract }: { exampleOnly: boolean; comparison?: ComparePageFixture }
+): ComparisonSuggestion {
   const targetTicker = normalizeTicker(rightTicker);
   const normalizedLeft = normalizeTicker(leftTicker);
   const normalizedRight = normalizeTicker(rightTicker);
-  const comparison = getComparePageFixture(normalizedLeft, normalizedRight);
+  const comparison = comparisonFromContract ?? getComparePageFixture(normalizedLeft, normalizedRight);
   const isStockEtf = comparison.comparison_type === "stock_vs_etf";
+  const availabilityState = getComparisonAvailabilityState(comparison);
 
   return {
     leftTicker: normalizedLeft,
@@ -143,7 +166,10 @@ function buildSuggestion(leftTicker: string, rightTicker: string): ComparisonSug
       : "Open the local source-backed comparison for benchmark, cost, holdings breadth, and beginner role.",
     accessibleName: isStockEtf
       ? `Open educational source-backed stock-vs-ETF relationship comparison for ${normalizedLeft} and ${normalizedRight}; this is not personal advice.`
-      : `Open educational source-backed comparison for ${normalizedLeft} and ${normalizedRight}; this is not personal advice.`
+      : `Open educational source-backed comparison for ${normalizedLeft} and ${normalizedRight}; this is not personal advice.`,
+    availabilityState,
+    availabilitySource: "backend_aligned_local_contract",
+    exampleOnly
   };
 }
 
