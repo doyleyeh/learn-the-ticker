@@ -1,61 +1,40 @@
 ## Current task
 
-### T-140: Add backend AAPL-vs-VOO stock-vs-ETF comparison pack
-
-Goal:
-Add a governed backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack so `POST /api/compare`, comparison export, and chat compare-route availability agree with the frontend stock-vs-ETF workflow. The task must use existing deterministic local AAPL and VOO evidence only, make no live provider/news/LLM calls, and keep unsupported, out-of-scope, eligible-not-cached, and missing-pack comparisons blocked from generated output.
-
-Gap this task closes:
-- The frontend currently contains a source-backed `AAPL` vs `VOO` stock-vs-ETF scaffold and suggestions.
-- The backend currently returns `no_local_pack` for `POST /api/compare` with `AAPL` + `VOO`.
-- The result is a local availability mismatch: the UI advertises a comparison the API cannot serve.
-
-Acceptance criteria:
-- `POST /api/compare` returns a source-backed `stock_vs_etf` comparison for both `AAPL` vs `VOO` and `VOO` vs `AAPL`.
-- The response has `state.status = supported`, `evidence_availability.availability_state = available`, non-empty `key_differences`, a non-prescriptive `bottom_line_for_beginners`, citations, source documents, and source-reference metadata.
-- The local comparison pack is bounded to the same comparison pack only: AAPL evidence can cite only AAPL source documents/chunks/facts, VOO evidence can cite only VOO source documents/chunks/facts, and generated comparison claims must validate against both sides.
-- The stock-vs-ETF template covers at least: structure, basket membership or verified membership limitation, breadth/diversification, cost model, and educational role.
-- If VOO holdings evidence verifies that Apple appears in VOO, the response may state that membership with citation and as-of/freshness metadata. If exact weight, top-10 concentration, sector exposure, or full overlap is not verified from allowed evidence, the response must label those fields `partial`, `unknown`, `unavailable`, or `insufficient_evidence` and must not invent a weight or claim full overlap.
-- Backend schema/generation supports the stock-vs-ETF relationship/basket structure needed by the existing comparison UI, using PRD/TDS relationship concepts such as direct holding, sector/theme, broad-market context, or weak relationship when evidence supports them.
-- `export_comparison(AAPL, VOO)` and `/api/compare/export?left_ticker=AAPL&right_ticker=VOO` become source-backed exports with citations, source metadata, freshness/as-of labels, and the educational disclaimer.
-- Single-asset chat comparison redirects for `AAPL vs VOO` report comparison availability as `available` while still returning only workflow metadata and no multi-asset factual answer inside asset chat.
-- Existing unavailable cases continue to return no generated facts, no bottom line, no citations, and no source documents for unsupported, out-of-scope, eligible-not-cached, unknown, and genuinely missing-pack pairs.
-- Existing `VOO` vs `QQQ` ETF-vs-ETF comparison behavior remains unchanged.
-
-Suggested implementation notes:
-- Add an `AAPL`/`VOO` comparison fixture to `data/retrieval_fixtures.json` rather than creating a frontend-only fixture.
-- Extend `backend/comparison.py` with type-specific stock-vs-ETF generation instead of forcing ETF-vs-ETF dimensions through stock data.
-- Extend `backend/models.py` only as needed for the relationship/basket structure the API must return to the frontend.
-- Update tests that currently assert `AAPL` + `VOO` is `no_local_pack`.
-
-Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_retrieval_fixtures.py tests/unit/test_comparison_generation.py tests/unit/test_exports.py tests/unit/test_chat_generation.py tests/integration/test_backend_api.py -q`
-- `TMPDIR=/tmp python3 evals/run_static_evals.py`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
-- `git diff --check`
-
-Iteration budget:
-One agent-loop cycle. If the stock-vs-ETF backend schema/model work grows beyond the comparison response, export, chat-redirect availability, and focused tests listed above, stop after preserving the existing `no_local_pack` block and update this task with the smaller next slice.
-
-## Backlog
-
-Stock-vs-ETF comparison feature gap review:
-- Already present: `/compare` route, comparison UI, backend comparison contract, deterministic `VOO` vs `QQQ` ETF-vs-ETF pack, asset/chat/search entry points, and frontend stock-vs-ETF relationship scaffolding for `AAPL` vs `VOO`.
-- Missing for full local functionality: a backend/API-backed `AAPL` vs `VOO` comparison pack, API-compatible frontend rendering and suggestions, source-backed comparison export, chat redirect availability parity, explicit localhost browser/API smoke coverage, and a deterministic readiness signal that stops future tasks from reintroducing frontend-only availability.
-- Ordered agent-loop sequence: T-140 adds the backend pack, T-141 aligns frontend/API behavior, T-142 proves the feature through local browser/API smoke paths, and T-143 adds a deterministic stock-vs-ETF readiness gate for future local testing and regression review.
-
 ### T-141: Align frontend comparison suggestions with API availability
 
 Goal:
-Remove the frontend-only local-availability drift for comparison suggestions and fallback rendering so the UI never advertises a source-backed pair that `POST /api/compare` cannot serve.
+Remove frontend-only local-availability drift for comparison suggestions, fallback rendering, and stock-vs-ETF relationship display so the UI never advertises a source-backed pair that `POST /api/compare` cannot serve.
+
+Task scope:
+This is a frontend/API-alignment slice after T-140. Keep the change focused on the compare page, comparison suggestion model/rendering, frontend deterministic fixtures used only as API-shaped fallbacks, and smoke coverage that proves `AAPL` vs `VOO` is rendered from the backend-aligned contract. The task may adjust frontend TypeScript types for the T-140 `stock_etf_relationship` schema and tests that assert those markers. Do not broaden comparison coverage, add live providers, change backend generation behavior, or turn the home page into a two-input comparison workflow.
+
+Allowed files:
+- `apps/web/lib/compare.ts`
+- `apps/web/lib/compareSuggestions.ts`
+- `apps/web/app/compare/page.tsx`
+- `apps/web/app/assets/[ticker]/page.tsx`
+- `apps/web/components/ComparisonSuggestions.tsx`
+- `apps/web/styles/globals.css` only if needed for existing stock-vs-ETF relationship or suggestion state rendering
+- `tests/frontend/smoke.mjs`
+- Focused frontend test/config files only if an existing `npm test` expectation must be updated for this alignment
+
+Do not change:
+- Backend comparison generation, retrieval fixtures, exports, chat generation, API schemas, source-use policy, universe manifests, source allowlists, or Golden Asset Source Handoff logic.
+- `data/universes/*`, `data/retrieval_fixtures.json`, `backend/*`, `evals/*`, `SPEC.md`, `EVALS.md`, `AGENTS.md`, or docs other than this task board unless a test failure proves the current task contract is impossible.
+- Home-page primary workflow: it remains single stock/ETF search first. Clear `A vs B` patterns may route to `/compare`, but the home page must not become a comparison builder.
+- Contextual glossary, source drawer, mobile bottom-sheet/full-screen behavior, Weekly News Focus, AI Comprehensive Analysis, or asset-chat factual-answer behavior except where existing compare-route metadata is displayed.
 
 Acceptance criteria:
-- The compare page consumes API-backed `stock_vs_etf` relationship/basket data for `AAPL` vs `VOO` after T-140, rather than relying on a richer frontend-only shape that the backend does not return.
-- If `fetchComparisonResponse` succeeds with `no_local_pack`, the compare page renders the unavailable state and does not fall back to a source-backed local `AAPL`/`VOO` fixture.
-- Fallback fixtures used for deterministic frontend tests stay API-compatible and do not contain locally available comparison pairs that the backend tests mark unavailable.
-- `ComparisonSuggestions` and `lib/compareSuggestions.ts` label available local comparison links from the backend-aligned availability contract. If a pair is unavailable, suggestions may show only existing fixture examples clearly labeled as examples, not facts about the requested pair.
-- Frontend smoke coverage no longer hard-codes `AAPL`/`VOO` as locally available unless backend API tests also prove it available.
-- The home page remains single-asset search first; clear `A vs B` patterns still route to `/compare`, and the comparison builder remains a separate workflow.
+- The compare page consumes the T-140 API-backed `stock_vs_etf` response shape for `AAPL` vs `VOO` and `VOO` vs `AAPL`, including `stock_etf_relationship.schema_version = stock-etf-relationship-v1`, relationship state values such as `direct_holding`, relationship badges, `single-company-vs-etf-basket` markers, `partial` basket evidence, citations, source documents, and source-reference metadata.
+- Frontend `StockEtfRelationshipState` and related rendering logic match backend-supported relationship states: `direct_holding`, `sector_or_theme`, `broad_market_context`, `weak_relationship`, and `unknown`. Frontend-only states such as `holding_verified` are removed or translated only inside deterministic fallback fixtures without leaking into API-aligned rendering.
+- If `fetchComparisonResponse` succeeds with `evidence_availability.availability_state = no_local_pack`, `unsupported`, `out_of_scope`, `eligible_not_cached`, `unknown`, `unavailable`, `stale`, `partial`, or `insufficient_evidence`, the compare page renders the corresponding unavailable or limited state from the response and does not fall back to a richer local source-backed fixture for the requested pair.
+- Fallback fixtures remain API-compatible and are used only for deterministic local rendering when the backend request fails or a test deliberately exercises fallback behavior. They must not make a pair look source-backed when backend API tests mark the same pair unavailable.
+- `ComparisonSuggestions` and `apps/web/lib/compareSuggestions.ts` label available local comparison links from a backend-aligned availability contract. If a requested pair is unavailable, suggestions may show existing fixture examples clearly labeled as examples, not facts about the requested pair.
+- `AAPL` asset-page and compare-page suggestions may link to `AAPL` vs `VOO` as available only because T-140 backend/API tests prove `POST /api/compare` and compare export are available for that pair. Other unavailable pairs, such as `AAPL` vs `QQQ`, remain unavailable examples and must not show source-backed facts.
+- Frontend smoke coverage checks the API-aligned `AAPL` vs `VOO` stock-vs-ETF relationship markers and unavailable-state fallback behavior without requiring live provider, news, market-data, or LLM calls.
+- Existing `VOO` vs `QQQ` ETF-vs-ETF comparison behavior remains unchanged.
+- Search/home behavior still treats home as single-asset search first, with clear `A vs B` queries routing to `/compare`.
+- Important factual comparison claims rendered by the frontend remain tied to backend citations/source metadata or explicit uncertainty labels; no buy/sell/hold, allocation, price-target, tax, brokerage, or personalized recommendation language is introduced.
 
 Required commands:
 - `npm test`
@@ -67,7 +46,14 @@ Required commands:
 - `git diff --check`
 
 Iteration budget:
-One agent-loop cycle after T-140. Keep the change scoped to compare-page fetching/fallback, comparison suggestions, frontend smoke coverage, and API-aligned stock-vs-ETF rendering.
+One agent-loop cycle. If API alignment exposes a backend contract mismatch, stop after preserving unavailable-state rendering and update the task board with the smallest backend follow-up; do not broaden this slice into backend generation or live-provider work.
+
+## Backlog
+
+Stock-vs-ETF comparison feature gap review:
+- Already present: `/compare` route, comparison UI, backend comparison contract, deterministic `VOO` vs `QQQ` ETF-vs-ETF pack, backend/API-backed `AAPL` vs `VOO` stock-vs-ETF pack, source-backed comparison export, chat redirect availability parity, asset/chat/search entry points, and frontend stock-vs-ETF relationship scaffolding.
+- Missing for full local functionality: API-compatible frontend rendering and suggestions, explicit localhost browser/API smoke coverage, and a deterministic readiness signal that stops future tasks from reintroducing frontend-only availability.
+- Ordered agent-loop sequence: T-140 added the backend pack, T-141 aligns frontend/API behavior, T-142 proves the feature through local browser/API smoke paths, and T-143 adds a deterministic stock-vs-ETF readiness gate for future local testing and regression review.
 
 ### T-142: Add local AAPL-vs-VOO browser/API smoke coverage
 
@@ -125,6 +111,39 @@ Iteration budget:
 One agent-loop cycle after T-142. Keep this as a readiness/reporting task; do not broaden supported comparison coverage beyond the deterministic local `AAPL`/`VOO` and existing `VOO`/`QQQ` packs.
 
 ## Completed
+
+### T-140: Add backend AAPL-vs-VOO stock-vs-ETF comparison pack
+
+Goal:
+Add a governed backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack so `POST /api/compare`, comparison export, and chat compare-route availability agree with the frontend stock-vs-ETF workflow while using deterministic local evidence only.
+
+Completion details:
+- Implementation commit: `21149ba feat(T-140): add backend AAPL-vs-VOO stock-vs-ETF comparison pack`
+- Local merge commit: `65f07fd chore(T-140): merge backend AAPL-vs-VOO stock-vs-ETF comparison pack` from branch `agent/T-140-20260501T060807Z`
+- Added stock-vs-ETF generation in `backend/comparison.py` for comparison packs containing one stock and one ETF, with required dimensions `Structure`, `Basket membership`, `Breadth`, `Cost model`, and `Educational role`.
+- Added `StockEtfRelationshipBadge`, `StockEtfBasketStructure`, and `StockEtfRelationshipModel` to `backend/models.py`, and exposed `stock_etf_relationship` on `CompareResponse`.
+- Added an `AAPL_vs_VOO` deterministic comparison fixture in `data/retrieval_fixtures.json` with computed differences tied to AAPL and VOO local facts/chunks.
+- `generate_comparison("AAPL", "VOO")` and the reverse order now return `comparison_type = stock_vs_etf`, `state.status = supported`, `evidence_availability.availability_state = available`, citations, source documents, source references, and relationship badges.
+- The relationship model labels Apple membership in VOO as `direct_holding` with `partial` evidence because the local VOO holdings fixture lists Apple among top holdings, while exact holding weight, top-10 concentration, sector exposure, and full overlap remain unavailable.
+- Added same-comparison-pack citation/source binding coverage so AAPL evidence cites AAPL fixture sources and VOO evidence cites VOO fixture sources.
+- Updated comparison export behavior in `backend/export.py` to include a `stock_etf_relationship_context` section with relationship badge items, citations, source metadata, freshness state, limitations, and the educational disclaimer.
+- `/api/compare/export?left_ticker=AAPL&right_ticker=VOO` now returns an available source-backed stock-vs-ETF export; reverse-order export coverage is included in unit tests.
+- Single-asset chat comparison redirects now report `AAPL vs VOO` availability as `available` while preserving compare-route workflow metadata instead of returning a multi-asset factual answer inside asset chat.
+- Existing unavailable cases remain non-generated for unsupported, out-of-scope, eligible-not-cached, unknown, and missing-pack pairs; `AAPL` vs `QQQ` is the deterministic missing-pack stock-vs-ETF case.
+- Existing `VOO` vs `QQQ` ETF-vs-ETF comparison behavior remains covered.
+- Updated static evals and golden/export/comparison eval cases so `AAPL` vs `VOO` is available and validated, while unavailable pairs remain blocked.
+- `docs/agent-journal/20260501T060807Z.md` records the files changed, tests/evals run, pass status, and remaining risks.
+
+Required commands executed in this task branch:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_retrieval_fixtures.py tests/unit/test_comparison_generation.py tests/unit/test_exports.py tests/unit/test_chat_generation.py tests/integration/test_backend_api.py -q` - pass (`94 passed`)
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass (`468 passed` in Python phases; static evals, frontend smoke/typecheck/build, and backend checks passed)
+- `git diff --check` - pass
+
+Remaining risks:
+- The new stock-vs-ETF pack is deterministic and fixture-backed only; it does not prove broad stock-vs-ETF coverage.
+- Exact VOO holding weight for Apple, top-10 concentration, sector exposure, and full holdings overlap remain unavailable by design and must stay labeled as limitations unless approved evidence is added later.
+- Frontend API-alignment work remains in T-141 so the UI consumes the backend relationship schema and avoids frontend-only availability drift.
 
 ### T-139: Add local manual fresh-data readiness gate
 
@@ -3896,7 +3915,7 @@ Current runtime snapshot:
 - T-130 completed the deterministic local fresh-data MVP rehearsal command.
 - T-131 through T-135 completed the ETF eligible-universe, stock SEC source-pack readiness, ETF issuer source-pack readiness, local MVP readiness-threshold packets, and batchable local ingestion priority planner.
 - The ETF-500 scope update is documented across the product and handoff docs; T-136 completed deterministic ETF-500 candidate manifest review contracts, and T-137 completed ETF-500 issuer source-pack batch planning contracts.
-- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, and T-139 completed the local manual fresh-data readiness gate. T-140 through T-143 are now prepared to close the stock-vs-ETF comparison availability mismatch, local browser/API smoke gap, and readiness-reporting gap before broader fresh-data or production-hardening work resumes.
+- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, T-139 completed the local manual fresh-data readiness gate, and T-140 completed the backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack. T-141 through T-143 are now prepared to close the frontend/API alignment gap, local browser/API smoke gap, and readiness-reporting gap before broader fresh-data or production-hardening work resumes.
 - T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, full governed source artifacts, admin auth/rate limiting, broader live ingestion, and launch-sized reviewed manifests remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:
@@ -3956,7 +3975,7 @@ Operational defaults for general MVP roadmap tasks:
 - T-128 established deterministic governed golden evidence API/frontend rendering proof. It is completed and must not be reintroduced as runnable backlog.
 - T-129 established launch-manifest operator automation parity. It is completed and must not be reintroduced as runnable backlog.
 - T-130 established the local fresh-data MVP rehearsal command. It is completed and must not be reintroduced as runnable backlog.
-- T-134 through T-139 are completed. T-140 is the current prepared stock-vs-ETF comparison backend task; T-141, T-142, and T-143 are the prepared frontend alignment, local smoke, and readiness-gate follow-ups.
+- T-134 through T-140 are completed. T-141 is the current prepared frontend/API alignment task; T-142 and T-143 are the prepared local smoke and readiness-gate follow-ups.
 - Production hardening remains unpromoted until these comparison-contract tasks are complete and a new narrow launch-readiness task is explicitly prepared.
 - Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until explicit launch readiness work is promoted into a narrow task and passes deterministic CI coverage.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
@@ -4030,8 +4049,8 @@ Roadmap integration tracker:
 | ETF-500 issuer source-pack batch planning | Completed | T-137 |
 | Top-500 SEC source-pack batch planning | Completed | T-138 |
 | Local manual fresh-data readiness gate | Completed | T-139 |
-| Backend AAPL-vs-VOO stock-vs-ETF comparison pack | Current | T-140 |
-| Frontend comparison suggestions API-availability alignment | Prepared | T-141 |
+| Backend AAPL-vs-VOO stock-vs-ETF comparison pack | Completed | T-140 |
+| Frontend comparison suggestions API-availability alignment | Current | T-141 |
 | Local AAPL-vs-VOO browser/API smoke coverage | Prepared | T-142 |
 | Stock-vs-ETF comparison readiness gate | Prepared | T-143 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
@@ -4039,7 +4058,7 @@ Roadmap integration tracker:
 Remaining unpromoted general MVP sequence:
 
 - T-139 produced a deterministic readiness gate that says whether more agent-loop work remains or whether manual local fresh-data testing is the next step.
-- The next promoted work is the stock-vs-ETF comparison feature-completion sequence: T-140 adds the backend `AAPL`/`VOO` pack, T-141 aligns frontend suggestions/fallback with API availability, T-142 adds optional localhost browser/API smoke coverage, and T-143 adds the deterministic readiness signal.
+- The next promoted work is the stock-vs-ETF comparison feature-completion sequence: T-141 aligns frontend suggestions/fallback with API availability, T-142 adds optional localhost browser/API smoke coverage, and T-143 adds the deterministic readiness signal.
 - Full production deployment remains unpromoted until a narrow launch-readiness task is added: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
 - Recurring production jobs only after manual official-source acquisition, Top-500 candidate refresh review, and local fresh-data behavior are stable.
 - Broad paid-provider or news-provider integrations only after provider licensing/source-use review, no-secret-exposure tests, mocked CI fixtures, source-rights validation, and export/display constraints are documented.
