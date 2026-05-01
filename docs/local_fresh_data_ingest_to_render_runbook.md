@@ -1,6 +1,6 @@
 # Local Fresh-Data Ingest-To-Render Runbook
 
-Task: T-118, updated by T-119 through T-142 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, and AAPL-vs-VOO stock-vs-ETF localhost smoke coverage
+Task: T-118, updated by T-119 through T-143 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, and stock-vs-ETF comparison readiness gating
 
 This runbook describes the local golden-asset smoke path before production deployment work. Normal CI uses deterministic fixtures, mocked official-source acquisition, and in-memory repositories. It must not require real SEC, issuer, market-data, broad news, storage, database, Redis, RSS, or LLM calls.
 
@@ -236,6 +236,8 @@ This opt-in smoke checks:
 - `POST /api/assets/VOO/chat` with `AAPL vs VOO` redirects to `/compare?left=AAPL&right=VOO` with `comparison_availability_state = available`, no factual citations, and no multi-asset factual answer in chat.
 - the home page remains single-asset search first, while `A vs B` search handling remains a separate comparison-route workflow.
 - existing `VOO` vs `QQQ` ETF-vs-ETF comparison behavior remains available and does not render stock-vs-ETF basket markers.
+
+Stock-vs-ETF local functional readiness (T-143): the deterministic rehearsal command reports `stock_vs_etf_comparison_readiness` for the local `AAPL` vs `VOO` pack. Passing this check means the backend comparison pack, API-aligned frontend markers, comparison export, asset-chat compare redirect, optional localhost smoke instructions, and blocked unsupported/no-local-pack comparison states all agree for the fixture-backed `AAPL`/`VOO` path. It does not mean broad stock-vs-ETF coverage, live-provider readiness, deployment readiness, production launch readiness, source approval, manifest promotion, generated-output cache writes, or any generated-output unlock for unsupported, out-of-scope, eligible-not-cached, unknown, or missing-pack pairs.
 
 8. Optional local-durable smoke (T-122): run the browser smoke with durable prereqs set.
 
