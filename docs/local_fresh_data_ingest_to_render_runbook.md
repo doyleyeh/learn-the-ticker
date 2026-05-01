@@ -1,6 +1,6 @@
 # Local Fresh-Data Ingest-To-Render Runbook
 
-Task: T-118, updated by T-119 through T-135 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, and ingestion priority planning
+Task: T-118, updated by T-119 through T-142 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, and AAPL-vs-VOO stock-vs-ETF localhost smoke coverage
 
 This runbook describes the local golden-asset smoke path before production deployment work. Normal CI uses deterministic fixtures, mocked official-source acquisition, and in-memory repositories. It must not require real SEC, issuer, market-data, broad news, storage, database, Redis, RSS, or LLM calls.
 
@@ -175,9 +175,18 @@ T-119 established two valid local strategies:
 - browser helpers prefer `NEXT_PUBLIC_API_BASE_URL` and call FastAPI directly, with FastAPI CORS allowing the local web origins
 - the Next app also rewrites `/api/:path*` to the configured FastAPI backend, so relative chat/export links do not hit missing Next API routes during local development
 
-Start the API with the placeholder CORS origins and start the web app with the API base configured:
+Start the API with the placeholder CORS origins:
 
 ```bash
+CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000 \
+TMPDIR=/tmp python3 -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+
+Start the web app with both local API-base variables configured:
+
+```bash
+NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000 \
+API_BASE_URL=http://127.0.0.1:8000 \
 npm --workspace apps/web run dev -- --hostname 127.0.0.1 --port 3000
 ```
 
@@ -191,13 +200,44 @@ curl -s http://127.0.0.1:3000/api/assets/VOO/export?export_format=markdown
 curl -s -X POST http://127.0.0.1:3000/api/compare \
   -H 'Content-Type: application/json' \
   -d '{"left_ticker":"VOO","right_ticker":"QQQ"}'
+curl -s -X POST http://127.0.0.1:3000/api/compare \
+  -H 'Content-Type: application/json' \
+  -d '{"left_ticker":"AAPL","right_ticker":"VOO"}'
+curl -s 'http://127.0.0.1:3000/api/compare/export?left_ticker=AAPL&right_ticker=VOO&export_format=json'
+curl -s -X POST http://127.0.0.1:3000/api/assets/VOO/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"AAPL vs VOO"}'
 curl -s -D - -o /dev/null http://127.0.0.1:8000/api/search?q=VOO \
   -H 'Origin: http://127.0.0.1:3000'
+curl -s -X OPTIONS http://127.0.0.1:8000/api/compare \
+  -H 'Origin: http://127.0.0.1:3000' \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: content-type' \
+  -D - -o /dev/null
 ```
 
-Expected result: chat, export, and compare return backend payloads instead of Next 404s, and the Origin request includes an `Access-Control-Allow-Origin` header for the configured local origin.
+Expected result: chat, export, and compare return backend payloads instead of Next 404s. `AAPL` vs `VOO` returns `comparison_type = stock_vs_etf`, `stock_etf_relationship.schema_version = stock-etf-relationship-v1`, `relationship_state = direct_holding`, `evidence_availability.availability_state = available`, citations, source documents, source-reference metadata, relationship badges, and the `single-company-vs-etf-basket` structure. The `AAPL vs VOO` chat request returns `safety_classification = compare_route_redirect`, `comparison_availability_state = available`, no factual citations, and no multi-asset factual answer in the chat body. Origin and preflight requests include an `Access-Control-Allow-Origin` header for the configured local origin.
 
-7. Optional local-durable smoke (T-122): run the browser smoke with durable prereqs set.
+7. Optional local browser/API smoke (T-142): run the stock-vs-ETF localhost smoke with the same web/API bases.
+
+```bash
+LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 \
+LEARN_TICKER_LOCAL_WEB_BASE=http://127.0.0.1:3000 \
+LEARN_TICKER_LOCAL_API_BASE=http://127.0.0.1:8000 \
+npm run test:browser-smoke
+```
+
+This opt-in smoke checks:
+
+- `/compare?left=AAPL&right=VOO` renders `stock_vs_etf`, `stock-etf-relationship-v1`, `direct_holding`, relationship badges, source/citation metadata, and `single-company-vs-etf-basket`.
+- `POST /api/compare` through the Next `/api/:path*` proxy returns backend JSON for `AAPL` and `VOO`, not a Next 404, HTML fallback, or frontend-only fixture response.
+- direct FastAPI CORS/preflight behavior allows the local web origin configured by `LEARN_TICKER_LOCAL_WEB_BASE`.
+- `/api/compare/export` for `AAPL` and `VOO` is available, source-backed, citation-bearing, and preserves the educational disclaimer and no-advice framing.
+- `POST /api/assets/VOO/chat` with `AAPL vs VOO` redirects to `/compare?left=AAPL&right=VOO` with `comparison_availability_state = available`, no factual citations, and no multi-asset factual answer in chat.
+- the home page remains single-asset search first, while `A vs B` search handling remains a separate comparison-route workflow.
+- existing `VOO` vs `QQQ` ETF-vs-ETF comparison behavior remains available and does not render stock-vs-ETF basket markers.
+
+8. Optional local-durable smoke (T-122): run the browser smoke with durable prereqs set.
 
 ```bash
 LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 \
@@ -215,13 +255,14 @@ When durable prereqs are present, this optional run validates:
 - `/api/assets/VOO/sources/export`
 - `/assets/VOO/sources`
 - `/compare?left=VOO&right=QQQ`
+- `/compare?left=AAPL&right=VOO`
 - `/api/compare/export`
 - CORS behavior from `/api/search?q=VOO` using the local web origin
 - out-of-scope/unknown search blocking behavior under API proxy
 
 If any durable prerequisites are missing, the smoke should print blockers and report that durable smoke is skipped.
 
-8. Verify frontend rendering with the API base configured:
+9. Verify frontend rendering with the API base configured:
 
 ```bash
 npm run dev
