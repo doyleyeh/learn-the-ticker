@@ -67,6 +67,7 @@ from backend.weekly_news_repository import (
     WeeklyNewsSourceRankTier,
     acquire_weekly_news_event_evidence_from_fixtures,
 )
+from scripts.run_local_fresh_data_slice_smoke import run_slice_smoke
 
 
 SCHEMA_VERSION = "local-fresh-data-mvp-rehearsal-v1"
@@ -80,6 +81,7 @@ REQUIRED_THRESHOLD_CHECK_IDS = (
     "deterministic_default_boundary",
     "source_handoff_approval_gate",
     "governed_golden_api_rendering",
+    "local_fresh_data_mvp_slice_smoke",
     "stock_vs_etf_comparison_readiness",
     "launch_manifest_review_packets",
     "stock_sec_source_pack_readiness",
@@ -121,6 +123,7 @@ def run_rehearsal(env: dict[str, str] | None = None, *, root: Path = ROOT) -> di
         _guarded("deterministic_default_boundary", lambda: _check_default_boundary(source_env)),
         _guarded("source_handoff_approval_gate", _check_source_handoff_approval_gate),
         _guarded("governed_golden_api_rendering", _check_governed_golden_api_rendering),
+        _guarded("local_fresh_data_mvp_slice_smoke", _check_local_fresh_data_mvp_slice_smoke),
         _guarded("stock_vs_etf_comparison_readiness", lambda: _check_stock_vs_etf_comparison_readiness(root)),
         _guarded("launch_manifest_review_packets", lambda: _check_launch_manifest_review_packets(root)),
         _guarded("stock_sec_source_pack_readiness", lambda: _check_stock_sec_source_pack_readiness(root)),
@@ -340,6 +343,111 @@ def _check_governed_golden_api_rendering() -> RehearsalCheck:
             "export_surfaces": ["asset", "source_list", "comparison", "chat"],
         },
     )
+
+
+def _check_local_fresh_data_mvp_slice_smoke() -> RehearsalCheck:
+    check_id = "local_fresh_data_mvp_slice_smoke"
+    result = run_slice_smoke()
+    rows = result.get("rows", [])
+    row_by_ticker = {row.get("ticker"): row for row in rows if isinstance(row, dict)}
+    expected_supported = ["AAPL", "MSFT", "NVDA", "VOO", "SPY", "VTI", "QQQ", "XLK"]
+    expected_blocked = ["TQQQ", "ARKK", "BND", "GLD"]
+    expected_status_counts = {"pass": 3, "partial": 5, "blocked": 4, "unavailable": 0}
+    blockers = list(result.get("blockers") or [])
+
+    if result.get("status") != "pass":
+        blockers.append(
+            {
+                "reason_code": "slice_smoke_status_not_pass",
+                "status": result.get("status"),
+            }
+        )
+    if result.get("status_counts") != expected_status_counts:
+        blockers.append(
+            {
+                "reason_code": "slice_smoke_status_counts_mismatch",
+                "expected": expected_status_counts,
+                "actual": result.get("status_counts"),
+            }
+        )
+    if result.get("supported_renderable_tickers") != expected_supported:
+        blockers.append(
+            {
+                "reason_code": "slice_supported_tickers_mismatch",
+                "expected": expected_supported,
+                "actual": result.get("supported_renderable_tickers"),
+            }
+        )
+    if result.get("blocked_regression_tickers") != expected_blocked:
+        blockers.append(
+            {
+                "reason_code": "slice_blocked_tickers_mismatch",
+                "expected": expected_blocked,
+                "actual": result.get("blocked_regression_tickers"),
+            }
+        )
+    if result.get("raw_payload_exposed_count") != 0 or result.get("raw_payload_values_reported"):
+        blockers.append(
+            {
+                "reason_code": "slice_raw_payload_exposed",
+                "raw_payload_exposed_count": result.get("raw_payload_exposed_count"),
+                "raw_payload_values_reported": result.get("raw_payload_values_reported"),
+            }
+        )
+    if result.get("secret_values_reported"):
+        blockers.append({"reason_code": "slice_secret_values_reported"})
+    if any(not row.get("no_live_external_calls") for row in rows):
+        blockers.append({"reason_code": "slice_live_external_call_required"})
+    for ticker in expected_supported:
+        row = row_by_ticker.get(ticker)
+        if not row or row.get("generated_output_eligible") is not True or row.get("source_count", 0) <= 0:
+            blockers.append(
+                {
+                    "reason_code": "slice_supported_row_not_renderable",
+                    "ticker": ticker,
+                    "row": row,
+                }
+            )
+    for ticker in expected_blocked:
+        row = row_by_ticker.get(ticker)
+        if not row or row.get("status") != "blocked" or row.get("generated_output_eligible") is not False:
+            blockers.append(
+                {
+                    "reason_code": "slice_blocked_row_not_blocked",
+                    "ticker": ticker,
+                    "row": row,
+                }
+            )
+        elif row.get("source_count") or row.get("citation_count") or row.get("fact_count") or row.get("fetch_call_count"):
+            blockers.append(
+                {
+                    "reason_code": "slice_blocked_row_exposed_evidence_or_fetch",
+                    "ticker": ticker,
+                    "row": row,
+                }
+            )
+
+    details = {
+        "schema_version": result.get("schema_version"),
+        "slice_name": result.get("slice_name"),
+        "policy": result.get("policy"),
+        "normal_ci_requires_live_calls": result.get("normal_ci_requires_live_calls"),
+        "browser_startup_required": result.get("browser_startup_required"),
+        "local_services_required": result.get("local_services_required"),
+        "secret_values_reported": result.get("secret_values_reported"),
+        "raw_payload_values_reported": result.get("raw_payload_values_reported"),
+        "raw_payload_exposed_count": result.get("raw_payload_exposed_count"),
+        "status_definitions": result.get("status_definitions"),
+        "supported_renderable_tickers": result.get("supported_renderable_tickers"),
+        "blocked_regression_tickers": result.get("blocked_regression_tickers"),
+        "blocked_generated_surfaces": result.get("blocked_generated_surfaces"),
+        "status_counts": result.get("status_counts"),
+        "rows": rows,
+        "blockers": blockers,
+    }
+    if blockers:
+        return _blocked(check_id, "local_fresh_data_mvp_slice_smoke_blocked", details)
+    return _pass(check_id, "local_fresh_data_mvp_slice_smoke_passed", details)
 
 
 def _check_stock_vs_etf_comparison_readiness(root: Path) -> RehearsalCheck:
@@ -1669,6 +1777,7 @@ def _manual_readiness_prerequisite_summaries(
     ingestion = check_by_id["local_ingestion_priority_planner"].details
     frontend = check_by_id["frontend_v04_smoke_markers"]
     golden = check_by_id["governed_golden_api_rendering"]
+    slice_smoke = check_by_id["local_fresh_data_mvp_slice_smoke"]
     stock_vs_etf = check_by_id["stock_vs_etf_comparison_readiness"]
     return [
         {
@@ -1724,6 +1833,18 @@ def _manual_readiness_prerequisite_summaries(
             "status": golden.status,
             "reason_code": golden.reason_code,
             "blocked_search_cases": golden.details.get("blocked_search_cases", []),
+        },
+        {
+            "prerequisite_id": "t144_local_fresh_data_mvp_slice_smoke",
+            "check_id": "local_fresh_data_mvp_slice_smoke",
+            "status": slice_smoke.status,
+            "reason_code": slice_smoke.reason_code,
+            "status_counts": slice_smoke.details.get("status_counts"),
+            "supported_renderable_tickers": slice_smoke.details.get("supported_renderable_tickers"),
+            "blocked_regression_tickers": slice_smoke.details.get("blocked_regression_tickers"),
+            "raw_payload_exposed_count": slice_smoke.details.get("raw_payload_exposed_count"),
+            "secret_values_reported": slice_smoke.details.get("secret_values_reported"),
+            "normal_ci_requires_live_calls": slice_smoke.details.get("normal_ci_requires_live_calls"),
         },
         {
             "prerequisite_id": "stock_vs_etf_comparison_readiness",

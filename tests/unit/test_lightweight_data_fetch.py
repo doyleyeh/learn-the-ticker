@@ -19,6 +19,7 @@ from backend.models import (
 )
 from backend.search import search_assets
 from backend.settings import build_lightweight_data_settings
+from scripts.run_local_fresh_data_slice_smoke import run_slice_smoke
 
 
 RETRIEVED_AT = "2026-05-02T12:00:00Z"
@@ -301,6 +302,97 @@ def test_lightweight_etf_fetch_builds_partial_but_renderable_page_contracts():
     assert details.facts["role"]
     assert details.facts["holdings"]
     assert details.facts["cost_context"].value == "Unavailable in the lightweight provider response"
+
+
+def test_local_fresh_data_mvp_slice_smoke_contract_is_deterministic():
+    result = run_slice_smoke()
+
+    assert result["schema_version"] == "local-fresh-data-mvp-slice-smoke-v1"
+    assert result["status"] == "pass"
+    assert result["normal_ci_requires_live_calls"] is False
+    assert result["browser_startup_required"] is False
+    assert result["local_services_required"] is False
+    assert result["secret_values_reported"] is False
+    assert result["raw_payload_values_reported"] is False
+    assert result["raw_payload_exposed_count"] == 0
+    assert result["supported_renderable_tickers"] == ["AAPL", "MSFT", "NVDA", "VOO", "SPY", "VTI", "QQQ", "XLK"]
+    assert result["blocked_regression_tickers"] == ["TQQQ", "ARKK", "BND", "GLD"]
+    assert set(result["status_definitions"]) == {"pass", "partial", "blocked", "unavailable"}
+    assert result["status_counts"] == {"pass": 3, "partial": 5, "blocked": 4, "unavailable": 0}
+
+    rows = {row["ticker"]: row for row in result["rows"]}
+    for ticker in ("AAPL", "MSFT", "NVDA"):
+        row = rows[ticker]
+        assert row["status"] == "pass"
+        assert row["asset_type"] == "stock"
+        assert row["fetch_state"] == "supported"
+        assert row["page_render_state"] == "supported"
+        assert row["generated_output_eligible"] is True
+        assert row["source_count"] >= 4
+        assert row["citation_count"] > 0
+        assert row["fact_count"] > 0
+        assert row["freshness"]["facts_as_of"] == "2025-10-31"
+        assert row["raw_payload_exposed"] is False
+        assert row["no_live_external_calls"] is True
+        assert set(row["source_labels"]) == {"official", "provider_derived"}
+        surface = row["surface_contract"]
+        assert surface["renderable"] is True
+        assert surface["generated_page"] is True
+        assert surface["source_drawer_state"] == "available"
+        assert {"business_model", "provider_market_price"} <= set(surface["detail_fact_keys"])
+        assert surface["unavailable_detail_fact_keys"] == []
+        assert surface["section_states"]["business_overview"]["evidence_state"] == "supported"
+
+    for ticker in ("VOO", "SPY", "VTI", "QQQ", "XLK"):
+        row = rows[ticker]
+        assert row["status"] == "partial"
+        assert row["asset_type"] == "etf"
+        assert row["fetch_state"] == "partial"
+        assert row["page_render_state"] == "partial"
+        assert row["generated_output_eligible"] is True
+        assert row["freshness"]["holdings_as_of"] == "2026-05-01"
+        assert row["raw_payload_exposed"] is False
+        assert row["no_live_external_calls"] is True
+        assert row["source_labels"] == ["partial", "provider_derived"]
+        surface = row["surface_contract"]
+        assert surface["renderable"] is True
+        assert surface["source_drawer_state"] == "available"
+        assert {"role", "holdings", "cost_context", "manifest_scope_signal", "provider_market_price"} <= set(
+            surface["detail_fact_keys"]
+        )
+        assert surface["unavailable_detail_fact_keys"] == ["cost_context"]
+        assert {"cost_trading_context", "fund_objective_role", "holdings_exposure"} <= set(
+            surface["partial_section_ids"]
+        )
+        assert surface["section_states"]["holdings_exposure"]["evidence_state"] == "partial"
+        assert surface["section_states"]["cost_trading_context"]["evidence_state"] == "partial"
+
+    for ticker in ("TQQQ", "ARKK", "BND", "GLD"):
+        row = rows[ticker]
+        assert row["status"] == "blocked"
+        assert row["asset_type"] == "unsupported"
+        assert row["expected_recognition_type"] == "etf_or_etp"
+        assert row["fetch_state"] == "unsupported"
+        assert row["generated_output_eligible"] is False
+        assert row["source_count"] == 0
+        assert row["citation_count"] == 0
+        assert row["fact_count"] == 0
+        assert row["fetch_call_count"] == 0
+        assert row["raw_payload_exposed"] is False
+        assert row["no_live_external_calls"] is True
+        assert row["blocked_generated_surfaces"] == result["blocked_generated_surfaces"]
+        assert row["surface_contract"] == {
+            "renderable": False,
+            "generated_page": False,
+            "generated_chat_answer": False,
+            "generated_comparison": False,
+            "weekly_news_focus": False,
+            "ai_comprehensive_analysis": False,
+            "export": False,
+            "generated_risk_summary": False,
+            "source_drawer_state": "unavailable",
+            "overview_state": "unsupported",
+        }
 
 
 def test_live_lightweight_search_can_open_exact_eligible_not_cached_asset(monkeypatch):

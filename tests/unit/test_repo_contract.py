@@ -722,7 +722,7 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert threshold["launch_or_public_deployment_approved"] is False
     assert threshold["required_blockers"] == []
     assert threshold["optional_blockers"] == []
-    assert len(threshold["required_checks"]) == 9
+    assert len(threshold["required_checks"]) == 10
     assert all(check["status"] == "pass" for check in threshold["required_checks"])
     assert len(threshold["optional_skipped_modes"]) == 4
     assert threshold["thresholds"] == {
@@ -746,6 +746,7 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert statuses["deterministic_default_boundary"] == "pass"
     assert statuses["source_handoff_approval_gate"] == "pass"
     assert statuses["governed_golden_api_rendering"] == "pass"
+    assert statuses["local_fresh_data_mvp_slice_smoke"] == "pass"
     assert statuses["stock_vs_etf_comparison_readiness"] == "pass"
     assert statuses["launch_manifest_review_packets"] == "pass"
     assert statuses["stock_sec_source_pack_readiness"] == "pass"
@@ -755,6 +756,33 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert statuses["optional_local_durable_repositories"] == "skipped"
     assert statuses["optional_official_source_retrieval"] == "skipped"
     assert statuses["optional_live_ai_review"] == "skipped"
+    slice_details = next(
+        check["details"] for check in result["checks"] if check["check_id"] == "local_fresh_data_mvp_slice_smoke"
+    )
+    assert slice_details["schema_version"] == "local-fresh-data-mvp-slice-smoke-v1"
+    assert slice_details["normal_ci_requires_live_calls"] is False
+    assert slice_details["browser_startup_required"] is False
+    assert slice_details["local_services_required"] is False
+    assert slice_details["secret_values_reported"] is False
+    assert slice_details["raw_payload_values_reported"] is False
+    assert slice_details["raw_payload_exposed_count"] == 0
+    assert slice_details["status_counts"] == {"pass": 3, "partial": 5, "blocked": 4, "unavailable": 0}
+    assert slice_details["supported_renderable_tickers"] == [
+        "AAPL",
+        "MSFT",
+        "NVDA",
+        "VOO",
+        "SPY",
+        "VTI",
+        "QQQ",
+        "XLK",
+    ]
+    assert slice_details["blocked_regression_tickers"] == ["TQQQ", "ARKK", "BND", "GLD"]
+    slice_rows = {row["ticker"]: row for row in slice_details["rows"]}
+    assert slice_rows["AAPL"]["source_labels"] == ["official", "provider_derived"]
+    assert slice_rows["VOO"]["source_labels"] == ["partial", "provider_derived"]
+    assert slice_rows["TQQQ"]["fetch_call_count"] == 0
+    assert all(row["raw_payload_exposed"] is False for row in slice_rows.values())
     launch_details = next(
         check["details"] for check in result["checks"] if check["check_id"] == "launch_manifest_review_packets"
     )
@@ -1091,6 +1119,7 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
         "local_mvp_thresholds",
         "local_ingestion_priority_planning",
         "governed_golden_rendering",
+        "t144_local_fresh_data_mvp_slice_smoke",
         "stock_vs_etf_comparison_readiness",
         "frontend_workflow_smoke_markers",
     } == prerequisite_ids
@@ -1281,6 +1310,13 @@ def test_t118_local_fresh_data_runbook_covers_deterministic_smoke_without_live_r
         "backend comparison pack, API-aligned frontend markers, comparison export, asset-chat compare redirect",
         "does not mean broad stock-vs-ETF coverage",
         "unsupported, out-of-scope, eligible-not-cached, unknown, or missing-pack pairs",
+        "Task: T-144",
+        "scripts/run_local_fresh_data_slice_smoke.py --json",
+        "local fresh-data MVP slice smoke",
+        "`pass`, `partial`, `blocked`, and `unavailable`",
+        "`AAPL`, `MSFT`, `NVDA`, `VOO`, `SPY`, `VTI`, `QQQ`, and `XLK`",
+        "`TQQQ`, `ARKK`, `BND`, and `GLD`",
+        "DATA_POLICY_MODE=lightweight LIGHTWEIGHT_LIVE_FETCH_ENABLED=true LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true SEC_EDGAR_USER_AGENT=\"learn-the-ticker-local/0.1 contact@example.com\" TMPDIR=/tmp python3 scripts/run_lightweight_data_fetch_smoke.py --live --ticker AAPL --ticker MSFT --ticker NVDA --ticker VOO --ticker SPY --ticker VTI --ticker QQQ --ticker XLK --json",
     ]:
         assert marker in runbook, f"T-118 runbook should include marker: {marker}"
 
