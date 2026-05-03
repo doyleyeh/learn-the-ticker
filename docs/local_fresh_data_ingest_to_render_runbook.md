@@ -1,6 +1,6 @@
 # Local Fresh-Data Ingest-To-Render Runbook
 
-Task: T-118, updated by T-119 through T-144 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, stock-vs-ETF comparison readiness gating, and local fresh-data MVP slice smoke coverage
+Task: T-118, updated by T-119 through T-145 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, stock-vs-ETF comparison readiness gating, local fresh-data MVP slice smoke coverage, and optional slice browser/API localhost coverage
 
 This runbook describes the local golden-asset smoke path before production deployment work. Normal CI uses deterministic fixtures, mocked official-source acquisition, and in-memory repositories. It must not require real SEC, issuer, market-data, broad news, storage, database, Redis, RSS, or LLM calls.
 
@@ -289,7 +289,34 @@ This opt-in smoke checks:
 
 Stock-vs-ETF local functional readiness (T-143): the deterministic rehearsal command reports `stock_vs_etf_comparison_readiness` for the local `AAPL` vs `VOO` pack. Passing this check means the backend comparison pack, API-aligned frontend markers, comparison export, asset-chat compare redirect, optional localhost smoke instructions, and blocked unsupported/no-local-pack comparison states all agree for the fixture-backed `AAPL`/`VOO` path. It does not mean broad stock-vs-ETF coverage, live-provider readiness, deployment readiness, production launch readiness, source approval, manifest promotion, generated-output cache writes, or any generated-output unlock for unsupported, out-of-scope, eligible-not-cached, unknown, or missing-pack pairs.
 
-8. Optional local-durable smoke (T-122): run the browser smoke with durable prereqs set.
+8. Optional local fresh-data MVP slice browser/API smoke (T-145): run this only when already-running API and web services are started with the lightweight local MVP settings. This smoke is skip-by-default and must not start browser services, local ports, live provider calls, Docker, or LLM calls in normal CI. It checks the Next `/api/:path*` proxy, direct FastAPI JSON responses, and CORS from the configured web origin for the T-144 slice.
+
+```bash
+LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1 LEARN_TICKER_LOCAL_WEB_BASE=http://127.0.0.1:3000 LEARN_TICKER_LOCAL_API_BASE=http://127.0.0.1:8000 DATA_POLICY_MODE=lightweight LIGHTWEIGHT_LIVE_FETCH_ENABLED=true LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true SEC_EDGAR_USER_AGENT="learn-the-ticker-local/0.1 contact@example.com" TMPDIR=/tmp npm run test:browser-smoke
+```
+
+Required local prerequisites:
+
+- `LEARN_TICKER_LOCAL_BROWSER_SMOKE=1`
+- `LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1`
+- `LEARN_TICKER_LOCAL_WEB_BASE` pointing to the already-running Next service
+- `LEARN_TICKER_LOCAL_API_BASE` pointing to the already-running FastAPI service
+- `DATA_POLICY_MODE=lightweight`
+- `LIGHTWEIGHT_LIVE_FETCH_ENABLED=true`
+- `LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true`
+- placeholder `SEC_EDGAR_USER_AGENT`
+
+When one of these prerequisites is missing, the smoke reports sanitized blockers using env var names only. It must not print secret values, unrestricted provider payloads, raw source text, or raw payload values.
+
+Slice expectations:
+
+- `AAPL`, `MSFT`, and `NVDA` are probed through `/api/assets/{ticker}/fresh-data` via both the frontend proxy and direct FastAPI. They should return JSON rather than a Next HTML fallback, stock identity, renderable supported state, generated-output eligibility, official SEC/source labeling where exposed, provider-derived fallback labeling where present, citations or explicit evidence states, freshness/as-of metadata, and source-drawer/source-count metadata.
+- `VOO`, `SPY`, `VTI`, `QQQ`, and `XLK` are probed through `/api/assets/{ticker}/fresh-data` via both the frontend proxy and direct FastAPI. They should return JSON rather than a Next HTML fallback, ETF identity, renderable partial state, generated-output eligibility, manifest/scope or partial source labels, provider-derived fallback labeling where present, citations or explicit partial/unavailable evidence states, freshness/as-of metadata, and visible partial/unavailable labels for missing issuer evidence.
+- Representative stock and ETF rows also check `/api/search`, `/api/assets/{ticker}/overview`, `/api/assets/{ticker}/details`, and `/api/assets/{ticker}/sources` through the running-service contract so overview, details, citation, freshness, and source-drawer surfaces remain API-backed.
+- The blocked regression tickers `TQQQ`, `ARKK`, `BND`, and `GLD` remain generated-output-ineligible. They must not receive generated pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, source documents, citations, facts, provider fetches from the slice smoke, or generated-output cache writes.
+- The existing optional browser smoke remains intact for `VOO`/`QQQ` ETF-vs-ETF and `AAPL`/`VOO` stock-vs-ETF, including comparison-route redirects, relationship badges, the `single-company-vs-ETF-basket` structure, export/chat proxy checks, and no `holding_verified` regression.
+
+9. Optional local-durable smoke (T-122): run the browser smoke with durable prereqs set.
 
 ```bash
 LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 \
@@ -314,7 +341,7 @@ When durable prereqs are present, this optional run validates:
 
 If any durable prerequisites are missing, the smoke should print blockers and report that durable smoke is skipped.
 
-9. Verify frontend rendering with the API base configured:
+10. Verify frontend rendering with the API base configured:
 
 ```bash
 npm run dev
@@ -345,4 +372,4 @@ For optional `local_durable`, remove only local throwaway data created for the s
 - If chat or export links return frontend 404s, confirm the web dev server was started after setting `NEXT_PUBLIC_API_BASE_URL` or that the Next `/api/:path*` rewrite can reach the local FastAPI backend.
 - If browser direct API calls fail, confirm `CORS_ALLOWED_ORIGINS` includes the exact local web origin, including hostname and port.
 
-The deterministic regression for this runbook is `test_t118_local_fresh_data_ingest_to_render_smoke_path_is_deterministic` in `tests/integration/test_backend_api.py`. T-119 added static coverage for the frontend API helper, Next rewrite, and CORS settings. T-121/T-122 added optional localhost browser and durable smoke paths. T-125 keeps this runbook aligned with the v0.6 handoff docs. T-127 covers operator-only live-AI validation smoke, T-128 proves deterministic governed golden source snapshots, knowledge-pack records, and generated-output cache records can drive API and frontend-rendering markers without approving new sources or adding live calls, and T-144 adds the deterministic local fresh-data MVP slice smoke.
+The deterministic regression for this runbook is `test_t118_local_fresh_data_ingest_to_render_smoke_path_is_deterministic` in `tests/integration/test_backend_api.py`. T-119 added static coverage for the frontend API helper, Next rewrite, and CORS settings. T-121/T-122 added optional localhost browser and durable smoke paths. T-125 keeps this runbook aligned with the v0.6 handoff docs. T-127 covers operator-only live-AI validation smoke, T-128 proves deterministic governed golden source snapshots, knowledge-pack records, and generated-output cache records can drive API and frontend-rendering markers without approving new sources or adding live calls, T-144 adds the deterministic local fresh-data MVP slice smoke, and T-145 adds the opt-in local fresh-data MVP slice browser/API smoke under the existing localhost browser smoke gate.
