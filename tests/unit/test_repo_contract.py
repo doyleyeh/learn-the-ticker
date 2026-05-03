@@ -1419,6 +1419,79 @@ def test_t145_local_fresh_data_slice_browser_api_smoke_is_optional_and_documente
         assert forbidden.lower() not in runbook.lower()
 
 
+def test_t146_optional_durable_fresh_data_slice_smoke_is_gated_and_documented():
+    smoke = read_file("tests/frontend/smoke.mjs")
+    runbook = read_file("docs/local_fresh_data_ingest_to_render_runbook.md")
+    combined = f"{smoke}\n{runbook}"
+
+    for marker in [
+        "LEARN_TICKER_LOCAL_DURABLE_SMOKE",
+        "LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE",
+        "LOCAL_DURABLE_REPOSITORIES_ENABLED",
+        "DATABASE_URL",
+        "LOCAL_DURABLE_OBJECT_NAMESPACE",
+        "localDurableFreshDataSlicePrereqStatus",
+        "reportLocalDurableFreshDataSlicePrereqBlockers",
+        "runOptionalDurableFreshDataSliceSmoke",
+        "assertSmokeLevelStableFreshDataFields",
+        "assertAssetExportContractPayload",
+        "assertSourceListExportContractPayload",
+        "assertBlockedExportContractPayload",
+        "Use a placeholder-only non-public LOCAL_DURABLE_OBJECT_NAMESPACE",
+        "Local durable fresh-data slice browser/API smoke is blocked by missing prerequisites",
+        "Local durable fresh-data slice browser/API smoke",
+        "/api/assets/${encodeURIComponent(ticker)}/export?export_format=json",
+        "/api/assets/${encodeURIComponent(ticker)}/sources/export?export_format=json",
+        "asset_page",
+        "asset_source_list",
+        "empty_factual_evidence_export",
+        "same_asset",
+    ]:
+        assert marker in combined, f"T-146 durable slice smoke/runbook should include marker: {marker}"
+
+    for marker in [
+        "LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 LEARN_TICKER_LOCAL_DURABLE_SMOKE=1 LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1 LEARN_TICKER_LOCAL_WEB_BASE=http://127.0.0.1:3000 LEARN_TICKER_LOCAL_API_BASE=http://127.0.0.1:8000 DATA_POLICY_MODE=lightweight LIGHTWEIGHT_LIVE_FETCH_ENABLED=true LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true LOCAL_DURABLE_REPOSITORIES_ENABLED=true LOCAL_DURABLE_OBJECT_NAMESPACE=ticker-smoke DATABASE_URL=\"<local durable repository DSN, placeholder-only>\" SEC_EDGAR_USER_AGENT=\"learn-the-ticker-local/0.1 contact@example.com\" TMPDIR=/tmp npm run test:browser-smoke",
+        "already-running FastAPI and Next services",
+        "`LEARN_TICKER_LOCAL_DURABLE_SMOKE=1`",
+        "`LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1`",
+        "placeholder-only local `DATABASE_URL`",
+        "non-public placeholder `LOCAL_DURABLE_OBJECT_NAMESPACE`",
+        "rejects object namespaces that look public, URL-like, signed-link-like, credential-bearing, token-bearing, password-bearing, or secret-bearing",
+        "must not print actual DSNs, object namespaces, provider credentials, unrestricted provider payloads, raw source text, raw payload values",
+        "Representative durable rows `AAPL` and `VOO` check `/api/search`, `/api/assets/{ticker}/overview`, `/api/assets/{ticker}/details`, `/api/assets/{ticker}/sources`, `/api/assets/{ticker}/export?export_format=json`, and `/api/assets/{ticker}/sources/export?export_format=json`",
+        "Repeated representative reads compare only smoke-level stable fields",
+        "do not require exact quote, timestamp, checksum, freshness timestamp, or payload equality",
+        "Default `node tests/frontend/smoke.mjs`, `npm test`, `npm run build`, repo-contract tests, local rehearsal, and the quality gate remain deterministic",
+        "Do not touch production databases, buckets, deployment resources, current Top-500 manifests, candidate manifests, or diff reports",
+    ]:
+        assert marker in runbook, f"T-146 runbook should document marker: {marker}"
+
+    assert smoke.index("const localBrowserSmokeEnabled") < smoke.index("const localDurableBrowserSmokeEnabled")
+    assert smoke.index("const localDurableBrowserSmokeEnabled") < smoke.index("const localFreshDataSliceSmokeEnabled")
+    assert smoke.index("localDurableFreshDataSlicePrereqStatus") < smoke.index("runOptionalDurableFreshDataSliceSmoke")
+    assert "if (localFreshDataSliceSmokeEnabled && localDurableBrowserSmokeEnabled)" in smoke
+    assert smoke.index("if (localFreshDataSliceSmokeEnabled && localDurableBrowserSmokeEnabled)") < smoke.index(
+        "await runOptionalDurableFreshDataSliceSmoke()"
+    )
+    assert "DATABASE_URL=${prereqs.databaseUrlConfigured ? \"set\" : \"missing\"}" in smoke
+    assert "LOCAL_DURABLE_OBJECT_NAMESPACE=${prereqs.namespaceConfigured ? \"set\" : \"missing\"}" in smoke
+
+    for forbidden in [
+        "OPENROUTER_API_KEY=",
+        "FMP_API_KEY=",
+        "ALPHA_VANTAGE_API_KEY=",
+        "FINNHUB_API_KEY=",
+        "TIINGO_API_KEY=",
+        "EODHD_API_KEY=",
+        "BEGIN PRIVATE KEY",
+        "sk-",
+        "xoxb-",
+        "ghp_",
+        "raw model reasoning is shown",
+    ]:
+        assert forbidden.lower() not in runbook.lower()
+
+
 def test_sec_stock_acquisition_contract_is_backend_only_fixture_backed_and_sanitized():
     adapter = read_file("backend/provider_adapters/sec_stock.py")
     worker = read_file("backend/ingestion_worker.py")

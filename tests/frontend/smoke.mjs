@@ -1518,7 +1518,7 @@ function localDurablePrereqStatus() {
     blockers.push("Set LOCAL_DURABLE_REPOSITORIES_ENABLED=true");
   }
   if (!databaseUrl) {
-    blockers.push("Set DATABASE_URL to a local durable repository DSN");
+    blockers.push("Set DATABASE_URL to a local durable repository DSN (placeholder-only)");
   }
   if (!namespace) {
     blockers.push("Set LOCAL_DURABLE_OBJECT_NAMESPACE");
@@ -1526,11 +1526,23 @@ function localDurablePrereqStatus() {
 
   const unsafeNamespace = [
     "://",
+    "?",
     "signed",
+    "signature",
+    "sharedaccesssignature",
     "signature=",
+    "credential",
+    "accesskey",
+    "access_key",
+    "api-key",
+    "apikey",
+    "api_key",
+    "bearer",
     "token=",
+    "token",
     "secret",
     "password",
+    "public",
     "public/",
     "/public/",
   ];
@@ -1610,6 +1622,24 @@ function reportLocalFreshDataSlicePrereqBlockers(blockers) {
   }
   console.error(
     "Start already-running web/API services with the listed env vars; no secret values or raw payloads are required in this output."
+  );
+}
+
+function localDurableFreshDataSlicePrereqStatus() {
+  const blockers = [...localFreshDataSlicePrereqStatus()];
+  if (!toBool(process.env.LEARN_TICKER_LOCAL_DURABLE_SMOKE)) {
+    blockers.push("Set LEARN_TICKER_LOCAL_DURABLE_SMOKE=1");
+  }
+  return [...blockers, ...localDurablePrereqStatus().blockers];
+}
+
+function reportLocalDurableFreshDataSlicePrereqBlockers(blockers) {
+  console.error("Local durable fresh-data slice browser/API smoke is blocked by missing prerequisites:");
+  for (const blocker of blockers) {
+    console.error(`- ${blocker}`);
+  }
+  console.error(
+    "Use already-running web/API services with local durable settings; this output reports env var names/status only and never prints DSNs, namespaces, keys, tokens, raw source text, or raw payload values."
   );
 }
 
@@ -1786,9 +1816,15 @@ if (localBrowserSmokeEnabled) {
     "8000"
   );
   if (localFreshDataSliceSmokeEnabled) {
-    const prereqBlockers = localFreshDataSlicePrereqStatus();
+    const prereqBlockers = localDurableBrowserSmokeEnabled
+      ? localDurableFreshDataSlicePrereqStatus()
+      : localFreshDataSlicePrereqStatus();
     if (prereqBlockers.length > 0) {
-      reportLocalFreshDataSlicePrereqBlockers(prereqBlockers);
+      if (localDurableBrowserSmokeEnabled) {
+        reportLocalDurableFreshDataSlicePrereqBlockers(prereqBlockers);
+      } else {
+        reportLocalFreshDataSlicePrereqBlockers(prereqBlockers);
+      }
       process.exit(1);
     }
   }
@@ -2151,17 +2187,89 @@ if (localBrowserSmokeEnabled) {
     assert.ok(Array.isArray(payload?.related_claims) && payload.related_claims.length > 0, `${label} should include related claims`);
   };
 
-  const runOptionalFreshDataSliceSmoke = async () => {
-    const prereqBlockers = localFreshDataSlicePrereqStatus();
+  const stableFreshDataSmokeFields = (payload) => ({
+    ticker: payload?.ticker,
+    assetType: payload?.asset?.asset_type,
+    fetchState: payload?.fetch_state,
+    pageRenderState: payload?.page_render_state,
+    generatedOutputEligible: payload?.generated_output_eligible,
+    hasSources: (payload?.sources ?? []).length > 0,
+    hasCitations: (payload?.citations ?? []).length > 0,
+    blockedGeneratedOutput: Boolean(payload?.diagnostics?.blocked_generated_output),
+    rawPayloadExposed: Boolean(payload?.raw_payload_exposed),
+  });
+
+  const assertSmokeLevelStableFreshDataFields = (firstPayload, secondPayload, label) => {
+    assert.deepEqual(
+      stableFreshDataSmokeFields(secondPayload),
+      stableFreshDataSmokeFields(firstPayload),
+      `${label} should keep smoke-level stable fields across repeated durable reads`
+    );
+  };
+
+  const assertAssetExportContractPayload = (payload, ticker, label) => {
+    assert.equal(payload?.content_type, "asset_page", `${label} should be an asset-page export`);
+    assert.equal(payload?.export_state, "available", `${label} should be available`);
+    assert.equal(payload?.asset?.ticker, ticker, `${label} should preserve ticker identity`);
+    assert.ok(payload?.freshness?.page_last_updated_at, `${label} should expose export freshness metadata`);
+    assert.ok(Array.isArray(payload?.sections) && payload.sections.length > 0, `${label} should include exported sections`);
+    assert.ok(Array.isArray(payload?.citations) && payload.citations.length > 0, `${label} should include export citations`);
+    assert.ok(Array.isArray(payload?.source_documents) && payload.source_documents.length > 0, `${label} should include export source metadata`);
+    assert.equal(payload?.export_validation?.schema_version, "export-validation-v1", `${label} should include export validation metadata`);
+    assert.equal(payload?.export_validation?.binding_scope, "same_asset", `${label} should stay bound to same-asset evidence`);
+    assert.match(payload?.disclaimer ?? "", /not investment, financial, legal, or tax advice/i, `${label} should preserve the educational disclaimer`);
+    assertNoPersonalAdviceText(`${payload?.rendered_markdown ?? ""}\n${payload?.disclaimer ?? ""}`, label);
+    assertNoRawPayloadOrSecretExposure(payload, label);
+  };
+
+  const assertSourceListExportContractPayload = (payload, ticker, label) => {
+    assert.equal(payload?.content_type, "asset_source_list", `${label} should be a source-list export`);
+    assert.equal(payload?.export_state, "available", `${label} should be available`);
+    assert.equal(payload?.asset?.ticker, ticker, `${label} should preserve ticker identity`);
+    assert.ok(payload?.freshness?.page_last_updated_at, `${label} should expose source-list export freshness metadata`);
+    assert.ok(Array.isArray(payload?.sections) && payload.sections.length > 0, `${label} should include exported source-list sections`);
+    assert.ok(Array.isArray(payload?.source_documents) && payload.source_documents.length > 0, `${label} should include exported source metadata`);
+    assert.equal(payload?.export_validation?.schema_version, "export-validation-v1", `${label} should include export validation metadata`);
+    assert.equal(payload?.export_validation?.binding_scope, "same_asset", `${label} should stay bound to same-asset source evidence`);
+    assertNoRawPayloadOrSecretExposure(payload, label);
+  };
+
+  const assertBlockedExportContractPayload = (payload, ticker, expectedContentType, label) => {
+    assert.equal(payload?.content_type, expectedContentType, `${label} should keep the requested export content type`);
+    assert.equal(payload?.asset?.ticker, ticker, `${label} should preserve blocked ticker identity`);
+    assert.ok(["unsupported", "unavailable"].includes(payload?.export_state), `${label} should not be an available export`);
+    assert.equal((payload?.citations ?? []).length, 0, `${label} should not include citations`);
+    assert.equal((payload?.source_documents ?? []).length, 0, `${label} should not include source documents`);
+    assert.equal(payload?.metadata?.generated_asset_output, false, `${label} should report no generated asset output`);
+    assert.equal(
+      payload?.export_validation?.diagnostics?.empty_factual_evidence_export,
+      true,
+      `${label} should validate as an empty factual-evidence export`
+    );
+    assertNoRawPayloadOrSecretExposure(payload, label);
+  };
+
+  const runOptionalFreshDataSliceSmoke = async ({ durableMode = false } = {}) => {
+    const prereqBlockers = durableMode
+      ? localDurableFreshDataSlicePrereqStatus()
+      : localFreshDataSlicePrereqStatus();
     if (prereqBlockers.length > 0) {
-      reportLocalFreshDataSlicePrereqBlockers(prereqBlockers);
+      if (durableMode) {
+        reportLocalDurableFreshDataSlicePrereqBlockers(prereqBlockers);
+      } else {
+        reportLocalFreshDataSlicePrereqBlockers(prereqBlockers);
+      }
       process.exit(1);
     }
 
     const sliceSmokeFailures = [];
+    const smokeLabel = durableMode
+      ? "Local durable fresh-data slice browser/API smoke"
+      : "Local fresh-data slice browser/API smoke";
 
     for (const ticker of localFreshDataSliceSupportedTickers) {
       const expectedAssetType = localFreshDataSliceStocks.includes(ticker) ? "stock" : "etf";
+      const representative = localFreshDataSliceRepresentativeTickers.some((row) => row.ticker === ticker);
       try {
         const [proxyResponse, proxyPayload] = await requestJsonWithLog(
           "GET",
@@ -2172,6 +2280,20 @@ if (localBrowserSmokeEnabled) {
         assert.equal(proxyResponse.status, 200, `${ticker} frontend proxy fresh-data API should return 200`);
         assertFreshDataCommonPayload(proxyPayload, ticker, `${ticker} frontend proxy fresh-data API`);
         assertRenderableFreshDataPayload(proxyPayload, expectedAssetType, `${ticker} frontend proxy fresh-data API`);
+        if (durableMode && representative) {
+          const [repeatProxyResponse, repeatProxyPayload] = await requestJsonWithLog(
+            "GET",
+            `${webBase}/api/assets/${encodeURIComponent(ticker)}/fresh-data`,
+            {},
+            `${ticker} frontend proxy repeated durable fresh-data API`
+          );
+          assert.equal(repeatProxyResponse.status, 200, `${ticker} frontend proxy repeated durable fresh-data API should return 200`);
+          assertSmokeLevelStableFreshDataFields(
+            proxyPayload,
+            repeatProxyPayload,
+            `${ticker} frontend proxy durable fresh-data repeat`
+          );
+        }
 
         const [directResponse, directPayload] = await requestJsonWithLog(
           "GET",
@@ -2183,6 +2305,21 @@ if (localBrowserSmokeEnabled) {
         assertCorsAllowsLocalWebOrigin(directResponse, `${ticker} direct FastAPI fresh-data API`);
         assertFreshDataCommonPayload(directPayload, ticker, `${ticker} direct FastAPI fresh-data API`);
         assertRenderableFreshDataPayload(directPayload, expectedAssetType, `${ticker} direct FastAPI fresh-data API`);
+        if (durableMode && representative) {
+          const [repeatDirectResponse, repeatDirectPayload] = await requestJsonWithLog(
+            "GET",
+            `${apiBase}/api/assets/${encodeURIComponent(ticker)}/fresh-data`,
+            { headers: { Origin: webBase } },
+            `${ticker} direct FastAPI repeated durable fresh-data API`
+          );
+          assert.equal(repeatDirectResponse.status, 200, `${ticker} direct FastAPI repeated durable fresh-data API should return 200`);
+          assertCorsAllowsLocalWebOrigin(repeatDirectResponse, `${ticker} direct FastAPI repeated durable fresh-data API`);
+          assertSmokeLevelStableFreshDataFields(
+            directPayload,
+            repeatDirectPayload,
+            `${ticker} direct FastAPI durable fresh-data repeat`
+          );
+        }
       } catch (error) {
         sliceSmokeFailures.push(`${ticker} supported fresh-data probe failed: ${error}`);
       }
@@ -2218,6 +2355,35 @@ if (localBrowserSmokeEnabled) {
         assert.equal(searchResponse.status, 200, `${ticker} frontend proxy blocked search API should return 200`);
         assertBlockedSearchPayload(searchPayload, ticker, `${ticker} frontend proxy blocked search API`);
         assertNoRawPayloadOrSecretExposure(searchPayload, `${ticker} frontend proxy blocked search API`);
+        if (durableMode) {
+          const [assetExportResponse, assetExportPayload] = await requestJsonWithLog(
+            "GET",
+            `${webBase}/api/assets/${encodeURIComponent(ticker)}/export?export_format=json`,
+            {},
+            `${ticker} frontend proxy blocked asset JSON export`
+          );
+          assert.equal(assetExportResponse.status, 200, `${ticker} frontend proxy blocked asset JSON export should return 200`);
+          assertBlockedExportContractPayload(
+            assetExportPayload,
+            ticker,
+            "asset_page",
+            `${ticker} frontend proxy blocked asset JSON export`
+          );
+
+          const [sourceExportResponse, sourceExportPayload] = await requestJsonWithLog(
+            "GET",
+            `${webBase}/api/assets/${encodeURIComponent(ticker)}/sources/export?export_format=json`,
+            {},
+            `${ticker} frontend proxy blocked source-list JSON export`
+          );
+          assert.equal(sourceExportResponse.status, 200, `${ticker} frontend proxy blocked source-list JSON export should return 200`);
+          assertBlockedExportContractPayload(
+            sourceExportPayload,
+            ticker,
+            "asset_source_list",
+            `${ticker} frontend proxy blocked source-list JSON export`
+          );
+        }
       } catch (error) {
         sliceSmokeFailures.push(`${ticker} blocked regression probe failed: ${error}`);
       }
@@ -2264,13 +2430,41 @@ if (localBrowserSmokeEnabled) {
         assert.equal(sourcesResponse.status, 200, `${ticker} frontend proxy sources contract should return 200`);
         assertSourcesContractPayload(sourcesPayload, ticker, `${ticker} frontend proxy sources contract`);
         assertNoRawPayloadOrSecretExposure(sourcesPayload, `${ticker} frontend proxy sources contract`);
+
+        if (durableMode) {
+          const [assetExportResponse, assetExportPayload] = await requestJsonWithLog(
+            "GET",
+            `${webBase}/api/assets/${encodeURIComponent(ticker)}/export?export_format=json`,
+            {},
+            `${ticker} frontend proxy durable asset JSON export contract`
+          );
+          assert.equal(assetExportResponse.status, 200, `${ticker} frontend proxy durable asset JSON export contract should return 200`);
+          assertAssetExportContractPayload(
+            assetExportPayload,
+            ticker,
+            `${ticker} frontend proxy durable asset JSON export contract`
+          );
+
+          const [sourceExportResponse, sourceExportPayload] = await requestJsonWithLog(
+            "GET",
+            `${webBase}/api/assets/${encodeURIComponent(ticker)}/sources/export?export_format=json`,
+            {},
+            `${ticker} frontend proxy durable source-list JSON export contract`
+          );
+          assert.equal(sourceExportResponse.status, 200, `${ticker} frontend proxy durable source-list JSON export contract should return 200`);
+          assertSourceListExportContractPayload(
+            sourceExportPayload,
+            ticker,
+            `${ticker} frontend proxy durable source-list JSON export contract`
+          );
+        }
       } catch (error) {
         sliceSmokeFailures.push(`${ticker} representative running-service contract probe failed: ${error}`);
       }
     }
 
     if (sliceSmokeFailures.length > 0) {
-      console.error("Local fresh-data slice browser/API smoke detected blockers:");
+      console.error(`${smokeLabel} detected blockers:`);
       for (const item of sliceSmokeFailures) {
         console.error(`- ${item}`);
       }
@@ -2278,9 +2472,13 @@ if (localBrowserSmokeEnabled) {
     }
 
     console.log(
-      `Local fresh-data slice browser/API smoke passed for supported=${localFreshDataSliceSupportedTickers.join(",")} `
+      `${smokeLabel} passed for supported=${localFreshDataSliceSupportedTickers.join(",")} `
       + `and blocked=${localFreshDataSliceBlockedTickers.join(",")}.`
     );
+  };
+
+  const runOptionalDurableFreshDataSliceSmoke = async () => {
+    await runOptionalFreshDataSliceSmoke({ durableMode: true });
   };
 
   const runOptionalBrowserSmoke = async () => {
@@ -2528,7 +2726,9 @@ if (localBrowserSmokeEnabled) {
     console.log(`Local browser smoke checks passed for web=${webBase}, api=${apiBase}.`);
     console.log(`Local browser smoke recorded ${networkEvents.length} network events.`);
 
-    if (localFreshDataSliceSmokeEnabled) {
+    if (localFreshDataSliceSmokeEnabled && localDurableBrowserSmokeEnabled) {
+      await runOptionalDurableFreshDataSliceSmoke();
+    } else if (localFreshDataSliceSmokeEnabled) {
       await runOptionalFreshDataSliceSmoke();
     } else {
       console.log(

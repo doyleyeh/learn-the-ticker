@@ -1,6 +1,6 @@
 # Local Fresh-Data Ingest-To-Render Runbook
 
-Task: T-118, updated by T-119 through T-145 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, stock-vs-ETF comparison readiness gating, local fresh-data MVP slice smoke coverage, and optional slice browser/API localhost coverage
+Task: T-118, updated by T-119 through T-146 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, stock-vs-ETF comparison readiness gating, local fresh-data MVP slice smoke coverage, optional slice browser/API localhost coverage, and optional durable slice smoke coverage
 
 This runbook describes the local golden-asset smoke path before production deployment work. Normal CI uses deterministic fixtures, mocked official-source acquisition, and in-memory repositories. It must not require real SEC, issuer, market-data, broad news, storage, database, Redis, RSS, or LLM calls.
 
@@ -316,7 +316,40 @@ Slice expectations:
 - The blocked regression tickers `TQQQ`, `ARKK`, `BND`, and `GLD` remain generated-output-ineligible. They must not receive generated pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, source documents, citations, facts, provider fetches from the slice smoke, or generated-output cache writes.
 - The existing optional browser smoke remains intact for `VOO`/`QQQ` ETF-vs-ETF and `AAPL`/`VOO` stock-vs-ETF, including comparison-route redirects, relationship badges, the `single-company-vs-ETF-basket` structure, export/chat proxy checks, and no `holding_verified` regression.
 
-9. Optional local-durable smoke (T-122): run the browser smoke with durable prereqs set.
+9. Optional durable local fresh-data MVP slice browser/API smoke (T-146): run this only when the already-running API and web services use lightweight local MVP settings plus local durable repository settings. This is skip-by-default and gated by all three local smoke flags: `LEARN_TICKER_LOCAL_BROWSER_SMOKE=1`, `LEARN_TICKER_LOCAL_DURABLE_SMOKE=1`, and `LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1`.
+
+```bash
+LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 LEARN_TICKER_LOCAL_DURABLE_SMOKE=1 LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1 LEARN_TICKER_LOCAL_WEB_BASE=http://127.0.0.1:3000 LEARN_TICKER_LOCAL_API_BASE=http://127.0.0.1:8000 DATA_POLICY_MODE=lightweight LIGHTWEIGHT_LIVE_FETCH_ENABLED=true LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true LOCAL_DURABLE_REPOSITORIES_ENABLED=true LOCAL_DURABLE_OBJECT_NAMESPACE=ticker-smoke DATABASE_URL="<local durable repository DSN, placeholder-only>" SEC_EDGAR_USER_AGENT="learn-the-ticker-local/0.1 contact@example.com" TMPDIR=/tmp npm run test:browser-smoke
+```
+
+Required durable slice prerequisites:
+
+- already-running FastAPI and Next services
+- `LEARN_TICKER_LOCAL_WEB_BASE`
+- `LEARN_TICKER_LOCAL_API_BASE`
+- `LEARN_TICKER_LOCAL_BROWSER_SMOKE=1`
+- `LEARN_TICKER_LOCAL_DURABLE_SMOKE=1`
+- `LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1`
+- `DATA_POLICY_MODE=lightweight`
+- `LIGHTWEIGHT_LIVE_FETCH_ENABLED=true`
+- `LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true`
+- placeholder `SEC_EDGAR_USER_AGENT`
+- `LOCAL_DURABLE_REPOSITORIES_ENABLED=true`
+- placeholder-only local `DATABASE_URL`
+- non-public placeholder `LOCAL_DURABLE_OBJECT_NAMESPACE`
+
+The durable slice smoke reports missing prerequisites with env var names/status only. It rejects object namespaces that look public, URL-like, signed-link-like, credential-bearing, token-bearing, password-bearing, or secret-bearing. It must not print actual DSNs, object namespaces, provider credentials, unrestricted provider payloads, raw source text, raw payload values, generated live responses, or hidden diagnostics.
+
+Durable slice expectations:
+
+- `AAPL`, `MSFT`, and `NVDA` still return stock identity, supported render state, generated-output eligibility, official SEC/source labels where exposed, provider-derived fallback labels where present, citations or explicit evidence states, freshness/as-of metadata, and source-drawer/source-count metadata through both the Next `/api/:path*` proxy and direct FastAPI `/api/assets/{ticker}/fresh-data`.
+- `VOO`, `SPY`, `VTI`, `QQQ`, and `XLK` still return ETF identity, partial render state, generated-output eligibility, manifest/scope or partial source labels, provider-derived fallback labels where present, citations or explicit partial/unavailable evidence states, freshness/as-of metadata, and visible partial/unavailable labels for missing issuer evidence through both paths.
+- Representative durable rows `AAPL` and `VOO` check `/api/search`, `/api/assets/{ticker}/overview`, `/api/assets/{ticker}/details`, `/api/assets/{ticker}/sources`, `/api/assets/{ticker}/export?export_format=json`, and `/api/assets/{ticker}/sources/export?export_format=json` so overview, details, export, citation, freshness, and source-drawer surfaces remain API-backed under local durable configuration.
+- Repeated representative reads compare only smoke-level stable fields: ticker, asset type, fetch/render state, generated-output eligibility, source/citation presence, blocked state, and no raw/secret exposure. They do not require exact quote, timestamp, checksum, freshness timestamp, or payload equality.
+- Blocked regression tickers `TQQQ`, `ARKK`, `BND`, and `GLD` remain generated-output-ineligible and receive no generated pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, available exports, generated risk summaries, source documents, citations, facts, provider fetches from blocked probes, or generated-output cache writes.
+- Default `node tests/frontend/smoke.mjs`, `npm test`, `npm run build`, repo-contract tests, local rehearsal, and the quality gate remain deterministic and skip localhost, durable, and durable-slice checks unless the local-smoke flags above are set.
+
+10. Optional local-durable smoke (T-122): run the browser smoke with durable prereqs set.
 
 ```bash
 LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 \
@@ -341,7 +374,7 @@ When durable prereqs are present, this optional run validates:
 
 If any durable prerequisites are missing, the smoke should print blockers and report that durable smoke is skipped.
 
-10. Verify frontend rendering with the API base configured:
+11. Verify frontend rendering with the API base configured:
 
 ```bash
 npm run dev
