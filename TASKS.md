@@ -1,57 +1,50 @@
 ## Current task
 
-### T-147: Add issuer-backed ETF source enrichment for the local fresh-data MVP slice
+### T-148: Add lightweight local manual-readiness gate for the MVP slice
 
 Goal:
-Wire deterministic ETF issuer-source enrichment into the lightweight local fresh-data MVP slice so issuer-backed ETF rows can expose official issuer citations, source-drawer metadata, freshness/as-of fields, and normalized fund facts before provider fallback, while keeping unsupported products blocked and normal CI free of live issuer/provider/network calls.
+Add a deterministic, slice-specific manual-readiness gate to the local fresh-data MVP rehearsal so the agent loop can tell the operator when the lightweight local MVP slice is ready for explicit manual browser/API review, without changing the broader T-139 manual readiness gate, requiring live services in CI, or promoting production readiness.
 
 Scope:
-Build on the existing lightweight fetch path, deterministic ETF issuer adapter, T-144 slice smoke, and T-145/T-146 optional browser/API smoke contracts. The task should enrich only the local fresh-data MVP slice and only through deterministic issuer fixtures or fixture-backed adapter responses that already satisfy source-use policy. It may make cached issuer-backed ETF rows such as `VOO` and `QQQ` render as official-source-supported when evidence is present, while ETF slice rows without deterministic issuer fixtures such as `SPY`, `VTI`, and `XLK` must remain renderable partial rows with explicit issuer-evidence gaps. This is not ETF-500 expansion, live issuer acquisition, source approval, manifest promotion, or deployment work.
+Build on the existing T-139 broad manual readiness gate, T-144 deterministic slice smoke, T-145 optional browser/API slice smoke, T-146 optional durable slice smoke, and T-147 issuer-backed ETF enrichment. Add a lightweight local-slice readiness decision to `scripts/run_local_fresh_data_rehearsal.py --json` that consumes the deterministic slice output and reports whether remaining work is agent-loop work or operator-only manual local testing for this slice. This gate is only for the local fresh-data MVP slice; it must not claim full ETF-500, Top-500, production, live-provider, live-AI, or deployment readiness.
 
 Allowed files:
-- `backend/lightweight_data_fetch.py`
-- `backend/lightweight_page.py`
-- `backend/provider_adapters/etf_issuer.py`
-- `scripts/run_local_fresh_data_slice_smoke.py`
 - `scripts/run_local_fresh_data_rehearsal.py`
-- `scripts/run_lightweight_data_fetch_smoke.py`
+- `scripts/run_local_fresh_data_slice_smoke.py`
 - `tests/frontend/smoke.mjs`
-- `tests/integration/test_backend_api.py`
 - `tests/unit/test_lightweight_data_fetch.py`
-- `tests/unit/test_provider_adapters.py`
-- `tests/unit/test_search_classification.py`
 - `tests/unit/test_repo_contract.py`
 - `docs/local_fresh_data_ingest_to_render_runbook.md`
 - `docs/agent-journal/<run-id>.md`
 
 Do not change:
-- Do not edit ETF or stock runtime manifests, candidate manifests, launch review packets, source allowlists, source-use policy, source-handoff rules, generated-output cache behavior, durable repository implementations, migrations, production deployment files, frontend product components, or package dependencies unless the user explicitly retasks the cycle.
-- Do not add live issuer HTTP fetching to normal CI, required tests, default scripts, or the quality gate. Deterministic fixture-backed adapter responses are allowed; live official-source retrieval remains explicit operator-only work.
-- Do not add new issuer domains or source allowlist entries in this task. If an ETF lacks an already-reviewed deterministic issuer source path, keep it partial and label the issuer evidence as unavailable or insufficient.
-- Do not treat provider fallback, local manifest metadata, recognition rows, or issuer-search hints as audit-quality evidence approval.
-- Do not print or document real provider keys, OpenRouter keys, DSNs, signed URLs, object-store credentials, raw issuer documents, raw provider payloads, raw source text, raw model reasoning, hidden prompts, or secret-like tokens.
+- Do not edit ETF or stock runtime manifests, candidate manifests, launch review packets, source allowlists, source-use policy, source-handoff rules, provider adapters, source snapshot repositories, generated-output cache behavior, durable repository implementations, migrations, production deployment files, frontend product components, or package dependencies unless the user explicitly retasks the cycle.
+- Do not make localhost browser services, durable repositories, Docker, live issuer retrieval, live provider calls, market-data/news calls, or live LLM calls required for normal CI, default scripts, or the quality gate.
+- Do not change the broad `manual_fresh_data_readiness_gate` to report `manual_test_ready` while ETF-500, Top-500, source-pack, parser, handoff, freshness/as-of, checksum, production, or deployment blockers remain.
+- Do not approve sources, promote manifests, expand ETF-500 or Top-500 coverage, add source allowlist entries, write production storage, start ingestion jobs, or treat provider fallback, recognition rows, issuer-search hints, or deterministic local smoke output as audit-quality evidence approval.
+- Do not make comparison or glossary a primary home-page workflow. Preserve the v0.4 baseline: home is single stock/ETF search first, comparison remains separate but connected, glossary remains contextual, and source/glossary/chat use mobile bottom-sheet or full-screen behavior where appropriate.
+- Do not print or document real provider keys, OpenRouter keys, DSNs, signed URLs, object-store credentials, raw issuer documents, raw provider payloads, raw source text, raw model reasoning, hidden prompts, raw user text, transcripts, or secret-like tokens.
 - Do not unlock generated pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, source documents, citations, facts, provider fetches, or generated-output cache writes for blocked products such as `TQQQ`, `ARKK`, `BND`, and `GLD`.
 
 Acceptance criteria:
-- The lightweight ETF fetch path attempts issuer-backed enrichment for supported local-slice ETFs after deterministic support/scope classification and before final provider-fallback-only response shaping.
-- Issuer-backed enrichment uses the deterministic ETF issuer adapter or equivalent fixture-backed response only. It must preserve same-ticker, same-fund, same-issuer, source-use policy, parser/freshness/as-of, citation-support, canonical-fact-support, and no-raw-payload boundaries.
-- Cached issuer-backed ETF slice rows with deterministic official issuer evidence, at minimum currently fixture-backed `VOO` and `QQQ`, expose official issuer sources, citations, normalized facts, holdings/exposure or explicit evidence gaps, prospectus/fact-sheet metadata where available, freshness/as-of metadata, and source-drawer-ready source metadata.
-- Issuer-backed ETF rows may render as `fetch_state = supported` and `page_render_state = supported` only when official issuer facts and citations are present. The response must still label provider-derived market/reference fields separately when provider fallback is also present.
-- ETF slice rows without deterministic issuer fixtures, currently `SPY`, `VTI`, and `XLK`, remain generated-output-eligible only as renderable partial local-MVP rows. They must keep manifest/scope metadata, provider-derived fallback where present, citations or explicit partial/unavailable states, and clear issuer-evidence gaps instead of fabricated issuer facts.
-- The deterministic T-144 slice smoke updates ETF expectations and status counts to distinguish issuer-backed ETF rows from still-partial ETF rows, while keeping supported stock rows, blocked ticker rows, source counts, citations, freshness/as-of metadata, and no-live/no-secret/no-raw-payload flags covered.
-- `build_lightweight_overview_response`, `build_lightweight_details_response`, and `build_lightweight_sources_response` expose issuer-backed ETF facts through existing beginner sections, details facts, source drawer groups, citation bindings, related claims, freshness labels, and partial/unavailable labels without making glossary, comparison, or chat a primary home-page workflow.
-- The optional browser/API smoke accepts issuer-backed ETF responses as supported when official issuer evidence is present, continues to accept partial ETF rows when issuer evidence is unavailable, and still checks JSON responses through the Next `/api/:path*` proxy and direct FastAPI paths without requiring localhost in default runs.
+- `scripts/run_local_fresh_data_rehearsal.py --json` returns a new slice-specific readiness object named `lightweight_local_mvp_slice_manual_readiness_gate` with a stable schema version, decision, boolean readiness flags, next operator action, blocker list, prerequisite summaries, and sanitized diagnostics.
+- The new gate distinguishes at least these decision states: deterministic local-slice manual review is ready, agent work remains for the local slice, and an opted-in optional local check is blocked. Skipped optional checks should stay explicit and should not be hidden as pass.
+- In the default deterministic run, the slice gate consumes `local_fresh_data_mvp_slice_smoke` and reports the local slice as ready for explicit operator manual browser/API review only when the deterministic slice has `pass` status, `normal_ci_requires_live_calls=false`, `raw_payload_exposed_count=0`, no secret/raw-payload reporting, and no blocked-surface regression.
+- The gate validates the current T-147 slice shape: `AAPL`, `MSFT`, and `NVDA` pass as stock rows; `VOO` and `QQQ` pass as issuer-backed ETF rows; `SPY`, `VTI`, and `XLK` remain partial ETF rows with issuer-evidence gaps; `TQQQ`, `ARKK`, `BND`, and `GLD` remain blocked; status counts remain `pass=5`, `partial=3`, `blocked=4`, and `unavailable=0`.
+- If the deterministic slice smoke is blocked, exposes raw payloads or secret-like values, loses issuer-backed ETF markers, loses partial ETF markers, changes blocked ticker behavior, requires live calls, or unlocks a blocked generated surface, the slice gate reports agent work remaining with concrete reason codes.
+- Optional browser/API, durable repository, official-source retrieval, and live-AI rehearsal checks remain operator-only. When their flags are unset, the slice gate reports them as skipped prerequisites; when flags are set and a check is blocked, the slice gate reports an optional-check blocker without leaking env values or secrets.
+- The existing broad `manual_fresh_data_readiness_gate` remains accurate and can still report `agent_work_remaining` for broader ETF-500, Top-500, source-pack, parser, handoff, freshness/as-of, checksum, production, and deployment blockers even when the new local-slice gate is ready for manual slice review.
+- The gate output preserves product guardrails: no investment advice, no live external calls in normal CI, citations/source labels for important claims in the slice output, source-use and raw-payload boundaries, PRD/TDS-first authority after safety, and explicit `partial`, `unknown`, `stale`, `unavailable`, or `insufficient_evidence` handling where evidence is missing.
+- Weekly News Focus and AI Comprehensive Analysis behavior is not broadened. The slice gate may recognize smaller or empty Weekly News Focus states and AI Comprehensive Analysis suppression as valid when evidence thresholds are not met.
 - Existing `VOO`/`QQQ` ETF-vs-ETF and `AAPL`/`VOO` stock-vs-ETF comparison smoke markers remain intact, including separate `/compare` workflow, `A vs B` redirect behavior, stock-vs-ETF relationship badges, the `single-company-vs-ETF-basket` structure, export/chat proxy checks, and no `holding_verified` regression.
 - Blocked regression tickers `TQQQ`, `ARKK`, `BND`, and `GLD` remain generated-output-ineligible and receive no source documents, citations, facts, provider fetches, generated pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, or generated-output cache writes.
-- Weekly News Focus and AI Comprehensive Analysis behavior is not broadened. The slice may continue to show smaller or empty Weekly News Focus states and suppress AI Comprehensive Analysis unless evidence thresholds are met.
-- The runbook documents which slice ETF rows are issuer-backed versus partial, the deterministic/no-live boundary, source-use and raw-payload limits, and the operator-only nature of live local fresh-data validation.
-- Static repo-contract coverage verifies the T-147 markers, issuer-backed versus partial ETF expectations, no-live-in-CI boundary, no-secret/no-raw-payload boundary, blocked ticker boundary, v0.4 frontend workflow markers, and source-use rights language.
+- The runbook documents the new slice-readiness gate, its command, default deterministic meaning, optional operator-only local checks, readiness versus broad launch readiness distinction, source-use/raw-payload limits, no-secret boundary, and the fact that live local fresh-data validation remains explicit operator work.
+- Static repo-contract coverage verifies the T-148 gate name/schema, decision states, default deterministic ready path, synthetic blocked path, optional-check skip/block behavior, T-147 issuer-backed versus partial ETF expectations, no-live-in-CI boundary, no-secret/no-raw-payload boundary, blocked ticker boundary, v0.4 frontend workflow markers, and source-use rights language.
 
 Required commands:
 - `node tests/frontend/smoke.mjs`
 - `TMPDIR=/tmp python3 -m pytest tests/unit/test_repo_contract.py -q`
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_lightweight_data_fetch.py tests/unit/test_provider_adapters.py tests/unit/test_search_classification.py tests/unit/test_repo_contract.py -q`
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py tests/unit/test_search_classification.py tests/unit/test_provider_adapters.py tests/unit/test_repo_contract.py -q`
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_lightweight_data_fetch.py tests/unit/test_repo_contract.py -q`
 - `TMPDIR=/tmp python3 scripts/run_local_fresh_data_slice_smoke.py --json`
 - `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
 - `TMPDIR=/tmp python3 evals/run_static_evals.py`
@@ -63,11 +56,39 @@ Max 2 attempts.
 
 ## Backlog
 
-### T-148: Add lightweight local manual-readiness gate for the MVP slice
-
 ### T-149: Add local fresh-data MVP slice comparison and export parity coverage
 
 ## Completed
+
+### T-147: Add issuer-backed ETF source enrichment for the local fresh-data MVP slice
+
+Goal:
+Wire deterministic ETF issuer-source enrichment into the lightweight local fresh-data MVP slice so issuer-backed ETF rows can expose official issuer citations, source-drawer metadata, freshness/as-of fields, and normalized fund facts before provider fallback, while keeping unsupported products blocked and normal CI free of live issuer/provider/network calls.
+
+Completion details:
+- Implementation commit: `3367642 feat(T-147): add issuer-backed ETF source enrichment for the local fresh-data MVP slice`
+- Local merge commit: `d5b8adc chore(T-147): merge issuer-backed ETF source enrichment for the local fresh-data MVP slice` from branch `agent/T-147-20260503T225627Z`
+- `backend/lightweight_data_fetch.py` now attempts deterministic ETF issuer enrichment through the mock ETF issuer adapter before provider-fallback shaping, validates same-ticker/same-fund/same-issuer binding, requires official allowed source attributions with citation and canonical-fact permissions, rejects raw-payload exposure, maps issuer attributions into lightweight official sources, maps supported issuer provider facts into lightweight facts, records issuer enrichment diagnostics, and uses issuer source dates for preferred ETF as-of metadata.
+- `backend/lightweight_page.py` now surfaces issuer-backed ETF facts in beginner summaries, risk copy, ETF overview sections, snapshot fields, detail facts, source drawer source groups, citation bindings, benchmark, expense-ratio, prospectus-reference, holdings/exposure, freshness, and partial/unavailable labeling while keeping provider-derived market/reference fields separate.
+- `scripts/run_local_fresh_data_slice_smoke.py` now distinguishes issuer-backed ETF rows from still-partial ETF rows: `VOO` and `QQQ` are expected as `issuer_backed_supported`, while `SPY`, `VTI`, and `XLK` remain `supported_renderable_partial` with explicit issuer-evidence gaps. The deterministic slice status counts moved to `pass=5`, `partial=3`, `blocked=4`, and `unavailable=0`.
+- `scripts/run_local_fresh_data_rehearsal.py`, `tests/frontend/smoke.mjs`, `tests/unit/test_lightweight_data_fetch.py`, and `tests/unit/test_repo_contract.py` were updated so rehearsal, optional browser/API smoke, focused unit coverage, and static contract coverage understand issuer-backed ETF rows, partial ETF rows, no-live/no-secret/no-raw-payload boundaries, v0.4 frontend markers, and blocked ticker behavior.
+- `docs/local_fresh_data_ingest_to_render_runbook.md` documents T-147 issuer-backed ETF expectations, partial ETF expectations, deterministic/no-live boundaries, source-use limits, raw-payload limits, and operator-only live local fresh-data validation.
+- `docs/agent-journal/20260503T225627Z.md` records the changed files, tests/evals run, pass status, and remaining risks.
+
+Required commands executed in this task branch:
+- `node tests/frontend/smoke.mjs` - pass
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_repo_contract.py -q` - pass
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_lightweight_data_fetch.py tests/unit/test_provider_adapters.py tests/unit/test_search_classification.py tests/unit/test_repo_contract.py -q` - pass
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py tests/unit/test_search_classification.py tests/unit/test_provider_adapters.py tests/unit/test_repo_contract.py -q` - pass
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_slice_smoke.py --json` - pass
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` - pass
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass
+- `git diff --check` - pass
+
+Remaining risks:
+- T-147 remains deterministic local-MVP slice enrichment only. It does not expand ETF-500 coverage, add live issuer acquisition, approve new sources, promote manifests, or unlock blocked products.
+- `SPY`, `VTI`, and `XLK` intentionally remain partial until deterministic issuer fixtures or reviewed issuer source paths are added in a future task.
 
 ### T-146: Add optional durable repository smoke for the local fresh-data MVP slice
 
@@ -4084,7 +4105,7 @@ Current runtime snapshot:
 - T-130 completed the deterministic local fresh-data MVP rehearsal command.
 - T-131 through T-135 completed the ETF eligible-universe, stock SEC source-pack readiness, ETF issuer source-pack readiness, local MVP readiness-threshold packets, and batchable local ingestion priority planner.
 - The ETF-500 scope update is documented across the product and handoff docs; T-136 completed deterministic ETF-500 candidate manifest review contracts, and T-137 completed ETF-500 issuer source-pack batch planning contracts.
-- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, T-139 completed the local manual fresh-data readiness gate, T-140 completed the backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack, T-141 aligned frontend/API comparison availability, T-142 completed local browser/API smoke coverage, T-143 completed the deterministic stock-vs-ETF readiness-reporting gate, T-144 completed the first local fresh-data MVP slice smoke contract, T-145 completed the local slice browser/API smoke task, and T-146 completed optional durable repository smoke coverage for the local slice. T-147 is now the current issuer-backed ETF source-enrichment task, with T-148 through T-149 staged as follow-on local slice backlog before production hardening.
+- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, T-139 completed the local manual fresh-data readiness gate, T-140 completed the backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack, T-141 aligned frontend/API comparison availability, T-142 completed local browser/API smoke coverage, T-143 completed the deterministic stock-vs-ETF readiness-reporting gate, T-144 completed the first local fresh-data MVP slice smoke contract, T-145 completed the local slice browser/API smoke task, T-146 completed optional durable repository smoke coverage for the local slice, and T-147 completed issuer-backed ETF source enrichment for the local slice. T-148 is now the current lightweight local slice manual-readiness gate, with T-149 staged as follow-on local slice backlog before production hardening.
 - T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, full governed source artifacts, admin auth/rate limiting, broader live ingestion, and launch-sized reviewed manifests remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:
@@ -4144,7 +4165,7 @@ Operational defaults for general MVP roadmap tasks:
 - T-128 established deterministic governed golden evidence API/frontend rendering proof. It is completed and must not be reintroduced as runnable backlog.
 - T-129 established launch-manifest operator automation parity. It is completed and must not be reintroduced as runnable backlog.
 - T-130 established the local fresh-data MVP rehearsal command. It is completed and must not be reintroduced as runnable backlog.
-- T-134 through T-146 are completed. T-147 is the current issuer-backed ETF source-enrichment task for the local fresh-data MVP slice, and T-148 through T-149 are prepared backlog headings for the remaining local slice path.
+- T-134 through T-147 are completed. T-148 is the current lightweight local manual-readiness gate for the local fresh-data MVP slice, and T-149 is the prepared backlog heading for the remaining local slice path.
 - Production hardening remains unpromoted until a new narrow launch-readiness task is explicitly prepared.
 - Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until explicit launch readiness work is promoted into a narrow task and passes deterministic CI coverage.
 - Later promoted tasks must keep live providers, secrets, deployment credentials, broad pre-cache refreshes, and recurring jobs out of normal CI until the explicit production-hardening stage.
@@ -4225,15 +4246,15 @@ Roadmap integration tracker:
 | Local fresh-data MVP slice smoke contract | Completed | T-144 |
 | Local fresh-data MVP browser/API smoke for the slice | Completed | T-145 |
 | Optional durable repository smoke for the local fresh-data MVP slice | Completed | T-146 |
-| Issuer-backed ETF source enrichment for the local fresh-data MVP slice | Current | T-147 |
-| Lightweight local manual-readiness gate for the MVP slice | Prepared | T-148 |
+| Issuer-backed ETF source enrichment for the local fresh-data MVP slice | Completed | T-147 |
+| Lightweight local manual-readiness gate for the MVP slice | Current | T-148 |
 | Local fresh-data MVP slice comparison and export parity coverage | Prepared | T-149 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
 Remaining unpromoted general MVP sequence:
 
 - T-139 produced a deterministic readiness gate that says whether more agent-loop work remains or whether manual local fresh-data testing is the next step.
-- The stock-vs-ETF comparison feature-completion sequence is complete through the final prepared step: T-141 aligned frontend suggestions/fallback with API availability, T-142 added optional localhost browser/API smoke coverage, and T-143 added the deterministic readiness signal. The promoted local fresh-data MVP slice sequence has completed T-146 and continues with T-147.
+- The stock-vs-ETF comparison feature-completion sequence is complete through the final prepared step: T-141 aligned frontend suggestions/fallback with API availability, T-142 added optional localhost browser/API smoke coverage, and T-143 added the deterministic readiness signal. The promoted local fresh-data MVP slice sequence has completed T-147 and continues with T-148.
 - Full production deployment remains unpromoted until a narrow launch-readiness task is added: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
 - Recurring production jobs only after manual official-source acquisition, Top-500 candidate refresh review, and local fresh-data behavior are stable.
 - Broad paid-provider or news-provider integrations only after provider licensing/source-use review, no-secret-exposure tests, mocked CI fixtures, source-rights validation, and export/display constraints are documented.
