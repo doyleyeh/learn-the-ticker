@@ -39,8 +39,8 @@ BLOCKED_GENERATED_SURFACES = (
     "generated_output_cache_entries",
 )
 STATUS_DEFINITIONS = {
-    "pass": "Renderable stock row with official SEC evidence plus labeled provider fallback.",
-    "partial": "Renderable ETF row with manifest/scope evidence plus labeled provider fallback and visible unavailable issuer fields.",
+    "pass": "Renderable supported row with official SEC stock evidence or official issuer ETF evidence plus labeled provider fallback.",
+    "partial": "Renderable ETF row without a deterministic issuer fixture; manifest/scope evidence, labeled provider fallback, and visible issuer gaps remain.",
     "blocked": "Generated-output-ineligible row with every generated surface disabled.",
     "unavailable": "Non-renderable row when deterministic fake evidence or explicit live prerequisites are absent.",
 }
@@ -49,10 +49,10 @@ EXPECTED_SLICE: dict[str, dict[str, Any]] = {
     "AAPL": {"asset_type": "stock", "support_state": "supported_renderable", "generated_output_eligible": True},
     "MSFT": {"asset_type": "stock", "support_state": "supported_renderable", "generated_output_eligible": True},
     "NVDA": {"asset_type": "stock", "support_state": "supported_renderable", "generated_output_eligible": True},
-    "VOO": {"asset_type": "etf", "support_state": "supported_renderable_partial", "generated_output_eligible": True},
+    "VOO": {"asset_type": "etf", "support_state": "issuer_backed_supported", "generated_output_eligible": True},
     "SPY": {"asset_type": "etf", "support_state": "supported_renderable_partial", "generated_output_eligible": True},
     "VTI": {"asset_type": "etf", "support_state": "supported_renderable_partial", "generated_output_eligible": True},
-    "QQQ": {"asset_type": "etf", "support_state": "supported_renderable_partial", "generated_output_eligible": True},
+    "QQQ": {"asset_type": "etf", "support_state": "issuer_backed_supported", "generated_output_eligible": True},
     "XLK": {"asset_type": "etf", "support_state": "supported_renderable_partial", "generated_output_eligible": True},
     "TQQQ": {
         "asset_type": "unsupported",
@@ -189,6 +189,8 @@ def run_slice_smoke(tickers: list[str] | None = None) -> dict[str, Any]:
         "raw_payload_exposed_count": sum(1 for row in rows if row["raw_payload_exposed"]),
         "status_definitions": STATUS_DEFINITIONS,
         "supported_renderable_tickers": list(SUPPORTED_SLICE_TICKERS),
+        "issuer_backed_etf_tickers": ["VOO", "QQQ"],
+        "partial_etf_tickers": ["SPY", "VTI", "XLK"],
         "blocked_regression_tickers": list(BLOCKED_SLICE_TICKERS),
         "blocked_generated_surfaces": list(BLOCKED_GENERATED_SURFACES),
         "status_counts": status_counts,
@@ -201,6 +203,13 @@ def _row_contract(response: LightweightFetchResponse, expected: dict[str, Any], 
     row_status = _row_status(response)
     surface = _surface_contract(response)
     blockers = _row_blockers(response, expected, row_status, surface, fetch_call_count)
+    source_labels = sorted({source.source_label.value for source in response.sources})
+    issuer_backed = (
+        response.asset.asset_type is AssetType.etf
+        and response.fetch_state is LightweightFetchState.supported
+        and "official" in source_labels
+        and response.diagnostics.get("issuer_enrichment_state") == "supported"
+    )
     return {
         "ticker": response.ticker,
         "status": row_status,
@@ -212,7 +221,11 @@ def _row_contract(response: LightweightFetchResponse, expected: dict[str, Any], 
         "fetch_state": response.fetch_state.value,
         "page_render_state": response.page_render_state.value,
         "generated_output_eligible": response.generated_output_eligible,
-        "source_labels": sorted({source.source_label.value for source in response.sources}),
+        "source_labels": source_labels,
+        "official_source_count": response.diagnostics.get("official_source_count", 0),
+        "provider_fallback_source_count": response.diagnostics.get("provider_fallback_source_count", 0),
+        "issuer_backed": issuer_backed,
+        "issuer_evidence_state": "supported" if issuer_backed else "partial" if response.asset.asset_type is AssetType.etf else "not_applicable",
         "source_count": len(response.sources),
         "citation_count": len(response.citations),
         "fact_count": len(response.facts),
@@ -347,13 +360,55 @@ def _row_blockers(
         if response.asset.asset_type is AssetType.stock and "official" not in {source.source_label.value for source in response.sources}:
             blockers.append({"reason_code": "stock_official_source_missing"})
         if response.asset.asset_type is AssetType.etf:
+            expected_support_state = expected.get("support_state")
             labels = {source.source_label.value for source in response.sources}
-            if "partial" not in labels or "provider_derived" not in labels:
-                blockers.append({"reason_code": "etf_partial_or_provider_source_label_missing", "source_labels": sorted(labels)})
             section_states = surface.get("section_states", {})
-            for section_id in ("holdings_exposure", "cost_trading_context"):
-                if (section_states.get(section_id) or {}).get("evidence_state") != "partial":
-                    blockers.append({"reason_code": "etf_partial_section_label_missing", "section_id": section_id})
+            if expected_support_state == "issuer_backed_supported":
+                if response.fetch_state is not LightweightFetchState.supported or response.page_render_state.value != "supported":
+                    blockers.append(
+                        {
+                            "reason_code": "issuer_backed_etf_not_supported",
+                            "fetch_state": response.fetch_state.value,
+                            "page_render_state": response.page_render_state.value,
+                        }
+                    )
+                if "official" not in labels:
+                    blockers.append({"reason_code": "issuer_backed_etf_official_source_missing", "source_labels": sorted(labels)})
+                if response.diagnostics.get("issuer_enrichment_state") != "supported":
+                    blockers.append(
+                        {
+                            "reason_code": "issuer_backed_etf_enrichment_not_supported",
+                            "issuer_enrichment_state": response.diagnostics.get("issuer_enrichment_state"),
+                        }
+                    )
+                for section_id in ("fund_objective_role", "holdings_exposure"):
+                    if (section_states.get(section_id) or {}).get("evidence_state") != "supported":
+                        blockers.append({"reason_code": "issuer_backed_etf_supported_section_missing", "section_id": section_id})
+                if surface.get("unavailable_detail_fact_keys"):
+                    blockers.append(
+                        {
+                            "reason_code": "issuer_backed_etf_detail_fact_unavailable",
+                            "unavailable_detail_fact_keys": surface.get("unavailable_detail_fact_keys"),
+                        }
+                    )
+            else:
+                if response.fetch_state is not LightweightFetchState.partial or response.page_render_state.value != "partial":
+                    blockers.append(
+                        {
+                            "reason_code": "partial_etf_state_mismatch",
+                            "fetch_state": response.fetch_state.value,
+                            "page_render_state": response.page_render_state.value,
+                        }
+                    )
+                if "partial" not in labels or "provider_derived" not in labels:
+                    blockers.append({"reason_code": "etf_partial_or_provider_source_label_missing", "source_labels": sorted(labels)})
+                if response.diagnostics.get("issuer_enrichment_state") == "supported":
+                    blockers.append({"reason_code": "partial_etf_unexpected_issuer_enrichment"})
+                for section_id in ("holdings_exposure", "cost_trading_context"):
+                    if (section_states.get(section_id) or {}).get("evidence_state") != "partial":
+                        blockers.append({"reason_code": "etf_partial_section_label_missing", "section_id": section_id})
+                if "etf_issuer_evidence" not in {gap.field_name for gap in response.gaps}:
+                    blockers.append({"reason_code": "partial_etf_issuer_gap_missing"})
     else:
         exposed_surface = any(bool(surface.get(key)) for key in ("generated_page", "generated_chat_answer", "generated_comparison", "weekly_news_focus", "ai_comprehensive_analysis", "export", "generated_risk_summary"))
         if row_status != "blocked":
