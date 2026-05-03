@@ -936,6 +936,95 @@ class ProviderResponse(BaseModel):
     message: str
 
 
+class DataPolicyMode(str, Enum):
+    strict = "strict"
+    lightweight = "lightweight"
+
+
+class LightweightSourceLabel(str, Enum):
+    official = "official"
+    reputable_third_party = "reputable_third_party"
+    provider_derived = "provider_derived"
+    fallback = "fallback"
+    partial = "partial"
+    unavailable = "unavailable"
+
+
+class LightweightFetchState(str, Enum):
+    supported = "supported"
+    partial = "partial"
+    unsupported = "unsupported"
+    out_of_scope = "out_of_scope"
+    unknown = "unknown"
+    unavailable = "unavailable"
+
+
+class LightweightFetchSource(BaseModel):
+    source_document_id: str
+    source_label: LightweightSourceLabel
+    source_type: str
+    title: str
+    publisher: str
+    url: str | None = None
+    is_official: bool
+    source_quality: SourceQuality
+    source_use_policy: SourceUsePolicy
+    allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
+    published_at: str | None = None
+    as_of_date: str | None = None
+    retrieved_at: str
+    date_precision: Literal["day", "month", "year", "unknown"] = "unknown"
+    freshness_state: FreshnessState
+    fallback_reason: str | None = None
+    rights_note: str
+    raw_payload_exposed: bool = False
+    export_allowed: bool = False
+
+
+class LightweightFetchCitation(BaseModel):
+    citation_id: str
+    source_document_id: str
+    title: str
+    publisher: str
+    source_label: LightweightSourceLabel
+    freshness_state: FreshnessState
+
+
+class LightweightFetchFact(BaseModel):
+    fact_id: str
+    field_name: str
+    value: Any
+    evidence_state: EvidenceState
+    freshness_state: FreshnessState
+    as_of_date: str | None = None
+    retrieved_at: str | None = None
+    source_document_ids: list[str] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+    source_labels: list[LightweightSourceLabel] = Field(default_factory=list)
+    fallback_used: bool = False
+    limitations: str | None = None
+
+
+class LightweightFetchResponse(BaseModel):
+    schema_version: Literal["lightweight-asset-fetch-v1"] = "lightweight-asset-fetch-v1"
+    ticker: str
+    data_policy_mode: DataPolicyMode
+    fetch_state: LightweightFetchState
+    asset: AssetIdentity
+    generated_output_eligible: bool
+    page_render_state: EvidenceState
+    source_priority: list[str] = Field(default_factory=list)
+    freshness: Freshness
+    facts: list[LightweightFetchFact] = Field(default_factory=list)
+    sources: list[LightweightFetchSource] = Field(default_factory=list)
+    citations: list[LightweightFetchCitation] = Field(default_factory=list)
+    gaps: list[LightweightFetchFact] = Field(default_factory=list)
+    diagnostics: dict[str, Any] = Field(default_factory=dict)
+    no_live_external_calls: bool = True
+    raw_payload_exposed: bool = False
+    message: str
+
+
 class LlmProviderKind(str, Enum):
     mock = "mock"
     openrouter = "openrouter"

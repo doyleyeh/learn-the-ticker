@@ -39,6 +39,7 @@ from backend.ingestion import (
     request_pre_cache_for_asset,
 )
 from backend.glossary import build_glossary_response
+from backend.lightweight_data_fetch import fetch_lightweight_asset_data
 from backend.llm import runtime_diagnostics
 from backend.models import (
     AssetIdentity,
@@ -56,6 +57,7 @@ from backend.models import (
     GlossaryResponse,
     IngestionJobResponse,
     KnowledgePackBuildResponse,
+    LightweightFetchResponse,
     LlmRuntimeDiagnosticsResponse,
     OverviewResponse,
     PreCacheBatchResponse,
@@ -220,6 +222,11 @@ def asset_overview(ticker: str, mode: str = "beginner") -> OverviewResponse:
 def asset_knowledge_pack(ticker: str) -> KnowledgePackBuildResponse:
     readers = _read_dependencies()
     return build_asset_knowledge_pack_result(ticker, persisted_reader=readers.reader("knowledge_pack_reader"))
+
+
+@app.get("/api/assets/{ticker}/fresh-data", response_model=LightweightFetchResponse, tags=["assets"])
+def asset_fresh_data(ticker: str) -> LightweightFetchResponse:
+    return fetch_lightweight_asset_data(ticker)
 
 
 @app.get("/api/assets/{ticker}/details", response_model=DetailsResponse, tags=["assets"])

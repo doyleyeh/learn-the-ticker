@@ -1,17 +1,17 @@
 # PRD: Learn the Ticker - Citation-First Beginner U.S. Stock & ETF Research Assistant
 
-**Document version:** v0.6 product decision refresh
-**Date:** 2026-04-28
+**Document version:** v0.7 lightweight data policy refresh
+**Date:** 2026-05-02
 **Product stage:** Side-project MVP / v1 planning  
 **Primary audience:** Product, design, engineering, data/LLM, and compliance reviewers
-**Source basis:** Original proposal, PRD v0.1, technical design spec v0.1, ETF manifest policy update, and resolved product decisions from current review.
+**Source basis:** Original proposal, PRD v0.1, technical design spec v0.1, ETF manifest policy update, resolved product decisions from current review, and the 2026-05-02 lightweight data policy.
 **Documentation role:** Product source of truth. The proposal provides narrative vision; the technical design spec translates this PRD into implementation details.
 
 ---
 
 ## 1. Executive summary
 
-Learn the Ticker is a web-based educational research assistant that helps beginner investors understand U.S.-listed common stocks and a manifest-approved ETF-500 target of currently U.S.-listed, non-leveraged, non-inverse, passive/index-based U.S. equity ETFs in plain English.
+Learn the Ticker is a web-based educational research assistant that helps beginner investors understand U.S.-listed common stocks and understandable U.S.-listed ETFs in plain English, using official sources first and clearly labeled reputable third-party/provider fallbacks when official data is incomplete.
 
 A user can search one ticker or asset name such as `VOO`, `QQQ`, `Apple`, or `AAPL` and receive a source-grounded explanation of:
 
@@ -53,13 +53,27 @@ The home page has one primary action: search for a single supported stock or ETF
 
 This version resolves the previous open questions and makes the MVP direction explicit.
 
+### 2.0 Lightweight data policy update
+
+As of 2026-05-02, the project is optimized as a personal educational side project and framework demo rather than a production financial-data platform. `docs/LIGHTWEIGHT_DATA_POLICY.md` supersedes older strict source-pack, ETF-500 promotion, allowlist-only evidence, and Golden Asset Source Handoff gating language when those requirements would block ordinary personal-project page rendering.
+
+The intended product behavior is now:
+
+- code automatically tries official sources first;
+- code resolves locator pages, dates, and alternate documents when practical;
+- if official data remains absent or incomplete, code may use reputable third-party/provider fallback such as Yahoo Finance/yfinance-derived data, configured market/reference providers, exchange pages, or reputable news sources;
+- local fresh-data validation uses the explicit `GET /api/assets/{ticker}/fresh-data` boundary and `scripts/run_lightweight_data_fetch_smoke.py` so CI remains deterministic while the operator can test fresh stock and ETF fetching;
+- every page, chat answer, comparison, Weekly News Focus item, and export shows source provenance and freshness clearly;
+- missing fields render as `partial`, `unavailable`, `stale`, or fallback states instead of blocking the whole asset;
+- operator review focuses on checking suspicious results and improving repeated failure patterns, not manually filling every URL and as-of date.
+
 | Area                     | Decision                                                                                                                                                                                                                                                                                                                                                                                                      |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Coverage universe        | Support a top-500-first U.S.-listed common stock universe plus an ETF-500 reviewed supported ETF universe. ETF-500 targets around 500 approved supported ETF rows, with a practical reviewed range of 475-525, limited to currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs. Pre-cache the existing curated high-demand universe for speed and regression reliability, but do not treat golden ETFs as the coverage ceiling. Treat stocks outside the top 500 and ETFs outside the supported ETF manifest as future expansion unless explicitly approved. |
-| Unsupported assets       | Block unsupported and out-of-scope assets from generated pages, chat, and comparisons. Search may show a recognized-but-unsupported or recognized-but-out-of-scope result with a clear explanation.                                                                                                                                                |
-| Market/reference data    | Use a free-first approach: SEC EDGAR/XBRL, official issuer materials, free/reference metadata where available, provider adapters, deterministic mocks, and fixtures for tests. No paid provider keys are assumed for v1; paid market/reference providers may be added later behind adapters after licensing and export-rights review.                 |
-| Golden Asset Source Handoff | Treat source handoff as the approval layer and API fetching as only the retrieval layer. A fetched API payload, endpoint, issuer page, or filing URL is not approved evidence until domain, source type, official-source status, storage rights, export rights, source-use policy, rationale, parser validity, freshness/as-of metadata, and review status are approved. |
-| Weekly News Focus and analysis | Use a fixed Monday-Sunday market-week model plus current week-to-date through yesterday, based on U.S. Eastern dates. Use official filings, company investor relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes first, then broaden coverage with reputable third-party/news sources when source governance permits. Clearly label source type and official-vs-third-party status. AI Comprehensive Analysis starts with What Changed This Week and then Market Context, Business/Fund Context, and Risk Context, and appears only when at least two approved Weekly News Focus items exist. |
+| Coverage universe        | Use top-500 stock and ETF manifests as useful seeds, caches, and audit-quality coverage artifacts, not as the only way a beginner page can render. The local/personal MVP may resolve recognized U.S.-listed common stocks and understandable U.S.-listed, active, non-leveraged, non-inverse ETFs through official sources, issuer/search metadata, exchange pages, or reputable provider fallback when source provenance is visible. Complex wrappers remain blocked unless a future scope expansion explicitly supports them. |
+| Unsupported assets       | Block clearly out-of-scope, unsupported complex wrappers, unsafe, and unknown assets from generated pages, chat, and comparisons. For recognized in-scope stocks and ETFs with incomplete evidence, render partial or fallback states instead of blocking the whole page. |
+| Market/reference data    | Use a free-first approach: SEC EDGAR/XBRL, official issuer materials, free/reference metadata where available, provider adapters, deterministic mocks, and fixtures for tests. Reputable third-party/provider fallback, including Yahoo Finance/yfinance-derived data, may support personal-project display when labeled clearly and kept server-side. Paid providers remain adapter-gated and secret-safe. |
+| Golden Asset Source Handoff | Treat source handoff as an optional audit-quality/public-launch hardening layer. For personal-project display, a fetched API payload, endpoint, issuer page, filing URL, or provider record may support output when source provenance, freshness, official-vs-third-party label, rights-safe output limits, and uncertainty/fallback states are preserved. |
+| Weekly News Focus and analysis | Use a fixed Monday-Sunday market-week model plus current week-to-date through yesterday, based on U.S. Eastern dates. Use official filings, company investor relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes first, then broaden coverage with reputable third-party/news sources when official sources are sparse. Clearly label source type and official-vs-third-party status. AI Comprehensive Analysis starts with What Changed This Week and then Market Context, Business/Fund Context, and Risk Context, and should render only when enough source-backed evidence exists; otherwise show a partial or insufficient-evidence state. |
 | Grounded chat timing     | Include asset-specific grounded chat in MVP as a beta feature. Local testing should exercise live AI chat fully so the operator can review quality. Public v1 keeps chat beta-limited, asset-bounded, citation-aware, and not a general finance chatbot.                                                                                                                                                                                                                                                                                                 |
 | Citation strictness      | Require citations for important factual claims, not every sentence. Generic educational explanations do not require citations unless they include asset-specific facts.                                                                                                                                                                                                                                       |
 | Frontend workflow        | The home page is single-asset search first. Comparison lives on `/compare` and is reachable from global navigation, asset pages, suggested comparisons, chat compare redirects, and natural `A vs B` search patterns. Glossary is contextual help in reading flows, not a primary home-page workflow for MVP. |
@@ -71,7 +85,7 @@ This version resolves the previous open questions and makes the MVP direction ex
 | LLM runtime provider     | Keep deterministic mocks as the default for CI and ordinary local tests. Local fresh-data review should exercise live OpenRouter for generated features, especially grounded chat and AI Comprehensive Analysis when evidence thresholds are met. First deployment may enable live OpenRouter behind `LLM_LIVE_GENERATION_ENABLED=true` with an explicit free-model chain and DeepSeek V3.2 paid fallback only when paid fallback is enabled and the operator has configured OpenRouter platform/API-key limits; the repo does not enforce a separate spend cap. The browser must never call OpenRouter directly or receive the key. |
 | Local provider secrets  | For local live-provider runs, `OPENROUTER_API_KEY`, `FMP_API_KEY`, `ALPHA_VANTAGE_API_KEY`, `FINNHUB_API_KEY`, `TIINGO_API_KEY`, and `EODHD_API_KEY` are expected to exist in the developer's WSL Bash environment. Key values must not be committed, copied into docs, exposed in frontend env vars, returned from APIs, or printed in logs. |
 | MVP readiness            | Full MVP remains the v1 target. Implementation may be phased internally, but v1 is not ready until compare, limited grounded chat beta, exports, freshness, citations, glossary, and on-demand ingestion states pass the MVP acceptance checklist and strict quality gates.                                                                         |
-| Public launch path       | Keep the current MVP/v1 structure. Before public deployment, validate locally with fresh data, live AI for generated features, and limited local users. Public v1 still requires the approved top-500 stock manifest, approved ETF-500 supported ETF manifest, source-backed golden assets, full-manifest ETF support smoke, and launch/deploy smoke. |
+| Public launch path       | Keep the current MVP/v1 structure, but first prove the simpler personal-project loop: automated official-source fetching, reputable fallback, source labels in the UI, partial rendering, local fresh-data validation, live AI review for generated features, and launch/deploy smoke. Full audit-quality manifest/source-pack approval is optional hardening, not the first blocker. |
 
 ---
 
@@ -105,20 +119,20 @@ These deployment choices do not relax product safety. Generated and exported out
 
 Provider API keys are configuration readiness only. `OPENROUTER_API_KEY`, `FMP_API_KEY`, `ALPHA_VANTAGE_API_KEY`, `FINNHUB_API_KEY`, `TIINGO_API_KEY`, and `EODHD_API_KEY` are server-side only; local live runs inherit them from WSL Bash, and production uses Secret Manager. Market/reference provider keys do not change source hierarchy or licensing constraints.
 
-Golden Asset Source Handoff is required before any retrieved source can be stored as evidence, summarized, cited, used in generation, or exported. Retrieval tools include SEC/issuer fetch commands, API clients, provider endpoints, adapters, and downloaded payloads. Approval requires the source to be allowlisted or explicitly governed by review, compatible with the requested source type, classified for official-source status, assigned storage and export rights, given a source-use policy and rationale, parsed successfully, and labeled with freshness/as-of metadata. Sources missing from the allowlist, carrying unclear rights, failing parser validation, or coming from hidden/internal endpoints default to `pending_review` or `rejected` and must not support generated output.
+Golden Asset Source Handoff is optional audit-quality hardening before a retrieved source is promoted as reviewed evidence. Retrieval tools include SEC/issuer fetch commands, API clients, provider endpoints, adapters, and downloaded payloads. In lightweight personal-MVP mode, retrieved or provider-derived data may support display, generation, citations/source chips, and exports when source provenance, freshness, official-vs-third-party/provider labels, rights-safe output limits, and uncertainty/fallback states are preserved. Sources missing from the allowlist, carrying unclear rights, failing parser validation, or coming from hidden/internal endpoints should trigger automated fallback, partial labeling, or strict-mode rejection rather than a whole-page block.
 
 ### 2.2 Top-500 Universe Definition
 
-The authoritative source for the top-500 stock universe is a versioned manifest, not a live provider response at request time.
+The top-500 stock universe is a versioned seed/cache and audit-quality coverage artifact.
 
 - Manifest path: `data/universes/us_common_stocks_top500.current.json`.
 - Production mirror: a private GCS object referenced by `TOP500_UNIVERSE_MANIFEST_URI`.
 - Each entry includes ticker, name, CIK when available, exchange, rank, rank basis, provider/source provenance, snapshot date, generated checksum, and approval timestamp.
-- External providers may supply provenance inputs, but the manifest is the runtime source of truth. Runtime coverage must never be resolved directly from a live ETF holdings file or provider response.
+- External providers may supply provenance inputs. In strict/audit-quality mode, the manifest is runtime truth. In lightweight mode, recognized U.S.-listed common stocks may also resolve through SEC/exchange/provider fallback with visible source labels.
 - Refresh cadence is monthly by default. Ad hoc refreshes require a development-log entry explaining source, checksum, and reason.
 - The manifest is operational coverage metadata, not an endorsement, recommendation, or model portfolio.
-- Stocks outside the manifest return `out_of_scope` unless explicitly added to the approved on-demand ingestion queue.
-- Local stock validation may use golden assets and smaller reviewed test manifests for regression, but public v1 requires the full approved top-500 manifest and private production mirror.
+- Stocks outside the manifest can return `pending_ingestion`, `partial`, fallback, `unavailable`, or `out_of_scope` based on SEC/exchange/provider resolution and source availability.
+- Local stock validation may use golden assets, high-demand manifests, and provider fallback for regression. Full top-500 approval and private production mirror remain public-launch hardening.
 
 Monthly refresh workflow:
 
@@ -133,22 +147,23 @@ Monthly refresh workflow:
 
 ### 2.3 ETF Supported Universe Definition
 
-The authoritative source for v1 supported ETF coverage is a versioned manifest, not live provider lookup, exchange directory search, issuer search results, or a generic ETF flag.
+The supported ETF manifest is a versioned seed/cache and audit-quality coverage artifact, not the only way the personal MVP may render an ETF page.
 
 - Supported ETF manifest path: `data/universes/us_equity_etfs_supported.current.json`.
 - ETF/ETP recognition manifest path: `data/universes/us_etp_recognition.current.json`.
 - The recognition manifest helps search identify real exchange-traded products, including unsupported ETFs, ETNs, ETVs, closed-end funds, commodity products, active ETFs, single-stock funds, option-income/buffer products, leveraged funds, inverse funds, and other complex wrappers.
-- The supported ETF manifest is the only ETF runtime authority for generated asset pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, and exports.
-- Supported ETF entries must be currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs.
-- Issuer source packs must pass Golden Asset Source Handoff and parser validation before an ETF is marked supported.
-- Search may display recognized ETFs or ETPs outside the supported manifest as `unsupported`, `out_of_scope`, `pending_review`, `unavailable`, or `pending_ingestion`, but those states must block generated output.
+- In strict/audit-quality mode, the supported ETF manifest is the ETF runtime authority for generated asset pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, and exports.
+- Lightweight personal-MVP rendering may also use official-source automation or reputable provider fallback for recognized U.S.-listed, active, non-leveraged, non-inverse ETFs when source provenance, fallback labels, freshness, and partial states are shown.
+- Strict supported ETF entries should be U.S.-listed, active, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs.
+- Issuer source packs should pass Golden Asset Source Handoff and parser validation before an ETF is marked audit-quality supported.
+- Search may display recognized ETFs or ETPs outside the supported manifest as `unsupported`, `out_of_scope`, `pending_review`, `unavailable`, `partial`, fallback, or `pending_ingestion`; clearly unsupported complex products remain blocked.
 - The supported ETF manifest is operational coverage metadata, not an endorsement, recommendation, model portfolio, or statement of suitability.
 
-ETF-500 is the named v1 supported ETF target: around 500 reviewed rows, with 475-525 accepted after review quality gates. The manifest must never be padded with leveraged, inverse, active, fixed income, commodity, crypto, single-stock, option-income/buffer, ETN, ETV, CEF, international equity, or unclear products just to reach a count.
+ETF-500 remains the named audit-quality ETF target: around 500 reviewed rows, with 475-525 accepted after review quality gates. The personal MVP should not wait for ETF-500 when high-demand ETFs can render from source-labeled official or reputable fallback data. The manifest should never be padded with active, leveraged, inverse, fixed income, commodity, crypto, single-stock, option-income/buffer, ETN, ETV, CEF, international equity, or unclear products just to reach a count.
 
 The supported ETF manifest should cover the reviewed eligible universe, not only a fixed launch list. Target coverage should be category-complete across broad/core U.S. equity beta, market-cap and size/style, sector ETFs, industry/theme passive U.S. equity ETFs, dividend and shareholder-yield index ETFs, factor/smart-beta/equal-weight ETFs, and ESG or values-screened U.S. equity index ETFs when they are U.S.-listed, non-leveraged, non-inverse, passive/index-based, primary U.S. equity funds with validated issuer source packs. Golden ETF tickers are pre-cache and regression assets only, not the full coverage limit.
 
-ETF support expansion requires a reviewed candidate packet with exchange or regulatory recognition evidence, issuer source-pack references, source dates, checksums, wrapper classification, leverage/inverse flags, asset-class and geographic-exposure checks, passive/index validation, parser results, Golden Asset Source Handoff approval, exclusions, warnings, and manual approval notes.
+Audit-quality ETF support expansion requires a reviewed candidate packet with exchange or regulatory recognition evidence, issuer source-pack references, source dates, checksums, wrapper classification, leverage/inverse flags, asset-class and geographic-exposure checks, passive/index validation, parser results, Golden Asset Source Handoff approval, exclusions, warnings, and manual approval notes.
 
 ## 3. Product positioning
 
@@ -322,7 +337,7 @@ Primary needs:
 #### Asset coverage
 
 - Top 500 U.S.-listed common stocks first, based on a deterministic launch universe maintained by ingestion configuration
-- Manifest-approved ETF-500 scope: currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs
+- Manifest-approved U.S.-listed, active, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs
 - Pre-cached high-demand stocks and ETFs for launch performance
 - Limited on-demand ingestion only for assets that pass deterministic classification and are explicitly added to the supported queue
 
@@ -553,7 +568,7 @@ Deterministic classification rules:
 - If `asset_class != equity`, mark the asset `unsupported`.
 - If `strategy == active`, mark the asset `unsupported`.
 - If an ETF is not present in `data/universes/us_equity_etfs_supported.current.json`, mark it `unsupported`, `out_of_scope`, `pending_review`, `unavailable`, or `pending_ingestion` based on deterministic recognition and review state.
-- If an asset is not a U.S.-listed common stock in the top-500 launch universe or a manifest-approved ETF-500 scope U.S.-listed passive/index-based U.S. equity ETF, mark it `unsupported` or `out_of_scope` for MVP.
+- If an asset is not a U.S.-listed common stock in the top-500 launch universe or a manifest-approved U.S.-listed passive/index-based U.S. equity ETF, mark it `unsupported` or `out_of_scope` for MVP.
 - If a supported asset passes classification but has not been ingested yet, return `pending_ingestion` and create or reuse a queued ingestion job.
 - other complex or unsupported exchange-traded products
 
@@ -562,7 +577,7 @@ Required blocked-state copy:
 ```text
 We found this ticker, but it is not supported in v1.
 
-Learn the Ticker currently supports a top-500-first U.S. common-stock universe and ETFs listed in the approved ETF-500 supported ETF manifest.
+Learn the Ticker currently supports a top-500-first U.S. common-stock universe and ETFs listed in the approved supported ETF manifest.
 ```
 
 For out-of-scope stocks:
@@ -570,7 +585,7 @@ For out-of-scope stocks:
 ```text
 This stock is outside the current v1 coverage universe.
 
-Learn the Ticker currently supports a top-500-first U.S. common stock universe and ETFs in the approved ETF-500 supported ETF manifest.
+Learn the Ticker currently supports a top-500-first U.S. common stock universe and ETFs in the approved supported ETF manifest.
 ```
 
 For pending ingestion:
@@ -798,7 +813,7 @@ Acceptance criteria:
 - Each Weekly News Focus item has at least one citation or source link.
 - AI analysis factual claims have citations or uncertainty labels.
 - The AI analysis labels are educational UI labels, not claims that the system is a real advisor or person.
-- Weekly News Focus items come from official sources first, then approved reputable third-party/news sources when source governance and rights policy permit the intended metadata, summary, storage, display, and export behavior.
+- Weekly News Focus items come from official sources first, then reputable third-party/news sources with source labels and rights-safe metadata, summary, storage, display, and export behavior.
 - Third-party/news items are clearly labeled as non-official reporting in the section and source drawer.
 - Low-quality, duplicate, promotional, irrelevant, unapproved, and rights-disallowed news is excluded.
 - The section can say "No major Weekly News Focus items found for this window" when appropriate, and this is normal for many broad ETFs.
@@ -961,7 +976,7 @@ Acceptance criteria:
 - User can distinguish official source material from news or third-party data.
 - User can tell when a page or section was last updated.
 - Unsupported claims are removed, regenerated, or marked as uncertain.
-- A public `citation_id` resolves only to approved source metadata: source title, publisher, URL, source type, official-source status, source-use policy, published/as-of/retrieved dates, freshness state, claim role, normalized fact references, and an allowed supporting excerpt.
+- A public `citation_id` resolves only to source metadata and policy-allowed excerpts: source title, publisher, URL, source type, official/third-party/provider status, source-use policy when known, published/as-of/retrieved dates, freshness state, claim role, normalized fact references, and an allowed supporting excerpt.
 - A public `citation_id` never resolves to unrestricted provider payloads, full restricted article text, private raw PDF text, secrets, hidden prompts, or unrestricted raw source text.
 - Citation chips should be near the supported claim and compact enough not to clutter beginner reading.
 
@@ -1269,7 +1284,7 @@ The model must not become the source of truth.
 2. Company investor relations pages
 3. Earnings releases and presentations
 4. Free/reference metadata or approved provider enrichment
-5. Official sources and approved reputable third-party/news sources for Weekly News Focus
+5. Official sources and reputable third-party/news sources for Weekly News Focus
 
 #### For ETFs
 
@@ -1278,7 +1293,7 @@ The model must not become the source of truth.
 3. Summary prospectus and full prospectus
 4. Shareholder reports
 5. Issuer holdings files, exposure files, and official ETF website disclosures
-6. Sponsor announcements, official sources, and approved reputable third-party/news sources for Weekly News Focus
+6. Sponsor announcements, official sources, and reputable third-party/news sources for Weekly News Focus
 7. Free/reference metadata or approved provider enrichment
 
 ### 13.3 Recommended market/reference data stack
@@ -1296,9 +1311,9 @@ Provider strategy:
 - SEC EDGAR, SEC XBRL company facts, and SEC filing documents are the trust backbone for stocks such as `AAPL` and `NVDA`.
 - Official issuer pages, fact sheets, prospectuses, shareholder reports, holdings files, exposure files, and sponsor announcements are the trust backbone for ETFs such as `VOO`, `QQQ`, and `SOXX`.
 - Structured enrichment providers can improve convenience and coverage only when licensing, rate limits, caching, attribution, display, and export rights allow the intended product use.
-- FMP, Finnhub, Tiingo, Alpha Vantage, EODHD, yfinance, and similar services are optional enrichment only. Their payloads must not override official SEC or issuer evidence, and unclear rights limit them to internal diagnostics, enrichment, or metadata-only use.
+- FMP, Finnhub, Tiingo, Alpha Vantage, EODHD, yfinance, and similar services are allowed fallback/enrichment for the personal MVP. Their payloads must stay server-side, preserve attribution/source labels, avoid unrestricted raw payload display/export, and not hide when official SEC or issuer evidence is unavailable.
 - Quote fields in the MVP are delayed or best-effort. The UI must label freshness and must show `unavailable` when quote data cannot be verified instead of implying real-time coverage.
-- yfinance is allowed only for local development or fallback diagnostics and must not become production truth or a public redistributable data source.
+- yfinance may be used as a lightweight fallback path when labeled as Yahoo Finance/yfinance-derived data and kept out of unrestricted raw payload redistribution.
 
 Provider-selection requirements:
 
@@ -1314,10 +1329,10 @@ Provider-selection requirements:
 Recommended MVP stack:
 
 1. **Official first:** SEC filings, company IR releases, ETF issuer announcements, prospectus updates, fact-sheet updates, and sponsor notices.
-2. **Approved reputable third-party/news sources:** curated sources with source metadata, dates, categories, ticker/entity matching, published timestamps, official-vs-third-party labels, and source-use rights. These sources broaden coverage but must not be presented as official.
+2. **Reputable third-party/news sources:** curated or source-labeled sources with source metadata, dates, categories, ticker/entity matching, published timestamps, official-vs-third-party labels, and source-use rights when known. These sources broaden coverage but must not be presented as official.
 3. **Weekly News Focus selection:** deduplicate, score, and select up to the configured maximum for the selected asset's Weekly News Focus pack; show fewer items or an empty state when evidence is thin.
 4. **Rights-gated full text:** reputable news reputation does not automatically approve full article text. Full text storage, display, or export requires `full_text_allowed` or explicit reviewed rights.
-5. **Rejected by default:** unrecognized or low-quality sources should not be used for Weekly News Focus until added to the allowlist.
+5. **Limited or rejected by default:** unrecognized or low-quality sources should not support raw text or confident Weekly News Focus claims until reviewed; metadata/link-only fallback may be used when clearly labeled and rights-safe.
 6. **Paid future option:** ticker-tagged news APIs or premium news providers may be added later when budget and licensing justify them.
 
 Source-use categories:
@@ -1337,19 +1352,19 @@ Approval statuses:
 Source allowlist governance:
 
 - The source allowlist lives in config, e.g. `config/source_allowlist.yaml`.
-- Config-only review means a future agent may update the allowlist only when source-use policy, source type, domain, official-source status, storage rights, export rights, rationale, and validation tests are updated together.
-- Automated scoring cannot approve new sources. It only ranks sources already present in the allowlist.
+- Config-only review means a future agent should update the allowlist with source-use policy, source type, domain, official-source status, storage rights, export rights, rationale, and validation tests when adding a recurring source.
+- Automated scoring can rank candidate sources and propose new domains, but source labels and fallback states must remain visible until a recurring source is reviewed.
 - Allowlist records must include `source_use_policy`: `metadata_only`, `link_only`, `summary_allowed`, `full_text_allowed`, or `rejected`.
 
 Operational source rule:
 
-- Fetch only from allowlisted sources.
-- Store according to source-use policy.
-- Generate only from approved evidence.
+- Fetch only through SSRF-safe server-side source/provider adapters.
+- Store raw text according to source-use policy; metadata, normalized facts, summaries, links, and provider labels may be used when raw text storage is not allowed.
+- Generate only from source-labeled facts/evidence and preserve fallback/partial labels.
 - Export only what the policy permits.
-- Always allow approved source metadata needed for attribution: headline/title, publisher, URL, published date, retrieved date, source type, official-vs-third-party label, topic/event classification, and citation link.
-- Allow beginner summaries of approved reputable third-party/news items, but avoid reproducing full article text unless the source policy permits full text.
-- Mark missing, unclear, hidden/internal, parser-invalid, or unapproved sources as `pending_review` or `rejected` instead of using them as evidence.
+- Always allow rights-safe source metadata needed for attribution: headline/title, publisher, URL, published date, retrieved date, source type, official-vs-third-party/provider label, topic/event classification, and citation link.
+- Allow beginner summaries of reputable third-party/news items, but avoid reproducing full article text unless the source policy permits full text.
+- Mark missing, unclear, hidden/internal, parser-invalid, or low-confidence sources as `pending_review`, `partial`, `unavailable`, or fallback instead of blocking the whole asset.
 
 Weekly News Focus items should be filtered for:
 
@@ -1895,11 +1910,11 @@ Weekly News Focus checked: Apr 22, 2026
 
 ### 19.1 MVP / v1
 
-Objective: Ship a credible, source-grounded, accountless beginner explainer for the top 500 U.S.-listed common stocks first and the ETF-500 manifest-approved supported U.S. equity ETF universe.
+Objective: Ship a credible, source-grounded, accountless beginner explainer for high-demand U.S.-listed common stocks and understandable U.S.-listed ETFs first, using official-source automation, reputable fallback, and visible source labels.
 
 The phases below describe MVP scope and delivery milestones. They do not relax the acceptance checklist or safety, citation, source-use, freshness, and no-advice requirements.
 
-Before public deployment, the operator should validate the full product locally with fresh data, the approved golden assets, live AI enabled for generated features, full ETF-500 manifest support/blocked-state checks, and a small number of limited local users. This is a local/private-test practice, not an in-product account system or release stage. Public v1 remains fully accountless and requires the full approved top-500 stock manifest plus approved ETF-500 supported ETF manifest.
+Before public deployment, the operator should validate the full product locally with fresh data, the approved golden assets, source-labeled provider fallback, live AI enabled for generated features, high-demand ETF support/blocked-state checks, and a small number of limited local users. This is a local/private-test practice, not an in-product account system or release stage. Public v1 remains fully accountless; full approved top-500 and ETF-500 manifests are audit-quality hardening rather than the first personal-MVP blocker.
 
 Included:
 
@@ -1982,9 +1997,10 @@ Potential additions:
 
 The MVP is ready when:
 
-- User can search a supported top-500 U.S.-listed common stock or a manifest-approved supported U.S. equity ETF.
-- Public v1 uses a full approved top-500 stock manifest and an approved ETF-500 supported ETF manifest; smaller golden or local reviewed test sets are regression aids only.
-- ETF support is controlled by `data/universes/us_equity_etfs_supported.current.json`; `data/universes/us_etp_recognition.current.json` can identify unsupported ETPs for blocked search states only, and recognition rows cannot unlock generated output.
+- User can search a recognized U.S.-listed common stock or understandable U.S.-listed ETF from manifests, official metadata, or reputable provider fallback.
+- Local operator smoke can fetch fresh source-labeled stock and ETF data for at least `AAPL` and `VOO` through the lightweight fresh-data boundary without exposing raw provider payloads.
+- Public v1 can start with high-demand manifests plus automated official-source and provider fallback; full approved top-500 and ETF-500 manifests are audit-quality hardening.
+- ETF support uses `data/universes/us_equity_etfs_supported.current.json` and `data/universes/us_etp_recognition.current.json` as support/recognition signals; recognized in-scope ETFs may render partial/fallback educational output with source labels.
 - Home page has one primary action: search one stock or ETF.
 - Home page does not present comparison or Glossary as a primary workflow.
 - Search autocomplete supports partial ticker/name/issuer matches and support-state chips.
@@ -1992,7 +2008,7 @@ The MVP is ready when:
 - System resolves the asset correctly.
 - Unsupported assets are blocked clearly.
 - Exact recognized-but-unsupported ticker searches show a blocked state rather than generated content.
-- Golden Asset Source Handoff blocks unapproved, unclear-rights, parser-invalid, hidden/internal, and rejected sources from storage as evidence, generation, citation, and export.
+- Golden Asset Source Handoff blocks unapproved, unclear-rights, parser-invalid, hidden/internal, and rejected sources in strict/audit-quality mode. Lightweight mode shows partial/fallback states and avoids restricted raw text export.
 - User lands on the correct stock or ETF page.
 - Asset pages show the Beginner Summary first.
 - Exactly three top risks are shown first.
@@ -2121,8 +2137,8 @@ Provider role summary:
 - Official ETF issuer materials are the primary source for ETF identity, holdings, fees, methodology, exposures, and fund risks.
 - The supported ETF manifest is the primary runtime policy for ETF coverage; issuer materials are the primary evidence source after manifest approval.
 - Financial Modeling Prep, Finnhub, Tiingo, Alpha Vantage, EODHD, yfinance, and similar providers may be used only as enrichment where licensing, rate limits, attribution, display, caching, and export rights allow; unclear rights restrict usage to internal diagnostics, enrichment, or metadata-only use.
-- Official filings, company investor relations, ETF issuer updates, and approved reputable third-party/news sources should feed Weekly News Focus before general news APIs.
-- yfinance is a local-development and emergency fallback tool only, not production truth.
+- Official filings, company investor relations, ETF issuer updates, and reputable third-party/news sources should feed Weekly News Focus before general news APIs.
+- yfinance may be used as a lightweight fallback path when labeled as Yahoo Finance/yfinance-derived data and kept out of unrestricted raw payload redistribution.
 
 1. SEC EDGAR APIs provide JSON APIs for submissions history and XBRL financial-statement data, do not require authentication or API keys, and are updated throughout the day as submissions are disseminated.
    Reference: https://www.sec.gov/search-filings/edgar-application-programming-interfaces
@@ -2202,7 +2218,7 @@ Provider role summary:
 20. EODHD is useful for light testing, EOD-style history, delayed live data, fundamentals, and basic enrichment. Its free access is small, and personal-use versus commercial-use limits must be reviewed before public display, caching, or export.
     Reference: https://eodhd.com/pricing
 
-21. yfinance is not affiliated with Yahoo, is intended for research/educational use, and points users to Yahoo terms for rights to downloaded data. It must remain local-development or fallback-only and should not be treated as production truth.
+21. yfinance is not affiliated with Yahoo, is intended for research/educational use, and points users to Yahoo terms for rights to downloaded data. It may be used as a labeled fallback for this personal MVP, but raw downloaded data should not be redistributed without rights review.
     Reference: https://github.com/ranaroussi/yfinance
 
 22. iShares describes IWB as exposure to large U.S. companies, access to about 1,000 domestic stocks, and an ETF seeking to track large- and mid-capitalization U.S. equities. IWB official holdings are the preferred monthly top-500 ranking proxy.

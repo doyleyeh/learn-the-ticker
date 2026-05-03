@@ -1,8 +1,8 @@
 # Learn the Ticker: Citation-First Beginner U.S. Stock & ETF Research Assistant
 
 **Document type:** Detailed product proposal  
-**Version:** v0.7 product decision refresh
-**Last updated:** 2026-04-28
+**Version:** v0.8 lightweight data policy refresh
+**Last updated:** 2026-05-02
 **Project stage:** Side-project MVP / v1 planning
 **Documentation role:** Narrative product vision and product-thesis document. The PRD is the product source of truth, the technical design spec is the implementation source of truth, and the implementation plan plus handoff docs own execution details.
 
@@ -51,11 +51,11 @@ A user can search one ticker or asset name such as `VOO`, `QQQ`, `Apple`, or `AA
 - what changed recently;
 - which sources support the important claims.
 
-The product should use official and structured sources as the factual backbone. The language model should not be treated as the source of truth. Instead, the model should translate verified facts, filings, prospectuses, holdings data, and other source-backed material into simple explanations for beginners.
+The product should use official and structured sources as the factual backbone when they are available. When official sources are incomplete, stale, or too costly to recover manually for the personal MVP, the product may use reputable third-party/provider fallback and show that provenance clearly. The language model should not be treated as the source of truth. Instead, the model should translate source-labeled facts, filings, prospectuses, holdings data, provider records, and other supported material into simple explanations for beginners.
 
-Fetching a filing, issuer document, API endpoint, or provider payload is only retrieval. It is not evidence approval. Golden Asset Source Handoff is the approval layer that decides whether a retrieved source may be stored, summarized, cited, generated from, or exported.
+The 2026-05-02 lightweight data policy changes the operating model for this personal side project: strict source-pack approval and Golden Asset Source Handoff are audit-quality hardening workflows, not default blockers for ordinary educational page rendering. Code should do the first pass of source discovery and fallback; operators should review suspicious results and repeated failure patterns.
 
-ETF support is also a runtime coverage decision, not a descriptive product phrase. V1 ETF coverage must come from a reviewed supported ETF manifest plus deterministic rules, while broader ETF/ETP recognition may help search identify real but unsupported products.
+ETF support is also a runtime coverage decision, not a descriptive product phrase. Manifests remain useful seeds, caches, and audit artifacts, while the personal MVP may render recognized U.S.-listed, active, non-leveraged, non-inverse ETF pages from official-source automation or reputable provider fallback with visible source labels and partial states. Complex products remain blocked unless a future scope expansion supports them.
 
 The result should feel like a calm learning product with receipts: easy to understand, visibly sourced, and careful about the difference between education and investment advice. The home page should lead with single-asset search. Comparison should be easy to enter, but it should live in its own workflow rather than replacing the main search experience.
 
@@ -199,13 +199,13 @@ This framing is better for trust, easier for scope control, and more consistent 
 
 ### 6.1 Source first
 
-Important facts must come from official or structured sources before the model writes explanations.
+Important facts should come from official or structured sources before the model writes explanations. When official data is missing or difficult to parse, reputable third-party/provider fallback is acceptable for the personal MVP if the UI labels the source and freshness honestly.
 
 For stocks such as `AAPL` and `NVDA`, that means SEC EDGAR, SEC XBRL company facts, and SEC filing documents form the canonical backbone. Company investor relations pages, earnings releases, and presentations can be official secondary sources for recent context and management explanations.
 
-For every supported ETF, including examples such as `VOO`, `QQQ`, and `SOXX`, two gates must pass before the product can generate output: the ETF must be in the approved ETF-500 supported ETF manifest, and issuer materials must form the canonical evidence backbone. Issuer evidence includes the official issuer page, fact sheet, prospectus, shareholder reports, holdings files, exposure files, and sponsor announcements.
+For supported ETFs, including examples such as `VOO`, `QQQ`, and `SOXX`, issuer materials should form the preferred canonical evidence backbone. Issuer evidence includes the official issuer page, fact sheet, prospectus, shareholder reports, holdings files, exposure files, and sponsor announcements. If those sources are blocked by locator pages, missing dates, parser gaps, or dynamic download flows, code should try alternate official sources and then reputable fallback before asking an operator to manually collect data.
 
-Market/reference APIs and other provider payloads are retrieval and enrichment tools, not automatic evidence. Before any source can support product output, Golden Asset Source Handoff must approve its domain, source type, official-source status, storage rights, export rights, source-use policy, rationale, parser validity, and review status.
+Market/reference APIs and other provider payloads are source-labeled retrieval and enrichment tools. Golden Asset Source Handoff may still approve audit-quality evidence, but personal-project output may use provider-derived facts when provenance, retrieved dates, date quality, and fallback labels are visible.
 
 ### 6.2 Plain English first
 
@@ -309,14 +309,14 @@ This user needs:
 
 The first version should stay narrow and credible while still targeting the full MVP experience. Implementation may happen in phases, but v1 is not considered ready until the MVP acceptance checklist in the PRD and technical design spec passes.
 
-Local validation may keep golden assets for source-backed regression and smoke proof, but ETF coverage validation must exercise the promoted supported ETF manifest once the ETF-500 universe is approved. Public v1 still requires the full approved top-500 stock manifest, the approved ETF-500 supported ETF manifest, fresh-data validation, and deployment smoke. Private testing before public launch is a local operator exercise with limited users in the developer's local environment; it should not add product accounts, login flows, or a private-auth product surface.
+Local validation may keep golden assets for source-backed regression and smoke proof. The personal MVP should first prove automated official-source fetching, reputable fallback, source labels, partial rendering, fresh-data validation, and deployment smoke. Full top-500/ETF-500 manifest promotion remains useful audit-quality hardening, but it is not the first blocker for a personal framework demo. Private testing before public launch is a local operator exercise with limited users in the developer's local environment; it should not add product accounts, login flows, or a private-auth product surface.
 
 ### 8.1 In scope
 
 The v1 product should support:
 
-- the top 500 U.S.-listed common stocks first;
-- around 500 reviewed, currently U.S.-listed, non-leveraged, non-inverse, passive/index-based equity ETFs with primary U.S. equity exposure and validated issuer source packs;
+- high-demand U.S.-listed common stocks first, with top-500 manifests as useful seeds/caches;
+- high-demand U.S.-listed, active, non-leveraged, non-inverse ETFs first, with ETF manifests/source packs as useful seeds/caches and audit-quality hardening;
 - home-page single-asset ticker/name search;
 - search and entity resolution;
 - stock asset pages;
@@ -331,29 +331,29 @@ The v1 product should support:
 - Markdown/JSON exports for asset pages, comparisons, source lists, and chat transcripts;
 - basic educational suitability summaries.
 
-Stocks outside the top-500 MVP universe should not be promised as ready in v1. If a recognized stock is not in the launch universe, the product should show `pending_ingestion`, `unsupported`, `partial`, or `unavailable` based on deterministic classification and source availability.
+Stocks outside the top-500 seed universe should not be promised as equally complete. If a recognized stock is not pre-cached, the product should try SEC/exchange/provider resolution and show `pending_ingestion`, `partial`, `stale`, fallback, `unsupported`, or `unavailable` based on deterministic classification and source availability.
 
 ### 8.1.1 Top-500 Universe Definition
 
-The exact top-500 stock universe should come from a reviewed, versioned manifest, not from a live provider query at request time. The proposal-level product rule is simple: runtime stock coverage is operational metadata, not a recommendation list, and unsupported or not-yet-ingested stocks must render honest blocked, pending, partial, stale, unavailable, or out-of-scope states.
+The exact top-500 stock universe should remain a reviewed, versioned seed/cache and audit artifact. The proposal-level product rule is simple: runtime stock coverage is operational metadata, not a recommendation list, and non-pre-cached stocks must render honest source-labeled supported, pending, partial, stale, fallback, unavailable, unsupported, or out-of-scope states.
 
-Top-500 coverage remains a hard public-v1 requirement. Golden assets and smaller local test manifests are useful for operator validation, but they are not sufficient for public launch.
+Top-500 coverage is useful public-launch hardening. Golden assets, high-demand manifests, and provider fallback are enough for the personal MVP when source labels and partial states are honest.
 
-The PRD owns the coverage requirement. The technical design spec owns manifest fields, validation, private-GCS behavior, and runtime loading. The implementation plan and `docs/TOP500_MANIFEST_HANDOFF.md` own the monthly candidate, diff, review, and promotion workflow.
+The PRD owns the coverage requirement. The technical design spec owns manifest fields, validation, private-GCS behavior, and runtime loading. The implementation plan and `doc/TOP500_MANIFEST_HANDOFF.md` own the monthly candidate, diff, review, and promotion workflow.
 
 ### 8.1.2 ETF Supported Universe Definition
 
-The exact supported ETF universe should come from a reviewed, versioned supported ETF manifest. A separate ETF/ETP recognition universe may help search identify real but unsupported exchange-traded products, but recognition is not support.
+The exact supported ETF universe can come from a reviewed, versioned supported ETF manifest for audit-quality coverage. A separate ETF/ETP recognition universe may help search identify real exchange-traded products, but lightweight personal-MVP rendering may also use official-source automation and reputable provider fallback for recognized in-scope ETFs.
 
-The named v1 coverage target is **ETF-500**: around 500 reviewed, currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs. The practical acceptance range is 475-525 approved supported ETF rows after review quality gates. The product must not pad the manifest with leveraged, inverse, active, fixed income, commodity, crypto, single-stock, option-income/buffer, ETN, ETV, CEF, international equity, or unclear products just to reach a count.
+The audit-quality coverage target can remain **ETF-500**: around 500 reviewed U.S.-listed, active, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs. The personal MVP should not wait for that target when high-demand ETF pages can render from source-labeled official or reputable fallback data. The product must not pad support with active, leveraged, inverse, fixed income, commodity, crypto, single-stock, option-income/buffer, ETN, ETV, CEF, international equity, or unclear products just to reach a count.
 
-The proposal-level product rule is that v1 generated ETF experiences are unlocked only for reviewed, currently U.S.-listed, non-leveraged, non-inverse, passive/index-based U.S. equity ETFs with validated issuer source packs. Live provider ETF flags, exchange listings, issuer search results, and recognition-only rows may help candidate discovery or blocked search states, but they must not unlock ETF pages, chat, comparison output, Weekly News Focus, AI Comprehensive Analysis, or exports.
+The proposal-level product rule is that generated ETF experiences may render for recognized U.S.-listed, active, non-leveraged, non-inverse ETFs when the data is source-labeled and suitable for beginners. Live provider ETF flags, exchange listings, issuer search results, and recognition rows may help source/fallback discovery, but they must not unlock clearly unsupported complex products or unknown tickers by themselves.
 
 The v1 supported ETF manifest is an eligible-universe workflow rather than a fixed launch list. ETF-500 should intentionally cover broad/core U.S. equity beta, market-cap and size/style exposures, sector ETFs, industry/theme passive U.S. equity ETFs, dividend and shareholder-yield index ETFs, factor/smart-beta/equal-weight ETFs, and ESG or values-screened U.S. equity index ETFs after issuer source packs validate.
 
 Golden and pre-cache ETFs such as `VOO`, `QQQ`, and `SOXX` are local proof and regression assets. They are not the ETF coverage ceiling, and local ETF-500 readiness must prove the full promoted supported manifest resolves through the same runtime path rather than only golden examples.
 
-The PRD owns the supported ETF product scope. The technical design spec owns ETF support and recognition manifest fields, validators, and runtime authority. `docs/ETF_MANIFEST_HANDOFF.md` owns candidate packet, source-pack, parser-validation, and manual-promotion workflow details.
+The PRD owns the supported ETF product scope. The technical design spec owns ETF support and recognition manifest fields, validators, and runtime authority. `doc/ETF_MANIFEST_HANDOFF.md` owns candidate packet, source-pack, parser-validation, and manual-promotion workflow details.
 
 ### 8.2 Out of scope for v1
 
@@ -565,7 +565,7 @@ The Weekly News Focus should show a source-grounded weekly list of approved item
 
 It should show the configured maximum only when enough high-quality evidence exists. Fewer items are acceptable when the evidence set is limited, and many broad ETFs may legitimately show "No major Weekly News Focus items found for this window." The product should never pad the list with weak, duplicative, promotional, irrelevant, non-reviewed, or rights-disallowed items just to reach a target count.
 
-Weekly News Focus should be official-first while still allowing reputable third-party/news sources to broaden coverage when they pass source governance and relevance checks. The UI must clearly label whether each item is official, issuer/company-provided, or third-party reporting, and source details should show publisher, URL, published date, retrieval date, source type, topic/event classification, and citation link.
+Weekly News Focus should be official-first while still allowing reputable third-party/news sources to broaden coverage when official sources are sparse. The UI must clearly label whether each item is official, issuer/company-provided, or third-party reporting, and source details should show publisher, URL, published date, retrieval date, source type, topic/event classification, and citation link.
 
 Each Weekly News Focus item should include:
 
@@ -577,7 +577,7 @@ Each Weekly News Focus item should include:
 - official-vs-third-party source label;
 - freshness and source-quality metadata.
 
-The AI Comprehensive Analysis should synthesize the Weekly News Focus into educational context. It should appear only when at least two approved Weekly News Focus items exist. Approved reputable third-party items may count when source governance permits them and the UI labels them as third-party reporting. The module should begin with **What Changed This Week**, then use three safer context sections:
+The AI Comprehensive Analysis should synthesize the Weekly News Focus into educational context. It should appear when enough source-backed Weekly News Focus items exist; otherwise it should show a partial or insufficient-evidence state. Reputable third-party items may count when the UI labels them as third-party reporting. The module should begin with **What Changed This Week**, then use three safer context sections:
 
 - **Market Context**;
 - **Business/Fund Context**;
@@ -923,17 +923,17 @@ The model should not become the source of truth.
 
 ## 12. Source Hierarchy
 
-The MVP should assume a free-first evidence strategy: SEC data for stocks, official issuer materials for ETFs, official-first Weekly News Focus sources, reputable third-party/news sources where source governance permits, deterministic mocks, fixtures, and provider adapters only where rights and attribution allow.
+The MVP should assume a free-first, source-transparent evidence strategy: SEC data for stocks, official issuer materials for ETFs, official-first Weekly News Focus sources, reputable third-party/news fallback when official data is incomplete, deterministic mocks, fixtures, and provider adapters where rights-safe display and attribution allow.
 
-The source hierarchy is part of the product's trust model. Stable understanding should come from official and structured sources first. Weekly News Focus should add context, not define the asset. Provider payloads are optional enrichment and must not override official SEC or issuer evidence.
+The source hierarchy is part of the product's trust model. Stable understanding should come from official and structured sources first. Weekly News Focus should add context, not define the asset. Provider payloads are allowed fallback/enrichment for the personal MVP, but the UI must not hide that a fact is provider-derived or third-party.
 
-Golden Asset Source Handoff remains the approval layer between retrieval and evidence use. Fetching a filing, issuer page, provider endpoint, PDF, HTML page, or news-like item is retrieval only. A retrieved source should not be stored as evidence, cited, summarized, generated from, or exported unless the handoff policy approves its domain, source type, official-source status, rights, rationale, parser result, freshness/as-of metadata, and review status. For reputable third-party/news sources, metadata and beginner summaries may be used when approved; full article text storage, public display, or export remains rights-gated and should not be assumed by reputation alone.
+Golden Asset Source Handoff remains available as audit-quality hardening between retrieval and evidence use. For the personal MVP, fetching a filing, issuer page, provider endpoint, PDF, HTML page, or news-like item may support output when the system preserves source provenance, official/third-party/provider labels, retrieved dates, available as-of dates or date-precision labels, rights-safe output limits, and uncertainty/fallback states. Full article text storage, public display, or export remains rights-gated and should not be assumed by reputation alone.
 
 The proposal-level operating rule is:
 
-> Fetch only from governed sources, store according to source-use policy, generate only from approved evidence, and export only what policy permits.
+> Try official sources first, fall back to reputable third-party/provider data when needed, show source provenance clearly, render partial states honestly, and never export restricted raw text or provider secrets.
 
-The PRD owns product-level source requirements and source-use states. The technical design spec owns provider roles, raw-text policy, allowlist behavior, retrieval modes, and source-handoff fields. `docs/SOURCE_HANDOFF.md`, `config/source_allowlist.yaml`, and the implementation plan own execution details and validation expectations.
+The PRD owns product-level source requirements and source-use states. The technical design spec owns provider roles, raw-text policy, allowlist behavior, retrieval modes, and source-handoff fields. `doc/SOURCE_HANDOFF.md`, `config/source_allowlist.yaml`, and the implementation plan own execution details and validation expectations.
 
 ## 12.1 Stocks
 
@@ -943,19 +943,21 @@ For stocks, the source priority should be:
 2. company investor relations pages;
 3. earnings presentations and transcripts;
 4. free or official reference metadata where available;
-5. reputable third-party/news sources for Weekly News Focus context when approved and labeled as non-official.
+5. reputable third-party/provider fallback such as Yahoo Finance/yfinance-derived metadata or configured provider adapters when official data is incomplete;
+6. reputable third-party/news sources for Weekly News Focus context when labeled as non-official.
 
 ## 12.2 ETFs
 
 For ETFs, the source priority should be:
 
-1. approved ETF-500 supported ETF manifest entry;
+1. supported ETF manifest entry when available;
 2. ETF issuer official page;
 3. ETF fact sheet;
 4. summary prospectus and full prospectus;
 5. shareholder reports;
 6. issuer holdings files, exposure files, and official ETF website disclosures;
-7. sponsor announcements and reputable third-party/news sources for Weekly News Focus context when approved and labeled as non-official.
+7. reputable third-party/provider fallback such as Yahoo Finance/yfinance-derived metadata or configured provider adapters when official data is incomplete;
+8. sponsor announcements and reputable third-party/news sources for Weekly News Focus context when labeled as non-official.
 
 ## 12.3 Source use by content type
 
@@ -965,14 +967,14 @@ Different content sections should use different source types.
 | ------------------------- | ----------------------------------------------------- |
 | Stock identity            | SEC metadata, free/reference metadata                  |
 | Stock business overview   | 10-K, 10-Q, company investor relations                |
-| Stock financial trends    | SEC XBRL, approved structured enrichment data         |
+| Stock financial trends    | SEC XBRL, structured enrichment/provider fallback with labels |
 | Stock risks               | 10-K and 10-Q risk factors                            |
-| Stock Weekly News Focus events | 8-Ks, earnings releases, approved reputable third-party/news sources |
-| ETF identity              | issuer page, approved free/reference metadata         |
+| Stock Weekly News Focus events | 8-Ks, earnings releases, reputable third-party/news sources |
+| ETF identity              | issuer page, free/reference metadata, provider fallback with labels |
 | ETF holdings              | issuer holdings file, fact sheet                      |
 | ETF methodology           | prospectus, index methodology, issuer page            |
 | ETF risks                 | prospectus, summary prospectus                        |
-| ETF Weekly News Focus events | issuer announcements, sponsor updates, approved reputable third-party/news sources |
+| ETF Weekly News Focus events | issuer announcements, sponsor updates, reputable third-party/news sources |
 
 ---
 
@@ -981,13 +983,14 @@ Different content sections should use different source types.
 This proposal treats the pipeline as a product promise, not an implementation recipe:
 
 1. resolve the asset and support state;
-2. retrieve official or governed source material;
-3. approve evidence through Golden Asset Source Handoff;
-4. extract canonical facts;
-5. retrieve timely Weekly News Focus evidence separately;
-6. assemble an asset knowledge pack from approved evidence;
-7. generate beginner explanations, comparison context, chat answers, and AI Comprehensive Analysis only from that pack;
-8. validate citations, safety, freshness, and source-use policy before display or export.
+2. retrieve official source material and recover locators/dates automatically where practical;
+3. fall back to reputable third-party/provider data when official data is incomplete;
+4. record source provenance, freshness, fallback reason, and partial/unavailable states;
+5. extract canonical facts;
+6. retrieve timely Weekly News Focus evidence separately;
+7. assemble an asset knowledge pack from source-labeled evidence and facts;
+8. generate beginner explanations, comparison context, chat answers, and AI Comprehensive Analysis only from that pack;
+9. validate citations/source labels, safety, freshness, and rights-safe output before display or export.
 
 For stocks, the pipeline should prioritize SEC identity, filings, XBRL facts, filing-derived business and risk language, official company materials, and optional rights-reviewed enrichment. For ETFs, it should prioritize the supported ETF manifest, issuer pages, fact sheets, prospectuses, holdings/exposure files, and sponsor announcements.
 
@@ -1093,7 +1096,7 @@ The technical architecture should serve the product promise: source-first retrie
 At the proposal level, the architecture has four durable constraints:
 
 - browser code should call the backend, not LLM providers, market/reference providers, news providers, or ingestion services directly;
-- source ingestion and generated output should pass through Golden Asset Source Handoff, citation validation, source-use policy, freshness, and safety checks;
+- source ingestion and generated output should preserve provenance, citation/source-label validation, source-use policy, freshness, fallback labels, and safety checks; Golden Asset Source Handoff remains available for audit-quality hardening;
 - deterministic mocks and fixtures should remain the default for local development and CI;
 - first deployment should stay free-tier oriented unless the user explicitly approves a cost tradeoff.
 
@@ -1144,7 +1147,7 @@ The system should show:
 | SEC filings and XBRL facts | Scheduled refresh plus on-demand refresh          |
 | ETF holdings and exposure  | Daily refresh or refresh when source dates change |
 | Price and reference data   | Free-source or configured-adapter TTL             |
-| Weekly News Focus events   | Official-source checks plus approved reputable third-party/news source TTL |
+| Weekly News Focus events   | Official-source checks plus reputable third-party/news source TTL |
 | LLM summaries              | Invalidate when underlying fact hashes change     |
 
 ## 18.2 SEC data handling
@@ -1214,7 +1217,7 @@ The source drawer should show:
 
 On desktop, source details should open as a right-side drawer. On mobile, they should open as a bottom sheet.
 
-The public `citation_id` should be opaque, such as `cit_...`, and should never expose raw database row IDs. Resolving a citation should return only approved source metadata and allowed excerpts: title, publisher, URL, source type, official-source status, source-use policy, published/as-of/retrieved dates, freshness state, normalized fact references where relevant, and claim role. It should never expose unrestricted provider payloads, full restricted article text, private raw PDF text, secrets, hidden prompts, raw model reasoning, or unrestricted raw source text.
+The public `citation_id` should be opaque, such as `cit_...`, and should never expose raw database row IDs. Resolving a citation should return only source metadata and allowed excerpts: title, publisher, URL, source type, official/third-party/provider status, source-use policy when known, published/as-of/retrieved dates, freshness state, normalized fact references where relevant, and claim role. It should never expose unrestricted provider payloads, full restricted article text, private raw PDF text, secrets, hidden prompts, raw model reasoning, or unrestricted raw source text.
 
 ## 19.3 Official source badges
 
@@ -1439,9 +1442,9 @@ The product should help users understand what they are looking at before they ma
 
 Detailed external-source references, provider constraints, endpoint contracts, manifest fields, and handoff workflows live in the PRD, technical design spec, implementation plan, and specialized handoff docs:
 
-- `docs/learn_the_ticker_PRD.md`
-- `docs/learn_the_ticker_technical_design_spec.md`
-- `SPEC.md`
-- `docs/SOURCE_HANDOFF.md`
-- `docs/TOP500_MANIFEST_HANDOFF.md`
-- `docs/ETF_MANIFEST_HANDOFF.md`
+- `doc/learn_the_ticker_PRD.md`
+- `doc/learn_the_ticker_technical_design_spec.md`
+- `doc/IMPLEMENTATION_PLAN.md`
+- `doc/SOURCE_HANDOFF.md`
+- `doc/TOP500_MANIFEST_HANDOFF.md`
+- `doc/ETF_MANIFEST_HANDOFF.md`

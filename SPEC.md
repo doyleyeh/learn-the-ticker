@@ -35,8 +35,8 @@ MVP direction:
 
 MVP product scope:
 
-- top-500-first U.S.-listed common stocks from `data/universes/us_common_stocks_top500.current.json`
-- manifest-approved ETF-500 scope: around 500 reviewed, currently U.S.-listed, non-leveraged, non-inverse, passive/index-based ETFs with primary U.S. equity exposure and validated issuer source packs
+- top-500-first U.S.-listed common stocks from `data/universes/us_common_stocks_top500.current.json` as the strict/audit-quality seed, plus source-labeled SEC/exchange/provider fallback for the personal lightweight MVP
+- manifest-approved ETF-500 scope as the strict/audit-quality target, plus source-labeled lightweight rendering for recognized U.S.-listed, active, non-leveraged, non-inverse ETF pages when official automation or reputable provider fallback supplies enough normalized facts
 - pre-cached high-demand stocks and ETF-500 entries for reliability and latency, without treating the pre-cache set as the ETF coverage ceiling
 - explicit `pending_ingestion` states only for approved eligible supported assets outside the pre-cache set
 - home page single-asset search first, with natural `A vs B` queries redirecting to comparison instead of turning home into a comparison builder
@@ -63,7 +63,7 @@ Current implementation stage:
 - local durable repository execution has in-memory fallback, configured reader boundaries, and optional browser/API smoke coverage, but normal CI remains fixture-backed
 - v0.5 ETF manifest split contracts are implemented: supported ETF generated-output coverage reads `data/universes/us_equity_etfs_supported.current.json`, while recognition-only blocked states read `data/universes/us_etp_recognition.current.json`; the legacy combined ETF fixture remains only for repo continuity
 - repo-native source-handoff manifest tooling, governed golden API/frontend rendering proof, launch-manifest review packets, and the deterministic local fresh-data MVP rehearsal command are implemented as review-only/operator-safe layers
-- opt-in official-source acquisition readiness exists for SEC stock, ETF issuer, and Weekly News golden paths, but launch-sized governed source artifacts and ETF-500 source-pack approvals remain MVP gaps
+- opt-in official-source acquisition readiness exists for SEC stock, ETF issuer, and Weekly News golden paths, and the lightweight fresh-data fetch path now exposes `/api/assets/{ticker}/fresh-data` plus `scripts/run_lightweight_data_fetch_smoke.py` for local stock/ETF fetch validation; launch-sized governed source artifacts and ETF-500 source-pack approvals remain audit-quality hardening gaps
 - v0.6 local validation expects operator-only live-AI review for grounded chat and AI Comprehensive Analysis when evidence thresholds are met, while CI and ordinary local tests remain deterministic mocks
 - CI and local checks are deterministic and fixture-backed; normal quality gates do not depend on live provider, market-data, news, or LLM calls
 - the local manual fresh-data readiness gate is review-only and reports `agent_work_remaining` until deterministic ETF-500 candidate review, ETF issuer source-pack planning, Top-500 SEC source-pack planning, local MVP thresholds, ingestion priority planning, governed golden rendering, frontend workflow markers, parser readiness, Golden Asset Source Handoff readiness, freshness/as-of metadata, and checksums are ready; it reports `manual_test_ready` only when the next action is explicit operator-run browser/API, durable repository, official-source retrieval, or live-AI validation, without starting services, fetching live sources, approving sources, promoting manifests, exposing secrets, or unlocking generated output
@@ -71,8 +71,8 @@ Current implementation stage:
 Near-term implementation priority order:
 
 1. preserve the deterministic launch-readiness regression layer for search, support states, asset pages, comparison, source drawer, contextual glossary, grounded chat, exports, Weekly News Focus, AI Comprehensive Analysis, and mobile workflow markers
-2. preserve the implemented v0.5 ETF manifest split so supported ETF generated-output coverage stays separate from ETF/ETP recognition-only blocked search states
-3. preserve Golden Asset Source Handoff enforcement across source allowlist records, source snapshots, knowledge packs, citations, generated-output cache entries, source drawer output, and exports
+2. preserve the implemented v0.5 ETF manifest split so strict supported ETF generated-output coverage stays separate from ETF/ETP recognition-only blocked search states, while lightweight local fetches can show source-labeled partial data for in-scope ETFs
+3. preserve Golden Asset Source Handoff enforcement for strict/audit-quality promotion across source allowlist records, source snapshots, knowledge packs, citations, generated-output cache entries, source drawer output, and exports
 4. preserve the reviewed Top-500 candidate-manifest refresh workflow that uses official IWB holdings first, official SPY/IVV/VOO holdings only as fallback inputs, SEC/Nasdaq validation, checksums, and a diff report before current-manifest promotion
 5. preserve optional browser E2E and local durable smoke for golden assets using the API-base/proxy/CORS path before production deployment work
 6. expand ETF eligible-universe review outputs from the current fixture-sized packet into category, exclusion, source-pack, and generated-output eligibility packets for the ETF-500 reviewed local MVP scope
@@ -100,11 +100,11 @@ AI Comprehensive Analysis must be suppressed unless at least two approved Weekly
 
 Source-use policy wins over scoring. Rejected or rights-disallowed sources must not display, summarize, cache, or export. Raw source text storage is rights-tiered across `full_text_allowed`, `summary_allowed`, `metadata_only`, `link_only`, and `rejected`.
 
-Golden Asset Source Handoff is the approval layer between retrieval and evidence use. Fetching from SEC, issuer sites, ETF holdings files, APIs, or provider adapters does not approve evidence by itself. Before evidence can be stored as evidence, cited, summarized, generated from, cached, or exported, the source must have approved domain/source identity, source type, official-source status, storage rights, export rights, source-use policy, approval rationale, parser status, freshness/as-of metadata, and review status.
+Golden Asset Source Handoff is the approval layer between retrieval and strict/audit-quality evidence use. Fetching from SEC, issuer sites, ETF holdings files, APIs, or provider adapters does not approve strict evidence by itself. Before a source is promoted into governed evidence storage, generated-output cache entries, or audit-quality exports, it must have approved domain/source identity, source type, official-source status, storage rights, export rights, source-use policy, approval rationale, parser status, freshness/as-of metadata, and review status. In lightweight personal-MVP mode, source-labeled normalized facts may support local display and local smoke validation before full handoff approval when raw payloads remain hidden and partial/unavailable states are visible.
 
 Top-500 stock coverage must be manifest-owned. The approved runtime manifest is `data/universes/us_common_stocks_top500.current.json`; monthly refresh work produces a candidate manifest and diff report before review. Official IWB holdings are the primary source input; official SPY, IVV, and VOO holdings are fallback inputs only. Live holdings or provider responses may inform candidates, but they must never become runtime coverage truth directly.
 
-ETF coverage must be manifest-owned. The implemented v0.5 runtime authority for generated ETF output is `data/universes/us_equity_etfs_supported.current.json`; the recognition-only authority for blocked ETF/ETP search states is `data/universes/us_etp_recognition.current.json`. ETF-500 is the named v1 supported ETF target, but only reviewed supported-manifest rows with validated issuer source packs unlock generated output. Recognition rows, live listings, provider flags, and issuer search results must not unlock generated output.
+ETF strict/audit-quality coverage remains manifest-owned. The implemented v0.5 runtime authority for strict generated ETF output is `data/universes/us_equity_etfs_supported.current.json`; the recognition-only authority for blocked ETF/ETP search states is `data/universes/us_etp_recognition.current.json`. ETF-500 is the named audit-quality target. Lightweight local fetches may render partial educational data for recognized in-scope ETFs from manifest/scope signals and reputable provider fallback, but recognition rows, live listings, provider flags, and issuer search results must still block clearly unsupported complex products and unknown tickers.
 
 ## Hard Product Rules
 

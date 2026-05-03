@@ -4,7 +4,7 @@ Task: T-118, updated by T-119 through T-143 local API, manifest, durable-smoke, 
 
 This runbook describes the local golden-asset smoke path before production deployment work. Normal CI uses deterministic fixtures, mocked official-source acquisition, and in-memory repositories. It must not require real SEC, issuer, market-data, broad news, storage, database, Redis, RSS, or LLM calls.
 
-Fetching alone is retrieval, not evidence approval. A retrieved source can support snapshots, normalized facts, citations, generated-output cache records, exports, or rendered UI only after Golden Asset Source Handoff approves source identity, source type, official-source status, storage rights, export rights, source-use policy, parser status, freshness/as-of metadata, and review status.
+Fetching alone is retrieval, not evidence approval. For strict/audit-quality evidence promotion, a retrieved source can support snapshots, normalized facts, citations, generated-output cache records, exports, or rendered UI only after Golden Asset Source Handoff approves source identity, source type, official-source status, storage rights, export rights, source-use policy, parser status, freshness/as-of metadata, and review status. For the personal lightweight MVP, `docs/LIGHTWEIGHT_DATA_POLICY.md` allows source-labeled official/provider-derived display before full handoff approval when raw payloads stay hidden, provenance and freshness are visible, and missing fields render as partial or unavailable.
 
 ETF support note: T-120 implemented the split between supported ETF generated-output coverage and ETF/ETP recognition-only blocked states. ETF-500 is the v1 supported ETF target, while golden/pre-cache ETFs remain regression assets. Local smoke should verify supported ETF output comes from `data/universes/us_equity_etfs_supported.current.json` and recognition-only rows from `data/universes/us_etp_recognition.current.json` never unlock generated output.
 
@@ -14,7 +14,7 @@ Use one of these local modes:
 
 - `in_memory`: deterministic smoke mode. Uses injected in-memory ledgers and repositories. This is the CI-safe path.
 - `local_durable`: optional operator-only local repository mode. Use placeholder-only local connection settings and never print credential values. This mode is for manual inspection only and is not required by CI.
-- `operator_live_experiment`: optional local experiment mode. Keep it disabled by default. Any real retrieval or live-AI review must still pass source handoff, citation, source-use, freshness, and safety validation before evidence or generated output can be used. Do not commit fetched payloads, generated answers, logs, or diagnostics from this mode.
+- `operator_live_experiment`: optional local experiment mode. Keep it disabled by default. Lightweight fresh-data fetches may render source-labeled normalized facts for local review, while strict/audit-quality promotion still requires source handoff, citation, source-use, freshness, and safety validation. Do not commit fetched payloads, generated answers, logs, or diagnostics from this mode.
 
 ## One-Command MVP Rehearsal
 
@@ -48,10 +48,36 @@ Optional-mode meanings:
 
 - browser services: checks already-running localhost web/API services and local CORS/proxy behavior.
 - durable repositories: checks local durable repository prerequisites and reports sanitized blockers when the local DSN or private object namespace is missing or unsafe.
-- official-source retrieval: checks live acquisition readiness flags only; it does not execute retrieval or approve sources.
+- official-source retrieval: when `LIGHTWEIGHT_LIVE_FETCH_ENABLED=true` is also set, runs the lightweight `AAPL` and `VOO` fresh-data smoke; otherwise it reports sanitized missing prerequisites. It does not approve sources, promote manifests, write source snapshots, or expose raw provider payloads.
 - live-AI review: delegates to the operator-only live-AI validation smoke and reports sanitized pass or blocker states.
 
 Stop when any required deterministic check is `blocked`, or when an opted-in optional check is `blocked`. The rehearsal does not start production services, approve sources, promote manifests, write production storage, require live calls by default, or make fixture-sized/local-only data launch-approved.
+
+## Lightweight Fresh-Data Fetch Smoke
+
+The personal-MVP fresh-data fetch path is explicit and opt-in. It prefers SEC official stock metadata and filings for stocks, uses local ETF manifest/scope signals for ETFs, and falls back to Yahoo Finance/yfinance-derived provider data for local-test fields when official issuer automation is incomplete. It returns normalized facts, source labels, freshness, and partial/unavailable gaps only; it does not return unrestricted raw payloads.
+
+```bash
+DATA_POLICY_MODE=lightweight \
+LIGHTWEIGHT_LIVE_FETCH_ENABLED=true \
+LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true \
+SEC_EDGAR_USER_AGENT="learn-the-ticker-local/0.1 contact@example.com" \
+TMPDIR=/tmp python3 scripts/run_lightweight_data_fetch_smoke.py --live --ticker AAPL --ticker VOO --json
+```
+
+The API equivalent is:
+
+```bash
+curl -s http://127.0.0.1:8000/api/assets/AAPL/fresh-data
+curl -s http://127.0.0.1:8000/api/assets/VOO/fresh-data
+```
+
+Expected local behavior:
+
+- `AAPL` should include SEC official source labels and may include Yahoo-labeled provider fallback for market-reference fields.
+- `VOO` should include local ETF manifest/scope metadata and Yahoo-labeled provider fallback when issuer automation has not produced a reviewed source pack.
+- Unsupported or out-of-scope products such as leveraged, inverse, active, bond, commodity, crypto, ETN, single-stock, option-income, buffer, or multi-asset ETF-like products remain blocked.
+- `raw_payload_exposed` must stay `false`; diagnostics must not include provider keys, full raw payloads, raw source text, or secret values.
 
 ## Current Local MVP Gap Track
 

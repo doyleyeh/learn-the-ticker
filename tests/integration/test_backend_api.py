@@ -1060,12 +1060,14 @@ def test_details_sources_and_recent_routes_exist():
     recent = client.get("/api/assets/AAPL/recent")
     weekly = client.get("/api/assets/AAPL/weekly-news")
     glossary = client.get("/api/assets/AAPL/glossary")
+    fresh_data = client.get("/api/assets/AAPL/fresh-data")
 
     assert details.status_code == 200
     assert sources.status_code == 200
     assert recent.status_code == 200
     assert weekly.status_code == 200
     assert glossary.status_code == 200
+    assert fresh_data.status_code == 200
     assert details.json()["facts"]["business_model"]
     assert sources.json()["sources"][0]["source_document_id"] == "src_aapl_10k_fixture"
     assert sources.json()["sources"][0]["publisher"] == "U.S. SEC"
@@ -1089,6 +1091,10 @@ def test_details_sources_and_recent_routes_exist():
     assert glossary.json()["glossary_state"] == "available"
     assert {term["term_identity"]["term"] for term in glossary.json()["terms"]} >= {"revenue", "P/E ratio"}
     assert glossary.json()["diagnostics"]["no_live_external_calls"] is True
+    assert fresh_data.json()["schema_version"] == "lightweight-asset-fetch-v1"
+    assert fresh_data.json()["fetch_state"] == "unavailable"
+    assert fresh_data.json()["diagnostics"]["reason_code"] == "lightweight_live_fetch_disabled"
+    assert fresh_data.json()["no_live_external_calls"] is True
 
 
 def test_glossary_route_serializes_supported_filtered_and_non_generated_states():

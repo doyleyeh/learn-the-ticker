@@ -8,6 +8,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 PERSISTENCE_SETTINGS_SCHEMA_VERSION = "persistence-settings-v1"
 LOCAL_DURABLE_REPOSITORY_SETTINGS_SCHEMA_VERSION = "local-durable-repository-settings-v1"
 LIVE_ACQUISITION_SETTINGS_SCHEMA_VERSION = "live-acquisition-readiness-settings-v1"
+LIGHTWEIGHT_DATA_SETTINGS_SCHEMA_VERSION = "lightweight-data-settings-v1"
 CORS_SETTINGS_SCHEMA_VERSION = "cors-settings-v1"
 DEFAULT_DATABASE_CONNECT_TIMEOUT_SECONDS = 5
 DEFAULT_DATABASE_POOL_PRE_PING = False
@@ -19,6 +20,11 @@ DEFAULT_LIVE_SEC_STOCK_ACQUISITION_ENABLED = False
 DEFAULT_LIVE_ETF_ISSUER_ACQUISITION_ENABLED = False
 DEFAULT_LIVE_WEEKLY_NEWS_ACQUISITION_ENABLED = False
 DEFAULT_LIVE_SOURCE_RATE_LIMIT_READY = False
+DEFAULT_DATA_POLICY_MODE = "lightweight"
+DEFAULT_LIGHTWEIGHT_LIVE_FETCH_ENABLED = False
+DEFAULT_LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED = True
+DEFAULT_LIGHTWEIGHT_FETCH_TIMEOUT_SECONDS = 15
+DEFAULT_SEC_EDGAR_USER_AGENT = "learn-the-ticker-local/0.1 contact@example.com"
 DEFAULT_LOCAL_DURABLE_OBJECT_NAMESPACE = "local-private-source-artifacts"
 DEFAULT_OFFLINE_MIGRATION_DATABASE_URL = "postgresql+psycopg://placeholder@localhost:5432/learn_the_ticker"
 DEFAULT_CORS_ALLOWED_ORIGINS = ("http://localhost:3000", "http://127.0.0.1:3000")
@@ -36,6 +42,8 @@ LIVE_SOURCE_RATE_LIMIT_NOT_READY_REASON = "live_source_rate_limit_not_ready"
 LIVE_SOURCE_SNAPSHOT_WRITER_MISSING_REASON = "live_source_snapshot_writer_missing"
 LIVE_KNOWLEDGE_PACK_WRITER_MISSING_REASON = "live_knowledge_pack_writer_missing"
 LIVE_WEEKLY_NEWS_WRITER_MISSING_REASON = "live_weekly_news_evidence_writer_missing"
+LIGHTWEIGHT_LIVE_FETCH_DISABLED_REASON = "lightweight_live_fetch_disabled"
+LIGHTWEIGHT_PROVIDER_FALLBACK_DISABLED_REASON = "lightweight_provider_fallback_disabled"
 SENSITIVE_QUERY_KEY_MARKERS = ("password", "pass", "token", "secret", "key", "credential")
 _UNSAFE_OBJECT_NAMESPACE_MARKERS = (
     "://",
@@ -153,6 +161,41 @@ class LiveAcquisitionSettings:
             "knowledge_pack_writer_ready": self.knowledge_pack_writer_ready,
             "weekly_news_evidence_writer_ready": self.weekly_news_evidence_writer_ready,
             "generated_output_cache_writer_ready": self.generated_output_cache_writer_ready,
+            "missing_reasons": list(self.missing_reasons),
+        }
+
+
+@dataclass(frozen=True)
+class LightweightDataSettings:
+    schema_version: str
+    data_policy_mode: str
+    live_fetch_enabled: bool
+    provider_fallback_enabled: bool
+    sec_user_agent_configured: bool
+    sec_user_agent_redacted: str
+    fetch_timeout_seconds: int
+    missing_reasons: tuple[str, ...] = ()
+    _sec_user_agent: str = field(default=DEFAULT_SEC_EDGAR_USER_AGENT, repr=False, compare=False)
+
+    @property
+    def lightweight_enabled(self) -> bool:
+        return self.data_policy_mode == DEFAULT_DATA_POLICY_MODE
+
+    @property
+    def can_fetch_fresh_data(self) -> bool:
+        return self.lightweight_enabled and self.live_fetch_enabled
+
+    @property
+    def safe_diagnostics(self) -> dict[str, object]:
+        return {
+            "schema_version": self.schema_version,
+            "data_policy_mode": self.data_policy_mode,
+            "lightweight_enabled": self.lightweight_enabled,
+            "live_fetch_enabled": self.live_fetch_enabled,
+            "provider_fallback_enabled": self.provider_fallback_enabled,
+            "sec_user_agent_configured": self.sec_user_agent_configured,
+            "sec_user_agent_redacted": self.sec_user_agent_redacted,
+            "fetch_timeout_seconds": self.fetch_timeout_seconds,
             "missing_reasons": list(self.missing_reasons),
         }
 
@@ -401,6 +444,51 @@ def build_live_acquisition_settings(env: dict[str, str] | None = None) -> LiveAc
     )
 
 
+def build_lightweight_data_settings(env: dict[str, str] | None = None) -> LightweightDataSettings:
+    source = os.environ if env is None else env
+    mode = _clean_optional(source.get("DATA_POLICY_MODE")) or DEFAULT_DATA_POLICY_MODE
+    mode = mode.strip().lower()
+    live_fetch_enabled = _bool_setting(
+        _first_present(source, "LIGHTWEIGHT_LIVE_FETCH_ENABLED", "LTT_LIGHTWEIGHT_LIVE_FETCH_ENABLED"),
+        DEFAULT_LIGHTWEIGHT_LIVE_FETCH_ENABLED,
+    )
+    provider_fallback_enabled = _bool_setting(
+        _first_present(
+            source,
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED",
+            "LTT_LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED",
+        ),
+        DEFAULT_LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED,
+    )
+    user_agent = _clean_optional(
+        _first_present(source, "SEC_EDGAR_USER_AGENT", "LIGHTWEIGHT_SEC_USER_AGENT")
+    ) or DEFAULT_SEC_EDGAR_USER_AGENT
+    fetch_timeout = _int_setting(
+        _first_present(source, "LIGHTWEIGHT_FETCH_TIMEOUT_SECONDS", "LTT_LIGHTWEIGHT_FETCH_TIMEOUT_SECONDS"),
+        DEFAULT_LIGHTWEIGHT_FETCH_TIMEOUT_SECONDS,
+        minimum=1,
+    )
+    missing_reasons = []
+    if mode != DEFAULT_DATA_POLICY_MODE:
+        missing_reasons.append("data_policy_mode_not_lightweight")
+    if not live_fetch_enabled:
+        missing_reasons.append(LIGHTWEIGHT_LIVE_FETCH_DISABLED_REASON)
+    if not provider_fallback_enabled:
+        missing_reasons.append(LIGHTWEIGHT_PROVIDER_FALLBACK_DISABLED_REASON)
+
+    return LightweightDataSettings(
+        schema_version=LIGHTWEIGHT_DATA_SETTINGS_SCHEMA_VERSION,
+        data_policy_mode=mode,
+        live_fetch_enabled=live_fetch_enabled,
+        provider_fallback_enabled=provider_fallback_enabled,
+        sec_user_agent_configured=bool(user_agent),
+        sec_user_agent_redacted=_redact_user_agent(user_agent),
+        fetch_timeout_seconds=fetch_timeout,
+        missing_reasons=tuple(missing_reasons),
+        _sec_user_agent=user_agent,
+    )
+
+
 def redact_database_url(database_url: str | None) -> str | None:
     cleaned = _clean_optional(database_url)
     if cleaned is None:
@@ -472,6 +560,13 @@ def _clean_optional(value: str | None) -> str | None:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+def _redact_user_agent(value: str) -> str:
+    stripped = value.strip()
+    if "@" in stripped:
+        return stripped.split("@", 1)[0].rstrip(" <(") + "@<redacted>"
+    return stripped
 
 
 def _csv_setting(value: str | None) -> tuple[str, ...]:

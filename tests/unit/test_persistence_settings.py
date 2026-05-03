@@ -26,8 +26,11 @@ from backend.settings import (
     LIVE_WEEKLY_NEWS_ACQUISITION_DISABLED_REASON,
     LIVE_WEEKLY_NEWS_SOURCE_CONFIGURATION_MISSING_REASON,
     LIVE_WEEKLY_NEWS_WRITER_MISSING_REASON,
+    LIGHTWEIGHT_DATA_SETTINGS_SCHEMA_VERSION,
+    LIGHTWEIGHT_LIVE_FETCH_DISABLED_REASON,
     MISSING_DATABASE_URL_REASON,
     build_cors_settings,
+    build_lightweight_data_settings,
     build_live_acquisition_settings,
     build_local_durable_repository_settings,
     build_persistence_settings,
@@ -297,6 +300,35 @@ def test_live_acquisition_settings_require_source_rate_limit_and_writer_readines
     assert weekly_ready.weekly_news_ready is True
     assert weekly_ready.sec_stock_ready is False
     assert weekly_ready.etf_issuer_ready is False
+
+
+def test_lightweight_data_settings_default_to_policy_mode_but_live_fetch_opt_in():
+    settings = build_lightweight_data_settings(env={})
+
+    assert settings.schema_version == LIGHTWEIGHT_DATA_SETTINGS_SCHEMA_VERSION
+    assert settings.data_policy_mode == "lightweight"
+    assert settings.lightweight_enabled is True
+    assert settings.live_fetch_enabled is False
+    assert settings.provider_fallback_enabled is True
+    assert settings.can_fetch_fresh_data is False
+    assert LIGHTWEIGHT_LIVE_FETCH_DISABLED_REASON in settings.missing_reasons
+    serialized = str(settings.safe_diagnostics)
+    assert "test@example.com" not in serialized
+    assert "API_KEY" not in serialized
+
+    enabled = build_lightweight_data_settings(
+        env={
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-test/0.1 person@example.com",
+            "LIGHTWEIGHT_FETCH_TIMEOUT_SECONDS": "9",
+        }
+    )
+    assert enabled.can_fetch_fresh_data is True
+    assert enabled.fetch_timeout_seconds == 9
+    assert enabled.sec_user_agent_redacted == "learn-the-ticker-test/0.1 person@<redacted>"
+    assert enabled.missing_reasons == ()
 
 
 def test_local_durable_repository_factories_are_lazy_and_build_configured_readers():

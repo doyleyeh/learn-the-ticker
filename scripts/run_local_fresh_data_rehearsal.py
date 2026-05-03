@@ -28,6 +28,7 @@ from backend.etf_universe import (
 from backend.generated_output_cache_repository import InMemoryGeneratedOutputCacheRepository
 from backend.ingestion import build_local_ingestion_priority_plan, get_pre_cache_job_status
 from backend.knowledge_pack_repository import AssetKnowledgePackRepository, InMemoryAssetKnowledgePackRepository
+from backend.lightweight_data_fetch import fetch_lightweight_asset_data
 from backend.main import app
 from backend.models import (
     FreshnessState,
@@ -47,7 +48,7 @@ from backend.overview import (
 from backend.persistence import BackendReadDependencies, configure_backend_read_dependencies
 from backend.retrieval import build_asset_knowledge_pack, build_asset_knowledge_pack_result
 from backend.safety import find_forbidden_output_phrases
-from backend.settings import build_live_acquisition_settings, build_local_durable_repository_settings
+from backend.settings import build_lightweight_data_settings, build_live_acquisition_settings, build_local_durable_repository_settings
 from backend.source_policy import SourcePolicyAction, source_handoff_fields_from_policy, validate_source_handoff
 from backend.source_policy import resolve_source_policy
 from backend.source_snapshot_repository import (
@@ -1270,17 +1271,67 @@ def _check_optional_durable_repositories(env: dict[str, str]) -> RehearsalCheck:
 def _check_optional_official_source_retrieval(env: dict[str, str]) -> RehearsalCheck:
     if not _bool_env(env.get(OFFICIAL_RETRIEVAL_OPT_IN_ENV)):
         return _skipped("optional_official_source_retrieval", "official_source_retrieval_opt_in_missing")
-    settings = build_live_acquisition_settings(env=env)
-    if settings.status != "configured":
+    lightweight_settings = build_lightweight_data_settings(env=env)
+    strict_settings = build_live_acquisition_settings(env=env)
+    if not lightweight_settings.can_fetch_fresh_data:
         return _blocked(
             "optional_official_source_retrieval",
-            "official_source_retrieval_prerequisites_missing",
-            settings.safe_diagnostics,
+            "lightweight_fresh_data_fetch_prerequisites_missing",
+            {
+                "lightweight_settings": lightweight_settings.safe_diagnostics,
+                "strict_audit_settings": strict_settings.safe_diagnostics,
+                "required_env_names_without_values": [
+                    "DATA_POLICY_MODE",
+                    "LIGHTWEIGHT_LIVE_FETCH_ENABLED",
+                    "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED",
+                    "SEC_EDGAR_USER_AGENT",
+                ],
+            },
+        )
+    smoke_tickers = ["AAPL", "VOO"]
+    responses = [fetch_lightweight_asset_data(ticker, settings=lightweight_settings) for ticker in smoke_tickers]
+    blocked = [
+        {
+            "ticker": response.ticker,
+            "fetch_state": response.fetch_state.value,
+            "source_count": len(response.sources),
+            "fact_count": len(response.facts),
+        }
+        for response in responses
+        if response.fetch_state.value not in {"supported", "partial"} or not response.sources or not response.facts
+    ]
+    if blocked:
+        return _blocked(
+            "optional_official_source_retrieval",
+            "lightweight_fresh_data_fetch_blocked",
+            {
+                "blocked": blocked,
+                "settings": lightweight_settings.safe_diagnostics,
+                "raw_payload_exposed": any(response.raw_payload_exposed for response in responses),
+            },
         )
     return _pass(
         "optional_official_source_retrieval",
-        "official_source_retrieval_readiness_present_without_execution",
-        settings.safe_diagnostics,
+        "lightweight_fresh_data_fetch_passed",
+        {
+            "settings": lightweight_settings.safe_diagnostics,
+            "smoke_tickers": smoke_tickers,
+            "responses": [
+                {
+                    "ticker": response.ticker,
+                    "fetch_state": response.fetch_state.value,
+                    "asset_type": response.asset.asset_type.value,
+                    "source_labels": sorted({source.source_label.value for source in response.sources}),
+                    "official_source_count": response.diagnostics.get("official_source_count", 0),
+                    "provider_fallback_source_count": response.diagnostics.get("provider_fallback_source_count", 0),
+                    "fact_count": len(response.facts),
+                    "gap_count": len(response.gaps),
+                    "raw_payload_exposed": response.raw_payload_exposed,
+                }
+                for response in responses
+            ],
+            "strict_audit_quality_approval": False,
+        },
     )
 
 
