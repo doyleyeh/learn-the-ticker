@@ -38,6 +38,30 @@ BLOCKED_GENERATED_SURFACES = (
     "generated_risk_summaries",
     "generated_output_cache_entries",
 )
+COMPARISON_EXPORT_PARITY_SUMMARY = {
+    "schema_version": "local-fresh-data-mvp-slice-comparison-export-parity-inputs-v1",
+    "check_name": "local_fresh_data_mvp_slice_comparison_export_parity",
+    "representative_comparison_pairs": [
+        {"left_ticker": "VOO", "right_ticker": "QQQ", "comparison_type": "etf_vs_etf"},
+        {"left_ticker": "AAPL", "right_ticker": "VOO", "comparison_type": "stock_vs_etf"},
+    ],
+    "unavailable_or_blocked_comparison_cases": [
+        {"left_ticker": "VOO", "right_ticker": "SPY", "expected_state": "eligible_not_cached"},
+        {"left_ticker": "VOO", "right_ticker": "TQQQ", "expected_state": "unsupported"},
+        {"left_ticker": "AAPL", "right_ticker": "TQQQ", "expected_state": "unsupported"},
+    ],
+    "asset_export_case_tickers": ["AAPL", "VOO", "QQQ", "SPY", "TQQQ", "ARKK", "BND", "GLD"],
+    "export_surfaces": [
+        "comparison_json",
+        "comparison_markdown",
+        "asset_json",
+        "asset_markdown",
+        "source_list_json",
+        "source_list_markdown",
+        "asset_chat_compare_redirect",
+    ],
+    "operator_only_optional_checks_skipped_by_default": True,
+}
 STATUS_DEFINITIONS = {
     "pass": "Renderable supported row with official SEC stock evidence or official issuer ETF evidence plus labeled provider fallback.",
     "partial": "Renderable ETF row without a deterministic issuer fixture; manifest/scope evidence, labeled provider fallback, and visible issuer gaps remain.",
@@ -193,6 +217,7 @@ def run_slice_smoke(tickers: list[str] | None = None) -> dict[str, Any]:
         "partial_etf_tickers": ["SPY", "VTI", "XLK"],
         "blocked_regression_tickers": list(BLOCKED_SLICE_TICKERS),
         "blocked_generated_surfaces": list(BLOCKED_GENERATED_SURFACES),
+        "comparison_export_parity_summary": COMPARISON_EXPORT_PARITY_SUMMARY,
         "status_counts": status_counts,
         "blockers": blockers,
         "rows": rows,

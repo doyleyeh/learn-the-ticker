@@ -727,7 +727,7 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert threshold["launch_or_public_deployment_approved"] is False
     assert threshold["required_blockers"] == []
     assert threshold["optional_blockers"] == []
-    assert len(threshold["required_checks"]) == 10
+    assert len(threshold["required_checks"]) == 11
     assert all(check["status"] == "pass" for check in threshold["required_checks"])
     assert len(threshold["optional_skipped_modes"]) == 4
     assert threshold["thresholds"] == {
@@ -1051,6 +1051,65 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert stock_vs_etf_details["review_only_boundaries"]["services_started"] is False
     assert stock_vs_etf_details["review_only_boundaries"]["live_llm_calls"] is False
     assert stock_vs_etf_details["review_only_boundaries"]["comparison_coverage_broadened"] is False
+    parity_details = next(
+        check["details"]
+        for check in result["checks"]
+        if check["check_id"] == "local_fresh_data_mvp_slice_comparison_export_parity"
+    )
+    assert parity_details["schema_version"] == "local-fresh-data-mvp-slice-comparison-export-parity-v1"
+    assert parity_details["boundary"] == "deterministic_fixture_backed_no_services_no_live_calls_v1"
+    assert [asset["ticker"] for asset in parity_details["representative_assets"]] == [
+        "AAPL",
+        "VOO",
+        "QQQ",
+        "SPY",
+        "TQQQ",
+        "ARKK",
+        "BND",
+        "GLD",
+    ]
+    pair_by_key = {tuple(pair["pair"]): pair for pair in parity_details["representative_comparison_pairs"]}
+    assert set(pair_by_key) == {("VOO", "QQQ"), ("AAPL", "VOO")}
+    assert pair_by_key[("VOO", "QQQ")]["comparison_type"] == "etf_vs_etf"
+    assert pair_by_key[("VOO", "QQQ")]["availability_state"] == "available"
+    assert pair_by_key[("VOO", "QQQ")]["source_backed"] is True
+    assert pair_by_key[("VOO", "QQQ")]["same_comparison_pack_sources_only"] is True
+    assert pair_by_key[("AAPL", "VOO")]["comparison_type"] == "stock_vs_etf"
+    assert pair_by_key[("AAPL", "VOO")]["stock_etf_relationship_schema"] == "stock-etf-relationship-v1"
+    assert pair_by_key[("AAPL", "VOO")]["relationship_state"] == "direct_holding"
+    assert pair_by_key[("AAPL", "VOO")]["basket_structure"] == "single-company-vs-etf-basket"
+    assert all(pair["educational_disclaimer_present_in_exports"] is True for pair in pair_by_key.values())
+    assert all(pair["old_frontend_only_holding_verified_present"] is False for pair in pair_by_key.values())
+    for pair in pair_by_key.values():
+        assert {export["export_format"] for export in pair["exports"]} == {"json", "markdown"}
+        assert all(export["export_state"] == "available" for export in pair["exports"])
+        assert all(export["binding_scope"] == "same_comparison_pack" for export in pair["exports"])
+        assert all(export["source_use_policy_present"] is True for export in pair["exports"])
+        assert all(export["source_freshness_metadata_present"] is True for export in pair["exports"])
+    assert {
+        tuple(case["pair"]): case["availability_state"]
+        for case in parity_details["unavailable_or_blocked_comparison_cases"]
+    } == {
+        ("VOO", "SPY"): "eligible_not_cached",
+        ("VOO", "TQQQ"): "unsupported",
+        ("AAPL", "TQQQ"): "unsupported",
+    }
+    assert all(case["generated_output_blocked"] is True for case in parity_details["unavailable_or_blocked_comparison_cases"])
+    asset_export_by_ticker = {case["ticker"]: case for case in parity_details["asset_export_cases"]}
+    assert asset_export_by_ticker["AAPL"]["slice_status"] == "pass"
+    assert asset_export_by_ticker["VOO"]["issuer_evidence_state"] == "supported"
+    assert asset_export_by_ticker["QQQ"]["issuer_evidence_state"] == "supported"
+    assert asset_export_by_ticker["SPY"]["slice_status"] == "partial"
+    assert asset_export_by_ticker["SPY"]["provider_fallback_not_audit_quality_approval"] is True
+    for ticker in ["TQQQ", "ARKK", "BND", "GLD"]:
+        assert asset_export_by_ticker[ticker]["slice_status"] == "blocked"
+        assert all(export["export_state"] == "unsupported" for export in asset_export_by_ticker[ticker]["exports"])
+        assert all(export["empty_factual_evidence_export"] is True for export in asset_export_by_ticker[ticker]["exports"])
+    assert parity_details["chat_compare_redirect"]["route"] == "/compare?left=AAPL&right=VOO"
+    assert parity_details["chat_compare_redirect"]["generated_multi_asset_chat_answer"] is False
+    assert parity_details["blocker_reason_codes"] == []
+    assert parity_details["sanitized_diagnostics"]["forbidden_marker_hits"] == []
+    assert parity_details["review_only_boundaries"]["comparison_coverage_broadened"] is False
     asset_summary = threshold["asset_state_summary"]
     assert asset_summary["failed_asset_count"] == 1
     assert asset_summary["unavailable_asset_count"] == 1
@@ -1130,6 +1189,7 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
         "local_ingestion_priority_planning",
         "governed_golden_rendering",
         "t144_local_fresh_data_mvp_slice_smoke",
+        "t149_local_fresh_data_mvp_slice_comparison_export_parity",
         "stock_vs_etf_comparison_readiness",
         "frontend_workflow_smoke_markers",
     } == prerequisite_ids
@@ -1308,6 +1368,23 @@ def test_t148_lightweight_local_slice_manual_readiness_gate_reports_ready_and_bl
     assert slice_prereq["normal_ci_requires_live_calls"] is False
     assert slice_prereq["raw_payload_exposed_count"] == 0
     assert slice_prereq["secret_values_reported"] is False
+    parity_prereq = prereqs["local_fresh_data_mvp_slice_comparison_export_parity"]
+    assert parity_prereq["status"] == "pass"
+    assert parity_prereq["expected_schema_version"] == "local-fresh-data-mvp-slice-comparison-export-parity-v1"
+    assert parity_prereq["representative_assets"] == ["AAPL", "VOO", "QQQ", "SPY", "TQQQ", "ARKK", "BND", "GLD"]
+    assert parity_prereq["representative_comparison_pairs"] == [["VOO", "QQQ"], ["AAPL", "VOO"]]
+    assert parity_prereq["export_surfaces"] == [
+        "comparison_json",
+        "comparison_markdown",
+        "asset_json",
+        "asset_markdown",
+        "source_list_json",
+        "source_list_markdown",
+        "asset_chat_compare_redirect",
+    ]
+    assert parity_prereq["asset_export_case_tickers"] == ["AAPL", "VOO", "QQQ", "SPY", "TQQQ", "ARKK", "BND", "GLD"]
+    assert parity_prereq["normal_ci_requires_live_calls"] is False
+    assert parity_prereq["forbidden_marker_hits"] == []
     workflow_prereq = prereqs["frontend_v04_and_comparison_slice_markers"]
     assert workflow_prereq["etf_vs_etf_baseline_pair"] == ["VOO", "QQQ"]
     assert workflow_prereq["stock_vs_etf_pair"] == ["AAPL", "VOO"]
@@ -1330,6 +1407,8 @@ def test_t148_lightweight_local_slice_manual_readiness_gate_reports_ready_and_bl
     row_by_ticker = {row["ticker"]: row for row in slice_check.details["rows"]}
     row_by_ticker["VOO"]["issuer_backed"] = False
     row_by_ticker["TQQQ"]["surface_contract"]["generated_page"] = True
+    parity_check = next(check for check in checks if check.check_id == "local_fresh_data_mvp_slice_comparison_export_parity")
+    parity_check.details["blockers"] = [{"reason_code": "comparison_export_parity_mismatch"}]
     blocked_gate = _build_lightweight_local_mvp_slice_manual_readiness_gate(checks)
     assert blocked_gate["decision"] == "local_slice_agent_work_remaining"
     assert blocked_gate["manual_slice_review_ready"] is False
@@ -1340,6 +1419,7 @@ def test_t148_lightweight_local_slice_manual_readiness_gate_reports_ready_and_bl
         "local_slice_raw_payload_exposed",
         "local_slice_issuer_backed_etf_row_regression",
         "local_slice_blocked_surface_regression",
+        "local_slice_comparison_export_parity_reported_blocker",
     } <= blocker_reasons
 
     optional_result = run_rehearsal(env={"LTT_REHEARSAL_DURABLE_REPOSITORIES_ENABLED": "true"})
@@ -1536,6 +1616,79 @@ def test_t145_local_fresh_data_slice_browser_api_smoke_is_optional_and_documente
     assert smoke.index("const localBrowserSmokeEnabled") < smoke.index("const localFreshDataSliceSmokeEnabled")
     assert smoke.index("if (localBrowserSmokeEnabled)") < smoke.index("await runOptionalFreshDataSliceSmoke()")
     assert smoke.index("await runOptionalBrowserSmoke()") < smoke.rindex("} else {")
+
+    for forbidden in [
+        "OPENROUTER_API_KEY=",
+        "FMP_API_KEY=",
+        "ALPHA_VANTAGE_API_KEY=",
+        "FINNHUB_API_KEY=",
+        "TIINGO_API_KEY=",
+        "EODHD_API_KEY=",
+        "BEGIN PRIVATE KEY",
+        "sk-",
+        "xoxb-",
+        "ghp_",
+        "raw model reasoning is shown",
+    ]:
+        assert forbidden.lower() not in runbook.lower()
+
+
+def test_t149_local_slice_comparison_export_parity_is_documented_and_static_marked():
+    rehearsal = read_file("scripts/run_local_fresh_data_rehearsal.py")
+    slice_smoke = read_file("scripts/run_local_fresh_data_slice_smoke.py")
+    browser_smoke = read_file("tests/frontend/smoke.mjs")
+    runbook = read_file("docs/local_fresh_data_ingest_to_render_runbook.md")
+    combined = "\n".join([rehearsal, slice_smoke, browser_smoke, runbook])
+
+    for marker in [
+        "T-149",
+        "local_fresh_data_mvp_slice_comparison_export_parity",
+        "local-fresh-data-mvp-slice-comparison-export-parity-v1",
+        "local-fresh-data-mvp-slice-comparison-export-parity-inputs-v1",
+        "`VOO`/`QQQ` ETF-vs-ETF",
+        "`AAPL`/`VOO` stock-vs-ETF",
+        "stock-etf-relationship-v1",
+        "direct_holding",
+        "single-company-vs-ETF-basket",
+        "same_comparison_pack",
+        "asset_chat_compare_redirect",
+        "asset_source_list",
+        "comparison_markdown",
+        "source_list_markdown",
+        "`SPY` partial ETF export",
+        "`TQQQ`, `ARKK`, `BND`, and `GLD` blocked export",
+        "provider fallback is not audit-quality evidence approval",
+        "raw payloads stay hidden",
+        "hidden prompts",
+        "raw model reasoning",
+        "optional operator-only local checks",
+        "LEARN_TICKER_LOCAL_BROWSER_SMOKE",
+        "LEARN_TICKER_LOCAL_DURABLE_SMOKE",
+        "No major Weekly News Focus items found",
+        "AI Comprehensive Analysis remains suppressed unless at least two approved Weekly News Focus items exist",
+        "data-home-primary-workflow=\\\"single-supported-stock-or-etf-search\\\"",
+        "data-search-comparison-route",
+        "data-source-drawer-mobile-presentation=\\\"bottom-sheet\\\"",
+        "data-glossary-mobile-presentation=\\\"bottom-sheet\\\"",
+        "data-asset-chat-mobile-presentation=\\\"bottom-sheet-or-full-screen\\\"",
+    ]:
+        assert marker in combined, f"T-149 parity contract should include marker: {marker}"
+
+    for marker in [
+        "TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json",
+        "TMPDIR=/tmp python3 scripts/run_local_fresh_data_slice_smoke.py --json",
+        "comparison response is available, source-backed, same-comparison-pack citation bound",
+        "comparison export parity",
+        "source-list export parity",
+        "blocked products receive no generated asset output, source documents, citations, facts, Weekly News Focus, AI Comprehensive Analysis, generated chat answers, or generated-output cache writes",
+        "readiness versus broad launch readiness",
+    ]:
+        assert marker in runbook, f"T-149 runbook should document marker: {marker}"
+
+    assert "local_fresh_data_mvp_slice_comparison_export_parity" in rehearsal
+    assert "local_fresh_data_mvp_slice_comparison_export_parity" in slice_smoke
+    assert "local_fresh_data_mvp_slice_comparison_export_parity" in runbook
+    assert "local_fresh_data_mvp_slice_comparison_export_parity" in browser_smoke or "AAPL vs VOO" in browser_smoke
 
     for forbidden in [
         "OPENROUTER_API_KEY=",

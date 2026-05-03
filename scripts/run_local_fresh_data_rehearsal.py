@@ -82,6 +82,7 @@ REQUIRED_THRESHOLD_CHECK_IDS = (
     "source_handoff_approval_gate",
     "governed_golden_api_rendering",
     "local_fresh_data_mvp_slice_smoke",
+    "local_fresh_data_mvp_slice_comparison_export_parity",
     "stock_vs_etf_comparison_readiness",
     "launch_manifest_review_packets",
     "stock_sec_source_pack_readiness",
@@ -102,6 +103,41 @@ SLICE_EXPECTED_STOCK_PASS_TICKERS = ("AAPL", "MSFT", "NVDA")
 SLICE_EXPECTED_ISSUER_BACKED_ETF_TICKERS = ("VOO", "QQQ")
 SLICE_EXPECTED_PARTIAL_ETF_TICKERS = ("SPY", "VTI", "XLK")
 SLICE_EXPECTED_BLOCKED_TICKERS = ("TQQQ", "ARKK", "BND", "GLD")
+SLICE_PARITY_REPRESENTATIVE_ASSETS = ("AAPL", "VOO", "QQQ", "SPY", "TQQQ", "ARKK", "BND", "GLD")
+SLICE_PARITY_COMPARISON_PAIRS = (
+    ("VOO", "QQQ", "etf_vs_etf"),
+    ("AAPL", "VOO", "stock_vs_etf"),
+)
+SLICE_PARITY_UNAVAILABLE_COMPARISON_CASES = (
+    ("VOO", "SPY", "eligible_not_cached"),
+    ("VOO", "TQQQ", "unsupported"),
+    ("AAPL", "TQQQ", "unsupported"),
+)
+SLICE_PARITY_ASSET_EXPORT_CASES = ("AAPL", "VOO", "QQQ", "SPY", "TQQQ", "ARKK", "BND", "GLD")
+SLICE_PARITY_EXPORT_SURFACES = (
+    "comparison_json",
+    "comparison_markdown",
+    "asset_json",
+    "asset_markdown",
+    "source_list_json",
+    "source_list_markdown",
+    "asset_chat_compare_redirect",
+)
+SLICE_PARITY_FORBIDDEN_MARKERS = (
+    "OPENROUTER_API_KEY",
+    "FMP_API_KEY",
+    "ALPHA_VANTAGE_API_KEY",
+    "FINNHUB_API_KEY",
+    "TIINGO_API_KEY",
+    "EODHD_API_KEY",
+    "BEGIN " "PRIVATE KEY",
+    "Bearer ",
+    "hidden prompt",
+    "raw model reasoning",
+    "unrestricted provider payload",
+    "raw source text",
+    '"raw_payload_exposed": true',
+)
 SLICE_EXPECTED_SUPPORTED_TICKERS = (
     *SLICE_EXPECTED_STOCK_PASS_TICKERS,
     "VOO",
@@ -156,6 +192,10 @@ def run_rehearsal(env: dict[str, str] | None = None, *, root: Path = ROOT) -> di
         _guarded("source_handoff_approval_gate", _check_source_handoff_approval_gate),
         _guarded("governed_golden_api_rendering", _check_governed_golden_api_rendering),
         _guarded("local_fresh_data_mvp_slice_smoke", _check_local_fresh_data_mvp_slice_smoke),
+        _guarded(
+            "local_fresh_data_mvp_slice_comparison_export_parity",
+            _check_local_fresh_data_mvp_slice_comparison_export_parity,
+        ),
         _guarded("stock_vs_etf_comparison_readiness", lambda: _check_stock_vs_etf_comparison_readiness(root)),
         _guarded("launch_manifest_review_packets", lambda: _check_launch_manifest_review_packets(root)),
         _guarded("stock_sec_source_pack_readiness", lambda: _check_stock_sec_source_pack_readiness(root)),
@@ -497,6 +537,7 @@ def _check_local_fresh_data_mvp_slice_smoke() -> RehearsalCheck:
         "partial_etf_tickers": result.get("partial_etf_tickers"),
         "blocked_regression_tickers": result.get("blocked_regression_tickers"),
         "blocked_generated_surfaces": result.get("blocked_generated_surfaces"),
+        "comparison_export_parity_summary": result.get("comparison_export_parity_summary"),
         "status_counts": result.get("status_counts"),
         "rows": rows,
         "blockers": blockers,
@@ -504,6 +545,623 @@ def _check_local_fresh_data_mvp_slice_smoke() -> RehearsalCheck:
     if blockers:
         return _blocked(check_id, "local_fresh_data_mvp_slice_smoke_blocked", details)
     return _pass(check_id, "local_fresh_data_mvp_slice_smoke_passed", details)
+
+
+def _check_local_fresh_data_mvp_slice_comparison_export_parity() -> RehearsalCheck:
+    check_id = "local_fresh_data_mvp_slice_comparison_export_parity"
+    client = TestClient(app)
+    slice_result = run_slice_smoke()
+    rows = slice_result.get("rows", [])
+    row_by_ticker = {row.get("ticker"): row for row in rows if isinstance(row, dict)}
+    blockers: list[dict[str, Any]] = []
+
+    if slice_result.get("status") != "pass":
+        blockers.append(
+            {
+                "reason_code": "slice_smoke_prerequisite_blocked",
+                "slice_status": slice_result.get("status"),
+            }
+        )
+
+    for ticker in SLICE_PARITY_REPRESENTATIVE_ASSETS:
+        row = row_by_ticker.get(ticker)
+        if not row:
+            blockers.append({"reason_code": "representative_asset_missing_from_slice", "ticker": ticker})
+            continue
+        if row.get("raw_payload_exposed") is not False or row.get("no_live_external_calls") is not True:
+            blockers.append(
+                {
+                    "reason_code": "representative_asset_boundary_regression",
+                    "ticker": ticker,
+                    "raw_payload_exposed": row.get("raw_payload_exposed"),
+                    "no_live_external_calls": row.get("no_live_external_calls"),
+                }
+            )
+
+    comparison_summaries: list[dict[str, Any]] = []
+    for left, right, comparison_type in SLICE_PARITY_COMPARISON_PAIRS:
+        comparison_summaries.append(
+            _comparison_pair_parity_summary(
+                client=client,
+                left=left,
+                right=right,
+                expected_comparison_type=comparison_type,
+                blockers=blockers,
+            )
+        )
+
+    chat_summary = _aapl_voo_chat_compare_redirect_parity_summary(client, blockers)
+
+    unavailable_comparison_summaries = [
+        _unavailable_comparison_parity_summary(client, left, right, expected_state, blockers)
+        for left, right, expected_state in SLICE_PARITY_UNAVAILABLE_COMPARISON_CASES
+    ]
+
+    asset_export_summaries = [
+        _asset_and_source_export_parity_summary(client, ticker, row_by_ticker.get(ticker), blockers)
+        for ticker in SLICE_PARITY_ASSET_EXPORT_CASES
+    ]
+
+    diagnostics_payload = {
+        "slice_result": {
+            "status": slice_result.get("status"),
+            "status_counts": slice_result.get("status_counts"),
+            "supported_renderable_tickers": slice_result.get("supported_renderable_tickers"),
+            "issuer_backed_etf_tickers": slice_result.get("issuer_backed_etf_tickers"),
+            "partial_etf_tickers": slice_result.get("partial_etf_tickers"),
+            "blocked_regression_tickers": slice_result.get("blocked_regression_tickers"),
+            "raw_payload_exposed_count": slice_result.get("raw_payload_exposed_count"),
+            "secret_values_reported": slice_result.get("secret_values_reported"),
+            "raw_payload_values_reported": slice_result.get("raw_payload_values_reported"),
+        },
+        "comparison_summaries": comparison_summaries,
+        "chat_summary": chat_summary,
+        "unavailable_comparison_summaries": unavailable_comparison_summaries,
+        "asset_export_summaries": asset_export_summaries,
+    }
+    forbidden_marker_hits = _serialized_forbidden_marker_hits(diagnostics_payload)
+    if forbidden_marker_hits:
+        blockers.append({"reason_code": "secret_or_raw_payload_marker_detected", "markers": forbidden_marker_hits})
+
+    blocker_reason_codes = sorted({blocker["reason_code"] for blocker in blockers})
+    details = {
+        "schema_version": "local-fresh-data-mvp-slice-comparison-export-parity-v1",
+        "boundary": "deterministic_fixture_backed_no_services_no_live_calls_v1",
+        "slice_name": "local_fresh_data_mvp_slice",
+        "representative_assets": _representative_asset_summaries(row_by_ticker),
+        "representative_comparison_pairs": comparison_summaries,
+        "export_surfaces": list(SLICE_PARITY_EXPORT_SURFACES),
+        "asset_export_cases": asset_export_summaries,
+        "unavailable_or_blocked_comparison_cases": unavailable_comparison_summaries,
+        "chat_compare_redirect": chat_summary,
+        "blocker_reason_codes": blocker_reason_codes,
+        "blockers": blockers,
+        "optional_operator_only_prerequisites": [
+            {
+                "prerequisite_id": "optional_browser_api_slice_smoke",
+                "status": "skipped",
+                "operator_only": True,
+                "env_names": ["LEARN_TICKER_LOCAL_BROWSER_SMOKE", "LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE"],
+            },
+            {
+                "prerequisite_id": "optional_durable_slice_smoke",
+                "status": "skipped",
+                "operator_only": True,
+                "env_names": [
+                    "LEARN_TICKER_LOCAL_DURABLE_SMOKE",
+                    "LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE",
+                    "LOCAL_DURABLE_REPOSITORIES_ENABLED",
+                    "DATABASE_URL",
+                    "LOCAL_DURABLE_OBJECT_NAMESPACE",
+                ],
+            },
+        ],
+        "sanitized_diagnostics": {
+            "safe_diagnostics_only": True,
+            "normal_ci_requires_live_calls": False,
+            "browser_startup_required": False,
+            "local_services_required": False,
+            "secret_values_reported": bool(slice_result.get("secret_values_reported")),
+            "raw_payload_values_reported": bool(slice_result.get("raw_payload_values_reported")),
+            "raw_payload_exposed_count": int(slice_result.get("raw_payload_exposed_count") or 0),
+            "forbidden_marker_hits": forbidden_marker_hits,
+            "opt_in_env_names_reported_without_values": [
+                "LEARN_TICKER_LOCAL_BROWSER_SMOKE",
+                "LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE",
+                "LEARN_TICKER_LOCAL_DURABLE_SMOKE",
+                "LOCAL_DURABLE_REPOSITORIES_ENABLED",
+                "DATABASE_URL",
+                "LOCAL_DURABLE_OBJECT_NAMESPACE",
+            ],
+        },
+        "review_only_boundaries": {
+            "services_started": False,
+            "live_provider_calls": False,
+            "live_market_data_calls": False,
+            "live_news_calls": False,
+            "live_llm_calls": False,
+            "sources_approved": False,
+            "manifests_promoted": False,
+            "generated_output_cache_entries_written": False,
+            "comparison_coverage_broadened": False,
+            "production_or_launch_ready": False,
+        },
+    }
+    if blockers:
+        return _blocked(check_id, "local_fresh_data_mvp_slice_comparison_export_parity_blocked", details)
+    return _pass(check_id, "local_fresh_data_mvp_slice_comparison_export_parity_passed", details)
+
+
+def _representative_asset_summaries(row_by_ticker: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    summaries: list[dict[str, Any]] = []
+    for ticker in SLICE_PARITY_REPRESENTATIVE_ASSETS:
+        row = row_by_ticker.get(ticker, {})
+        summaries.append(
+            {
+                "ticker": ticker,
+                "slice_status": row.get("status"),
+                "asset_type": row.get("asset_type"),
+                "fetch_state": row.get("fetch_state"),
+                "issuer_evidence_state": row.get("issuer_evidence_state"),
+                "generated_output_eligible": row.get("generated_output_eligible"),
+                "source_count": row.get("source_count", 0),
+                "citation_count": row.get("citation_count", 0),
+                "raw_payload_exposed": row.get("raw_payload_exposed"),
+                "no_live_external_calls": row.get("no_live_external_calls"),
+            }
+        )
+    return summaries
+
+
+def _comparison_pair_parity_summary(
+    *,
+    client: TestClient,
+    left: str,
+    right: str,
+    expected_comparison_type: str,
+    blockers: list[dict[str, Any]],
+) -> dict[str, Any]:
+    pair_id = f"{left}_{right}"
+    compare_response = client.post("/api/compare", json={"left_ticker": left, "right_ticker": right})
+    if compare_response.status_code != 200:
+        blockers.append({"reason_code": "comparison_endpoint_unavailable", "pair_id": pair_id, "status_code": compare_response.status_code})
+        return {"pair": [left, right], "status": "blocked", "endpoint_status_code": compare_response.status_code}
+    comparison = compare_response.json()
+    blocker = _available_comparison_payload_blocker(comparison, left, right, expected_comparison_type)
+    if blocker:
+        blockers.append({"pair_id": pair_id, **blocker})
+
+    export_summaries: list[dict[str, Any]] = []
+    for export_format in ("json", "markdown"):
+        export_response = client.get(
+            "/api/compare/export",
+            params={"left_ticker": left, "right_ticker": right, "export_format": export_format},
+        )
+        if export_response.status_code != 200:
+            blockers.append(
+                {
+                    "reason_code": "comparison_export_endpoint_unavailable",
+                    "pair_id": pair_id,
+                    "export_format": export_format,
+                    "status_code": export_response.status_code,
+                }
+            )
+            export_summaries.append({"export_format": export_format, "status": "blocked"})
+            continue
+        export_payload = export_response.json()
+        export_blocker = _available_comparison_export_payload_blocker(
+            export_payload,
+            left,
+            right,
+            expected_comparison_type,
+            export_format,
+        )
+        if export_blocker:
+            blockers.append({"pair_id": pair_id, **export_blocker})
+        export_summaries.append(_available_export_summary(export_payload, export_format))
+
+    evidence = comparison.get("evidence_availability") or {}
+    relationship = comparison.get("stock_etf_relationship") or {}
+    return {
+        "pair": [left, right],
+        "comparison_type": comparison.get("comparison_type"),
+        "availability_state": evidence.get("availability_state"),
+        "state_status": (comparison.get("state") or {}).get("status"),
+        "source_backed": bool(comparison.get("citations")) and bool(comparison.get("source_documents")),
+        "same_comparison_pack_sources_only": (evidence.get("diagnostics") or {}).get("same_comparison_pack_sources_only"),
+        "citation_count": len(comparison.get("citations") or []),
+        "source_document_count": len(comparison.get("source_documents") or []),
+        "source_reference_assets": sorted(
+            {
+                reference.get("asset_ticker")
+                for reference in evidence.get("source_references", [])
+                if reference.get("asset_ticker")
+            }
+        ),
+        "educational_disclaimer_present_in_exports": all(
+            summary.get("educational_disclaimer_present") is True for summary in export_summaries
+        ),
+        "exports": export_summaries,
+        "stock_etf_relationship_schema": relationship.get("schema_version"),
+        "relationship_state": relationship.get("relationship_state"),
+        "basket_structure": (
+            "single-company-vs-etf-basket"
+            if expected_comparison_type == "stock_vs_etf" and relationship.get("basket_structure")
+            else None
+        ),
+        "old_frontend_only_holding_verified_present": "holding_verified" in json.dumps(comparison, sort_keys=True),
+    }
+
+
+def _available_comparison_payload_blocker(
+    payload: dict[str, Any],
+    left: str,
+    right: str,
+    expected_comparison_type: str,
+) -> dict[str, Any] | None:
+    evidence = payload.get("evidence_availability") or {}
+    diagnostics = evidence.get("diagnostics") or {}
+    source_reference_assets = {
+        reference.get("asset_ticker") for reference in evidence.get("source_references", []) if reference.get("asset_ticker")
+    }
+    required_assets = {left, right}
+    forbidden_hits = _serialized_forbidden_marker_hits(payload) + find_forbidden_output_phrases(json.dumps(payload, sort_keys=True))
+    if (
+        (payload.get("state") or {}).get("status") != "supported"
+        or payload.get("comparison_type") != expected_comparison_type
+        or evidence.get("availability_state") != "available"
+        or diagnostics.get("no_live_external_calls") is not True
+        or diagnostics.get("same_comparison_pack_sources_only") is not True
+        or not payload.get("key_differences")
+        or not payload.get("bottom_line_for_beginners")
+        or not payload.get("citations")
+        or not payload.get("source_documents")
+        or not required_assets <= source_reference_assets
+        or forbidden_hits
+    ):
+        return {
+            "reason_code": "available_comparison_parity_mismatch",
+            "surface": "comparison",
+            "comparison_type": payload.get("comparison_type"),
+            "availability_state": evidence.get("availability_state"),
+            "source_reference_assets": sorted(source_reference_assets),
+            "forbidden_hits": forbidden_hits,
+        }
+    if not _source_documents_have_allowed_metadata(payload.get("source_documents") or []):
+        return {"reason_code": "comparison_source_metadata_missing", "surface": "comparison"}
+    if expected_comparison_type == "stock_vs_etf":
+        stock_blocker = _stock_vs_etf_compare_payload_blocker(payload)
+        if stock_blocker:
+            return stock_blocker
+    elif payload.get("stock_etf_relationship") is not None:
+        return {"reason_code": "etf_vs_etf_relationship_regression", "surface": "comparison"}
+    return None
+
+
+def _available_comparison_export_payload_blocker(
+    payload: dict[str, Any],
+    left: str,
+    right: str,
+    expected_comparison_type: str,
+    export_format: str,
+) -> dict[str, Any] | None:
+    validation = payload.get("export_validation") or {}
+    diagnostics = validation.get("diagnostics") or {}
+    section_ids = {section.get("section_id") for section in payload.get("sections", []) if section.get("section_id")}
+    forbidden_hits = _serialized_forbidden_marker_hits(payload) + find_forbidden_output_phrases(json.dumps(payload, sort_keys=True))
+    markdown_ok = export_format != "markdown" or (
+        payload.get("export_format") == "markdown"
+        and "not investment, financial, legal, or tax advice" in (payload.get("rendered_markdown") or "").lower()
+    )
+    relationship_ok = expected_comparison_type != "stock_vs_etf" or "stock_etf_relationship_context" in section_ids
+    if (
+        payload.get("content_type") != "comparison"
+        or payload.get("export_state") != "available"
+        or (payload.get("left_asset") or {}).get("ticker") != left
+        or (payload.get("right_asset") or {}).get("ticker") != right
+        or (payload.get("metadata") or {}).get("comparison_type") != expected_comparison_type
+        or validation.get("binding_scope") != "same_comparison_pack"
+        or diagnostics.get("no_live_external_calls") is not True
+        or diagnostics.get("same_comparison_pack_citation_bindings_only") is not True
+        or diagnostics.get("same_comparison_pack_source_bindings_only") is not True
+        or not payload.get("citations")
+        or not payload.get("source_documents")
+        or not payload.get("sections")
+        or not _educational_disclaimer_present(payload)
+        or not markdown_ok
+        or not relationship_ok
+        or forbidden_hits
+    ):
+        return {
+            "reason_code": "comparison_export_parity_mismatch",
+            "surface": "comparison_export",
+            "export_format": export_format,
+            "export_state": payload.get("export_state"),
+            "comparison_type": (payload.get("metadata") or {}).get("comparison_type"),
+            "binding_scope": validation.get("binding_scope"),
+            "section_ids": sorted(section_ids),
+            "forbidden_hits": forbidden_hits,
+        }
+    if not _source_documents_have_allowed_metadata(payload.get("source_documents") or [], allowed_excerpt=True):
+        return {"reason_code": "comparison_export_source_metadata_missing", "surface": "comparison_export"}
+    return None
+
+
+def _aapl_voo_chat_compare_redirect_parity_summary(
+    client: TestClient,
+    blockers: list[dict[str, Any]],
+) -> dict[str, Any]:
+    response = client.post("/api/assets/VOO/chat", json={"question": "AAPL vs VOO"})
+    if response.status_code != 200:
+        blockers.append({"reason_code": "chat_compare_redirect_unavailable", "status_code": response.status_code})
+        return {"endpoint": "POST /api/assets/VOO/chat", "status": "blocked", "status_code": response.status_code}
+    payload = response.json()
+    blocker = _stock_vs_etf_chat_redirect_blocker(payload)
+    if blocker:
+        blockers.append(blocker)
+    route = payload.get("compare_route_suggestion") or {}
+    return {
+        "endpoint": "POST /api/assets/VOO/chat",
+        "safety_classification": payload.get("safety_classification"),
+        "route": route.get("route"),
+        "comparison_availability_state": route.get("comparison_availability_state"),
+        "generated_multi_asset_chat_answer": (route.get("diagnostics") or {}).get("generated_multi_asset_chat_answer"),
+        "factual_citation_count": len(payload.get("citations") or []),
+        "factual_source_document_count": len(payload.get("source_documents") or []),
+    }
+
+
+def _unavailable_comparison_parity_summary(
+    client: TestClient,
+    left: str,
+    right: str,
+    expected_state: str,
+    blockers: list[dict[str, Any]],
+) -> dict[str, Any]:
+    compare_response = client.post("/api/compare", json={"left_ticker": left, "right_ticker": right})
+    pair_id = f"{left}_{right}"
+    if compare_response.status_code != 200:
+        blockers.append({"reason_code": "unavailable_comparison_endpoint_error", "pair_id": pair_id, "status_code": compare_response.status_code})
+        return {"pair": [left, right], "status": "blocked", "status_code": compare_response.status_code}
+    comparison = compare_response.json()
+    compare_blocker = _blocked_comparison_case_regression(left, right, expected_state, comparison)
+    if compare_blocker:
+        blockers.append(compare_blocker)
+
+    export_response = client.get(
+        "/api/compare/export",
+        params={"left_ticker": left, "right_ticker": right, "export_format": "json"},
+    )
+    if export_response.status_code != 200:
+        blockers.append({"reason_code": "unavailable_comparison_export_endpoint_error", "pair_id": pair_id, "status_code": export_response.status_code})
+        export_payload: dict[str, Any] = {}
+    else:
+        export_payload = export_response.json()
+        export_blocker = _limited_comparison_export_payload_blocker(export_payload, expected_state)
+        if export_blocker:
+            blockers.append({"pair_id": pair_id, **export_blocker})
+
+    evidence = comparison.get("evidence_availability") or {}
+    return {
+        "pair": [left, right],
+        "expected_availability_state": expected_state,
+        "availability_state": evidence.get("availability_state"),
+        "comparison_type": comparison.get("comparison_type"),
+        "generated_output_blocked": not bool(
+            comparison.get("bottom_line_for_beginners")
+            or comparison.get("key_differences")
+            or comparison.get("citations")
+            or comparison.get("source_documents")
+        ),
+        "comparison_export_state": export_payload.get("export_state"),
+        "comparison_export_content_count": len(export_payload.get("sections") or [])
+        + len(export_payload.get("citations") or [])
+        + len(export_payload.get("source_documents") or []),
+    }
+
+
+def _limited_comparison_export_payload_blocker(payload: dict[str, Any], expected_state: str) -> dict[str, Any] | None:
+    validation = payload.get("export_validation") or {}
+    diagnostics = validation.get("diagnostics") or {}
+    expected_export_states = {"unsupported"} if expected_state == "unsupported" else {"unavailable"}
+    forbidden_hits = _serialized_forbidden_marker_hits(payload) + find_forbidden_output_phrases(json.dumps(payload, sort_keys=True))
+    if (
+        payload.get("content_type") != "comparison"
+        or payload.get("export_state") not in expected_export_states
+        or (payload.get("metadata") or {}).get("generated_comparison_output") is not False
+        or payload.get("sections")
+        or payload.get("citations")
+        or payload.get("source_documents")
+        or validation.get("binding_scope") != "unavailable"
+        or diagnostics.get("empty_factual_evidence_export") is not True
+        or diagnostics.get("no_live_external_calls") is not True
+        or diagnostics.get("no_new_facts_or_dates") is not True
+        or forbidden_hits
+    ):
+        return {
+            "reason_code": "unavailable_comparison_export_regression",
+            "surface": "comparison_export",
+            "expected_availability_state": expected_state,
+            "export_state": payload.get("export_state"),
+            "forbidden_hits": forbidden_hits,
+        }
+    return None
+
+
+def _asset_and_source_export_parity_summary(
+    client: TestClient,
+    ticker: str,
+    row: dict[str, Any] | None,
+    blockers: list[dict[str, Any]],
+) -> dict[str, Any]:
+    surface_summaries: list[dict[str, Any]] = []
+    for content_type, endpoint in (
+        ("asset_page", f"/api/assets/{ticker}/export"),
+        ("asset_source_list", f"/api/assets/{ticker}/sources/export"),
+    ):
+        for export_format in ("json", "markdown"):
+            response = client.get(endpoint, params={"export_format": export_format})
+            if response.status_code != 200:
+                blockers.append(
+                    {
+                        "reason_code": "asset_export_endpoint_unavailable",
+                        "ticker": ticker,
+                        "content_type": content_type,
+                        "export_format": export_format,
+                        "status_code": response.status_code,
+                    }
+                )
+                surface_summaries.append({"content_type": content_type, "export_format": export_format, "status": "blocked"})
+                continue
+            payload = response.json()
+            if ticker in {"AAPL", "VOO", "QQQ"}:
+                blocker = _available_asset_export_payload_blocker(payload, ticker, content_type, export_format)
+            else:
+                expected_states = {"unsupported"} if ticker in SLICE_EXPECTED_BLOCKED_TICKERS else {"unavailable"}
+                blocker = _limited_asset_export_payload_blocker(payload, ticker, content_type, expected_states)
+            if blocker:
+                blockers.append({"ticker": ticker, **blocker})
+            surface_summaries.append(_available_export_summary(payload, export_format))
+
+    return {
+        "ticker": ticker,
+        "slice_status": (row or {}).get("status"),
+        "fetch_state": (row or {}).get("fetch_state"),
+        "issuer_evidence_state": (row or {}).get("issuer_evidence_state"),
+        "source_labels": (row or {}).get("source_labels", []),
+        "generated_output_eligible": (row or {}).get("generated_output_eligible"),
+        "provider_fallback_not_audit_quality_approval": ticker not in {"AAPL", "VOO", "QQQ"},
+        "exports": surface_summaries,
+    }
+
+
+def _available_asset_export_payload_blocker(
+    payload: dict[str, Any],
+    ticker: str,
+    expected_content_type: str,
+    export_format: str,
+) -> dict[str, Any] | None:
+    validation = payload.get("export_validation") or {}
+    diagnostics = validation.get("diagnostics") or {}
+    forbidden_hits = _serialized_forbidden_marker_hits(payload) + find_forbidden_output_phrases(json.dumps(payload, sort_keys=True))
+    markdown_ok = export_format != "markdown" or (
+        payload.get("export_format") == "markdown"
+        and "not investment, financial, legal, or tax advice" in (payload.get("rendered_markdown") or "").lower()
+    )
+    if (
+        payload.get("content_type") != expected_content_type
+        or payload.get("export_state") != "available"
+        or (payload.get("asset") or {}).get("ticker") != ticker
+        or validation.get("binding_scope") != "same_asset"
+        or diagnostics.get("no_live_external_calls") is not True
+        or diagnostics.get("same_asset_citation_bindings_only") is not True
+        or diagnostics.get("same_asset_source_bindings_only") is not True
+        or not payload.get("freshness")
+        or not payload.get("sections")
+        or not payload.get("citations")
+        or not payload.get("source_documents")
+        or not _educational_disclaimer_present(payload)
+        or not markdown_ok
+        or forbidden_hits
+    ):
+        return {
+            "reason_code": "asset_export_parity_mismatch",
+            "surface": expected_content_type,
+            "export_format": export_format,
+            "export_state": payload.get("export_state"),
+            "binding_scope": validation.get("binding_scope"),
+            "forbidden_hits": forbidden_hits,
+        }
+    if not _source_documents_have_allowed_metadata(payload.get("source_documents") or [], allowed_excerpt=True):
+        return {"reason_code": "asset_export_source_metadata_missing", "surface": expected_content_type}
+    return None
+
+
+def _limited_asset_export_payload_blocker(
+    payload: dict[str, Any],
+    ticker: str,
+    expected_content_type: str,
+    expected_export_states: set[str],
+) -> dict[str, Any] | None:
+    validation = payload.get("export_validation") or {}
+    diagnostics = validation.get("diagnostics") or {}
+    forbidden_hits = _serialized_forbidden_marker_hits(payload) + find_forbidden_output_phrases(json.dumps(payload, sort_keys=True))
+    if (
+        payload.get("content_type") != expected_content_type
+        or payload.get("export_state") not in expected_export_states
+        or (payload.get("asset") or {}).get("ticker") != ticker
+        or (payload.get("metadata") or {}).get("generated_asset_output") is not False
+        or payload.get("sections")
+        or payload.get("citations")
+        or payload.get("source_documents")
+        or payload.get("freshness") is not None
+        or validation.get("binding_scope") != "unavailable"
+        or diagnostics.get("empty_factual_evidence_export") is not True
+        or diagnostics.get("no_live_external_calls") is not True
+        or diagnostics.get("no_new_facts_or_dates") is not True
+        or forbidden_hits
+    ):
+        return {
+            "reason_code": "blocked_or_partial_export_parity_mismatch",
+            "surface": expected_content_type,
+            "expected_export_states": sorted(expected_export_states),
+            "export_state": payload.get("export_state"),
+            "forbidden_hits": forbidden_hits,
+        }
+    return None
+
+
+def _available_export_summary(payload: dict[str, Any], export_format: str) -> dict[str, Any]:
+    validation = payload.get("export_validation") or {}
+    diagnostics = validation.get("diagnostics") or {}
+    return {
+        "content_type": payload.get("content_type"),
+        "export_format": export_format,
+        "export_state": payload.get("export_state"),
+        "binding_scope": validation.get("binding_scope"),
+        "citation_count": len(payload.get("citations") or []),
+        "source_document_count": len(payload.get("source_documents") or []),
+        "section_count": len(payload.get("sections") or []),
+        "freshness_present": bool(payload.get("freshness")),
+        "educational_disclaimer_present": _educational_disclaimer_present(payload),
+        "source_use_policy_present": any(
+            bool(source.get("source_use_policy")) for source in payload.get("source_documents") or []
+        ),
+        "source_freshness_metadata_present": any(
+            bool(source.get("freshness_state") and (source.get("as_of_date") or source.get("retrieved_at")))
+            for source in payload.get("source_documents") or []
+        ),
+        "empty_factual_evidence_export": diagnostics.get("empty_factual_evidence_export"),
+        "no_live_external_calls": diagnostics.get("no_live_external_calls"),
+    }
+
+
+def _educational_disclaimer_present(payload: dict[str, Any]) -> bool:
+    disclaimer = (payload.get("disclaimer") or "").lower()
+    return "not investment, financial, legal, or tax advice" in disclaimer and "not a recommendation to buy, sell, or hold" in disclaimer
+
+
+def _source_documents_have_allowed_metadata(
+    source_documents: list[dict[str, Any]],
+    *,
+    allowed_excerpt: bool = False,
+) -> bool:
+    if not source_documents:
+        return False
+    return all(
+        source.get("url")
+        and source.get("source_use_policy")
+        and source.get("retrieved_at")
+        and source.get("freshness_state")
+        and (not allowed_excerpt or (source.get("allowed_excerpt") or {}).get("text"))
+        for source in source_documents
+    )
+
+
+def _serialized_forbidden_marker_hits(payload: Any) -> list[str]:
+    serialized = json.dumps(payload, sort_keys=True, default=str)
+    lower = serialized.lower()
+    return sorted({marker for marker in SLICE_PARITY_FORBIDDEN_MARKERS if marker.lower() in lower})
 
 
 def _check_stock_vs_etf_comparison_readiness(root: Path) -> RehearsalCheck:
@@ -1824,7 +2482,9 @@ def _build_manual_fresh_data_readiness_gate(
 def _build_lightweight_local_mvp_slice_manual_readiness_gate(checks: list[RehearsalCheck]) -> dict[str, Any]:
     check_by_id = {check.check_id: check for check in checks}
     slice_check = check_by_id["local_fresh_data_mvp_slice_smoke"]
+    parity_check = check_by_id["local_fresh_data_mvp_slice_comparison_export_parity"]
     slice_blockers = _lightweight_local_mvp_slice_blockers(slice_check)
+    parity_blockers = _lightweight_local_mvp_slice_parity_blockers(parity_check)
     optional_statuses = [_lightweight_slice_optional_prerequisite_summary(check_by_id[check_id]) for check_id in OPTIONAL_THRESHOLD_CHECK_IDS]
     optional_blockers = [
         {
@@ -1836,8 +2496,9 @@ def _build_lightweight_local_mvp_slice_manual_readiness_gate(checks: list[Rehear
         for status in optional_statuses
         if status["status"] == "blocked"
     ]
-    blockers = [*slice_blockers, *optional_blockers]
-    if slice_blockers:
+    deterministic_blockers = [*slice_blockers, *parity_blockers]
+    blockers = [*deterministic_blockers, *optional_blockers]
+    if deterministic_blockers:
         decision = "local_slice_agent_work_remaining"
     elif optional_blockers:
         decision = "optional_local_check_blocked"
@@ -1852,7 +2513,7 @@ def _build_lightweight_local_mvp_slice_manual_readiness_gate(checks: list[Rehear
         "deterministic_local_slice_manual_review_ready": decision == "deterministic_local_slice_manual_review_ready",
         "manual_slice_review_ready": decision == "deterministic_local_slice_manual_review_ready",
         "local_slice_agent_work_remaining": decision == "local_slice_agent_work_remaining",
-        "agent_work_remaining": bool(slice_blockers),
+        "agent_work_remaining": bool(deterministic_blockers),
         "optional_local_check_blocked": bool(optional_blockers),
         "launch_or_public_deployment_ready": False,
         "production_ready": False,
@@ -1860,6 +2521,7 @@ def _build_lightweight_local_mvp_slice_manual_readiness_gate(checks: list[Rehear
         "blockers": blockers,
         "prerequisite_summaries": [
             _lightweight_slice_smoke_prerequisite_summary(slice_check, slice_blockers),
+            _lightweight_slice_comparison_export_parity_prerequisite_summary(parity_check, parity_blockers),
             _lightweight_slice_workflow_prerequisite_summary(check_by_id),
             *optional_statuses,
         ],
@@ -1869,7 +2531,9 @@ def _build_lightweight_local_mvp_slice_manual_readiness_gate(checks: list[Rehear
             "raw_payload_values_reported": bool(details.get("raw_payload_values_reported")),
             "raw_payload_exposed_count": int(details.get("raw_payload_exposed_count") or 0),
             "secret_or_raw_value_reporting_detected": bool(
-                details.get("secret_values_reported") or details.get("raw_payload_values_reported")
+                details.get("secret_values_reported")
+                or details.get("raw_payload_values_reported")
+                or (parity_check.details.get("sanitized_diagnostics") or {}).get("forbidden_marker_hits")
             ),
             "normal_ci_requires_live_calls": bool(details.get("normal_ci_requires_live_calls")),
             "browser_startup_required_by_default": bool(details.get("browser_startup_required")),
@@ -1900,10 +2564,12 @@ def _build_lightweight_local_mvp_slice_manual_readiness_gate(checks: list[Rehear
                 "VOO and QQQ pass as issuer-backed ETF rows",
                 "SPY, VTI, and XLK remain partial ETF rows",
                 "TQQQ, ARKK, BND, and GLD remain blocked with no generated surfaces or evidence",
+                "local_fresh_data_mvp_slice_comparison_export_parity passes for representative pairs and exports",
                 "optional operator-only checks are skipped or pass",
             ],
             "local_slice_agent_work_remaining_when": [
                 "the deterministic slice smoke is blocked",
+                "the deterministic comparison/export parity check is blocked",
                 "the T-147 issuer-backed versus partial ETF shape changes",
                 "blocked regression tickers unlock generated output or expose evidence",
                 "normal CI starts requiring live calls, browser startup, or local services",
@@ -1998,6 +2664,45 @@ def _lightweight_local_mvp_slice_blockers(slice_check: RehearsalCheck) -> list[d
     return blockers
 
 
+def _lightweight_local_mvp_slice_parity_blockers(parity_check: RehearsalCheck) -> list[dict[str, Any]]:
+    details = parity_check.details
+    diagnostics = details.get("sanitized_diagnostics") or {}
+    blockers: list[dict[str, Any]] = []
+    _append_slice_blocker_if(
+        blockers,
+        parity_check.status != "pass",
+        "local_slice_comparison_export_parity_not_pass",
+        {"status": parity_check.status, "reason_code": parity_check.reason_code},
+    )
+    _append_slice_blocker_if(
+        blockers,
+        details.get("schema_version") != "local-fresh-data-mvp-slice-comparison-export-parity-v1",
+        "local_slice_comparison_export_parity_schema_mismatch",
+        {"actual": details.get("schema_version")},
+    )
+    _append_slice_blocker_if(
+        blockers,
+        diagnostics.get("normal_ci_requires_live_calls") is not False,
+        "local_slice_comparison_export_parity_live_call_requirement",
+        {"normal_ci_requires_live_calls": diagnostics.get("normal_ci_requires_live_calls")},
+    )
+    _append_slice_blocker_if(
+        blockers,
+        bool(diagnostics.get("forbidden_marker_hits")),
+        "local_slice_comparison_export_parity_secret_or_raw_marker",
+        {"markers": diagnostics.get("forbidden_marker_hits")},
+    )
+    for blocker in details.get("blockers") or []:
+        if isinstance(blocker, dict):
+            blockers.append(
+                {
+                    "reason_code": "local_slice_comparison_export_parity_reported_blocker",
+                    "parity_reason_code": blocker.get("reason_code"),
+                }
+            )
+    return blockers
+
+
 def _append_slice_blocker_if(blockers: list[dict[str, Any]], condition: bool, reason_code: str, details: dict[str, Any]) -> None:
     if condition:
         blockers.append({"reason_code": reason_code, **details})
@@ -2029,6 +2734,33 @@ def _lightweight_slice_smoke_prerequisite_summary(
         "secret_values_reported": details.get("secret_values_reported"),
         "raw_payload_values_reported": details.get("raw_payload_values_reported"),
         "blocker_count": len(slice_blockers),
+    }
+
+
+def _lightweight_slice_comparison_export_parity_prerequisite_summary(
+    parity_check: RehearsalCheck,
+    parity_blockers: list[dict[str, Any]],
+) -> dict[str, Any]:
+    details = parity_check.details
+    diagnostics = details.get("sanitized_diagnostics") or {}
+    return {
+        "prerequisite_id": "local_fresh_data_mvp_slice_comparison_export_parity",
+        "check_id": parity_check.check_id,
+        "status": parity_check.status,
+        "reason_code": parity_check.reason_code,
+        "schema_version": details.get("schema_version"),
+        "expected_schema_version": "local-fresh-data-mvp-slice-comparison-export-parity-v1",
+        "representative_assets": [asset.get("ticker") for asset in details.get("representative_assets", [])],
+        "representative_comparison_pairs": [
+            pair.get("pair") for pair in details.get("representative_comparison_pairs", [])
+        ],
+        "export_surfaces": details.get("export_surfaces"),
+        "asset_export_case_tickers": [case.get("ticker") for case in details.get("asset_export_cases", [])],
+        "unavailable_or_blocked_comparison_cases": details.get("unavailable_or_blocked_comparison_cases"),
+        "chat_compare_redirect": details.get("chat_compare_redirect"),
+        "normal_ci_requires_live_calls": diagnostics.get("normal_ci_requires_live_calls"),
+        "forbidden_marker_hits": diagnostics.get("forbidden_marker_hits"),
+        "blocker_count": len(parity_blockers),
     }
 
 
@@ -2082,6 +2814,7 @@ def _manual_readiness_prerequisite_summaries(
     frontend = check_by_id["frontend_v04_smoke_markers"]
     golden = check_by_id["governed_golden_api_rendering"]
     slice_smoke = check_by_id["local_fresh_data_mvp_slice_smoke"]
+    parity = check_by_id["local_fresh_data_mvp_slice_comparison_export_parity"]
     stock_vs_etf = check_by_id["stock_vs_etf_comparison_readiness"]
     return [
         {
@@ -2149,6 +2882,20 @@ def _manual_readiness_prerequisite_summaries(
             "raw_payload_exposed_count": slice_smoke.details.get("raw_payload_exposed_count"),
             "secret_values_reported": slice_smoke.details.get("secret_values_reported"),
             "normal_ci_requires_live_calls": slice_smoke.details.get("normal_ci_requires_live_calls"),
+        },
+        {
+            "prerequisite_id": "t149_local_fresh_data_mvp_slice_comparison_export_parity",
+            "check_id": "local_fresh_data_mvp_slice_comparison_export_parity",
+            "status": parity.status,
+            "reason_code": parity.reason_code,
+            "representative_assets": parity.details.get("representative_assets"),
+            "representative_comparison_pairs": parity.details.get("representative_comparison_pairs"),
+            "export_surfaces": parity.details.get("export_surfaces"),
+            "asset_export_cases": parity.details.get("asset_export_cases"),
+            "unavailable_or_blocked_comparison_cases": parity.details.get(
+                "unavailable_or_blocked_comparison_cases"
+            ),
+            "chat_compare_redirect": parity.details.get("chat_compare_redirect"),
         },
         {
             "prerequisite_id": "stock_vs_etf_comparison_readiness",
