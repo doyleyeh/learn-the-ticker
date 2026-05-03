@@ -160,11 +160,9 @@ def build_lightweight_details_response(response: LightweightFetchResponse) -> De
         facts = {
             "role": _etf_role(response),
             "holdings": _etf_holdings_context(response),
-            "cost_context": MetricValue(
-                value="Unavailable in the lightweight provider response",
-                unit=None,
-                citation_ids=_preferred_citation_ids(response),
-            ),
+            "benchmark": _metric_from_etf_fact(response, "benchmark", citation_ids),
+            "cost_context": _metric_from_etf_expense_ratio(response, citation_ids),
+            "prospectus_reference": _etf_prospectus_reference(response, citation_ids),
             "provider_market_price": _metric_from_market_price(response, provider_citation_ids),
             "manifest_scope_signal": _etf_scope_summary(response),
         }
@@ -369,6 +367,21 @@ def _beginner_summary(response: LightweightFetchResponse) -> BeginnerSummary:
                 "market reference data and does not make buy, sell, hold, or allocation recommendations."
             ),
         )
+    if _has_official_etf_issuer_evidence(response):
+        return BeginnerSummary(
+            what_it_is=(
+                f"{response.asset.name} ({response.asset.ticker}) is a U.S.-listed ETF with deterministic official "
+                "issuer evidence in the lightweight local-MVP fetch pipeline."
+            ),
+            why_people_consider_it=(
+                "Beginners may study it to understand the fund's benchmark, cost, holdings or exposure examples, "
+                "and separately labeled provider market-reference context."
+            ),
+            main_catch=(
+                "Issuer facts are point-in-time and do not make the ETF suitable for any specific person; provider-derived "
+                "fields stay separately labeled and complex products remain blocked."
+            ),
+        )
     return BeginnerSummary(
         what_it_is=(
             f"{response.asset.name} ({response.asset.ticker}) is a U.S.-listed ETF rendered through the "
@@ -417,6 +430,24 @@ def _top_risks(
                 citation_ids=provider_citation_ids,
             ),
         ]
+    if _has_official_etf_issuer_evidence(response):
+        issuer_risk = RiskItem(
+            title="Issuer facts are point-in-time",
+            plain_english_explanation=(
+                "Official issuer fact-sheet, prospectus, holdings, and exposure fields are dated evidence; beginners "
+                "should check as-of dates before treating them as current."
+            ),
+            citation_ids=stable_citation_ids,
+        )
+    else:
+        issuer_risk = RiskItem(
+            title="Issuer evidence may be partial",
+            plain_english_explanation=(
+                "The lightweight ETF path can use manifest and provider fallback while exact issuer holdings, fee, "
+                "or methodology evidence is still incomplete."
+            ),
+            citation_ids=stable_citation_ids,
+        )
     return [
         RiskItem(
             title="Market basket risk",
@@ -426,14 +457,7 @@ def _top_risks(
             ),
             citation_ids=stable_citation_ids,
         ),
-        RiskItem(
-            title="Issuer evidence may be partial",
-            plain_english_explanation=(
-                "The lightweight ETF path can use manifest and provider fallback while exact issuer holdings, fee, "
-                "or methodology evidence is still incomplete."
-            ),
-            citation_ids=stable_citation_ids,
-        ),
+        issuer_risk,
         RiskItem(
             title="Provider fallback limits",
             plain_english_explanation=(
@@ -519,6 +543,10 @@ def _etf_sections(
     provider_citation_ids: list[str],
 ) -> list[OverviewSection]:
     retrieved_at = response.freshness.page_last_updated_at
+    has_issuer = _has_official_etf_issuer_evidence(response)
+    issuer_state = EvidenceState.supported if has_issuer else EvidenceState.partial
+    holdings_state = EvidenceState.supported if _has_official_etf_holdings_evidence(response) else EvidenceState.partial
+    expense_metric = _expense_ratio_metric(response, stable_citation_ids)
     return [
         OverviewSection(
             section_id="fund_objective_role",
@@ -533,53 +561,75 @@ def _etf_sections(
                     _etf_scope_summary(response),
                     stable_citation_ids,
                     response,
-                    evidence_state=EvidenceState.partial,
+                    evidence_state=issuer_state,
+                ),
+                _item(
+                    "etf_benchmark",
+                    "Benchmark",
+                    _etf_benchmark_summary(response),
+                    stable_citation_ids,
+                    response,
+                    evidence_state=EvidenceState.supported if _fact(response, "benchmark") else EvidenceState.unavailable,
+                    as_of_date=_fact_as_of(response, "benchmark"),
                 )
             ],
             metrics=[],
             citation_ids=stable_citation_ids,
             source_document_ids=_source_ids_for_citations(response, stable_citation_ids),
             freshness_state=FreshnessState.fresh,
-            evidence_state=EvidenceState.partial,
+            evidence_state=issuer_state,
             as_of_date=response.freshness.facts_as_of,
             retrieved_at=retrieved_at,
-            limitations="Manifest/scope metadata is enough for local MVP rendering but not strict issuer evidence.",
+            limitations=(
+                "Official issuer fixture evidence supports this local-MVP ETF row."
+                if has_issuer
+                else "Manifest/scope metadata is enough for local MVP rendering but not strict issuer evidence."
+            ),
         ),
         OverviewSection(
             section_id="holdings_exposure",
             title="Holdings And Exposure",
             section_type=OverviewSectionType.stable_facts,
             applies_to=[AssetType.etf],
-            beginner_summary=(
-                "Exact holdings and exposure may be unavailable until issuer automation succeeds; the page keeps "
-                "that limitation visible instead of inventing holdings."
-            ),
+            beginner_summary=" ".join(_etf_holdings_context(response)),
             items=[
                 _item(
-                    "holdings_partial",
+                    "holdings_status",
                     "Holdings status",
                     "; ".join(_etf_holdings_context(response)),
                     stable_citation_ids,
                     response,
-                    evidence_state=EvidenceState.partial,
-                    limitations="Full issuer holdings are not included in the lightweight provider response.",
+                    evidence_state=holdings_state,
+                    as_of_date=response.freshness.holdings_as_of or response.freshness.facts_as_of,
+                    limitations=(
+                        "Official issuer holdings or exposure fixture metadata supports this section."
+                        if holdings_state is EvidenceState.supported
+                        else "Full issuer holdings are unavailable in this lightweight response."
+                    ),
                 )
             ],
             metrics=[],
             citation_ids=stable_citation_ids,
             source_document_ids=_source_ids_for_citations(response, stable_citation_ids),
             freshness_state=FreshnessState.fresh,
-            evidence_state=EvidenceState.partial,
+            evidence_state=holdings_state,
             as_of_date=response.freshness.holdings_as_of or response.freshness.facts_as_of,
             retrieved_at=retrieved_at,
-            limitations="Full issuer holdings are unavailable in this lightweight response.",
+            limitations=(
+                "Official issuer holdings or exposure fixture metadata is present."
+                if holdings_state is EvidenceState.supported
+                else "Full issuer holdings are unavailable in this lightweight response."
+            ),
         ),
         OverviewSection(
             section_id="cost_trading_context",
             title="Cost And Trading Context",
             section_type=OverviewSectionType.stable_facts,
             applies_to=[AssetType.etf],
-            beginner_summary="Provider-derived market fields are available; expense ratio stays unavailable unless issuer evidence supplies it.",
+            beginner_summary=(
+                "Official issuer expense-ratio evidence is shown when available; provider-derived market fields "
+                "remain separate local-test context."
+            ),
             items=[
                 _item(
                     "provider_reference",
@@ -593,19 +643,7 @@ def _etf_sections(
             ],
             metrics=[
                 _market_metric(response, provider_citation_ids),
-                OverviewMetric(
-                    metric_id="expense_ratio",
-                    label="Expense ratio",
-                    value="Unavailable",
-                    unit=None,
-                    citation_ids=stable_citation_ids,
-                    source_document_ids=_source_ids_for_citations(response, stable_citation_ids),
-                    freshness_state=FreshnessState.unavailable,
-                    evidence_state=EvidenceState.unavailable,
-                    as_of_date=None,
-                    retrieved_at=retrieved_at,
-                    limitations="Expense ratio requires issuer evidence or another reviewed provider field.",
-                ),
+                expense_metric,
             ],
             citation_ids=[*provider_citation_ids, *stable_citation_ids],
             source_document_ids=_source_ids_for_citations(response, [*provider_citation_ids, *stable_citation_ids]),
@@ -727,12 +765,52 @@ def _market_metric(response: LightweightFetchResponse, citation_ids: list[str]) 
     )
 
 
+def _expense_ratio_metric(response: LightweightFetchResponse, citation_ids: list[str]) -> OverviewMetric:
+    metric = _metric_from_etf_expense_ratio(response, citation_ids)
+    supported = metric.value not in (None, "Unavailable")
+    return OverviewMetric(
+        metric_id="expense_ratio",
+        label="Expense ratio",
+        value=metric.value,
+        unit=metric.unit,
+        citation_ids=metric.citation_ids,
+        source_document_ids=_source_ids_for_citations(response, metric.citation_ids),
+        freshness_state=FreshnessState.fresh if supported else FreshnessState.unavailable,
+        evidence_state=EvidenceState.supported if supported else EvidenceState.unavailable,
+        as_of_date=_fact_as_of(response, "expense_ratio"),
+        retrieved_at=response.freshness.page_last_updated_at,
+        limitations=(
+            "Official issuer fact-sheet fixture evidence."
+            if supported
+            else "Expense ratio requires issuer evidence or another reviewed provider field."
+        ),
+    )
+
+
 def _metric_from_market_price(response: LightweightFetchResponse, citation_ids: list[str]) -> MetricValue:
     value = _fact_value(response, "provider_market_price")
     if isinstance(value, dict):
         price = value.get("regularMarketPrice") or value.get("chartPreviousClose")
         if price is not None:
             return MetricValue(value=price, unit=value.get("currency"), citation_ids=citation_ids)
+    return MetricValue(value="Unavailable", unit=None, citation_ids=citation_ids)
+
+
+def _metric_from_etf_expense_ratio(response: LightweightFetchResponse, citation_ids: list[str]) -> MetricValue:
+    value = _fact_value(response, "expense_ratio")
+    if value is not None:
+        return MetricValue(value=value, unit="%", citation_ids=citation_ids)
+    return MetricValue(value="Unavailable", unit=None, citation_ids=citation_ids)
+
+
+def _metric_from_etf_fact(
+    response: LightweightFetchResponse,
+    field_name: str,
+    citation_ids: list[str],
+) -> MetricValue:
+    value = _fact_value(response, field_name)
+    if value is not None:
+        return MetricValue(value=value, unit=None, citation_ids=citation_ids)
     return MetricValue(value="Unavailable", unit=None, citation_ids=citation_ids)
 
 
@@ -765,6 +843,19 @@ def _snapshot(
         snapshot["latest_revenue"] = MetricValue(
             value=revenue.get("value"),
             unit=revenue.get("unit"),
+            citation_ids=stable_citation_ids,
+        )
+    benchmark = _fact_value(response, "benchmark")
+    if benchmark is not None:
+        snapshot["benchmark"] = MetricValue(value=benchmark, unit=None, citation_ids=stable_citation_ids)
+    expense_ratio = _fact_value(response, "expense_ratio")
+    if expense_ratio is not None:
+        snapshot["expense_ratio"] = MetricValue(value=expense_ratio, unit="%", citation_ids=stable_citation_ids)
+    holdings_count = _fact_value(response, "holdings_count")
+    if holdings_count is not None:
+        snapshot["holdings_count"] = MetricValue(
+            value=holdings_count,
+            unit="approximate holdings",
             citation_ids=stable_citation_ids,
         )
     return snapshot
@@ -1053,6 +1144,17 @@ def _provider_reference_summary(response: LightweightFetchResponse) -> str:
 
 
 def _etf_role(response: LightweightFetchResponse) -> str:
+    identity = _fact_value(response, "etf_identity")
+    benchmark = _fact_value(response, "benchmark")
+    expense_ratio = _fact_value(response, "expense_ratio")
+    if isinstance(identity, dict):
+        return (
+            f"Official issuer fixture evidence identifies {identity.get('fund_name') or response.asset.name} as a "
+            f"{identity.get('etf_classification') or 'U.S.-listed ETF'} from "
+            f"{identity.get('issuer') or response.asset.issuer or 'the issuer'}"
+            f"{f' tracking {benchmark}' if benchmark else ''}"
+            f"{f' with an expense ratio of {expense_ratio}%' if expense_ratio is not None else ''}."
+        )
     signal = _fact_value(response, "etf_manifest_scope_signal")
     if isinstance(signal, dict):
         return (
@@ -1063,6 +1165,12 @@ def _etf_role(response: LightweightFetchResponse) -> str:
 
 
 def _etf_scope_summary(response: LightweightFetchResponse) -> str:
+    identity = _fact_value(response, "etf_identity")
+    if isinstance(identity, dict):
+        return (
+            f"Issuer-backed support state: {identity.get('support_state')}; classification: "
+            f"{identity.get('etf_classification')}; issuer: {identity.get('issuer') or response.asset.issuer or 'unknown'}."
+        )
     signal = _fact_value(response, "etf_manifest_scope_signal")
     if isinstance(signal, dict):
         return (
@@ -1073,6 +1181,30 @@ def _etf_scope_summary(response: LightweightFetchResponse) -> str:
 
 
 def _etf_holdings_context(response: LightweightFetchResponse) -> list[str]:
+    holdings_count = _fact_value(response, "holdings_count")
+    holding_summaries = [
+        fact.value
+        for fact in response.facts
+        if (
+            fact.field_name.startswith("top_holding_")
+            or fact.field_name.endswith("_exposure")
+            or fact.field_name == "equity_exposure"
+        )
+    ]
+    if holdings_count is not None or holding_summaries:
+        lines = [
+            f"Official issuer fixture evidence lists {holdings_count or 'available'} holdings or exposure metadata for {response.asset.ticker}."
+        ]
+        for item in holding_summaries[:3]:
+            if isinstance(item, dict):
+                name = item.get("name") or item.get("holding_ticker") or "exposure"
+                weight = item.get("weight")
+                unit = item.get("unit") or "weight"
+                if weight is not None:
+                    lines.append(f"{name}: {weight} {unit}.")
+                else:
+                    lines.append(str(name))
+        return lines
     signal = _fact_value(response, "etf_manifest_scope_signal")
     issuer = response.asset.issuer or (signal.get("issuer") if isinstance(signal, dict) else None) or "issuer"
     return [
@@ -1080,6 +1212,41 @@ def _etf_holdings_context(response: LightweightFetchResponse) -> list[str]:
         "Full issuer holdings are unavailable in the lightweight response.",
         "Use the source labels before treating any provider field as official issuer evidence.",
     ]
+
+
+def _etf_benchmark_summary(response: LightweightFetchResponse) -> str:
+    benchmark = _fact_value(response, "benchmark")
+    if benchmark is not None:
+        return f"Official issuer fact-sheet fixture metadata lists benchmark/index: {benchmark}."
+    return "Benchmark is unavailable until deterministic issuer evidence is present."
+
+
+def _etf_prospectus_reference(response: LightweightFetchResponse, citation_ids: list[str]) -> MetricValue:
+    value = _fact_value(response, "prospectus_reference")
+    if isinstance(value, dict):
+        document_type = value.get("document_type") or "prospectus"
+        publication_date = value.get("publication_date") or value.get("effective_date") or "unknown date"
+        return MetricValue(value=f"{document_type} published {publication_date}", unit=None, citation_ids=citation_ids)
+    return MetricValue(value="Unavailable", unit=None, citation_ids=citation_ids)
+
+
+def _has_official_etf_issuer_evidence(response: LightweightFetchResponse) -> bool:
+    if response.asset.asset_type is not AssetType.etf:
+        return False
+    return bool(_citation_ids_for_source_label(response, "official")) and _fact(response, "etf_fact_sheet_metadata") is not None
+
+
+def _has_official_etf_holdings_evidence(response: LightweightFetchResponse) -> bool:
+    if response.asset.asset_type is not AssetType.etf:
+        return False
+    return _fact(response, "holdings_count") is not None and any(
+        fact.source_document_ids and (
+            fact.field_name.startswith("top_holding_")
+            or fact.field_name.endswith("_exposure")
+            or fact.field_name == "equity_exposure"
+        )
+        for fact in response.facts
+    )
 
 
 def _exchange_phrase(response: LightweightFetchResponse) -> str:

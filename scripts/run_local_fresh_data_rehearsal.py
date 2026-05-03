@@ -352,7 +352,7 @@ def _check_local_fresh_data_mvp_slice_smoke() -> RehearsalCheck:
     row_by_ticker = {row.get("ticker"): row for row in rows if isinstance(row, dict)}
     expected_supported = ["AAPL", "MSFT", "NVDA", "VOO", "SPY", "VTI", "QQQ", "XLK"]
     expected_blocked = ["TQQQ", "ARKK", "BND", "GLD"]
-    expected_status_counts = {"pass": 3, "partial": 5, "blocked": 4, "unavailable": 0}
+    expected_status_counts = {"pass": 5, "partial": 3, "blocked": 4, "unavailable": 0}
     blockers = list(result.get("blockers") or [])
 
     if result.get("status") != "pass":
@@ -408,6 +408,26 @@ def _check_local_fresh_data_mvp_slice_smoke() -> RehearsalCheck:
                     "row": row,
                 }
             )
+    for ticker in ("VOO", "QQQ"):
+        row = row_by_ticker.get(ticker)
+        if not row or row.get("issuer_backed") is not True or row.get("fetch_state") != "supported":
+            blockers.append(
+                {
+                    "reason_code": "slice_issuer_backed_etf_not_supported",
+                    "ticker": ticker,
+                    "row": row,
+                }
+            )
+    for ticker in ("SPY", "VTI", "XLK"):
+        row = row_by_ticker.get(ticker)
+        if not row or row.get("issuer_evidence_state") != "partial" or row.get("fetch_state") != "partial":
+            blockers.append(
+                {
+                    "reason_code": "slice_partial_etf_state_mismatch",
+                    "ticker": ticker,
+                    "row": row,
+                }
+            )
     for ticker in expected_blocked:
         row = row_by_ticker.get(ticker)
         if not row or row.get("status") != "blocked" or row.get("generated_output_eligible") is not False:
@@ -439,6 +459,8 @@ def _check_local_fresh_data_mvp_slice_smoke() -> RehearsalCheck:
         "raw_payload_exposed_count": result.get("raw_payload_exposed_count"),
         "status_definitions": result.get("status_definitions"),
         "supported_renderable_tickers": result.get("supported_renderable_tickers"),
+        "issuer_backed_etf_tickers": result.get("issuer_backed_etf_tickers"),
+        "partial_etf_tickers": result.get("partial_etf_tickers"),
         "blocked_regression_tickers": result.get("blocked_regression_tickers"),
         "blocked_generated_surfaces": result.get("blocked_generated_surfaces"),
         "status_counts": result.get("status_counts"),

@@ -403,8 +403,8 @@ def _fetch_etf(
     no_live_external_calls: bool,
 ) -> LightweightFetchResponse:
     entry = etf_universe_entry(ticker)
-    sources = list(yahoo_sources)
-    facts = list(yahoo_facts)
+    sources: list[LightweightFetchSource] = []
+    facts: list[LightweightFetchFact] = []
     gaps: list[LightweightFetchFact] = []
     name = str((yahoo_quote or {}).get("longname") or (yahoo_quote or {}).get("shortname") or (entry.fund_name if entry else ticker))
     disqualifiers = _etf_scope_disqualifiers(ticker, name)
@@ -473,6 +473,17 @@ def _fetch_etf(
             )
         )
 
+    diagnostics["official_sources_attempted"].append("deterministic_etf_issuer_adapter")
+    issuer_sources, issuer_facts, issuer_gaps, issuer_diagnostics = _try_etf_issuer_enrichment(
+        ticker,
+        entry,
+        retrieved_at,
+    )
+    sources = [*issuer_sources, *sources, *yahoo_sources]
+    facts = [*issuer_facts, *facts, *yahoo_facts]
+    gaps.extend(issuer_gaps)
+    diagnostics.update(issuer_diagnostics)
+
     if not yahoo_sources:
         gaps.append(
             _gap(
@@ -483,6 +494,7 @@ def _fetch_etf(
             )
         )
 
+    preferred_as_of = _latest_as_of(issuer_sources) if issuer_sources else None
     asset = AssetIdentity(
         ticker=ticker,
         name=name,
@@ -502,7 +514,205 @@ def _fetch_etf(
         gaps=gaps,
         diagnostics=diagnostics,
         no_live_external_calls=no_live_external_calls,
-        message="Lightweight ETF fetch used manifest/scope metadata and Yahoo-labeled provider fallback for fresh local-test fields.",
+        message=(
+            "Lightweight ETF fetch used deterministic issuer evidence before manifest/provider fallback."
+            if issuer_sources
+            else "Lightweight ETF fetch used manifest/scope metadata and Yahoo-labeled provider fallback while issuer evidence remains unavailable."
+        ),
+        preferred_as_of=preferred_as_of,
+    )
+
+
+def _try_etf_issuer_enrichment(
+    ticker: str,
+    entry: Any,
+    retrieved_at: str,
+) -> tuple[list[LightweightFetchSource], list[LightweightFetchFact], list[LightweightFetchFact], dict[str, Any]]:
+    diagnostics: dict[str, Any] = {
+        "issuer_enrichment_attempted": True,
+        "issuer_enrichment_source": "deterministic_etf_issuer_adapter",
+        "issuer_enrichment_state": "unavailable",
+        "issuer_enrichment_no_live_external_calls": True,
+    }
+    try:
+        from backend.providers import mock_etf_issuer_adapter
+
+        adapter = mock_etf_issuer_adapter()
+        response = adapter.fetch(adapter.request(ticker))
+    except Exception as exc:
+        diagnostics.update(
+            {
+                "issuer_enrichment_state": "adapter_error",
+                "issuer_enrichment_error_type": type(exc).__name__,
+            }
+        )
+        return (
+            [],
+            [],
+            [
+                _gap(
+                    ticker,
+                    "etf_issuer_evidence",
+                    "Deterministic ETF issuer evidence is unavailable for this local-MVP slice row.",
+                    retrieved_at,
+                )
+            ],
+            diagnostics,
+        )
+
+    diagnostics["issuer_enrichment_state"] = response.state.value
+    diagnostics["issuer_enrichment_no_live_external_calls"] = response.no_live_external_calls
+    if response.state.value != "supported":
+        return (
+            [],
+            [],
+            [
+                _gap(
+                    ticker,
+                    "etf_issuer_evidence",
+                    "No deterministic issuer fixture is available for this ETF slice row; issuer facts stay partial or unavailable.",
+                    retrieved_at,
+                )
+            ],
+            diagnostics,
+        )
+
+    if not _valid_etf_issuer_response_binding(ticker, entry, response):
+        diagnostics["issuer_enrichment_state"] = "binding_rejected"
+        return (
+            [],
+            [],
+            [
+                _gap(
+                    ticker,
+                    "etf_issuer_evidence",
+                    "Deterministic issuer fixture failed same-ticker, same-fund, same-issuer, or source-use binding checks.",
+                    retrieved_at,
+                )
+            ],
+            diagnostics,
+        )
+
+    source_by_id = {
+        source.source_document_id: _source_from_etf_issuer_attribution(source, retrieved_at)
+        for source in response.source_attributions
+    }
+    facts: list[LightweightFetchFact] = []
+    gaps: list[LightweightFetchFact] = []
+    for provider_fact in response.facts:
+        if provider_fact.evidence_state is EvidenceState.supported and provider_fact.source_document_ids:
+            facts.append(_fact_from_etf_issuer_provider_fact(provider_fact, source_by_id, retrieved_at))
+        else:
+            gaps.append(
+                LightweightFetchFact(
+                    fact_id=f"lw_gap_{ticker.lower()}_{provider_fact.field_name}",
+                    field_name=provider_fact.field_name,
+                    value=provider_fact.value,
+                    evidence_state=provider_fact.evidence_state,
+                    freshness_state=provider_fact.freshness_state,
+                    as_of_date=provider_fact.as_of_date,
+                    retrieved_at=retrieved_at,
+                    source_labels=[LightweightSourceLabel.unavailable],
+                    fallback_used=False,
+                    limitations=str(provider_fact.value),
+                )
+            )
+
+    diagnostics.update(
+        {
+            "issuer_enrichment_state": "supported",
+            "issuer_enrichment_source_count": len(source_by_id),
+            "issuer_enrichment_fact_count": len(facts),
+            "issuer_enrichment_gap_count": len(gaps),
+            "issuer_enrichment_raw_payload_exposed": False,
+        }
+    )
+    return list(source_by_id.values()), facts, gaps, diagnostics
+
+
+def _valid_etf_issuer_response_binding(ticker: str, entry: Any, response: Any) -> bool:
+    asset = response.asset
+    if asset is None or asset.ticker != ticker or asset.asset_type is not AssetType.etf:
+        return False
+    if entry is not None:
+        if asset.name != entry.fund_name or asset.issuer != entry.issuer:
+            return False
+    if not response.no_live_external_calls:
+        return False
+    if not response.source_attributions or not response.facts:
+        return False
+    for source in response.source_attributions:
+        if source.asset_ticker != ticker or not source.is_official:
+            return False
+        if source.publisher != asset.issuer:
+            return False
+        if source.source_use_policy is SourceUsePolicy.rejected:
+            return False
+        if source.allowlist_status is not SourceAllowlistStatus.allowed:
+            return False
+        if not source.can_support_canonical_facts:
+            return False
+        if not source.permitted_operations.can_support_citations:
+            return False
+        if not source.permitted_operations.can_support_canonical_facts:
+            return False
+        if source.parser_status.value != "parsed":
+            return False
+        if getattr(source, "raw_payload_exposed", False):
+            return False
+    source_ids = {source.source_document_id for source in response.source_attributions}
+    for fact in response.facts:
+        if fact.asset_ticker != ticker or fact.uses_glossary_as_support:
+            return False
+        if set(fact.source_document_ids) - source_ids:
+            return False
+    return True
+
+
+def _source_from_etf_issuer_attribution(source: Any, retrieved_at: str) -> LightweightFetchSource:
+    return LightweightFetchSource(
+        source_document_id=source.source_document_id,
+        source_label=LightweightSourceLabel.official,
+        source_type=source.source_type,
+        title=source.title,
+        publisher=source.publisher,
+        url=source.url,
+        is_official=True,
+        source_quality=source.source_quality,
+        source_use_policy=source.source_use_policy,
+        allowlist_status=source.allowlist_status,
+        published_at=source.published_at,
+        as_of_date=source.as_of_date,
+        retrieved_at=retrieved_at,
+        date_precision="day" if source.as_of_date or source.published_at else "unknown",
+        freshness_state=source.freshness_state,
+        fallback_reason=None,
+        rights_note=(
+            "Official issuer fixture metadata is used for lightweight local-MVP display; raw issuer documents "
+            "and unrestricted source text are not exposed by this response."
+        ),
+        export_allowed=source.permitted_operations.can_export_metadata,
+    )
+
+
+def _fact_from_etf_issuer_provider_fact(
+    fact: Any,
+    source_by_id: dict[str, LightweightFetchSource],
+    retrieved_at: str,
+) -> LightweightFetchFact:
+    source_ids = [source_id for source_id in fact.source_document_ids if source_id in source_by_id]
+    return LightweightFetchFact(
+        fact_id=fact.fact_id.replace("provider_", "lw_issuer_", 1),
+        field_name=fact.field_name,
+        value=fact.value,
+        evidence_state=fact.evidence_state,
+        freshness_state=fact.freshness_state,
+        as_of_date=fact.as_of_date,
+        retrieved_at=retrieved_at,
+        source_document_ids=source_ids,
+        source_labels=[source_by_id[source_id].source_label for source_id in source_ids],
+        fallback_used=False,
+        limitations=None,
     )
 
 

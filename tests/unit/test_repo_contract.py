@@ -766,7 +766,9 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert slice_details["secret_values_reported"] is False
     assert slice_details["raw_payload_values_reported"] is False
     assert slice_details["raw_payload_exposed_count"] == 0
-    assert slice_details["status_counts"] == {"pass": 3, "partial": 5, "blocked": 4, "unavailable": 0}
+    assert slice_details["status_counts"] == {"pass": 5, "partial": 3, "blocked": 4, "unavailable": 0}
+    assert slice_details["issuer_backed_etf_tickers"] == ["VOO", "QQQ"]
+    assert slice_details["partial_etf_tickers"] == ["SPY", "VTI", "XLK"]
     assert slice_details["supported_renderable_tickers"] == [
         "AAPL",
         "MSFT",
@@ -780,7 +782,10 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert slice_details["blocked_regression_tickers"] == ["TQQQ", "ARKK", "BND", "GLD"]
     slice_rows = {row["ticker"]: row for row in slice_details["rows"]}
     assert slice_rows["AAPL"]["source_labels"] == ["official", "provider_derived"]
-    assert slice_rows["VOO"]["source_labels"] == ["partial", "provider_derived"]
+    assert slice_rows["VOO"]["source_labels"] == ["official", "partial", "provider_derived"]
+    assert slice_rows["VOO"]["issuer_backed"] is True
+    assert slice_rows["QQQ"]["issuer_backed"] is True
+    assert slice_rows["SPY"]["issuer_evidence_state"] == "partial"
     assert slice_rows["TQQQ"]["fetch_call_count"] == 0
     assert all(row["raw_payload_exposed"] is False for row in slice_rows.values())
     launch_details = next(
@@ -1490,6 +1495,62 @@ def test_t146_optional_durable_fresh_data_slice_smoke_is_gated_and_documented():
         "raw model reasoning is shown",
     ]:
         assert forbidden.lower() not in runbook.lower()
+
+
+def test_t147_issuer_backed_etf_slice_enrichment_is_fixture_backed_and_documented():
+    fetch = read_file("backend/lightweight_data_fetch.py")
+    page = read_file("backend/lightweight_page.py")
+    slice_smoke = read_file("scripts/run_local_fresh_data_slice_smoke.py")
+    rehearsal = read_file("scripts/run_local_fresh_data_rehearsal.py")
+    browser_smoke = read_file("tests/frontend/smoke.mjs")
+    runbook = read_file("docs/local_fresh_data_ingest_to_render_runbook.md")
+    combined = "\n".join([fetch, page, slice_smoke, rehearsal, browser_smoke, runbook])
+    sensitive_surface = "\n".join([fetch, page, slice_smoke, rehearsal, runbook])
+
+    for marker in [
+        "T-147",
+        "deterministic_etf_issuer_adapter",
+        "issuer_enrichment_state",
+        "issuer_backed_etf_tickers",
+        "partial_etf_tickers",
+        "issuer_backed_supported",
+        "etf_issuer_evidence",
+        "issuer-backed ETF rows",
+        "official issuer fixture evidence",
+        "official issuer source labels",
+        "no deterministic issuer fixture",
+        "source-drawer-ready metadata",
+        "raw_payload_exposed=false",
+        "without broadening ETF-500",
+        "source-use",
+        "live issuer acquisition",
+        "provider-derived fallback",
+        "data-home-primary-workflow=\\\"single-supported-stock-or-etf-search\\\"",
+        "data-stock-etf-basket-structure",
+        "No major Weekly News Focus items found",
+    ]:
+        assert marker in combined, f"T-147 issuer-backed slice contract should include marker: {marker}"
+
+    for ticker in ["VOO", "QQQ"]:
+        assert f'"{ticker}": {{"asset_type": "etf", "support_state": "issuer_backed_supported"' in slice_smoke
+    for ticker in ["SPY", "VTI", "XLK"]:
+        assert f'"{ticker}": {{"asset_type": "etf", "support_state": "supported_renderable_partial"' in slice_smoke
+
+    for forbidden in [
+        "OPENROUTER_API_KEY=",
+        "FMP_API_KEY=",
+        "ALPHA_VANTAGE_API_KEY=",
+        "FINNHUB_API_KEY=",
+        "TIINGO_API_KEY=",
+        "EODHD_API_KEY=",
+        "BEGIN PRIVATE KEY",
+        "sk-",
+        "xoxb-",
+        "ghp_",
+        "raw issuer documents are exposed",
+        "unrestricted source text is exported",
+    ]:
+        assert forbidden.lower() not in sensitive_surface.lower()
 
 
 def test_sec_stock_acquisition_contract_is_backend_only_fixture_backed_and_sanitized():

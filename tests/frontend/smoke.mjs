@@ -2102,18 +2102,29 @@ if (localBrowserSmokeEnabled) {
     }
 
     if (expectedAssetType === "etf") {
-      assert.equal(payload.fetch_state, "partial", `${label} should expose partial ETF fresh-data state until issuer evidence is complete`);
-      assert.equal(payload.page_render_state, "partial", `${label} should expose partial ETF render state`);
-      assert.equal(
-        labels.has("partial") || (payload?.source_priority ?? []).includes("local_manifest_scope_signal"),
-        true,
-        `${label} should expose ETF manifest/scope or partial source labeling`
-      );
-      assert.equal(
-        evidenceStates.has("partial") || evidenceStates.has("unavailable") || (payload?.gaps ?? []).length > 0,
-        true,
-        `${label} should show partial/unavailable labels for missing issuer evidence`
-      );
+      const issuerBacked = labels.has("official") && (payload?.diagnostics?.issuer_enrichment_state === "supported");
+      if (issuerBacked) {
+        assert.equal(payload.fetch_state, "supported", `${label} should expose supported ETF state when official issuer evidence is present`);
+        assert.equal(payload.page_render_state, "supported", `${label} should expose supported ETF render state when official issuer evidence is present`);
+        assert.equal(labels.has("official"), true, `${label} should label issuer fixture sources as official`);
+        assert.ok(
+          (payload?.facts ?? []).some((fact) => fact.field_name === "etf_fact_sheet_metadata" || fact.field_name === "expense_ratio"),
+          `${label} should expose issuer-backed normalized ETF facts`
+        );
+      } else {
+        assert.equal(payload.fetch_state, "partial", `${label} should expose partial ETF fresh-data state until issuer evidence is complete`);
+        assert.equal(payload.page_render_state, "partial", `${label} should expose partial ETF render state`);
+        assert.equal(
+          labels.has("partial") || (payload?.source_priority ?? []).includes("local_manifest_scope_signal"),
+          true,
+          `${label} should expose ETF manifest/scope or partial source labeling`
+        );
+        assert.equal(
+          evidenceStates.has("partial") || evidenceStates.has("unavailable") || (payload?.gaps ?? []).length > 0,
+          true,
+          `${label} should show partial/unavailable labels for missing issuer evidence`
+        );
+      }
       assert.ok(payload?.freshness?.holdings_as_of || payload?.freshness?.facts_as_of, `${label} should include ETF as-of metadata`);
     }
 
