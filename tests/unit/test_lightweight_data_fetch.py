@@ -3,12 +3,21 @@ from __future__ import annotations
 from typing import Any
 
 from backend.lightweight_data_fetch import fetch_lightweight_asset_data
+from backend.lightweight_page import (
+    build_lightweight_details_response,
+    build_lightweight_overview_response,
+    build_lightweight_sources_response,
+)
 from backend.models import (
+    AssetStatus,
     AssetType,
     EvidenceState,
     LightweightFetchState,
     LightweightSourceLabel,
+    SearchResponseStatus,
+    SourceDrawerState,
 )
+from backend.search import search_assets
 from backend.settings import build_lightweight_data_settings
 
 
@@ -57,7 +66,37 @@ class FakeJsonFetcher:
                                     }
                                 ]
                             },
-                        }
+                        },
+                        "NetIncomeLoss": {
+                            "label": "Net income",
+                            "units": {
+                                "USD": [
+                                    {
+                                        "val": 93000000000,
+                                        "fy": 2025,
+                                        "fp": "FY",
+                                        "form": "10-K",
+                                        "filed": "2025-10-31",
+                                        "end": "2025-09-27",
+                                    }
+                                ]
+                            },
+                        },
+                        "Assets": {
+                            "label": "Assets",
+                            "units": {
+                                "USD": [
+                                    {
+                                        "val": 350000000000,
+                                        "fy": 2025,
+                                        "fp": "FY",
+                                        "form": "10-K",
+                                        "filed": "2025-10-31",
+                                        "end": "2025-09-27",
+                                    }
+                                ]
+                            },
+                        },
                     }
                 }
             }
@@ -154,7 +193,10 @@ def test_lightweight_stock_fetch_prefers_sec_and_labels_provider_fallback():
     assert fields["sec_identity"].value["cik"] == "0000320193"
     assert fields["latest_sec_filing"].value["form_type"] == "10-K"
     assert fields["latest_revenue_fact"].source_labels == [LightweightSourceLabel.official]
+    assert fields["latest_net_income_fact"].value["value"] == 93000000000
+    assert fields["latest_assets_fact"].value["value"] == 350000000000
     assert fields["provider_identity_or_market_reference"].fallback_used is True
+    assert fields["provider_market_price"].value["regularMarketPrice"] == 199.5
     assert response.diagnostics["official_source_count"] == 3
     assert response.diagnostics["provider_fallback_source_count"] == 1
     assert all("raw" not in fact.field_name for fact in response.facts)
@@ -177,6 +219,7 @@ def test_lightweight_etf_fetch_uses_manifest_scope_signal_and_provider_fallback(
     fields = {fact.field_name: fact for fact in response.facts}
     assert fields["etf_manifest_scope_signal"].value["support_state"] == "cached_supported"
     assert fields["provider_identity_or_market_reference"].value["instrumentType"] == "ETF"
+    assert fields["provider_market_price"].value["regularMarketPrice"] == 662.52
     assert response.freshness.holdings_as_of is not None
 
 
@@ -202,3 +245,86 @@ def test_lightweight_fetch_disabled_returns_unavailable_without_live_calls():
     assert response.generated_output_eligible is False
     assert response.no_live_external_calls is True
     assert response.diagnostics["reason_code"] == "lightweight_live_fetch_disabled"
+
+
+def test_lightweight_stock_fetch_builds_overview_details_and_source_drawer_contracts():
+    response = fetch_lightweight_asset_data(
+        "AAPL",
+        settings=_settings(),
+        fetcher=FakeJsonFetcher(),
+        retrieved_at=RETRIEVED_AT,
+    )
+
+    overview = build_lightweight_overview_response(response)
+    details = build_lightweight_details_response(response)
+    sources = build_lightweight_sources_response(response)
+
+    assert overview.asset.ticker == "AAPL"
+    assert overview.state.status is AssetStatus.supported
+    assert overview.beginner_summary is not None
+    assert "SEC" in overview.beginner_summary.what_it_is
+    assert len(overview.top_risks) == 3
+    assert overview.source_documents
+    assert overview.citations
+    assert {section.section_id for section in overview.sections} >= {"business_overview", "market_reference"}
+    assert overview.weekly_news_focus is not None
+    assert overview.weekly_news_focus.selected_item_count == 0
+    assert overview.ai_comprehensive_analysis is not None
+    assert overview.ai_comprehensive_analysis.analysis_available is False
+    assert details.facts["business_model"]
+    assert details.facts["provider_market_price"].value == 199.5
+    assert sources.drawer_state is SourceDrawerState.available
+    assert sources.source_groups
+    assert sources.citation_bindings
+    assert sources.related_claims
+    assert sources.diagnostics.generated_output_created is True
+
+
+def test_lightweight_etf_fetch_builds_partial_but_renderable_page_contracts():
+    response = fetch_lightweight_asset_data(
+        "VOO",
+        settings=_settings(),
+        fetcher=FakeJsonFetcher(),
+        retrieved_at=RETRIEVED_AT,
+    )
+
+    overview = build_lightweight_overview_response(response)
+    details = build_lightweight_details_response(response)
+
+    assert overview.asset.asset_type is AssetType.etf
+    assert overview.state.status is AssetStatus.supported
+    assert overview.beginner_summary is not None
+    assert "ETF" in overview.beginner_summary.what_it_is
+    sections = {section.section_id: section for section in overview.sections}
+    assert sections["holdings_exposure"].evidence_state is EvidenceState.partial
+    assert sections["cost_trading_context"].evidence_state is EvidenceState.partial
+    assert details.facts["role"]
+    assert details.facts["holdings"]
+    assert details.facts["cost_context"].value == "Unavailable in the lightweight provider response"
+
+
+def test_live_lightweight_search_can_open_exact_eligible_not_cached_asset(monkeypatch):
+    response = fetch_lightweight_asset_data(
+        "AAPL",
+        settings=_settings(),
+        fetcher=FakeJsonFetcher(),
+        retrieved_at=RETRIEVED_AT,
+    )
+    msft_response = response.model_copy(
+        update={
+            "ticker": "MSFT",
+            "asset": response.asset.model_copy(update={"ticker": "MSFT", "name": "Microsoft Corporation"}),
+        }
+    )
+
+    monkeypatch.setenv("DATA_POLICY_MODE", "lightweight")
+    monkeypatch.setenv("LIGHTWEIGHT_LIVE_FETCH_ENABLED", "true")
+    monkeypatch.setenv("LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED", "true")
+    monkeypatch.setattr("backend.search.fetch_lightweight_asset_data", lambda ticker, settings: msft_response)
+
+    result = search_assets("MSFT")
+
+    assert result.state.status is SearchResponseStatus.supported
+    assert result.results[0].ticker == "MSFT"
+    assert result.results[0].can_open_generated_page is True
+    assert result.results[0].generated_route == "/assets/MSFT"

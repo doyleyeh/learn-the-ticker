@@ -12,11 +12,14 @@ from backend.data import (
     top500_stock_universe_entry,
 )
 from backend.etf_universe import blocked_etf_entries, eligible_not_cached_etf_entries, etf_universe_entry
+from backend.lightweight_data_fetch import fetch_lightweight_asset_data
 from backend.models import (
     AssetIdentity,
+    AssetStatus,
     AssetType,
     ETFUniverseEntry,
     ETFUniverseSupportState,
+    LightweightFetchResponse,
     SearchBlockedCapabilityFlags,
     SearchBlockedExplanation,
     SearchBlockedExplanationDiagnostics,
@@ -27,6 +30,7 @@ from backend.models import (
     SearchState,
     SearchSupportClassification,
 )
+from backend.settings import build_lightweight_data_settings
 
 
 @dataclass(frozen=True)
@@ -82,6 +86,10 @@ def search_assets(q: str) -> SearchResponse:
             )
 
         result = results[0]
+        lightweight_result = _maybe_lightweight_live_result(result, normalized_ticker)
+        if lightweight_result is not None:
+            result = lightweight_result
+            results = [result]
         blocked_explanation = _blocked_explanation_for_result(result)
         if blocked_explanation is not None:
             result = result.model_copy(update={"blocked_explanation": blocked_explanation})
@@ -107,6 +115,13 @@ def search_assets(q: str) -> SearchResponse:
         generated_route=None,
         message="No deterministic local fixture or recognized eligible asset matched this query.",
     )
+    lightweight_unknown = _maybe_lightweight_unknown_result(unknown, normalized_ticker)
+    if lightweight_unknown is not None:
+        return SearchResponse(
+            query=q,
+            results=[lightweight_unknown],
+            state=_state_for_single_result(lightweight_unknown),
+        )
     return SearchResponse(
         query=q,
         results=[unknown],
@@ -449,3 +464,64 @@ def _blocked_explanation_for_result(result: SearchResult) -> SearchBlockedExplan
         )
 
     return None
+
+
+def _maybe_lightweight_live_result(result: SearchResult, normalized_ticker: str) -> SearchResult | None:
+    if result.ticker != normalized_ticker:
+        return None
+    if result.status is SearchResultStatus.supported:
+        return None
+    if result.support_classification not in {
+        SearchSupportClassification.eligible_not_cached,
+        SearchSupportClassification.unknown,
+    }:
+        return None
+    return _search_result_from_lightweight_fetch(normalized_ticker)
+
+
+def _maybe_lightweight_unknown_result(result: SearchResult, normalized_ticker: str) -> SearchResult | None:
+    if not normalized_ticker or result.ticker != normalized_ticker:
+        return None
+    return _search_result_from_lightweight_fetch(normalized_ticker)
+
+
+def _search_result_from_lightweight_fetch(ticker: str) -> SearchResult | None:
+    settings = build_lightweight_data_settings()
+    if not settings.can_fetch_fresh_data:
+        return None
+    response = fetch_lightweight_asset_data(ticker, settings=settings)
+    if not _lightweight_fetch_opens_page(response):
+        return None
+    return SearchResult(
+        ticker=response.asset.ticker,
+        name=response.asset.name,
+        asset_type=response.asset.asset_type,
+        exchange=response.asset.exchange,
+        issuer=response.asset.issuer,
+        supported=True,
+        status=SearchResultStatus.supported,
+        support_classification=SearchSupportClassification.cached_supported,
+        eligible_for_ingestion=False,
+        requires_ingestion=False,
+        can_open_generated_page=True,
+        can_answer_chat=True,
+        can_compare=True,
+        generated_route=f"/assets/{response.asset.ticker}",
+        can_request_ingestion=False,
+        ingestion_request_route=None,
+        message=(
+            "Live lightweight fresh-data fetch resolved this asset for local MVP rendering with source labels "
+            "and partial/unavailable states."
+        ),
+    )
+
+
+def _lightweight_fetch_opens_page(response: LightweightFetchResponse) -> bool:
+    return (
+        response.asset.status is AssetStatus.supported
+        and response.asset.asset_type in {AssetType.stock, AssetType.etf}
+        and response.generated_output_eligible
+        and bool(response.sources)
+        and bool(response.facts)
+        and not response.raw_payload_exposed
+    )

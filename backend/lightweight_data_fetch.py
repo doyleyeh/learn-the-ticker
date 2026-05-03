@@ -288,6 +288,18 @@ def _fetch_stock(
                 timeout_seconds=settings.fetch_timeout_seconds,
             )
             revenue = _latest_revenue_fact(companyfacts)
+            net_income = _latest_gaap_fact(
+                companyfacts,
+                ("NetIncomeLoss", "ProfitLoss"),
+                unit="USD",
+                label="Net income",
+            )
+            assets = _latest_gaap_fact(
+                companyfacts,
+                ("Assets",),
+                unit="USD",
+                label="Total assets",
+            )
             source = _sec_source(
                 ticker,
                 "sec_companyfacts",
@@ -313,6 +325,32 @@ def _fetch_stock(
             else:
                 gaps.append(
                     _gap(ticker, "latest_revenue_fact", "SEC company facts did not expose a parsed revenue field.", retrieved_at)
+                )
+            if net_income:
+                facts.append(
+                    _fact(
+                        ticker,
+                        "latest_net_income_fact",
+                        net_income,
+                        EvidenceState.supported,
+                        FreshnessState.fresh,
+                        retrieved_at,
+                        source,
+                        as_of_date=net_income.get("end"),
+                    )
+                )
+            if assets:
+                facts.append(
+                    _fact(
+                        ticker,
+                        "latest_assets_fact",
+                        assets,
+                        EvidenceState.supported,
+                        FreshnessState.fresh,
+                        retrieved_at,
+                        source,
+                        as_of_date=assets.get("end"),
+                    )
                 )
         except Exception as exc:
             official_errors.append({"source": "sec_companyfacts", "error_type": type(exc).__name__})
@@ -540,6 +578,22 @@ def _try_yahoo_provider_fallback(
             limitations="Provider-derived fallback is useful for local testing but is not official issuer or SEC evidence.",
         )
     )
+    market_price = _market_price_reference(merged)
+    if market_price:
+        facts.append(
+            _fact(
+                ticker,
+                "provider_market_price",
+                market_price,
+                EvidenceState.partial,
+                FreshnessState.fresh,
+                retrieved_at,
+                source,
+                as_of_date=source.as_of_date,
+                fallback_used=True,
+                limitations="Provider-derived market price is delayed/reference data for local testing, not trading advice.",
+            )
+        )
     return merged, sources, facts, errors
 
 
@@ -883,15 +937,30 @@ def _latest_filing_metadata(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _latest_revenue_fact(payload: dict[str, Any]) -> dict[str, Any] | None:
+    return _latest_gaap_fact(
+        payload,
+        ("RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet"),
+        unit="USD",
+        label="Revenue",
+    )
+
+
+def _latest_gaap_fact(
+    payload: dict[str, Any],
+    concepts: tuple[str, ...],
+    *,
+    unit: str,
+    label: str,
+) -> dict[str, Any] | None:
     facts = ((payload.get("facts") or {}).get("us-gaap") or {})
-    for concept in ("RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet"):
+    for concept in concepts:
         concept_payload = facts.get(concept) or {}
         units = concept_payload.get("units") or {}
-        usd_facts = units.get("USD") or []
-        if not isinstance(usd_facts, list) or not usd_facts:
+        unit_facts = units.get(unit) or []
+        if not isinstance(unit_facts, list) or not unit_facts:
             continue
         sorted_facts = sorted(
-            [item for item in usd_facts if isinstance(item, dict) and item.get("val") is not None],
+            [item for item in unit_facts if isinstance(item, dict) and item.get("val") is not None],
             key=lambda item: (str(item.get("filed") or ""), str(item.get("end") or "")),
             reverse=True,
         )
@@ -899,9 +968,9 @@ def _latest_revenue_fact(payload: dict[str, Any]) -> dict[str, Any] | None:
             item = sorted_facts[0]
             return {
                 "concept": concept,
-                "label": concept_payload.get("label") or concept,
+                "label": concept_payload.get("label") or label,
                 "value": item.get("val"),
-                "unit": "USD",
+                "unit": unit,
                 "fy": item.get("fy"),
                 "fp": item.get("fp"),
                 "form": item.get("form"),
@@ -951,6 +1020,25 @@ def _compact_market_reference(payload: dict[str, Any]) -> dict[str, Any]:
             "regularMarketTime",
             "fiftyTwoWeekHigh",
             "fiftyTwoWeekLow",
+        )
+        if payload.get(key) is not None
+    }
+
+
+def _market_price_reference(payload: dict[str, Any]) -> dict[str, Any] | None:
+    price = payload.get("regularMarketPrice")
+    previous_close = payload.get("chartPreviousClose")
+    if price is None and previous_close is None:
+        return None
+    return {
+        key: payload.get(key)
+        for key in (
+            "symbol",
+            "regularMarketPrice",
+            "chartPreviousClose",
+            "currency",
+            "regularMarketTime",
+            "fullExchangeName",
         )
         if payload.get(key) is not None
     }

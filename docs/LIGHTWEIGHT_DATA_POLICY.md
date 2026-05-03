@@ -40,6 +40,8 @@ The lightweight path is implemented as an explicit local fresh-data fetch bounda
 - `LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true` allows reputable provider fallback when official data is incomplete.
 - `SEC_EDGAR_USER_AGENT` should identify the local SEC client; diagnostics may report only a redacted form.
 - `GET /api/assets/{ticker}/fresh-data` exposes source-labeled fresh fetch results and returns `unavailable` unless live lightweight fetching is explicitly enabled.
+- When live lightweight fetching is enabled, exact search can open source-labeled local-MVP pages for renderable eligible stocks and ETFs, including assets without deterministic cached packs.
+- `GET /api/assets/{ticker}/overview`, `/details`, and `/sources` use the lightweight response to fill the existing page, detail, and source drawer contracts only when the fetch is renderable and raw payloads remain hidden.
 - `python3 scripts/run_lightweight_data_fetch_smoke.py --live --ticker AAPL --ticker VOO --json` is the local operator smoke for stock and ETF fetching.
 
 Normal tests and CI must still run without live SEC, issuer, market-data, news, or LLM calls. The lightweight fetch response must not expose unrestricted raw provider payloads. It returns normalized facts, source labels, freshness metadata, partial/unavailable gaps, and safe diagnostics only.

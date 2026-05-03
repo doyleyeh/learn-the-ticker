@@ -57,6 +57,13 @@ Stop when any required deterministic check is `blocked`, or when an opted-in opt
 
 The personal-MVP fresh-data fetch path is explicit and opt-in. It prefers SEC official stock metadata and filings for stocks, uses local ETF manifest/scope signals for ETFs, and falls back to Yahoo Finance/yfinance-derived provider data for local-test fields when official issuer automation is incomplete. It returns normalized facts, source labels, freshness, and partial/unavailable gaps only; it does not return unrestricted raw payloads.
 
+When live lightweight mode is enabled, exact search and the existing asset-page contracts can use fresh renderable data:
+
+- `/api/search?q=MSFT` can open a source-labeled local-MVP page even when the deterministic cached pack is absent.
+- `/api/assets/{ticker}/overview` returns the existing overview contract with beginner summary, three risks, sections, citations, source documents, Weekly News Focus empty state, and AI Comprehensive Analysis suppression.
+- `/api/assets/{ticker}/details` returns stock or ETF detail fields from the same source-labeled fetch.
+- `/api/assets/{ticker}/sources` returns the source drawer contract with source groups, citation bindings, related claims, and section references.
+
 ```bash
 DATA_POLICY_MODE=lightweight \
 LIGHTWEIGHT_LIVE_FETCH_ENABLED=true \
@@ -70,12 +77,17 @@ The API equivalent is:
 ```bash
 curl -s http://127.0.0.1:8000/api/assets/AAPL/fresh-data
 curl -s http://127.0.0.1:8000/api/assets/VOO/fresh-data
+curl -s http://127.0.0.1:8000/api/search?q=MSFT
+curl -s http://127.0.0.1:8000/api/assets/MSFT/overview
+curl -s http://127.0.0.1:8000/api/assets/SPY/details
+curl -s http://127.0.0.1:8000/api/assets/SPY/sources
 ```
 
 Expected local behavior:
 
-- `AAPL` should include SEC official source labels and may include Yahoo-labeled provider fallback for market-reference fields.
-- `VOO` should include local ETF manifest/scope metadata and Yahoo-labeled provider fallback when issuer automation has not produced a reviewed source pack.
+- `AAPL` and other SEC-resolved common stocks should include SEC official source labels and may include Yahoo-labeled provider fallback for market-reference fields.
+- `VOO`, `SPY`, and other renderable in-scope ETFs should include local ETF manifest/scope metadata or heuristic scope context plus Yahoo-labeled provider fallback when issuer automation has not produced a reviewed source pack.
+- Renderable stock and ETF pages should have exactly three top risks, source/citation metadata, source drawer groups, and partial/unavailable states for missing issuer or provider fields.
 - Unsupported or out-of-scope products such as leveraged, inverse, active, bond, commodity, crypto, ETN, single-stock, option-income, buffer, or multi-asset ETF-like products remain blocked.
 - `raw_payload_exposed` must stay `false`; diagnostics must not include provider keys, full raw payloads, raw source text, or secret values.
 

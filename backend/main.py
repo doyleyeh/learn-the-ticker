@@ -40,6 +40,11 @@ from backend.ingestion import (
 )
 from backend.glossary import build_glossary_response
 from backend.lightweight_data_fetch import fetch_lightweight_asset_data
+from backend.lightweight_page import (
+    build_lightweight_details_response_if_enabled,
+    build_lightweight_overview_response_if_enabled,
+    build_lightweight_sources_response_if_enabled,
+)
 from backend.llm import runtime_diagnostics
 from backend.models import (
     AssetIdentity,
@@ -208,6 +213,10 @@ def pre_cache_asset(ticker: str) -> PreCacheJobResponse:
 
 @app.get("/api/assets/{ticker}/overview", response_model=OverviewResponse, tags=["assets"])
 def asset_overview(ticker: str, mode: str = "beginner") -> OverviewResponse:
+    lightweight = build_lightweight_overview_response_if_enabled(ticker)
+    if lightweight is not None:
+        return lightweight
+
     readers = _read_dependencies()
     return generate_asset_overview(
         ticker,
@@ -231,6 +240,10 @@ def asset_fresh_data(ticker: str) -> LightweightFetchResponse:
 
 @app.get("/api/assets/{ticker}/details", response_model=DetailsResponse, tags=["assets"])
 def asset_details(ticker: str) -> DetailsResponse:
+    lightweight = build_lightweight_details_response_if_enabled(ticker)
+    if lightweight is not None:
+        return lightweight
+
     readers = _read_dependencies()
     persisted_details = _details_from_configured_reader(ticker, readers)
     if persisted_details is not None:
@@ -257,6 +270,14 @@ def asset_sources(
     citation_id: str | None = None,
     source_document_id: str | None = None,
 ) -> SourcesResponse:
+    lightweight = build_lightweight_sources_response_if_enabled(
+        ticker,
+        citation_id=citation_id,
+        source_document_id=source_document_id,
+    )
+    if lightweight is not None:
+        return lightweight
+
     readers = _read_dependencies()
     return build_asset_source_drawer_response(
         ticker,
