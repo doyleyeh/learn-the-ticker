@@ -1,6 +1,6 @@
 # Local Fresh-Data Ingest-To-Render Runbook
 
-Task: T-118, updated by T-119 through T-143 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, and stock-vs-ETF comparison readiness gating
+Task: T-118, updated by T-119 through T-144 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, stock-vs-ETF comparison readiness gating, and local fresh-data MVP slice smoke coverage
 
 This runbook describes the local golden-asset smoke path before production deployment work. Normal CI uses deterministic fixtures, mocked official-source acquisition, and in-memory repositories. It must not require real SEC, issuer, market-data, broad news, storage, database, Redis, RSS, or LLM calls.
 
@@ -30,6 +30,7 @@ The default rehearsal is deterministic and fixture-backed. It checks:
 
 - Golden Asset Source Handoff approval and blocked states before evidence use.
 - governed golden API reads for overview, source drawer, exports, comparison, chat, Weekly News Focus, and AI Comprehensive Analysis threshold suppression.
+- deterministic local fresh-data MVP slice smoke for `AAPL`, `MSFT`, `NVDA`, `VOO`, `SPY`, `VTI`, `QQQ`, and `XLK`, plus blocked examples `TQQQ`, `ARKK`, `BND`, and `GLD`.
 - unsupported, out-of-scope, pending-ingestion, and unknown asset blocking.
 - launch-manifest review packets without promotion or launch approval.
 - v0.4 frontend smoke markers for single-asset home search, separate comparison, contextual glossary, mobile source/glossary/chat surfaces, stock-vs-ETF relationship structure, citation/source export scope, and evidence-limited Weekly News Focus.
@@ -48,7 +49,7 @@ Optional-mode meanings:
 
 - browser services: checks already-running localhost web/API services and local CORS/proxy behavior.
 - durable repositories: checks local durable repository prerequisites and reports sanitized blockers when the local DSN or private object namespace is missing or unsafe.
-- official-source retrieval: when `LIGHTWEIGHT_LIVE_FETCH_ENABLED=true` is also set, runs the lightweight `AAPL` and `VOO` fresh-data smoke; otherwise it reports sanitized missing prerequisites. It does not approve sources, promote manifests, write source snapshots, or expose raw provider payloads.
+- official-source retrieval: when `LIGHTWEIGHT_LIVE_FETCH_ENABLED=true` is also set, runs the lightweight `AAPL` and `VOO` fresh-data smoke; otherwise it reports sanitized missing prerequisites. The required deterministic slice smoke covers the expanded local MVP ticker set without live calls. Neither path approves sources, promotes manifests, writes source snapshots, or exposes raw provider payloads.
 - live-AI review: delegates to the operator-only live-AI validation smoke and reports sanitized pass or blocker states.
 
 Stop when any required deterministic check is `blocked`, or when an opted-in optional check is `blocked`. The rehearsal does not start production services, approve sources, promote manifests, write production storage, require live calls by default, or make fixture-sized/local-only data launch-approved.
@@ -56,6 +57,21 @@ Stop when any required deterministic check is `blocked`, or when an opted-in opt
 ## Lightweight Fresh-Data Fetch Smoke
 
 The personal-MVP fresh-data fetch path is explicit and opt-in. It prefers SEC official stock metadata and filings for stocks, uses local ETF manifest/scope signals for ETFs, and falls back to Yahoo Finance/yfinance-derived provider data for local-test fields when official issuer automation is incomplete. It returns normalized facts, source labels, freshness, and partial/unavailable gaps only; it does not return unrestricted raw payloads.
+
+Task: T-144.
+
+The local fresh-data MVP slice smoke is deterministic and CI-safe. It uses injected fixtures, does not need secrets, live provider calls, browser startup, or local services, and reports `pass`, `partial`, `blocked`, and `unavailable` states with source labels/counts, citation/fact counts, freshness/as-of metadata, generated-output eligibility, and `raw_payload_exposed=false`.
+
+```bash
+TMPDIR=/tmp python3 scripts/run_local_fresh_data_slice_smoke.py --json
+```
+
+Expected deterministic slice output:
+
+- `AAPL`, `MSFT`, and `NVDA` report `pass` with SEC official source labels, provider-derived fallback labels, citations, freshness/as-of metadata, and available source drawer contracts.
+- `VOO`, `SPY`, `VTI`, `QQQ`, and `XLK` report `partial` with ETF manifest/scope evidence, provider-derived fallback labels, citations, freshness/as-of metadata, available source drawer contracts, and partial/unavailable issuer-evidence labels where issuer automation is incomplete.
+- `TQQQ`, `ARKK`, `BND`, and `GLD` report `blocked`; they remain generated-output-ineligible and do not unlock generated pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, or generated-output cache entries.
+- The smoke output must not contain provider secrets, raw payload values, raw source text, or unrestricted provider responses.
 
 When live lightweight mode is enabled, exact search and the existing asset-page contracts can use fresh renderable data:
 
@@ -65,11 +81,7 @@ When live lightweight mode is enabled, exact search and the existing asset-page 
 - `/api/assets/{ticker}/sources` returns the source drawer contract with source groups, citation bindings, related claims, and section references.
 
 ```bash
-DATA_POLICY_MODE=lightweight \
-LIGHTWEIGHT_LIVE_FETCH_ENABLED=true \
-LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true \
-SEC_EDGAR_USER_AGENT="learn-the-ticker-local/0.1 contact@example.com" \
-TMPDIR=/tmp python3 scripts/run_lightweight_data_fetch_smoke.py --live --ticker AAPL --ticker VOO --json
+DATA_POLICY_MODE=lightweight LIGHTWEIGHT_LIVE_FETCH_ENABLED=true LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true SEC_EDGAR_USER_AGENT="learn-the-ticker-local/0.1 contact@example.com" TMPDIR=/tmp python3 scripts/run_lightweight_data_fetch_smoke.py --live --ticker AAPL --ticker MSFT --ticker NVDA --ticker VOO --ticker SPY --ticker VTI --ticker QQQ --ticker XLK --json
 ```
 
 The API equivalent is:
@@ -85,15 +97,15 @@ curl -s http://127.0.0.1:8000/api/assets/SPY/sources
 
 Expected local behavior:
 
-- `AAPL` and other SEC-resolved common stocks should include SEC official source labels and may include Yahoo-labeled provider fallback for market-reference fields.
-- `VOO`, `SPY`, and other renderable in-scope ETFs should include local ETF manifest/scope metadata or heuristic scope context plus Yahoo-labeled provider fallback when issuer automation has not produced a reviewed source pack.
+- `AAPL`, `MSFT`, `NVDA`, and other SEC-resolved common stocks should include SEC official source labels and may include Yahoo-labeled provider fallback for market-reference fields.
+- `VOO`, `SPY`, `VTI`, `QQQ`, `XLK`, and other renderable in-scope ETFs should include local ETF manifest/scope metadata or heuristic scope context plus Yahoo-labeled provider fallback when issuer automation has not produced a reviewed source pack.
 - Renderable stock and ETF pages should have exactly three top risks, source/citation metadata, source drawer groups, and partial/unavailable states for missing issuer or provider fields.
-- Unsupported or out-of-scope products such as leveraged, inverse, active, bond, commodity, crypto, ETN, single-stock, option-income, buffer, or multi-asset ETF-like products remain blocked.
+- Unsupported or out-of-scope products such as `TQQQ`, `ARKK`, `BND`, `GLD`, leveraged, inverse, active, bond, commodity, crypto, ETN, single-stock, option-income, buffer, or multi-asset ETF-like products remain blocked.
 - `raw_payload_exposed` must stay `false`; diagnostics must not include provider keys, full raw payloads, raw source text, or secret values.
 
 ## Current Local MVP Gap Track
 
-The deterministic rehearsal can pass today, but that is not the same as a fully functional local fresh-data MVP. T-131 through T-135 added ETF eligible-universe review, stock and ETF source-pack readiness packets, local MVP thresholds, and batchable ingestion priority planning. The next agent-loop work should follow this order before the project can honestly become manual-test-only:
+The deterministic rehearsal can pass today, but that is not the same as a fully functional local fresh-data MVP. T-131 through T-144 added ETF eligible-universe review, stock and ETF source-pack readiness packets, local MVP thresholds, batchable ingestion priority planning, and a deterministic local fresh-data MVP slice smoke. The next agent-loop work should follow this order before the project can honestly become manual-test-only:
 
 1. Finish T-136 ETF-500 candidate manifest review contracts while keeping golden/pre-cache ETFs as regression assets only.
 2. Add T-137 ETF-500 issuer source-pack batch planning for required issuer pages, fact sheets, prospectus or summary prospectus documents, holdings, exposures, methodology/risk/shareholder sources, and sponsor announcements where relevant.
@@ -333,4 +345,4 @@ For optional `local_durable`, remove only local throwaway data created for the s
 - If chat or export links return frontend 404s, confirm the web dev server was started after setting `NEXT_PUBLIC_API_BASE_URL` or that the Next `/api/:path*` rewrite can reach the local FastAPI backend.
 - If browser direct API calls fail, confirm `CORS_ALLOWED_ORIGINS` includes the exact local web origin, including hostname and port.
 
-The deterministic regression for this runbook is `test_t118_local_fresh_data_ingest_to_render_smoke_path_is_deterministic` in `tests/integration/test_backend_api.py`. T-119 added static coverage for the frontend API helper, Next rewrite, and CORS settings. T-121/T-122 added optional localhost browser and durable smoke paths. T-125 keeps this runbook aligned with the v0.6 handoff docs. T-127 covers operator-only live-AI validation smoke, and T-128 proves deterministic governed golden source snapshots, knowledge-pack records, and generated-output cache records can drive API and frontend-rendering markers without approving new sources or adding live calls.
+The deterministic regression for this runbook is `test_t118_local_fresh_data_ingest_to_render_smoke_path_is_deterministic` in `tests/integration/test_backend_api.py`. T-119 added static coverage for the frontend API helper, Next rewrite, and CORS settings. T-121/T-122 added optional localhost browser and durable smoke paths. T-125 keeps this runbook aligned with the v0.6 handoff docs. T-127 covers operator-only live-AI validation smoke, T-128 proves deterministic governed golden source snapshots, knowledge-pack records, and generated-output cache records can drive API and frontend-rendering markers without approving new sources or adding live calls, and T-144 adds the deterministic local fresh-data MVP slice smoke.
