@@ -1561,6 +1561,57 @@ function normalizeSmokeBase(value, fallbackPort) {
 
 const localBrowserSmokeEnabled = toBool(process.env.LEARN_TICKER_LOCAL_BROWSER_SMOKE);
 const localDurableBrowserSmokeEnabled = toBool(process.env.LEARN_TICKER_LOCAL_DURABLE_SMOKE);
+const localFreshDataSliceSmokeEnabled = toBool(process.env.LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE);
+
+const localFreshDataSliceStocks = ["AAPL", "MSFT", "NVDA"];
+const localFreshDataSliceEtfs = ["VOO", "SPY", "VTI", "QQQ", "XLK"];
+const localFreshDataSliceBlockedTickers = ["TQQQ", "ARKK", "BND", "GLD"];
+const localFreshDataSliceSupportedTickers = [
+  ...localFreshDataSliceStocks,
+  ...localFreshDataSliceEtfs,
+];
+const localFreshDataSliceRepresentativeTickers = [
+  { ticker: "AAPL", assetType: "stock" },
+  { ticker: "VOO", assetType: "etf" },
+];
+
+function localFreshDataSlicePrereqStatus() {
+  const blockers = [];
+
+  if (!toBool(process.env.LEARN_TICKER_LOCAL_BROWSER_SMOKE)) {
+    blockers.push("Set LEARN_TICKER_LOCAL_BROWSER_SMOKE=1");
+  }
+  if (!(process.env.LEARN_TICKER_LOCAL_WEB_BASE || "").trim()) {
+    blockers.push("Set LEARN_TICKER_LOCAL_WEB_BASE for the already-running local web service");
+  }
+  if (!(process.env.LEARN_TICKER_LOCAL_API_BASE || "").trim()) {
+    blockers.push("Set LEARN_TICKER_LOCAL_API_BASE for the already-running local API service");
+  }
+  if ((process.env.DATA_POLICY_MODE || "").trim() !== "lightweight") {
+    blockers.push("Set DATA_POLICY_MODE=lightweight");
+  }
+  if (!toBool(process.env.LIGHTWEIGHT_LIVE_FETCH_ENABLED)) {
+    blockers.push("Set LIGHTWEIGHT_LIVE_FETCH_ENABLED=true");
+  }
+  if (!toBool(process.env.LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED)) {
+    blockers.push("Set LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true");
+  }
+  if (!(process.env.SEC_EDGAR_USER_AGENT || "").trim()) {
+    blockers.push("Set SEC_EDGAR_USER_AGENT to a placeholder contact user agent");
+  }
+
+  return blockers;
+}
+
+function reportLocalFreshDataSlicePrereqBlockers(blockers) {
+  console.error("Local fresh-data slice browser/API smoke is blocked by missing prerequisites:");
+  for (const blocker of blockers) {
+    console.error(`- ${blocker}`);
+  }
+  console.error(
+    "Start already-running web/API services with the listed env vars; no secret values or raw payloads are required in this output."
+  );
+}
 
 const runOptionalLocalDurableSmoke = async ({ webBase, apiBase, requestWithLog }) => {
   const prereqs = localDurablePrereqStatus();
@@ -1734,6 +1785,13 @@ if (localBrowserSmokeEnabled) {
     process.env.LEARN_TICKER_LOCAL_API_BASE || process.env.API_BASE,
     "8000"
   );
+  if (localFreshDataSliceSmokeEnabled) {
+    const prereqBlockers = localFreshDataSlicePrereqStatus();
+    if (prereqBlockers.length > 0) {
+      reportLocalFreshDataSlicePrereqBlockers(prereqBlockers);
+      process.exit(1);
+    }
+  }
   const smokeFailures = [];
   const networkEvents = [];
 
@@ -1915,6 +1973,314 @@ if (localBrowserSmokeEnabled) {
     assert.deepEqual(payload?.source_documents ?? [], [], `${label} should not include factual source documents in the redirect body`);
     assert.match(payload?.direct_answer ?? "", /comparison workflow/i, `${label} should direct the user to comparison workflow`);
     assertNoPersonalAdviceText(JSON.stringify(payload), label);
+  };
+
+  const assertNoRawPayloadOrSecretExposure = (payload, label) => {
+    const serialized = JSON.stringify(payload);
+    if (payload && "raw_payload_exposed" in payload) {
+      assert.equal(payload.raw_payload_exposed, false, `${label} should not expose raw payload values`);
+    }
+    assert.equal(/"raw_payload_exposed"\s*:\s*true/.test(serialized), false, `${label} should not mark raw payload exposure`);
+    for (const source of payload?.sources ?? []) {
+      if (source && "raw_payload_exposed" in source) {
+        assert.equal(source.raw_payload_exposed, false, `${label} source metadata should not expose raw payloads`);
+      }
+    }
+    if (payload?.diagnostics && "raw_payload_exposed" in payload.diagnostics) {
+      assert.equal(payload.diagnostics.raw_payload_exposed, false, `${label} diagnostics should not expose raw payloads`);
+    }
+    for (const forbidden of [
+      "BEGIN PRIVATE KEY",
+      "Bearer ",
+      "Authorization",
+      "OPENROUTER_API_KEY",
+      "FMP_API_KEY",
+      "ALPHA_VANTAGE_API_KEY",
+      "FINNHUB_API_KEY",
+      "TIINGO_API_KEY",
+      "EODHD_API_KEY",
+      "sk-",
+      "xoxb-",
+      "ghp_",
+      "hidden prompt",
+      "raw model reasoning",
+      "unrestricted provider payload",
+    ]) {
+      assert.equal(serialized.includes(forbidden), false, `${label} should not expose ${forbidden}`);
+    }
+  };
+
+  const sourceLabelsFor = (payload) => new Set((payload?.sources ?? []).map((source) => source.source_label));
+  const factEvidenceStatesFor = (payload) => new Set([
+    ...(payload?.facts ?? []).map((fact) => fact.evidence_state),
+    ...(payload?.gaps ?? []).map((gap) => gap.evidence_state),
+  ]);
+
+  const assertFreshDataCommonPayload = (payload, ticker, label) => {
+    assert.equal(payload?.schema_version, "lightweight-asset-fetch-v1", `${label} should use the lightweight fresh-data schema`);
+    assert.equal(payload?.ticker, ticker, `${label} should return the requested ticker`);
+    assert.equal(payload?.data_policy_mode, "lightweight", `${label} should run in lightweight data mode`);
+    assert.ok(payload?.freshness?.page_last_updated_at, `${label} should include page freshness metadata`);
+    assert.ok(
+      payload?.freshness?.facts_as_of || payload?.freshness?.holdings_as_of || payload?.freshness?.freshness_state,
+      `${label} should include as-of or freshness-state metadata`
+    );
+    assertNoRawPayloadOrSecretExposure(payload, label);
+  };
+
+  const assertRenderableFreshDataPayload = (payload, expectedAssetType, label) => {
+    const labels = sourceLabelsFor(payload);
+    const evidenceStates = factEvidenceStatesFor(payload);
+
+    assert.equal(payload?.asset?.asset_type, expectedAssetType, `${label} should preserve ${expectedAssetType} identity`);
+    assert.equal(payload?.generated_output_eligible, true, `${label} should be generated-output eligible for local MVP rendering`);
+    assert.ok(["supported", "partial"].includes(payload?.fetch_state), `${label} should be renderable from supported or partial evidence`);
+    assert.ok(["supported", "partial"].includes(payload?.page_render_state), `${label} should expose a renderable page state`);
+    assert.ok(Array.isArray(payload?.sources) && payload.sources.length > 0, `${label} should include source metadata`);
+    assert.ok(Array.isArray(payload?.citations) && payload.citations.length > 0, `${label} should include citations`);
+    assert.ok(Array.isArray(payload?.facts) && payload.facts.length > 0, `${label} should include normalized facts`);
+    assert.ok(
+      payload.sources.every((source) => source.source_document_id && source.title && source.source_use_policy && source.freshness_state),
+      `${label} source metadata should be source-drawer ready`
+    );
+    assert.ok(
+      payload.citations.every((citation) => citation.citation_id && citation.source_document_id && citation.freshness_state),
+      `${label} citation metadata should bind to source documents`
+    );
+    assert.ok(
+      payload.citations.length > 0 || evidenceStates.has("partial") || evidenceStates.has("unavailable"),
+      `${label} should include citations or explicit partial/unavailable evidence states`
+    );
+
+    if (expectedAssetType === "stock") {
+      assert.equal(payload.fetch_state, "supported", `${label} should expose supported stock fresh-data state`);
+      assert.equal(payload.page_render_state, "supported", `${label} should expose supported stock render state`);
+      assert.equal(
+        labels.has("official") || payload.sources.some((source) => source.is_official || /SEC|U\.S\. SEC/i.test(`${source.publisher} ${source.title}`)),
+        true,
+        `${label} should expose official SEC/source labels where the API provides them`
+      );
+      if ((payload?.diagnostics?.official_source_count ?? 0) > 0) {
+        assert.equal(labels.has("official"), true, `${label} should label official sources as official`);
+      }
+    }
+
+    if (expectedAssetType === "etf") {
+      assert.equal(payload.fetch_state, "partial", `${label} should expose partial ETF fresh-data state until issuer evidence is complete`);
+      assert.equal(payload.page_render_state, "partial", `${label} should expose partial ETF render state`);
+      assert.equal(
+        labels.has("partial") || (payload?.source_priority ?? []).includes("local_manifest_scope_signal"),
+        true,
+        `${label} should expose ETF manifest/scope or partial source labeling`
+      );
+      assert.equal(
+        evidenceStates.has("partial") || evidenceStates.has("unavailable") || (payload?.gaps ?? []).length > 0,
+        true,
+        `${label} should show partial/unavailable labels for missing issuer evidence`
+      );
+      assert.ok(payload?.freshness?.holdings_as_of || payload?.freshness?.facts_as_of, `${label} should include ETF as-of metadata`);
+    }
+
+    if (labels.has("provider_derived") || (payload?.diagnostics?.provider_fallback_source_count ?? 0) > 0) {
+      assert.equal(labels.has("provider_derived"), true, `${label} should label provider fallback sources as provider_derived`);
+    }
+  };
+
+  const assertBlockedFreshDataPayload = (payload, ticker, label) => {
+    assertFreshDataCommonPayload(payload, ticker, label);
+    assert.ok(["unsupported", "out_of_scope", "unknown"].includes(payload?.fetch_state), `${label} should stay blocked`);
+    assert.equal(payload?.generated_output_eligible, false, `${label} should remain generated-output ineligible`);
+    assert.equal(payload?.sources?.length ?? 0, 0, `${label} should not expose source documents`);
+    assert.equal(payload?.citations?.length ?? 0, 0, `${label} should not expose citations`);
+    assert.equal(payload?.facts?.length ?? 0, 0, `${label} should not expose facts`);
+    assert.equal(payload?.diagnostics?.blocked_generated_output, true, `${label} should report generated output blocked`);
+  };
+
+  const assertSearchContractPayload = (payload, ticker, expectedAssetType, label) => {
+    const serialized = JSON.stringify(payload);
+    assert.match(serialized, new RegExp(`"${ticker}"`), `${label} should include ${ticker}`);
+    const firstResult = (payload?.results ?? []).find((result) => result.ticker === ticker) || (payload?.results ?? [])[0];
+    assert.ok(firstResult, `${label} should include a search result`);
+    assert.equal(firstResult.ticker, ticker, `${label} should return the requested ticker result`);
+    assert.equal(firstResult.asset_type, expectedAssetType, `${label} should preserve ${expectedAssetType} identity`);
+    assert.equal(firstResult.can_open_generated_page, true, `${label} should open a generated local-MVP page`);
+    assert.equal(firstResult.can_answer_chat, true, `${label} should allow asset-bounded chat for supported rows`);
+    assert.equal(firstResult.can_compare, true, `${label} should allow supported comparison entry`);
+  };
+
+  const assertBlockedSearchPayload = (payload, ticker, label) => {
+    const firstResult = (payload?.results ?? []).find((result) => result.ticker === ticker) || (payload?.results ?? [])[0];
+    assert.ok(firstResult, `${label} should include a blocked search result`);
+    assert.equal(firstResult.ticker, ticker, `${label} should return the requested blocked ticker`);
+    assert.equal(firstResult.can_open_generated_page, false, `${label} should not open generated pages`);
+    assert.equal(firstResult.can_answer_chat, false, `${label} should not allow generated chat answers`);
+    assert.equal(firstResult.can_compare, false, `${label} should not allow generated comparisons`);
+    assert.ok(
+      ["unsupported", "out_of_scope", "unknown", "unavailable", "pending_review"].includes(payload?.state?.status),
+      `${label} should expose a non-supported search state`
+    );
+  };
+
+  const assertOverviewContractPayload = (payload, ticker, expectedAssetType, label) => {
+    assert.equal(payload?.asset?.ticker, ticker, `${label} should preserve ticker identity`);
+    assert.equal(payload?.asset?.asset_type, expectedAssetType, `${label} should preserve ${expectedAssetType} identity`);
+    assert.equal(payload?.state?.status, "supported", `${label} should use the supported overview contract state`);
+    assert.ok(payload?.freshness?.page_last_updated_at, `${label} should expose freshness metadata`);
+    assert.ok(Array.isArray(payload?.citations) && payload.citations.length > 0, `${label} should include citation chips`);
+    assert.ok(Array.isArray(payload?.source_documents) && payload.source_documents.length > 0, `${label} should include source documents`);
+    assert.ok(Array.isArray(payload?.top_risks) && payload.top_risks.length === 3, `${label} should preserve exactly three top risks`);
+    assert.ok(Array.isArray(payload?.sections) && payload.sections.length > 0, `${label} should include detail sections`);
+  };
+
+  const assertDetailsContractPayload = (payload, ticker, expectedAssetType, label) => {
+    assert.equal(payload?.asset?.ticker, ticker, `${label} should preserve ticker identity`);
+    assert.equal(payload?.asset?.asset_type, expectedAssetType, `${label} should preserve ${expectedAssetType} identity`);
+    assert.equal(payload?.state?.status, "supported", `${label} should use the supported details contract state`);
+    assert.ok(payload?.freshness?.page_last_updated_at, `${label} should expose details freshness metadata`);
+    assert.ok(payload?.facts && Object.keys(payload.facts).length > 0, `${label} should include detail facts`);
+    assert.ok(Array.isArray(payload?.citations) && payload.citations.length > 0, `${label} should include details citations`);
+  };
+
+  const assertSourcesContractPayload = (payload, ticker, label) => {
+    assert.equal(payload?.schema_version, "asset-source-drawer-v1", `${label} should use the source drawer schema`);
+    assert.equal(payload?.asset?.ticker, ticker, `${label} should preserve ticker identity`);
+    assert.equal(payload?.drawer_state, "available", `${label} should have available source drawer metadata`);
+    assert.ok(Array.isArray(payload?.sources) && payload.sources.length > 0, `${label} should include source records`);
+    assert.ok(Array.isArray(payload?.source_groups) && payload.source_groups.length > 0, `${label} should include source groups`);
+    assert.ok(Array.isArray(payload?.citation_bindings) && payload.citation_bindings.length > 0, `${label} should include citation bindings`);
+    assert.ok(Array.isArray(payload?.related_claims) && payload.related_claims.length > 0, `${label} should include related claims`);
+  };
+
+  const runOptionalFreshDataSliceSmoke = async () => {
+    const prereqBlockers = localFreshDataSlicePrereqStatus();
+    if (prereqBlockers.length > 0) {
+      reportLocalFreshDataSlicePrereqBlockers(prereqBlockers);
+      process.exit(1);
+    }
+
+    const sliceSmokeFailures = [];
+
+    for (const ticker of localFreshDataSliceSupportedTickers) {
+      const expectedAssetType = localFreshDataSliceStocks.includes(ticker) ? "stock" : "etf";
+      try {
+        const [proxyResponse, proxyPayload] = await requestJsonWithLog(
+          "GET",
+          `${webBase}/api/assets/${encodeURIComponent(ticker)}/fresh-data`,
+          {},
+          `${ticker} frontend proxy fresh-data API`
+        );
+        assert.equal(proxyResponse.status, 200, `${ticker} frontend proxy fresh-data API should return 200`);
+        assertFreshDataCommonPayload(proxyPayload, ticker, `${ticker} frontend proxy fresh-data API`);
+        assertRenderableFreshDataPayload(proxyPayload, expectedAssetType, `${ticker} frontend proxy fresh-data API`);
+
+        const [directResponse, directPayload] = await requestJsonWithLog(
+          "GET",
+          `${apiBase}/api/assets/${encodeURIComponent(ticker)}/fresh-data`,
+          { headers: { Origin: webBase } },
+          `${ticker} direct FastAPI fresh-data API`
+        );
+        assert.equal(directResponse.status, 200, `${ticker} direct FastAPI fresh-data API should return 200`);
+        assertCorsAllowsLocalWebOrigin(directResponse, `${ticker} direct FastAPI fresh-data API`);
+        assertFreshDataCommonPayload(directPayload, ticker, `${ticker} direct FastAPI fresh-data API`);
+        assertRenderableFreshDataPayload(directPayload, expectedAssetType, `${ticker} direct FastAPI fresh-data API`);
+      } catch (error) {
+        sliceSmokeFailures.push(`${ticker} supported fresh-data probe failed: ${error}`);
+      }
+    }
+
+    for (const ticker of localFreshDataSliceBlockedTickers) {
+      try {
+        const [proxyResponse, proxyPayload] = await requestJsonWithLog(
+          "GET",
+          `${webBase}/api/assets/${encodeURIComponent(ticker)}/fresh-data`,
+          {},
+          `${ticker} frontend proxy blocked fresh-data API`
+        );
+        assert.equal(proxyResponse.status, 200, `${ticker} frontend proxy blocked fresh-data API should return 200`);
+        assertBlockedFreshDataPayload(proxyPayload, ticker, `${ticker} frontend proxy blocked fresh-data API`);
+
+        const [directResponse, directPayload] = await requestJsonWithLog(
+          "GET",
+          `${apiBase}/api/assets/${encodeURIComponent(ticker)}/fresh-data`,
+          { headers: { Origin: webBase } },
+          `${ticker} direct FastAPI blocked fresh-data API`
+        );
+        assert.equal(directResponse.status, 200, `${ticker} direct FastAPI blocked fresh-data API should return 200`);
+        assertCorsAllowsLocalWebOrigin(directResponse, `${ticker} direct FastAPI blocked fresh-data API`);
+        assertBlockedFreshDataPayload(directPayload, ticker, `${ticker} direct FastAPI blocked fresh-data API`);
+
+        const [searchResponse, searchPayload] = await requestJsonWithLog(
+          "GET",
+          `${webBase}/api/search?q=${encodeURIComponent(ticker)}`,
+          {},
+          `${ticker} frontend proxy blocked search API`
+        );
+        assert.equal(searchResponse.status, 200, `${ticker} frontend proxy blocked search API should return 200`);
+        assertBlockedSearchPayload(searchPayload, ticker, `${ticker} frontend proxy blocked search API`);
+        assertNoRawPayloadOrSecretExposure(searchPayload, `${ticker} frontend proxy blocked search API`);
+      } catch (error) {
+        sliceSmokeFailures.push(`${ticker} blocked regression probe failed: ${error}`);
+      }
+    }
+
+    for (const { ticker, assetType } of localFreshDataSliceRepresentativeTickers) {
+      try {
+        const [searchResponse, searchPayload] = await requestJsonWithLog(
+          "GET",
+          `${webBase}/api/search?q=${encodeURIComponent(ticker)}`,
+          {},
+          `${ticker} frontend proxy search contract`
+        );
+        assert.equal(searchResponse.status, 200, `${ticker} frontend proxy search contract should return 200`);
+        assertSearchContractPayload(searchPayload, ticker, assetType, `${ticker} frontend proxy search contract`);
+        assertNoRawPayloadOrSecretExposure(searchPayload, `${ticker} frontend proxy search contract`);
+
+        const [overviewResponse, overviewPayload] = await requestJsonWithLog(
+          "GET",
+          `${webBase}/api/assets/${encodeURIComponent(ticker)}/overview`,
+          {},
+          `${ticker} frontend proxy overview contract`
+        );
+        assert.equal(overviewResponse.status, 200, `${ticker} frontend proxy overview contract should return 200`);
+        assertOverviewContractPayload(overviewPayload, ticker, assetType, `${ticker} frontend proxy overview contract`);
+        assertNoRawPayloadOrSecretExposure(overviewPayload, `${ticker} frontend proxy overview contract`);
+
+        const [detailsResponse, detailsPayload] = await requestJsonWithLog(
+          "GET",
+          `${webBase}/api/assets/${encodeURIComponent(ticker)}/details`,
+          {},
+          `${ticker} frontend proxy details contract`
+        );
+        assert.equal(detailsResponse.status, 200, `${ticker} frontend proxy details contract should return 200`);
+        assertDetailsContractPayload(detailsPayload, ticker, assetType, `${ticker} frontend proxy details contract`);
+        assertNoRawPayloadOrSecretExposure(detailsPayload, `${ticker} frontend proxy details contract`);
+
+        const [sourcesResponse, sourcesPayload] = await requestJsonWithLog(
+          "GET",
+          `${webBase}/api/assets/${encodeURIComponent(ticker)}/sources`,
+          {},
+          `${ticker} frontend proxy sources contract`
+        );
+        assert.equal(sourcesResponse.status, 200, `${ticker} frontend proxy sources contract should return 200`);
+        assertSourcesContractPayload(sourcesPayload, ticker, `${ticker} frontend proxy sources contract`);
+        assertNoRawPayloadOrSecretExposure(sourcesPayload, `${ticker} frontend proxy sources contract`);
+      } catch (error) {
+        sliceSmokeFailures.push(`${ticker} representative running-service contract probe failed: ${error}`);
+      }
+    }
+
+    if (sliceSmokeFailures.length > 0) {
+      console.error("Local fresh-data slice browser/API smoke detected blockers:");
+      for (const item of sliceSmokeFailures) {
+        console.error(`- ${item}`);
+      }
+      process.exit(1);
+    }
+
+    console.log(
+      `Local fresh-data slice browser/API smoke passed for supported=${localFreshDataSliceSupportedTickers.join(",")} `
+      + `and blocked=${localFreshDataSliceBlockedTickers.join(",")}.`
+    );
   };
 
   const runOptionalBrowserSmoke = async () => {
@@ -2162,6 +2528,14 @@ if (localBrowserSmokeEnabled) {
     console.log(`Local browser smoke checks passed for web=${webBase}, api=${apiBase}.`);
     console.log(`Local browser smoke recorded ${networkEvents.length} network events.`);
 
+    if (localFreshDataSliceSmokeEnabled) {
+      await runOptionalFreshDataSliceSmoke();
+    } else {
+      console.log(
+        "Local fresh-data slice browser/API smoke is skipped by default. Set LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 and LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1 with lightweight local-service env vars to run it."
+      );
+    }
+
     if (localDurableBrowserSmokeEnabled) {
       await runOptionalLocalDurableSmoke({ webBase, apiBase, requestWithLog });
     }
@@ -2170,7 +2544,7 @@ if (localBrowserSmokeEnabled) {
   await runOptionalBrowserSmoke();
 } else {
   console.log(
-    "Local browser smoke is skipped by default. Set LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 and optionally LEARN_TICKER_LOCAL_WEB_BASE/API_BASE to run localhost-only browser/API checks."
+    "Local browser smoke is skipped by default. Set LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 and optionally LEARN_TICKER_LOCAL_WEB_BASE/API_BASE to run localhost-only browser/API checks. Add LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1 for the T-144 fresh-data MVP slice checks."
   );
 }
 

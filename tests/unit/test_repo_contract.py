@@ -1340,6 +1340,85 @@ def test_t118_local_fresh_data_runbook_covers_deterministic_smoke_without_live_r
         assert forbidden.lower() not in runbook_lower
 
 
+def test_t145_local_fresh_data_slice_browser_api_smoke_is_optional_and_documented():
+    smoke = read_file("tests/frontend/smoke.mjs")
+    runbook = read_file("docs/local_fresh_data_ingest_to_render_runbook.md")
+    combined = f"{smoke}\n{runbook}"
+
+    for marker in [
+        "LEARN_TICKER_LOCAL_BROWSER_SMOKE",
+        "LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE",
+        "LEARN_TICKER_LOCAL_WEB_BASE",
+        "LEARN_TICKER_LOCAL_API_BASE",
+        "DATA_POLICY_MODE",
+        "LIGHTWEIGHT_LIVE_FETCH_ENABLED",
+        "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED",
+        "SEC_EDGAR_USER_AGENT",
+        "Local fresh-data slice browser/API smoke is skipped by default",
+        "Local fresh-data slice browser/API smoke is blocked by missing prerequisites",
+        "localFreshDataSlicePrereqStatus",
+        "assertFreshDataCommonPayload",
+        "assertRenderableFreshDataPayload",
+        "assertBlockedFreshDataPayload",
+        "assertSearchContractPayload",
+        "assertOverviewContractPayload",
+        "assertDetailsContractPayload",
+        "assertSourcesContractPayload",
+        "/api/assets/${encodeURIComponent(ticker)}/fresh-data",
+        "/api/assets/${encodeURIComponent(ticker)}/overview",
+        "/api/assets/${encodeURIComponent(ticker)}/details",
+        "/api/assets/${encodeURIComponent(ticker)}/sources",
+        "assertCorsAllowsLocalWebOrigin",
+        "assertNoRawPayloadOrSecretExposure",
+        "generated_output_eligible",
+        "source_label",
+        "provider_derived",
+        "partial",
+        "unavailable",
+        "blocked_generated_output",
+        "data-home-primary-workflow=\\\"single-supported-stock-or-etf-search\\\"",
+        "data-stock-etf-basket-structure",
+        "data-glossary-mobile-presentation",
+        "No major Weekly News Focus items found",
+    ]:
+        assert marker in combined, f"T-145 smoke/runbook should include marker: {marker}"
+
+    for ticker in ["AAPL", "MSFT", "NVDA", "VOO", "SPY", "VTI", "QQQ", "XLK", "TQQQ", "ARKK", "BND", "GLD"]:
+        assert ticker in combined, f"T-145 smoke/runbook should include ticker: {ticker}"
+
+    for marker in [
+        "LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1 LEARN_TICKER_LOCAL_WEB_BASE=http://127.0.0.1:3000 LEARN_TICKER_LOCAL_API_BASE=http://127.0.0.1:8000 DATA_POLICY_MODE=lightweight LIGHTWEIGHT_LIVE_FETCH_ENABLED=true LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true SEC_EDGAR_USER_AGENT=\"learn-the-ticker-local/0.1 contact@example.com\" TMPDIR=/tmp npm run test:browser-smoke",
+        "skip-by-default",
+        "already-running API and web services",
+        "Next `/api/:path*` proxy",
+        "direct FastAPI JSON responses",
+        "CORS",
+        "blocked regression tickers",
+        "must not start browser services, local ports, live provider calls, Docker, or LLM calls in normal CI",
+        "must not print secret values, unrestricted provider payloads, raw source text, or raw payload values",
+    ]:
+        assert marker in runbook, f"T-145 runbook should document marker: {marker}"
+
+    assert smoke.index("const localBrowserSmokeEnabled") < smoke.index("const localFreshDataSliceSmokeEnabled")
+    assert smoke.index("if (localBrowserSmokeEnabled)") < smoke.index("await runOptionalFreshDataSliceSmoke()")
+    assert smoke.index("await runOptionalBrowserSmoke()") < smoke.rindex("} else {")
+
+    for forbidden in [
+        "OPENROUTER_API_KEY=",
+        "FMP_API_KEY=",
+        "ALPHA_VANTAGE_API_KEY=",
+        "FINNHUB_API_KEY=",
+        "TIINGO_API_KEY=",
+        "EODHD_API_KEY=",
+        "BEGIN PRIVATE KEY",
+        "sk-",
+        "xoxb-",
+        "ghp_",
+        "raw model reasoning is shown",
+    ]:
+        assert forbidden.lower() not in runbook.lower()
+
+
 def test_sec_stock_acquisition_contract_is_backend_only_fixture_backed_and_sanitized():
     adapter = read_file("backend/provider_adapters/sec_stock.py")
     worker = read_file("backend/ingestion_worker.py")
