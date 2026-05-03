@@ -1,6 +1,6 @@
 # Local Fresh-Data Ingest-To-Render Runbook
 
-Task: T-118, updated by T-119 through T-148 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, stock-vs-ETF comparison readiness gating, local fresh-data MVP slice smoke coverage, optional slice browser/API localhost coverage, optional durable slice smoke coverage, and lightweight local-slice manual-readiness gating
+Task: T-118, updated by T-119 through T-149 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, stock-vs-ETF comparison readiness gating, local fresh-data MVP slice smoke coverage, optional slice browser/API localhost coverage, optional durable slice smoke coverage, lightweight local-slice manual-readiness gating, and local slice comparison/export parity coverage
 
 This runbook describes the local golden-asset smoke path before production deployment work. Normal CI uses deterministic fixtures, mocked official-source acquisition, and in-memory repositories. It must not require real SEC, issuer, market-data, broad news, storage, database, Redis, RSS, or LLM calls.
 
@@ -31,6 +31,7 @@ The default rehearsal is deterministic and fixture-backed. It checks:
 - Golden Asset Source Handoff approval and blocked states before evidence use.
 - governed golden API reads for overview, source drawer, exports, comparison, chat, Weekly News Focus, and AI Comprehensive Analysis threshold suppression.
 - deterministic local fresh-data MVP slice smoke for `AAPL`, `MSFT`, `NVDA`, `VOO`, `SPY`, `VTI`, `QQQ`, and `XLK`, plus blocked examples `TQQQ`, `ARKK`, `BND`, and `GLD`.
+- local slice comparison/export parity through `local_fresh_data_mvp_slice_comparison_export_parity`.
 - unsupported, out-of-scope, pending-ingestion, and unknown asset blocking.
 - launch-manifest review packets without promotion or launch approval.
 - v0.4 frontend smoke markers for single-asset home search, separate comparison, contextual glossary, mobile source/glossary/chat surfaces, stock-vs-ETF relationship structure, citation/source export scope, and evidence-limited Weekly News Focus.
@@ -82,6 +83,33 @@ Default deterministic readiness means all of these are true:
 Skipped optional checks are reported explicitly as operator-only prerequisites; they are not hidden as pass. The optional operator-only local checks include browser/API services, local durable repositories, official-source retrieval, and live-AI review. When an optional flag is set and the check is blocked, the slice gate reports `optional_local_check_blocked` with env var names and safe diagnostics only, never credential values.
 
 The slice gate is not launch readiness. It does not approve ETF-500, Top-500, production, deployment, source-pack, parser, Golden Asset Source Handoff, checksum, live-provider, or live-AI readiness. It does not approve sources, promote manifests, start services, write production storage, write generated-output cache entries, or unlock blocked products. Source-use policy still applies: fetching is retrieval, not evidence approval; source-labeled official/provider-derived display is allowed for the personal lightweight MVP only while raw payloads stay hidden, rights-safe output limits are preserved, provenance/freshness are visible, and missing evidence renders as `partial`, `unknown`, `stale`, `unavailable`, or `insufficient_evidence`.
+
+## Local Slice Comparison And Export Parity
+
+Task: T-149.
+
+`TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` returns the required check `local_fresh_data_mvp_slice_comparison_export_parity` with schema `local-fresh-data-mvp-slice-comparison-export-parity-v1`. The check is deterministic and fixture-backed. It is a local fresh-data MVP slice parity signal only, not readiness versus broad launch readiness.
+
+`TMPDIR=/tmp python3 scripts/run_local_fresh_data_slice_smoke.py --json` also exposes `comparison_export_parity_summary` with schema `local-fresh-data-mvp-slice-comparison-export-parity-inputs-v1` so the rehearsal can verify the same supported, partial, and blocked ticker contracts without live services.
+
+Representative parity coverage:
+
+- `VOO`/`QQQ` ETF-vs-ETF: comparison response is available, source-backed, same-comparison-pack citation bound, exportable as JSON and Markdown, includes the educational disclaimer, preserves source-use policy and source freshness metadata, and contains no advice output, hidden prompts, raw model reasoning, unrestricted provider payloads, raw source text, or secret-like values.
+- `AAPL`/`VOO` stock-vs-ETF: comparison response is available with `stock-etf-relationship-v1`, `direct_holding`, relationship badges, the `single-company-vs-ETF-basket` structure, same-pack citations/source documents, comparison export parity, asset-chat compare redirect parity, and no `holding_verified` regression.
+- `VOO`/`SPY`: missing local comparison pack involving the `SPY` partial ETF remains non-generated with `eligible_not_cached`, no beginner bottom line, no generated key differences, no citations, no source documents, and unavailable comparison export content.
+- `VOO`/`TQQQ` and `AAPL`/`TQQQ`: blocked product comparison cases stay `unsupported`, non-generated, and export-empty.
+
+Asset export and source-list export parity:
+
+- Renderable stock and issuer-backed ETF rows `AAPL`, `VOO`, and `QQQ` have asset export and source-list export parity for JSON and Markdown. Exports include the educational disclaimer, citation IDs, allowed source metadata, source-use policy, freshness/as-of metadata, uncertainty labels where present, and no buy/sell/hold, allocation, price-target, tax, brokerage, unrestricted provider payloads, hidden prompts, raw model reasoning, or secrets.
+- `SPY` partial ETF export preserves explicit `partial` slice state and unavailable export state. provider fallback is not audit-quality evidence approval, and the parity check must not convert missing issuer evidence into generated export content.
+- `TQQQ`, `ARKK`, `BND`, and `GLD` blocked export rows stay unsupported. blocked products receive no generated asset output, source documents, citations, facts, Weekly News Focus, AI Comprehensive Analysis, generated chat answers, or generated-output cache writes. `TQQQ`, `ARKK`, `BND`, and `GLD` blocked export coverage is representative regression coverage, not a broad complex-product approval path.
+
+Optional operator-only local checks remain skipped by default. Browser/API parity can be reviewed only when `LEARN_TICKER_LOCAL_BROWSER_SMOKE=1` and `LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1` are set for already-running local services. Durable parity can be reviewed only when `LEARN_TICKER_LOCAL_DURABLE_SMOKE=1`, `LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1`, `LOCAL_DURABLE_REPOSITORIES_ENABLED=true`, placeholder-only `DATABASE_URL`, and non-public `LOCAL_DURABLE_OBJECT_NAMESPACE` are set. Blocked optional diagnostics report env var names and safe reason codes only; they must not print env values, DSNs, credentials, temporary object links, raw provider payloads, raw source text, hidden prompts, raw model reasoning, transcripts, or secret-like tokens.
+
+The parity check preserves v0.4 workflow markers: home remains `data-home-primary-workflow="single-supported-stock-or-etf-search"`, `data-search-comparison-route` keeps `A vs B` search routed to `/compare`, comparison remains a separate connected workflow, glossary remains contextual, source/glossary/chat mobile behavior stays bottom-sheet or full-screen oriented through `data-source-drawer-mobile-presentation="bottom-sheet"`, `data-glossary-mobile-presentation="bottom-sheet"`, and `data-asset-chat-mobile-presentation="bottom-sheet-or-full-screen"`, and stock-vs-ETF relationship badges stay present.
+
+Weekly News Focus remains evidence-limited. "No major Weekly News Focus items found" is valid when evidence is thin, and AI Comprehensive Analysis remains suppressed unless at least two approved Weekly News Focus items exist. The parity check must not pad Weekly News Focus items or treat comparison/export parity as live-provider, live-AI, ETF-500, Top-500, source approval, manifest promotion, production, deployment, generated-output cache persistence, or public-launch readiness.
 
 ## Lightweight Fresh-Data Fetch Smoke
 
