@@ -2,7 +2,12 @@ from copy import deepcopy
 import re
 from pathlib import Path
 
-from scripts.run_local_fresh_data_rehearsal import RehearsalCheck, _build_manual_fresh_data_readiness_gate, run_rehearsal
+from scripts.run_local_fresh_data_rehearsal import (
+    RehearsalCheck,
+    _build_lightweight_local_mvp_slice_manual_readiness_gate,
+    _build_manual_fresh_data_readiness_gate,
+    run_rehearsal,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -1272,6 +1277,130 @@ def test_manual_fresh_data_readiness_gate_can_report_manual_test_ready_when_bloc
     assert gate["stop_conditions"] == []
     assert gate["generated_output_unlocked_for_unsupported_or_incomplete_assets"] is False
     assert "generated_output_cache_entries" in gate["blocked_generated_surfaces"]
+
+
+def test_t148_lightweight_local_slice_manual_readiness_gate_reports_ready_and_blocked_paths():
+    result = run_rehearsal(env={})
+
+    gate = result["lightweight_local_mvp_slice_manual_readiness_gate"]
+    assert gate["schema_version"] == "lightweight-local-mvp-slice-manual-readiness-gate-v1"
+    assert gate["gate_name"] == "lightweight_local_mvp_slice_manual_readiness_gate"
+    assert gate["decision"] == "deterministic_local_slice_manual_review_ready"
+    assert gate["deterministic_local_slice_manual_review_ready"] is True
+    assert gate["manual_slice_review_ready"] is True
+    assert gate["agent_work_remaining"] is False
+    assert gate["optional_local_check_blocked"] is False
+    assert gate["next_operator_action"] == "run_explicit_manual_browser_api_review_for_lightweight_local_mvp_slice"
+    assert gate["blockers"] == []
+    assert gate["launch_or_public_deployment_ready"] is False
+    assert gate["production_ready"] is False
+    assert result["manual_fresh_data_readiness_gate"]["decision"] == "agent_work_remaining"
+
+    prereqs = {item["prerequisite_id"]: item for item in gate["prerequisite_summaries"]}
+    slice_prereq = prereqs["deterministic_local_fresh_data_mvp_slice_smoke"]
+    assert slice_prereq["status"] == "pass"
+    assert slice_prereq["expected_status_counts"] == {"pass": 5, "partial": 3, "blocked": 4, "unavailable": 0}
+    assert slice_prereq["status_counts"] == {"pass": 5, "partial": 3, "blocked": 4, "unavailable": 0}
+    assert slice_prereq["stock_pass_tickers"] == ["AAPL", "MSFT", "NVDA"]
+    assert slice_prereq["issuer_backed_etf_tickers"] == ["VOO", "QQQ"]
+    assert slice_prereq["partial_etf_tickers"] == ["SPY", "VTI", "XLK"]
+    assert slice_prereq["blocked_regression_tickers"] == ["TQQQ", "ARKK", "BND", "GLD"]
+    assert slice_prereq["normal_ci_requires_live_calls"] is False
+    assert slice_prereq["raw_payload_exposed_count"] == 0
+    assert slice_prereq["secret_values_reported"] is False
+    workflow_prereq = prereqs["frontend_v04_and_comparison_slice_markers"]
+    assert workflow_prereq["etf_vs_etf_baseline_pair"] == ["VOO", "QQQ"]
+    assert workflow_prereq["stock_vs_etf_pair"] == ["AAPL", "VOO"]
+    assert workflow_prereq["a_vs_b_search_routes_to_separate_compare_workflow"] is True
+    assert workflow_prereq["stock_vs_etf_basket_structure"] == "single-company-vs-etf-basket"
+    assert workflow_prereq["old_holding_verified_regression_absent"] is True
+    optional_prereqs = [
+        item for item in gate["prerequisite_summaries"] if item["prerequisite_id"].endswith("_operator_only")
+    ]
+    assert [item["status"] for item in optional_prereqs] == ["skipped"] * 4
+    assert all(item["operator_only"] is True and item["skipped_is_pass"] is False for item in optional_prereqs)
+    assert gate["sanitized_diagnostics"]["safe_diagnostics_only"] is True
+    assert gate["sanitized_diagnostics"]["secret_or_raw_value_reporting_detected"] is False
+    assert gate["sanitized_diagnostics"]["normal_ci_requires_live_calls"] is False
+    assert gate["sanitized_diagnostics"]["raw_payload_exposed_count"] == 0
+
+    checks = checks_from_result(result)
+    slice_check = next(check for check in checks if check.check_id == "local_fresh_data_mvp_slice_smoke")
+    slice_check.details["raw_payload_exposed_count"] = 1
+    row_by_ticker = {row["ticker"]: row for row in slice_check.details["rows"]}
+    row_by_ticker["VOO"]["issuer_backed"] = False
+    row_by_ticker["TQQQ"]["surface_contract"]["generated_page"] = True
+    blocked_gate = _build_lightweight_local_mvp_slice_manual_readiness_gate(checks)
+    assert blocked_gate["decision"] == "local_slice_agent_work_remaining"
+    assert blocked_gate["manual_slice_review_ready"] is False
+    assert blocked_gate["agent_work_remaining"] is True
+    assert blocked_gate["next_operator_action"] == "fix_local_slice_agent_blockers_before_manual_browser_api_review"
+    blocker_reasons = {blocker["reason_code"] for blocker in blocked_gate["blockers"]}
+    assert {
+        "local_slice_raw_payload_exposed",
+        "local_slice_issuer_backed_etf_row_regression",
+        "local_slice_blocked_surface_regression",
+    } <= blocker_reasons
+
+    optional_result = run_rehearsal(env={"LTT_REHEARSAL_DURABLE_REPOSITORIES_ENABLED": "true"})
+    optional_gate = optional_result["lightweight_local_mvp_slice_manual_readiness_gate"]
+    assert optional_gate["decision"] == "optional_local_check_blocked"
+    assert optional_gate["optional_local_check_blocked"] is True
+    assert optional_gate["manual_slice_review_ready"] is False
+    assert optional_gate["next_operator_action"] == "resolve_opted_in_optional_local_check_blockers_or_rerun_default_deterministic_slice"
+    assert {
+        (blocker["reason_code"], blocker["check_id"]) for blocker in optional_gate["blockers"]
+    } == {("optional_local_check_blocked", "optional_local_durable_repositories")}
+    serialized = str(optional_gate)
+    for forbidden in ["postgresql://", "Bearer ", "Authorization", "BEGIN PRIVATE KEY", "sk-"]:
+        assert forbidden not in serialized
+
+
+def test_t148_lightweight_local_slice_manual_readiness_gate_is_documented_and_static_marked():
+    rehearsal = read_file("scripts/run_local_fresh_data_rehearsal.py")
+    runbook = read_file("docs/local_fresh_data_ingest_to_render_runbook.md")
+    smoke = read_file("tests/frontend/smoke.mjs")
+    combined = f"{rehearsal}\n{runbook}\n{smoke}"
+
+    for marker in [
+        "T-148",
+        "lightweight_local_mvp_slice_manual_readiness_gate",
+        "lightweight-local-mvp-slice-manual-readiness-gate-v1",
+        "deterministic_local_slice_manual_review_ready",
+        "local_slice_agent_work_remaining",
+        "optional_local_check_blocked",
+        "run_explicit_manual_browser_api_review_for_lightweight_local_mvp_slice",
+        "does not approve ETF-500, Top-500, production, deployment",
+        "`AAPL`, `MSFT`, and `NVDA`",
+        "`VOO` and `QQQ`",
+        "`SPY`, `VTI`, and `XLK`",
+        "`TQQQ`, `ARKK`, `BND`, and `GLD`",
+        "source-use policy",
+        "source-labeled official/provider-derived display",
+        "raw payloads stay hidden",
+        "optional operator-only local checks",
+        "data-home-primary-workflow=\\\"single-supported-stock-or-etf-search\\\"",
+        "data-stock-etf-basket-structure",
+        "single-company-vs-ETF-basket",
+        "No major Weekly News Focus items found",
+    ]:
+        assert marker in combined, f"T-148 slice readiness gate should include marker: {marker}"
+
+    for forbidden in [
+        "OPENROUTER_API_KEY=",
+        "FMP_API_KEY=",
+        "ALPHA_VANTAGE_API_KEY=",
+        "FINNHUB_API_KEY=",
+        "TIINGO_API_KEY=",
+        "EODHD_API_KEY=",
+        "BEGIN PRIVATE KEY",
+        "sk-",
+        "xoxb-",
+        "ghp_",
+        "raw model reasoning is shown",
+        "raw provider payloads are printed",
+    ]:
+        assert forbidden.lower() not in runbook.lower()
 
 
 def test_t118_local_fresh_data_runbook_covers_deterministic_smoke_without_live_requirements():

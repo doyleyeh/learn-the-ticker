@@ -97,6 +97,38 @@ OPTIONAL_THRESHOLD_CHECK_IDS = (
 )
 ALLOWED_FAILED_ASSET_COUNT = 1
 ALLOWED_UNAVAILABLE_ASSET_COUNT = 1
+SLICE_EXPECTED_STATUS_COUNTS = {"pass": 5, "partial": 3, "blocked": 4, "unavailable": 0}
+SLICE_EXPECTED_STOCK_PASS_TICKERS = ("AAPL", "MSFT", "NVDA")
+SLICE_EXPECTED_ISSUER_BACKED_ETF_TICKERS = ("VOO", "QQQ")
+SLICE_EXPECTED_PARTIAL_ETF_TICKERS = ("SPY", "VTI", "XLK")
+SLICE_EXPECTED_BLOCKED_TICKERS = ("TQQQ", "ARKK", "BND", "GLD")
+SLICE_EXPECTED_SUPPORTED_TICKERS = (
+    *SLICE_EXPECTED_STOCK_PASS_TICKERS,
+    "VOO",
+    "SPY",
+    "VTI",
+    "QQQ",
+    "XLK",
+)
+SLICE_EXPECTED_BLOCKED_SURFACES = (
+    "generated_pages",
+    "generated_chat_answers",
+    "generated_comparisons",
+    "weekly_news_focus",
+    "ai_comprehensive_analysis",
+    "exports",
+    "generated_risk_summaries",
+    "generated_output_cache_entries",
+)
+SLICE_BLOCKED_SURFACE_CONTRACT_KEYS = (
+    "generated_page",
+    "generated_chat_answer",
+    "generated_comparison",
+    "weekly_news_focus",
+    "ai_comprehensive_analysis",
+    "export",
+    "generated_risk_summary",
+)
 
 
 @dataclass(frozen=True)
@@ -136,6 +168,7 @@ def run_rehearsal(env: dict[str, str] | None = None, *, root: Path = ROOT) -> di
         _guarded("optional_live_ai_review", lambda: _check_optional_live_ai_review(source_env)),
     ]
     threshold_summary = _build_local_mvp_threshold_summary(checks)
+    lightweight_slice_readiness_gate = _build_lightweight_local_mvp_slice_manual_readiness_gate(checks)
     manual_readiness_gate = _build_manual_fresh_data_readiness_gate(checks, threshold_summary)
     return {
         "schema_version": SCHEMA_VERSION,
@@ -146,6 +179,7 @@ def run_rehearsal(env: dict[str, str] | None = None, *, root: Path = ROOT) -> di
         "manifests_promoted": False,
         "sources_approved_by_rehearsal": False,
         "local_mvp_threshold_summary": threshold_summary,
+        "lightweight_local_mvp_slice_manual_readiness_gate": lightweight_slice_readiness_gate,
         "manual_fresh_data_readiness_gate": manual_readiness_gate,
         "checks": [check.to_dict() for check in checks],
     }
@@ -1784,6 +1818,254 @@ def _build_manual_fresh_data_readiness_gate(
                 "manual local browser/API testing is the next explicit operator action",
             ],
         },
+    }
+
+
+def _build_lightweight_local_mvp_slice_manual_readiness_gate(checks: list[RehearsalCheck]) -> dict[str, Any]:
+    check_by_id = {check.check_id: check for check in checks}
+    slice_check = check_by_id["local_fresh_data_mvp_slice_smoke"]
+    slice_blockers = _lightweight_local_mvp_slice_blockers(slice_check)
+    optional_statuses = [_lightweight_slice_optional_prerequisite_summary(check_by_id[check_id]) for check_id in OPTIONAL_THRESHOLD_CHECK_IDS]
+    optional_blockers = [
+        {
+            "reason_code": "optional_local_check_blocked",
+            "check_id": status["check_id"],
+            "status": status["status"],
+            "check_reason_code": status["reason_code"],
+        }
+        for status in optional_statuses
+        if status["status"] == "blocked"
+    ]
+    blockers = [*slice_blockers, *optional_blockers]
+    if slice_blockers:
+        decision = "local_slice_agent_work_remaining"
+    elif optional_blockers:
+        decision = "optional_local_check_blocked"
+    else:
+        decision = "deterministic_local_slice_manual_review_ready"
+
+    details = slice_check.details
+    return {
+        "schema_version": "lightweight-local-mvp-slice-manual-readiness-gate-v1",
+        "gate_name": "lightweight_local_mvp_slice_manual_readiness_gate",
+        "decision": decision,
+        "deterministic_local_slice_manual_review_ready": decision == "deterministic_local_slice_manual_review_ready",
+        "manual_slice_review_ready": decision == "deterministic_local_slice_manual_review_ready",
+        "local_slice_agent_work_remaining": decision == "local_slice_agent_work_remaining",
+        "agent_work_remaining": bool(slice_blockers),
+        "optional_local_check_blocked": bool(optional_blockers),
+        "launch_or_public_deployment_ready": False,
+        "production_ready": False,
+        "next_operator_action": _lightweight_local_mvp_slice_next_operator_action(decision),
+        "blockers": blockers,
+        "prerequisite_summaries": [
+            _lightweight_slice_smoke_prerequisite_summary(slice_check, slice_blockers),
+            _lightweight_slice_workflow_prerequisite_summary(check_by_id),
+            *optional_statuses,
+        ],
+        "sanitized_diagnostics": {
+            "safe_diagnostics_only": True,
+            "secret_values_reported": bool(details.get("secret_values_reported")),
+            "raw_payload_values_reported": bool(details.get("raw_payload_values_reported")),
+            "raw_payload_exposed_count": int(details.get("raw_payload_exposed_count") or 0),
+            "secret_or_raw_value_reporting_detected": bool(
+                details.get("secret_values_reported") or details.get("raw_payload_values_reported")
+            ),
+            "normal_ci_requires_live_calls": bool(details.get("normal_ci_requires_live_calls")),
+            "browser_startup_required_by_default": bool(details.get("browser_startup_required")),
+            "local_services_required_by_default": bool(details.get("local_services_required")),
+            "production_services_started": False,
+            "live_sources_fetched": False,
+            "live_llms_called": False,
+            "sources_approved": False,
+            "manifests_promoted": False,
+            "ingestion_started": False,
+            "generated_output_cache_entries_written": False,
+            "opt_in_env_names_reported_without_values": [
+                BROWSER_OPT_IN_ENV,
+                DURABLE_OPT_IN_ENV,
+                OFFICIAL_RETRIEVAL_OPT_IN_ENV,
+                LIVE_AI_OPT_IN_ENV,
+                WEB_BASE_ENV,
+                API_BASE_ENV,
+            ],
+        },
+        "decision_boundary": {
+            "deterministic_local_slice_manual_review_ready_when": [
+                "local_fresh_data_mvp_slice_smoke passes",
+                "normal_ci_requires_live_calls is false",
+                "raw_payload_exposed_count is zero",
+                "secret and raw-payload value reporting are false",
+                "AAPL, MSFT, and NVDA pass as stock rows",
+                "VOO and QQQ pass as issuer-backed ETF rows",
+                "SPY, VTI, and XLK remain partial ETF rows",
+                "TQQQ, ARKK, BND, and GLD remain blocked with no generated surfaces or evidence",
+                "optional operator-only checks are skipped or pass",
+            ],
+            "local_slice_agent_work_remaining_when": [
+                "the deterministic slice smoke is blocked",
+                "the T-147 issuer-backed versus partial ETF shape changes",
+                "blocked regression tickers unlock generated output or expose evidence",
+                "normal CI starts requiring live calls, browser startup, or local services",
+                "secret, raw payload, or raw source text reporting is detected",
+            ],
+            "optional_local_check_blocked_when": [
+                "an operator explicitly opts into browser/API, durable repository, official-source retrieval, or live-AI review and that optional check reports blocked",
+            ],
+            "not_a_broad_readiness_gate": [
+                "does not approve ETF-500, Top-500, production, deployment, source-pack, parser, handoff, checksum, live-provider, or live-AI readiness",
+                "does not approve sources, promote manifests, start services, write production storage, or unlock blocked products",
+            ],
+        },
+    }
+
+
+def _lightweight_local_mvp_slice_next_operator_action(decision: str) -> str:
+    if decision == "deterministic_local_slice_manual_review_ready":
+        return "run_explicit_manual_browser_api_review_for_lightweight_local_mvp_slice"
+    if decision == "optional_local_check_blocked":
+        return "resolve_opted_in_optional_local_check_blockers_or_rerun_default_deterministic_slice"
+    return "fix_local_slice_agent_blockers_before_manual_browser_api_review"
+
+
+def _lightweight_local_mvp_slice_blockers(slice_check: RehearsalCheck) -> list[dict[str, Any]]:
+    details = slice_check.details
+    rows = details.get("rows", [])
+    row_by_ticker = {row.get("ticker"): row for row in rows if isinstance(row, dict)}
+    blockers: list[dict[str, Any]] = []
+
+    _append_slice_blocker_if(blockers, slice_check.status != "pass", "local_slice_smoke_not_pass", {"status": slice_check.status, "reason_code": slice_check.reason_code})
+    _append_slice_blocker_if(blockers, details.get("schema_version") != "local-fresh-data-mvp-slice-smoke-v1", "local_slice_schema_version_mismatch", {"actual": details.get("schema_version")})
+    _append_slice_blocker_if(blockers, details.get("normal_ci_requires_live_calls") is not False, "local_slice_normal_ci_requires_live_calls", {"normal_ci_requires_live_calls": details.get("normal_ci_requires_live_calls")})
+    _append_slice_blocker_if(blockers, details.get("browser_startup_required") is not False, "local_slice_browser_startup_required", {"browser_startup_required": details.get("browser_startup_required")})
+    _append_slice_blocker_if(blockers, details.get("local_services_required") is not False, "local_slice_local_services_required", {"local_services_required": details.get("local_services_required")})
+    _append_slice_blocker_if(blockers, int(details.get("raw_payload_exposed_count") or 0) != 0, "local_slice_raw_payload_exposed", {"raw_payload_exposed_count": details.get("raw_payload_exposed_count")})
+    _append_slice_blocker_if(blockers, bool(details.get("secret_values_reported")), "local_slice_secret_values_reported", {})
+    _append_slice_blocker_if(blockers, bool(details.get("raw_payload_values_reported")), "local_slice_raw_payload_values_reported", {})
+    _append_slice_blocker_if(blockers, details.get("status_counts") != SLICE_EXPECTED_STATUS_COUNTS, "local_slice_status_counts_mismatch", {"expected": SLICE_EXPECTED_STATUS_COUNTS, "actual": details.get("status_counts")})
+    _append_slice_blocker_if(blockers, details.get("supported_renderable_tickers") != list(SLICE_EXPECTED_SUPPORTED_TICKERS), "local_slice_supported_tickers_mismatch", {"expected": list(SLICE_EXPECTED_SUPPORTED_TICKERS), "actual": details.get("supported_renderable_tickers")})
+    _append_slice_blocker_if(blockers, details.get("issuer_backed_etf_tickers") != list(SLICE_EXPECTED_ISSUER_BACKED_ETF_TICKERS), "local_slice_issuer_backed_etfs_mismatch", {"expected": list(SLICE_EXPECTED_ISSUER_BACKED_ETF_TICKERS), "actual": details.get("issuer_backed_etf_tickers")})
+    _append_slice_blocker_if(blockers, details.get("partial_etf_tickers") != list(SLICE_EXPECTED_PARTIAL_ETF_TICKERS), "local_slice_partial_etfs_mismatch", {"expected": list(SLICE_EXPECTED_PARTIAL_ETF_TICKERS), "actual": details.get("partial_etf_tickers")})
+    _append_slice_blocker_if(blockers, details.get("blocked_regression_tickers") != list(SLICE_EXPECTED_BLOCKED_TICKERS), "local_slice_blocked_tickers_mismatch", {"expected": list(SLICE_EXPECTED_BLOCKED_TICKERS), "actual": details.get("blocked_regression_tickers")})
+
+    blocked_surfaces = set(details.get("blocked_generated_surfaces") or [])
+    missing_surfaces = sorted(set(SLICE_EXPECTED_BLOCKED_SURFACES) - blocked_surfaces)
+    _append_slice_blocker_if(blockers, bool(missing_surfaces), "local_slice_blocked_surface_catalog_missing", {"missing": missing_surfaces})
+
+    for ticker in SLICE_EXPECTED_STOCK_PASS_TICKERS:
+        row = row_by_ticker.get(ticker)
+        if not row or row.get("status") != "pass" or row.get("asset_type") != "stock" or row.get("fetch_state") != "supported":
+            blockers.append({"reason_code": "local_slice_stock_row_not_pass", "ticker": ticker, "status": (row or {}).get("status"), "asset_type": (row or {}).get("asset_type"), "fetch_state": (row or {}).get("fetch_state")})
+        elif row.get("generated_output_eligible") is not True or row.get("source_count", 0) <= 0 or row.get("raw_payload_exposed") is not False:
+            blockers.append({"reason_code": "local_slice_stock_row_contract_regression", "ticker": ticker})
+
+    for ticker in SLICE_EXPECTED_ISSUER_BACKED_ETF_TICKERS:
+        row = row_by_ticker.get(ticker)
+        if not row or row.get("status") != "pass" or row.get("asset_type") != "etf" or row.get("fetch_state") != "supported" or row.get("issuer_backed") is not True or row.get("issuer_evidence_state") != "supported":
+            blockers.append({"reason_code": "local_slice_issuer_backed_etf_row_regression", "ticker": ticker, "status": (row or {}).get("status"), "fetch_state": (row or {}).get("fetch_state"), "issuer_backed": (row or {}).get("issuer_backed"), "issuer_evidence_state": (row or {}).get("issuer_evidence_state")})
+
+    for ticker in SLICE_EXPECTED_PARTIAL_ETF_TICKERS:
+        row = row_by_ticker.get(ticker)
+        if not row or row.get("status") != "partial" or row.get("asset_type") != "etf" or row.get("fetch_state") != "partial" or row.get("issuer_evidence_state") != "partial":
+            blockers.append({"reason_code": "local_slice_partial_etf_row_regression", "ticker": ticker, "status": (row or {}).get("status"), "fetch_state": (row or {}).get("fetch_state"), "issuer_evidence_state": (row or {}).get("issuer_evidence_state")})
+
+    for ticker in SLICE_EXPECTED_BLOCKED_TICKERS:
+        row = row_by_ticker.get(ticker)
+        if not row:
+            blockers.append({"reason_code": "local_slice_blocked_ticker_missing", "ticker": ticker})
+            continue
+        surface = row.get("surface_contract") or {}
+        unlocked_surfaces = sorted(key for key in SLICE_BLOCKED_SURFACE_CONTRACT_KEYS if surface.get(key))
+        evidence_counts = {
+            "source_count": row.get("source_count", 0),
+            "citation_count": row.get("citation_count", 0),
+            "fact_count": row.get("fact_count", 0),
+            "fetch_call_count": row.get("fetch_call_count", 0),
+        }
+        if row.get("status") != "blocked" or row.get("generated_output_eligible") is not False:
+            blockers.append({"reason_code": "local_slice_blocked_ticker_unblocked", "ticker": ticker, "status": row.get("status"), "generated_output_eligible": row.get("generated_output_eligible")})
+        if unlocked_surfaces or any(int(value or 0) > 0 for value in evidence_counts.values()):
+            blockers.append({"reason_code": "local_slice_blocked_surface_regression", "ticker": ticker, "unlocked_surfaces": unlocked_surfaces, **evidence_counts})
+        if row.get("raw_payload_exposed") is not False:
+            blockers.append({"reason_code": "local_slice_blocked_ticker_raw_payload_exposed", "ticker": ticker})
+
+    live_call_tickers = sorted(row.get("ticker") for row in rows if isinstance(row, dict) and row.get("no_live_external_calls") is not True)
+    _append_slice_blocker_if(blockers, bool(live_call_tickers), "local_slice_live_external_call_required", {"tickers": live_call_tickers})
+
+    for blocker in details.get("blockers") or []:
+        if isinstance(blocker, dict):
+            blockers.append({"reason_code": "local_slice_smoke_reported_blocker", "slice_reason_code": blocker.get("reason_code")})
+    return blockers
+
+
+def _append_slice_blocker_if(blockers: list[dict[str, Any]], condition: bool, reason_code: str, details: dict[str, Any]) -> None:
+    if condition:
+        blockers.append({"reason_code": reason_code, **details})
+
+
+def _lightweight_slice_smoke_prerequisite_summary(
+    slice_check: RehearsalCheck,
+    slice_blockers: list[dict[str, Any]],
+) -> dict[str, Any]:
+    details = slice_check.details
+    return {
+        "prerequisite_id": "deterministic_local_fresh_data_mvp_slice_smoke",
+        "check_id": slice_check.check_id,
+        "status": slice_check.status,
+        "reason_code": slice_check.reason_code,
+        "schema_version": details.get("schema_version"),
+        "expected_schema_version": "local-fresh-data-mvp-slice-smoke-v1",
+        "status_counts": details.get("status_counts"),
+        "expected_status_counts": SLICE_EXPECTED_STATUS_COUNTS,
+        "stock_pass_tickers": list(SLICE_EXPECTED_STOCK_PASS_TICKERS),
+        "issuer_backed_etf_tickers": details.get("issuer_backed_etf_tickers"),
+        "expected_issuer_backed_etf_tickers": list(SLICE_EXPECTED_ISSUER_BACKED_ETF_TICKERS),
+        "partial_etf_tickers": details.get("partial_etf_tickers"),
+        "expected_partial_etf_tickers": list(SLICE_EXPECTED_PARTIAL_ETF_TICKERS),
+        "blocked_regression_tickers": details.get("blocked_regression_tickers"),
+        "expected_blocked_regression_tickers": list(SLICE_EXPECTED_BLOCKED_TICKERS),
+        "normal_ci_requires_live_calls": details.get("normal_ci_requires_live_calls"),
+        "raw_payload_exposed_count": details.get("raw_payload_exposed_count"),
+        "secret_values_reported": details.get("secret_values_reported"),
+        "raw_payload_values_reported": details.get("raw_payload_values_reported"),
+        "blocker_count": len(slice_blockers),
+    }
+
+
+def _lightweight_slice_workflow_prerequisite_summary(check_by_id: dict[str, RehearsalCheck]) -> dict[str, Any]:
+    frontend = check_by_id["frontend_v04_smoke_markers"]
+    stock_vs_etf = check_by_id["stock_vs_etf_comparison_readiness"]
+    stock_vs_etf_details = stock_vs_etf.details
+    return {
+        "prerequisite_id": "frontend_v04_and_comparison_slice_markers",
+        "frontend_check_id": frontend.check_id,
+        "frontend_status": frontend.status,
+        "frontend_reason_code": frontend.reason_code,
+        "stock_vs_etf_check_id": stock_vs_etf.check_id,
+        "stock_vs_etf_status": stock_vs_etf.status,
+        "stock_vs_etf_reason_code": stock_vs_etf.reason_code,
+        "etf_vs_etf_baseline_pair": (stock_vs_etf_details.get("deterministic_pairs") or {}).get("etf_vs_etf_baseline"),
+        "stock_vs_etf_pair": (stock_vs_etf_details.get("deterministic_pairs") or {}).get("stock_vs_etf"),
+        "a_vs_b_search_routes_to_separate_compare_workflow": (
+            stock_vs_etf_details.get("frontend_api_alignment") or {}
+        ).get("a_vs_b_search_routes_to_separate_compare_workflow"),
+        "stock_vs_etf_basket_structure": (stock_vs_etf_details.get("backend_compare") or {}).get("basket_structure"),
+        "old_holding_verified_regression_absent": (stock_vs_etf_details.get("backend_compare") or {}).get(
+            "old_frontend_only_holding_verified_present"
+        )
+        is False,
+    }
+
+
+def _lightweight_slice_optional_prerequisite_summary(check: RehearsalCheck) -> dict[str, Any]:
+    return {
+        "prerequisite_id": f"{check.check_id}_operator_only",
+        "check_id": check.check_id,
+        "status": check.status,
+        "reason_code": check.reason_code,
+        "operator_only": True,
+        "skipped_is_pass": False,
+        "safe_diagnostics_only": True,
     }
 
 

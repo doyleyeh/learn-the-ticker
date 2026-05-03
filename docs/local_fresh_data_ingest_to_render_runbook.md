@@ -1,6 +1,6 @@
 # Local Fresh-Data Ingest-To-Render Runbook
 
-Task: T-118, updated by T-119 through T-146 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, stock-vs-ETF comparison readiness gating, local fresh-data MVP slice smoke coverage, optional slice browser/API localhost coverage, and optional durable slice smoke coverage
+Task: T-118, updated by T-119 through T-148 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, stock-vs-ETF comparison readiness gating, local fresh-data MVP slice smoke coverage, optional slice browser/API localhost coverage, optional durable slice smoke coverage, and lightweight local-slice manual-readiness gating
 
 This runbook describes the local golden-asset smoke path before production deployment work. Normal CI uses deterministic fixtures, mocked official-source acquisition, and in-memory repositories. It must not require real SEC, issuer, market-data, broad news, storage, database, Redis, RSS, or LLM calls.
 
@@ -34,6 +34,7 @@ The default rehearsal is deterministic and fixture-backed. It checks:
 - unsupported, out-of-scope, pending-ingestion, and unknown asset blocking.
 - launch-manifest review packets without promotion or launch approval.
 - v0.4 frontend smoke markers for single-asset home search, separate comparison, contextual glossary, mobile source/glossary/chat surfaces, stock-vs-ETF relationship structure, citation/source export scope, and evidence-limited Weekly News Focus.
+- a lightweight local MVP slice manual-readiness gate named `lightweight_local_mvp_slice_manual_readiness_gate`, separate from the broader `manual_fresh_data_readiness_gate`.
 
 The JSON output reports each check as `pass`, `skipped`, or `blocked`. Optional checks are skipped unless their rehearsal flag is set:
 
@@ -53,6 +54,34 @@ Optional-mode meanings:
 - live-AI review: delegates to the operator-only live-AI validation smoke and reports sanitized pass or blocker states.
 
 Stop when any required deterministic check is `blocked`, or when an opted-in optional check is `blocked`. The rehearsal does not start production services, approve sources, promote manifests, write production storage, require live calls by default, or make fixture-sized/local-only data launch-approved.
+
+## Lightweight Local MVP Slice Manual-Readiness Gate
+
+Task: T-148.
+
+`TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` returns `lightweight_local_mvp_slice_manual_readiness_gate` with schema `lightweight-local-mvp-slice-manual-readiness-gate-v1`. This is a slice-specific readiness signal for the local fresh-data MVP slice only. It can say `deterministic_local_slice_manual_review_ready` while the broader `manual_fresh_data_readiness_gate` still says `agent_work_remaining` for ETF-500, Top-500, source-pack, parser, handoff, freshness/as-of, checksum, production, deployment, live-provider, and live-AI blockers.
+
+The slice gate has three decision states:
+
+- `deterministic_local_slice_manual_review_ready`: the deterministic slice is ready for explicit operator manual browser/API review.
+- `local_slice_agent_work_remaining`: deterministic slice behavior regressed and agent-loop work remains before manual review.
+- `optional_local_check_blocked`: the deterministic slice is ready, but an explicitly opted-in optional local check is blocked by sanitized prerequisites or validation failures.
+
+Default deterministic readiness means all of these are true:
+
+- `local_fresh_data_mvp_slice_smoke` reports `pass`.
+- `normal_ci_requires_live_calls=false`, `browser_startup_required=false`, and `local_services_required=false`.
+- `raw_payload_exposed_count=0`, `secret_values_reported=false`, and `raw_payload_values_reported=false`.
+- status counts are `pass=5`, `partial=3`, `blocked=4`, and `unavailable=0`.
+- `AAPL`, `MSFT`, and `NVDA` pass as stock rows.
+- `VOO` and `QQQ` pass as issuer-backed ETF rows.
+- `SPY`, `VTI`, and `XLK` remain partial ETF rows with explicit issuer-evidence gaps.
+- `TQQQ`, `ARKK`, `BND`, and `GLD` remain blocked and receive no source documents, citations, facts, provider fetches, generated pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, or generated-output cache writes.
+- the existing `VOO`/`QQQ` ETF-vs-ETF and `AAPL`/`VOO` stock-vs-ETF smoke markers remain intact, including separate `/compare` workflow, `A vs B` redirect behavior, relationship badges, the `single-company-vs-ETF-basket` structure, export/chat proxy checks, and no `holding_verified` regression.
+
+Skipped optional checks are reported explicitly as operator-only prerequisites; they are not hidden as pass. The optional operator-only local checks include browser/API services, local durable repositories, official-source retrieval, and live-AI review. When an optional flag is set and the check is blocked, the slice gate reports `optional_local_check_blocked` with env var names and safe diagnostics only, never credential values.
+
+The slice gate is not launch readiness. It does not approve ETF-500, Top-500, production, deployment, source-pack, parser, Golden Asset Source Handoff, checksum, live-provider, or live-AI readiness. It does not approve sources, promote manifests, start services, write production storage, write generated-output cache entries, or unlock blocked products. Source-use policy still applies: fetching is retrieval, not evidence approval; source-labeled official/provider-derived display is allowed for the personal lightweight MVP only while raw payloads stay hidden, rights-safe output limits are preserved, provenance/freshness are visible, and missing evidence renders as `partial`, `unknown`, `stale`, `unavailable`, or `insufficient_evidence`.
 
 ## Lightweight Fresh-Data Fetch Smoke
 
