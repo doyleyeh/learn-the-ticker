@@ -1,6 +1,6 @@
 # Local Fresh-Data Ingest-To-Render Runbook
 
-Task: T-118, updated by T-119 through T-151 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, stock-vs-ETF comparison readiness gating, local fresh-data MVP slice smoke coverage, optional slice browser/API localhost coverage, optional durable slice smoke coverage, lightweight local-slice manual-readiness gating, local slice comparison/export parity coverage, the lightweight live browser/API MVP slice smoke runner contract, and lightweight API fallback diagnostics
+Task: T-118, updated by T-119 through T-152 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, stock-vs-ETF comparison readiness gating, local fresh-data MVP slice smoke coverage, optional slice browser/API localhost coverage, optional durable slice smoke coverage, lightweight local-slice manual-readiness gating, local slice comparison/export parity coverage, the lightweight live browser/API MVP slice smoke runner contract, lightweight API fallback diagnostics, and the lightweight live durable MVP slice smoke runner contract
 
 This runbook describes the local golden-asset smoke path before production deployment work. Normal CI uses deterministic fixtures, mocked official-source acquisition, and in-memory repositories. It must not require real SEC, issuer, market-data, broad news, storage, database, Redis, RSS, or LLM calls.
 
@@ -385,6 +385,31 @@ The smoke summary uses schema `local-live-browser-api-mvp-slice-smoke-v1` and pr
 - No-raw-payload/no-secret diagnostics showing raw payload values and secret values were not reported.
 
 Old strict source-pack/readiness stop conditions are audit diagnostics for this local lightweight path, not failure conditions for lightweight live browser/API smoke when the fresh-data response is renderable, source-labeled, and raw payloads remain hidden. This includes strict Golden Asset Source Handoff, ETF-500 source-pack, Top-500 source-pack, parser, checksum, manifest-promotion, and broad readiness gates. Those strict gates still matter for audit-quality promotion and public-launch hardening; they do not block this local personal-MVP smoke contract.
+
+T-152 adds a named lightweight live durable MVP slice smoke runner for the same already-running local services plus local durable repository settings:
+
+```bash
+LEARN_TICKER_LOCAL_WEB_BASE=http://127.0.0.1:3000 LEARN_TICKER_LOCAL_API_BASE=http://127.0.0.1:8000 DATA_POLICY_MODE=lightweight LIGHTWEIGHT_LIVE_FETCH_ENABLED=true LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true LEARN_TICKER_LOCAL_DURABLE_SMOKE=1 LOCAL_DURABLE_REPOSITORIES_ENABLED=true LOCAL_DURABLE_OBJECT_NAMESPACE=ticker-smoke DATABASE_URL="<local durable repository DSN, placeholder-only>" SEC_EDGAR_USER_AGENT="learn-the-ticker-local/0.1 contact@example.com" TMPDIR=/tmp npm run test:local-live-durable-slice-smoke
+```
+
+The T-152 runner is still operator-only and skipped by deterministic CI. The npm command sets `LEARN_TICKER_LOCAL_BROWSER_SMOKE=1`, `LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1`, and `LEARN_TICKER_LOCAL_DURABLE_SMOKE=1` for the smoke process, then validates the live lightweight slice through the Next proxy and direct FastAPI paths without starting services, Docker, live AI, or production storage.
+
+The durable-live contract summary uses schema `local-live-durable-mvp-slice-smoke-v1` and adds `durable_repository_diagnostics` with sanitized metadata only:
+
+- prerequisite status reports env var names, set/missing booleans, placeholder-local database status, non-public object-namespace status, and safe reason codes.
+- repository mode reports `local_durable`, whether local durable repositories are enabled, and confirms production database and production storage are not used.
+- persistence availability reports whether throwaway durable writes or direct repository-read proof are available. When the current browser/API path cannot prove a real durable write/read, it reports blocked optional reason codes such as `throwaway_durable_write_api_not_exercised_by_browser_smoke` and `repository_read_proof_not_exposed_by_lightweight_fresh_data_api` instead of pretending persistence passed.
+- stable repeated reads for representative renderable rows are checked across fresh-data, overview, details, sources, asset JSON export, and source-list JSON export surfaces. Repeated reads compare only smoke-level stable fields.
+- safe record metadata includes counts plus hashed record keys and checksums only; it does not print raw keys, DSNs, namespace values, raw provider payloads, raw source text, hidden prompts, model reasoning, or credential-like values.
+- fallback diagnostic summaries include `lightweight-api-fallback-diagnostics-v1` source paths and reason codes, while freshness/as-of summaries and generated-output eligibility remain compact.
+- no-raw/no-secret flags confirm raw payload values, secret values, database DSN values, object namespace values, hidden prompts, and model reasoning were not reported.
+
+Expected durable-live states:
+
+- `pass`: local services are reachable, all live lightweight slice probes pass, representative repeated-read checks pass, and durable diagnostics are sanitized.
+- `blocked`: required local-service, lightweight live, durable, placeholder-local database, non-public namespace, or placeholder SEC user-agent prerequisites are missing or unsafe, or a slice/blocking/export regression is detected.
+
+This smoke is local durability validation only. It does not approve Golden Asset Source Handoff, promote manifests, create production cache fixtures, broaden support classification, convert `SPY` issuer gaps into issuer evidence, or unlock generated output for `TQQQ`, `ARKK`, `BND`, `GLD`, unknown tickers, or any clearly unsupported product.
 
 Required local prerequisites:
 

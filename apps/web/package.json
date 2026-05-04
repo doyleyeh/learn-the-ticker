@@ -10,6 +10,7 @@
     "test": "cd ../.. && node tests/frontend/smoke.mjs",
     "test:browser-smoke": "cd ../.. && LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 node tests/frontend/smoke.mjs",
     "test:local-live-slice-smoke": "cd ../.. && LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1 node tests/frontend/smoke.mjs",
+    "test:local-live-durable-slice-smoke": "cd ../.. && LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1 LEARN_TICKER_LOCAL_DURABLE_SMOKE=1 node tests/frontend/smoke.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
