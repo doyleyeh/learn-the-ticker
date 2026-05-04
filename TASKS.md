@@ -1,62 +1,56 @@
 ## Current task
 
-### T-156: Add lightweight fresh-data comparison coverage for stock-vs-stock and partial ETF pairs
+### T-157: Add lightweight local deployment smoke and environment validation
 
 Goal:
-Extend the deterministic local fresh-data MVP slice comparison coverage so the next local review proves representative stock-vs-stock behavior and ETF pair availability states before local deployment smoke, while preserving source-backed comparisons, explicit partial/unavailable states, and the v0.4 frontend workflow.
+Add a deterministic, CI-safe local deployment and environment readiness smoke so the next local review can verify repo-local deployment scaffolding, placeholder environment files, API-base/CORS wiring, Docker Compose config readiness when available, and no-secret boundaries before any production deployment hardening.
 
 Scope:
-Build on T-149 comparison/export parity, T-153 issuer-backed ETF slice rows, and T-155's optional live-AI validation boundary. Add a narrow deterministic comparison coverage contract for `AAPL`/`MSFT` stock-vs-stock and representative ETF pairs involving issuer-backed, partial, or eligible-not-cached slice rows. The task may add the minimum source-backed local fixture or generator support needed for one stock-vs-stock comparison, but it must not turn fresh-data fallback into broad generated-output eligibility. ETF pairs without same-comparison-pack evidence must stay explicit `no_local_pack`, `eligible_not_cached`, `partial`, `unavailable`, or `insufficient_evidence` states with no generated claims, citations, source documents, exports, or cache writes.
+Build on T-150 through T-156 local fresh-data, browser/API, durable, live-AI, Weekly News Focus, and comparison-smoke coverage. Add a narrow repo-native smoke such as `scripts/run_local_deployment_env_smoke.py` and wire its deterministic summary into the local fresh-data rehearsal. The smoke should inspect committed placeholder files and local scaffolding only; it may report Docker availability and `docker compose config` readiness, but it must not start services, deploy to Vercel or Cloud Run, open database/storage connections, fetch live sources, call providers, call LLMs, or mark the app production-ready.
 
 Allowed files:
-- `backend/comparison.py`
-- `backend/export.py`
-- `backend/retrieval.py`
-- `backend/models.py`
-- `backend/lightweight_data_fetch.py`
-- `backend/lightweight_page.py`
-- `data/retrieval_fixtures.json`
-- `scripts/run_local_fresh_data_slice_smoke.py`
+- `backend/settings.py`
+- `scripts/run_local_deployment_env_smoke.py`
 - `scripts/run_local_fresh_data_rehearsal.py`
+- `.env.example`
+- `apps/web/.env.example`
+- `deploy/env/api.example.env`
+- `deploy/env/web.example.env`
+- `deploy/env/worker.example.env`
+- `docker-compose.yml`
+- `docker/api/Dockerfile`
+- `docker/web/Dockerfile`
 - `docs/local_fresh_data_ingest_to_render_runbook.md`
-- `tests/unit/test_comparison_generation.py`
-- `tests/unit/test_lightweight_data_fetch.py`
-- `tests/unit/test_safety_guardrails.py`
 - `tests/unit/test_repo_contract.py`
-- `tests/integration/test_backend_api.py`
-- `tests/frontend/smoke.mjs`
-- `evals/safety_eval_cases.yaml`
+- `tests/unit/test_persistence_settings.py`
 - `evals/run_static_evals.py`
 - `docs/agent-journal/<run-id>.md`
 
 Do not change:
-- Do not edit frontend app routes/components/styles, manifests, candidate manifests, source-pack artifacts, source allowlist records, generated-output cache fixtures, provider credentials, env example secret values, deployment files, database migrations, Docker files, package scripts, production configuration, production dependencies, or `config/source_allowlist.yaml`.
-- Do not add live provider/news/market-data/LLM calls, localhost-service requirements, durable-storage requirements, Docker requirements, browser requirements, or secret requirements to normal CI.
-- Do not add a broad comparison recommender, paid-provider integration, news provider integration, RSS crawler, scheduler, queue, database writer, production storage writer, or recurring job.
-- Do not broaden runtime support classification or unlock generated pages, generated chat answers, generated comparisons, exports, Weekly News Focus, AI Comprehensive Analysis, generated risk summaries, or generated-output cache writes for `TQQQ`, `ARKK`, `BND`, `GLD`, unknown tickers, clearly unsupported products, or out-of-scope assets.
-- Do not treat local fresh-data rows, partial ETF rows, issuer-backed ETF rows, comparison smoke pass states, deterministic fixture responses, source candidates, or provider/source fallback as ETF-500 completion, Top-500 completion, source-pack approval, Golden Asset Source Handoff approval, generated-output cache promotion, production readiness, investment suitability, or permission to store raw source text.
-- Do not change home-page workflow, comparison routing, glossary behavior, chat behavior, stock-vs-ETF comparison templates, source drawer behavior, mobile bottom-sheet/full-screen behavior, or the separate `/compare` workflow.
-- Do not print, store in committed files, or expose API keys, provider secrets, raw provider payloads, raw article/source text, hidden prompts, prompt text, raw model reasoning, raw transcripts, generated live responses, DSNs, signed links, unrestricted excerpts, raw live documents, or actual secret values.
+- Do not edit frontend app routes/components/styles, backend generation/retrieval/comparison/chat/export behavior, manifests, candidate manifests, source-pack artifacts, source allowlist records, generated-output cache fixtures, database migrations, package scripts, production dependencies, CI workflows, Vercel project settings, Cloud Run configuration, Secret Manager settings, production storage/database resources, or `config/source_allowlist.yaml`.
+- Do not run or add real Vercel deploys, Cloud Run deploys, Cloud Run Jobs, Cloud Scheduler jobs, production database migrations, production object-storage writes, Docker service startup requirements, localhost-service requirements, browser requirements, live provider/news/market-data/LLM calls, or secret requirements to normal CI.
+- Do not inspect, print, store, or commit actual secret values, DSNs, tokens, signed links, service-account JSON, `OPENROUTER_API_KEY`, provider API keys, raw provider payloads, raw source text, hidden prompts, prompt text, raw model reasoning, generated live responses, raw transcripts, unrestricted excerpts, or private deployment credentials.
+- Do not broaden runtime support classification or unlock generated pages, generated chat answers, generated comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, generated-output cache writes, or source approval for unsupported, out-of-scope, unknown, eligible-not-cached, partial-without-evidence, `TQQQ`, `ARKK`, `BND`, or `GLD` assets.
+- Do not treat placeholder env validation, Docker Compose config validation, local deployment-smoke pass states, local fresh-data rows, provider/source fallback, source candidates, or optional operator-mode readiness as ETF-500 completion, Top-500 completion, source-pack approval, Golden Asset Source Handoff approval, generated-output cache promotion, production readiness, public-launch readiness, investment suitability, or permission to store raw source text.
+- Do not change the v0.4 frontend workflow: home stays single stock/ETF search first, comparison remains a separate connected `/compare` workflow, glossary stays contextual, source/glossary/chat mobile bottom-sheet or full-screen behavior remains intact, and stock-vs-ETF relationship badges/templates remain unchanged.
 
 Acceptance criteria:
-- `scripts/run_local_fresh_data_slice_smoke.py --json` and `scripts/run_local_fresh_data_rehearsal.py --json` keep explicit schemas and include comparison coverage for existing `VOO`/`QQQ` ETF-vs-ETF, existing `AAPL`/`VOO` stock-vs-ETF, new `AAPL`/`MSFT` stock-vs-stock, and representative ETF pairs involving issuer-backed, partial, or eligible-not-cached slice rows. Default execution requires no live network, no local services, no durable repositories, no browser, no Docker, and no secrets, and reports `normal_ci_requires_live_calls=false`.
-- `AAPL`/`MSFT` is covered as a deterministic stock-vs-stock comparison. If a same-comparison-pack fixture is added, `/api/compare` and comparison export return `comparison_type=stock_vs_stock`, beginner bottom line, source-backed key differences, same-comparison-pack citation/source bindings, freshness/source-use metadata, and educational no-advice framing. If evidence is intentionally insufficient for a generated comparison, the scripts and API must report a non-generated `no_local_pack`, `partial`, `unavailable`, or `insufficient_evidence` state with no generated claims, citations, source documents, exports, or cache writes.
-- Stock-vs-stock copy does not reuse ETF-only dimensions such as benchmark, expense ratio, holdings count, fund construction, or ETF role. It uses stock-appropriate dimensions such as business model, revenue/profitability scale, financial quality evidence, risk context, and valuation-context evidence availability, with explicit `partial`, `unknown`, `unavailable`, or `insufficient_evidence` labels when evidence is missing.
-- Existing `VOO`/`QQQ` ETF-vs-ETF behavior remains source-backed, exportable, same-comparison-pack bound, and independent of stock-vs-stock or stock-vs-ETF markers. Existing `AAPL`/`VOO` stock-vs-ETF behavior keeps `stock-etf-relationship-v1`, relationship badges, `direct_holding`, and the `single-company-vs-ETF-basket` structure.
-- ETF pair coverage includes at least `VOO`/`SPY` and one additional pair from the current issuer-backed or partial/fallback ETF slice, such as `SPY`/`VTI`, `QQQ`/`XLK`, or the current non-empty `partial_etf_tickers` list. Pairs without a source-backed comparison pack stay explicitly non-generated with the correct `eligible_not_cached`, `no_local_pack`, `partial`, `unavailable`, or `insufficient_evidence` state.
-- If the current deterministic slice has no true partial ETF rows after T-153, the coverage reports that explicitly with a safe reason code such as `no_partial_etf_rows_in_current_slice` instead of inventing a partial ETF or downgrading issuer-backed `SPY`, `VTI`, or `XLK`.
-- Non-generated ETF pair states have no beginner bottom line, no key differences, no factual citations, no source documents, no Weekly News Focus, no AI Comprehensive Analysis, no generated chat answer, no export content, and no generated-output cache writes.
-- Blocked regression tickers `TQQQ`, `ARKK`, `BND`, and `GLD` remain generated-output-ineligible and receive no generated pages, generated chat answers, generated comparisons, Weekly News Focus, AI Comprehensive Analysis, citations, sources, facts, exports, generated risk summaries, provider fetches, live calls, or generated-output cache writes.
-- Comparison exports, source references, and citation bindings include only the relevant same-comparison-pack source metadata and allowed excerpts. Unsupported, eligible-not-cached, partial-without-comparison-pack, unknown, and out-of-scope pairs export empty or unavailable states without raw provider payloads, raw source text, unrestricted excerpts, hidden prompts, raw model reasoning, transcripts, or secrets.
-- `scripts/run_local_fresh_data_rehearsal.py` surfaces the expanded comparison coverage in required deterministic checks, manual-readiness prerequisite summaries, blocker diagnostics, and optional-mode summaries without making browser/API, durable repository, source retrieval, or live-AI checks required by default.
-- `docs/local_fresh_data_ingest_to_render_runbook.md` documents the new stock-vs-stock and ETF-pair comparison coverage, expected pass/partial/unavailable/blocked states, representative tickers, source-use/no-secret/no-raw-output boundaries, and the distinction from source approval, manifest promotion, generated-output cache promotion, ETF-500/Top-500 completion, deployment readiness, production readiness, or investment advice.
-- Existing backend chat, export, search, asset page, Weekly News Focus, and AI Comprehensive Analysis behavior remains unchanged except where directly needed for the new comparison coverage. Advice-like prompts are redirected before live calls, second-ticker questions in single-asset chat route to comparison, stable facts stay separate from timely context, and important generated claims have citations or explicit uncertainty.
-- The v0.4 frontend workflow markers remain intact: home stays single stock/ETF search first, comparison remains separate and connected through `/compare`, glossary remains contextual, source/glossary/chat mobile bottom-sheet or full-screen behavior remains, and stock-vs-ETF comparison relationship badges/templates are not changed.
-- Tests cover the smoke/rehearsal schemas, default no-live/no-secret behavior, `AAPL`/`MSFT` stock-vs-stock coverage, existing `VOO`/`QQQ` and `AAPL`/`VOO` regressions, ETF pair non-generated states, source/citation/freshness/source-use validation, export parity, blocked-product boundaries, no raw payload or secret reporting, runbook markers, and static eval coverage for safety expectations.
+- Add a deterministic local deployment/environment smoke command with an explicit schema such as `local-deployment-env-smoke-v1`. Default execution requires no live network, no local services, no browser, no durable repositories, no Docker daemon, no deployment credentials, and no secrets, and reports `normal_ci_requires_live_calls=false`, `production_services_started=false`, `deployments_created=false`, `live_provider_calls_attempted=false`, `database_connections_opened=false`, and `secret_values_reported=false`.
+- The smoke validates committed placeholder environment surfaces: `.env.example`, `apps/web/.env.example`, `deploy/env/api.example.env`, `deploy/env/web.example.env`, and `deploy/env/worker.example.env`. It confirms browser-exposed env files contain only browser-safe values such as `NEXT_PUBLIC_API_BASE_URL`; server-only keys such as `DATABASE_URL`, `OPENROUTER_API_KEY`, `FMP_API_KEY`, `ALPHA_VANTAGE_API_KEY`, `FINNHUB_API_KEY`, `TIINGO_API_KEY`, and `EODHD_API_KEY` stay out of browser env files and are never printed with values.
+- The smoke validates local and first-deployment configuration readiness by env var name and safe boolean/status only: API `PORT`, `CORS_ALLOWED_ORIGINS`, `DATABASE_URL` presence/redaction, `DATA_POLICY_MODE=lightweight`, `LIGHTWEIGHT_LIVE_FETCH_ENABLED` default-off behavior, `LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED`, `SEC_EDGAR_USER_AGENT` placeholder presence, `LLM_PROVIDER=mock`, `LLM_LIVE_GENERATION_ENABLED=false`, OpenRouter placeholders, Vercel `NEXT_PUBLIC_API_BASE_URL`, Cloud Run API env placeholders, and Cloud Run Job worker placeholders.
+- The smoke validates repo-local deployment scaffolding without starting it: `apps/web` remains the Vercel project root, root npm scripts still delegate to `apps/web`, `apps/web/next.config.mjs` keeps the documented API-base or Next `/api/:path*` rewrite behavior, the API Dockerfile respects Cloud Run's `PORT` contract with a local fallback, the web Dockerfile builds the Next workspace, and `docker-compose.yml` remains local-only with API/web/worker/Postgres/Redis/MinIO scaffolding and mock LLM defaults.
+- Docker Compose validation is optional and safe: when Docker is available, `docker compose config` passes; when Docker is unavailable, the smoke reports `docker_compose_config_status=skipped_unavailable` or an equivalent safe reason code without failing normal CI, starting services, pulling images, creating volumes, or requiring Docker for default tests.
+- `scripts/run_local_fresh_data_rehearsal.py --json` surfaces the new deployment/env smoke in deterministic required checks or prerequisite summaries. It must keep `launch_or_public_deployment_approved=false`, `production_ready=false`, `production_services_started=false`, and `normal_ci_requires_live_calls=false`, and it must distinguish local operator-readiness diagnostics from production launch approval.
+- The smoke and rehearsal diagnostics must report env var names, configured/missing booleans, redacted placeholders, reason codes, and readiness states only. They must not include actual env values, DSNs, keys, tokens, service-account JSON, signed URLs, raw provider payloads, raw source text, raw model output, raw model reasoning, hidden prompts, transcripts, or unrestricted excerpts.
+- `docs/local_fresh_data_ingest_to_render_runbook.md` documents the new smoke command, expected pass/skipped/block states, Docker-optional behavior, placeholder-only env boundaries, local-service/deployment no-op boundaries, safe manual follow-up commands, and the distinction from source approval, Golden Asset Source Handoff approval, manifest promotion, generated-output cache promotion, ETF-500/Top-500 completion, live-provider readiness, production deployment readiness, public-launch approval, or investment advice.
+- Existing T-156 comparison coverage remains intact: `AAPL`/`MSFT` stock-vs-stock, `VOO`/`QQQ` ETF-vs-ETF, `AAPL`/`VOO` stock-vs-ETF, `VOO`/`SPY` and `SPY`/`VTI` non-generated ETF-pair states, `no_partial_etf_rows_in_current_slice`, and blocked regression tickers continue to pass in slice smoke/rehearsal.
+- Existing backend search, asset pages, comparison, exports, grounded chat, Weekly News Focus, AI Comprehensive Analysis, source drawer metadata, citation validation, source-use policy, safety redirects, freshness labels, stale/unknown/unavailable/partial states, and generated-output cache boundaries remain unchanged except where directly needed to add safe deployment/env diagnostics.
+- The v0.4 frontend workflow markers remain intact: home stays single stock/ETF search first; clear `A vs B` patterns route to `/compare`; comparison remains separate but connected; glossary remains contextual; source drawer, glossary, and chat retain mobile bottom-sheet/full-screen expectations; stock-vs-ETF comparison keeps relationship badges and the `single-company-vs-ETF-basket` structure.
+- Tests cover the smoke schema, no-live/no-service/no-secret defaults, placeholder env validation, browser/server secret separation, CORS/API-base/Next proxy expectations, Docker-optional config behavior, rehearsal integration, runbook markers, static eval markers, and unchanged local fresh-data MVP slice coverage.
 
 Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_comparison_generation.py tests/unit/test_lightweight_data_fetch.py tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py tests/integration/test_backend_api.py -q`
-- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_slice_smoke.py --json`
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_repo_contract.py tests/unit/test_persistence_settings.py -q`
+- `TMPDIR=/tmp python3 scripts/run_local_deployment_env_smoke.py --json`
 - `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
 - `TMPDIR=/tmp python3 -m pytest tests -q`
 - `npm test`
@@ -64,6 +58,7 @@ Required commands:
 - `npm run build`
 - `TMPDIR=/tmp python3 evals/run_static_evals.py`
 - `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+- `docker compose config` when Docker is available; if Docker is unavailable, record the skipped/unavailable reason in the journal and keep the smoke deterministic
 - `git diff --check`
 
 Iteration budget:
@@ -71,11 +66,43 @@ Max 2 attempts.
 
 ## Backlog
 
-### T-157: Add lightweight local deployment smoke and environment validation
-
 ### T-158: Add lightweight MVP readiness gate with strict gates marked audit-only
 
 ## Completed
+
+### T-156: Add lightweight fresh-data comparison coverage for stock-vs-stock and partial ETF pairs
+
+Goal:
+Extend the deterministic local fresh-data MVP slice comparison coverage so the next local review proves representative stock-vs-stock behavior and ETF pair availability states before local deployment smoke, while preserving source-backed comparisons, explicit partial/unavailable states, and the v0.4 frontend workflow.
+
+Completion details:
+- Implementation commit: `4729e19 feat(T-156): add lightweight fresh-data comparison coverage for stock-vs-stock and partial ETF pairs`
+- Local merge commit: `3dae1c1 chore(T-156): merge lightweight fresh-data comparison coverage for stock-vs-stock and partial ETF pairs` from branch `agent/T-156-20260504T021539Z`
+- `backend/comparison.py` now supports deterministic `AAPL`/`MSFT` stock-vs-stock generation from a same-comparison-pack fixture, returning `comparison_type=stock_vs_stock`, a beginner bottom line, same-pack citations/source references, source-use/freshness metadata, and stock-appropriate dimensions such as `Business model`, `Revenue trend`, `Business quality evidence`, `Risk context`, and `Valuation evidence availability`.
+- `data/retrieval_fixtures.json` now includes the MSFT fixture evidence needed for the narrow `AAPL`/`MSFT` comparison path. The agent journal notes that search/pre-cache classification still treats MSFT as eligible-not-cached, with static evals preserving that boundary through a narrow comparison-specific exception.
+- `scripts/run_local_fresh_data_slice_smoke.py` and `scripts/run_local_fresh_data_rehearsal.py` now include `AAPL`/`MSFT` stock-vs-stock coverage, preserve existing `VOO`/`QQQ` ETF-vs-ETF and `AAPL`/`VOO` stock-vs-ETF coverage, and keep `AAPL`/`VOO` relationship markers including `stock-etf-relationship-v1`, `direct_holding`, relationship badges, and the `single-company-vs-ETF-basket` structure.
+- The slice smoke now covers supported local rows `AAPL`, `MSFT`, `NVDA`, `VOO`, `SPY`, `VTI`, `QQQ`, and `XLK`, plus blocked regression tickers `TQQQ`, `ARKK`, `BND`, and `GLD`.
+- Representative ETF pairs without a static comparison pack, including `VOO`/`SPY` and `SPY`/`VTI`, remain non-generated as `eligible_not_cached` with no beginner bottom line, no generated key differences, no citations, no source documents, and unavailable/empty export content.
+- Because the deterministic slice has no true partial ETF rows after T-153, the smoke reports `no_partial_etf_rows_in_current_slice` instead of inventing a partial ETF or downgrading issuer-backed `SPY`, `VTI`, or `XLK`.
+- `tests/unit/test_comparison_generation.py`, `tests/unit/test_lightweight_data_fetch.py`, `tests/unit/test_repo_contract.py`, `tests/unit/test_retrieval_fixtures.py`, and `tests/integration/test_backend_api.py` cover the new stock-vs-stock path, non-generated ETF-pair states, blocked-product boundaries, fixture boundaries, API/export behavior, and rehearsal markers.
+- `evals/run_static_evals.py` and `docs/local_fresh_data_ingest_to_render_runbook.md` were updated with the new comparison coverage, no-live/no-secret/no-raw-output boundaries, expected pass/non-generated states, and the distinction from source approval, manifest promotion, generated-output cache promotion, deployment readiness, production readiness, or investment advice.
+- `docs/agent-journal/20260504T021539Z.md` records the changed files, tests/evals run, pass status, and remaining risks.
+
+Required commands executed in this task branch:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_comparison_generation.py tests/unit/test_lightweight_data_fetch.py tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py tests/integration/test_backend_api.py -q` - pass
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_slice_smoke.py --json` - pass
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` - pass
+- `TMPDIR=/tmp python3 -m pytest tests -q` - pass
+- `npm test` - pass
+- `npm run typecheck` - pass
+- `npm run build` - pass
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass
+- `git diff --check` - pass
+
+Remaining risks:
+- `MSFT` has deterministic retrieval fixture support for `AAPL`/`MSFT` comparison generation, while search/pre-cache classification still treats MSFT as eligible-not-cached.
+- No frontend suggested-comparison UI changed; the new stock-vs-stock coverage is verified through backend comparison/export, chat redirect when the selected asset is involved, smoke/rehearsal, and static evals.
 
 ### T-155: Add lightweight live AI validation for grounded chat and analysis
 
@@ -4391,7 +4418,7 @@ Current runtime snapshot:
 - T-130 completed the deterministic local fresh-data MVP rehearsal command.
 - T-131 through T-135 completed the ETF eligible-universe, stock SEC source-pack readiness, ETF issuer source-pack readiness, local MVP readiness-threshold packets, and batchable local ingestion priority planner.
 - The ETF-500 scope update is documented across the product and handoff docs; T-136 completed deterministic ETF-500 candidate manifest review contracts, and T-137 completed ETF-500 issuer source-pack batch planning contracts.
-- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, T-139 completed the local manual fresh-data readiness gate, T-140 completed the backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack, T-141 aligned frontend/API comparison availability, T-142 completed local browser/API smoke coverage, T-143 completed the deterministic stock-vs-ETF readiness-reporting gate, T-144 completed the first local fresh-data MVP slice smoke contract, T-145 completed the local slice browser/API smoke task, T-146 completed optional durable repository smoke coverage for the local slice, T-147 completed issuer-backed ETF source enrichment for the local slice, T-148 completed the lightweight local slice manual-readiness gate, T-149 completed local slice comparison/export parity coverage, T-150 completed the lightweight live browser/API smoke runner, T-151 completed lightweight live API fallback diagnostics, T-152 completed lightweight live durable persistence smoke coverage, T-153 completed lightweight issuer enrichment for `SPY`, `VTI`, and `XLK`, T-154 completed the Weekly News Focus live-source smoke task, and T-155 completed lightweight live-AI validation. T-156 is now the current fresh-data comparison-coverage task, with T-157 and T-158 staged as follow-on local personal-MVP work before production hardening.
+- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, T-139 completed the local manual fresh-data readiness gate, T-140 completed the backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack, T-141 aligned frontend/API comparison availability, T-142 completed local browser/API smoke coverage, T-143 completed the deterministic stock-vs-ETF readiness-reporting gate, T-144 completed the first local fresh-data MVP slice smoke contract, T-145 completed the local slice browser/API smoke task, T-146 completed optional durable repository smoke coverage for the local slice, T-147 completed issuer-backed ETF source enrichment for the local slice, T-148 completed the lightweight local slice manual-readiness gate, T-149 completed local slice comparison/export parity coverage, T-150 completed the lightweight live browser/API smoke runner, T-151 completed lightweight live API fallback diagnostics, T-152 completed lightweight live durable persistence smoke coverage, T-153 completed lightweight issuer enrichment for `SPY`, `VTI`, and `XLK`, T-154 completed the Weekly News Focus live-source smoke task, T-155 completed lightweight live-AI validation, and T-156 completed fresh-data comparison coverage for stock-vs-stock plus non-generated ETF pairs. T-157 is now the current local deployment/environment smoke task, with T-158 staged as follow-on local personal-MVP readiness work before production hardening.
 - T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, full governed source artifacts, admin auth/rate limiting, broader live ingestion, and launch-sized reviewed manifests remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:
@@ -4451,7 +4478,7 @@ Operational defaults for general MVP roadmap tasks:
 - T-128 established deterministic governed golden evidence API/frontend rendering proof. It is completed and must not be reintroduced as runnable backlog.
 - T-129 established launch-manifest operator automation parity. It is completed and must not be reintroduced as runnable backlog.
 - T-130 established the local fresh-data MVP rehearsal command. It is completed and must not be reintroduced as runnable backlog.
-- T-134 through T-155 are completed. T-156 is the current runnable fresh-data comparison-coverage task, and T-157 through T-158 are prepared backlog headings for the remaining local personal-MVP path.
+- T-134 through T-156 are completed. T-157 is the current runnable local deployment/environment smoke task, and T-158 is the prepared backlog heading for the remaining local personal-MVP readiness path.
 - For the local personal MVP, use lightweight live fetch and source-labeled partial rendering as the active readiness path. Old strict source-pack, parser, checksum, ETF-500, Top-500, and Golden Asset Source Handoff promotion gates remain audit-quality diagnostics unless a task explicitly says it is strict/audit hardening.
 - Production hardening remains unpromoted until a new narrow launch-readiness task is explicitly prepared.
 - Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until explicit launch readiness work is promoted into a narrow task and passes deterministic CI coverage.
@@ -4542,15 +4569,15 @@ Roadmap integration tracker:
 | Lightweight issuer enrichment for SPY, VTI, and XLK | Completed | T-153 |
 | Lightweight Weekly News Focus live-source smoke for the MVP slice | Completed | T-154 |
 | Lightweight live AI validation for grounded chat and analysis | Completed | T-155 |
-| Lightweight fresh-data comparison coverage for stock-vs-stock and partial ETF pairs | Current | T-156 |
-| Lightweight local deployment smoke and environment validation | Prepared | T-157 |
+| Lightweight fresh-data comparison coverage for stock-vs-stock and partial ETF pairs | Completed | T-156 |
+| Lightweight local deployment smoke and environment validation | Current | T-157 |
 | Lightweight MVP readiness gate with strict gates marked audit-only | Prepared | T-158 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
 Remaining unpromoted general MVP sequence:
 
 - T-139 produced a deterministic readiness gate that says whether more agent-loop work remains or whether manual local fresh-data testing is the next step.
-- The stock-vs-ETF comparison feature-completion sequence is complete through the final prepared step: T-141 aligned frontend suggestions/fallback with API availability, T-142 added optional localhost browser/API smoke coverage, and T-143 added the deterministic readiness signal. The promoted local fresh-data MVP slice sequence is complete through T-155 lightweight live-AI validation for grounded chat and AI Comprehensive Analysis. The current runnable sequence starts at T-156 and adds fresh-data comparison coverage for stock-vs-stock and ETF pair availability states rather than reintroducing old strict source-pack gates as local-MVP blockers.
+- The stock-vs-ETF comparison feature-completion sequence is complete through the final prepared step: T-141 aligned frontend suggestions/fallback with API availability, T-142 added optional localhost browser/API smoke coverage, and T-143 added the deterministic readiness signal. The promoted local fresh-data MVP slice sequence is complete through T-156 fresh-data comparison coverage for stock-vs-stock and ETF pair availability states. The current runnable sequence starts at T-157 and adds deterministic local deployment/environment smoke coverage before the final strict-gates-audit-only MVP readiness task, without reintroducing old strict source-pack gates as local-MVP blockers.
 - Full production deployment remains unpromoted until a narrow launch-readiness task is added: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
 - Recurring production jobs only after manual official-source acquisition, Top-500 candidate refresh review, and local fresh-data behavior are stable.
 - Broad paid-provider or news-provider integrations only after provider licensing/source-use review, no-secret-exposure tests, mocked CI fixtures, source-rights validation, and export/display constraints are documented.
