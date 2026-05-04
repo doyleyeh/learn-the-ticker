@@ -1,47 +1,54 @@
 ## Current task
 
-### T-151: Add lightweight live API fallback diagnostics for search and asset pages
+### T-152: Add lightweight live durable persistence smoke for MVP slice fetches
 
 Goal:
-Add compact, sanitized API diagnostics that make the lightweight live fallback path explainable for search and asset-page API responses during local MVP review, without changing support eligibility, source-use rules, or deterministic CI behavior.
+Add a skip-by-default local durable persistence smoke for the lightweight live MVP slice so an operator can verify fresh-data fetches, local durable repository configuration, repeated reads, and API/export surfaces together before deployment work, without changing deterministic CI, source approval, support eligibility, or production storage.
 
 Scope:
-Implement repo-native response diagnostics and deterministic regression coverage for the existing lightweight fetch/page path. The diagnostics should distinguish cached fixture output, lightweight official-source evidence, ETF manifest/scope evidence, provider-derived fallback, partial or unavailable evidence gaps, and blocked/out-of-scope paths for `AAPL`, `MSFT`, `NVDA`, `VOO`, `SPY`, `VTI`, `QQQ`, `XLK`, `TQQQ`, `ARKK`, `BND`, and `GLD`. Keep the output compact and API-safe: reason codes, source labels/counts, freshness/as-of summaries, generated-output eligibility, and page render/fetch states are allowed; raw provider payloads, raw source text, secret values, hidden prompts, model reasoning, DSNs, and unrestricted excerpts are not. Normal CI remains deterministic and must not require live providers, localhost services, Docker, LLM calls, or secret values.
+Build on the existing T-146 durable smoke, T-150 local live browser/API smoke runner, and T-151 `fallback_diagnostics` contract. Add a narrow operator-only smoke path and deterministic regression markers that prove the local lightweight slice can be checked with local durable repository settings enabled. The smoke should cover representative supported, partial, and blocked rows through already-running FastAPI and Next services, and should report only compact durable diagnostics: prerequisite status, repository mode, persisted-read/write availability or explicit blocker reason, safe record counts/keys/checksums where available, fallback diagnostics, freshness/as-of summaries, generated-output eligibility, and no-raw/no-secret flags. If a real durable write/read path is unavailable in the current app, the optional smoke must report a blocked optional check with safe reason codes instead of pretending persistence passed. Normal CI remains deterministic and must not require live providers, localhost services, Docker, durable storage, LLM calls, or secret values.
 
 Allowed files:
 - `backend/models.py`
-- `backend/search.py`
+- `backend/main.py`
+- `backend/persistence.py`
 - `backend/lightweight_data_fetch.py`
 - `backend/lightweight_page.py`
-- `tests/unit/test_lightweight_data_fetch.py`
-- `tests/unit/test_search_classification.py`
-- `tests/integration/test_backend_api.py`
-- `tests/frontend/smoke.mjs`
-- `tests/unit/test_repo_contract.py`
 - `scripts/run_local_fresh_data_slice_smoke.py`
+- `scripts/run_local_fresh_data_rehearsal.py`
+- `tests/frontend/smoke.mjs`
+- `tests/integration/test_backend_api.py`
+- `tests/unit/test_lightweight_data_fetch.py`
+- `tests/unit/test_persistence_settings.py`
+- `tests/unit/test_repo_contract.py`
+- `package.json`
+- `apps/web/package.json`
 - `docs/local_fresh_data_ingest_to_render_runbook.md`
 - `docs/agent-journal/<run-id>.md`
 
 Do not change:
-- Do not edit data manifests, candidate manifests, source allowlists, source-pack artifacts, generated-output cache fixtures, provider credentials, env example secret values, deployment files, or production configuration.
+- Do not edit data manifests, candidate manifests, source allowlists, source-pack artifacts, generated-output cache fixtures, provider credentials, env example secret values, deployment files, database migrations, Docker files, or production configuration.
 - Do not change home-page workflow, comparison routing, glossary behavior, chat behavior, Weekly News Focus generation, AI Comprehensive Analysis generation, export generation, or stock-vs-ETF comparison templates.
-- Do not unlock generated output for `TQQQ`, `ARKK`, `BND`, `GLD`, unknown tickers, clearly unsupported products, or out-of-scope assets.
-- Do not weaken Golden Asset Source Handoff or source-use rights. Strict gates may remain audit diagnostics for local lightweight smoke, but strict/audit-quality evidence promotion rules must remain intact.
-- Do not add production dependencies, live provider requirements, localhost service requirements, or LLM requirements to normal tests/CI.
+- Do not unlock generated output, source documents, citations, exports, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, generated risk summaries, or generated-output cache writes for `TQQQ`, `ARKK`, `BND`, `GLD`, unknown tickers, clearly unsupported products, or out-of-scope assets.
+- Do not treat lightweight live fetching, provider fallback, or local durable writes as Golden Asset Source Handoff approval or strict/audit-quality evidence promotion.
+- Do not print, store in committed files, or expose real `DATABASE_URL`, object namespace values that look like credentials, provider secrets, raw provider payloads, raw source text, hidden prompts, model reasoning, transcripts, DSNs, signed links, or unrestricted excerpts.
+- Do not add production dependencies, production database requirements, live provider requirements, localhost service requirements, durable-storage requirements, or LLM requirements to normal tests/CI.
 
 Acceptance criteria:
-- A reusable lightweight API fallback diagnostics contract exists with schema/version marker, compact reason codes, and no raw payload or secret fields.
-- `GET /api/search` exposes diagnostics when lightweight live fallback resolves an otherwise eligible, partial, unavailable, or unknown asset into a local renderable result. The diagnostics must report source path, fetch state, page render state, generated-output eligibility, source labels/counts, official/provider/gap counts, freshness/as-of summary, and `raw_payload_exposed=false`.
-- Search diagnostics must not convert cached deterministic fixture rows into live-fallback rows unless the existing lightweight fetch rules already do so, and they must not alter ambiguous, unsupported, out-of-scope, or unknown blocked behavior except to expose safe diagnostics where appropriate.
-- Lightweight overview, details, and source-drawer API responses expose the same fallback/source-path diagnostics for live lightweight asset pages through explicit model fields or existing diagnostics containers, including partial/unavailable labels for missing issuer evidence.
-- Diagnostics distinguish `VOO` and `QQQ` issuer-backed ETF evidence from `SPY`, `VTI`, and `XLK` partial ETF fallback evidence, while preserving generated-output eligibility only where the existing lightweight response is renderable and source-labeled.
-- Diagnostics keep `TQQQ`, `ARKK`, `BND`, and `GLD` generated-output-ineligible and export-safe blocked, with no source documents, citations, facts, generated pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, generated risk summaries, or generated-output cache writes unlocked by the diagnostics.
-- `tests/frontend/smoke.mjs` or the deterministic slice smoke validates the new diagnostic markers for representative supported, partial, and blocked rows without making the operator-only T-150 command required in CI.
-- `docs/local_fresh_data_ingest_to_render_runbook.md` documents where operators can inspect the new diagnostics in search, overview, details, sources/source drawer, and the T-150 local live smoke summary.
-- Existing deterministic local fresh-data slice smoke, local rehearsal, comparison/export parity, source-use boundaries, v0.4 frontend workflow markers, and quality gate behavior remain unchanged.
+- A named optional durable-live smoke contract exists with a schema/version marker such as `local-live-durable-mvp-slice-smoke-v1`, and it is explicitly skipped unless durable and live local-smoke flags are set.
+- The optional smoke is gated by already-running local web/API bases, `DATA_POLICY_MODE=lightweight`, `LIGHTWEIGHT_LIVE_FETCH_ENABLED=true`, `LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true`, `LEARN_TICKER_LOCAL_BROWSER_SMOKE=1`, `LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1`, `LEARN_TICKER_LOCAL_DURABLE_SMOKE=1`, `LOCAL_DURABLE_REPOSITORIES_ENABLED=true`, placeholder-only local `DATABASE_URL`, non-public `LOCAL_DURABLE_OBJECT_NAMESPACE`, and placeholder `SEC_EDGAR_USER_AGENT`.
+- Missing or unsafe durable prerequisites report only env var names, set/missing booleans, and safe reason codes. They must not report actual DSNs, object namespace values, credentials, tokens, signed URLs, raw source text, raw provider payloads, hidden prompts, model reasoning, transcripts, or secret-like values.
+- The durable-live smoke validates representative `AAPL`, `VOO`, `SPY`, and blocked rows across frontend proxy and direct FastAPI paths where applicable. `AAPL` remains a supported stock with `sec_official_provider_fallback`; `VOO` remains issuer-backed with `issuer_backed_etf_provider_fallback`; `SPY` remains partial with `etf_manifest_scope_provider_fallback`; blocked rows remain `generated_output_eligible=false` with source/citation/fact counts of zero.
+- Durable diagnostics prove either local durable write/read or stable repeated durable reads for representative renderable rows. If writes are implemented, they are local throwaway writes only and expose safe record metadata such as repository name, record key hash or stable non-secret key, record count, checksum, freshness/as-of, source labels, and fallback diagnostic summary.
+- Local durable persistence must not promote source approval, mutate manifests, broaden support classification, create production cache fixtures, or convert partial ETF issuer gaps into supported issuer evidence.
+- Asset-page JSON export and source-list JSON export remain available only for renderable supported rows and remain unavailable or unsupported with empty factual evidence for `TQQQ`, `ARKK`, `BND`, and `GLD`.
+- Existing deterministic `scripts/run_local_fresh_data_slice_smoke.py`, local rehearsal, comparison/export parity, T-151 fallback diagnostics, source-use boundaries, v0.4 frontend workflow markers, and quality gate behavior remain unchanged.
+- `docs/local_fresh_data_ingest_to_render_runbook.md` documents the new durable-live command, prerequisites, expected pass/blocked states, cleanup boundaries for local throwaway durable data, and the distinction between local durable smoke and production readiness.
+- `tests/unit/test_repo_contract.py` or focused tests statically cover the command, schema marker, prerequisite gates, no-live-in-CI boundary, no-secret/no-raw-payload boundary, blocked-product boundary, and runbook markers.
 
 Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_lightweight_data_fetch.py tests/unit/test_search_classification.py tests/integration/test_backend_api.py tests/unit/test_repo_contract.py -q`
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_persistence_settings.py tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py tests/unit/test_repo_contract.py -q`
+- `node tests/frontend/smoke.mjs`
 - `TMPDIR=/tmp python3 scripts/run_local_fresh_data_slice_smoke.py --json`
 - `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
 - `npm test`
@@ -52,14 +59,12 @@ Required commands:
 - `git diff --check`
 
 Optional operator command to keep supported but not require in CI:
-- `LEARN_TICKER_LOCAL_WEB_BASE=http://127.0.0.1:3000 LEARN_TICKER_LOCAL_API_BASE=http://127.0.0.1:8000 DATA_POLICY_MODE=lightweight LIGHTWEIGHT_LIVE_FETCH_ENABLED=true LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true SEC_EDGAR_USER_AGENT="learn-the-ticker-local/0.1 contact@example.com" TMPDIR=/tmp npm run test:local-live-slice-smoke`
+- `LEARN_TICKER_LOCAL_WEB_BASE=http://127.0.0.1:3000 LEARN_TICKER_LOCAL_API_BASE=http://127.0.0.1:8000 DATA_POLICY_MODE=lightweight LIGHTWEIGHT_LIVE_FETCH_ENABLED=true LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true LEARN_TICKER_LOCAL_DURABLE_SMOKE=1 LOCAL_DURABLE_REPOSITORIES_ENABLED=true LOCAL_DURABLE_OBJECT_NAMESPACE=ticker-smoke DATABASE_URL="<local durable repository DSN, placeholder-only>" SEC_EDGAR_USER_AGENT="learn-the-ticker-local/0.1 contact@example.com" TMPDIR=/tmp npm run test:local-live-durable-slice-smoke`
 
 Iteration budget:
 Max 2 attempts.
 
 ## Backlog
-
-### T-152: Add lightweight live durable persistence smoke for MVP slice fetches
 
 ### T-153: Add lightweight issuer enrichment for SPY, VTI, and XLK
 
@@ -74,6 +79,39 @@ Max 2 attempts.
 ### T-158: Add lightweight MVP readiness gate with strict gates marked audit-only
 
 ## Completed
+
+### T-151: Add lightweight live API fallback diagnostics for search and asset pages
+
+Goal:
+Add compact, sanitized API diagnostics that make the lightweight live fallback path explainable for search and asset-page API responses during local MVP review, without changing support eligibility, source-use rules, or deterministic CI behavior.
+
+Completion details:
+- Implementation commit: `6ce0405 feat(T-151): add lightweight live API fallback diagnostics for search and asset pages`
+- Local merge commit: `17134db chore(T-151): merge lightweight live API fallback diagnostics for search and asset pages` from branch `agent/T-151-20260504T003625Z`
+- Added `LightweightApiFallbackDiagnostics` and `LightweightFallbackFreshnessSummary` models with schema `lightweight-api-fallback-diagnostics-v1`, plus `fallback_diagnostics` fields on lightweight fetch, search result, overview, details, and source-drawer response models.
+- `backend/lightweight_data_fetch.py` now builds sanitized fallback diagnostics with source path, reason codes, fetch state, page render state, generated-output eligibility, source labels/counts, official/provider/partial/unavailable/gap counts, issuer-evidence state, freshness/as-of summary, and no-raw/no-secret flags.
+- The diagnostics distinguish stock official/provider fallback (`sec_official_provider_fallback`), issuer-backed ETF fallback (`issuer_backed_etf_provider_fallback`), partial ETF manifest/provider fallback (`etf_manifest_scope_provider_fallback`), unavailable fetches, unknowns, and blocked scope screens.
+- `backend/search.py` attaches fallback diagnostics only when the existing lightweight live fallback path resolves an eligible/unknown exact ticker into a local renderable result; cached deterministic rows are not converted unless that path is actually used.
+- `backend/lightweight_page.py` propagates the same diagnostics into lightweight overview, details, and source-drawer responses.
+- Deterministic slice smoke and browser smoke now validate fallback diagnostics for supported stock rows, issuer-backed `VOO`/`QQQ`, partial `SPY`/`VTI`/`XLK`, and blocked `TQQQ`/`ARKK`/`BND`/`GLD` rows while preserving `raw_payload_exposed=false`.
+- `docs/local_fresh_data_ingest_to_render_runbook.md` documents where operators can inspect `fallback_diagnostics` in fresh-data, search, overview, details, sources/source drawer, and the T-150 local live smoke summary.
+- `tests/unit/test_repo_contract.py`, `tests/unit/test_lightweight_data_fetch.py`, `tests/integration/test_backend_api.py`, and `tests/frontend/smoke.mjs` were updated for the schema markers, source paths, blocked-product boundary, and no-secret/no-raw-payload diagnostics.
+- `docs/agent-journal/20260504T003625Z.md` records the changed files, tests/evals run, pass status, and remaining risks.
+
+Required commands executed in this task branch:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_lightweight_data_fetch.py tests/unit/test_search_classification.py tests/integration/test_backend_api.py tests/unit/test_repo_contract.py -q` - pass (`95 passed`)
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_slice_smoke.py --json` - pass
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` - pass
+- `npm test` - pass
+- `npm run typecheck` - pass
+- `npm run build` - pass
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass, including `487` backend tests
+- `git diff --check` - pass
+
+Remaining risks:
+- The optional T-150 browser/API live smoke remains operator-run only and was not executed against already-running localhost services in the CI-safe task attempt.
+- T-151 diagnostics explain the lightweight fallback path only. They do not approve strict source packs, promote manifests, validate production deployment, or unlock blocked products.
 
 ### T-150: Add lightweight live browser/API MVP slice smoke runner
 
@@ -4218,7 +4256,7 @@ Current runtime snapshot:
 - T-130 completed the deterministic local fresh-data MVP rehearsal command.
 - T-131 through T-135 completed the ETF eligible-universe, stock SEC source-pack readiness, ETF issuer source-pack readiness, local MVP readiness-threshold packets, and batchable local ingestion priority planner.
 - The ETF-500 scope update is documented across the product and handoff docs; T-136 completed deterministic ETF-500 candidate manifest review contracts, and T-137 completed ETF-500 issuer source-pack batch planning contracts.
-- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, T-139 completed the local manual fresh-data readiness gate, T-140 completed the backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack, T-141 aligned frontend/API comparison availability, T-142 completed local browser/API smoke coverage, T-143 completed the deterministic stock-vs-ETF readiness-reporting gate, T-144 completed the first local fresh-data MVP slice smoke contract, T-145 completed the local slice browser/API smoke task, T-146 completed optional durable repository smoke coverage for the local slice, T-147 completed issuer-backed ETF source enrichment for the local slice, T-148 completed the lightweight local slice manual-readiness gate, T-149 completed local slice comparison/export parity coverage, and T-150 completed the lightweight live browser/API smoke runner. T-151 is now the current lightweight live API fallback diagnostics task, with T-152 through T-158 staged as follow-on lightweight-live work before production hardening.
+- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, T-139 completed the local manual fresh-data readiness gate, T-140 completed the backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack, T-141 aligned frontend/API comparison availability, T-142 completed local browser/API smoke coverage, T-143 completed the deterministic stock-vs-ETF readiness-reporting gate, T-144 completed the first local fresh-data MVP slice smoke contract, T-145 completed the local slice browser/API smoke task, T-146 completed optional durable repository smoke coverage for the local slice, T-147 completed issuer-backed ETF source enrichment for the local slice, T-148 completed the lightweight local slice manual-readiness gate, T-149 completed local slice comparison/export parity coverage, T-150 completed the lightweight live browser/API smoke runner, and T-151 completed lightweight live API fallback diagnostics. T-152 is now the current lightweight live durable persistence smoke task, with T-153 through T-158 staged as follow-on lightweight-live work before production hardening.
 - T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, full governed source artifacts, admin auth/rate limiting, broader live ingestion, and launch-sized reviewed manifests remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:
@@ -4278,7 +4316,7 @@ Operational defaults for general MVP roadmap tasks:
 - T-128 established deterministic governed golden evidence API/frontend rendering proof. It is completed and must not be reintroduced as runnable backlog.
 - T-129 established launch-manifest operator automation parity. It is completed and must not be reintroduced as runnable backlog.
 - T-130 established the local fresh-data MVP rehearsal command. It is completed and must not be reintroduced as runnable backlog.
-- T-134 through T-150 are completed. T-151 is the current runnable lightweight live fetch diagnostics task, and T-152 through T-158 are prepared backlog headings for the remaining local personal-MVP path.
+- T-134 through T-151 are completed. T-152 is the current runnable lightweight live durable persistence smoke task, and T-153 through T-158 are prepared backlog headings for the remaining local personal-MVP path.
 - For the local personal MVP, use lightweight live fetch and source-labeled partial rendering as the active readiness path. Old strict source-pack, parser, checksum, ETF-500, Top-500, and Golden Asset Source Handoff promotion gates remain audit-quality diagnostics unless a task explicitly says it is strict/audit hardening.
 - Production hardening remains unpromoted until a new narrow launch-readiness task is explicitly prepared.
 - Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until explicit launch readiness work is promoted into a narrow task and passes deterministic CI coverage.
@@ -4364,8 +4402,8 @@ Roadmap integration tracker:
 | Lightweight local manual-readiness gate for the MVP slice | Completed | T-148 |
 | Local fresh-data MVP slice comparison and export parity coverage | Completed | T-149 |
 | Lightweight live browser/API MVP slice smoke runner | Completed | T-150 |
-| Lightweight live API fallback diagnostics for search and asset pages | Current | T-151 |
-| Lightweight live durable persistence smoke for MVP slice fetches | Prepared | T-152 |
+| Lightweight live API fallback diagnostics for search and asset pages | Completed | T-151 |
+| Lightweight live durable persistence smoke for MVP slice fetches | Current | T-152 |
 | Lightweight issuer enrichment for SPY, VTI, and XLK | Prepared | T-153 |
 | Lightweight Weekly News Focus live-source smoke for the MVP slice | Prepared | T-154 |
 | Lightweight live AI validation for grounded chat and analysis | Prepared | T-155 |
@@ -4377,7 +4415,7 @@ Roadmap integration tracker:
 Remaining unpromoted general MVP sequence:
 
 - T-139 produced a deterministic readiness gate that says whether more agent-loop work remains or whether manual local fresh-data testing is the next step.
-- The stock-vs-ETF comparison feature-completion sequence is complete through the final prepared step: T-141 aligned frontend suggestions/fallback with API availability, T-142 added optional localhost browser/API smoke coverage, and T-143 added the deterministic readiness signal. The promoted local fresh-data MVP slice sequence is complete through T-150 lightweight live browser/API smoke runner coverage. The next runnable sequence starts at T-151 and continues the lightweight live fetch diagnostics path rather than reintroducing old strict source-pack gates as local-MVP blockers.
+- The stock-vs-ETF comparison feature-completion sequence is complete through the final prepared step: T-141 aligned frontend suggestions/fallback with API availability, T-142 added optional localhost browser/API smoke coverage, and T-143 added the deterministic readiness signal. The promoted local fresh-data MVP slice sequence is complete through T-151 lightweight live API fallback diagnostics. The current runnable sequence starts at T-152 and continues the lightweight live durable persistence smoke path rather than reintroducing old strict source-pack gates as local-MVP blockers.
 - Full production deployment remains unpromoted until a narrow launch-readiness task is added: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
 - Recurring production jobs only after manual official-source acquisition, Top-500 candidate refresh review, and local fresh-data behavior are stable.
 - Broad paid-provider or news-provider integrations only after provider licensing/source-use review, no-secret-exposure tests, mocked CI fixtures, source-rights validation, and export/display constraints are documented.
