@@ -1,6 +1,6 @@
 # Local Fresh-Data Ingest-To-Render Runbook
 
-Task: T-118, updated by T-119 through T-149 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, stock-vs-ETF comparison readiness gating, local fresh-data MVP slice smoke coverage, optional slice browser/API localhost coverage, optional durable slice smoke coverage, lightweight local-slice manual-readiness gating, and local slice comparison/export parity coverage
+Task: T-118, updated by T-119 through T-150 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, stock-vs-ETF comparison readiness gating, local fresh-data MVP slice smoke coverage, optional slice browser/API localhost coverage, optional durable slice smoke coverage, lightweight local-slice manual-readiness gating, local slice comparison/export parity coverage, and the lightweight live browser/API MVP slice smoke runner contract
 
 This runbook describes the local golden-asset smoke path before production deployment work. Normal CI uses deterministic fixtures, mocked official-source acquisition, and in-memory repositories. It must not require real SEC, issuer, market-data, broad news, storage, database, Redis, RSS, or LLM calls.
 
@@ -354,6 +354,23 @@ Stock-vs-ETF local functional readiness (T-143): the deterministic rehearsal com
 LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1 LEARN_TICKER_LOCAL_WEB_BASE=http://127.0.0.1:3000 LEARN_TICKER_LOCAL_API_BASE=http://127.0.0.1:8000 DATA_POLICY_MODE=lightweight LIGHTWEIGHT_LIVE_FETCH_ENABLED=true LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true SEC_EDGAR_USER_AGENT="learn-the-ticker-local/0.1 contact@example.com" TMPDIR=/tmp npm run test:browser-smoke
 ```
 
+T-150 adds the named lightweight live browser/API MVP slice smoke runner command for the same already-running local services:
+
+```bash
+LEARN_TICKER_LOCAL_WEB_BASE=http://127.0.0.1:3000 LEARN_TICKER_LOCAL_API_BASE=http://127.0.0.1:8000 DATA_POLICY_MODE=lightweight LIGHTWEIGHT_LIVE_FETCH_ENABLED=true LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true SEC_EDGAR_USER_AGENT="learn-the-ticker-local/0.1 contact@example.com" TMPDIR=/tmp npm run test:local-live-slice-smoke
+```
+
+The T-150 runner is still operator-only and skipped by deterministic CI. It sets `LEARN_TICKER_LOCAL_BROWSER_SMOKE=1` and `LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1` for the smoke process, then validates the existing running-service contract without starting Next, FastAPI, Docker, live AI, or any provider process.
+
+The smoke summary uses schema `local-live-browser-api-mvp-slice-smoke-v1` and prints sanitized metadata only:
+
+- API/proxy bases: normalized `next_api_proxy_base` and `direct_fastapi_base`.
+- Per-ticker source labels, source/citation/fact/gap counts, freshness/as-of metadata, fetch state, page render state, generated-output eligibility, and partial/unavailable states.
+- Blocked export diagnostics for `TQQQ`, `ARKK`, `BND`, and `GLD` across asset-page and source-list JSON exports through both the Next proxy and direct FastAPI base.
+- No-raw-payload/no-secret diagnostics showing raw payload values and secret values were not reported.
+
+Old strict source-pack/readiness stop conditions are audit diagnostics for this local lightweight path, not failure conditions for lightweight live browser/API smoke when the fresh-data response is renderable, source-labeled, and raw payloads remain hidden. This includes strict Golden Asset Source Handoff, ETF-500 source-pack, Top-500 source-pack, parser, checksum, manifest-promotion, and broad readiness gates. Those strict gates still matter for audit-quality promotion and public-launch hardening; they do not block this local personal-MVP smoke contract.
+
 Required local prerequisites:
 
 - `LEARN_TICKER_LOCAL_BROWSER_SMOKE=1`
@@ -372,8 +389,8 @@ Slice expectations:
 - `AAPL`, `MSFT`, and `NVDA` are probed through `/api/assets/{ticker}/fresh-data` via both the frontend proxy and direct FastAPI. They should return JSON rather than a Next HTML fallback, stock identity, renderable supported state, generated-output eligibility, official SEC/source labeling where exposed, provider-derived fallback labeling where present, citations or explicit evidence states, freshness/as-of metadata, and source-drawer/source-count metadata.
 - `VOO` and `QQQ` are probed through `/api/assets/{ticker}/fresh-data` via both the frontend proxy and direct FastAPI. They should return JSON rather than a Next HTML fallback, ETF identity, renderable supported state when official issuer fixture evidence is present, generated-output eligibility, official issuer source labels, issuer-backed normalized facts, provider-derived fallback labeling where present, citations, freshness/as-of metadata, and source-drawer/source-count metadata.
 - `SPY`, `VTI`, and `XLK` are probed through `/api/assets/{ticker}/fresh-data` via both the frontend proxy and direct FastAPI. They should return JSON rather than a Next HTML fallback, ETF identity, renderable partial state, generated-output eligibility, manifest/scope or partial source labels, provider-derived fallback labeling where present, citations or explicit partial/unavailable evidence states, freshness/as-of metadata, and visible partial/unavailable labels for missing issuer evidence.
-- Representative stock and ETF rows also check `/api/search`, `/api/assets/{ticker}/overview`, `/api/assets/{ticker}/details`, and `/api/assets/{ticker}/sources` through the running-service contract so overview, details, citation, freshness, and source-drawer surfaces remain API-backed.
-- The blocked regression tickers `TQQQ`, `ARKK`, `BND`, and `GLD` remain generated-output-ineligible. They must not receive generated pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, source documents, citations, facts, provider fetches from the slice smoke, or generated-output cache writes.
+- Representative stock and ETF rows also check `/api/search`, `/api/assets/{ticker}/overview`, `/api/assets/{ticker}/details`, and `/api/assets/{ticker}/sources` through both the Next proxy and direct FastAPI running-service contract so overview, details, citation, freshness, and source-drawer surfaces remain API-backed.
+- The blocked regression tickers `TQQQ`, `ARKK`, `BND`, and `GLD` remain generated-output-ineligible. They must not receive generated pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, available exports, generated risk summaries, source documents, citations, facts, provider fetches from the slice smoke, or generated-output cache writes. Their asset-page and source-list JSON exports return unsupported or unavailable export-safe blocked states with empty factual evidence.
 - The existing optional browser smoke remains intact for `VOO`/`QQQ` ETF-vs-ETF and `AAPL`/`VOO` stock-vs-ETF, including comparison-route redirects, relationship badges, the `single-company-vs-ETF-basket` structure, export/chat proxy checks, and no `holding_verified` regression.
 
 9. Optional durable local fresh-data MVP slice browser/API smoke (T-146): run this only when the already-running API and web services use lightweight local MVP settings plus local durable repository settings. This is skip-by-default and gated by all three local smoke flags: `LEARN_TICKER_LOCAL_BROWSER_SMOKE=1`, `LEARN_TICKER_LOCAL_DURABLE_SMOKE=1`, and `LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1`.
