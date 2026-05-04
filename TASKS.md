@@ -1,55 +1,45 @@
 ## Current task
 
-### T-157: Add lightweight local deployment smoke and environment validation
+### T-158: Add lightweight MVP readiness gate with strict gates marked audit-only
 
 Goal:
-Add a deterministic, CI-safe local deployment and environment readiness smoke so the next local review can verify repo-local deployment scaffolding, placeholder environment files, API-base/CORS wiring, Docker Compose config readiness when available, and no-secret boundaries before any production deployment hardening.
+Add a deterministic lightweight MVP readiness gate that summarizes whether the local personal-MVP slice is ready for operator manual review, while explicitly marking strict ETF-500, Top-500, Golden Asset Source Handoff, source-pack, generated-output cache, launch-manifest, live-provider, and production-deployment gates as audit-only diagnostics unless a future strict/public-launch task promotes them.
 
 Scope:
-Build on T-150 through T-156 local fresh-data, browser/API, durable, live-AI, Weekly News Focus, and comparison-smoke coverage. Add a narrow repo-native smoke such as `scripts/run_local_deployment_env_smoke.py` and wire its deterministic summary into the local fresh-data rehearsal. The smoke should inspect committed placeholder files and local scaffolding only; it may report Docker availability and `docker compose config` readiness, but it must not start services, deploy to Vercel or Cloud Run, open database/storage connections, fetch live sources, call providers, call LLMs, or mark the app production-ready.
+Build on the deterministic local rehearsal, local manual-readiness gates, local deployment/environment smoke, and local fresh-data MVP slice coverage from T-130 through T-157. Add a narrow repo-native readiness command such as `scripts/run_lightweight_mvp_readiness_gate.py` that consumes existing deterministic checks and emits a concise JSON/operator summary for the personal local MVP. The gate should clarify which blockers affect local manual review and which strict/public-launch checks remain audit-only; it must not change runtime product behavior, broaden support classification, start services, fetch live sources, call providers or LLMs, deploy infrastructure, approve sources, promote manifests, or mark the app production/public-launch ready.
 
 Allowed files:
-- `backend/settings.py`
-- `scripts/run_local_deployment_env_smoke.py`
+- `scripts/run_lightweight_mvp_readiness_gate.py`
 - `scripts/run_local_fresh_data_rehearsal.py`
-- `.env.example`
-- `apps/web/.env.example`
-- `deploy/env/api.example.env`
-- `deploy/env/web.example.env`
-- `deploy/env/worker.example.env`
-- `docker-compose.yml`
-- `docker/api/Dockerfile`
-- `docker/web/Dockerfile`
 - `docs/local_fresh_data_ingest_to_render_runbook.md`
 - `tests/unit/test_repo_contract.py`
-- `tests/unit/test_persistence_settings.py`
 - `evals/run_static_evals.py`
 - `docs/agent-journal/<run-id>.md`
 
 Do not change:
-- Do not edit frontend app routes/components/styles, backend generation/retrieval/comparison/chat/export behavior, manifests, candidate manifests, source-pack artifacts, source allowlist records, generated-output cache fixtures, database migrations, package scripts, production dependencies, CI workflows, Vercel project settings, Cloud Run configuration, Secret Manager settings, production storage/database resources, or `config/source_allowlist.yaml`.
-- Do not run or add real Vercel deploys, Cloud Run deploys, Cloud Run Jobs, Cloud Scheduler jobs, production database migrations, production object-storage writes, Docker service startup requirements, localhost-service requirements, browser requirements, live provider/news/market-data/LLM calls, or secret requirements to normal CI.
+- Do not edit frontend app routes/components/styles, backend API/generation/retrieval/comparison/chat/export behavior, provider adapters, manifests, candidate manifests, source-pack artifacts, source allowlist records, generated-output cache fixtures, database migrations, env example files, Dockerfiles, Docker Compose service definitions, package scripts, production dependencies, CI workflows, Vercel project settings, Cloud Run configuration, Secret Manager settings, production storage/database resources, or `config/source_allowlist.yaml`.
+- Do not run or add real Vercel deploys, Cloud Run deploys, Cloud Run Jobs, Cloud Scheduler jobs, production database migrations, production object-storage writes, Docker service startup requirements, localhost-service requirements, browser requirements, live provider/news/market-data/LLM calls, broad official-source retrieval, or secret requirements to normal CI.
 - Do not inspect, print, store, or commit actual secret values, DSNs, tokens, signed links, service-account JSON, `OPENROUTER_API_KEY`, provider API keys, raw provider payloads, raw source text, hidden prompts, prompt text, raw model reasoning, generated live responses, raw transcripts, unrestricted excerpts, or private deployment credentials.
 - Do not broaden runtime support classification or unlock generated pages, generated chat answers, generated comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, generated-output cache writes, or source approval for unsupported, out-of-scope, unknown, eligible-not-cached, partial-without-evidence, `TQQQ`, `ARKK`, `BND`, or `GLD` assets.
-- Do not treat placeholder env validation, Docker Compose config validation, local deployment-smoke pass states, local fresh-data rows, provider/source fallback, source candidates, or optional operator-mode readiness as ETF-500 completion, Top-500 completion, source-pack approval, Golden Asset Source Handoff approval, generated-output cache promotion, production readiness, public-launch readiness, investment suitability, or permission to store raw source text.
+- Do not treat local MVP readiness, local smoke pass states, placeholder env validation, Docker Compose config validation, local fresh-data rows, provider/source fallback, source candidates, optional operator-mode readiness, or audit-only strict diagnostics as ETF-500 completion, Top-500 completion, source-pack approval, Golden Asset Source Handoff approval, generated-output cache promotion, production readiness, public-launch readiness, investment suitability, or permission to store raw source text.
 - Do not change the v0.4 frontend workflow: home stays single stock/ETF search first, comparison remains a separate connected `/compare` workflow, glossary stays contextual, source/glossary/chat mobile bottom-sheet or full-screen behavior remains intact, and stock-vs-ETF relationship badges/templates remain unchanged.
 
 Acceptance criteria:
-- Add a deterministic local deployment/environment smoke command with an explicit schema such as `local-deployment-env-smoke-v1`. Default execution requires no live network, no local services, no browser, no durable repositories, no Docker daemon, no deployment credentials, and no secrets, and reports `normal_ci_requires_live_calls=false`, `production_services_started=false`, `deployments_created=false`, `live_provider_calls_attempted=false`, `database_connections_opened=false`, and `secret_values_reported=false`.
-- The smoke validates committed placeholder environment surfaces: `.env.example`, `apps/web/.env.example`, `deploy/env/api.example.env`, `deploy/env/web.example.env`, and `deploy/env/worker.example.env`. It confirms browser-exposed env files contain only browser-safe values such as `NEXT_PUBLIC_API_BASE_URL`; server-only keys such as `DATABASE_URL`, `OPENROUTER_API_KEY`, `FMP_API_KEY`, `ALPHA_VANTAGE_API_KEY`, `FINNHUB_API_KEY`, `TIINGO_API_KEY`, and `EODHD_API_KEY` stay out of browser env files and are never printed with values.
-- The smoke validates local and first-deployment configuration readiness by env var name and safe boolean/status only: API `PORT`, `CORS_ALLOWED_ORIGINS`, `DATABASE_URL` presence/redaction, `DATA_POLICY_MODE=lightweight`, `LIGHTWEIGHT_LIVE_FETCH_ENABLED` default-off behavior, `LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED`, `SEC_EDGAR_USER_AGENT` placeholder presence, `LLM_PROVIDER=mock`, `LLM_LIVE_GENERATION_ENABLED=false`, OpenRouter placeholders, Vercel `NEXT_PUBLIC_API_BASE_URL`, Cloud Run API env placeholders, and Cloud Run Job worker placeholders.
-- The smoke validates repo-local deployment scaffolding without starting it: `apps/web` remains the Vercel project root, root npm scripts still delegate to `apps/web`, `apps/web/next.config.mjs` keeps the documented API-base or Next `/api/:path*` rewrite behavior, the API Dockerfile respects Cloud Run's `PORT` contract with a local fallback, the web Dockerfile builds the Next workspace, and `docker-compose.yml` remains local-only with API/web/worker/Postgres/Redis/MinIO scaffolding and mock LLM defaults.
-- Docker Compose validation is optional and safe: when Docker is available, `docker compose config` passes; when Docker is unavailable, the smoke reports `docker_compose_config_status=skipped_unavailable` or an equivalent safe reason code without failing normal CI, starting services, pulling images, creating volumes, or requiring Docker for default tests.
-- `scripts/run_local_fresh_data_rehearsal.py --json` surfaces the new deployment/env smoke in deterministic required checks or prerequisite summaries. It must keep `launch_or_public_deployment_approved=false`, `production_ready=false`, `production_services_started=false`, and `normal_ci_requires_live_calls=false`, and it must distinguish local operator-readiness diagnostics from production launch approval.
-- The smoke and rehearsal diagnostics must report env var names, configured/missing booleans, redacted placeholders, reason codes, and readiness states only. They must not include actual env values, DSNs, keys, tokens, service-account JSON, signed URLs, raw provider payloads, raw source text, raw model output, raw model reasoning, hidden prompts, transcripts, or unrestricted excerpts.
-- `docs/local_fresh_data_ingest_to_render_runbook.md` documents the new smoke command, expected pass/skipped/block states, Docker-optional behavior, placeholder-only env boundaries, local-service/deployment no-op boundaries, safe manual follow-up commands, and the distinction from source approval, Golden Asset Source Handoff approval, manifest promotion, generated-output cache promotion, ETF-500/Top-500 completion, live-provider readiness, production deployment readiness, public-launch approval, or investment advice.
-- Existing T-156 comparison coverage remains intact: `AAPL`/`MSFT` stock-vs-stock, `VOO`/`QQQ` ETF-vs-ETF, `AAPL`/`VOO` stock-vs-ETF, `VOO`/`SPY` and `SPY`/`VTI` non-generated ETF-pair states, `no_partial_etf_rows_in_current_slice`, and blocked regression tickers continue to pass in slice smoke/rehearsal.
-- Existing backend search, asset pages, comparison, exports, grounded chat, Weekly News Focus, AI Comprehensive Analysis, source drawer metadata, citation validation, source-use policy, safety redirects, freshness labels, stale/unknown/unavailable/partial states, and generated-output cache boundaries remain unchanged except where directly needed to add safe deployment/env diagnostics.
+- Add a deterministic command with an explicit schema such as `lightweight-mvp-readiness-gate-v1`. Default execution requires no live network, no local services, no browser, no durable repositories, no Docker daemon, no deployment credentials, no source/provider credentials, and no secrets, and reports `normal_ci_requires_live_calls=false`, `production_services_started=false`, `deployments_created=false`, `live_provider_calls_attempted=false`, `database_connections_opened=false`, `secret_values_reported=false`, `production_ready=false`, and `public_launch_ready=false`.
+- The gate consumes the existing deterministic local rehearsal and local deployment/env smoke results rather than duplicating product checks. It must include the statuses and reason codes for local fresh-data MVP slice smoke, comparison/export parity, stock-vs-ETF readiness, local deployment/env smoke, frontend workflow markers, source-handoff readiness, launch-manifest review packets, source-pack planning, local ingestion priority planning, Weekly News Focus threshold behavior, live-AI optional readiness, unsupported blocked tickers, and no-secret diagnostics.
+- The gate distinguishes local personal-MVP manual-review readiness from public-launch readiness. A passing deterministic local slice may set a clearly named local/manual review state such as `local_personal_mvp_ready_for_manual_review=true`, but it must keep `production_ready=false`, `public_launch_ready=false`, `strict_audit_ready=false`, `launch_or_public_deployment_approved=false`, `sources_approved_by_readiness_gate=false`, `manifests_promoted=false`, and `generated_output_cache_promoted=false`.
+- Strict/public-launch hardening items are represented as `audit_only` or equivalent non-blocking diagnostics for the lightweight personal MVP: ETF-500 full supported-manifest validation, Top-500 current-manifest refresh approval, full Golden Asset Source Handoff approval, stock SEC source-pack approval, ETF issuer source-pack approval, launch-sized source artifacts, launch-manifest promotion, generated-output cache promotion, live-provider execution, live-AI review, production deployment, recurring jobs, and broad paid-provider/news integrations.
+- The gate must still block local manual-review readiness when deterministic required checks fail, when unsupported/out-of-scope/unknown products unlock generated output, when no-live/no-secret boundaries regress, when source-use/export boundaries regress, when important local generated claims lose citations or uncertainty labels, or when v0.4 frontend workflow markers are missing.
+- Existing T-156 and T-157 coverage remains intact: `AAPL`/`MSFT`, `VOO`/`QQQ`, `AAPL`/`VOO`, non-generated `VOO`/`SPY` and `SPY`/`VTI` states, blocked regression tickers, `local_deployment_env_smoke`, Docker-optional diagnostics, placeholder-env no-secret checks, and no-production flags continue to pass in rehearsal/readiness output.
 - The v0.4 frontend workflow markers remain intact: home stays single stock/ETF search first; clear `A vs B` patterns route to `/compare`; comparison remains separate but connected; glossary remains contextual; source drawer, glossary, and chat retain mobile bottom-sheet/full-screen expectations; stock-vs-ETF comparison keeps relationship badges and the `single-company-vs-ETF-basket` structure.
-- Tests cover the smoke schema, no-live/no-service/no-secret defaults, placeholder env validation, browser/server secret separation, CORS/API-base/Next proxy expectations, Docker-optional config behavior, rehearsal integration, runbook markers, static eval markers, and unchanged local fresh-data MVP slice coverage.
+- Weekly News Focus and AI Comprehensive Analysis boundaries remain explicit in the gate: Weekly News Focus shows the configured maximum only when approved evidence supports it, smaller or empty states remain valid, AI Comprehensive Analysis remains suppressed unless at least two approved Weekly News Focus items exist, and canonical facts remain separate from timely context.
+- The gate and rehearsal diagnostics must report booleans, status counts, reason codes, safe markers, and readiness states only. They must not include actual env values, DSNs, keys, tokens, service-account JSON, signed URLs, raw provider payloads, raw source text, raw model output, raw model reasoning, hidden prompts, transcripts, full restricted article text, or unrestricted excerpts.
+- `docs/local_fresh_data_ingest_to_render_runbook.md` documents the new readiness command, pass/block/skipped meanings, audit-only strict gates, safe manual follow-up, local personal-MVP scope, no-live/no-secret/no-service boundaries, and the distinction from source approval, Golden Asset Source Handoff approval, manifest promotion, generated-output cache promotion, ETF-500/Top-500 completion, live-provider readiness, production deployment readiness, public-launch approval, or investment advice.
+- Static evals and repo-contract tests cover the schema, local/manual readiness flags, audit-only strict gate list, blocker behavior, no-live/no-service/no-secret defaults, rehearsal integration, runbook markers, forbidden raw/secret markers, unchanged T-156/T-157 coverage, v0.4 frontend workflow markers, source-use/freshness/citation safety markers, and no production/public-launch approval.
 
 Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_repo_contract.py tests/unit/test_persistence_settings.py -q`
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_repo_contract.py -q`
+- `TMPDIR=/tmp python3 scripts/run_lightweight_mvp_readiness_gate.py --json`
 - `TMPDIR=/tmp python3 scripts/run_local_deployment_env_smoke.py --json`
 - `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
 - `TMPDIR=/tmp python3 -m pytest tests -q`
@@ -58,7 +48,7 @@ Required commands:
 - `npm run build`
 - `TMPDIR=/tmp python3 evals/run_static_evals.py`
 - `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
-- `docker compose config` when Docker is available; if Docker is unavailable, record the skipped/unavailable reason in the journal and keep the smoke deterministic
+- `docker compose config` when Docker is available; if Docker is unavailable, record the skipped/unavailable reason in the journal and keep readiness deterministic
 - `git diff --check`
 
 Iteration budget:
@@ -66,9 +56,41 @@ Max 2 attempts.
 
 ## Backlog
 
-### T-158: Add lightweight MVP readiness gate with strict gates marked audit-only
+No backlog tasks are currently prepared.
 
 ## Completed
+
+### T-157: Add lightweight local deployment smoke and environment validation
+
+Goal:
+Add a deterministic, CI-safe local deployment and environment readiness smoke so local review can verify repo-local deployment scaffolding, placeholder environment files, API-base/CORS wiring, Docker Compose config readiness when available, and no-secret boundaries before any production deployment hardening.
+
+Completion details:
+- Implementation commit: `f866488 feat(T-157): add lightweight local deployment smoke and environment validation`
+- Local merge commit: `22f8aab chore(T-157): merge lightweight local deployment smoke and environment validation` from branch `agent/T-157-20260504T024320Z`
+- Added `scripts/run_local_deployment_env_smoke.py` with schema `local-deployment-env-smoke-v1`. The smoke inspects committed repo scaffolding only and reports safe default flags including `normal_ci_requires_live_calls=false`, `production_services_started=false`, `deployments_created=false`, `live_provider_calls_attempted=false`, `database_connections_opened=false`, `secret_values_reported=false`, `launch_or_public_deployment_approved=false`, and `production_ready=false`.
+- The smoke validates placeholder env files, browser/server env separation, backend lightweight settings defaults, `apps/web` as the Vercel project root, root npm delegation to `apps/web`, Next API-base/rewrite behavior, API/web Dockerfile markers, local-only Docker Compose services, mock LLM defaults, and optional `docker compose config` readiness without starting services.
+- `scripts/run_local_fresh_data_rehearsal.py` now includes `local_deployment_env_smoke` as a required deterministic check and surfaces it in prerequisite summaries and the manual test checklist with no-live, no-service, no-secret, no-launch, and no-production flags.
+- `evals/run_static_evals.py` and `tests/unit/test_repo_contract.py` cover the smoke schema, safe defaults, placeholder env validation, browser/server secret separation, local deployment scaffolding markers, Docker-optional behavior, rehearsal integration, runbook markers, and forbidden raw/secret output markers.
+- `docs/local_fresh_data_ingest_to_render_runbook.md` documents the deployment/env smoke command, pass/skipped/block states, Docker-optional behavior, placeholder-only env boundaries, local-service/deployment no-op boundaries, safe diagnostics, and the distinction from source approval, Golden Asset Source Handoff approval, manifest promotion, generated-output cache promotion, ETF-500/Top-500 completion, live-provider readiness, production deployment readiness, public-launch approval, or investment advice.
+- `docs/agent-journal/20260504T024320Z.md` records the changed files, tests/evals run, pass status, and remaining risks.
+
+Required commands executed in this task branch:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_repo_contract.py tests/unit/test_persistence_settings.py -q` - pass
+- `TMPDIR=/tmp python3 scripts/run_local_deployment_env_smoke.py --json` - pass
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` - pass
+- `TMPDIR=/tmp python3 -m pytest tests -q` - pass
+- `npm test` - pass
+- `npm run typecheck` - pass
+- `npm run build` - pass
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass
+- `docker compose config` - pass
+- `git diff --check` - pass
+
+Remaining risks:
+- The smoke validates committed placeholders and local scaffolding only; it does not start services, deploy, open database connections, approve sources, promote manifests, or mark production/public-launch readiness.
+- Docker Compose config passed in the T-157 environment; in environments without Docker or the Compose plugin, the smoke reports a safe skipped Docker sub-check instead of failing deterministic CI.
 
 ### T-156: Add lightweight fresh-data comparison coverage for stock-vs-stock and partial ETF pairs
 
@@ -4418,7 +4440,7 @@ Current runtime snapshot:
 - T-130 completed the deterministic local fresh-data MVP rehearsal command.
 - T-131 through T-135 completed the ETF eligible-universe, stock SEC source-pack readiness, ETF issuer source-pack readiness, local MVP readiness-threshold packets, and batchable local ingestion priority planner.
 - The ETF-500 scope update is documented across the product and handoff docs; T-136 completed deterministic ETF-500 candidate manifest review contracts, and T-137 completed ETF-500 issuer source-pack batch planning contracts.
-- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, T-139 completed the local manual fresh-data readiness gate, T-140 completed the backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack, T-141 aligned frontend/API comparison availability, T-142 completed local browser/API smoke coverage, T-143 completed the deterministic stock-vs-ETF readiness-reporting gate, T-144 completed the first local fresh-data MVP slice smoke contract, T-145 completed the local slice browser/API smoke task, T-146 completed optional durable repository smoke coverage for the local slice, T-147 completed issuer-backed ETF source enrichment for the local slice, T-148 completed the lightweight local slice manual-readiness gate, T-149 completed local slice comparison/export parity coverage, T-150 completed the lightweight live browser/API smoke runner, T-151 completed lightweight live API fallback diagnostics, T-152 completed lightweight live durable persistence smoke coverage, T-153 completed lightweight issuer enrichment for `SPY`, `VTI`, and `XLK`, T-154 completed the Weekly News Focus live-source smoke task, T-155 completed lightweight live-AI validation, and T-156 completed fresh-data comparison coverage for stock-vs-stock plus non-generated ETF pairs. T-157 is now the current local deployment/environment smoke task, with T-158 staged as follow-on local personal-MVP readiness work before production hardening.
+- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, T-139 completed the local manual fresh-data readiness gate, T-140 completed the backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack, T-141 aligned frontend/API comparison availability, T-142 completed local browser/API smoke coverage, T-143 completed the deterministic stock-vs-ETF readiness-reporting gate, T-144 completed the first local fresh-data MVP slice smoke contract, T-145 completed the local slice browser/API smoke task, T-146 completed optional durable repository smoke coverage for the local slice, T-147 completed issuer-backed ETF source enrichment for the local slice, T-148 completed the lightweight local slice manual-readiness gate, T-149 completed local slice comparison/export parity coverage, T-150 completed the lightweight live browser/API smoke runner, T-151 completed lightweight live API fallback diagnostics, T-152 completed lightweight live durable persistence smoke coverage, T-153 completed lightweight issuer enrichment for `SPY`, `VTI`, and `XLK`, T-154 completed the Weekly News Focus live-source smoke task, T-155 completed lightweight live-AI validation, T-156 completed fresh-data comparison coverage for stock-vs-stock plus non-generated ETF pairs, and T-157 completed local deployment/environment smoke coverage. T-158 is now the current local personal-MVP readiness gate before production hardening, with no additional backlog task prepared.
 - T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, full governed source artifacts, admin auth/rate limiting, broader live ingestion, and launch-sized reviewed manifests remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:
@@ -4478,7 +4500,7 @@ Operational defaults for general MVP roadmap tasks:
 - T-128 established deterministic governed golden evidence API/frontend rendering proof. It is completed and must not be reintroduced as runnable backlog.
 - T-129 established launch-manifest operator automation parity. It is completed and must not be reintroduced as runnable backlog.
 - T-130 established the local fresh-data MVP rehearsal command. It is completed and must not be reintroduced as runnable backlog.
-- T-134 through T-156 are completed. T-157 is the current runnable local deployment/environment smoke task, and T-158 is the prepared backlog heading for the remaining local personal-MVP readiness path.
+- T-134 through T-157 are completed. T-158 is the current runnable local personal-MVP readiness gate, and no prepared backlog heading remains.
 - For the local personal MVP, use lightweight live fetch and source-labeled partial rendering as the active readiness path. Old strict source-pack, parser, checksum, ETF-500, Top-500, and Golden Asset Source Handoff promotion gates remain audit-quality diagnostics unless a task explicitly says it is strict/audit hardening.
 - Production hardening remains unpromoted until a new narrow launch-readiness task is explicitly prepared.
 - Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until explicit launch readiness work is promoted into a narrow task and passes deterministic CI coverage.
@@ -4570,14 +4592,14 @@ Roadmap integration tracker:
 | Lightweight Weekly News Focus live-source smoke for the MVP slice | Completed | T-154 |
 | Lightweight live AI validation for grounded chat and analysis | Completed | T-155 |
 | Lightweight fresh-data comparison coverage for stock-vs-stock and partial ETF pairs | Completed | T-156 |
-| Lightweight local deployment smoke and environment validation | Current | T-157 |
-| Lightweight MVP readiness gate with strict gates marked audit-only | Prepared | T-158 |
+| Lightweight local deployment smoke and environment validation | Completed | T-157 |
+| Lightweight MVP readiness gate with strict gates marked audit-only | Current | T-158 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
 Remaining unpromoted general MVP sequence:
 
 - T-139 produced a deterministic readiness gate that says whether more agent-loop work remains or whether manual local fresh-data testing is the next step.
-- The stock-vs-ETF comparison feature-completion sequence is complete through the final prepared step: T-141 aligned frontend suggestions/fallback with API availability, T-142 added optional localhost browser/API smoke coverage, and T-143 added the deterministic readiness signal. The promoted local fresh-data MVP slice sequence is complete through T-156 fresh-data comparison coverage for stock-vs-stock and ETF pair availability states. The current runnable sequence starts at T-157 and adds deterministic local deployment/environment smoke coverage before the final strict-gates-audit-only MVP readiness task, without reintroducing old strict source-pack gates as local-MVP blockers.
+- The stock-vs-ETF comparison feature-completion sequence is complete through the final prepared step: T-141 aligned frontend suggestions/fallback with API availability, T-142 added optional localhost browser/API smoke coverage, and T-143 added the deterministic readiness signal. The promoted local fresh-data MVP slice sequence is complete through T-157 local deployment/environment smoke coverage. The current runnable sequence is T-158 and adds the final strict-gates-audit-only MVP readiness task without reintroducing old strict source-pack gates as local-MVP blockers.
 - Full production deployment remains unpromoted until a narrow launch-readiness task is added: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
 - Recurring production jobs only after manual official-source acquisition, Top-500 candidate refresh review, and local fresh-data behavior are stable.
 - Broad paid-provider or news-provider integrations only after provider licensing/source-use review, no-secret-exposure tests, mocked CI fixtures, source-rights validation, and export/display constraints are documented.
