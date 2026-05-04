@@ -1,6 +1,6 @@
 # Local Fresh-Data Ingest-To-Render Runbook
 
-Task: T-118, updated by T-119 through T-156 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, stock-vs-ETF comparison readiness gating, local fresh-data MVP slice smoke coverage, optional slice browser/API localhost coverage, optional durable slice smoke coverage, lightweight local-slice manual-readiness gating, local slice comparison/export parity coverage, the lightweight live browser/API MVP slice smoke runner contract, lightweight API fallback diagnostics, the lightweight live durable MVP slice smoke runner contract, lightweight issuer-backed SPY/VTI/XLK enrichment, the optional Weekly News Focus live-source smoke, and lightweight fresh-data comparison coverage for stock-vs-stock plus non-generated ETF pairs
+Task: T-118, updated by T-119 through T-157 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, stock-vs-ETF comparison readiness gating, local fresh-data MVP slice smoke coverage, optional slice browser/API localhost coverage, optional durable slice smoke coverage, lightweight local-slice manual-readiness gating, local slice comparison/export parity coverage, the lightweight live browser/API MVP slice smoke runner contract, lightweight API fallback diagnostics, the lightweight live durable MVP slice smoke runner contract, lightweight issuer-backed SPY/VTI/XLK enrichment, the optional Weekly News Focus live-source smoke, lightweight fresh-data comparison coverage for stock-vs-stock plus non-generated ETF pairs, and the local deployment/environment smoke
 
 This runbook describes the local golden-asset smoke path before production deployment work. Normal CI uses deterministic fixtures, mocked official-source acquisition, and in-memory repositories. It must not require real SEC, issuer, market-data, broad news, storage, database, Redis, RSS, or LLM calls.
 
@@ -32,6 +32,7 @@ The default rehearsal is deterministic and fixture-backed. It checks:
 - governed golden API reads for overview, source drawer, exports, comparison, chat, Weekly News Focus, and AI Comprehensive Analysis threshold suppression.
 - deterministic local fresh-data MVP slice smoke for `AAPL`, `MSFT`, `NVDA`, `VOO`, `SPY`, `VTI`, `QQQ`, and `XLK`, plus blocked examples `TQQQ`, `ARKK`, `BND`, and `GLD`.
 - local slice comparison/export parity through `local_fresh_data_mvp_slice_comparison_export_parity`.
+- local deployment/environment smoke through `local_deployment_env_smoke`, including placeholder env files, API-base/CORS wiring, Docker Compose config readiness when Docker is available, and no-secret boundaries.
 - unsupported, out-of-scope, pending-ingestion, and unknown asset blocking.
 - launch-manifest review packets without promotion or launch approval.
 - v0.4 frontend smoke markers for single-asset home search, separate comparison, contextual glossary, mobile source/glossary/chat surfaces, stock-vs-ETF relationship structure, citation/source export scope, and evidence-limited Weekly News Focus.
@@ -56,6 +57,43 @@ Optional-mode meanings:
 - live-AI review: delegates to the operator-only live-AI validation smoke and reports sanitized pass or blocker states.
 
 Stop when any required deterministic check is `blocked`, or when an opted-in optional check is `blocked`. The rehearsal does not start production services, approve sources, promote manifests, write production storage, require live calls by default, or make fixture-sized/local-only data launch-approved.
+
+## Local Deployment/Environment Smoke
+
+Task: T-157.
+
+Run the deployment/environment smoke before production hardening or first-deployment review:
+
+```bash
+TMPDIR=/tmp python3 scripts/run_local_deployment_env_smoke.py --json
+```
+
+The smoke uses schema `local-deployment-env-smoke-v1`. It is deterministic and CI-safe: default execution does not require live network, local services, a browser, durable repositories, a Docker daemon, deployment credentials, provider keys, LLM keys, or secrets. It reports `normal_ci_requires_live_calls=false`, `production_services_started=false`, `deployments_created=false`, `live_provider_calls_attempted=false`, `database_connections_opened=false`, `secret_values_reported=false`, `launch_or_public_deployment_approved=false`, and `production_ready=false`.
+
+What it checks:
+
+- placeholder env files `.env.example`, `apps/web/.env.example`, `deploy/env/api.example.env`, `deploy/env/web.example.env`, and `deploy/env/worker.example.env` exist, are non-empty, and expose env var names only.
+- browser env surfaces contain only browser-safe names such as `NEXT_PUBLIC_API_BASE_URL`; server-only names such as `DATABASE_URL`, `OPENROUTER_API_KEY`, `FMP_API_KEY`, `ALPHA_VANTAGE_API_KEY`, `FINNHUB_API_KEY`, `TIINGO_API_KEY`, and `EODHD_API_KEY` stay out of browser env files.
+- API and worker placeholders include safe readiness names for `PORT`, `CORS_ALLOWED_ORIGINS`, `DATABASE_URL` presence/redaction, `DATA_POLICY_MODE=lightweight`, `LIGHTWEIGHT_LIVE_FETCH_ENABLED` default-off behavior, `LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED`, `SEC_EDGAR_USER_AGENT` placeholder presence, `LLM_PROVIDER=mock`, `LLM_LIVE_GENERATION_ENABLED=false`, OpenRouter placeholders, Vercel `NEXT_PUBLIC_API_BASE_URL`, Cloud Run API env placeholders, and Cloud Run Job worker placeholders.
+- `apps/web` remains the Vercel project root, root npm scripts delegate to `apps/web`, `apps/web/next.config.mjs` preserves the documented API-base or Next `/api/:path*` rewrite behavior, the API Dockerfile respects Cloud Run's `PORT` contract with a local fallback, the web Dockerfile builds the Next workspace, and `docker-compose.yml` remains local-only with API/web/worker/Postgres/Redis/MinIO scaffolding and mock LLM defaults.
+
+Docker Compose validation is optional and safe. When Docker Compose is available, the smoke runs `docker compose config` without starting services, pulling images, creating volumes, or opening databases. When Docker is unavailable, it reports `docker_compose_config_status=skipped_unavailable` or another safe skipped reason and still allows deterministic CI to pass. To inspect the same validation manually, run:
+
+```bash
+docker compose config
+```
+
+Safe states:
+
+- `pass`: committed placeholder files and local scaffolding are present, browser/server env separation holds, default settings remain no-live/no-service/no-secret, and Docker Compose config passed or was safely skipped.
+- `skipped`: only the Docker Compose config sub-check should be skipped when Docker or the caller's Docker config check is unavailable.
+- `blocked`: a required placeholder env file is missing, a browser env file contains a server-only key, required local deployment scaffolding markers are missing, safe defaults regress, or Docker Compose config is available but invalid.
+
+The diagnostics report env var names, configured/missing booleans, redacted-placeholder statuses, reason codes, and readiness states only. They must not include actual env values, DSNs, keys, tokens, service-account JSON, temporary credential-bearing links, raw provider payloads, raw source text, raw model output, raw model reasoning, hidden prompts, transcripts, or unrestricted excerpts.
+
+This smoke is local deployment-scaffold readiness only. It is not source approval, Golden Asset Source Handoff approval, manifest promotion, generated-output cache promotion, ETF-500 completion, Top-500 completion, live-provider readiness, production deployment readiness, public-launch approval, or investment advice. It must not start Vercel deploys, Cloud Run deploys, Cloud Run Jobs, Cloud Scheduler, Docker services, database migrations, production object-storage writes, provider calls, news calls, market-data calls, or LLM calls.
+
+`TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` includes this as the required deterministic check `local_deployment_env_smoke` and surfaces the same no-launch/no-production boundaries in prerequisite summaries.
 
 ## Lightweight Local MVP Slice Manual-Readiness Gate
 

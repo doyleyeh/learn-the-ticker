@@ -153,6 +153,10 @@ from scripts.run_live_ai_validation_smoke import (
     SCHEMA_VERSION as LIVE_AI_SMOKE_SCHEMA_VERSION,
     run_live_ai_validation_smoke,
 )
+from scripts.run_local_deployment_env_smoke import (
+    SCHEMA_VERSION as LOCAL_DEPLOYMENT_ENV_SMOKE_SCHEMA_VERSION,
+    run_local_deployment_env_smoke,
+)
 
 
 client = TestClient(app)
@@ -2667,6 +2671,68 @@ def test_llm_provider_cases():
     assert smoke_cases[LIVE_AI_BLOCKED_REGRESSION_CASE_ID]["validation_contract"]["generated_chat_answers"] is False
 
 
+def test_local_deployment_env_smoke_cases():
+    smoke = run_local_deployment_env_smoke(run_docker_config=False)
+    assert smoke["schema_version"] == LOCAL_DEPLOYMENT_ENV_SMOKE_SCHEMA_VERSION
+    assert smoke["status"] == "pass"
+    assert smoke["normal_ci_requires_live_calls"] is False
+    assert smoke["production_services_started"] is False
+    assert smoke["deployments_created"] is False
+    assert smoke["live_provider_calls_attempted"] is False
+    assert smoke["database_connections_opened"] is False
+    assert smoke["secret_values_reported"] is False
+    assert smoke["launch_or_public_deployment_approved"] is False
+    assert smoke["production_ready"] is False
+
+    checks = {check["check_id"]: check for check in smoke["checks"]}
+    assert checks["browser_env_secret_separation"]["status"] == "pass"
+    assert checks["server_env_readiness_placeholders"]["cloud_run_api_env_placeholders_present"] is True
+    assert checks["server_env_readiness_placeholders"]["cloud_run_worker_env_placeholders_present"] is True
+    assert checks["server_env_readiness_placeholders"]["vercel_next_public_api_base_placeholder_present"] is True
+    assert checks["repo_local_deployment_scaffolding"]["apps_web_is_vercel_project_root"] is True
+    assert checks["repo_local_deployment_scaffolding"]["next_api_rewrite_or_api_base_behavior_present"] is True
+    assert checks["docker_compose_config"]["status"] == "skipped"
+
+    combined = "\n".join(
+        [
+            (ROOT / "scripts/run_local_deployment_env_smoke.py").read_text(encoding="utf-8"),
+            (ROOT / "scripts/run_local_fresh_data_rehearsal.py").read_text(encoding="utf-8"),
+            (ROOT / "docs/local_fresh_data_ingest_to_render_runbook.md").read_text(encoding="utf-8"),
+        ]
+    )
+    for marker in [
+        "local-deployment-env-smoke-v1",
+        "local_deployment_env_smoke",
+        "NEXT_PUBLIC_API_BASE_URL",
+        "CORS_ALLOWED_ORIGINS",
+        "docker compose config",
+        "production_ready",
+        "launch_or_public_deployment_approved",
+        "secret_values_reported",
+        "database_connections_opened",
+        "normal_ci_requires_live_calls",
+        "deployment readiness",
+        "Golden Asset Source Handoff approval",
+    ]:
+        assert marker in combined
+
+    serialized = str(smoke)
+    for forbidden in [
+        "postgresql://",
+        "postgresql+psycopg://",
+        "Bearer ",
+        "Authorization",
+        "BEGIN PRIVATE KEY",
+        "sk-",
+        "xoxb-",
+        "ghp_",
+        "raw provider payload",
+        "raw source text",
+        "raw model reasoning",
+    ]:
+        assert forbidden not in serialized
+
+
 def _live_ai_eval_transport_factory(case_id, prompt_payload):
     def transport(request):
         if case_id in {LIVE_AI_CHAT_STOCK_CASE_ID, LIVE_AI_CHAT_ETF_CASE_ID}:
@@ -2746,4 +2812,5 @@ if __name__ == "__main__":
     test_export_cases()
     test_weekly_news_cases()
     test_llm_provider_cases()
+    test_local_deployment_env_smoke_cases()
     print("Static evals passed.")

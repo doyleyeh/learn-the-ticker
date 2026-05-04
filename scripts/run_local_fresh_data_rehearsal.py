@@ -68,6 +68,7 @@ from backend.weekly_news_repository import (
     acquire_weekly_news_event_evidence_from_fixtures,
 )
 from scripts.run_local_fresh_data_slice_smoke import run_slice_smoke
+from scripts.run_local_deployment_env_smoke import run_local_deployment_env_smoke
 
 
 SCHEMA_VERSION = "local-fresh-data-mvp-rehearsal-v1"
@@ -85,6 +86,7 @@ REQUIRED_THRESHOLD_CHECK_IDS = (
     "governed_golden_api_rendering",
     "local_fresh_data_mvp_slice_smoke",
     "local_fresh_data_mvp_slice_comparison_export_parity",
+    "local_deployment_env_smoke",
     "stock_vs_etf_comparison_readiness",
     "launch_manifest_review_packets",
     "stock_sec_source_pack_readiness",
@@ -201,6 +203,7 @@ def run_rehearsal(env: dict[str, str] | None = None, *, root: Path = ROOT) -> di
             "local_fresh_data_mvp_slice_comparison_export_parity",
             _check_local_fresh_data_mvp_slice_comparison_export_parity,
         ),
+        _guarded("local_deployment_env_smoke", _check_local_deployment_env_smoke),
         _guarded("stock_vs_etf_comparison_readiness", lambda: _check_stock_vs_etf_comparison_readiness(root)),
         _guarded("launch_manifest_review_packets", lambda: _check_launch_manifest_review_packets(root)),
         _guarded("stock_sec_source_pack_readiness", lambda: _check_stock_sec_source_pack_readiness(root)),
@@ -222,6 +225,8 @@ def run_rehearsal(env: dict[str, str] | None = None, *, root: Path = ROOT) -> di
         "default_mode": "deterministic_fixture_backed",
         "normal_ci_requires_live_calls": False,
         "production_services_started": False,
+        "launch_or_public_deployment_approved": False,
+        "production_ready": False,
         "manifests_promoted": False,
         "sources_approved_by_rehearsal": False,
         "local_mvp_threshold_summary": threshold_summary,
@@ -697,6 +702,35 @@ def _check_local_fresh_data_mvp_slice_comparison_export_parity() -> RehearsalChe
     if blockers:
         return _blocked(check_id, "local_fresh_data_mvp_slice_comparison_export_parity_blocked", details)
     return _pass(check_id, "local_fresh_data_mvp_slice_comparison_export_parity_passed", details)
+
+
+def _check_local_deployment_env_smoke() -> RehearsalCheck:
+    check_id = "local_deployment_env_smoke"
+    result = run_local_deployment_env_smoke()
+    details = {
+        "schema_version": result.get("schema_version"),
+        "status": result.get("status"),
+        "reason_code": result.get("reason_code"),
+        "default_mode": result.get("default_mode"),
+        "normal_ci_requires_live_calls": result.get("normal_ci_requires_live_calls"),
+        "production_services_started": result.get("production_services_started"),
+        "deployments_created": result.get("deployments_created"),
+        "live_provider_calls_attempted": result.get("live_provider_calls_attempted"),
+        "database_connections_opened": result.get("database_connections_opened"),
+        "secret_values_reported": result.get("secret_values_reported"),
+        "launch_or_public_deployment_approved": result.get("launch_or_public_deployment_approved"),
+        "production_ready": result.get("production_ready"),
+        "source_approval_granted": result.get("source_approval_granted"),
+        "golden_asset_source_handoff_approved": result.get("golden_asset_source_handoff_approved"),
+        "manifests_promoted": result.get("manifests_promoted"),
+        "generated_output_cache_promoted": result.get("generated_output_cache_promoted"),
+        "safe_diagnostics": result.get("safe_diagnostics"),
+        "status_counts": result.get("status_counts"),
+        "checks": result.get("checks", []),
+    }
+    if result.get("status") == "blocked":
+        return _blocked(check_id, "local_deployment_env_smoke_blocked", details)
+    return _pass(check_id, "local_deployment_env_smoke_passed", details)
 
 
 def _representative_asset_summaries(row_by_ticker: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
@@ -2973,6 +3007,7 @@ def _manual_readiness_prerequisite_summaries(
     golden = check_by_id["governed_golden_api_rendering"]
     slice_smoke = check_by_id["local_fresh_data_mvp_slice_smoke"]
     parity = check_by_id["local_fresh_data_mvp_slice_comparison_export_parity"]
+    deployment = check_by_id["local_deployment_env_smoke"]
     stock_vs_etf = check_by_id["stock_vs_etf_comparison_readiness"]
     return [
         {
@@ -3054,6 +3089,23 @@ def _manual_readiness_prerequisite_summaries(
                 "unavailable_or_blocked_comparison_cases"
             ),
             "chat_compare_redirect": parity.details.get("chat_compare_redirect"),
+        },
+        {
+            "prerequisite_id": "t157_local_deployment_env_smoke",
+            "check_id": "local_deployment_env_smoke",
+            "status": deployment.status,
+            "reason_code": deployment.reason_code,
+            "schema_version": deployment.details.get("schema_version"),
+            "normal_ci_requires_live_calls": deployment.details.get("normal_ci_requires_live_calls"),
+            "production_services_started": deployment.details.get("production_services_started"),
+            "deployments_created": deployment.details.get("deployments_created"),
+            "database_connections_opened": deployment.details.get("database_connections_opened"),
+            "secret_values_reported": deployment.details.get("secret_values_reported"),
+            "launch_or_public_deployment_approved": deployment.details.get(
+                "launch_or_public_deployment_approved"
+            ),
+            "production_ready": deployment.details.get("production_ready"),
+            "status_counts": deployment.details.get("status_counts"),
         },
         {
             "prerequisite_id": "stock_vs_etf_comparison_readiness",
@@ -3251,6 +3303,10 @@ def _manual_fresh_data_test_checklist() -> list[dict[str, str]]:
         {
             "check_id": "api_base_proxy_cors",
             "guidance": "Verify NEXT_PUBLIC_API_BASE_URL, API_BASE_URL, CORS_ALLOWED_ORIGINS, and the Next /api/:path* rewrite path.",
+        },
+        {
+            "check_id": "local_deployment_env_smoke",
+            "guidance": "Run the local deployment/env smoke to inspect placeholder env files, API-base/CORS wiring, Docker Compose config readiness when available, and no-secret boundaries without starting services.",
         },
         {
             "check_id": "home_single_asset_search",
