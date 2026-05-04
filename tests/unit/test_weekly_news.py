@@ -61,6 +61,12 @@ from backend.weekly_news_repository import (
     validate_weekly_news_event_evidence_records,
     weekly_news_event_evidence_repository_metadata,
 )
+from scripts.run_weekly_news_live_source_smoke import (
+    REAL_SOURCE_OPT_IN_ENV,
+    SMOKE_OPT_IN_ENV,
+    SMOKE_SCHEMA_VERSION,
+    run_weekly_news_live_source_smoke,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -787,6 +793,103 @@ def test_weekly_news_official_source_live_acquisition_blocks_invalid_checksum_an
     assert bad_checksum.status == "blocked"
     assert bad_checksum.records is None
     assert "official_source_use_validation_failed" in bad_checksum.readiness.blocked_reasons
+
+
+def test_weekly_news_live_source_smoke_is_skipped_by_default_without_live_requirements():
+    result = run_weekly_news_live_source_smoke(env={})
+
+    assert result["schema_version"] == SMOKE_SCHEMA_VERSION
+    assert result["status"] == "skipped"
+    assert result["reason_code"] == "weekly_news_live_source_smoke_opt_in_missing"
+    assert result["normal_ci_requires_live_calls"] is False
+    assert result["live_network_calls_attempted"] is False
+    assert result["safe_diagnostics"]["secret_values_reported"] is False
+    assert result["safe_diagnostics"]["raw_article_text_reported"] is False
+    assert result["safe_diagnostics"]["raw_provider_payload_reported"] is False
+    assert result["safe_diagnostics"]["opt_in_env_names_reported_without_values"] == [
+        SMOKE_OPT_IN_ENV,
+        REAL_SOURCE_OPT_IN_ENV,
+    ]
+
+
+def test_weekly_news_live_source_smoke_opt_in_exercises_source_use_and_threshold_cases():
+    result = run_weekly_news_live_source_smoke(env={SMOKE_OPT_IN_ENV: "true"})
+
+    assert result["schema_version"] == "weekly-news-live-source-smoke-v1"
+    assert result["status"] == "pass"
+    assert result["normal_ci_requires_live_calls"] is False
+    assert result["case_status_counts"] == {"pass": 4, "blocked": 0, "skipped": 0}
+    cases = {case["case_id"]: case for case in result["cases"]}
+
+    official = cases["source_backed_official_first"]
+    assert official["asset_ticker"] == "QQQ"
+    assert official["market_week_window"]["previous_market_week_start"] == "2026-04-13"
+    assert official["market_week_window"]["news_window_end"] == "2026-04-22"
+    assert official["selected_item_count"] == 3
+    assert official["evidence_limited_state"] == "limited_verified_set"
+    assert official["selected_source_rank_tiers"] == [
+        "official_filing",
+        "etf_issuer_announcement",
+        "allowlisted_news",
+    ]
+    assert official["selected_source_quality"] == ["official", "issuer", "allowlisted"]
+    assert official["selected_official_labels"] == [True, True, False]
+    assert official["selected_events"][2]["third_party_or_provider_label"] == "third_party_reporting"
+    assert official["same_asset_citation_binding"] is True
+    for reason in [
+        "duplicate",
+        "promotional",
+        "irrelevant",
+        "wrong_asset",
+        "outside_market_week_window",
+        "source_policy_blocked",
+        "rejected_source",
+        "non_allowlisted_source",
+        "license_disallowed",
+        "unrecognized_source",
+        "parser_invalid",
+        "rights_disallowed",
+        "hidden_internal",
+        "stale_unlabeled",
+    ]:
+        assert official["suppression_reason_counts"][reason] >= 1
+    assert official["ai_threshold"]["analysis_allowed"] is True
+    assert official["ai_threshold"]["live_generated"] is False
+    assert official["ai_threshold"]["generated_output_cache_written"] is False
+
+    limited = cases["limited_verified_set"]
+    assert limited["asset_ticker"] == "AAPL"
+    assert limited["selected_item_count"] == 1
+    assert limited["evidence_limited_state"] == "limited_verified_set"
+    assert limited["ai_threshold"]["analysis_allowed"] is False
+    assert limited["ai_threshold"]["suppression_reason_code"] == "fewer_than_two_approved_items"
+
+    empty = cases["empty_evidence"]
+    assert empty["asset_ticker"] == "VOO"
+    assert empty["selected_item_count"] == 0
+    assert empty["evidence_limited_state"] == "empty"
+    assert empty["ai_threshold"]["analysis_allowed"] is False
+
+    blocked = cases["blocked_regression_tickers"]
+    assert blocked["blocked_regression_tickers"] == ["TQQQ", "ARKK", "BND", "GLD"]
+    assert blocked["no_weekly_news_focus"] is True
+    assert blocked["no_ai_comprehensive_analysis"] is True
+    assert blocked["no_citations_sources_facts_or_exports"] is True
+    assert all(row["source_count"] == row["citation_count"] == row["fact_count"] == 0 for row in blocked["rows"])
+    assert all(row["generated_output_cache_entries_written"] is False for row in blocked["rows"])
+
+
+def test_weekly_news_live_source_smoke_blocks_real_fetch_request_with_sanitized_diagnostics():
+    result = run_weekly_news_live_source_smoke(env={SMOKE_OPT_IN_ENV: "true", REAL_SOURCE_OPT_IN_ENV: "true"})
+
+    assert result["status"] == "blocked"
+    assert result["reason_code"] == "weekly_news_real_source_retrieval_not_available_in_ci_safe_smoke"
+    assert result["normal_ci_requires_live_calls"] is False
+    assert result["live_network_calls_attempted"] is False
+    assert result["required_env_names_without_values"] == [SMOKE_OPT_IN_ENV, REAL_SOURCE_OPT_IN_ENV]
+    serialized = repr(result)
+    for forbidden in ["Bearer ", "Authorization", "BEGIN PRIVATE KEY", "raw article body", "provider payload value", "sk-"]:
+        assert forbidden not in serialized
 
 
 def test_weekly_news_module_does_not_import_live_network_clients():

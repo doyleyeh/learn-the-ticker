@@ -1,6 +1,6 @@
 # Local Fresh-Data Ingest-To-Render Runbook
 
-Task: T-118, updated by T-119 through T-153 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, stock-vs-ETF comparison readiness gating, local fresh-data MVP slice smoke coverage, optional slice browser/API localhost coverage, optional durable slice smoke coverage, lightweight local-slice manual-readiness gating, local slice comparison/export parity coverage, the lightweight live browser/API MVP slice smoke runner contract, lightweight API fallback diagnostics, the lightweight live durable MVP slice smoke runner contract, and lightweight issuer-backed SPY/VTI/XLK enrichment
+Task: T-118, updated by T-119 through T-154 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, stock-vs-ETF comparison readiness gating, local fresh-data MVP slice smoke coverage, optional slice browser/API localhost coverage, optional durable slice smoke coverage, lightweight local-slice manual-readiness gating, local slice comparison/export parity coverage, the lightweight live browser/API MVP slice smoke runner contract, lightweight API fallback diagnostics, the lightweight live durable MVP slice smoke runner contract, lightweight issuer-backed SPY/VTI/XLK enrichment, and the optional Weekly News Focus live-source smoke
 
 This runbook describes the local golden-asset smoke path before production deployment work. Normal CI uses deterministic fixtures, mocked official-source acquisition, and in-memory repositories. It must not require real SEC, issuer, market-data, broad news, storage, database, Redis, RSS, or LLM calls.
 
@@ -52,6 +52,7 @@ Optional-mode meanings:
 - browser services: checks already-running localhost web/API services and local CORS/proxy behavior.
 - durable repositories: checks local durable repository prerequisites and reports sanitized blockers when the local DSN or private object namespace is missing or unsafe.
 - official-source retrieval: when `LIGHTWEIGHT_LIVE_FETCH_ENABLED=true` is also set, runs the lightweight `AAPL` and `VOO` fresh-data smoke; otherwise it reports sanitized missing prerequisites. The required deterministic slice smoke covers the expanded local MVP ticker set without live calls. Neither path approves sources, promotes manifests, writes source snapshots, or exposes raw provider payloads.
+- Weekly News Focus live-source smoke: when `LTT_WEEKLY_NEWS_LIVE_SOURCE_SMOKE_ENABLED=true` is set, runs the deterministic fixture-backed Weekly News Focus source smoke. It is skipped by default. If `LTT_WEEKLY_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED=true` is also set, the current T-154 command reports a safe blocked state rather than fetching live documents.
 - live-AI review: delegates to the operator-only live-AI validation smoke and reports sanitized pass or blocker states.
 
 Stop when any required deterministic check is `blocked`, or when an opted-in optional check is `blocked`. The rehearsal does not start production services, approve sources, promote manifests, write production storage, require live calls by default, or make fixture-sized/local-only data launch-approved.
@@ -83,6 +84,49 @@ Default deterministic readiness means all of these are true:
 Skipped optional checks are reported explicitly as operator-only prerequisites; they are not hidden as pass. The optional operator-only local checks include browser/API services, local durable repositories, official-source retrieval, and live-AI review. When an optional flag is set and the check is blocked, the slice gate reports `optional_local_check_blocked` with env var names and safe diagnostics only, never credential values.
 
 The slice gate is not launch readiness. It does not approve ETF-500, Top-500, production, deployment, source-pack, parser, Golden Asset Source Handoff, checksum, live-provider, or live-AI readiness. It does not approve sources, promote manifests, start services, write production storage, write generated-output cache entries, or unlock blocked products. Source-use policy still applies: fetching is retrieval, not evidence approval; source-labeled official/provider-derived display is allowed for the personal lightweight MVP only while raw payloads stay hidden, rights-safe output limits are preserved, provenance/freshness are visible, and missing evidence renders as `partial`, `unknown`, `stale`, `unavailable`, or `insufficient_evidence`.
+
+## Weekly News Focus Live-Source Smoke
+
+Task: T-154.
+
+The Weekly News Focus live-source smoke is an operator-only review contract for local MVP source acquisition behavior. It is deterministic and CI-safe by default, uses fixture-backed source candidates when opted in, and does not require live network calls, local services, durable repositories, browser startup, provider keys, news providers, market-data providers, or live LLMs.
+
+Default command:
+
+```bash
+TMPDIR=/tmp python3 scripts/run_weekly_news_live_source_smoke.py --json
+```
+
+Default output uses schema `weekly-news-live-source-smoke-v1`, reports `status=skipped`, `normal_ci_requires_live_calls=false`, and names only the opt-in boundary `LTT_WEEKLY_NEWS_LIVE_SOURCE_SMOKE_ENABLED`. It never prints env values.
+
+Deterministic opted-in command:
+
+```bash
+LTT_WEEKLY_NEWS_LIVE_SOURCE_SMOKE_ENABLED=true TMPDIR=/tmp python3 scripts/run_weekly_news_live_source_smoke.py --json
+```
+
+Expected deterministic cases:
+
+- `source_backed_official_first`: `QQQ` candidates prove the U.S. Eastern market-week window, official-source priority, same-asset citation/source binding, source event dates, published dates, retrieved timestamps, period buckets, freshness labels, source rank tiers, source quality, official-vs-third-party labels, source-use policy, allowlist/review status, and citation IDs. Selected source rank tiers include `official_filing`, `etf_issuer_announcement`, and `allowlisted_news`; the allowlisted news item is labeled `third_party_reporting`.
+- `limited_verified_set`: `AAPL` has one approved official item, so Weekly News Focus shows fewer than the configured maximum and AI Comprehensive Analysis remains suppressed.
+- `empty_evidence`: `VOO` has no selected items and reports the clear empty state. "No major Weekly News Focus items found" remains valid when evidence is thin.
+- `blocked_regression_tickers`: `TQQQ`, `ARKK`, `BND`, and `GLD` receive no Weekly News Focus, AI Comprehensive Analysis, citations, sources, facts, exports, generated pages, generated chat answers, generated comparisons, generated risk summaries, or generated-output cache writes.
+
+Suppression diagnostics are compact reason-code counts only. The deterministic smoke covers duplicate, promotional, irrelevant, wrong-asset, outside-window, metadata-only, link-only, rejected, unrecognized, pending-review, parser-invalid, rights-disallowed, hidden/internal, stale-unlabeled, and license-disallowed candidates without printing raw article text, raw source text, unrestricted excerpts, provider payloads, signed links, hidden prompts, transcripts, model reasoning, generated live responses, or secret values.
+
+AI threshold behavior is metadata-only in this smoke. `analysis_allowed=true` appears only when the selected approved item count is at least two. AI Comprehensive Analysis remains suppressed unless at least two approved Weekly News Focus items exist. T-154 must not call live LLMs or write generated-output cache records.
+
+Real source retrieval remains blocked in this command:
+
+```bash
+LTT_WEEKLY_NEWS_LIVE_SOURCE_SMOKE_ENABLED=true LTT_WEEKLY_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED=true TMPDIR=/tmp python3 scripts/run_weekly_news_live_source_smoke.py --json
+```
+
+This reports `status=blocked` with safe reason codes and env var names only. It does not fetch live documents.
+
+`TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` includes `optional_weekly_news_live_source_smoke` as an optional operator-only check. It is skipped by default, appears in optional mode summaries and manual-readiness prerequisites, passes when explicitly opted into the deterministic fixture-backed smoke, and blocks rehearsal only when explicitly opted in and the smoke returns `blocked`.
+
+This smoke is local source-acquisition review only: local smoke readiness is not source approval, Golden Asset Source Handoff approval, generated-output cache promotion, ETF-500 completion, Top-500 completion, live-AI readiness, deployment readiness, production readiness, investment suitability, or permission to store raw source text.
 
 ## Local Slice Comparison And Export Parity
 

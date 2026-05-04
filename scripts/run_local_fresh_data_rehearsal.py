@@ -75,6 +75,8 @@ BROWSER_OPT_IN_ENV = "LTT_REHEARSAL_BROWSER_SERVICES_ENABLED"
 DURABLE_OPT_IN_ENV = "LTT_REHEARSAL_DURABLE_REPOSITORIES_ENABLED"
 OFFICIAL_RETRIEVAL_OPT_IN_ENV = "LTT_REHEARSAL_OFFICIAL_SOURCE_RETRIEVAL_ENABLED"
 LIVE_AI_OPT_IN_ENV = "LTT_REHEARSAL_LIVE_AI_REVIEW_ENABLED"
+WEEKLY_NEWS_LIVE_SOURCE_SMOKE_OPT_IN_ENV = "LTT_WEEKLY_NEWS_LIVE_SOURCE_SMOKE_ENABLED"
+WEEKLY_NEWS_LIVE_SOURCE_REAL_FETCH_ENV = "LTT_WEEKLY_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED"
 WEB_BASE_ENV = "LEARN_TICKER_LOCAL_WEB_BASE"
 API_BASE_ENV = "LEARN_TICKER_LOCAL_API_BASE"
 REQUIRED_THRESHOLD_CHECK_IDS = (
@@ -94,6 +96,7 @@ OPTIONAL_THRESHOLD_CHECK_IDS = (
     "optional_browser_services",
     "optional_local_durable_repositories",
     "optional_official_source_retrieval",
+    "optional_weekly_news_live_source_smoke",
     "optional_live_ai_review",
 )
 ALLOWED_FAILED_ASSET_COUNT = 1
@@ -205,6 +208,7 @@ def run_rehearsal(env: dict[str, str] | None = None, *, root: Path = ROOT) -> di
         _guarded("optional_browser_services", lambda: _check_optional_browser_services(source_env)),
         _guarded("optional_local_durable_repositories", lambda: _check_optional_durable_repositories(source_env)),
         _guarded("optional_official_source_retrieval", lambda: _check_optional_official_source_retrieval(source_env)),
+        _guarded("optional_weekly_news_live_source_smoke", lambda: _check_optional_weekly_news_live_source_smoke(source_env)),
         _guarded("optional_live_ai_review", lambda: _check_optional_live_ai_review(source_env)),
     ]
     threshold_summary = _build_local_mvp_threshold_summary(checks)
@@ -230,6 +234,8 @@ def _check_default_boundary(env: dict[str, str]) -> RehearsalCheck:
         BROWSER_OPT_IN_ENV: _bool_env(env.get(BROWSER_OPT_IN_ENV)),
         DURABLE_OPT_IN_ENV: _bool_env(env.get(DURABLE_OPT_IN_ENV)),
         OFFICIAL_RETRIEVAL_OPT_IN_ENV: _bool_env(env.get(OFFICIAL_RETRIEVAL_OPT_IN_ENV)),
+        WEEKLY_NEWS_LIVE_SOURCE_SMOKE_OPT_IN_ENV: _bool_env(env.get(WEEKLY_NEWS_LIVE_SOURCE_SMOKE_OPT_IN_ENV)),
+        WEEKLY_NEWS_LIVE_SOURCE_REAL_FETCH_ENV: _bool_env(env.get(WEEKLY_NEWS_LIVE_SOURCE_REAL_FETCH_ENV)),
         LIVE_AI_OPT_IN_ENV: _bool_env(env.get(LIVE_AI_OPT_IN_ENV)),
     }
     return _pass(
@@ -2154,6 +2160,30 @@ def _check_optional_official_source_retrieval(env: dict[str, str]) -> RehearsalC
     )
 
 
+def _check_optional_weekly_news_live_source_smoke(env: dict[str, str]) -> RehearsalCheck:
+    from scripts.run_weekly_news_live_source_smoke import run_weekly_news_live_source_smoke
+
+    result = run_weekly_news_live_source_smoke(env)
+    scrubbed = _scrub_weekly_news_live_source_smoke_result(result)
+    if result["status"] == "skipped":
+        return _skipped(
+            "optional_weekly_news_live_source_smoke",
+            "weekly_news_live_source_smoke_opt_in_missing",
+            scrubbed,
+        )
+    if result["status"] == "blocked":
+        return _blocked(
+            "optional_weekly_news_live_source_smoke",
+            "weekly_news_live_source_smoke_blocked",
+            scrubbed,
+        )
+    return _pass(
+        "optional_weekly_news_live_source_smoke",
+        "weekly_news_live_source_smoke_passed",
+        scrubbed,
+    )
+
+
 def _check_optional_live_ai_review(env: dict[str, str]) -> RehearsalCheck:
     if not _bool_env(env.get(LIVE_AI_OPT_IN_ENV)):
         return _skipped("optional_live_ai_review", "live_ai_review_opt_in_missing")
@@ -2306,6 +2336,44 @@ def _scrub_live_ai_result(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _scrub_weekly_news_live_source_smoke_result(result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "schema_version": result.get("schema_version"),
+        "status": result.get("status"),
+        "reason_code": result.get("reason_code"),
+        "source_retrieval_mode": result.get("source_retrieval_mode"),
+        "normal_ci_requires_live_calls": result.get("normal_ci_requires_live_calls"),
+        "live_network_calls_attempted": result.get("live_network_calls_attempted"),
+        "live_news_calls_attempted": result.get("live_news_calls_attempted"),
+        "live_llm_calls_attempted": result.get("live_llm_calls_attempted"),
+        "generated_output_cache_entries_written": result.get("generated_output_cache_entries_written"),
+        "sources_approved_by_smoke": result.get("sources_approved_by_smoke"),
+        "manifests_promoted": result.get("manifests_promoted"),
+        "case_status_counts": result.get("case_status_counts", {}),
+        "case_summaries": [
+            {
+                "case_id": case.get("case_id"),
+                "status": case.get("status"),
+                "reason_code": case.get("reason_code"),
+                "asset_ticker": case.get("asset_ticker"),
+                "selected_item_count": case.get("selected_item_count"),
+                "evidence_limited_state": case.get("evidence_limited_state"),
+                "ai_threshold": case.get("ai_threshold"),
+                "blocked_regression_tickers": case.get("blocked_regression_tickers"),
+                "suppression_reason_counts": case.get("suppression_reason_counts"),
+                "no_live_external_calls": case.get("no_live_external_calls"),
+            }
+            for case in result.get("cases", [])
+        ],
+        "safe_diagnostics": result.get("safe_diagnostics", {}),
+        "review_only_boundaries": result.get("review_only_boundaries", {}),
+        "required_env_names_without_values": result.get(
+            "required_env_names_without_values",
+            [WEEKLY_NEWS_LIVE_SOURCE_SMOKE_OPT_IN_ENV, WEEKLY_NEWS_LIVE_SOURCE_REAL_FETCH_ENV],
+        ),
+    }
+
+
 def _build_local_mvp_threshold_summary(checks: list[RehearsalCheck]) -> dict[str, Any]:
     check_by_id = {check.check_id: check for check in checks}
     required_checks = [_threshold_check_summary(check_by_id[check_id]) for check_id in REQUIRED_THRESHOLD_CHECK_IDS]
@@ -2448,6 +2516,8 @@ def _build_manual_fresh_data_readiness_gate(
                 BROWSER_OPT_IN_ENV,
                 DURABLE_OPT_IN_ENV,
                 OFFICIAL_RETRIEVAL_OPT_IN_ENV,
+                WEEKLY_NEWS_LIVE_SOURCE_SMOKE_OPT_IN_ENV,
+                WEEKLY_NEWS_LIVE_SOURCE_REAL_FETCH_ENV,
                 LIVE_AI_OPT_IN_ENV,
                 WEB_BASE_ENV,
                 API_BASE_ENV,
@@ -2546,6 +2616,8 @@ def _build_lightweight_local_mvp_slice_manual_readiness_gate(checks: list[Rehear
                 BROWSER_OPT_IN_ENV,
                 DURABLE_OPT_IN_ENV,
                 OFFICIAL_RETRIEVAL_OPT_IN_ENV,
+                WEEKLY_NEWS_LIVE_SOURCE_SMOKE_OPT_IN_ENV,
+                WEEKLY_NEWS_LIVE_SOURCE_REAL_FETCH_ENV,
                 LIVE_AI_OPT_IN_ENV,
                 WEB_BASE_ENV,
                 API_BASE_ENV,
@@ -2573,7 +2645,7 @@ def _build_lightweight_local_mvp_slice_manual_readiness_gate(checks: list[Rehear
                 "secret, raw payload, or raw source text reporting is detected",
             ],
             "optional_local_check_blocked_when": [
-                "an operator explicitly opts into browser/API, durable repository, official-source retrieval, or live-AI review and that optional check reports blocked",
+                "an operator explicitly opts into browser/API, durable repository, official-source retrieval, Weekly News Focus live-source smoke, or live-AI review and that optional check reports blocked",
             ],
             "not_a_broad_readiness_gate": [
                 "does not approve ETF-500, Top-500, production, deployment, source-pack, parser, handoff, checksum, live-provider, or live-AI readiness",
@@ -3150,6 +3222,10 @@ def _manual_fresh_data_test_checklist() -> list[dict[str, str]]:
         {
             "check_id": "optional_official_source_retrieval",
             "guidance": "If explicitly opted in, validate official-source retrieval readiness without treating retrieval as evidence approval.",
+        },
+        {
+            "check_id": "optional_weekly_news_live_source_smoke",
+            "guidance": "If explicitly opted in, validate Weekly News Focus source selection, evidence limits, blocked products, and AI threshold metadata with sanitized diagnostics only.",
         },
         {
             "check_id": "optional_live_ai_validation",
