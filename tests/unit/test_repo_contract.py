@@ -8,6 +8,10 @@ from scripts.run_local_fresh_data_rehearsal import (
     _build_manual_fresh_data_readiness_gate,
     run_rehearsal,
 )
+from scripts.run_lightweight_mvp_readiness_gate import (
+    SCHEMA_VERSION as LIGHTWEIGHT_MVP_READINESS_GATE_SCHEMA_VERSION,
+    run_lightweight_mvp_readiness_gate,
+)
 from scripts.run_local_deployment_env_smoke import run_local_deployment_env_smoke
 
 
@@ -374,6 +378,256 @@ def test_t157_local_deployment_env_smoke_is_documented_and_static_marked():
         "investment advice",
     ]:
         assert marker in combined, f"T-157 deployment/env smoke marker missing: {marker}"
+
+    for forbidden in [
+        "OPENROUTER_API_KEY=",
+        "FMP_API_KEY=",
+        "ALPHA_VANTAGE_API_KEY=",
+        "FINNHUB_API_KEY=",
+        "TIINGO_API_KEY=",
+        "EODHD_API_KEY=",
+        "BEGIN PRIVATE KEY",
+        "sk-",
+        "xoxb-",
+        "ghp_",
+        "raw provider payload is printed",
+        "raw source text is printed",
+        "raw model reasoning is shown",
+    ]:
+        assert forbidden.lower() not in runbook.lower()
+
+
+def test_t158_lightweight_mvp_readiness_gate_contract_is_safe_and_audit_only():
+    result = run_lightweight_mvp_readiness_gate(env={})
+
+    assert result["schema_version"] == LIGHTWEIGHT_MVP_READINESS_GATE_SCHEMA_VERSION
+    assert result["status"] == "pass"
+    assert result["reason_code"] == "lightweight_mvp_ready_for_local_manual_review"
+    assert result["normal_ci_requires_live_calls"] is False
+    assert result["production_services_started"] is False
+    assert result["deployments_created"] is False
+    assert result["live_provider_calls_attempted"] is False
+    assert result["database_connections_opened"] is False
+    assert result["secret_values_reported"] is False
+    assert result["local_personal_mvp_ready_for_manual_review"] is True
+    assert result["production_ready"] is False
+    assert result["public_launch_ready"] is False
+    assert result["strict_audit_ready"] is False
+    assert result["launch_or_public_deployment_approved"] is False
+    assert result["sources_approved_by_readiness_gate"] is False
+    assert result["manifests_promoted"] is False
+    assert result["generated_output_cache_promoted"] is False
+
+    assert result["rehearsal_integration"] == {
+        "schema_version": "local-fresh-data-mvp-rehearsal-v1",
+        "status": "pass",
+        "reason_code": "local_fresh_data_rehearsal_consumed",
+        "embedded_local_deployment_env_smoke_consumed": True,
+        "threshold_schema_version": "local-fresh-data-mvp-threshold-summary-v1",
+        "slice_gate_schema_version": "lightweight-local-mvp-slice-manual-readiness-gate-v1",
+        "manual_gate_schema_version": "local-manual-fresh-data-readiness-gate-v1",
+    }
+    assert result["manual_review_boundary"] == {
+        "scope": "local_personal_mvp",
+        "ready_state": "ready_for_local_manual_review",
+        "strict_public_launch_checks_block_local_manual_review": False,
+        "operator_action": "run_explicit_manual_browser_api_review_for_lightweight_local_mvp_slice",
+    }
+    assert result["status_counts"] == {"pass": 12, "blocked": 0, "skipped": 5}
+
+    local_checks = {check["check_id"]: check for check in result["local_manual_review_checks"]}
+    assert set(local_checks) == {
+        "deterministic_default_boundary",
+        "source_handoff_approval_gate",
+        "governed_golden_api_rendering",
+        "local_fresh_data_mvp_slice_smoke",
+        "local_fresh_data_mvp_slice_comparison_export_parity",
+        "local_deployment_env_smoke",
+        "stock_vs_etf_comparison_readiness",
+        "frontend_v04_smoke_markers",
+    }
+    assert all(check["status"] == "pass" for check in local_checks.values())
+    assert [check["status"] for check in result["optional_operator_checks"]] == ["skipped"] * 5
+    assert result["local_manual_review_blockers"] == []
+
+    audit_gates = {gate["gate_id"]: gate for gate in result["strict_public_launch_audit_only_gates"]}
+    assert set(audit_gates) == {
+        "etf500_full_supported_manifest_validation",
+        "top500_current_manifest_refresh_approval",
+        "full_golden_asset_source_handoff_approval",
+        "stock_sec_source_pack_approval",
+        "etf_issuer_source_pack_approval",
+        "launch_sized_source_artifacts",
+        "launch_manifest_promotion",
+        "generated_output_cache_promotion",
+        "live_provider_execution",
+        "live_ai_review",
+        "production_deployment",
+        "recurring_jobs",
+        "broad_paid_provider_news_integrations",
+    }
+    assert all(gate["status"] == "audit_only" for gate in audit_gates.values())
+    assert all(gate["blocking_for_local_personal_mvp_manual_review"] is False for gate in audit_gates.values())
+    assert all(gate["promoted_or_approved_by_gate"] is False for gate in audit_gates.values())
+
+    summaries = result["readiness_summaries"]
+    assert summaries["local_fresh_data_mvp_slice_smoke"]["status_counts"] == {
+        "pass": 8,
+        "partial": 0,
+        "blocked": 4,
+        "unavailable": 0,
+    }
+    assert summaries["local_fresh_data_mvp_slice_smoke"]["blocked_regression_tickers"] == [
+        "TQQQ",
+        "ARKK",
+        "BND",
+        "GLD",
+    ]
+    assert summaries["comparison_export_parity"]["representative_comparison_pairs"] == [
+        ["VOO", "QQQ"],
+        ["AAPL", "VOO"],
+        ["AAPL", "MSFT"],
+    ]
+    assert summaries["stock_vs_etf_readiness"]["backend_compare"]["basket_structure"] == (
+        "single-company-vs-etf-basket"
+    )
+    assert summaries["local_deployment_env_smoke"]["schema_version"] == "local-deployment-env-smoke-v1"
+    assert summaries["local_deployment_env_smoke"]["normal_ci_requires_live_calls"] is False
+    assert summaries["frontend_workflow_markers"]["status"] == "pass"
+    assert summaries["source_handoff_readiness"]["retrieval_alone_approves_evidence"] is False
+    assert summaries["launch_manifest_review_packets"]["etf500_current_fixture_not_launch_coverage"] is True
+    assert summaries["source_pack_planning"]["stock_sec_source_pack_readiness"]["status"] == "pass"
+    assert summaries["source_pack_planning"]["etf_issuer_source_pack_readiness"]["status"] == "pass"
+    assert summaries["local_ingestion_priority_planning"]["summary"]["blocked_or_not_ready_count"] == 20
+    assert summaries["manual_gate_stop_conditions_audit_only"]["manual_gate_decision"] == "agent_work_remaining"
+    assert summaries["manual_gate_stop_conditions_audit_only"]["stop_condition_count"] >= 10
+
+    weekly = result["weekly_news_and_ai_boundaries"]
+    assert weekly["weekly_news_focus_configured_max_requires_evidence"] is True
+    assert weekly["weekly_news_focus_smaller_or_empty_sets_valid"] is True
+    assert weekly["ai_comprehensive_analysis_suppressed_without_two_items"] is True
+    assert weekly["ai_analysis_minimum_weekly_items"] == 2
+    assert weekly["canonical_facts_separate_from_timely_context"] is True
+
+    blocked = result["unsupported_blocked_ticker_boundaries"]
+    assert blocked["blocked_regression_tickers"] == ["TQQQ", "ARKK", "BND", "GLD"]
+    assert blocked["blocked_rows_have_no_generated_output"] is True
+    assert "generated_output_cache_entries" in blocked["blocked_generated_surfaces"]
+
+    no_secret = result["no_secret_diagnostics"]
+    assert no_secret["safe_diagnostics_only"] is True
+    assert no_secret["env_var_names_reported_without_values"] is True
+    assert no_secret["secret_values_reported"] is False
+    assert no_secret["database_dsn_values_reported"] is False
+    assert no_secret["provider_payloads_reported"] is False
+    assert no_secret["raw_source_text_reported"] is False
+    assert no_secret["raw_model_output_reported"] is False
+    assert no_secret["raw_model_reasoning_reported"] is False
+    assert no_secret["hidden_prompts_reported"] is False
+    assert no_secret["service_account_json_reported"] is False
+    assert no_secret["forbidden_value_marker_hits"] == []
+
+    serialized = str(result)
+    for forbidden in [
+        "postgresql://",
+        "postgresql+psycopg://",
+        "Bearer ",
+        "Authorization:",
+        "BEGIN PRIVATE KEY",
+        "sk-",
+        "xoxb-",
+        "ghp_",
+        "raw provider payload value",
+        "raw source text value",
+        "raw model output",
+        "raw model reasoning",
+        "hidden prompt text",
+        "service account json",
+        "signed url",
+    ]:
+        assert forbidden not in serialized
+
+
+def test_t158_lightweight_mvp_readiness_gate_blocks_opted_in_optional_failures_without_secrets():
+    result = run_lightweight_mvp_readiness_gate(env={"LTT_REHEARSAL_DURABLE_REPOSITORIES_ENABLED": "true"})
+
+    assert result["schema_version"] == "lightweight-mvp-readiness-gate-v1"
+    assert result["status"] == "blocked"
+    assert result["reason_code"] == "lightweight_mvp_local_manual_review_blocked"
+    assert result["local_personal_mvp_ready_for_manual_review"] is False
+    assert result["production_ready"] is False
+    assert result["public_launch_ready"] is False
+    blocker_reasons = {blocker["reason_code"] for blocker in result["local_manual_review_blockers"]}
+    assert "optional_operator_check_blocked_after_explicit_opt_in" in blocker_reasons
+    assert "local_threshold_summary_not_ready" in blocker_reasons
+    assert "lightweight_local_slice_gate_not_ready" in blocker_reasons
+    optional_blockers = [
+        blocker
+        for blocker in result["local_manual_review_blockers"]
+        if blocker["reason_code"] == "optional_operator_check_blocked_after_explicit_opt_in"
+    ]
+    assert optional_blockers == [
+            {
+                "reason_code": "optional_operator_check_blocked_after_explicit_opt_in",
+                "check_id": "optional_local_durable_repositories",
+                "check_reason_code": "local_durable_repository_prerequisites_missing",
+            }
+        ]
+    assert result["no_secret_diagnostics"]["secret_values_reported"] is False
+    assert result["no_secret_diagnostics"]["forbidden_value_marker_hits"] == []
+    serialized = str(result)
+    for forbidden in ["postgresql://", "Bearer ", "Authorization:", "BEGIN PRIVATE KEY", "sk-"]:
+        assert forbidden not in serialized
+
+
+def test_t158_lightweight_mvp_readiness_gate_is_documented_and_static_marked():
+    gate = read_file("scripts/run_lightweight_mvp_readiness_gate.py")
+    runbook = read_file("docs/local_fresh_data_ingest_to_render_runbook.md")
+    evals = read_file("evals/run_static_evals.py")
+    combined = "\n".join([gate, runbook, evals])
+
+    for marker in [
+        "lightweight-mvp-readiness-gate-v1",
+        "scripts/run_lightweight_mvp_readiness_gate.py --json",
+        "local_personal_mvp_ready_for_manual_review",
+        "strict_public_launch_audit_only_gates",
+        "strict_audit_ready",
+        "public_launch_ready",
+        "production_ready",
+        "sources_approved_by_readiness_gate",
+        "manifests_promoted",
+        "generated_output_cache_promoted",
+        "normal_ci_requires_live_calls",
+        "production_services_started",
+        "deployments_created",
+        "live_provider_calls_attempted",
+        "database_connections_opened",
+        "secret_values_reported",
+        "local_fresh_data_mvp_slice_smoke",
+        "local_fresh_data_mvp_slice_comparison_export_parity",
+        "stock_vs_etf_comparison_readiness",
+        "local_deployment_env_smoke",
+        "frontend_v04_smoke_markers",
+        "source_handoff_approval_gate",
+        "launch_manifest_review_packets",
+        "stock_sec_source_pack_readiness",
+        "etf_issuer_source_pack_readiness",
+        "local_ingestion_priority_planner",
+        "weekly_news_focus_configured_max_requires_evidence",
+        "ai_comprehensive_analysis_suppressed_without_two_items",
+        "TQQQ",
+        "ARKK",
+        "BND",
+        "GLD",
+        "ETF-500 full supported-manifest validation",
+        "Top-500 current-manifest refresh approval",
+        "Golden Asset Source Handoff approval",
+        "generated-output cache promotion",
+        "production deployment readiness",
+        "public-launch approval",
+        "investment advice",
+    ]:
+        assert marker in combined, f"T-158 readiness gate marker missing: {marker}"
 
     for forbidden in [
         "OPENROUTER_API_KEY=",
