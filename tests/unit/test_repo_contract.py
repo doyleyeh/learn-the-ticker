@@ -1893,6 +1893,73 @@ def test_t146_optional_durable_fresh_data_slice_smoke_is_gated_and_documented():
         assert forbidden.lower() not in runbook.lower()
 
 
+def test_t152_lightweight_live_durable_mvp_slice_smoke_runner_contract():
+    smoke = read_file("tests/frontend/smoke.mjs")
+    runbook = read_file("docs/local_fresh_data_ingest_to_render_runbook.md")
+    root_package = read_file("package.json")
+    web_package = read_file("apps/web/package.json")
+    combined = "\n".join([smoke, runbook, root_package, web_package])
+
+    for marker in [
+        "test:local-live-durable-slice-smoke",
+        "local-live-durable-mvp-slice-smoke-v1",
+        "localLiveDurableSliceSmokeSchemaVersion",
+        "durableLiveDiagnostic",
+        "durable_repository_diagnostics",
+        "prerequisite_status",
+        "repository_mode",
+        "persistence_availability",
+        "durable_write_blocker_reason_codes",
+        "persisted_repository_read_blocker_reason_codes",
+        "stable_repeated_read_available",
+        "safe_record_metadata",
+        "record_key_hashes",
+        "record_checksums",
+        "fallback_diagnostics_summary",
+        "freshness_as_of_summary",
+        "generated_output_eligibility_summary",
+        "no_raw_no_secret_flags",
+        "database_url_not_placeholder_local",
+        "local_durable_object_namespace_unsafe",
+        "object_namespace_value_reported",
+        "database_dsn_value_reported",
+    ]:
+        assert marker in combined, f"T-152 durable-live smoke contract should include marker: {marker}"
+
+    for marker in [
+        "LEARN_TICKER_LOCAL_WEB_BASE=http://127.0.0.1:3000 LEARN_TICKER_LOCAL_API_BASE=http://127.0.0.1:8000 DATA_POLICY_MODE=lightweight LIGHTWEIGHT_LIVE_FETCH_ENABLED=true LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true LEARN_TICKER_LOCAL_DURABLE_SMOKE=1 LOCAL_DURABLE_REPOSITORIES_ENABLED=true LOCAL_DURABLE_OBJECT_NAMESPACE=ticker-smoke DATABASE_URL=\"<local durable repository DSN, placeholder-only>\" SEC_EDGAR_USER_AGENT=\"learn-the-ticker-local/0.1 contact@example.com\" TMPDIR=/tmp npm run test:local-live-durable-slice-smoke",
+        "The T-152 runner is still operator-only and skipped by deterministic CI",
+        "The durable-live contract summary uses schema `local-live-durable-mvp-slice-smoke-v1`",
+        "blocked optional reason codes",
+        "`throwaway_durable_write_api_not_exercised_by_browser_smoke`",
+        "`repository_read_proof_not_exposed_by_lightweight_fresh_data_api`",
+        "safe record metadata includes counts plus hashed record keys and checksums only",
+        "Expected durable-live states:",
+        "This smoke is local durability validation only",
+    ]:
+        assert marker in runbook, f"T-152 runbook should document marker: {marker}"
+
+    assert "LEARN_TICKER_LOCAL_DURABLE_SMOKE=1 npm --workspace apps/web run test:browser-smoke" in root_package
+    assert "LEARN_TICKER_LOCAL_DURABLE_SMOKE=1 node tests/frontend/smoke.mjs" in web_package
+    assert smoke.index("localLiveSliceSmokeSchemaVersion") < smoke.index("localLiveDurableSliceSmokeSchemaVersion")
+    assert smoke.index("durableLiveDiagnostic") < smoke.index("durable_repository_diagnostics")
+
+    for forbidden in [
+        "OPENROUTER_API_KEY=",
+        "FMP_API_KEY=",
+        "ALPHA_VANTAGE_API_KEY=",
+        "FINNHUB_API_KEY=",
+        "TIINGO_API_KEY=",
+        "EODHD_API_KEY=",
+        "BEGIN PRIVATE KEY",
+        "sk-",
+        "xoxb-",
+        "ghp_",
+        "raw model reasoning is shown",
+    ]:
+        assert forbidden.lower() not in runbook.lower()
+
+
 def test_t147_issuer_backed_etf_slice_enrichment_is_fixture_backed_and_documented():
     fetch = read_file("backend/lightweight_data_fetch.py")
     page = read_file("backend/lightweight_page.py")

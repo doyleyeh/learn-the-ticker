@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -1513,15 +1514,26 @@ function localDurablePrereqStatus() {
   const namespace = (process.env.LOCAL_DURABLE_OBJECT_NAMESPACE || "").trim();
   const enabled = toBool(process.env.LOCAL_DURABLE_REPOSITORIES_ENABLED);
   const blockers = [];
+  const reasonCodes = [];
 
   if (!enabled) {
     blockers.push("Set LOCAL_DURABLE_REPOSITORIES_ENABLED=true");
+    reasonCodes.push("local_durable_repositories_enabled_missing");
   }
   if (!databaseUrl) {
     blockers.push("Set DATABASE_URL to a local durable repository DSN (placeholder-only)");
+    reasonCodes.push("database_url_missing");
   }
   if (!namespace) {
     blockers.push("Set LOCAL_DURABLE_OBJECT_NAMESPACE");
+    reasonCodes.push("local_durable_object_namespace_missing");
+  }
+  const databaseUrlLocalPlaceholder = databaseUrl
+    ? databaseUrlLooksLocalPlaceholder(databaseUrl)
+    : false;
+  if (databaseUrl && !databaseUrlLocalPlaceholder) {
+    blockers.push("Use a placeholder-only local DATABASE_URL");
+    reasonCodes.push("database_url_not_placeholder_local");
   }
 
   const unsafeNamespace = [
@@ -1546,16 +1558,37 @@ function localDurablePrereqStatus() {
     "public/",
     "/public/",
   ];
-  if (namespace && unsafeNamespace.some((marker) => namespace.toLowerCase().includes(marker))) {
+  const namespaceSafe = namespace
+    ? !unsafeNamespace.some((marker) => namespace.toLowerCase().includes(marker))
+    : false;
+  if (namespace && !namespaceSafe) {
     blockers.push("Use a placeholder-only non-public LOCAL_DURABLE_OBJECT_NAMESPACE");
+    reasonCodes.push("local_durable_object_namespace_unsafe");
   }
 
   return {
     enabled,
     databaseUrlConfigured: Boolean(databaseUrl),
+    databaseUrlLocalPlaceholder,
     namespaceConfigured: Boolean(namespace),
+    namespaceSafe,
     blockers,
+    reasonCodes,
   };
+}
+
+function databaseUrlLooksLocalPlaceholder(value) {
+  const lowered = value.toLowerCase();
+  if (lowered.includes("placeholder") || lowered.startsWith("sqlite")) {
+    return true;
+  }
+  try {
+    const parsed = new URL(value);
+    const hostname = parsed.hostname.toLowerCase();
+    return ["localhost", "127.0.0.1", "::1"].includes(hostname);
+  } catch {
+    return false;
+  }
 }
 
 function normalizeSmokeBase(value, fallbackPort) {
@@ -1579,6 +1612,7 @@ const localFreshDataSliceStocks = ["AAPL", "MSFT", "NVDA"];
 const localFreshDataSliceEtfs = ["VOO", "SPY", "VTI", "QQQ", "XLK"];
 const localFreshDataSliceBlockedTickers = ["TQQQ", "ARKK", "BND", "GLD"];
 const localLiveSliceSmokeSchemaVersion = "local-live-browser-api-mvp-slice-smoke-v1";
+const localLiveDurableSliceSmokeSchemaVersion = "local-live-durable-mvp-slice-smoke-v1";
 const localFreshDataSliceSupportedTickers = [
   ...localFreshDataSliceStocks,
   ...localFreshDataSliceEtfs,
@@ -1635,9 +1669,13 @@ function localDurableFreshDataSlicePrereqStatus() {
 }
 
 function reportLocalDurableFreshDataSlicePrereqBlockers(blockers) {
+  const prereqs = localDurablePrereqStatus();
   console.error("Local durable fresh-data slice browser/API smoke is blocked by missing prerequisites:");
   for (const blocker of blockers) {
     console.error(`- ${blocker}`);
+  }
+  if (prereqs.reasonCodes.length > 0) {
+    console.error(`Safe durable reason codes: ${prereqs.reasonCodes.join(",")}`);
   }
   console.error(
     "Use already-running web/API services with local durable settings; this output reports env var names/status only and never prints DSNs, namespaces, keys, tokens, raw source text, or raw payload values."
@@ -2111,6 +2149,156 @@ if (localBrowserSmokeEnabled) {
     raw_payload_exposed: Boolean(payload?.raw_payload_exposed),
     fallback_diagnostics: apiFallbackDiagnosticsFor(payload),
   });
+
+  const stableDigest = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 16);
+
+  const durableLiveDiagnostic = (sliceSmokeDiagnostics) => {
+    const prereqs = localDurablePrereqStatus();
+    const representativeRows = sliceSmokeDiagnostics.filter((row) =>
+      ["AAPL", "VOO"].includes(row.ticker) && !row.surface.includes("blocked")
+    );
+    const freshnessRows = representativeRows.map((row) => ({
+      ticker: row.ticker,
+      surface: row.surface,
+      freshness: row.freshness,
+      generated_output_eligible: row.generated_output_eligible,
+    }));
+    const fallbackPaths = Array.from(
+      new Set(
+        sliceSmokeDiagnostics
+          .map((row) => row.fallback_diagnostics?.source_path)
+          .filter(Boolean)
+      )
+    ).sort();
+    const fallbackReasonCodes = Array.from(
+      new Set(
+        sliceSmokeDiagnostics.flatMap((row) => row.fallback_diagnostics?.reason_codes ?? [])
+      )
+    ).sort();
+
+    return {
+      schema_version: localLiveDurableSliceSmokeSchemaVersion,
+      prerequisite_status: {
+        env_names_only: true,
+        local_browser_smoke: {
+          env_name: "LEARN_TICKER_LOCAL_BROWSER_SMOKE",
+          configured: toBool(process.env.LEARN_TICKER_LOCAL_BROWSER_SMOKE),
+        },
+        local_fresh_data_slice_smoke: {
+          env_name: "LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE",
+          configured: toBool(process.env.LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE),
+        },
+        local_durable_smoke: {
+          env_name: "LEARN_TICKER_LOCAL_DURABLE_SMOKE",
+          configured: toBool(process.env.LEARN_TICKER_LOCAL_DURABLE_SMOKE),
+        },
+        local_web_base: {
+          env_name: "LEARN_TICKER_LOCAL_WEB_BASE",
+          configured: Boolean((process.env.LEARN_TICKER_LOCAL_WEB_BASE || "").trim()),
+        },
+        local_api_base: {
+          env_name: "LEARN_TICKER_LOCAL_API_BASE",
+          configured: Boolean((process.env.LEARN_TICKER_LOCAL_API_BASE || "").trim()),
+        },
+        data_policy_mode_lightweight: {
+          env_name: "DATA_POLICY_MODE",
+          configured: (process.env.DATA_POLICY_MODE || "").trim() === "lightweight",
+        },
+        lightweight_live_fetch_enabled: {
+          env_name: "LIGHTWEIGHT_LIVE_FETCH_ENABLED",
+          configured: toBool(process.env.LIGHTWEIGHT_LIVE_FETCH_ENABLED),
+        },
+        lightweight_provider_fallback_enabled: {
+          env_name: "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED",
+          configured: toBool(process.env.LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED),
+        },
+        sec_edgar_user_agent: {
+          env_name: "SEC_EDGAR_USER_AGENT",
+          configured: Boolean((process.env.SEC_EDGAR_USER_AGENT || "").trim()),
+        },
+        local_durable_repositories_enabled: {
+          env_name: "LOCAL_DURABLE_REPOSITORIES_ENABLED",
+          configured: prereqs.enabled,
+        },
+        database_url: {
+          env_name: "DATABASE_URL",
+          configured: prereqs.databaseUrlConfigured,
+          placeholder_local: prereqs.databaseUrlLocalPlaceholder,
+        },
+        local_durable_object_namespace: {
+          env_name: "LOCAL_DURABLE_OBJECT_NAMESPACE",
+          configured: prereqs.namespaceConfigured,
+          non_public_placeholder: prereqs.namespaceSafe,
+        },
+        blocker_reason_codes: prereqs.reasonCodes,
+      },
+      repository_mode: {
+        mode: "local_durable",
+        local_durable_repositories_enabled: prereqs.enabled,
+        production_database_used: false,
+        production_storage_used: false,
+        object_namespace_value_reported: false,
+        database_dsn_value_reported: false,
+      },
+      persistence_availability: {
+        durable_write_available: false,
+        durable_write_blocked_optional_check: true,
+        durable_write_blocker_reason_codes: ["throwaway_durable_write_api_not_exercised_by_browser_smoke"],
+        persisted_repository_read_available: false,
+        persisted_repository_read_blocked_optional_check: true,
+        persisted_repository_read_blocker_reason_codes: ["repository_read_proof_not_exposed_by_lightweight_fresh_data_api"],
+        stable_repeated_read_available: true,
+        stable_repeated_read_status: "pass",
+        stable_repeated_read_surfaces: [
+          "next_api_proxy_fresh_data",
+          "direct_fastapi_fresh_data",
+          "overview",
+          "details",
+          "sources",
+          "asset_json_export",
+          "source_list_json_export",
+        ],
+      },
+      safe_record_metadata: {
+        safe_record_count: representativeRows.length,
+        record_key_hashes: representativeRows.map((row) => stableDigest({
+          ticker: row.ticker,
+          surface: row.surface,
+        })),
+        record_checksums: representativeRows.map((row) => stableDigest({
+          ticker: row.ticker,
+          asset_type: row.asset_type,
+          fetch_state: row.fetch_state,
+          page_render_state: row.page_render_state,
+          generated_output_eligible: row.generated_output_eligible,
+          source_count: row.source_count,
+          citation_count: row.citation_count,
+          fact_count: row.fact_count,
+          fallback_source_path: row.fallback_diagnostics?.source_path ?? "unknown",
+        })),
+      },
+      fallback_diagnostics_summary: {
+        schema_version: "lightweight-api-fallback-diagnostics-v1",
+        source_paths: fallbackPaths,
+        reason_codes: fallbackReasonCodes,
+      },
+      freshness_as_of_summary: freshnessRows,
+      generated_output_eligibility_summary: sliceSmokeDiagnostics.map((row) => ({
+        ticker: row.ticker,
+        surface: row.surface,
+        generated_output_eligible: row.generated_output_eligible,
+      })),
+      no_raw_no_secret_flags: {
+        raw_payload_exposed_detected: sliceSmokeDiagnostics.some((row) => row.raw_payload_exposed),
+        raw_payload_values_reported: false,
+        secret_values_reported: false,
+        database_dsn_value_reported: false,
+        object_namespace_value_reported: false,
+        hidden_prompt_or_reasoning_reported: false,
+        sanitized_metadata_only: true,
+      },
+    };
+  };
 
   const blockedExportDiagnostic = (payload, ticker, surface) => ({
     ticker,
@@ -2680,7 +2868,9 @@ if (localBrowserSmokeEnabled) {
     console.log(
       `${smokeLabel} contract summary: ${JSON.stringify(
         {
-          schema_version: localLiveSliceSmokeSchemaVersion,
+          schema_version: durableMode
+            ? localLiveDurableSliceSmokeSchemaVersion
+            : localLiveSliceSmokeSchemaVersion,
           bases: {
             next_api_proxy_base: `${webBase}/api`,
             direct_fastapi_base: `${apiBase}/api`,
@@ -2691,6 +2881,9 @@ if (localBrowserSmokeEnabled) {
           blocked_regression_tickers: localFreshDataSliceBlockedTickers,
           fresh_data_diagnostics: sliceSmokeDiagnostics,
           blocked_export_diagnostics: blockedExportDiagnostics,
+          durable_repository_diagnostics: durableMode
+            ? durableLiveDiagnostic(sliceSmokeDiagnostics)
+            : null,
           no_raw_payload_no_secret_diagnostics: {
             raw_payload_exposed_detected: sliceSmokeDiagnostics.some((row) => row.raw_payload_exposed),
             raw_payload_values_reported: false,
