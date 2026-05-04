@@ -1,6 +1,6 @@
 # Local Fresh-Data Ingest-To-Render Runbook
 
-Task: T-118, updated by T-119 through T-157 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, stock-vs-ETF comparison readiness gating, local fresh-data MVP slice smoke coverage, optional slice browser/API localhost coverage, optional durable slice smoke coverage, lightweight local-slice manual-readiness gating, local slice comparison/export parity coverage, the lightweight live browser/API MVP slice smoke runner contract, lightweight API fallback diagnostics, the lightweight live durable MVP slice smoke runner contract, lightweight issuer-backed SPY/VTI/XLK enrichment, the optional Weekly News Focus live-source smoke, lightweight fresh-data comparison coverage for stock-vs-stock plus non-generated ETF pairs, and the local deployment/environment smoke
+Task: T-118, updated by T-119 through T-158 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, stock-vs-ETF comparison readiness gating, local fresh-data MVP slice smoke coverage, optional slice browser/API localhost coverage, optional durable slice smoke coverage, lightweight local-slice manual-readiness gating, local slice comparison/export parity coverage, the lightweight live browser/API MVP slice smoke runner contract, lightweight API fallback diagnostics, the lightweight live durable MVP slice smoke runner contract, lightweight issuer-backed SPY/VTI/XLK enrichment, the optional Weekly News Focus live-source smoke, lightweight fresh-data comparison coverage for stock-vs-stock plus non-generated ETF pairs, the local deployment/environment smoke, and the lightweight MVP readiness gate
 
 This runbook describes the local golden-asset smoke path before production deployment work. Normal CI uses deterministic fixtures, mocked official-source acquisition, and in-memory repositories. It must not require real SEC, issuer, market-data, broad news, storage, database, Redis, RSS, or LLM calls.
 
@@ -94,6 +94,50 @@ The diagnostics report env var names, configured/missing booleans, redacted-plac
 This smoke is local deployment-scaffold readiness only. It is not source approval, Golden Asset Source Handoff approval, manifest promotion, generated-output cache promotion, ETF-500 completion, Top-500 completion, live-provider readiness, production deployment readiness, public-launch approval, or investment advice. It must not start Vercel deploys, Cloud Run deploys, Cloud Run Jobs, Cloud Scheduler, Docker services, database migrations, production object-storage writes, provider calls, news calls, market-data calls, or LLM calls.
 
 `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` includes this as the required deterministic check `local_deployment_env_smoke` and surfaces the same no-launch/no-production boundaries in prerequisite summaries.
+
+## Lightweight MVP Readiness Gate
+
+Task: T-158.
+
+Use the lightweight MVP readiness gate to summarize whether the deterministic personal/local MVP slice is ready for explicit operator manual review:
+
+```bash
+TMPDIR=/tmp python3 scripts/run_lightweight_mvp_readiness_gate.py --json
+```
+
+The command emits schema `lightweight-mvp-readiness-gate-v1`. Default execution is deterministic and fixture-backed. It does not require live network, local services, a browser, durable repositories, a Docker daemon, deployment credentials, source/provider credentials, LLM credentials, or secrets. It reports `normal_ci_requires_live_calls=false`, `production_services_started=false`, `deployments_created=false`, `live_provider_calls_attempted=false`, `database_connections_opened=false`, `secret_values_reported=false`, `production_ready=false`, and `public_launch_ready=false`.
+
+The gate consumes the existing `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` result, including the embedded `local_deployment_env_smoke` summary, instead of duplicating product checks. It returns `local_personal_mvp_ready_for_manual_review=true` only when deterministic local/manual-review prerequisites pass:
+
+- `local_fresh_data_mvp_slice_smoke`
+- `local_fresh_data_mvp_slice_comparison_export_parity`
+- `stock_vs_etf_comparison_readiness`
+- `local_deployment_env_smoke`
+- `frontend_v04_smoke_markers`
+- `source_handoff_approval_gate`
+- `governed_golden_api_rendering`
+- local threshold summaries for unsupported blocked tickers, source-use/export boundaries, no-live boundaries, and no-secret diagnostics
+
+The output also includes status and reason-code summaries for launch-manifest review packets, stock SEC source-pack readiness, ETF issuer source-pack readiness, local ingestion priority planning, Weekly News Focus evidence-threshold behavior, live-AI optional readiness, unsupported blocked tickers `TQQQ`, `ARKK`, `BND`, and `GLD`, and the no-secret diagnostics surface.
+
+`pass`, `blocked`, and `skipped` meanings:
+
+- `pass`: deterministic local/manual-review checks pass, optional operator-only modes are skipped or pass, unsupported products remain blocked from generated output, and the local personal MVP can move to explicit operator manual browser/API review.
+- `blocked`: a deterministic required check failed, an explicitly opted-in optional check blocked, unsupported or out-of-scope products unlocked generated output, no-live/no-secret boundaries regressed, source-use/export boundaries regressed, source-backed claims lost citations or uncertainty labels, or v0.4 frontend workflow markers are missing.
+- `skipped`: an operator-only optional check was not enabled. Skipped optional checks are visible diagnostics, not hidden passes.
+
+Strict/public-launch gates are intentionally represented as `audit_only` diagnostics in `strict_public_launch_audit_only_gates`. They do not block local personal-MVP manual review and they are not promoted or approved by this command. The audit-only list includes ETF-500 full supported-manifest validation, Top-500 current-manifest refresh approval, full Golden Asset Source Handoff approval, stock SEC source-pack approval, ETF issuer source-pack approval, launch-sized source artifacts, launch-manifest promotion, generated-output cache promotion, live-provider execution, live-AI review, production deployment, recurring jobs, and broad paid-provider/news integrations.
+
+The readiness gate always keeps these launch/public flags false unless a future strict/public-launch task changes the contract: `strict_audit_ready=false`, `launch_or_public_deployment_approved=false`, `sources_approved_by_readiness_gate=false`, `manifests_promoted=false`, `generated_output_cache_promoted=false`, `production_ready=false`, and `public_launch_ready=false`.
+
+Safe manual follow-up after a passing gate:
+
+- Start local web/API services manually only when the operator intends to review the slice.
+- Verify home single-asset search, clear `A vs B` routing to `/compare`, asset pages, citation chips, source drawer desktop/mobile behavior, contextual glossary desktop/mobile behavior, asset chat bottom-sheet or full-screen behavior, exports, and comparison flows.
+- Verify stock-vs-ETF comparison still shows relationship badges and the `single-company-vs-ETF-basket` structure.
+- Verify Weekly News Focus shows only the evidence-backed set, smaller or empty states remain valid, AI Comprehensive Analysis stays suppressed unless at least two approved Weekly News Focus items exist, and canonical facts remain separate from timely context.
+
+This command is a local personal-MVP readiness summary only. It is not source approval, Golden Asset Source Handoff approval, manifest promotion, generated-output cache promotion, ETF-500 completion, Top-500 completion, live-provider readiness, live-AI readiness, production deployment readiness, public-launch approval, or investment advice. Its diagnostics report booleans, status counts, reason codes, safe markers, and readiness states only. They must not include actual env values, DSNs, keys, tokens, service-account JSON, signed credential-bearing links, raw provider payloads, raw source text, raw model output, raw model reasoning, hidden prompts, transcripts, full restricted article text, or unrestricted excerpts.
 
 ## Lightweight Local MVP Slice Manual-Readiness Gate
 

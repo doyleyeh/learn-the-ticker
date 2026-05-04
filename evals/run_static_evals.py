@@ -157,6 +157,10 @@ from scripts.run_local_deployment_env_smoke import (
     SCHEMA_VERSION as LOCAL_DEPLOYMENT_ENV_SMOKE_SCHEMA_VERSION,
     run_local_deployment_env_smoke,
 )
+from scripts.run_lightweight_mvp_readiness_gate import (
+    SCHEMA_VERSION as LIGHTWEIGHT_MVP_READINESS_GATE_SCHEMA_VERSION,
+    run_lightweight_mvp_readiness_gate,
+)
 
 
 client = TestClient(app)
@@ -2733,6 +2737,109 @@ def test_local_deployment_env_smoke_cases():
         assert forbidden not in serialized
 
 
+def test_lightweight_mvp_readiness_gate_cases():
+    gate = run_lightweight_mvp_readiness_gate(env={})
+    assert gate["schema_version"] == LIGHTWEIGHT_MVP_READINESS_GATE_SCHEMA_VERSION
+    assert gate["status"] == "pass"
+    assert gate["local_personal_mvp_ready_for_manual_review"] is True
+    assert gate["normal_ci_requires_live_calls"] is False
+    assert gate["production_services_started"] is False
+    assert gate["deployments_created"] is False
+    assert gate["live_provider_calls_attempted"] is False
+    assert gate["database_connections_opened"] is False
+    assert gate["secret_values_reported"] is False
+    assert gate["production_ready"] is False
+    assert gate["public_launch_ready"] is False
+    assert gate["strict_audit_ready"] is False
+    assert gate["launch_or_public_deployment_approved"] is False
+    assert gate["sources_approved_by_readiness_gate"] is False
+    assert gate["manifests_promoted"] is False
+    assert gate["generated_output_cache_promoted"] is False
+    assert gate["rehearsal_integration"]["embedded_local_deployment_env_smoke_consumed"] is True
+    assert gate["readiness_summaries"]["local_fresh_data_mvp_slice_smoke"]["status_counts"] == {
+        "pass": 8,
+        "partial": 0,
+        "blocked": 4,
+        "unavailable": 0,
+    }
+    assert gate["readiness_summaries"]["comparison_export_parity"]["representative_comparison_pairs"] == [
+        ["VOO", "QQQ"],
+        ["AAPL", "VOO"],
+        ["AAPL", "MSFT"],
+    ]
+    assert gate["readiness_summaries"]["stock_vs_etf_readiness"]["backend_compare"]["basket_structure"] == (
+        "single-company-vs-etf-basket"
+    )
+    assert gate["weekly_news_and_ai_boundaries"]["weekly_news_focus_configured_max_requires_evidence"] is True
+    assert gate["weekly_news_and_ai_boundaries"]["weekly_news_focus_smaller_or_empty_sets_valid"] is True
+    assert gate["weekly_news_and_ai_boundaries"]["ai_comprehensive_analysis_suppressed_without_two_items"] is True
+    assert gate["unsupported_blocked_ticker_boundaries"]["blocked_regression_tickers"] == [
+        "TQQQ",
+        "ARKK",
+        "BND",
+        "GLD",
+    ]
+    assert gate["unsupported_blocked_ticker_boundaries"]["blocked_rows_have_no_generated_output"] is True
+    assert len(gate["strict_public_launch_audit_only_gates"]) == 13
+    assert all(item["status"] == "audit_only" for item in gate["strict_public_launch_audit_only_gates"])
+    assert all(
+        item["blocking_for_local_personal_mvp_manual_review"] is False
+        for item in gate["strict_public_launch_audit_only_gates"]
+    )
+    assert gate["no_secret_diagnostics"]["forbidden_value_marker_hits"] == []
+
+    blocked = run_lightweight_mvp_readiness_gate(env={"LTT_REHEARSAL_DURABLE_REPOSITORIES_ENABLED": "true"})
+    assert blocked["status"] == "blocked"
+    assert blocked["local_personal_mvp_ready_for_manual_review"] is False
+    assert {
+        blocker["reason_code"] for blocker in blocked["local_manual_review_blockers"]
+    } >= {
+        "optional_operator_check_blocked_after_explicit_opt_in",
+        "local_threshold_summary_not_ready",
+        "lightweight_local_slice_gate_not_ready",
+    }
+    assert blocked["no_secret_diagnostics"]["secret_values_reported"] is False
+
+    combined = "\n".join(
+        [
+            (ROOT / "scripts/run_lightweight_mvp_readiness_gate.py").read_text(encoding="utf-8"),
+            (ROOT / "docs/local_fresh_data_ingest_to_render_runbook.md").read_text(encoding="utf-8"),
+        ]
+    )
+    for marker in [
+        "lightweight-mvp-readiness-gate-v1",
+        "scripts/run_lightweight_mvp_readiness_gate.py --json",
+        "strict_public_launch_audit_only_gates",
+        "local_personal_mvp_ready_for_manual_review",
+        "ETF-500 full supported-manifest validation",
+        "Top-500 current-manifest refresh approval",
+        "Golden Asset Source Handoff approval",
+        "generated-output cache promotion",
+        "public-launch approval",
+    ]:
+        assert marker in combined
+
+    serialized = str(gate)
+    for forbidden in [
+        "postgresql://",
+        "postgresql+psycopg://",
+        "Bearer ",
+        "Authorization:",
+        "BEGIN PRIVATE KEY",
+        "sk-",
+        "xoxb-",
+        "ghp_",
+        "raw provider payload value",
+        "raw source text value",
+        "raw model output",
+        "raw model reasoning",
+        "hidden prompt text",
+        "service account json",
+        "signed url",
+    ]:
+        assert forbidden not in serialized
+
+
 def _live_ai_eval_transport_factory(case_id, prompt_payload):
     def transport(request):
         if case_id in {LIVE_AI_CHAT_STOCK_CASE_ID, LIVE_AI_CHAT_ETF_CASE_ID}:
@@ -2813,4 +2920,5 @@ if __name__ == "__main__":
     test_weekly_news_cases()
     test_llm_provider_cases()
     test_local_deployment_env_smoke_cases()
+    test_lightweight_mvp_readiness_gate_cases()
     print("Static evals passed.")
