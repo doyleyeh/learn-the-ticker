@@ -1633,6 +1633,71 @@ def test_t145_local_fresh_data_slice_browser_api_smoke_is_optional_and_documente
         assert forbidden.lower() not in runbook.lower()
 
 
+def test_t150_lightweight_live_browser_api_mvp_slice_smoke_runner_contract():
+    smoke = read_file("tests/frontend/smoke.mjs")
+    runbook = read_file("docs/local_fresh_data_ingest_to_render_runbook.md")
+    root_package = read_file("package.json")
+    web_package = read_file("apps/web/package.json")
+    combined = "\n".join([smoke, runbook, root_package, web_package])
+
+    for marker in [
+        "test:local-live-slice-smoke",
+        "local-live-browser-api-mvp-slice-smoke-v1",
+        "localLiveSliceSmokeSchemaVersion",
+        "freshDataSliceDiagnostic",
+        "blockedExportDiagnostic",
+        "next_api_proxy_base",
+        "direct_fastapi_base",
+        "strict_source_pack_readiness_gates_are_audit_diagnostics_only",
+        "strict_gates_do_not_block_lightweight_live_smoke_when_renderable_source_labeled_and_raw_payload_hidden",
+        "fresh_data_diagnostics",
+        "blocked_export_diagnostics",
+        "no_raw_payload_no_secret_diagnostics",
+        "next_api_proxy_blocked_asset_export",
+        "direct_fastapi_blocked_asset_export",
+        "next_api_proxy_blocked_source_list_export",
+        "direct_fastapi_blocked_source_list_export",
+        "direct FastAPI search contract",
+        "direct FastAPI overview contract",
+        "direct FastAPI details contract",
+        "direct FastAPI sources contract",
+    ]:
+        assert marker in combined, f"T-150 live browser/API slice smoke contract should include marker: {marker}"
+
+    for marker in [
+        "LEARN_TICKER_LOCAL_WEB_BASE=http://127.0.0.1:3000 LEARN_TICKER_LOCAL_API_BASE=http://127.0.0.1:8000 DATA_POLICY_MODE=lightweight LIGHTWEIGHT_LIVE_FETCH_ENABLED=true LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true SEC_EDGAR_USER_AGENT=\"learn-the-ticker-local/0.1 contact@example.com\" TMPDIR=/tmp npm run test:local-live-slice-smoke",
+        "The T-150 runner is still operator-only and skipped by deterministic CI",
+        "already-running local services",
+        "API/proxy bases",
+        "source labels, source/citation/fact/gap counts, freshness/as-of metadata, fetch state, page render state, generated-output eligibility, and partial/unavailable states",
+        "Blocked export diagnostics for `TQQQ`, `ARKK`, `BND`, and `GLD`",
+        "No-raw-payload/no-secret diagnostics",
+        "Old strict source-pack/readiness stop conditions are audit diagnostics",
+        "not failure conditions for lightweight live browser/API smoke",
+        "strict Golden Asset Source Handoff, ETF-500 source-pack, Top-500 source-pack, parser, checksum, manifest-promotion, and broad readiness gates",
+        "asset-page and source-list JSON exports return unsupported or unavailable export-safe blocked states with empty factual evidence",
+    ]:
+        assert marker in runbook, f"T-150 runbook should document marker: {marker}"
+
+    assert "npm --workspace apps/web run test:browser-smoke" in root_package
+    assert "LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1 node tests/frontend/smoke.mjs" in web_package
+
+    for forbidden in [
+        "OPENROUTER_API_KEY=",
+        "FMP_API_KEY=",
+        "ALPHA_VANTAGE_API_KEY=",
+        "FINNHUB_API_KEY=",
+        "TIINGO_API_KEY=",
+        "EODHD_API_KEY=",
+        "BEGIN PRIVATE KEY",
+        "sk-",
+        "xoxb-",
+        "ghp_",
+        "raw model reasoning is shown",
+    ]:
+        assert forbidden.lower() not in runbook.lower()
+
+
 def test_t149_local_slice_comparison_export_parity_is_documented_and_static_marked():
     rehearsal = read_file("scripts/run_local_fresh_data_rehearsal.py")
     slice_smoke = read_file("scripts/run_local_fresh_data_slice_smoke.py")

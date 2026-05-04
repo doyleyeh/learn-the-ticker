@@ -1578,6 +1578,7 @@ const localFreshDataSliceSmokeEnabled = toBool(process.env.LEARN_TICKER_LOCAL_FR
 const localFreshDataSliceStocks = ["AAPL", "MSFT", "NVDA"];
 const localFreshDataSliceEtfs = ["VOO", "SPY", "VTI", "QQQ", "XLK"];
 const localFreshDataSliceBlockedTickers = ["TQQQ", "ARKK", "BND", "GLD"];
+const localLiveSliceSmokeSchemaVersion = "local-live-browser-api-mvp-slice-smoke-v1";
 const localFreshDataSliceSupportedTickers = [
   ...localFreshDataSliceStocks,
   ...localFreshDataSliceEtfs,
@@ -2051,6 +2052,52 @@ if (localBrowserSmokeEnabled) {
     ...(payload?.facts ?? []).map((fact) => fact.evidence_state),
     ...(payload?.gaps ?? []).map((gap) => gap.evidence_state),
   ]);
+  const partialOrUnavailableStatesFor = (payload) => {
+    const states = [
+      payload?.fetch_state,
+      payload?.page_render_state,
+      ...(payload?.facts ?? []).map((fact) => fact.evidence_state),
+      ...(payload?.gaps ?? []).map((gap) => gap.evidence_state),
+    ];
+    return Array.from(
+      new Set(
+        states.filter((state) => ["partial", "unavailable", "unknown", "stale", "insufficient_evidence"].includes(state))
+      )
+    ).sort();
+  };
+
+  const freshDataSliceDiagnostic = (payload, ticker, surface) => ({
+    ticker,
+    surface,
+    asset_type: payload?.asset?.asset_type ?? "unknown",
+    fetch_state: payload?.fetch_state ?? "unknown",
+    page_render_state: payload?.page_render_state ?? "unknown",
+    generated_output_eligible: Boolean(payload?.generated_output_eligible),
+    source_labels: Array.from(sourceLabelsFor(payload)).filter(Boolean).sort(),
+    source_count: (payload?.sources ?? []).length,
+    citation_count: (payload?.citations ?? []).length,
+    fact_count: (payload?.facts ?? []).length,
+    gap_count: (payload?.gaps ?? []).length,
+    partial_or_unavailable_states: partialOrUnavailableStatesFor(payload),
+    freshness: {
+      page_last_updated_at: payload?.freshness?.page_last_updated_at ?? "unavailable",
+      facts_as_of: payload?.freshness?.facts_as_of ?? "unavailable",
+      holdings_as_of: payload?.freshness?.holdings_as_of ?? "unavailable",
+      freshness_state: payload?.freshness?.freshness_state ?? "unknown",
+    },
+    raw_payload_exposed: Boolean(payload?.raw_payload_exposed),
+  });
+
+  const blockedExportDiagnostic = (payload, ticker, surface) => ({
+    ticker,
+    surface,
+    content_type: payload?.content_type ?? "unknown",
+    export_state: payload?.export_state ?? "unknown",
+    generated_asset_output: Boolean(payload?.metadata?.generated_asset_output),
+    empty_factual_evidence_export: Boolean(payload?.export_validation?.diagnostics?.empty_factual_evidence_export),
+    citation_count: (payload?.citations ?? []).length,
+    source_document_count: (payload?.source_documents ?? []).length,
+  });
 
   const assertFreshDataCommonPayload = (payload, ticker, label) => {
     assert.equal(payload?.schema_version, "lightweight-asset-fetch-v1", `${label} should use the lightweight fresh-data schema`);
@@ -2274,6 +2321,8 @@ if (localBrowserSmokeEnabled) {
     }
 
     const sliceSmokeFailures = [];
+    const sliceSmokeDiagnostics = [];
+    const blockedExportDiagnostics = [];
     const smokeLabel = durableMode
       ? "Local durable fresh-data slice browser/API smoke"
       : "Local fresh-data slice browser/API smoke";
@@ -2291,6 +2340,7 @@ if (localBrowserSmokeEnabled) {
         assert.equal(proxyResponse.status, 200, `${ticker} frontend proxy fresh-data API should return 200`);
         assertFreshDataCommonPayload(proxyPayload, ticker, `${ticker} frontend proxy fresh-data API`);
         assertRenderableFreshDataPayload(proxyPayload, expectedAssetType, `${ticker} frontend proxy fresh-data API`);
+        sliceSmokeDiagnostics.push(freshDataSliceDiagnostic(proxyPayload, ticker, "next_api_proxy_fresh_data"));
         if (durableMode && representative) {
           const [repeatProxyResponse, repeatProxyPayload] = await requestJsonWithLog(
             "GET",
@@ -2316,6 +2366,7 @@ if (localBrowserSmokeEnabled) {
         assertCorsAllowsLocalWebOrigin(directResponse, `${ticker} direct FastAPI fresh-data API`);
         assertFreshDataCommonPayload(directPayload, ticker, `${ticker} direct FastAPI fresh-data API`);
         assertRenderableFreshDataPayload(directPayload, expectedAssetType, `${ticker} direct FastAPI fresh-data API`);
+        sliceSmokeDiagnostics.push(freshDataSliceDiagnostic(directPayload, ticker, "direct_fastapi_fresh_data"));
         if (durableMode && representative) {
           const [repeatDirectResponse, repeatDirectPayload] = await requestJsonWithLog(
             "GET",
@@ -2346,6 +2397,7 @@ if (localBrowserSmokeEnabled) {
         );
         assert.equal(proxyResponse.status, 200, `${ticker} frontend proxy blocked fresh-data API should return 200`);
         assertBlockedFreshDataPayload(proxyPayload, ticker, `${ticker} frontend proxy blocked fresh-data API`);
+        sliceSmokeDiagnostics.push(freshDataSliceDiagnostic(proxyPayload, ticker, "next_api_proxy_blocked_fresh_data"));
 
         const [directResponse, directPayload] = await requestJsonWithLog(
           "GET",
@@ -2356,6 +2408,7 @@ if (localBrowserSmokeEnabled) {
         assert.equal(directResponse.status, 200, `${ticker} direct FastAPI blocked fresh-data API should return 200`);
         assertCorsAllowsLocalWebOrigin(directResponse, `${ticker} direct FastAPI blocked fresh-data API`);
         assertBlockedFreshDataPayload(directPayload, ticker, `${ticker} direct FastAPI blocked fresh-data API`);
+        sliceSmokeDiagnostics.push(freshDataSliceDiagnostic(directPayload, ticker, "direct_fastapi_blocked_fresh_data"));
 
         const [searchResponse, searchPayload] = await requestJsonWithLog(
           "GET",
@@ -2366,35 +2419,78 @@ if (localBrowserSmokeEnabled) {
         assert.equal(searchResponse.status, 200, `${ticker} frontend proxy blocked search API should return 200`);
         assertBlockedSearchPayload(searchPayload, ticker, `${ticker} frontend proxy blocked search API`);
         assertNoRawPayloadOrSecretExposure(searchPayload, `${ticker} frontend proxy blocked search API`);
-        if (durableMode) {
-          const [assetExportResponse, assetExportPayload] = await requestJsonWithLog(
-            "GET",
-            `${webBase}/api/assets/${encodeURIComponent(ticker)}/export?export_format=json`,
-            {},
-            `${ticker} frontend proxy blocked asset JSON export`
-          );
-          assert.equal(assetExportResponse.status, 200, `${ticker} frontend proxy blocked asset JSON export should return 200`);
-          assertBlockedExportContractPayload(
-            assetExportPayload,
-            ticker,
-            "asset_page",
-            `${ticker} frontend proxy blocked asset JSON export`
-          );
+        const [directSearchResponse, directSearchPayload] = await requestJsonWithLog(
+          "GET",
+          `${apiBase}/api/search?q=${encodeURIComponent(ticker)}`,
+          { headers: { Origin: webBase } },
+          `${ticker} direct FastAPI blocked search API`
+        );
+        assert.equal(directSearchResponse.status, 200, `${ticker} direct FastAPI blocked search API should return 200`);
+        assertCorsAllowsLocalWebOrigin(directSearchResponse, `${ticker} direct FastAPI blocked search API`);
+        assertBlockedSearchPayload(directSearchPayload, ticker, `${ticker} direct FastAPI blocked search API`);
+        assertNoRawPayloadOrSecretExposure(directSearchPayload, `${ticker} direct FastAPI blocked search API`);
 
-          const [sourceExportResponse, sourceExportPayload] = await requestJsonWithLog(
-            "GET",
-            `${webBase}/api/assets/${encodeURIComponent(ticker)}/sources/export?export_format=json`,
-            {},
-            `${ticker} frontend proxy blocked source-list JSON export`
-          );
-          assert.equal(sourceExportResponse.status, 200, `${ticker} frontend proxy blocked source-list JSON export should return 200`);
-          assertBlockedExportContractPayload(
-            sourceExportPayload,
-            ticker,
-            "asset_source_list",
-            `${ticker} frontend proxy blocked source-list JSON export`
-          );
-        }
+        const [assetExportResponse, assetExportPayload] = await requestJsonWithLog(
+          "GET",
+          `${webBase}/api/assets/${encodeURIComponent(ticker)}/export?export_format=json`,
+          {},
+          `${ticker} frontend proxy blocked asset JSON export`
+        );
+        assert.equal(assetExportResponse.status, 200, `${ticker} frontend proxy blocked asset JSON export should return 200`);
+        assertBlockedExportContractPayload(
+          assetExportPayload,
+          ticker,
+          "asset_page",
+          `${ticker} frontend proxy blocked asset JSON export`
+        );
+        blockedExportDiagnostics.push(blockedExportDiagnostic(assetExportPayload, ticker, "next_api_proxy_blocked_asset_export"));
+
+        const [directAssetExportResponse, directAssetExportPayload] = await requestJsonWithLog(
+          "GET",
+          `${apiBase}/api/assets/${encodeURIComponent(ticker)}/export?export_format=json`,
+          { headers: { Origin: webBase } },
+          `${ticker} direct FastAPI blocked asset JSON export`
+        );
+        assert.equal(directAssetExportResponse.status, 200, `${ticker} direct FastAPI blocked asset JSON export should return 200`);
+        assertCorsAllowsLocalWebOrigin(directAssetExportResponse, `${ticker} direct FastAPI blocked asset JSON export`);
+        assertBlockedExportContractPayload(
+          directAssetExportPayload,
+          ticker,
+          "asset_page",
+          `${ticker} direct FastAPI blocked asset JSON export`
+        );
+        blockedExportDiagnostics.push(blockedExportDiagnostic(directAssetExportPayload, ticker, "direct_fastapi_blocked_asset_export"));
+
+        const [sourceExportResponse, sourceExportPayload] = await requestJsonWithLog(
+          "GET",
+          `${webBase}/api/assets/${encodeURIComponent(ticker)}/sources/export?export_format=json`,
+          {},
+          `${ticker} frontend proxy blocked source-list JSON export`
+        );
+        assert.equal(sourceExportResponse.status, 200, `${ticker} frontend proxy blocked source-list JSON export should return 200`);
+        assertBlockedExportContractPayload(
+          sourceExportPayload,
+          ticker,
+          "asset_source_list",
+          `${ticker} frontend proxy blocked source-list JSON export`
+        );
+        blockedExportDiagnostics.push(blockedExportDiagnostic(sourceExportPayload, ticker, "next_api_proxy_blocked_source_list_export"));
+
+        const [directSourceExportResponse, directSourceExportPayload] = await requestJsonWithLog(
+          "GET",
+          `${apiBase}/api/assets/${encodeURIComponent(ticker)}/sources/export?export_format=json`,
+          { headers: { Origin: webBase } },
+          `${ticker} direct FastAPI blocked source-list JSON export`
+        );
+        assert.equal(directSourceExportResponse.status, 200, `${ticker} direct FastAPI blocked source-list JSON export should return 200`);
+        assertCorsAllowsLocalWebOrigin(directSourceExportResponse, `${ticker} direct FastAPI blocked source-list JSON export`);
+        assertBlockedExportContractPayload(
+          directSourceExportPayload,
+          ticker,
+          "asset_source_list",
+          `${ticker} direct FastAPI blocked source-list JSON export`
+        );
+        blockedExportDiagnostics.push(blockedExportDiagnostic(directSourceExportPayload, ticker, "direct_fastapi_blocked_source_list_export"));
       } catch (error) {
         sliceSmokeFailures.push(`${ticker} blocked regression probe failed: ${error}`);
       }
@@ -2411,6 +2507,16 @@ if (localBrowserSmokeEnabled) {
         assert.equal(searchResponse.status, 200, `${ticker} frontend proxy search contract should return 200`);
         assertSearchContractPayload(searchPayload, ticker, assetType, `${ticker} frontend proxy search contract`);
         assertNoRawPayloadOrSecretExposure(searchPayload, `${ticker} frontend proxy search contract`);
+        const [directSearchResponse, directSearchPayload] = await requestJsonWithLog(
+          "GET",
+          `${apiBase}/api/search?q=${encodeURIComponent(ticker)}`,
+          { headers: { Origin: webBase } },
+          `${ticker} direct FastAPI search contract`
+        );
+        assert.equal(directSearchResponse.status, 200, `${ticker} direct FastAPI search contract should return 200`);
+        assertCorsAllowsLocalWebOrigin(directSearchResponse, `${ticker} direct FastAPI search contract`);
+        assertSearchContractPayload(directSearchPayload, ticker, assetType, `${ticker} direct FastAPI search contract`);
+        assertNoRawPayloadOrSecretExposure(directSearchPayload, `${ticker} direct FastAPI search contract`);
 
         const [overviewResponse, overviewPayload] = await requestJsonWithLog(
           "GET",
@@ -2421,6 +2527,16 @@ if (localBrowserSmokeEnabled) {
         assert.equal(overviewResponse.status, 200, `${ticker} frontend proxy overview contract should return 200`);
         assertOverviewContractPayload(overviewPayload, ticker, assetType, `${ticker} frontend proxy overview contract`);
         assertNoRawPayloadOrSecretExposure(overviewPayload, `${ticker} frontend proxy overview contract`);
+        const [directOverviewResponse, directOverviewPayload] = await requestJsonWithLog(
+          "GET",
+          `${apiBase}/api/assets/${encodeURIComponent(ticker)}/overview`,
+          { headers: { Origin: webBase } },
+          `${ticker} direct FastAPI overview contract`
+        );
+        assert.equal(directOverviewResponse.status, 200, `${ticker} direct FastAPI overview contract should return 200`);
+        assertCorsAllowsLocalWebOrigin(directOverviewResponse, `${ticker} direct FastAPI overview contract`);
+        assertOverviewContractPayload(directOverviewPayload, ticker, assetType, `${ticker} direct FastAPI overview contract`);
+        assertNoRawPayloadOrSecretExposure(directOverviewPayload, `${ticker} direct FastAPI overview contract`);
 
         const [detailsResponse, detailsPayload] = await requestJsonWithLog(
           "GET",
@@ -2431,6 +2547,16 @@ if (localBrowserSmokeEnabled) {
         assert.equal(detailsResponse.status, 200, `${ticker} frontend proxy details contract should return 200`);
         assertDetailsContractPayload(detailsPayload, ticker, assetType, `${ticker} frontend proxy details contract`);
         assertNoRawPayloadOrSecretExposure(detailsPayload, `${ticker} frontend proxy details contract`);
+        const [directDetailsResponse, directDetailsPayload] = await requestJsonWithLog(
+          "GET",
+          `${apiBase}/api/assets/${encodeURIComponent(ticker)}/details`,
+          { headers: { Origin: webBase } },
+          `${ticker} direct FastAPI details contract`
+        );
+        assert.equal(directDetailsResponse.status, 200, `${ticker} direct FastAPI details contract should return 200`);
+        assertCorsAllowsLocalWebOrigin(directDetailsResponse, `${ticker} direct FastAPI details contract`);
+        assertDetailsContractPayload(directDetailsPayload, ticker, assetType, `${ticker} direct FastAPI details contract`);
+        assertNoRawPayloadOrSecretExposure(directDetailsPayload, `${ticker} direct FastAPI details contract`);
 
         const [sourcesResponse, sourcesPayload] = await requestJsonWithLog(
           "GET",
@@ -2441,6 +2567,16 @@ if (localBrowserSmokeEnabled) {
         assert.equal(sourcesResponse.status, 200, `${ticker} frontend proxy sources contract should return 200`);
         assertSourcesContractPayload(sourcesPayload, ticker, `${ticker} frontend proxy sources contract`);
         assertNoRawPayloadOrSecretExposure(sourcesPayload, `${ticker} frontend proxy sources contract`);
+        const [directSourcesResponse, directSourcesPayload] = await requestJsonWithLog(
+          "GET",
+          `${apiBase}/api/assets/${encodeURIComponent(ticker)}/sources`,
+          { headers: { Origin: webBase } },
+          `${ticker} direct FastAPI sources contract`
+        );
+        assert.equal(directSourcesResponse.status, 200, `${ticker} direct FastAPI sources contract should return 200`);
+        assertCorsAllowsLocalWebOrigin(directSourcesResponse, `${ticker} direct FastAPI sources contract`);
+        assertSourcesContractPayload(directSourcesPayload, ticker, `${ticker} direct FastAPI sources contract`);
+        assertNoRawPayloadOrSecretExposure(directSourcesPayload, `${ticker} direct FastAPI sources contract`);
 
         if (durableMode) {
           const [assetExportResponse, assetExportPayload] = await requestJsonWithLog(
@@ -2485,6 +2621,32 @@ if (localBrowserSmokeEnabled) {
     console.log(
       `${smokeLabel} passed for supported=${localFreshDataSliceSupportedTickers.join(",")} `
       + `and blocked=${localFreshDataSliceBlockedTickers.join(",")}.`
+    );
+    console.log(
+      `${smokeLabel} contract summary: ${JSON.stringify(
+        {
+          schema_version: localLiveSliceSmokeSchemaVersion,
+          bases: {
+            next_api_proxy_base: `${webBase}/api`,
+            direct_fastapi_base: `${apiBase}/api`,
+          },
+          strict_source_pack_readiness_gates_are_audit_diagnostics_only: true,
+          strict_gates_do_not_block_lightweight_live_smoke_when_renderable_source_labeled_and_raw_payload_hidden: true,
+          supported_tickers: localFreshDataSliceSupportedTickers,
+          blocked_regression_tickers: localFreshDataSliceBlockedTickers,
+          fresh_data_diagnostics: sliceSmokeDiagnostics,
+          blocked_export_diagnostics: blockedExportDiagnostics,
+          no_raw_payload_no_secret_diagnostics: {
+            raw_payload_exposed_detected: sliceSmokeDiagnostics.some((row) => row.raw_payload_exposed),
+            raw_payload_values_reported: false,
+            secret_values_reported: false,
+            secret_env_values_reported: false,
+            sanitized_metadata_only: true,
+          },
+        },
+        null,
+        2
+      )}`
     );
   };
 
