@@ -1,4 +1,5 @@
 schema_version: llm-provider-evals-v1
+live_ai_smoke_schema_version: local-live-ai-validation-smoke-v1
 
 required_models:
   - LlmProviderKind
@@ -94,3 +95,27 @@ validation_rejection_cases:
     expected_status: invalid_raw_reasoning
   - id: unrestricted_source_text_leakage
     expected_status: invalid_unrestricted_source_text
+
+live_ai_smoke_required_cases:
+  - grounded_chat_supported_stock_mvp_slice
+  - grounded_chat_supported_etf_mvp_slice
+  - ai_comprehensive_analysis_threshold_case
+  - ai_comprehensive_analysis_zero_evidence_suppressed
+  - ai_comprehensive_analysis_one_item_insufficient_evidence
+  - blocked_regression_tickers_generated_output_ineligible
+
+live_ai_smoke_chat_tickers:
+  stock: AAPL
+  etf: VOO
+
+live_ai_smoke_blocked_regression_tickers:
+  - TQQQ
+  - ARKK
+  - BND
+  - GLD
+
+live_ai_smoke_required_prereq_env_vars:
+  - LTT_LIVE_AI_SMOKE_ENABLED
+  - LLM_PROVIDER
+  - LLM_LIVE_GENERATION_ENABLED
+  - OPENROUTER_API_KEY

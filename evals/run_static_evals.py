@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import os
 import sys
 import yaml
@@ -141,6 +142,16 @@ from scripts.run_weekly_news_live_source_smoke import (
     SMOKE_OPT_IN_ENV,
     SMOKE_SCHEMA_VERSION,
     run_weekly_news_live_source_smoke,
+)
+from scripts.run_live_ai_validation_smoke import (
+    ANALYSIS_CASE_ID as LIVE_AI_ANALYSIS_CASE_ID,
+    ANALYSIS_EMPTY_CASE_ID as LIVE_AI_ANALYSIS_EMPTY_CASE_ID,
+    ANALYSIS_ONE_ITEM_CASE_ID as LIVE_AI_ANALYSIS_ONE_ITEM_CASE_ID,
+    BLOCKED_REGRESSION_CASE_ID as LIVE_AI_BLOCKED_REGRESSION_CASE_ID,
+    CHAT_ETF_CASE_ID as LIVE_AI_CHAT_ETF_CASE_ID,
+    CHAT_STOCK_CASE_ID as LIVE_AI_CHAT_STOCK_CASE_ID,
+    SCHEMA_VERSION as LIVE_AI_SMOKE_SCHEMA_VERSION,
+    run_live_ai_validation_smoke,
 )
 
 
@@ -2397,6 +2408,7 @@ def test_weekly_news_cases():
 def test_llm_provider_cases():
     data = load_yaml("llm_provider_eval_cases.yaml")
     assert data.get("schema_version") == "llm-provider-evals-v1"
+    assert data.get("live_ai_smoke_schema_version") == LIVE_AI_SMOKE_SCHEMA_VERSION
 
     missing_models = {name for name in data.get("required_models", []) if not hasattr(models, name)}
     assert not missing_models, f"Missing LLM provider contract models: {missing_models}"
@@ -2559,6 +2571,86 @@ def test_llm_provider_cases():
         assert forbidden not in llm_source
         if forbidden != "os.environ":
             assert forbidden not in main_source
+
+    default_smoke = run_live_ai_validation_smoke(env={})
+    assert default_smoke["schema_version"] == LIVE_AI_SMOKE_SCHEMA_VERSION
+    assert default_smoke["status"] == "skipped"
+    assert default_smoke["normal_ci_requires_live_calls"] is False
+    assert default_smoke["live_network_calls_attempted"] is False
+    assert {case["case_id"] for case in default_smoke["cases"]} == set(data["live_ai_smoke_required_cases"])
+    assert {row["env_var"] for row in default_smoke["readiness_prerequisites"]} >= set(
+        data["live_ai_smoke_required_prereq_env_vars"]
+    )
+
+    mocked_smoke = run_live_ai_validation_smoke(
+        env={
+            "LTT_LIVE_AI_SMOKE_ENABLED": "true",
+            "LLM_PROVIDER": "openrouter",
+            "LLM_LIVE_GENERATION_ENABLED": "true",
+            "OPENROUTER_API_KEY": "placeholder-local-key",
+        },
+        transport_factory=_live_ai_eval_transport_factory,
+    )
+    assert mocked_smoke["status"] == "pass"
+    assert mocked_smoke["normal_ci_requires_live_calls"] is False
+    assert mocked_smoke["live_network_calls_attempted"] is False
+    assert mocked_smoke["generated_output_cache_entries_written"] is False
+    smoke_cases = {case["case_id"]: case for case in mocked_smoke["cases"]}
+    assert set(data["live_ai_smoke_required_cases"]) == set(smoke_cases)
+    assert smoke_cases[LIVE_AI_CHAT_STOCK_CASE_ID]["asset_ticker"] == data["live_ai_smoke_chat_tickers"]["stock"]
+    assert smoke_cases[LIVE_AI_CHAT_STOCK_CASE_ID]["asset_type"] == "stock"
+    assert smoke_cases[LIVE_AI_CHAT_ETF_CASE_ID]["asset_ticker"] == data["live_ai_smoke_chat_tickers"]["etf"]
+    assert smoke_cases[LIVE_AI_CHAT_ETF_CASE_ID]["asset_type"] == "etf"
+    assert smoke_cases[LIVE_AI_CHAT_STOCK_CASE_ID]["validation_contract"]["selected_asset_grounding"] is True
+    assert smoke_cases[LIVE_AI_CHAT_ETF_CASE_ID]["validation_contract"]["single_asset_chat_scope"] is True
+    assert smoke_cases[LIVE_AI_ANALYSIS_CASE_ID]["selected_item_count"] == 2
+    assert smoke_cases[LIVE_AI_ANALYSIS_CASE_ID]["validation_contract"]["required_section_order"] is True
+    assert smoke_cases[LIVE_AI_ANALYSIS_EMPTY_CASE_ID]["diagnostic_state"] == "empty"
+    assert smoke_cases[LIVE_AI_ANALYSIS_EMPTY_CASE_ID]["live_call_attempted"] is False
+    assert smoke_cases[LIVE_AI_ANALYSIS_ONE_ITEM_CASE_ID]["diagnostic_state"] == "insufficient_evidence"
+    assert smoke_cases[LIVE_AI_ANALYSIS_ONE_ITEM_CASE_ID]["validation_contract"]["generated_output_usable"] is False
+    assert smoke_cases[LIVE_AI_BLOCKED_REGRESSION_CASE_ID]["blocked_regression_tickers"] == data[
+        "live_ai_smoke_blocked_regression_tickers"
+    ]
+    assert smoke_cases[LIVE_AI_BLOCKED_REGRESSION_CASE_ID]["validation_contract"]["generated_chat_answers"] is False
+
+
+def _live_ai_eval_transport_factory(case_id, prompt_payload):
+    def transport(request):
+        if case_id in {LIVE_AI_CHAT_STOCK_CASE_ID, LIVE_AI_CHAT_ETF_CASE_ID}:
+            content = {
+                "asset_ticker": prompt_payload["asset_ticker"],
+                "direct_answer": f"{prompt_payload['asset_ticker']} is described from selected evidence.",
+                "why_it_matters": "The response stays educational and same-asset cited.",
+                "citation_ids": [prompt_payload["allowed_citation_ids"][0]],
+                "freshness_state": "fresh",
+            }
+        else:
+            weekly_citation = prompt_payload["allowed_weekly_citation_ids"][0]
+            canonical_citation = prompt_payload["canonical_fact_citation_ids"][0]
+            content = {
+                "sections": [
+                    {
+                        "section_id": section_id,
+                        "analysis": "Educational Weekly News Focus context from selected evidence.",
+                        "citation_ids": [weekly_citation],
+                    }
+                    for section_id in prompt_payload["required_section_order"]
+                ],
+                "canonical_fact_citation_ids": [canonical_citation],
+                "stable_facts_separate": True,
+            }
+        return {
+            "status_code": 200,
+            "latency_ms": 1,
+            "json": {
+                "model": DEFAULT_OPENROUTER_FREE_MODEL_ORDER[0],
+                "choices": [{"message": {"content": json.dumps(content)}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            },
+        }
+
+    return transport
 
 
 def _flatten_static_text(value):

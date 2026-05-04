@@ -122,12 +122,17 @@ def _ready_openrouter_runtime():
     return build_llm_runtime_config(default_openrouter_settings(), server_side_key_present=True)
 
 
-def _live_ai_smoke_transport_factory(*, invalid_analysis: bool = False):
+def _live_ai_smoke_transport_factory(*, invalid_analysis: bool = False, invalid_chat_scope: bool = False):
     def factory(case_id, prompt_payload):
         def transport(request):
-            if case_id == "grounded_chat_supported_golden_asset":
+            if case_id in {"grounded_chat_supported_stock_mvp_slice", "grounded_chat_supported_etf_mvp_slice"}:
+                other_ticker_text = " It also compares QQQ without being asked." if invalid_chat_scope else ""
                 content = {
-                    "direct_answer": "VOO is described from the selected approved knowledge pack.",
+                    "asset_ticker": prompt_payload["asset_ticker"],
+                    "direct_answer": (
+                        f"{prompt_payload['asset_ticker']} is described from the selected approved knowledge pack."
+                        f"{other_ticker_text}"
+                    ),
                     "why_it_matters": "The answer stays educational and cites the selected asset evidence.",
                     "citation_ids": [prompt_payload["allowed_citation_ids"][0]],
                     "freshness_state": "fresh",
@@ -150,6 +155,7 @@ def _live_ai_smoke_transport_factory(*, invalid_analysis: bool = False):
                         for section_id in section_order
                     ],
                     "canonical_fact_citation_ids": [canonical_citation],
+                    "stable_facts_separate": True,
                 }
             return {
                 "status_code": 200,
@@ -230,10 +236,28 @@ def test_local_live_ai_validation_smoke_defaults_to_sanitized_skip_without_live_
 
     assert result["schema_version"] == "local-live-ai-validation-smoke-v1"
     assert result["status"] == "skipped"
+    assert result["normal_ci_requires_live_calls"] is False
     assert result["readiness_status"] == "disabled_by_default"
+    assert result["live_network_calls_attempted"] is False
+    assert result["generated_output_cache_entries_written"] is False
     assert all(case["status"] == "skipped" for case in result["cases"])
     assert all(case["live_call_attempted"] is False for case in result["cases"])
+    assert {case["case_id"] for case in result["cases"]} == {
+        "grounded_chat_supported_stock_mvp_slice",
+        "grounded_chat_supported_etf_mvp_slice",
+        "ai_comprehensive_analysis_threshold_case",
+        "ai_comprehensive_analysis_zero_evidence_suppressed",
+        "ai_comprehensive_analysis_one_item_insufficient_evidence",
+        "blocked_regression_tickers_generated_output_ineligible",
+    }
+    assert {row["env_var"] for row in result["readiness_prerequisites"]} >= {
+        "LTT_LIVE_AI_SMOKE_ENABLED",
+        "LLM_PROVIDER",
+        "LLM_LIVE_GENERATION_ENABLED",
+        "OPENROUTER_API_KEY",
+    }
     assert result["sanitized_diagnostics"]["normal_ci_requires_live_calls"] is False
+    assert result["sanitized_diagnostics"]["env_var_names_reported_without_values"] is True
     serialized = str(result)
     for forbidden in [
         "raw user",
@@ -261,9 +285,24 @@ def test_local_live_ai_validation_smoke_blocks_without_server_side_key_readiness
 
     assert result["status"] == "blocked"
     assert result["server_side_key_present"] is False
-    assert all(case["status"] == "blocked" for case in result["cases"])
-    assert {case["reason_code"] for case in result["cases"]} == {"server_side_key_missing"}
+    live_cases = [
+        case
+        for case in result["cases"]
+        if case["case_id"]
+        in {
+            "grounded_chat_supported_stock_mvp_slice",
+            "grounded_chat_supported_etf_mvp_slice",
+            "ai_comprehensive_analysis_threshold_case",
+        }
+    ]
+    assert all(case["status"] == "blocked" for case in live_cases)
+    assert {case["reason_code"] for case in live_cases} == {"server_side_key_missing"}
     assert all(case["live_call_attempted"] is False for case in result["cases"])
+    assert result["readiness_prerequisites"][3] == {
+        "env_var": "OPENROUTER_API_KEY",
+        "satisfied": False,
+        "reason_code": "server_side_key_presence_required",
+    }
 
 
 def test_local_live_ai_validation_smoke_passes_with_mocked_live_transport_and_validation_gates():
@@ -283,14 +322,43 @@ def test_local_live_ai_validation_smoke_passes_with_mocked_live_transport_and_va
     assert result["readiness_status"] == "ready_for_explicit_live_call"
     assert result["server_side_key_present"] is True
     assert {case["case_id"]: case["status"] for case in result["cases"]} == {
-        "grounded_chat_supported_golden_asset": "pass",
+        "grounded_chat_supported_stock_mvp_slice": "pass",
+        "grounded_chat_supported_etf_mvp_slice": "pass",
         "ai_comprehensive_analysis_threshold_case": "pass",
+        "ai_comprehensive_analysis_zero_evidence_suppressed": "pass",
+        "ai_comprehensive_analysis_one_item_insufficient_evidence": "pass",
+        "blocked_regression_tickers_generated_output_ineligible": "pass",
     }
-    assert all(case["validation_status"] == "valid" for case in result["cases"])
-    assert all(case["cacheable"] is True for case in result["cases"])
-    assert all(case["live_call_attempted"] is True for case in result["cases"])
+    live_cases = [
+        case
+        for case in result["cases"]
+        if case["case_kind"] in {"grounded_chat", "ai_comprehensive_analysis"}
+    ]
+    assert all(case["validation_status"] == "valid" for case in live_cases)
+    assert all(case["cacheable"] is True for case in live_cases)
+    assert all(case["live_call_attempted"] is True for case in live_cases)
+    assert result["live_network_calls_attempted"] is False
+    chat_cases = {case["asset_ticker"]: case for case in result["cases"] if case["case_kind"] == "grounded_chat"}
+    assert chat_cases["AAPL"]["asset_type"] == "stock"
+    assert chat_cases["VOO"]["asset_type"] == "etf"
+    assert chat_cases["AAPL"]["validation_contract"]["selected_asset_grounding"] is True
+    assert chat_cases["VOO"]["validation_contract"]["single_asset_chat_scope"] is True
     analysis_case = next(case for case in result["cases"] if case["case_id"] == "ai_comprehensive_analysis_threshold_case")
     assert analysis_case["selected_item_count"] == 2
+    assert analysis_case["expected_minimum_item_count"] == 2
+    assert analysis_case["validation_contract"]["stable_facts_separate"] is True
+    zero_case = next(case for case in result["cases"] if case["case_id"] == "ai_comprehensive_analysis_zero_evidence_suppressed")
+    one_case = next(case for case in result["cases"] if case["case_id"] == "ai_comprehensive_analysis_one_item_insufficient_evidence")
+    assert zero_case["diagnostic_state"] == "empty"
+    assert zero_case["selected_item_count"] == 0
+    assert zero_case["live_call_attempted"] is False
+    assert one_case["diagnostic_state"] == "insufficient_evidence"
+    assert one_case["selected_item_count"] == 1
+    assert one_case["validation_contract"]["generated_output_usable"] is False
+    blocked_case = next(case for case in result["cases"] if case["case_id"] == "blocked_regression_tickers_generated_output_ineligible")
+    assert blocked_case["blocked_regression_tickers"] == ["TQQQ", "ARKK", "BND", "GLD"]
+    assert blocked_case["live_call_attempted"] is False
+    assert blocked_case["validation_contract"]["generated_chat_answers"] is False
 
 
 def test_local_live_ai_validation_smoke_blocks_invalid_analysis_before_cache_use():
@@ -313,6 +381,28 @@ def test_local_live_ai_validation_smoke_blocks_invalid_analysis_before_cache_use
     assert analysis_case["validation_status"] == "invalid_schema"
     assert analysis_case["cacheable"] is False
     assert analysis_case["reason_code"] == "validation_invalid_schema"
+
+
+def test_local_live_ai_validation_smoke_blocks_multi_asset_single_chat_output():
+    smoke = _load_live_ai_smoke_module()
+
+    result = smoke.run_live_ai_validation_smoke(
+        env={
+            "LTT_LIVE_AI_SMOKE_ENABLED": "true",
+            "LLM_PROVIDER": "openrouter",
+            "LLM_LIVE_GENERATION_ENABLED": "true",
+            "OPENROUTER_API_KEY": "placeholder-local-key",
+        },
+        transport_factory=_live_ai_smoke_transport_factory(invalid_chat_scope=True),
+    )
+
+    chat_case = next(case for case in result["cases"] if case["case_id"] == "grounded_chat_supported_stock_mvp_slice")
+
+    assert result["status"] == "blocked"
+    assert chat_case["status"] == "blocked"
+    assert chat_case["validation_status"] == "invalid_unsupported_claim"
+    assert chat_case["validation_contract"]["single_asset_chat_scope"] is False
+    assert chat_case["cacheable"] is False
 
 
 def test_openrouter_readiness_distinguishes_missing_endpoint_models_and_validation_gates():

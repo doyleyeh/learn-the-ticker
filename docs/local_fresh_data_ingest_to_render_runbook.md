@@ -234,39 +234,62 @@ All steps remain deterministic by default and must not approve sources, promote 
 
 ## Local Live-AI Validation Smoke
 
-Task: T-127.
+Task: T-127 baseline, updated by T-155.
 
-The local live-AI validation smoke is operator-only and disabled by default. It validates one supported golden grounded-chat case and one AI Comprehensive Analysis case where two approved Weekly News Focus items are available. Approved reputable third-party items may count only when source governance permits them and the item is labeled as third-party reporting. It does not approve sources, does not relax Golden Asset Source Handoff, does not write generated-output cache records, and does not print raw user text, prompts, source text, model reasoning, transcripts, generated live responses, or secret values.
+The local live-AI validation smoke is operator-only and disabled by default. T-155 extends it from the original T-127 two-case smoke into a lightweight MVP-slice contract for:
+
+- grounded chat for one supported stock (`AAPL`) and one supported ETF (`VOO`)
+- AI Comprehensive Analysis for `QQQ` only when the T-154 Weekly News Focus threshold has at least two selected approved items
+- zero-item and one-item Weekly News Focus cases that suppress AI output as empty or insufficient evidence
+- blocked-product regression coverage for `TQQQ`, `ARKK`, `BND`, and `GLD`
+- sanitized readiness and validation diagnostics only
+
+The smoke does not approve sources, does not relax Golden Asset Source Handoff, does not promote ETF-500 or Top-500 coverage, does not mark deployment readiness, does not provide investment advice, does not write generated-output cache records, and does not print raw user text, prompts, source text, model reasoning, transcripts, generated live responses, raw provider payloads, or secret values.
 
 Prerequisites:
 
-- a server-side live provider key is already present in the operator shell
-- local opt-in is intentional for this shell only
-- live generation is explicitly enabled for this one command
-- source evidence remains fixture-safe or already handoff-approved
+- `LTT_LIVE_AI_SMOKE_ENABLED=true` for this shell only
+- `LLM_PROVIDER=openrouter`
+- `LLM_LIVE_GENERATION_ENABLED=true`
+- server-side `OPENROUTER_API_KEY` presence in the operator shell, without echoing or pasting the value into logs
+- OpenRouter base URL, free model chain, paid fallback model metadata, validation retry count, and `LLM_REASONING_SUMMARY_ONLY=true` remain configured server-side
+- source evidence remains fixture-safe or already source-governed; this command is validation, not source approval
 
 Command:
 
 ```bash
 LTT_LIVE_AI_SMOKE_ENABLED=true \
-LLM_PROVIDER=<server-side-live-provider> \
+LLM_PROVIDER=openrouter \
 LLM_LIVE_GENERATION_ENABLED=true \
 TMPDIR=/tmp python3 scripts/run_live_ai_validation_smoke.py --json
 ```
 
+Deterministic mocked test path:
+
+```bash
+TMPDIR=/tmp python3 -m pytest tests/unit/test_llm_provider.py -q
+TMPDIR=/tmp python3 evals/run_static_evals.py
+```
+
 Expected results:
 
-- without `LTT_LIVE_AI_SMOKE_ENABLED=true`, both smoke cases report `skipped`
-- without live-generation readiness or a server-side key, both smoke cases report `blocked`
-- with readiness and valid output, cases report `pass`
+- without `LTT_LIVE_AI_SMOKE_ENABLED=true`, all six smoke cases report `skipped`
+- without live-generation readiness or server-side key presence, the stock chat, ETF chat, and two-item analysis cases report `blocked` with env var names and safe reason codes only
+- with readiness and valid output, the stock chat, ETF chat, two-item analysis, zero-item suppression, one-item suppression, and blocked-regression cases report `pass`
+- zero selected Weekly News Focus items remain an empty state, one selected item remains insufficient evidence, and neither case treats live or mocked AI output as usable
+- `normal_ci_requires_live_calls=false`, `live_network_calls_attempted=false` for mocked tests, and `generated_output_cache_entries_written=false`
 - failed schema, citation, source-use, freshness, safety, evidence-threshold, or cache-eligibility checks report `blocked`
 
 Stop conditions:
 
 - any blocked validation result
 - fewer than two approved Weekly News Focus items for the AI Comprehensive Analysis case
+- any generated single-asset chat answer that includes a second ticker instead of staying grounded to the selected asset
+- any generated AI Comprehensive Analysis section order other than What Changed This Week, Market Context, Business/Fund Context, and Risk Context
+- any generated claim that lacks same-asset or same-pack citation binding, source-use eligibility, freshness or uncertainty labels, and educational framing
+- any generated output for `TQQQ`, `ARKK`, `BND`, or `GLD`
 - any diagnostic or log path that would expose raw user text, prompts, source text, generated live responses, model reasoning, transcripts, unrestricted provider payloads, or secret values
-- any attempt to treat local live-AI review as source approval or a Golden Asset Source Handoff override
+- any attempt to treat local live-AI review as source approval, Golden Asset Source Handoff approval, generated-output cache promotion, ETF-500 or Top-500 completion, production readiness, or investment advice
 
 Suggested placeholder-only environment for local frontend/API rendering:
 

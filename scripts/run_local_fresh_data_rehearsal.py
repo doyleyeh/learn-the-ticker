@@ -2326,11 +2326,20 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 def _scrub_live_ai_result(result: dict[str, Any]) -> dict[str, Any]:
     return {
+        "schema_version": result.get("schema_version"),
         "status": result.get("status"),
+        "normal_ci_requires_live_calls": result.get("normal_ci_requires_live_calls"),
         "provider_kind": result.get("provider_kind"),
         "readiness_status": result.get("readiness_status"),
         "live_generation_enabled": result.get("live_generation_enabled"),
+        "live_llm_calls_attempted": result.get("live_llm_calls_attempted"),
+        "live_network_calls_attempted": result.get("live_network_calls_attempted"),
         "server_side_key_present": result.get("server_side_key_present"),
+        "readiness_prerequisites": result.get("readiness_prerequisites", []),
+        "generated_output_cache_entries_written": result.get("generated_output_cache_entries_written"),
+        "sources_approved_by_smoke": result.get("sources_approved_by_smoke"),
+        "manifests_promoted": result.get("manifests_promoted"),
+        "validation_contract": result.get("validation_contract", {}),
         "cases": result.get("cases", []),
         "sanitized_diagnostics": result.get("sanitized_diagnostics", {}),
     }

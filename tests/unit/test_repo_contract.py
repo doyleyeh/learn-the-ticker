@@ -1251,6 +1251,32 @@ def test_local_fresh_data_rehearsal_optional_modes_report_blockers_without_secre
     assert checks["optional_local_durable_repositories"]["status"] == "blocked"
     assert checks["optional_official_source_retrieval"]["status"] == "blocked"
     assert checks["optional_live_ai_review"]["status"] == "blocked"
+    live_ai_details = checks["optional_live_ai_review"]["details"]
+    assert live_ai_details["schema_version"] == "local-live-ai-validation-smoke-v1"
+    assert live_ai_details["normal_ci_requires_live_calls"] is False
+    assert live_ai_details["generated_output_cache_entries_written"] is False
+    assert live_ai_details["sources_approved_by_smoke"] is False
+    assert live_ai_details["manifests_promoted"] is False
+    assert {row["env_var"] for row in live_ai_details["readiness_prerequisites"]} >= {
+        "LTT_LIVE_AI_SMOKE_ENABLED",
+        "LLM_PROVIDER",
+        "LLM_LIVE_GENERATION_ENABLED",
+        "OPENROUTER_API_KEY",
+    }
+    live_ai_cases = {case["case_id"]: case for case in live_ai_details["cases"]}
+    assert live_ai_cases["grounded_chat_supported_stock_mvp_slice"]["status"] == "blocked"
+    assert live_ai_cases["grounded_chat_supported_etf_mvp_slice"]["status"] == "blocked"
+    assert live_ai_cases["ai_comprehensive_analysis_threshold_case"]["status"] == "blocked"
+    assert live_ai_cases["ai_comprehensive_analysis_zero_evidence_suppressed"]["status"] == "pass"
+    assert live_ai_cases["ai_comprehensive_analysis_one_item_insufficient_evidence"]["diagnostic_state"] == (
+        "insufficient_evidence"
+    )
+    assert live_ai_cases["blocked_regression_tickers_generated_output_ineligible"]["blocked_regression_tickers"] == [
+        "TQQQ",
+        "ARKK",
+        "BND",
+        "GLD",
+    ]
     threshold = result["local_mvp_threshold_summary"]
     assert threshold["overall_local_approval_status"] == "blocked_for_local_operator_review"
     assert threshold["local_operator_review_ready"] is False
@@ -1561,9 +1587,15 @@ def test_t118_local_fresh_data_runbook_covers_deterministic_smoke_without_live_r
         "Weekly News Focus renders only the evidence-backed set",
         "test_t118_local_fresh_data_ingest_to_render_smoke_path_is_deterministic",
         "Task: T-127",
+        "updated by T-155",
         "scripts/run_live_ai_validation_smoke.py --json",
-        "both smoke cases report `skipped`",
-        "both smoke cases report `blocked`",
+        "grounded chat for one supported stock (`AAPL`) and one supported ETF (`VOO`)",
+        "AI Comprehensive Analysis for `QQQ` only when the T-154 Weekly News Focus threshold",
+        "all six smoke cases report `skipped`",
+        "the stock chat, ETF chat, and two-item analysis cases report `blocked`",
+        "zero selected Weekly News Focus items remain an empty state",
+        "`normal_ci_requires_live_calls=false`",
+        "`TQQQ`, `ARKK`, `BND`, and `GLD`",
         "T-128 proves deterministic governed golden source snapshots",
         "does not approve sources",
         "does not relax Golden Asset Source Handoff",
@@ -1582,13 +1614,12 @@ def test_t118_local_fresh_data_runbook_covers_deterministic_smoke_without_live_r
         assert marker in runbook, f"T-118 runbook should include marker: {marker}"
 
     for forbidden in [
-        "OPENROUTER",
-        "FMP_API",
-        "ALPHA_VANTAGE",
-        "FINNHUB",
-        "TIINGO",
-        "EODHD",
-        "api_key",
+        "OPENROUTER_API_KEY=",
+        "FMP_API_KEY=",
+        "ALPHA_VANTAGE_API_KEY=",
+        "FINNHUB_API_KEY=",
+        "TIINGO_API_KEY=",
+        "EODHD_API_KEY=",
         "BEGIN PRIVATE KEY",
         "signed url",
         "public storage url",
