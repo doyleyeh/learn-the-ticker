@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.lightweight_data_fetch import fetch_lightweight_asset_data
+from backend.lightweight_data_fetch import build_lightweight_api_fallback_diagnostics, fetch_lightweight_asset_data
 from backend.models import (
     AssetStatus,
     AssetType,
@@ -138,6 +138,7 @@ def build_lightweight_overview_response(response: LightweightFetchResponse) -> O
         source_documents=sources,
         sections=sections,
         section_freshness_validation=[],
+        fallback_diagnostics=_fallback_diagnostics(response),
     )
 
 
@@ -185,6 +186,7 @@ def build_lightweight_details_response(response: LightweightFetchResponse) -> De
             )
             for citation in response.citations
         ],
+        fallback_diagnostics=_fallback_diagnostics(response),
     )
 
 
@@ -228,6 +230,7 @@ def build_lightweight_sources_response(
             },
             unavailable_reasons=[] if source_groups else ["No lightweight source matched the selected filter."],
         ),
+        fallback_diagnostics=_fallback_diagnostics(response),
     )
 
 
@@ -240,6 +243,10 @@ def _can_render_lightweight_page(response: LightweightFetchResponse) -> bool:
         and bool(response.facts)
         and not response.raw_payload_exposed
     )
+
+
+def _fallback_diagnostics(response: LightweightFetchResponse):
+    return response.fallback_diagnostics or build_lightweight_api_fallback_diagnostics(response)
 
 
 def _source_document_from_lightweight(source: LightweightFetchSource, response: LightweightFetchResponse) -> SourceDocument:

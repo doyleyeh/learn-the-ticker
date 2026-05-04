@@ -705,6 +705,7 @@ class SearchResult(BaseModel):
     ingestion_request_route: str | None = None
     message: str | None = None
     blocked_explanation: SearchBlockedExplanation | None = None
+    fallback_diagnostics: LightweightApiFallbackDiagnostics | None = None
 
 
 class SearchResponse(BaseModel):
@@ -1005,6 +1006,40 @@ class LightweightFetchFact(BaseModel):
     limitations: str | None = None
 
 
+class LightweightFallbackFreshnessSummary(BaseModel):
+    page_last_updated_at: str | None = None
+    facts_as_of: str | None = None
+    holdings_as_of: str | None = None
+    recent_events_as_of: str | None = None
+    freshness_state: FreshnessState
+
+
+class LightweightApiFallbackDiagnostics(BaseModel):
+    schema_version: Literal["lightweight-api-fallback-diagnostics-v1"] = "lightweight-api-fallback-diagnostics-v1"
+    source_path: str
+    reason_codes: list[str] = Field(default_factory=list)
+    fetch_state: LightweightFetchState
+    page_render_state: EvidenceState
+    generated_output_eligible: bool
+    source_labels: list[LightweightSourceLabel] = Field(default_factory=list)
+    source_label_counts: dict[str, int] = Field(default_factory=dict)
+    source_count: int = 0
+    citation_count: int = 0
+    fact_count: int = 0
+    gap_count: int = 0
+    official_source_count: int = 0
+    provider_fallback_source_count: int = 0
+    partial_source_count: int = 0
+    unavailable_source_count: int = 0
+    issuer_evidence_state: str = "not_applicable"
+    freshness: LightweightFallbackFreshnessSummary
+    raw_payload_exposed: bool = False
+    secret_values_exposed: bool = False
+    raw_payload_fields_exposed: bool = False
+    hidden_prompt_or_reasoning_exposed: bool = False
+    diagnostics_are_sanitized: bool = True
+
+
 class LightweightFetchResponse(BaseModel):
     schema_version: Literal["lightweight-asset-fetch-v1"] = "lightweight-asset-fetch-v1"
     ticker: str
@@ -1020,6 +1055,7 @@ class LightweightFetchResponse(BaseModel):
     citations: list[LightweightFetchCitation] = Field(default_factory=list)
     gaps: list[LightweightFetchFact] = Field(default_factory=list)
     diagnostics: dict[str, Any] = Field(default_factory=dict)
+    fallback_diagnostics: LightweightApiFallbackDiagnostics | None = None
     no_live_external_calls: bool = True
     raw_payload_exposed: bool = False
     message: str
@@ -2446,6 +2482,7 @@ class OverviewResponse(BaseModel):
     source_documents: list[SourceDocument] = Field(default_factory=list)
     sections: list[OverviewSection] = Field(default_factory=list)
     section_freshness_validation: list[OverviewSectionFreshnessValidation] = Field(default_factory=list)
+    fallback_diagnostics: LightweightApiFallbackDiagnostics | None = None
 
 
 class DetailsResponse(BaseModel):
@@ -2454,6 +2491,7 @@ class DetailsResponse(BaseModel):
     freshness: Freshness
     facts: dict[str, MetricValue | str | int | float | list[Any] | None]
     citations: list[Citation] = Field(default_factory=list)
+    fallback_diagnostics: LightweightApiFallbackDiagnostics | None = None
 
 
 class SourcesResponse(BaseModel):
@@ -2468,6 +2506,7 @@ class SourcesResponse(BaseModel):
     related_claims: list[SourceDrawerRelatedClaim] = Field(default_factory=list)
     section_references: list[SourceDrawerSectionReference] = Field(default_factory=list)
     diagnostics: SourceDrawerDiagnostics = Field(default_factory=SourceDrawerDiagnostics)
+    fallback_diagnostics: LightweightApiFallbackDiagnostics | None = None
 
 
 class RecentResponse(BaseModel):

@@ -13,6 +13,7 @@ from backend.knowledge_pack_repository import (
     InMemoryAssetKnowledgePackRepository,
     knowledge_pack_records_from_acquisition_result,
 )
+from backend.lightweight_data_fetch import fetch_lightweight_asset_data
 from backend.models import FreshnessState, SourceAllowlistStatus, SourceQuality, SourceUsePolicy, WeeklyNewsEventType
 from backend.overview import (
     _asset_knowledge_pack_from_repository_records,
@@ -25,6 +26,7 @@ from backend.provider_adapters.etf_issuer import execute_etf_issuer_handoff_gate
 from backend.providers import fetch_mock_provider_response, mock_etf_issuer_adapter
 from backend.retrieval import build_asset_knowledge_pack, build_asset_knowledge_pack_result
 from backend.safety import find_forbidden_output_phrases
+from backend.settings import build_lightweight_data_settings
 from backend.source_snapshot_repository import (
     InMemorySourceSnapshotArtifactRepository,
     SourceSnapshotArtifactCategory,
@@ -41,6 +43,7 @@ from backend.weekly_news_repository import (
     acquire_weekly_news_event_evidence_from_fixtures,
 )
 from scripts.run_local_fresh_data_rehearsal import run_rehearsal
+from scripts.run_local_fresh_data_slice_smoke import LocalFreshDataSliceFakeFetcher, RETRIEVED_AT
 
 
 client = TestClient(app)
@@ -748,6 +751,80 @@ def test_search_classification_states_cover_ambiguous_unknown_and_ingestion_need
     assert out_of_scope_etf["results"][0]["generated_route"] is None
     assert out_of_scope_etf["results"][0]["can_answer_chat"] is False
     assert out_of_scope_etf["results"][0]["can_compare"] is False
+
+
+def test_lightweight_api_fallback_diagnostics_are_exposed_without_unlocking_cached_or_blocked_rows(monkeypatch):
+    settings = build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+        }
+    )
+
+    def fake_fetch(ticker, settings=None):  # noqa: ANN001 - monkeypatch target matches production call shapes.
+        del settings
+        return fetch_lightweight_asset_data(
+            ticker,
+            settings=settings_override,
+            fetcher=LocalFreshDataSliceFakeFetcher(),
+            retrieved_at=RETRIEVED_AT,
+        )
+
+    settings_override = settings
+    monkeypatch.setenv("DATA_POLICY_MODE", "lightweight")
+    monkeypatch.setenv("LIGHTWEIGHT_LIVE_FETCH_ENABLED", "true")
+    monkeypatch.setenv("LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED", "true")
+    monkeypatch.setenv("SEC_EDGAR_USER_AGENT", "learn-the-ticker-tests/0.1 test@example.com")
+    monkeypatch.setattr("backend.search.fetch_lightweight_asset_data", fake_fetch)
+    monkeypatch.setattr("backend.lightweight_page.fetch_lightweight_asset_data", fake_fetch)
+    monkeypatch.setattr("backend.main.fetch_lightweight_asset_data", fake_fetch)
+
+    cached_search = client.get("/api/search", params={"q": "VOO"}).json()
+    partial_search = client.get("/api/search", params={"q": "SPY"}).json()
+    overview = client.get("/api/assets/SPY/overview").json()
+    details = client.get("/api/assets/SPY/details").json()
+    sources = client.get("/api/assets/SPY/sources").json()
+    blocked_fresh_data = client.get("/api/assets/TQQQ/fresh-data").json()
+
+    assert cached_search["state"]["support_classification"] == "cached_supported"
+    assert cached_search["results"][0]["fallback_diagnostics"] is None
+
+    search_diagnostics = partial_search["results"][0]["fallback_diagnostics"]
+    assert partial_search["state"]["status"] == "supported"
+    assert partial_search["results"][0]["ticker"] == "SPY"
+    assert search_diagnostics["schema_version"] == "lightweight-api-fallback-diagnostics-v1"
+    assert search_diagnostics["source_path"] == "etf_manifest_scope_provider_fallback"
+    assert search_diagnostics["fetch_state"] == "partial"
+    assert search_diagnostics["page_render_state"] == "partial"
+    assert search_diagnostics["generated_output_eligible"] is True
+    assert search_diagnostics["source_labels"] == ["partial", "provider_derived"]
+    assert search_diagnostics["source_count"] == 2
+    assert search_diagnostics["provider_fallback_source_count"] == 1
+    assert search_diagnostics["gap_count"] == 1
+    assert search_diagnostics["issuer_evidence_state"] == "partial"
+    assert search_diagnostics["freshness"]["holdings_as_of"] == "2026-05-01"
+    assert search_diagnostics["raw_payload_exposed"] is False
+    assert search_diagnostics["secret_values_exposed"] is False
+
+    for payload in (overview, details, sources):
+        diagnostics = payload["fallback_diagnostics"]
+        assert diagnostics["schema_version"] == "lightweight-api-fallback-diagnostics-v1"
+        assert diagnostics["source_path"] == "etf_manifest_scope_provider_fallback"
+        assert diagnostics["issuer_evidence_state"] == "partial"
+        assert diagnostics["raw_payload_exposed"] is False
+        assert diagnostics["secret_values_exposed"] is False
+
+    blocked_diagnostics = blocked_fresh_data["fallback_diagnostics"]
+    assert blocked_fresh_data["generated_output_eligible"] is False
+    assert blocked_fresh_data["sources"] == []
+    assert blocked_fresh_data["citations"] == []
+    assert blocked_fresh_data["facts"] == []
+    assert blocked_diagnostics["source_path"] == "blocked_scope_screen"
+    assert blocked_diagnostics["generated_output_eligible"] is False
+    assert blocked_diagnostics["source_count"] == 0
+    assert blocked_diagnostics["raw_payload_exposed"] is False
 
 
 def test_ingestion_request_route_returns_deterministic_job_or_non_job_states():

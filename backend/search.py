@@ -12,7 +12,7 @@ from backend.data import (
     top500_stock_universe_entry,
 )
 from backend.etf_universe import blocked_etf_entries, eligible_not_cached_etf_entries, etf_universe_entry
-from backend.lightweight_data_fetch import fetch_lightweight_asset_data
+from backend.lightweight_data_fetch import build_lightweight_api_fallback_diagnostics, fetch_lightweight_asset_data
 from backend.models import (
     AssetIdentity,
     AssetStatus,
@@ -492,6 +492,7 @@ def _search_result_from_lightweight_fetch(ticker: str) -> SearchResult | None:
     response = fetch_lightweight_asset_data(ticker, settings=settings)
     if not _lightweight_fetch_opens_page(response):
         return None
+    fallback_diagnostics = response.fallback_diagnostics or build_lightweight_api_fallback_diagnostics(response)
     return SearchResult(
         ticker=response.asset.ticker,
         name=response.asset.name,
@@ -513,6 +514,7 @@ def _search_result_from_lightweight_fetch(ticker: str) -> SearchResult | None:
             "Live lightweight fresh-data fetch resolved this asset for local MVP rendering with source labels "
             "and partial/unavailable states."
         ),
+        fallback_diagnostics=fallback_diagnostics,
     )
 
 

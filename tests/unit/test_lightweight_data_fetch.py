@@ -229,6 +229,14 @@ def test_lightweight_stock_fetch_prefers_sec_and_labels_provider_fallback():
     assert fields["provider_market_price"].value["regularMarketPrice"] == 199.5
     assert response.diagnostics["official_source_count"] == 3
     assert response.diagnostics["provider_fallback_source_count"] == 1
+    assert response.fallback_diagnostics is not None
+    assert response.fallback_diagnostics.schema_version == "lightweight-api-fallback-diagnostics-v1"
+    assert response.fallback_diagnostics.source_path == "sec_official_provider_fallback"
+    assert response.fallback_diagnostics.generated_output_eligible is True
+    assert response.fallback_diagnostics.official_source_count == 3
+    assert response.fallback_diagnostics.provider_fallback_source_count == 1
+    assert response.fallback_diagnostics.raw_payload_exposed is False
+    assert response.fallback_diagnostics.secret_values_exposed is False
     assert all("raw" not in fact.field_name for fact in response.facts)
 
 
@@ -262,6 +270,12 @@ def test_lightweight_etf_fetch_uses_issuer_fixtures_before_manifest_and_provider
     assert response.diagnostics["issuer_enrichment_state"] == "supported"
     assert response.diagnostics["official_source_count"] == 4
     assert response.diagnostics["provider_fallback_source_count"] == 1
+    assert response.fallback_diagnostics is not None
+    assert response.fallback_diagnostics.source_path == "issuer_backed_etf_provider_fallback"
+    assert response.fallback_diagnostics.issuer_evidence_state == "supported"
+    assert response.fallback_diagnostics.official_source_count == 4
+    assert response.fallback_diagnostics.provider_fallback_source_count == 1
+    assert response.fallback_diagnostics.gap_count == 1
     assert {gap.field_name for gap in response.gaps} == {"premium_discount_or_spread"}
 
 
@@ -285,6 +299,13 @@ def test_lightweight_etf_without_issuer_fixture_stays_partial_with_explicit_gap(
     assert fields["provider_market_price"].value["regularMarketPrice"] == 670.01
     assert response.diagnostics["issuer_enrichment_state"] == "eligible_not_cached"
     assert response.diagnostics["official_source_count"] == 0
+    assert response.fallback_diagnostics is not None
+    assert response.fallback_diagnostics.source_path == "etf_manifest_scope_provider_fallback"
+    assert response.fallback_diagnostics.fetch_state is LightweightFetchState.partial
+    assert response.fallback_diagnostics.issuer_evidence_state == "partial"
+    assert response.fallback_diagnostics.partial_source_count == 1
+    assert response.fallback_diagnostics.provider_fallback_source_count == 1
+    assert "partial_or_unavailable_evidence_gaps" in response.fallback_diagnostics.reason_codes
     assert {gap.field_name for gap in response.gaps} == {"etf_issuer_evidence"}
 
 
@@ -299,6 +320,11 @@ def test_lightweight_fetch_blocks_manifest_unsupported_etf_without_provider_call
     assert response.sources == []
     assert fetcher.urls == []
     assert response.diagnostics["blocked_generated_output"] is True
+    assert response.fallback_diagnostics is not None
+    assert response.fallback_diagnostics.source_path == "blocked_scope_screen"
+    assert response.fallback_diagnostics.generated_output_eligible is False
+    assert response.fallback_diagnostics.source_count == 0
+    assert response.fallback_diagnostics.raw_payload_exposed is False
 
 
 def test_lightweight_fetch_disabled_returns_unavailable_without_live_calls():
@@ -310,6 +336,16 @@ def test_lightweight_fetch_disabled_returns_unavailable_without_live_calls():
     assert response.generated_output_eligible is False
     assert response.no_live_external_calls is True
     assert response.diagnostics["reason_code"] == "lightweight_live_fetch_disabled"
+    assert response.fallback_diagnostics is not None
+    assert response.fallback_diagnostics.source_path == "lightweight_fetch_unavailable"
+    assert response.fallback_diagnostics.reason_codes == [
+        "fetch_state_unavailable",
+        "generated_output_blocked",
+        "lightweight_live_fetch_disabled",
+        "page_render_state_unavailable",
+        "partial_or_unavailable_evidence_gaps",
+        "raw_payload_hidden",
+    ]
 
 
 def test_lightweight_stock_fetch_builds_overview_details_and_source_drawer_contracts():
@@ -343,6 +379,10 @@ def test_lightweight_stock_fetch_builds_overview_details_and_source_drawer_contr
     assert sources.citation_bindings
     assert sources.related_claims
     assert sources.diagnostics.generated_output_created is True
+    assert overview.fallback_diagnostics is not None
+    assert overview.fallback_diagnostics.source_path == "sec_official_provider_fallback"
+    assert details.fallback_diagnostics == overview.fallback_diagnostics
+    assert sources.fallback_diagnostics == overview.fallback_diagnostics
 
 
 def test_lightweight_issuer_backed_etf_fetch_builds_supported_page_contracts():
@@ -404,6 +444,12 @@ def test_local_fresh_data_mvp_slice_smoke_contract_is_deterministic():
         assert row["raw_payload_exposed"] is False
         assert row["no_live_external_calls"] is True
         assert set(row["source_labels"]) == {"official", "provider_derived"}
+        fallback_diagnostics = row["fallback_diagnostics"]
+        assert fallback_diagnostics["schema_version"] == "lightweight-api-fallback-diagnostics-v1"
+        assert fallback_diagnostics["source_path"] == "sec_official_provider_fallback"
+        assert fallback_diagnostics["source_count"] == row["source_count"]
+        assert fallback_diagnostics["raw_payload_exposed"] is False
+        assert fallback_diagnostics["secret_values_exposed"] is False
         surface = row["surface_contract"]
         assert surface["renderable"] is True
         assert surface["generated_page"] is True
@@ -427,6 +473,10 @@ def test_local_fresh_data_mvp_slice_smoke_contract_is_deterministic():
         assert row["raw_payload_exposed"] is False
         assert row["no_live_external_calls"] is True
         assert set(row["source_labels"]) == {"official", "partial", "provider_derived"}
+        fallback_diagnostics = row["fallback_diagnostics"]
+        assert fallback_diagnostics["source_path"] == "issuer_backed_etf_provider_fallback"
+        assert fallback_diagnostics["issuer_evidence_state"] == "supported"
+        assert fallback_diagnostics["official_source_count"] == row["official_source_count"]
         surface = row["surface_contract"]
         assert surface["renderable"] is True
         assert surface["source_drawer_state"] == "available"
@@ -451,6 +501,11 @@ def test_local_fresh_data_mvp_slice_smoke_contract_is_deterministic():
         assert row["raw_payload_exposed"] is False
         assert row["no_live_external_calls"] is True
         assert row["source_labels"] == ["partial", "provider_derived"]
+        fallback_diagnostics = row["fallback_diagnostics"]
+        assert fallback_diagnostics["source_path"] == "etf_manifest_scope_provider_fallback"
+        assert fallback_diagnostics["issuer_evidence_state"] == "partial"
+        assert fallback_diagnostics["provider_fallback_source_count"] == 1
+        assert fallback_diagnostics["gap_count"] == row["gap_count"]
         surface = row["surface_contract"]
         assert surface["renderable"] is True
         assert surface["source_drawer_state"] == "available"
@@ -478,6 +533,11 @@ def test_local_fresh_data_mvp_slice_smoke_contract_is_deterministic():
         assert row["raw_payload_exposed"] is False
         assert row["no_live_external_calls"] is True
         assert row["blocked_generated_surfaces"] == result["blocked_generated_surfaces"]
+        fallback_diagnostics = row["fallback_diagnostics"]
+        assert fallback_diagnostics["source_path"] == "blocked_scope_screen"
+        assert fallback_diagnostics["generated_output_eligible"] is False
+        assert fallback_diagnostics["source_count"] == 0
+        assert fallback_diagnostics["raw_payload_exposed"] is False
         assert row["surface_contract"] == {
             "renderable": False,
             "generated_page": False,
@@ -517,3 +577,7 @@ def test_live_lightweight_search_can_open_exact_eligible_not_cached_asset(monkey
     assert result.results[0].ticker == "MSFT"
     assert result.results[0].can_open_generated_page is True
     assert result.results[0].generated_route == "/assets/MSFT"
+    assert result.results[0].fallback_diagnostics is not None
+    assert result.results[0].fallback_diagnostics.schema_version == "lightweight-api-fallback-diagnostics-v1"
+    assert result.results[0].fallback_diagnostics.source_path == "sec_official_provider_fallback"
+    assert result.results[0].fallback_diagnostics.raw_payload_exposed is False

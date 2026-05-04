@@ -265,6 +265,7 @@ def _row_contract(response: LightweightFetchResponse, expected: dict[str, Any], 
         "no_live_external_calls": response.no_live_external_calls,
         "fetch_call_count": fetch_call_count,
         "payload_checksum": lightweight_payload_checksum(response),
+        "fallback_diagnostics": _serialized_fallback_diagnostics(response),
         "surface_contract": surface,
         "blocked_generated_surfaces": list(BLOCKED_GENERATED_SURFACES) if not response.generated_output_eligible else [],
         "blockers": blockers,
@@ -363,6 +364,8 @@ def _row_blockers(
     blockers: list[dict[str, Any]] = []
     expected_asset_type = expected["asset_type"]
     expected_generated = expected["generated_output_eligible"]
+    fallback_diagnostics = _serialized_fallback_diagnostics(response)
+    blockers.extend(_fallback_diagnostic_blockers(response, expected, fallback_diagnostics))
     if expected_asset_type != response.asset.asset_type.value:
         blockers.append({"reason_code": "asset_type_mismatch", "expected": expected_asset_type, "actual": response.asset.asset_type.value})
     if expected_generated != response.generated_output_eligible:
@@ -451,6 +454,72 @@ def _row_blockers(
         if fetch_call_count != 0:
             blockers.append({"reason_code": "blocked_row_used_provider_fetch", "fetch_call_count": fetch_call_count})
     return blockers
+
+
+def _serialized_fallback_diagnostics(response: LightweightFetchResponse) -> dict[str, Any]:
+    if response.fallback_diagnostics is None:
+        return {}
+    return response.fallback_diagnostics.model_dump(mode="json")
+
+
+def _fallback_diagnostic_blockers(
+    response: LightweightFetchResponse,
+    expected: dict[str, Any],
+    diagnostics: dict[str, Any],
+) -> list[dict[str, Any]]:
+    if not diagnostics:
+        return [{"reason_code": "fallback_diagnostics_missing"}]
+
+    blockers: list[dict[str, Any]] = []
+    if diagnostics.get("schema_version") != "lightweight-api-fallback-diagnostics-v1":
+        blockers.append({"reason_code": "fallback_diagnostics_schema_mismatch"})
+    if diagnostics.get("fetch_state") != response.fetch_state.value:
+        blockers.append({"reason_code": "fallback_diagnostics_fetch_state_mismatch"})
+    if diagnostics.get("page_render_state") != response.page_render_state.value:
+        blockers.append({"reason_code": "fallback_diagnostics_page_render_state_mismatch"})
+    if diagnostics.get("generated_output_eligible") != response.generated_output_eligible:
+        blockers.append({"reason_code": "fallback_diagnostics_generated_output_eligibility_mismatch"})
+    if diagnostics.get("source_count") != len(response.sources):
+        blockers.append({"reason_code": "fallback_diagnostics_source_count_mismatch"})
+    if diagnostics.get("citation_count") != len(response.citations):
+        blockers.append({"reason_code": "fallback_diagnostics_citation_count_mismatch"})
+    if diagnostics.get("fact_count") != len(response.facts):
+        blockers.append({"reason_code": "fallback_diagnostics_fact_count_mismatch"})
+    if diagnostics.get("gap_count") != len(response.gaps):
+        blockers.append({"reason_code": "fallback_diagnostics_gap_count_mismatch"})
+    if diagnostics.get("raw_payload_exposed") is not False:
+        blockers.append({"reason_code": "fallback_diagnostics_raw_payload_exposed"})
+    if diagnostics.get("secret_values_exposed") is not False:
+        blockers.append({"reason_code": "fallback_diagnostics_secret_values_exposed"})
+    if diagnostics.get("raw_payload_fields_exposed") is not False:
+        blockers.append({"reason_code": "fallback_diagnostics_raw_payload_fields_exposed"})
+    if diagnostics.get("hidden_prompt_or_reasoning_exposed") is not False:
+        blockers.append({"reason_code": "fallback_diagnostics_hidden_prompt_or_reasoning_exposed"})
+    if diagnostics.get("diagnostics_are_sanitized") is not True:
+        blockers.append({"reason_code": "fallback_diagnostics_not_sanitized"})
+
+    expected_source_path = _expected_fallback_source_path(response, expected)
+    if diagnostics.get("source_path") != expected_source_path:
+        blockers.append(
+            {
+                "reason_code": "fallback_diagnostics_source_path_mismatch",
+                "expected": expected_source_path,
+                "actual": diagnostics.get("source_path"),
+            }
+        )
+    if "raw_payload_hidden" not in set(diagnostics.get("reason_codes") or []):
+        blockers.append({"reason_code": "fallback_diagnostics_raw_payload_hidden_reason_missing"})
+    return blockers
+
+
+def _expected_fallback_source_path(response: LightweightFetchResponse, expected: dict[str, Any]) -> str:
+    if not expected["generated_output_eligible"]:
+        return "blocked_scope_screen"
+    if response.asset.asset_type is AssetType.stock:
+        return "sec_official_provider_fallback"
+    if expected.get("support_state") == "issuer_backed_supported":
+        return "issuer_backed_etf_provider_fallback"
+    return "etf_manifest_scope_provider_fallback"
 
 
 def _status_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
