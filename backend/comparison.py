@@ -147,6 +147,14 @@ STOCK_ETF_COMPARISON_DIMENSIONS = [
     "Educational role",
 ]
 
+STOCK_STOCK_COMPARISON_DIMENSIONS = [
+    "Business model",
+    "Revenue trend",
+    "Business quality evidence",
+    "Risk context",
+    "Valuation evidence availability",
+]
+
 
 def generate_comparison(
     left_ticker: str,
@@ -603,6 +611,8 @@ def _validate_comparison_cache_covers_response(
 def generate_comparison_from_pack(pack: ComparisonKnowledgePack) -> CompareResponse:
     if not pack.left_asset_pack.asset.supported or not pack.right_asset_pack.asset.supported:
         return _unavailable_comparison(pack.left_asset_pack, pack.right_asset_pack)
+    if _is_stock_vs_stock(pack):
+        return _generate_stock_vs_stock_comparison_from_pack(pack)
     if _is_stock_vs_etf(pack):
         return _generate_stock_vs_etf_comparison_from_pack(pack)
 
@@ -643,6 +653,48 @@ def generate_comparison_from_pack(pack: ComparisonKnowledgePack) -> CompareRespo
         source_documents=bindings.source_documents(),
     )
     response.evidence_availability = _available_evidence_availability(
+        response=response,
+        pack=pack,
+        bindings=bindings,
+        left_facts=left_facts,
+        right_facts=right_facts,
+    )
+    _assert_safe_copy(response)
+    return response
+
+
+def _generate_stock_vs_stock_comparison_from_pack(pack: ComparisonKnowledgePack) -> CompareResponse:
+    bindings = _ComparisonCitationRegistry(pack)
+    left_facts = _supported_facts_by_field(pack.left_asset_pack)
+    right_facts = _supported_facts_by_field(pack.right_asset_pack)
+    required_assets = [pack.left_asset_pack.asset.ticker, pack.right_asset_pack.asset.ticker]
+
+    key_differences = _stock_stock_key_differences(pack, left_facts, right_facts, bindings)
+    bottom_line = _stock_stock_bottom_line(pack, left_facts, right_facts, bindings)
+    planned_claims = _planned_claims(key_differences, bottom_line, required_assets)
+
+    report = validate_generated_comparison_claims(pack, planned_claims, bindings.evidence())
+    if not report.valid:
+        first_issue = report.issues[0]
+        raise ComparisonGenerationError(
+            f"Generated stock-vs-stock citation validation failed for {pack.comparison_pack_id}: "
+            f"{first_issue.status.value} on {first_issue.claim_id}"
+        )
+
+    response = CompareResponse(
+        left_asset=pack.left_asset_pack.asset,
+        right_asset=pack.right_asset_pack.asset,
+        state=StateMessage(
+            status=AssetStatus.supported,
+            message="Stock-vs-stock comparison is supported by deterministic local retrieval fixtures.",
+        ),
+        comparison_type="stock_vs_stock",
+        key_differences=key_differences,
+        bottom_line_for_beginners=bottom_line,
+        citations=bindings.citations(),
+        source_documents=bindings.source_documents(),
+    )
+    response.evidence_availability = _available_stock_stock_evidence_availability(
         response=response,
         pack=pack,
         bindings=bindings,
@@ -904,6 +956,120 @@ def _stock_etf_relationship_model(
     )
 
 
+def _stock_stock_key_differences(
+    pack: ComparisonKnowledgePack,
+    left_facts: dict[str, RetrievedFact],
+    right_facts: dict[str, RetrievedFact],
+    bindings: _ComparisonCitationRegistry,
+) -> list[KeyDifference]:
+    for dimension in STOCK_STOCK_COMPARISON_DIMENSIONS:
+        _require_difference(pack, dimension)
+
+    left_business = _require_fact(left_facts, "primary_business")
+    right_business = _require_fact(right_facts, "primary_business")
+    left_revenue = _require_fact(left_facts, "financial_quality_revenue_trend")
+    right_revenue = _require_fact(right_facts, "financial_quality_revenue_trend")
+    left_quality = _require_fact(left_facts, "business_quality_strength")
+    right_quality = _require_fact(right_facts, "business_quality_strength")
+    left_risk = _require_fact(left_facts, "company_specific_risk")
+    right_risk = _require_fact(right_facts, "company_specific_risk")
+    left_valuation = _require_fact(left_facts, "valuation_data_limitation")
+    right_valuation = _require_fact(right_facts, "valuation_data_limitation")
+
+    left_ticker = pack.left_asset_pack.asset.ticker
+    right_ticker = pack.right_asset_pack.asset.ticker
+    return [
+        KeyDifference(
+            dimension="Business model",
+            plain_english_summary=(
+                f"{left_ticker}'s local filing fixture describes the business as {str(left_business.fact.value).lower()} "
+                f"{right_ticker}'s fixture describes the business as {str(right_business.fact.value).lower()}"
+            ),
+            citation_ids=[
+                bindings.for_fact(left_business).citation.citation_id,
+                bindings.for_fact(right_business).citation.citation_id,
+            ],
+        ),
+        KeyDifference(
+            dimension="Revenue trend",
+            plain_english_summary=(
+                f"The local SEC XBRL fixtures record {left_ticker} revenue moving from {left_revenue.fact.value}, "
+                f"while {right_ticker} revenue moved from {right_revenue.fact.value}."
+            ),
+            citation_ids=[
+                bindings.for_fact(left_revenue).citation.citation_id,
+                bindings.for_fact(right_revenue).citation.citation_id,
+            ],
+        ),
+        KeyDifference(
+            dimension="Business quality evidence",
+            plain_english_summary=(
+                f"{left_ticker}'s fixture evidence highlights {left_quality.fact.value} "
+                f"{right_ticker}'s fixture evidence highlights {right_quality.fact.value}"
+            ),
+            citation_ids=[
+                bindings.for_fact(left_quality).citation.citation_id,
+                bindings.for_fact(right_quality).citation.citation_id,
+            ],
+        ),
+        KeyDifference(
+            dimension="Risk context",
+            plain_english_summary=(
+                f"{left_ticker}'s risk fixture notes product demand, competition, supply chain, regulation, "
+                f"and company-specific risks; {right_ticker}'s risk fixture notes cloud/software competition, "
+                "cybersecurity, regulation, and customer-spending risks."
+            ),
+            citation_ids=[
+                bindings.for_fact(left_risk).citation.citation_id,
+                bindings.for_fact(right_risk).citation.citation_id,
+            ],
+        ),
+        KeyDifference(
+            dimension="Valuation evidence availability",
+            plain_english_summary=(
+                f"The local fixtures do not include current valuation metrics for {left_ticker} or {right_ticker}, "
+                "so this comparison does not compare valuation levels."
+            ),
+            citation_ids=[
+                bindings.for_fact(left_valuation).citation.citation_id,
+                bindings.for_fact(right_valuation).citation.citation_id,
+            ],
+        ),
+    ]
+
+
+def _stock_stock_bottom_line(
+    pack: ComparisonKnowledgePack,
+    left_facts: dict[str, RetrievedFact],
+    right_facts: dict[str, RetrievedFact],
+    bindings: _ComparisonCitationRegistry,
+) -> BeginnerBottomLine:
+    left_business = _require_fact(left_facts, "primary_business")
+    right_business = _require_fact(right_facts, "primary_business")
+    left_revenue = _require_fact(left_facts, "financial_quality_revenue_trend")
+    right_revenue = _require_fact(right_facts, "financial_quality_revenue_trend")
+    left_risk = _require_fact(left_facts, "company_specific_risk")
+    right_risk = _require_fact(right_facts, "company_specific_risk")
+    left_ticker = pack.left_asset_pack.asset.ticker
+    right_ticker = pack.right_asset_pack.asset.ticker
+
+    return BeginnerBottomLine(
+        summary=(
+            f"{left_ticker} and {right_ticker} are both single-company stocks in this deterministic pack. "
+            "For beginner learning, compare the source-backed business model, revenue trend, and risk context; "
+            "do not treat this as a personal decision rule."
+        ),
+        citation_ids=[
+            bindings.for_fact(left_business).citation.citation_id,
+            bindings.for_fact(right_business).citation.citation_id,
+            bindings.for_fact(left_revenue).citation.citation_id,
+            bindings.for_fact(right_revenue).citation.citation_id,
+            bindings.for_fact(left_risk).citation.citation_id,
+            bindings.for_fact(right_risk).citation.citation_id,
+        ],
+    )
+
+
 def validate_comparison_response(
     comparison: CompareResponse,
     pack: ComparisonKnowledgePack,
@@ -924,6 +1090,7 @@ def validate_comparison_response(
             claim_text=item.plain_english_summary,
             claim_type="comparison",
             citation_ids=item.citation_ids,
+            freshness_label=_comparison_claim_freshness_label(item.dimension),
             required_asset_tickers=[pack.left_asset_pack.asset.ticker, pack.right_asset_pack.asset.ticker],
         )
         for item in comparison.key_differences
@@ -1283,6 +1450,7 @@ def _planned_claims(
             claim_text=item.plain_english_summary,
             citation_ids=item.citation_ids,
             required_asset_tickers=required_assets,
+            freshness_label=_comparison_claim_freshness_label(item.dimension),
         )
         for item in key_differences
     ]
@@ -1295,6 +1463,12 @@ def _planned_claims(
         )
     )
     return planned
+
+
+def _comparison_claim_freshness_label(dimension: str) -> FreshnessState | None:
+    if dimension == "Valuation evidence availability":
+        return FreshnessState.unavailable
+    return None
 
 
 def _unavailable_comparison(
@@ -1599,6 +1773,142 @@ def _available_stock_etf_evidence_availability(
     )
 
 
+def _available_stock_stock_evidence_availability(
+    response: CompareResponse,
+    pack: ComparisonKnowledgePack,
+    bindings: _ComparisonCitationRegistry,
+    left_facts: dict[str, RetrievedFact],
+    right_facts: dict[str, RetrievedFact],
+) -> ComparisonEvidenceAvailability:
+    evidence_items: list[ComparisonEvidenceItem] = []
+    dimensions: list[ComparisonEvidenceDimension] = []
+    claim_bindings: list[ComparisonEvidenceClaimBinding] = []
+    citation_bindings: list[ComparisonEvidenceCitationBinding] = []
+    evidence_item_ids_by_dimension: dict[str, list[str]] = {}
+
+    dimension_facts = _stock_stock_dimension_facts(left_facts, right_facts)
+    for dimension in STOCK_STOCK_COMPARISON_DIMENSIONS:
+        dimension_items: list[ComparisonEvidenceItem] = []
+        for fact in dimension_facts[dimension]:
+            citation_binding = bindings.for_fact(fact)
+            side = _side_for_asset(
+                fact.fact.asset_ticker,
+                pack.left_asset_pack.asset.ticker,
+                pack.right_asset_pack.asset.ticker,
+            )
+            side_role = _side_role_for_asset(
+                fact.fact.asset_ticker,
+                pack.left_asset_pack.asset.ticker,
+                pack.right_asset_pack.asset.ticker,
+            )
+            item = _evidence_item_for_fact(dimension, side, side_role, fact, citation_binding)
+            dimension_items.append(item)
+            evidence_items.append(item)
+
+        item_ids = [item.evidence_item_id for item in dimension_items]
+        citation_ids = sorted({citation_id for item in dimension_items for citation_id in item.citation_ids})
+        source_document_ids = sorted(
+            {source_id for item in dimension_items for source_id in [item.source_document_id] if source_id is not None}
+        )
+        evidence_item_ids_by_dimension[dimension] = item_ids
+        valuation_dimension = dimension == "Valuation evidence availability"
+        dimensions.append(
+            ComparisonEvidenceDimension(
+                dimension=dimension,
+                availability_state=ComparisonEvidenceAvailabilityState.available,
+                evidence_state=EvidenceState.partial if valuation_dimension else EvidenceState.supported,
+                freshness_state=_combined_freshness([item.freshness_state for item in dimension_items]),
+                left_evidence_item_ids=[
+                    item.evidence_item_id for item in dimension_items if item.side is ComparisonEvidenceSide.left
+                ],
+                right_evidence_item_ids=[
+                    item.evidence_item_id for item in dimension_items if item.side is ComparisonEvidenceSide.right
+                ],
+                shared_evidence_item_ids=[],
+                citation_ids=citation_ids,
+                source_document_ids=source_document_ids,
+                generated_claim_ids=[f"claim_comparison_{_claim_slug(dimension)}"],
+                unavailable_reason=(
+                    "Current valuation metrics are unavailable in the deterministic local fixtures for both stocks."
+                    if valuation_dimension
+                    else None
+                ),
+            )
+        )
+
+    for difference in response.key_differences:
+        claim_id = f"claim_comparison_{_claim_slug(difference.dimension)}"
+        claim_bindings.append(
+            ComparisonEvidenceClaimBinding(
+                claim_id=claim_id,
+                claim_kind="key_difference",
+                dimension=difference.dimension,
+                side_role=ComparisonEvidenceSideRole.shared_comparison_support,
+                citation_ids=difference.citation_ids,
+                source_document_ids=_source_document_ids_for_citations(difference.citation_ids, bindings),
+                evidence_item_ids=evidence_item_ids_by_dimension.get(difference.dimension, []),
+                availability_state=ComparisonEvidenceAvailabilityState.available,
+            )
+        )
+        citation_bindings.extend(
+            _citation_bindings_for_claim(
+                claim_id=claim_id,
+                dimension=difference.dimension,
+                citation_ids=difference.citation_ids,
+                bindings=bindings,
+                left_ticker=pack.left_asset_pack.asset.ticker,
+                right_ticker=pack.right_asset_pack.asset.ticker,
+            )
+        )
+
+    if response.bottom_line_for_beginners is not None:
+        bottom_line_citation_ids = response.bottom_line_for_beginners.citation_ids
+        claim_bindings.append(
+            ComparisonEvidenceClaimBinding(
+                claim_id="claim_comparison_bottom_line",
+                claim_kind="beginner_bottom_line",
+                dimension="Beginner bottom line",
+                side_role=ComparisonEvidenceSideRole.shared_comparison_support,
+                citation_ids=bottom_line_citation_ids,
+                source_document_ids=_source_document_ids_for_citations(bottom_line_citation_ids, bindings),
+                evidence_item_ids=sorted({item.evidence_item_id for item in evidence_items if item.dimension != "Valuation evidence availability"}),
+                availability_state=ComparisonEvidenceAvailabilityState.available,
+            )
+        )
+        citation_bindings.extend(
+            _citation_bindings_for_claim(
+                claim_id="claim_comparison_bottom_line",
+                dimension="Beginner bottom line",
+                citation_ids=bottom_line_citation_ids,
+                bindings=bindings,
+                left_ticker=pack.left_asset_pack.asset.ticker,
+                right_ticker=pack.right_asset_pack.asset.ticker,
+            )
+        )
+
+    return ComparisonEvidenceAvailability(
+        comparison_id=_comparison_id(pack.left_asset_pack.asset.ticker, pack.right_asset_pack.asset.ticker),
+        comparison_type=response.comparison_type,
+        left_asset=response.left_asset,
+        right_asset=response.right_asset,
+        availability_state=ComparisonEvidenceAvailabilityState.available,
+        required_dimensions=STOCK_STOCK_COMPARISON_DIMENSIONS,
+        required_evidence_dimensions=dimensions,
+        evidence_items=evidence_items,
+        claim_bindings=claim_bindings,
+        citation_bindings=sorted(citation_bindings, key=lambda item: item.binding_id),
+        source_references=[
+            _source_reference_from_fixture(source)
+            for source in sorted(pack.comparison_sources, key=lambda source: source.source_document_id)
+            if source.source_document_id in {source.source_document_id for source in response.source_documents}
+        ],
+        diagnostics=ComparisonEvidenceDiagnostics(
+            generated_comparison_available=True,
+            unavailable_reasons=[],
+        ),
+    )
+
+
 def _stock_etf_dimension_facts(
     stock_facts: dict[str, RetrievedFact],
     etf_facts: dict[str, RetrievedFact],
@@ -1616,6 +1926,34 @@ def _stock_etf_dimension_facts(
         "Breadth": [stock_identity, etf_holdings_count],
         "Cost model": [stock_identity, etf_expense],
         "Educational role": [stock_business, etf_role, etf_holdings],
+    }
+
+
+def _stock_stock_dimension_facts(
+    left_facts: dict[str, RetrievedFact],
+    right_facts: dict[str, RetrievedFact],
+) -> dict[str, list[RetrievedFact]]:
+    return {
+        "Business model": [
+            _require_fact(left_facts, "primary_business"),
+            _require_fact(right_facts, "primary_business"),
+        ],
+        "Revenue trend": [
+            _require_fact(left_facts, "financial_quality_revenue_trend"),
+            _require_fact(right_facts, "financial_quality_revenue_trend"),
+        ],
+        "Business quality evidence": [
+            _require_fact(left_facts, "business_quality_strength"),
+            _require_fact(right_facts, "business_quality_strength"),
+        ],
+        "Risk context": [
+            _require_fact(left_facts, "company_specific_risk"),
+            _require_fact(right_facts, "company_specific_risk"),
+        ],
+        "Valuation evidence availability": [
+            _require_fact(left_facts, "valuation_data_limitation"),
+            _require_fact(right_facts, "valuation_data_limitation"),
+        ],
     }
 
 
@@ -1856,6 +2194,13 @@ def _is_stock_vs_etf(pack: ComparisonKnowledgePack) -> bool:
         AssetType.stock,
         AssetType.etf,
     }
+
+
+def _is_stock_vs_stock(pack: ComparisonKnowledgePack) -> bool:
+    return (
+        pack.left_asset_pack.asset.asset_type is AssetType.stock
+        and pack.right_asset_pack.asset.asset_type is AssetType.stock
+    )
 
 
 def _stock_etf_asset_packs(pack: ComparisonKnowledgePack) -> tuple[AssetKnowledgePack, AssetKnowledgePack]:

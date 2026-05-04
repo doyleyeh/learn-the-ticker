@@ -44,12 +44,23 @@ COMPARISON_EXPORT_PARITY_SUMMARY = {
     "representative_comparison_pairs": [
         {"left_ticker": "VOO", "right_ticker": "QQQ", "comparison_type": "etf_vs_etf"},
         {"left_ticker": "AAPL", "right_ticker": "VOO", "comparison_type": "stock_vs_etf"},
+        {"left_ticker": "AAPL", "right_ticker": "MSFT", "comparison_type": "stock_vs_stock"},
     ],
     "unavailable_or_blocked_comparison_cases": [
         {"left_ticker": "VOO", "right_ticker": "SPY", "expected_state": "eligible_not_cached"},
+        {"left_ticker": "SPY", "right_ticker": "VTI", "expected_state": "eligible_not_cached"},
         {"left_ticker": "VOO", "right_ticker": "TQQQ", "expected_state": "unsupported"},
         {"left_ticker": "AAPL", "right_ticker": "TQQQ", "expected_state": "unsupported"},
     ],
+    "partial_etf_pair_coverage": {
+        "partial_etf_tickers": [],
+        "reason_code": "no_partial_etf_rows_in_current_slice",
+        "representative_non_generated_pair": {
+            "left_ticker": "SPY",
+            "right_ticker": "VTI",
+            "expected_state": "eligible_not_cached",
+        },
+    },
     "asset_export_case_tickers": ["AAPL", "VOO", "QQQ", "SPY", "TQQQ", "ARKK", "BND", "GLD"],
     "export_surfaces": [
         "comparison_json",
@@ -215,6 +226,7 @@ def run_slice_smoke(tickers: list[str] | None = None) -> dict[str, Any]:
         "supported_renderable_tickers": list(SUPPORTED_SLICE_TICKERS),
         "issuer_backed_etf_tickers": ["VOO", "QQQ", "SPY", "VTI", "XLK"],
         "partial_etf_tickers": [],
+        "partial_etf_coverage_reason": "no_partial_etf_rows_in_current_slice",
         "blocked_regression_tickers": list(BLOCKED_SLICE_TICKERS),
         "blocked_generated_surfaces": list(BLOCKED_GENERATED_SURFACES),
         "comparison_export_parity_summary": COMPARISON_EXPORT_PARITY_SUMMARY,

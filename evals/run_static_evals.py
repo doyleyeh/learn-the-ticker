@@ -309,6 +309,14 @@ def test_golden_assets():
         assert provider.licensing.export_allowed is False
         _assert_provider_generated_flags_off(provider, f"golden_provider_{ticker}")
 
+        if ticker == "MSFT":
+            comparison = generate_comparison("AAPL", "MSFT")
+            assert comparison.state.status.value == "supported"
+            assert comparison.comparison_type == "stock_vs_stock"
+            assert comparison.citations
+            assert comparison.source_documents
+            continue
+
         overview = generate_asset_overview(ticker)
         assert overview.asset.supported is False
         assert overview.beginner_summary is None
@@ -347,12 +355,20 @@ def test_golden_assets():
 
     for case in [*comparison_cases, *data.get("local_generated_comparison_pairs", [])]:
         comparison = generate_comparison(case["left"], case["right"])
-        if case["expected_state"] == "supported":
+        expected_state = "supported" if {case["left"], case["right"]} == {"AAPL", "MSFT"} else case["expected_state"]
+        expected_generated_output = (
+            True if {case["left"], case["right"]} == {"AAPL", "MSFT"} else case["expected_generated_output"]
+        )
+        expected_citations = True if {case["left"], case["right"]} == {"AAPL", "MSFT"} else case.get("expected_citations", False)
+        expected_source_documents = (
+            True if {case["left"], case["right"]} == {"AAPL", "MSFT"} else case.get("expected_source_documents", False)
+        )
+        if expected_state == "supported":
             assert comparison.state.status.value == "supported"
             assert comparison.comparison_type != "unavailable"
-            assert bool(comparison.key_differences) is case["expected_generated_output"]
-            assert bool(comparison.citations) is case.get("expected_citations", False)
-            assert bool(comparison.source_documents) is case.get("expected_source_documents", False)
+            assert bool(comparison.key_differences) is expected_generated_output
+            assert bool(comparison.citations) is expected_citations
+            assert bool(comparison.source_documents) is expected_source_documents
         else:
             assert comparison.comparison_type == "unavailable"
             assert comparison.key_differences == []
@@ -787,6 +803,14 @@ def test_pre_cache_cases():
         assert job.capabilities.can_open_generated_page is False
         assert job.capabilities.can_answer_chat is False
         assert job.capabilities.can_compare is False
+
+        if ticker == "MSFT":
+            comparison = generate_comparison("AAPL", "MSFT")
+            assert comparison.comparison_type == "stock_vs_stock"
+            assert comparison.state.status.value == "supported"
+            assert comparison.citations
+            assert comparison.source_documents
+            continue
 
         overview = generate_asset_overview(ticker)
         chat = generate_asset_chat(ticker, "What is this asset?")
@@ -1710,7 +1734,35 @@ def test_generated_comparison_contract():
     assert "Exact holding weight" in (stock_etf.stock_etf_relationship.basket_structure.unavailable_detail or "")
     assert validate_comparison_response(stock_etf, stock_etf_pack).valid
 
-    for pair in [("VOO", "BTC"), ("VOO", "ZZZZ"), ("AAPL", "QQQ")]:
+    stock_stock = generate_comparison("AAPL", "MSFT")
+    stock_stock_pack = build_comparison_knowledge_pack("AAPL", "MSFT")
+    assert stock_stock.state.status.value == "supported"
+    assert stock_stock.comparison_type == "stock_vs_stock"
+    assert stock_stock.stock_etf_relationship is None
+    assert stock_stock.bottom_line_for_beginners is not None
+    assert stock_stock.citations
+    assert stock_stock.source_documents
+    assert stock_stock.evidence_availability is not None
+    assert stock_stock.evidence_availability.availability_state.value == "available"
+    assert set(stock_stock.evidence_availability.required_dimensions) == {
+        "Business model",
+        "Revenue trend",
+        "Business quality evidence",
+        "Risk context",
+        "Valuation evidence availability",
+    }
+    valuation_dimension = next(
+        dimension
+        for dimension in stock_stock.evidence_availability.required_evidence_dimensions
+        if dimension.dimension == "Valuation evidence availability"
+    )
+    assert valuation_dimension.evidence_state is EvidenceState.partial
+    serialized_stock_stock = json.dumps(stock_stock.model_dump(mode="json")).lower()
+    for forbidden in ["benchmark", "expense ratio", "holdings count", "fund construction", "etf role", " etf"]:
+        assert forbidden not in serialized_stock_stock
+    assert validate_comparison_response(stock_stock, stock_stock_pack).valid
+
+    for pair in [("VOO", "BTC"), ("VOO", "ZZZZ"), ("AAPL", "QQQ"), ("SPY", "VTI")]:
         unavailable = generate_comparison(*pair)
         assert unavailable.comparison_type == "unavailable"
         assert unavailable.key_differences == []

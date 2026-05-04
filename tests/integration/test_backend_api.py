@@ -1715,7 +1715,10 @@ def test_compare_route_uses_fixture_pipeline_in_reverse_order_and_unavailable_st
     out_of_scope = client.post("/api/compare", json={"left_ticker": "VOO", "right_ticker": "GME"}).json()
     stock_etf = client.post("/api/compare", json={"left_ticker": "AAPL", "right_ticker": "VOO"}).json()
     stock_etf_reverse = client.post("/api/compare", json={"left_ticker": "VOO", "right_ticker": "AAPL"}).json()
+    stock_stock = client.post("/api/compare", json={"left_ticker": "AAPL", "right_ticker": "MSFT"}).json()
+    stock_stock_reverse = client.post("/api/compare", json={"left_ticker": "MSFT", "right_ticker": "AAPL"}).json()
     no_local_pack = client.post("/api/compare", json={"left_ticker": "AAPL", "right_ticker": "QQQ"}).json()
+    issuer_pair_without_pack = client.post("/api/compare", json={"left_ticker": "SPY", "right_ticker": "VTI"}).json()
 
     assert reverse["left_asset"]["ticker"] == "QQQ"
     assert reverse["right_asset"]["ticker"] == "VOO"
@@ -1766,6 +1769,26 @@ def test_compare_route_uses_fixture_pipeline_in_reverse_order_and_unavailable_st
         for item in stock_etf_reverse["evidence_availability"]["evidence_items"]
         if item["side_role"] == "right_side_support"
     } == {"AAPL"}
+    assert stock_stock["comparison_type"] == "stock_vs_stock"
+    assert stock_stock["state"]["status"] == "supported"
+    assert stock_stock["stock_etf_relationship"] is None
+    assert set(stock_stock["evidence_availability"]["required_dimensions"]) == {
+        "Business model",
+        "Revenue trend",
+        "Business quality evidence",
+        "Risk context",
+        "Valuation evidence availability",
+    }
+    assert {
+        item["dimension"]: item["evidence_state"]
+        for item in stock_stock["evidence_availability"]["required_evidence_dimensions"]
+    }["Valuation evidence availability"] == "partial"
+    serialized_stock_stock = str(stock_stock).lower()
+    for forbidden in ["benchmark", "expense ratio", "holdings count", "fund construction", "etf role", " etf"]:
+        assert forbidden not in serialized_stock_stock
+    assert stock_stock_reverse["left_asset"]["ticker"] == "MSFT"
+    assert stock_stock_reverse["right_asset"]["ticker"] == "AAPL"
+    assert stock_stock_reverse["comparison_type"] == "stock_vs_stock"
     assert unsupported["state"]["status"] == "unsupported"
     assert unsupported["comparison_type"] == "unavailable"
     assert unsupported["key_differences"] == []
@@ -1776,6 +1799,7 @@ def test_compare_route_uses_fixture_pipeline_in_reverse_order_and_unavailable_st
 
     for body, expected_state in [
         (eligible, "eligible_not_cached"),
+        (issuer_pair_without_pack, "eligible_not_cached"),
         (out_of_scope, "out_of_scope"),
         (no_local_pack, "no_local_pack"),
     ]:
@@ -1835,6 +1859,7 @@ def test_chat_comparison_questions_redirect_to_compare_workflow_with_local_avail
         ("VOO", "How is QQQ different from VOO?", "QQQ", "VOO", "available"),
         ("QQQ", "Why is this more concentrated than VOO?", "QQQ", "VOO", "available"),
         ("VOO", "AAPL vs VOO", "AAPL", "VOO", "available"),
+        ("AAPL", "AAPL vs MSFT", "AAPL", "MSFT", "available"),
         ("VOO", "VOO vs SPY", "VOO", "SPY", "eligible_not_cached"),
         ("VOO", "VOO vs BTC", "VOO", "BTC", "unsupported"),
         ("VOO", "VOO vs GME", "VOO", "GME", "out_of_scope"),

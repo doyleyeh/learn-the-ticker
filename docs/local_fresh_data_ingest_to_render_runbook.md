@@ -1,6 +1,6 @@
 # Local Fresh-Data Ingest-To-Render Runbook
 
-Task: T-118, updated by T-119 through T-154 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, stock-vs-ETF comparison readiness gating, local fresh-data MVP slice smoke coverage, optional slice browser/API localhost coverage, optional durable slice smoke coverage, lightweight local-slice manual-readiness gating, local slice comparison/export parity coverage, the lightweight live browser/API MVP slice smoke runner contract, lightweight API fallback diagnostics, the lightweight live durable MVP slice smoke runner contract, lightweight issuer-backed SPY/VTI/XLK enrichment, and the optional Weekly News Focus live-source smoke
+Task: T-118, updated by T-119 through T-156 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, stock-vs-ETF comparison readiness gating, local fresh-data MVP slice smoke coverage, optional slice browser/API localhost coverage, optional durable slice smoke coverage, lightweight local-slice manual-readiness gating, local slice comparison/export parity coverage, the lightweight live browser/API MVP slice smoke runner contract, lightweight API fallback diagnostics, the lightweight live durable MVP slice smoke runner contract, lightweight issuer-backed SPY/VTI/XLK enrichment, the optional Weekly News Focus live-source smoke, and lightweight fresh-data comparison coverage for stock-vs-stock plus non-generated ETF pairs
 
 This runbook describes the local golden-asset smoke path before production deployment work. Normal CI uses deterministic fixtures, mocked official-source acquisition, and in-memory repositories. It must not require real SEC, issuer, market-data, broad news, storage, database, Redis, RSS, or LLM calls.
 
@@ -79,7 +79,7 @@ Default deterministic readiness means all of these are true:
 - `VOO`, `QQQ`, `SPY`, `VTI`, and `XLK` pass as issuer-backed ETF rows.
 - no ETF rows remain partial in the deterministic slice; unsupported fields such as current premium/discount or bid-ask spread remain explicit unavailable gaps.
 - `TQQQ`, `ARKK`, `BND`, and `GLD` remain blocked and receive no source documents, citations, facts, provider fetches, generated pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, or generated-output cache writes.
-- the existing `VOO`/`QQQ` ETF-vs-ETF and `AAPL`/`VOO` stock-vs-ETF smoke markers remain intact, including separate `/compare` workflow, `A vs B` redirect behavior, relationship badges, the `single-company-vs-ETF-basket` structure, export/chat proxy checks, and no `holding_verified` regression.
+- the existing `VOO`/`QQQ` ETF-vs-ETF and `AAPL`/`VOO` stock-vs-ETF smoke markers remain intact, and `AAPL`/`MSFT` stock-vs-stock coverage stays available with stock-appropriate dimensions and no ETF-only benchmark, expense-ratio, holdings-count, fund-construction, or ETF-role copy. These checks keep the separate `/compare` workflow, `A vs B` redirect behavior, relationship badges, the `single-company-vs-ETF-basket` structure, export/chat proxy checks, and no `holding_verified` regression.
 
 Skipped optional checks are reported explicitly as operator-only prerequisites; they are not hidden as pass. The optional operator-only local checks include browser/API services, local durable repositories, official-source retrieval, and live-AI review. When an optional flag is set and the check is blocked, the slice gate reports `optional_local_check_blocked` with env var names and safe diagnostics only, never credential values.
 
@@ -140,7 +140,9 @@ Representative parity coverage:
 
 - `VOO`/`QQQ` ETF-vs-ETF: comparison response is available, source-backed, same-comparison-pack citation bound, exportable as JSON and Markdown, includes the educational disclaimer, preserves source-use policy and source freshness metadata, and contains no advice output, hidden prompts, raw model reasoning, unrestricted provider payloads, raw source text, or secret-like values.
 - `AAPL`/`VOO` stock-vs-ETF: comparison response is available with `stock-etf-relationship-v1`, `direct_holding`, relationship badges, the `single-company-vs-ETF-basket` structure, same-pack citations/source documents, comparison export parity, asset-chat compare redirect parity, and no `holding_verified` regression.
+- `AAPL`/`MSFT` stock-vs-stock: comparison response is available, source-backed, same-comparison-pack citation bound, exportable as JSON and Markdown, returns `comparison_type=stock_vs_stock`, includes a beginner bottom line, uses stock-appropriate dimensions (`Business model`, `Revenue trend`, `Business quality evidence`, `Risk context`, and `Valuation evidence availability`), labels the valuation evidence limit as partial/unavailable, and avoids ETF-only dimensions or copy such as benchmark, expense ratio, holdings count, fund construction, or ETF role.
 - `VOO`/`SPY`: missing static comparison pack involving `SPY` remains non-generated with `eligible_not_cached`, no beginner bottom line, no generated key differences, no citations, no source documents, and unavailable comparison export content, even though the local fresh-data slice now has issuer-backed SPY evidence.
+- `SPY`/`VTI` non-generated: an additional issuer-backed ETF pair without a static comparison pack remains `eligible_not_cached`, export-empty, and non-generated. Because there are no partial ETF rows in the current deterministic slice, the smoke reports `no_partial_etf_rows_in_current_slice` instead of inventing a partial ETF comparison row.
 - `VOO`/`TQQQ` and `AAPL`/`TQQQ`: blocked product comparison cases stay `unsupported`, non-generated, and export-empty.
 
 Asset export and source-list export parity:
@@ -179,7 +181,7 @@ Fallback diagnostic paths to expect:
 - Stocks such as `AAPL`, `MSFT`, and `NVDA`: `fallback_diagnostics.source_path=sec_official_provider_fallback`.
 - `VOO`, `QQQ`, `SPY`, `VTI`, and `XLK`: `fallback_diagnostics.source_path=issuer_backed_etf_provider_fallback` and `issuer_evidence_state=supported`.
 - Other eligible ETFs without deterministic issuer fixtures: `fallback_diagnostics.source_path=etf_manifest_scope_provider_fallback` when they are locally renderable, partial, and provider-backed.
-- Partial ETFs: none in the deterministic slice after T-153.
+- Partial ETFs: none in the deterministic slice after T-153; T-156 reports `no_partial_etf_rows_in_current_slice` and uses the non-generated `SPY`/`VTI` pair as representative ETF-pair coverage without a source-backed comparison pack.
 - Blocked tickers `TQQQ`, `ARKK`, `BND`, and `GLD`: `fallback_diagnostics.source_path=blocked_scope_screen`, `generated_output_eligible=false`, source/citation/fact counts of zero, and no generated surfaces unlocked.
 
 When live lightweight mode is enabled, exact search and the existing asset-page contracts can use fresh renderable data:

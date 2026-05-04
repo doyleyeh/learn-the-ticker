@@ -106,13 +106,15 @@ SLICE_EXPECTED_STOCK_PASS_TICKERS = ("AAPL", "MSFT", "NVDA")
 SLICE_EXPECTED_ISSUER_BACKED_ETF_TICKERS = ("VOO", "QQQ", "SPY", "VTI", "XLK")
 SLICE_EXPECTED_PARTIAL_ETF_TICKERS: tuple[str, ...] = ()
 SLICE_EXPECTED_BLOCKED_TICKERS = ("TQQQ", "ARKK", "BND", "GLD")
-SLICE_PARITY_REPRESENTATIVE_ASSETS = ("AAPL", "VOO", "QQQ", "SPY", "TQQQ", "ARKK", "BND", "GLD")
+SLICE_PARITY_REPRESENTATIVE_ASSETS = ("AAPL", "MSFT", "VOO", "QQQ", "SPY", "TQQQ", "ARKK", "BND", "GLD")
 SLICE_PARITY_COMPARISON_PAIRS = (
     ("VOO", "QQQ", "etf_vs_etf"),
     ("AAPL", "VOO", "stock_vs_etf"),
+    ("AAPL", "MSFT", "stock_vs_stock"),
 )
 SLICE_PARITY_UNAVAILABLE_COMPARISON_CASES = (
     ("VOO", "SPY", "eligible_not_cached"),
+    ("SPY", "VTI", "eligible_not_cached"),
     ("VOO", "TQQQ", "unsupported"),
     ("AAPL", "TQQQ", "unsupported"),
 )
@@ -538,6 +540,7 @@ def _check_local_fresh_data_mvp_slice_smoke() -> RehearsalCheck:
         "supported_renderable_tickers": result.get("supported_renderable_tickers"),
         "issuer_backed_etf_tickers": result.get("issuer_backed_etf_tickers"),
         "partial_etf_tickers": result.get("partial_etf_tickers"),
+        "partial_etf_coverage_reason": result.get("partial_etf_coverage_reason"),
         "blocked_regression_tickers": result.get("blocked_regression_tickers"),
         "blocked_generated_surfaces": result.get("blocked_generated_surfaces"),
         "comparison_export_parity_summary": result.get("comparison_export_parity_summary"),
@@ -612,6 +615,7 @@ def _check_local_fresh_data_mvp_slice_comparison_export_parity() -> RehearsalChe
             "supported_renderable_tickers": slice_result.get("supported_renderable_tickers"),
             "issuer_backed_etf_tickers": slice_result.get("issuer_backed_etf_tickers"),
             "partial_etf_tickers": slice_result.get("partial_etf_tickers"),
+            "partial_etf_coverage_reason": slice_result.get("partial_etf_coverage_reason"),
             "blocked_regression_tickers": slice_result.get("blocked_regression_tickers"),
             "raw_payload_exposed_count": slice_result.get("raw_payload_exposed_count"),
             "secret_values_reported": slice_result.get("secret_values_reported"),
@@ -765,11 +769,13 @@ def _comparison_pair_parity_summary(
 
     evidence = comparison.get("evidence_availability") or {}
     relationship = comparison.get("stock_etf_relationship") or {}
+    required_dimensions = evidence.get("required_dimensions") or []
     return {
         "pair": [left, right],
         "comparison_type": comparison.get("comparison_type"),
         "availability_state": evidence.get("availability_state"),
         "state_status": (comparison.get("state") or {}).get("status"),
+        "required_dimensions": required_dimensions,
         "source_backed": bool(comparison.get("citations")) and bool(comparison.get("source_documents")),
         "same_comparison_pack_sources_only": (evidence.get("diagnostics") or {}).get("same_comparison_pack_sources_only"),
         "citation_count": len(comparison.get("citations") or []),
@@ -790,6 +796,11 @@ def _comparison_pair_parity_summary(
         "basket_structure": (
             "single-company-vs-etf-basket"
             if expected_comparison_type == "stock_vs_etf" and relationship.get("basket_structure")
+            else None
+        ),
+        "stock_vs_stock_copy_avoids_etf_only_markers": (
+            _stock_vs_stock_copy_avoids_etf_only_markers(comparison)
+            if expected_comparison_type == "stock_vs_stock"
             else None
         ),
         "old_frontend_only_holding_verified_present": "holding_verified" in json.dumps(comparison, sort_keys=True),
@@ -834,6 +845,10 @@ def _available_comparison_payload_blocker(
         return {"reason_code": "comparison_source_metadata_missing", "surface": "comparison"}
     if expected_comparison_type == "stock_vs_etf":
         stock_blocker = _stock_vs_etf_compare_payload_blocker(payload)
+        if stock_blocker:
+            return stock_blocker
+    elif expected_comparison_type == "stock_vs_stock":
+        stock_blocker = _stock_vs_stock_compare_payload_blocker(payload, left, right)
         if stock_blocker:
             return stock_blocker
     elif payload.get("stock_etf_relationship") is not None:
@@ -1450,6 +1465,63 @@ def _stock_vs_etf_compare_payload_blocker(payload: dict[str, Any]) -> dict[str, 
             "citation_binding_assets": sorted(asset for asset in citation_binding_assets if asset),
         }
     return None
+
+
+def _stock_vs_stock_compare_payload_blocker(payload: dict[str, Any], left: str, right: str) -> dict[str, Any] | None:
+    evidence = payload.get("evidence_availability") or {}
+    diagnostics = evidence.get("diagnostics") or {}
+    expected_dimensions = {
+        "Business model",
+        "Revenue trend",
+        "Business quality evidence",
+        "Risk context",
+        "Valuation evidence availability",
+    }
+    dimension_states = {
+        dimension.get("dimension"): dimension.get("evidence_state")
+        for dimension in evidence.get("required_evidence_dimensions", [])
+        if isinstance(dimension, dict)
+    }
+    source_reference_assets = {reference.get("asset_ticker") for reference in evidence.get("source_references", [])}
+    citation_binding_assets = {binding.get("asset_ticker") for binding in evidence.get("citation_bindings", [])}
+    stock_contract_ok = (
+        payload.get("state", {}).get("status") == "supported"
+        and payload.get("comparison_type") == "stock_vs_stock"
+        and evidence.get("availability_state") == "available"
+        and payload.get("stock_etf_relationship") is None
+        and set(evidence.get("required_dimensions") or []) == expected_dimensions
+        and {left, right} <= source_reference_assets
+        and {left, right} <= citation_binding_assets
+        and diagnostics.get("same_comparison_pack_sources_only") is True
+        and dimension_states.get("Valuation evidence availability") == "partial"
+        and _stock_vs_stock_copy_avoids_etf_only_markers(payload)
+    )
+    if not stock_contract_ok:
+        return {
+            "reason_code": "stock_vs_stock_comparison_contract_regression",
+            "surface": "comparison",
+            "comparison_type": payload.get("comparison_type"),
+            "availability_state": evidence.get("availability_state"),
+            "required_dimensions": evidence.get("required_dimensions"),
+            "dimension_states": dimension_states,
+            "source_reference_assets": sorted(asset for asset in source_reference_assets if asset),
+            "citation_binding_assets": sorted(asset for asset in citation_binding_assets if asset),
+            "stock_etf_relationship_present": payload.get("stock_etf_relationship") is not None,
+        }
+    return None
+
+
+def _stock_vs_stock_copy_avoids_etf_only_markers(payload: dict[str, Any]) -> bool:
+    serialized = json.dumps(payload, sort_keys=True).lower()
+    forbidden_markers = [
+        "benchmark",
+        "expense ratio",
+        "holdings count",
+        "fund construction",
+        "etf role",
+        " etf",
+    ]
+    return not any(marker in serialized for marker in forbidden_markers)
 
 
 def _stock_vs_etf_export_payload_blocker(payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -2690,6 +2762,13 @@ def _lightweight_local_mvp_slice_blockers(slice_check: RehearsalCheck) -> list[d
     _append_slice_blocker_if(blockers, details.get("supported_renderable_tickers") != list(SLICE_EXPECTED_SUPPORTED_TICKERS), "local_slice_supported_tickers_mismatch", {"expected": list(SLICE_EXPECTED_SUPPORTED_TICKERS), "actual": details.get("supported_renderable_tickers")})
     _append_slice_blocker_if(blockers, details.get("issuer_backed_etf_tickers") != list(SLICE_EXPECTED_ISSUER_BACKED_ETF_TICKERS), "local_slice_issuer_backed_etfs_mismatch", {"expected": list(SLICE_EXPECTED_ISSUER_BACKED_ETF_TICKERS), "actual": details.get("issuer_backed_etf_tickers")})
     _append_slice_blocker_if(blockers, details.get("partial_etf_tickers") != list(SLICE_EXPECTED_PARTIAL_ETF_TICKERS), "local_slice_partial_etfs_mismatch", {"expected": list(SLICE_EXPECTED_PARTIAL_ETF_TICKERS), "actual": details.get("partial_etf_tickers")})
+    _append_slice_blocker_if(
+        blockers,
+        not details.get("partial_etf_tickers")
+        and details.get("partial_etf_coverage_reason") != "no_partial_etf_rows_in_current_slice",
+        "local_slice_partial_etf_empty_reason_missing",
+        {"actual": details.get("partial_etf_coverage_reason")},
+    )
     _append_slice_blocker_if(blockers, details.get("blocked_regression_tickers") != list(SLICE_EXPECTED_BLOCKED_TICKERS), "local_slice_blocked_tickers_mismatch", {"expected": list(SLICE_EXPECTED_BLOCKED_TICKERS), "actual": details.get("blocked_regression_tickers")})
 
     blocked_surfaces = set(details.get("blocked_generated_surfaces") or [])
@@ -2805,6 +2884,7 @@ def _lightweight_slice_smoke_prerequisite_summary(
         "expected_issuer_backed_etf_tickers": list(SLICE_EXPECTED_ISSUER_BACKED_ETF_TICKERS),
         "partial_etf_tickers": details.get("partial_etf_tickers"),
         "expected_partial_etf_tickers": list(SLICE_EXPECTED_PARTIAL_ETF_TICKERS),
+        "partial_etf_coverage_reason": details.get("partial_etf_coverage_reason"),
         "blocked_regression_tickers": details.get("blocked_regression_tickers"),
         "expected_blocked_regression_tickers": list(SLICE_EXPECTED_BLOCKED_TICKERS),
         "normal_ci_requires_live_calls": details.get("normal_ci_requires_live_calls"),

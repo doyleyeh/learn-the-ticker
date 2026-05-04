@@ -134,7 +134,7 @@
           "token_count": 23,
           "char_start": 315,
           "char_end": 456,
-          "supported_claim_types": ["factual", "interpretation"]
+          "supported_claim_types": ["factual", "comparison", "interpretation"]
         },
         {
           "chunk_id": "chk_aapl_financials_001",
@@ -146,7 +146,7 @@
           "token_count": 24,
           "char_start": 0,
           "char_end": 128,
-          "supported_claim_types": ["factual"]
+          "supported_claim_types": ["factual", "comparison"]
         },
         {
           "chunk_id": "chk_aapl_valuation_limitation_001",
@@ -158,7 +158,7 @@
           "token_count": 22,
           "char_start": 0,
           "char_end": 160,
-          "supported_claim_types": ["factual"]
+          "supported_claim_types": ["factual", "comparison"]
         },
         {
           "chunk_id": "chk_aapl_risks_001",
@@ -170,7 +170,7 @@
           "token_count": 20,
           "char_start": 457,
           "char_end": 599,
-          "supported_claim_types": ["risk"]
+          "supported_claim_types": ["risk", "comparison"]
         },
         {
           "chunk_id": "chk_aapl_recent_none_001",
@@ -324,6 +324,287 @@
         {
           "gap_id": "gap_aapl_valuation_context",
           "asset_ticker": "AAPL",
+          "field_name": "valuation_context",
+          "evidence_state": "missing",
+          "message": "No local fixture evidence is available for valuation context, so retrieval must not invent valuation facts.",
+          "freshness_state": "unavailable",
+          "source_document_id": null,
+          "source_chunk_id": null
+        }
+      ]
+    },
+    {
+      "asset": {
+        "ticker": "MSFT",
+        "name": "Microsoft Corporation",
+        "asset_type": "stock",
+        "exchange": "NASDAQ",
+        "issuer": null,
+        "status": "supported",
+        "supported": true
+      },
+      "freshness": {
+        "page_last_updated_at": "2026-04-20T00:00:00Z",
+        "facts_as_of": "2026-04-01",
+        "holdings_as_of": null,
+        "recent_events_as_of": "2026-04-20",
+        "freshness_state": "fresh"
+      },
+      "source_documents": [
+        {
+          "source_document_id": "src_msft_10k_fixture",
+          "asset_ticker": "MSFT",
+          "source_type": "sec_filing",
+          "source_rank": 1,
+          "title": "Microsoft Corporation Form 10-K fixture excerpt",
+          "publisher": "U.S. SEC",
+          "url": "https://www.sec.gov/",
+          "published_at": "2026-04-01",
+          "retrieved_at": "2026-04-20T00:00:00Z",
+          "content_type": "text",
+          "is_official": true,
+          "freshness_state": "fresh",
+          "as_of_date": "2026-04-01",
+          "source_quality": "official",
+          "allowlist_status": "allowed",
+          "source_use_policy": "full_text_allowed"
+        },
+        {
+          "source_document_id": "src_msft_xbrl_fixture",
+          "asset_ticker": "MSFT",
+          "source_type": "structured_market_data",
+          "source_rank": 2,
+          "title": "Microsoft Corporation SEC XBRL company facts fixture excerpt",
+          "publisher": "U.S. SEC",
+          "url": "https://www.sec.gov/",
+          "published_at": "2026-04-01",
+          "retrieved_at": "2026-04-20T00:00:00Z",
+          "content_type": "text",
+          "is_official": true,
+          "freshness_state": "fresh",
+          "as_of_date": "2026-04-01",
+          "source_quality": "official",
+          "allowlist_status": "allowed",
+          "source_use_policy": "full_text_allowed"
+        },
+        {
+          "source_document_id": "src_msft_valuation_limitation",
+          "asset_ticker": "MSFT",
+          "source_type": "structured_market_data",
+          "source_rank": 4,
+          "title": "MSFT valuation data availability fixture note",
+          "publisher": "Learn the Ticker fixtures",
+          "url": "local://fixtures/msft/valuation-data-limitation",
+          "published_at": "2026-04-20",
+          "retrieved_at": "2026-04-20T00:00:00Z",
+          "content_type": "text",
+          "is_official": false,
+          "freshness_state": "unavailable",
+          "as_of_date": "2026-04-20",
+          "source_quality": "fixture",
+          "allowlist_status": "allowed",
+          "source_use_policy": "full_text_allowed"
+        }
+      ],
+      "source_chunks": [
+        {
+          "chunk_id": "chk_msft_business_001",
+          "asset_ticker": "MSFT",
+          "source_document_id": "src_msft_10k_fixture",
+          "section_name": "Business",
+          "chunk_order": 1,
+          "text": "Microsoft develops and supports software, services, devices, and solutions across productivity, cloud, operating-system, gaming, search, and LinkedIn offerings.",
+          "token_count": 20,
+          "char_start": 0,
+          "char_end": 156,
+          "supported_claim_types": ["factual", "comparison", "interpretation"]
+        },
+        {
+          "chunk_id": "chk_msft_products_001",
+          "asset_ticker": "MSFT",
+          "source_document_id": "src_msft_10k_fixture",
+          "section_name": "Products and services",
+          "chunk_order": 2,
+          "text": "Microsoft product and service areas in this fixture include Microsoft 365, Azure and other cloud services, Windows, Xbox content and services, search advertising, and LinkedIn.",
+          "token_count": 25,
+          "char_start": 157,
+          "char_end": 329,
+          "supported_claim_types": ["factual"]
+        },
+        {
+          "chunk_id": "chk_msft_strength_001",
+          "asset_ticker": "MSFT",
+          "source_document_id": "src_msft_10k_fixture",
+          "section_name": "Business quality",
+          "chunk_order": 3,
+          "text": "The local filing fixture describes Microsoft's business as supported by commercial cloud demand, productivity software subscriptions, and a broad enterprise customer base.",
+          "token_count": 22,
+          "char_start": 330,
+          "char_end": 489,
+          "supported_claim_types": ["factual", "comparison", "interpretation"]
+        },
+        {
+          "chunk_id": "chk_msft_financials_001",
+          "asset_ticker": "MSFT",
+          "source_document_id": "src_msft_xbrl_fixture",
+          "section_name": "Financial quality",
+          "chunk_order": 1,
+          "text": "The local SEC XBRL fixture records Microsoft revenue of $211.9 billion for fiscal 2023 and $245.1 billion for fiscal 2024.",
+          "token_count": 23,
+          "char_start": 0,
+          "char_end": 130,
+          "supported_claim_types": ["factual", "comparison"]
+        },
+        {
+          "chunk_id": "chk_msft_valuation_limitation_001",
+          "asset_ticker": "MSFT",
+          "source_document_id": "src_msft_valuation_limitation",
+          "section_name": "Valuation context",
+          "chunk_order": 1,
+          "text": "The local structured-data fixture does not include current P/E, forward P/E, price/sales, price/free-cash-flow, peer context, or own-history valuation metrics for MSFT.",
+          "token_count": 22,
+          "char_start": 0,
+          "char_end": 160,
+          "supported_claim_types": ["factual", "comparison"]
+        },
+        {
+          "chunk_id": "chk_msft_risks_001",
+          "asset_ticker": "MSFT",
+          "source_document_id": "src_msft_10k_fixture",
+          "section_name": "Risk factors",
+          "chunk_order": 4,
+          "text": "Single-company stock results can be affected by cloud and software competition, cybersecurity incidents, regulation, customer spending patterns, and other company-specific risks.",
+          "token_count": 22,
+          "char_start": 490,
+          "char_end": 653,
+          "supported_claim_types": ["risk", "comparison"]
+        }
+      ],
+      "normalized_facts": [
+        {
+          "fact_id": "fact_msft_asset_identity",
+          "asset_ticker": "MSFT",
+          "fact_type": "identity",
+          "field_name": "canonical_asset_identity",
+          "value": {
+            "ticker": "MSFT",
+            "name": "Microsoft Corporation",
+            "asset_type": "stock",
+            "exchange": "NASDAQ",
+            "cik": "0000789019"
+          },
+          "unit": null,
+          "period": null,
+          "as_of_date": "2026-04-01",
+          "source_document_id": "src_msft_10k_fixture",
+          "source_chunk_id": "chk_msft_business_001",
+          "extraction_method": "manual_fixture",
+          "confidence": 1.0,
+          "freshness_state": "fresh",
+          "evidence_state": "supported"
+        },
+        {
+          "fact_id": "fact_msft_primary_business",
+          "asset_ticker": "MSFT",
+          "fact_type": "business_model",
+          "field_name": "primary_business",
+          "value": "Develops and supports software, cloud services, devices, gaming, search, and LinkedIn offerings.",
+          "unit": null,
+          "period": null,
+          "as_of_date": "2026-04-01",
+          "source_document_id": "src_msft_10k_fixture",
+          "source_chunk_id": "chk_msft_business_001",
+          "extraction_method": "manual_fixture",
+          "confidence": 0.98,
+          "freshness_state": "fresh",
+          "evidence_state": "supported"
+        },
+        {
+          "fact_id": "fact_msft_products_services_detail",
+          "asset_ticker": "MSFT",
+          "fact_type": "business_model",
+          "field_name": "products_services_detail",
+          "value": "Product and service areas include Microsoft 365, Azure and other cloud services, Windows, Xbox content and services, search advertising, and LinkedIn.",
+          "unit": null,
+          "period": null,
+          "as_of_date": "2026-04-01",
+          "source_document_id": "src_msft_10k_fixture",
+          "source_chunk_id": "chk_msft_products_001",
+          "extraction_method": "manual_fixture",
+          "confidence": 0.96,
+          "freshness_state": "fresh",
+          "evidence_state": "supported"
+        },
+        {
+          "fact_id": "fact_msft_business_quality_strength",
+          "asset_ticker": "MSFT",
+          "fact_type": "business_quality",
+          "field_name": "business_quality_strength",
+          "value": "The fixture describes Microsoft's business as supported by commercial cloud demand, productivity software subscriptions, and a broad enterprise customer base.",
+          "unit": null,
+          "period": null,
+          "as_of_date": "2026-04-01",
+          "source_document_id": "src_msft_10k_fixture",
+          "source_chunk_id": "chk_msft_strength_001",
+          "extraction_method": "manual_fixture",
+          "confidence": 0.9,
+          "freshness_state": "fresh",
+          "evidence_state": "supported"
+        },
+        {
+          "fact_id": "fact_msft_revenue_trend",
+          "asset_ticker": "MSFT",
+          "fact_type": "financial_quality",
+          "field_name": "financial_quality_revenue_trend",
+          "value": "$211.9 billion in fiscal 2023 to $245.1 billion in fiscal 2024",
+          "unit": null,
+          "period": "FY2023-FY2024",
+          "as_of_date": "2026-04-01",
+          "source_document_id": "src_msft_xbrl_fixture",
+          "source_chunk_id": "chk_msft_financials_001",
+          "extraction_method": "manual_fixture",
+          "confidence": 0.95,
+          "freshness_state": "fresh",
+          "evidence_state": "supported"
+        },
+        {
+          "fact_id": "fact_msft_valuation_limitation",
+          "asset_ticker": "MSFT",
+          "fact_type": "valuation_context",
+          "field_name": "valuation_data_limitation",
+          "value": "The local fixture does not include current P/E, forward P/E, price/sales, price/free-cash-flow, peer context, or own-history valuation metrics for MSFT.",
+          "unit": null,
+          "period": null,
+          "as_of_date": "2026-04-20",
+          "source_document_id": "src_msft_valuation_limitation",
+          "source_chunk_id": "chk_msft_valuation_limitation_001",
+          "extraction_method": "manual_fixture",
+          "confidence": 1.0,
+          "freshness_state": "unavailable",
+          "evidence_state": "supported"
+        },
+        {
+          "fact_id": "fact_msft_risk_context",
+          "asset_ticker": "MSFT",
+          "fact_type": "risk",
+          "field_name": "company_specific_risk",
+          "value": "A single-company stock can be affected by cloud and software competition, cybersecurity incidents, regulation, customer spending patterns, and other company-specific issues.",
+          "unit": null,
+          "period": null,
+          "as_of_date": "2026-04-01",
+          "source_document_id": "src_msft_10k_fixture",
+          "source_chunk_id": "chk_msft_risks_001",
+          "extraction_method": "manual_fixture",
+          "confidence": 0.95,
+          "freshness_state": "fresh",
+          "evidence_state": "supported"
+        }
+      ],
+      "recent_developments": [],
+      "evidence_gaps": [
+        {
+          "gap_id": "gap_msft_valuation_context",
+          "asset_ticker": "MSFT",
           "field_name": "valuation_context",
           "evidence_state": "missing",
           "message": "No local fixture evidence is available for valuation context, so retrieval must not invent valuation facts.",
@@ -1130,6 +1411,48 @@
           "summary": "The comparison separates learning about Apple's business from learning about VOO's basket exposure.",
           "fact_ids": ["fact_aapl_primary_business", "fact_voo_role", "fact_voo_holdings_exposure_detail"],
           "source_chunk_ids": ["chk_aapl_business_001", "chk_voo_profile_001", "chk_voo_holdings_exposure_001"]
+        }
+      ]
+    },
+    {
+      "comparison_pack_id": "AAPL_vs_MSFT",
+      "left_ticker": "AAPL",
+      "right_ticker": "MSFT",
+      "computed_differences": [
+        {
+          "difference_id": "diff_aapl_msft_business_model",
+          "dimension": "Business model",
+          "summary": "AAPL and MSFT are both single-company stocks, but the fixtures describe different business mixes.",
+          "fact_ids": ["fact_aapl_primary_business", "fact_msft_primary_business"],
+          "source_chunk_ids": ["chk_aapl_business_001", "chk_msft_business_001"]
+        },
+        {
+          "difference_id": "diff_aapl_msft_revenue_trend",
+          "dimension": "Revenue trend",
+          "summary": "The local SEC XBRL fixtures provide separate revenue trend facts for AAPL and MSFT.",
+          "fact_ids": ["fact_aapl_revenue_trend", "fact_msft_revenue_trend"],
+          "source_chunk_ids": ["chk_aapl_financials_001", "chk_msft_financials_001"]
+        },
+        {
+          "difference_id": "diff_aapl_msft_business_quality",
+          "dimension": "Business quality evidence",
+          "summary": "The fixtures provide different source-backed business quality evidence for AAPL and MSFT.",
+          "fact_ids": ["fact_aapl_business_quality_strength", "fact_msft_business_quality_strength"],
+          "source_chunk_ids": ["chk_aapl_strength_001", "chk_msft_strength_001"]
+        },
+        {
+          "difference_id": "diff_aapl_msft_risk_context",
+          "dimension": "Risk context",
+          "summary": "The fixtures provide company-specific risk context for both AAPL and MSFT.",
+          "fact_ids": ["fact_aapl_risk_context", "fact_msft_risk_context"],
+          "source_chunk_ids": ["chk_aapl_risks_001", "chk_msft_risks_001"]
+        },
+        {
+          "difference_id": "diff_aapl_msft_valuation_evidence",
+          "dimension": "Valuation evidence availability",
+          "summary": "The local fixtures do not include current valuation metrics for either AAPL or MSFT.",
+          "fact_ids": ["fact_aapl_valuation_limitation", "fact_msft_valuation_limitation"],
+          "source_chunk_ids": ["chk_aapl_valuation_limitation_001", "chk_msft_valuation_limitation_001"]
         }
       ]
     }

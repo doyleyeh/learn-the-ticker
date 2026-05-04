@@ -237,6 +237,74 @@ def test_aapl_voo_stock_etf_comparison_is_schema_valid_source_backed_and_reversi
         )
 
 
+def test_aapl_msft_stock_stock_comparison_is_schema_valid_source_backed_and_stock_appropriate():
+    for left, right in [("AAPL", "MSFT"), ("MSFT", "AAPL")]:
+        pack = build_comparison_knowledge_pack(left, right)
+        comparison = generate_comparison(left, right)
+        validated = CompareResponse.model_validate(comparison.model_dump(mode="json"))
+
+        assert validated.left_asset.ticker == left
+        assert validated.right_asset.ticker == right
+        assert validated.state.status is AssetStatus.supported
+        assert validated.comparison_type == "stock_vs_stock"
+        assert validated.bottom_line_for_beginners is not None
+        assert validated.citations
+        assert validated.source_documents
+        assert validated.stock_etf_relationship is None
+
+        expected_dimensions = {
+            "Business model",
+            "Revenue trend",
+            "Business quality evidence",
+            "Risk context",
+            "Valuation evidence availability",
+        }
+        assert {difference.dimension for difference in validated.key_differences} == expected_dimensions
+        assert validate_comparison_response(validated, pack).valid
+
+        citation_ids = {citation.citation_id for citation in validated.citations}
+        source_ids = {source.source_document_id for source in validated.source_documents}
+        used_citation_ids = {
+            *{citation_id for item in validated.key_differences for citation_id in item.citation_ids},
+            *validated.bottom_line_for_beginners.citation_ids,
+        }
+        assert used_citation_ids <= citation_ids
+        assert {citation.source_document_id for citation in validated.citations} <= source_ids
+        assert {source.source_document_id for source in validated.source_documents} <= {
+            source.source_document_id for source in pack.comparison_sources
+        }
+
+        assert validated.evidence_availability is not None
+        assert validated.evidence_availability.availability_state.value == "available"
+        assert set(validated.evidence_availability.required_dimensions) == expected_dimensions
+        assert {reference.asset_ticker for reference in validated.evidence_availability.source_references} == {
+            "AAPL",
+            "MSFT",
+        }
+        valuation_dimension = next(
+            dimension
+            for dimension in validated.evidence_availability.required_evidence_dimensions
+            if dimension.dimension == "Valuation evidence availability"
+        )
+        assert valuation_dimension.evidence_state is EvidenceState.partial
+        assert "valuation metrics are unavailable" in (valuation_dimension.unavailable_reason or "")
+        assert {
+            item.asset_ticker
+            for item in validated.evidence_availability.evidence_items
+            if item.side_role.value == "left_side_support"
+        } == {left}
+        assert {
+            item.asset_ticker
+            for item in validated.evidence_availability.evidence_items
+            if item.side_role.value == "right_side_support"
+        } == {right}
+
+        serialized = _flatten_text(validated.model_dump(mode="json")).lower()
+        for forbidden in ["benchmark", "expense ratio", "holdings count", "fund construction", "etf role", " etf"]:
+            assert forbidden not in serialized
+        assert find_forbidden_output_phrases(serialized) == []
+
+
 def test_knowledge_pack_builder_does_not_change_comparison_output():
     before = generate_comparison("VOO", "QQQ").model_dump(mode="json")
     build_result = build_asset_knowledge_pack_result("VOO")
@@ -458,6 +526,7 @@ def test_unavailable_comparisons_do_not_generate_claims_or_citations():
         ("VOO", "TQQQ", AssetStatus.unsupported, "unsupported"),
         ("VOO", "GME", AssetStatus.unknown, "out_of_scope"),
         ("VOO", "SPY", AssetStatus.unknown, "eligible_not_cached"),
+        ("SPY", "VTI", AssetStatus.unknown, "eligible_not_cached"),
         ("VOO", "ZZZZ", AssetStatus.unknown, "unknown"),
         ("AAPL", "QQQ", AssetStatus.unknown, "no_local_pack"),
     ]
@@ -611,7 +680,15 @@ def test_comparison_claim_validation_rejects_wrong_stale_unsupported_and_empty_e
 
 
 def test_generated_comparison_copy_avoids_forbidden_advice_phrases():
-    for pair in [("VOO", "QQQ"), ("QQQ", "VOO"), ("VOO", "BTC"), ("AAPL", "VOO"), ("VOO", "AAPL")]:
+    for pair in [
+        ("VOO", "QQQ"),
+        ("QQQ", "VOO"),
+        ("VOO", "BTC"),
+        ("AAPL", "VOO"),
+        ("VOO", "AAPL"),
+        ("AAPL", "MSFT"),
+        ("MSFT", "AAPL"),
+    ]:
         comparison = generate_comparison(*pair)
         assert find_forbidden_output_phrases(_flatten_text(comparison.model_dump(mode="json"))) == []
 

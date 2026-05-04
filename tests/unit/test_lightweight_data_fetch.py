@@ -441,6 +441,26 @@ def test_local_fresh_data_mvp_slice_smoke_contract_is_deterministic():
     assert result["status_counts"] == {"pass": 8, "partial": 0, "blocked": 4, "unavailable": 0}
     assert result["issuer_backed_etf_tickers"] == ["VOO", "QQQ", "SPY", "VTI", "XLK"]
     assert result["partial_etf_tickers"] == []
+    assert result["partial_etf_coverage_reason"] == "no_partial_etf_rows_in_current_slice"
+    comparison_summary = result["comparison_export_parity_summary"]
+    assert {
+        (pair["left_ticker"], pair["right_ticker"], pair["comparison_type"])
+        for pair in comparison_summary["representative_comparison_pairs"]
+    } == {
+        ("VOO", "QQQ", "etf_vs_etf"),
+        ("AAPL", "VOO", "stock_vs_etf"),
+        ("AAPL", "MSFT", "stock_vs_stock"),
+    }
+    assert {
+        (case["left_ticker"], case["right_ticker"], case["expected_state"])
+        for case in comparison_summary["unavailable_or_blocked_comparison_cases"]
+    } == {
+        ("VOO", "SPY", "eligible_not_cached"),
+        ("SPY", "VTI", "eligible_not_cached"),
+        ("VOO", "TQQQ", "unsupported"),
+        ("AAPL", "TQQQ", "unsupported"),
+    }
+    assert comparison_summary["partial_etf_pair_coverage"]["reason_code"] == "no_partial_etf_rows_in_current_slice"
 
     rows = {row["ticker"]: row for row in result["rows"]}
     for ticker in ("AAPL", "MSFT", "NVDA"):
