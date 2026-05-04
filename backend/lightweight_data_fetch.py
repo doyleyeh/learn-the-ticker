@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Protocol
@@ -23,6 +24,8 @@ from backend.models import (
     EvidenceState,
     Freshness,
     FreshnessState,
+    LightweightApiFallbackDiagnostics,
+    LightweightFallbackFreshnessSummary,
     LightweightFetchCitation,
     LightweightFetchFact,
     LightweightFetchResponse,
@@ -843,44 +846,48 @@ def _response_from_parts(
     page_state = EvidenceState.supported if has_official and facts else EvidenceState.partial if facts else EvidenceState.unavailable
     fetch_state = LightweightFetchState.supported if page_state is EvidenceState.supported else LightweightFetchState.partial if facts else LightweightFetchState.unavailable
     as_of = preferred_as_of or _latest_as_of([*sources, *source_by_id.values()])
-    return LightweightFetchResponse(
-        ticker=ticker,
-        data_policy_mode=DataPolicyMode(settings.data_policy_mode),
-        fetch_state=fetch_state,
-        asset=asset,
-        generated_output_eligible=fetch_state in {LightweightFetchState.supported, LightweightFetchState.partial},
-        page_render_state=page_state,
-        source_priority=[
-            "official_sources",
-            "local_manifest_scope_signal",
-            "reputable_provider_fallback" if has_provider else "provider_fallback_unavailable",
-            "partial_or_unavailable_states",
-        ],
-        freshness=Freshness(
-            page_last_updated_at=retrieved_at,
-            facts_as_of=as_of,
-            holdings_as_of=as_of if asset.asset_type is AssetType.etf else None,
-            recent_events_as_of=None,
-            freshness_state=FreshnessState.fresh if facts else FreshnessState.unavailable,
-        ),
-        facts=facts,
-        sources=sources,
-        citations=citations,
-        gaps=gaps,
-        diagnostics={
-            **diagnostics,
-            "settings": settings.safe_diagnostics,
-            "official_source_count": sum(1 for source in sources if source.source_label is LightweightSourceLabel.official),
-            "provider_fallback_source_count": sum(
-                1 for source in sources if source.source_label is LightweightSourceLabel.provider_derived
+    return _with_fallback_diagnostics(
+        LightweightFetchResponse(
+            ticker=ticker,
+            data_policy_mode=DataPolicyMode(settings.data_policy_mode),
+            fetch_state=fetch_state,
+            asset=asset,
+            generated_output_eligible=fetch_state in {LightweightFetchState.supported, LightweightFetchState.partial},
+            page_render_state=page_state,
+            source_priority=[
+                "official_sources",
+                "local_manifest_scope_signal",
+                "reputable_provider_fallback" if has_provider else "provider_fallback_unavailable",
+                "partial_or_unavailable_states",
+            ],
+            freshness=Freshness(
+                page_last_updated_at=retrieved_at,
+                facts_as_of=as_of,
+                holdings_as_of=as_of if asset.asset_type is AssetType.etf else None,
+                recent_events_as_of=None,
+                freshness_state=FreshnessState.fresh if facts else FreshnessState.unavailable,
             ),
-            "gap_count": len(gaps),
-            "strict_audit_quality_approval": False,
-            "raw_payload_exposed": False,
-        },
-        no_live_external_calls=no_live_external_calls,
-        raw_payload_exposed=False,
-        message=message,
+            facts=facts,
+            sources=sources,
+            citations=citations,
+            gaps=gaps,
+            diagnostics={
+                **diagnostics,
+                "settings": settings.safe_diagnostics,
+                "official_source_count": sum(
+                    1 for source in sources if source.source_label is LightweightSourceLabel.official
+                ),
+                "provider_fallback_source_count": sum(
+                    1 for source in sources if source.source_label is LightweightSourceLabel.provider_derived
+                ),
+                "gap_count": len(gaps),
+                "strict_audit_quality_approval": False,
+                "raw_payload_exposed": False,
+            },
+            no_live_external_calls=no_live_external_calls,
+            raw_payload_exposed=False,
+            message=message,
+        )
     )
 
 
@@ -892,24 +899,34 @@ def _unavailable_response(
     reason_code: str,
     message: str,
 ) -> LightweightFetchResponse:
-    return LightweightFetchResponse(
-        ticker=ticker,
-        data_policy_mode=DataPolicyMode(settings.data_policy_mode if settings.data_policy_mode in {"strict", "lightweight"} else "lightweight"),
-        fetch_state=LightweightFetchState.unavailable,
-        asset=AssetIdentity(ticker=ticker, name=ticker, asset_type=AssetType.unknown, status=AssetStatus.unknown, supported=False),
-        generated_output_eligible=False,
-        page_render_state=EvidenceState.unavailable,
-        source_priority=["official_sources", "reputable_provider_fallback", "partial_or_unavailable_states"],
-        freshness=Freshness(
-            page_last_updated_at=retrieved_at,
-            facts_as_of=None,
-            holdings_as_of=None,
-            recent_events_as_of=None,
-            freshness_state=FreshnessState.unavailable,
-        ),
-        diagnostics={"reason_code": reason_code, "settings": settings.safe_diagnostics},
-        no_live_external_calls=True,
-        message=message,
+    return _with_fallback_diagnostics(
+        LightweightFetchResponse(
+            ticker=ticker,
+            data_policy_mode=DataPolicyMode(
+                settings.data_policy_mode if settings.data_policy_mode in {"strict", "lightweight"} else "lightweight"
+            ),
+            fetch_state=LightweightFetchState.unavailable,
+            asset=AssetIdentity(
+                ticker=ticker,
+                name=ticker,
+                asset_type=AssetType.unknown,
+                status=AssetStatus.unknown,
+                supported=False,
+            ),
+            generated_output_eligible=False,
+            page_render_state=EvidenceState.unavailable,
+            source_priority=["official_sources", "reputable_provider_fallback", "partial_or_unavailable_states"],
+            freshness=Freshness(
+                page_last_updated_at=retrieved_at,
+                facts_as_of=None,
+                holdings_as_of=None,
+                recent_events_as_of=None,
+                freshness_state=FreshnessState.unavailable,
+            ),
+            diagnostics={"reason_code": reason_code, "settings": settings.safe_diagnostics},
+            no_live_external_calls=True,
+            message=message,
+        )
     )
 
 
@@ -920,24 +937,32 @@ def _unknown_response(
     *,
     diagnostics: dict[str, Any],
 ) -> LightweightFetchResponse:
-    return LightweightFetchResponse(
-        ticker=ticker,
-        data_policy_mode=DataPolicyMode.lightweight,
-        fetch_state=LightweightFetchState.unknown,
-        asset=AssetIdentity(ticker=ticker, name=ticker, asset_type=AssetType.unknown, status=AssetStatus.unknown, supported=False),
-        generated_output_eligible=False,
-        page_render_state=EvidenceState.unknown,
-        source_priority=["official_sources", "reputable_provider_fallback", "partial_or_unavailable_states"],
-        freshness=Freshness(
-            page_last_updated_at=retrieved_at,
-            facts_as_of=None,
-            holdings_as_of=None,
-            recent_events_as_of=None,
-            freshness_state=FreshnessState.unknown,
-        ),
-        diagnostics={**diagnostics, "settings": settings.safe_diagnostics},
-        no_live_external_calls=False,
-        message="No recognized stock or in-scope ETF could be resolved from official or provider fallback metadata.",
+    return _with_fallback_diagnostics(
+        LightweightFetchResponse(
+            ticker=ticker,
+            data_policy_mode=DataPolicyMode.lightweight,
+            fetch_state=LightweightFetchState.unknown,
+            asset=AssetIdentity(
+                ticker=ticker,
+                name=ticker,
+                asset_type=AssetType.unknown,
+                status=AssetStatus.unknown,
+                supported=False,
+            ),
+            generated_output_eligible=False,
+            page_render_state=EvidenceState.unknown,
+            source_priority=["official_sources", "reputable_provider_fallback", "partial_or_unavailable_states"],
+            freshness=Freshness(
+                page_last_updated_at=retrieved_at,
+                facts_as_of=None,
+                holdings_as_of=None,
+                recent_events_as_of=None,
+                freshness_state=FreshnessState.unknown,
+            ),
+            diagnostics={**diagnostics, "settings": settings.safe_diagnostics},
+            no_live_external_calls=False,
+            message="No recognized stock or in-scope ETF could be resolved from official or provider fallback metadata.",
+        )
     )
 
 
@@ -952,25 +977,146 @@ def _blocked_response(
     *,
     diagnostics: dict[str, Any] | None = None,
 ) -> LightweightFetchResponse:
-    return LightweightFetchResponse(
-        ticker=ticker,
-        data_policy_mode=DataPolicyMode.lightweight,
-        fetch_state=fetch_state,
-        asset=AssetIdentity(ticker=ticker, name=name, asset_type=asset_type, status=AssetStatus.unsupported, supported=False),
-        generated_output_eligible=False,
-        page_render_state=EvidenceState.unsupported,
-        source_priority=["scope_screen_before_generation", "partial_or_unavailable_states"],
-        freshness=Freshness(
-            page_last_updated_at=retrieved_at,
-            facts_as_of=None,
-            holdings_as_of=None,
-            recent_events_as_of=None,
-            freshness_state=FreshnessState.unavailable,
-        ),
-        diagnostics={**(diagnostics or {}), "settings": settings.safe_diagnostics, "blocked_generated_output": True},
-        no_live_external_calls=True,
-        message=message,
+    return _with_fallback_diagnostics(
+        LightweightFetchResponse(
+            ticker=ticker,
+            data_policy_mode=DataPolicyMode.lightweight,
+            fetch_state=fetch_state,
+            asset=AssetIdentity(
+                ticker=ticker,
+                name=name,
+                asset_type=asset_type,
+                status=AssetStatus.unsupported,
+                supported=False,
+            ),
+            generated_output_eligible=False,
+            page_render_state=EvidenceState.unsupported,
+            source_priority=["scope_screen_before_generation", "partial_or_unavailable_states"],
+            freshness=Freshness(
+                page_last_updated_at=retrieved_at,
+                facts_as_of=None,
+                holdings_as_of=None,
+                recent_events_as_of=None,
+                freshness_state=FreshnessState.unavailable,
+            ),
+            diagnostics={**(diagnostics or {}), "settings": settings.safe_diagnostics, "blocked_generated_output": True},
+            no_live_external_calls=True,
+            message=message,
+        )
     )
+
+
+def _with_fallback_diagnostics(response: LightweightFetchResponse) -> LightweightFetchResponse:
+    return response.model_copy(update={"fallback_diagnostics": build_lightweight_api_fallback_diagnostics(response)})
+
+
+def build_lightweight_api_fallback_diagnostics(response: LightweightFetchResponse) -> LightweightApiFallbackDiagnostics:
+    label_counts = Counter(source.source_label.value for source in response.sources)
+    reason_codes = _fallback_reason_codes(response, label_counts)
+    return LightweightApiFallbackDiagnostics(
+        source_path=_fallback_source_path(response, label_counts),
+        reason_codes=reason_codes,
+        fetch_state=response.fetch_state,
+        page_render_state=response.page_render_state,
+        generated_output_eligible=response.generated_output_eligible,
+        source_labels=[LightweightSourceLabel(label) for label in sorted(label_counts)],
+        source_label_counts=dict(sorted(label_counts.items())),
+        source_count=len(response.sources),
+        citation_count=len(response.citations),
+        fact_count=len(response.facts),
+        gap_count=len(response.gaps),
+        official_source_count=label_counts.get(LightweightSourceLabel.official.value, 0),
+        provider_fallback_source_count=label_counts.get(LightweightSourceLabel.provider_derived.value, 0),
+        partial_source_count=label_counts.get(LightweightSourceLabel.partial.value, 0),
+        unavailable_source_count=label_counts.get(LightweightSourceLabel.unavailable.value, 0),
+        issuer_evidence_state=_issuer_evidence_state(response, label_counts),
+        freshness=LightweightFallbackFreshnessSummary(
+            page_last_updated_at=response.freshness.page_last_updated_at,
+            facts_as_of=response.freshness.facts_as_of,
+            holdings_as_of=response.freshness.holdings_as_of,
+            recent_events_as_of=response.freshness.recent_events_as_of,
+            freshness_state=response.freshness.freshness_state,
+        ),
+        raw_payload_exposed=response.raw_payload_exposed or bool(response.diagnostics.get("raw_payload_exposed")),
+        secret_values_exposed=False,
+        raw_payload_fields_exposed=False,
+        hidden_prompt_or_reasoning_exposed=False,
+        diagnostics_are_sanitized=True,
+    )
+
+
+def _fallback_source_path(response: LightweightFetchResponse, label_counts: Counter[str]) -> str:
+    if response.fetch_state in {LightweightFetchState.unsupported, LightweightFetchState.out_of_scope}:
+        return "blocked_scope_screen"
+    if response.fetch_state is LightweightFetchState.unknown:
+        return "unknown_or_unavailable"
+    if response.fetch_state is LightweightFetchState.unavailable:
+        return "lightweight_fetch_unavailable"
+    if response.asset.asset_type is AssetType.stock:
+        if label_counts.get(LightweightSourceLabel.official.value) and label_counts.get(
+            LightweightSourceLabel.provider_derived.value
+        ):
+            return "sec_official_provider_fallback"
+        if label_counts.get(LightweightSourceLabel.official.value):
+            return "sec_official"
+        if label_counts.get(LightweightSourceLabel.provider_derived.value):
+            return "provider_fallback_only"
+        return "stock_partial_or_unavailable"
+    if response.asset.asset_type is AssetType.etf:
+        if response.diagnostics.get("issuer_enrichment_state") == "supported":
+            return "issuer_backed_etf_provider_fallback"
+        if label_counts.get(LightweightSourceLabel.partial.value) and label_counts.get(
+            LightweightSourceLabel.provider_derived.value
+        ):
+            return "etf_manifest_scope_provider_fallback"
+        if label_counts.get(LightweightSourceLabel.partial.value):
+            return "etf_manifest_scope_partial"
+        if label_counts.get(LightweightSourceLabel.provider_derived.value):
+            return "provider_fallback_only"
+        return "etf_partial_or_unavailable"
+    return "unknown_or_unavailable"
+
+
+def _fallback_reason_codes(response: LightweightFetchResponse, label_counts: Counter[str]) -> list[str]:
+    codes: list[str] = [f"fetch_state_{response.fetch_state.value}", f"page_render_state_{response.page_render_state.value}"]
+    if response.generated_output_eligible:
+        codes.append("generated_output_eligible")
+    else:
+        codes.append("generated_output_blocked")
+    if response.diagnostics.get("reason_code"):
+        codes.append(str(response.diagnostics["reason_code"]))
+    if response.diagnostics.get("blocked_generated_output"):
+        codes.append("blocked_generated_output")
+    if label_counts.get(LightweightSourceLabel.official.value):
+        codes.append("official_source_evidence")
+    if label_counts.get(LightweightSourceLabel.provider_derived.value):
+        codes.append("provider_fallback_used")
+    if label_counts.get(LightweightSourceLabel.partial.value):
+        codes.append("manifest_or_partial_source_signal")
+    issuer_state = _issuer_evidence_state(response, label_counts)
+    if issuer_state != "not_applicable":
+        codes.append(f"issuer_evidence_{issuer_state}")
+    if response.gaps or response.page_render_state in {
+        EvidenceState.partial,
+        EvidenceState.unavailable,
+        EvidenceState.unknown,
+        EvidenceState.insufficient_evidence,
+    }:
+        codes.append("partial_or_unavailable_evidence_gaps")
+    codes.append("raw_payload_hidden")
+    return sorted(dict.fromkeys(codes))
+
+
+def _issuer_evidence_state(response: LightweightFetchResponse, label_counts: Counter[str]) -> str:
+    if response.asset.asset_type is not AssetType.etf:
+        return "not_applicable"
+    if response.fetch_state in {LightweightFetchState.unsupported, LightweightFetchState.out_of_scope}:
+        return "blocked"
+    if response.diagnostics.get("issuer_enrichment_state") == "supported":
+        return "supported"
+    if label_counts.get(LightweightSourceLabel.partial.value) or response.gaps:
+        return "partial"
+    return "unavailable"
 
 
 def _manifest_blocked_response(

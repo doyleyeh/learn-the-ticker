@@ -1698,6 +1698,55 @@ def test_t150_lightweight_live_browser_api_mvp_slice_smoke_runner_contract():
         assert forbidden.lower() not in runbook.lower()
 
 
+def test_t151_lightweight_api_fallback_diagnostics_are_documented_and_static_marked():
+    models = read_file("backend/models.py")
+    search = read_file("backend/search.py")
+    lightweight_fetch = read_file("backend/lightweight_data_fetch.py")
+    lightweight_page = read_file("backend/lightweight_page.py")
+    slice_smoke = read_file("scripts/run_local_fresh_data_slice_smoke.py")
+    browser_smoke = read_file("tests/frontend/smoke.mjs")
+    runbook = read_file("docs/local_fresh_data_ingest_to_render_runbook.md")
+    combined = "\n".join([models, search, lightweight_fetch, lightweight_page, slice_smoke, browser_smoke, runbook])
+
+    for marker in [
+        "LightweightApiFallbackDiagnostics",
+        "lightweight-api-fallback-diagnostics-v1",
+        "fallback_diagnostics",
+        "build_lightweight_api_fallback_diagnostics",
+        "sec_official_provider_fallback",
+        "issuer_backed_etf_provider_fallback",
+        "etf_manifest_scope_provider_fallback",
+        "blocked_scope_screen",
+        "reason_codes",
+        "source_label_counts",
+        "official_source_count",
+        "provider_fallback_source_count",
+        "gap_count",
+        "issuer_evidence_state",
+        "raw_payload_exposed",
+        "secret_values_exposed",
+        "raw_payload_fields_exposed",
+        "hidden_prompt_or_reasoning_exposed",
+        "diagnostics_are_sanitized",
+        "results[].fallback_diagnostics",
+        "fresh_data_diagnostics[].fallback_diagnostics",
+        "apiFallbackDiagnosticsFor",
+    ]:
+        assert marker in combined, f"T-151 fallback diagnostics contract should include marker: {marker}"
+
+    for marker in [
+        "`VOO` and `QQQ`: `fallback_diagnostics.source_path=issuer_backed_etf_provider_fallback`",
+        "`SPY`, `VTI`, and `XLK`: `fallback_diagnostics.source_path=etf_manifest_scope_provider_fallback`",
+        "`TQQQ`, `ARKK`, `BND`, and `GLD`: `fallback_diagnostics.source_path=blocked_scope_screen`",
+        "Cached deterministic fixture rows such as cached `VOO` may keep this field `null`",
+        "Overview: `GET /api/assets/{ticker}/overview` returns `fallback_diagnostics`",
+        "Details: `GET /api/assets/{ticker}/details` returns the same `fallback_diagnostics`",
+        "Sources/source drawer: `GET /api/assets/{ticker}/sources` returns the same `fallback_diagnostics`",
+        "`raw_payload_exposed=false`",
+    ]:
+        assert marker in runbook, f"T-151 runbook should document marker: {marker}"
+
+
 def test_t149_local_slice_comparison_export_parity_is_documented_and_static_marked():
     rehearsal = read_file("scripts/run_local_fresh_data_rehearsal.py")
     slice_smoke = read_file("scripts/run_local_fresh_data_slice_smoke.py")

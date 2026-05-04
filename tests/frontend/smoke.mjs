@@ -2066,6 +2066,29 @@ if (localBrowserSmokeEnabled) {
     ).sort();
   };
 
+  const apiFallbackDiagnosticsFor = (payload) => {
+    const diagnostics = payload?.fallback_diagnostics ?? null;
+    if (!diagnostics) {
+      return null;
+    }
+    return {
+      schema_version: diagnostics.schema_version ?? "unknown",
+      source_path: diagnostics.source_path ?? "unknown",
+      reason_codes: Array.isArray(diagnostics.reason_codes) ? diagnostics.reason_codes : [],
+      fetch_state: diagnostics.fetch_state ?? "unknown",
+      page_render_state: diagnostics.page_render_state ?? "unknown",
+      generated_output_eligible: Boolean(diagnostics.generated_output_eligible),
+      source_labels: Array.isArray(diagnostics.source_labels) ? diagnostics.source_labels : [],
+      source_count: diagnostics.source_count ?? 0,
+      official_source_count: diagnostics.official_source_count ?? 0,
+      provider_fallback_source_count: diagnostics.provider_fallback_source_count ?? 0,
+      gap_count: diagnostics.gap_count ?? 0,
+      issuer_evidence_state: diagnostics.issuer_evidence_state ?? "unknown",
+      raw_payload_exposed: Boolean(diagnostics.raw_payload_exposed),
+      secret_values_exposed: Boolean(diagnostics.secret_values_exposed),
+    };
+  };
+
   const freshDataSliceDiagnostic = (payload, ticker, surface) => ({
     ticker,
     surface,
@@ -2086,6 +2109,7 @@ if (localBrowserSmokeEnabled) {
       freshness_state: payload?.freshness?.freshness_state ?? "unknown",
     },
     raw_payload_exposed: Boolean(payload?.raw_payload_exposed),
+    fallback_diagnostics: apiFallbackDiagnosticsFor(payload),
   });
 
   const blockedExportDiagnostic = (payload, ticker, surface) => ({
@@ -2109,6 +2133,13 @@ if (localBrowserSmokeEnabled) {
       `${label} should include as-of or freshness-state metadata`
     );
     assertNoRawPayloadOrSecretExposure(payload, label);
+    assert.equal(
+      payload?.fallback_diagnostics?.schema_version,
+      "lightweight-api-fallback-diagnostics-v1",
+      `${label} should expose the safe API fallback diagnostics schema`
+    );
+    assert.equal(payload?.fallback_diagnostics?.raw_payload_exposed, false, `${label} should keep fallback diagnostics raw-payload safe`);
+    assert.equal(payload?.fallback_diagnostics?.secret_values_exposed, false, `${label} should keep fallback diagnostics secret safe`);
   };
 
   const assertRenderableFreshDataPayload = (payload, expectedAssetType, label) => {
@@ -2200,6 +2231,15 @@ if (localBrowserSmokeEnabled) {
     assert.equal(firstResult.can_open_generated_page, true, `${label} should open a generated local-MVP page`);
     assert.equal(firstResult.can_answer_chat, true, `${label} should allow asset-bounded chat for supported rows`);
     assert.equal(firstResult.can_compare, true, `${label} should allow supported comparison entry`);
+    if (firstResult.fallback_diagnostics) {
+      assert.equal(
+        firstResult.fallback_diagnostics.schema_version,
+        "lightweight-api-fallback-diagnostics-v1",
+        `${label} live-fallback search result should expose safe diagnostics`
+      );
+      assert.equal(firstResult.fallback_diagnostics.raw_payload_exposed, false, `${label} live-fallback search diagnostics should hide raw payloads`);
+      assert.equal(firstResult.fallback_diagnostics.secret_values_exposed, false, `${label} live-fallback search diagnostics should hide secrets`);
+    }
   };
 
   const assertBlockedSearchPayload = (payload, ticker, label) => {
@@ -2224,6 +2264,11 @@ if (localBrowserSmokeEnabled) {
     assert.ok(Array.isArray(payload?.source_documents) && payload.source_documents.length > 0, `${label} should include source documents`);
     assert.ok(Array.isArray(payload?.top_risks) && payload.top_risks.length === 3, `${label} should preserve exactly three top risks`);
     assert.ok(Array.isArray(payload?.sections) && payload.sections.length > 0, `${label} should include detail sections`);
+    assert.equal(
+      payload?.fallback_diagnostics?.schema_version,
+      "lightweight-api-fallback-diagnostics-v1",
+      `${label} should expose safe fallback diagnostics`
+    );
   };
 
   const assertDetailsContractPayload = (payload, ticker, expectedAssetType, label) => {
@@ -2233,6 +2278,11 @@ if (localBrowserSmokeEnabled) {
     assert.ok(payload?.freshness?.page_last_updated_at, `${label} should expose details freshness metadata`);
     assert.ok(payload?.facts && Object.keys(payload.facts).length > 0, `${label} should include detail facts`);
     assert.ok(Array.isArray(payload?.citations) && payload.citations.length > 0, `${label} should include details citations`);
+    assert.equal(
+      payload?.fallback_diagnostics?.schema_version,
+      "lightweight-api-fallback-diagnostics-v1",
+      `${label} should expose safe fallback diagnostics`
+    );
   };
 
   const assertSourcesContractPayload = (payload, ticker, label) => {
@@ -2243,6 +2293,11 @@ if (localBrowserSmokeEnabled) {
     assert.ok(Array.isArray(payload?.source_groups) && payload.source_groups.length > 0, `${label} should include source groups`);
     assert.ok(Array.isArray(payload?.citation_bindings) && payload.citation_bindings.length > 0, `${label} should include citation bindings`);
     assert.ok(Array.isArray(payload?.related_claims) && payload.related_claims.length > 0, `${label} should include related claims`);
+    assert.equal(
+      payload?.fallback_diagnostics?.schema_version,
+      "lightweight-api-fallback-diagnostics-v1",
+      `${label} should expose safe fallback diagnostics`
+    );
   };
 
   const stableFreshDataSmokeFields = (payload) => ({

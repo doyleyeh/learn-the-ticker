@@ -1,6 +1,6 @@
 # Local Fresh-Data Ingest-To-Render Runbook
 
-Task: T-118, updated by T-119 through T-150 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, stock-vs-ETF comparison readiness gating, local fresh-data MVP slice smoke coverage, optional slice browser/API localhost coverage, optional durable slice smoke coverage, lightweight local-slice manual-readiness gating, local slice comparison/export parity coverage, and the lightweight live browser/API MVP slice smoke runner contract
+Task: T-118, updated by T-119 through T-151 local API, manifest, durable-smoke, v0.6 handoff alignment, local MVP rehearsal, readiness thresholds, ingestion priority planning, AAPL-vs-VOO stock-vs-ETF localhost smoke coverage, stock-vs-ETF comparison readiness gating, local fresh-data MVP slice smoke coverage, optional slice browser/API localhost coverage, optional durable slice smoke coverage, lightweight local-slice manual-readiness gating, local slice comparison/export parity coverage, the lightweight live browser/API MVP slice smoke runner contract, and lightweight API fallback diagnostics
 
 This runbook describes the local golden-asset smoke path before production deployment work. Normal CI uses deterministic fixtures, mocked official-source acquisition, and in-memory repositories. It must not require real SEC, issuer, market-data, broad news, storage, database, Redis, RSS, or LLM calls.
 
@@ -117,7 +117,7 @@ The personal-MVP fresh-data fetch path is explicit and opt-in. It prefers SEC of
 
 Task: T-144 / T-147.
 
-The local fresh-data MVP slice smoke is deterministic and CI-safe. It uses injected fixtures, does not need secrets, live provider calls, browser startup, or local services, and reports `pass`, `partial`, `blocked`, and `unavailable` states with source labels/counts, citation/fact counts, freshness/as-of metadata, generated-output eligibility, and `raw_payload_exposed=false`. T-147 distinguishes issuer-backed ETF rows from still-partial ETF rows without broadening ETF-500, source approval, live issuer acquisition, or production deployment scope.
+The local fresh-data MVP slice smoke is deterministic and CI-safe. It uses injected fixtures, does not need secrets, live provider calls, browser startup, or local services, and reports `pass`, `partial`, `blocked`, and `unavailable` states with source labels/counts, citation/fact counts, freshness/as-of metadata, generated-output eligibility, and `raw_payload_exposed=false`. T-147 distinguishes issuer-backed ETF rows from still-partial ETF rows without broadening ETF-500, source approval, live issuer acquisition, or production deployment scope. T-151 adds a compact `fallback_diagnostics` object with schema `lightweight-api-fallback-diagnostics-v1`; it contains reason codes, source path, fetch state, page render state, generated-output eligibility, source label counts, official/provider/gap counts, issuer-evidence state, freshness/as-of summary, and `raw_payload_exposed=false`.
 
 ```bash
 TMPDIR=/tmp python3 scripts/run_local_fresh_data_slice_smoke.py --json
@@ -131,12 +131,27 @@ Expected deterministic slice output:
 - `TQQQ`, `ARKK`, `BND`, and `GLD` report `blocked`; they remain generated-output-ineligible and do not unlock generated pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, or generated-output cache entries.
 - The smoke output must not contain provider secrets, raw payload values, raw source text, or unrestricted provider responses.
 
+Fallback diagnostic paths to expect:
+
+- Stocks such as `AAPL`, `MSFT`, and `NVDA`: `fallback_diagnostics.source_path=sec_official_provider_fallback`.
+- Issuer-backed ETFs `VOO` and `QQQ`: `fallback_diagnostics.source_path=issuer_backed_etf_provider_fallback` and `issuer_evidence_state=supported`.
+- Partial ETFs `SPY`, `VTI`, and `XLK`: `fallback_diagnostics.source_path=etf_manifest_scope_provider_fallback` and `issuer_evidence_state=partial`.
+- Blocked tickers `TQQQ`, `ARKK`, `BND`, and `GLD`: `fallback_diagnostics.source_path=blocked_scope_screen`, `generated_output_eligible=false`, source/citation/fact counts of zero, and no generated surfaces unlocked.
+
 When live lightweight mode is enabled, exact search and the existing asset-page contracts can use fresh renderable data:
 
 - `/api/search?q=MSFT` can open a source-labeled local-MVP page even when the deterministic cached pack is absent.
 - `/api/assets/{ticker}/overview` returns the existing overview contract with beginner summary, three risks, sections, citations, source documents, Weekly News Focus empty state, and AI Comprehensive Analysis suppression.
 - `/api/assets/{ticker}/details` returns stock or ETF detail fields from the same source-labeled fetch.
 - `/api/assets/{ticker}/sources` returns the source drawer contract with source groups, citation bindings, related claims, and section references.
+
+Operators can inspect T-151 diagnostics in these API fields:
+
+- Search: `GET /api/search?q=MSFT` or another live-fallback-resolved eligible/partial ticker returns `results[].fallback_diagnostics`. Cached deterministic fixture rows such as cached `VOO` may keep this field `null` unless the existing lightweight search fallback path is actually used.
+- Overview: `GET /api/assets/{ticker}/overview` returns `fallback_diagnostics` when the lightweight page path renders.
+- Details: `GET /api/assets/{ticker}/details` returns the same `fallback_diagnostics` when the lightweight page path renders.
+- Sources/source drawer: `GET /api/assets/{ticker}/sources` returns the same `fallback_diagnostics` next to the source drawer diagnostics.
+- Fresh-data and T-150 local live smoke summary: `GET /api/assets/{ticker}/fresh-data` returns `fallback_diagnostics`, and the optional `local-live-browser-api-mvp-slice-smoke-v1` summary includes it under `fresh_data_diagnostics[].fallback_diagnostics`.
 
 ```bash
 DATA_POLICY_MODE=lightweight LIGHTWEIGHT_LIVE_FETCH_ENABLED=true LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true SEC_EDGAR_USER_AGENT="learn-the-ticker-local/0.1 contact@example.com" TMPDIR=/tmp python3 scripts/run_lightweight_data_fetch_smoke.py --live --ticker AAPL --ticker MSFT --ticker NVDA --ticker VOO --ticker SPY --ticker VTI --ticker QQQ --ticker XLK --json
