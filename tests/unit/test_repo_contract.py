@@ -8,6 +8,7 @@ from scripts.run_local_fresh_data_rehearsal import (
     _build_manual_fresh_data_readiness_gate,
     run_rehearsal,
 )
+from scripts.run_local_deployment_env_smoke import run_local_deployment_env_smoke
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -266,6 +267,130 @@ def test_environment_scaffolds_are_placeholder_only():
     assert "NEXT_PUBLIC_API_BASE_URL" in web_env
     assert "OPENROUTER_API_KEY" not in web_env
     assert "FMP_API_KEY" not in web_env
+
+
+def test_t157_local_deployment_env_smoke_contract_is_safe_and_deterministic():
+    result = run_local_deployment_env_smoke(run_docker_config=False)
+
+    assert result["schema_version"] == "local-deployment-env-smoke-v1"
+    assert result["status"] == "pass"
+    assert result["normal_ci_requires_live_calls"] is False
+    assert result["production_services_started"] is False
+    assert result["deployments_created"] is False
+    assert result["live_provider_calls_attempted"] is False
+    assert result["database_connections_opened"] is False
+    assert result["secret_values_reported"] is False
+    assert result["launch_or_public_deployment_approved"] is False
+    assert result["production_ready"] is False
+    assert result["source_approval_granted"] is False
+    assert result["golden_asset_source_handoff_approved"] is False
+    assert result["generated_output_cache_promoted"] is False
+
+    checks = {check["check_id"]: check for check in result["checks"]}
+    assert checks["placeholder_env_files"]["status"] == "pass"
+    assert checks["browser_env_secret_separation"]["status"] == "pass"
+    assert checks["server_env_readiness_placeholders"]["cloud_run_api_env_placeholders_present"] is True
+    assert checks["server_env_readiness_placeholders"]["cloud_run_worker_env_placeholders_present"] is True
+    assert checks["server_env_readiness_placeholders"]["vercel_next_public_api_base_placeholder_present"] is True
+    assert checks["backend_settings_defaults"]["data_policy_mode"] == "lightweight"
+    assert checks["backend_settings_defaults"]["lightweight_live_fetch_enabled"] is False
+    assert checks["backend_settings_defaults"]["lightweight_provider_fallback_enabled"] is True
+    assert checks["repo_local_deployment_scaffolding"]["apps_web_is_vercel_project_root"] is True
+    assert checks["repo_local_deployment_scaffolding"]["root_npm_scripts_delegate_to_apps_web"] is True
+    assert checks["repo_local_deployment_scaffolding"]["next_api_rewrite_or_api_base_behavior_present"] is True
+    assert checks["repo_local_deployment_scaffolding"]["api_dockerfile_respects_port_contract"] is True
+    assert checks["repo_local_deployment_scaffolding"]["web_dockerfile_builds_next_workspace"] is True
+    assert checks["docker_compose_config"]["status"] == "skipped"
+    assert checks["docker_compose_config"]["reason_code"] == "docker_compose_config_skipped_by_caller"
+
+    browser_files = checks["browser_env_secret_separation"]["files"]
+    assert all(file["env_names"] == ["NEXT_PUBLIC_API_BASE_URL"] for file in browser_files)
+    assert all(file["server_only_env_names_absent"] is True for file in browser_files)
+    assert result["safe_diagnostics"]["env_var_names_reported_without_values"] is True
+    assert result["safe_diagnostics"]["forbidden_marker_hits"] == []
+
+    serialized = str(result)
+    for forbidden in [
+        "postgresql://",
+        "postgresql+psycopg://",
+        "Bearer ",
+        "Authorization",
+        "BEGIN PRIVATE KEY",
+        "sk-",
+        "xoxb-",
+        "ghp_",
+        "raw provider payload",
+        "raw source text",
+        "raw model reasoning",
+    ]:
+        assert forbidden not in serialized
+
+
+def test_t157_local_deployment_env_smoke_is_documented_and_static_marked():
+    smoke = read_file("scripts/run_local_deployment_env_smoke.py")
+    rehearsal = read_file("scripts/run_local_fresh_data_rehearsal.py")
+    runbook = read_file("docs/local_fresh_data_ingest_to_render_runbook.md")
+    evals = read_file("evals/run_static_evals.py")
+    combined = "\n".join([smoke, rehearsal, runbook, evals])
+
+    for marker in [
+        "T-157",
+        "local-deployment-env-smoke-v1",
+        "local_deployment_env_smoke",
+        "scripts/run_local_deployment_env_smoke.py --json",
+        "NEXT_PUBLIC_API_BASE_URL",
+        "CORS_ALLOWED_ORIGINS",
+        "DATA_POLICY_MODE",
+        "LIGHTWEIGHT_LIVE_FETCH_ENABLED",
+        "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED",
+        "SEC_EDGAR_USER_AGENT",
+        "LLM_PROVIDER",
+        "LLM_LIVE_GENERATION_ENABLED",
+        "OPENROUTER_API_KEY",
+        "FMP_API_KEY",
+        "ALPHA_VANTAGE_API_KEY",
+        "FINNHUB_API_KEY",
+        "TIINGO_API_KEY",
+        "EODHD_API_KEY",
+        "docker compose config",
+        "docker_compose_config_status",
+        "skipped_unavailable",
+        "production_ready",
+        "launch_or_public_deployment_approved",
+        "production_services_started",
+        "deployments_created",
+        "live_provider_calls_attempted",
+        "database_connections_opened",
+        "secret_values_reported",
+        "Cloud Run API env placeholders",
+        "Cloud Run Job worker placeholders",
+        "Vercel `NEXT_PUBLIC_API_BASE_URL`",
+        "Golden Asset Source Handoff approval",
+        "manifest promotion",
+        "generated-output cache promotion",
+        "ETF-500 completion",
+        "Top-500 completion",
+        "public-launch approval",
+        "investment advice",
+    ]:
+        assert marker in combined, f"T-157 deployment/env smoke marker missing: {marker}"
+
+    for forbidden in [
+        "OPENROUTER_API_KEY=",
+        "FMP_API_KEY=",
+        "ALPHA_VANTAGE_API_KEY=",
+        "FINNHUB_API_KEY=",
+        "TIINGO_API_KEY=",
+        "EODHD_API_KEY=",
+        "BEGIN PRIVATE KEY",
+        "sk-",
+        "xoxb-",
+        "ghp_",
+        "raw provider payload is printed",
+        "raw source text is printed",
+        "raw model reasoning is shown",
+    ]:
+        assert forbidden.lower() not in runbook.lower()
 
 
 def test_etf_universe_contract_files_are_local_metadata_only():
@@ -717,6 +842,8 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert result["status"] == "pass"
     assert result["normal_ci_requires_live_calls"] is False
     assert result["production_services_started"] is False
+    assert result["launch_or_public_deployment_approved"] is False
+    assert result["production_ready"] is False
     assert result["manifests_promoted"] is False
     assert result["sources_approved_by_rehearsal"] is False
     threshold = result["local_mvp_threshold_summary"]
@@ -727,7 +854,7 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert threshold["launch_or_public_deployment_approved"] is False
     assert threshold["required_blockers"] == []
     assert threshold["optional_blockers"] == []
-    assert len(threshold["required_checks"]) == 11
+    assert len(threshold["required_checks"]) == 12
     assert all(check["status"] == "pass" for check in threshold["required_checks"])
     assert len(threshold["optional_skipped_modes"]) == 5
     assert threshold["thresholds"] == {
@@ -752,6 +879,7 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert statuses["source_handoff_approval_gate"] == "pass"
     assert statuses["governed_golden_api_rendering"] == "pass"
     assert statuses["local_fresh_data_mvp_slice_smoke"] == "pass"
+    assert statuses["local_deployment_env_smoke"] == "pass"
     assert statuses["stock_vs_etf_comparison_readiness"] == "pass"
     assert statuses["launch_manifest_review_packets"] == "pass"
     assert statuses["stock_sec_source_pack_readiness"] == "pass"
@@ -1120,6 +1248,21 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert parity_details["blocker_reason_codes"] == []
     assert parity_details["sanitized_diagnostics"]["forbidden_marker_hits"] == []
     assert parity_details["review_only_boundaries"]["comparison_coverage_broadened"] is False
+    deployment_details = next(
+        check["details"] for check in result["checks"] if check["check_id"] == "local_deployment_env_smoke"
+    )
+    assert deployment_details["schema_version"] == "local-deployment-env-smoke-v1"
+    assert deployment_details["normal_ci_requires_live_calls"] is False
+    assert deployment_details["production_services_started"] is False
+    assert deployment_details["deployments_created"] is False
+    assert deployment_details["live_provider_calls_attempted"] is False
+    assert deployment_details["database_connections_opened"] is False
+    assert deployment_details["secret_values_reported"] is False
+    assert deployment_details["launch_or_public_deployment_approved"] is False
+    assert deployment_details["production_ready"] is False
+    deployment_checks = {check["check_id"]: check for check in deployment_details["checks"]}
+    assert deployment_checks["browser_env_secret_separation"]["status"] == "pass"
+    assert deployment_checks["repo_local_deployment_scaffolding"]["apps_web_is_vercel_project_root"] is True
     asset_summary = threshold["asset_state_summary"]
     assert asset_summary["failed_asset_count"] == 1
     assert asset_summary["unavailable_asset_count"] == 1
@@ -1200,6 +1343,7 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
         "governed_golden_rendering",
         "t144_local_fresh_data_mvp_slice_smoke",
         "t149_local_fresh_data_mvp_slice_comparison_export_parity",
+        "t157_local_deployment_env_smoke",
         "stock_vs_etf_comparison_readiness",
         "frontend_workflow_smoke_markers",
     } == prerequisite_ids
@@ -1224,6 +1368,7 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert {
         "local_web_api_startup",
         "api_base_proxy_cors",
+        "local_deployment_env_smoke",
         "home_single_asset_search",
         "a_vs_b_compare_redirect",
         "source_drawer",
