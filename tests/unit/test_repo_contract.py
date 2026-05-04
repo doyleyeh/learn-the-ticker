@@ -1062,6 +1062,7 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert parity_details["boundary"] == "deterministic_fixture_backed_no_services_no_live_calls_v1"
     assert [asset["ticker"] for asset in parity_details["representative_assets"]] == [
         "AAPL",
+        "MSFT",
         "VOO",
         "QQQ",
         "SPY",
@@ -1071,7 +1072,7 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
         "GLD",
     ]
     pair_by_key = {tuple(pair["pair"]): pair for pair in parity_details["representative_comparison_pairs"]}
-    assert set(pair_by_key) == {("VOO", "QQQ"), ("AAPL", "VOO")}
+    assert set(pair_by_key) == {("VOO", "QQQ"), ("AAPL", "VOO"), ("AAPL", "MSFT")}
     assert pair_by_key[("VOO", "QQQ")]["comparison_type"] == "etf_vs_etf"
     assert pair_by_key[("VOO", "QQQ")]["availability_state"] == "available"
     assert pair_by_key[("VOO", "QQQ")]["source_backed"] is True
@@ -1080,6 +1081,11 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert pair_by_key[("AAPL", "VOO")]["stock_etf_relationship_schema"] == "stock-etf-relationship-v1"
     assert pair_by_key[("AAPL", "VOO")]["relationship_state"] == "direct_holding"
     assert pair_by_key[("AAPL", "VOO")]["basket_structure"] == "single-company-vs-etf-basket"
+    assert pair_by_key[("AAPL", "MSFT")]["comparison_type"] == "stock_vs_stock"
+    assert pair_by_key[("AAPL", "MSFT")]["availability_state"] == "available"
+    assert pair_by_key[("AAPL", "MSFT")]["source_backed"] is True
+    assert pair_by_key[("AAPL", "MSFT")]["source_reference_assets"] == ["AAPL", "MSFT"]
+    assert pair_by_key[("AAPL", "MSFT")]["stock_vs_stock_copy_avoids_etf_only_markers"] is True
     assert all(pair["educational_disclaimer_present_in_exports"] is True for pair in pair_by_key.values())
     assert all(pair["old_frontend_only_holding_verified_present"] is False for pair in pair_by_key.values())
     for pair in pair_by_key.values():
@@ -1093,6 +1099,7 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
         for case in parity_details["unavailable_or_blocked_comparison_cases"]
     } == {
         ("VOO", "SPY"): "eligible_not_cached",
+        ("SPY", "VTI"): "eligible_not_cached",
         ("VOO", "TQQQ"): "unsupported",
         ("AAPL", "TQQQ"): "unsupported",
     }
@@ -1437,6 +1444,7 @@ def test_t148_lightweight_local_slice_manual_readiness_gate_reports_ready_and_bl
     assert slice_prereq["stock_pass_tickers"] == ["AAPL", "MSFT", "NVDA"]
     assert slice_prereq["issuer_backed_etf_tickers"] == ["VOO", "QQQ", "SPY", "VTI", "XLK"]
     assert slice_prereq["partial_etf_tickers"] == []
+    assert slice_prereq["partial_etf_coverage_reason"] == "no_partial_etf_rows_in_current_slice"
     assert slice_prereq["blocked_regression_tickers"] == ["TQQQ", "ARKK", "BND", "GLD"]
     assert slice_prereq["normal_ci_requires_live_calls"] is False
     assert slice_prereq["raw_payload_exposed_count"] == 0
@@ -1444,8 +1452,22 @@ def test_t148_lightweight_local_slice_manual_readiness_gate_reports_ready_and_bl
     parity_prereq = prereqs["local_fresh_data_mvp_slice_comparison_export_parity"]
     assert parity_prereq["status"] == "pass"
     assert parity_prereq["expected_schema_version"] == "local-fresh-data-mvp-slice-comparison-export-parity-v1"
-    assert parity_prereq["representative_assets"] == ["AAPL", "VOO", "QQQ", "SPY", "TQQQ", "ARKK", "BND", "GLD"]
-    assert parity_prereq["representative_comparison_pairs"] == [["VOO", "QQQ"], ["AAPL", "VOO"]]
+    assert parity_prereq["representative_assets"] == [
+        "AAPL",
+        "MSFT",
+        "VOO",
+        "QQQ",
+        "SPY",
+        "TQQQ",
+        "ARKK",
+        "BND",
+        "GLD",
+    ]
+    assert parity_prereq["representative_comparison_pairs"] == [
+        ["VOO", "QQQ"],
+        ["AAPL", "VOO"],
+        ["AAPL", "MSFT"],
+    ]
     assert parity_prereq["export_surfaces"] == [
         "comparison_json",
         "comparison_markdown",
@@ -1839,6 +1861,11 @@ def test_t149_local_slice_comparison_export_parity_is_documented_and_static_mark
         "local-fresh-data-mvp-slice-comparison-export-parity-inputs-v1",
         "`VOO`/`QQQ` ETF-vs-ETF",
         "`AAPL`/`VOO` stock-vs-ETF",
+        "`AAPL`/`MSFT` stock-vs-stock",
+        "stock_vs_stock",
+        "Valuation evidence availability",
+        "no_partial_etf_rows_in_current_slice",
+        "`SPY`/`VTI` non-generated",
         "stock-etf-relationship-v1",
         "direct_holding",
         "single-company-vs-ETF-basket",
