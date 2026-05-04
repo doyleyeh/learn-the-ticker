@@ -1,4 +1,5 @@
 schema_version: weekly-news-evals-v1
+live_source_smoke_schema_version: weekly-news-live-source-smoke-v1
 window_cases:
   - id: thursday_eastern_window
     as_of: "2026-04-23"
@@ -62,3 +63,32 @@ forbidden_analysis_language:
   - price target
   - guaranteed
   - will outperform
+live_source_smoke_required_cases:
+  - source_backed_official_first
+  - limited_verified_set
+  - empty_evidence
+  - blocked_regression_tickers
+live_source_smoke_blocked_regression_tickers:
+  - TQQQ
+  - ARKK
+  - BND
+  - GLD
+live_source_smoke_required_suppression_reasons:
+  - duplicate
+  - promotional
+  - irrelevant
+  - wrong_asset
+  - outside_market_week_window
+  - source_policy_blocked
+  - rejected_source
+  - non_allowlisted_source
+  - license_disallowed
+  - unrecognized_source
+  - parser_invalid
+  - rights_disallowed
+  - hidden_internal
+  - stale_unlabeled
+live_source_smoke_required_selected_tiers:
+  - official_filing
+  - etf_issuer_announcement
+  - allowlisted_news

@@ -729,7 +729,7 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert threshold["optional_blockers"] == []
     assert len(threshold["required_checks"]) == 11
     assert all(check["status"] == "pass" for check in threshold["required_checks"])
-    assert len(threshold["optional_skipped_modes"]) == 4
+    assert len(threshold["optional_skipped_modes"]) == 5
     assert threshold["thresholds"] == {
         "required_blockers_allowed": 0,
         "optional_blockers_allowed": 0,
@@ -760,6 +760,7 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert statuses["optional_browser_services"] == "skipped"
     assert statuses["optional_local_durable_repositories"] == "skipped"
     assert statuses["optional_official_source_retrieval"] == "skipped"
+    assert statuses["optional_weekly_news_live_source_smoke"] == "skipped"
     assert statuses["optional_live_ai_review"] == "skipped"
     slice_details = next(
         check["details"] for check in result["checks"] if check["check_id"] == "local_fresh_data_mvp_slice_smoke"
@@ -1195,7 +1196,7 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
         "stock_vs_etf_comparison_readiness",
         "frontend_workflow_smoke_markers",
     } == prerequisite_ids
-    assert [mode["status"] for mode in gate["optional_mode_statuses"]] == ["skipped"] * 4
+    assert [mode["status"] for mode in gate["optional_mode_statuses"]] == ["skipped"] * 5
     assert gate["no_secret_diagnostics"] == {
         "secret_values_reported": False,
         "secret_values_requested": False,
@@ -1204,6 +1205,8 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
             "LTT_REHEARSAL_BROWSER_SERVICES_ENABLED",
             "LTT_REHEARSAL_DURABLE_REPOSITORIES_ENABLED",
             "LTT_REHEARSAL_OFFICIAL_SOURCE_RETRIEVAL_ENABLED",
+            "LTT_WEEKLY_NEWS_LIVE_SOURCE_SMOKE_ENABLED",
+            "LTT_WEEKLY_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED",
             "LTT_REHEARSAL_LIVE_AI_REVIEW_ENABLED",
             "LEARN_TICKER_LOCAL_WEB_BASE",
             "LEARN_TICKER_LOCAL_API_BASE",
@@ -1229,6 +1232,7 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
         "unsupported_recognition_only_blocking",
         "optional_durable_repositories",
         "optional_official_source_retrieval",
+        "optional_weekly_news_live_source_smoke",
         "optional_live_ai_validation",
     } == checklist_ids
 
@@ -1283,6 +1287,47 @@ def test_local_fresh_data_rehearsal_optional_modes_report_blockers_without_secre
     assert gate["no_secret_diagnostics"]["secret_values_requested"] is False
     serialized = str(result)
     for forbidden in ["postgresql://", "Bearer ", "Authorization", "BEGIN PRIVATE KEY", "sk-"]:
+        assert forbidden not in serialized
+
+
+def test_t154_weekly_news_live_source_smoke_is_optional_in_rehearsal():
+    passed = run_rehearsal(env={"LTT_WEEKLY_NEWS_LIVE_SOURCE_SMOKE_ENABLED": "true"})
+    checks = {check["check_id"]: check for check in passed["checks"]}
+
+    assert passed["status"] == "pass"
+    assert checks["optional_weekly_news_live_source_smoke"]["status"] == "pass"
+    weekly_details = checks["optional_weekly_news_live_source_smoke"]["details"]
+    assert weekly_details["schema_version"] == "weekly-news-live-source-smoke-v1"
+    assert weekly_details["normal_ci_requires_live_calls"] is False
+    assert weekly_details["case_status_counts"] == {"pass": 4, "blocked": 0, "skipped": 0}
+    assert weekly_details["case_summaries"][0]["case_id"] == "source_backed_official_first"
+    assert weekly_details["case_summaries"][0]["selected_item_count"] == 3
+    assert weekly_details["case_summaries"][1]["evidence_limited_state"] == "limited_verified_set"
+    assert weekly_details["case_summaries"][2]["evidence_limited_state"] == "empty"
+    assert weekly_details["safe_diagnostics"]["secret_values_reported"] is False
+    assert passed["lightweight_local_mvp_slice_manual_readiness_gate"]["decision"] == (
+        "deterministic_local_slice_manual_review_ready"
+    )
+
+    blocked = run_rehearsal(
+        env={
+            "LTT_WEEKLY_NEWS_LIVE_SOURCE_SMOKE_ENABLED": "true",
+            "LTT_WEEKLY_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED": "true",
+        }
+    )
+    blocked_checks = {check["check_id"]: check for check in blocked["checks"]}
+    assert blocked["status"] == "blocked"
+    assert blocked_checks["optional_weekly_news_live_source_smoke"]["status"] == "blocked"
+    assert blocked_checks["optional_weekly_news_live_source_smoke"]["details"]["required_env_names_without_values"] == [
+        "LTT_WEEKLY_NEWS_LIVE_SOURCE_SMOKE_ENABLED",
+        "LTT_WEEKLY_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED",
+    ]
+    assert blocked["lightweight_local_mvp_slice_manual_readiness_gate"]["decision"] == "optional_local_check_blocked"
+    assert {
+        (blocker["reason_code"], blocker["check_id"]) for blocker in blocked["lightweight_local_mvp_slice_manual_readiness_gate"]["blockers"]
+    } == {("optional_local_check_blocked", "optional_weekly_news_live_source_smoke")}
+    serialized = str(blocked)
+    for forbidden in ["Bearer ", "Authorization", "BEGIN PRIVATE KEY", "sk-", "raw article body"]:
         assert forbidden not in serialized
 
 
@@ -1396,7 +1441,7 @@ def test_t148_lightweight_local_slice_manual_readiness_gate_reports_ready_and_bl
     optional_prereqs = [
         item for item in gate["prerequisite_summaries"] if item["prerequisite_id"].endswith("_operator_only")
     ]
-    assert [item["status"] for item in optional_prereqs] == ["skipped"] * 4
+    assert [item["status"] for item in optional_prereqs] == ["skipped"] * 5
     assert all(item["operator_only"] is True and item["skipped_is_pass"] is False for item in optional_prereqs)
     assert gate["sanitized_diagnostics"]["safe_diagnostics_only"] is True
     assert gate["sanitized_diagnostics"]["secret_or_raw_value_reporting_detected"] is False
@@ -2016,6 +2061,62 @@ def test_t147_t153_issuer_backed_etf_slice_enrichment_is_fixture_backed_and_docu
         "unrestricted source text is exported",
     ]:
         assert forbidden.lower() not in sensitive_surface.lower()
+
+
+def test_t154_weekly_news_live_source_smoke_is_documented_and_static_marked():
+    smoke = read_file("scripts/run_weekly_news_live_source_smoke.py")
+    rehearsal = read_file("scripts/run_local_fresh_data_rehearsal.py")
+    runbook = read_file("docs/local_fresh_data_ingest_to_render_runbook.md")
+    evals = read_file("evals/weekly_news_eval_cases.yaml")
+    combined = "\n".join([smoke, rehearsal, runbook, evals])
+
+    for marker in [
+        "T-154",
+        "weekly-news-live-source-smoke-v1",
+        "LTT_WEEKLY_NEWS_LIVE_SOURCE_SMOKE_ENABLED",
+        "LTT_WEEKLY_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED",
+        "optional_weekly_news_live_source_smoke",
+        "source_backed_official_first",
+        "limited_verified_set",
+        "empty_evidence",
+        "blocked_regression_tickers",
+        "official_filing",
+        "etf_issuer_announcement",
+        "allowlisted_news",
+        "third_party_reporting",
+        "metadata_only",
+        "link_only",
+        "rejected_source",
+        "pending_review",
+        "parser_invalid",
+        "rights_disallowed",
+        "hidden_internal",
+        "stale_unlabeled",
+        "No major Weekly News Focus items found",
+        "AI Comprehensive Analysis remains suppressed unless at least two approved Weekly News Focus items exist",
+        "local smoke readiness is not source approval",
+        "generated-output cache promotion",
+        "ETF-500 completion",
+        "Top-500 completion",
+    ]:
+        assert marker in combined, f"T-154 Weekly News smoke marker missing: {marker}"
+
+    for forbidden in [
+        "OPENROUTER_API_KEY=",
+        "FMP_API_KEY=",
+        "ALPHA_VANTAGE_API_KEY=",
+        "FINNHUB_API_KEY=",
+        "TIINGO_API_KEY=",
+        "EODHD_API_KEY=",
+        "BEGIN PRIVATE KEY",
+        "sk-",
+        "xoxb-",
+        "ghp_",
+        "raw article body",
+        "raw provider payload is printed",
+        "raw source text is printed",
+    ]:
+        assert forbidden.lower() not in runbook.lower()
 
 
 def test_sec_stock_acquisition_contract_is_backend_only_fixture_backed_and_sanitized():

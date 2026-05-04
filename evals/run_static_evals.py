@@ -137,6 +137,11 @@ from backend.weekly_news import (
     build_weekly_news_focus_from_pack,
     compute_weekly_news_window,
 )
+from scripts.run_weekly_news_live_source_smoke import (
+    SMOKE_OPT_IN_ENV,
+    SMOKE_SCHEMA_VERSION,
+    run_weekly_news_live_source_smoke,
+)
 
 
 client = TestClient(app)
@@ -2310,6 +2315,7 @@ def test_export_cases():
 def test_weekly_news_cases():
     data = load_yaml("weekly_news_eval_cases.yaml")
     assert data.get("schema_version") == "weekly-news-evals-v1"
+    assert data.get("live_source_smoke_schema_version") == SMOKE_SCHEMA_VERSION
 
     for case in data["window_cases"]:
         window = compute_weekly_news_window(case["as_of"])
@@ -2367,6 +2373,25 @@ def test_weekly_news_cases():
     analysis_text = _flatten_static_text(overview.ai_comprehensive_analysis.model_dump(mode="json"))
     for phrase in data["forbidden_analysis_language"]:
         assert phrase not in analysis_text.lower()
+
+    smoke = run_weekly_news_live_source_smoke(env={SMOKE_OPT_IN_ENV: "true"})
+    assert smoke["schema_version"] == SMOKE_SCHEMA_VERSION
+    assert smoke["status"] == "pass"
+    assert smoke["normal_ci_requires_live_calls"] is False
+    smoke_cases = {case["case_id"]: case for case in smoke["cases"]}
+    assert set(data["live_source_smoke_required_cases"]) <= set(smoke_cases)
+    source_case = smoke_cases["source_backed_official_first"]
+    assert source_case["selected_source_rank_tiers"] == data["live_source_smoke_required_selected_tiers"]
+    assert source_case["evidence_limited_state"] == "limited_verified_set"
+    assert source_case["ai_threshold"]["analysis_allowed"] is True
+    assert source_case["same_asset_citation_binding"] is True
+    for reason in data["live_source_smoke_required_suppression_reasons"]:
+        assert source_case["suppression_reason_counts"][reason] >= 1
+    assert smoke_cases["limited_verified_set"]["ai_threshold"]["analysis_allowed"] is False
+    assert smoke_cases["empty_evidence"]["evidence_limited_state"] == "empty"
+    assert smoke_cases["blocked_regression_tickers"]["blocked_regression_tickers"] == data[
+        "live_source_smoke_blocked_regression_tickers"
+    ]
 
 
 def test_llm_provider_cases():
