@@ -119,6 +119,7 @@ def test_source_allowlist_loads_required_schema_and_policy_tiers():
 def test_source_policy_resolution_by_domain_fixture_provider_and_unknown():
     sec = resolve_source_policy(url="https://www.sec.gov/Archives/example")
     issuer = resolve_source_policy(url="https://www.investor.vanguard.com/funds")
+    state_street = resolve_source_policy(url="https://www.ssga.com/mainfund/xlk")
     recent = resolve_source_policy(source_identifier="local://fixtures/voo/recent-review")
     provider = resolve_source_policy(provider_name="Mock Market Reference")
     rejected = resolve_source_policy(url="https://unlicensed.example/article")
@@ -132,6 +133,11 @@ def test_source_policy_resolution_by_domain_fixture_provider_and_unknown():
     assert issuer.decision is SourcePolicyDecisionState.allowed
     assert issuer.source_use_policy is SourceUsePolicy.full_text_allowed
     assert issuer.source_quality.value == "issuer"
+
+    assert state_street.decision is SourcePolicyDecisionState.allowed
+    assert state_street.source_use_policy is SourceUsePolicy.full_text_allowed
+    assert state_street.source_quality.value == "issuer"
+    assert source_can_support_generated_output(state_street) is True
 
     assert recent.decision is SourcePolicyDecisionState.allowed
     assert recent.source_use_policy is SourceUsePolicy.summary_allowed

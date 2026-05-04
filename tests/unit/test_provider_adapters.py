@@ -33,6 +33,7 @@ from backend.provider_adapters.etf_issuer import (
     ETF_ISSUER_LIVE_HTTP_FETCH_BOUNDARY,
     ETF_ISSUER_PARSER_ADAPTER_BOUNDARY,
     ETF_ISSUER_FIXTURES,
+    LIGHTWEIGHT_ETF_ISSUER_FIXTURES,
     EtfIssuerFixtureContractError,
     EtfIssuerMockFetchResponse,
     EtfIssuerParserAdapter,
@@ -513,10 +514,17 @@ def test_sec_stock_live_acquisition_readiness_is_explicit_opt_in_and_manifest_ci
     assert "supported_common_stock_identity_not_ready" in unsupported.blocked_reasons
 
 
-def test_etf_issuer_adapter_returns_voo_and_qqq_official_facts_and_holdings_metadata():
+def test_etf_issuer_adapter_returns_official_facts_and_holdings_metadata_for_fixture_etfs():
     adapter = mock_etf_issuer_adapter()
 
-    for ticker, benchmark in [("VOO", "S&P 500 Index"), ("QQQ", "Nasdaq-100 Index")]:
+    expected = {
+        "VOO": ("S&P 500 Index", False),
+        "QQQ": ("Nasdaq-100 Index", False),
+        "SPY": ("S&P 500 Index", True),
+        "VTI": ("CRSP US Total Market Index", True),
+        "XLK": ("Technology Select Sector Index", True),
+    }
+    for ticker, (benchmark, eligible_not_cached) in expected.items():
         response = adapter.fetch(adapter.request(ticker))
 
         assert response.provider_kind is ProviderKind.etf_issuer
@@ -539,7 +547,7 @@ def test_etf_issuer_adapter_returns_voo_and_qqq_official_facts_and_holdings_meta
         assert fields["etf_identity"].value["issuer"] == response.asset.issuer
         assert fields["etf_identity"].value["asset_type"] == "etf"
         assert fields["etf_identity"].value["support_state"] == "supported"
-        assert fields["etf_identity"].value["eligible_not_cached"] is False
+        assert fields["etf_identity"].value["eligible_not_cached"] is eligible_not_cached
         assert fields["etf_identity"].value["blocked_state_indicators"] == {
             "leveraged": False,
             "inverse": False,
@@ -556,9 +564,14 @@ def test_etf_issuer_adapter_returns_voo_and_qqq_official_facts_and_holdings_meta
         }
         assert fields["prospectus_reference"].value["document_type"] == "summary_prospectus"
         assert fields["prospectus_reference"].value["source_use_policy"] == "full_text_allowed"
-        assert fields["top_holding_apple"].value["holding_ticker"] == "AAPL"
-        assert fields["top_holding_apple"].value["exposure_category"] == "holding"
-        assert fields["equity_exposure"].value["exposure_category"] == "asset_class"
+        top_holding_fields = [fact for field_name, fact in fields.items() if field_name.startswith("top_holding_")]
+        assert len(top_holding_fields) == 1
+        assert top_holding_fields[0].value["exposure_category"] == "holding"
+        assert any(
+            fact.value["exposure_category"] in {"asset_class", "sector"}
+            for field_name, fact in fields.items()
+            if field_name.endswith("_exposure")
+        )
         assert fields["premium_discount_or_spread"].evidence_state is EvidenceState.unavailable
         assert fields["premium_discount_or_spread"].freshness_state is FreshnessState.unavailable
         assert all(source.usage is ProviderSourceUsage.canonical for source in response.source_attributions)
@@ -576,6 +589,8 @@ def test_etf_issuer_fixture_contract_normalizes_sources_holdings_exposures_and_g
     fixture = etf_issuer_fixture_for_ticker("voo")
 
     assert ETF_ISSUER_FIXTURE_CONTRACT_VERSION == "etf-issuer-fixture-adapter-v1"
+    assert set(ETF_ISSUER_FIXTURES) == {"VOO", "QQQ"}
+    assert set(LIGHTWEIGHT_ETF_ISSUER_FIXTURES) == {"VOO", "QQQ", "SPY", "VTI", "XLK"}
     assert fixture is ETF_ISSUER_FIXTURES["VOO"]
     assert fixture.identity.ticker == "VOO"
     assert fixture.identity.fund_name == "Vanguard S&P 500 ETF"
@@ -860,7 +875,7 @@ def test_etf_issuer_acquisition_boundary_blocks_non_golden_or_wrong_scope_inputs
     licensing = fetch_mock_provider_response(ProviderKind.etf_issuer, "VOO").licensing
 
     wrong_asset_type = build_etf_issuer_acquisition_result(adapter, adapter.request("AAPL"), licensing)
-    eligible = build_etf_issuer_acquisition_result(adapter, adapter.request("SPY"), licensing)
+    eligible = build_etf_issuer_acquisition_result(adapter, adapter.request("IVV"), licensing)
     unsupported = build_etf_issuer_acquisition_result(adapter, adapter.request("TQQQ"), licensing)
     out_of_scope = build_etf_issuer_acquisition_result(adapter, adapter.request("VXX"), licensing)
     unknown = build_etf_issuer_acquisition_result(adapter, adapter.request("ZZZZ"), licensing)

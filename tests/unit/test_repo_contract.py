@@ -771,9 +771,9 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert slice_details["secret_values_reported"] is False
     assert slice_details["raw_payload_values_reported"] is False
     assert slice_details["raw_payload_exposed_count"] == 0
-    assert slice_details["status_counts"] == {"pass": 5, "partial": 3, "blocked": 4, "unavailable": 0}
-    assert slice_details["issuer_backed_etf_tickers"] == ["VOO", "QQQ"]
-    assert slice_details["partial_etf_tickers"] == ["SPY", "VTI", "XLK"]
+    assert slice_details["status_counts"] == {"pass": 8, "partial": 0, "blocked": 4, "unavailable": 0}
+    assert slice_details["issuer_backed_etf_tickers"] == ["VOO", "QQQ", "SPY", "VTI", "XLK"]
+    assert slice_details["partial_etf_tickers"] == []
     assert slice_details["supported_renderable_tickers"] == [
         "AAPL",
         "MSFT",
@@ -790,7 +790,8 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert slice_rows["VOO"]["source_labels"] == ["official", "partial", "provider_derived"]
     assert slice_rows["VOO"]["issuer_backed"] is True
     assert slice_rows["QQQ"]["issuer_backed"] is True
-    assert slice_rows["SPY"]["issuer_evidence_state"] == "partial"
+    assert slice_rows["SPY"]["issuer_backed"] is True
+    assert slice_rows["SPY"]["issuer_evidence_state"] == "supported"
     assert slice_rows["TQQQ"]["fetch_call_count"] == 0
     assert all(row["raw_payload_exposed"] is False for row in slice_rows.values())
     launch_details = next(
@@ -1099,7 +1100,8 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert asset_export_by_ticker["AAPL"]["slice_status"] == "pass"
     assert asset_export_by_ticker["VOO"]["issuer_evidence_state"] == "supported"
     assert asset_export_by_ticker["QQQ"]["issuer_evidence_state"] == "supported"
-    assert asset_export_by_ticker["SPY"]["slice_status"] == "partial"
+    assert asset_export_by_ticker["SPY"]["slice_status"] == "pass"
+    assert asset_export_by_ticker["SPY"]["issuer_evidence_state"] == "supported"
     assert asset_export_by_ticker["SPY"]["provider_fallback_not_audit_quality_approval"] is True
     for ticker in ["TQQQ", "ARKK", "BND", "GLD"]:
         assert asset_export_by_ticker[ticker]["slice_status"] == "blocked"
@@ -1359,11 +1361,11 @@ def test_t148_lightweight_local_slice_manual_readiness_gate_reports_ready_and_bl
     prereqs = {item["prerequisite_id"]: item for item in gate["prerequisite_summaries"]}
     slice_prereq = prereqs["deterministic_local_fresh_data_mvp_slice_smoke"]
     assert slice_prereq["status"] == "pass"
-    assert slice_prereq["expected_status_counts"] == {"pass": 5, "partial": 3, "blocked": 4, "unavailable": 0}
-    assert slice_prereq["status_counts"] == {"pass": 5, "partial": 3, "blocked": 4, "unavailable": 0}
+    assert slice_prereq["expected_status_counts"] == {"pass": 8, "partial": 0, "blocked": 4, "unavailable": 0}
+    assert slice_prereq["status_counts"] == {"pass": 8, "partial": 0, "blocked": 4, "unavailable": 0}
     assert slice_prereq["stock_pass_tickers"] == ["AAPL", "MSFT", "NVDA"]
-    assert slice_prereq["issuer_backed_etf_tickers"] == ["VOO", "QQQ"]
-    assert slice_prereq["partial_etf_tickers"] == ["SPY", "VTI", "XLK"]
+    assert slice_prereq["issuer_backed_etf_tickers"] == ["VOO", "QQQ", "SPY", "VTI", "XLK"]
+    assert slice_prereq["partial_etf_tickers"] == []
     assert slice_prereq["blocked_regression_tickers"] == ["TQQQ", "ARKK", "BND", "GLD"]
     assert slice_prereq["normal_ci_requires_live_calls"] is False
     assert slice_prereq["raw_payload_exposed_count"] == 0
@@ -1735,8 +1737,8 @@ def test_t151_lightweight_api_fallback_diagnostics_are_documented_and_static_mar
         assert marker in combined, f"T-151 fallback diagnostics contract should include marker: {marker}"
 
     for marker in [
-        "`VOO` and `QQQ`: `fallback_diagnostics.source_path=issuer_backed_etf_provider_fallback`",
-        "`SPY`, `VTI`, and `XLK`: `fallback_diagnostics.source_path=etf_manifest_scope_provider_fallback`",
+        "`VOO`, `QQQ`, `SPY`, `VTI`, and `XLK`: `fallback_diagnostics.source_path=issuer_backed_etf_provider_fallback`",
+        "Other eligible ETFs without deterministic issuer fixtures: `fallback_diagnostics.source_path=etf_manifest_scope_provider_fallback`",
         "`TQQQ`, `ARKK`, `BND`, and `GLD`: `fallback_diagnostics.source_path=blocked_scope_screen`",
         "Cached deterministic fixture rows such as cached `VOO` may keep this field `null`",
         "Overview: `GET /api/assets/{ticker}/overview` returns `fallback_diagnostics`",
@@ -1769,7 +1771,7 @@ def test_t149_local_slice_comparison_export_parity_is_documented_and_static_mark
         "asset_source_list",
         "comparison_markdown",
         "source_list_markdown",
-        "`SPY` partial ETF export",
+        "`SPY` asset export remains unavailable",
         "`TQQQ`, `ARKK`, `BND`, and `GLD` blocked export",
         "provider fallback is not audit-quality evidence approval",
         "raw payloads stay hidden",
@@ -1960,28 +1962,30 @@ def test_t152_lightweight_live_durable_mvp_slice_smoke_runner_contract():
         assert forbidden.lower() not in runbook.lower()
 
 
-def test_t147_issuer_backed_etf_slice_enrichment_is_fixture_backed_and_documented():
+def test_t147_t153_issuer_backed_etf_slice_enrichment_is_fixture_backed_and_documented():
+    adapter = read_file("backend/provider_adapters/etf_issuer.py")
     fetch = read_file("backend/lightweight_data_fetch.py")
     page = read_file("backend/lightweight_page.py")
     slice_smoke = read_file("scripts/run_local_fresh_data_slice_smoke.py")
     rehearsal = read_file("scripts/run_local_fresh_data_rehearsal.py")
     browser_smoke = read_file("tests/frontend/smoke.mjs")
     runbook = read_file("docs/local_fresh_data_ingest_to_render_runbook.md")
-    combined = "\n".join([fetch, page, slice_smoke, rehearsal, browser_smoke, runbook])
-    sensitive_surface = "\n".join([fetch, page, slice_smoke, rehearsal, runbook])
+    combined = "\n".join([adapter, fetch, page, slice_smoke, rehearsal, browser_smoke, runbook])
+    sensitive_surface = "\n".join([adapter, fetch, page, slice_smoke, rehearsal, runbook])
 
     for marker in [
         "T-147",
+        "T-153",
         "deterministic_etf_issuer_adapter",
         "issuer_enrichment_state",
         "issuer_backed_etf_tickers",
         "partial_etf_tickers",
         "issuer_backed_supported",
-        "etf_issuer_evidence",
+        "premium_discount_or_spread",
         "issuer-backed ETF rows",
         "official issuer fixture evidence",
         "official issuer source labels",
-        "no deterministic issuer fixture",
+        "no ETF rows remain partial in the deterministic slice",
         "source-drawer-ready metadata",
         "raw_payload_exposed=false",
         "without broadening ETF-500",
@@ -1994,10 +1998,8 @@ def test_t147_issuer_backed_etf_slice_enrichment_is_fixture_backed_and_documente
     ]:
         assert marker in combined, f"T-147 issuer-backed slice contract should include marker: {marker}"
 
-    for ticker in ["VOO", "QQQ"]:
+    for ticker in ["VOO", "QQQ", "SPY", "VTI", "XLK"]:
         assert f'"{ticker}": {{"asset_type": "etf", "support_state": "issuer_backed_supported"' in slice_smoke
-    for ticker in ["SPY", "VTI", "XLK"]:
-        assert f'"{ticker}": {{"asset_type": "etf", "support_state": "supported_renderable_partial"' in slice_smoke
 
     for forbidden in [
         "OPENROUTER_API_KEY=",

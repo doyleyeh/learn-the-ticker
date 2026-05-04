@@ -279,34 +279,47 @@ def test_lightweight_etf_fetch_uses_issuer_fixtures_before_manifest_and_provider
     assert {gap.field_name for gap in response.gaps} == {"premium_discount_or_spread"}
 
 
-def test_lightweight_etf_without_issuer_fixture_stays_partial_with_explicit_gap():
+def test_lightweight_spy_issuer_fixture_returns_supported_with_explicit_remaining_gap():
     fetcher = FakeJsonFetcher()
 
     response = fetch_lightweight_asset_data("SPY", settings=_settings(), fetcher=fetcher, retrieved_at=RETRIEVED_AT)
 
-    assert response.fetch_state is LightweightFetchState.partial
-    assert response.page_render_state is EvidenceState.partial
+    assert response.fetch_state is LightweightFetchState.supported
+    assert response.page_render_state is EvidenceState.supported
     assert response.asset.asset_type is AssetType.etf
     assert response.generated_output_eligible is True
     assert response.no_live_external_calls is True
     assert {source.source_label for source in response.sources} == {
+        LightweightSourceLabel.official,
         LightweightSourceLabel.partial,
         LightweightSourceLabel.provider_derived,
     }
     fields = {fact.field_name: fact for fact in response.facts}
+    assert fields["etf_identity"].value["issuer"] == "State Street Global Advisors"
+    assert fields["etf_identity"].value["eligible_not_cached"] is True
+    assert fields["etf_fact_sheet_metadata"].value["benchmark"] == "S&P 500 Index"
+    assert fields["benchmark"].value == "S&P 500 Index"
+    assert fields["expense_ratio"].value == 0.0945
+    assert fields["holdings_count"].value == 503
+    assert fields["top_holding_nvidia"].value["holding_ticker"] == "NVDA"
+    assert fields["information_technology_exposure"].value["exposure_category"] == "sector"
     assert fields["etf_manifest_scope_signal"].value["support_state"] == "eligible_not_cached"
     assert fields["provider_identity_or_market_reference"].value["instrumentType"] == "ETF"
     assert fields["provider_market_price"].value["regularMarketPrice"] == 670.01
-    assert response.diagnostics["issuer_enrichment_state"] == "eligible_not_cached"
-    assert response.diagnostics["official_source_count"] == 0
+    assert response.freshness.holdings_as_of == "2026-04-01"
+    assert response.diagnostics["issuer_enrichment_state"] == "supported"
+    assert response.diagnostics["official_source_count"] == 4
+    assert response.diagnostics["provider_fallback_source_count"] == 1
     assert response.fallback_diagnostics is not None
-    assert response.fallback_diagnostics.source_path == "etf_manifest_scope_provider_fallback"
-    assert response.fallback_diagnostics.fetch_state is LightweightFetchState.partial
-    assert response.fallback_diagnostics.issuer_evidence_state == "partial"
+    assert response.fallback_diagnostics.source_path == "issuer_backed_etf_provider_fallback"
+    assert response.fallback_diagnostics.fetch_state is LightweightFetchState.supported
+    assert response.fallback_diagnostics.issuer_evidence_state == "supported"
+    assert response.fallback_diagnostics.official_source_count == 4
     assert response.fallback_diagnostics.partial_source_count == 1
     assert response.fallback_diagnostics.provider_fallback_source_count == 1
+    assert response.fallback_diagnostics.gap_count == 1
     assert "partial_or_unavailable_evidence_gaps" in response.fallback_diagnostics.reason_codes
-    assert {gap.field_name for gap in response.gaps} == {"etf_issuer_evidence"}
+    assert {gap.field_name for gap in response.gaps} == {"premium_discount_or_spread"}
 
 
 def test_lightweight_fetch_blocks_manifest_unsupported_etf_without_provider_calls():
@@ -425,9 +438,9 @@ def test_local_fresh_data_mvp_slice_smoke_contract_is_deterministic():
     assert result["supported_renderable_tickers"] == ["AAPL", "MSFT", "NVDA", "VOO", "SPY", "VTI", "QQQ", "XLK"]
     assert result["blocked_regression_tickers"] == ["TQQQ", "ARKK", "BND", "GLD"]
     assert set(result["status_definitions"]) == {"pass", "partial", "blocked", "unavailable"}
-    assert result["status_counts"] == {"pass": 5, "partial": 3, "blocked": 4, "unavailable": 0}
-    assert result["issuer_backed_etf_tickers"] == ["VOO", "QQQ"]
-    assert result["partial_etf_tickers"] == ["SPY", "VTI", "XLK"]
+    assert result["status_counts"] == {"pass": 8, "partial": 0, "blocked": 4, "unavailable": 0}
+    assert result["issuer_backed_etf_tickers"] == ["VOO", "QQQ", "SPY", "VTI", "XLK"]
+    assert result["partial_etf_tickers"] == []
 
     rows = {row["ticker"]: row for row in result["rows"]}
     for ticker in ("AAPL", "MSFT", "NVDA"):
@@ -458,7 +471,7 @@ def test_local_fresh_data_mvp_slice_smoke_contract_is_deterministic():
         assert surface["unavailable_detail_fact_keys"] == []
         assert surface["section_states"]["business_overview"]["evidence_state"] == "supported"
 
-    for ticker in ("VOO", "QQQ"):
+    for ticker in ("VOO", "QQQ", "SPY", "VTI", "XLK"):
         row = rows[ticker]
         assert row["status"] == "pass"
         assert row["asset_type"] == "etf"
@@ -486,37 +499,6 @@ def test_local_fresh_data_mvp_slice_smoke_contract_is_deterministic():
         assert surface["unavailable_detail_fact_keys"] == []
         assert surface["section_states"]["fund_objective_role"]["evidence_state"] == "supported"
         assert surface["section_states"]["holdings_exposure"]["evidence_state"] == "supported"
-        assert surface["section_states"]["cost_trading_context"]["evidence_state"] == "partial"
-
-    for ticker in ("SPY", "VTI", "XLK"):
-        row = rows[ticker]
-        assert row["status"] == "partial"
-        assert row["asset_type"] == "etf"
-        assert row["fetch_state"] == "partial"
-        assert row["page_render_state"] == "partial"
-        assert row["generated_output_eligible"] is True
-        assert row["issuer_backed"] is False
-        assert row["issuer_evidence_state"] == "partial"
-        assert row["freshness"]["holdings_as_of"] == "2026-05-01"
-        assert row["raw_payload_exposed"] is False
-        assert row["no_live_external_calls"] is True
-        assert row["source_labels"] == ["partial", "provider_derived"]
-        fallback_diagnostics = row["fallback_diagnostics"]
-        assert fallback_diagnostics["source_path"] == "etf_manifest_scope_provider_fallback"
-        assert fallback_diagnostics["issuer_evidence_state"] == "partial"
-        assert fallback_diagnostics["provider_fallback_source_count"] == 1
-        assert fallback_diagnostics["gap_count"] == row["gap_count"]
-        surface = row["surface_contract"]
-        assert surface["renderable"] is True
-        assert surface["source_drawer_state"] == "available"
-        assert {"role", "holdings", "cost_context", "manifest_scope_signal", "provider_market_price"} <= set(
-            surface["detail_fact_keys"]
-        )
-        assert surface["unavailable_detail_fact_keys"] == ["benchmark", "cost_context", "prospectus_reference"]
-        assert {"cost_trading_context", "fund_objective_role", "holdings_exposure"} <= set(
-            surface["partial_section_ids"]
-        )
-        assert surface["section_states"]["holdings_exposure"]["evidence_state"] == "partial"
         assert surface["section_states"]["cost_trading_context"]["evidence_state"] == "partial"
 
     for ticker in ("TQQQ", "ARKK", "BND", "GLD"):

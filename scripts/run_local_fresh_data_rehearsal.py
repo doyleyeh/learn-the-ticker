@@ -98,10 +98,10 @@ OPTIONAL_THRESHOLD_CHECK_IDS = (
 )
 ALLOWED_FAILED_ASSET_COUNT = 1
 ALLOWED_UNAVAILABLE_ASSET_COUNT = 1
-SLICE_EXPECTED_STATUS_COUNTS = {"pass": 5, "partial": 3, "blocked": 4, "unavailable": 0}
+SLICE_EXPECTED_STATUS_COUNTS = {"pass": 8, "partial": 0, "blocked": 4, "unavailable": 0}
 SLICE_EXPECTED_STOCK_PASS_TICKERS = ("AAPL", "MSFT", "NVDA")
-SLICE_EXPECTED_ISSUER_BACKED_ETF_TICKERS = ("VOO", "QQQ")
-SLICE_EXPECTED_PARTIAL_ETF_TICKERS = ("SPY", "VTI", "XLK")
+SLICE_EXPECTED_ISSUER_BACKED_ETF_TICKERS = ("VOO", "QQQ", "SPY", "VTI", "XLK")
+SLICE_EXPECTED_PARTIAL_ETF_TICKERS: tuple[str, ...] = ()
 SLICE_EXPECTED_BLOCKED_TICKERS = ("TQQQ", "ARKK", "BND", "GLD")
 SLICE_PARITY_REPRESENTATIVE_ASSETS = ("AAPL", "VOO", "QQQ", "SPY", "TQQQ", "ARKK", "BND", "GLD")
 SLICE_PARITY_COMPARISON_PAIRS = (
@@ -426,7 +426,7 @@ def _check_local_fresh_data_mvp_slice_smoke() -> RehearsalCheck:
     row_by_ticker = {row.get("ticker"): row for row in rows if isinstance(row, dict)}
     expected_supported = ["AAPL", "MSFT", "NVDA", "VOO", "SPY", "VTI", "QQQ", "XLK"]
     expected_blocked = ["TQQQ", "ARKK", "BND", "GLD"]
-    expected_status_counts = {"pass": 5, "partial": 3, "blocked": 4, "unavailable": 0}
+    expected_status_counts = {"pass": 8, "partial": 0, "blocked": 4, "unavailable": 0}
     blockers = list(result.get("blockers") or [])
 
     if result.get("status") != "pass":
@@ -482,7 +482,7 @@ def _check_local_fresh_data_mvp_slice_smoke() -> RehearsalCheck:
                     "row": row,
                 }
             )
-    for ticker in ("VOO", "QQQ"):
+    for ticker in SLICE_EXPECTED_ISSUER_BACKED_ETF_TICKERS:
         row = row_by_ticker.get(ticker)
         if not row or row.get("issuer_backed") is not True or row.get("fetch_state") != "supported":
             blockers.append(
@@ -492,16 +492,13 @@ def _check_local_fresh_data_mvp_slice_smoke() -> RehearsalCheck:
                     "row": row,
                 }
             )
-    for ticker in ("SPY", "VTI", "XLK"):
-        row = row_by_ticker.get(ticker)
-        if not row or row.get("issuer_evidence_state") != "partial" or row.get("fetch_state") != "partial":
-            blockers.append(
-                {
-                    "reason_code": "slice_partial_etf_state_mismatch",
-                    "ticker": ticker,
-                    "row": row,
-                }
-            )
+    if result.get("partial_etf_tickers"):
+        blockers.append(
+            {
+                "reason_code": "slice_partial_etf_state_mismatch",
+                "tickers": result.get("partial_etf_tickers"),
+            }
+        )
     for ticker in expected_blocked:
         row = row_by_ticker.get(ticker)
         if not row or row.get("status") != "blocked" or row.get("generated_output_eligible") is not False:
@@ -2561,8 +2558,8 @@ def _build_lightweight_local_mvp_slice_manual_readiness_gate(checks: list[Rehear
                 "raw_payload_exposed_count is zero",
                 "secret and raw-payload value reporting are false",
                 "AAPL, MSFT, and NVDA pass as stock rows",
-                "VOO and QQQ pass as issuer-backed ETF rows",
-                "SPY, VTI, and XLK remain partial ETF rows",
+                "VOO, QQQ, SPY, VTI, and XLK pass as issuer-backed ETF rows",
+                "no ETF rows remain partial in the deterministic slice",
                 "TQQQ, ARKK, BND, and GLD remain blocked with no generated surfaces or evidence",
                 "local_fresh_data_mvp_slice_comparison_export_parity passes for representative pairs and exports",
                 "optional operator-only checks are skipped or pass",
@@ -2570,7 +2567,7 @@ def _build_lightweight_local_mvp_slice_manual_readiness_gate(checks: list[Rehear
             "local_slice_agent_work_remaining_when": [
                 "the deterministic slice smoke is blocked",
                 "the deterministic comparison/export parity check is blocked",
-                "the T-147 issuer-backed versus partial ETF shape changes",
+                "the T-153 issuer-backed ETF shape changes",
                 "blocked regression tickers unlock generated output or expose evidence",
                 "normal CI starts requiring live calls, browser startup, or local services",
                 "secret, raw payload, or raw source text reporting is detected",

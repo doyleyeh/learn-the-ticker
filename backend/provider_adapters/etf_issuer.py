@@ -14,6 +14,7 @@ from backend.data import (
 from backend.etf_universe import can_generate_output_for_etf_entry, etf_universe_entry
 from backend.models import (
     AssetIdentity,
+    AssetStatus,
     AssetType,
     EvidenceState,
     FreshnessState,
@@ -348,7 +349,7 @@ class EtfIssuerLiveAcquisitionReadiness:
     sanitized_diagnostics: dict[str, object] | None = None
 
 
-ETF_ISSUER_FIXTURES: dict[str, EtfIssuerFixture] = {
+LIGHTWEIGHT_ETF_ISSUER_FIXTURES: dict[str, EtfIssuerFixture] = {
     "VOO": EtfIssuerFixture(
         identity=EtfIdentityFixture(
             ticker="VOO",
@@ -567,11 +568,344 @@ ETF_ISSUER_FIXTURES: dict[str, EtfIssuerFixture] = {
             ),
         ),
     ),
+    "SPY": EtfIssuerFixture(
+        identity=EtfIdentityFixture(
+            ticker="SPY",
+            fund_name="SPDR S&P 500 ETF Trust",
+            issuer="State Street Global Advisors",
+            exchange="NYSE Arca",
+            asset_type="etf",
+            support_state="supported",
+            etf_classification="non_leveraged_us_equity_index_etf",
+            eligible_not_cached=True,
+        ),
+        sources=(
+            EtfSourceFixture(
+                source_document_id="provider_issuer_spy_fact_sheet_2026",
+                source_type="issuer_fact_sheet",
+                title="SPDR S&P 500 ETF Trust fact sheet deterministic provider fixture",
+                publisher="State Street Global Advisors",
+                url="https://www.ssga.com/us/en/intermediary/etfs/funds/spdr-sp-500-etf-trust-spy",
+                published_at="2026-04-01",
+                as_of_date="2026-04-01",
+                freshness_state=FreshnessState.fresh,
+                data_category=ProviderDataCategory.etf_issuer_facts,
+                source_rank=1,
+            ),
+            EtfSourceFixture(
+                source_document_id="provider_issuer_spy_prospectus_2026",
+                source_type="summary_prospectus",
+                title="SPDR S&P 500 ETF Trust summary prospectus deterministic provider fixture",
+                publisher="State Street Global Advisors",
+                url="https://www.ssga.com/us/en/intermediary/etfs/funds/spdr-sp-500-etf-trust-spy",
+                published_at="2026-04-01",
+                as_of_date="2026-04-01",
+                freshness_state=FreshnessState.fresh,
+                data_category=ProviderDataCategory.etf_issuer_facts,
+                source_rank=2,
+            ),
+            EtfSourceFixture(
+                source_document_id="provider_issuer_spy_holdings_2026",
+                source_type="issuer_holdings_file",
+                title="SPDR S&P 500 ETF Trust holdings deterministic provider fixture",
+                publisher="State Street Global Advisors",
+                url="https://www.ssga.com/us/en/intermediary/etfs/funds/spdr-sp-500-etf-trust-spy",
+                published_at="2026-04-01",
+                as_of_date="2026-04-01",
+                freshness_state=FreshnessState.fresh,
+                data_category=ProviderDataCategory.etf_holdings_metadata,
+                source_rank=2,
+            ),
+            EtfSourceFixture(
+                source_document_id="provider_issuer_spy_exposure_2026",
+                source_type="issuer_exposure_file",
+                title="SPDR S&P 500 ETF Trust sector exposure deterministic provider fixture",
+                publisher="State Street Global Advisors",
+                url="https://www.ssga.com/us/en/intermediary/etfs/funds/spdr-sp-500-etf-trust-spy",
+                published_at="2026-04-01",
+                as_of_date="2026-04-01",
+                freshness_state=FreshnessState.fresh,
+                data_category=ProviderDataCategory.etf_holdings_metadata,
+                source_rank=2,
+            ),
+        ),
+        fact_sheet=EtfFactSheetMetadataFixture(
+            benchmark="S&P 500 Index",
+            expense_ratio=0.0945,
+            holdings_count=503,
+            source_document_id="provider_issuer_spy_fact_sheet_2026",
+            citation_id="provider_cite_spy_fact_sheet",
+            as_of_date="2026-04-01",
+        ),
+        prospectus=EtfProspectusReferenceFixture(
+            document_type="summary_prospectus",
+            publication_date="2026-04-01",
+            effective_date="2026-04-01",
+            source_document_id="provider_issuer_spy_prospectus_2026",
+            citation_id="provider_cite_spy_prospectus",
+        ),
+        holdings_or_exposures=(
+            EtfHoldingExposureFixture(
+                field_name="top_holding_nvidia",
+                holding_ticker="NVDA",
+                name="NVIDIA Corp.",
+                weight=8.0,
+                exposure_category="holding",
+                unit="percent_weight",
+                as_of_date="2026-04-01",
+                source_document_id="provider_issuer_spy_holdings_2026",
+                citation_id="provider_cite_spy_holdings",
+            ),
+            EtfHoldingExposureFixture(
+                field_name="information_technology_exposure",
+                holding_ticker=None,
+                name="Information technology sector exposure",
+                weight=34.0,
+                exposure_category="sector",
+                unit="percent_weight",
+                as_of_date="2026-04-01",
+                source_document_id="provider_issuer_spy_exposure_2026",
+                citation_id="provider_cite_spy_exposure",
+            ),
+        ),
+        evidence_gaps=(
+            EtfEvidenceGapFixture(
+                field_name="premium_discount_or_spread",
+                evidence_state=EvidenceState.unavailable,
+                freshness_state=FreshnessState.unavailable,
+                message="The ETF issuer fixture does not provide current premium, discount, or bid-ask spread data.",
+            ),
+        ),
+    ),
+    "VTI": EtfIssuerFixture(
+        identity=EtfIdentityFixture(
+            ticker="VTI",
+            fund_name="Vanguard Total Stock Market ETF",
+            issuer="Vanguard",
+            exchange="NYSE Arca",
+            asset_type="etf",
+            support_state="supported",
+            etf_classification="non_leveraged_us_equity_index_etf",
+            eligible_not_cached=True,
+        ),
+        sources=(
+            EtfSourceFixture(
+                source_document_id="provider_issuer_vti_fact_sheet_2026",
+                source_type="issuer_fact_sheet",
+                title="Vanguard Total Stock Market ETF fact sheet deterministic provider fixture",
+                publisher="Vanguard",
+                url="https://investor.vanguard.com/investment-products/etfs/profile/vti",
+                published_at="2026-04-01",
+                as_of_date="2026-04-01",
+                freshness_state=FreshnessState.fresh,
+                data_category=ProviderDataCategory.etf_issuer_facts,
+                source_rank=1,
+            ),
+            EtfSourceFixture(
+                source_document_id="provider_issuer_vti_prospectus_2026",
+                source_type="summary_prospectus",
+                title="Vanguard Total Stock Market ETF summary prospectus deterministic provider fixture",
+                publisher="Vanguard",
+                url="https://investor.vanguard.com/investment-products/etfs/profile/vti",
+                published_at="2026-04-01",
+                as_of_date="2026-04-01",
+                freshness_state=FreshnessState.fresh,
+                data_category=ProviderDataCategory.etf_issuer_facts,
+                source_rank=2,
+            ),
+            EtfSourceFixture(
+                source_document_id="provider_issuer_vti_holdings_2026",
+                source_type="issuer_holdings_file",
+                title="Vanguard Total Stock Market ETF holdings deterministic provider fixture",
+                publisher="Vanguard",
+                url="https://investor.vanguard.com/investment-products/etfs/profile/vti",
+                published_at="2026-04-01",
+                as_of_date="2026-04-01",
+                freshness_state=FreshnessState.fresh,
+                data_category=ProviderDataCategory.etf_holdings_metadata,
+                source_rank=2,
+            ),
+            EtfSourceFixture(
+                source_document_id="provider_issuer_vti_exposure_2026",
+                source_type="issuer_exposure_file",
+                title="Vanguard Total Stock Market ETF exposure deterministic provider fixture",
+                publisher="Vanguard",
+                url="https://investor.vanguard.com/investment-products/etfs/profile/vti",
+                published_at="2026-04-01",
+                as_of_date="2026-04-01",
+                freshness_state=FreshnessState.fresh,
+                data_category=ProviderDataCategory.etf_holdings_metadata,
+                source_rank=2,
+            ),
+        ),
+        fact_sheet=EtfFactSheetMetadataFixture(
+            benchmark="CRSP US Total Market Index",
+            expense_ratio=0.03,
+            holdings_count=3520,
+            source_document_id="provider_issuer_vti_fact_sheet_2026",
+            citation_id="provider_cite_vti_fact_sheet",
+            as_of_date="2026-04-01",
+        ),
+        prospectus=EtfProspectusReferenceFixture(
+            document_type="summary_prospectus",
+            publication_date="2026-04-01",
+            effective_date="2026-04-01",
+            source_document_id="provider_issuer_vti_prospectus_2026",
+            citation_id="provider_cite_vti_prospectus",
+        ),
+        holdings_or_exposures=(
+            EtfHoldingExposureFixture(
+                field_name="top_holding_nvidia",
+                holding_ticker="NVDA",
+                name="NVIDIA Corp.",
+                weight=6.4,
+                exposure_category="holding",
+                unit="percent_weight",
+                as_of_date="2026-04-01",
+                source_document_id="provider_issuer_vti_holdings_2026",
+                citation_id="provider_cite_vti_holdings",
+            ),
+            EtfHoldingExposureFixture(
+                field_name="equity_exposure",
+                holding_ticker=None,
+                name="U.S. total market equity exposure",
+                weight=100.0,
+                exposure_category="asset_class",
+                unit="percent_weight",
+                as_of_date="2026-04-01",
+                source_document_id="provider_issuer_vti_exposure_2026",
+                citation_id="provider_cite_vti_exposure",
+            ),
+        ),
+        evidence_gaps=(
+            EtfEvidenceGapFixture(
+                field_name="premium_discount_or_spread",
+                evidence_state=EvidenceState.unavailable,
+                freshness_state=FreshnessState.unavailable,
+                message="The ETF issuer fixture does not provide current premium, discount, or bid-ask spread data.",
+            ),
+        ),
+    ),
+    "XLK": EtfIssuerFixture(
+        identity=EtfIdentityFixture(
+            ticker="XLK",
+            fund_name="Technology Select Sector SPDR Fund",
+            issuer="State Street Global Advisors",
+            exchange="NYSE Arca",
+            asset_type="etf",
+            support_state="supported",
+            etf_classification="non_leveraged_us_equity_sector_etf",
+            eligible_not_cached=True,
+        ),
+        sources=(
+            EtfSourceFixture(
+                source_document_id="provider_issuer_xlk_fact_sheet_2026",
+                source_type="issuer_fact_sheet",
+                title="Technology Select Sector SPDR Fund fact sheet deterministic provider fixture",
+                publisher="State Street Global Advisors",
+                url="https://www.ssga.com/mainfund/xlk",
+                published_at="2026-04-01",
+                as_of_date="2026-04-01",
+                freshness_state=FreshnessState.fresh,
+                data_category=ProviderDataCategory.etf_issuer_facts,
+                source_rank=1,
+            ),
+            EtfSourceFixture(
+                source_document_id="provider_issuer_xlk_prospectus_2026",
+                source_type="summary_prospectus",
+                title="Technology Select Sector SPDR Fund summary prospectus deterministic provider fixture",
+                publisher="State Street Global Advisors",
+                url="https://www.ssga.com/mainfund/xlk",
+                published_at="2026-04-01",
+                as_of_date="2026-04-01",
+                freshness_state=FreshnessState.fresh,
+                data_category=ProviderDataCategory.etf_issuer_facts,
+                source_rank=2,
+            ),
+            EtfSourceFixture(
+                source_document_id="provider_issuer_xlk_holdings_2026",
+                source_type="issuer_holdings_file",
+                title="Technology Select Sector SPDR Fund holdings deterministic provider fixture",
+                publisher="State Street Global Advisors",
+                url="https://www.ssga.com/mainfund/xlk",
+                published_at="2026-04-01",
+                as_of_date="2026-04-01",
+                freshness_state=FreshnessState.fresh,
+                data_category=ProviderDataCategory.etf_holdings_metadata,
+                source_rank=2,
+            ),
+            EtfSourceFixture(
+                source_document_id="provider_issuer_xlk_exposure_2026",
+                source_type="issuer_exposure_file",
+                title="Technology Select Sector SPDR Fund industry exposure deterministic provider fixture",
+                publisher="State Street Global Advisors",
+                url="https://www.ssga.com/mainfund/xlk",
+                published_at="2026-04-01",
+                as_of_date="2026-04-01",
+                freshness_state=FreshnessState.fresh,
+                data_category=ProviderDataCategory.etf_holdings_metadata,
+                source_rank=2,
+            ),
+        ),
+        fact_sheet=EtfFactSheetMetadataFixture(
+            benchmark="Technology Select Sector Index",
+            expense_ratio=0.08,
+            holdings_count=69,
+            source_document_id="provider_issuer_xlk_fact_sheet_2026",
+            citation_id="provider_cite_xlk_fact_sheet",
+            as_of_date="2026-04-01",
+        ),
+        prospectus=EtfProspectusReferenceFixture(
+            document_type="summary_prospectus",
+            publication_date="2026-04-01",
+            effective_date="2026-04-01",
+            source_document_id="provider_issuer_xlk_prospectus_2026",
+            citation_id="provider_cite_xlk_prospectus",
+        ),
+        holdings_or_exposures=(
+            EtfHoldingExposureFixture(
+                field_name="top_holding_nvidia",
+                holding_ticker="NVDA",
+                name="NVIDIA Corp.",
+                weight=14.7,
+                exposure_category="holding",
+                unit="percent_weight",
+                as_of_date="2026-04-01",
+                source_document_id="provider_issuer_xlk_holdings_2026",
+                citation_id="provider_cite_xlk_holdings",
+            ),
+            EtfHoldingExposureFixture(
+                field_name="technology_sector_exposure",
+                holding_ticker=None,
+                name="Technology sector exposure",
+                weight=100.0,
+                exposure_category="sector",
+                unit="percent_weight",
+                as_of_date="2026-04-01",
+                source_document_id="provider_issuer_xlk_exposure_2026",
+                citation_id="provider_cite_xlk_exposure",
+            ),
+        ),
+        evidence_gaps=(
+            EtfEvidenceGapFixture(
+                field_name="premium_discount_or_spread",
+                evidence_state=EvidenceState.unavailable,
+                freshness_state=FreshnessState.unavailable,
+                message="The ETF issuer fixture does not provide current premium, discount, or bid-ask spread data.",
+            ),
+        ),
+    ),
+}
+
+ETF_ISSUER_FIXTURES: dict[str, EtfIssuerFixture] = {
+    ticker: LIGHTWEIGHT_ETF_ISSUER_FIXTURES[ticker]
+    for ticker in ("VOO", "QQQ")
 }
 
 
-def etf_issuer_fixture_for_ticker(ticker: str) -> EtfIssuerFixture | None:
-    return ETF_ISSUER_FIXTURES.get(normalize_ticker(ticker))
+def etf_issuer_fixture_for_ticker(ticker: str, *, include_lightweight: bool = False) -> EtfIssuerFixture | None:
+    fixtures = LIGHTWEIGHT_ETF_ISSUER_FIXTURES if include_lightweight else ETF_ISSUER_FIXTURES
+    return fixtures.get(normalize_ticker(ticker))
 
 
 def build_etf_issuer_acquisition_result(
@@ -806,9 +1140,11 @@ def build_etf_issuer_provider_response(
     adapter: EtfIssuerAdapterLike,
     request: ProviderRequestMetadata,
     licensing: ProviderLicensing,
+    *,
+    include_lightweight: bool = False,
 ) -> ProviderResponse:
     ticker = normalize_ticker(request.normalized_ticker)
-    fixture = etf_issuer_fixture_for_ticker(ticker)
+    fixture = etf_issuer_fixture_for_ticker(ticker, include_lightweight=include_lightweight)
     if fixture is None:
         raise EtfIssuerFixtureContractError(f"No deterministic ETF issuer fixture is registered for {ticker}.")
 
@@ -844,7 +1180,29 @@ def build_etf_issuer_provider_response(
 
 
 def _asset_identity(identity: EtfIdentityFixture) -> AssetIdentity:
-    return ASSETS[identity.ticker]["identity"].model_copy(deep=True)
+    cached = ASSETS.get(identity.ticker)
+    if cached:
+        return cached["identity"].model_copy(deep=True)
+    eligible = ELIGIBLE_NOT_CACHED_ASSETS.get(identity.ticker)
+    if eligible:
+        return AssetIdentity(
+            ticker=identity.ticker,
+            name=str(eligible["name"]),
+            asset_type=AssetType(str(eligible["asset_type"])),
+            exchange=str(eligible["exchange"]) if eligible.get("exchange") else None,
+            issuer=str(eligible["issuer"]) if eligible.get("issuer") else None,
+            status=AssetStatus.supported,
+            supported=True,
+        )
+    return AssetIdentity(
+        ticker=identity.ticker,
+        name=identity.fund_name,
+        asset_type=AssetType.etf,
+        exchange=identity.exchange,
+        issuer=identity.issuer,
+        status=AssetStatus.supported,
+        supported=True,
+    )
 
 
 def _configuration_readiness() -> EtfIssuerConfigurationReadiness:
@@ -866,10 +1224,10 @@ def _setting_bool(settings, name: str, explicit: bool | None, default: bool) -> 
 def _supported_equity_etf_identity_ready(ticker: str, fixture: EtfIssuerFixture | None) -> bool:
     if fixture is None:
         return False
-    cached_asset = ASSETS.get(ticker)
-    if cached_asset is None:
+    try:
+        identity = _asset_identity(fixture.identity)
+    except Exception:
         return False
-    identity = cached_asset["identity"]
     entry = etf_universe_entry(ticker)
     return (
         getattr(identity, "ticker", None) == ticker
@@ -888,8 +1246,7 @@ def _supported_equity_etf_identity_ready(ticker: str, fixture: EtfIssuerFixture 
                 fixture.identity.multi_asset,
             )
         )
-        and entry is not None
-        and can_generate_output_for_etf_entry(entry)
+        and _supported_scope_etf_entry_ready(entry)
     )
 
 
@@ -1066,7 +1423,7 @@ def _contract_error_acquisition_result(ticker: str, error_message: str) -> EtfIs
 
 def _source_checksum(source_document_id: str) -> str:
     ticker = _ticker_from_source_id(source_document_id)
-    fixture = ETF_ISSUER_FIXTURES.get(ticker)
+    fixture = LIGHTWEIGHT_ETF_ISSUER_FIXTURES.get(ticker)
     if fixture:
         for source in fixture.sources:
             if source.source_document_id == source_document_id:
@@ -1353,19 +1710,24 @@ def _facts_from_fixture(fixture: EtfIssuerFixture) -> list[ProviderFact]:
 
 def _validate_fixture_binding(fixture: EtfIssuerFixture, requested_ticker: str) -> None:
     identity = fixture.identity
-    asset = ASSETS.get(identity.ticker, {}).get("identity")
     if identity.ticker != requested_ticker:
         raise EtfIssuerFixtureContractError("ETF issuer fixture ticker does not match the requested ticker.")
-    if asset is None:
-        raise EtfIssuerFixtureContractError(f"{identity.ticker} is not present in deterministic cached ETF fixtures.")
-    if asset.asset_type is not AssetType.etf or not asset.supported:
-        raise EtfIssuerFixtureContractError("ETF issuer fixture can only represent supported ETF identity.")
+    entry = etf_universe_entry(identity.ticker)
+    asset = ASSETS.get(identity.ticker, {}).get("identity")
+    eligible = ELIGIBLE_NOT_CACHED_ASSETS.get(identity.ticker)
+    if asset is None and eligible is None:
+        raise EtfIssuerFixtureContractError(f"{identity.ticker} is not present in deterministic ETF fixture inputs.")
+    if not _supported_scope_etf_entry_ready(entry):
+        raise EtfIssuerFixtureContractError("ETF issuer fixture can only represent supported ETF manifest identity.")
     if identity.asset_type != "etf" or identity.support_state != "supported":
         raise EtfIssuerFixtureContractError("ETF issuer fixture has an invalid ETF support state.")
-    if identity.fund_name != asset.name or identity.exchange != asset.exchange or identity.issuer != asset.issuer:
-        raise EtfIssuerFixtureContractError(f"{identity.ticker} ETF identity disagrees with the cached asset fixture.")
-    if identity.eligible_not_cached:
-        raise EtfIssuerFixtureContractError("ETF issuer fixture cannot create evidence for eligible-not-cached ETFs.")
+    expected_name = asset.name if asset else str(eligible["name"])
+    expected_exchange = asset.exchange if asset else str(eligible["exchange"])
+    expected_issuer = asset.issuer if asset else str(eligible["issuer"])
+    if identity.fund_name != expected_name or identity.exchange != expected_exchange or identity.issuer != expected_issuer:
+        raise EtfIssuerFixtureContractError(f"{identity.ticker} ETF identity disagrees with the supported ETF manifest entry.")
+    if identity.eligible_not_cached != (asset is None):
+        raise EtfIssuerFixtureContractError("ETF issuer fixture eligible-not-cached marker disagrees with local cache state.")
     blocked = [
         identity.leveraged,
         identity.inverse,
@@ -1377,6 +1739,12 @@ def _validate_fixture_binding(fixture: EtfIssuerFixture, requested_ticker: str) 
     ]
     if any(blocked):
         raise EtfIssuerFixtureContractError("ETF issuer fixture cannot represent blocked ETF classes.")
+
+
+def _supported_scope_etf_entry_ready(entry: object | None) -> bool:
+    if entry is None:
+        return False
+    return can_generate_output_for_etf_entry(entry) or getattr(getattr(entry, "support_state", None), "value", None) == "eligible_not_cached"
 
 
 def _validate_response_contract(

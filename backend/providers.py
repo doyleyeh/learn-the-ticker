@@ -210,8 +210,8 @@ def _build_etf_issuer_response(adapter: MockProviderAdapter, request: ProviderRe
     ticker = request.normalized_ticker
     licensing = _official_public_licensing(adapter.provider_name)
 
-    if etf_issuer_fixture_for_ticker(ticker) is not None:
-        return build_etf_issuer_provider_response(adapter, request, licensing)
+    if etf_issuer_fixture_for_ticker(ticker, include_lightweight=True) is not None:
+        return build_etf_issuer_provider_response(adapter, request, licensing, include_lightweight=True)
 
     if ticker in ELIGIBLE_NOT_CACHED_ASSETS:
         return _eligible_not_cached_response(adapter, request, licensing)
