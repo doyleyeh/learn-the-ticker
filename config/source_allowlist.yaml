@@ -143,6 +143,41 @@ source_records:
       approval_reference: PRD-v0.2-source-hierarchy
       rationale: Official ETF issuer materials are the ETF trust backbone for fixture-backed fund facts.
 
+  - source_id: state_street_spdr_official_issuer
+    display_name: State Street SPDR official issuer materials
+    match_kind: domain
+    domain: ssga.com
+    source_type: official_issuer_material
+    source_quality: issuer
+    allowlist_status: allowed
+    source_use_policy: full_text_allowed
+    permitted_operations:
+      can_store_metadata: true
+      can_store_raw_text: true
+      can_display_metadata: true
+      can_display_excerpt: true
+      can_summarize: true
+      can_cache: true
+      can_export_metadata: true
+      can_export_excerpt: true
+      can_export_full_text: false
+      can_support_generated_output: true
+      can_support_citations: true
+      can_support_canonical_facts: true
+      can_support_recent_developments: true
+    allowed_excerpt:
+      allowed: true
+      max_words: 90
+      requires_attribution: true
+      note: Short attributed issuer excerpts may support citations; full issuer documents are not exported.
+    recent_context_only: false
+    canonical_facts_allowed: true
+    review:
+      reviewed_by: local-contract
+      reviewed_at: 2026-05-04
+      approval_reference: T-153-state-street-spdr-issuer-fixtures
+      rationale: Official State Street SPDR issuer materials are required for deterministic SPY and XLK fixture-backed ETF facts.
+
   - source_id: ltt_controlled_limitation_fixtures
     display_name: Learn the Ticker controlled limitation fixtures
     match_kind: local_fixture

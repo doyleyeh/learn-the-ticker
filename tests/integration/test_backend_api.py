@@ -782,7 +782,7 @@ def test_lightweight_api_fallback_diagnostics_are_exposed_without_unlocking_cach
     monkeypatch.setattr("backend.main.fetch_lightweight_asset_data", fake_fetch)
 
     cached_search = client.get("/api/search", params={"q": "VOO"}).json()
-    partial_search = client.get("/api/search", params={"q": "SPY"}).json()
+    issuer_backed_search = client.get("/api/search", params={"q": "SPY"}).json()
     overview = client.get("/api/assets/SPY/overview").json()
     details = client.get("/api/assets/SPY/details").json()
     sources = client.get("/api/assets/SPY/sources").json()
@@ -791,28 +791,30 @@ def test_lightweight_api_fallback_diagnostics_are_exposed_without_unlocking_cach
     assert cached_search["state"]["support_classification"] == "cached_supported"
     assert cached_search["results"][0]["fallback_diagnostics"] is None
 
-    search_diagnostics = partial_search["results"][0]["fallback_diagnostics"]
-    assert partial_search["state"]["status"] == "supported"
-    assert partial_search["results"][0]["ticker"] == "SPY"
+    search_diagnostics = issuer_backed_search["results"][0]["fallback_diagnostics"]
+    assert issuer_backed_search["state"]["status"] == "supported"
+    assert issuer_backed_search["results"][0]["ticker"] == "SPY"
     assert search_diagnostics["schema_version"] == "lightweight-api-fallback-diagnostics-v1"
-    assert search_diagnostics["source_path"] == "etf_manifest_scope_provider_fallback"
-    assert search_diagnostics["fetch_state"] == "partial"
-    assert search_diagnostics["page_render_state"] == "partial"
+    assert search_diagnostics["source_path"] == "issuer_backed_etf_provider_fallback"
+    assert search_diagnostics["fetch_state"] == "supported"
+    assert search_diagnostics["page_render_state"] == "supported"
     assert search_diagnostics["generated_output_eligible"] is True
-    assert search_diagnostics["source_labels"] == ["partial", "provider_derived"]
-    assert search_diagnostics["source_count"] == 2
+    assert search_diagnostics["source_labels"] == ["official", "partial", "provider_derived"]
+    assert search_diagnostics["source_count"] == 6
+    assert search_diagnostics["official_source_count"] == 4
     assert search_diagnostics["provider_fallback_source_count"] == 1
     assert search_diagnostics["gap_count"] == 1
-    assert search_diagnostics["issuer_evidence_state"] == "partial"
-    assert search_diagnostics["freshness"]["holdings_as_of"] == "2026-05-01"
+    assert search_diagnostics["issuer_evidence_state"] == "supported"
+    assert search_diagnostics["freshness"]["holdings_as_of"] == "2026-04-01"
     assert search_diagnostics["raw_payload_exposed"] is False
     assert search_diagnostics["secret_values_exposed"] is False
 
     for payload in (overview, details, sources):
         diagnostics = payload["fallback_diagnostics"]
         assert diagnostics["schema_version"] == "lightweight-api-fallback-diagnostics-v1"
-        assert diagnostics["source_path"] == "etf_manifest_scope_provider_fallback"
-        assert diagnostics["issuer_evidence_state"] == "partial"
+        assert diagnostics["source_path"] == "issuer_backed_etf_provider_fallback"
+        assert diagnostics["issuer_evidence_state"] == "supported"
+        assert diagnostics["official_source_count"] == 4
         assert diagnostics["raw_payload_exposed"] is False
         assert diagnostics["secret_values_exposed"] is False
 
