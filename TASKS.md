@@ -1,53 +1,61 @@
 ## Current task
 
-### T-154: Add lightweight Weekly News Focus live-source smoke for the MVP slice
+### T-155: Add lightweight live AI validation for grounded chat and analysis
 
 Goal:
-Add a deterministic-by-default, operator-only Weekly News Focus live-source smoke for the local MVP slice so local review can verify market-week windowing, official-source-first candidate handling, source-use filtering, evidence-limited Weekly News Focus output, AI Comprehensive Analysis threshold gating, and sanitized diagnostics before live-AI or deployment expansion.
+Extend the operator-only live-AI validation smoke so local review can validate grounded chat and AI Comprehensive Analysis against the lightweight MVP slice, T-154 Weekly News Focus evidence-threshold behavior, citation/source-use rules, safety boundaries, and sanitized diagnostics before local deployment smoke or production hardening.
 
 Scope:
-Build on the existing Weekly News Focus repository contracts, T-151 sanitized diagnostics style, T-152/T-153 local slice smoke expectations, and the current optional rehearsal checks. Add a narrow smoke command and rehearsal integration for Weekly News Focus source acquisition/review behavior across representative local MVP slice assets. The default path must stay deterministic and CI-safe, using mocked or fixture-backed source candidates; any real source retrieval must be explicitly operator-enabled and must report safe blocked/pass diagnostics without printing source text, raw article bodies, provider payloads, secrets, prompts, transcripts, or generated live responses. The smoke should prove that Weekly News Focus can show fewer than the configured maximum or an empty state when evidence is thin, and that AI Comprehensive Analysis remains suppressed unless at least two approved Weekly News Focus items exist. This is a review/smoke contract only; it must not approve sources, promote manifests, generate cache entries, broaden asset support, or add production/news-provider infrastructure.
+Build on T-127's `scripts/run_live_ai_validation_smoke.py`, T-151 sanitized diagnostics, T-154 Weekly News Focus live-source smoke, and the current local fresh-data rehearsal optional-check pattern. Add a narrow validation contract for representative grounded chat and AI Comprehensive Analysis cases using deterministic mocked transport in tests and explicit operator-only live OpenRouter transport only when all live-generation readiness gates are set. The default CLI path must remain skipped or deterministic, require no live network, local services, durable repositories, browser, Docker, or secrets, and print only safe diagnostics. This task validates generated output eligibility; it must not approve sources, store live outputs, write generated-output cache records, broaden support classification, add provider/news infrastructure, or make live AI part of normal CI.
 
 Allowed files:
-- `backend/repositories/weekly_news.py`
-- `backend/weekly_news_repository.py`
+- `backend/llm.py`
+- `backend/llm_transport.py`
+- `backend/chat.py`
 - `backend/weekly_news.py`
-- `scripts/run_weekly_news_live_source_smoke.py`
+- `backend/repositories/weekly_news.py`
+- `scripts/run_live_ai_validation_smoke.py`
 - `scripts/run_local_fresh_data_rehearsal.py`
 - `docs/local_fresh_data_ingest_to_render_runbook.md`
+- `tests/unit/test_llm_provider.py`
+- `tests/unit/test_chat_generation.py`
 - `tests/unit/test_weekly_news.py`
+- `tests/unit/test_safety_guardrails.py`
 - `tests/unit/test_repo_contract.py`
 - `tests/integration/test_backend_api.py`
+- `evals/llm_provider_eval_cases.yaml`
 - `evals/weekly_news_eval_cases.yaml`
+- `evals/safety_eval_cases.yaml`
+- `evals/run_static_evals.py`
 - `docs/agent-journal/<run-id>.md`
 
 Do not change:
-- Do not edit data manifests, candidate manifests, source-pack artifacts, generated-output cache fixtures, provider credentials, env example secret values, deployment files, database migrations, Docker files, package scripts, production configuration, production dependencies, or `config/source_allowlist.yaml`.
-- Do not add live provider/news/market-data/LLM calls, localhost-service requirements, durable-storage requirements, Docker requirements, or secret requirements to normal CI.
-- Do not add a broad news provider integration, paid-provider integration, RSS crawler, scheduler, queue, database writer, production storage writer, or recurring job.
+- Do not edit frontend app files, data manifests, candidate manifests, source-pack artifacts, generated-output cache fixtures, provider credentials, env example secret values, deployment files, database migrations, Docker files, package scripts, production configuration, production dependencies, or `config/source_allowlist.yaml`.
+- Do not add live provider/news/market-data/LLM calls, localhost-service requirements, durable-storage requirements, Docker requirements, browser requirements, or secret requirements to normal CI.
+- Do not add a broad LLM feature, paid-provider integration, news provider integration, RSS crawler, scheduler, queue, database writer, production storage writer, or recurring job.
 - Do not broaden runtime support classification or unlock generated pages, generated chat answers, generated comparisons, exports, Weekly News Focus, AI Comprehensive Analysis, generated risk summaries, or generated-output cache writes for `TQQQ`, `ARKK`, `BND`, `GLD`, unknown tickers, clearly unsupported products, or out-of-scope assets.
-- Do not treat live-source smoke pass states, fetched URLs, deterministic candidates, or provider/source fallback as ETF-500 completion, Top-500 completion, source-pack approval, Golden Asset Source Handoff approval, generated-output cache promotion, production readiness, investment suitability, or permission to store raw source text.
+- Do not treat live-AI smoke pass states, deterministic mocked responses, model names, usage metadata, live outputs, source candidates, or provider/source fallback as ETF-500 completion, Top-500 completion, source-pack approval, Golden Asset Source Handoff approval, generated-output cache promotion, production readiness, investment suitability, or permission to store raw source text.
 - Do not change home-page workflow, comparison routing, glossary behavior, chat behavior, stock-vs-ETF comparison templates, source drawer behavior, mobile bottom-sheet/full-screen behavior, or the separate `/compare` workflow.
-- Do not print, store in committed files, or expose provider secrets, raw provider payloads, raw article/source text, hidden prompts, model reasoning, transcripts, DSNs, signed links, unrestricted excerpts, raw live documents, or actual secret values.
+- Do not print, store in committed files, or expose OpenRouter/API keys, provider secrets, raw provider payloads, raw article/source text, hidden prompts, prompt text, raw model reasoning, raw transcripts, generated live responses, DSNs, signed links, unrestricted excerpts, raw live documents, or actual secret values.
 
 Acceptance criteria:
-- `scripts/run_weekly_news_live_source_smoke.py --json` exists and returns schema `weekly-news-live-source-smoke-v1` with `status` values of `skipped`, `pass`, or `blocked`; default execution is deterministic or skipped, requires no live network, no local services, no durable repositories, no secrets, and reports `normal_ci_requires_live_calls=false`.
-- The smoke has an explicit opt-in environment boundary such as `LTT_WEEKLY_NEWS_LIVE_SOURCE_SMOKE_ENABLED`; when the opt-in or required local source-retrieval prerequisites are missing, it returns `skipped` or `blocked` with env var names and safe reason codes only, never env values.
-- The deterministic smoke exercises representative local MVP slice cases: at least one source-backed Weekly News Focus case with selected official or allowed source events, at least one limited or empty evidence case, and blocked regression tickers `TQQQ`, `ARKK`, `BND`, and `GLD` with no Weekly News Focus, AI Comprehensive Analysis, citations, sources, facts, exports, generated pages, generated chat answers, comparisons, generated risk summaries, or generated-output cache writes.
-- Weekly News Focus candidates use the last completed Monday-Sunday market week plus current week-to-date through yesterday using U.S. Eastern dates, preserve source event dates, published dates where available, retrieved timestamps, period buckets, freshness/as-of labels, event types, source rank tiers, source quality, official-vs-third-party labels, source-use policy, allowlist/review status, citation IDs, and same-asset source bindings.
-- Source selection prefers official filings, investor-relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes before approved reputable third-party/news/provider context. Third-party/news items are labeled as third-party reporting or provider context, may use only rights-safe metadata/summary fields, and must not store or export full article text unless already governed by source-use rights.
-- Duplicate, promotional, irrelevant, wrong-asset, outside-window, metadata-only, link-only, rejected, unrecognized, pending-review, parser-invalid, rights-disallowed, hidden/internal, and stale-unlabeled candidates are suppressed or marked unavailable with compact reason-code counts. Suppression diagnostics must not include raw article/source text.
-- The smoke proves the configured maximum is shown only when enough selected evidence exists. Smaller verified sets report `limited_verified_set`, empty sets report the existing clear empty state, and no weak item is added just to reach the configured maximum.
-- AI Comprehensive Analysis threshold behavior is reported but not live-generated: analysis remains suppressed when fewer than two approved Weekly News Focus items exist, and `analysis_allowed=true` appears only when the selected approved item count is at least two. This task must not call live LLMs or write generated-output cache records.
-- `scripts/run_local_fresh_data_rehearsal.py` includes the Weekly News Focus live-source smoke as an optional operator-only check. It is skipped by default, appears in optional mode summaries/manual-readiness prerequisites, and blocks rehearsal only when explicitly opted in and the smoke returns `blocked`.
-- Existing Weekly News Focus API behavior remains unchanged for supported deterministic pages: stable facts stay separate from Weekly News Focus and AI Comprehensive Analysis, important Weekly News Focus claims have citations or explicit uncertainty, and AI Comprehensive Analysis stays suppressed unless the backend returns sufficient approved evidence.
+- `scripts/run_live_ai_validation_smoke.py --json` keeps an explicit schema and includes a lightweight MVP-slice validation contract covering grounded chat, AI Comprehensive Analysis threshold validation, skipped/default behavior, blocked readiness behavior, and sanitized diagnostics. Default execution requires no live network, no local services, no durable repositories, no browser, no Docker, and no secrets, and reports `normal_ci_requires_live_calls=false`.
+- The live-AI smoke keeps explicit opt-in boundaries: `LTT_LIVE_AI_SMOKE_ENABLED` plus `LLM_LIVE_GENERATION_ENABLED=true`, `LLM_PROVIDER=openrouter`, and server-side `OPENROUTER_API_KEY` presence before any real transport call is attempted. Missing prerequisites return `skipped` or `blocked` with env var names and safe reason codes only, never env values.
+- Deterministic mocked-transport test coverage exercises at least one supported stock grounded-chat case and one supported ETF grounded-chat case from the local MVP slice. Chat validation must prove selected-asset grounding, same-asset citation IDs, source documents, freshness labels, educational framing, no buy/sell/hold/allocation/tax/brokerage/price-target advice, and no generated multi-asset answer inside single-asset chat.
+- Deterministic mocked-transport test coverage exercises AI Comprehensive Analysis only when the selected Weekly News Focus evidence count is at least two approved items, using the T-154 threshold semantics. The analysis output must include What Changed This Week, Market Context, Business/Fund Context, and Risk Context in order, cite selected Weekly News Focus items and canonical facts, and keep stable facts separate from timely context.
+- Evidence-limited analysis cases remain suppressed: zero selected Weekly News Focus items produce the normal empty or insufficient-evidence state, one selected approved item reports insufficient evidence, and no live or mocked AI analysis output is treated as usable below the two-item threshold.
+- Blocked regression tickers `TQQQ`, `ARKK`, `BND`, and `GLD` remain generated-output-ineligible and receive no live-AI call attempts, generated pages, generated chat answers, generated comparisons, Weekly News Focus, AI Comprehensive Analysis, citations, sources, facts, exports, generated risk summaries, or generated-output cache writes.
+- Live or mocked model outputs are validated for JSON/schema shape, citation binding, source-use eligibility, freshness/uncertainty labels, safety classification, advice-boundary text, same-asset or same-pack evidence scope, and cache eligibility. Validation failures return `blocked`, `partial`, `unavailable`, or `insufficient_evidence` diagnostics and do not write generated-output cache records.
+- Sanitized diagnostics may report provider kind, readiness status, model tier, attempt status, validation status, selected item counts, cache eligibility, latency/usage/cost metadata when available, and reason codes. They must not print raw user text, prompt text, hidden prompts, raw source text, unrestricted excerpts, model reasoning, raw transcripts, generated live responses, raw provider payloads, or secret values.
+- `scripts/run_local_fresh_data_rehearsal.py` continues to include the live-AI check as optional operator-only validation. It is skipped by default, appears in optional mode summaries and manual-readiness prerequisites, and blocks rehearsal only when explicitly opted in and the live-AI smoke returns `blocked`.
+- `docs/local_fresh_data_ingest_to_render_runbook.md` documents the updated live-AI smoke command, opt-in environment boundaries, deterministic mocked test path, expected skip/block/pass states, local MVP slice chat and analysis cases, T-154 Weekly News Focus threshold dependency, source-use/no-secret/no-raw-output boundaries, blocked-product behavior, and the distinction between local AI review and source approval, cache promotion, ETF-500/Top-500 completion, deployment readiness, or investment advice.
+- Existing backend chat and Weekly News behavior remains unchanged for deterministic supported pages: advice-like prompts are redirected before live calls, second-ticker questions in single-asset chat route to comparison, stable facts remain separate from Weekly News Focus and AI Comprehensive Analysis, important generated claims have citations or explicit uncertainty, and AI Comprehensive Analysis stays suppressed unless approved evidence thresholds pass.
 - The v0.4 frontend workflow markers remain intact: home stays single stock/ETF search first, comparison remains separate and connected through `/compare`, glossary remains contextual, source/glossary/chat mobile bottom-sheet or full-screen behavior remains, and stock-vs-ETF comparison relationship badges/templates are not changed.
-- `docs/local_fresh_data_ingest_to_render_runbook.md` documents the new smoke command, opt-in environment boundary, deterministic default behavior, expected pass/skip/block states, representative Weekly News Focus cases, source-use/raw-text/no-secret boundaries, blocked-product behavior, AI threshold behavior, and the distinction between local smoke readiness and source approval, generated-output cache promotion, ETF-500/Top-500 completion, live-AI readiness, or deployment readiness.
-- Tests cover the smoke schema, default no-live/no-secret behavior, opt-in blocked diagnostics, official-source priority, source-use suppression, evidence-limited and empty states, AI threshold gating, same-asset citation/source binding, blocked-product boundary, rehearsal optional-check integration, runbook markers, and static eval coverage for Weekly News Focus source-use/safety expectations.
+- Tests cover the smoke schema, default no-live/no-secret behavior, opt-in blocked diagnostics, deterministic mocked transport pass paths, grounded chat validation, advice/comparison redirect boundaries, AI threshold gating, section order, citation/source-use/freshness validation, cache-ineligible output blocking, blocked-product boundaries, rehearsal optional-check integration, runbook markers, and static eval coverage for LLM provider, Weekly News Focus, and safety expectations.
 
 Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_repo_contract.py tests/integration/test_backend_api.py -q`
-- `TMPDIR=/tmp python3 scripts/run_weekly_news_live_source_smoke.py --json`
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_llm_provider.py tests/unit/test_chat_generation.py tests/unit/test_weekly_news.py tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py tests/integration/test_backend_api.py -q`
+- `TMPDIR=/tmp python3 scripts/run_live_ai_validation_smoke.py --json`
 - `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
 - `TMPDIR=/tmp python3 -m pytest tests -q`
 - `npm test`
@@ -62,8 +70,6 @@ Max 2 attempts.
 
 ## Backlog
 
-### T-155: Add lightweight live AI validation for grounded chat and analysis
-
 ### T-156: Add lightweight fresh-data comparison coverage for stock-vs-stock and partial ETF pairs
 
 ### T-157: Add lightweight local deployment smoke and environment validation
@@ -71,6 +77,40 @@ Max 2 attempts.
 ### T-158: Add lightweight MVP readiness gate with strict gates marked audit-only
 
 ## Completed
+
+### T-154: Add lightweight Weekly News Focus live-source smoke for the MVP slice
+
+Goal:
+Add a deterministic-by-default, operator-only Weekly News Focus live-source smoke for the local MVP slice so local review can verify market-week windowing, official-source-first candidate handling, source-use filtering, evidence-limited Weekly News Focus output, AI Comprehensive Analysis threshold gating, and sanitized diagnostics before live-AI or deployment expansion.
+
+Completion details:
+- Implementation commit: `03899cb feat(T-154): add lightweight Weekly News Focus live-source smoke for the MVP slice`
+- Local merge commit: `7776357 chore(T-154): merge lightweight Weekly News Focus live-source smoke for the MVP slice` from branch `agent/T-154-20260504T013724Z`
+- Added `scripts/run_weekly_news_live_source_smoke.py` with schema `weekly-news-live-source-smoke-v1`, default skipped/no-live behavior, opt-in boundary `LTT_WEEKLY_NEWS_LIVE_SOURCE_SMOKE_ENABLED`, and safe blocked diagnostics when `LTT_WEEKLY_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED` requests real source retrieval in the CI-safe smoke.
+- The smoke covers representative deterministic cases: `QQQ` official-first source-backed Weekly News Focus selection, `AAPL` as a one-item `limited_verified_set`, `VOO` as an empty-evidence case, and blocked regression tickers `TQQQ`, `ARKK`, `BND`, and `GLD`.
+- Weekly News Focus evidence validation now reports market-week windows, selected item counts, suppression counts, source rank tiers, source quality, official-vs-third-party labels, source-use policy values, allowlist/review statuses, freshness labels, event/published/retrieved dates, period buckets, and same-asset citation bindings.
+- Source-use filtering suppresses or marks unavailable duplicate, promotional, irrelevant, wrong-asset, outside-window, metadata-only, link-only, rejected, unrecognized, pending-review, parser-invalid, rights-disallowed, hidden/internal, and stale-unlabeled candidates with compact reason-code diagnostics and no raw article/source text.
+- AI Comprehensive Analysis threshold metadata is reported without live generation: `analysis_allowed=true` only when at least two approved Weekly News Focus items are selected, lower-evidence cases stay suppressed, and no generated-output cache records are written.
+- `scripts/run_local_fresh_data_rehearsal.py` now includes `optional_weekly_news_live_source_smoke` as a skipped-by-default operator-only check that passes when explicitly opted into deterministic fixture mode and blocks only when explicitly opted in and the smoke returns `blocked`.
+- `backend/repositories/weekly_news.py`, `tests/unit/test_weekly_news.py`, `tests/unit/test_repo_contract.py`, `evals/run_static_evals.py`, and `evals/weekly_news_eval_cases.yaml` were updated for threshold metadata, blocked-product boundaries, same-asset source binding, static eval markers, and source-use/safety expectations.
+- `docs/local_fresh_data_ingest_to_render_runbook.md` documents the command, opt-in env boundaries, skip/pass/block states, representative Weekly News Focus cases, AI threshold behavior, no-secret/no-raw-output boundaries, blocked-product behavior, and the distinction from source approval, manifest promotion, generated-output cache promotion, live-AI readiness, or deployment readiness.
+- `docs/agent-journal/20260504T013724Z.md` records the changed files, tests/evals run, pass status, and remaining risks.
+
+Required commands executed in this task branch:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_repo_contract.py tests/integration/test_backend_api.py -q` - pass
+- `TMPDIR=/tmp python3 scripts/run_weekly_news_live_source_smoke.py --json` - pass, default skipped/no-live schema
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` - pass
+- `TMPDIR=/tmp python3 -m pytest tests -q` - pass
+- `npm test` - pass
+- `npm run typecheck` - pass
+- `npm run build` - pass
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass
+- `git diff --check` - pass
+
+Remaining risks:
+- The smoke remains fixture-backed unless an operator explicitly enables the local live-source boundary; no real source retrieval was performed in the deterministic attempt.
+- A pass from this smoke does not approve sources, complete Golden Asset Source Handoff, promote manifests, write generated-output cache entries, validate live AI, or indicate deployment readiness.
 
 ### T-153: Add lightweight issuer enrichment for SPY, VTI, and XLK
 
@@ -4316,7 +4356,7 @@ Current runtime snapshot:
 - T-130 completed the deterministic local fresh-data MVP rehearsal command.
 - T-131 through T-135 completed the ETF eligible-universe, stock SEC source-pack readiness, ETF issuer source-pack readiness, local MVP readiness-threshold packets, and batchable local ingestion priority planner.
 - The ETF-500 scope update is documented across the product and handoff docs; T-136 completed deterministic ETF-500 candidate manifest review contracts, and T-137 completed ETF-500 issuer source-pack batch planning contracts.
-- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, T-139 completed the local manual fresh-data readiness gate, T-140 completed the backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack, T-141 aligned frontend/API comparison availability, T-142 completed local browser/API smoke coverage, T-143 completed the deterministic stock-vs-ETF readiness-reporting gate, T-144 completed the first local fresh-data MVP slice smoke contract, T-145 completed the local slice browser/API smoke task, T-146 completed optional durable repository smoke coverage for the local slice, T-147 completed issuer-backed ETF source enrichment for the local slice, T-148 completed the lightweight local slice manual-readiness gate, T-149 completed local slice comparison/export parity coverage, T-150 completed the lightweight live browser/API smoke runner, T-151 completed lightweight live API fallback diagnostics, T-152 completed lightweight live durable persistence smoke coverage, and T-153 completed lightweight issuer enrichment for `SPY`, `VTI`, and `XLK`. T-154 is now the current Weekly News Focus live-source smoke task, with T-155 through T-158 staged as follow-on lightweight-live work before production hardening.
+- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, T-139 completed the local manual fresh-data readiness gate, T-140 completed the backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack, T-141 aligned frontend/API comparison availability, T-142 completed local browser/API smoke coverage, T-143 completed the deterministic stock-vs-ETF readiness-reporting gate, T-144 completed the first local fresh-data MVP slice smoke contract, T-145 completed the local slice browser/API smoke task, T-146 completed optional durable repository smoke coverage for the local slice, T-147 completed issuer-backed ETF source enrichment for the local slice, T-148 completed the lightweight local slice manual-readiness gate, T-149 completed local slice comparison/export parity coverage, T-150 completed the lightweight live browser/API smoke runner, T-151 completed lightweight live API fallback diagnostics, T-152 completed lightweight live durable persistence smoke coverage, T-153 completed lightweight issuer enrichment for `SPY`, `VTI`, and `XLK`, and T-154 completed the Weekly News Focus live-source smoke task. T-155 is now the current lightweight live-AI validation task, with T-156 through T-158 staged as follow-on lightweight-live work before production hardening.
 - T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, full governed source artifacts, admin auth/rate limiting, broader live ingestion, and launch-sized reviewed manifests remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:
@@ -4376,7 +4416,7 @@ Operational defaults for general MVP roadmap tasks:
 - T-128 established deterministic governed golden evidence API/frontend rendering proof. It is completed and must not be reintroduced as runnable backlog.
 - T-129 established launch-manifest operator automation parity. It is completed and must not be reintroduced as runnable backlog.
 - T-130 established the local fresh-data MVP rehearsal command. It is completed and must not be reintroduced as runnable backlog.
-- T-134 through T-153 are completed. T-154 is the current runnable lightweight Weekly News Focus live-source smoke task, and T-155 through T-158 are prepared backlog headings for the remaining local personal-MVP path.
+- T-134 through T-154 are completed. T-155 is the current runnable lightweight live-AI validation task, and T-156 through T-158 are prepared backlog headings for the remaining local personal-MVP path.
 - For the local personal MVP, use lightweight live fetch and source-labeled partial rendering as the active readiness path. Old strict source-pack, parser, checksum, ETF-500, Top-500, and Golden Asset Source Handoff promotion gates remain audit-quality diagnostics unless a task explicitly says it is strict/audit hardening.
 - Production hardening remains unpromoted until a new narrow launch-readiness task is explicitly prepared.
 - Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until explicit launch readiness work is promoted into a narrow task and passes deterministic CI coverage.
@@ -4465,8 +4505,8 @@ Roadmap integration tracker:
 | Lightweight live API fallback diagnostics for search and asset pages | Completed | T-151 |
 | Lightweight live durable persistence smoke for MVP slice fetches | Completed | T-152 |
 | Lightweight issuer enrichment for SPY, VTI, and XLK | Completed | T-153 |
-| Lightweight Weekly News Focus live-source smoke for the MVP slice | Current | T-154 |
-| Lightweight live AI validation for grounded chat and analysis | Prepared | T-155 |
+| Lightweight Weekly News Focus live-source smoke for the MVP slice | Completed | T-154 |
+| Lightweight live AI validation for grounded chat and analysis | Current | T-155 |
 | Lightweight fresh-data comparison coverage for stock-vs-stock and partial ETF pairs | Prepared | T-156 |
 | Lightweight local deployment smoke and environment validation | Prepared | T-157 |
 | Lightweight MVP readiness gate with strict gates marked audit-only | Prepared | T-158 |
@@ -4475,7 +4515,7 @@ Roadmap integration tracker:
 Remaining unpromoted general MVP sequence:
 
 - T-139 produced a deterministic readiness gate that says whether more agent-loop work remains or whether manual local fresh-data testing is the next step.
-- The stock-vs-ETF comparison feature-completion sequence is complete through the final prepared step: T-141 aligned frontend suggestions/fallback with API availability, T-142 added optional localhost browser/API smoke coverage, and T-143 added the deterministic readiness signal. The promoted local fresh-data MVP slice sequence is complete through T-153 lightweight issuer enrichment for `SPY`, `VTI`, and `XLK`. The current runnable sequence starts at T-154 and adds lightweight Weekly News Focus live-source smoke coverage rather than reintroducing old strict source-pack gates as local-MVP blockers.
+- The stock-vs-ETF comparison feature-completion sequence is complete through the final prepared step: T-141 aligned frontend suggestions/fallback with API availability, T-142 added optional localhost browser/API smoke coverage, and T-143 added the deterministic readiness signal. The promoted local fresh-data MVP slice sequence is complete through T-154 lightweight Weekly News Focus live-source smoke coverage. The current runnable sequence starts at T-155 and adds lightweight live-AI validation for grounded chat and AI Comprehensive Analysis rather than reintroducing old strict source-pack gates as local-MVP blockers.
 - Full production deployment remains unpromoted until a narrow launch-readiness task is added: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
 - Recurring production jobs only after manual official-source acquisition, Top-500 candidate refresh review, and local fresh-data behavior are stable.
 - Broad paid-provider or news-provider integrations only after provider licensing/source-use review, no-secret-exposure tests, mocked CI fixtures, source-rights validation, and export/display constraints are documented.
