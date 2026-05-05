@@ -100,7 +100,7 @@ export function AssetLearningLayout({
         className="sidebar asset-helper-rail"
         aria-label="Asset helper rail"
         data-asset-helper-rail
-        data-helper-rail-tools="ask,compare,freshness,sources"
+        data-helper-rail-tools="ask,compare,export,freshness,sources"
       >
         {helperRail}
       </aside>

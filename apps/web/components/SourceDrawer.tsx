@@ -78,6 +78,7 @@ type SourceDrawerProps = {
   claim: string;
   contexts?: CitationContext[];
   drawerState?: SourceDrawerState;
+  defaultOpen?: boolean;
 };
 
 const HIDE_DETAILS_FOR_STATES = new Set<SourceDrawerState>([
@@ -160,7 +161,8 @@ export function SourceDrawer({
   source,
   claim,
   contexts = [],
-  drawerState = "available"
+  drawerState = "available",
+  defaultOpen = false
 }: SourceDrawerProps) {
   const publishedOrAsOf = source.published_at ?? source.as_of_date ?? "Unknown";
   const supportingPassages = contexts.length
@@ -207,30 +209,21 @@ export function SourceDrawer({
       data-trust-metric-evidence-state={trustMetricDescriptor.evidenceState}
       data-trust-metric-citation-coverage-event="citation_coverage"
       data-trust-metric-freshness-accuracy-event="freshness_accuracy"
-      open
+      open={defaultOpen}
     >
       <summary data-source-drawer-close-control="native-details-summary">
-        <span className="source-summary-kicker">Source drawer</span>
-        <span className="source-summary-title">{source.title}</span>
+        <span className="source-index-summary-copy">
+          <span className="source-summary-kicker">{source.source_type}</span>
+          <span className="source-summary-title">{source.title}</span>
+        </span>
+        {source.isOfficial ? <span className="source-badge">Official source</span> : null}
       </summary>
       <div className="source-body">
-        <div className="source-title-row">
-          <h2>{source.title}</h2>
-          {source.isOfficial ? <span className="source-badge">Official source</span> : null}
-        </div>
         <p className="source-gap-note">{stateInfo.label}</p>
         <dl className="source-meta">
           <div>
             <dt>Source document ID</dt>
             <dd>{source.source_document_id}</dd>
-          </div>
-          <div>
-            <dt>Title</dt>
-            <dd>{source.title}</dd>
-          </div>
-          <div>
-            <dt>Type</dt>
-            <dd>{source.source_type}</dd>
           </div>
           <div>
             <dt>Publisher</dt>
@@ -278,10 +271,6 @@ export function SourceDrawer({
             </div>
           )}
         </dl>
-        <div>
-          <h3>Source state</h3>
-          <p>{source.freshness_state}</p>
-        </div>
         {isUnavailableFreshness ? (
           <p className="source-gap-note">{stateInfo.allowlistStatusLabel}</p>
         ) : null}

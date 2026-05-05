@@ -1,6 +1,6 @@
 import type { Citation, WeeklyNewsFocusFixture } from "../lib/fixtures";
 import { CitationChip } from "./CitationChip";
-import { FreshnessLabel } from "./FreshnessLabel";
+import { FreshnessDisclosure } from "./FreshnessLabel";
 
 type FreshnessState = "fresh" | "stale" | "unknown" | "unavailable" | "partial" | "insufficient_evidence";
 
@@ -51,7 +51,7 @@ type WeeklyNewsPanelProps = {
 
 export function WeeklyNewsPanel({ focus, citations }: WeeklyNewsPanelProps) {
   const windowLabel = `${focus.window.newsWindowStart} to ${focus.window.newsWindowEnd}`;
-  const emptyMessage = focus.emptyState?.message ?? "No major Weekly News Focus items found in the deterministic local fixture window.";
+  const emptyMessage = focus.emptyState?.message ?? "No major Weekly News Focus items found in the current local evidence window.";
   const emptyEvidenceState = evidenceStateToFreshnessFromFocus(focus.emptyState);
   const windowFreshness = stateToFreshness(focus.state);
 
@@ -71,23 +71,26 @@ export function WeeklyNewsPanel({ focus, citations }: WeeklyNewsPanelProps) {
       data-weekly-news-evidence-limited-state={focus.evidenceLimitedState}
       data-weekly-news-empty-behavior={focus.selectedItemCount === 0 ? "explicit_empty_state" : "not_empty"}
     >
-      <div className="section-heading">
-        <p className="eyebrow">Timely context</p>
-        <h2 id="beginner-weekly-news-focus">Weekly News Focus</h2>
-      </div>
-
-      <div className="state-row">
-        <FreshnessLabel label="News window" value={windowLabel} state={windowFreshness} />
-        <FreshnessLabel label="Checked as of" value={focus.window.asOfDate} state={windowFreshness} />
-        <span className="state-pill compact-state" data-evidence-state={focus.evidenceState}>
-          {focus.selectedItemCount} of {focus.configuredMaxItemCount} verified
-        </span>
+      <div className="section-heading-row">
+        <div className="section-heading">
+          <p className="eyebrow">Timely context</p>
+          <h2 id="beginner-weekly-news-focus">Weekly News Focus</h2>
+        </div>
+        <div className="state-row">
+          <span className="state-pill compact-state" data-evidence-state={focus.evidenceState}>
+            {focus.selectedItemCount} of {focus.configuredMaxItemCount} verified
+          </span>
+        </div>
       </div>
 
       <p className="notice-text">
         Weekly News Focus keeps recent developments separate from stable facts so short-term context does not redefine the
         asset.
       </p>
+      <div className="freshness-disclosure-row">
+        <FreshnessDisclosure label="News window" value={windowLabel} state={windowFreshness} />
+        <FreshnessDisclosure label="Checked as of" value={focus.window.asOfDate} state={windowFreshness} />
+      </div>
 
       {focus.items.length ? (
         <div className="section-stack" data-weekly-news-item-count={focus.items.length}>
@@ -116,13 +119,13 @@ export function WeeklyNewsPanel({ focus, citations }: WeeklyNewsPanelProps) {
                 </span>
               </div>
               <p>{item.summary}</p>
-              <div className="state-row">
-                <FreshnessLabel
+              <div className="freshness-disclosure-row">
+                <FreshnessDisclosure
                   label={item.eventDate ? "Event date" : "Published or as of"}
-                  value={item.eventDate ?? item.source.publishedAt ?? item.source.asOfDate ?? "Unknown in local fixture"}
+                  value={item.eventDate ?? item.source.publishedAt ?? item.source.asOfDate ?? "Unknown in current evidence"}
                   state={item.freshnessState}
                 />
-                <FreshnessLabel label="Retrieved" value={item.source.retrievedAt} state={item.freshnessState} />
+                <FreshnessDisclosure label="Retrieved" value={item.source.retrievedAt} state={item.freshnessState} />
               </div>
               <p className="source-gap-note">
                 Source quality: {item.source.sourceQuality}. Allowlist: {item.source.allowlistStatus}. Source-use policy:{" "}
@@ -141,11 +144,6 @@ export function WeeklyNewsPanel({ focus, citations }: WeeklyNewsPanelProps) {
         <div className="unknown-state" data-weekly-news-empty-state={focus.emptyState?.state ?? focus.state}>
           <p>{emptyMessage}</p>
           <div className="state-row">
-            <FreshnessLabel
-              label="Empty-state evidence"
-              value={focus.emptyState ? focus.emptyState.state : focus.state}
-              state={emptyEvidenceState}
-            />
             {focus.emptyState ? (
               <span className="state-pill compact-state" data-evidence-state={focus.emptyState.state}>
                 selected items: {focus.emptyState.selectedItemCount}
@@ -154,6 +152,13 @@ export function WeeklyNewsPanel({ focus, citations }: WeeklyNewsPanelProps) {
             <span className="state-pill compact-state" data-weekly-news-empty-suppressed-candidate-count={focus.suppressedCandidateCount}>
               suppressed candidates: {focus.suppressedCandidateCount}
             </span>
+          </div>
+          <div className="freshness-disclosure-row">
+            <FreshnessDisclosure
+              label="Empty-state evidence"
+              value={focus.emptyState ? focus.emptyState.state : focus.state}
+              state={emptyEvidenceState}
+            />
           </div>
           <p className="source-gap-note">
             An empty Weekly News Focus state is normal when no major high-signal items pass the local evidence rules.

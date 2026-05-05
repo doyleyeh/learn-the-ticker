@@ -60,7 +60,7 @@ export function getAssetComparisonSuggestions(ticker: string): ComparisonSuggest
       state: "local_comparison_available",
       heading: "Available local comparison",
       body:
-        "A local source-backed comparison exists for this fixture-backed asset. The comparison page covers benchmark, cost, holdings breadth, and beginner role without making a personal decision rule.",
+        "A local source-backed comparison exists for this asset. The comparison page covers benchmark, cost, holdings breadth, and beginner role without making a personal decision rule.",
       suggestions
     };
   }
@@ -109,8 +109,8 @@ export function getComparePageSuggestions(
     scope: "compare",
     selectedTicker: `${requestedLeftTicker}-${requestedRightTicker}`,
     state: "unavailable_with_fixture_examples",
-    heading: "Available fixture example",
-    body: `The requested ${requestedLeftTicker} and ${requestedRightTicker} comparison is ${formatAvailabilityState(requestedAvailabilityState)} in local deterministic data. The link below is only an existing local fixture example, not facts about the requested pair.`,
+    heading: "Available local example",
+    body: `The requested ${requestedLeftTicker} and ${requestedRightTicker} comparison is ${formatAvailabilityState(requestedAvailabilityState)} in local source data. The link below is only an existing local comparison example, not facts about the requested pair.`,
     requestedLeftTicker,
     requestedRightTicker,
     requestedAvailabilityState,

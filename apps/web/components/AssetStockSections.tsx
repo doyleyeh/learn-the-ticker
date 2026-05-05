@@ -6,7 +6,7 @@ import {
   type StockSectionItem
 } from "../lib/fixtures";
 import { CitationChip } from "./CitationChip";
-import { FreshnessLabel } from "./FreshnessLabel";
+import { FreshnessDisclosure } from "./FreshnessLabel";
 import { InlineGlossaryText, type InlineGlossaryContextMap, type InlineGlossaryMatch } from "./InlineGlossaryText";
 
 type AssetStockSectionsProps = {
@@ -78,22 +78,18 @@ function StockSection({
       data-freshness-state={section.freshnessState}
       data-stock-stable-recent-separation={isRecent ? "recent" : "stable"}
     >
-      <div className="section-heading">
-        <p className="eyebrow">
-          {isRecent ? "Recent developments" : section.sectionType === "risk" ? "Exactly three shown first" : "Stable stock facts"}
-        </p>
-        <h2 id={`stock-section-${section.sectionId}`}>{section.title}</h2>
-      </div>
-
-      <div className="state-row stock-section-state">
-        <FreshnessLabel
-          label="Section freshness"
-          value={section.asOfDate ?? section.retrievedAt ?? section.limitations ?? "Unknown in local fixture"}
-          state={section.freshnessState}
-        />
-        <span className="state-pill" data-evidence-state={section.evidenceState}>
-          Evidence: {section.evidenceState.replaceAll("_", " ")}
-        </span>
+      <div className="section-heading-row">
+        <div className="section-heading">
+          <p className="eyebrow">
+            {isRecent ? "Recent developments" : section.sectionType === "risk" ? "Exactly three shown first" : "Stable stock facts"}
+          </p>
+          <h2 id={`stock-section-${section.sectionId}`}>{section.title}</h2>
+        </div>
+        <div className="state-row stock-section-state">
+          <span className="state-pill" data-evidence-state={section.evidenceState}>
+            Evidence: {section.evidenceState.replaceAll("_", " ")}
+          </span>
+        </div>
       </div>
 
       <p>
@@ -148,6 +144,13 @@ function StockSection({
       </div>
 
       {section.limitations ? <p className="notice-text">{section.limitations}</p> : null}
+      <div className="freshness-disclosure-row">
+        <FreshnessDisclosure
+          label="Section freshness"
+          value={section.asOfDate ?? section.retrievedAt ?? section.limitations ?? "Unknown in current evidence"}
+          state={section.freshnessState}
+        />
+      </div>
     </section>
   );
 }
@@ -195,13 +198,13 @@ function StockSectionItemCard({
           sourceSection="stock.item_summary"
         />
       </p>
-      <div className="state-row">
-        <FreshnessLabel
+      <div className="freshness-disclosure-row">
+        <FreshnessDisclosure
           label={item.eventDate ? "Event date" : "As of"}
-          value={item.eventDate ?? item.asOfDate ?? item.limitations ?? "Unknown in local fixture"}
+          value={item.eventDate ?? item.asOfDate ?? item.limitations ?? "Unknown in current evidence"}
           state={item.freshnessState}
         />
-        {item.retrievedAt ? <FreshnessLabel label="Retrieved" value={item.retrievedAt} state={item.freshnessState} /> : null}
+        {item.retrievedAt ? <FreshnessDisclosure label="Retrieved" value={item.retrievedAt} state={item.freshnessState} /> : null}
       </div>
       {item.citationIds.length ? (
         <span className="chip-row">

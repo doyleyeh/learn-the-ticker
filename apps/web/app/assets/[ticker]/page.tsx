@@ -8,7 +8,7 @@ import { AssetLearningLayout } from "../../../components/AssetModeLayout";
 import { CitationChip } from "../../../components/CitationChip";
 import { ComparisonSuggestions } from "../../../components/ComparisonSuggestions";
 import { ExportControls } from "../../../components/ExportControls";
-import { FreshnessLabel } from "../../../components/FreshnessLabel";
+import { FreshnessDisclosure, FreshnessLabel } from "../../../components/FreshnessLabel";
 import { InlineGlossaryText, type InlineGlossaryMatch } from "../../../components/InlineGlossaryText";
 import { WeeklyNewsPanel } from "../../../components/WeeklyNewsPanel";
 import { fetchSupportedAssetDetails } from "../../../lib/assetDetails";
@@ -281,10 +281,6 @@ export default async function AssetPage({ params }: AssetPageProps) {
                 <p className="eyebrow">Stable facts</p>
                 <h2 id="beginner-overview">Beginner Summary</h2>
               </div>
-              <div className="state-row">
-                <FreshnessLabel label="Page last updated" value={asset.freshness.pageLastUpdatedAt} state="fresh" />
-                <FreshnessLabel label="Beginner overview as of" value={asset.freshness.factsAsOf} state="fresh" />
-              </div>
               <div
                 className="beginner-summary-grid"
                 data-beginner-summary-card-count="3"
@@ -325,6 +321,10 @@ export default async function AssetPage({ params }: AssetPageProps) {
                   </p>
                 </article>
               </div>
+              <div className="freshness-disclosure-row">
+                <FreshnessDisclosure label="Page last updated" value={asset.freshness.pageLastUpdatedAt} state="fresh" />
+                <FreshnessDisclosure label="Beginner overview as of" value={asset.freshness.factsAsOf} state="fresh" />
+              </div>
             </section>
 
             <section
@@ -338,7 +338,6 @@ export default async function AssetPage({ params }: AssetPageProps) {
                 <p className="eyebrow">Exactly three shown first</p>
                 <h2 id="beginner-top-risks">Top 3 Risks</h2>
               </div>
-              <FreshnessLabel label="Top risks as of" value={asset.freshness.factsAsOf} state="fresh" />
               <div className="risk-grid" data-beginner-top-risk-count={asset.topRisks.slice(0, 3).length}>
                 {asset.topRisks.slice(0, 3).map((risk) => {
                   const citation = getCitationById(asset, risk.citationIds[0]);
@@ -365,6 +364,9 @@ export default async function AssetPage({ params }: AssetPageProps) {
                   );
                 })}
               </div>
+              <div className="freshness-disclosure-row">
+                <FreshnessDisclosure label="Top risks as of" value={asset.freshness.factsAsOf} state="fresh" />
+              </div>
             </section>
 
             <section
@@ -377,7 +379,6 @@ export default async function AssetPage({ params }: AssetPageProps) {
                 <p className="eyebrow">Key facts</p>
                 <h2 id="beginner-details">Key Facts</h2>
               </div>
-              <FreshnessLabel label="Stable facts as of" value={asset.freshness.factsAsOf} state="fresh" />
               <dl className="fact-list">
                 {asset.facts.map((fact) => {
                   const citation = fact.citationId ? getCitationById(asset, fact.citationId) : undefined;
@@ -404,6 +405,9 @@ export default async function AssetPage({ params }: AssetPageProps) {
                   );
                 })}
               </dl>
+              <div className="freshness-disclosure-row">
+                <FreshnessDisclosure label="Stable facts as of" value={asset.freshness.factsAsOf} state="fresh" />
+              </div>
             </section>
 
             <section
@@ -413,26 +417,19 @@ export default async function AssetPage({ params }: AssetPageProps) {
               data-prd-section="what_it_does_or_holds"
               data-asset-what-section-id={whatItDoesOrHoldsSection?.sectionId ?? "primary_claim_fallback"}
             >
-              <div className="section-heading">
-                <p className="eyebrow">Stable facts</p>
-                <h2 id="beginner-what-it-does-or-holds">
-                  {asset.assetType === "etf" ? "What It Holds" : "What It Does"}
-                </h2>
-              </div>
-              <div className="state-row">
-                <FreshnessLabel
-                  label={asset.assetType === "etf" ? "Holdings as of" : "Business facts as of"}
-                  value={
-                    asset.assetType === "etf"
-                      ? asset.freshness.holdingsAsOf ?? "Unknown in local fixture"
-                      : asset.freshness.factsAsOf
-                  }
-                  state={asset.assetType === "etf" && !asset.freshness.holdingsAsOf ? "unknown" : "fresh"}
-                />
+              <div className="section-heading-row">
+                <div className="section-heading">
+                  <p className="eyebrow">Stable facts</p>
+                  <h2 id="beginner-what-it-does-or-holds">
+                    {asset.assetType === "etf" ? "What It Holds" : "What It Does"}
+                  </h2>
+                </div>
                 {whatItDoesOrHoldsSection ? (
-                  <span className="state-pill" data-evidence-state={whatItDoesOrHoldsSection.evidenceState}>
-                    Evidence: {whatItDoesOrHoldsSection.evidenceState.replaceAll("_", " ")}
-                  </span>
+                  <div className="state-row">
+                    <span className="state-pill" data-evidence-state={whatItDoesOrHoldsSection.evidenceState}>
+                      Evidence: {whatItDoesOrHoldsSection.evidenceState.replaceAll("_", " ")}
+                    </span>
+                  </div>
                 ) : null}
               </div>
               <p>
@@ -481,6 +478,17 @@ export default async function AssetPage({ params }: AssetPageProps) {
                   ))}
                 </div>
               ) : null}
+              <div className="freshness-disclosure-row">
+                <FreshnessDisclosure
+                  label={asset.assetType === "etf" ? "Holdings as of" : "Business facts as of"}
+                  value={
+                    asset.assetType === "etf"
+                      ? asset.freshness.holdingsAsOf ?? "Unknown in current evidence"
+                      : asset.freshness.factsAsOf
+                  }
+                  state={asset.assetType === "etf" && !asset.freshness.holdingsAsOf ? "unknown" : "fresh"}
+                />
+              </div>
             </section>
 
             <WeeklyNewsPanel focus={weeklyNewsFocus} citations={mergedCitations} />
@@ -508,14 +516,14 @@ export default async function AssetPage({ params }: AssetPageProps) {
                   <p className="eyebrow">Uncertainty</p>
                   <h2 id="unknowns">Stale and unknown treatment</h2>
                 </div>
-                <div className="state-row">
-                  <FreshnessLabel label="Valuation context" value="Unknown in local fixture" state="unknown" />
-                  <FreshnessLabel label="Live market quote" value="Unavailable by design" state="stale" />
-                </div>
                 <p>
-                  Missing live facts are labeled instead of being filled in from model memory. This skeleton uses local fixture
-                  data only.
+                  Missing live facts are labeled instead of being filled in from model memory. This view uses only the
+                  evidence currently available to the local source pack.
                 </p>
+                <div className="freshness-disclosure-row">
+                  <FreshnessDisclosure label="Valuation context" value="Unknown in current evidence" state="unknown" />
+                  <FreshnessDisclosure label="Live market quote" value="Unavailable by design" state="stale" />
+                </div>
               </section>
             )}
 
@@ -563,7 +571,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
               data-asset-source-drawer-repetition="removed"
             >
               {renderedDrawerEntries.map((entry) => (
-                <article
+                <details
                   key={entry.source.source_document_id}
                   id={`source-${entry.source.source_document_id}`}
                   className="asset-source-index-card"
@@ -573,13 +581,13 @@ export default async function AssetPage({ params }: AssetPageProps) {
                   data-source-freshness-state={entry.source.freshness_state}
                   data-source-use-policy={entry.source.source_use_policy}
                 >
-                  <div className="source-title-row">
-                    <div>
-                      <p className="eyebrow">{entry.source.source_type}</p>
-                      <h3>{entry.source.title}</h3>
-                    </div>
+                  <summary>
+                    <span className="source-index-summary-copy">
+                      <span className="eyebrow">{entry.source.source_type}</span>
+                      <strong>{entry.source.title}</strong>
+                    </span>
                     {entry.source.isOfficial ? <span className="source-badge">Official source</span> : null}
-                  </div>
+                  </summary>
                   <dl className="source-meta compact-source-meta">
                     <div>
                       <dt>Publisher</dt>
@@ -604,7 +612,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
                   >
                     Open full source details
                   </a>
-                </article>
+                </details>
               ))}
             </div>
           </>
@@ -622,6 +630,9 @@ export default async function AssetPage({ params }: AssetPageProps) {
                 </a>
                 <a href="#compare-this-asset" data-helper-rail-action="compare">
                   Compare this asset
+                </a>
+                <a href={assetPageExportUrl(asset.ticker)} data-helper-rail-action="export">
+                  Export
                 </a>
                 <a href="#asset-sources" data-helper-rail-action="sources">
                   View sources

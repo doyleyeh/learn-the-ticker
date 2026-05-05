@@ -2,7 +2,7 @@ import { CitationChip } from "../../components/CitationChip";
 import { ComparisonSuggestions } from "../../components/ComparisonSuggestions";
 import { ComparisonSourceDetails } from "../../components/ComparisonSourceDetails";
 import { ExportControls } from "../../components/ExportControls";
-import { FreshnessLabel } from "../../components/FreshnessLabel";
+import { FreshnessDisclosure } from "../../components/FreshnessLabel";
 import {
   getComparisonAvailabilityState,
   getComparisonCitationMetadata,
@@ -137,17 +137,17 @@ export default async function ComparePage({ searchParams }: ComparePageProps) {
         <div className="freshness-row">
           {hasSourceBackedComparison ? (
             <>
-              <FreshnessLabel label="Comparison data as of" value="2026-04-01" state="fresh" />
-              <FreshnessLabel label="Live quotes" value="Unavailable in skeleton" state="unknown" />
+              <FreshnessDisclosure label="Comparison data as of" value="2026-04-01" state="fresh" />
+              <FreshnessDisclosure label="Live quotes" value="Unavailable in current evidence" state="unknown" />
             </>
           ) : (
             <>
-              <FreshnessLabel
+              <FreshnessDisclosure
                 label="Comparison availability"
                 value={availabilityState.replace(/_/g, " ")}
                 state={freshnessStateForAvailability(availabilityState)}
               />
-              <FreshnessLabel
+              <FreshnessDisclosure
                 label="Generated comparison output"
                 value="Not rendered for this state"
                 state={freshnessStateForAvailability(availabilityState)}
@@ -238,7 +238,7 @@ export default async function ComparePage({ searchParams }: ComparePageProps) {
                     helper:
                       comparisonExportContract?.rendering === "backend_contract"
                         ? "Backend comparison export contract validated for this same-pack Markdown export."
-                        : "Uses the local comparison export route for this supported fixture-backed pair.",
+                        : "Uses the local comparison export route for this supported source-backed pair.",
                     contract: comparisonExportContract
                   }
                 ]}
@@ -282,17 +282,19 @@ export default async function ComparePage({ searchParams }: ComparePageProps) {
               <p className="eyebrow">{compareEyebrowForAvailability(availabilityState)}</p>
               <h2 id="comparison-unavailable">Comparison evidence unavailable</h2>
             </div>
-            <FreshnessLabel
-              label="Comparison source pack"
-              value={availabilityState.replace(/_/g, " ")}
-              state={freshnessStateForAvailability(availabilityState)}
-            />
             <p>{comparison.state.message}</p>
             <p className="notice-text">
               {unavailableDetailForAvailability(availabilityState)}
             </p>
+            <div className="freshness-disclosure-row">
+              <FreshnessDisclosure
+                label="Comparison source pack"
+                value={availabilityState.replace(/_/g, " ")}
+                state={freshnessStateForAvailability(availabilityState)}
+              />
+            </div>
             <p className="source-gap-note" data-export-unavailable-state>
-              Export controls stay unavailable until a deterministic local comparison pack exists for both requested assets.
+              Export controls stay unavailable until a local comparison evidence pack exists for both requested assets.
             </p>
           </section>
         )}
@@ -330,8 +332,8 @@ function CompareBuilderState({
             : "One asset is selected. Add a second supported stock or ETF to open a source-backed comparison page; no two-asset comparison is generated from a one-sided state."}
         </p>
         <div className="freshness-row">
-          <FreshnessLabel label="Comparison output" value="Not generated in builder state" state="unavailable" />
-          <FreshnessLabel label="Live provider calls" value="None" state="fresh" />
+          <FreshnessDisclosure label="Comparison output" value="Not generated in builder state" state="unavailable" />
+          <FreshnessDisclosure label="Live provider calls" value="None" state="fresh" />
         </div>
       </section>
 
@@ -416,7 +418,7 @@ function CompareBuilderState({
                 <h2 id="empty-builder-examples">Available deterministic examples</h2>
               </div>
               <p>
-                These links are fixture-backed comparison examples for learning the workflow. They are not recommendations or
+                These links are source-backed local comparison examples for learning the workflow. They are not recommendations or
                 personalized suitability guidance.
               </p>
               <div className="comparison-suggestion-list" aria-label="Available deterministic comparison examples">
@@ -444,7 +446,7 @@ function SelectedBuilderCard({
     <div className="selected-builder-card">
       <span>{label}</span>
       <strong>{ticker}</strong>
-      <small>{fixture ? `${fixture.name} · ${fixture.assetType.toUpperCase()}` : "Unknown in local deterministic data"}</small>
+      <small>{fixture ? `${fixture.name} · ${fixture.assetType.toUpperCase()}` : "Unknown in local source data"}</small>
     </div>
   );
 }
@@ -494,7 +496,9 @@ function CompareColumn({ asset, fixture }: { asset: CompareAssetIdentity; fixtur
           ))}
         </dl>
       ) : (
-        <FreshnessLabel label="Evidence state" value={asset.status} state="unknown" />
+        <div className="freshness-disclosure-row">
+          <FreshnessDisclosure label="Evidence state" value={asset.status} state="unknown" />
+        </div>
       )}
     </article>
   );
@@ -643,10 +647,10 @@ function unavailableSummaryForAvailability(availabilityState: ComparisonEvidence
     return "The requested pair includes an eligible but not locally cached asset, so this page does not invent comparison facts or expose supported comparison output.";
   }
   if (availabilityState === "no_local_pack") {
-    return "Both assets are supported individually, but no deterministic local comparison pack exists for this pair yet, so generated comparison output stays hidden.";
+    return "Both assets are supported individually, but no local comparison evidence pack exists for this pair yet, so generated comparison output stays hidden.";
   }
   if (availabilityState === "partial") {
-    return "The backend returned partial comparison evidence, so this page keeps the limited state visible instead of replacing it with richer local fixture facts.";
+    return "The backend returned partial comparison evidence, so this page keeps the limited state visible instead of replacing it with richer local facts.";
   }
   if (availabilityState === "stale") {
     return "The backend marked the comparison evidence stale, so this page keeps the stale state visible and does not render generated comparison claims.";
@@ -655,9 +659,9 @@ function unavailableSummaryForAvailability(availabilityState: ComparisonEvidence
     return "The backend found insufficient evidence for this comparison, so no generated comparison claims, citation chips, source drawers, or export controls are rendered.";
   }
   if (availabilityState === "unavailable") {
-    return "The backend marked this comparison unavailable, so this page does not replace that response with local source-backed fixture output.";
+    return "The backend marked this comparison unavailable, so this page does not replace that response with local source-backed output.";
   }
-  return "The requested pair is unavailable in deterministic local compare data, so this page avoids invented facts and renders only the blocked-state explanation.";
+  return "The requested pair is unavailable in local compare data, so this page avoids invented facts and renders only the blocked-state explanation.";
 }
 
 function unavailableDetailForAvailability(availabilityState: ComparisonEvidenceAvailabilityState) {
@@ -671,7 +675,7 @@ function unavailableDetailForAvailability(availabilityState: ComparisonEvidenceA
     return "No factual citation chips or source drawers are shown because the requested pair needs a cached local pack before deterministic comparison output can exist.";
   }
   if (availabilityState === "no_local_pack") {
-    return "No factual citation chips or source drawers are shown because this requested supported pair has no deterministic local comparison pack yet.";
+    return "No factual citation chips or source drawers are shown because this requested supported pair has no local comparison evidence pack yet.";
   }
   if (availabilityState === "partial") {
     return "No richer local fallback is used because the backend response is the authority for this requested pair's limited evidence state.";
@@ -711,5 +715,5 @@ function unsupportedAssetSummary(asset: CompareAssetIdentity) {
   if (asset.asset_type === "stock" || asset.asset_type === "etf") {
     return "No local comparison facts are rendered for this asset in the current compare request. Use the asset page or an available local comparison pack instead.";
   }
-  return "Unknown in the local deterministic data. No facts are invented for assets without fixture-backed evidence.";
+  return "Unknown in the local source data. No facts are invented for assets without verified local evidence.";
 }

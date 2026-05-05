@@ -317,10 +317,18 @@ includes("app/assets/[ticker]/page.tsx", "data-beginner-stable-recent-separation
 includes("app/assets/[ticker]/page.tsx", "data-beginner-educational-framing");
 includes("components/AssetHeader.tsx", "data-asset-header-layout");
 includes("components/AssetHeader.tsx", "data-prd-section");
-includes("components/AssetHeader.tsx", "data-asset-header-actions=\"compare,export,sources\"");
-includes("components/AssetHeader.tsx", "Compare this asset");
-includes("components/AssetHeader.tsx", "Export");
-includes("components/AssetHeader.tsx", "View sources");
+includes("components/AssetHeader.tsx", "FreshnessDisclosure");
+assert.equal(
+  read("components/AssetHeader.tsx").includes("data-asset-header-actions"),
+  false,
+  "Asset hero should not repeat page tool actions"
+);
+assert.equal(
+  read("components/AssetHeader.tsx").includes("data-asset-header-action"),
+  false,
+  "Asset hero should not render individual action links"
+);
+includes("app/assets/[ticker]/page.tsx", "data-helper-rail-action=\"export\"");
 assert.equal(
   read("app/assets/[ticker]/page.tsx").includes("<SourceDrawer"),
   false,
@@ -566,7 +574,7 @@ includes("components/AssetModeLayout.tsx", "data-prd-section-order");
 includes("components/AssetModeLayout.tsx", "data-mobile-sticky-actions=\"ask-compare-sources\"");
 includes("components/AssetModeLayout.tsx", "data-mobile-actions-no-overlap=\"in-flow-sticky\"");
 includes("components/AssetModeLayout.tsx", "data-asset-helper-rail");
-includes("components/AssetModeLayout.tsx", "data-helper-rail-tools=\"ask,compare,freshness,sources\"");
+includes("components/AssetModeLayout.tsx", "data-helper-rail-tools=\"ask,compare,export,freshness,sources\"");
 includes("components/AssetModeLayout.tsx", "data-prd-section=\"deep_dive\"");
 includes("components/AssetModeLayout.tsx", "data-prd-section=\"sources\"");
 includes("components/AssetModeLayout.tsx", "Deep Dive");
@@ -1450,7 +1458,7 @@ for (const marker of [
   "data-comparison-suggestion-example-only",
   "backend_aligned_local_contract",
   "Backend-aligned comparison available",
-  "Fixture example, not the requested pair",
+  "Local example, not the requested pair",
   "benchmark, cost, holdings breadth, and beginner role",
   "peer list, citation chips, source documents",
   "not facts about the requested pair"

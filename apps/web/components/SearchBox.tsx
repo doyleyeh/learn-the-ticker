@@ -57,16 +57,24 @@ function resultStateLabel(result: LocalSearchResult) {
 
 function ResultIdentity({ result }: { result: LocalSearchResult }) {
   return (
-    <>
-      <strong data-search-result-ticker>{result.ticker}</strong>
-      <span data-search-result-name>{result.name}</span>
-      <span data-search-result-type>{formatSearchAssetType(result)}</span>
-      {result.exchange ? <span data-search-result-exchange>{result.exchange}</span> : null}
-      {result.issuer ? <span data-search-result-issuer>{result.issuer}</span> : null}
+    <span className="search-result-identity">
+      <strong className="search-result-ticker" data-search-result-ticker>
+        {result.ticker}
+      </strong>
+      <span className="search-result-copy">
+        <span className="search-result-name" data-search-result-name>
+          {result.name}
+        </span>
+        <span className="search-result-meta">
+          <span data-search-result-type>{formatSearchAssetType(result)}</span>
+          {result.exchange ? <span data-search-result-exchange>{result.exchange}</span> : null}
+          {result.issuer ? <span data-search-result-issuer>{result.issuer}</span> : null}
+        </span>
+      </span>
       <span className="result-state-chip" data-search-result-state-label>
         {resultStateLabel(result)}
       </span>
-    </>
+    </span>
   );
 }
 
@@ -84,7 +92,7 @@ export function SearchBox() {
       return searchQueryExampleText();
     }
     if (state === "loading") {
-      return "Checking the configured backend search contract, with deterministic fixture fallback if it is unavailable.";
+      return "Checking the configured backend search contract and source-labeled local fallback.";
     }
     if (state === "supported" && singleResult) {
       return `${singleResult.ticker} has a cached local generated page available today.`;
@@ -173,7 +181,7 @@ export function SearchBox() {
           data-search-comparison-right={singleResult.comparison_right_ticker ?? ""}
           data-search-comparison-route={singleResult.comparison_route}
         >
-          <a href={singleResult.comparison_route} data-search-comparison-link>
+          <a className="search-result-card" href={singleResult.comparison_route} data-search-comparison-link>
             <ResultIdentity result={singleResult} />
           </a>
           <span data-search-result-message>{singleResult.message}</span>
@@ -187,7 +195,7 @@ export function SearchBox() {
           data-search-support-classification={singleResult.support_classification}
           data-search-can-open-generated-page={singleResult.can_open_generated_page}
         >
-          <a href={singleResult.generated_route ?? "#search-status"} data-search-result-link>
+          <a className="search-result-card" href={singleResult.generated_route ?? "#search-status"} data-search-result-link>
             <ResultIdentity result={singleResult} />
           </a>
           <span data-search-result-message>{singleResult.message}</span>
@@ -204,6 +212,7 @@ export function SearchBox() {
           {resolution.results.map((result) =>
             result.can_open_generated_page && result.generated_route ? (
               <a
+                className="search-result-card"
                 key={result.ticker}
                 href={result.generated_route}
                 data-search-result-link
@@ -215,6 +224,7 @@ export function SearchBox() {
               </a>
             ) : (
               <span
+                className="search-result-card"
                 key={result.ticker}
                 data-search-ambiguous-candidate
                 data-search-result-group={result.asset_type}
@@ -241,7 +251,7 @@ export function SearchBox() {
           data-search-support-classification={singleResult.support_classification}
           data-search-can-open-generated-page={singleResult.can_open_generated_page}
         >
-          <span>
+          <span className="search-result-card">
             <ResultIdentity result={singleResult} />
           </span>
           <span data-search-result-message>{singleResult.message}</span>
@@ -259,7 +269,7 @@ export function SearchBox() {
           data-search-result-status={singleResult.status}
           data-search-support-classification={singleResult.support_classification}
         >
-          <span>
+          <span className="search-result-card">
             <ResultIdentity result={singleResult} />
           </span>
           <span data-search-blocked-summary>{singleResult.blocked_explanation?.summary ?? singleResult.message}</span>
@@ -275,7 +285,7 @@ export function SearchBox() {
           data-search-result-status={singleResult.status}
           data-search-support-classification={singleResult.support_classification}
         >
-          <span>
+          <span className="search-result-card">
             <ResultIdentity result={singleResult} />
           </span>
           <span data-search-blocked-summary>{singleResult.blocked_explanation?.summary ?? singleResult.message}</span>

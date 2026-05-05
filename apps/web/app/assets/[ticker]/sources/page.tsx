@@ -58,7 +58,7 @@ function sourceListUnavailableMessage(state: SourceDrawerState) {
     return "No source metadata is rendered because this ticker is outside the Top-500 manifest-backed support scope.";
   }
   if (state === "unknown") {
-    return "No source metadata is rendered because this ticker is unknown in local deterministic data.";
+    return "No source metadata is rendered because this ticker is unknown in local source data.";
   }
   if (state === "eligible_not_cached") {
     return "No source metadata is rendered because this ticker is eligible but not locally cached yet.";
@@ -122,7 +122,7 @@ export default async function AssetSourcesPage({ params }: AssetSourcesPageProps
             <h1>Source list unavailable</h1>
           </div>
           <p className="source-gap-note">
-            This ticker is marked as available in search contracts, but no local fixture exists for deterministic source-list rendering.
+            This ticker is marked as available in search contracts, but no local source pack exists for source-list rendering.
           </p>
         </section>
       </main>
@@ -218,7 +218,7 @@ export default async function AssetSourcesPage({ params }: AssetSourcesPageProps
         <dl className="source-list-summary-grid">
           <div>
             <dt>Rendering mode</dt>
-            <dd>{renderingMode === "backend_contract" ? "Backend source-drawer contract" : "Local fixture fallback"}</dd>
+            <dd>{renderingMode === "backend_contract" ? "Backend source-drawer contract" : "Local source fallback"}</dd>
           </div>
           <div>
             <dt>Source count</dt>
@@ -273,7 +273,7 @@ export default async function AssetSourcesPage({ params }: AssetSourcesPageProps
         <p className="source-gap-note" data-source-list-rendering-note>
           {renderingMode === "backend_contract"
             ? "This page is rendering the existing backend source-drawer contract for same-asset sources."
-            : "No API-base source-drawer contract is available, so this page uses the deterministic local fixture fallback."}
+            : "No API-base source-drawer contract is available, so this page uses the source-labeled local fallback."}
         </p>
       </section>
       <section

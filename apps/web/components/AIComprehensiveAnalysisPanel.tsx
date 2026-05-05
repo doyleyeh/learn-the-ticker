@@ -1,6 +1,6 @@
 import type { Citation, AIComprehensiveAnalysisFixture } from "../lib/fixtures";
 import { CitationChip } from "./CitationChip";
-import { FreshnessLabel } from "./FreshnessLabel";
+import { FreshnessDisclosure } from "./FreshnessLabel";
 
 type FreshnessState = "fresh" | "stale" | "unknown" | "unavailable" | "partial" | "insufficient_evidence";
 
@@ -58,28 +58,31 @@ export function AIComprehensiveAnalysisPanel({ analysis, citations }: AIComprehe
         analysis.weeklyNewsSelectedItemCount >= analysis.minimumWeeklyNewsItemCount ? "threshold_met" : "threshold_not_met"
       }
     >
-      <div className="section-heading">
-        <p className="eyebrow">Timely context</p>
-        <h2 id="beginner-ai-comprehensive-analysis">AI Comprehensive Analysis</h2>
+      <div className="section-heading-row">
+        <div className="section-heading">
+          <p className="eyebrow">Timely context</p>
+          <h2 id="beginner-ai-comprehensive-analysis">AI Comprehensive Analysis</h2>
+        </div>
+        <div className="state-row">
+          <span className="state-pill" data-evidence-state={analysis.analysisAvailable ? "supported" : "insufficient_evidence"}>
+            State: {analysis.state.replaceAll("_", " ")}
+          </span>
+          <span className="state-pill compact-state" data-ai-analysis-evidence-threshold>
+            {analysis.weeklyNewsSelectedItemCount} of {analysis.minimumWeeklyNewsItemCount} high-signal items
+          </span>
+        </div>
       </div>
-
-      <div className="state-row">
-        <FreshnessLabel
+      <div className="freshness-disclosure-row">
+        <FreshnessDisclosure
           label="Analysis availability"
-          value={analysis.analysisAvailable ? "Available in deterministic fixture" : "Suppressed in deterministic fixture"}
+          value={analysis.analysisAvailable ? "Available in current evidence" : "Suppressed in current evidence"}
           state={freshnessState}
         />
-        <FreshnessLabel
+        <FreshnessDisclosure
           label="Evidence state"
           value={analysis.state}
           state={freshnessState}
         />
-        <span className="state-pill" data-evidence-state={analysis.analysisAvailable ? "supported" : "insufficient_evidence"}>
-          State: {analysis.state.replaceAll("_", " ")}
-        </span>
-        <span className="state-pill compact-state" data-ai-analysis-evidence-threshold>
-          {analysis.weeklyNewsSelectedItemCount} of {analysis.minimumWeeklyNewsItemCount} high-signal items
-        </span>
       </div>
 
       {shouldRenderSections ? (
@@ -127,7 +130,9 @@ export function AIComprehensiveAnalysisPanel({ analysis, citations }: AIComprehe
           <p className="source-gap-note">
             Analysis requires at least {analysis.minimumWeeklyNewsItemCount} high-signal Weekly News Focus items.
           </p>
-          <FreshnessLabel label="Canonical evidence" value={analysis.canonicalFactCitationIds.join(", ")} state={freshnessState} />
+          <div className="freshness-disclosure-row">
+            <FreshnessDisclosure label="Canonical evidence" value={analysis.canonicalFactCitationIds.join(", ")} state={freshnessState} />
+          </div>
         </div>
       )}
     </section>

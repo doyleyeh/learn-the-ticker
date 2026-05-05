@@ -70,13 +70,13 @@ export function ComparisonSuggestions({ model }: ComparisonSuggestionsProps) {
             >
               <strong>{suggestion.title}</strong>
               <span>{suggestion.description}</span>
-              <small>{suggestion.exampleOnly ? "Fixture example, not the requested pair" : "Backend-aligned local availability"}</small>
+              <small>{suggestion.exampleOnly ? "Local example, not the requested pair" : "Backend-aligned local availability"}</small>
             </a>
           ))}
         </div>
       ) : (
         <p className="source-gap-note" data-comparison-no-local-pack>
-          No relative compare link is shown because no deterministic local comparison pack exists for this fixture.
+          No relative compare link is shown because no local comparison evidence pack exists for this asset yet.
         </p>
       )}
     </section>
