@@ -5,9 +5,11 @@ import json
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from http.cookiejar import CookieJar
 from typing import Any, Protocol
-from urllib.parse import quote, urlsplit
-from urllib.request import Request, urlopen
+from urllib.error import HTTPError
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
+from urllib.request import HTTPCookieProcessor, Request, build_opener, urlopen
 
 from backend.data import (
     OUT_OF_SCOPE_COMMON_STOCKS,
@@ -42,6 +44,7 @@ from backend.settings import LightweightDataSettings, build_lightweight_data_set
 LIGHTWEIGHT_FETCH_SCHEMA_VERSION = "lightweight-asset-fetch-v1"
 ALLOWED_LIGHTWEIGHT_HOSTS = {
     "data.sec.gov",
+    "finance.yahoo.com",
     "www.sec.gov",
     "query1.finance.yahoo.com",
 }
@@ -49,6 +52,7 @@ YAHOO_RIGHTS_NOTE = (
     "Yahoo Finance/yfinance-derived provider fallback is source-labeled and normalized for display; "
     "the raw provider payload is not displayed or exported."
 )
+YAHOO_PROVIDER_USER_AGENT = "Mozilla/5.0 (compatible; learn-the-ticker/0.1; +https://example.local)"
 SEC_RIGHTS_NOTE = (
     "SEC public metadata is used as an official source; full raw SEC payloads are not exported by this response."
 )
@@ -98,8 +102,18 @@ class UrlLibJsonFetcher:
     def fetch_json(self, url: str, *, user_agent: str, timeout_seconds: int) -> dict[str, Any]:
         _validate_lightweight_url(url)
         request = Request(url, headers={"User-Agent": user_agent, "Accept": "application/json"})
-        with urlopen(request, timeout=timeout_seconds) as response:  # noqa: S310 - guarded by _validate_lightweight_url.
-            payload = response.read(self.max_bytes + 1)
+        try:
+            with urlopen(request, timeout=timeout_seconds) as response:  # noqa: S310 - guarded by _validate_lightweight_url.
+                payload = response.read(self.max_bytes + 1)
+        except HTTPError as exc:
+            if exc.code == 401 and _is_yahoo_finance_url(url):
+                return _fetch_yahoo_json_with_crumb(
+                    url,
+                    user_agent=user_agent,
+                    timeout_seconds=timeout_seconds,
+                    max_bytes=self.max_bytes,
+                )
+            raise
         if len(payload) > self.max_bytes:
             raise LightweightFetchError("lightweight_source_payload_too_large")
         parsed = json.loads(payload.decode("utf-8"))
@@ -731,12 +745,15 @@ def _try_yahoo_provider_fallback(
     facts: list[LightweightFetchFact] = []
     errors: list[dict[str, str]] = []
     quote_payload: dict[str, Any] | None = None
+    quote_summary: dict[str, Any] = {}
+    chart_payload: dict[str, Any] = {}
     chart_meta: dict[str, Any] = {}
+    provider_user_agent = YAHOO_PROVIDER_USER_AGENT
 
     try:
         search_payload = fetcher.fetch_json(
             f"https://query1.finance.yahoo.com/v1/finance/search?q={quote(ticker)}&quotesCount=5&newsCount=0",
-            user_agent=settings._sec_user_agent,
+            user_agent=provider_user_agent,
             timeout_seconds=settings.fetch_timeout_seconds,
         )
         quote_payload = _exact_yahoo_quote(search_payload, ticker)
@@ -745,32 +762,55 @@ def _try_yahoo_provider_fallback(
 
     try:
         chart_payload = fetcher.fetch_json(
-            f"https://query1.finance.yahoo.com/v8/finance/chart/{quote(ticker)}?range=1d&interval=1d",
-            user_agent=settings._sec_user_agent,
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{quote(ticker)}?range=1mo&interval=1d",
+            user_agent=provider_user_agent,
             timeout_seconds=settings.fetch_timeout_seconds,
         )
         chart_meta = _chart_meta(chart_payload)
     except Exception as exc:
         errors.append({"source": "yahoo_chart", "error_type": type(exc).__name__})
 
+    try:
+        modules = ",".join(
+            [
+                "price",
+                "summaryProfile",
+                "fundProfile",
+                "topHoldings",
+                "fundPerformance",
+                "summaryDetail",
+                "defaultKeyStatistics",
+                "financialData",
+            ]
+        )
+        quote_summary_payload = fetcher.fetch_json(
+            f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{quote(ticker)}?modules={modules}",
+            user_agent=provider_user_agent,
+            timeout_seconds=settings.fetch_timeout_seconds,
+        )
+        quote_summary = _quote_summary_result(quote_summary_payload)
+    except Exception as exc:
+        errors.append({"source": "yahoo_quote_summary", "error_type": type(exc).__name__})
+
     merged = {**(quote_payload or {}), **chart_meta}
     if not merged:
         return quote_payload, sources, facts, errors
 
+    provider_as_of = _market_time_as_of(merged) or _chart_latest_as_of(chart_payload)
     source = LightweightFetchSource(
         source_document_id=f"lw_yahoo_{ticker.lower()}_chart_search",
         source_label=LightweightSourceLabel.provider_derived,
         source_type="provider_market_reference",
-        title=f"{ticker} Yahoo Finance/yfinance-derived market reference",
+        title=f"{ticker} Yahoo Finance/yfinance-derived normalized reference",
         publisher="Yahoo Finance",
         url=f"https://finance.yahoo.com/quote/{quote(ticker)}",
         is_official=False,
         source_quality=SourceQuality.provider,
         source_use_policy=SourceUsePolicy.summary_allowed,
         published_at=None,
-        as_of_date=_market_time_as_of(merged),
+        as_of_date=provider_as_of,
         retrieved_at=retrieved_at,
-        date_precision="day" if _market_time_as_of(merged) else "unknown",
+        date_precision="day" if provider_as_of else "unknown",
         freshness_state=FreshnessState.fresh,
         fallback_reason="Official issuer/SEC data was incomplete for some local-test fields.",
         rights_note=YAHOO_RIGHTS_NOTE,
@@ -805,6 +845,102 @@ def _try_yahoo_provider_fallback(
                 as_of_date=source.as_of_date,
                 fallback_used=True,
                 limitations="Provider-derived market price is delayed/reference data for local testing, not trading advice.",
+            )
+        )
+    profile = _provider_profile_overview(merged, quote_summary)
+    if profile:
+        facts.append(
+            _fact(
+                ticker,
+                "provider_profile_overview",
+                profile,
+                EvidenceState.partial,
+                FreshnessState.fresh,
+                retrieved_at,
+                source,
+                as_of_date=source.as_of_date,
+                fallback_used=True,
+                limitations="Provider-derived profile fields are normalized display fallback, not official issuer or SEC evidence.",
+            )
+        )
+    top_holdings = _provider_top_holdings(quote_summary)
+    if top_holdings:
+        facts.append(
+            _fact(
+                ticker,
+                "provider_top_holdings",
+                top_holdings,
+                EvidenceState.partial,
+                FreshnessState.fresh,
+                retrieved_at,
+                source,
+                as_of_date=source.as_of_date,
+                fallback_used=True,
+                limitations="Provider-derived holdings are used only as a labeled fallback when official holdings rows are incomplete.",
+            )
+        )
+    sector_weightings = _provider_sector_weightings(quote_summary)
+    if sector_weightings:
+        facts.append(
+            _fact(
+                ticker,
+                "provider_sector_weightings",
+                sector_weightings,
+                EvidenceState.partial,
+                FreshnessState.fresh,
+                retrieved_at,
+                source,
+                as_of_date=source.as_of_date,
+                fallback_used=True,
+                limitations="Provider-derived sector weights are normalized display fallback, not official issuer evidence.",
+            )
+        )
+    fund_performance = _provider_fund_performance(quote_summary)
+    if fund_performance:
+        facts.append(
+            _fact(
+                ticker,
+                "provider_fund_performance",
+                fund_performance,
+                EvidenceState.partial,
+                FreshnessState.fresh,
+                retrieved_at,
+                source,
+                as_of_date=fund_performance.get("as_of_date") or source.as_of_date,
+                fallback_used=True,
+                limitations="Provider-derived performance fields are educational context and not a forecast or recommendation.",
+            )
+        )
+    stock_metrics = _provider_stock_metric_groups(quote_summary, merged)
+    if stock_metrics:
+        facts.append(
+            _fact(
+                ticker,
+                "provider_stock_metric_groups",
+                stock_metrics,
+                EvidenceState.partial,
+                FreshnessState.fresh,
+                retrieved_at,
+                source,
+                as_of_date=source.as_of_date,
+                fallback_used=True,
+                limitations="Provider-derived stock metrics are source-labeled enrichment and remain separate from SEC facts.",
+            )
+        )
+    price_chart = _price_chart_reference(chart_payload, range_label="1mo", interval="1d")
+    if price_chart:
+        facts.append(
+            _fact(
+                ticker,
+                "provider_price_chart",
+                price_chart,
+                EvidenceState.partial,
+                FreshnessState.fresh,
+                retrieved_at,
+                source,
+                as_of_date=price_chart.get("as_of_date") or source.as_of_date,
+                fallback_used=True,
+                limitations="Provider-derived chart points are delayed or best-effort reference data, not trading guidance.",
             )
         )
     return merged, sources, facts, errors
@@ -1357,6 +1493,272 @@ def _chart_meta(payload: dict[str, Any]) -> dict[str, Any]:
     return meta if isinstance(meta, dict) else {}
 
 
+def _quote_summary_result(payload: dict[str, Any]) -> dict[str, Any]:
+    result = ((payload.get("quoteSummary") or {}).get("result") or [])
+    if not result or not isinstance(result[0], dict):
+        return {}
+    return result[0]
+
+
+def _provider_profile_overview(market_reference: dict[str, Any], quote_summary: dict[str, Any]) -> dict[str, Any]:
+    summary_profile = _module(quote_summary, "summaryProfile")
+    fund_profile = _module(quote_summary, "fundProfile")
+    summary_detail = _module(quote_summary, "summaryDetail")
+    default_stats = _module(quote_summary, "defaultKeyStatistics")
+    financial_data = _module(quote_summary, "financialData")
+    price = _module(quote_summary, "price")
+    officers = summary_profile.get("companyOfficers") if isinstance(summary_profile.get("companyOfficers"), list) else []
+    ceo = _company_ceo(officers)
+    fields = {
+        "symbol": market_reference.get("symbol") or _clean_text(price.get("symbol")),
+        "name": market_reference.get("longname") or market_reference.get("shortname") or _display_value(price.get("longName")),
+        "quote_type": market_reference.get("quoteType") or market_reference.get("instrumentType"),
+        "exchange": market_reference.get("fullExchangeName") or market_reference.get("exchangeName") or market_reference.get("exchange"),
+        "currency": market_reference.get("currency") or _display_value(price.get("currency")),
+        "category": _clean_text(fund_profile.get("categoryName")),
+        "fund_family": _clean_text(fund_profile.get("family")),
+        "legal_type": _clean_text(fund_profile.get("legalType")),
+        "net_assets": _metric_payload(summary_detail.get("totalAssets") or default_stats.get("totalAssets"), unit="USD"),
+        "yield": _percent_payload(summary_detail.get("yield")),
+        "ytd_return": _percent_payload(summary_detail.get("ytdReturn")),
+        "sector": _clean_text(summary_profile.get("sector")),
+        "industry": _clean_text(summary_profile.get("industry")),
+        "ceo": ceo,
+        "full_time_employees": _number_value(summary_profile.get("fullTimeEmployees")),
+        "long_business_summary": _clean_text(summary_profile.get("longBusinessSummary")),
+        "market_cap": _metric_payload(price.get("marketCap") or default_stats.get("marketCap"), unit="USD"),
+        "enterprise_value": _metric_payload(default_stats.get("enterpriseValue"), unit="USD"),
+        "trailing_pe": _metric_payload(summary_detail.get("trailingPE")),
+        "forward_pe": _metric_payload(summary_detail.get("forwardPE")),
+        "eps_ttm": _metric_payload(default_stats.get("trailingEps")),
+        "forward_eps": _metric_payload(default_stats.get("forwardEps")),
+        "dividend_yield": _percent_payload(summary_detail.get("dividendYield")),
+        "revenue_ttm": _metric_payload(financial_data.get("totalRevenue"), unit="USD"),
+        "free_cash_flow": _metric_payload(financial_data.get("freeCashflow"), unit="USD"),
+    }
+    return {key: value for key, value in fields.items() if _present(value)}
+
+
+def _provider_top_holdings(quote_summary: dict[str, Any]) -> list[dict[str, Any]]:
+    top_holdings = _module(quote_summary, "topHoldings")
+    holdings = top_holdings.get("holdings")
+    if not isinstance(holdings, list):
+        return []
+    normalized: list[dict[str, Any]] = []
+    for index, item in enumerate(holdings, start=1):
+        if not isinstance(item, dict):
+            continue
+        symbol = _clean_text(item.get("symbol"))
+        name = _clean_text(item.get("holdingName") or item.get("name"))
+        weight = _percent_value(item.get("holdingPercent"))
+        if not (symbol or name or weight is not None):
+            continue
+        normalized.append(
+            {
+                "rank": index,
+                "symbol": symbol,
+                "name": name or symbol or f"Holding {index}",
+                "weight": weight,
+                "unit": "percent_weight",
+                "source_label": LightweightSourceLabel.provider_derived.value,
+            }
+        )
+    return normalized[:10]
+
+
+def _provider_sector_weightings(quote_summary: dict[str, Any]) -> list[dict[str, Any]]:
+    top_holdings = _module(quote_summary, "topHoldings")
+    sectors = top_holdings.get("sectorWeightings")
+    if not isinstance(sectors, list):
+        return []
+    normalized: list[dict[str, Any]] = []
+    for item in sectors:
+        if not isinstance(item, dict):
+            continue
+        for key, value in item.items():
+            weight = _percent_value(value)
+            if weight is None:
+                continue
+            normalized.append(
+                {
+                    "sector": _sector_label(str(key)),
+                    "weight": weight,
+                    "unit": "percent_weight",
+                    "source_label": LightweightSourceLabel.provider_derived.value,
+                }
+            )
+    return sorted(normalized, key=lambda row: float(row.get("weight") or 0), reverse=True)
+
+
+def _provider_fund_performance(quote_summary: dict[str, Any]) -> dict[str, Any]:
+    module = _module(quote_summary, "fundPerformance")
+    trailing = _module(module, "trailingReturns")
+    trailing_rows: list[dict[str, Any]] = []
+    for key, label in [
+        ("ytd", "YTD"),
+        ("oneMonth", "1-Month"),
+        ("threeMonth", "3-Month"),
+        ("oneYear", "1-Year"),
+        ("threeYear", "3-Year"),
+        ("fiveYear", "5-Year"),
+        ("tenYear", "10-Year"),
+        ("lastBullMkt", "Last Bull Market"),
+        ("lastBearMkt", "Last Bear Market"),
+    ]:
+        value = _percent_value(trailing.get(key))
+        if value is not None:
+            trailing_rows.append({"period": label, "return": value, "unit": "percent"})
+
+    annual_module = _module(module, "annualTotalReturns")
+    annual_rows: list[dict[str, Any]] = []
+    returns = annual_module.get("returns")
+    if isinstance(returns, list):
+        for item in returns:
+            if not isinstance(item, dict):
+                continue
+            year = _clean_text(item.get("year"))
+            value = _percent_value(item.get("annualValue"))
+            if year and value is not None:
+                annual_rows.append({"year": year, "return": value, "unit": "percent"})
+
+    as_of_date = _date_from_yahoo(trailing.get("asOfDate") or annual_module.get("asOfDate"))
+    result = {
+        "trailing_returns": trailing_rows,
+        "annual_returns": annual_rows,
+        "as_of_date": as_of_date,
+        "source_label": LightweightSourceLabel.provider_derived.value,
+    }
+    return {key: value for key, value in result.items() if _present(value)}
+
+
+def _provider_stock_metric_groups(quote_summary: dict[str, Any], market_reference: dict[str, Any]) -> dict[str, Any]:
+    profile = _provider_profile_overview(market_reference, quote_summary)
+    summary_detail = _module(quote_summary, "summaryDetail")
+    default_stats = _module(quote_summary, "defaultKeyStatistics")
+    financial_data = _module(quote_summary, "financialData")
+    groups = [
+        {
+            "group_id": "market_value_enterprise_value",
+            "title": "Market Value / Enterprise Value",
+            "metrics": [
+                _provider_metric("market_cap", "Market cap", profile.get("market_cap")),
+                _provider_metric("enterprise_value", "Enterprise value", profile.get("enterprise_value")),
+            ],
+        },
+        {
+            "group_id": "price_performance",
+            "title": "Price Performance",
+            "metrics": [
+                _provider_metric("fifty_two_week_change", "52-week change", _percent_payload(summary_detail.get("52WeekChange"))),
+                _provider_metric("sandp_fifty_two_week_change", "S&P 500 52-week change", _percent_payload(summary_detail.get("SandP52WeekChange"))),
+            ],
+        },
+        {
+            "group_id": "income_statement",
+            "title": "Income Statement Snapshot",
+            "metrics": [
+                _provider_metric("total_revenue", "Revenue TTM", _metric_payload(financial_data.get("totalRevenue"), unit="USD")),
+                _provider_metric("gross_profit", "Gross profit", _metric_payload(financial_data.get("grossProfits"), unit="USD")),
+                _provider_metric("revenue_growth", "Revenue growth", _percent_payload(financial_data.get("revenueGrowth"))),
+                _provider_metric("ebitda", "EBITDA", _metric_payload(financial_data.get("ebitda"), unit="USD")),
+            ],
+        },
+        {
+            "group_id": "balance_sheet",
+            "title": "Balance Sheet Snapshot",
+            "metrics": [
+                _provider_metric("total_cash", "Cash", _metric_payload(financial_data.get("totalCash"), unit="USD")),
+                _provider_metric("total_debt", "Debt", _metric_payload(financial_data.get("totalDebt"), unit="USD")),
+                _provider_metric("current_ratio", "Current ratio", _metric_payload(financial_data.get("currentRatio"))),
+            ],
+        },
+        {
+            "group_id": "cash_flow",
+            "title": "Cash Flow Snapshot",
+            "metrics": [
+                _provider_metric("operating_cashflow", "Operating cash flow", _metric_payload(financial_data.get("operatingCashflow"), unit="USD")),
+                _provider_metric("free_cashflow", "Free cash flow", _metric_payload(financial_data.get("freeCashflow"), unit="USD")),
+            ],
+        },
+        {
+            "group_id": "valuation_ratios",
+            "title": "Valuation Ratios",
+            "metrics": [
+                _provider_metric("trailing_pe", "P/E", _metric_payload(summary_detail.get("trailingPE"))),
+                _provider_metric("forward_pe", "Forward P/E", _metric_payload(summary_detail.get("forwardPE"))),
+                _provider_metric("price_to_book", "Price/book", _metric_payload(default_stats.get("priceToBook"))),
+                _provider_metric("enterprise_to_ebitda", "EV/EBITDA", _metric_payload(default_stats.get("enterpriseToEbitda"))),
+            ],
+        },
+        {
+            "group_id": "margins_returns_ownership",
+            "title": "Margins, Returns, And Ownership",
+            "metrics": [
+                _provider_metric("gross_margin", "Gross margin", _percent_payload(financial_data.get("grossMargins"))),
+                _provider_metric("operating_margin", "Operating margin", _percent_payload(financial_data.get("operatingMargins"))),
+                _provider_metric("profit_margin", "Profit margin", _percent_payload(financial_data.get("profitMargins"))),
+                _provider_metric("return_on_assets", "Return on assets", _percent_payload(financial_data.get("returnOnAssets"))),
+                _provider_metric("return_on_equity", "Return on equity", _percent_payload(financial_data.get("returnOnEquity"))),
+                _provider_metric("institutional_ownership", "Institutional ownership", _percent_payload(default_stats.get("heldPercentInstitutions"))),
+            ],
+        },
+        {
+            "group_id": "profile",
+            "title": "Profile",
+            "metrics": [
+                _provider_metric("sector", "Sector", profile.get("sector")),
+                _provider_metric("industry", "Industry", profile.get("industry")),
+                _provider_metric("ceo", "CEO", profile.get("ceo")),
+                _provider_metric("eps_ttm", "EPS TTM", profile.get("eps_ttm")),
+                _provider_metric("dividend_yield", "Dividend yield", profile.get("dividend_yield")),
+            ],
+        },
+    ]
+    groups = [
+        group | {"metrics": [metric for metric in group["metrics"] if metric.get("value") is not None]}
+        for group in groups
+    ]
+    groups = [group for group in groups if group["metrics"]]
+    return {"groups": groups, "source_label": LightweightSourceLabel.provider_derived.value} if groups else {}
+
+
+def _price_chart_reference(payload: dict[str, Any], *, range_label: str, interval: str) -> dict[str, Any]:
+    result = ((payload.get("chart") or {}).get("result") or [])
+    if not result or not isinstance(result[0], dict):
+        return {}
+    item = result[0]
+    timestamps = item.get("timestamp") if isinstance(item.get("timestamp"), list) else []
+    quote_payloads = ((item.get("indicators") or {}).get("quote") or [])
+    quote_payload = quote_payloads[0] if quote_payloads and isinstance(quote_payloads[0], dict) else {}
+    closes = quote_payload.get("close") if isinstance(quote_payload.get("close"), list) else []
+    volumes = quote_payload.get("volume") if isinstance(quote_payload.get("volume"), list) else []
+    points: list[dict[str, Any]] = []
+    for index, timestamp in enumerate(timestamps):
+        close = _list_value(closes, index)
+        if not isinstance(timestamp, (int, float)) or not isinstance(close, (int, float)):
+            continue
+        volume = _list_value(volumes, index)
+        points.append(
+            {
+                "timestamp": datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat().replace("+00:00", "Z"),
+                "close": float(close),
+                "volume": volume if isinstance(volume, (int, float)) else None,
+            }
+        )
+    meta = item.get("meta") if isinstance(item.get("meta"), dict) else {}
+    if not points:
+        return {}
+    return {
+        "range": range_label,
+        "interval": interval,
+        "currency": meta.get("currency"),
+        "points": points,
+        "as_of_date": points[-1]["timestamp"][:10],
+        "delayed_or_best_effort_label": "Yahoo Finance/yfinance-derived delayed or best-effort chart points",
+        "source_label": LightweightSourceLabel.provider_derived.value,
+    }
+
+
 def _compact_market_reference(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         key: payload.get(key)
@@ -1407,6 +1809,143 @@ def _market_time_as_of(payload: dict[str, Any]) -> str | None:
     return datetime.fromtimestamp(value, tz=timezone.utc).date().isoformat()
 
 
+def _chart_latest_as_of(payload: dict[str, Any]) -> str | None:
+    result = ((payload.get("chart") or {}).get("result") or [])
+    if not result or not isinstance(result[0], dict):
+        return None
+    timestamps = result[0].get("timestamp")
+    if not isinstance(timestamps, list):
+        return None
+    numeric = [timestamp for timestamp in timestamps if isinstance(timestamp, (int, float))]
+    if not numeric:
+        return None
+    return datetime.fromtimestamp(max(numeric), tz=timezone.utc).date().isoformat()
+
+
+def _module(payload: dict[str, Any], key: str) -> dict[str, Any]:
+    value = payload.get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def _clean_text(value: Any) -> str | None:
+    display = _display_value(value)
+    if display is None:
+        return None
+    text = str(display).strip()
+    return text or None
+
+
+def _display_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        for key in ("fmt", "longFmt", "shortFmt"):
+            if value.get(key) not in (None, ""):
+                return value.get(key)
+        return value.get("raw")
+    return value
+
+
+def _number_value(value: Any) -> float | int | None:
+    if isinstance(value, dict):
+        value = value.get("raw")
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    return None
+
+
+def _percent_value(value: Any) -> float | None:
+    numeric = _number_value(value)
+    if numeric is None:
+        return None
+    percent = float(numeric)
+    if abs(percent) <= 1:
+        percent *= 100
+    return round(percent, 4)
+
+
+def _metric_payload(value: Any, *, unit: str | None = None) -> dict[str, Any] | None:
+    numeric = _number_value(value)
+    display = _clean_text(value)
+    if numeric is None and display is None:
+        return None
+    return {key: item for key, item in {"value": numeric if numeric is not None else display, "display": display, "unit": unit}.items() if item is not None}
+
+
+def _percent_payload(value: Any) -> dict[str, Any] | None:
+    percent = _percent_value(value)
+    display = _clean_text(value)
+    if percent is None and display is None:
+        return None
+    return {
+        key: item
+        for key, item in {"value": percent if percent is not None else display, "display": display, "unit": "%"}.items()
+        if item is not None
+    }
+
+
+def _provider_metric(metric_id: str, label: str, payload: Any) -> dict[str, Any]:
+    if isinstance(payload, dict):
+        value = payload.get("display") or payload.get("value")
+        unit = payload.get("unit")
+    else:
+        value = payload
+        unit = None
+    return {"metric_id": metric_id, "label": label, "value": value, "unit": unit}
+
+
+def _company_ceo(officers: list[Any]) -> str | None:
+    for officer in officers:
+        if not isinstance(officer, dict):
+            continue
+        title = str(officer.get("title") or "").lower()
+        if "chief executive" in title or title == "ceo" or " ceo" in f" {title}":
+            return _clean_text(officer.get("name"))
+    for officer in officers:
+        if isinstance(officer, dict):
+            name = _clean_text(officer.get("name"))
+            if name:
+                return name
+    return None
+
+
+def _date_from_yahoo(value: Any) -> str | None:
+    numeric = _number_value(value)
+    if numeric is not None:
+        return datetime.fromtimestamp(float(numeric), tz=timezone.utc).date().isoformat()
+    text = _clean_text(value)
+    return text
+
+
+def _sector_label(value: str) -> str:
+    explicit = {
+        "technology": "Technology",
+        "financial_services": "Financial Services",
+        "communication_services": "Communication Services",
+        "consumer_cyclical": "Consumer Cyclical",
+        "consumer_defensive": "Consumer Defensive",
+        "healthcare": "Healthcare",
+        "industrials": "Industrials",
+        "energy": "Energy",
+        "utilities": "Utilities",
+        "realestate": "Real Estate",
+        "real_estate": "Real Estate",
+        "basic_materials": "Basic Materials",
+    }
+    normalized = value.strip().lower()
+    return explicit.get(normalized, normalized.replace("_", " ").title())
+
+
+def _present(value: Any) -> bool:
+    if value is None:
+        return False
+    if value == "":
+        return False
+    if isinstance(value, (list, dict)) and not value:
+        return False
+    return True
+
+
 def _etf_scope_disqualifiers(ticker: str, name: str) -> list[str]:
     if ticker in UNSUPPORTED_ASSETS or ticker in OUT_OF_SCOPE_COMMON_STOCKS:
         return ["manifest_blocked"]
@@ -1423,6 +1962,59 @@ def _validate_lightweight_url(url: str) -> None:
     hostname = (parsed.hostname or "").lower()
     if hostname not in ALLOWED_LIGHTWEIGHT_HOSTS:
         raise LightweightFetchError("lightweight_fetch_host_not_allowed")
+
+
+def _is_yahoo_finance_url(url: str) -> bool:
+    return (urlsplit(url).hostname or "").lower() in {"query1.finance.yahoo.com", "finance.yahoo.com"}
+
+
+def _fetch_yahoo_json_with_crumb(
+    url: str,
+    *,
+    user_agent: str,
+    timeout_seconds: int,
+    max_bytes: int,
+) -> dict[str, Any]:
+    _validate_lightweight_url(url)
+    cookie_jar = CookieJar()
+    opener = build_opener(HTTPCookieProcessor(cookie_jar))
+    seed_url = _yahoo_cookie_seed_url(url)
+    _validate_lightweight_url(seed_url)
+    seed_request = Request(seed_url, headers={"User-Agent": user_agent, "Accept": "text/html,application/xhtml+xml"})
+    with opener.open(seed_request, timeout=timeout_seconds) as seed_response:  # noqa: S310 - guarded by _validate_lightweight_url.
+        seed_response.read(2048)
+    crumb_url = "https://query1.finance.yahoo.com/v1/test/getcrumb"
+    _validate_lightweight_url(crumb_url)
+    crumb_request = Request(crumb_url, headers={"User-Agent": user_agent, "Accept": "text/plain"})
+    with opener.open(crumb_request, timeout=timeout_seconds) as crumb_response:  # noqa: S310 - guarded by _validate_lightweight_url.
+        crumb = crumb_response.read(512).decode("utf-8").strip()
+    if not crumb:
+        raise LightweightFetchError("yahoo_crumb_unavailable")
+    request = Request(_append_query_param(url, "crumb", crumb), headers={"User-Agent": user_agent, "Accept": "application/json"})
+    with opener.open(request, timeout=timeout_seconds) as response:  # noqa: S310 - guarded by _validate_lightweight_url.
+        payload = response.read(max_bytes + 1)
+    if len(payload) > max_bytes:
+        raise LightweightFetchError("lightweight_source_payload_too_large")
+    parsed = json.loads(payload.decode("utf-8"))
+    if not isinstance(parsed, dict):
+        raise LightweightFetchError("lightweight_source_payload_not_json_object")
+    return parsed
+
+
+def _yahoo_cookie_seed_url(url: str) -> str:
+    parsed = urlsplit(url)
+    parts = [part for part in parsed.path.split("/") if part]
+    ticker = "SPY"
+    if parts:
+        ticker = parts[-1].upper()
+    return f"https://finance.yahoo.com/quote/{quote(ticker)}"
+
+
+def _append_query_param(url: str, key: str, value: str) -> str:
+    parsed = urlsplit(url)
+    query = parse_qsl(parsed.query, keep_blank_values=True)
+    query.append((key, value))
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment))
 
 
 def _padded_cik(value: Any) -> str | None:

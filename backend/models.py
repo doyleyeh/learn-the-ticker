@@ -2435,6 +2435,63 @@ class OverviewMetric(BaseModel):
     limitations: str | None = None
 
 
+class OverviewTableColumn(BaseModel):
+    column_id: str
+    label: str
+    value_type: Literal["text", "number", "percent", "currency"] = "text"
+    align: Literal["left", "right", "center"] = "left"
+
+
+class OverviewTableRow(BaseModel):
+    row_id: str
+    label: str | None = None
+    values: dict[str, str | float | int | None] = Field(default_factory=dict)
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    freshness_state: FreshnessState
+    evidence_state: EvidenceState
+    as_of_date: str | None = None
+    retrieved_at: str | None = None
+    limitations: str | None = None
+
+
+class OverviewTable(BaseModel):
+    table_id: str
+    title: str
+    columns: list[OverviewTableColumn] = Field(default_factory=list)
+    rows: list[OverviewTableRow] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    freshness_state: FreshnessState
+    evidence_state: EvidenceState
+    as_of_date: str | None = None
+    retrieved_at: str | None = None
+    limitations: str | None = None
+
+
+class OverviewChartPoint(BaseModel):
+    timestamp: str
+    close: float
+    volume: float | int | None = None
+
+
+class OverviewChart(BaseModel):
+    chart_id: str
+    title: str
+    range: str
+    interval: str
+    points: list[OverviewChartPoint] = Field(default_factory=list)
+    currency: str | None = None
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    freshness_state: FreshnessState
+    evidence_state: EvidenceState
+    as_of_date: str | None = None
+    retrieved_at: str | None = None
+    delayed_or_best_effort_label: str | None = None
+    limitations: str | None = None
+
+
 class OverviewSectionItem(BaseModel):
     item_id: str
     title: str
@@ -2457,6 +2514,8 @@ class OverviewSection(BaseModel):
     beginner_summary: str | None = None
     items: list[OverviewSectionItem] = Field(default_factory=list)
     metrics: list[OverviewMetric] = Field(default_factory=list)
+    table: OverviewTable | None = None
+    chart: OverviewChart | None = None
     citation_ids: list[str] = Field(default_factory=list)
     source_document_ids: list[str] = Field(default_factory=list)
     freshness_state: FreshnessState
@@ -2533,6 +2592,31 @@ class KeyDifference(BaseModel):
 class BeginnerBottomLine(BaseModel):
     summary: str
     citation_ids: list[str]
+
+
+class ComparisonMetricRow(BaseModel):
+    metric_id: str
+    label: str
+    left_value: str | float | int | None = None
+    right_value: str | float | int | None = None
+    unit: str | None = None
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    freshness_state: FreshnessState
+    evidence_state: EvidenceState
+    as_of_date: str | None = None
+    limitations: str | None = None
+
+
+class ComparisonMetricGroup(BaseModel):
+    group_id: str
+    title: str
+    rows: list[ComparisonMetricRow] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    freshness_state: FreshnessState
+    evidence_state: EvidenceState
+    limitations: str | None = None
 
 
 class ComparisonEvidenceAvailabilityState(str, Enum):
@@ -2727,6 +2811,7 @@ class CompareResponse(BaseModel):
     source_documents: list[SourceDocument] = Field(default_factory=list)
     evidence_availability: ComparisonEvidenceAvailability | None = None
     stock_etf_relationship: StockEtfRelationshipModel | None = None
+    metric_groups: list[ComparisonMetricGroup] = Field(default_factory=list)
 
 
 class ChatRequest(BaseModel):

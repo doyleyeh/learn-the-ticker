@@ -818,6 +818,17 @@ def test_lightweight_api_fallback_diagnostics_are_exposed_without_unlocking_cach
         assert diagnostics["raw_payload_exposed"] is False
         assert diagnostics["secret_values_exposed"] is False
 
+    sections = {section["section_id"]: section for section in overview["sections"]}
+    assert sections["holdings_exposure"]["table"]["table_id"] == "top_holdings"
+    assert len(sections["holdings_exposure"]["table"]["rows"]) == 10
+    assert sections["sector_weightings"]["table"]["table_id"] == "sector_weightings"
+    assert sections["performance"]["table"]["table_id"] == "performance_returns"
+    assert sections["price_chart"]["chart"]["chart_id"] == "provider_price_chart"
+    assert len(sections["price_chart"]["chart"]["points"]) >= 6
+    serialized_overview = str(overview).lower()
+    assert "'raw'" not in serialized_overview
+    assert '"raw"' not in serialized_overview
+
     blocked_diagnostics = blocked_fresh_data["fallback_diagnostics"]
     assert blocked_fresh_data["generated_output_eligible"] is False
     assert blocked_fresh_data["sources"] == []
@@ -1772,6 +1783,17 @@ def test_compare_route_uses_fixture_pipeline_in_reverse_order_and_unavailable_st
     assert stock_stock["comparison_type"] == "stock_vs_stock"
     assert stock_stock["state"]["status"] == "supported"
     assert stock_stock["stock_etf_relationship"] is None
+    assert {group["group_id"] for group in stock_stock["metric_groups"]} >= {
+        "market_value_enterprise_value",
+        "price_performance",
+        "income_statement",
+        "balance_sheet",
+        "cash_flow",
+        "valuation_ratios",
+        "margins_earnings_returns_ownership",
+    }
+    assert stock_stock["metric_groups"][0]["rows"]
+    assert "you should" not in str(stock_stock["metric_groups"]).lower()
     assert set(stock_stock["evidence_availability"]["required_dimensions"]) == {
         "Business model",
         "Revenue trend",

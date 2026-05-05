@@ -16,10 +16,15 @@ from backend.models import (
     LightweightFetchSource,
     LightweightFetchState,
     MetricValue,
+    OverviewChart,
+    OverviewChartPoint,
     OverviewMetric,
     OverviewResponse,
     OverviewSection,
     OverviewSectionItem,
+    OverviewTable,
+    OverviewTableColumn,
+    OverviewTableRow,
     OverviewSectionType,
     RiskItem,
     SourceDocument,
@@ -497,6 +502,17 @@ def _stock_sections(
     has_market_reference = bool(provider_citation_ids)
     risks = _top_risks(response, stable_citation_ids, provider_citation_ids)
     suitability = _suitability_summary(response, stable_citation_ids)
+    profile_table = _stock_profile_table(response, provider_citation_ids)
+    financial_table = _stock_financial_table(response, stable_citation_ids, provider_citation_ids)
+    valuation_table = _stock_valuation_table(response, provider_citation_ids)
+    business_citation_ids = _dedupe([*stable_citation_ids, *((profile_table.citation_ids if profile_table else []))])
+    financial_citation_ids = _dedupe(
+        [
+            *[citation_id for metric in financial_metrics for citation_id in metric.citation_ids],
+            *((financial_table.citation_ids if financial_table else [])),
+        ]
+    )
+    valuation_citation_ids = _dedupe([*provider_citation_ids, *((valuation_table.citation_ids if valuation_table else []))])
     sections = [
         OverviewSection(
             section_id="business_overview",
@@ -523,8 +539,9 @@ def _stock_sections(
                 ),
             ],
             metrics=[],
-            citation_ids=stable_citation_ids,
-            source_document_ids=_source_ids_for_citations(response, stable_citation_ids),
+            table=profile_table,
+            citation_ids=business_citation_ids,
+            source_document_ids=_source_ids_for_citations(response, business_citation_ids),
             freshness_state=FreshnessState.fresh,
             evidence_state=EvidenceState.supported,
             as_of_date=response.freshness.facts_as_of,
@@ -611,8 +628,9 @@ def _stock_sections(
                 ),
             ],
             metrics=financial_metrics,
-            citation_ids=_dedupe([citation_id for metric in financial_metrics for citation_id in metric.citation_ids]),
-            source_document_ids=_dedupe([source_id for metric in financial_metrics for source_id in metric.source_document_ids]),
+            table=financial_table,
+            citation_ids=financial_citation_ids,
+            source_document_ids=_source_ids_for_citations(response, financial_citation_ids),
             freshness_state=FreshnessState.fresh if financial_metrics else FreshnessState.unavailable,
             evidence_state=EvidenceState.mixed if financial_metrics else EvidenceState.unavailable,
             as_of_date=_latest_fact_as_of(response, ("latest_revenue_fact", "latest_net_income_fact", "latest_assets_fact")),
@@ -645,14 +663,17 @@ def _stock_sections(
                 ),
             ],
             metrics=[_market_metric(response, provider_citation_ids)],
-            citation_ids=provider_citation_ids,
-            source_document_ids=_source_ids_for_citations(response, provider_citation_ids),
+            table=valuation_table,
+            citation_ids=valuation_citation_ids,
+            source_document_ids=_source_ids_for_citations(response, valuation_citation_ids),
             freshness_state=FreshnessState.fresh if has_market_reference else FreshnessState.unavailable,
             evidence_state=EvidenceState.mixed if has_market_reference else EvidenceState.insufficient_evidence,
             as_of_date=_fact_as_of(response, "provider_market_price"),
             retrieved_at=retrieved_at,
             limitations="Valuation context is intentionally limited to sourced availability and does not label the stock cheap or expensive.",
         ),
+        *_stock_provider_metric_sections(response, provider_citation_ids),
+        _price_chart_section(response, provider_citation_ids, applies_to=[AssetType.stock]),
         _risk_section(response, risks, applies_to=[AssetType.stock], section_id="top_risks", title="Top Risks"),
         OverviewSection(
             section_id="market_reference",
@@ -705,6 +726,10 @@ def _etf_sections(
     prospectus_citations = _citation_ids_for_fact(response, "prospectus_reference", stable_citation_ids)
     risks = _top_risks(response, stable_citation_ids, provider_citation_ids)
     suitability = _suitability_summary(response, stable_citation_ids)
+    overview_table = _etf_overview_table(response, stable_citation_ids, provider_citation_ids)
+    holdings_table = _etf_holdings_table(response, stable_citation_ids, provider_citation_ids)
+    overview_citation_ids = _dedupe([*stable_citation_ids, *((overview_table.citation_ids if overview_table else []))])
+    holdings_citation_ids = _dedupe([*stable_citation_ids, *((holdings_table.citation_ids if holdings_table else []))])
     return [
         OverviewSection(
             section_id="fund_objective_role",
@@ -732,8 +757,9 @@ def _etf_sections(
                 )
             ],
             metrics=[benchmark_metric] if benchmark_metric.evidence_state is not EvidenceState.unavailable else [],
-            citation_ids=stable_citation_ids,
-            source_document_ids=_source_ids_for_citations(response, stable_citation_ids),
+            table=overview_table,
+            citation_ids=overview_citation_ids,
+            source_document_ids=_source_ids_for_citations(response, overview_citation_ids),
             freshness_state=FreshnessState.fresh,
             evidence_state=issuer_state,
             as_of_date=response.freshness.facts_as_of,
@@ -752,8 +778,9 @@ def _etf_sections(
             beginner_summary=" ".join(_etf_holdings_context(response)),
             items=_etf_holdings_items(response, stable_citation_ids, holdings_state),
             metrics=[holdings_count_metric] if holdings_count_metric.evidence_state is not EvidenceState.unavailable else [],
-            citation_ids=stable_citation_ids,
-            source_document_ids=_source_ids_for_citations(response, stable_citation_ids),
+            table=holdings_table,
+            citation_ids=holdings_citation_ids,
+            source_document_ids=_source_ids_for_citations(response, holdings_citation_ids),
             freshness_state=FreshnessState.fresh,
             evidence_state=holdings_state,
             as_of_date=response.freshness.holdings_as_of or response.freshness.facts_as_of,
@@ -764,6 +791,9 @@ def _etf_sections(
                 else "Full issuer holdings are unavailable in this lightweight response."
             ),
         ),
+        _etf_sector_weightings_section(response, stable_citation_ids, provider_citation_ids),
+        _etf_performance_section(response, provider_citation_ids),
+        _price_chart_section(response, provider_citation_ids, applies_to=[AssetType.etf]),
         OverviewSection(
             section_id="construction_methodology",
             title="Construction Or Methodology",
@@ -1128,6 +1158,509 @@ def _etf_holdings_items(
     return items
 
 
+def _stock_profile_table(response: LightweightFetchResponse, provider_citation_ids: list[str]) -> OverviewTable | None:
+    profile = _fact_value(response, "provider_profile_overview")
+    if not isinstance(profile, dict):
+        return None
+    rows = [
+        _simple_table_row(response, "sector", "Sector", profile.get("sector"), provider_citation_ids),
+        _simple_table_row(response, "industry", "Industry", profile.get("industry"), provider_citation_ids),
+        _simple_table_row(response, "ceo", "CEO", profile.get("ceo"), provider_citation_ids),
+        _simple_table_row(response, "market_cap", "Market cap", _metric_display(profile.get("market_cap")), provider_citation_ids),
+        _simple_table_row(
+            response,
+            "enterprise_value",
+            "Enterprise value",
+            _metric_display(profile.get("enterprise_value")),
+            provider_citation_ids,
+        ),
+        _simple_table_row(response, "trailing_pe", "P/E", _metric_display(profile.get("trailing_pe")), provider_citation_ids),
+        _simple_table_row(response, "forward_pe", "Forward P/E", _metric_display(profile.get("forward_pe")), provider_citation_ids),
+        _simple_table_row(response, "eps_ttm", "EPS TTM", _metric_display(profile.get("eps_ttm")), provider_citation_ids),
+        _simple_table_row(
+            response,
+            "dividend_yield",
+            "Dividend yield",
+            _metric_display(profile.get("dividend_yield")),
+            provider_citation_ids,
+        ),
+    ]
+    rows = [row for row in rows if row.values.get("value") not in (None, "")]
+    return _overview_table(
+        response,
+        table_id="stock_profile_snapshot",
+        title="Stock Profile Snapshot",
+        rows=rows,
+        citation_ids=provider_citation_ids,
+        evidence_state=EvidenceState.partial,
+        limitations="Provider-derived profile fields are labeled fallback; SEC identity and filing facts remain the official backbone.",
+    )
+
+
+def _stock_financial_table(
+    response: LightweightFetchResponse,
+    stable_citation_ids: list[str],
+    provider_citation_ids: list[str],
+) -> OverviewTable | None:
+    rows: list[OverviewTableRow] = []
+    for field_name, label in (
+        ("latest_revenue_fact", "SEC latest revenue"),
+        ("latest_net_income_fact", "SEC latest net income"),
+        ("latest_assets_fact", "SEC latest assets"),
+    ):
+        value = _fact_value(response, field_name)
+        if isinstance(value, dict) and value.get("value") is not None:
+            rows.append(
+                _simple_table_row(
+                    response,
+                    field_name,
+                    label,
+                    _format_fact_number(value.get("value")) + (f" {value.get('unit')}" if value.get("unit") else ""),
+                    _citation_ids_for_fact(response, field_name, stable_citation_ids),
+                    as_of_date=value.get("end"),
+                    evidence_state=EvidenceState.supported,
+                )
+            )
+    for group_id in ("income_statement", "balance_sheet", "cash_flow", "margins_returns_ownership"):
+        rows.extend(_metric_rows_from_provider_group(response, group_id, provider_citation_ids))
+    if not rows:
+        return None
+    citation_ids = _dedupe(citation_id for row in rows for citation_id in row.citation_ids)
+    return _overview_table(
+        response,
+        table_id="stock_financial_snapshot",
+        title="Stock Financial Snapshot",
+        rows=rows,
+        citation_ids=citation_ids,
+        evidence_state=EvidenceState.mixed,
+        limitations="Combines SEC latest facts with provider-labeled fallback metrics where available.",
+    )
+
+
+def _stock_valuation_table(response: LightweightFetchResponse, provider_citation_ids: list[str]) -> OverviewTable | None:
+    rows = _metric_rows_from_provider_group(response, "valuation_ratios", provider_citation_ids)
+    if not rows:
+        return None
+    return _overview_table(
+        response,
+        table_id="stock_valuation_ratios",
+        title="Valuation Ratios",
+        rows=rows,
+        citation_ids=_dedupe(citation_id for row in rows for citation_id in row.citation_ids),
+        evidence_state=EvidenceState.partial,
+        limitations="Provider-derived ratios are context only and are not cheap/expensive labels or recommendations.",
+    )
+
+
+def _stock_provider_metric_sections(
+    response: LightweightFetchResponse,
+    provider_citation_ids: list[str],
+) -> list[OverviewSection]:
+    sections: list[OverviewSection] = []
+    for group in _provider_metric_groups(response):
+        group_id = str(group.get("group_id") or "")
+        if group_id in {"profile", "valuation_ratios"}:
+            continue
+        rows = _metric_rows_from_provider_group(response, group_id, provider_citation_ids)
+        if not rows:
+            continue
+        citation_ids = _dedupe(citation_id for row in rows for citation_id in row.citation_ids)
+        title = str(group.get("title") or group_id.replace("_", " ").title())
+        sections.append(
+            OverviewSection(
+                section_id=f"provider_{group_id}",
+                title=title,
+                section_type=OverviewSectionType.stable_facts,
+                applies_to=[AssetType.stock],
+                beginner_summary=f"{title} is shown from provider-derived normalized fields when available, with SEC facts kept separate.",
+                items=[],
+                metrics=[],
+                table=_overview_table(
+                    response,
+                    table_id=f"provider_{group_id}",
+                    title=title,
+                    rows=rows,
+                    citation_ids=citation_ids,
+                    evidence_state=EvidenceState.partial,
+                    limitations="Provider-derived stock metrics are labeled fallback and may be incomplete.",
+                ),
+                citation_ids=citation_ids,
+                source_document_ids=_source_ids_for_citations(response, citation_ids),
+                freshness_state=FreshnessState.fresh,
+                evidence_state=EvidenceState.partial,
+                as_of_date=_fact_as_of(response, "provider_stock_metric_groups"),
+                retrieved_at=response.freshness.page_last_updated_at,
+                limitations="Provider-derived metrics are displayed for education only, not as decision rules.",
+            )
+        )
+    return sections
+
+
+def _etf_overview_table(
+    response: LightweightFetchResponse,
+    stable_citation_ids: list[str],
+    provider_citation_ids: list[str],
+) -> OverviewTable | None:
+    profile = _fact_value(response, "provider_profile_overview")
+    profile = profile if isinstance(profile, dict) else {}
+    rows = [
+        _simple_table_row(response, "benchmark", "Benchmark", _fact_value(response, "benchmark"), _citation_ids_for_fact(response, "benchmark", stable_citation_ids), evidence_state=EvidenceState.supported),
+        _simple_table_row(response, "expense_ratio", "Expense ratio", _percent_text(_fact_value(response, "expense_ratio")), _citation_ids_for_fact(response, "expense_ratio", stable_citation_ids), evidence_state=EvidenceState.supported),
+        _simple_table_row(response, "holdings_count", "Holdings count", _fact_value(response, "holdings_count"), _citation_ids_for_fact(response, "holdings_count", stable_citation_ids), evidence_state=EvidenceState.supported),
+        _simple_table_row(response, "category", "Category", profile.get("category"), provider_citation_ids, evidence_state=EvidenceState.partial),
+        _simple_table_row(response, "fund_family", "Fund family", profile.get("fund_family") or response.asset.issuer, provider_citation_ids, evidence_state=EvidenceState.partial),
+        _simple_table_row(response, "net_assets", "Net assets / AUM", _metric_display(profile.get("net_assets")), provider_citation_ids, evidence_state=EvidenceState.partial),
+        _simple_table_row(response, "ytd_return", "YTD daily total return", _metric_display(profile.get("ytd_return")), provider_citation_ids, evidence_state=EvidenceState.partial),
+        _simple_table_row(response, "yield", "Yield", _metric_display(profile.get("yield")), provider_citation_ids, evidence_state=EvidenceState.partial),
+        _simple_table_row(response, "legal_type", "Legal type", profile.get("legal_type"), provider_citation_ids, evidence_state=EvidenceState.partial),
+    ]
+    rows = [row for row in rows if row.values.get("value") not in (None, "")]
+    if not rows:
+        return None
+    citation_ids = _dedupe(citation_id for row in rows for citation_id in row.citation_ids)
+    return _overview_table(
+        response,
+        table_id="etf_overview",
+        title="ETF Overview",
+        rows=rows,
+        citation_ids=citation_ids,
+        evidence_state=EvidenceState.mixed,
+        limitations="Official issuer facts are preferred; provider fields fill overview gaps with labels.",
+    )
+
+
+def _etf_holdings_table(
+    response: LightweightFetchResponse,
+    stable_citation_ids: list[str],
+    provider_citation_ids: list[str],
+) -> OverviewTable | None:
+    rows: list[OverviewTableRow] = []
+    official_holdings: list[dict[str, Any]] = []
+    official_by_symbol: dict[str, dict[str, Any]] = {}
+    seen_symbols: set[str] = set()
+    for fact in response.facts:
+        if not fact.field_name.startswith("top_holding_") or not isinstance(fact.value, dict):
+            continue
+        symbol = str(fact.value.get("holding_ticker") or "").strip().upper()
+        name = str(fact.value.get("name") or symbol or fact.field_name).strip()
+        official_holding = {
+            "row_id": fact.field_name,
+            "symbol": symbol,
+            "name": name,
+            "weight": fact.value.get("weight"),
+            "citation_ids": _citation_ids_for_fact(response, fact.field_name, stable_citation_ids),
+            "as_of_date": fact.as_of_date,
+        }
+        official_holdings.append(official_holding)
+        if symbol:
+            official_by_symbol[symbol] = official_holding
+    provider_holdings = _fact_value(response, "provider_top_holdings")
+    if isinstance(provider_holdings, list):
+        for item in provider_holdings:
+            if not isinstance(item, dict) or len(rows) >= 10:
+                continue
+            symbol = str(item.get("symbol") or "").strip().upper()
+            if symbol and symbol in seen_symbols:
+                continue
+            official_holding = official_by_symbol.get(symbol)
+            if symbol:
+                seen_symbols.add(symbol)
+            row_rank = int(item.get("rank") or len(rows) + 1)
+            if official_holding:
+                rows.append(
+                    _holding_table_row(
+                        response,
+                        row_id=str(official_holding["row_id"]),
+                        rank=row_rank,
+                        symbol=str(official_holding["symbol"]),
+                        name=str(official_holding["name"]),
+                        weight=official_holding["weight"],
+                        citation_ids=list(official_holding["citation_ids"]),
+                        as_of_date=official_holding["as_of_date"],
+                        evidence_state=EvidenceState.supported,
+                    )
+                )
+                continue
+            rows.append(
+                _holding_table_row(
+                    response,
+                    row_id=f"provider_holding_{len(rows) + 1}",
+                    rank=row_rank,
+                    symbol=symbol,
+                    name=str(item.get("name") or symbol or f"Holding {len(rows) + 1}"),
+                    weight=item.get("weight"),
+                    citation_ids=provider_citation_ids,
+                    as_of_date=_fact_as_of(response, "provider_top_holdings"),
+                    evidence_state=EvidenceState.partial,
+                    limitations="Provider-derived fallback row.",
+                )
+            )
+    for official_holding in official_holdings:
+        if len(rows) >= 10:
+            break
+        symbol = str(official_holding["symbol"])
+        if symbol and symbol in seen_symbols:
+            continue
+        if symbol:
+            seen_symbols.add(symbol)
+        rows.append(
+            _holding_table_row(
+                response,
+                row_id=str(official_holding["row_id"]),
+                rank=len(rows) + 1,
+                symbol=symbol,
+                name=str(official_holding["name"]),
+                weight=official_holding["weight"],
+                citation_ids=list(official_holding["citation_ids"]),
+                as_of_date=official_holding["as_of_date"],
+                evidence_state=EvidenceState.supported,
+            )
+        )
+    if not rows:
+        return None
+    total = sum(float(row.values.get("weight") or 0) for row in rows if isinstance(row.values.get("weight"), (int, float)))
+    title = f"Top Holdings ({round(total, 2)}% shown)" if total else "Top Holdings"
+    citation_ids = _dedupe(citation_id for row in rows for citation_id in row.citation_ids)
+    return OverviewTable(
+        table_id="top_holdings",
+        title=title,
+        columns=[
+            OverviewTableColumn(column_id="rank", label="#", value_type="number", align="right"),
+            OverviewTableColumn(column_id="symbol", label="Symbol"),
+            OverviewTableColumn(column_id="name", label="Company"),
+            OverviewTableColumn(column_id="weight", label="% Assets", value_type="percent", align="right"),
+        ],
+        rows=rows,
+        citation_ids=citation_ids,
+        source_document_ids=_source_ids_for_citations(response, citation_ids),
+        freshness_state=FreshnessState.fresh,
+        evidence_state=EvidenceState.supported if len(rows) >= 10 and all(row.evidence_state is EvidenceState.supported for row in rows) else EvidenceState.mixed,
+        as_of_date=response.freshness.holdings_as_of or _fact_as_of(response, "provider_top_holdings"),
+        retrieved_at=response.freshness.page_last_updated_at,
+        limitations="Official issuer holdings win by symbol; provider rows fill missing top-holding slots and stay labeled fallback.",
+    )
+
+
+def _etf_sector_weightings_section(
+    response: LightweightFetchResponse,
+    stable_citation_ids: list[str],
+    provider_citation_ids: list[str],
+) -> OverviewSection:
+    table = _etf_sector_weightings_table(response, stable_citation_ids, provider_citation_ids)
+    citation_ids = table.citation_ids if table else []
+    return OverviewSection(
+        section_id="sector_weightings",
+        title="Sector Weightings",
+        section_type=OverviewSectionType.stable_facts,
+        applies_to=[AssetType.etf],
+        beginner_summary=(
+            f"{response.asset.ticker} sector weights are shown when issuer exposure rows or provider fallback sectors are available."
+        ),
+        items=[],
+        metrics=[],
+        table=table,
+        citation_ids=citation_ids,
+        source_document_ids=_source_ids_for_citations(response, citation_ids),
+        freshness_state=FreshnessState.fresh if table else FreshnessState.unavailable,
+        evidence_state=table.evidence_state if table else EvidenceState.unavailable,
+        as_of_date=table.as_of_date if table else None,
+        retrieved_at=response.freshness.page_last_updated_at,
+        limitations=table.limitations if table else "Sector weighting evidence is unavailable in the lightweight response.",
+    )
+
+
+def _etf_sector_weightings_table(
+    response: LightweightFetchResponse,
+    stable_citation_ids: list[str],
+    provider_citation_ids: list[str],
+) -> OverviewTable | None:
+    rows: list[OverviewTableRow] = []
+    seen: set[str] = set()
+    for fact in response.facts:
+        if not isinstance(fact.value, dict) or fact.value.get("exposure_category") != "sector":
+            continue
+        sector = str(fact.value.get("name") or fact.field_name).replace(" sector exposure", "").title()
+        seen.add(sector.lower())
+        rows.append(
+            _sector_table_row(
+                response,
+                row_id=fact.field_name,
+                sector=sector,
+                weight=fact.value.get("weight"),
+                citation_ids=_citation_ids_for_fact(response, fact.field_name, stable_citation_ids),
+                as_of_date=fact.as_of_date,
+                evidence_state=EvidenceState.supported,
+            )
+        )
+    provider_sectors = _fact_value(response, "provider_sector_weightings")
+    if isinstance(provider_sectors, list):
+        for item in provider_sectors:
+            if not isinstance(item, dict):
+                continue
+            sector = str(item.get("sector") or "").strip()
+            if not sector or sector.lower() in seen:
+                continue
+            seen.add(sector.lower())
+            rows.append(
+                _sector_table_row(
+                    response,
+                    row_id=f"provider_sector_{len(rows) + 1}",
+                    sector=sector,
+                    weight=item.get("weight"),
+                    citation_ids=provider_citation_ids,
+                    as_of_date=_fact_as_of(response, "provider_sector_weightings"),
+                    evidence_state=EvidenceState.partial,
+                    limitations="Provider-derived fallback row.",
+                )
+            )
+    if not rows:
+        return None
+    citation_ids = _dedupe(citation_id for row in rows for citation_id in row.citation_ids)
+    return OverviewTable(
+        table_id="sector_weightings",
+        title="Sector Weightings",
+        columns=[
+            OverviewTableColumn(column_id="sector", label="Sector"),
+            OverviewTableColumn(column_id="weight", label=f"{response.asset.ticker}", value_type="percent", align="right"),
+        ],
+        rows=rows,
+        citation_ids=citation_ids,
+        source_document_ids=_source_ids_for_citations(response, citation_ids),
+        freshness_state=FreshnessState.fresh,
+        evidence_state=EvidenceState.supported if all(row.evidence_state is EvidenceState.supported for row in rows) else EvidenceState.mixed,
+        as_of_date=response.freshness.holdings_as_of or _fact_as_of(response, "provider_sector_weightings"),
+        retrieved_at=response.freshness.page_last_updated_at,
+        limitations="Official issuer sector rows are preferred; provider sector rows are labeled fallback.",
+    )
+
+
+def _etf_performance_section(response: LightweightFetchResponse, provider_citation_ids: list[str]) -> OverviewSection:
+    table = _etf_performance_table(response, provider_citation_ids)
+    citation_ids = table.citation_ids if table else []
+    return OverviewSection(
+        section_id="performance",
+        title=f"Performance Overview: {response.asset.ticker}",
+        section_type=OverviewSectionType.stable_facts,
+        applies_to=[AssetType.etf],
+        beginner_summary="Trailing and annual returns are shown only when provider-derived performance fields are available.",
+        items=[],
+        metrics=[],
+        table=table,
+        citation_ids=citation_ids,
+        source_document_ids=_source_ids_for_citations(response, citation_ids),
+        freshness_state=FreshnessState.fresh if table else FreshnessState.unavailable,
+        evidence_state=EvidenceState.partial if table else EvidenceState.unavailable,
+        as_of_date=table.as_of_date if table else None,
+        retrieved_at=response.freshness.page_last_updated_at,
+        limitations=table.limitations if table else "Performance fields are unavailable in this lightweight response.",
+    )
+
+
+def _etf_performance_table(response: LightweightFetchResponse, provider_citation_ids: list[str]) -> OverviewTable | None:
+    performance = _fact_value(response, "provider_fund_performance")
+    if not isinstance(performance, dict):
+        return None
+    rows: list[OverviewTableRow] = []
+    for item in performance.get("trailing_returns") or []:
+        if isinstance(item, dict):
+            rows.append(
+                _performance_table_row(
+                    response,
+                    row_id=f"trailing_{len(rows) + 1}",
+                    label=str(item.get("period") or "Trailing return"),
+                    value=item.get("return"),
+                    return_type="Trailing",
+                    citation_ids=provider_citation_ids,
+                )
+            )
+    for item in performance.get("annual_returns") or []:
+        if isinstance(item, dict):
+            rows.append(
+                _performance_table_row(
+                    response,
+                    row_id=f"annual_{item.get('year') or len(rows) + 1}",
+                    label=str(item.get("year") or "Annual return"),
+                    value=item.get("return"),
+                    return_type="Annual",
+                    citation_ids=provider_citation_ids,
+                )
+            )
+    if not rows:
+        return None
+    return OverviewTable(
+        table_id="performance_returns",
+        title=f"Performance Overview: {response.asset.ticker}",
+        columns=[
+            OverviewTableColumn(column_id="type", label="Type"),
+            OverviewTableColumn(column_id="period", label="Period"),
+            OverviewTableColumn(column_id="return", label=response.asset.ticker, value_type="percent", align="right"),
+        ],
+        rows=rows,
+        citation_ids=provider_citation_ids,
+        source_document_ids=_source_ids_for_citations(response, provider_citation_ids),
+        freshness_state=FreshnessState.fresh,
+        evidence_state=EvidenceState.partial,
+        as_of_date=str(performance.get("as_of_date") or _fact_as_of(response, "provider_fund_performance") or ""),
+        retrieved_at=response.freshness.page_last_updated_at,
+        limitations="Provider-derived return fields are historical context, not return forecasts.",
+    )
+
+
+def _price_chart_section(
+    response: LightweightFetchResponse,
+    provider_citation_ids: list[str],
+    *,
+    applies_to: list[AssetType],
+) -> OverviewSection:
+    chart = _price_chart(response, provider_citation_ids)
+    return OverviewSection(
+        section_id="price_chart",
+        title="Price Chart",
+        section_type=OverviewSectionType.stable_facts,
+        applies_to=applies_to,
+        beginner_summary="A basic provider-derived price line is shown when chart points are available.",
+        items=[],
+        metrics=[],
+        chart=chart,
+        citation_ids=chart.citation_ids if chart else [],
+        source_document_ids=chart.source_document_ids if chart else [],
+        freshness_state=FreshnessState.fresh if chart else FreshnessState.unavailable,
+        evidence_state=EvidenceState.partial if chart else EvidenceState.unavailable,
+        as_of_date=chart.as_of_date if chart else None,
+        retrieved_at=response.freshness.page_last_updated_at,
+        limitations=chart.limitations if chart else "Price chart points are unavailable in this lightweight response.",
+    )
+
+
+def _price_chart(response: LightweightFetchResponse, provider_citation_ids: list[str]) -> OverviewChart | None:
+    value = _fact_value(response, "provider_price_chart")
+    if not isinstance(value, dict):
+        return None
+    points = [
+        OverviewChartPoint(timestamp=str(point.get("timestamp")), close=float(point.get("close")), volume=point.get("volume"))
+        for point in value.get("points") or []
+        if isinstance(point, dict) and point.get("timestamp") and isinstance(point.get("close"), (int, float))
+    ]
+    if not points:
+        return None
+    return OverviewChart(
+        chart_id="provider_price_chart",
+        title=f"{response.asset.ticker} Price Chart",
+        range=str(value.get("range") or "1mo"),
+        interval=str(value.get("interval") or "1d"),
+        points=points,
+        currency=value.get("currency"),
+        citation_ids=provider_citation_ids,
+        source_document_ids=_source_ids_for_citations(response, provider_citation_ids),
+        freshness_state=FreshnessState.fresh,
+        evidence_state=EvidenceState.partial,
+        as_of_date=str(value.get("as_of_date") or _fact_as_of(response, "provider_price_chart") or ""),
+        retrieved_at=response.freshness.page_last_updated_at,
+        delayed_or_best_effort_label=str(value.get("delayed_or_best_effort_label") or "Provider-derived delayed or best-effort chart points"),
+        limitations="Basic server-normalized chart; not an advanced trading chart and not trading guidance.",
+    )
+
+
 def _risk_section(
     response: LightweightFetchResponse,
     risks: list[RiskItem],
@@ -1207,6 +1740,205 @@ def _market_metric(response: LightweightFetchResponse, citation_ids: list[str]) 
         retrieved_at=response.freshness.page_last_updated_at,
         limitations="Provider-derived local-test market reference, not trading advice.",
     )
+
+
+def _overview_table(
+    response: LightweightFetchResponse,
+    *,
+    table_id: str,
+    title: str,
+    rows: list[OverviewTableRow],
+    citation_ids: list[str],
+    evidence_state: EvidenceState,
+    limitations: str,
+) -> OverviewTable | None:
+    if not rows:
+        return None
+    return OverviewTable(
+        table_id=table_id,
+        title=title,
+        columns=[
+            OverviewTableColumn(column_id="label", label="Metric"),
+            OverviewTableColumn(column_id="value", label="Value", align="right"),
+        ],
+        rows=rows,
+        citation_ids=_dedupe(citation_ids),
+        source_document_ids=_source_ids_for_citations(response, _dedupe(citation_ids)),
+        freshness_state=FreshnessState.fresh,
+        evidence_state=evidence_state,
+        as_of_date=response.freshness.facts_as_of,
+        retrieved_at=response.freshness.page_last_updated_at,
+        limitations=limitations,
+    )
+
+
+def _simple_table_row(
+    response: LightweightFetchResponse,
+    row_id: str,
+    label: str,
+    value: Any,
+    citation_ids: list[str],
+    *,
+    as_of_date: str | None = None,
+    evidence_state: EvidenceState = EvidenceState.partial,
+    limitations: str | None = None,
+) -> OverviewTableRow:
+    return OverviewTableRow(
+        row_id=row_id,
+        label=label,
+        values={"label": label, "value": _display_table_value(value)},
+        citation_ids=citation_ids,
+        source_document_ids=_source_ids_for_citations(response, citation_ids),
+        freshness_state=FreshnessState.fresh if value not in (None, "") else FreshnessState.unavailable,
+        evidence_state=evidence_state if value not in (None, "") else EvidenceState.unavailable,
+        as_of_date=as_of_date or response.freshness.facts_as_of,
+        retrieved_at=response.freshness.page_last_updated_at,
+        limitations=limitations,
+    )
+
+
+def _metric_rows_from_provider_group(
+    response: LightweightFetchResponse,
+    group_id: str,
+    provider_citation_ids: list[str],
+) -> list[OverviewTableRow]:
+    group = next((item for item in _provider_metric_groups(response) if item.get("group_id") == group_id), None)
+    if not group:
+        return []
+    rows: list[OverviewTableRow] = []
+    for metric in group.get("metrics") or []:
+        if not isinstance(metric, dict) or metric.get("value") in (None, ""):
+            continue
+        rows.append(
+            _simple_table_row(
+                response,
+                str(metric.get("metric_id") or f"{group_id}_{len(rows) + 1}"),
+                str(metric.get("label") or "Metric"),
+                metric.get("value"),
+                provider_citation_ids,
+                as_of_date=_fact_as_of(response, "provider_stock_metric_groups"),
+                evidence_state=EvidenceState.partial,
+            )
+        )
+    return rows
+
+
+def _provider_metric_groups(response: LightweightFetchResponse) -> list[dict[str, Any]]:
+    value = _fact_value(response, "provider_stock_metric_groups")
+    if not isinstance(value, dict):
+        return []
+    groups = value.get("groups")
+    return [group for group in groups if isinstance(group, dict)] if isinstance(groups, list) else []
+
+
+def _holding_table_row(
+    response: LightweightFetchResponse,
+    *,
+    row_id: str,
+    rank: int,
+    symbol: str,
+    name: str,
+    weight: Any,
+    citation_ids: list[str],
+    as_of_date: str | None,
+    evidence_state: EvidenceState,
+    limitations: str | None = None,
+) -> OverviewTableRow:
+    return OverviewTableRow(
+        row_id=row_id,
+        label=name,
+        values={"rank": rank, "symbol": symbol, "name": name, "weight": _number_or_text(weight)},
+        citation_ids=citation_ids,
+        source_document_ids=_source_ids_for_citations(response, citation_ids),
+        freshness_state=FreshnessState.fresh,
+        evidence_state=evidence_state,
+        as_of_date=as_of_date,
+        retrieved_at=response.freshness.page_last_updated_at,
+        limitations=limitations,
+    )
+
+
+def _sector_table_row(
+    response: LightweightFetchResponse,
+    *,
+    row_id: str,
+    sector: str,
+    weight: Any,
+    citation_ids: list[str],
+    as_of_date: str | None,
+    evidence_state: EvidenceState,
+    limitations: str | None = None,
+) -> OverviewTableRow:
+    return OverviewTableRow(
+        row_id=row_id,
+        label=sector,
+        values={"sector": sector, "weight": _number_or_text(weight)},
+        citation_ids=citation_ids,
+        source_document_ids=_source_ids_for_citations(response, citation_ids),
+        freshness_state=FreshnessState.fresh,
+        evidence_state=evidence_state,
+        as_of_date=as_of_date,
+        retrieved_at=response.freshness.page_last_updated_at,
+        limitations=limitations,
+    )
+
+
+def _performance_table_row(
+    response: LightweightFetchResponse,
+    *,
+    row_id: str,
+    label: str,
+    value: Any,
+    return_type: str,
+    citation_ids: list[str],
+) -> OverviewTableRow:
+    return OverviewTableRow(
+        row_id=row_id,
+        label=label,
+        values={"type": return_type, "period": label, "return": _number_or_text(value)},
+        citation_ids=citation_ids,
+        source_document_ids=_source_ids_for_citations(response, citation_ids),
+        freshness_state=FreshnessState.fresh,
+        evidence_state=EvidenceState.partial,
+        as_of_date=_fact_as_of(response, "provider_fund_performance"),
+        retrieved_at=response.freshness.page_last_updated_at,
+        limitations="Provider-derived performance row.",
+    )
+
+
+def _metric_display(value: Any) -> Any:
+    if isinstance(value, dict):
+        return value.get("display") or value.get("value")
+    return value
+
+
+def _display_table_value(value: Any) -> str | float | int | None:
+    if isinstance(value, dict):
+        value = _metric_display(value)
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (int, float)) or value is None:
+        return value
+    return str(value)
+
+
+def _number_or_text(value: Any) -> str | float | int | None:
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (int, float)) or value is None:
+        return value
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _percent_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return f"{value}%"
+    return str(value)
 
 
 def _expense_ratio_metric(response: LightweightFetchResponse, citation_ids: list[str]) -> OverviewMetric:

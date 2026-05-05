@@ -114,6 +114,7 @@ function isCompareResponsePayload(value: unknown): value is ComparePageFixture {
     Array.isArray(candidate.key_differences) &&
     Array.isArray(candidate.citations) &&
     Array.isArray(candidate.source_documents) &&
+    (candidate.metric_groups === undefined || Array.isArray(candidate.metric_groups)) &&
     (candidate.evidence_availability == null || typeof candidate.evidence_availability === "object") &&
     hasValidStockEtfRelationship
   );
@@ -223,6 +224,31 @@ export type ComparisonKeyDifference = {
 export type ComparisonBeginnerBottomLine = {
   summary: string;
   citation_ids: string[];
+};
+
+export type ComparisonMetricRow = {
+  metric_id: string;
+  label: string;
+  left_value: string | number | null;
+  right_value: string | number | null;
+  unit: string | null;
+  citation_ids: string[];
+  source_document_ids: string[];
+  freshness_state: FreshnessState;
+  evidence_state: ComparisonEvidenceState;
+  as_of_date: string | null;
+  limitations: string | null;
+};
+
+export type ComparisonMetricGroup = {
+  group_id: string;
+  title: string;
+  rows: ComparisonMetricRow[];
+  citation_ids: string[];
+  source_document_ids: string[];
+  freshness_state: FreshnessState;
+  evidence_state: ComparisonEvidenceState;
+  limitations: string | null;
 };
 
 export type StockEtfRelationshipBadge = {
@@ -383,6 +409,7 @@ export type ComparePageFixture = {
   source_documents: ComparisonSourceDocument[];
   evidence_availability: ComparisonEvidenceAvailability | null;
   stock_etf_relationship?: StockEtfRelationshipModel | null;
+  metric_groups?: ComparisonMetricGroup[];
 };
 
 const retrieved_at = "2026-04-20T00:00:00Z";

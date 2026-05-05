@@ -36,6 +36,8 @@ from backend.models import (
     ComparisonEvidenceSide,
     ComparisonEvidenceSideRole,
     ComparisonEvidenceSourceReference,
+    ComparisonMetricGroup,
+    ComparisonMetricRow,
     CompareResponse,
     EvidenceState,
     FreshnessState,
@@ -693,6 +695,7 @@ def _generate_stock_vs_stock_comparison_from_pack(pack: ComparisonKnowledgePack)
         bottom_line_for_beginners=bottom_line,
         citations=bindings.citations(),
         source_documents=bindings.source_documents(),
+        metric_groups=_stock_stock_metric_groups(pack, left_facts, right_facts, bindings),
     )
     response.evidence_availability = _available_stock_stock_evidence_availability(
         response=response,
@@ -1068,6 +1071,217 @@ def _stock_stock_bottom_line(
             bindings.for_fact(right_risk).citation.citation_id,
         ],
     )
+
+
+def _stock_stock_metric_groups(
+    pack: ComparisonKnowledgePack,
+    left_facts: dict[str, RetrievedFact],
+    right_facts: dict[str, RetrievedFact],
+    bindings: _ComparisonCitationRegistry,
+) -> list[ComparisonMetricGroup]:
+    left_revenue = _require_fact(left_facts, "financial_quality_revenue_trend")
+    right_revenue = _require_fact(right_facts, "financial_quality_revenue_trend")
+    left_business = _require_fact(left_facts, "primary_business")
+    right_business = _require_fact(right_facts, "primary_business")
+    left_valuation = _require_fact(left_facts, "valuation_data_limitation")
+    right_valuation = _require_fact(right_facts, "valuation_data_limitation")
+    left_quality = _require_fact(left_facts, "business_quality_strength")
+    right_quality = _require_fact(right_facts, "business_quality_strength")
+
+    return [
+        _comparison_metric_group(
+            "profile",
+            "Profile",
+            [
+                _comparison_metric_row(
+                    pack,
+                    "primary_business",
+                    "Primary business",
+                    left_business.fact.value,
+                    right_business.fact.value,
+                    [bindings.for_fact(left_business).citation.citation_id, bindings.for_fact(right_business).citation.citation_id],
+                    bindings,
+                    EvidenceState.supported,
+                ),
+            ],
+            bindings,
+        ),
+        _comparison_metric_group(
+            "market_value_enterprise_value",
+            "Market Value / Enterprise Value",
+            [
+                _unavailable_comparison_metric_row("market_cap", "Market cap"),
+                _unavailable_comparison_metric_row("enterprise_value", "Enterprise value"),
+            ],
+            bindings,
+            limitations="The deterministic stock comparison pack does not include current market cap or enterprise value.",
+        ),
+        _comparison_metric_group(
+            "price_performance",
+            "Price Performance",
+            [
+                _unavailable_comparison_metric_row("one_week_price_performance", "1-week price performance"),
+                _unavailable_comparison_metric_row("three_month_price_performance", "3-month price performance"),
+                _unavailable_comparison_metric_row("ytd_price_performance", "YTD price performance"),
+                _unavailable_comparison_metric_row("one_year_price_performance", "1-year price performance"),
+            ],
+            bindings,
+            limitations="Price-performance fields require provider or market-data enrichment and remain unavailable in this deterministic comparison pack.",
+        ),
+        _comparison_metric_group(
+            "income_statement",
+            "Income Statement",
+            [
+                _comparison_metric_row(
+                    pack,
+                    "revenue_trend",
+                    "Revenue trend",
+                    left_revenue.fact.value,
+                    right_revenue.fact.value,
+                    [bindings.for_fact(left_revenue).citation.citation_id, bindings.for_fact(right_revenue).citation.citation_id],
+                    bindings,
+                    EvidenceState.supported,
+                    as_of_date=left_revenue.fact.as_of_date or right_revenue.fact.as_of_date,
+                ),
+            ],
+            bindings,
+        ),
+        _comparison_metric_group(
+            "balance_sheet",
+            "Balance Sheet",
+            [_unavailable_comparison_metric_row("balance_sheet_snapshot", "Balance sheet snapshot")],
+            bindings,
+            limitations="Balance-sheet comparison rows are unavailable until the comparison pack includes normalized balance-sheet facts.",
+        ),
+        _comparison_metric_group(
+            "cash_flow",
+            "Cash Flow",
+            [_unavailable_comparison_metric_row("cash_flow_snapshot", "Cash-flow snapshot")],
+            bindings,
+            limitations="Cash-flow comparison rows are unavailable until the comparison pack includes normalized cash-flow facts.",
+        ),
+        _comparison_metric_group(
+            "valuation_ratios",
+            "Valuation Ratios",
+            [
+                _comparison_metric_row(
+                    pack,
+                    "valuation_data_availability",
+                    "Valuation data availability",
+                    left_valuation.fact.value,
+                    right_valuation.fact.value,
+                    [bindings.for_fact(left_valuation).citation.citation_id, bindings.for_fact(right_valuation).citation.citation_id],
+                    bindings,
+                    EvidenceState.partial,
+                    as_of_date=left_valuation.fact.as_of_date or right_valuation.fact.as_of_date,
+                    limitations="Current ratio values are unavailable; row explains the evidence gap.",
+                ),
+            ],
+            bindings,
+            limitations="The comparison does not compare current valuation levels because the local fixture marks those fields unavailable.",
+        ),
+        _comparison_metric_group(
+            "margins_earnings_returns_ownership",
+            "Margins, Earnings, Returns, And Ownership",
+            [
+                _comparison_metric_row(
+                    pack,
+                    "business_quality_context",
+                    "Business quality context",
+                    left_quality.fact.value,
+                    right_quality.fact.value,
+                    [bindings.for_fact(left_quality).citation.citation_id, bindings.for_fact(right_quality).citation.citation_id],
+                    bindings,
+                    EvidenceState.supported,
+                ),
+                _unavailable_comparison_metric_row("margin_ratios", "Margin ratios"),
+                _unavailable_comparison_metric_row("earnings_snapshot", "Earnings snapshot"),
+                _unavailable_comparison_metric_row("returns_snapshot", "Returns snapshot"),
+                _unavailable_comparison_metric_row("ownership_snapshot", "Ownership snapshot"),
+            ],
+            bindings,
+            limitations="Only business-quality context is available; margin, earnings, returns, and ownership metrics need normalized provider or SEC facts.",
+        ),
+    ]
+
+
+def _comparison_metric_group(
+    group_id: str,
+    title: str,
+    rows: list[ComparisonMetricRow],
+    bindings: _ComparisonCitationRegistry,
+    *,
+    limitations: str | None = None,
+) -> ComparisonMetricGroup:
+    citation_ids = sorted({citation_id for row in rows for citation_id in row.citation_ids})
+    evidence_states = {row.evidence_state for row in rows}
+    evidence_state = EvidenceState.supported if evidence_states == {EvidenceState.supported} else EvidenceState.partial if citation_ids else EvidenceState.unavailable
+    freshness_state = _combined_freshness([row.freshness_state for row in rows]) if citation_ids else FreshnessState.unavailable
+    return ComparisonMetricGroup(
+        group_id=group_id,
+        title=title,
+        rows=rows,
+        citation_ids=citation_ids,
+        source_document_ids=_source_document_ids_for_citations(citation_ids, bindings),
+        freshness_state=freshness_state,
+        evidence_state=evidence_state,
+        limitations=limitations,
+    )
+
+
+def _comparison_metric_row(
+    pack: ComparisonKnowledgePack,
+    metric_id: str,
+    label: str,
+    left_value: Any,
+    right_value: Any,
+    citation_ids: list[str],
+    bindings: _ComparisonCitationRegistry,
+    evidence_state: EvidenceState,
+    *,
+    as_of_date: str | None = None,
+    limitations: str | None = None,
+) -> ComparisonMetricRow:
+    del pack
+    return ComparisonMetricRow(
+        metric_id=metric_id,
+        label=label,
+        left_value=_comparison_metric_value(left_value),
+        right_value=_comparison_metric_value(right_value),
+        citation_ids=citation_ids,
+        source_document_ids=_source_document_ids_for_citations(citation_ids, bindings),
+        freshness_state=_combined_freshness(
+            [
+                binding.citation.freshness_state
+                for citation_id in citation_ids
+                for binding in [bindings.binding_for_citation_id(citation_id)]
+                if binding is not None
+            ]
+        ),
+        evidence_state=evidence_state,
+        as_of_date=as_of_date,
+        limitations=limitations,
+    )
+
+
+def _unavailable_comparison_metric_row(metric_id: str, label: str) -> ComparisonMetricRow:
+    return ComparisonMetricRow(
+        metric_id=metric_id,
+        label=label,
+        left_value="Unavailable in current evidence",
+        right_value="Unavailable in current evidence",
+        citation_ids=[],
+        source_document_ids=[],
+        freshness_state=FreshnessState.unavailable,
+        evidence_state=EvidenceState.unavailable,
+        limitations="Unavailable in the deterministic local comparison pack.",
+    )
+
+
+def _comparison_metric_value(value: Any) -> str | float | int | None:
+    if isinstance(value, (str, int, float)) or value is None:
+        return value
+    return str(value)
 
 
 def validate_comparison_response(

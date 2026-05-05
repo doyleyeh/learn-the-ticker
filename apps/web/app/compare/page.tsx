@@ -12,6 +12,7 @@ import {
   type CompareAssetIdentity,
   type ComparisonCitation,
   type ComparisonEvidenceAvailabilityState,
+  type ComparisonMetricGroup,
   type StockEtfRelationshipModel
 } from "../../lib/compare";
 import { getAssetComparisonSuggestions, getComparePageSuggestions } from "../../lib/compareSuggestions";
@@ -220,6 +221,15 @@ export default async function ComparePage({ searchParams }: ComparePageProps) {
                 ))}
               </div>
             </section>
+
+            {comparison.metric_groups?.length ? (
+              <ComparisonMetricGroups
+                groups={comparison.metric_groups}
+                leftTicker={comparison.left_asset.ticker}
+                rightTicker={comparison.right_asset.ticker}
+                citationsById={citations_by_id}
+              />
+            ) : null}
 
             <section
               data-prd-section="export_controls"
@@ -504,6 +514,77 @@ function CompareColumn({ asset, fixture }: { asset: CompareAssetIdentity; fixtur
   );
 }
 
+function ComparisonMetricGroups({
+  groups,
+  leftTicker,
+  rightTicker,
+  citationsById
+}: {
+  groups: ComparisonMetricGroup[];
+  leftTicker: string;
+  rightTicker: string;
+  citationsById: Map<string, ComparisonCitation>;
+}) {
+  return (
+    <section
+      className="plain-panel"
+      aria-labelledby="comparison-metric-groups"
+      data-prd-section="metric_groups"
+      data-compare-generated-section="metric_groups"
+      data-comparison-metric-groups
+    >
+      <div className="section-heading">
+        <p className="eyebrow">Metric groups</p>
+        <h2 id="comparison-metric-groups">Side-by-side facts and unavailable fields</h2>
+      </div>
+      <div className="section-stack">
+        {groups.map((group) => (
+          <article className="comparison-metric-group" key={group.group_id} data-comparison-metric-group-id={group.group_id}>
+            <div className="structured-table-heading">
+              <h3>{group.title}</h3>
+              <span className="state-pill compact-state" data-evidence-state={group.evidence_state}>
+                {group.evidence_state.replaceAll("_", " ")}
+              </span>
+            </div>
+            <div className="structured-table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Metric</th>
+                    <th>{leftTicker}</th>
+                    <th>{rightTicker}</th>
+                    <th>Sources</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {group.rows.map((row) => (
+                    <tr key={row.metric_id} data-row-evidence-state={row.evidence_state}>
+                      <td>{row.label}</td>
+                      <td>{formatComparisonMetricValue(row.left_value, row.unit)}</td>
+                      <td>{formatComparisonMetricValue(row.right_value, row.unit)}</td>
+                      <td>
+                        <span className="chip-row">
+                          {row.citation_ids.map((citationId) => {
+                            const citation = citationsById.get(citationId);
+                            return citation ? (
+                              <CitationChip key={citationId} citation={comparisonCitationToChip(citation)} label={citationId} />
+                            ) : null;
+                          })}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {group.limitations ? <p className="notice-text">{group.limitations}</p> : null}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function StockEtfRelationshipSection({
   model,
   citationsById
@@ -588,6 +669,13 @@ function StockEtfRelationshipSection({
       </div>
     </section>
   );
+}
+
+function formatComparisonMetricValue(value: string | number | null, unit: string | null) {
+  if (value === null || value === undefined || value === "") {
+    return "Unavailable";
+  }
+  return unit ? `${value}${unit}` : String(value);
 }
 
 function comparisonCitationToChip(citation: ComparisonCitation) {

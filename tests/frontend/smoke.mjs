@@ -53,6 +53,7 @@ function orderedMarkers(path, markers, label) {
   "components/AssetChatPanel.tsx",
   "components/AssetEtfSections.tsx",
   "components/AssetStockSections.tsx",
+  "components/StructuredOverviewDisplays.tsx",
   "components/AssetModeLayout.tsx",
   "components/CitationChip.tsx",
   "components/ComparisonSuggestions.tsx",
@@ -672,6 +673,7 @@ includes("components/AssetStockSections.tsx", "data-stock-stable-recent-separati
 includes("components/AssetStockSections.tsx", "data-stock-top-risk-count");
 includes("components/AssetStockSections.tsx", "InlineGlossaryText");
 includes("components/AssetStockSections.tsx", "glossaryMatches");
+includes("components/AssetStockSections.tsx", "StructuredOverviewDisplays");
 includes("components/AssetStockSections.tsx", "No citation chip is shown because this item is an explicit evidence gap");
 includes("components/AssetEtfSections.tsx", "data-etf-prd-sections");
 includes("components/AssetEtfSections.tsx", "data-etf-section-id");
@@ -681,7 +683,20 @@ includes("components/AssetEtfSections.tsx", "data-etf-stable-recent-separation")
 includes("components/AssetEtfSections.tsx", "data-etf-top-risk-count");
 includes("components/AssetEtfSections.tsx", "InlineGlossaryText");
 includes("components/AssetEtfSections.tsx", "glossaryMatches");
+includes("components/AssetEtfSections.tsx", "StructuredOverviewDisplays");
 includes("components/AssetEtfSections.tsx", "No citation chip is shown because this ETF item is an explicit evidence gap");
+includes("components/StructuredOverviewDisplays.tsx", "data-overview-table");
+includes("components/StructuredOverviewDisplays.tsx", "data-holdings-table");
+includes("components/StructuredOverviewDisplays.tsx", "data-sector-weightings");
+includes("components/StructuredOverviewDisplays.tsx", "data-performance-section");
+includes("components/StructuredOverviewDisplays.tsx", "data-price-chart-panel");
+includes("components/StructuredOverviewDisplays.tsx", "price-chart-svg");
+includes("lib/assetOverview.ts", "table: section.table");
+includes("lib/assetOverview.ts", "chart: section.chart");
+includes("lib/fixtures.ts", "OverviewTable");
+includes("lib/fixtures.ts", "OverviewChart");
+includes("app/compare/page.tsx", "data-comparison-metric-groups");
+includes("lib/compare.ts", "metric_groups");
 includes("lib/assetChat.ts", "/api/assets/");
 includes("lib/assetChat.ts", "/chat");
 includes("lib/assetChat.ts", "publicApiEndpoint");
@@ -1248,6 +1263,7 @@ const frontendSource = [
   read("components/AssetChatPanel.tsx"),
   read("components/AssetEtfSections.tsx"),
   read("components/AssetStockSections.tsx"),
+  read("components/StructuredOverviewDisplays.tsx"),
   read("components/AssetModeLayout.tsx"),
   read("components/ComparisonSuggestions.tsx"),
   read("components/ComparisonSourceDetails.tsx"),

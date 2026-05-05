@@ -178,6 +178,9 @@ class LocalFreshDataSliceFakeFetcher:
         if parsed.netloc == "query1.finance.yahoo.com" and parsed.path.endswith("/finance/search"):
             ticker = normalize_query_ticker(parse_qs(parsed.query).get("q", [""])[0])
             return _yahoo_search_payload(ticker)
+        if parsed.netloc == "query1.finance.yahoo.com" and "/finance/quoteSummary/" in parsed.path:
+            ticker = normalize_query_ticker(parsed.path.rsplit("/", 1)[-1])
+            return _yahoo_quote_summary_payload(ticker)
         if parsed.netloc == "query1.finance.yahoo.com" and "/finance/chart/" in parsed.path:
             ticker = normalize_query_ticker(parsed.path.rsplit("/", 1)[-1])
             return _yahoo_chart_payload(ticker)
@@ -615,6 +618,8 @@ def _yahoo_chart_payload(ticker: str) -> dict[str, Any]:
     fixture = QUOTE_FIXTURES.get(ticker)
     if fixture is None:
         return {"chart": {"result": []}}
+    timestamps = [1775073600, 1775682000, 1776286800, 1776891600, 1777496400, 1777665600]
+    closes = [round(fixture.price * multiplier, 2) for multiplier in (0.94, 0.97, 0.99, 1.01, 0.995, 1.0)]
     return {
         "chart": {
             "result": [
@@ -626,11 +631,165 @@ def _yahoo_chart_payload(ticker: str) -> dict[str, Any]:
                         "regularMarketTime": 1777665600,
                         "currency": "USD",
                         "fullExchangeName": "NasdaqGS" if fixture.exchange == "NMS" else "NYSEArca",
-                    }
+                    },
+                    "timestamp": timestamps,
+                    "indicators": {
+                        "quote": [
+                            {
+                                "close": closes,
+                                "volume": [1000000, 1200000, 980000, 1400000, 1100000, 1300000],
+                            }
+                        ]
+                    },
                 }
             ]
         }
     }
+
+
+def _yahoo_quote_summary_payload(ticker: str) -> dict[str, Any]:
+    quote = QUOTE_FIXTURES.get(ticker)
+    if quote is None:
+        return {"quoteSummary": {"result": []}}
+    if quote.quote_type == "ETF":
+        result = _etf_quote_summary(ticker, quote)
+    else:
+        result = _stock_quote_summary(ticker, quote)
+    return {"quoteSummary": {"result": [result]}}
+
+
+def _stock_quote_summary(ticker: str, quote: QuoteFixture) -> dict[str, Any]:
+    stock = STOCK_FIXTURES.get(ticker)
+    revenue = stock.revenue if stock else 100_000_000_000
+    market_cap = int(quote.price * 15_700_000_000) if ticker == "AAPL" else int(quote.price * 7_500_000_000)
+    return {
+        "price": {
+            "symbol": ticker,
+            "longName": quote.name,
+            "currency": "USD",
+            "marketCap": _yahoo_money(market_cap),
+        },
+        "summaryProfile": {
+            "sector": "Technology",
+            "industry": "Consumer Electronics" if ticker == "AAPL" else "Software - Infrastructure",
+            "fullTimeEmployees": 164000 if ticker == "AAPL" else 228000,
+            "companyOfficers": [
+                {"name": "Tim Cook" if ticker == "AAPL" else "Satya Nadella", "title": "Chief Executive Officer"}
+            ],
+            "longBusinessSummary": f"{quote.name} provider profile summary fixture.",
+        },
+        "summaryDetail": {
+            "trailingPE": _yahoo_number(31.4 if ticker == "AAPL" else 35.2),
+            "forwardPE": _yahoo_number(27.8 if ticker == "AAPL" else 29.6),
+            "dividendYield": _yahoo_percent(0.0045 if ticker == "AAPL" else 0.0072),
+            "52WeekChange": _yahoo_percent(0.112 if ticker == "AAPL" else 0.184),
+            "SandP52WeekChange": _yahoo_percent(0.157),
+        },
+        "defaultKeyStatistics": {
+            "enterpriseValue": _yahoo_money(int(market_cap * 1.02)),
+            "trailingEps": _yahoo_number(6.43 if ticker == "AAPL" else 12.11),
+            "forwardEps": _yahoo_number(7.18 if ticker == "AAPL" else 13.92),
+            "priceToBook": _yahoo_number(43.5 if ticker == "AAPL" else 10.8),
+            "enterpriseToEbitda": _yahoo_number(24.2 if ticker == "AAPL" else 23.1),
+            "heldPercentInstitutions": _yahoo_percent(0.62 if ticker == "AAPL" else 0.74),
+        },
+        "financialData": {
+            "totalRevenue": _yahoo_money(revenue),
+            "grossProfits": _yahoo_money(int(revenue * 0.45)),
+            "revenueGrowth": _yahoo_percent(0.06 if ticker == "AAPL" else 0.15),
+            "ebitda": _yahoo_money(int(revenue * 0.34)),
+            "totalCash": _yahoo_money(65_000_000_000 if ticker == "AAPL" else 80_000_000_000),
+            "totalDebt": _yahoo_money(95_000_000_000 if ticker == "AAPL" else 58_000_000_000),
+            "currentRatio": _yahoo_number(0.92 if ticker == "AAPL" else 1.25),
+            "operatingCashflow": _yahoo_money(118_000_000_000 if ticker == "AAPL" else 110_000_000_000),
+            "freeCashflow": _yahoo_money(105_000_000_000 if ticker == "AAPL" else 78_000_000_000),
+            "grossMargins": _yahoo_percent(0.46 if ticker == "AAPL" else 0.69),
+            "operatingMargins": _yahoo_percent(0.31 if ticker == "AAPL" else 0.45),
+            "profitMargins": _yahoo_percent(0.24 if ticker == "AAPL" else 0.36),
+            "returnOnAssets": _yahoo_percent(0.22 if ticker == "AAPL" else 0.18),
+            "returnOnEquity": _yahoo_percent(1.36 if ticker == "AAPL" else 0.34),
+        },
+    }
+
+
+def _etf_quote_summary(ticker: str, quote: QuoteFixture) -> dict[str, Any]:
+    return {
+        "price": {"symbol": ticker, "longName": quote.name, "currency": "USD"},
+        "fundProfile": {
+            "categoryName": "Large Blend" if ticker in {"VOO", "SPY"} else "Large Growth",
+            "family": "Vanguard" if ticker in {"VOO", "VTI"} else "State Street" if ticker == "XLK" else "Invesco",
+            "legalType": "Exchange Traded Fund",
+        },
+        "summaryDetail": {
+            "totalAssets": _yahoo_money(1_420_000_000_000 if ticker == "VOO" else 600_000_000_000),
+            "yield": _yahoo_percent(0.0119),
+            "ytdReturn": _yahoo_percent(0.0598),
+        },
+        "topHoldings": {
+            "holdings": [
+                {"symbol": symbol, "holdingName": name, "holdingPercent": _yahoo_percent(weight / 100)}
+                for symbol, name, weight in [
+                    ("NVDA", "NVIDIA Corporation", 7.58),
+                    ("AAPL", "Apple Inc.", 6.67),
+                    ("MSFT", "Microsoft Corporation", 4.92),
+                    ("AMZN", "Amazon.com, Inc.", 3.64),
+                    ("GOOGL", "Alphabet Inc.", 3.00),
+                    ("AVGO", "Broadcom Inc.", 2.63),
+                    ("GOOG", "Alphabet Inc.", 2.40),
+                    ("META", "Meta Platforms, Inc.", 2.24),
+                    ("TSLA", "Tesla, Inc.", 1.87),
+                    ("BRK-B", "Berkshire Hathaway Inc.", 1.57),
+                ]
+            ],
+            "sectorWeightings": [
+                {"technology": _yahoo_percent(0.3362)},
+                {"financial_services": _yahoo_percent(0.1221)},
+                {"communication_services": _yahoo_percent(0.1050)},
+                {"consumer_cyclical": _yahoo_percent(0.1002)},
+                {"healthcare": _yahoo_percent(0.0948)},
+                {"industrials": _yahoo_percent(0.0848)},
+                {"consumer_defensive": _yahoo_percent(0.0526)},
+                {"energy": _yahoo_percent(0.0402)},
+                {"utilities": _yahoo_percent(0.0255)},
+                {"real_estate": _yahoo_percent(0.0195)},
+                {"basic_materials": _yahoo_percent(0.0191)},
+            ],
+        },
+        "fundPerformance": {
+            "trailingReturns": {
+                "asOfDate": {"raw": 1777584000, "fmt": "2026-05-01"},
+                "ytd": _yahoo_percent(0.0598),
+                "oneMonth": _yahoo_percent(-0.0498),
+                "threeMonth": _yahoo_percent(-0.0434),
+                "oneYear": _yahoo_percent(0.1777),
+                "threeYear": _yahoo_percent(0.1828),
+                "fiveYear": _yahoo_percent(0.1202),
+                "tenYear": _yahoo_percent(0.1412),
+            },
+            "annualTotalReturns": {
+                "returns": [
+                    {"year": "2025", "annualValue": _yahoo_percent(0.1782)},
+                    {"year": "2024", "annualValue": _yahoo_percent(0.2498)},
+                    {"year": "2023", "annualValue": _yahoo_percent(0.2632)},
+                    {"year": "2022", "annualValue": _yahoo_percent(-0.1819)},
+                    {"year": "2021", "annualValue": _yahoo_percent(0.2878)},
+                    {"year": "2020", "annualValue": _yahoo_percent(0.1829)},
+                ]
+            },
+        },
+    }
+
+
+def _yahoo_number(value: float | int) -> dict[str, Any]:
+    return {"raw": value, "fmt": f"{value:,.2f}".rstrip("0").rstrip(".")}
+
+
+def _yahoo_money(value: int) -> dict[str, Any]:
+    return {"raw": value, "fmt": f"{value:,}"}
+
+
+def _yahoo_percent(value: float) -> dict[str, Any]:
+    return {"raw": value, "fmt": f"{value * 100:.2f}%"}
 
 
 def normalize_query_ticker(ticker: str) -> str:

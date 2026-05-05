@@ -8,6 +8,7 @@ import {
 import { CitationChip } from "./CitationChip";
 import { FreshnessDisclosure } from "./FreshnessLabel";
 import { InlineGlossaryText, type InlineGlossaryContextMap, type InlineGlossaryMatch } from "./InlineGlossaryText";
+import { StructuredOverviewDisplays } from "./StructuredOverviewDisplays";
 
 type AssetEtfSectionsProps = {
   asset: AssetFixture;
@@ -126,6 +127,8 @@ function EtfSection({
           ))}
         </dl>
       ) : null}
+
+      <StructuredOverviewDisplays asset={asset} section={section} />
 
       <div
         className={isRisk ? "risk-grid etf-section-items" : "etf-section-items"}

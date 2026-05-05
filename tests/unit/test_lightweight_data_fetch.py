@@ -125,11 +125,22 @@ class FakeJsonFetcher:
                                 "regularMarketTime": 1777665600,
                                 "currency": "USD",
                                 "fullExchangeName": "NasdaqGS",
-                            }
+                            },
+                            "timestamp": [1775073600, 1775682000, 1776286800, 1776891600, 1777496400, 1777665600],
+                            "indicators": {
+                                "quote": [
+                                    {
+                                        "close": [188.0, 191.5, 195.25, 201.0, 198.75, 199.5],
+                                        "volume": [1000000, 1200000, 980000, 1400000, 1100000, 1300000],
+                                    }
+                                ]
+                            },
                         }
                     ]
                 }
             }
+        if "quoteSummary/AAPL" in url:
+            return _stock_quote_summary_payload("AAPL")
         if "finance/search?q=VOO" in url:
             return {
                 "quotes": [
@@ -154,11 +165,22 @@ class FakeJsonFetcher:
                                 "regularMarketTime": 1777665600,
                                 "currency": "USD",
                                 "fullExchangeName": "NYSEArca",
-                            }
+                            },
+                            "timestamp": [1775073600, 1775682000, 1776286800, 1776891600, 1777496400, 1777665600],
+                            "indicators": {
+                                "quote": [
+                                    {
+                                        "close": [621.0, 635.2, 650.4, 668.1, 658.4, 662.52],
+                                        "volume": [1000000, 1200000, 980000, 1400000, 1100000, 1300000],
+                                    }
+                                ]
+                            },
                         }
                     ]
                 }
             }
+        if "quoteSummary/VOO" in url:
+            return _etf_quote_summary_payload("VOO")
         if "finance/search?q=SPY" in url:
             return {
                 "quotes": [
@@ -183,11 +205,22 @@ class FakeJsonFetcher:
                                 "regularMarketTime": 1777665600,
                                 "currency": "USD",
                                 "fullExchangeName": "NYSEArca",
-                            }
+                            },
+                            "timestamp": [1775073600, 1775682000, 1776286800, 1776891600, 1777496400, 1777665600],
+                            "indicators": {
+                                "quote": [
+                                    {
+                                        "close": [630.0, 645.5, 660.1, 676.4, 665.7, 670.01],
+                                        "volume": [1000000, 1200000, 980000, 1400000, 1100000, 1300000],
+                                    }
+                                ]
+                            },
                         }
                     ]
                 }
             }
+        if "quoteSummary/SPY" in url:
+            return _etf_quote_summary_payload("SPY")
         raise AssertionError(f"Unexpected URL: {url}")
 
 
@@ -200,6 +233,132 @@ def _settings():
             "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
         }
     )
+
+
+def _stock_quote_summary_payload(ticker: str) -> dict[str, Any]:
+    return {
+        "quoteSummary": {
+            "result": [
+                {
+                    "price": {
+                        "symbol": ticker,
+                        "longName": "Apple Inc.",
+                        "currency": "USD",
+                        "marketCap": _yahoo_money(3_120_000_000_000),
+                    },
+                    "summaryProfile": {
+                        "sector": "Technology",
+                        "industry": "Consumer Electronics",
+                        "companyOfficers": [{"name": "Tim Cook", "title": "Chief Executive Officer"}],
+                    },
+                    "summaryDetail": {
+                        "trailingPE": _yahoo_number(31.4),
+                        "forwardPE": _yahoo_number(27.8),
+                        "dividendYield": _yahoo_percent(0.0045),
+                        "52WeekChange": _yahoo_percent(0.112),
+                    },
+                    "defaultKeyStatistics": {
+                        "enterpriseValue": _yahoo_money(3_180_000_000_000),
+                        "trailingEps": _yahoo_number(6.43),
+                        "forwardEps": _yahoo_number(7.18),
+                        "priceToBook": _yahoo_number(43.5),
+                        "enterpriseToEbitda": _yahoo_number(24.2),
+                        "heldPercentInstitutions": _yahoo_percent(0.62),
+                    },
+                    "financialData": {
+                        "totalRevenue": _yahoo_money(391_000_000_000),
+                        "grossProfits": _yahoo_money(181_000_000_000),
+                        "revenueGrowth": _yahoo_percent(0.06),
+                        "totalCash": _yahoo_money(65_000_000_000),
+                        "totalDebt": _yahoo_money(95_000_000_000),
+                        "currentRatio": _yahoo_number(0.9),
+                        "operatingCashflow": _yahoo_money(118_000_000_000),
+                        "freeCashflow": _yahoo_money(105_000_000_000),
+                        "grossMargins": _yahoo_percent(0.46),
+                        "operatingMargins": _yahoo_percent(0.31),
+                        "profitMargins": _yahoo_percent(0.24),
+                        "returnOnAssets": _yahoo_percent(0.22),
+                        "returnOnEquity": _yahoo_percent(1.36),
+                    },
+                }
+            ]
+        }
+    }
+
+
+def _etf_quote_summary_payload(ticker: str) -> dict[str, Any]:
+    return {
+        "quoteSummary": {
+            "result": [
+                {
+                    "price": {"symbol": ticker, "longName": "Vanguard S&P 500 ETF", "currency": "USD"},
+                    "fundProfile": {
+                        "categoryName": "Large Blend",
+                        "family": "Vanguard",
+                        "legalType": "Exchange Traded Fund",
+                    },
+                    "summaryDetail": {
+                        "totalAssets": _yahoo_money(1_420_000_000_000),
+                        "yield": _yahoo_percent(0.0119),
+                        "ytdReturn": _yahoo_percent(0.0598),
+                    },
+                    "topHoldings": {
+                        "holdings": [
+                            {"symbol": symbol, "holdingName": name, "holdingPercent": _yahoo_percent(weight / 100)}
+                            for symbol, name, weight in [
+                                ("NVDA", "NVIDIA Corporation", 7.58),
+                                ("AAPL", "Apple Inc.", 6.67),
+                                ("MSFT", "Microsoft Corporation", 4.92),
+                                ("AMZN", "Amazon.com, Inc.", 3.64),
+                                ("GOOGL", "Alphabet Inc.", 3.00),
+                                ("AVGO", "Broadcom Inc.", 2.63),
+                                ("GOOG", "Alphabet Inc.", 2.40),
+                                ("META", "Meta Platforms, Inc.", 2.24),
+                                ("TSLA", "Tesla, Inc.", 1.87),
+                                ("BRK-B", "Berkshire Hathaway Inc.", 1.57),
+                            ]
+                        ],
+                        "sectorWeightings": [
+                            {"technology": _yahoo_percent(0.3362)},
+                            {"financial_services": _yahoo_percent(0.1221)},
+                            {"communication_services": _yahoo_percent(0.1050)},
+                            {"consumer_cyclical": _yahoo_percent(0.1002)},
+                            {"healthcare": _yahoo_percent(0.0948)},
+                            {"industrials": _yahoo_percent(0.0848)},
+                        ],
+                    },
+                    "fundPerformance": {
+                        "trailingReturns": {
+                            "asOfDate": {"raw": 1777584000, "fmt": "2026-05-01"},
+                            "ytd": _yahoo_percent(0.0598),
+                            "oneYear": _yahoo_percent(0.1777),
+                            "threeYear": _yahoo_percent(0.1828),
+                            "fiveYear": _yahoo_percent(0.1202),
+                        },
+                        "annualTotalReturns": {
+                            "returns": [
+                                {"year": "2025", "annualValue": _yahoo_percent(0.1782)},
+                                {"year": "2024", "annualValue": _yahoo_percent(0.2498)},
+                                {"year": "2023", "annualValue": _yahoo_percent(0.2632)},
+                            ]
+                        },
+                    },
+                }
+            ]
+        }
+    }
+
+
+def _yahoo_number(value: float | int) -> dict[str, Any]:
+    return {"raw": value, "fmt": f"{value:,.2f}".rstrip("0").rstrip(".")}
+
+
+def _yahoo_money(value: int) -> dict[str, Any]:
+    return {"raw": value, "fmt": f"{value:,}"}
+
+
+def _yahoo_percent(value: float) -> dict[str, Any]:
+    return {"raw": value, "fmt": f"{value * 100:.2f}%"}
 
 
 def test_lightweight_stock_fetch_prefers_sec_and_labels_provider_fallback():
@@ -227,6 +386,9 @@ def test_lightweight_stock_fetch_prefers_sec_and_labels_provider_fallback():
     assert fields["latest_assets_fact"].value["value"] == 350000000000
     assert fields["provider_identity_or_market_reference"].fallback_used is True
     assert fields["provider_market_price"].value["regularMarketPrice"] == 199.5
+    assert fields["provider_profile_overview"].value["sector"] == "Technology"
+    assert fields["provider_stock_metric_groups"].value["groups"]
+    assert len(fields["provider_price_chart"].value["points"]) >= 6
     assert response.diagnostics["official_source_count"] == 3
     assert response.diagnostics["provider_fallback_source_count"] == 1
     assert response.fallback_diagnostics is not None
@@ -266,6 +428,11 @@ def test_lightweight_etf_fetch_uses_issuer_fixtures_before_manifest_and_provider
     assert fields["etf_manifest_scope_signal"].value["support_state"] == "cached_supported"
     assert fields["provider_identity_or_market_reference"].value["instrumentType"] == "ETF"
     assert fields["provider_market_price"].value["regularMarketPrice"] == 662.52
+    assert len(fields["provider_top_holdings"].value) == 10
+    assert fields["provider_top_holdings"].value[0]["symbol"] == "NVDA"
+    assert fields["provider_sector_weightings"].value[0]["sector"] == "Technology"
+    assert fields["provider_fund_performance"].value["trailing_returns"]
+    assert len(fields["provider_price_chart"].value["points"]) >= 6
     assert response.freshness.holdings_as_of == "2026-04-01"
     assert response.diagnostics["issuer_enrichment_state"] == "supported"
     assert response.diagnostics["official_source_count"] == 4
@@ -387,6 +554,12 @@ def test_lightweight_stock_fetch_builds_overview_details_and_source_drawer_contr
         "strengths",
         "financial_quality",
         "valuation_context",
+        "provider_price_performance",
+        "provider_income_statement",
+        "provider_balance_sheet",
+        "provider_cash_flow",
+        "provider_margins_returns_ownership",
+        "price_chart",
         "top_risks",
         "market_reference",
         "educational_suitability",
@@ -394,6 +567,12 @@ def test_lightweight_stock_fetch_builds_overview_details_and_source_drawer_contr
     assert sections["products_services"].evidence_state is EvidenceState.mixed
     assert sections["financial_quality"].evidence_state is EvidenceState.mixed
     assert sections["valuation_context"].evidence_state is EvidenceState.mixed
+    assert sections["business_overview"].table is not None
+    assert sections["business_overview"].table.table_id == "stock_profile_snapshot"
+    assert sections["financial_quality"].table is not None
+    assert sections["valuation_context"].table is not None
+    assert sections["price_chart"].chart is not None
+    assert len(sections["price_chart"].chart.points) >= 6
     assert sections["top_risks"].items[0].citation_ids
     assert {metric.metric_id for metric in sections["financial_quality"].metrics} == {
         "latest_revenue_fact",
@@ -440,6 +619,9 @@ def test_lightweight_issuer_backed_etf_fetch_builds_supported_page_contracts():
     assert {
         "fund_objective_role",
         "holdings_exposure",
+        "sector_weightings",
+        "performance",
+        "price_chart",
         "construction_methodology",
         "cost_trading_context",
         "etf_specific_risks",
@@ -449,6 +631,20 @@ def test_lightweight_issuer_backed_etf_fetch_builds_supported_page_contracts():
     } <= set(sections)
     assert sections["fund_objective_role"].evidence_state is EvidenceState.supported
     assert sections["holdings_exposure"].evidence_state is EvidenceState.supported
+    assert sections["fund_objective_role"].table is not None
+    assert sections["fund_objective_role"].table.table_id == "etf_overview"
+    assert sections["holdings_exposure"].table is not None
+    assert sections["holdings_exposure"].table.table_id == "top_holdings"
+    assert len(sections["holdings_exposure"].table.rows) == 10
+    assert sections["holdings_exposure"].table.rows[0].values["symbol"] == "NVDA"
+    aapl_holding = next(row for row in sections["holdings_exposure"].table.rows if row.values["symbol"] == "AAPL")
+    assert aapl_holding.values["weight"] == 7.0
+    assert aapl_holding.evidence_state is EvidenceState.supported
+    assert sections["sector_weightings"].table is not None
+    assert sections["sector_weightings"].table.rows[0].values["sector"] == "Technology"
+    assert sections["performance"].table is not None
+    assert sections["price_chart"].chart is not None
+    assert len(sections["price_chart"].chart.points) >= 6
     assert sections["construction_methodology"].evidence_state is EvidenceState.mixed
     assert sections["cost_trading_context"].evidence_state is EvidenceState.mixed
     assert sections["etf_specific_risks"].items[0].citation_ids

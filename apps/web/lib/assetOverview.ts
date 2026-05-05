@@ -112,6 +112,63 @@ type BackendOverviewMetric = {
   limitations: string | null;
 };
 
+type BackendOverviewTableColumn = {
+  column_id: string;
+  label: string;
+  value_type: "text" | "number" | "percent" | "currency";
+  align: "left" | "right" | "center";
+};
+
+type BackendOverviewTableRow = {
+  row_id: string;
+  label: string | null;
+  values: Record<string, string | number | null>;
+  citation_ids: string[];
+  source_document_ids: string[];
+  freshness_state: string;
+  evidence_state: string;
+  as_of_date: string | null;
+  retrieved_at: string | null;
+  limitations: string | null;
+};
+
+type BackendOverviewTable = {
+  table_id: string;
+  title: string;
+  columns: BackendOverviewTableColumn[];
+  rows: BackendOverviewTableRow[];
+  citation_ids: string[];
+  source_document_ids: string[];
+  freshness_state: string;
+  evidence_state: string;
+  as_of_date: string | null;
+  retrieved_at: string | null;
+  limitations: string | null;
+};
+
+type BackendOverviewChartPoint = {
+  timestamp: string;
+  close: number;
+  volume: number | null;
+};
+
+type BackendOverviewChart = {
+  chart_id: string;
+  title: string;
+  range: string;
+  interval: string;
+  points: BackendOverviewChartPoint[];
+  currency: string | null;
+  citation_ids: string[];
+  source_document_ids: string[];
+  freshness_state: string;
+  evidence_state: string;
+  as_of_date: string | null;
+  retrieved_at: string | null;
+  delayed_or_best_effort_label: string | null;
+  limitations: string | null;
+};
+
 type BackendOverviewSection = {
   section_id: string;
   title: string;
@@ -120,6 +177,8 @@ type BackendOverviewSection = {
   beginner_summary: string | null;
   items: BackendOverviewSectionItem[];
   metrics: BackendOverviewMetric[];
+  table: BackendOverviewTable | null;
+  chart: BackendOverviewChart | null;
   citation_ids: string[];
   source_document_ids: string[];
   freshness_state: string;
@@ -451,6 +510,59 @@ function toOverviewSection(section: BackendOverviewSection): StockOverviewSectio
       retrievedAt: metric.retrieved_at,
       limitations: metric.limitations
     })),
+    table: section.table
+      ? {
+          tableId: section.table.table_id,
+          title: section.table.title,
+          columns: section.table.columns.map((column) => ({
+            columnId: column.column_id,
+            label: column.label,
+            valueType: column.value_type,
+            align: column.align
+          })),
+          rows: section.table.rows.map((row) => ({
+            rowId: row.row_id,
+            label: row.label,
+            values: row.values,
+            citationIds: row.citation_ids,
+            sourceDocumentIds: row.source_document_ids,
+            freshnessState: toFreshnessState(row.freshness_state),
+            evidenceState: toEvidenceState(row.evidence_state),
+            asOfDate: row.as_of_date,
+            retrievedAt: row.retrieved_at,
+            limitations: row.limitations
+          })),
+          citationIds: section.table.citation_ids,
+          sourceDocumentIds: section.table.source_document_ids,
+          freshnessState: toFreshnessState(section.table.freshness_state),
+          evidenceState: toEvidenceState(section.table.evidence_state),
+          asOfDate: section.table.as_of_date,
+          retrievedAt: section.table.retrieved_at,
+          limitations: section.table.limitations
+        }
+      : null,
+    chart: section.chart
+      ? {
+          chartId: section.chart.chart_id,
+          title: section.chart.title,
+          range: section.chart.range,
+          interval: section.chart.interval,
+          points: section.chart.points.map((point) => ({
+            timestamp: point.timestamp,
+            close: point.close,
+            volume: point.volume
+          })),
+          currency: section.chart.currency,
+          citationIds: section.chart.citation_ids,
+          sourceDocumentIds: section.chart.source_document_ids,
+          freshnessState: toFreshnessState(section.chart.freshness_state),
+          evidenceState: toEvidenceState(section.chart.evidence_state),
+          asOfDate: section.chart.as_of_date,
+          retrievedAt: section.chart.retrieved_at,
+          delayedOrBestEffortLabel: section.chart.delayed_or_best_effort_label,
+          limitations: section.chart.limitations
+        }
+      : null,
     citationIds: section.citation_ids,
     sourceDocumentIds: section.source_document_ids,
     freshnessState: toFreshnessState(section.freshness_state),

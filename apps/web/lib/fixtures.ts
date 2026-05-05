@@ -116,6 +116,63 @@ export type StockSectionMetric = {
   limitations?: string | null;
 };
 
+export type OverviewTableColumn = {
+  columnId: string;
+  label: string;
+  valueType: "text" | "number" | "percent" | "currency";
+  align: "left" | "right" | "center";
+};
+
+export type OverviewTableRow = {
+  rowId: string;
+  label?: string | null;
+  values: Record<string, string | number | null>;
+  citationIds: string[];
+  sourceDocumentIds: string[];
+  freshnessState: FreshnessState;
+  evidenceState: EvidenceState;
+  asOfDate?: string | null;
+  retrievedAt?: string | null;
+  limitations?: string | null;
+};
+
+export type OverviewTable = {
+  tableId: string;
+  title: string;
+  columns: OverviewTableColumn[];
+  rows: OverviewTableRow[];
+  citationIds: string[];
+  sourceDocumentIds: string[];
+  freshnessState: FreshnessState;
+  evidenceState: EvidenceState;
+  asOfDate?: string | null;
+  retrievedAt?: string | null;
+  limitations?: string | null;
+};
+
+export type OverviewChartPoint = {
+  timestamp: string;
+  close: number;
+  volume?: number | null;
+};
+
+export type OverviewChart = {
+  chartId: string;
+  title: string;
+  range: string;
+  interval: string;
+  points: OverviewChartPoint[];
+  currency?: string | null;
+  citationIds: string[];
+  sourceDocumentIds: string[];
+  freshnessState: FreshnessState;
+  evidenceState: EvidenceState;
+  asOfDate?: string | null;
+  retrievedAt?: string | null;
+  delayedOrBestEffortLabel?: string | null;
+  limitations?: string | null;
+};
+
 export type StockOverviewSection = {
   sectionId: string;
   title: string;
@@ -123,6 +180,8 @@ export type StockOverviewSection = {
   beginnerSummary: string;
   items: StockSectionItem[];
   metrics?: StockSectionMetric[];
+  table?: OverviewTable | null;
+  chart?: OverviewChart | null;
   citationIds: string[];
   sourceDocumentIds: string[];
   freshnessState: FreshnessState;
