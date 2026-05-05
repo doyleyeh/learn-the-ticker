@@ -1506,9 +1506,26 @@ main[data-prd-source-list-marker] > .plain-panel:last-child {
   table-layout: auto;
 }
 
+.asset-dashboard-table-panel col[data-column-id="sources"] {
+  width: 54px;
+}
+
+.asset-dashboard-table-panel col[data-column-id="rank"] {
+  width: 44px;
+}
+
+.asset-dashboard-table-panel col[data-column-id="symbol"] {
+  width: 96px;
+}
+
+.asset-dashboard-table-panel col[data-column-id="weight"],
+.asset-dashboard-table-panel col[data-column-id="return"] {
+  width: 178px;
+}
+
 .asset-dashboard-table-panel[data-overview-table-id="top_holdings"] table,
 .asset-dashboard-table-panel[data-overview-table-id="performance_returns"] table {
-  min-width: 680px;
+  min-width: 620px;
   table-layout: fixed;
 }
 
@@ -1525,6 +1542,121 @@ main[data-prd-source-list-marker] > .plain-panel:last-child {
   color: var(--muted);
   font-size: 12px;
   text-transform: uppercase;
+}
+
+.asset-dashboard-table-panel .source-column-header {
+  width: 54px;
+  padding-right: 2px;
+  padding-left: 2px;
+  font-size: 11px;
+  text-align: center;
+}
+
+.asset-dashboard-table-panel .source-icon-cell {
+  position: relative;
+  width: 54px;
+  padding-right: 2px;
+  padding-left: 2px;
+  text-align: center;
+  overflow-wrap: normal;
+}
+
+.source-icon-disclosure {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+}
+
+.source-icon-disclosure summary {
+  position: relative;
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid #b7d7d0;
+  border-radius: 999px;
+  background: #ecfaf7;
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1;
+  list-style: none;
+  cursor: pointer;
+}
+
+.source-icon-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.source-icon-count {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent-strong);
+  color: #ffffff;
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.source-icon-popover {
+  position: absolute;
+  z-index: 10;
+  top: 34px;
+  right: 0;
+  display: none;
+  min-width: 220px;
+  max-width: min(320px, 60vw);
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 14px 30px rgba(23, 32, 42, 0.14);
+  text-align: left;
+}
+
+.source-icon-popover .citation-chip {
+  min-height: 22px;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+
+.source-icon-disclosure[open] .source-icon-popover,
+.source-icon-disclosure:hover .source-icon-popover,
+.source-icon-disclosure:focus-within .source-icon-popover {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.source-icon-empty {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.dashboard-table-expander {
+  display: grid;
+  gap: 10px;
+}
+
+.dashboard-table-expander summary {
+  justify-self: start;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f7f9fa;
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.compact-table-scroll {
+  padding-top: 2px;
 }
 
 .asset-dashboard-table-panel [data-align="right"] {
@@ -1693,8 +1825,8 @@ main[data-prd-source-list-marker] > .plain-panel:last-child {
 .sidebar {
   display: grid;
   gap: 20px;
-  position: sticky;
-  top: 18px;
+  position: static;
+  top: auto;
   min-width: 0;
 }
 
@@ -1903,6 +2035,12 @@ blockquote {
 .bottom-line {
   border-color: #b7d7d0;
   background: #f5fbfa;
+}
+
+@media (min-width: 760px) {
+  .asset-dashboard-table-panel .structured-table-scroll {
+    overflow: visible;
+  }
 }
 
 @media (max-width: 900px) {

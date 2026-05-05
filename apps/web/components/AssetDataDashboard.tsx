@@ -152,6 +152,9 @@ function DashboardTable({
     "data-dashboard-performance-section": table.tableId === "performance_returns" ? "true" : undefined
   };
   const subtitle = dashboardTableSubtitle(table);
+  const collapsedRowCount = table.tableId === "performance_returns" ? 4 : table.rows.length;
+  const visibleRows = table.rows.slice(0, collapsedRowCount);
+  const hiddenRows = table.rows.slice(collapsedRowCount);
 
   return (
     <article
@@ -173,6 +176,7 @@ function DashboardTable({
       </div>
       <div className="structured-table-scroll">
         <table>
+          <DashboardColGroup table={table} />
           <thead>
             <tr>
               {table.columns.map((column) => (
@@ -185,44 +189,41 @@ function DashboardTable({
                   />
                 </th>
               ))}
-              <th data-align="left">Sources</th>
+              <th className="source-column-header" data-align="center">
+                Src
+              </th>
             </tr>
           </thead>
           <tbody>
-            {table.rows.map((row) => (
-              <tr key={row.rowId} data-row-evidence-state={row.evidenceState}>
-                {table.columns.map((column) => {
-                  const value = row.values[column.columnId];
-                  const isLabelCell = column.columnId === "label" || column.columnId === "sector" || column.columnId === "period";
-                  return (
-                    <td key={column.columnId} data-align={column.align} data-value-type={column.valueType}>
-                      {column.valueType === "percent" && typeof value === "number" ? (
-                        <PercentBar value={value} />
-                      ) : isLabelCell ? (
-                        <span data-dashboard-glossary-label>
-                          <InlineGlossaryText
-                            text={formatTableValue(value)}
-                            matches={glossaryMatches}
-                            contexts={glossaryContexts}
-                            sourceSection={`dashboard.${table.tableId}.${row.rowId}.${column.columnId}`}
-                          />
-                        </span>
-                      ) : (
-                        formatTableValue(value)
-                      )}
-                    </td>
-                  );
-                })}
-                <td>
-                  <span className="chip-row">
-                    <CitationChips asset={asset} citationIds={row.citationIds} />
-                  </span>
-                </td>
-              </tr>
-            ))}
+            <DashboardRows
+              asset={asset}
+              table={table}
+              rows={visibleRows}
+              glossaryMatches={glossaryMatches}
+              glossaryContexts={glossaryContexts}
+            />
           </tbody>
         </table>
       </div>
+      {hiddenRows.length ? (
+        <details className="dashboard-table-expander" data-dashboard-collapsible-table>
+          <summary>Show {hiddenRows.length} more rows</summary>
+          <div className="structured-table-scroll compact-table-scroll">
+            <table>
+              <DashboardColGroup table={table} />
+              <tbody>
+                <DashboardRows
+                  asset={asset}
+                  table={table}
+                  rows={hiddenRows}
+                  glossaryMatches={glossaryMatches}
+                  glossaryContexts={glossaryContexts}
+                />
+              </tbody>
+            </table>
+          </div>
+        </details>
+      ) : null}
       <div className="freshness-disclosure-row">
         <FreshnessDisclosure
           label="Table as of"
@@ -232,6 +233,65 @@ function DashboardTable({
       </div>
       {table.limitations ? <p className="notice-text">{table.limitations}</p> : null}
     </article>
+  );
+}
+
+function DashboardColGroup({ table }: { table: OverviewTable }) {
+  return (
+    <colgroup>
+      {table.columns.map((column) => (
+        <col key={column.columnId} data-column-id={column.columnId} />
+      ))}
+      <col data-column-id="sources" />
+    </colgroup>
+  );
+}
+
+function DashboardRows({
+  asset,
+  table,
+  rows,
+  glossaryMatches,
+  glossaryContexts
+}: {
+  asset: AssetFixture;
+  table: OverviewTable;
+  rows: OverviewTable["rows"];
+  glossaryMatches: readonly InlineGlossaryMatch[];
+  glossaryContexts?: InlineGlossaryContextMap | null;
+}) {
+  return (
+    <>
+      {rows.map((row) => (
+        <tr key={row.rowId} data-row-evidence-state={row.evidenceState}>
+          {table.columns.map((column) => {
+            const value = row.values[column.columnId];
+            const isLabelCell = column.columnId === "label" || column.columnId === "sector" || column.columnId === "period";
+            return (
+              <td key={column.columnId} data-align={column.align} data-value-type={column.valueType}>
+                {column.valueType === "percent" && typeof value === "number" ? (
+                  <PercentBar value={value} />
+                ) : isLabelCell ? (
+                  <span data-dashboard-glossary-label>
+                    <InlineGlossaryText
+                      text={formatTableValue(value)}
+                      matches={glossaryMatches}
+                      contexts={glossaryContexts}
+                      sourceSection={`dashboard.${table.tableId}.${row.rowId}.${column.columnId}`}
+                    />
+                  </span>
+                ) : (
+                  formatTableValue(value)
+                )}
+              </td>
+            );
+          })}
+          <td className="source-icon-cell" data-align="center">
+            <SourceDisclosure asset={asset} citationIds={row.citationIds} />
+          </td>
+        </tr>
+      ))}
+    </>
   );
 }
 
@@ -287,6 +347,32 @@ function CitationChips({ asset, citationIds }: { asset: AssetFixture; citationId
         return citation ? <CitationChip key={citationId} citation={citation} label={citationLabel(citationId)} /> : null;
       })}
     </>
+  );
+}
+
+function SourceDisclosure({ asset, citationIds }: { asset: AssetFixture; citationIds: string[] }) {
+  const citations = citationIds
+    .map((citationId) => {
+      const citation = getCitationById(asset, citationId);
+      return citation ? { citation, citationId } : null;
+    })
+    .filter((item): item is { citation: NonNullable<ReturnType<typeof getCitationById>>; citationId: string } => Boolean(item));
+  const label = citations.map(({ citationId }) => citationLabel(citationId)).join(", ");
+
+  if (!citations.length) {
+    return <span className="source-icon-empty" aria-label="No source citation">-</span>;
+  }
+
+  return (
+    <details className="source-icon-disclosure" data-dashboard-source-icon title={label}>
+      <summary aria-label={`Show ${citations.length} source citation${citations.length === 1 ? "" : "s"}`}>
+        <span aria-hidden="true">i</span>
+        <span className="source-icon-count">{citations.length}</span>
+      </summary>
+      <span className="source-icon-popover">
+        <CitationChips asset={asset} citationIds={citationIds} />
+      </span>
+    </details>
   );
 }
 
