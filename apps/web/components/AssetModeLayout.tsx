@@ -31,7 +31,7 @@ export function AssetLearningLayout({
       data-asset-learning-layout
       data-asset-ticker={asset.ticker}
       data-prd-learning-flow="supported-asset-page-v1"
-      data-prd-section-order="beginner_summary,top_risks,key_facts,what_it_does_or_holds,weekly_news_focus,ai_comprehensive_analysis,deep_dive,ask_about_this_asset,sources,educational_disclaimer"
+      data-prd-section-order="beginner_summary,asset_data_dashboard,top_risks,key_facts_fallback,what_it_does_or_holds_fallback,weekly_news_focus,ai_comprehensive_analysis,deep_dive,ask_about_this_asset,sources,educational_disclaimer"
     >
       <h2 id={learningFlowLabelId} className="sr-only">
         Asset learning flow

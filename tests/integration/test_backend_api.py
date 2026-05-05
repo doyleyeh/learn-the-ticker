@@ -763,13 +763,14 @@ def test_lightweight_api_fallback_diagnostics_are_exposed_without_unlocking_cach
         }
     )
 
-    def fake_fetch(ticker, settings=None):  # noqa: ANN001 - monkeypatch target matches production call shapes.
+    def fake_fetch(ticker, settings=None, chart_range="6mo"):  # noqa: ANN001 - monkeypatch target matches production call shapes.
         del settings
         return fetch_lightweight_asset_data(
             ticker,
             settings=settings_override,
             fetcher=LocalFreshDataSliceFakeFetcher(),
             retrieved_at=RETRIEVED_AT,
+            chart_range=chart_range,
         )
 
     settings_override = settings
@@ -784,6 +785,8 @@ def test_lightweight_api_fallback_diagnostics_are_exposed_without_unlocking_cach
     cached_search = client.get("/api/search", params={"q": "VOO"}).json()
     issuer_backed_search = client.get("/api/search", params={"q": "SPY"}).json()
     overview = client.get("/api/assets/SPY/overview").json()
+    chart_6mo = client.get("/api/assets/SPY/chart", params={"range": "6mo"}).json()
+    chart_invalid = client.get("/api/assets/SPY/chart", params={"range": "2y"}).json()
     details = client.get("/api/assets/SPY/details").json()
     sources = client.get("/api/assets/SPY/sources").json()
     blocked_fresh_data = client.get("/api/assets/TQQQ/fresh-data").json()
@@ -824,7 +827,26 @@ def test_lightweight_api_fallback_diagnostics_are_exposed_without_unlocking_cach
     assert sections["sector_weightings"]["table"]["table_id"] == "sector_weightings"
     assert sections["performance"]["table"]["table_id"] == "performance_returns"
     assert sections["price_chart"]["chart"]["chart_id"] == "provider_price_chart"
+    assert sections["price_chart"]["chart"]["range"] == "6mo"
     assert len(sections["price_chart"]["chart"]["points"]) >= 6
+    assert sections["price_chart"]["table"]["table_id"] == "quote_stats"
+    assert any(row["row_id"] == "expense_ratio" and row["evidence_state"] == "supported" for row in sections["price_chart"]["table"]["rows"])
+    assert chart_6mo["schema_version"] == "asset-chart-v1"
+    assert chart_6mo["requested_range"] == "6mo"
+    assert chart_6mo["default_range"] == "6mo"
+    assert chart_6mo["supported_ranges"] == ["1d", "5d", "1mo", "6mo", "ytd", "1y", "5y", "max"]
+    assert chart_6mo["chart"]["range"] == "6mo"
+    assert len(chart_6mo["chart"]["points"]) >= 6
+    assert chart_6mo["citations"]
+    assert chart_6mo["source_documents"]
+    for supported_range in chart_6mo["supported_ranges"]:
+        range_payload = client.get("/api/assets/SPY/chart", params={"range": supported_range}).json()
+        assert range_payload["requested_range"] == supported_range
+        assert range_payload["chart"]["range"] == supported_range
+        assert len(range_payload["chart"]["points"]) >= 6
+    assert chart_invalid["chart"] is None
+    assert chart_invalid["state"]["status"] == "unknown"
+    assert chart_invalid["supported_ranges"] == chart_6mo["supported_ranges"]
     serialized_overview = str(overview).lower()
     assert "'raw'" not in serialized_overview
     assert '"raw"' not in serialized_overview

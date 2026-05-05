@@ -387,8 +387,12 @@ def test_lightweight_stock_fetch_prefers_sec_and_labels_provider_fallback():
     assert fields["provider_identity_or_market_reference"].fallback_used is True
     assert fields["provider_market_price"].value["regularMarketPrice"] == 199.5
     assert fields["provider_profile_overview"].value["sector"] == "Technology"
+    assert fields["provider_quote_stats"].value["rows"]
+    assert any(row["metric_id"] == "pe_ratio_ttm" for row in fields["provider_quote_stats"].value["rows"])
     assert fields["provider_stock_metric_groups"].value["groups"]
     assert len(fields["provider_price_chart"].value["points"]) >= 6
+    assert fields["provider_price_chart"].value["range"] == "6mo"
+    assert fields["provider_price_chart"].value["interval"] == "1d"
     assert response.diagnostics["official_source_count"] == 3
     assert response.diagnostics["provider_fallback_source_count"] == 1
     assert response.fallback_diagnostics is not None
@@ -432,7 +436,10 @@ def test_lightweight_etf_fetch_uses_issuer_fixtures_before_manifest_and_provider
     assert fields["provider_top_holdings"].value[0]["symbol"] == "NVDA"
     assert fields["provider_sector_weightings"].value[0]["sector"] == "Technology"
     assert fields["provider_fund_performance"].value["trailing_returns"]
+    quote_stat_ids = {row["metric_id"] for row in fields["provider_quote_stats"].value["rows"]}
+    assert {"net_assets", "yield", "ytd_return"}.issubset(quote_stat_ids)
     assert len(fields["provider_price_chart"].value["points"]) >= 6
+    assert fields["provider_price_chart"].value["range"] == "6mo"
     assert response.freshness.holdings_as_of == "2026-04-01"
     assert response.diagnostics["issuer_enrichment_state"] == "supported"
     assert response.diagnostics["official_source_count"] == 4
@@ -444,6 +451,14 @@ def test_lightweight_etf_fetch_uses_issuer_fixtures_before_manifest_and_provider
     assert response.fallback_diagnostics.provider_fallback_source_count == 1
     assert response.fallback_diagnostics.gap_count == 1
     assert {gap.field_name for gap in response.gaps} == {"premium_discount_or_spread"}
+
+    overview = build_lightweight_overview_response(response)
+    price_section = next(section for section in overview.sections if section.section_id == "price_chart")
+    assert price_section.table is not None
+    assert price_section.table.table_id == "quote_stats"
+    expense_row = next(row for row in price_section.table.rows if row.row_id == "expense_ratio")
+    assert expense_row.evidence_state is EvidenceState.supported
+    assert expense_row.citation_ids
 
 
 def test_lightweight_spy_issuer_fixture_returns_supported_with_explicit_remaining_gap():

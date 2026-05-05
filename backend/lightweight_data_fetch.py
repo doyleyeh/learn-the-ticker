@@ -42,6 +42,18 @@ from backend.settings import LightweightDataSettings, build_lightweight_data_set
 
 
 LIGHTWEIGHT_FETCH_SCHEMA_VERSION = "lightweight-asset-fetch-v1"
+DEFAULT_CHART_RANGE = "6mo"
+SUPPORTED_CHART_RANGES = ("1d", "5d", "1mo", "6mo", "ytd", "1y", "5y", "max")
+CHART_INTERVAL_BY_RANGE = {
+    "1d": "5m",
+    "5d": "15m",
+    "1mo": "1d",
+    "6mo": "1d",
+    "ytd": "1d",
+    "1y": "1d",
+    "5y": "1wk",
+    "max": "1mo",
+}
 ALLOWED_LIGHTWEIGHT_HOSTS = {
     "data.sec.gov",
     "finance.yahoo.com",
@@ -128,6 +140,7 @@ def fetch_lightweight_asset_data(
     settings: LightweightDataSettings | None = None,
     fetcher: JsonFetcher | None = None,
     retrieved_at: str | None = None,
+    chart_range: str = DEFAULT_CHART_RANGE,
 ) -> LightweightFetchResponse:
     normalized = normalize_ticker(ticker)
     active_settings = settings or build_lightweight_data_settings()
@@ -169,6 +182,7 @@ def fetch_lightweight_asset_data(
         active_settings,
         source_fetcher,
         now,
+        chart_range=chart_range,
     )
     diagnostics["provider_fallback_attempted"] = bool(active_settings.provider_fallback_enabled)
     if yahoo_errors:
@@ -738,6 +752,8 @@ def _try_yahoo_provider_fallback(
     settings: LightweightDataSettings,
     fetcher: JsonFetcher,
     retrieved_at: str,
+    *,
+    chart_range: str = DEFAULT_CHART_RANGE,
 ) -> tuple[dict[str, Any] | None, list[LightweightFetchSource], list[LightweightFetchFact], list[dict[str, str]]]:
     if not settings.provider_fallback_enabled:
         return None, [], [], [{"source": "yahoo_finance", "error_type": "provider_fallback_disabled"}]
@@ -749,6 +765,8 @@ def _try_yahoo_provider_fallback(
     chart_payload: dict[str, Any] = {}
     chart_meta: dict[str, Any] = {}
     provider_user_agent = YAHOO_PROVIDER_USER_AGENT
+    normalized_chart_range = normalize_chart_range(chart_range) or DEFAULT_CHART_RANGE
+    chart_interval = chart_interval_for_range(normalized_chart_range)
 
     try:
         search_payload = fetcher.fetch_json(
@@ -762,7 +780,8 @@ def _try_yahoo_provider_fallback(
 
     try:
         chart_payload = fetcher.fetch_json(
-            f"https://query1.finance.yahoo.com/v8/finance/chart/{quote(ticker)}?range=1mo&interval=1d",
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{quote(ticker)}"
+            f"?range={quote(normalized_chart_range)}&interval={quote(chart_interval)}",
             user_agent=provider_user_agent,
             timeout_seconds=settings.fetch_timeout_seconds,
         )
@@ -863,6 +882,22 @@ def _try_yahoo_provider_fallback(
                 limitations="Provider-derived profile fields are normalized display fallback, not official issuer or SEC evidence.",
             )
         )
+    quote_stats = _provider_quote_stats(merged, quote_summary)
+    if quote_stats:
+        facts.append(
+            _fact(
+                ticker,
+                "provider_quote_stats",
+                quote_stats,
+                EvidenceState.partial,
+                FreshnessState.fresh,
+                retrieved_at,
+                source,
+                as_of_date=source.as_of_date,
+                fallback_used=True,
+                limitations="Provider-derived quote and fund stats are normalized display fallback, not official issuer or SEC evidence.",
+            )
+        )
     top_holdings = _provider_top_holdings(quote_summary)
     if top_holdings:
         facts.append(
@@ -927,7 +962,7 @@ def _try_yahoo_provider_fallback(
                 limitations="Provider-derived stock metrics are source-labeled enrichment and remain separate from SEC facts.",
             )
         )
-    price_chart = _price_chart_reference(chart_payload, range_label="1mo", interval="1d")
+    price_chart = _price_chart_reference(chart_payload, range_label=normalized_chart_range, interval=chart_interval)
     if price_chart:
         facts.append(
             _fact(
@@ -1384,6 +1419,23 @@ def _asset_type_from_quote_or_manifest(ticker: str, quote_payload: dict[str, Any
     return AssetType.unknown
 
 
+def normalize_chart_range(value: str | None) -> str | None:
+    normalized = str(value or "").strip().lower()
+    if not normalized:
+        return None
+    aliases = {
+        "1m": "1mo",
+        "6m": "6mo",
+        "all": "max",
+    }
+    normalized = aliases.get(normalized, normalized)
+    return normalized if normalized in SUPPORTED_CHART_RANGES else None
+
+
+def chart_interval_for_range(range_label: str) -> str:
+    return CHART_INTERVAL_BY_RANGE.get(range_label, CHART_INTERVAL_BY_RANGE[DEFAULT_CHART_RANGE])
+
+
 def _sec_row_for_ticker(payload: dict[str, Any], ticker: str) -> dict[str, Any] | None:
     fields = payload.get("fields")
     data = payload.get("data")
@@ -1537,6 +1589,71 @@ def _provider_profile_overview(market_reference: dict[str, Any], quote_summary: 
         "free_cash_flow": _metric_payload(financial_data.get("freeCashflow"), unit="USD"),
     }
     return {key: value for key, value in fields.items() if _present(value)}
+
+
+def _provider_quote_stats(market_reference: dict[str, Any], quote_summary: dict[str, Any]) -> dict[str, Any]:
+    summary_detail = _module(quote_summary, "summaryDetail")
+    default_stats = _module(quote_summary, "defaultKeyStatistics")
+    fund_profile = _module(quote_summary, "fundProfile")
+    profile = _provider_profile_overview(market_reference, quote_summary)
+    rows = [
+        _quote_stat(
+            "previous_close",
+            "Previous Close",
+            _first_present(summary_detail.get("previousClose"), market_reference.get("chartPreviousClose")),
+            value_type="currency",
+        ),
+        _quote_stat("open", "Open", _first_present(summary_detail.get("open"), market_reference.get("regularMarketOpen")), value_type="currency"),
+        _quote_stat(
+            "day_range",
+            "Day's Range",
+            _range_display(
+                _first_present(summary_detail.get("dayLow"), market_reference.get("regularMarketDayLow")),
+                _first_present(summary_detail.get("dayHigh"), market_reference.get("regularMarketDayHigh")),
+            ),
+        ),
+        _quote_stat(
+            "fifty_two_week_range",
+            "52 Week Range",
+            _range_display(
+                _first_present(summary_detail.get("fiftyTwoWeekLow"), market_reference.get("fiftyTwoWeekLow")),
+                _first_present(summary_detail.get("fiftyTwoWeekHigh"), market_reference.get("fiftyTwoWeekHigh")),
+            ),
+        ),
+        _quote_stat("bid", "Bid", _quote_price_size(summary_detail.get("bid"), summary_detail.get("bidSize")), value_type="currency"),
+        _quote_stat("ask", "Ask", _quote_price_size(summary_detail.get("ask"), summary_detail.get("askSize")), value_type="currency"),
+        _quote_stat(
+            "volume",
+            "Volume",
+            _first_present(summary_detail.get("volume"), market_reference.get("regularMarketVolume")),
+            value_type="number",
+        ),
+        _quote_stat(
+            "average_volume",
+            "Avg. Volume",
+            _first_present(summary_detail.get("averageVolume"), market_reference.get("averageDailyVolume3Month")),
+            value_type="number",
+        ),
+        _quote_stat("net_assets", "Net Assets", profile.get("net_assets") or _metric_payload(summary_detail.get("totalAssets"), unit="USD"), value_type="currency"),
+        _quote_stat("nav", "NAV", _first_present(summary_detail.get("navPrice"), summary_detail.get("nav")), value_type="currency"),
+        _quote_stat("pe_ratio_ttm", "PE Ratio (TTM)", _first_present(summary_detail.get("trailingPE"), profile.get("trailing_pe")), value_type="number"),
+        _quote_stat("yield", "Yield", profile.get("yield") or _percent_payload(summary_detail.get("yield")), value_type="percent"),
+        _quote_stat("ytd_return", "YTD Daily Total Return", profile.get("ytd_return") or _percent_payload(summary_detail.get("ytdReturn")), value_type="percent"),
+        _quote_stat("beta_5y_monthly", "Beta (5Y Monthly)", _first_present(default_stats.get("beta"), summary_detail.get("beta")), value_type="number"),
+        _quote_stat(
+            "expense_ratio",
+            "Expense Ratio (net)",
+            _first_present(
+                _percent_payload(summary_detail.get("annualReportExpenseRatio")),
+                _percent_payload(default_stats.get("annualReportExpenseRatio")),
+                _percent_payload(fund_profile.get("annualReportExpenseRatio")),
+                _percent_payload(fund_profile.get("expenseRatio")),
+            ),
+            value_type="percent",
+        ),
+    ]
+    rows = [row for row in rows if row.get("value") not in (None, "")]
+    return {"rows": rows, "source_label": LightweightSourceLabel.provider_derived.value} if rows else {}
 
 
 def _provider_top_holdings(quote_summary: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1892,6 +2009,51 @@ def _provider_metric(metric_id: str, label: str, payload: Any) -> dict[str, Any]
         value = payload
         unit = None
     return {"metric_id": metric_id, "label": label, "value": value, "unit": unit}
+
+
+def _quote_stat(metric_id: str, label: str, payload: Any, *, value_type: str = "text") -> dict[str, Any]:
+    value, unit = _display_payload(payload)
+    return {
+        key: item
+        for key, item in {
+            "metric_id": metric_id,
+            "label": label,
+            "value": value,
+            "unit": unit,
+            "value_type": value_type,
+            "source_label": LightweightSourceLabel.provider_derived.value,
+        }.items()
+        if item is not None
+    }
+
+
+def _display_payload(payload: Any) -> tuple[Any, str | None]:
+    if isinstance(payload, dict):
+        return payload.get("display") or payload.get("value") or _display_value(payload), payload.get("unit")
+    return _display_value(payload), None
+
+
+def _first_present(*values: Any) -> Any:
+    for value in values:
+        if _present(value):
+            return value
+    return None
+
+
+def _range_display(low: Any, high: Any) -> str | None:
+    low_display = _clean_text(low)
+    high_display = _clean_text(high)
+    if low_display and high_display:
+        return f"{low_display} - {high_display}"
+    return low_display or high_display
+
+
+def _quote_price_size(price: Any, size: Any) -> str | None:
+    price_display = _clean_text(price)
+    size_display = _clean_text(size)
+    if price_display and size_display:
+        return f"{price_display} x {size_display}"
+    return price_display
 
 
 def _company_ceo(officers: list[Any]) -> str | None:

@@ -8,7 +8,6 @@ import {
 import { CitationChip } from "./CitationChip";
 import { FreshnessDisclosure } from "./FreshnessLabel";
 import { InlineGlossaryText, type InlineGlossaryContextMap, type InlineGlossaryMatch } from "./InlineGlossaryText";
-import { StructuredOverviewDisplays } from "./StructuredOverviewDisplays";
 
 type AssetEtfSectionsProps = {
   asset: AssetFixture;
@@ -21,8 +20,18 @@ export function AssetEtfSections({ asset, glossaryMatches = [], glossaryContexts
     return null;
   }
 
+  const dashboardDuplicateIds = new Set([
+    "fund_objective_role",
+    "holdings_exposure",
+    "sector_weightings",
+    "performance",
+    "price_chart",
+    "cost_trading_context"
+  ]);
   const deepDiveSections = asset.etfSections.filter(
-    (section) => !["etf_specific_risks", "recent_developments", "educational_suitability"].includes(section.sectionId)
+    (section) =>
+      !["etf_specific_risks", "recent_developments", "educational_suitability"].includes(section.sectionId) &&
+      !(section.table || section.chart || dashboardDuplicateIds.has(section.sectionId))
   );
 
   return (
@@ -31,7 +40,8 @@ export function AssetEtfSections({ asset, glossaryMatches = [], glossaryContexts
       data-etf-prd-sections
       data-asset-ticker={asset.ticker}
       data-shared-prd-section-shell
-      data-deep-dive-duplicate-sections-filtered="etf_specific_risks,recent_developments,educational_suitability"
+      data-dashboard-duplicate-sections-filtered
+      data-deep-dive-duplicate-sections-filtered="etf_specific_risks,recent_developments,educational_suitability,fund_objective_role,holdings_exposure,sector_weightings,performance,price_chart,cost_trading_context"
     >
       {deepDiveSections.map((section) => (
         <EtfSection
@@ -127,8 +137,6 @@ function EtfSection({
           ))}
         </dl>
       ) : null}
-
-      <StructuredOverviewDisplays asset={asset} section={section} />
 
       <div
         className={isRisk ? "risk-grid etf-section-items" : "etf-section-items"}

@@ -2544,6 +2544,19 @@ class OverviewResponse(BaseModel):
     fallback_diagnostics: LightweightApiFallbackDiagnostics | None = None
 
 
+class AssetChartResponse(BaseModel):
+    schema_version: str = "asset-chart-v1"
+    asset: AssetIdentity
+    state: StateMessage
+    requested_range: str
+    supported_ranges: list[str] = Field(default_factory=list)
+    default_range: str
+    chart: OverviewChart | None = None
+    citations: list[Citation] = Field(default_factory=list)
+    source_documents: list[SourceDocument] = Field(default_factory=list)
+    fallback_diagnostics: LightweightApiFallbackDiagnostics | None = None
+
+
 class DetailsResponse(BaseModel):
     asset: AssetIdentity
     state: StateMessage

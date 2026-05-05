@@ -673,7 +673,7 @@ def _stock_sections(
             limitations="Valuation context is intentionally limited to sourced availability and does not label the stock cheap or expensive.",
         ),
         *_stock_provider_metric_sections(response, provider_citation_ids),
-        _price_chart_section(response, provider_citation_ids, applies_to=[AssetType.stock]),
+        _price_chart_section(response, stable_citation_ids, provider_citation_ids, applies_to=[AssetType.stock]),
         _risk_section(response, risks, applies_to=[AssetType.stock], section_id="top_risks", title="Top Risks"),
         OverviewSection(
             section_id="market_reference",
@@ -793,7 +793,7 @@ def _etf_sections(
         ),
         _etf_sector_weightings_section(response, stable_citation_ids, provider_citation_ids),
         _etf_performance_section(response, provider_citation_ids),
-        _price_chart_section(response, provider_citation_ids, applies_to=[AssetType.etf]),
+        _price_chart_section(response, stable_citation_ids, provider_citation_ids, applies_to=[AssetType.etf]),
         OverviewSection(
             section_id="construction_methodology",
             title="Construction Or Methodology",
@@ -1608,27 +1608,106 @@ def _etf_performance_table(response: LightweightFetchResponse, provider_citation
 
 def _price_chart_section(
     response: LightweightFetchResponse,
+    stable_citation_ids: list[str],
     provider_citation_ids: list[str],
     *,
     applies_to: list[AssetType],
 ) -> OverviewSection:
     chart = _price_chart(response, provider_citation_ids)
+    table = _quote_stats_table(response, stable_citation_ids, provider_citation_ids)
+    citation_ids = _dedupe([*((chart.citation_ids if chart else [])), *((table.citation_ids if table else []))])
+    source_document_ids = _dedupe(
+        [*((chart.source_document_ids if chart else [])), *((table.source_document_ids if table else []))]
+    )
     return OverviewSection(
         section_id="price_chart",
         title="Price Chart",
         section_type=OverviewSectionType.stable_facts,
         applies_to=applies_to,
-        beginner_summary="A basic provider-derived price line is shown when chart points are available.",
+        beginner_summary="A basic provider-derived price line and quote-stat grid are shown when normalized chart or market fields are available.",
         items=[],
         metrics=[],
+        table=table,
         chart=chart,
-        citation_ids=chart.citation_ids if chart else [],
-        source_document_ids=chart.source_document_ids if chart else [],
-        freshness_state=FreshnessState.fresh if chart else FreshnessState.unavailable,
-        evidence_state=EvidenceState.partial if chart else EvidenceState.unavailable,
-        as_of_date=chart.as_of_date if chart else None,
+        citation_ids=citation_ids,
+        source_document_ids=source_document_ids,
+        freshness_state=FreshnessState.fresh if chart or table else FreshnessState.unavailable,
+        evidence_state=EvidenceState.mixed if chart and table else EvidenceState.partial if chart or table else EvidenceState.unavailable,
+        as_of_date=(chart.as_of_date if chart else None) or (table.as_of_date if table else None),
         retrieved_at=response.freshness.page_last_updated_at,
-        limitations=chart.limitations if chart else "Price chart points are unavailable in this lightweight response.",
+        limitations=(
+            "Provider-derived chart and quote stats are source-labeled reference data, not trading guidance."
+            if chart or table
+            else "Price chart points and quote stats are unavailable in this lightweight response."
+        ),
+    )
+
+
+def _quote_stats_table(
+    response: LightweightFetchResponse,
+    stable_citation_ids: list[str],
+    provider_citation_ids: list[str],
+) -> OverviewTable | None:
+    quote_stats = _fact_value(response, "provider_quote_stats")
+    provider_rows = quote_stats.get("rows") if isinstance(quote_stats, dict) else None
+    rows_by_id: dict[str, OverviewTableRow] = {}
+    row_order: list[str] = []
+    if isinstance(provider_rows, list):
+        for item in provider_rows:
+            if not isinstance(item, dict):
+                continue
+            metric_id = str(item.get("metric_id") or "").strip()
+            value = item.get("value")
+            if not metric_id or value in (None, ""):
+                continue
+            rows_by_id[metric_id] = _simple_table_row(
+                response,
+                metric_id,
+                str(item.get("label") or metric_id.replace("_", " ").title()),
+                value,
+                provider_citation_ids,
+                as_of_date=_fact_as_of(response, "provider_quote_stats"),
+                evidence_state=EvidenceState.partial,
+                limitations="Provider-derived quote-stat row.",
+            )
+            row_order.append(metric_id)
+
+    official_expense_ratio = _fact_value(response, "expense_ratio")
+    if official_expense_ratio not in (None, ""):
+        official_ids = _citation_ids_for_fact(response, "expense_ratio", stable_citation_ids)
+        rows_by_id["expense_ratio"] = _simple_table_row(
+            response,
+            "expense_ratio",
+            "Expense Ratio (net)",
+            _percent_text(official_expense_ratio),
+            official_ids,
+            as_of_date=_fact_as_of(response, "expense_ratio"),
+            evidence_state=EvidenceState.supported,
+            limitations="Official issuer expense ratio overrides provider fallback for this dashboard stat.",
+        )
+        if "expense_ratio" not in row_order:
+            row_order.append("expense_ratio")
+
+    ordered_rows = [rows_by_id[row_id] for row_id in row_order if row_id in rows_by_id]
+    if not ordered_rows:
+        return None
+    citation_ids = _dedupe(citation_id for row in ordered_rows for citation_id in row.citation_ids)
+    all_official = all(row.evidence_state is EvidenceState.supported for row in ordered_rows)
+    return OverviewTable(
+        table_id="quote_stats",
+        title="Quote And Fund Stats",
+        columns=[
+            OverviewTableColumn(column_id="label", label="Metric"),
+            OverviewTableColumn(column_id="value", label="Value", align="right"),
+        ],
+        rows=ordered_rows,
+        citation_ids=citation_ids,
+        source_document_ids=_source_ids_for_citations(response, citation_ids),
+        freshness_state=FreshnessState.fresh,
+        evidence_state=EvidenceState.supported if all_official else EvidenceState.mixed,
+        as_of_date=_fact_as_of(response, "provider_quote_stats") or response.freshness.facts_as_of,
+        retrieved_at=response.freshness.page_last_updated_at,
+        limitations="Official facts override provider fallback where available; remaining rows are provider-derived normalized display fields.",
     )
 
 

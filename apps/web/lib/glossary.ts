@@ -27,6 +27,13 @@ export const glossaryTerms = {
     whyItMatters: "It can help show the scale of a fund, though size alone does not describe quality or risk.",
     beginnerMistake: "Assuming a larger fund is automatically better for every learning goal."
   },
+  "net assets": {
+    term: "net assets",
+    category: "ETF size",
+    definition: "Net assets are the total value managed inside a fund after accounting for its assets and liabilities.",
+    whyItMatters: "They help show fund scale and are often displayed as AUM-like context on quote pages.",
+    beginnerMistake: "Treating fund size as a standalone quality score."
+  },
   "market cap": {
     term: "market cap",
     category: "Company size",
@@ -47,6 +54,13 @@ export const glossaryTerms = {
     definition: "Forward P/E compares a stock price with expected earnings per share for a future period.",
     whyItMatters: "It shows how valuation looks using forecasts, which can differ from recent reported earnings.",
     beginnerMistake: "Forgetting that forecasts can be wrong or change quickly."
+  },
+  "EV/EBITDA": {
+    term: "EV/EBITDA",
+    category: "Valuation",
+    definition: "EV/EBITDA compares enterprise value with earnings before interest, taxes, depreciation, and amortization.",
+    whyItMatters: "It can help compare companies with different debt levels or capital structures.",
+    beginnerMistake: "Using it as a complete valuation answer without checking cash flow, growth, and industry context."
   },
   "dividend yield": {
     term: "dividend yield",
@@ -167,6 +181,69 @@ export const glossaryTerms = {
     whyItMatters: "It is a reference point for comparing the fund's market price with what it owns.",
     beginnerMistake: "Assuming the market price and NAV are always identical during the trading day."
   },
+  "YTD return": {
+    term: "YTD return",
+    category: "Performance context",
+    definition: "Year-to-date return shows performance from the start of the current calendar year through the stated date.",
+    whyItMatters: "It gives a recent-period snapshot while staying separate from long-term evidence.",
+    beginnerMistake: "Extrapolating a partial-year return as if it predicts the full year."
+  },
+  beta: {
+    term: "beta",
+    category: "Risk and volatility",
+    definition: "Beta compares how much an asset has tended to move relative to a broad market benchmark.",
+    whyItMatters: "It helps beginners separate market sensitivity from company or fund-specific facts.",
+    beginnerMistake: "Treating beta as a guarantee of future movement."
+  },
+  volume: {
+    term: "volume",
+    category: "Trading context",
+    definition: "Volume is the number of shares traded over a stated period.",
+    whyItMatters: "It helps show how actively an asset is trading, which can affect execution context.",
+    beginnerMistake: "Assuming high volume means the asset is safer or better."
+  },
+  "average volume": {
+    term: "average volume",
+    category: "Trading context",
+    definition: "Average volume is the typical number of shares traded over a recent measurement window.",
+    whyItMatters: "It gives a smoother liquidity reference than a single day's volume.",
+    beginnerMistake: "Comparing today's volume without checking the usual trading level."
+  },
+  "day's range": {
+    term: "day's range",
+    category: "Trading context",
+    definition: "Day's range shows the low and high market prices seen during the current trading day.",
+    whyItMatters: "It provides short-term price context without explaining long-term value by itself.",
+    beginnerMistake: "Reading an intraday range as a reason to trade."
+  },
+  "52 week range": {
+    term: "52 week range",
+    category: "Trading context",
+    definition: "The 52 week range shows the lowest and highest prices over roughly the past year.",
+    whyItMatters: "It helps place the current price in a recent historical range.",
+    beginnerMistake: "Assuming a low point is automatically cheap or a high point is automatically expensive."
+  },
+  bid: {
+    term: "bid",
+    category: "Trading context",
+    definition: "The bid is the price buyers are currently offering for an asset.",
+    whyItMatters: "Together with the ask, it helps explain visible trading depth and spread.",
+    beginnerMistake: "Confusing the bid with the last traded price."
+  },
+  ask: {
+    term: "ask",
+    category: "Trading context",
+    definition: "The ask is the price sellers are currently requesting for an asset.",
+    whyItMatters: "Together with the bid, it helps explain visible trading depth and spread.",
+    beginnerMistake: "Confusing the ask with the price at which every order will execute."
+  },
+  yield: {
+    term: "yield",
+    category: "Income",
+    definition: "Yield compares recent or expected distributions with price or net asset value.",
+    whyItMatters: "It helps explain the income component of a stock or fund, separate from price changes.",
+    beginnerMistake: "Assuming a higher yield is always safer or more attractive."
+  },
   "premium/discount": {
     term: "premium/discount",
     category: "ETF pricing",
@@ -232,19 +309,19 @@ export const beginnerGlossaryGroupsByAssetType = {
     {
       groupId: "stock-business-metrics",
       title: "Business and financial metrics",
-      terms: ["market cap", "revenue", "operating margin", "EPS", "free cash flow", "debt"]
+      terms: ["market cap", "revenue", "operating margin", "EPS", "free cash flow", "debt", "volume", "average volume"]
     },
     {
       groupId: "stock-valuation-risk",
       title: "Valuation and risk",
-      terms: ["P/E ratio", "forward P/E", "market risk", "concentration risk"]
+      terms: ["P/E ratio", "forward P/E", "EV/EBITDA", "beta", "yield", "day's range", "52 week range", "bid", "ask", "market risk", "concentration risk"]
     }
   ],
   etf: [
     {
       groupId: "etf-fund-basics",
       title: "Fund basics",
-      terms: ["expense ratio", "AUM", "benchmark", "index", "holdings"]
+      terms: ["expense ratio", "AUM", "benchmark", "index", "holdings", "net assets", "yield", "YTD return"]
     },
     {
       groupId: "etf-exposure-risk",
@@ -254,7 +331,7 @@ export const beginnerGlossaryGroupsByAssetType = {
     {
       groupId: "etf-trading-tracking",
       title: "Trading and tracking",
-      terms: ["bid-ask spread", "premium/discount", "NAV", "liquidity", "tracking error", "tracking difference"]
+      terms: ["bid-ask spread", "premium/discount", "NAV", "liquidity", "tracking error", "tracking difference", "bid", "ask", "volume", "average volume", "day's range", "52 week range", "beta"]
     }
   ]
 } satisfies Record<"stock" | "etf", GlossaryTermGroup[]>;

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { AssetHeader } from "../../../components/AssetHeader";
 import { AIComprehensiveAnalysisPanel } from "../../../components/AIComprehensiveAnalysisPanel";
 import { AssetChatPanel } from "../../../components/AssetChatPanel";
+import { AssetDataDashboard, hasAssetDataDashboard } from "../../../components/AssetDataDashboard";
 import { AssetEtfSections } from "../../../components/AssetEtfSections";
 import { AssetStockSections } from "../../../components/AssetStockSections";
 import { AssetLearningLayout } from "../../../components/AssetModeLayout";
@@ -187,14 +188,51 @@ export default async function AssetPage({ params }: AssetPageProps) {
     }
   }
   const glossaryGroups = beginnerGlossaryGroupsByAssetType[asset.assetType];
-  const additionalInlineGlossaryTerms: GlossaryTermKey[] = asset.assetType === "etf" ? ["market risk"] : [];
+  const dashboardGlossaryTerms: GlossaryTermKey[] = [
+    "net assets",
+    "AUM",
+    "P/E ratio",
+    "forward P/E",
+    "EV/EBITDA",
+    "NAV",
+    "YTD return",
+    "beta",
+    "volume",
+    "average volume",
+    "day's range",
+    "52 week range",
+    "bid",
+    "ask",
+    "yield",
+    "expense ratio"
+  ];
+  const additionalInlineGlossaryTerms: GlossaryTermKey[] =
+    asset.assetType === "etf" ? ["market risk", ...dashboardGlossaryTerms] : dashboardGlossaryTerms;
   const glossaryTermsForBackend = [
     ...new Set<GlossaryTermKey>([...glossaryGroups.flatMap((group) => group.terms), ...additionalInlineGlossaryTerms])
   ];
   const inlineGlossaryMatches: InlineGlossaryMatch[] = [...glossaryTermsForBackend];
-  if (asset.assetType === "stock") {
-    inlineGlossaryMatches.push({ match: "P/E", term: "P/E ratio" });
-  }
+  inlineGlossaryMatches.push(
+    { match: "Net assets / AUM", term: "net assets" },
+    { match: "Net Assets", term: "net assets" },
+    { match: "PE Ratio (TTM)", term: "P/E ratio" },
+    { match: "P/E", term: "P/E ratio" },
+    { match: "Forward P/E", term: "forward P/E" },
+    { match: "EV/EBITDA", term: "EV/EBITDA" },
+    { match: "NAV", term: "NAV" },
+    { match: "YTD Daily Total Return", term: "YTD return" },
+    { match: "YTD return", term: "YTD return" },
+    { match: "Beta (5Y Monthly)", term: "beta" },
+    { match: "Beta", term: "beta" },
+    { match: "Avg. Volume", term: "average volume" },
+    { match: "Average volume", term: "average volume" },
+    { match: "Day's Range", term: "day's range" },
+    { match: "52 Week Range", term: "52 week range" },
+    { match: "Bid", term: "bid" },
+    { match: "Ask", term: "ask" },
+    { match: "Yield", term: "yield" },
+    { match: "Expense Ratio (net)", term: "expense ratio" }
+  );
   const backendGlossaryContexts = await (async () => {
     try {
       return await fetchSupportedAssetGlossaryContexts(asset.ticker, glossaryTermsForBackend);
@@ -246,6 +284,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
       : asset.stockSections?.find((section) => section.sectionId === "business_overview");
   const whatItDoesOrHoldsItems = whatItDoesOrHoldsSection?.items.slice(0, 2) ?? [];
   const keySourceTitles = renderedDrawerEntries.slice(0, 3).map((entry) => entry.source.title);
+  const hasDashboard = hasAssetDataDashboard(asset);
 
   if (backendDrawerEntries) {
     sourceDrawerRendering = renderedDrawerEntries.every((entry) => backendDrawerEntries.has(entry.source.source_document_id))
@@ -263,7 +302,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
       data-asset-page-export-contract={assetPageExportContract?.rendering ?? "local_fallback"}
       data-asset-source-list-export-contract={assetSourceListExportContract?.rendering ?? "local_fallback"}
       data-prd-layout-marker="supported-asset-page-learning-flow-v1"
-      data-prd-section-order="header,beginner_summary,top_risks,key_facts,what_it_does_or_holds,weekly_news_focus,ai_comprehensive_analysis,deep_dive,ask_about_this_asset,sources,educational_disclaimer"
+      data-prd-section-order="header,beginner_summary,asset_data_dashboard,top_risks,key_facts_fallback,what_it_does_or_holds_fallback,weekly_news_focus,ai_comprehensive_analysis,deep_dive,ask_about_this_asset,sources,educational_disclaimer"
     >
       <AssetHeader asset={asset} layoutMarker="header" />
       <AssetLearningLayout
@@ -327,6 +366,12 @@ export default async function AssetPage({ params }: AssetPageProps) {
               </div>
             </section>
 
+            <AssetDataDashboard
+              asset={asset}
+              glossaryMatches={inlineGlossaryMatches}
+              glossaryContexts={backendGlossaryContexts}
+            />
+
             <section
               className="plain-panel stable-section"
               aria-labelledby="beginner-top-risks"
@@ -369,12 +414,14 @@ export default async function AssetPage({ params }: AssetPageProps) {
               </div>
             </section>
 
-            <section
-              className="plain-panel stable-section"
-              aria-labelledby="beginner-details"
-              data-beginner-stable-recent-separation="stable"
-              data-prd-section="key_facts"
-            >
+            {!hasDashboard ? (
+              <>
+                <section
+                  className="plain-panel stable-section"
+                  aria-labelledby="beginner-details"
+                  data-beginner-stable-recent-separation="stable"
+                  data-prd-section="key_facts"
+                >
               <div className="section-heading">
                 <p className="eyebrow">Key facts</p>
                 <h2 id="beginner-details">Key Facts</h2>
@@ -408,15 +455,15 @@ export default async function AssetPage({ params }: AssetPageProps) {
               <div className="freshness-disclosure-row">
                 <FreshnessDisclosure label="Stable facts as of" value={asset.freshness.factsAsOf} state="fresh" />
               </div>
-            </section>
+                </section>
 
-            <section
-              className="plain-panel stable-section"
-              aria-labelledby="beginner-what-it-does-or-holds"
-              data-beginner-stable-recent-separation="stable"
-              data-prd-section="what_it_does_or_holds"
-              data-asset-what-section-id={whatItDoesOrHoldsSection?.sectionId ?? "primary_claim_fallback"}
-            >
+                <section
+                  className="plain-panel stable-section"
+                  aria-labelledby="beginner-what-it-does-or-holds"
+                  data-beginner-stable-recent-separation="stable"
+                  data-prd-section="what_it_does_or_holds"
+                  data-asset-what-section-id={whatItDoesOrHoldsSection?.sectionId ?? "primary_claim_fallback"}
+                >
               <div className="section-heading-row">
                 <div className="section-heading">
                   <p className="eyebrow">Stable facts</p>
@@ -489,7 +536,9 @@ export default async function AssetPage({ params }: AssetPageProps) {
                   state={asset.assetType === "etf" && !asset.freshness.holdingsAsOf ? "unknown" : "fresh"}
                 />
               </div>
-            </section>
+                </section>
+              </>
+            ) : null}
 
             <WeeklyNewsPanel focus={weeklyNewsFocus} citations={mergedCitations} />
 

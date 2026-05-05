@@ -8,7 +8,6 @@ import {
 import { CitationChip } from "./CitationChip";
 import { FreshnessDisclosure } from "./FreshnessLabel";
 import { InlineGlossaryText, type InlineGlossaryContextMap, type InlineGlossaryMatch } from "./InlineGlossaryText";
-import { StructuredOverviewDisplays } from "./StructuredOverviewDisplays";
 
 type AssetStockSectionsProps = {
   asset: AssetFixture;
@@ -21,8 +20,11 @@ export function AssetStockSections({ asset, glossaryMatches = [], glossaryContex
     return null;
   }
 
+  const dashboardDuplicateIds = new Set(["business_overview", "financial_quality", "valuation_context", "price_chart", "market_reference"]);
   const deepDiveSections = asset.stockSections.filter(
-    (section) => !["top_risks", "recent_developments", "educational_suitability"].includes(section.sectionId)
+    (section) =>
+      !["top_risks", "recent_developments", "educational_suitability"].includes(section.sectionId) &&
+      !(section.table || section.chart || dashboardDuplicateIds.has(section.sectionId) || section.sectionId.startsWith("provider_"))
   );
 
   return (
@@ -31,7 +33,8 @@ export function AssetStockSections({ asset, glossaryMatches = [], glossaryContex
       data-stock-prd-sections
       data-asset-ticker={asset.ticker}
       data-shared-prd-section-shell
-      data-deep-dive-duplicate-sections-filtered="top_risks,recent_developments,educational_suitability"
+      data-dashboard-duplicate-sections-filtered
+      data-deep-dive-duplicate-sections-filtered="top_risks,recent_developments,educational_suitability,business_overview,financial_quality,valuation_context,price_chart,provider_metric_tables,market_reference"
     >
       {deepDiveSections.map((section) => (
         <StockSection
@@ -127,8 +130,6 @@ function StockSection({
           ))}
         </dl>
       ) : null}
-
-      <StructuredOverviewDisplays asset={asset} section={section} />
 
       <div
         className={isRisk ? "risk-grid stock-section-items" : "stock-section-items"}

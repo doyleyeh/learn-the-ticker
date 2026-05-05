@@ -313,6 +313,17 @@ def _surface_contract(response: LightweightFetchResponse) -> dict[str, Any]:
         }
         for section in overview.sections
     }
+    section_by_id = {section.section_id: section for section in overview.sections}
+    price_chart_section = section_by_id.get("price_chart")
+    holdings_section = section_by_id.get("holdings_exposure")
+    sector_section = section_by_id.get("sector_weightings")
+    performance_section = section_by_id.get("performance")
+    stock_table_sections = [
+        section
+        for section in overview.sections
+        if section.table is not None
+        and (section.section_id in {"business_overview", "financial_quality", "valuation_context"} or section.section_id.startswith("provider_"))
+    ]
     detail_fact_keys = sorted(details.facts.keys())
     return {
         "renderable": (
@@ -351,6 +362,18 @@ def _surface_contract(response: LightweightFetchResponse) -> dict[str, Any]:
             key for key, value in details.facts.items() if _is_unavailable_detail_value(value)
         ),
         "section_states": section_states,
+        "dashboard_contract": {
+            "default_chart_range": "6mo",
+            "chart_range": price_chart_section.chart.range if price_chart_section and price_chart_section.chart else None,
+            "chart_interval": price_chart_section.chart.interval if price_chart_section and price_chart_section.chart else None,
+            "chart_point_count": len(price_chart_section.chart.points) if price_chart_section and price_chart_section.chart else 0,
+            "quote_stat_row_count": len(price_chart_section.table.rows) if price_chart_section and price_chart_section.table else 0,
+            "top_holdings_row_count": len(holdings_section.table.rows) if holdings_section and holdings_section.table else 0,
+            "sector_weighting_row_count": len(sector_section.table.rows) if sector_section and sector_section.table else 0,
+            "performance_row_count": len(performance_section.table.rows) if performance_section and performance_section.table else 0,
+            "stock_metric_table_count": len(stock_table_sections),
+            "stock_metric_table_ids": [section.table.table_id for section in stock_table_sections if section.table is not None],
+        },
     }
 
 
@@ -400,8 +423,15 @@ def _row_blockers(
             blockers.append({"reason_code": "renderable_row_not_pass_or_partial", "status": row_status})
         if not surface.get("renderable"):
             blockers.append({"reason_code": "renderable_surface_contract_failed", "surface": surface})
+        dashboard = surface.get("dashboard_contract", {})
+        if dashboard.get("chart_range") != "6mo" or dashboard.get("chart_point_count", 0) < 6:
+            blockers.append({"reason_code": "dashboard_chart_range_or_points_missing", "dashboard_contract": dashboard})
+        if dashboard.get("quote_stat_row_count", 0) < 1:
+            blockers.append({"reason_code": "dashboard_quote_stats_missing", "dashboard_contract": dashboard})
         if response.asset.asset_type is AssetType.stock and "official" not in {source.source_label.value for source in response.sources}:
             blockers.append({"reason_code": "stock_official_source_missing"})
+        if response.asset.asset_type is AssetType.stock and surface.get("dashboard_contract", {}).get("stock_metric_table_count", 0) < 3:
+            blockers.append({"reason_code": "stock_dashboard_metric_groups_missing", "dashboard_contract": dashboard})
         if response.asset.asset_type is AssetType.etf:
             expected_support_state = expected.get("support_state")
             labels = {source.source_label.value for source in response.sources}
@@ -427,6 +457,20 @@ def _row_blockers(
                 for section_id in ("fund_objective_role", "holdings_exposure"):
                     if (section_states.get(section_id) or {}).get("evidence_state") != "supported":
                         blockers.append({"reason_code": "issuer_backed_etf_supported_section_missing", "section_id": section_id})
+                for metric_name, minimum in (
+                    ("top_holdings_row_count", 10),
+                    ("sector_weighting_row_count", 1),
+                    ("performance_row_count", 1),
+                ):
+                    if dashboard.get(metric_name, 0) < minimum:
+                        blockers.append(
+                            {
+                                "reason_code": "issuer_backed_etf_dashboard_section_missing",
+                                "metric_name": metric_name,
+                                "minimum": minimum,
+                                "dashboard_contract": dashboard,
+                            }
+                        )
                 if surface.get("unavailable_detail_fact_keys"):
                     blockers.append(
                         {

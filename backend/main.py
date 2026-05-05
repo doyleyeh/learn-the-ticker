@@ -39,15 +39,23 @@ from backend.ingestion import (
     request_pre_cache_for_asset,
 )
 from backend.glossary import build_glossary_response
-from backend.lightweight_data_fetch import fetch_lightweight_asset_data
+from backend.lightweight_data_fetch import (
+    DEFAULT_CHART_RANGE,
+    SUPPORTED_CHART_RANGES,
+    fetch_lightweight_asset_data,
+    normalize_chart_range,
+)
 from backend.lightweight_page import (
+    build_lightweight_overview_response,
     build_lightweight_details_response_if_enabled,
     build_lightweight_overview_response_if_enabled,
     build_lightweight_sources_response_if_enabled,
 )
 from backend.llm import runtime_diagnostics
 from backend.models import (
+    AssetChartResponse,
     AssetIdentity,
+    AssetStatus,
     ChatRequest,
     ChatResponse,
     ChatSessionDeleteResponse,
@@ -70,6 +78,7 @@ from backend.models import (
     RecentResponse,
     SearchResponse,
     SourcesResponse,
+    StateMessage,
     TrustMetricCatalogResponse,
     TrustMetricValidationRequest,
     TrustMetricValidationResponse,
@@ -87,7 +96,7 @@ from backend.persistence import (
 from backend.retrieval import build_asset_knowledge_pack_result
 from backend.retrieval_repository import read_persisted_knowledge_pack_response
 from backend.search import search_assets
-from backend.settings import build_cors_settings
+from backend.settings import build_cors_settings, build_lightweight_data_settings
 from backend.sources import build_asset_source_drawer_response
 from backend.trust_metrics import get_trust_metric_event_catalog, validate_trust_metric_events
 
@@ -125,6 +134,49 @@ def _asset_payload(ticker: str) -> tuple[AssetIdentity, dict[str, Any] | None]:
 
 def _read_dependencies() -> BackendReadDependencies:
     return backend_read_dependencies_from_app(app)
+
+
+def _asset_chart_response_from_overview(
+    overview: OverviewResponse,
+    *,
+    requested_range: str,
+    normalized_range: str,
+) -> AssetChartResponse:
+    chart_section = next((section for section in overview.sections if section.section_id == "price_chart"), None)
+    chart = chart_section.chart if chart_section and chart_section.chart else None
+    if chart and normalize_chart_range(chart.range) != normalized_range:
+        chart = None
+    if chart is None:
+        return AssetChartResponse(
+            asset=overview.asset,
+            state=StateMessage(
+                status=AssetStatus.unknown,
+                message=f"Chart data is unavailable for {overview.asset.ticker} range {requested_range}.",
+            ),
+            requested_range=requested_range,
+            supported_ranges=list(SUPPORTED_CHART_RANGES),
+            default_range=DEFAULT_CHART_RANGE,
+            chart=None,
+            citations=[],
+            source_documents=[],
+            fallback_diagnostics=overview.fallback_diagnostics,
+        )
+
+    citation_ids = set(chart.citation_ids)
+    source_document_ids = set(chart.source_document_ids)
+    return AssetChartResponse(
+        asset=overview.asset,
+        state=overview.state,
+        requested_range=requested_range,
+        supported_ranges=list(SUPPORTED_CHART_RANGES),
+        default_range=DEFAULT_CHART_RANGE,
+        chart=chart,
+        citations=[citation for citation in overview.citations if citation.citation_id in citation_ids],
+        source_documents=[
+            source for source in overview.source_documents if source.source_document_id in source_document_ids
+        ],
+        fallback_diagnostics=overview.fallback_diagnostics,
+    )
 
 
 def _details_from_configured_reader(ticker: str, readers: BackendReadDependencies) -> DetailsResponse | None:
@@ -225,6 +277,46 @@ def asset_overview(ticker: str, mode: str = "beginner") -> OverviewResponse:
         source_snapshot_reader=readers.reader("source_snapshot_repository"),
         persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
     )
+
+
+@app.get("/api/assets/{ticker}/chart", response_model=AssetChartResponse, tags=["assets"])
+def asset_chart(ticker: str, range: str = DEFAULT_CHART_RANGE) -> AssetChartResponse:
+    requested_range = str(range or DEFAULT_CHART_RANGE)
+    normalized_range = normalize_chart_range(requested_range)
+    if normalized_range is None:
+        asset, _ = _asset_payload(ticker)
+        return AssetChartResponse(
+            asset=asset,
+            state=StateMessage(
+                status=AssetStatus.unknown,
+                message=(
+                    f"Chart range '{requested_range}' is unavailable. Supported ranges are "
+                    f"{', '.join(SUPPORTED_CHART_RANGES)}."
+                ),
+            ),
+            requested_range=requested_range,
+            supported_ranges=list(SUPPORTED_CHART_RANGES),
+            default_range=DEFAULT_CHART_RANGE,
+            chart=None,
+            citations=[],
+            source_documents=[],
+        )
+
+    active_settings = build_lightweight_data_settings()
+    if active_settings.can_fetch_fresh_data:
+        lightweight_fetch = fetch_lightweight_asset_data(ticker, settings=active_settings, chart_range=normalized_range)
+        overview = build_lightweight_overview_response(lightweight_fetch)
+        return _asset_chart_response_from_overview(overview, requested_range=requested_range, normalized_range=normalized_range)
+
+    readers = _read_dependencies()
+    overview = generate_asset_overview(
+        ticker,
+        persisted_pack_reader=readers.reader("knowledge_pack_reader"),
+        generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+        source_snapshot_reader=readers.reader("source_snapshot_repository"),
+        persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
+    )
+    return _asset_chart_response_from_overview(overview, requested_range=requested_range, normalized_range=normalized_range)
 
 
 @app.get("/api/assets/{ticker}/knowledge-pack", response_model=KnowledgePackBuildResponse, tags=["assets"])
