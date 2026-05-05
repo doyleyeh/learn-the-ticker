@@ -151,11 +151,11 @@ function DashboardTable({
     "data-dashboard-sector-weightings": table.tableId === "sector_weightings" ? "true" : undefined,
     "data-dashboard-performance-section": table.tableId === "performance_returns" ? "true" : undefined
   };
-  const isWide = table.tableId === "top_holdings" || table.tableId === "performance_returns";
+  const subtitle = dashboardTableSubtitle(table);
 
   return (
     <article
-      className={isWide ? "asset-dashboard-table-panel wide" : "asset-dashboard-table-panel"}
+      className="asset-dashboard-table-panel"
       data-overview-table
       data-overview-table-id={table.tableId}
       data-overview-section-id={section.sectionId}
@@ -165,7 +165,7 @@ function DashboardTable({
       <div className="structured-table-heading">
         <div>
           <h3>{table.title}</h3>
-          <p>{section.beginnerSummary}</p>
+          <p>{subtitle}</p>
         </div>
         <span className="state-pill compact-state" data-evidence-state={table.evidenceState}>
           {table.evidenceState.replaceAll("_", " ")}
@@ -254,8 +254,29 @@ function dashboardTableSections(asset: AssetFixture, sections: StockOverviewSect
       ? new Set(["fund_objective_role", "holdings_exposure", "sector_weightings", "performance"])
       : new Set(["business_overview", "financial_quality", "valuation_context"]);
   return sections
-    .filter((section) => section.table && (dashboardSectionIds.has(section.sectionId) || section.sectionId.startsWith("provider_")))
+    .filter((section) => section.table && dashboardSectionIds.has(section.sectionId))
     .map((section) => ({ section, table: section.table as OverviewTable }));
+}
+
+function dashboardTableSubtitle(table: OverviewTable) {
+  switch (table.tableId) {
+    case "etf_overview":
+      return "Official issuer facts are preferred; provider fields fill overview gaps with labels.";
+    case "top_holdings":
+      return "Top positions use issuer rows first, then provider fallback where official rows are missing.";
+    case "sector_weightings":
+      return "Sector rows are issuer-first with provider fallback clearly labeled.";
+    case "performance_returns":
+      return "Historical returns are provider-derived context only, not forecasts.";
+    case "stock_profile_snapshot":
+      return "Profile fields are provider-labeled unless SEC-backed facts are available.";
+    case "stock_financial_snapshot":
+      return "SEC latest facts are combined with provider-labeled financial context.";
+    case "stock_valuation_ratios":
+      return "Provider valuation ratios are context only, not cheap-or-expensive labels.";
+    default:
+      return "Structured facts use official sources first and provider fallback where needed.";
+  }
 }
 
 function CitationChips({ asset, citationIds }: { asset: AssetFixture; citationIds: string[] }) {

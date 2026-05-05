@@ -1446,14 +1446,14 @@ main[data-prd-source-list-marker] > .plain-panel:last-child {
 
 .quote-stat-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0 22px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0 24px;
   margin: 0;
 }
 
 .quote-stat {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(128px, 0.9fr) minmax(96px, 1fr);
   gap: 10px;
   align-items: baseline;
   min-height: 38px;
@@ -1466,18 +1466,22 @@ main[data-prd-source-list-marker] > .plain-panel:last-child {
   color: var(--muted);
   font-size: 13px;
   font-weight: 800;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .quote-stat dd {
+  min-width: 0;
   margin: 0;
   font-weight: 850;
   text-align: right;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .asset-dashboard-table-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 16px;
 }
 
@@ -1492,13 +1496,19 @@ main[data-prd-source-list-marker] > .plain-panel:last-child {
 }
 
 .asset-dashboard-table-panel.wide {
-  grid-column: 1 / -1;
+  grid-column: auto;
 }
 
 .asset-dashboard-table-panel table {
   width: 100%;
-  min-width: 560px;
+  min-width: 0;
   border-collapse: collapse;
+  table-layout: auto;
+}
+
+.asset-dashboard-table-panel[data-overview-table-id="top_holdings"] table,
+.asset-dashboard-table-panel[data-overview-table-id="performance_returns"] table {
+  min-width: 680px;
   table-layout: fixed;
 }
 
@@ -1690,9 +1700,9 @@ main[data-prd-source-list-marker] > .plain-panel:last-child {
 
 .asset-helper-rail {
   align-self: start;
-  max-height: calc(100vh - 36px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  max-height: none;
+  overflow: visible;
+  overscroll-behavior: auto;
 }
 
 .helper-rail-panel {

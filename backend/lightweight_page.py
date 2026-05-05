@@ -505,7 +505,23 @@ def _stock_sections(
     profile_table = _stock_profile_table(response, provider_citation_ids)
     financial_table = _stock_financial_table(response, stable_citation_ids, provider_citation_ids)
     valuation_table = _stock_valuation_table(response, provider_citation_ids)
+    products_items = _stock_products_services_items(response, filing_citations, provider_citation_ids)
+    strength_items = _stock_strength_items(response, provider_citation_ids)
+    financial_items = _stock_financial_quality_items(
+        response,
+        stable_citation_ids,
+        provider_citation_ids,
+        has_provider_snapshot=financial_table is not None,
+    )
+    valuation_items = _stock_valuation_items(
+        response,
+        provider_citation_ids,
+        has_valuation_table=valuation_table is not None,
+        has_market_reference=has_market_reference,
+    )
     business_citation_ids = _dedupe([*stable_citation_ids, *((profile_table.citation_ids if profile_table else []))])
+    products_citation_ids = _dedupe(citation_id for item in products_items for citation_id in item.citation_ids)
+    strength_citation_ids = _dedupe(citation_id for item in strength_items for citation_id in item.citation_ids)
     financial_citation_ids = _dedupe(
         [
             *[citation_id for metric in financial_metrics for citation_id in metric.citation_ids],
@@ -553,61 +569,33 @@ def _stock_sections(
             section_type=OverviewSectionType.stable_facts,
             applies_to=[AssetType.stock],
             beginner_summary=_stock_products_services_context(response),
-            items=[
-                _item(
-                    "filing_narrative_pointer",
-                    "Filing narrative pointer",
-                    (
-                        "The lightweight SEC path identifies the latest filing reference, but it does not yet parse "
-                        "the filing narrative into product, segment, revenue-driver, geography, or competitor detail."
-                    ),
-                    filing_citations,
-                    response,
-                    evidence_state=EvidenceState.partial,
-                    as_of_date=_fact_as_of(response, "latest_sec_filing"),
-                    limitations="Use the source drawer to inspect the filing reference before relying on this partial section.",
-                ),
-                _gap_item(
-                    "products_services_gap",
-                    "Products and services detail",
-                    "Source-backed product, segment, revenue-driver, geographic-exposure, and competitor detail is unavailable in the lightweight response.",
-                    response,
-                ),
-            ],
+            items=products_items,
             metrics=[],
-            citation_ids=filing_citations,
-            source_document_ids=_source_ids_for_citations(response, filing_citations),
-            freshness_state=FreshnessState.unknown,
+            citation_ids=products_citation_ids,
+            source_document_ids=_source_ids_for_citations(response, products_citation_ids),
+            freshness_state=FreshnessState.fresh if products_citation_ids else FreshnessState.unknown,
             evidence_state=EvidenceState.mixed,
             as_of_date=_fact_as_of(response, "latest_sec_filing"),
             retrieved_at=retrieved_at,
-            limitations="Narrative filing parsing remains a proposal-snapshot gap in lightweight mode.",
+            limitations="Narrative filing parsing remains partial; normalized provider profile fields fill lightweight context gaps.",
         ),
         OverviewSection(
             section_id="strengths",
-            title="Strengths",
-            section_type=OverviewSectionType.evidence_gap,
+            title="Strengths To Investigate",
+            section_type=OverviewSectionType.stable_facts,
             applies_to=[AssetType.stock],
             beginner_summary=(
-                "The lightweight SEC/XBRL fetch has not yet parsed source-backed strengths such as competitive "
-                "advantages, scale, brand, switching costs, technology, or industry tailwinds."
+                "Lightweight mode does not generate competitive-advantage claims, but provider-normalized profile, "
+                "financial, margin, return, and ownership fields can give beginners concrete questions to investigate."
             ),
-            items=[
-                _gap_item(
-                    "strengths_gap",
-                    "Strengths evidence",
-                    "No source-backed strengths are generated from the lightweight facts; this section stays unavailable instead of filling gaps with model memory.",
-                    response,
-                    evidence_state=EvidenceState.insufficient_evidence,
-                )
-            ],
+            items=strength_items,
             metrics=[],
-            citation_ids=[],
-            source_document_ids=[],
-            freshness_state=FreshnessState.unavailable,
-            evidence_state=EvidenceState.insufficient_evidence,
+            citation_ids=strength_citation_ids,
+            source_document_ids=_source_ids_for_citations(response, strength_citation_ids),
+            freshness_state=FreshnessState.fresh if strength_citation_ids else FreshnessState.unavailable,
+            evidence_state=EvidenceState.partial if strength_citation_ids else EvidenceState.insufficient_evidence,
             retrieved_at=retrieved_at,
-            limitations="Strengths need filing narrative or reviewed company-source evidence before generated claims.",
+            limitations="This section avoids moat or strength claims; it lists provider-labeled context for learning questions.",
         ),
         OverviewSection(
             section_id="financial_quality",
@@ -615,18 +603,7 @@ def _stock_sections(
             section_type=OverviewSectionType.stable_facts,
             applies_to=[AssetType.stock],
             beginner_summary=_stock_financial_quality_context(response),
-            items=[
-                _stock_financial_item(response, "latest_revenue_fact", "Latest reported revenue", stable_citation_ids),
-                _stock_financial_item(response, "latest_net_income_fact", "Latest reported net income", stable_citation_ids),
-                _stock_financial_item(response, "latest_assets_fact", "Latest reported assets", stable_citation_ids),
-                _gap_item(
-                    "financial_quality_trend_gap",
-                    "Remaining financial-quality trend gaps",
-                    "The lightweight response has latest SEC/XBRL facts, but it does not yet build multi-year revenue, EPS, margins, cash-flow, debt, cash, ROE, or ROIC trends.",
-                    response,
-                    evidence_state=EvidenceState.partial,
-                ),
-            ],
+            items=financial_items,
             metrics=financial_metrics,
             table=financial_table,
             citation_ids=financial_citation_ids,
@@ -635,33 +612,15 @@ def _stock_sections(
             evidence_state=EvidenceState.mixed if financial_metrics else EvidenceState.unavailable,
             as_of_date=_latest_fact_as_of(response, ("latest_revenue_fact", "latest_net_income_fact", "latest_assets_fact")),
             retrieved_at=retrieved_at,
-            limitations="Single latest facts are shown; multi-year quality trends remain partial in lightweight mode.",
+            limitations="Single latest SEC facts plus provider-labeled snapshot rows are shown; audited multi-year trends remain partial.",
         ),
         OverviewSection(
             section_id="valuation_context",
             title="Valuation Context",
-            section_type=OverviewSectionType.evidence_gap,
+            section_type=OverviewSectionType.stable_facts,
             applies_to=[AssetType.stock],
             beginner_summary=_stock_valuation_context(response),
-            items=[
-                _item(
-                    "provider_market_reference",
-                    "Provider market reference",
-                    _provider_reference_summary(response),
-                    provider_citation_ids,
-                    response,
-                    evidence_state=EvidenceState.partial if has_market_reference else EvidenceState.unavailable,
-                    as_of_date=_fact_as_of(response, "provider_market_price"),
-                    limitations="Provider-derived market reference is not a valuation conclusion or recommendation.",
-                ),
-                _gap_item(
-                    "valuation_metrics_gap",
-                    "Valuation metrics",
-                    "P/E, forward P/E, price/sales, price/free-cash-flow, peer context, and own-history context are unavailable in this lightweight response.",
-                    response,
-                    evidence_state=EvidenceState.insufficient_evidence,
-                ),
-            ],
+            items=valuation_items,
             metrics=[_market_metric(response, provider_citation_ids)],
             table=valuation_table,
             citation_ids=valuation_citation_ids,
@@ -800,33 +759,7 @@ def _etf_sections(
             section_type=OverviewSectionType.stable_facts,
             applies_to=[AssetType.etf],
             beginner_summary=_etf_construction_context(response),
-            items=[
-                _item(
-                    "index_tracking",
-                    "Index tracking",
-                    _etf_benchmark_summary(response),
-                    _citation_ids_for_fact(response, "benchmark", stable_citation_ids),
-                    response,
-                    evidence_state=EvidenceState.supported if _fact(response, "benchmark") else EvidenceState.unavailable,
-                    as_of_date=_fact_as_of(response, "benchmark"),
-                ),
-                _item(
-                    "prospectus_reference",
-                    "Prospectus reference",
-                    _etf_prospectus_reference(response, prospectus_citations).value,
-                    prospectus_citations,
-                    response,
-                    evidence_state=EvidenceState.supported if _fact(response, "prospectus_reference") else EvidenceState.unavailable,
-                    as_of_date=_fact_as_of(response, "prospectus_reference"),
-                ),
-                _gap_item(
-                    "methodology_detail_gap",
-                    "Remaining methodology details",
-                    "Rebalancing frequency, complete screening rules, and full methodology details are unavailable in the lightweight response.",
-                    response,
-                    evidence_state=EvidenceState.partial,
-                ),
-            ],
+            items=_etf_methodology_items(response, stable_citation_ids, prospectus_citations),
             metrics=[],
             citation_ids=_dedupe([*_citation_ids_for_fact(response, "benchmark", stable_citation_ids), *prospectus_citations]),
             source_document_ids=_source_ids_for_citations(
@@ -848,24 +781,7 @@ def _etf_sections(
                 "Official issuer expense-ratio evidence is shown when available; provider-derived market fields "
                 "remain separate local-test context."
             ),
-            items=[
-                _item(
-                    "provider_reference",
-                    "Provider reference",
-                    _provider_reference_summary(response),
-                    provider_citation_ids,
-                    response,
-                    evidence_state=EvidenceState.partial,
-                    as_of_date=_fact_as_of(response, "provider_market_price"),
-                ),
-                _gap_item(
-                    "premium_discount_or_spread",
-                    "Premium, discount, or spread",
-                    _gap_message(response, "premium_discount_or_spread")
-                    or "Premium, discount, bid-ask spread, and average-volume fields are unavailable in this lightweight response.",
-                    response,
-                ),
-            ],
+            items=_etf_cost_trading_items(response, stable_citation_ids, provider_citation_ids),
             metrics=[
                 expense_metric,
                 _market_metric(response, provider_citation_ids),
@@ -1156,6 +1072,386 @@ def _etf_holdings_items(
         )
     )
     return items
+
+
+def _stock_products_services_items(
+    response: LightweightFetchResponse,
+    filing_citations: list[str],
+    provider_citation_ids: list[str],
+) -> list[OverviewSectionItem]:
+    items = [
+        _item(
+            "filing_narrative_pointer",
+            "Filing narrative pointer",
+            (
+                "The lightweight SEC path identifies the latest filing reference; detailed segment, revenue-driver, "
+                "geography, and competitor parsing remains a deeper source-pack task."
+            ),
+            filing_citations,
+            response,
+            evidence_state=EvidenceState.partial,
+            as_of_date=_fact_as_of(response, "latest_sec_filing"),
+            limitations="Use the source drawer to inspect the filing reference before relying on this partial section.",
+        )
+    ]
+    provider_summary = _provider_profile_context_summary(response)
+    if provider_summary:
+        items.append(
+            _item(
+                "provider_profile_context",
+                "Provider profile context",
+                provider_summary,
+                provider_citation_ids,
+                response,
+                evidence_state=EvidenceState.partial,
+                as_of_date=_fact_as_of(response, "provider_profile_overview"),
+                limitations="Provider-derived profile context is labeled fallback and does not replace filing narrative parsing.",
+            )
+        )
+    else:
+        items.append(
+            _gap_item(
+                "products_services_gap",
+                "Products and services detail",
+                "Source-backed product, segment, revenue-driver, geographic-exposure, and competitor detail is unavailable in the lightweight response.",
+                response,
+            )
+        )
+    return items
+
+
+def _stock_strength_items(
+    response: LightweightFetchResponse,
+    provider_citation_ids: list[str],
+) -> list[OverviewSectionItem]:
+    items: list[OverviewSectionItem] = []
+    metric_titles = _provider_metric_group_titles(
+        response,
+        ("price_performance", "income_statement", "balance_sheet", "cash_flow", "margins_returns_ownership"),
+    )
+    if metric_titles:
+        items.append(
+            _item(
+                "provider_learning_context",
+                "Provider learning context",
+                (
+                    "The dashboard includes provider-normalized "
+                    + _join_human(metric_titles)
+                    + " rows. Treat them as learning context for questions about scale, profitability, cash generation, "
+                    "balance-sheet position, and ownership, not as claims that the company has durable strengths."
+                ),
+                provider_citation_ids,
+                response,
+                evidence_state=EvidenceState.partial,
+                as_of_date=_fact_as_of(response, "provider_stock_metric_groups"),
+                limitations="Provider-derived metrics are educational context only and are not a recommendation signal.",
+            )
+        )
+    profile_summary = _provider_profile_context_summary(response)
+    if profile_summary:
+        items.append(
+            _item(
+                "provider_profile_checkpoints",
+                "Profile checkpoints",
+                profile_summary,
+                provider_citation_ids,
+                response,
+                evidence_state=EvidenceState.partial,
+                as_of_date=_fact_as_of(response, "provider_profile_overview"),
+                limitations="Profile fields are fallback context and should be checked against official company sources when available.",
+            )
+        )
+    if not items:
+        items.append(
+            _gap_item(
+                "strengths_gap",
+                "Strengths evidence",
+                "No source-backed strengths are generated from the lightweight facts; this section stays unavailable instead of filling gaps with model memory.",
+                response,
+                evidence_state=EvidenceState.insufficient_evidence,
+            )
+        )
+    return items
+
+
+def _stock_financial_quality_items(
+    response: LightweightFetchResponse,
+    stable_citation_ids: list[str],
+    provider_citation_ids: list[str],
+    *,
+    has_provider_snapshot: bool,
+) -> list[OverviewSectionItem]:
+    items = [
+        _stock_financial_item(response, "latest_revenue_fact", "Latest reported revenue", stable_citation_ids),
+        _stock_financial_item(response, "latest_net_income_fact", "Latest reported net income", stable_citation_ids),
+        _stock_financial_item(response, "latest_assets_fact", "Latest reported assets", stable_citation_ids),
+    ]
+    if has_provider_snapshot:
+        group_titles = _provider_metric_group_titles(
+            response,
+            ("income_statement", "balance_sheet", "cash_flow", "margins_returns_ownership"),
+        )
+        if group_titles:
+            items.append(
+                _item(
+                    "provider_financial_snapshot",
+                    "Provider financial snapshot",
+                    (
+                        "The dashboard adds provider-normalized "
+                        + _join_human(group_titles)
+                        + " rows alongside SEC latest facts. These rows help fill the local lightweight view while audited "
+                        "multi-year trend analysis remains partial."
+                    ),
+                    provider_citation_ids,
+                    response,
+                    evidence_state=EvidenceState.partial,
+                    as_of_date=_fact_as_of(response, "provider_stock_metric_groups"),
+                    limitations="Provider-derived financial rows are labeled fallback and may be incomplete.",
+                )
+            )
+    else:
+        items.append(
+            _gap_item(
+                "financial_quality_trend_gap",
+                "Remaining financial-quality trend gaps",
+                "The lightweight response has latest SEC/XBRL facts, but it does not yet build multi-year revenue, EPS, margins, cash-flow, debt, cash, ROE, or ROIC trends.",
+                response,
+                evidence_state=EvidenceState.partial,
+            )
+        )
+    return items
+
+
+def _stock_valuation_items(
+    response: LightweightFetchResponse,
+    provider_citation_ids: list[str],
+    *,
+    has_valuation_table: bool,
+    has_market_reference: bool,
+) -> list[OverviewSectionItem]:
+    items = [
+        _item(
+            "provider_market_reference",
+            "Provider market reference",
+            _provider_reference_summary(response),
+            provider_citation_ids,
+            response,
+            evidence_state=EvidenceState.partial if has_market_reference else EvidenceState.unavailable,
+            as_of_date=_fact_as_of(response, "provider_market_price"),
+            limitations="Provider-derived market reference is not a valuation conclusion or recommendation.",
+        )
+    ]
+    if has_valuation_table:
+        labels = _provider_metric_labels(response, "valuation_ratios", limit=5)
+        label_text = _join_human(labels) if labels else "valuation ratio"
+        items.append(
+            _item(
+                "provider_valuation_ratios",
+                "Provider valuation ratios",
+                (
+                    f"Provider-derived valuation rows include {label_text}. They are shown as context for learning "
+                    "how valuation vocabulary works, not as cheap-or-expensive labels."
+                ),
+                provider_citation_ids,
+                response,
+                evidence_state=EvidenceState.partial,
+                as_of_date=_fact_as_of(response, "provider_stock_metric_groups"),
+                limitations="Provider-derived ratios are context only and do not include peer or own-history judgment.",
+            )
+        )
+    else:
+        items.append(
+            _gap_item(
+                "valuation_metrics_gap",
+                "Valuation metrics",
+                "P/E, forward P/E, price/sales, price/free-cash-flow, peer context, and own-history context are unavailable in this lightweight response.",
+                response,
+                evidence_state=EvidenceState.insufficient_evidence,
+            )
+        )
+    return items
+
+
+def _provider_profile_context_summary(response: LightweightFetchResponse) -> str | None:
+    profile = _fact_value(response, "provider_profile_overview")
+    if not isinstance(profile, dict):
+        return None
+    parts: list[str] = []
+    sector = profile.get("sector")
+    industry = profile.get("industry")
+    ceo = profile.get("ceo")
+    if sector and industry:
+        parts.append(f"Provider profile fields place {response.asset.ticker} in the {sector} sector and {industry} industry")
+    elif sector:
+        parts.append(f"Provider profile fields place {response.asset.ticker} in the {sector} sector")
+    elif industry:
+        parts.append(f"Provider profile fields place {response.asset.ticker} in the {industry} industry")
+    if ceo:
+        parts.append(f"Provider profile fields list {ceo} as CEO")
+    available_metrics = [
+        label
+        for key, label in (
+            ("market_cap", "market cap"),
+            ("enterprise_value", "enterprise value"),
+            ("revenue_ttm", "revenue TTM"),
+            ("free_cash_flow", "free cash flow"),
+        )
+        if profile.get(key) not in (None, "")
+    ]
+    if available_metrics:
+        parts.append("The dashboard also normalizes " + _join_human(available_metrics) + " when available")
+    if not parts:
+        return None
+    return ". ".join(parts) + "."
+
+
+def _provider_metric_group_titles(response: LightweightFetchResponse, group_ids: tuple[str, ...]) -> list[str]:
+    groups = _provider_metric_groups(response)
+    titles: list[str] = []
+    for group_id in group_ids:
+        group = next((item for item in groups if item.get("group_id") == group_id), None)
+        if not group:
+            continue
+        has_metric = any(
+            isinstance(metric, dict) and metric.get("value") not in (None, "")
+            for metric in group.get("metrics") or []
+        )
+        if has_metric:
+            titles.append(str(group.get("title") or group_id.replace("_", " ").title()))
+    return titles
+
+
+def _provider_metric_labels(response: LightweightFetchResponse, group_id: str, *, limit: int) -> list[str]:
+    group = next((item for item in _provider_metric_groups(response) if item.get("group_id") == group_id), None)
+    if not group:
+        return []
+    labels: list[str] = []
+    for metric in group.get("metrics") or []:
+        if isinstance(metric, dict) and metric.get("value") not in (None, ""):
+            labels.append(str(metric.get("label") or metric.get("metric_id") or "metric"))
+        if len(labels) >= limit:
+            break
+    return labels
+
+
+def _join_human(values: list[str]) -> str:
+    if not values:
+        return ""
+    if len(values) == 1:
+        return values[0]
+    if len(values) == 2:
+        return f"{values[0]} and {values[1]}"
+    return ", ".join(values[:-1]) + f", and {values[-1]}"
+
+
+def _etf_methodology_items(
+    response: LightweightFetchResponse,
+    stable_citation_ids: list[str],
+    prospectus_citations: list[str],
+) -> list[OverviewSectionItem]:
+    benchmark_citations = _citation_ids_for_fact(response, "benchmark", stable_citation_ids)
+    citations = _dedupe([*benchmark_citations, *prospectus_citations])
+    return [
+        _item(
+            "index_tracking",
+            "Index tracking",
+            _etf_benchmark_summary(response),
+            benchmark_citations,
+            response,
+            evidence_state=EvidenceState.supported if _fact(response, "benchmark") else EvidenceState.unavailable,
+            as_of_date=_fact_as_of(response, "benchmark"),
+        ),
+        _item(
+            "prospectus_reference",
+            "Prospectus reference",
+            _etf_prospectus_reference(response, prospectus_citations).value,
+            prospectus_citations,
+            response,
+            evidence_state=EvidenceState.supported if _fact(response, "prospectus_reference") else EvidenceState.unavailable,
+            as_of_date=_fact_as_of(response, "prospectus_reference"),
+        ),
+        _item(
+            "methodology_scope_note",
+            "Methodology scope note",
+            (
+                "The lightweight page uses benchmark and prospectus metadata for core index-tracking context. "
+                "Complete rebalancing frequency, screening rules, and methodology documents remain partial until a "
+                "deeper issuer source pack is added."
+            ),
+            citations,
+            response,
+            evidence_state=EvidenceState.partial,
+            as_of_date=response.freshness.facts_as_of,
+            limitations="Methodology depth remains partial even though the core benchmark/prospectus context is available.",
+        ),
+    ]
+
+
+def _etf_cost_trading_items(
+    response: LightweightFetchResponse,
+    stable_citation_ids: list[str],
+    provider_citation_ids: list[str],
+) -> list[OverviewSectionItem]:
+    items = [
+        _item(
+            "provider_reference",
+            "Provider reference",
+            _provider_reference_summary(response),
+            provider_citation_ids,
+            response,
+            evidence_state=EvidenceState.partial,
+            as_of_date=_fact_as_of(response, "provider_market_price"),
+        )
+    ]
+    quote_labels = _quote_stat_metric_labels(response, limit=6)
+    if quote_labels:
+        citations = _dedupe([*provider_citation_ids, *_citation_ids_for_fact(response, "expense_ratio", stable_citation_ids)])
+        items.append(
+            _item(
+                "quote_stats_context",
+                "Quote stats context",
+                (
+                    "The dashboard includes "
+                    + _join_human(quote_labels)
+                    + " rows from normalized quote and fund stats. Official expense-ratio facts override provider "
+                    "fallback where available."
+                ),
+                citations,
+                response,
+                evidence_state=EvidenceState.partial,
+                as_of_date=_fact_as_of(response, "provider_quote_stats") or response.freshness.facts_as_of,
+                limitations="Provider-derived quote stats are reference data and not trading guidance.",
+            )
+        )
+    else:
+        items.append(
+            _gap_item(
+                "premium_discount_or_spread",
+                "Premium, discount, or spread",
+                _gap_message(response, "premium_discount_or_spread")
+                or "Premium, discount, bid-ask spread, and average-volume fields are unavailable in this lightweight response.",
+                response,
+            )
+        )
+    return items
+
+
+def _quote_stat_metric_labels(response: LightweightFetchResponse, *, limit: int) -> list[str]:
+    quote_stats = _fact_value(response, "provider_quote_stats")
+    provider_rows = quote_stats.get("rows") if isinstance(quote_stats, dict) else None
+    labels: list[str] = []
+    if isinstance(provider_rows, list):
+        for row in provider_rows:
+            if not isinstance(row, dict) or row.get("value") in (None, ""):
+                continue
+            label = str(row.get("label") or row.get("metric_id") or "quote stat")
+            if label not in labels:
+                labels.append(label)
+            if len(labels) >= limit:
+                break
+    if _fact_value(response, "expense_ratio") not in (None, "") and "Expense Ratio (net)" not in labels:
+        labels.append("Expense Ratio (net)")
+    return labels[:limit]
 
 
 def _stock_profile_table(response: LightweightFetchResponse, provider_citation_ids: list[str]) -> OverviewTable | None:
@@ -2359,6 +2655,12 @@ def _stock_business_model(response: LightweightFetchResponse) -> str:
 
 
 def _stock_products_services_context(response: LightweightFetchResponse) -> str:
+    if _provider_profile_context_summary(response):
+        return (
+            f"{response.asset.ticker}'s lightweight page keeps SEC identity and filing-reference metadata as the official "
+            "backbone, then uses provider-normalized profile fields for sector, industry, leadership, and scale context "
+            "while detailed filing narrative parsing remains partial."
+        )
     return (
         f"{response.asset.ticker}'s lightweight page has SEC identity and filing-reference metadata, but it does not "
         "yet parse the filing narrative into a full products, services, segment, revenue-driver, geographic-exposure, "
@@ -2377,15 +2679,32 @@ def _stock_financial_quality_context(response: LightweightFetchResponse) -> str:
         if _fact(response, field_name) is not None
     ]
     if available:
+        provider_titles = _provider_metric_group_titles(
+            response,
+            ("income_statement", "balance_sheet", "cash_flow", "margins_returns_ownership"),
+        )
+        provider_phrase = (
+            " Provider-normalized " + _join_human(provider_titles) + " rows fill out the dashboard context."
+            if provider_titles
+            else ""
+        )
         return (
             "SEC/XBRL supports latest "
             + ", ".join(available)
-            + " facts in this lightweight page, while multi-year quality trends remain incomplete."
+            + " facts in this lightweight page."
+            + provider_phrase
         )
     return "SEC/XBRL financial-quality facts are unavailable in this lightweight response."
 
 
 def _stock_valuation_context(response: LightweightFetchResponse) -> str:
+    valuation_labels = _provider_metric_labels(response, "valuation_ratios", limit=4)
+    if valuation_labels:
+        return (
+            "Provider-derived valuation rows such as "
+            + _join_human(valuation_labels)
+            + " are available as labeled fallback context. They explain valuation vocabulary but do not judge whether the stock is cheap or expensive."
+        )
     price = _metric_from_market_price(response, _citation_ids_for_source_label(response, "provider_derived"))
     if price.value not in (None, "Unavailable"):
         return (

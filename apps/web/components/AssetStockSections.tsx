@@ -20,7 +20,14 @@ export function AssetStockSections({ asset, glossaryMatches = [], glossaryContex
     return null;
   }
 
-  const dashboardDuplicateIds = new Set(["business_overview", "financial_quality", "valuation_context", "price_chart", "market_reference"]);
+  const dashboardDuplicateIds = new Set([
+    "business_overview",
+    "financial_quality",
+    "valuation_context",
+    "price_chart",
+    "market_reference",
+    "lightweight_evidence_gaps"
+  ]);
   const deepDiveSections = asset.stockSections.filter(
     (section) =>
       !["top_risks", "recent_developments", "educational_suitability"].includes(section.sectionId) &&
@@ -34,7 +41,7 @@ export function AssetStockSections({ asset, glossaryMatches = [], glossaryContex
       data-asset-ticker={asset.ticker}
       data-shared-prd-section-shell
       data-dashboard-duplicate-sections-filtered
-      data-deep-dive-duplicate-sections-filtered="top_risks,recent_developments,educational_suitability,business_overview,financial_quality,valuation_context,price_chart,provider_metric_tables,market_reference"
+      data-deep-dive-duplicate-sections-filtered="top_risks,recent_developments,educational_suitability,business_overview,financial_quality,valuation_context,price_chart,provider_metric_tables,market_reference,lightweight_evidence_gaps"
     >
       {deepDiveSections.map((section) => (
         <StockSection

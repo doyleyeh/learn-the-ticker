@@ -694,6 +694,9 @@ includes("components/AssetDataDashboard.tsx", "data-dashboard-performance-sectio
 includes("components/AssetDataDashboard.tsx", "data-quote-stat-grid");
 includes("components/AssetDataDashboard.tsx", "data-dashboard-glossary-label");
 includes("components/AssetDataDashboard.tsx", "hasAssetDataDashboard");
+includes("components/AssetDataDashboard.tsx", "dashboardTableSubtitle");
+includes("styles/globals.css", "repeat\\(auto-fit, minmax\\(260px, 1fr\\)\\)");
+includes("styles/globals.css", "overflow: visible");
 includes("components/AssetPriceRangeChart.tsx", "data-chart-range-tabs");
 includes("components/AssetPriceRangeChart.tsx", "data-active-chart-range");
 includes("components/AssetPriceRangeChart.tsx", "data-chart-volume-bars");
@@ -805,7 +808,7 @@ includes("styles/globals.css", ".asset-helper-rail");
 includes("styles/globals.css", ".asset-source-index");
 includes("styles/globals.css", ".asset-source-index-card");
 includes("styles/globals.css", ".compact-source-meta");
-includes("styles/globals.css", "max-height: calc\\(100vh - 36px\\)");
+includes("styles/globals.css", "max-height: none");
 includes("styles/globals.css", ".compare-builder-form");
 includes("styles/globals.css", ".selected-builder-card");
 includes("styles/globals.css", ".relationship-badge-grid");

@@ -26,7 +26,8 @@ export function AssetEtfSections({ asset, glossaryMatches = [], glossaryContexts
     "sector_weightings",
     "performance",
     "price_chart",
-    "cost_trading_context"
+    "cost_trading_context",
+    "lightweight_evidence_gaps"
   ]);
   const deepDiveSections = asset.etfSections.filter(
     (section) =>
@@ -41,7 +42,7 @@ export function AssetEtfSections({ asset, glossaryMatches = [], glossaryContexts
       data-asset-ticker={asset.ticker}
       data-shared-prd-section-shell
       data-dashboard-duplicate-sections-filtered
-      data-deep-dive-duplicate-sections-filtered="etf_specific_risks,recent_developments,educational_suitability,fund_objective_role,holdings_exposure,sector_weightings,performance,price_chart,cost_trading_context"
+      data-deep-dive-duplicate-sections-filtered="etf_specific_risks,recent_developments,educational_suitability,fund_objective_role,holdings_exposure,sector_weightings,performance,price_chart,cost_trading_context,lightweight_evidence_gaps"
     >
       {deepDiveSections.map((section) => (
         <EtfSection

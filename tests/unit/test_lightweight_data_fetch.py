@@ -580,8 +580,17 @@ def test_lightweight_stock_fetch_builds_overview_details_and_source_drawer_contr
         "educational_suitability",
     } <= set(sections)
     assert sections["products_services"].evidence_state is EvidenceState.mixed
+    assert "provider_profile_context" in {item.item_id for item in sections["products_services"].items}
+    assert "products_services_gap" not in {item.item_id for item in sections["products_services"].items}
+    assert sections["strengths"].evidence_state is EvidenceState.partial
+    assert "provider_learning_context" in {item.item_id for item in sections["strengths"].items}
+    assert "strengths_gap" not in {item.item_id for item in sections["strengths"].items}
     assert sections["financial_quality"].evidence_state is EvidenceState.mixed
+    assert "provider_financial_snapshot" in {item.item_id for item in sections["financial_quality"].items}
+    assert "financial_quality_trend_gap" not in {item.item_id for item in sections["financial_quality"].items}
     assert sections["valuation_context"].evidence_state is EvidenceState.mixed
+    assert "provider_valuation_ratios" in {item.item_id for item in sections["valuation_context"].items}
+    assert "valuation_metrics_gap" not in {item.item_id for item in sections["valuation_context"].items}
     assert sections["business_overview"].table is not None
     assert sections["business_overview"].table.table_id == "stock_profile_snapshot"
     assert sections["financial_quality"].table is not None
@@ -661,7 +670,11 @@ def test_lightweight_issuer_backed_etf_fetch_builds_supported_page_contracts():
     assert sections["price_chart"].chart is not None
     assert len(sections["price_chart"].chart.points) >= 6
     assert sections["construction_methodology"].evidence_state is EvidenceState.mixed
+    assert "methodology_scope_note" in {item.item_id for item in sections["construction_methodology"].items}
+    assert "methodology_detail_gap" not in {item.item_id for item in sections["construction_methodology"].items}
     assert sections["cost_trading_context"].evidence_state is EvidenceState.mixed
+    assert "quote_stats_context" in {item.item_id for item in sections["cost_trading_context"].items}
+    assert "premium_discount_or_spread" not in {item.item_id for item in sections["cost_trading_context"].items}
     assert sections["etf_specific_risks"].items[0].citation_ids
     assert {metric.metric_id for metric in sections["cost_trading_context"].metrics} == {
         "expense_ratio",
