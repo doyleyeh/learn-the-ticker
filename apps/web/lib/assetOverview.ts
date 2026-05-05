@@ -26,7 +26,7 @@ type BackendFreshness = {
   page_last_updated_at: string;
   facts_as_of: string;
   holdings_as_of: string | null;
-  recent_events_as_of: string;
+  recent_events_as_of: string | null;
   freshness_state: string;
 };
 
@@ -196,7 +196,8 @@ function isSupportedAssetOverviewResponse(value: unknown, requestedTicker: strin
     typeof candidate.freshness === "object" &&
     typeof candidate.freshness.page_last_updated_at === "string" &&
     typeof candidate.freshness.facts_as_of === "string" &&
-    typeof candidate.freshness.recent_events_as_of === "string" &&
+    (typeof candidate.freshness.recent_events_as_of === "string" ||
+      candidate.freshness.recent_events_as_of === null) &&
     !!candidate.beginner_summary &&
     typeof candidate.beginner_summary === "object" &&
     typeof candidate.beginner_summary.what_it_is === "string" &&
@@ -250,7 +251,10 @@ function mergeAssetFixtureWithOverview(fallbackAsset: AssetFixture | undefined, 
       pageLastUpdatedAt: overview.freshness.page_last_updated_at,
       factsAsOf: overview.freshness.facts_as_of,
       holdingsAsOf: overview.freshness.holdings_as_of ?? fallbackAsset?.freshness.holdingsAsOf,
-      recentEventsAsOf: overview.freshness.recent_events_as_of
+      recentEventsAsOf:
+        overview.freshness.recent_events_as_of ??
+        fallbackAsset?.freshness.recentEventsAsOf ??
+        overview.freshness.page_last_updated_at
     },
     beginnerSummary: {
       whatItIs: overview.beginner_summary.what_it_is,

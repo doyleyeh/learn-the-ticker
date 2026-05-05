@@ -380,12 +380,35 @@ def test_lightweight_stock_fetch_builds_overview_details_and_source_drawer_contr
     assert len(overview.top_risks) == 3
     assert overview.source_documents
     assert overview.citations
-    assert {section.section_id for section in overview.sections} >= {"business_overview", "market_reference"}
+    sections = {section.section_id: section for section in overview.sections}
+    assert {
+        "business_overview",
+        "products_services",
+        "strengths",
+        "financial_quality",
+        "valuation_context",
+        "top_risks",
+        "market_reference",
+        "educational_suitability",
+    } <= set(sections)
+    assert sections["products_services"].evidence_state is EvidenceState.mixed
+    assert sections["financial_quality"].evidence_state is EvidenceState.mixed
+    assert sections["valuation_context"].evidence_state is EvidenceState.mixed
+    assert sections["top_risks"].items[0].citation_ids
+    assert {metric.metric_id for metric in sections["financial_quality"].metrics} == {
+        "latest_revenue_fact",
+        "latest_net_income_fact",
+        "latest_assets_fact",
+    }
     assert overview.weekly_news_focus is not None
     assert overview.weekly_news_focus.selected_item_count == 0
     assert overview.ai_comprehensive_analysis is not None
     assert overview.ai_comprehensive_analysis.analysis_available is False
     assert details.facts["business_model"]
+    assert details.facts["products_services_context"]
+    assert details.facts["financial_quality_context"]
+    assert details.facts["valuation_context"]
+    assert details.facts["risk_context"]
     assert details.facts["provider_market_price"].value == 199.5
     assert sources.drawer_state is SourceDrawerState.available
     assert sources.source_groups
@@ -414,14 +437,33 @@ def test_lightweight_issuer_backed_etf_fetch_builds_supported_page_contracts():
     assert overview.beginner_summary is not None
     assert "ETF" in overview.beginner_summary.what_it_is
     sections = {section.section_id: section for section in overview.sections}
+    assert {
+        "fund_objective_role",
+        "holdings_exposure",
+        "construction_methodology",
+        "cost_trading_context",
+        "etf_specific_risks",
+        "similar_assets_alternatives",
+        "educational_suitability",
+        "lightweight_evidence_gaps",
+    } <= set(sections)
     assert sections["fund_objective_role"].evidence_state is EvidenceState.supported
     assert sections["holdings_exposure"].evidence_state is EvidenceState.supported
-    assert sections["cost_trading_context"].evidence_state is EvidenceState.partial
+    assert sections["construction_methodology"].evidence_state is EvidenceState.mixed
+    assert sections["cost_trading_context"].evidence_state is EvidenceState.mixed
+    assert sections["etf_specific_risks"].items[0].citation_ids
+    assert {metric.metric_id for metric in sections["cost_trading_context"].metrics} == {
+        "expense_ratio",
+        "provider_market_price",
+    }
     assert details.facts["role"]
     assert details.facts["holdings"]
+    assert details.facts["construction_methodology"]
     assert details.facts["benchmark"].value == "S&P 500 Index"
     assert details.facts["cost_context"].value == 0.03
     assert details.facts["prospectus_reference"].value == "summary_prospectus published 2026-04-01"
+    assert details.facts["risk_context"]
+    assert details.facts["comparison_overlap_context"]
 
 
 def test_local_fresh_data_mvp_slice_smoke_contract_is_deterministic():
@@ -490,6 +532,10 @@ def test_local_fresh_data_mvp_slice_smoke_contract_is_deterministic():
         assert {"business_model", "provider_market_price"} <= set(surface["detail_fact_keys"])
         assert surface["unavailable_detail_fact_keys"] == []
         assert surface["section_states"]["business_overview"]["evidence_state"] == "supported"
+        assert surface["section_states"]["products_services"]["evidence_state"] == "mixed"
+        assert surface["section_states"]["financial_quality"]["evidence_state"] == "mixed"
+        assert surface["section_states"]["valuation_context"]["evidence_state"] == "mixed"
+        assert surface["section_states"]["top_risks"]["evidence_state"] == "supported"
 
     for ticker in ("VOO", "QQQ", "SPY", "VTI", "XLK"):
         row = rows[ticker]
@@ -519,7 +565,10 @@ def test_local_fresh_data_mvp_slice_smoke_contract_is_deterministic():
         assert surface["unavailable_detail_fact_keys"] == []
         assert surface["section_states"]["fund_objective_role"]["evidence_state"] == "supported"
         assert surface["section_states"]["holdings_exposure"]["evidence_state"] == "supported"
-        assert surface["section_states"]["cost_trading_context"]["evidence_state"] == "partial"
+        assert surface["section_states"]["construction_methodology"]["evidence_state"] == "mixed"
+        assert surface["section_states"]["cost_trading_context"]["evidence_state"] == "mixed"
+        assert surface["section_states"]["etf_specific_risks"]["evidence_state"] == "supported"
+        assert surface["section_states"]["similar_assets_alternatives"]["evidence_state"] == "insufficient_evidence"
 
     for ticker in ("TQQQ", "ARKK", "BND", "GLD"):
         row = rows[ticker]

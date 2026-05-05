@@ -22,7 +22,7 @@ type BackendFreshness = {
   page_last_updated_at: string;
   facts_as_of: string;
   holdings_as_of: string | null;
-  recent_events_as_of: string;
+  recent_events_as_of: string | null;
   freshness_state: string;
 };
 
@@ -112,7 +112,10 @@ function isSupportedAssetDetailsResponse(
     typeof candidate.freshness !== "object" ||
     typeof candidate.freshness.page_last_updated_at !== "string" ||
     typeof candidate.freshness.facts_as_of !== "string" ||
-    typeof candidate.freshness.recent_events_as_of !== "string" ||
+    !(
+      typeof candidate.freshness.recent_events_as_of === "string" ||
+      candidate.freshness.recent_events_as_of === null
+    ) ||
     !candidate.facts ||
     typeof candidate.facts !== "object" ||
     !Array.isArray(candidate.citations)
@@ -140,7 +143,10 @@ function mergeAssetFixtureWithDetails(fallbackAsset: AssetFixture, details: Back
       pageLastUpdatedAt: details.freshness.page_last_updated_at,
       factsAsOf: details.freshness.facts_as_of,
       holdingsAsOf: details.freshness.holdings_as_of ?? fallbackAsset.freshness.holdingsAsOf,
-      recentEventsAsOf: details.freshness.recent_events_as_of
+      recentEventsAsOf:
+        details.freshness.recent_events_as_of ??
+        fallbackAsset.freshness.recentEventsAsOf ??
+        details.freshness.page_last_updated_at
     },
     citations: mergeUniqueBy(
       details.citations.map(toCitation),

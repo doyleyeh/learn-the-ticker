@@ -148,6 +148,11 @@ def build_lightweight_details_response(response: LightweightFetchResponse) -> De
     if response.asset.asset_type is AssetType.stock:
         facts: dict[str, Any] = {
             "business_model": _stock_business_model(response),
+            "products_services_context": _stock_products_services_context(response),
+            "financial_quality_context": _stock_financial_quality_context(response),
+            "valuation_context": _stock_valuation_context(response),
+            "risk_context": _stock_risk_context(response),
+            "educational_suitability": _suitability_summary(response, citation_ids).learn_next,
             "diversification_context": (
                 f"{response.asset.ticker} is a single-company stock, so beginner research should separate the "
                 "company's SEC-reported facts from broad market or ETF-basket context."
@@ -161,11 +166,15 @@ def build_lightweight_details_response(response: LightweightFetchResponse) -> De
         facts = {
             "role": _etf_role(response),
             "holdings": _etf_holdings_context(response),
+            "construction_methodology": _etf_construction_context(response),
             "benchmark": _metric_from_etf_fact(response, "benchmark", citation_ids),
             "cost_context": _metric_from_etf_expense_ratio(response, citation_ids),
             "prospectus_reference": _etf_prospectus_reference(response, citation_ids),
             "provider_market_price": _metric_from_market_price(response, provider_citation_ids),
             "manifest_scope_signal": _etf_scope_summary(response),
+            "risk_context": _etf_risk_context(response),
+            "comparison_overlap_context": _etf_comparison_overlap_context(response),
+            "educational_suitability": _suitability_summary(response, citation_ids).learn_next,
         }
 
     return DetailsResponse(
@@ -482,6 +491,12 @@ def _stock_sections(
     provider_citation_ids: list[str],
 ) -> list[OverviewSection]:
     retrieved_at = response.freshness.page_last_updated_at
+    filing_citations = _citation_ids_for_fact(response, "latest_sec_filing", stable_citation_ids)
+    identity_citations = _citation_ids_for_fact(response, "sec_identity", stable_citation_ids)
+    financial_metrics = _stock_metrics(response, stable_citation_ids)
+    has_market_reference = bool(provider_citation_ids)
+    risks = _top_risks(response, stable_citation_ids, provider_citation_ids)
+    suitability = _suitability_summary(response, stable_citation_ids)
     sections = [
         OverviewSection(
             section_id="business_overview",
@@ -494,19 +509,20 @@ def _stock_sections(
                     "sec_identity",
                     "SEC identity",
                     _sec_identity_summary(response),
-                    stable_citation_ids,
+                    identity_citations,
                     response,
+                    as_of_date=_fact_as_of(response, "sec_identity"),
                 ),
                 _item(
                     "latest_sec_filing",
                     "Latest SEC filing",
                     _latest_filing_summary(response),
-                    stable_citation_ids,
+                    filing_citations,
                     response,
                     as_of_date=_fact_as_of(response, "latest_sec_filing"),
                 ),
             ],
-            metrics=_stock_metrics(response, stable_citation_ids, provider_citation_ids),
+            metrics=[],
             citation_ids=stable_citation_ids,
             source_document_ids=_source_ids_for_citations(response, stable_citation_ids),
             freshness_state=FreshnessState.fresh,
@@ -514,6 +530,130 @@ def _stock_sections(
             as_of_date=response.freshness.facts_as_of,
             retrieved_at=retrieved_at,
         ),
+        OverviewSection(
+            section_id="products_services",
+            title="Products Or Services",
+            section_type=OverviewSectionType.stable_facts,
+            applies_to=[AssetType.stock],
+            beginner_summary=_stock_products_services_context(response),
+            items=[
+                _item(
+                    "filing_narrative_pointer",
+                    "Filing narrative pointer",
+                    (
+                        "The lightweight SEC path identifies the latest filing reference, but it does not yet parse "
+                        "the filing narrative into product, segment, revenue-driver, geography, or competitor detail."
+                    ),
+                    filing_citations,
+                    response,
+                    evidence_state=EvidenceState.partial,
+                    as_of_date=_fact_as_of(response, "latest_sec_filing"),
+                    limitations="Use the source drawer to inspect the filing reference before relying on this partial section.",
+                ),
+                _gap_item(
+                    "products_services_gap",
+                    "Products and services detail",
+                    "Source-backed product, segment, revenue-driver, geographic-exposure, and competitor detail is unavailable in the lightweight response.",
+                    response,
+                ),
+            ],
+            metrics=[],
+            citation_ids=filing_citations,
+            source_document_ids=_source_ids_for_citations(response, filing_citations),
+            freshness_state=FreshnessState.unknown,
+            evidence_state=EvidenceState.mixed,
+            as_of_date=_fact_as_of(response, "latest_sec_filing"),
+            retrieved_at=retrieved_at,
+            limitations="Narrative filing parsing remains a proposal-snapshot gap in lightweight mode.",
+        ),
+        OverviewSection(
+            section_id="strengths",
+            title="Strengths",
+            section_type=OverviewSectionType.evidence_gap,
+            applies_to=[AssetType.stock],
+            beginner_summary=(
+                "The lightweight SEC/XBRL fetch has not yet parsed source-backed strengths such as competitive "
+                "advantages, scale, brand, switching costs, technology, or industry tailwinds."
+            ),
+            items=[
+                _gap_item(
+                    "strengths_gap",
+                    "Strengths evidence",
+                    "No source-backed strengths are generated from the lightweight facts; this section stays unavailable instead of filling gaps with model memory.",
+                    response,
+                    evidence_state=EvidenceState.insufficient_evidence,
+                )
+            ],
+            metrics=[],
+            citation_ids=[],
+            source_document_ids=[],
+            freshness_state=FreshnessState.unavailable,
+            evidence_state=EvidenceState.insufficient_evidence,
+            retrieved_at=retrieved_at,
+            limitations="Strengths need filing narrative or reviewed company-source evidence before generated claims.",
+        ),
+        OverviewSection(
+            section_id="financial_quality",
+            title="Financial Quality",
+            section_type=OverviewSectionType.stable_facts,
+            applies_to=[AssetType.stock],
+            beginner_summary=_stock_financial_quality_context(response),
+            items=[
+                _stock_financial_item(response, "latest_revenue_fact", "Latest reported revenue", stable_citation_ids),
+                _stock_financial_item(response, "latest_net_income_fact", "Latest reported net income", stable_citation_ids),
+                _stock_financial_item(response, "latest_assets_fact", "Latest reported assets", stable_citation_ids),
+                _gap_item(
+                    "financial_quality_trend_gap",
+                    "Remaining financial-quality trend gaps",
+                    "The lightweight response has latest SEC/XBRL facts, but it does not yet build multi-year revenue, EPS, margins, cash-flow, debt, cash, ROE, or ROIC trends.",
+                    response,
+                    evidence_state=EvidenceState.partial,
+                ),
+            ],
+            metrics=financial_metrics,
+            citation_ids=_dedupe([citation_id for metric in financial_metrics for citation_id in metric.citation_ids]),
+            source_document_ids=_dedupe([source_id for metric in financial_metrics for source_id in metric.source_document_ids]),
+            freshness_state=FreshnessState.fresh if financial_metrics else FreshnessState.unavailable,
+            evidence_state=EvidenceState.mixed if financial_metrics else EvidenceState.unavailable,
+            as_of_date=_latest_fact_as_of(response, ("latest_revenue_fact", "latest_net_income_fact", "latest_assets_fact")),
+            retrieved_at=retrieved_at,
+            limitations="Single latest facts are shown; multi-year quality trends remain partial in lightweight mode.",
+        ),
+        OverviewSection(
+            section_id="valuation_context",
+            title="Valuation Context",
+            section_type=OverviewSectionType.evidence_gap,
+            applies_to=[AssetType.stock],
+            beginner_summary=_stock_valuation_context(response),
+            items=[
+                _item(
+                    "provider_market_reference",
+                    "Provider market reference",
+                    _provider_reference_summary(response),
+                    provider_citation_ids,
+                    response,
+                    evidence_state=EvidenceState.partial if has_market_reference else EvidenceState.unavailable,
+                    as_of_date=_fact_as_of(response, "provider_market_price"),
+                    limitations="Provider-derived market reference is not a valuation conclusion or recommendation.",
+                ),
+                _gap_item(
+                    "valuation_metrics_gap",
+                    "Valuation metrics",
+                    "P/E, forward P/E, price/sales, price/free-cash-flow, peer context, and own-history context are unavailable in this lightweight response.",
+                    response,
+                    evidence_state=EvidenceState.insufficient_evidence,
+                ),
+            ],
+            metrics=[_market_metric(response, provider_citation_ids)],
+            citation_ids=provider_citation_ids,
+            source_document_ids=_source_ids_for_citations(response, provider_citation_ids),
+            freshness_state=FreshnessState.fresh if has_market_reference else FreshnessState.unavailable,
+            evidence_state=EvidenceState.mixed if has_market_reference else EvidenceState.insufficient_evidence,
+            as_of_date=_fact_as_of(response, "provider_market_price"),
+            retrieved_at=retrieved_at,
+            limitations="Valuation context is intentionally limited to sourced availability and does not label the stock cheap or expensive.",
+        ),
+        _risk_section(response, risks, applies_to=[AssetType.stock], section_id="top_risks", title="Top Risks"),
         OverviewSection(
             section_id="market_reference",
             title="Market Reference",
@@ -540,6 +680,12 @@ def _stock_sections(
             retrieved_at=retrieved_at,
             limitations="Provider-derived market reference is not official company evidence.",
         ),
+        _educational_suitability_section(
+            response,
+            suitability,
+            citation_ids=stable_citation_ids,
+            applies_to=[AssetType.stock],
+        ),
     ]
     return [*sections, *_gap_sections(response)]
 
@@ -554,6 +700,11 @@ def _etf_sections(
     issuer_state = EvidenceState.supported if has_issuer else EvidenceState.partial
     holdings_state = EvidenceState.supported if _has_official_etf_holdings_evidence(response) else EvidenceState.partial
     expense_metric = _expense_ratio_metric(response, stable_citation_ids)
+    benchmark_metric = _etf_metric(response, "benchmark", "Benchmark", stable_citation_ids)
+    holdings_count_metric = _etf_metric(response, "holdings_count", "Holdings count", stable_citation_ids)
+    prospectus_citations = _citation_ids_for_fact(response, "prospectus_reference", stable_citation_ids)
+    risks = _top_risks(response, stable_citation_ids, provider_citation_ids)
+    suitability = _suitability_summary(response, stable_citation_ids)
     return [
         OverviewSection(
             section_id="fund_objective_role",
@@ -580,7 +731,7 @@ def _etf_sections(
                     as_of_date=_fact_as_of(response, "benchmark"),
                 )
             ],
-            metrics=[],
+            metrics=[benchmark_metric] if benchmark_metric.evidence_state is not EvidenceState.unavailable else [],
             citation_ids=stable_citation_ids,
             source_document_ids=_source_ids_for_citations(response, stable_citation_ids),
             freshness_state=FreshnessState.fresh,
@@ -599,23 +750,8 @@ def _etf_sections(
             section_type=OverviewSectionType.stable_facts,
             applies_to=[AssetType.etf],
             beginner_summary=" ".join(_etf_holdings_context(response)),
-            items=[
-                _item(
-                    "holdings_status",
-                    "Holdings status",
-                    "; ".join(_etf_holdings_context(response)),
-                    stable_citation_ids,
-                    response,
-                    evidence_state=holdings_state,
-                    as_of_date=response.freshness.holdings_as_of or response.freshness.facts_as_of,
-                    limitations=(
-                        "Official issuer holdings or exposure fixture metadata supports this section."
-                        if holdings_state is EvidenceState.supported
-                        else "Full issuer holdings are unavailable in this lightweight response."
-                    ),
-                )
-            ],
-            metrics=[],
+            items=_etf_holdings_items(response, stable_citation_ids, holdings_state),
+            metrics=[holdings_count_metric] if holdings_count_metric.evidence_state is not EvidenceState.unavailable else [],
             citation_ids=stable_citation_ids,
             source_document_ids=_source_ids_for_citations(response, stable_citation_ids),
             freshness_state=FreshnessState.fresh,
@@ -627,6 +763,51 @@ def _etf_sections(
                 if holdings_state is EvidenceState.supported
                 else "Full issuer holdings are unavailable in this lightweight response."
             ),
+        ),
+        OverviewSection(
+            section_id="construction_methodology",
+            title="Construction Or Methodology",
+            section_type=OverviewSectionType.stable_facts,
+            applies_to=[AssetType.etf],
+            beginner_summary=_etf_construction_context(response),
+            items=[
+                _item(
+                    "index_tracking",
+                    "Index tracking",
+                    _etf_benchmark_summary(response),
+                    _citation_ids_for_fact(response, "benchmark", stable_citation_ids),
+                    response,
+                    evidence_state=EvidenceState.supported if _fact(response, "benchmark") else EvidenceState.unavailable,
+                    as_of_date=_fact_as_of(response, "benchmark"),
+                ),
+                _item(
+                    "prospectus_reference",
+                    "Prospectus reference",
+                    _etf_prospectus_reference(response, prospectus_citations).value,
+                    prospectus_citations,
+                    response,
+                    evidence_state=EvidenceState.supported if _fact(response, "prospectus_reference") else EvidenceState.unavailable,
+                    as_of_date=_fact_as_of(response, "prospectus_reference"),
+                ),
+                _gap_item(
+                    "methodology_detail_gap",
+                    "Remaining methodology details",
+                    "Rebalancing frequency, complete screening rules, and full methodology details are unavailable in the lightweight response.",
+                    response,
+                    evidence_state=EvidenceState.partial,
+                ),
+            ],
+            metrics=[],
+            citation_ids=_dedupe([*_citation_ids_for_fact(response, "benchmark", stable_citation_ids), *prospectus_citations]),
+            source_document_ids=_source_ids_for_citations(
+                response,
+                _dedupe([*_citation_ids_for_fact(response, "benchmark", stable_citation_ids), *prospectus_citations]),
+            ),
+            freshness_state=FreshnessState.fresh,
+            evidence_state=EvidenceState.mixed if has_issuer else EvidenceState.partial,
+            as_of_date=response.freshness.facts_as_of,
+            retrieved_at=retrieved_at,
+            limitations="Construction is summarized from available benchmark/prospectus metadata; full methodology parsing remains partial.",
         ),
         OverviewSection(
             section_id="cost_trading_context",
@@ -646,19 +827,62 @@ def _etf_sections(
                     response,
                     evidence_state=EvidenceState.partial,
                     as_of_date=_fact_as_of(response, "provider_market_price"),
-                )
+                ),
+                _gap_item(
+                    "premium_discount_or_spread",
+                    "Premium, discount, or spread",
+                    _gap_message(response, "premium_discount_or_spread")
+                    or "Premium, discount, bid-ask spread, and average-volume fields are unavailable in this lightweight response.",
+                    response,
+                ),
             ],
             metrics=[
-                _market_metric(response, provider_citation_ids),
                 expense_metric,
+                _market_metric(response, provider_citation_ids),
             ],
             citation_ids=[*provider_citation_ids, *stable_citation_ids],
             source_document_ids=_source_ids_for_citations(response, [*provider_citation_ids, *stable_citation_ids]),
             freshness_state=FreshnessState.fresh,
-            evidence_state=EvidenceState.partial,
+            evidence_state=EvidenceState.mixed,
             as_of_date=_fact_as_of(response, "provider_market_price"),
             retrieved_at=retrieved_at,
             limitations="Provider-derived market reference is not official issuer evidence.",
+        ),
+        _risk_section(
+            response,
+            risks,
+            applies_to=[AssetType.etf],
+            section_id="etf_specific_risks",
+            title="ETF-Specific Risks",
+        ),
+        OverviewSection(
+            section_id="similar_assets_alternatives",
+            title="Similar Assets Or Simpler Alternatives",
+            section_type=OverviewSectionType.evidence_gap,
+            applies_to=[AssetType.etf],
+            beginner_summary=_etf_comparison_overlap_context(response),
+            items=[
+                _gap_item(
+                    "similar_assets_gap",
+                    "Similar assets and overlap",
+                    "Similar ETF, simpler-alternative, and broad-market overlap evidence is unavailable in the lightweight response.",
+                    response,
+                    evidence_state=EvidenceState.insufficient_evidence,
+                )
+            ],
+            metrics=[],
+            citation_ids=[],
+            source_document_ids=[],
+            freshness_state=FreshnessState.unavailable,
+            evidence_state=EvidenceState.insufficient_evidence,
+            retrieved_at=retrieved_at,
+            limitations="Comparison and overlap context requires verified comparison packs or issuer holdings overlap evidence.",
+        ),
+        _educational_suitability_section(
+            response,
+            suitability,
+            citation_ids=stable_citation_ids,
+            applies_to=[AssetType.etf],
         ),
         *_gap_sections(response),
     ]
@@ -724,10 +948,60 @@ def _item(
     )
 
 
+def _gap_item(
+    item_id: str,
+    title: str,
+    summary: str,
+    response: LightweightFetchResponse,
+    *,
+    evidence_state: EvidenceState = EvidenceState.unavailable,
+    freshness_state: FreshnessState = FreshnessState.unavailable,
+    limitations: str | None = None,
+) -> OverviewSectionItem:
+    return OverviewSectionItem(
+        item_id=item_id,
+        title=title,
+        summary=summary,
+        citation_ids=[],
+        source_document_ids=[],
+        freshness_state=freshness_state,
+        evidence_state=evidence_state,
+        as_of_date=None,
+        retrieved_at=response.freshness.page_last_updated_at,
+        limitations=limitations or summary,
+    )
+
+
+def _stock_financial_item(
+    response: LightweightFetchResponse,
+    field_name: str,
+    title: str,
+    stable_citation_ids: list[str],
+) -> OverviewSectionItem:
+    value = _fact_value(response, field_name)
+    if isinstance(value, dict) and value.get("value") is not None:
+        citation_ids = _citation_ids_for_fact(response, field_name, stable_citation_ids)
+        label = value.get("label") or title
+        period = value.get("end") or value.get("filed") or "unknown period"
+        return _item(
+            field_name,
+            title,
+            f"SEC/XBRL reports {label} of {_format_fact_number(value.get('value'))} {value.get('unit') or ''} for period {period}.",
+            citation_ids,
+            response,
+            as_of_date=value.get("end") or _fact_as_of(response, field_name),
+        )
+    return _gap_item(
+        field_name,
+        title,
+        f"{title} is unavailable in the lightweight SEC/XBRL response.",
+        response,
+    )
+
+
 def _stock_metrics(
     response: LightweightFetchResponse,
     stable_citation_ids: list[str],
-    provider_citation_ids: list[str],
 ) -> list[OverviewMetric]:
     metrics: list[OverviewMetric] = []
     for field_name, label in (
@@ -737,22 +1011,185 @@ def _stock_metrics(
     ):
         value = _fact_value(response, field_name)
         if isinstance(value, dict) and value.get("value") is not None:
+            citation_ids = _citation_ids_for_fact(response, field_name, stable_citation_ids)
             metrics.append(
                 OverviewMetric(
                     metric_id=field_name,
                     label=label,
                     value=value.get("value"),
                     unit=value.get("unit"),
-                    citation_ids=stable_citation_ids,
-                    source_document_ids=_source_ids_for_citations(response, stable_citation_ids),
+                    citation_ids=citation_ids,
+                    source_document_ids=_source_ids_for_citations(response, citation_ids),
                     freshness_state=FreshnessState.fresh,
                     evidence_state=EvidenceState.supported,
                     as_of_date=value.get("end"),
                     retrieved_at=response.freshness.page_last_updated_at,
                 )
             )
-    metrics.append(_market_metric(response, provider_citation_ids))
     return metrics
+
+
+def _etf_metric(
+    response: LightweightFetchResponse,
+    field_name: str,
+    label: str,
+    stable_citation_ids: list[str],
+) -> OverviewMetric:
+    fact = _fact(response, field_name)
+    citation_ids = _citation_ids_for_fact(response, field_name, stable_citation_ids)
+    if fact is not None:
+        return OverviewMetric(
+            metric_id=field_name,
+            label=label,
+            value=fact.value,
+            unit="approximate holdings" if field_name == "holdings_count" else getattr(fact, "unit", None),
+            citation_ids=citation_ids,
+            source_document_ids=_source_ids_for_citations(response, citation_ids),
+            freshness_state=fact.freshness_state,
+            evidence_state=fact.evidence_state,
+            as_of_date=fact.as_of_date,
+            retrieved_at=fact.retrieved_at or response.freshness.page_last_updated_at,
+            limitations=fact.limitations,
+        )
+    return OverviewMetric(
+        metric_id=field_name,
+        label=label,
+        value="Unavailable",
+        unit=None,
+        citation_ids=[],
+        source_document_ids=[],
+        freshness_state=FreshnessState.unavailable,
+        evidence_state=EvidenceState.unavailable,
+        retrieved_at=response.freshness.page_last_updated_at,
+        limitations=f"{label} is unavailable in the lightweight response.",
+    )
+
+
+def _etf_holdings_items(
+    response: LightweightFetchResponse,
+    stable_citation_ids: list[str],
+    holdings_state: EvidenceState,
+) -> list[OverviewSectionItem]:
+    items = [
+        _item(
+            "holdings_status",
+            "Holdings status",
+            "; ".join(_etf_holdings_context(response)),
+            stable_citation_ids,
+            response,
+            evidence_state=holdings_state,
+            as_of_date=response.freshness.holdings_as_of or response.freshness.facts_as_of,
+            limitations=(
+                "Official issuer holdings or exposure fixture metadata supports this section."
+                if holdings_state is EvidenceState.supported
+                else "Full issuer holdings are unavailable in this lightweight response."
+            ),
+        )
+    ]
+    holdings_count = _fact(response, "holdings_count")
+    if holdings_count is not None:
+        citation_ids = _citation_ids_for_fact(response, "holdings_count", stable_citation_ids)
+        items.append(
+            _item(
+                "holdings_count",
+                "Holdings count",
+                f"Official issuer metadata lists about {holdings_count.value} holdings.",
+                citation_ids,
+                response,
+                as_of_date=holdings_count.as_of_date,
+            )
+        )
+    for fact in response.facts:
+        if not (
+            fact.field_name.startswith("top_holding_")
+            or fact.field_name.endswith("_exposure")
+            or fact.field_name == "equity_exposure"
+        ):
+            continue
+        items.append(
+            _item(
+                fact.field_name,
+                fact.field_name.replace("_", " ").title(),
+                _etf_holding_or_exposure_summary(fact.value),
+                _citation_ids_for_fact(response, fact.field_name, stable_citation_ids),
+                response,
+                as_of_date=fact.as_of_date,
+            )
+        )
+    items.append(
+        _gap_item(
+            "remaining_holdings_exposure_gap",
+            "Remaining holdings and exposure gaps",
+            "Top-10 weights, top-10 concentration, complete sector or country breakdowns, and largest-position verification remain incomplete in the lightweight response.",
+            response,
+            evidence_state=EvidenceState.partial,
+        )
+    )
+    return items
+
+
+def _risk_section(
+    response: LightweightFetchResponse,
+    risks: list[RiskItem],
+    *,
+    applies_to: list[AssetType],
+    section_id: str,
+    title: str,
+) -> OverviewSection:
+    citation_ids = _dedupe(citation_id for risk in risks for citation_id in risk.citation_ids)
+    return OverviewSection(
+        section_id=section_id,
+        title=title,
+        section_type=OverviewSectionType.risk,
+        applies_to=applies_to,
+        beginner_summary="Exactly three top risks are shown first for beginner readability.",
+        items=[
+            _item(
+                f"risk_{index}",
+                risk.title,
+                risk.plain_english_explanation,
+                risk.citation_ids,
+                response,
+            )
+            for index, risk in enumerate(risks, start=1)
+        ],
+        metrics=[],
+        citation_ids=citation_ids,
+        source_document_ids=_source_ids_for_citations(response, citation_ids),
+        freshness_state=FreshnessState.fresh,
+        evidence_state=EvidenceState.supported,
+        as_of_date=response.freshness.facts_as_of,
+        retrieved_at=response.freshness.page_last_updated_at,
+    )
+
+
+def _educational_suitability_section(
+    response: LightweightFetchResponse,
+    suitability: SuitabilitySummary,
+    *,
+    citation_ids: list[str],
+    applies_to: list[AssetType],
+) -> OverviewSection:
+    return OverviewSection(
+        section_id="educational_suitability",
+        title="Educational Suitability",
+        section_type=OverviewSectionType.educational_suitability,
+        applies_to=applies_to,
+        beginner_summary=suitability.may_fit,
+        items=[
+            _item("may_fit", "May fit as a learning topic", suitability.may_fit, citation_ids, response),
+            _item("may_not_fit", "May not fit", suitability.may_not_fit, citation_ids, response),
+            _item("learn_next", "Learn next", suitability.learn_next, citation_ids, response),
+        ],
+        metrics=[],
+        citation_ids=citation_ids,
+        source_document_ids=_source_ids_for_citations(response, citation_ids),
+        freshness_state=FreshnessState.fresh,
+        evidence_state=EvidenceState.supported,
+        as_of_date=response.freshness.facts_as_of,
+        retrieved_at=response.freshness.page_last_updated_at,
+    )
+
 
 
 def _market_metric(response: LightweightFetchResponse, citation_ids: list[str]) -> OverviewMetric:
@@ -1110,6 +1547,50 @@ def _stock_business_model(response: LightweightFetchResponse) -> str:
     )
 
 
+def _stock_products_services_context(response: LightweightFetchResponse) -> str:
+    return (
+        f"{response.asset.ticker}'s lightweight page has SEC identity and filing-reference metadata, but it does not "
+        "yet parse the filing narrative into a full products, services, segment, revenue-driver, geographic-exposure, "
+        "or competitor snapshot."
+    )
+
+
+def _stock_financial_quality_context(response: LightweightFetchResponse) -> str:
+    available = [
+        label
+        for field_name, label in (
+            ("latest_revenue_fact", "revenue"),
+            ("latest_net_income_fact", "net income"),
+            ("latest_assets_fact", "assets"),
+        )
+        if _fact(response, field_name) is not None
+    ]
+    if available:
+        return (
+            "SEC/XBRL supports latest "
+            + ", ".join(available)
+            + " facts in this lightweight page, while multi-year quality trends remain incomplete."
+        )
+    return "SEC/XBRL financial-quality facts are unavailable in this lightweight response."
+
+
+def _stock_valuation_context(response: LightweightFetchResponse) -> str:
+    price = _metric_from_market_price(response, _citation_ids_for_source_label(response, "provider_derived"))
+    if price.value not in (None, "Unavailable"):
+        return (
+            f"Provider-derived local-test market reference is available at {price.value} {price.unit or ''}. "
+            "The lightweight page does not calculate P/E, forward P/E, price/sales, price/free-cash-flow, peer context, or own-history context."
+        )
+    return "Valuation context is unavailable because the lightweight response has no supported valuation ratios or provider price reference."
+
+
+def _stock_risk_context(response: LightweightFetchResponse) -> str:
+    return (
+        f"{response.asset.ticker} is a single-company stock, so risks are framed around company-specific exposure, "
+        "point-in-time SEC facts, and provider fallback limits rather than trading signals."
+    )
+
+
 def _sec_identity_summary(response: LightweightFetchResponse) -> str:
     identity = _fact_value(response, "sec_identity")
     if isinstance(identity, dict):
@@ -1228,6 +1709,43 @@ def _etf_benchmark_summary(response: LightweightFetchResponse) -> str:
     return "Benchmark is unavailable until deterministic issuer evidence is present."
 
 
+def _etf_construction_context(response: LightweightFetchResponse) -> str:
+    benchmark = _fact_value(response, "benchmark")
+    prospectus = _fact_value(response, "prospectus_reference")
+    if benchmark or prospectus:
+        return (
+            f"{response.asset.ticker} construction is summarized from available benchmark and prospectus metadata; "
+            "full rebalancing, screening, and methodology detail remains partial in lightweight mode."
+        )
+    return "Construction and methodology evidence is unavailable until issuer benchmark or prospectus metadata is present."
+
+
+def _etf_risk_context(response: LightweightFetchResponse) -> str:
+    return (
+        f"{response.asset.ticker} risks are framed around market exposure, point-in-time issuer evidence, and provider "
+        "fallback limits; the page does not assign a personalized portfolio role."
+    )
+
+
+def _etf_comparison_overlap_context(response: LightweightFetchResponse) -> str:
+    return (
+        f"{response.asset.ticker} needs verified comparison or overlap evidence before the page can name similar ETFs, "
+        "simpler alternatives, or diversification effects."
+    )
+
+
+def _etf_holding_or_exposure_summary(value: Any) -> str:
+    if isinstance(value, dict):
+        name = value.get("name") or value.get("holding_ticker") or "Exposure"
+        weight = value.get("weight")
+        unit = value.get("unit") or "weight"
+        category = value.get("exposure_category")
+        if weight is not None:
+            return f"{name} is listed as {weight} {unit}{f' in {category}' if category else ''}."
+        return f"{name}{f' is listed as {category}' if category else ' is listed'}."
+    return str(value)
+
+
 def _etf_prospectus_reference(response: LightweightFetchResponse, citation_ids: list[str]) -> MetricValue:
     value = _fact_value(response, "prospectus_reference")
     if isinstance(value, dict):
@@ -1274,6 +1792,21 @@ def _fact_as_of(response: LightweightFetchResponse, field_name: str) -> str | No
     return fact.as_of_date if fact is not None else None
 
 
+def _latest_fact_as_of(response: LightweightFetchResponse, field_names: tuple[str, ...]) -> str | None:
+    for field_name in field_names:
+        as_of = _fact_as_of(response, field_name)
+        if as_of:
+            return as_of
+    return response.freshness.facts_as_of
+
+
+def _gap_message(response: LightweightFetchResponse, field_name: str) -> str | None:
+    gap = next((item for item in response.gaps if item.field_name == field_name), None)
+    if gap is None:
+        return None
+    return str(gap.value)
+
+
 def _preferred_citation_ids(response: LightweightFetchResponse) -> list[str]:
     official_ids = _citation_ids_for_source_label(response, "official")
     partial_ids = _citation_ids_for_source_label(response, "partial")
@@ -1284,6 +1817,25 @@ def _preferred_citation_ids(response: LightweightFetchResponse) -> list[str]:
 def _citation_ids_for_source_label(response: LightweightFetchResponse, label: str) -> list[str]:
     source_ids = {source.source_document_id for source in response.sources if source.source_label.value == label}
     return [citation.citation_id for citation in response.citations if citation.source_document_id in source_ids]
+
+
+def _citation_ids_for_fact(
+    response: LightweightFetchResponse,
+    field_name: str,
+    fallback_citation_ids: list[str],
+) -> list[str]:
+    fact = _fact(response, field_name)
+    if fact is None:
+        return fallback_citation_ids
+    if fact.citation_ids:
+        return fact.citation_ids
+    source_ids = set(fact.source_document_ids)
+    citation_ids = [
+        citation.citation_id
+        for citation in response.citations
+        if citation.source_document_id in source_ids
+    ]
+    return citation_ids or fallback_citation_ids
 
 
 def _source_ids_for_citations(response: LightweightFetchResponse, citation_ids: list[str]) -> list[str]:
@@ -1309,3 +1861,22 @@ def _short_value(value: Any) -> str:
         return "; ".join(str(item) for item in value[:3])
     text = str(value)
     return text if len(text) <= 220 else text[:217] + "..."
+
+
+def _format_fact_number(value: Any) -> str:
+    if isinstance(value, int):
+        return f"{value:,}"
+    if isinstance(value, float):
+        return f"{value:,.2f}".rstrip("0").rstrip(".")
+    return str(value)
+
+
+def _dedupe(values) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
