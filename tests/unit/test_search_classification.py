@@ -242,6 +242,37 @@ def test_etf_launch_review_packet_preserves_supported_and_recognition_split():
     assert bucket_diagnostics["industry_theme_passive_us_equity"]["current_supported_count"] == 2
     assert bucket_diagnostics["dividend_and_shareholder_yield_index"]["current_supported_count"] == 0
     blocking = etf500["generated_output_blocking_rules"]
+    expected_blocked_conditions = {
+        "recognition_only",
+        "pending_review",
+        "unavailable",
+        "parser_invalid",
+        "unclear_rights",
+        "source_pack_incomplete",
+        "leveraged_etf",
+        "inverse_etf",
+        "active_etf",
+        "fixed_income_etf",
+        "commodity_etf",
+        "crypto_product",
+        "single_stock_etf",
+        "option_income_or_buffer_etf",
+        "multi_asset_etf",
+        "etn",
+        "etv",
+        "cef",
+        "international_or_global_primary_exposure",
+    }
+    matrix = {row["condition"]: row for row in blocking["blocked_generated_surface_matrix"]}
+    assert set(blocking["blocked_conditions"]) == expected_blocked_conditions
+    assert set(matrix) == expected_blocked_conditions
+    assert matrix["recognition_only"]["row_count"] == 9
+    assert matrix["source_pack_incomplete"]["row_count"] == 13
+    assert matrix["leveraged_etf"]["row_count"] >= 1
+    assert matrix["international_or_global_primary_exposure"]["row_count"] == 0
+    assert all(row["generated_output_unlocked"] is False for row in matrix.values())
+    assert all("generated_output_cache_entries" in row["blocked_generated_surfaces"] for row in matrix.values())
+    assert diagnostics["blocked_generated_surface_matrix"] == blocking["blocked_generated_surface_matrix"]
     assert blocking["recognition_only_rows_unlock_generated_output"] is False
     assert blocking["candidate_rows_that_fail_scope_gates_unlock_generated_output"] is False
     assert blocking["pending_review_rows_unlock_generated_output"] is False

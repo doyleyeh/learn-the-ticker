@@ -1220,6 +1220,34 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
         "supported_checksum_matches": True,
         "recognition_checksum_matches": True,
     }
+    blocked_matrix = {row["condition"]: row for row in launch_details["etf500_blocked_generated_surface_matrix"]}
+    assert set(blocked_matrix) == {
+        "recognition_only",
+        "pending_review",
+        "unavailable",
+        "parser_invalid",
+        "unclear_rights",
+        "source_pack_incomplete",
+        "leveraged_etf",
+        "inverse_etf",
+        "active_etf",
+        "fixed_income_etf",
+        "commodity_etf",
+        "crypto_product",
+        "single_stock_etf",
+        "option_income_or_buffer_etf",
+        "multi_asset_etf",
+        "etn",
+        "etv",
+        "cef",
+        "international_or_global_primary_exposure",
+    }
+    assert blocked_matrix["recognition_only"]["row_count"] == 9
+    assert blocked_matrix["source_pack_incomplete"]["row_count"] == 13
+    assert blocked_matrix["leveraged_etf"]["row_count"] >= 1
+    assert blocked_matrix["international_or_global_primary_exposure"]["row_count"] == 0
+    assert all(row["generated_output_unlocked"] is False for row in blocked_matrix.values())
+    assert all("generated_output_cache_entries" in row["blocked_generated_surfaces"] for row in blocked_matrix.values())
     assert "do_not_pad_with_leveraged_etf" in launch_details["etf500_no_padding_stop_conditions"]
     assert "do_not_pad_with_option_income_or_buffer_etf" in launch_details["etf500_no_padding_stop_conditions"]
     assert "do_not_pad_with_cef" in launch_details["etf500_no_padding_stop_conditions"]

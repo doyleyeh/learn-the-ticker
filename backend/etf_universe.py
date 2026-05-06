@@ -236,6 +236,27 @@ ETF500_NO_PADDING_DISQUALIFIERS = (
     "international_equity",
     "unclear_or_pending_review_product",
 )
+ETF500_BLOCKED_GENERATED_OUTPUT_CONDITIONS = (
+    "recognition_only",
+    "pending_review",
+    "unavailable",
+    "parser_invalid",
+    "unclear_rights",
+    "source_pack_incomplete",
+    "leveraged_etf",
+    "inverse_etf",
+    "active_etf",
+    "fixed_income_etf",
+    "commodity_etf",
+    "crypto_product",
+    "single_stock_etf",
+    "option_income_or_buffer_etf",
+    "multi_asset_etf",
+    "etn",
+    "etv",
+    "cef",
+    "international_or_global_primary_exposure",
+)
 ETF_REQUIRED_ISSUER_SOURCE_PACK = [
     "issuer_page",
     "fact_sheet",
@@ -1525,6 +1546,15 @@ def _etf500_candidate_review_contract(
         "unclear_rights",
         "source_pack_incomplete",
     )
+    blocked_generated_surface_matrix = _etf500_blocked_generated_surface_matrix(
+        recognition_only_count=len(recognition_entries),
+        pending_review_count=pending_review_count,
+        unavailable_count=unavailable_count,
+        parser_invalid_count=parser_invalid_count,
+        unclear_rights_count=unclear_rights_count,
+        source_pack_incomplete_count=source_pack_incomplete_count,
+        disqualifier_counts=disqualifier_counts,
+    )
     return {
         "contract_version": ETF500_REVIEW_CONTRACT_VERSION,
         "review_only": True,
@@ -1593,10 +1623,13 @@ def _etf500_candidate_review_contract(
             },
             "blocked_statuses": blocked_statuses,
             "blocked_generated_surfaces": list(ETF_ISSUER_BLOCKED_GENERATED_SURFACES),
+            "blocked_generated_surface_matrix": blocked_generated_surface_matrix,
         },
         "generated_output_blocking_rules": {
             "blocked_statuses": blocked_statuses,
+            "blocked_conditions": list(ETF500_BLOCKED_GENERATED_OUTPUT_CONDITIONS),
             "blocked_generated_surfaces": list(ETF_ISSUER_BLOCKED_GENERATED_SURFACES),
+            "blocked_generated_surface_matrix": blocked_generated_surface_matrix,
             "recognition_only_rows_unlock_generated_output": False,
             "candidate_rows_that_fail_scope_gates_unlock_generated_output": False,
             "pending_review_rows_unlock_generated_output": False,
@@ -1655,6 +1688,37 @@ def _etf500_category_bucket_diagnostics(
             }
         )
     return diagnostics
+
+
+def _etf500_blocked_generated_surface_matrix(
+    *,
+    recognition_only_count: int,
+    pending_review_count: int,
+    unavailable_count: int,
+    parser_invalid_count: int,
+    unclear_rights_count: int,
+    source_pack_incomplete_count: int,
+    disqualifier_counts: dict[str, int],
+) -> list[dict[str, object]]:
+    count_by_condition = {
+        "recognition_only": recognition_only_count,
+        "pending_review": pending_review_count,
+        "unavailable": unavailable_count,
+        "parser_invalid": parser_invalid_count,
+        "unclear_rights": unclear_rights_count,
+        "source_pack_incomplete": source_pack_incomplete_count,
+        "international_or_global_primary_exposure": disqualifier_counts.get("international_equity", 0),
+    }
+    count_by_condition.update(disqualifier_counts)
+    return [
+        {
+            "condition": condition,
+            "row_count": int(count_by_condition.get(condition, 0)),
+            "blocked_generated_surfaces": list(ETF_ISSUER_BLOCKED_GENERATED_SURFACES),
+            "generated_output_unlocked": False,
+        }
+        for condition in ETF500_BLOCKED_GENERATED_OUTPUT_CONDITIONS
+    ]
 
 
 def _etf500_disqualifier_counts(recognition_entries: list[dict[str, object]]) -> dict[str, int]:
