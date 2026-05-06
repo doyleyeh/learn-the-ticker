@@ -12,14 +12,18 @@ from backend.knowledge_pack_repository import (
     InMemoryAssetKnowledgePackRepository,
     KnowledgePackRepositoryContractError,
     knowledge_pack_records_from_acquisition_result,
+    knowledge_pack_records_from_lightweight_response,
     knowledge_pack_repository_metadata,
 )
+from backend.lightweight_data_fetch import fetch_lightweight_asset_data
 from backend.models import SourceUsePolicy
 from backend.provider_adapters.etf_issuer import build_etf_issuer_acquisition_result
 from backend.provider_adapters.sec_stock import build_sec_stock_acquisition_result
 from backend.providers import fetch_mock_provider_response, mock_etf_issuer_adapter, mock_sec_stock_adapter
 from backend.retrieval import build_asset_knowledge_pack, build_asset_knowledge_pack_result
 from backend.source_snapshot_repository import source_snapshot_records_from_acquisition_result
+from backend.settings import build_lightweight_data_settings
+from scripts.run_local_fresh_data_slice_smoke import LocalFreshDataSliceFakeFetcher, RETRIEVED_AT
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -220,6 +224,65 @@ def test_in_memory_repository_reads_acquisition_records_with_fixture_fallback_co
     assert read_back == records
     assert repository.get("VOO") == records
     assert read_back.envelope.generated_output_available is False
+
+
+def test_lightweight_response_persists_re_reads_and_remains_cache_ineligible():
+    response = fetch_lightweight_asset_data(
+        "VOO",
+        settings=build_lightweight_data_settings(
+            {
+                "DATA_POLICY_MODE": "lightweight",
+                "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+                "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+                "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+            }
+        ),
+        fetcher=LocalFreshDataSliceFakeFetcher(),
+        retrieved_at=RETRIEVED_AT,
+    )
+    records = knowledge_pack_records_from_lightweight_response(response)
+    repository = InMemoryAssetKnowledgePackRepository()
+
+    repository.persist(records)
+    read_back = repository.read_knowledge_pack_records("voo")
+    restored = AssetKnowledgePackRepository().deserialize(read_back)
+
+    assert read_back == records
+    assert records.envelope.evidence_mode == "lightweight_local_mvp_durable_evidence"
+    assert records.envelope.strict_audit_quality_source_approval_granted is False
+    assert records.envelope.generated_output_cache_eligible is False
+    assert records.envelope.generated_output_available is False
+    assert records.envelope.ticker == "VOO"
+    assert records.normalized_facts
+    assert records.source_documents
+    assert records.source_checksums
+    assert {row.asset_ticker for row in records.normalized_facts} == {"VOO"}
+    assert all(row.value is not None for row in records.normalized_facts)
+    assert all(row.checksum.startswith("sha256:") for row in records.source_checksums)
+    assert all(row.cache_allowed is False for row in records.source_checksums)
+    assert restored.ticker == "VOO"
+    assert restored.generated_output_available is False
+    assert restored.source_document_ids == records.envelope.source_document_ids
+    assert set(restored.citation_ids) == set(records.envelope.citation_ids)
+
+
+def test_lightweight_blocked_rows_do_not_persist_knowledge_pack_evidence():
+    response = fetch_lightweight_asset_data(
+        "TQQQ",
+        settings=build_lightweight_data_settings(
+            {
+                "DATA_POLICY_MODE": "lightweight",
+                "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+                "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+                "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+            }
+        ),
+        fetcher=LocalFreshDataSliceFakeFetcher(),
+        retrieved_at=RETRIEVED_AT,
+    )
+
+    with pytest.raises(KnowledgePackRepositoryContractError, match="Only renderable lightweight"):
+        knowledge_pack_records_from_lightweight_response(response)
 
 
 def test_durable_knowledge_pack_repository_persists_and_reads_by_ticker():

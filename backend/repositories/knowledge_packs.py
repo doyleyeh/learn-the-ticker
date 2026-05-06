@@ -24,6 +24,9 @@ from backend.models import (
     KnowledgePackFactMetadata,
     KnowledgePackRecentDevelopmentMetadata,
     KnowledgePackSourceMetadata,
+    LightweightFetchResponse,
+    LightweightFetchState,
+    LightweightFetchSource,
     SectionFreshnessInput,
     SourceAllowlistStatus,
     SourceExportRights,
@@ -120,6 +123,9 @@ class KnowledgePackEnvelopeRow(StrictRow):
     cache_key: str | None = None
     no_live_external_calls: bool = True
     exports_full_source_documents: bool = False
+    evidence_mode: str = "strict_audit_quality_fixture"
+    strict_audit_quality_source_approval_granted: bool = True
+    generated_output_cache_eligible: bool = True
     message: str
 
 
@@ -557,6 +563,9 @@ def knowledge_pack_records_from_acquisition_result(
             cache_key=None,
             no_live_external_calls=True,
             exports_full_source_documents=False,
+            evidence_mode="official_source_acquisition_metadata",
+            strict_audit_quality_source_approval_granted=False,
+            generated_output_cache_eligible=False,
             message="Knowledge-pack record was built from deterministic official-source acquisition metadata only.",
         ),
         source_documents=source_rows,
@@ -617,6 +626,9 @@ def _non_generated_acquisition_records(acquisition: Any, *, created_at: str) -> 
             counts=KnowledgePackCounts(evidence_gap_count=1).model_dump(mode="json"),
             no_live_external_calls=True,
             exports_full_source_documents=False,
+            evidence_mode="non_generated_acquisition_metadata",
+            strict_audit_quality_source_approval_granted=False,
+            generated_output_cache_eligible=False,
             message=message,
         ),
         evidence_gaps=gap_rows,
@@ -1107,11 +1119,482 @@ def _enum_value(value: Any) -> str | None:
     return getattr(value, "value", value)
 
 
+def knowledge_pack_records_from_lightweight_response(
+    response: LightweightFetchResponse,
+    *,
+    created_at: str | None = None,
+) -> KnowledgePackRepositoryRecords:
+    """Build durable local-MVP knowledge-pack records from lightweight normalized facts.
+
+    The records are intentionally generated-output-cache-ineligible and are not Golden Asset
+    Source Handoff approval. They preserve enough source/citation/fact metadata for local
+    deterministic reads and grounded chat reconstruction without storing raw provider payloads.
+    """
+
+    if not _can_persist_lightweight_response(response):
+        raise KnowledgePackRepositoryContractError("Only renderable lightweight local-MVP responses can be persisted.")
+
+    ticker = response.asset.ticker
+    pack_id = f"asset-knowledge-pack-{ticker.lower()}-lightweight-local-v1"
+    source_by_id = {source.source_document_id: source for source in response.sources}
+    source_bindings: dict[str, dict[str, set[str]]] = {
+        source.source_document_id: {"citations": set(), "facts": set(), "chunks": set()}
+        for source in response.sources
+    }
+
+    source_rows = [_lightweight_source_row(pack_id, ticker, source) for source in response.sources]
+    chunk_rows: list[KnowledgePackSourceChunkRow] = []
+    fact_rows: list[KnowledgePackFactRow] = []
+    gap_rows: list[KnowledgePackEvidenceGapRow] = [
+        _lightweight_gap_row(pack_id, ticker, gap, index)
+        for index, gap in enumerate(response.gaps, start=1)
+    ]
+
+    for fact in sorted(response.facts, key=lambda item: item.fact_id):
+        source_id = next((source_id for source_id in fact.source_document_ids if source_id in source_by_id), None)
+        if source_id is None:
+            gap_rows.append(
+                KnowledgePackEvidenceGapRow(
+                    pack_id=pack_id,
+                    gap_id=f"gap_{fact.fact_id}_missing_source",
+                    asset_ticker=ticker,
+                    field_name=fact.field_name,
+                    evidence_state=EvidenceState.insufficient_evidence.value,
+                    freshness_state=fact.freshness_state.value,
+                    message="Lightweight fact did not bind to a same-asset source document.",
+                )
+            )
+            continue
+        source = source_by_id[source_id]
+        chunk_id = f"chunk_{fact.fact_id}"
+        chunk_rows.append(_lightweight_chunk_row(pack_id, ticker, fact, source, chunk_id))
+        fact_rows.append(_lightweight_fact_row(pack_id, ticker, fact, source_id, chunk_id))
+        source_bindings[source_id]["facts"].add(fact.fact_id)
+        source_bindings[source_id]["chunks"].add(chunk_id)
+        source_bindings[source_id]["citations"].update(fact.citation_ids)
+
+    citation_ids = sorted(
+        {
+            citation.citation_id
+            for citation in response.citations
+            if citation.source_document_id in source_by_id
+        }
+    )
+    source_rows = [
+        row.model_copy(
+            update={
+                "citation_ids": sorted(source_bindings[row.source_document_id]["citations"]),
+                "fact_ids": sorted(source_bindings[row.source_document_id]["facts"]),
+                "chunk_ids": sorted(source_bindings[row.source_document_id]["chunks"]),
+            }
+        )
+        for row in source_rows
+    ]
+    checksum_rows = [
+        _lightweight_checksum_row(pack_id, ticker, source_by_id[row.source_document_id], source_bindings[row.source_document_id])
+        for row in source_rows
+    ]
+    section_rows = _lightweight_section_rows(
+        pack_id,
+        response=response,
+        fact_rows=fact_rows,
+        gap_rows=gap_rows,
+    )
+    freshness_hash = _acquisition_pack_freshness_hash(
+        ticker,
+        checksum_rows=checksum_rows,
+        fact_rows=fact_rows,
+        recent_rows=[],
+        gap_rows=gap_rows,
+        section_rows=section_rows,
+    )
+    records = KnowledgePackRepositoryRecords(
+        envelope=KnowledgePackEnvelopeRow(
+            pack_id=pack_id,
+            schema_version="asset-knowledge-pack-build-v1",
+            ticker=ticker,
+            asset=response.asset.model_dump(mode="json"),
+            asset_type=response.asset.asset_type.value,
+            build_state=KnowledgePackBuildState.available.value,
+            support_status=response.asset.status.value,
+            state=StateMessage(
+                status=AssetStatus.supported,
+                message=(
+                    "Durable lightweight local-MVP evidence is available for this selected asset. "
+                    "It is source-labeled and not strict audit-quality source approval."
+                ),
+            ).model_dump(mode="json"),
+            generated_output_available=False,
+            reusable_generated_output_cache_hit=False,
+            generated_route=None,
+            capabilities=IngestionCapabilities(
+                can_open_generated_page=False,
+                can_answer_chat=True,
+                can_compare=False,
+                can_request_ingestion=False,
+            ).model_dump(mode="json"),
+            freshness=response.freshness.model_dump(mode="json"),
+            counts=KnowledgePackCounts(
+                source_document_count=len(source_rows),
+                citation_count=len(citation_ids),
+                normalized_fact_count=len(fact_rows),
+                source_chunk_count=len(chunk_rows),
+                evidence_gap_count=len(gap_rows),
+            ).model_dump(mode="json"),
+            source_document_ids=sorted(source_by_id),
+            citation_ids=citation_ids,
+            knowledge_pack_freshness_hash=freshness_hash,
+            cache_key=None,
+            no_live_external_calls=response.no_live_external_calls,
+            exports_full_source_documents=False,
+            evidence_mode="lightweight_local_mvp_durable_evidence",
+            strict_audit_quality_source_approval_granted=False,
+            generated_output_cache_eligible=False,
+            message=(
+                "Knowledge-pack record was built from lightweight normalized facts and rights-safe source metadata; "
+                "raw provider payloads, raw transcripts, hidden prompts, and model reasoning are not stored."
+            ),
+        ),
+        source_documents=source_rows,
+        source_chunks=chunk_rows,
+        normalized_facts=fact_rows,
+        evidence_gaps=gap_rows,
+        section_freshness_inputs=section_rows,
+        source_checksums=checksum_rows,
+    )
+    _validate_records(records)
+    return records
+
+
+def _can_persist_lightweight_response(response: LightweightFetchResponse) -> bool:
+    return (
+        response.generated_output_eligible
+        and response.asset.supported
+        and response.fetch_state in {LightweightFetchState.supported, LightweightFetchState.partial}
+        and bool(response.sources)
+        and bool(response.facts)
+        and not response.raw_payload_exposed
+    )
+
+
+def _lightweight_source_row(
+    pack_id: str,
+    ticker: str,
+    source: LightweightFetchSource,
+) -> KnowledgePackSourceDocumentRow:
+    return KnowledgePackSourceDocumentRow(
+        pack_id=pack_id,
+        source_document_id=source.source_document_id,
+        asset_ticker=ticker,
+        source_type=source.source_type,
+        source_rank=_lightweight_source_rank(source),
+        title=source.title,
+        publisher=source.publisher,
+        url=source.url or "",
+        published_at=source.published_at,
+        as_of_date=source.as_of_date,
+        retrieved_at=source.retrieved_at,
+        freshness_state=source.freshness_state.value,
+        is_official=source.is_official,
+        source_quality=source.source_quality.value,
+        allowlist_status=source.allowlist_status.value,
+        source_use_policy=source.source_use_policy.value,
+        permitted_operations=_lightweight_operations(source.source_use_policy).model_dump(mode="json"),
+        source_identity=source.url or source.publisher or source.source_document_id,
+        storage_rights=_lightweight_storage_rights(source.source_use_policy).value,
+        export_rights=_lightweight_export_rights(source.source_use_policy).value,
+        review_status=SourceReviewStatus.approved.value,
+        approval_rationale=(
+            "Local personal-MVP source metadata is persisted for deterministic review; "
+            "strict audit-quality source approval is not granted."
+        ),
+        parser_status=SourceParserStatus.partial.value,
+        parser_failure_diagnostics=source.fallback_reason,
+    )
+
+
+def _lightweight_chunk_row(
+    pack_id: str,
+    ticker: str,
+    fact: Any,
+    source: LightweightFetchSource,
+    chunk_id: str,
+) -> KnowledgePackSourceChunkRow:
+    stored_text, text_storage_policy = _stored_provider_excerpt(
+        source.source_use_policy,
+        _lightweight_fact_support_text(ticker, fact, source),
+    )
+    return KnowledgePackSourceChunkRow(
+        pack_id=pack_id,
+        chunk_id=chunk_id,
+        asset_ticker=ticker,
+        source_document_id=source.source_document_id,
+        section_name=f"lightweight_{fact.field_name}",
+        chunk_order=0,
+        token_count=max(1, len((stored_text or fact.field_name).split())),
+        supported_claim_types=[fact.field_name],
+        citation_ids=list(fact.citation_ids),
+        source_use_policy=source.source_use_policy.value,
+        text_storage_policy=text_storage_policy,
+        stored_text=stored_text,
+    )
+
+
+def _lightweight_fact_row(
+    pack_id: str,
+    ticker: str,
+    fact: Any,
+    source_document_id: str,
+    chunk_id: str,
+) -> KnowledgePackFactRow:
+    return KnowledgePackFactRow(
+        pack_id=pack_id,
+        fact_id=fact.fact_id,
+        asset_ticker=ticker,
+        fact_type="lightweight_normalized_fact",
+        field_name=fact.field_name,
+        value=fact.value,
+        unit=_lightweight_fact_unit(fact),
+        period=None,
+        as_of_date=fact.as_of_date,
+        source_document_id=source_document_id,
+        source_chunk_id=chunk_id,
+        extraction_method="lightweight_local_mvp_normalized_fact",
+        confidence=0.8 if fact.evidence_state is EvidenceState.supported else 0.55,
+        freshness_state=fact.freshness_state.value,
+        evidence_state=fact.evidence_state.value,
+        citation_ids=list(fact.citation_ids),
+    )
+
+
+def _lightweight_gap_row(
+    pack_id: str,
+    ticker: str,
+    gap: Any,
+    index: int,
+) -> KnowledgePackEvidenceGapRow:
+    evidence_state = _enum_value(gap.evidence_state)
+    if evidence_state not in _GAP_STATES:
+        evidence_state = EvidenceState.insufficient_evidence.value
+    return KnowledgePackEvidenceGapRow(
+        pack_id=pack_id,
+        gap_id=gap.fact_id or f"gap_{ticker.lower()}_lightweight_{index}",
+        asset_ticker=ticker,
+        field_name=gap.field_name,
+        evidence_state=evidence_state,
+        freshness_state=gap.freshness_state.value,
+        source_document_id=gap.source_document_ids[0] if gap.source_document_ids else None,
+        message=_sanitize_gap_message(str(gap.limitations or gap.value or "Lightweight evidence gap.")),
+    )
+
+
+def _lightweight_checksum_row(
+    pack_id: str,
+    ticker: str,
+    source: LightweightFetchSource,
+    bindings: dict[str, set[str]],
+) -> KnowledgePackSourceChecksumRow:
+    checksum_payload = {
+        "source_document_id": source.source_document_id,
+        "asset_ticker": ticker,
+        "source_type": source.source_type,
+        "url": source.url,
+        "as_of_date": source.as_of_date,
+        "retrieved_at": source.retrieved_at,
+        "source_use_policy": source.source_use_policy.value,
+        "fact_bindings": sorted(bindings["facts"]),
+        "citation_ids": sorted(bindings["citations"]),
+    }
+    checksum = "sha256:" + hashlib.sha256(
+        json.dumps(checksum_payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    ).hexdigest()
+    operations = _lightweight_operations(source.source_use_policy)
+    return KnowledgePackSourceChecksumRow(
+        pack_id=pack_id,
+        source_document_id=source.source_document_id,
+        asset_ticker=ticker,
+        checksum=checksum,
+        freshness_state=source.freshness_state.value,
+        cache_allowed=False,
+        export_allowed=operations.can_export_metadata and source.export_allowed,
+        allowlist_status=source.allowlist_status.value,
+        source_use_policy=source.source_use_policy.value,
+        source_type=source.source_type,
+        source_rank=_lightweight_source_rank(source),
+        source_identity=source.url or source.publisher or source.source_document_id,
+        retrieved_at=source.retrieved_at,
+        as_of_date=source.as_of_date,
+        published_at=source.published_at,
+        is_official=source.is_official,
+        source_quality=source.source_quality.value,
+        storage_rights=_lightweight_storage_rights(source.source_use_policy).value,
+        export_rights=_lightweight_export_rights(source.source_use_policy).value,
+        review_status=SourceReviewStatus.approved.value,
+        approval_rationale=(
+            "Local personal-MVP checksum metadata persisted for deterministic review; "
+            "strict audit-quality source approval is not granted."
+        ),
+        parser_status=SourceParserStatus.partial.value,
+        parser_failure_diagnostics=source.fallback_reason,
+        citation_ids=sorted(bindings["citations"]),
+        fact_bindings=sorted(bindings["facts"]),
+    )
+
+
+def _lightweight_section_rows(
+    pack_id: str,
+    *,
+    response: LightweightFetchResponse,
+    fact_rows: list[KnowledgePackFactRow],
+    gap_rows: list[KnowledgePackEvidenceGapRow],
+) -> list[KnowledgePackSectionFreshnessRow]:
+    return [
+        KnowledgePackSectionFreshnessRow(
+            pack_id=pack_id,
+            section_id="page",
+            freshness_state=response.freshness.freshness_state.value,
+            evidence_state=response.page_render_state.value,
+            as_of_date=response.freshness.facts_as_of,
+            retrieved_at=response.freshness.page_last_updated_at,
+        ),
+        KnowledgePackSectionFreshnessRow(
+            pack_id=pack_id,
+            section_id="canonical_facts",
+            freshness_state=_combined_row_freshness([row.freshness_state for row in fact_rows]),
+            evidence_state=response.page_render_state.value,
+            as_of_date=response.freshness.facts_as_of,
+            retrieved_at=response.freshness.page_last_updated_at,
+        ),
+        KnowledgePackSectionFreshnessRow(
+            pack_id=pack_id,
+            section_id="source_documents",
+            freshness_state=_combined_row_freshness([source.freshness_state.value for source in response.sources]),
+            evidence_state="supported" if response.sources else "unavailable",
+            retrieved_at=response.freshness.page_last_updated_at,
+        ),
+        KnowledgePackSectionFreshnessRow(
+            pack_id=pack_id,
+            section_id="weekly_news_focus",
+            freshness_state=FreshnessState.unavailable.value,
+            evidence_state=EvidenceState.insufficient_evidence.value,
+            retrieved_at=response.freshness.page_last_updated_at,
+        ),
+        KnowledgePackSectionFreshnessRow(
+            pack_id=pack_id,
+            section_id="ai_comprehensive_analysis",
+            freshness_state=FreshnessState.unavailable.value,
+            evidence_state=EvidenceState.insufficient_evidence.value,
+            retrieved_at=response.freshness.page_last_updated_at,
+        ),
+        KnowledgePackSectionFreshnessRow(
+            pack_id=pack_id,
+            section_id="evidence_gaps",
+            freshness_state=_combined_row_freshness([row.freshness_state for row in gap_rows]),
+            evidence_state="mixed" if gap_rows else "supported",
+            retrieved_at=response.freshness.page_last_updated_at,
+        ),
+    ]
+
+
+def _lightweight_operations(policy: SourceUsePolicy) -> SourceOperationPermissions:
+    if policy is SourceUsePolicy.full_text_allowed:
+        return SourceOperationPermissions(
+            can_store_metadata=True,
+            can_store_raw_text=False,
+            can_display_metadata=True,
+            can_display_excerpt=True,
+            can_summarize=True,
+            can_cache=False,
+            can_export_metadata=True,
+            can_export_excerpt=False,
+            can_export_full_text=False,
+            can_support_generated_output=True,
+            can_support_citations=True,
+            can_support_canonical_facts=True,
+            can_support_recent_developments=False,
+        )
+    if policy is SourceUsePolicy.summary_allowed:
+        return SourceOperationPermissions(
+            can_store_metadata=True,
+            can_store_raw_text=False,
+            can_display_metadata=True,
+            can_display_excerpt=True,
+            can_summarize=True,
+            can_cache=False,
+            can_export_metadata=True,
+            can_export_excerpt=False,
+            can_export_full_text=False,
+            can_support_generated_output=True,
+            can_support_citations=True,
+            can_support_canonical_facts=True,
+            can_support_recent_developments=False,
+        )
+    return SourceOperationPermissions(
+        can_store_metadata=True,
+        can_store_raw_text=False,
+        can_display_metadata=True,
+        can_display_excerpt=False,
+        can_summarize=False,
+        can_cache=False,
+        can_export_metadata=True,
+        can_export_excerpt=False,
+        can_export_full_text=False,
+        can_support_generated_output=False,
+        can_support_citations=False,
+        can_support_canonical_facts=False,
+        can_support_recent_developments=False,
+    )
+
+
+def _lightweight_storage_rights(policy: SourceUsePolicy) -> SourceStorageRights:
+    if policy is SourceUsePolicy.summary_allowed:
+        return SourceStorageRights.summary_allowed
+    if policy is SourceUsePolicy.metadata_only:
+        return SourceStorageRights.metadata_only
+    if policy is SourceUsePolicy.link_only:
+        return SourceStorageRights.link_only
+    return SourceStorageRights.raw_snapshot_allowed
+
+
+def _lightweight_export_rights(policy: SourceUsePolicy) -> SourceExportRights:
+    if policy is SourceUsePolicy.link_only:
+        return SourceExportRights.link_only
+    if policy is SourceUsePolicy.metadata_only:
+        return SourceExportRights.metadata_only
+    return SourceExportRights.metadata_only
+
+
+def _lightweight_source_rank(source: LightweightFetchSource) -> int:
+    if source.is_official:
+        return 1
+    if source.source_use_policy is SourceUsePolicy.summary_allowed:
+        return 20
+    return 50
+
+
+def _lightweight_fact_support_text(ticker: str, fact: Any, source: LightweightFetchSource) -> str:
+    return (
+        f"{ticker} lightweight normalized fact {fact.field_name}: {_json_safe(fact.value)}. "
+        f"Source document: {source.source_document_id}; source-use policy: {source.source_use_policy.value}; "
+        f"as of: {fact.as_of_date or source.as_of_date or 'unknown'}; retrieved at: {fact.retrieved_at or source.retrieved_at}."
+    )
+
+
+def _lightweight_fact_unit(fact: Any) -> str | None:
+    value = getattr(fact, "value", None)
+    if isinstance(value, dict) and value.get("unit"):
+        return str(value["unit"])
+    if getattr(fact, "field_name", None) == "expense_ratio":
+        return "%"
+    return None
+
+
 def serialize_knowledge_pack_response(
     response: KnowledgePackBuildResponse,
     *,
     retrieval_pack: Any | None = None,
 ) -> KnowledgePackRepositoryRecords:
+    strict_audit_approved = bool(response.generated_output_available)
     envelope = KnowledgePackEnvelopeRow(
         pack_id=response.pack_id,
         schema_version=response.schema_version,
@@ -1133,6 +1616,9 @@ def serialize_knowledge_pack_response(
         cache_key=response.cache_key,
         no_live_external_calls=response.no_live_external_calls,
         exports_full_source_documents=response.exports_full_source_documents,
+        evidence_mode="strict_audit_quality_fixture" if strict_audit_approved else "non_generated_fixture_metadata",
+        strict_audit_quality_source_approval_granted=strict_audit_approved,
+        generated_output_cache_eligible=strict_audit_approved,
         message=response.message,
     )
     records = KnowledgePackRepositoryRecords(

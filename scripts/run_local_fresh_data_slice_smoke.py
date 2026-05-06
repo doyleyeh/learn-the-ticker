@@ -18,9 +18,12 @@ from backend.lightweight_page import (
     build_lightweight_details_response,
     build_lightweight_overview_response,
     build_lightweight_sources_response,
+    persist_lightweight_evidence_if_configured,
 )
 from backend.chat import build_lightweight_chat_knowledge_pack, generate_chat_from_pack, validate_chat_response
 from backend.models import AssetType, LightweightFetchResponse, LightweightFetchState
+from backend.knowledge_pack_repository import InMemoryAssetKnowledgePackRepository
+from backend.source_snapshot_repository import InMemorySourceSnapshotArtifactRepository
 from backend.settings import build_lightweight_data_settings
 
 
@@ -301,11 +304,27 @@ def _surface_contract(response: LightweightFetchResponse) -> dict[str, Any]:
             "generated_risk_summary": False,
             "source_drawer_state": "unavailable",
             "overview_state": response.page_render_state.value,
+            "durable_persistence_contract": {
+                "schema_version": "local-fresh-data-slice-durable-persistence-contract-v1",
+                "status": "skipped",
+                "source_snapshot_persisted": False,
+                "knowledge_pack_persisted": False,
+                "knowledge_pack_re_read": False,
+                "source_snapshot_re_read": False,
+                "normalized_fact_count": 0,
+                "source_snapshot_artifact_count": 0,
+                "strict_audit_quality_source_approval_granted": False,
+                "generated_output_cache_promoted": False,
+                "raw_payload_exposed": False,
+                "secret_values_exposed": False,
+                "reason_codes": ["lightweight_response_not_renderable"],
+            },
         }
     overview = build_lightweight_overview_response(response)
     details = build_lightweight_details_response(response)
     sources = build_lightweight_sources_response(response)
     chat = _lightweight_chat_surface(response)
+    durable = _lightweight_durable_surface(response)
     section_states = {
         section.section_id: {
             "evidence_state": section.evidence_state.value,
@@ -357,6 +376,7 @@ def _surface_contract(response: LightweightFetchResponse) -> dict[str, Any]:
         "source_drawer_citation_binding_count": len(sources.citation_bindings),
         "source_drawer_related_claim_count": len(sources.related_claims),
         "chat_contract": chat,
+        "durable_persistence_contract": durable,
         "detail_fact_keys": detail_fact_keys,
         "partial_section_ids": sorted(
             section_id for section_id, state in section_states.items() if state["evidence_state"] == "partial"
@@ -428,6 +448,33 @@ def _lightweight_chat_surface(response: LightweightFetchResponse) -> dict[str, A
         }
 
 
+def _lightweight_durable_surface(response: LightweightFetchResponse) -> dict[str, Any]:
+    source_repo = InMemorySourceSnapshotArtifactRepository()
+    knowledge_repo = InMemoryAssetKnowledgePackRepository()
+    diagnostics = persist_lightweight_evidence_if_configured(
+        response,
+        source_snapshot_repository=source_repo,
+        knowledge_pack_repository=knowledge_repo,
+    )
+    read_back = knowledge_repo.read_knowledge_pack_records(response.asset.ticker)
+    snapshot_back = source_repo.read_source_snapshot_records(response.asset.ticker)
+    return {
+        "schema_version": "local-fresh-data-slice-durable-persistence-contract-v1",
+        "status": diagnostics["status"],
+        "source_snapshot_persisted": diagnostics["source_snapshot_persisted"],
+        "knowledge_pack_persisted": diagnostics["knowledge_pack_persisted"],
+        "knowledge_pack_re_read": read_back is not None,
+        "source_snapshot_re_read": snapshot_back is not None,
+        "normalized_fact_count": len(read_back.normalized_facts) if read_back else 0,
+        "source_snapshot_artifact_count": len(snapshot_back.artifacts) if snapshot_back else 0,
+        "strict_audit_quality_source_approval_granted": False,
+        "generated_output_cache_promoted": False,
+        "raw_payload_exposed": False,
+        "secret_values_exposed": False,
+        "reason_codes": diagnostics["reason_codes"],
+    }
+
+
 def _row_status(response: LightweightFetchResponse) -> str:
     if response.fetch_state is LightweightFetchState.supported:
         return "pass"
@@ -477,6 +524,17 @@ def _row_blockers(
         chat_contract = surface.get("chat_contract", {})
         if not surface.get("generated_chat_answer") or chat_contract.get("generated_output_cache_promoted") is not False:
             blockers.append({"reason_code": "lightweight_grounded_chat_contract_failed", "chat_contract": chat_contract})
+        durable_contract = surface.get("durable_persistence_contract", {})
+        if (
+            durable_contract.get("status") != "persisted"
+            or durable_contract.get("source_snapshot_persisted") is not True
+            or durable_contract.get("knowledge_pack_persisted") is not True
+            or durable_contract.get("knowledge_pack_re_read") is not True
+            or durable_contract.get("source_snapshot_re_read") is not True
+            or durable_contract.get("generated_output_cache_promoted") is not False
+            or durable_contract.get("strict_audit_quality_source_approval_granted") is not False
+        ):
+            blockers.append({"reason_code": "lightweight_durable_persistence_contract_failed", "durable_contract": durable_contract})
         dashboard = surface.get("dashboard_contract", {})
         if dashboard.get("chart_range") != "6mo" or dashboard.get("chart_point_count", 0) < 6:
             blockers.append({"reason_code": "dashboard_chart_range_or_points_missing", "dashboard_contract": dashboard})

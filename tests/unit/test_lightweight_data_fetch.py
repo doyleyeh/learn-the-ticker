@@ -903,6 +903,13 @@ def test_local_fresh_data_mvp_slice_smoke_contract_is_deterministic():
         assert surface["chat_contract"]["fallback_diagnostics_in_uncertainty"] is True
         assert surface["chat_contract"]["generated_output_cache_promoted"] is False
         assert surface["chat_contract"]["durable_knowledge_pack_persisted"] is False
+        assert surface["durable_persistence_contract"]["status"] == "persisted"
+        assert surface["durable_persistence_contract"]["source_snapshot_persisted"] is True
+        assert surface["durable_persistence_contract"]["knowledge_pack_persisted"] is True
+        assert surface["durable_persistence_contract"]["knowledge_pack_re_read"] is True
+        assert surface["durable_persistence_contract"]["source_snapshot_re_read"] is True
+        assert surface["durable_persistence_contract"]["generated_output_cache_promoted"] is False
+        assert surface["durable_persistence_contract"]["strict_audit_quality_source_approval_granted"] is False
         assert {"business_model", "provider_market_price"} <= set(surface["detail_fact_keys"])
         assert surface["unavailable_detail_fact_keys"] == []
         assert surface["section_states"]["business_overview"]["evidence_state"] == "supported"
@@ -941,6 +948,13 @@ def test_local_fresh_data_mvp_slice_smoke_contract_is_deterministic():
         assert surface["chat_contract"]["fallback_diagnostics_in_uncertainty"] is True
         assert surface["chat_contract"]["generated_output_cache_promoted"] is False
         assert surface["chat_contract"]["durable_knowledge_pack_persisted"] is False
+        assert surface["durable_persistence_contract"]["status"] == "persisted"
+        assert surface["durable_persistence_contract"]["source_snapshot_persisted"] is True
+        assert surface["durable_persistence_contract"]["knowledge_pack_persisted"] is True
+        assert surface["durable_persistence_contract"]["knowledge_pack_re_read"] is True
+        assert surface["durable_persistence_contract"]["source_snapshot_re_read"] is True
+        assert surface["durable_persistence_contract"]["generated_output_cache_promoted"] is False
+        assert surface["durable_persistence_contract"]["strict_audit_quality_source_approval_granted"] is False
         assert {"role", "holdings", "cost_context", "manifest_scope_signal", "provider_market_price"} <= set(
             surface["detail_fact_keys"]
         )
@@ -971,6 +985,12 @@ def test_local_fresh_data_mvp_slice_smoke_contract_is_deterministic():
         assert fallback_diagnostics["generated_output_eligible"] is False
         assert fallback_diagnostics["source_count"] == 0
         assert fallback_diagnostics["raw_payload_exposed"] is False
+        durable_contract = row["surface_contract"].pop("durable_persistence_contract")
+        assert durable_contract["status"] == "skipped"
+        assert durable_contract["source_snapshot_persisted"] is False
+        assert durable_contract["knowledge_pack_persisted"] is False
+        assert durable_contract["generated_output_cache_promoted"] is False
+        assert durable_contract["strict_audit_quality_source_approval_granted"] is False
         assert row["surface_contract"] == {
             "renderable": False,
             "generated_page": False,
