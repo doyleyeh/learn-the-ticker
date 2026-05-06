@@ -1,10 +1,190 @@
 ## Current task
 
-No current task is prepared. The backlog is empty.
+### T-159: Fix live local browser/API smoke blockers for the fresh-data MVP slice
+
+Goal:
+Make the already-implemented optional live local browser/API smoke pass for the lightweight fresh-data MVP slice, without broadening product scope, adding production dependencies, changing strict/audit gates, or making normal CI require live network calls.
+
+Context:
+- The deterministic quality gate currently passes.
+- `TMPDIR=/tmp python3 scripts/run_lightweight_data_fetch_smoke.py --live --json` passed for `AAPL` and `VOO`.
+- A manual local `/assets/VOO` request rendered backend-backed fresh data, citations, source metadata, freshness, and dashboard content.
+- The optional running-service smoke still blocks on local browser/API behavior:
+  - `/assets/VOO` does not include the expected `data-source-drawer-mobile-presentation="bottom-sheet"` marker in the live-rendered asset page.
+  - `POST /api/assets/VOO/chat` can exceed the smoke's 7-second timeout through the Next proxy during live local review.
+  - `AAPL vs VOO` submitted to `POST /api/assets/VOO/chat` does not redirect to `/compare?left=AAPL&right=VOO` under live-fetch-enabled settings, while `Compare AAPL and VOO` does redirect. The likely cause is ticker-token detection treating the word `vs` as ticker `VS` when live search can resolve unknown uppercase tokens.
+
+Acceptance criteria:
+- Preserve the home page as single-asset search first. Do not add a two-input home comparison builder.
+- Preserve comparison as a separate `/compare` workflow, including `AAPL`/`VOO` stock-vs-ETF relationship badges and `single-company-vs-ETF-basket` structure.
+- Restore or intentionally relocate the mobile source drawer/bottom-sheet marker so the asset-page live smoke and frontend workflow contract agree.
+- Fix chat comparison detection so `AAPL vs VOO`, `VOO vs AAPL`, and `Compare AAPL and VOO` all return `safety_classification=compare_route_redirect`, include no factual citations/source documents in the redirect body, and preserve the compare route.
+- Keep single-asset factual chat grounded in the selected asset knowledge pack and preserve advice redirects.
+- Reduce or avoid the observed local Next proxy chat timeout without hiding failures. Prefer a focused server/API fix or smoke-safe warm/retry behavior over increasing all timeouts blindly.
+- Keep `LIGHTWEIGHT_LIVE_FETCH_ENABLED=false` as the default for normal CI and ordinary local tests.
+- Do not call live providers, news, market-data, or LLMs from deterministic tests.
+- Do not expose raw provider payloads, raw source text, transcripts, hidden prompts, model reasoning, DSNs, or secret values.
+
+Files likely involved:
+- `backend/chat.py`
+- `backend/search.py`
+- `backend/chat_sessions.py`
+- `apps/web/app/assets/[ticker]/page.tsx`
+- `components/SourceDrawer.tsx`
+- `tests/frontend/smoke.mjs`
+- focused tests under `tests/unit/` and `tests/integration/`
+
+Required commands:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_chat_generation.py tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py tests/integration/test_backend_api.py -q`
+- `npm test`
+- `npm run typecheck`
+- `npm run build`
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
+- `TMPDIR=/tmp python3 scripts/run_lightweight_data_fetch_smoke.py --live --json`
+- Start local FastAPI and Next services with lightweight live fetch enabled, then run `LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1 LEARN_TICKER_LOCAL_WEB_BASE=http://127.0.0.1:3000 LEARN_TICKER_LOCAL_API_BASE=<api-base> DATA_POLICY_MODE=lightweight LIGHTWEIGHT_LIVE_FETCH_ENABLED=true LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true SEC_EDGAR_USER_AGENT='learn-the-ticker-local/0.1 contact@example.com' node tests/frontend/smoke.mjs`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+- `git diff --check`
+
+Iteration budget:
+- One agent-loop cycle. If fixing the live running-service smoke exposes a broader fresh-data cache, export, persistence, or live-AI dependency, stop after documenting the blocker and leave that broader work to the prepared backlog.
+
+Remaining risk to report:
+- This task proves the local running-service fresh-data slice only. It must not claim ETF-500 completion, Top-500 completion, source-pack approval, generated-output cache promotion, live-AI readiness, production deployment readiness, or public-launch readiness.
 
 ## Backlog
 
-No backlog tasks are currently prepared.
+### T-160: Add request-scope and short-TTL lightweight live fetch reuse
+
+Goal:
+Reduce repeated SEC/Yahoo/provider work during one asset-page render and local smoke run by adding safe lightweight fetch reuse for overview, details, sources, chart, and search surfaces.
+
+Acceptance criteria:
+- Reuse live lightweight fetch results across backend page-building surfaces for the same ticker/range within a request or short local TTL.
+- Preserve source labels, freshness/as-of metadata, fallback diagnostics, no-raw-payload guarantees, and explicit partial/unavailable states.
+- Keep normal CI deterministic and no-live by default.
+- Do not persist raw provider payloads or restricted source text.
+- Prove local `/assets/VOO` render and fresh-data smoke latency improves without suppressing source-use or citation validation.
+
+Required checks:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py tests/unit/test_repo_contract.py -q`
+- `npm test`
+- `npm run typecheck`
+- `npm run build`
+- `TMPDIR=/tmp python3 scripts/run_lightweight_data_fetch_smoke.py --live --json`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+
+### T-161: Wire lightweight fresh-data evidence into asset exports and source-list exports
+
+Goal:
+When lightweight fresh data renders a supported local-MVP asset page, make asset-page and source-list Markdown/JSON exports use the same source-labeled evidence instead of falling back only to static generated packs.
+
+Acceptance criteria:
+- `GET /api/assets/{ticker}/export` and `GET /api/assets/{ticker}/sources/export` return available exports for renderable lightweight fresh-data rows such as `AAPL` and `VOO`.
+- Exports include citation IDs, source metadata, source-use policy, freshness/as-of dates, uncertainty labels, educational disclaimer, and no-advice framing.
+- Exports omit raw provider payloads, hidden prompts, raw model reasoning, unrestricted source text, transcripts, and secrets.
+- Blocked tickers such as `TQQQ`, `ARKK`, `BND`, and `GLD` remain unsupported/unavailable with empty factual evidence exports.
+- Static generated-pack exports continue to work.
+
+Required checks:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_exports.py tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py -q`
+- `npm test`
+- `npm run typecheck`
+- `npm run build`
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+
+### T-162: Build lightweight knowledge packs for fresh-data-backed grounded chat
+
+Goal:
+Allow renderable lightweight fresh-data rows to answer grounded single-asset chat from the same normalized facts and source metadata that rendered the page, while preserving comparison redirects and advice redirects.
+
+Acceptance criteria:
+- Supported lightweight rows can build an in-memory asset knowledge pack from approved/lightweight source-labeled facts for local chat.
+- Chat answers cite same-asset lightweight sources or clearly say insufficient evidence.
+- `AAPL vs VOO` and similar second-ticker questions redirect to `/compare` instead of generating multi-asset chat answers.
+- Advice-like prompts redirect before any LLM/live provider call.
+- Unsupported, out-of-scope, unknown, and blocked ETF/ETP rows remain blocked from generated chat.
+- No raw transcripts are used for analytics/training/evaluation.
+
+Required checks:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_chat_generation.py tests/unit/test_safety_guardrails.py tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py -q`
+- `npm test`
+- `npm run typecheck`
+- `TMPDIR=/tmp python3 evals/run_static_evals.py`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+
+### T-163: Add local durable persistence for lightweight source snapshots and normalized facts
+
+Goal:
+Move from review-only durable smoke toward a real local durable path for source snapshot metadata, normalized facts, knowledge-pack records, and generated-output eligibility for the local MVP slice.
+
+Acceptance criteria:
+- Local durable mode can persist and re-read source snapshot metadata and normalized facts for supported lightweight rows without storing raw restricted provider payloads.
+- Source records include source-use policy, allowlist/review status, parser status, freshness/as-of metadata, checksums where available, and export rights.
+- Missing approval metadata fails closed to `pending_review`, `rejected`, `unavailable`, or `insufficient_evidence` for strict/audit-quality use.
+- Blocked products cannot persist generated evidence, generated chat, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, or generated-output cache entries.
+- Normal CI remains in-memory/fixture-backed and does not require a database.
+
+Required checks:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_persistence_settings.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_retrieval_repository.py tests/integration/test_backend_api.py -q`
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
+- `npm test`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+
+### T-164: Implement real Weekly News Focus acquisition for the local MVP slice
+
+Goal:
+Replace the current real-fetch-blocked Weekly News smoke with a narrow, operator-only live source acquisition path for official filings/releases and approved reputable fallback metadata for `AAPL`, `VOO`, and `QQQ`.
+
+Acceptance criteria:
+- Weekly News Focus uses the last completed Monday-Sunday market week plus current week-to-date through yesterday in U.S. Eastern dates.
+- Official filings, investor-relations releases, issuer announcements, prospectus updates, and fact-sheet changes rank before reputable third-party/news items.
+- Source-use filtering suppresses rejected, pending-review, hidden/internal, rights-disallowed, duplicate, promotional, irrelevant, wrong-asset, outside-window, and stale-unlabeled candidates.
+- AI Comprehensive Analysis remains suppressed unless at least two approved Weekly News Focus items exist.
+- No raw article text, restricted source text, hidden prompts, model reasoning, provider payloads, or secret values are emitted.
+- Deterministic tests use fixtures and mocks; live source acquisition remains opt-in.
+
+Required checks:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_source_policy.py tests/integration/test_backend_api.py -q`
+- `TMPDIR=/tmp python3 scripts/run_weekly_news_live_source_smoke.py --json`
+- `TMPDIR=/tmp python3 evals/run_static_evals.py`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+
+### T-165: Add live-AI validation on top of real local evidence packs
+
+Goal:
+Run local operator-only live AI review for grounded chat and AI Comprehensive Analysis only after local evidence packs, Weekly News thresholds, citations, and safety gates are in place.
+
+Acceptance criteria:
+- Live AI remains disabled by default and requires explicit server-side opt-in env vars.
+- OpenRouter keys remain server-side only and never appear in browser env, logs, docs, health endpoints, diagnostics, or committed files.
+- Generated answers validate schema, citations, source-use policy, no-advice rules, uncertainty labels, and no raw model reasoning before being cacheable.
+- AI Comprehensive Analysis starts with What Changed This Week, then Market Context, Business/Fund Context, and Risk Context, and only cites selected Weekly News Focus items plus canonical facts.
+- Failed validation suppresses output or returns safe insufficient-evidence states.
+
+Required checks:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_llm_provider.py tests/unit/test_chat_generation.py tests/unit/test_weekly_news.py tests/unit/test_safety_guardrails.py -q`
+- `TMPDIR=/tmp python3 scripts/run_live_ai_validation_smoke.py --json`
+- `TMPDIR=/tmp python3 evals/run_static_evals.py`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+
+### T-166: Expand local MVP coverage manifests after the fresh-data loop is stable
+
+Goal:
+After local live fetch, rendering, exports, chat, persistence, Weekly News, and live-AI validation pass for the MVP slice, expand reviewed coverage toward real Top-500 and ETF-500 local MVP readiness.
+
+Acceptance criteria:
+- Top-500 candidate refresh uses official IWB holdings first, official SPY/IVV/VOO holdings only as fallback, SEC/Nasdaq validation, checksums, diff report, and manual approval before promotion.
+- ETF supported-manifest expansion keeps supported ETF generated-output authority in `data/universes/us_equity_etfs_supported.current.json` and recognition-only blocked states in `data/universes/us_etp_recognition.current.json`.
+- ETF source-pack readiness covers issuer page, fact sheet, prospectus or summary prospectus, holdings, exposure/sector breakdown, methodology/risk source, and sponsor announcements when relevant.
+- Golden Asset Source Handoff remains required for strict/audit-quality promotion.
+- Complex products remain blocked unless future scope explicitly supports them.
+
+Required checks:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_top500_candidate_manifest.py tests/unit/test_search_classification.py tests/unit/test_source_policy.py tests/unit/test_provider_adapters.py -q`
+- `TMPDIR=/tmp python3 evals/run_static_evals.py`
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
 
 ## Completed
 
