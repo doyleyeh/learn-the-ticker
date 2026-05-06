@@ -63,6 +63,8 @@ function orderedMarkers(path, markers, label) {
   "components/FreshnessLabel.tsx",
   "components/GlossaryPopover.tsx",
   "components/InlineGlossaryText.tsx",
+  "components/MarketAIComprehensiveAnalysisPanel.tsx",
+  "components/MarketNewsPanel.tsx",
   "components/WeeklyNewsPanel.tsx",
   "lib/assetDetails.ts",
   "lib/apiEndpoints.ts",
@@ -75,6 +77,7 @@ function orderedMarkers(path, markers, label) {
   "lib/exportControls.ts",
   "lib/fixtures.ts",
   "lib/glossary.ts",
+  "lib/marketNews.ts",
   "lib/trustMetrics.ts",
   "lib/sourceDrawer.ts",
   "styles/globals.css"
@@ -158,6 +161,8 @@ orderedMarkers("app/assets/[ticker]/page.tsx", [
   "data-prd-section=\"top_risks\"",
   "data-prd-section=\"key_facts\"",
   "data-prd-section=\"what_it_does_or_holds\"",
+  "<MarketNewsPanel",
+  "<MarketAIComprehensiveAnalysisPanel",
   "<WeeklyNewsPanel",
   "<AIComprehensiveAnalysisPanel",
   "deepDiveSections=",
@@ -180,23 +185,50 @@ includesAll("app/assets/[ticker]/page.tsx", [
 includesAll("components/WeeklyNewsPanel.tsx", [
   "data-weekly-news-configured-max",
   "data-weekly-news-selected-count",
+  "data-weekly-news-scope=\"ticker\"",
   "data-weekly-news-evidence-limited-state",
   "data-weekly-news-empty-behavior",
   "data-weekly-news-limited-verified-set",
+  "Weekly News Focus:",
   "No major Weekly News Focus items found",
   "Source quality:",
   "Source-use policy:"
 ], "Weekly News Focus evidence-limited markers");
 includesAll("components/AIComprehensiveAnalysisPanel.tsx", [
+  "data-ai-analysis-scope=\"ticker\"",
   "data-ai-analysis-minimum-weekly-news-items",
   "data-ai-analysis-weekly-news-selected-count",
   "data-ai-analysis-threshold-state",
+  "AI Comprehensive Analysis:",
   "What Changed This Week",
   "Market Context",
   "Business/Fund Context",
   "Risk Context",
   "fabricated analysis"
 ], "AI Comprehensive Analysis threshold and separation markers");
+includesAll("components/MarketNewsPanel.tsx", [
+  "Market News Focus",
+  "data-market-news-focus",
+  "data-market-news-configured-max",
+  "data-market-news-selected-count",
+  "data-market-news-reusable-across-tickers",
+  "data-market-news-topic-bucket",
+  "Source-use policy:",
+  "Supporting sources:"
+], "Market News Focus reusable market context markers");
+includesAll("components/MarketAIComprehensiveAnalysisPanel.tsx", [
+  "AI Comprehensive Analysis: Market News Focus",
+  "data-market-ai-comprehensive-analysis",
+  "data-market-ai-analysis-minimum-market-news-items",
+  "data-market-ai-analysis-selected-topic-buckets",
+  "Macro & Policy",
+  "Equity Market Drivers",
+  "AI / Technology / Semiconductors",
+  "Geopolitical & Energy Risks",
+  "Credit / Liquidity / Sentiment",
+  "Scenario Lens",
+  "Practical Watchpoints"
+], "Market AI Comprehensive Analysis thematic markers");
 
 includesAll("app/assets/[ticker]/sources/page.tsx", [
   "supported-source-list-inspection-flow-v1",
@@ -295,11 +327,13 @@ includes("app/page.tsx", "home-next-steps");
 includes("app/assets/[ticker]/page.tsx", "Stable facts");
 includes("app/assets/[ticker]/page.tsx", "Stale and unknown treatment");
 includes("app/assets/[ticker]/page.tsx", "AssetLearningLayout");
+includes("app/assets/[ticker]/page.tsx", "MarketNewsPanel");
+includes("app/assets/[ticker]/page.tsx", "MarketAIComprehensiveAnalysisPanel");
 includes("app/assets/[ticker]/page.tsx", "WeeklyNewsPanel");
 includes("app/assets/[ticker]/page.tsx", "AIComprehensiveAnalysisPanel");
 includes("app/assets/[ticker]/page.tsx", "data-prd-layout-marker");
 includes("app/assets/[ticker]/page.tsx", "supported-asset-page-learning-flow-v1");
-includes("app/assets/[ticker]/page.tsx", "header,beginner_summary,asset_data_dashboard,top_risks,key_facts_fallback,what_it_does_or_holds_fallback,weekly_news_focus,ai_comprehensive_analysis,deep_dive,ask_about_this_asset,sources,educational_disclaimer");
+includes("app/assets/[ticker]/page.tsx", "header,beginner_summary,asset_data_dashboard,top_risks,key_facts_fallback,what_it_does_or_holds_fallback,market_news_focus,market_ai_comprehensive_analysis,weekly_news_focus,ai_comprehensive_analysis,deep_dive,ask_about_this_asset,sources,educational_disclaimer");
 includes("app/assets/[ticker]/page.tsx", "data-prd-section=\"beginner_summary\"");
 includes("app/assets/[ticker]/page.tsx", "AssetDataDashboard");
 includes("app/assets/[ticker]/page.tsx", "hasAssetDataDashboard");
@@ -365,12 +399,16 @@ assert.equal(
 includes("app/assets/[ticker]/page.tsx", "AssetChatPanel");
 includes("app/assets/[ticker]/page.tsx", "fetchSupportedAssetDetails");
 includes("app/assets/[ticker]/page.tsx", "fetchSupportedAssetOverview");
+includes("app/assets/[ticker]/page.tsx", "fetchMarketNews");
 includes("app/assets/[ticker]/page.tsx", "fetchSupportedAssetWeeklyNews");
 includes("app/assets/[ticker]/page.tsx", "fetchSupportedSourceDrawerResponse");
 includes("app/assets/[ticker]/page.tsx", "data-asset-details-rendering");
 includes("app/assets/[ticker]/page.tsx", "data-asset-overview-rendering");
 includes("app/assets/[ticker]/page.tsx", "data-asset-source-drawer-rendering");
+includes("app/assets/[ticker]/page.tsx", "data-asset-market-news-rendering");
 includes("app/assets/[ticker]/page.tsx", "data-asset-weekly-news-rendering");
+includes("app/assets/[ticker]/page.tsx", "marketNewsFocusFixture");
+includes("app/assets/[ticker]/page.tsx", "marketAIComprehensiveAnalysisFixture");
 includes("app/assets/[ticker]/page.tsx", "getWeeklyNewsFocusFixture");
 includes("app/assets/[ticker]/page.tsx", "getAIComprehensiveAnalysisFixture");
 includes("app/assets/[ticker]/page.tsx", "assetPageExportUrl");
@@ -455,6 +493,7 @@ includes("lib/assetOverview.ts", "etfSections: backendSections");
 includesAll("app/assets/[ticker]/page.tsx", [
   "data-asset-overview-rendering={overviewRendering}",
   "data-asset-details-rendering={detailsRendering}",
+  "data-asset-market-news-rendering={marketNewsRendering}",
   "data-asset-weekly-news-rendering={weeklyNewsRendering}",
   "data-asset-source-drawer-rendering={sourceDrawerRendering}",
   "data-asset-glossary-rendering={glossaryRendering}",
@@ -478,6 +517,9 @@ includes("lib/assetDetails.ts", "No API base URL is configured for supported ass
 includes("lib/assetWeeklyNews.ts", "/api/assets/");
 includes("lib/assetWeeklyNews.ts", "/weekly-news");
 includes("lib/assetWeeklyNews.ts", "No API base URL is configured for supported asset weekly-news fetches.");
+includes("lib/marketNews.ts", "/api/market-news");
+includes("lib/marketNews.ts", "No API base URL is configured for market-news fetches.");
+includes("lib/marketNews.ts", "market-news-response-v1");
 includes("lib/sourceDrawer.ts", "asset-source-drawer-v1");
 includes("lib/sourceDrawer.ts", "/api/assets/");
 includes("lib/sourceDrawer.ts", "/sources");
@@ -584,6 +626,7 @@ includes("components/AssetModeLayout.tsx", "Deep Dive");
 assert.equal(read("components/AssetModeLayout.tsx").includes("Beginner Mode"), false, "Asset layout should not expose a visible Beginner Mode wrapper");
 assert.equal(read("components/AssetModeLayout.tsx").includes("Deep-Dive Mode"), false, "Asset layout should not expose a visible Deep-Dive Mode wrapper");
 includes("components/WeeklyNewsPanel.tsx", "Weekly News Focus");
+includes("components/WeeklyNewsPanel.tsx", "Weekly News Focus:");
 includes("components/WeeklyNewsPanel.tsx", "data-weekly-news-state");
 includes("components/WeeklyNewsPanel.tsx", "data-weekly-news-configured-max");
 includes("components/WeeklyNewsPanel.tsx", "data-weekly-news-selected-count");
@@ -598,6 +641,7 @@ includes("components/WeeklyNewsPanel.tsx", "Source quality:");
 includes("components/WeeklyNewsPanel.tsx", "Source-use policy:");
 includes("components/WeeklyNewsPanel.tsx", "No major Weekly News Focus items found");
 includes("components/AIComprehensiveAnalysisPanel.tsx", "AI Comprehensive Analysis");
+includes("components/AIComprehensiveAnalysisPanel.tsx", "AI Comprehensive Analysis:");
 includes("components/AIComprehensiveAnalysisPanel.tsx", "data-ai-analysis-state");
 includes("components/AIComprehensiveAnalysisPanel.tsx", "data-ai-analysis-available");
 includes("components/AIComprehensiveAnalysisPanel.tsx", "data-ai-analysis-minimum-weekly-news-items");
@@ -610,6 +654,11 @@ includes("components/AIComprehensiveAnalysisPanel.tsx", "Business/Fund Context")
 includes("components/AIComprehensiveAnalysisPanel.tsx", "Risk Context");
 includes("components/AIComprehensiveAnalysisPanel.tsx", "data-ai-analysis-section-order");
 includes("components/AIComprehensiveAnalysisPanel.tsx", "fabricated analysis");
+includes("components/MarketNewsPanel.tsx", "Market News Focus");
+includes("components/MarketNewsPanel.tsx", "data-market-news-state");
+includes("components/MarketNewsPanel.tsx", "data-market-news-item-count");
+includes("components/MarketAIComprehensiveAnalysisPanel.tsx", "AI Comprehensive Analysis: Market News Focus");
+includes("components/MarketAIComprehensiveAnalysisPanel.tsx", "data-market-ai-analysis-section-order");
 includes("components/ExportControls.tsx", "data-export-controls");
 includes("components/ExportControls.tsx", "data-export-relative-api");
 includes("components/ExportControls.tsx", "data-export-no-live-external");
@@ -1091,12 +1140,20 @@ assert.ok(
   "Supported asset page should render Key Facts before What It Does or What It Holds"
 );
 assert.ok(
-  assetPage.indexOf("data-prd-section=\"what_it_does_or_holds\"") < assetPage.indexOf("<WeeklyNewsPanel"),
-  "Supported asset page should render What It Does or What It Holds before Weekly News Focus"
+  assetPage.indexOf("data-prd-section=\"what_it_does_or_holds\"") < assetPage.indexOf("<MarketNewsPanel"),
+  "Supported asset page should render What It Does or What It Holds before Market News Focus"
 );
 assert.ok(
-  assetPage.indexOf("data-beginner-top-risks") < assetPage.indexOf("<WeeklyNewsPanel"),
-  "Beginner section should show top risks before Weekly News Focus"
+  assetPage.indexOf("data-beginner-top-risks") < assetPage.indexOf("<MarketNewsPanel"),
+  "Beginner section should show top risks before Market News Focus"
+);
+assert.ok(
+  assetPage.indexOf("<MarketNewsPanel") < assetPage.indexOf("<MarketAIComprehensiveAnalysisPanel"),
+  "Market News Focus should render before Market AI Comprehensive Analysis"
+);
+assert.ok(
+  assetPage.indexOf("<MarketAIComprehensiveAnalysisPanel") < assetPage.indexOf("<WeeklyNewsPanel"),
+  "Market AI Comprehensive Analysis should render before ticker-specific Weekly News Focus"
 );
 assert.ok(
   assetPage.indexOf("<WeeklyNewsPanel") < assetPage.indexOf("<AIComprehensiveAnalysisPanel"),
@@ -1261,14 +1318,22 @@ for (const marker of [
   "provider_fallback_limits",
   "weeklyNewsFocusFixtures",
   "aiComprehensiveAnalysisFixtures",
+  "marketNewsFocusFixture",
+  "marketAIComprehensiveAnalysisFixture",
   "weekly-news-focus-v1",
   "ai-comprehensive-analysis-v1",
+  "market-news-focus-v1",
+  "market-ai-comprehensive-analysis-v1",
   "configuredMaxItemCount",
   "selectedItemCount",
   "suppressedCandidateCount",
   "evidenceLimitedState",
   "minimumWeeklyNewsItemCount",
   "weeklyNewsSelectedItemCount",
+  "minimumMarketNewsItemCount",
+  "marketNewsSelectedItemCount",
+  "c_market_news_macro_policy",
+  "src_market_news_macro_policy",
   "c_weekly_qqq_methodology",
   "c_weekly_qqq_sponsor_update",
   "src_qqq_weekly_methodology",
@@ -1277,6 +1342,8 @@ for (const marker of [
   "Market Context",
   "Business/Fund Context",
   "Risk Context",
+  "Macro & Policy",
+  "Scenario Lens",
   "no_high_signal",
   "suppressed",
   "available",
@@ -1308,6 +1375,8 @@ const frontendSource = [
   read("components/ComparisonSourceDetails.tsx"),
   read("components/ExportControls.tsx"),
   read("components/GlossaryPopover.tsx"),
+  read("components/MarketAIComprehensiveAnalysisPanel.tsx"),
+  read("components/MarketNewsPanel.tsx"),
   read("components/SearchBox.tsx"),
   read("components/SourceDrawer.tsx"),
   read("components/WeeklyNewsPanel.tsx"),
@@ -1318,6 +1387,7 @@ const frontendSource = [
   read("lib/exportControls.ts"),
   read("lib/fixtures.ts"),
   read("lib/glossary.ts"),
+  read("lib/marketNews.ts"),
   read("lib/trustMetrics.ts")
 ].join("\n");
 

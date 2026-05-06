@@ -296,6 +296,37 @@ def test_configured_backend_readers_are_route_wired_with_fixture_fallback():
     assert ("chat_session", ("missing-session",)) in spy.calls
 
 
+def test_market_news_endpoint_returns_reusable_market_context_without_asset_unlocking():
+    response = client.get("/api/market-news")
+
+    assert response.status_code == 200
+    body = response.json()
+    focus = body["market_news_focus"]
+    analysis = body["market_ai_comprehensive_analysis"]
+    assert body["schema_version"] == "market-news-response-v1"
+    assert focus["schema_version"] == "market-news-focus-v1"
+    assert focus["reusable_across_tickers"] is True
+    assert 0 < focus["selected_item_count"] <= 20
+    assert focus["audit"]["no_raw_article_text"] is True
+    assert focus["audit"]["no_raw_provider_payload"] is True
+    assert focus["audit"]["no_generated_output_cache_write"] is True
+    assert analysis["schema_version"] == "market-ai-comprehensive-analysis-v1"
+    assert analysis["analysis_available"] is True
+    assert [section["label"] for section in analysis["sections"]] == [
+        "What Changed This Week",
+        "Macro & Policy",
+        "Equity Market Drivers",
+        "AI / Technology / Semiconductors",
+        "Geopolitical & Energy Risks",
+        "Credit / Liquidity / Sentiment",
+        "Scenario Lens",
+        "Practical Watchpoints",
+    ]
+    rendered = str(body).lower()
+    for forbidden in ["you should buy", "you should sell", "raw article body", "provider payload value"]:
+        assert forbidden not in rendered
+
+
 def test_configured_governed_golden_records_drive_learning_surfaces_end_to_end():
     knowledge_repo, generated_repo, weekly_repo, source_snapshot_repo = _configured_golden_repositories()
     configure_backend_read_dependencies(
@@ -1131,6 +1162,12 @@ def test_overview_has_beginner_sections_and_citations():
     assert body["top_risks"][0]["citation_ids"][0] in citation_ids
     assert body["recent_developments"][0]["citation_ids"][0] in citation_ids
     assert body["weekly_news_focus"]["schema_version"] == "weekly-news-focus-v1"
+    assert body["market_news_focus"]["schema_version"] == "market-news-focus-v1"
+    assert body["market_news_focus"]["reusable_across_tickers"] is True
+    assert body["market_news_focus"]["configured_max_item_count"] == 20
+    assert body["market_news_focus"]["selected_item_count"] <= 20
+    assert body["market_ai_comprehensive_analysis"]["schema_version"] == "market-ai-comprehensive-analysis-v1"
+    assert body["market_ai_comprehensive_analysis"]["analysis_available"] is True
     assert body["weekly_news_focus"]["window"]["news_window_start"] == "2026-04-13"
     assert body["weekly_news_focus"]["window"]["news_window_end"] == "2026-04-22"
     assert body["weekly_news_focus"]["configured_max_item_count"] == 8

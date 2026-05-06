@@ -59,6 +59,12 @@ from backend.llm import (
     validate_llm_generated_output,
 )
 from backend.main import app
+from backend.market_news import (
+    build_market_ai_comprehensive_analysis,
+    build_market_news_response,
+    fixture_market_news_candidates,
+    select_market_news_focus,
+)
 from backend.models import (
     CacheEntryKind,
     CacheEntryMetadata,
@@ -142,6 +148,11 @@ from scripts.run_weekly_news_live_source_smoke import (
     SMOKE_OPT_IN_ENV,
     SMOKE_SCHEMA_VERSION,
     run_weekly_news_live_source_smoke,
+)
+from scripts.run_market_news_live_source_smoke import (
+    SMOKE_OPT_IN_ENV as MARKET_NEWS_SMOKE_OPT_IN_ENV,
+    SMOKE_SCHEMA_VERSION as MARKET_NEWS_SMOKE_SCHEMA_VERSION,
+    run_market_news_live_source_smoke,
 )
 from scripts.run_live_ai_validation_smoke import (
     ANALYSIS_CASE_ID as LIVE_AI_ANALYSIS_CASE_ID,
@@ -2470,6 +2481,65 @@ def test_weekly_news_cases():
     ]
 
 
+def test_market_news_cases():
+    data = load_yaml("market_news_eval_cases.yaml")
+    assert data.get("schema_version") == "market-news-evals-v1"
+    assert data.get("live_source_smoke_schema_version") == MARKET_NEWS_SMOKE_SCHEMA_VERSION
+
+    missing_models = {name for name in data.get("required_models", []) if not hasattr(models, name)}
+    assert not missing_models, f"Missing Market News contract models: {missing_models}"
+
+    response = build_market_news_response(as_of="2026-04-23")
+    focus = response.market_news_focus
+    analysis = response.market_ai_comprehensive_analysis
+    assert focus.schema_version == "market-news-focus-v1"
+    assert focus.reusable_across_tickers is True
+    assert 0 < focus.selected_item_count <= focus.configured_max_item_count == 20
+    assert focus.audit.no_raw_article_text is True
+    assert focus.audit.no_raw_provider_payload is True
+    assert focus.audit.no_generated_output_cache_write is True
+    assert data["required_topic_buckets"] == [bucket.value for bucket in models.MarketNewsTopicBucket]
+    assert len({item.topic_bucket.value for item in focus.items}) >= 3
+    assert all(item.source.source_use_policy is SourceUsePolicy.summary_allowed for item in focus.items)
+
+    assert analysis.schema_version == "market-ai-comprehensive-analysis-v1"
+    assert analysis.analysis_available is True
+    assert [section.label for section in analysis.sections] == data["required_analysis_labels"]
+    analysis_text = _flatten_static_text(analysis.model_dump(mode="json")).lower()
+    for phrase in data["forbidden_analysis_language"]:
+        assert phrase not in analysis_text
+    for persona in data["forbidden_personas"]:
+        assert persona not in analysis_text
+
+    market_source = (ROOT / "backend" / "market_news.py").read_text(encoding="utf-8")
+    for required in data["source_policy_required_exclusions"]:
+        assert required in market_source
+    for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import", "os.environ", "api_key"]:
+        assert forbidden not in market_source
+
+    limited_focus = select_market_news_focus(fixture_market_news_candidates(as_of="2026-04-23")[:2], as_of="2026-04-23")
+    limited_analysis = build_market_ai_comprehensive_analysis(limited_focus)
+    assert limited_analysis.analysis_available is False
+
+    skipped_smoke = run_market_news_live_source_smoke(env={})
+    assert skipped_smoke["schema_version"] == MARKET_NEWS_SMOKE_SCHEMA_VERSION
+    assert skipped_smoke["status"] == "skipped"
+    assert skipped_smoke["normal_ci_requires_live_calls"] is False
+    smoke = run_market_news_live_source_smoke(env={MARKET_NEWS_SMOKE_OPT_IN_ENV: "true"})
+    assert smoke["status"] == "pass"
+    assert smoke["normal_ci_requires_live_calls"] is False
+    assert smoke["live_sources_fetched"] is False
+    smoke_cases = {case["case_id"]: case for case in smoke["cases"]}
+    assert set(data["live_source_smoke_required_cases"]) <= set(smoke_cases)
+    assert set(data["live_source_smoke_required_providers"]) <= set(smoke_cases["provider_adapter_matrix"]["providers"])
+    assert smoke_cases["provider_adapter_matrix"]["raw_article_text_reported"] is False
+    assert smoke_cases["provider_adapter_matrix"]["raw_provider_payload_logged"] is False
+    assert smoke_cases["critical_claim_gate"]["critical_claim_requires_priority_or_corroboration"] is True
+    serialized = repr(smoke)
+    for forbidden in ["Bearer ", "Authorization", "BEGIN PRIVATE KEY", "raw article body", "provider payload value", "sk-"]:
+        assert forbidden not in serialized
+
+
 def test_llm_provider_cases():
     data = load_yaml("llm_provider_eval_cases.yaml")
     assert data.get("schema_version") == "llm-provider-evals-v1"
@@ -2923,6 +2993,7 @@ if __name__ == "__main__":
     test_generated_chat_contract()
     test_export_cases()
     test_weekly_news_cases()
+    test_market_news_cases()
     test_llm_provider_cases()
     test_local_deployment_env_smoke_cases()
     test_lightweight_mvp_readiness_gate_cases()

@@ -12,6 +12,14 @@ Acceptance criteria:
 - Live RSS/GDELT/keyed-provider/yfinance adapter work is documented as server-side, opt-in, key-safe, and mock-backed in normal CI.
 - Ticker-specific Weekly News Focus keeps the existing max-8 official-first behavior.
 
+Required commands:
+- `python3 -m pytest tests -q`
+- `python3 evals/run_static_evals.py`
+- `bash scripts/run_quality_gate.sh`
+
+Iteration budget:
+- Complete the docs, backend, frontend, and test slices in one user-approved implementation pass with conventional commits.
+
 ## Backlog
 
 ### T-173: Add Market News Focus backend contracts and adapters

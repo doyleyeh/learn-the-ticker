@@ -17,7 +17,12 @@ if str(ROOT) not in sys.path:
 
 os.environ.setdefault("LTT_FORCE_COMPAT_FASTAPI", "1")
 
-from backend.settings import build_cors_settings, build_lightweight_data_settings, build_persistence_settings
+from backend.settings import (
+    build_cors_settings,
+    build_lightweight_data_settings,
+    build_market_news_settings,
+    build_persistence_settings,
+)
 
 
 SCHEMA_VERSION = "local-deployment-env-smoke-v1"
@@ -31,6 +36,11 @@ SERVER_ONLY_ENV_NAMES = (
     "FMP_API_KEY",
     "ALPHA_VANTAGE_API_KEY",
     "FINNHUB_API_KEY",
+    "MARKETAUX_API_KEY",
+    "GUARDIAN_API_KEY",
+    "GNEWS_API_KEY",
+    "MEDIASTACK_API_KEY",
+    "NEWSAPI_API_KEY",
     "TIINGO_API_KEY",
     "EODHD_API_KEY",
 )
@@ -42,6 +52,10 @@ API_REQUIRED_ENV_NAMES = (
     "LIGHTWEIGHT_LIVE_FETCH_ENABLED",
     "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED",
     "LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED",
+    "MARKET_NEWS_FETCH_ENABLED",
+    "MARKET_NEWS_LIVE_SOURCE_SMOKE_ENABLED",
+    "MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED",
+    "MARKET_NEWS_CACHE_TTL_HOURS",
     "SEC_EDGAR_USER_AGENT",
     "LLM_PROVIDER",
     "LLM_LIVE_GENERATION_ENABLED",
@@ -55,6 +69,10 @@ WORKER_REQUIRED_ENV_NAMES = (
     "LIGHTWEIGHT_LIVE_FETCH_ENABLED",
     "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED",
     "LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED",
+    "MARKET_NEWS_FETCH_ENABLED",
+    "MARKET_NEWS_LIVE_SOURCE_SMOKE_ENABLED",
+    "MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED",
+    "MARKET_NEWS_CACHE_TTL_HOURS",
     "SEC_EDGAR_USER_AGENT",
     "LLM_PROVIDER",
     "LLM_LIVE_GENERATION_ENABLED",
@@ -69,6 +87,10 @@ ROOT_REQUIRED_ENV_NAMES = (
     "LIGHTWEIGHT_LIVE_FETCH_ENABLED",
     "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED",
     "LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED",
+    "MARKET_NEWS_FETCH_ENABLED",
+    "MARKET_NEWS_LIVE_SOURCE_SMOKE_ENABLED",
+    "MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED",
+    "MARKET_NEWS_CACHE_TTL_HOURS",
     "SEC_EDGAR_USER_AGENT",
     "LLM_PROVIDER",
     "LLM_LIVE_GENERATION_ENABLED",
@@ -79,6 +101,11 @@ PROVIDER_KEY_ENV_NAMES = (
     "FMP_API_KEY",
     "ALPHA_VANTAGE_API_KEY",
     "FINNHUB_API_KEY",
+    "MARKETAUX_API_KEY",
+    "GUARDIAN_API_KEY",
+    "GNEWS_API_KEY",
+    "MEDIASTACK_API_KEY",
+    "NEWSAPI_API_KEY",
     "TIINGO_API_KEY",
     "EODHD_API_KEY",
 )
@@ -283,6 +310,7 @@ def _check_server_env_readiness(root: Path) -> dict[str, Any]:
 def _check_settings_defaults() -> dict[str, Any]:
     persistence = build_persistence_settings(env={})
     lightweight = build_lightweight_data_settings(env={})
+    market_news = build_market_news_settings(env={})
     cors = build_cors_settings(env={})
     blockers = []
     if persistence.database_url_configured:
@@ -295,6 +323,12 @@ def _check_settings_defaults() -> dict[str, Any]:
         blockers.append("provider_fallback_should_default_on")
     if lightweight.weekly_news_fetch_enabled:
         blockers.append("lightweight_weekly_news_fetch_should_default_off")
+    if market_news.fetch_enabled:
+        blockers.append("market_news_fetch_should_default_off")
+    if market_news.live_source_smoke_enabled:
+        blockers.append("market_news_live_source_smoke_should_default_off")
+    if market_news.live_source_real_fetch_enabled:
+        blockers.append("market_news_live_source_real_fetch_should_default_off")
     if not lightweight.sec_user_agent_configured:
         blockers.append("sec_user_agent_placeholder_missing")
     if not cors.enabled:
@@ -308,6 +342,11 @@ def _check_settings_defaults() -> dict[str, Any]:
         "lightweight_live_fetch_enabled": lightweight.live_fetch_enabled,
         "lightweight_provider_fallback_enabled": lightweight.provider_fallback_enabled,
         "lightweight_weekly_news_fetch_enabled": lightweight.weekly_news_fetch_enabled,
+        "market_news_fetch_enabled": market_news.fetch_enabled,
+        "market_news_live_source_smoke_enabled": market_news.live_source_smoke_enabled,
+        "market_news_live_source_real_fetch_enabled": market_news.live_source_real_fetch_enabled,
+        "market_news_cache_ttl_hours": market_news.cache_ttl_hours,
+        "market_news_provider_credentials_configured": dict(market_news.provider_credentials_configured),
         "sec_edgar_user_agent_placeholder_present": lightweight.sec_user_agent_configured,
         "sec_edgar_user_agent_value_reported": False,
         "database_url_configured_by_default": persistence.database_url_configured,
