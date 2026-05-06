@@ -54,6 +54,7 @@ from backend.weekly_news import build_ai_comprehensive_analysis, compute_weekly_
 
 
 LIGHTWEIGHT_PAGE_SCHEMA_VERSION = "lightweight-local-mvp-page-v1"
+LIGHTWEIGHT_DURABLE_PERSISTENCE_SCHEMA_VERSION = "lightweight-durable-persistence-v1"
 
 
 def fetch_lightweight_page_data_if_enabled(
@@ -145,6 +146,63 @@ def build_lightweight_overview_response(response: LightweightFetchResponse) -> O
         section_freshness_validation=[],
         fallback_diagnostics=_fallback_diagnostics(response),
     )
+
+
+def persist_lightweight_evidence_if_configured(
+    response: LightweightFetchResponse,
+    *,
+    source_snapshot_repository: Any | None = None,
+    knowledge_pack_repository: Any | None = None,
+) -> dict[str, Any]:
+    """Persist rights-safe lightweight metadata when optional durable repositories are injected."""
+
+    diagnostics: dict[str, Any] = {
+        "schema_version": LIGHTWEIGHT_DURABLE_PERSISTENCE_SCHEMA_VERSION,
+        "ticker": response.asset.ticker,
+        "attempted": source_snapshot_repository is not None or knowledge_pack_repository is not None,
+        "source_snapshot_persisted": False,
+        "knowledge_pack_persisted": False,
+        "strict_audit_quality_source_approval_granted": False,
+        "generated_output_cache_promoted": False,
+        "raw_payload_exposed": False,
+        "secret_values_exposed": False,
+        "status": "not_configured",
+        "reason_codes": [],
+    }
+    if source_snapshot_repository is None and knowledge_pack_repository is None:
+        diagnostics["reason_codes"].append("durable_repository_not_configured")
+        return diagnostics
+    if not _can_render_lightweight_page(response):
+        diagnostics["status"] = "skipped"
+        diagnostics["reason_codes"].append("lightweight_response_not_renderable")
+        return diagnostics
+
+    try:
+        snapshot_records = None
+        if source_snapshot_repository is not None:
+            from backend.source_snapshot_repository import source_snapshot_records_from_lightweight_response
+
+            snapshot_records = source_snapshot_records_from_lightweight_response(response)
+            source_snapshot_repository.persist(snapshot_records)
+            diagnostics["source_snapshot_persisted"] = True
+            diagnostics["source_snapshot_artifact_count"] = len(snapshot_records.artifacts)
+        if knowledge_pack_repository is not None:
+            from backend.knowledge_pack_repository import knowledge_pack_records_from_lightweight_response
+
+            knowledge_records = knowledge_pack_records_from_lightweight_response(response)
+            knowledge_pack_repository.persist(knowledge_records)
+            diagnostics["knowledge_pack_persisted"] = True
+            diagnostics["normalized_fact_count"] = len(knowledge_records.normalized_facts)
+            diagnostics["source_document_count"] = len(knowledge_records.source_documents)
+            diagnostics["citation_count"] = len(knowledge_records.envelope.citation_ids)
+        diagnostics["status"] = "persisted"
+        return diagnostics
+    except Exception as exc:
+        diagnostics["status"] = "blocked"
+        diagnostics["reason_codes"].append(f"durable_persistence_contract_error:{exc.__class__.__name__}")
+        diagnostics["source_snapshot_persisted"] = False
+        diagnostics["knowledge_pack_persisted"] = False
+        return diagnostics
 
 
 def build_lightweight_details_response(response: LightweightFetchResponse) -> DetailsResponse:

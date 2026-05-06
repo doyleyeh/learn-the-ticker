@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -11,6 +13,9 @@ from backend.models import (
     DEFAULT_ALLOWED_EXCERPT_BEHAVIOR,
     FreshnessState,
     KnowledgePackSourceMetadata,
+    LightweightFetchResponse,
+    LightweightFetchState,
+    LightweightFetchSource,
     SourceAllowlistStatus,
     SourceExportRights,
     SourceOperationPermissions,
@@ -33,7 +38,14 @@ SOURCE_SNAPSHOT_TABLES = (
 )
 
 _RAW_OR_PARSED_CATEGORIES = {"raw_source", "parsed_text"}
-_SUMMARY_CATEGORIES = {"metadata", "allowed_excerpt", "summary", "diagnostics_metadata", "generated_artifact_reference"}
+_SUMMARY_CATEGORIES = {
+    "metadata",
+    "checksum_metadata",
+    "allowed_excerpt",
+    "summary",
+    "diagnostics_metadata",
+    "generated_artifact_reference",
+}
 _METADATA_ONLY_CATEGORIES = {"metadata", "checksum_metadata", "diagnostics_metadata"}
 _BLOCKED_GENERATED_OUTPUT_STATES = {
     "unsupported",
@@ -377,6 +389,219 @@ def artifact_from_knowledge_pack_source(
         cache_allowed=source.permitted_operations.can_cache,
         export_allowed=source.permitted_operations.can_export_metadata,
     )
+
+
+def source_snapshot_records_from_lightweight_response(
+    response: LightweightFetchResponse,
+    *,
+    created_at: str | None = None,
+    storage_prefix: str = "local-lightweight-source-metadata",
+) -> SourceSnapshotRepositoryRecords:
+    """Build private metadata-only source snapshot records for lightweight local-MVP evidence."""
+
+    if not _can_persist_lightweight_response(response):
+        raise SourceSnapshotContractError("Only renderable lightweight local-MVP responses can create source snapshots.")
+
+    ticker = response.asset.ticker
+    created = created_at or response.freshness.page_last_updated_at or STUB_TIMESTAMP
+    artifacts = [
+        _artifact_from_lightweight_source(
+            source,
+            ticker=ticker,
+            checksum=_lightweight_source_checksum(response, source),
+            created_at=created,
+            storage_key=_artifact_storage_key(
+                storage_prefix,
+                ticker,
+                source.source_document_id,
+                SourceSnapshotArtifactCategory.checksum_metadata,
+            ),
+        )
+        for source in response.sources
+        if source.source_use_policy is not SourceUsePolicy.rejected and not source.raw_payload_exposed
+    ]
+    diagnostics = [
+        SourceSnapshotDiagnosticRow(
+            diagnostic_id=f"snapshot-{ticker.lower()}-lightweight-durable-readiness",
+            category=SourceSnapshotDiagnosticCategory.validation_failed.value
+            if not artifacts
+            else SourceSnapshotDiagnosticCategory.unknown.value,
+            retrieval_status=response.fetch_state.value,
+            retryable=False,
+            source_policy_ref="lightweight-local-mvp-source-metadata",
+            checksum=_lightweight_response_checksum(response),
+            occurred_at=created,
+            created_at=created,
+            compact_metadata={
+                "asset_ticker": ticker,
+                "fetch_state": response.fetch_state.value,
+                "page_render_state": response.page_render_state.value,
+                "source_count": len(response.sources),
+                "fact_count": len(response.facts),
+                "strict_audit_quality_source_approval_granted": False,
+                "generated_output_cache_eligible": False,
+                "raw_payload_exposed": False,
+            },
+        )
+    ]
+    return validate_source_snapshot_records(SourceSnapshotRepositoryRecords(artifacts=artifacts, diagnostics=diagnostics))
+
+
+def _can_persist_lightweight_response(response: LightweightFetchResponse) -> bool:
+    return (
+        response.generated_output_eligible
+        and response.asset.supported
+        and response.fetch_state in {LightweightFetchState.supported, LightweightFetchState.partial}
+        and bool(response.sources)
+        and bool(response.facts)
+        and not response.raw_payload_exposed
+    )
+
+
+def _artifact_from_lightweight_source(
+    source: LightweightFetchSource,
+    *,
+    ticker: str,
+    checksum: str,
+    created_at: str,
+    storage_key: str,
+) -> SourceSnapshotArtifactRow:
+    operations = _lightweight_operations(source.source_use_policy)
+    return SourceSnapshotArtifactRow(
+        artifact_id=f"snapshot-{ticker.lower()}-{source.source_document_id}-checksum-metadata",
+        scope_kind=SourceSnapshotScopeKind.asset.value,
+        asset_ticker=ticker,
+        source_document_id=source.source_document_id,
+        source_reference_id=source.source_document_id,
+        source_asset_ticker=ticker,
+        artifact_category=SourceSnapshotArtifactCategory.checksum_metadata.value,
+        storage_key=storage_key,
+        checksum=checksum,
+        byte_size=0,
+        content_type="application/json",
+        retrieved_at=source.retrieved_at,
+        created_at=created_at,
+        source_use_policy=source.source_use_policy.value,
+        allowlist_status=source.allowlist_status.value,
+        source_quality=source.source_quality.value,
+        permitted_operations=operations.model_dump(mode="json"),
+        source_type=source.source_type,
+        source_identity=source.url or source.publisher or source.source_document_id,
+        is_official=source.is_official,
+        storage_rights=_lightweight_storage_rights(source.source_use_policy).value,
+        export_rights=_lightweight_export_rights(source.source_use_policy).value,
+        review_status=SourceReviewStatus.approved.value,
+        approval_rationale=(
+            "Local personal-MVP source metadata is persisted for deterministic review; "
+            "strict audit-quality source approval is not granted."
+        ),
+        parser_status=SourceParserStatus.partial.value,
+        parser_failure_diagnostics=source.fallback_reason,
+        freshness_state=source.freshness_state.value,
+        evidence_state="partial" if source.source_use_policy is SourceUsePolicy.metadata_only else "supported",
+        can_feed_generated_output=False,
+        can_support_citations=operations.can_support_citations,
+        cache_allowed=False,
+        export_allowed=(
+            operations.can_export_metadata
+            and source.export_allowed
+            and source.source_use_policy not in {SourceUsePolicy.metadata_only, SourceUsePolicy.link_only}
+        ),
+        generated_output_available=False,
+        compact_diagnostics={
+            "asset_ticker": ticker,
+            "source_label": source.source_label.value,
+            "source_type": source.source_type,
+            "source_document_id": source.source_document_id,
+            "as_of_date": source.as_of_date,
+            "retrieved_at": source.retrieved_at,
+            "strict_audit_quality_source_approval_granted": False,
+            "generated_output_cache_eligible": False,
+            "raw_payload_exposed": False,
+        },
+    )
+
+
+def _lightweight_source_checksum(response: LightweightFetchResponse, source: LightweightFetchSource) -> str:
+    fact_ids = sorted(
+        fact.fact_id
+        for fact in response.facts
+        if source.source_document_id in fact.source_document_ids
+    )
+    payload = {
+        "ticker": response.asset.ticker,
+        "source_document_id": source.source_document_id,
+        "source_type": source.source_type,
+        "source_use_policy": source.source_use_policy.value,
+        "as_of_date": source.as_of_date,
+        "retrieved_at": source.retrieved_at,
+        "fact_ids": fact_ids,
+    }
+    return "sha256:" + hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    ).hexdigest()
+
+
+def _lightweight_response_checksum(response: LightweightFetchResponse) -> str:
+    payload = {
+        "ticker": response.asset.ticker,
+        "fetch_state": response.fetch_state.value,
+        "source_ids": sorted(source.source_document_id for source in response.sources),
+        "fact_ids": sorted(fact.fact_id for fact in response.facts),
+    }
+    return "sha256:" + hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    ).hexdigest()
+
+
+def _lightweight_operations(policy: SourceUsePolicy) -> SourceOperationPermissions:
+    if policy in {SourceUsePolicy.full_text_allowed, SourceUsePolicy.summary_allowed}:
+        return SourceOperationPermissions(
+            can_store_metadata=True,
+            can_store_raw_text=False,
+            can_display_metadata=True,
+            can_display_excerpt=policy is SourceUsePolicy.summary_allowed,
+            can_summarize=policy is SourceUsePolicy.summary_allowed,
+            can_cache=False,
+            can_export_metadata=True,
+            can_export_excerpt=False,
+            can_export_full_text=False,
+            can_support_generated_output=False,
+            can_support_citations=True,
+            can_support_canonical_facts=True,
+            can_support_recent_developments=False,
+        )
+    return SourceOperationPermissions(
+        can_store_metadata=True,
+        can_store_raw_text=False,
+        can_display_metadata=True,
+        can_display_excerpt=False,
+        can_summarize=False,
+        can_cache=False,
+        can_export_metadata=True,
+        can_export_excerpt=False,
+        can_export_full_text=False,
+        can_support_generated_output=False,
+        can_support_citations=False,
+        can_support_canonical_facts=False,
+        can_support_recent_developments=False,
+    )
+
+
+def _lightweight_storage_rights(policy: SourceUsePolicy) -> SourceStorageRights:
+    if policy is SourceUsePolicy.summary_allowed:
+        return SourceStorageRights.summary_allowed
+    if policy is SourceUsePolicy.metadata_only:
+        return SourceStorageRights.metadata_only
+    if policy is SourceUsePolicy.link_only:
+        return SourceStorageRights.link_only
+    return SourceStorageRights.raw_snapshot_allowed
+
+
+def _lightweight_export_rights(policy: SourceUsePolicy) -> SourceExportRights:
+    if policy is SourceUsePolicy.link_only:
+        return SourceExportRights.link_only
+    return SourceExportRights.metadata_only
 
 
 def _artifact_from_provider_source(

@@ -8,6 +8,7 @@ from backend.repositories.knowledge_packs import (
     KnowledgePackRepositoryContractError,
     KnowledgePackRepositoryRecords,
     knowledge_pack_records_from_acquisition_result,
+    knowledge_pack_records_from_lightweight_response,
     knowledge_pack_repository_metadata,
 )
 from backend.repositories.ingestion_jobs import (
@@ -34,6 +35,7 @@ from backend.repositories.source_snapshots import (
     artifact_from_knowledge_pack_source,
     source_snapshot_repository_metadata,
     source_snapshot_records_from_acquisition_result,
+    source_snapshot_records_from_lightweight_response,
     validate_source_snapshot_records,
 )
 from backend.repositories.generated_outputs import (
@@ -148,10 +150,12 @@ __all__ = [
     "ingestion_job_ledger_repository_metadata",
     "knowledge_pack_repository_metadata",
     "knowledge_pack_records_from_acquisition_result",
+    "knowledge_pack_records_from_lightweight_response",
     "read_persisted_knowledge_pack_response",
     "serialize_ingestion_job_response",
     "source_snapshot_repository_metadata",
     "source_snapshot_records_from_acquisition_result",
+    "source_snapshot_records_from_lightweight_response",
     "validate_ingestion_job_ledger_records",
     "validate_generated_output_cache_records",
     "validate_chat_session_records",

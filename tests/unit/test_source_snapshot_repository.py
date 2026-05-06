@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from backend.models import SourceAllowlistStatus, SourceUsePolicy
+from backend.lightweight_data_fetch import fetch_lightweight_asset_data
 from backend.providers import fetch_mock_provider_response, mock_etf_issuer_adapter, mock_sec_stock_adapter
 from backend.provider_adapters.etf_issuer import build_etf_issuer_acquisition_result
 from backend.provider_adapters.sec_stock import build_sec_stock_acquisition_result
@@ -24,8 +25,11 @@ from backend.source_snapshot_repository import (
     artifact_from_knowledge_pack_source,
     source_snapshot_repository_metadata,
     source_snapshot_records_from_acquisition_result,
+    source_snapshot_records_from_lightweight_response,
     validate_source_snapshot_records,
 )
+from backend.settings import build_lightweight_data_settings
+from scripts.run_local_fresh_data_slice_smoke import LocalFreshDataSliceFakeFetcher, RETRIEVED_AT
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -279,6 +283,59 @@ def test_acquisition_outputs_create_private_source_snapshot_records_for_aapl_voo
         assert len(records.diagnostics) == 1
         assert records.diagnostics[0].stores_raw_source_text is False
         assert records.diagnostics[0].stores_provider_payload is False
+
+
+def test_lightweight_response_creates_metadata_only_local_durable_source_snapshots():
+    response = fetch_lightweight_asset_data(
+        "VOO",
+        settings=build_lightweight_data_settings(
+            {
+                "DATA_POLICY_MODE": "lightweight",
+                "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+                "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+                "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+            }
+        ),
+        fetcher=LocalFreshDataSliceFakeFetcher(),
+        retrieved_at=RETRIEVED_AT,
+    )
+
+    records = source_snapshot_records_from_lightweight_response(response)
+
+    assert records.artifacts
+    assert {artifact.asset_ticker for artifact in records.artifacts} == {"VOO"}
+    assert {artifact.artifact_category for artifact in records.artifacts} == {"checksum_metadata"}
+    assert all(artifact.checksum.startswith("sha256:") for artifact in records.artifacts)
+    assert all(artifact.storage_key.startswith("local-lightweight-source-metadata/voo/") for artifact in records.artifacts)
+    assert all(artifact.can_feed_generated_output is False for artifact in records.artifacts)
+    assert all(artifact.generated_output_available is False for artifact in records.artifacts)
+    assert all(artifact.raw_provider_payload_stored is False for artifact in records.artifacts)
+    assert all(artifact.raw_text_stored_in_contract is False for artifact in records.artifacts)
+    assert all(artifact.secrets_stored is False for artifact in records.artifacts)
+    assert all(
+        artifact.compact_diagnostics["strict_audit_quality_source_approval_granted"] is False
+        for artifact in records.artifacts
+    )
+    assert records.diagnostics[0].compact_metadata["generated_output_cache_eligible"] is False
+
+
+def test_lightweight_blocked_response_does_not_create_source_snapshot_evidence():
+    response = fetch_lightweight_asset_data(
+        "TQQQ",
+        settings=build_lightweight_data_settings(
+            {
+                "DATA_POLICY_MODE": "lightweight",
+                "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+                "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+                "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+            }
+        ),
+        fetcher=LocalFreshDataSliceFakeFetcher(),
+        retrieved_at=RETRIEVED_AT,
+    )
+
+    with pytest.raises(SourceSnapshotContractError, match="Only renderable lightweight"):
+        source_snapshot_records_from_lightweight_response(response)
 
 
 def test_acquisition_snapshot_builder_enforces_rights_tiers_and_blocks_rejected_sources():

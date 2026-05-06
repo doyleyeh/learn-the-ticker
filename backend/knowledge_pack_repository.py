@@ -8,6 +8,7 @@ from backend.repositories.knowledge_packs import (
     KnowledgePackRepositoryContractError,
     KnowledgePackRepositoryRecords,
     knowledge_pack_records_from_acquisition_result,
+    knowledge_pack_records_from_lightweight_response,
     knowledge_pack_repository_metadata,
 )
 
@@ -19,5 +20,6 @@ __all__ = [
     "KnowledgePackRepositoryContractError",
     "KnowledgePackRepositoryRecords",
     "knowledge_pack_records_from_acquisition_result",
+    "knowledge_pack_records_from_lightweight_response",
     "knowledge_pack_repository_metadata",
 ]

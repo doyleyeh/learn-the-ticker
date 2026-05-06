@@ -46,10 +46,11 @@ from backend.lightweight_data_fetch import (
     normalize_chart_range,
 )
 from backend.lightweight_page import (
+    build_lightweight_details_response,
     build_lightweight_overview_response,
-    build_lightweight_details_response_if_enabled,
-    build_lightweight_overview_response_if_enabled,
-    build_lightweight_sources_response_if_enabled,
+    build_lightweight_sources_response,
+    fetch_lightweight_page_data_if_enabled,
+    persist_lightweight_evidence_if_configured,
 )
 from backend.llm import runtime_diagnostics
 from backend.models import (
@@ -265,11 +266,16 @@ def pre_cache_asset(ticker: str) -> PreCacheJobResponse:
 
 @app.get("/api/assets/{ticker}/overview", response_model=OverviewResponse, tags=["assets"])
 def asset_overview(ticker: str, mode: str = "beginner") -> OverviewResponse:
-    lightweight = build_lightweight_overview_response_if_enabled(ticker)
-    if lightweight is not None:
-        return lightweight
-
     readers = _read_dependencies()
+    lightweight_response = fetch_lightweight_page_data_if_enabled(ticker)
+    if lightweight_response is not None:
+        persist_lightweight_evidence_if_configured(
+            lightweight_response,
+            source_snapshot_repository=readers.reader("source_snapshot_repository"),
+            knowledge_pack_repository=readers.reader("knowledge_pack_reader"),
+        )
+        return build_lightweight_overview_response(lightweight_response)
+
     return generate_asset_overview(
         ticker,
         persisted_pack_reader=readers.reader("knowledge_pack_reader"),
@@ -327,16 +333,28 @@ def asset_knowledge_pack(ticker: str) -> KnowledgePackBuildResponse:
 
 @app.get("/api/assets/{ticker}/fresh-data", response_model=LightweightFetchResponse, tags=["assets"])
 def asset_fresh_data(ticker: str) -> LightweightFetchResponse:
-    return fetch_lightweight_asset_data(ticker)
+    response = fetch_lightweight_asset_data(ticker)
+    readers = _read_dependencies()
+    persist_lightweight_evidence_if_configured(
+        response,
+        source_snapshot_repository=readers.reader("source_snapshot_repository"),
+        knowledge_pack_repository=readers.reader("knowledge_pack_reader"),
+    )
+    return response
 
 
 @app.get("/api/assets/{ticker}/details", response_model=DetailsResponse, tags=["assets"])
 def asset_details(ticker: str) -> DetailsResponse:
-    lightweight = build_lightweight_details_response_if_enabled(ticker)
-    if lightweight is not None:
-        return lightweight
-
     readers = _read_dependencies()
+    lightweight_response = fetch_lightweight_page_data_if_enabled(ticker)
+    if lightweight_response is not None:
+        persist_lightweight_evidence_if_configured(
+            lightweight_response,
+            source_snapshot_repository=readers.reader("source_snapshot_repository"),
+            knowledge_pack_repository=readers.reader("knowledge_pack_reader"),
+        )
+        return build_lightweight_details_response(lightweight_response)
+
     persisted_details = _details_from_configured_reader(ticker, readers)
     if persisted_details is not None:
         return persisted_details
@@ -362,15 +380,20 @@ def asset_sources(
     citation_id: str | None = None,
     source_document_id: str | None = None,
 ) -> SourcesResponse:
-    lightweight = build_lightweight_sources_response_if_enabled(
-        ticker,
-        citation_id=citation_id,
-        source_document_id=source_document_id,
-    )
-    if lightweight is not None:
-        return lightweight
-
     readers = _read_dependencies()
+    lightweight_response = fetch_lightweight_page_data_if_enabled(ticker)
+    if lightweight_response is not None:
+        persist_lightweight_evidence_if_configured(
+            lightweight_response,
+            source_snapshot_repository=readers.reader("source_snapshot_repository"),
+            knowledge_pack_repository=readers.reader("knowledge_pack_reader"),
+        )
+        return build_lightweight_sources_response(
+            lightweight_response,
+            citation_id=citation_id,
+            source_document_id=source_document_id,
+        )
+
     return build_asset_source_drawer_response(
         ticker,
         citation_id=citation_id,

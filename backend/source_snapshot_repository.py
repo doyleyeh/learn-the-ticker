@@ -15,6 +15,7 @@ from backend.repositories.source_snapshots import (
     artifact_from_knowledge_pack_source,
     source_snapshot_repository_metadata,
     source_snapshot_records_from_acquisition_result,
+    source_snapshot_records_from_lightweight_response,
     validate_source_snapshot_records,
 )
 
@@ -33,5 +34,6 @@ __all__ = [
     "artifact_from_knowledge_pack_source",
     "source_snapshot_repository_metadata",
     "source_snapshot_records_from_acquisition_result",
+    "source_snapshot_records_from_lightweight_response",
     "validate_source_snapshot_records",
 ]
