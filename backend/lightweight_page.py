@@ -51,6 +51,7 @@ from backend.models import (
 )
 from backend.settings import LightweightDataSettings, build_lightweight_data_settings
 from backend.weekly_news import build_ai_comprehensive_analysis, compute_weekly_news_window
+from backend.weekly_news_sources import build_lightweight_weekly_news_focus
 
 
 LIGHTWEIGHT_PAGE_SCHEMA_VERSION = "lightweight-local-mvp-page-v1"
@@ -114,7 +115,7 @@ def build_lightweight_overview_response(response: LightweightFetchResponse) -> O
     stable_citation_ids = _preferred_citation_ids(response) or default_citation_ids
     sections = _stock_sections(response, stable_citation_ids, provider_citation_ids) if response.asset.asset_type is AssetType.stock else _etf_sections(response, stable_citation_ids, provider_citation_ids)
     claims = _claims(response, stable_citation_ids, provider_citation_ids)
-    weekly_news_focus = _empty_weekly_news_focus(response)
+    weekly_news_focus = build_lightweight_weekly_news_focus(response) or _empty_weekly_news_focus(response)
     ai_analysis = build_ai_comprehensive_analysis(
         response.asset,
         weekly_news_focus,
@@ -2660,7 +2661,7 @@ def _empty_weekly_news_focus(response: LightweightFetchResponse) -> WeeklyNewsFo
     window = compute_weekly_news_window(response.freshness.page_last_updated_at)
     empty_state = WeeklyNewsEmptyState(
         state=WeeklyNewsContractState.no_high_signal,
-        message="Live lightweight canonical fetching is available, but Weekly News Focus is not fetched in this pipeline yet.",
+        message="No source-governed Weekly News Focus items passed the local MVP evidence rules for this asset.",
         evidence_state=EvidenceState.no_high_signal,
     )
     return WeeklyNewsFocusResponse(

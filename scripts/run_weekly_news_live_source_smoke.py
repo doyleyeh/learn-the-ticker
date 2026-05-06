@@ -17,8 +17,15 @@ os.environ.setdefault("LTT_FORCE_COMPAT_FASTAPI", "1")
 
 from backend.data import normalize_ticker
 from backend.models import (
+    AssetStatus,
+    AssetType,
+    DataPolicyMode,
     EvidenceState,
+    Freshness,
     FreshnessState,
+    LightweightFetchCitation,
+    LightweightFetchResponse,
+    LightweightFetchState,
     SourceAllowlistStatus,
     SourceExportRights,
     SourceParserStatus,
@@ -37,6 +44,12 @@ from backend.weekly_news_repository import (
     acquire_weekly_news_event_evidence_from_fixtures,
     evaluate_weekly_news_live_acquisition_readiness,
     validate_weekly_news_event_evidence_records,
+)
+from backend.weekly_news_sources import (
+    LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD,
+    WEEKLY_NEWS_SOURCE_ADAPTER_BOUNDARY,
+    yahoo_search_payload_to_weekly_news_facts,
+    weekly_news_candidate_rows_from_lightweight_response,
 )
 
 
@@ -81,6 +94,7 @@ def run_weekly_news_live_source_smoke(env: dict[str, str] | None = None) -> dict
 
     cases = [
         _source_backed_official_first_case(),
+        _provider_metadata_adapter_case(),
         _limited_evidence_case(),
         _empty_evidence_case(),
         _blocked_regression_case(),
@@ -190,6 +204,7 @@ def _operator_real_source_metadata_smoke(base: dict[str, Any]) -> dict[str, Any]
                 ),
             ],
         ),
+        _provider_metadata_adapter_case(),
         _blocked_regression_case(),
     ]
     case_status_counts = Counter(str(case.get("status")) for case in cases)
@@ -380,6 +395,115 @@ def _source_backed_official_first_case() -> dict[str, Any]:
         candidates=candidates,
     )
     return _case_from_records("source_backed_official_first", records, expected_selected_minimum=2)
+
+
+def _provider_metadata_adapter_case() -> dict[str, Any]:
+    ticker = "VOO"
+    asset = _asset_for_ticker(ticker).model_copy(update={"status": AssetStatus.supported, "supported": True})
+    adapter = yahoo_search_payload_to_weekly_news_facts(
+        ticker=ticker,
+        asset_type=AssetType.etf,
+        payload=_provider_weekly_news_payload(ticker),
+        retrieved_at=DEFAULT_CREATED_AT,
+        no_live_external_calls=True,
+    )
+    response = LightweightFetchResponse(
+        ticker=ticker,
+        data_policy_mode=DataPolicyMode.lightweight,
+        fetch_state=LightweightFetchState.supported,
+        asset=asset,
+        generated_output_eligible=True,
+        page_render_state=EvidenceState.supported,
+        freshness=Freshness(
+            page_last_updated_at=DEFAULT_CREATED_AT,
+            facts_as_of=DEFAULT_AS_OF,
+            holdings_as_of=DEFAULT_AS_OF,
+            recent_events_as_of="2026-04-22",
+            freshness_state=FreshnessState.fresh,
+        ),
+        facts=adapter.facts,
+        sources=adapter.sources,
+        citations=[
+            LightweightFetchCitation(
+                citation_id=f"lw_cite_{source.source_document_id.removeprefix('lw_')}",
+                source_document_id=source.source_document_id,
+                title=source.title,
+                publisher=source.publisher,
+                source_label=source.source_label,
+                freshness_state=source.freshness_state,
+            )
+            for source in adapter.sources
+        ],
+        diagnostics={
+            "weekly_news_adapter_boundary": adapter.boundary,
+            "weekly_news_fact_field": LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD,
+            "weekly_news_provider_candidate_count": adapter.candidate_count,
+            "weekly_news_provider_suppressed_count": adapter.suppressed_count,
+            "weekly_news_raw_article_text_collected": adapter.raw_article_text_collected,
+            "weekly_news_raw_provider_payload_exposed": adapter.raw_provider_payload_exposed,
+            "weekly_news_thumbnail_or_media_forwarded": adapter.thumbnail_or_media_forwarded,
+        },
+        no_live_external_calls=True,
+        raw_payload_exposed=False,
+        message="Deterministic Weekly News provider metadata adapter smoke.",
+    )
+    records = acquire_weekly_news_event_evidence_from_fixtures(
+        asset_ticker=ticker,
+        as_of=DEFAULT_AS_OF,
+        created_at=DEFAULT_CREATED_AT,
+        candidates=weekly_news_candidate_rows_from_lightweight_response(response),
+    )
+    case = _case_from_records("provider_metadata_adapter", records, expected_selected_minimum=2)
+    case["provider_metadata_adapter"] = {
+        "boundary": WEEKLY_NEWS_SOURCE_ADAPTER_BOUNDARY,
+        "fact_field": LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD,
+        "candidate_count": adapter.candidate_count,
+        "suppressed_count": adapter.suppressed_count,
+        "source_label": "provider_derived",
+        "source_rank_tier": WeeklyNewsSourceRankTier.provider_context.value,
+        "raw_article_text_reported": adapter.raw_article_text_collected,
+        "raw_provider_payload_reported": adapter.raw_provider_payload_exposed,
+        "thumbnail_or_media_forwarded": adapter.thumbnail_or_media_forwarded,
+        "generated_output_cache_written": False,
+        "live_news_calls_attempted": False,
+        "no_live_external_calls": adapter.no_live_external_calls,
+    }
+    return case
+
+
+def _provider_weekly_news_payload(ticker: str) -> dict[str, Any]:
+    return {
+        "news": [
+            {
+                "uuid": f"{ticker.lower()}-issuer-context",
+                "title": f"{ticker} issuer update highlights weekly fund context",
+                "publisher": "Yahoo Finance",
+                "link": f"https://finance.yahoo.com/news/{ticker.lower()}-issuer-context",
+                "published_at": "2026-04-22T14:30:00Z",
+                "summary": f"Provider metadata surfaced a source-labeled issuer context item for {ticker}.",
+                "relatedTickers": [ticker],
+                "thumbnail": {"resolutions": [{"url": "https://example.invalid/thumbnail.jpg"}]},
+            },
+            {
+                "uuid": f"{ticker.lower()}-flow-context",
+                "title": f"{ticker} weekly ETF flow context appears in provider news",
+                "publisher": "ETF.com",
+                "link": f"https://finance.yahoo.com/news/{ticker.lower()}-flow-context",
+                "published_at": "2026-04-21T13:15:00Z",
+                "summary": f"Provider metadata surfaced a weekly ETF flow context item related to {ticker}.",
+                "relatedTickers": [ticker],
+            },
+            {
+                "uuid": f"{ticker.lower()}-advice-like",
+                "title": f"Is {ticker} still worth buying now?",
+                "publisher": "Yahoo Finance",
+                "link": f"https://finance.yahoo.com/news/{ticker.lower()}-worth-buying",
+                "published_at": "2026-04-20T10:00:00Z",
+                "summary": "Advice-like headline fixture should be suppressed by the local adapter.",
+                "relatedTickers": [ticker],
+            },
+        ]
+    }
 
 
 def _limited_evidence_case() -> dict[str, Any]:

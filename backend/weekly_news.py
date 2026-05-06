@@ -414,8 +414,12 @@ def _item_from_persisted_selected_event(
             source_document_id=selected.source_document_id,
             source_type=getattr(candidate, "source_type", "persisted_weekly_news_evidence"),
             title=_persisted_source_title(selected),
-            publisher=_persisted_source_publisher(source_quality),
-            url=f"local://weekly-news-evidence/{_normalize_ticker(selected.asset_ticker)}/{selected.source_document_id}",
+            publisher=_persisted_source_publisher(source_quality, selected),
+            url=(
+                str(selected.source_url)
+                if getattr(selected, "source_url", None)
+                else f"local://weekly-news-evidence/{_normalize_ticker(selected.asset_ticker)}/{selected.source_document_id}"
+            ),
             published_at=selected.published_at,
             as_of_date=selected.event_date or (selected.published_at[:10] if selected.published_at else None),
             retrieved_at=selected.retrieved_at,
@@ -449,12 +453,16 @@ def _item_from_persisted_selected_event(
 
 
 def _persisted_event_title(event_type: WeeklyNewsEventType, selected: Any) -> str:
+    if getattr(selected, "event_title", None):
+        return str(selected.event_title)
     label = event_type.value.replace("_", " ").title()
     period = WeeklyNewsPeriodBucket(selected.period_bucket).value.replace("_", " ")
     return f"{label} evidence in {period}"
 
 
 def _persisted_event_summary(event_type: WeeklyNewsEventType, selected: Any) -> str:
+    if getattr(selected, "event_summary", None):
+        return str(selected.event_summary)
     label = event_type.value.replace("_", " ")
     period = WeeklyNewsPeriodBucket(selected.period_bucket).value.replace("_", " ")
     return (
@@ -464,11 +472,15 @@ def _persisted_event_summary(event_type: WeeklyNewsEventType, selected: Any) -> 
 
 
 def _persisted_source_title(selected: Any) -> str:
+    if getattr(selected, "source_title", None):
+        return str(selected.source_title)
     source_type = str(getattr(selected, "source_type", "weekly_news_evidence")).replace("_", " ")
     return f"Persisted {source_type} source {selected.source_document_id}"
 
 
-def _persisted_source_publisher(source_quality: SourceQuality) -> str:
+def _persisted_source_publisher(source_quality: SourceQuality, selected: Any | None = None) -> str:
+    if selected is not None and getattr(selected, "source_publisher", None):
+        return str(selected.source_publisher)
     return f"{source_quality.value.replace('_', ' ').title()} source"
 
 

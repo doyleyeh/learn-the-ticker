@@ -41,6 +41,7 @@ from backend.safety import find_forbidden_output_phrases
 from backend.lightweight_data_fetch import fetch_lightweight_asset_data
 from backend.settings import build_lightweight_data_settings
 from scripts.run_local_fresh_data_slice_smoke import LocalFreshDataSliceFakeFetcher, RETRIEVED_AT
+from tests.unit.test_lightweight_data_fetch import FakeJsonFetcher
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -52,7 +53,6 @@ def test_supported_chat_intents_are_schema_valid_and_source_backed():
         ("AAPL", "What does this company do?", "primary business", "src_aapl_10k_fixture"),
         ("VOO", "What does it hold?", "about 500", "src_voo_fact_sheet_fixture"),
         ("QQQ", "What is the biggest risk?", "concentration", "src_qqq_prospectus_fixture"),
-        ("VOO", "What changed recently?", "No high-signal recent development", "src_voo_recent_review"),
         ("VOO", "Why do beginners consider it?", "Beginners may study VOO", "src_voo_fact_sheet_fixture"),
     ]
 
@@ -73,6 +73,17 @@ def test_supported_chat_intents_are_schema_valid_and_source_backed():
         _assert_chat_source_metadata_matches_citations(validated)
         assert validated.uncertainty
         assert validate_chat_response(validated, pack).valid
+
+
+def test_supported_chat_no_news_marker_is_insufficient_evidence():
+    pack = build_asset_knowledge_pack("VOO")
+    response = generate_asset_chat("VOO", "What changed recently?")
+
+    assert response.safety_classification is SafetyClassification.educational
+    assert "Insufficient evidence" in response.direct_answer
+    assert response.citations == []
+    assert response.source_documents == []
+    assert validate_chat_response(response, pack).valid
 
 
 def test_supported_chat_unknown_evidence_does_not_invent_or_cite():
@@ -189,6 +200,40 @@ def test_lightweight_renderable_row_can_answer_grounded_chat_without_cache_write
     assert any("Lightweight fallback diagnostics:" in item for item in response.uncertainty)
     assert validate_chat_response(response, pack).valid
     assert writer.read_chat_answer_records("SPY") is None
+
+
+def test_lightweight_chat_answers_recent_questions_from_weekly_news(monkeypatch):
+    settings = build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED": "true",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+        }
+    )
+    lightweight = fetch_lightweight_asset_data(
+        "VOO",
+        settings=settings,
+        fetcher=FakeJsonFetcher(),
+        retrieved_at=RETRIEVED_AT,
+    )
+    pack = build_lightweight_chat_knowledge_pack(lightweight)
+    monkeypatch.setattr(
+        "backend.lightweight_page.fetch_lightweight_page_data_if_enabled",
+        lambda ticker: lightweight if ticker.upper() == "VOO" else None,
+    )
+
+    response = generate_asset_chat("VOO", "What happened recently in the news?")
+
+    assert response.asset.ticker == "VOO"
+    assert response.safety_classification is SafetyClassification.educational
+    assert "Weekly News" in response.direct_answer or "provider news" in response.direct_answer.lower()
+    assert response.citations
+    assert response.source_documents
+    assert any(source.source_type == "recent_development" for source in response.source_documents)
+    assert any(source.source_use_policy is SourceUsePolicy.summary_allowed for source in response.source_documents)
+    assert validate_chat_response(response, pack).valid
 
 
 def test_lightweight_chat_keeps_advice_and_compare_redirects_before_fetch(monkeypatch):

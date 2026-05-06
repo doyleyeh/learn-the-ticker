@@ -315,6 +315,8 @@ class WeeklyNewsEventCandidateRow(StrictRow):
     source_asset_ticker: str
     schema_version: str = WEEKLY_NEWS_EVENT_EVIDENCE_SCHEMA_VERSION
     event_type: str
+    event_title: str | None = None
+    event_summary: str | None = None
     event_date: str | None = None
     published_at: str | None = None
     retrieved_at: str
@@ -324,6 +326,9 @@ class WeeklyNewsEventCandidateRow(StrictRow):
     citation_ids: list[str] = Field(default_factory=list)
     citation_asset_tickers: dict[str, str] = Field(default_factory=dict)
     source_type: str
+    source_title: str | None = None
+    source_publisher: str | None = None
+    source_url: str | None = None
     source_rank: int
     source_rank_tier: str
     source_quality: str
@@ -442,6 +447,8 @@ class WeeklyNewsSelectedEventRow(StrictRow):
     window_id: str
     asset_ticker: str
     event_type: str
+    event_title: str | None = None
+    event_summary: str | None = None
     period_bucket: str
     event_date: str | None = None
     published_at: str | None = None
@@ -454,6 +461,9 @@ class WeeklyNewsSelectedEventRow(StrictRow):
     allowlist_status: str
     source_use_policy: str
     source_type: str = "weekly_news_evidence"
+    source_title: str | None = None
+    source_publisher: str | None = None
+    source_url: str | None = None
     source_identity: str | None = None
     is_official: bool | None = True
     storage_rights: str = SourceStorageRights.summary_allowed.value
@@ -1325,6 +1335,8 @@ def _selected_event_from_candidate(
         window_id=candidate.window_id,
         asset_ticker=candidate.asset_ticker,
         event_type=candidate.event_type,
+        event_title=candidate.event_title,
+        event_summary=candidate.event_summary,
         period_bucket=candidate.period_bucket,
         event_date=candidate.event_date,
         published_at=candidate.published_at,
@@ -1334,6 +1346,9 @@ def _selected_event_from_candidate(
         citation_ids=candidate.citation_ids,
         citation_asset_tickers=candidate.citation_asset_tickers,
         source_type=candidate.source_type,
+        source_title=candidate.source_title,
+        source_publisher=candidate.source_publisher,
+        source_url=candidate.source_url,
         source_identity=candidate.source_identity,
         is_official=candidate.is_official,
         storage_rights=candidate.storage_rights,

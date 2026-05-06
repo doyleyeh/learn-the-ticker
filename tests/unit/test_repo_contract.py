@@ -299,6 +299,7 @@ def test_t157_local_deployment_env_smoke_contract_is_safe_and_deterministic():
     assert checks["backend_settings_defaults"]["data_policy_mode"] == "lightweight"
     assert checks["backend_settings_defaults"]["lightweight_live_fetch_enabled"] is False
     assert checks["backend_settings_defaults"]["lightweight_provider_fallback_enabled"] is True
+    assert checks["backend_settings_defaults"]["lightweight_weekly_news_fetch_enabled"] is False
     assert checks["repo_local_deployment_scaffolding"]["apps_web_is_vercel_project_root"] is True
     assert checks["repo_local_deployment_scaffolding"]["root_npm_scripts_delegate_to_apps_web"] is True
     assert checks["repo_local_deployment_scaffolding"]["next_api_rewrite_or_api_base_behavior_present"] is True
@@ -1761,11 +1762,12 @@ def test_t154_weekly_news_live_source_smoke_is_optional_in_rehearsal():
     weekly_details = checks["optional_weekly_news_live_source_smoke"]["details"]
     assert weekly_details["schema_version"] == "weekly-news-live-source-smoke-v1"
     assert weekly_details["normal_ci_requires_live_calls"] is False
-    assert weekly_details["case_status_counts"] == {"pass": 4, "blocked": 0, "skipped": 0}
-    assert weekly_details["case_summaries"][0]["case_id"] == "source_backed_official_first"
-    assert weekly_details["case_summaries"][0]["selected_item_count"] == 3
-    assert weekly_details["case_summaries"][1]["evidence_limited_state"] == "limited_verified_set"
-    assert weekly_details["case_summaries"][2]["evidence_limited_state"] == "empty"
+    assert weekly_details["case_status_counts"] == {"pass": 5, "blocked": 0, "skipped": 0}
+    case_summaries = {case["case_id"]: case for case in weekly_details["case_summaries"]}
+    assert case_summaries["source_backed_official_first"]["selected_item_count"] == 3
+    assert case_summaries["provider_metadata_adapter"]["selected_item_count"] == 2
+    assert case_summaries["limited_verified_set"]["evidence_limited_state"] == "limited_verified_set"
+    assert case_summaries["empty_evidence"]["evidence_limited_state"] == "empty"
     assert weekly_details["safe_diagnostics"]["secret_values_reported"] is False
     assert passed["lightweight_local_mvp_slice_manual_readiness_gate"]["decision"] == (
         "deterministic_local_slice_manual_review_ready"
@@ -1782,7 +1784,7 @@ def test_t154_weekly_news_live_source_smoke_is_optional_in_rehearsal():
     assert real_source_checks["optional_weekly_news_live_source_smoke"]["status"] == "pass"
     real_details = real_source_checks["optional_weekly_news_live_source_smoke"]["details"]
     assert real_details["source_retrieval_mode"] == "operator_real_source_metadata_acquisition"
-    assert real_details["case_status_counts"] == {"pass": 4, "blocked": 0, "skipped": 0}
+    assert real_details["case_status_counts"] == {"pass": 5, "blocked": 0, "skipped": 0}
     assert real_details["case_summaries"][0]["case_id"] == "operator_real_source_aapl"
     assert real_source["lightweight_local_mvp_slice_manual_readiness_gate"]["decision"] == (
         "deterministic_local_slice_manual_review_ready"

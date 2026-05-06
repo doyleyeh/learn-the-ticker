@@ -207,6 +207,7 @@ Runtime feature defaults:
 - `DATA_POLICY_MODE=lightweight`
 - `LIGHTWEIGHT_LIVE_FETCH_ENABLED=false` for CI and ordinary local tests; set to `true` only for operator local fresh-data smoke.
 - `LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true`
+- `LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED=false`; set to `true` only for local MVP Weekly News metadata retrieval and deterministic fixture-backed tests.
 - `SEC_EDGAR_USER_AGENT=learn-the-ticker-local/0.1 contact@example.com` as a placeholder; deployments should set an operator-controlled contact string server-side and diagnostics should report only a redacted form.
 - `RETRIEVAL_MODE=keyword`
 - `EMBEDDINGS_ENABLED=false`
@@ -214,6 +215,8 @@ Runtime feature defaults:
 - `LLM_LIVE_GENERATION_ENABLED=false` for CI and ordinary local tests; local operator review should intentionally set it to `true` for fresh-data/live-AI validation before public deployment. First deployment may set it to `true` with the explicit OpenRouter free-model chain and DeepSeek fallback only when paid fallback is enabled, OpenRouter platform/API-key limits are configured, and validation gates are satisfied.
 - `LLM_VALIDATION_RETRY_COUNT=1`
 - `LLM_REASONING_SUMMARY_ONLY=true`
+
+Weekly News retrieval uses a server-side adapter boundary. Official filings, investor-relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes are candidate rank tiers before fallback provider/news metadata. Yahoo Finance/yfinance-derived recent context is treated as source-labeled metadata and bounded summary/snippet input only: it may support Weekly News Focus, AI Comprehensive Analysis threshold checks, and grounded recent/news chat when same-asset citations validate, but it cannot support canonical facts or raw article redistribution.
 
 ### 5.3 Ingestion worker
 

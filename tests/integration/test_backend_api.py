@@ -867,6 +867,48 @@ def test_lightweight_api_fallback_diagnostics_are_exposed_without_unlocking_cach
     assert blocked_diagnostics["raw_payload_exposed"] is False
 
 
+def test_lightweight_weekly_news_endpoint_matches_overview_when_enabled(monkeypatch):
+    clear_lightweight_fetch_reuse_cache()
+    settings_override = build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED": "true",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+        }
+    )
+    shared_fetcher = LocalFreshDataSliceFakeFetcher()
+
+    def fake_fetch(ticker, settings=None, chart_range="6mo"):  # noqa: ANN001 - monkeypatch target matches production call shapes.
+        del settings
+        return fetch_lightweight_asset_data(
+            ticker,
+            settings=settings_override,
+            fetcher=shared_fetcher,
+            retrieved_at=RETRIEVED_AT,
+            chart_range=chart_range,
+        )
+
+    monkeypatch.setenv("DATA_POLICY_MODE", "lightweight")
+    monkeypatch.setenv("LIGHTWEIGHT_LIVE_FETCH_ENABLED", "true")
+    monkeypatch.setenv("LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED", "true")
+    monkeypatch.setenv("LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED", "true")
+    monkeypatch.setenv("SEC_EDGAR_USER_AGENT", "learn-the-ticker-tests/0.1 test@example.com")
+    monkeypatch.setattr("backend.lightweight_page.fetch_lightweight_asset_data", fake_fetch)
+    monkeypatch.setattr("backend.main.fetch_lightweight_asset_data", fake_fetch)
+
+    overview = client.get("/api/assets/VOO/overview").json()
+    weekly = client.get("/api/assets/VOO/weekly-news").json()
+
+    assert overview["weekly_news_focus"]["selected_item_count"] == 2
+    assert overview["weekly_news_focus"]["items"][0]["source"]["source_quality"] == "provider"
+    assert overview["ai_comprehensive_analysis"]["analysis_available"] is True
+    assert weekly["weekly_news_focus"] == overview["weekly_news_focus"]
+    assert weekly["ai_comprehensive_analysis"] == overview["ai_comprehensive_analysis"]
+    assert weekly["weekly_news_focus"]["stable_facts_are_separate"] is True
+
+
 def test_ingestion_request_route_returns_deterministic_job_or_non_job_states():
     eligible = client.post("/api/admin/ingest/SPY").json()
     eligible_again = client.post("/api/admin/ingest/spy").json()
@@ -2125,7 +2167,6 @@ def test_chat_supported_beginner_intents_use_selected_asset_pack():
         ("AAPL", "What does Apple do?", "primary business", "src_aapl_10k_fixture"),
         ("VOO", "What does VOO hold?", "about 500", "src_voo_fact_sheet_fixture"),
         ("QQQ", "What is the biggest risk?", "concentration", "src_qqq_prospectus_fixture"),
-        ("VOO", "What changed recently?", "No high-signal recent development", "src_voo_recent_review"),
         ("AAPL", "Is Apple expensive based on valuation?", "Insufficient evidence", None),
     ]
 
@@ -2146,6 +2187,11 @@ def test_chat_supported_beginner_intents_use_selected_asset_pack():
             assert body["source_documents"]
             assert expected_source in {citation["source_document_id"] for citation in body["citations"]}
             assert expected_source in {source["source_document_id"] for source in body["source_documents"]}
+
+    recent = client.post("/api/assets/VOO/chat", json={"question": "What changed recently?"}).json()
+    assert "Insufficient evidence" in recent["direct_answer"]
+    assert recent["citations"] == []
+    assert recent["source_documents"] == []
 
 
 def test_chat_unsupported_assets_redirect_to_scope_language():

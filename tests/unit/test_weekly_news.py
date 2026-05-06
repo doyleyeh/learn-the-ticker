@@ -262,6 +262,11 @@ def test_persisted_weekly_news_read_prefers_valid_same_asset_event_evidence():
     assert result.weekly_news_focus.suppressed_candidate_count == 0
     assert result.weekly_news_focus.evidence_limited_state.value == "limited_verified_set"
     assert [item.event_id for item in result.weekly_news_focus.items] == ["official_filing", "issuer_update"]
+    assert result.weekly_news_focus.items[0].title == "Official Filing persisted headline"
+    assert result.weekly_news_focus.items[0].summary == "Persisted Weekly News Focus summary for official_filing."
+    assert result.weekly_news_focus.items[0].source.title == "Official Filing persisted source"
+    assert result.weekly_news_focus.items[0].source.publisher == "Fixture Publisher"
+    assert result.weekly_news_focus.items[0].source.url == "local://fixtures/qqq/weekly-news/official_filing"
     assert all(item.asset_ticker == "QQQ" for item in result.weekly_news_focus.items)
     assert all(item.period_bucket is WeeklyNewsPeriodBucket.current_week_to_date for item in result.weekly_news_focus.items)
     assert all(item.source.allowlist_status is SourceAllowlistStatus.allowed for item in result.weekly_news_focus.items)
@@ -818,7 +823,7 @@ def test_weekly_news_live_source_smoke_opt_in_exercises_source_use_and_threshold
     assert result["schema_version"] == "weekly-news-live-source-smoke-v1"
     assert result["status"] == "pass"
     assert result["normal_ci_requires_live_calls"] is False
-    assert result["case_status_counts"] == {"pass": 4, "blocked": 0, "skipped": 0}
+    assert result["case_status_counts"] == {"pass": 5, "blocked": 0, "skipped": 0}
     cases = {case["case_id"]: case for case in result["cases"]}
 
     official = cases["source_backed_official_first"]
@@ -857,6 +862,21 @@ def test_weekly_news_live_source_smoke_opt_in_exercises_source_use_and_threshold
     assert official["ai_threshold"]["live_generated"] is False
     assert official["ai_threshold"]["generated_output_cache_written"] is False
 
+    provider = cases["provider_metadata_adapter"]
+    assert provider["asset_ticker"] == "VOO"
+    assert provider["selected_item_count"] == 2
+    assert provider["selected_source_quality"] == ["provider", "provider"]
+    assert provider["selected_events"][0]["third_party_or_provider_label"] == "provider_context"
+    assert provider["provider_metadata_adapter"]["boundary"] == "weekly-news-source-adapter-v1"
+    assert provider["provider_metadata_adapter"]["fact_field"] == "provider_weekly_news_event"
+    assert provider["provider_metadata_adapter"]["candidate_count"] == 2
+    assert provider["provider_metadata_adapter"]["suppressed_count"] == 1
+    assert provider["provider_metadata_adapter"]["raw_article_text_reported"] is False
+    assert provider["provider_metadata_adapter"]["raw_provider_payload_reported"] is False
+    assert provider["provider_metadata_adapter"]["thumbnail_or_media_forwarded"] is False
+    assert provider["provider_metadata_adapter"]["generated_output_cache_written"] is False
+    assert provider["ai_threshold"]["analysis_allowed"] is True
+
     limited = cases["limited_verified_set"]
     assert limited["asset_ticker"] == "AAPL"
     assert limited["selected_item_count"] == 1
@@ -891,6 +911,7 @@ def test_weekly_news_live_source_smoke_real_fetch_opt_in_runs_metadata_only_oper
     assert result["operator_real_source_path"]["official_sources_first"] is True
     assert result["operator_real_source_path"]["fallback_metadata_after_official"] is True
     cases = {case["case_id"]: case for case in result["cases"]}
+    assert result["case_status_counts"] == {"pass": 5, "blocked": 0, "skipped": 0}
     assert cases["operator_real_source_aapl"]["selected_source_rank_tiers"] == [
         "official_filing",
         "investor_relations_release",
@@ -907,6 +928,8 @@ def test_weekly_news_live_source_smoke_real_fetch_opt_in_runs_metadata_only_oper
     ]
     assert cases["operator_real_source_voo"]["operator_real_source_acquisition"]["fallback_metadata_after_official"] is True
     assert cases["operator_real_source_qqq"]["operator_real_source_acquisition"]["fallback_metadata_after_official"] is True
+    assert cases["provider_metadata_adapter"]["provider_metadata_adapter"]["candidate_count"] == 2
+    assert cases["provider_metadata_adapter"]["provider_metadata_adapter"]["raw_article_text_reported"] is False
     assert cases["blocked_regression_tickers"]["blocked_regression_tickers"] == [
         "TQQQ",
         "ARKK",
@@ -1151,6 +1174,8 @@ def _repository_candidate(
         asset_ticker="QQQ",
         source_asset_ticker=source_asset_ticker,
         event_type=WeeklyNewsEventType.methodology_change.value,
+        event_title=f"{event_id.replace('_', ' ').title()} persisted headline",
+        event_summary=f"Persisted Weekly News Focus summary for {event_id}.",
         event_date=event_date,
         published_at=f"{event_date}T12:00:00Z",
         retrieved_at="2026-04-23T12:00:00Z",
@@ -1160,6 +1185,9 @@ def _repository_candidate(
         citation_ids=[f"c_weekly_{event_id}"],
         citation_asset_tickers={f"c_weekly_{event_id}": "QQQ"},
         source_type=tier.value,
+        source_title=f"{event_id.replace('_', ' ').title()} persisted source",
+        source_publisher="Fixture Publisher",
+        source_url=f"local://fixtures/qqq/weekly-news/{event_id}",
         source_rank=source_rank,
         source_rank_tier=tier.value,
         source_quality=source_quality.value,
@@ -1197,6 +1225,8 @@ def _repository_records(
             window_id=window.window_id,
             asset_ticker=candidate.asset_ticker,
             event_type=candidate.event_type,
+            event_title=candidate.event_title,
+            event_summary=candidate.event_summary,
             period_bucket=candidate.period_bucket,
             event_date=candidate.event_date,
             published_at=candidate.published_at,
@@ -1208,6 +1238,10 @@ def _repository_records(
             source_quality=candidate.source_quality,
             allowlist_status=candidate.allowlist_status,
             source_use_policy=candidate.source_use_policy,
+            source_type=candidate.source_type,
+            source_title=candidate.source_title,
+            source_publisher=candidate.source_publisher,
+            source_url=candidate.source_url,
             freshness_state=candidate.freshness_state,
             evidence_state=candidate.evidence_state,
             importance_score=candidate.importance_score,

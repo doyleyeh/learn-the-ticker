@@ -71,6 +71,7 @@ from backend.retrieval_repository import KnowledgePackRecordReader, read_persist
 from backend.safety import classify_question, educational_redirect, find_forbidden_output_phrases
 from backend.search import search_assets
 from backend.source_policy import resolve_source_policy
+from backend.weekly_news_sources import LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD
 
 
 class ChatGenerationError(ValueError):
@@ -224,6 +225,7 @@ def build_lightweight_chat_knowledge_pack(response: LightweightFetchResponse) ->
     source_by_id = {source.source_document_id: source for source in source_fixtures}
     chunks: list[RetrievedSourceChunk] = []
     facts: list[RetrievedFact] = []
+    recent_developments: list[RetrievedRecentDevelopment] = []
 
     for fact in _lightweight_chat_facts(response):
         source = _preferred_lightweight_fact_source(fact, response.sources)
@@ -232,6 +234,16 @@ def build_lightweight_chat_knowledge_pack(response: LightweightFetchResponse) ->
         source_fixture = source_by_id[source.source_document_id]
         chunk = _lightweight_fact_chunk(fact, response, source)
         chunks.append(RetrievedSourceChunk(chunk=chunk, source_document=source_fixture))
+        if fact.field_name == LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD and isinstance(fact.value, dict):
+            recent = _lightweight_recent_development(fact, response, source, chunk)
+            if recent is not None:
+                recent_developments.append(
+                    RetrievedRecentDevelopment(
+                        recent_development=recent,
+                        source_document=source_fixture,
+                        source_chunk=chunk,
+                    )
+                )
         facts.append(
             RetrievedFact(
                 fact=NormalizedFactFixture(
@@ -261,7 +273,7 @@ def build_lightweight_chat_knowledge_pack(response: LightweightFetchResponse) ->
         source_documents=source_fixtures,
         normalized_facts=facts,
         source_chunks=chunks,
-        recent_developments=[],
+        recent_developments=recent_developments,
         evidence_gaps=_lightweight_evidence_gaps(response),
     )
 
@@ -290,6 +302,8 @@ def _lightweight_source_fixture(source: LightweightFetchSource, ticker: str) -> 
 def _lightweight_chat_source_type(source: LightweightFetchSource) -> str:
     if source.source_type in {"sec_company_tickers_exchange", "sec_submissions", "sec_companyfacts"}:
         return "sec_filing"
+    if source.source_type == "yahoo_finance_weekly_news_metadata":
+        return "recent_development"
     if source.source_type == "provider_market_reference":
         return "structured_market_data"
     return source.source_type
@@ -487,6 +501,8 @@ def _short_chat_value(value: Any) -> str:
 
 def _lightweight_supported_claim_types(fact: LightweightFetchFact) -> list[str]:
     field = fact.field_name
+    if field == LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD:
+        return ["recent", "factual", "interpretation"]
     if field in {"canonical_asset_identity", "sec_identity", "etf_identity", "benchmark", "expense_ratio", "holdings_count"}:
         return ["factual", "interpretation"]
     if field == "primary_business":
@@ -498,6 +514,40 @@ def _lightweight_supported_claim_types(fact: LightweightFetchFact) -> list[str]:
     if field.startswith("provider_"):
         return ["factual", "interpretation"]
     return ["factual", "interpretation", "risk"]
+
+
+def _lightweight_recent_development(
+    fact: LightweightFetchFact,
+    response: LightweightFetchResponse,
+    source: LightweightFetchSource,
+    chunk: SourceChunkFixture,
+) -> RecentDevelopmentFixture | None:
+    if not isinstance(fact.value, dict):
+        return None
+    title = _clean_chat_text(fact.value.get("title")) or source.title
+    summary = _clean_chat_text(fact.value.get("summary"))
+    if not title or not summary:
+        return None
+    return RecentDevelopmentFixture(
+        event_id=_clean_chat_text(fact.value.get("event_id")) or fact.fact_id,
+        asset_ticker=response.asset.ticker,
+        event_type=_clean_chat_text(fact.value.get("event_type")) or "other",
+        title=title,
+        summary=summary,
+        event_date=_clean_chat_text(fact.value.get("event_date")) or fact.as_of_date or source.as_of_date,
+        source_document_id=source.source_document_id,
+        source_chunk_id=chunk.chunk_id,
+        importance_score=10.0 if fact.evidence_state is EvidenceState.supported else 5.0,
+        freshness_state=fact.freshness_state,
+        evidence_state=fact.evidence_state.value,
+    )
+
+
+def _clean_chat_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = " ".join(str(value).split())
+    return text or None
 
 
 def _lightweight_fact_unit(fact: LightweightFetchFact) -> str | None:
@@ -1134,7 +1184,7 @@ class _ChatCitationRegistry:
         return self.for_chunk(
             RetrievedSourceChunk(chunk=item.source_chunk, source_document=item.source_document),
             claim_text,
-            supports_claim=item.recent_development.evidence_state == "no_major_recent_development",
+            supports_claim=item.recent_development.evidence_state in {"supported", "partial"},
             freshness_state=item.recent_development.freshness_state,
             is_recent=True,
         )
@@ -1485,7 +1535,19 @@ def _recent_plan(
     if not pack.recent_developments:
         return _insufficient_plan(pack, "recent_development", "The local fixture does not contain recent-development evidence for this asset.")
 
-    recent = pack.recent_developments[0]
+    supported_recent = [
+        item
+        for item in pack.recent_developments
+        if item.recent_development.evidence_state in {"supported", "partial"}
+    ]
+    if not supported_recent:
+        return _insufficient_plan(
+            pack,
+            "recent_development",
+            "The selected asset pack records no supported recent-development evidence for this asset.",
+        )
+
+    recent = supported_recent[0]
     claim_text = f"{recent.recent_development.title}: {recent.recent_development.summary}"
     citation_id = bindings.for_recent_development(recent, claim_text)
     return (

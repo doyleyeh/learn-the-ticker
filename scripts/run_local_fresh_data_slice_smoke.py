@@ -766,8 +766,34 @@ def _yahoo_search_payload(ticker: str) -> dict[str, Any]:
                 "longname": fixture.name,
                 "exchange": fixture.exchange,
             }
-        ]
+        ],
+        "news": _yahoo_weekly_news_payload(ticker),
     }
+
+
+def _yahoo_weekly_news_payload(ticker: str) -> list[dict[str, Any]]:
+    if ticker not in QUOTE_FIXTURES:
+        return []
+    return [
+        {
+            "uuid": f"{ticker.lower()}-weekly-context",
+            "title": f"{ticker} weekly context appears in provider news metadata",
+            "publisher": "Yahoo Finance",
+            "link": f"https://finance.yahoo.com/news/{ticker.lower()}-weekly-context",
+            "published_at": "2026-05-01T14:30:00Z",
+            "summary": f"Provider metadata surfaced a Weekly News context item related to {ticker}.",
+            "relatedTickers": [ticker],
+        },
+        {
+            "uuid": f"{ticker.lower()}-source-context",
+            "title": f"{ticker} source-labeled update appears in provider news",
+            "publisher": "ETF.com" if QUOTE_FIXTURES[ticker].quote_type == "ETF" else "Reuters",
+            "link": f"https://finance.yahoo.com/news/{ticker.lower()}-source-context",
+            "published_at": "2026-04-30T13:15:00Z",
+            "summary": f"Provider metadata surfaced a source-labeled recent context item for {ticker}.",
+            "relatedTickers": [ticker],
+        },
+    ]
 
 
 def _yahoo_chart_payload(ticker: str) -> dict[str, Any]:

@@ -122,6 +122,7 @@ def test_source_policy_resolution_by_domain_fixture_provider_and_unknown():
     state_street = resolve_source_policy(url="https://www.ssga.com/mainfund/xlk")
     recent = resolve_source_policy(source_identifier="local://fixtures/voo/recent-review")
     provider = resolve_source_policy(provider_name="Mock Market Reference")
+    yahoo_news = resolve_source_policy(provider_name="Yahoo Finance/yfinance-derived news")
     rejected = resolve_source_policy(url="https://unlicensed.example/article")
     unknown = resolve_source_policy(url="https://not-allowlisted.example/item")
 
@@ -151,6 +152,15 @@ def test_source_policy_resolution_by_domain_fixture_provider_and_unknown():
     assert provider.permitted_operations.can_cache is True
     assert provider.permitted_operations.can_export_metadata is False
     assert source_can_support_generated_output(provider) is False
+
+    assert yahoo_news.decision is SourcePolicyDecisionState.allowed
+    assert yahoo_news.source_use_policy is SourceUsePolicy.summary_allowed
+    assert yahoo_news.recent_context_only is True
+    assert yahoo_news.permitted_operations.can_support_recent_developments is True
+    assert yahoo_news.permitted_operations.can_support_canonical_facts is False
+    assert yahoo_news.permitted_operations.can_store_raw_text is False
+    assert yahoo_news.permitted_operations.can_export_full_text is False
+    assert source_can_support_generated_output(yahoo_news) is True
 
     assert rejected.decision is SourcePolicyDecisionState.rejected
     assert rejected.allowlist_status is SourceAllowlistStatus.rejected

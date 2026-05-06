@@ -41,6 +41,7 @@ API_REQUIRED_ENV_NAMES = (
     "DATA_POLICY_MODE",
     "LIGHTWEIGHT_LIVE_FETCH_ENABLED",
     "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED",
+    "LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED",
     "SEC_EDGAR_USER_AGENT",
     "LLM_PROVIDER",
     "LLM_LIVE_GENERATION_ENABLED",
@@ -53,6 +54,7 @@ WORKER_REQUIRED_ENV_NAMES = (
     "DATA_POLICY_MODE",
     "LIGHTWEIGHT_LIVE_FETCH_ENABLED",
     "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED",
+    "LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED",
     "SEC_EDGAR_USER_AGENT",
     "LLM_PROVIDER",
     "LLM_LIVE_GENERATION_ENABLED",
@@ -66,6 +68,7 @@ ROOT_REQUIRED_ENV_NAMES = (
     "DATA_POLICY_MODE",
     "LIGHTWEIGHT_LIVE_FETCH_ENABLED",
     "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED",
+    "LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED",
     "SEC_EDGAR_USER_AGENT",
     "LLM_PROVIDER",
     "LLM_LIVE_GENERATION_ENABLED",
@@ -290,6 +293,8 @@ def _check_settings_defaults() -> dict[str, Any]:
         blockers.append("lightweight_live_fetch_should_default_off")
     if not lightweight.provider_fallback_enabled:
         blockers.append("provider_fallback_should_default_on")
+    if lightweight.weekly_news_fetch_enabled:
+        blockers.append("lightweight_weekly_news_fetch_should_default_off")
     if not lightweight.sec_user_agent_configured:
         blockers.append("sec_user_agent_placeholder_missing")
     if not cors.enabled:
@@ -302,6 +307,7 @@ def _check_settings_defaults() -> dict[str, Any]:
         "data_policy_mode": lightweight.data_policy_mode,
         "lightweight_live_fetch_enabled": lightweight.live_fetch_enabled,
         "lightweight_provider_fallback_enabled": lightweight.provider_fallback_enabled,
+        "lightweight_weekly_news_fetch_enabled": lightweight.weekly_news_fetch_enabled,
         "sec_edgar_user_agent_placeholder_present": lightweight.sec_user_agent_configured,
         "sec_edgar_user_agent_value_reported": False,
         "database_url_configured_by_default": persistence.database_url_configured,

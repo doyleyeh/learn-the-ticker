@@ -38,11 +38,14 @@ The lightweight path is implemented as an explicit local fresh-data fetch bounda
 - `DATA_POLICY_MODE=lightweight` selects this policy.
 - `LIGHTWEIGHT_LIVE_FETCH_ENABLED=true` opts into live local fetching.
 - `LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true` allows reputable provider fallback when official data is incomplete.
+- `LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED=true` opts into local Weekly News metadata retrieval on the same server-side lightweight boundary. It is off by default so normal CI and ordinary local tests remain deterministic.
 - `SEC_EDGAR_USER_AGENT` should identify the local SEC client; diagnostics may report only a redacted form.
 - `GET /api/assets/{ticker}/fresh-data` exposes source-labeled fresh fetch results and returns `unavailable` unless live lightweight fetching is explicitly enabled.
 - When live lightweight fetching is enabled, exact search can open source-labeled local-MVP pages for renderable eligible stocks and ETFs, including assets without deterministic cached packs.
 - `GET /api/assets/{ticker}/overview`, `/details`, and `/sources` use the lightweight response to fill the existing page, detail, and source drawer contracts only when the fetch is renderable and raw payloads remain hidden.
 - `python3 scripts/run_lightweight_data_fetch_smoke.py --live --ticker AAPL --ticker VOO --json` is the local operator smoke for stock and ETF fetching.
+
+Local Weekly News metadata uses a yfinance/Yahoo-style list shape only as a fallback structure. The product goal is not to clone a market-news feed. The local source shape is: headline/title, publisher, URL, published time, retrieved time, ticker match, event type, source label, source-use policy, and optional bounded summary/snippet. It excludes raw article body storage/display, unrestricted thumbnails/media, trade buttons, recommendation framing, production recurring ingestion, and generated-output cache promotion.
 
 Normal tests and CI must still run without live SEC, issuer, market-data, news, or LLM calls. The lightweight fetch response must not expose unrestricted raw provider payloads. It returns normalized facts, source labels, freshness metadata, partial/unavailable gaps, and safe diagnostics only.
 

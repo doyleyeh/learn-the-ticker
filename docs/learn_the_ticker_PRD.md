@@ -91,6 +91,12 @@ The intended product behavior is now:
 
 ---
 
+### 2.0.1 Local Weekly News retrieval expansion
+
+Weekly News in the local MVP may use Yahoo Finance/yfinance-style news metadata as a fallback list structure, but that structure is not the product goal. Learn the Ticker's product goal is a source-governed Weekly News Focus plus AI Comprehensive Analysis and grounded chat that help beginners understand how timely items relate to the selected ticker without turning recent news into canonical asset identity.
+
+The local MVP source shape is limited to headline/title, publisher, URL, published time, retrieved time, ticker match, event type, source label, source-use policy, and optional bounded summary/snippet. It explicitly excludes raw article bodies, unrestricted thumbnails/media, trade UX, recommendation headlines as generated advice, production recurring ingestion, and normal-CI live news calls.
+
 ### 2.1 Deployment and provider constraints
 
 The MVP should optimize for a small personal side-project audience before scale. Deployment choices should minimize fixed monthly cost and avoid always-on paid services until usage proves a need.

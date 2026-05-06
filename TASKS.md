@@ -1,12 +1,80 @@
 ## Current task
 
-No current task is prepared. The backlog is empty.
+No current task is prepared. T-167 through T-171 completed the local Weekly News MVP expansion, and production ingestion, recurring jobs, broad paid-provider integrations, and generated-output cache promotion remain unpromoted.
 
 ## Backlog
 
-No backlog tasks are currently prepared.
+No backlog tasks are currently prepared. Production ingestion, recurring production jobs, broad paid-provider integrations, and generated-output cache promotion require a new narrow task after operator/product review.
 
 ## Completed
+
+### T-171: UI and smoke validation for local Weekly News MVP
+
+Goal:
+Refine the Weekly News panel toward the yfinance-like list structure while keeping Learn the Ticker's educational source-governed analysis layer.
+
+Completion details:
+- Added Weekly News source-filter tabs for All, News, Press Releases, and SEC Filings / Issuer Updates while preserving title, publisher/date/source labels, and citation chips.
+- Kept trade buttons, completeness claims, recommendations, raw article text, unrestricted media, and generated-output cache promotion out of scope.
+- Expanded Weekly News smoke coverage for selected provider metadata, AI threshold behavior, source labels, no raw article/provider/media forwarding, no secrets, and no generated-output cache promotion.
+- Preserved operator-only live checks and deterministic default CI behavior.
+
+### T-170: Ground chat in stable facts plus Weekly News
+
+Goal:
+Extend lightweight chat packs so recent/news/latest questions can answer from selected Weekly News evidence with citations.
+
+Completion details:
+- Extended lightweight chat knowledge packs with same-asset Weekly News recent-development events when local Weekly News retrieval is enabled.
+- Recent/news/latest questions now answer from selected Weekly News evidence with citations when evidence exists.
+- No-news markers remain an insufficient-evidence path, and advice/compare redirects remain ahead of evidence fetching.
+- Fixed recent-development citation support so supported news events validate while empty/no-news markers do not create unsupported citations.
+
+### T-169: Wire Weekly News into local asset pages and AI analysis
+
+Goal:
+Make local lightweight asset pages and `/api/assets/{ticker}/weekly-news` return the same selected Weekly News pack when local Weekly News retrieval is explicitly enabled.
+
+Completion details:
+- Wired selected lightweight Weekly News evidence into overview and weekly-news API surfaces behind `LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED`.
+- Kept stable facts before Weekly News and Weekly News before AI Comprehensive Analysis.
+- Preserved AI Comprehensive Analysis suppression unless at least two selected source-governed Weekly News items exist.
+- Kept empty, partial, unavailable, and insufficient-evidence states visible without padding.
+
+### T-168: Add deterministic Weekly News source adapter contract
+
+Goal:
+Introduce a server-side Weekly News candidate adapter boundary with injected fetchers and deterministic fixtures.
+
+Completion details:
+- Added a deterministic Weekly News source adapter boundary for Yahoo Finance/yfinance-style provider metadata.
+- Mapped provider metadata into source-governed candidate rows with same-asset binding, dedupe keys, safe display metadata, source-use policy, and rights-safe summaries only.
+- Added source allowlist policy for Yahoo/yfinance-derived recent context as summary/metadata-only, recent-context-only, non-canonical, and not raw article redistribution.
+- Normal CI remains mock-backed and does not require live Yahoo, SEC, news, market-data, provider, or LLM calls.
+
+### T-167: Align docs and task queue for local Weekly News retrieval
+
+Goal:
+Move Weekly News from an operator-only metadata smoke into the local MVP page/chat surface plan while preserving production ingestion, recurring jobs, paid providers, broad live calls, and generated-output cache promotion as gated later work.
+
+Completion details:
+- Refined the PRD, technical design, Lightweight Data Policy, and EVALS to clarify that Yahoo Finance/yfinance-style lists are a fallback structure, not the product goal.
+- Documented the local MVP source shape: headline/title, publisher, URL, published time, retrieved time, ticker match, event type, source label, source-use policy, and optional bounded summary/snippet.
+- Explicitly excluded raw article body storage/display, unrestricted thumbnails/media, trade UX, recommendations, production recurring ingestion, and normal-CI live news calls.
+- T-168 through T-171 were completed in the same implementation pass because the user explicitly requested the full plan implementation.
+
+Required commands executed for T-167 through T-171:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_source_policy.py tests/unit/test_chat_generation.py tests/integration/test_backend_api.py -q` - pass
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `TMPDIR=/tmp python3 scripts/run_weekly_news_live_source_smoke.py --json` - pass, skipped by default without opt-in
+- `TMPDIR=/tmp LTT_WEEKLY_NEWS_LIVE_SOURCE_SMOKE_ENABLED=true python3 scripts/run_weekly_news_live_source_smoke.py --json` - pass
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` - pass
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass, including Python tests, static evals, frontend smoke, typecheck, build, and backend checks
+- `git diff --check` - pass
+
+Remaining risks:
+- This is a local MVP expansion only; it does not prove broad production ingestion, live news-provider reliability, recurring jobs, paid-provider licensing, generated-output cache promotion, or public-launch readiness.
+- Yahoo/yfinance-derived recent context remains fallback metadata and must not become canonical asset identity or stable facts.
 
 ### T-166: Expand local MVP coverage manifests after the fresh-data loop is stable
 
@@ -4683,7 +4751,7 @@ Current runtime snapshot:
 - T-130 completed the deterministic local fresh-data MVP rehearsal command.
 - T-131 through T-135 completed the ETF eligible-universe, stock SEC source-pack readiness, ETF issuer source-pack readiness, local MVP readiness-threshold packets, and batchable local ingestion priority planner.
 - The ETF-500 scope update is documented across the product and handoff docs; T-136 completed deterministic ETF-500 candidate manifest review contracts, and T-137 completed ETF-500 issuer source-pack batch planning contracts.
-- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, T-139 completed the local manual fresh-data readiness gate, T-140 completed the backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack, T-141 aligned frontend/API comparison availability, T-142 completed local browser/API smoke coverage, T-143 completed the deterministic stock-vs-ETF readiness-reporting gate, T-144 completed the first local fresh-data MVP slice smoke contract, T-145 completed the local slice browser/API smoke task, T-146 completed optional durable repository smoke coverage for the local slice, T-147 completed issuer-backed ETF source enrichment for the local slice, T-148 completed the lightweight local slice manual-readiness gate, T-149 completed local slice comparison/export parity coverage, T-150 completed the lightweight live browser/API smoke runner, T-151 completed lightweight live API fallback diagnostics, T-152 completed lightweight live durable persistence smoke coverage, T-153 completed lightweight issuer enrichment for `SPY`, `VTI`, and `XLK`, T-154 completed the Weekly News Focus live-source smoke task, T-155 completed lightweight live-AI validation, T-156 completed fresh-data comparison coverage for stock-vs-stock plus non-generated ETF pairs, T-157 completed local deployment/environment smoke coverage, T-158 completed the local personal-MVP readiness gate with strict/public-launch gates marked audit-only, T-159 fixed local browser/API smoke blockers, T-160 added short-TTL lightweight fetch reuse, T-161 wired lightweight exports, T-162 added lightweight grounded chat packs, T-163 added local durable persistence for lightweight source snapshots and normalized facts, T-164 added operator-only real Weekly News Focus source acquisition for the local MVP slice, T-165 added live-AI validation on real local evidence packs, and T-166 added deterministic ETF-500 blocked generated-surface diagnostics for local coverage-manifest review. No current task is prepared and the backlog is empty.
+- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, T-139 completed the local manual fresh-data readiness gate, T-140 completed the backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack, T-141 aligned frontend/API comparison availability, T-142 completed local browser/API smoke coverage, T-143 completed the deterministic stock-vs-ETF readiness-reporting gate, T-144 completed the first local fresh-data MVP slice smoke contract, T-145 completed the local slice browser/API smoke task, T-146 completed optional durable repository smoke coverage for the local slice, T-147 completed issuer-backed ETF source enrichment for the local slice, T-148 completed the lightweight local slice manual-readiness gate, T-149 completed local slice comparison/export parity coverage, T-150 completed the lightweight live browser/API smoke runner, T-151 completed lightweight live API fallback diagnostics, T-152 completed lightweight live durable persistence smoke coverage, T-153 completed lightweight issuer enrichment for `SPY`, `VTI`, and `XLK`, T-154 completed the Weekly News Focus live-source smoke task, T-155 completed lightweight live-AI validation, T-156 completed fresh-data comparison coverage for stock-vs-stock plus non-generated ETF pairs, T-157 completed local deployment/environment smoke coverage, T-158 completed the local personal-MVP readiness gate with strict/public-launch gates marked audit-only, T-159 fixed local browser/API smoke blockers, T-160 added short-TTL lightweight fetch reuse, T-161 wired lightweight exports, T-162 added lightweight grounded chat packs, T-163 added local durable persistence for lightweight source snapshots and normalized facts, T-164 added operator-only real Weekly News Focus source acquisition for the local MVP slice, T-165 added live-AI validation on real local evidence packs, T-166 added deterministic ETF-500 blocked generated-surface diagnostics for local coverage-manifest review, and T-167 through T-171 moved Weekly News into local MVP page, analysis, chat, UI, and smoke-validation surfaces with fallback provider metadata kept non-canonical. No current task is prepared and the backlog is empty.
 - T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, full governed source artifacts, admin auth/rate limiting, broader live ingestion, and launch-sized reviewed manifests remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:
@@ -4743,7 +4811,7 @@ Operational defaults for general MVP roadmap tasks:
 - T-128 established deterministic governed golden evidence API/frontend rendering proof. It is completed and must not be reintroduced as runnable backlog.
 - T-129 established launch-manifest operator automation parity. It is completed and must not be reintroduced as runnable backlog.
 - T-130 established the local fresh-data MVP rehearsal command. It is completed and must not be reintroduced as runnable backlog.
-- T-134 through T-166 are completed. No current task is prepared and the backlog is empty.
+- T-134 through T-171 are completed. No current task is prepared and the backlog is empty.
 - For the local personal MVP, use lightweight live fetch and source-labeled partial rendering as the active readiness path. Old strict source-pack, parser, checksum, ETF-500, Top-500, and Golden Asset Source Handoff promotion gates remain audit-quality diagnostics unless a task explicitly says it is strict/audit hardening.
 - Production hardening remains unpromoted until a new narrow launch-readiness task is explicitly prepared.
 - Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until explicit launch readiness work is promoted into a narrow task and passes deterministic CI coverage.
@@ -4845,12 +4913,17 @@ Roadmap integration tracker:
 | Real Weekly News Focus acquisition for the local MVP slice | Completed | T-164 |
 | Live-AI validation on real local evidence packs | Completed | T-165 |
 | Local MVP coverage manifest expansion after the fresh-data loop | Completed | T-166 |
+| Local Weekly News retrieval docs and task alignment | Completed | T-167 |
+| Deterministic Weekly News provider metadata adapter contract | Completed | T-168 |
+| Lightweight Weekly News page and AI analysis wiring | Completed | T-169 |
+| Grounded chat with stable facts plus Weekly News | Completed | T-170 |
+| Weekly News UI filters and local smoke validation | Completed | T-171 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
 Remaining unpromoted general MVP sequence:
 
 - T-139 produced a deterministic readiness gate that says whether more agent-loop work remains or whether manual local fresh-data testing is the next step.
-- The stock-vs-ETF comparison feature-completion sequence is complete through the final prepared step: T-141 aligned frontend suggestions/fallback with API availability, T-142 added optional localhost browser/API smoke coverage, and T-143 added the deterministic readiness signal. The promoted local fresh-data MVP slice sequence is complete through T-166 local coverage manifest expansion, and no next agent-loop task is currently prepared.
+- The stock-vs-ETF comparison feature-completion sequence is complete through the final prepared step: T-141 aligned frontend suggestions/fallback with API availability, T-142 added optional localhost browser/API smoke coverage, and T-143 added the deterministic readiness signal. The promoted local fresh-data MVP slice sequence is complete through T-171 local Weekly News MVP expansion, and no next agent-loop task is currently prepared.
 - Full production deployment remains unpromoted until a narrow launch-readiness task is added: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
 - Recurring production jobs only after manual official-source acquisition, Top-500 candidate refresh review, and local fresh-data behavior are stable.
 - Broad paid-provider or news-provider integrations only after provider licensing/source-use review, no-secret-exposure tests, mocked CI fixtures, source-rights validation, and export/display constraints are documented.

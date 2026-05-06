@@ -388,6 +388,41 @@ source_records:
       approval_reference: PRD-v0.2-weekly-news-source-use
       rationale: Recent context fixtures can inform high-signal context only and cannot overwrite canonical facts.
 
+  - source_id: yahoo_finance_yfinance_recent_context
+    display_name: Yahoo Finance/yfinance-derived recent context metadata
+    match_kind: provider
+    provider_name: Yahoo Finance/yfinance-derived news
+    source_type: recent_context_provider
+    source_quality: provider
+    allowlist_status: allowed
+    source_use_policy: summary_allowed
+    permitted_operations:
+      can_store_metadata: true
+      can_store_raw_text: false
+      can_display_metadata: true
+      can_display_excerpt: true
+      can_summarize: true
+      can_cache: true
+      can_export_metadata: true
+      can_export_excerpt: false
+      can_export_full_text: false
+      can_support_generated_output: true
+      can_support_citations: true
+      can_support_canonical_facts: false
+      can_support_recent_developments: true
+    allowed_excerpt:
+      allowed: true
+      max_words: 36
+      requires_attribution: true
+      note: Yahoo/yfinance-derived recent context may expose metadata and bounded summaries only; raw article text and media are not redistributed.
+    recent_context_only: true
+    canonical_facts_allowed: false
+    review:
+      reviewed_by: local-contract
+      reviewed_at: 2026-05-06
+      approval_reference: T-168-weekly-news-local-mvp-adapter
+      rationale: Yahoo/yfinance-derived news is a labeled fallback structure for local Weekly News context and cannot support stable canonical facts.
+
   - source_id: example_link_only_press_source
     display_name: Example link-only reviewed source
     match_kind: domain

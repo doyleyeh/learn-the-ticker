@@ -40,6 +40,11 @@ from backend.models import (
     SourceUsePolicy,
 )
 from backend.settings import LightweightDataSettings, build_lightweight_data_settings
+from backend.weekly_news_sources import (
+    LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD,
+    WEEKLY_NEWS_SOURCE_ADAPTER_BOUNDARY,
+    yahoo_search_payload_to_weekly_news_facts,
+)
 
 
 LIGHTWEIGHT_FETCH_SCHEMA_VERSION = "lightweight-asset-fetch-v1"
@@ -143,6 +148,7 @@ class _LightweightFetchReuseKey:
     data_policy_mode: str
     live_fetch_enabled: bool
     provider_fallback_enabled: bool
+    weekly_news_fetch_enabled: bool
     sec_user_agent_redacted: str
     fetch_timeout_seconds: int
     fetcher_boundary: str
@@ -224,13 +230,14 @@ def fetch_lightweight_asset_data(
         "blocked_by_scope_screen": False,
         "raw_payload_exposed": False,
     }
-    yahoo_quote, yahoo_sources, yahoo_facts, yahoo_errors = _try_yahoo_provider_fallback(
+    yahoo_quote, yahoo_sources, yahoo_facts, yahoo_errors, yahoo_diagnostics = _try_yahoo_provider_fallback(
         normalized,
         active_settings,
         source_fetcher,
         now,
         chart_range=normalized_chart_range,
     )
+    diagnostics.update(yahoo_diagnostics)
     diagnostics["provider_fallback_attempted"] = bool(active_settings.provider_fallback_enabled)
     if yahoo_errors:
         diagnostics["provider_fallback_errors"] = yahoo_errors
@@ -302,6 +309,7 @@ def _lightweight_fetch_reuse_key(
         data_policy_mode=settings.data_policy_mode,
         live_fetch_enabled=settings.live_fetch_enabled,
         provider_fallback_enabled=settings.provider_fallback_enabled,
+        weekly_news_fetch_enabled=settings.weekly_news_fetch_enabled,
         sec_user_agent_redacted=settings.sec_user_agent_redacted,
         fetch_timeout_seconds=settings.fetch_timeout_seconds,
         fetcher_boundary=_fetcher_reuse_boundary(fetcher),
@@ -403,6 +411,7 @@ def _response_with_reuse_diagnostics(
                 "data_policy_mode": key.data_policy_mode,
                 "live_fetch_enabled": key.live_fetch_enabled,
                 "provider_fallback_enabled": key.provider_fallback_enabled,
+                "weekly_news_fetch_enabled": key.weekly_news_fetch_enabled,
                 "fetcher_boundary": key.fetcher_boundary.split(":", 1)[0],
             },
             "raw_payload_exposed": False,
@@ -946,9 +955,14 @@ def _try_yahoo_provider_fallback(
     retrieved_at: str,
     *,
     chart_range: str = DEFAULT_CHART_RANGE,
-) -> tuple[dict[str, Any] | None, list[LightweightFetchSource], list[LightweightFetchFact], list[dict[str, str]]]:
+) -> tuple[dict[str, Any] | None, list[LightweightFetchSource], list[LightweightFetchFact], list[dict[str, str]], dict[str, Any]]:
     if not settings.provider_fallback_enabled:
-        return None, [], [], [{"source": "yahoo_finance", "error_type": "provider_fallback_disabled"}]
+        return None, [], [], [{"source": "yahoo_finance", "error_type": "provider_fallback_disabled"}], {
+            "weekly_news_adapter_boundary": WEEKLY_NEWS_SOURCE_ADAPTER_BOUNDARY,
+            "weekly_news_fetch_enabled": settings.weekly_news_fetch_enabled,
+            "weekly_news_provider_candidate_count": 0,
+            "weekly_news_provider_suppressed_count": 0,
+        }
     sources: list[LightweightFetchSource] = []
     facts: list[LightweightFetchFact] = []
     errors: list[dict[str, str]] = []
@@ -956,17 +970,49 @@ def _try_yahoo_provider_fallback(
     quote_summary: dict[str, Any] = {}
     chart_payload: dict[str, Any] = {}
     chart_meta: dict[str, Any] = {}
+    weekly_news_diagnostics: dict[str, Any] = {
+        "weekly_news_adapter_boundary": WEEKLY_NEWS_SOURCE_ADAPTER_BOUNDARY,
+        "weekly_news_fetch_enabled": settings.weekly_news_fetch_enabled,
+        "weekly_news_provider_candidate_count": 0,
+        "weekly_news_provider_suppressed_count": 0,
+        "weekly_news_raw_article_text_collected": False,
+        "weekly_news_raw_provider_payload_exposed": False,
+        "weekly_news_thumbnail_or_media_forwarded": False,
+    }
     provider_user_agent = YAHOO_PROVIDER_USER_AGENT
     normalized_chart_range = normalize_chart_range(chart_range) or DEFAULT_CHART_RANGE
     chart_interval = chart_interval_for_range(normalized_chart_range)
 
     try:
+        news_count = 8 if settings.weekly_news_fetch_enabled else 0
         search_payload = fetcher.fetch_json(
-            f"https://query1.finance.yahoo.com/v1/finance/search?q={quote(ticker)}&quotesCount=5&newsCount=0",
+            f"https://query1.finance.yahoo.com/v1/finance/search?q={quote(ticker)}&quotesCount=5&newsCount={news_count}",
             user_agent=provider_user_agent,
             timeout_seconds=settings.fetch_timeout_seconds,
         )
         quote_payload = _exact_yahoo_quote(search_payload, ticker)
+        if settings.weekly_news_fetch_enabled:
+            asset_type = _asset_type_from_quote_or_manifest(ticker, quote_payload)
+            weekly_news = yahoo_search_payload_to_weekly_news_facts(
+                ticker=ticker,
+                asset_type=asset_type if asset_type in {AssetType.stock, AssetType.etf} else AssetType.unknown,
+                payload=search_payload,
+                retrieved_at=retrieved_at,
+                no_live_external_calls=fetcher.no_live_external_calls,
+            )
+            sources.extend(weekly_news.sources)
+            facts.extend(weekly_news.facts)
+            weekly_news_diagnostics = {
+                "weekly_news_adapter_boundary": WEEKLY_NEWS_SOURCE_ADAPTER_BOUNDARY,
+                "weekly_news_fetch_enabled": True,
+                "weekly_news_provider_candidate_count": weekly_news.candidate_count,
+                "weekly_news_provider_suppressed_count": weekly_news.suppressed_count,
+                "weekly_news_fact_field": LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD,
+                "weekly_news_raw_article_text_collected": weekly_news.raw_article_text_collected,
+                "weekly_news_raw_provider_payload_exposed": weekly_news.raw_provider_payload_exposed,
+                "weekly_news_thumbnail_or_media_forwarded": weekly_news.thumbnail_or_media_forwarded,
+                "weekly_news_no_live_external_calls": weekly_news.no_live_external_calls,
+            }
     except Exception as exc:
         errors.append({"source": "yahoo_search", "error_type": type(exc).__name__})
 
@@ -1005,7 +1051,8 @@ def _try_yahoo_provider_fallback(
 
     merged = {**(quote_payload or {}), **chart_meta}
     if not merged:
-        return quote_payload, sources, facts, errors
+        weekly_news_diagnostics["weekly_news_recent_events_as_of"] = _latest_weekly_news_event_date(facts)
+        return quote_payload, sources, facts, errors, weekly_news_diagnostics
 
     provider_as_of = _market_time_as_of(merged) or _chart_latest_as_of(chart_payload)
     source = LightweightFetchSource(
@@ -1170,7 +1217,8 @@ def _try_yahoo_provider_fallback(
                 limitations="Provider-derived chart points are delayed or best-effort reference data, not trading guidance.",
             )
         )
-    return merged, sources, facts, errors
+    weekly_news_diagnostics["weekly_news_recent_events_as_of"] = _latest_weekly_news_event_date(facts)
+    return merged, sources, facts, errors, weekly_news_diagnostics
 
 
 def _response_from_parts(
@@ -1209,6 +1257,7 @@ def _response_from_parts(
     page_state = EvidenceState.supported if has_official and facts else EvidenceState.partial if facts else EvidenceState.unavailable
     fetch_state = LightweightFetchState.supported if page_state is EvidenceState.supported else LightweightFetchState.partial if facts else LightweightFetchState.unavailable
     as_of = preferred_as_of or _latest_as_of([*sources, *source_by_id.values()])
+    weekly_news_as_of = _latest_weekly_news_event_date(facts)
     return _with_fallback_diagnostics(
         LightweightFetchResponse(
             ticker=ticker,
@@ -1227,7 +1276,7 @@ def _response_from_parts(
                 page_last_updated_at=retrieved_at,
                 facts_as_of=as_of,
                 holdings_as_of=as_of if asset.asset_type is AssetType.etf else None,
-                recent_events_as_of=None,
+                recent_events_as_of=weekly_news_as_of,
                 freshness_state=FreshnessState.fresh if facts else FreshnessState.unavailable,
             ),
             facts=facts,
@@ -2389,6 +2438,19 @@ def _list_value(items: Any, index: int) -> Any:
 
 def _latest_as_of(sources: list[LightweightFetchSource]) -> str | None:
     dates = sorted({source.as_of_date for source in sources if source.as_of_date})
+    return dates[-1] if dates else None
+
+
+def _latest_weekly_news_event_date(facts: list[LightweightFetchFact]) -> str | None:
+    dates = sorted(
+        {
+            str(fact.value.get("event_date"))
+            for fact in facts
+            if fact.field_name == LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD
+            and isinstance(fact.value, dict)
+            and fact.value.get("event_date")
+        }
+    )
     return dates[-1] if dates else None
 
 

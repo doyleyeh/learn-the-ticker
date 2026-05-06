@@ -28,6 +28,7 @@ from backend.settings import (
     LIVE_WEEKLY_NEWS_WRITER_MISSING_REASON,
     LIGHTWEIGHT_DATA_SETTINGS_SCHEMA_VERSION,
     LIGHTWEIGHT_LIVE_FETCH_DISABLED_REASON,
+    LIGHTWEIGHT_WEEKLY_NEWS_FETCH_DISABLED_REASON,
     MISSING_DATABASE_URL_REASON,
     build_cors_settings,
     build_lightweight_data_settings,
@@ -310,8 +311,10 @@ def test_lightweight_data_settings_default_to_policy_mode_but_live_fetch_opt_in(
     assert settings.lightweight_enabled is True
     assert settings.live_fetch_enabled is False
     assert settings.provider_fallback_enabled is True
+    assert settings.weekly_news_fetch_enabled is False
     assert settings.can_fetch_fresh_data is False
     assert LIGHTWEIGHT_LIVE_FETCH_DISABLED_REASON in settings.missing_reasons
+    assert LIGHTWEIGHT_WEEKLY_NEWS_FETCH_DISABLED_REASON in settings.missing_reasons
     serialized = str(settings.safe_diagnostics)
     assert "test@example.com" not in serialized
     assert "API_KEY" not in serialized
@@ -321,11 +324,13 @@ def test_lightweight_data_settings_default_to_policy_mode_but_live_fetch_opt_in(
             "DATA_POLICY_MODE": "lightweight",
             "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
             "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED": "true",
             "SEC_EDGAR_USER_AGENT": "learn-the-ticker-test/0.1 person@example.com",
             "LIGHTWEIGHT_FETCH_TIMEOUT_SECONDS": "9",
         }
     )
     assert enabled.can_fetch_fresh_data is True
+    assert enabled.weekly_news_fetch_enabled is True
     assert enabled.fetch_timeout_seconds == 9
     assert enabled.sec_user_agent_redacted == "learn-the-ticker-test/0.1 person@<redacted>"
     assert enabled.missing_reasons == ()

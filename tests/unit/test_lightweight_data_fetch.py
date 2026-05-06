@@ -111,7 +111,8 @@ class FakeJsonFetcher:
                         "longname": "Apple Inc.",
                         "exchange": "NMS",
                     }
-                ]
+                ],
+                "news": _weekly_news_payload("AAPL"),
             }
         if "finance/chart/AAPL" in url:
             return {
@@ -151,7 +152,8 @@ class FakeJsonFetcher:
                         "longname": "Vanguard S&P 500 ETF",
                         "exchange": "PCX",
                     }
-                ]
+                ],
+                "news": _weekly_news_payload("VOO"),
             }
         if "finance/chart/VOO" in url:
             return {
@@ -191,7 +193,8 @@ class FakeJsonFetcher:
                         "longname": "SPDR S&P 500 ETF Trust",
                         "exchange": "PCX",
                     }
-                ]
+                ],
+                "news": _weekly_news_payload("SPY"),
             }
         if "finance/chart/SPY" in url:
             return {
@@ -243,6 +246,18 @@ def _settings():
     )
 
 
+def _settings_with_weekly_news():
+    return build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED": "true",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+        }
+    )
+
+
 def _settings_with_reuse_ttl(ttl_seconds: int):
     return build_lightweight_data_settings(
         {
@@ -253,6 +268,62 @@ def _settings_with_reuse_ttl(ttl_seconds: int):
             "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
         }
     )
+
+
+def _weekly_news_payload(ticker: str) -> list[dict[str, Any]]:
+    normalized = ticker.upper()
+    publisher = "Yahoo Finance"
+    if normalized in {"VOO", "SPY"}:
+        return [
+            {
+                "uuid": f"{normalized.lower()}-issuer-context",
+                "title": f"{normalized} issuer update highlights benchmark and fund context",
+                "publisher": publisher,
+                "link": f"https://finance.yahoo.com/news/{normalized.lower()}-issuer-context",
+                "published_at": "2026-05-01T14:30:00Z",
+                "summary": f"Provider news metadata linked {normalized} to an issuer or fund context update during the weekly window.",
+                "relatedTickers": [normalized],
+                "thumbnail": {"resolutions": [{"url": "https://example.invalid/thumb.jpg"}]},
+            },
+            {
+                "uuid": f"{normalized.lower()}-flows-context",
+                "title": f"{normalized} weekly ETF flows context appears in provider news",
+                "publisher": "ETF.com",
+                "link": f"https://finance.yahoo.com/news/{normalized.lower()}-weekly-flows-context",
+                "published_at": "2026-04-30T13:15:00Z",
+                "summary": f"Provider metadata surfaced a weekly ETF flow context item related to {normalized}.",
+                "relatedTickers": [normalized],
+            },
+            {
+                "uuid": f"{normalized.lower()}-advice-suppressed",
+                "title": f"Is {normalized} still worth buying now?",
+                "publisher": publisher,
+                "link": f"https://finance.yahoo.com/news/{normalized.lower()}-worth-buying",
+                "published_at": "2026-04-29T10:00:00Z",
+                "summary": "Advice-like headline fixture should be suppressed by the local adapter.",
+                "relatedTickers": [normalized],
+            },
+        ]
+    return [
+        {
+            "uuid": f"{normalized.lower()}-earnings-context",
+            "title": f"{normalized} earnings context appears in provider news metadata",
+            "publisher": publisher,
+            "link": f"https://finance.yahoo.com/news/{normalized.lower()}-earnings-context",
+            "published_at": "2026-05-01T14:30:00Z",
+            "summary": f"Provider news metadata linked {normalized} to earnings context during the weekly window.",
+            "relatedTickers": [normalized],
+        },
+        {
+            "uuid": f"{normalized.lower()}-business-context",
+            "title": f"{normalized} product and business update noted by provider news",
+            "publisher": "Reuters",
+            "link": f"https://finance.yahoo.com/news/{normalized.lower()}-business-context",
+            "published_at": "2026-04-30T13:15:00Z",
+            "summary": f"Provider metadata surfaced a product or business context item related to {normalized}.",
+            "relatedTickers": [normalized],
+        },
+    ]
 
 
 def _stock_quote_summary_payload(ticker: str) -> dict[str, Any]:
@@ -753,6 +824,41 @@ def test_lightweight_stock_fetch_builds_overview_details_and_source_drawer_contr
     assert overview.fallback_diagnostics.source_path == "sec_official_provider_fallback"
     assert details.fallback_diagnostics == overview.fallback_diagnostics
     assert sources.fallback_diagnostics == overview.fallback_diagnostics
+
+
+def test_lightweight_weekly_news_adapter_selects_provider_metadata_when_enabled():
+    response = fetch_lightweight_asset_data(
+        "VOO",
+        settings=_settings_with_weekly_news(),
+        fetcher=FakeJsonFetcher(),
+        retrieved_at=RETRIEVED_AT,
+    )
+    overview = build_lightweight_overview_response(response)
+    weekly_news_facts = [fact for fact in response.facts if fact.field_name == "provider_weekly_news_event"]
+
+    assert response.diagnostics["weekly_news_adapter_boundary"] == "weekly-news-source-adapter-v1"
+    assert response.diagnostics["weekly_news_fetch_enabled"] is True
+    assert response.diagnostics["weekly_news_provider_candidate_count"] == 2
+    assert response.diagnostics["weekly_news_provider_suppressed_count"] == 1
+    assert response.diagnostics["weekly_news_raw_article_text_collected"] is False
+    assert response.diagnostics["weekly_news_raw_provider_payload_exposed"] is False
+    assert response.diagnostics["weekly_news_thumbnail_or_media_forwarded"] is False
+    assert response.fallback_diagnostics is not None
+    assert response.fallback_diagnostics.provider_fallback_source_count == 3
+    assert response.fallback_diagnostics.freshness.recent_events_as_of == "2026-05-01"
+    assert len(weekly_news_facts) == 2
+    assert all(fact.evidence_state is EvidenceState.supported for fact in weekly_news_facts)
+    dumped = str(response.model_dump(mode="json")).lower()
+    assert "thumb.jpg" not in dumped
+    assert "raw article body" not in dumped
+
+    assert overview.weekly_news_focus is not None
+    assert overview.weekly_news_focus.selected_item_count == 2
+    assert overview.weekly_news_focus.items[0].source.source_quality.value == "provider"
+    assert overview.weekly_news_focus.items[0].source.source_use_policy.value == "summary_allowed"
+    assert overview.ai_comprehensive_analysis is not None
+    assert overview.ai_comprehensive_analysis.analysis_available is True
+    assert overview.ai_comprehensive_analysis.weekly_news_selected_item_count == 2
 
 
 def test_lightweight_issuer_backed_etf_fetch_builds_supported_page_contracts():

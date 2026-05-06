@@ -23,6 +23,7 @@ DEFAULT_LIVE_SOURCE_RATE_LIMIT_READY = False
 DEFAULT_DATA_POLICY_MODE = "lightweight"
 DEFAULT_LIGHTWEIGHT_LIVE_FETCH_ENABLED = False
 DEFAULT_LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED = True
+DEFAULT_LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED = False
 DEFAULT_LIGHTWEIGHT_FETCH_TIMEOUT_SECONDS = 15
 DEFAULT_LIGHTWEIGHT_FETCH_REUSE_TTL_SECONDS = 30
 DEFAULT_SEC_EDGAR_USER_AGENT = "learn-the-ticker-local/0.1 contact@example.com"
@@ -45,6 +46,7 @@ LIVE_KNOWLEDGE_PACK_WRITER_MISSING_REASON = "live_knowledge_pack_writer_missing"
 LIVE_WEEKLY_NEWS_WRITER_MISSING_REASON = "live_weekly_news_evidence_writer_missing"
 LIGHTWEIGHT_LIVE_FETCH_DISABLED_REASON = "lightweight_live_fetch_disabled"
 LIGHTWEIGHT_PROVIDER_FALLBACK_DISABLED_REASON = "lightweight_provider_fallback_disabled"
+LIGHTWEIGHT_WEEKLY_NEWS_FETCH_DISABLED_REASON = "lightweight_weekly_news_fetch_disabled"
 SENSITIVE_QUERY_KEY_MARKERS = ("password", "pass", "token", "secret", "key", "credential")
 _UNSAFE_OBJECT_NAMESPACE_MARKERS = (
     "://",
@@ -172,6 +174,7 @@ class LightweightDataSettings:
     data_policy_mode: str
     live_fetch_enabled: bool
     provider_fallback_enabled: bool
+    weekly_news_fetch_enabled: bool
     sec_user_agent_configured: bool
     sec_user_agent_redacted: str
     fetch_timeout_seconds: int
@@ -199,6 +202,7 @@ class LightweightDataSettings:
             "lightweight_enabled": self.lightweight_enabled,
             "live_fetch_enabled": self.live_fetch_enabled,
             "provider_fallback_enabled": self.provider_fallback_enabled,
+            "weekly_news_fetch_enabled": self.weekly_news_fetch_enabled,
             "sec_user_agent_configured": self.sec_user_agent_configured,
             "sec_user_agent_redacted": self.sec_user_agent_redacted,
             "fetch_timeout_seconds": self.fetch_timeout_seconds,
@@ -468,6 +472,14 @@ def build_lightweight_data_settings(env: dict[str, str] | None = None) -> Lightw
         ),
         DEFAULT_LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED,
     )
+    weekly_news_fetch_enabled = _bool_setting(
+        _first_present(
+            source,
+            "LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED",
+            "LTT_LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED",
+        ),
+        DEFAULT_LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED,
+    )
     user_agent = _clean_optional(
         _first_present(source, "SEC_EDGAR_USER_AGENT", "LIGHTWEIGHT_SEC_USER_AGENT")
     ) or DEFAULT_SEC_EDGAR_USER_AGENT
@@ -492,12 +504,15 @@ def build_lightweight_data_settings(env: dict[str, str] | None = None) -> Lightw
         missing_reasons.append(LIGHTWEIGHT_LIVE_FETCH_DISABLED_REASON)
     if not provider_fallback_enabled:
         missing_reasons.append(LIGHTWEIGHT_PROVIDER_FALLBACK_DISABLED_REASON)
+    if not weekly_news_fetch_enabled:
+        missing_reasons.append(LIGHTWEIGHT_WEEKLY_NEWS_FETCH_DISABLED_REASON)
 
     return LightweightDataSettings(
         schema_version=LIGHTWEIGHT_DATA_SETTINGS_SCHEMA_VERSION,
         data_policy_mode=mode,
         live_fetch_enabled=live_fetch_enabled,
         provider_fallback_enabled=provider_fallback_enabled,
+        weekly_news_fetch_enabled=weekly_news_fetch_enabled,
         sec_user_agent_configured=bool(user_agent),
         sec_user_agent_redacted=_redact_user_agent(user_agent),
         fetch_timeout_seconds=fetch_timeout,

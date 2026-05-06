@@ -1,3 +1,6 @@
+"use client";
+
+import { useMemo, useState } from "react";
 import type { Citation, WeeklyNewsFocusFixture } from "../lib/fixtures";
 import { CitationChip } from "./CitationChip";
 import { FreshnessDisclosure } from "./FreshnessLabel";
@@ -49,11 +52,36 @@ type WeeklyNewsPanelProps = {
   citations: Citation[];
 };
 
+type WeeklyNewsFilter = "all" | "news" | "press" | "filings";
+
+const WEEKLY_NEWS_FILTERS: Array<{ id: WeeklyNewsFilter; label: string }> = [
+  { id: "all", label: "All" },
+  { id: "news", label: "News" },
+  { id: "press", label: "Press Releases" },
+  { id: "filings", label: "SEC Filings / Issuer Updates" }
+];
+
 export function WeeklyNewsPanel({ focus, citations }: WeeklyNewsPanelProps) {
+  const [activeFilter, setActiveFilter] = useState<WeeklyNewsFilter>("all");
   const windowLabel = `${focus.window.newsWindowStart} to ${focus.window.newsWindowEnd}`;
   const emptyMessage = focus.emptyState?.message ?? "No major Weekly News Focus items found in the current local evidence window.";
   const emptyEvidenceState = evidenceStateToFreshnessFromFocus(focus.emptyState);
   const windowFreshness = stateToFreshness(focus.state);
+  const itemCounts = useMemo(
+    () =>
+      WEEKLY_NEWS_FILTERS.reduce<Record<WeeklyNewsFilter, number>>(
+        (counts, filter) => {
+          counts[filter.id] = filter.id === "all" ? focus.items.length : focus.items.filter((item) => classifyWeeklyNewsItem(item) === filter.id).length;
+          return counts;
+        },
+        { all: 0, news: 0, press: 0, filings: 0 }
+      ),
+    [focus.items]
+  );
+  const visibleItems = useMemo(
+    () => focus.items.filter((item) => activeFilter === "all" || classifyWeeklyNewsItem(item) === activeFilter),
+    [activeFilter, focus.items]
+  );
 
   return (
     <section
@@ -70,6 +98,7 @@ export function WeeklyNewsPanel({ focus, citations }: WeeklyNewsPanelProps) {
       data-weekly-news-evidence-state={focus.evidenceState}
       data-weekly-news-evidence-limited-state={focus.evidenceLimitedState}
       data-weekly-news-empty-behavior={focus.selectedItemCount === 0 ? "explicit_empty_state" : "not_empty"}
+      data-weekly-news-active-filter={activeFilter}
     >
       <div className="section-heading-row">
         <div className="section-heading">
@@ -94,13 +123,34 @@ export function WeeklyNewsPanel({ focus, citations }: WeeklyNewsPanelProps) {
 
       {focus.items.length ? (
         <div className="section-stack" data-weekly-news-item-count={focus.items.length}>
+          <div className="weekly-news-filter-tabs" role="tablist" aria-label="Weekly News source filter" data-weekly-news-filter-tabs>
+            {WEEKLY_NEWS_FILTERS.map((filter) => (
+              <button
+                key={filter.id}
+                type="button"
+                role="tab"
+                className="weekly-news-filter-tab"
+                aria-selected={activeFilter === filter.id}
+                onClick={() => setActiveFilter(filter.id)}
+                data-weekly-news-filter-tab={filter.id}
+                data-weekly-news-filter-count={itemCounts[filter.id]}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
           {focus.evidenceLimitedState === "limited_verified_set" ? (
             <p className="source-gap-note" data-weekly-news-limited-verified-set>
               Weekly News Focus is showing a smaller verified set because only {focus.selectedItemCount} high-signal
               item{focus.selectedItemCount === 1 ? "" : "s"} passed the evidence rules.
             </p>
           ) : null}
-          {focus.items.map((item) => (
+          {visibleItems.length ? null : (
+            <p className="source-gap-note" data-weekly-news-filter-empty>
+              No selected items match this source filter.
+            </p>
+          )}
+          {visibleItems.map((item) => (
             <article
               className="timeline-item"
               key={item.eventId}
@@ -110,6 +160,7 @@ export function WeeklyNewsPanel({ focus, citations }: WeeklyNewsPanelProps) {
               data-weekly-news-source-quality={item.source.sourceQuality}
               data-weekly-news-source-use-policy={item.source.sourceUsePolicy}
               data-weekly-news-allowlist-status={item.source.allowlistStatus}
+              data-weekly-news-source-filter={classifyWeeklyNewsItem(item)}
               data-freshness-state={item.freshnessState}
             >
               <div className="etf-item-heading">
@@ -167,4 +218,25 @@ export function WeeklyNewsPanel({ focus, citations }: WeeklyNewsPanelProps) {
       )}
     </section>
   );
+}
+
+function classifyWeeklyNewsItem(item: WeeklyNewsFocusFixture["items"][number]): WeeklyNewsFilter {
+  const sourceType = item.source.sourceType.toLowerCase();
+  const eventType = item.eventType.toLowerCase();
+  if (
+    sourceType.includes("sec") ||
+    sourceType.includes("filing") ||
+    sourceType.includes("prospectus") ||
+    sourceType.includes("fact_sheet") ||
+    eventType === "methodology_change" ||
+    eventType === "index_change" ||
+    eventType === "fee_change" ||
+    item.source.isOfficial
+  ) {
+    return "filings";
+  }
+  if (sourceType.includes("press") || sourceType.includes("investor_relations") || sourceType.includes("issuer")) {
+    return "press";
+  }
+  return "news";
 }

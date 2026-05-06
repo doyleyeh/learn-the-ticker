@@ -120,6 +120,10 @@ Verify:
 - source-use policy wins over score
 - AI Comprehensive Analysis is suppressed unless at least two approved Weekly News Focus items exist; approved reputable third-party items may count when labeled and source-governed
 - generated analysis cites selected Weekly News Focus items and canonical facts only
+- yfinance/Yahoo-style news lists are treated as a fallback metadata structure only, not broad production ingestion or canonical fact evidence
+- local Weekly News source rows expose headline/title, publisher, URL, published time, retrieved time, ticker match, event type, source label, source-use policy, and optional bounded summary/snippet only
+- raw article bodies, unrestricted thumbnails/media, provider payloads, trade UX, recommendation copy, secrets, and generated-output cache promotion are absent from local Weekly News output
+- `LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED` is off by default, and operator-only live checks remain skipped or mock-backed unless explicitly enabled
 
 ### Ingestion, Provider, Caching, And Freshness Tasks
 

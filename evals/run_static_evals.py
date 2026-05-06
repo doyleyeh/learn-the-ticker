@@ -2000,7 +2000,6 @@ def test_generated_chat_contract():
         ("AAPL", "What does Apple do?", "primary business"),
         ("VOO", "What is VOO and what risks should a beginner understand?", "market risk"),
         ("QQQ", "What does QQQ hold?", "about 100"),
-        ("VOO", "What changed recently?", "No high-signal recent development"),
         ("QQQ", "Why do beginners consider it?", "Beginners may study QQQ"),
     ]
 
@@ -2042,6 +2041,12 @@ def test_generated_chat_contract():
                 ]
             )
         )
+
+    recent = generate_asset_chat("VOO", "What changed recently?")
+    assert recent.safety_classification.value == "educational"
+    assert "Insufficient evidence" in recent.direct_answer
+    assert recent.citations == []
+    assert recent.source_documents == []
 
     insufficient = generate_asset_chat("AAPL", "Is Apple expensive based on valuation?")
     assert insufficient.safety_classification.value == "educational"
