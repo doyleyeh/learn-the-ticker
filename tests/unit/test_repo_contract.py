@@ -1741,24 +1741,23 @@ def test_t154_weekly_news_live_source_smoke_is_optional_in_rehearsal():
         "deterministic_local_slice_manual_review_ready"
     )
 
-    blocked = run_rehearsal(
+    real_source = run_rehearsal(
         env={
             "LTT_WEEKLY_NEWS_LIVE_SOURCE_SMOKE_ENABLED": "true",
             "LTT_WEEKLY_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED": "true",
         }
     )
-    blocked_checks = {check["check_id"]: check for check in blocked["checks"]}
-    assert blocked["status"] == "blocked"
-    assert blocked_checks["optional_weekly_news_live_source_smoke"]["status"] == "blocked"
-    assert blocked_checks["optional_weekly_news_live_source_smoke"]["details"]["required_env_names_without_values"] == [
-        "LTT_WEEKLY_NEWS_LIVE_SOURCE_SMOKE_ENABLED",
-        "LTT_WEEKLY_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED",
-    ]
-    assert blocked["lightweight_local_mvp_slice_manual_readiness_gate"]["decision"] == "optional_local_check_blocked"
-    assert {
-        (blocker["reason_code"], blocker["check_id"]) for blocker in blocked["lightweight_local_mvp_slice_manual_readiness_gate"]["blockers"]
-    } == {("optional_local_check_blocked", "optional_weekly_news_live_source_smoke")}
-    serialized = str(blocked)
+    real_source_checks = {check["check_id"]: check for check in real_source["checks"]}
+    assert real_source["status"] == "pass"
+    assert real_source_checks["optional_weekly_news_live_source_smoke"]["status"] == "pass"
+    real_details = real_source_checks["optional_weekly_news_live_source_smoke"]["details"]
+    assert real_details["source_retrieval_mode"] == "operator_real_source_metadata_acquisition"
+    assert real_details["case_status_counts"] == {"pass": 4, "blocked": 0, "skipped": 0}
+    assert real_details["case_summaries"][0]["case_id"] == "operator_real_source_aapl"
+    assert real_source["lightweight_local_mvp_slice_manual_readiness_gate"]["decision"] == (
+        "deterministic_local_slice_manual_review_ready"
+    )
+    serialized = str(real_source)
     for forbidden in ["Bearer ", "Authorization", "BEGIN PRIVATE KEY", "sk-", "raw article body"]:
         assert forbidden not in serialized
 

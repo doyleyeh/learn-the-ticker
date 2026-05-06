@@ -33,6 +33,7 @@ from backend.weekly_news_repository import (
     WeeklyNewsEventCandidateRow,
     WeeklyNewsEventEvidenceRepositoryRecords,
     WeeklyNewsSourceRankTier,
+    acquire_weekly_news_event_evidence_from_official_sources,
     acquire_weekly_news_event_evidence_from_fixtures,
     evaluate_weekly_news_live_acquisition_readiness,
     validate_weekly_news_event_evidence_records,
@@ -44,7 +45,7 @@ SMOKE_OPT_IN_ENV = "LTT_WEEKLY_NEWS_LIVE_SOURCE_SMOKE_ENABLED"
 REAL_SOURCE_OPT_IN_ENV = "LTT_WEEKLY_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED"
 DEFAULT_AS_OF = "2026-04-23"
 DEFAULT_CREATED_AT = "2026-04-23T12:00:00Z"
-BLOCKED_REGRESSION_TICKERS = ("TQQQ", "ARKK", "BND", "GLD")
+BLOCKED_REGRESSION_TICKERS = ("TQQQ", "ARKK", "BND", "GLD", "BTC", "ZZZZ")
 BLOCKED_GENERATED_SURFACES = (
     "generated_pages",
     "generated_chat_answers",
@@ -76,18 +77,7 @@ def run_weekly_news_live_source_smoke(env: dict[str, str] | None = None) -> dict
         }
 
     if real_source_enabled:
-        return {
-            **base,
-            "status": "blocked",
-            "reason_code": "weekly_news_real_source_retrieval_not_available_in_ci_safe_smoke",
-            "blocked_reason_codes": [
-                "real_source_retrieval_requires_future_operator_runner",
-                "normal_ci_requires_live_calls_false",
-            ],
-            "required_env_names_without_values": [SMOKE_OPT_IN_ENV, REAL_SOURCE_OPT_IN_ENV],
-            "cases": [],
-            "case_status_counts": {"pass": 0, "blocked": 1, "skipped": 0},
-        }
+        return _operator_real_source_metadata_smoke(base)
 
     cases = [
         _source_backed_official_first_case(),
@@ -116,6 +106,177 @@ def run_weekly_news_live_source_smoke(env: dict[str, str] | None = None) -> dict
     }
 
 
+def _operator_real_source_metadata_smoke(base: dict[str, Any]) -> dict[str, Any]:
+    """Run the operator-only live-source metadata path for the local MVP slice."""
+
+    cases = [
+        _operator_real_source_case(
+            "operator_real_source_aapl",
+            "AAPL",
+            [
+                _candidate(
+                    "aapl_sec_filing_metadata",
+                    asset_ticker="AAPL",
+                    tier=WeeklyNewsSourceRankTier.official_filing,
+                    event_type=WeeklyNewsEventType.earnings,
+                    source_quality=SourceQuality.official,
+                ),
+                _candidate(
+                    "aapl_investor_relations_metadata",
+                    asset_ticker="AAPL",
+                    tier=WeeklyNewsSourceRankTier.investor_relations_release,
+                    source_rank=2,
+                    event_type=WeeklyNewsEventType.product_announcement,
+                    source_quality=SourceQuality.issuer,
+                ),
+            ],
+        ),
+        _operator_real_source_case(
+            "operator_real_source_voo",
+            "VOO",
+            [
+                _candidate(
+                    "voo_issuer_announcement_metadata",
+                    asset_ticker="VOO",
+                    tier=WeeklyNewsSourceRankTier.etf_issuer_announcement,
+                    source_rank=3,
+                    event_type=WeeklyNewsEventType.sponsor_update,
+                    source_quality=SourceQuality.issuer,
+                ),
+                _candidate(
+                    "voo_fact_sheet_change_metadata",
+                    asset_ticker="VOO",
+                    tier=WeeklyNewsSourceRankTier.fact_sheet_change,
+                    source_rank=5,
+                    event_type=WeeklyNewsEventType.methodology_change,
+                    source_quality=SourceQuality.issuer,
+                ),
+                _candidate(
+                    "voo_allowlisted_context_metadata",
+                    asset_ticker="VOO",
+                    tier=WeeklyNewsSourceRankTier.allowlisted_news,
+                    source_rank=20,
+                    event_type=WeeklyNewsEventType.sponsor_update,
+                    source_quality=SourceQuality.allowlisted,
+                    is_official=False,
+                ),
+            ],
+        ),
+        _operator_real_source_case(
+            "operator_real_source_qqq",
+            "QQQ",
+            [
+                _candidate(
+                    "qqq_prospectus_update_metadata",
+                    tier=WeeklyNewsSourceRankTier.prospectus_update,
+                    source_rank=4,
+                    event_type=WeeklyNewsEventType.methodology_change,
+                    source_quality=SourceQuality.issuer,
+                ),
+                _candidate(
+                    "qqq_fact_sheet_change_metadata",
+                    tier=WeeklyNewsSourceRankTier.fact_sheet_change,
+                    source_rank=5,
+                    event_type=WeeklyNewsEventType.index_change,
+                    source_quality=SourceQuality.issuer,
+                ),
+                _candidate(
+                    "qqq_allowlisted_context_metadata",
+                    tier=WeeklyNewsSourceRankTier.allowlisted_news,
+                    source_rank=20,
+                    event_type=WeeklyNewsEventType.sponsor_update,
+                    source_quality=SourceQuality.allowlisted,
+                    is_official=False,
+                ),
+            ],
+        ),
+        _blocked_regression_case(),
+    ]
+    case_status_counts = Counter(str(case.get("status")) for case in cases)
+    status = "blocked" if case_status_counts.get("blocked") else "pass"
+    return {
+        **base,
+        "status": status,
+        "reason_code": (
+            "weekly_news_operator_real_source_metadata_smoke_passed"
+            if status == "pass"
+            else "weekly_news_operator_real_source_metadata_smoke_blocked"
+        ),
+        "cases": cases,
+        "case_status_counts": {
+            "pass": int(case_status_counts.get("pass", 0)),
+            "blocked": int(case_status_counts.get("blocked", 0)),
+            "skipped": int(case_status_counts.get("skipped", 0)),
+        },
+        "representative_local_mvp_slice_assets": ["AAPL", "VOO", "QQQ", *BLOCKED_REGRESSION_TICKERS],
+        "operator_real_source_path": {
+            "enabled": True,
+            "local_mvp_slice_assets": ["AAPL", "VOO", "QQQ"],
+            "metadata_only": True,
+            "official_sources_first": True,
+            "fallback_metadata_after_official": True,
+            "raw_text_collected": False,
+            "generated_output_cache_written": False,
+            "live_llm_generation_enabled": False,
+        },
+        "review_only_boundaries": _review_only_boundaries(),
+    }
+
+
+def _operator_real_source_case(
+    case_id: str,
+    ticker: str,
+    candidates: list[WeeklyNewsEventCandidateRow],
+) -> dict[str, Any]:
+    result = acquire_weekly_news_event_evidence_from_official_sources(
+        asset_ticker=ticker,
+        as_of=DEFAULT_AS_OF,
+        created_at=DEFAULT_CREATED_AT,
+        candidates=candidates,
+        opt_in_enabled=True,
+        official_source_configured=True,
+        rate_limit_ready=True,
+        repository_writer_ready=True,
+    )
+    if result.records is None:
+        return {
+            "case_id": case_id,
+            "status": "blocked",
+            "reason_code": "operator_real_source_metadata_acquisition_blocked",
+            "asset_ticker": normalize_ticker(ticker),
+            "readiness_status": result.readiness.status,
+            "blocked_reasons": list(result.readiness.blocked_reasons),
+            "candidate_count": result.candidate_count,
+            "selected_item_count": 0,
+            "safe_diagnostics_only": True,
+            "no_raw_text_or_payloads": True,
+            "generated_output_cache_written": False,
+            "live_llm_calls_attempted": False,
+            "no_live_external_calls": result.no_live_external_calls,
+        }
+
+    case = _case_from_records(case_id, result.records, expected_selected_minimum=1)
+    case["operator_real_source_acquisition"] = {
+        "readiness_status": result.readiness.status,
+        "fetched_source_count": result.fetched_source_count,
+        "parser_diagnostic_count": result.parser_diagnostic_count,
+        "handoff_approved_source_count": result.handoff_approved_source_count,
+        "handoff_blocked_source_count": result.handoff_blocked_source_count,
+        "official_sources_first": True,
+        "fallback_metadata_after_official": any(
+            row["source_rank_tier"] == WeeklyNewsSourceRankTier.allowlisted_news.value
+            for row in case["selected_events"]
+        ),
+        "raw_article_text_reported": False,
+        "raw_source_text_reported": False,
+        "raw_provider_payload_reported": False,
+        "generated_output_cache_written": False,
+        "live_llm_calls_attempted": False,
+    }
+    case["no_live_external_calls"] = result.no_live_external_calls
+    return case
+
+
 def _base_payload(
     env: dict[str, str],
     *,
@@ -126,7 +287,7 @@ def _base_payload(
         "schema_version": SMOKE_SCHEMA_VERSION,
         "default_mode": "deterministic_mocked_or_fixture_backed",
         "source_retrieval_mode": (
-            "operator_real_source_retrieval_requested_but_blocked"
+            "operator_real_source_metadata_acquisition"
             if real_source_enabled
             else "deterministic_fixture_backed_source_candidates"
         ),
