@@ -1,95 +1,44 @@
 ## Current task
 
-### T-166: Expand local MVP coverage manifests after the fresh-data loop is stable
-
-Goal:
-After local live fetch, rendering, exports, chat, persistence, Weekly News, and live-AI validation pass for the MVP slice, expand reviewed coverage toward real Top-500 and ETF-500 local MVP readiness.
-
-Task scope:
-Add or tighten deterministic, review-only coverage-manifest expansion contracts for the next local MVP slice after T-165. The work should make the existing Top-500 candidate workflow and ETF supported/recognition manifest review outputs clearer and more actionable for local coverage expansion, while preserving all strict/audit-quality gates. This is manifest/readiness tooling only: it may produce candidate or review artifacts and diagnostics, but it must not promote current manifests, approve sources, unlock generated output for unsupported rows, call live providers, call LLMs, redesign frontend workflows, or start deployment work.
-
-Allowed files:
-- `backend/etf_universe.py`
-- `backend/top500_candidate_manifest.py`
-- `backend/models.py`
-- `backend/data.py`
-- `backend/search.py`
-- `backend/source_policy.py`
-- `scripts/generate_top500_candidate_manifest.py`
-- `scripts/review_launch_manifests.py`
-- `scripts/run_local_fresh_data_rehearsal.py`
-- `scripts/run_lightweight_mvp_readiness_gate.py`
-- `data/universes/us_common_stocks_top500.candidate.*.json`
-- `data/universes/us_common_stocks_top500.diff.*.json`
-- `data/universes/us_common_stocks_top500.review.*.json`
-- `tests/fixtures/top500_refresh/*.json`
-- `tests/unit/test_top500_candidate_manifest.py`
-- `tests/unit/test_search_classification.py`
-- `tests/unit/test_source_policy.py`
-- `tests/unit/test_provider_adapters.py`
-- `tests/unit/test_repo_contract.py`
-- `evals/run_static_evals.py`
-- `docs/agent-journal/*.md`
-- Minimal adjacent deterministic helper, fixture, or eval files only if the existing manifest review, source-pack readiness, rehearsal, or readiness-gate contracts require them.
-
-Do not change:
-- Do not edit frontend UI, page layout, source drawer, glossary, chat UI, comparison UI, export UI, or home-page workflow.
-- Do not add a home-page two-input comparison builder or promote glossary as a primary home workflow.
-- Do not replace or directly edit `data/universes/us_common_stocks_top500.current.json` as part of this task.
-- Do not directly promote ETF generated-output coverage by editing `data/universes/us_equity_etfs_supported.current.json` unless the task is stopped and replanned with explicit operator approval and full source-pack/handoff evidence. Prefer review-only candidate or diagnostic artifacts.
-- Do not change supported ETF generated-output authority away from `data/universes/us_equity_etfs_supported.current.json` or ETF/ETP recognition authority away from `data/universes/us_etp_recognition.current.json`.
-- Do not change Top-500 runtime support away from `data/universes/us_common_stocks_top500.current.json` in strict/audit-quality paths.
-- Do not use live ETF holdings files, provider holdings files, market-data responses, exchange listings, issuer search results, recognition-only rows, or rank queries as runtime coverage truth.
-- Do not approve sources by automation, mark Golden Asset Source Handoff as complete without required metadata, promote manifests, write generated-output cache records, or claim ETF-500, Top-500, production deployment, public-launch, or investment-advice readiness.
-- Do not introduce live provider, news, market-data, source, or LLM calls into normal CI or deterministic tests.
-- Do not persist or print raw article text, paid/restricted article text, restricted source text, raw provider payloads, raw transcripts, raw user prompts, hidden prompts, raw model reasoning, DSNs, API keys, secret values, unrestricted source excerpts, or generated live responses.
-- Do not broaden Weekly News Focus into a general market-news feed or let recent news redefine the stable identity of a stock or ETF.
-- Do not broaden chat, comparison, summaries, or exports into buy/sell/hold guidance, allocation guidance, tax advice, brokerage/trading behavior, unsupported price targets, or personalized recommendations.
-- Do not add schema migration tooling, production database requirements, object storage services, new infrastructure, deployment settings, or production dependencies.
-
-Acceptance criteria:
-- Top-500 candidate refresh uses official IWB holdings first, official SPY/IVV/VOO holdings only as fallback, SEC/Nasdaq validation, checksums, diff report, and manual approval before promotion.
-- ETF supported-manifest expansion keeps supported ETF generated-output authority in `data/universes/us_equity_etfs_supported.current.json` and recognition-only blocked states in `data/universes/us_etp_recognition.current.json`.
-- ETF source-pack readiness covers issuer page, fact sheet, prospectus or summary prospectus, holdings, exposure/sector breakdown, methodology/risk source, and sponsor announcements when relevant.
-- Golden Asset Source Handoff remains required for strict/audit-quality promotion.
-- Complex products remain blocked unless future scope explicitly supports them.
-- Any generated Top-500 artifacts are candidate, diff, or review-only artifacts with deterministic source provenance, source snapshot dates, source checksums, rank basis, CIK, exchange, validation status, warnings, manual-review triggers, and an explicit "do not replace current manifest without approval" note.
-- The approved current Top-500 manifest remains unchanged; candidate generation or inspection must never overwrite `data/universes/us_common_stocks_top500.current.json`.
-- ETF review diagnostics report category coverage, source-pack readiness gaps, parser/handoff readiness, checksum status, disqualifier counts, no-padding stop conditions, and blocked generated surfaces for recognition-only, pending-review, unavailable, parser-invalid, unclear-rights, source-pack-incomplete, leveraged, inverse, active, fixed-income, commodity, crypto, single-stock, option-income/buffer, multi-asset, ETN, ETV, CEF, and international/global primary-exposure products.
-- Golden/pre-cache ETFs such as `VOO` and `QQQ` remain regression assets and are not treated as the ETF coverage ceiling.
-- Supported ETF rows outside the current generated-output-ready set may be marked pending ingestion, partial, unavailable, insufficient evidence, or review needed; they must not receive generated pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, or generated-output cache entries without source-backed eligibility.
-- Search classification still resolves supported stocks from the Top-500 current manifest and supported ETF generated-output coverage from the supported ETF manifest, while recognition-only or out-of-scope products such as `TQQQ`, `ARKK`, `BND`, `GLD`, `BTC`, and `ZZZZ` remain blocked from generated output.
-- Review or readiness outputs preserve source-use policy, official-vs-provider labeling, freshness/as-of metadata or explicit `unknown`, `stale`, `unavailable`, `partial`, or `insufficient_evidence` states.
-- Rehearsal/readiness-gate output, if touched, distinguishes local personal-MVP readiness from strict/public-launch audit gates and does not report production, public-launch, source-approval, manifest-promotion, generated-output-cache, or investment-advice readiness.
-- Normal CI remains deterministic and fixture-backed with no live external calls, no required secrets, no raw provider payload exposure, and no production service startup.
-- The home page remains single stock/ETF search first; comparison remains a separate connected workflow through `/compare`, asset CTAs, suggestions, chat redirects, and clear `A vs B` redirects.
-- Glossary remains contextual; source drawer, glossary, and asset chat mobile behavior are not redesigned by this task.
-- Stock-vs-ETF comparison behavior keeps relationship badges and the `single-company-vs-ETF-basket` structure.
-- All user-facing or generated copy remains educational and avoids buy/sell/hold, allocation, price-target, tax, brokerage, trading, or personalized recommendation language.
-
-Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_top500_candidate_manifest.py tests/unit/test_search_classification.py tests/unit/test_source_policy.py tests/unit/test_provider_adapters.py -q`
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q`
-- `TMPDIR=/tmp python3 evals/run_static_evals.py`
-- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
-- `TMPDIR=/tmp python3 scripts/run_lightweight_mvp_readiness_gate.py --json`
-- `npm test`
-- `npm run typecheck`
-- `npm run build`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
-- `git diff --check`
-
-Iteration budget:
-- One agent-loop cycle. If real coverage expansion requires live official-source downloads, paid/restricted provider data, broad ETF-500 source-pack review, Top-500 current-manifest promotion, Golden Asset Source Handoff approval, generated-output cache writes, frontend redesign, schema migrations, production services, deployment work, production monitoring, new dependencies, or manual operator approval, stop after documenting the blocker and leave the broader work unpromoted.
-
-Remaining risk to report:
-- This task can improve deterministic review readiness for local MVP coverage expansion, but it does not prove ETF-500 completion, Top-500 completion, source-pack approval, Golden Asset Source Handoff approval, generated-output cache promotion, broad live-provider reliability, production deployment readiness, public-launch readiness, or investment-advice readiness.
+No current task is prepared. The backlog is empty.
 
 ## Backlog
 
 No backlog task is currently prepared.
 
 ## Completed
+
+### T-166: Expand local MVP coverage manifests after the fresh-data loop is stable
+
+Goal:
+After local live fetch, rendering, exports, chat, persistence, Weekly News, and live-AI validation pass for the MVP slice, expand reviewed coverage toward real Top-500 and ETF-500 local MVP readiness.
+
+Completion details:
+- Implementation commit: `ed48cc3 feat(T-166): expand local MVP coverage manifests after the fresh-data loop is stable`
+- Local merge commit: `a1efa55 chore(T-166): merge expand local MVP coverage manifests after the fresh-data loop is stable` from branch `agent/T-166-20260506T042238Z`
+- Added a deterministic ETF-500 blocked generated-surface matrix in `backend/etf_universe.py` for recognition-only, pending-review, unavailable, parser-invalid, unclear-rights, source-pack-incomplete, complex-product disqualifier, and international/global primary-exposure conditions.
+- The matrix reports per-condition row counts, keeps `generated_output_unlocked=false`, and blocks generated pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, and generated-output cache entries.
+- Surfaced the ETF-500 blocked generated-surface matrix in `scripts/run_local_fresh_data_rehearsal.py` launch-manifest diagnostics alongside category coverage gaps, disqualifier counts, source-pack readiness, parser/handoff readiness, checksum status, no-padding stop conditions, and generated-output blocking rules.
+- Added regression coverage in `tests/unit/test_search_classification.py` and `tests/unit/test_repo_contract.py` proving recognition-only rows, source-pack-incomplete rows, and other blocked ETF-500 conditions never unlock generated output or generated-output cache entries.
+- Preserved review-only behavior: no current manifest was promoted, no source was approved, no generated-output cache entry was written, no live provider or LLM call was introduced into normal CI, and frontend v0.4 workflow behavior was not changed.
+- `docs/agent-journal/20260506T042238Z.md` records changed files, pass status, quality-gate results, and remaining risks.
+
+Required commands executed in this task branch:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_repo_contract.py -q` - pass
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_top500_candidate_manifest.py tests/unit/test_search_classification.py tests/unit/test_source_policy.py tests/unit/test_provider_adapters.py -q` - pass
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q` - pass
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` - pass
+- `TMPDIR=/tmp python3 scripts/run_lightweight_mvp_readiness_gate.py --json` - pass
+- `npm test` - pass
+- `npm run typecheck` - pass
+- `npm run build` - pass
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass
+- `git diff --check` - pass
+
+Remaining risks:
+- This improves deterministic ETF-500 review diagnostics only.
+- It does not prove ETF-500 completion, Top-500 completion, source-pack approval, Golden Asset Source Handoff approval, generated-output cache promotion, broad live-provider reliability, production deployment readiness, public-launch readiness, or investment-advice readiness.
 
 ### T-165: Add live-AI validation on top of real local evidence packs
 
@@ -4734,7 +4683,7 @@ Current runtime snapshot:
 - T-130 completed the deterministic local fresh-data MVP rehearsal command.
 - T-131 through T-135 completed the ETF eligible-universe, stock SEC source-pack readiness, ETF issuer source-pack readiness, local MVP readiness-threshold packets, and batchable local ingestion priority planner.
 - The ETF-500 scope update is documented across the product and handoff docs; T-136 completed deterministic ETF-500 candidate manifest review contracts, and T-137 completed ETF-500 issuer source-pack batch planning contracts.
-- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, T-139 completed the local manual fresh-data readiness gate, T-140 completed the backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack, T-141 aligned frontend/API comparison availability, T-142 completed local browser/API smoke coverage, T-143 completed the deterministic stock-vs-ETF readiness-reporting gate, T-144 completed the first local fresh-data MVP slice smoke contract, T-145 completed the local slice browser/API smoke task, T-146 completed optional durable repository smoke coverage for the local slice, T-147 completed issuer-backed ETF source enrichment for the local slice, T-148 completed the lightweight local slice manual-readiness gate, T-149 completed local slice comparison/export parity coverage, T-150 completed the lightweight live browser/API smoke runner, T-151 completed lightweight live API fallback diagnostics, T-152 completed lightweight live durable persistence smoke coverage, T-153 completed lightweight issuer enrichment for `SPY`, `VTI`, and `XLK`, T-154 completed the Weekly News Focus live-source smoke task, T-155 completed lightweight live-AI validation, T-156 completed fresh-data comparison coverage for stock-vs-stock plus non-generated ETF pairs, T-157 completed local deployment/environment smoke coverage, T-158 completed the local personal-MVP readiness gate with strict/public-launch gates marked audit-only, T-159 fixed local browser/API smoke blockers, T-160 added short-TTL lightweight fetch reuse, T-161 wired lightweight exports, T-162 added lightweight grounded chat packs, T-163 added local durable persistence for lightweight source snapshots and normalized facts, T-164 added operator-only real Weekly News Focus source acquisition for the local MVP slice, and T-165 added live-AI validation on real local evidence packs. T-166 is current and the backlog is empty.
+- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, T-139 completed the local manual fresh-data readiness gate, T-140 completed the backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack, T-141 aligned frontend/API comparison availability, T-142 completed local browser/API smoke coverage, T-143 completed the deterministic stock-vs-ETF readiness-reporting gate, T-144 completed the first local fresh-data MVP slice smoke contract, T-145 completed the local slice browser/API smoke task, T-146 completed optional durable repository smoke coverage for the local slice, T-147 completed issuer-backed ETF source enrichment for the local slice, T-148 completed the lightweight local slice manual-readiness gate, T-149 completed local slice comparison/export parity coverage, T-150 completed the lightweight live browser/API smoke runner, T-151 completed lightweight live API fallback diagnostics, T-152 completed lightweight live durable persistence smoke coverage, T-153 completed lightweight issuer enrichment for `SPY`, `VTI`, and `XLK`, T-154 completed the Weekly News Focus live-source smoke task, T-155 completed lightweight live-AI validation, T-156 completed fresh-data comparison coverage for stock-vs-stock plus non-generated ETF pairs, T-157 completed local deployment/environment smoke coverage, T-158 completed the local personal-MVP readiness gate with strict/public-launch gates marked audit-only, T-159 fixed local browser/API smoke blockers, T-160 added short-TTL lightweight fetch reuse, T-161 wired lightweight exports, T-162 added lightweight grounded chat packs, T-163 added local durable persistence for lightweight source snapshots and normalized facts, T-164 added operator-only real Weekly News Focus source acquisition for the local MVP slice, T-165 added live-AI validation on real local evidence packs, and T-166 added deterministic ETF-500 blocked generated-surface diagnostics for local coverage-manifest review. No current task is prepared and the backlog is empty.
 - T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, full governed source artifacts, admin auth/rate limiting, broader live ingestion, and launch-sized reviewed manifests remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:
@@ -4794,7 +4743,7 @@ Operational defaults for general MVP roadmap tasks:
 - T-128 established deterministic governed golden evidence API/frontend rendering proof. It is completed and must not be reintroduced as runnable backlog.
 - T-129 established launch-manifest operator automation parity. It is completed and must not be reintroduced as runnable backlog.
 - T-130 established the local fresh-data MVP rehearsal command. It is completed and must not be reintroduced as runnable backlog.
-- T-134 through T-165 are completed. T-166 is current and the backlog is empty.
+- T-134 through T-166 are completed. No current task is prepared and the backlog is empty.
 - For the local personal MVP, use lightweight live fetch and source-labeled partial rendering as the active readiness path. Old strict source-pack, parser, checksum, ETF-500, Top-500, and Golden Asset Source Handoff promotion gates remain audit-quality diagnostics unless a task explicitly says it is strict/audit hardening.
 - Production hardening remains unpromoted until a new narrow launch-readiness task is explicitly prepared.
 - Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until explicit launch readiness work is promoted into a narrow task and passes deterministic CI coverage.
@@ -4895,13 +4844,13 @@ Roadmap integration tracker:
 | Local durable persistence for lightweight source snapshots and normalized facts | Completed | T-163 |
 | Real Weekly News Focus acquisition for the local MVP slice | Completed | T-164 |
 | Live-AI validation on real local evidence packs | Completed | T-165 |
-| Local MVP coverage manifest expansion after the fresh-data loop | Current | T-166 |
+| Local MVP coverage manifest expansion after the fresh-data loop | Completed | T-166 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
 Remaining unpromoted general MVP sequence:
 
 - T-139 produced a deterministic readiness gate that says whether more agent-loop work remains or whether manual local fresh-data testing is the next step.
-- The stock-vs-ETF comparison feature-completion sequence is complete through the final prepared step: T-141 aligned frontend suggestions/fallback with API availability, T-142 added optional localhost browser/API smoke coverage, and T-143 added the deterministic readiness signal. The promoted local fresh-data MVP slice sequence is complete through T-165 live-AI validation on real local evidence packs, with T-166 local coverage manifest expansion now current.
+- The stock-vs-ETF comparison feature-completion sequence is complete through the final prepared step: T-141 aligned frontend suggestions/fallback with API availability, T-142 added optional localhost browser/API smoke coverage, and T-143 added the deterministic readiness signal. The promoted local fresh-data MVP slice sequence is complete through T-166 local coverage manifest expansion, and no next agent-loop task is currently prepared.
 - Full production deployment remains unpromoted until a narrow launch-readiness task is added: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
 - Recurring production jobs only after manual official-source acquisition, Top-500 candidate refresh review, and local fresh-data behavior are stable.
 - Broad paid-provider or news-provider integrations only after provider licensing/source-use review, no-secret-exposure tests, mocked CI fixtures, source-rights validation, and export/display constraints are documented.
