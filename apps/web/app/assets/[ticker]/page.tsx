@@ -618,6 +618,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
               data-asset-source-entry-count={renderedDrawerEntries.length}
               data-asset-source-full-drawers="dedicated-source-list"
               data-asset-source-drawer-repetition="removed"
+              data-source-drawer-mobile-presentation="bottom-sheet"
             >
               {renderedDrawerEntries.map((entry) => (
                 <details
