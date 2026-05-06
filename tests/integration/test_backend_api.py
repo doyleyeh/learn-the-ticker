@@ -13,7 +13,7 @@ from backend.knowledge_pack_repository import (
     InMemoryAssetKnowledgePackRepository,
     knowledge_pack_records_from_acquisition_result,
 )
-from backend.lightweight_data_fetch import fetch_lightweight_asset_data
+from backend.lightweight_data_fetch import clear_lightweight_fetch_reuse_cache, fetch_lightweight_asset_data
 from backend.models import FreshnessState, SourceAllowlistStatus, SourceQuality, SourceUsePolicy, WeeklyNewsEventType
 from backend.overview import (
     _asset_knowledge_pack_from_repository_records,
@@ -754,6 +754,7 @@ def test_search_classification_states_cover_ambiguous_unknown_and_ingestion_need
 
 
 def test_lightweight_api_fallback_diagnostics_are_exposed_without_unlocking_cached_or_blocked_rows(monkeypatch):
+    clear_lightweight_fetch_reuse_cache()
     settings = build_lightweight_data_settings(
         {
             "DATA_POLICY_MODE": "lightweight",
@@ -762,13 +763,14 @@ def test_lightweight_api_fallback_diagnostics_are_exposed_without_unlocking_cach
             "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
         }
     )
+    shared_fetcher = LocalFreshDataSliceFakeFetcher()
 
     def fake_fetch(ticker, settings=None, chart_range="6mo"):  # noqa: ANN001 - monkeypatch target matches production call shapes.
         del settings
         return fetch_lightweight_asset_data(
             ticker,
             settings=settings_override,
-            fetcher=LocalFreshDataSliceFakeFetcher(),
+            fetcher=shared_fetcher,
             retrieved_at=RETRIEVED_AT,
             chart_range=chart_range,
         )
@@ -795,6 +797,7 @@ def test_lightweight_api_fallback_diagnostics_are_exposed_without_unlocking_cach
     assert cached_search["results"][0]["fallback_diagnostics"] is None
 
     search_diagnostics = issuer_backed_search["results"][0]["fallback_diagnostics"]
+    search_fetch_url_count = len(shared_fetcher.urls)
     assert issuer_backed_search["state"]["status"] == "supported"
     assert issuer_backed_search["results"][0]["ticker"] == "SPY"
     assert search_diagnostics["schema_version"] == "lightweight-api-fallback-diagnostics-v1"
@@ -820,6 +823,7 @@ def test_lightweight_api_fallback_diagnostics_are_exposed_without_unlocking_cach
         assert diagnostics["official_source_count"] == 4
         assert diagnostics["raw_payload_exposed"] is False
         assert diagnostics["secret_values_exposed"] is False
+    assert len(shared_fetcher.urls) == search_fetch_url_count
 
     sections = {section["section_id"]: section for section in overview["sections"]}
     assert sections["holdings_exposure"]["table"]["table_id"] == "top_holdings"

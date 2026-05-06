@@ -11,7 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from backend.lightweight_data_fetch import fetch_lightweight_asset_data, lightweight_payload_checksum
+from backend.lightweight_data_fetch import (
+    clear_lightweight_fetch_reuse_cache,
+    fetch_lightweight_asset_data,
+    lightweight_payload_checksum,
+)
 from backend.lightweight_page import (
     build_lightweight_details_response,
     build_lightweight_overview_response,
@@ -31,7 +35,9 @@ def run_smoke(tickers: list[str], *, live: bool) -> dict[str, object]:
         env["LIGHTWEIGHT_LIVE_FETCH_ENABLED"] = "true"
         env.setdefault("LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED", "true")
     settings = build_lightweight_data_settings(env=env)
+    clear_lightweight_fetch_reuse_cache()
     responses = [fetch_lightweight_asset_data(ticker, settings=settings) for ticker in tickers]
+    repeated_responses = [fetch_lightweight_asset_data(ticker, settings=settings) for ticker in tickers]
     surface_contracts = [_surface_contract(response) for response in responses]
     acceptable_states = {LightweightFetchState.supported.value, LightweightFetchState.partial.value}
     blocked = [
@@ -48,6 +54,7 @@ def run_smoke(tickers: list[str], *, live: bool) -> dict[str, object]:
         "live_fetch_enabled": settings.live_fetch_enabled,
         "settings": settings.safe_diagnostics,
         "blocked_tickers": blocked,
+        "reuse_diagnostics": _reuse_diagnostics(responses, repeated_responses),
         "surface_contracts": surface_contracts,
         "responses": [
             {
@@ -67,6 +74,38 @@ def run_smoke(tickers: list[str], *, live: bool) -> dict[str, object]:
             }
             for response in responses
         ],
+    }
+
+
+def _reuse_diagnostics(first_responses, repeated_responses) -> dict[str, object]:
+    rows = []
+    hit_count = 0
+    miss_count = 0
+    for first, repeated in zip(first_responses, repeated_responses, strict=True):
+        first_reuse = first.diagnostics.get("lightweight_fetch_reuse") or {}
+        repeated_reuse = repeated.diagnostics.get("lightweight_fetch_reuse") or {}
+        if first_reuse.get("cache_status") == "miss":
+            miss_count += 1
+        if repeated_reuse.get("cache_status") == "hit":
+            hit_count += 1
+        rows.append(
+            {
+                "ticker": first.ticker,
+                "first_cache_status": first_reuse.get("cache_status"),
+                "repeat_cache_status": repeated_reuse.get("cache_status"),
+                "repeat_age_seconds": repeated_reuse.get("age_seconds"),
+                "payload_checksum_stable": lightweight_payload_checksum(first) == lightweight_payload_checksum(repeated),
+                "raw_payload_exposed": bool(first.raw_payload_exposed or repeated.raw_payload_exposed),
+            }
+        )
+    return {
+        "schema_version": "lightweight-fetch-reuse-smoke-v1",
+        "enabled": bool((first_responses[0].diagnostics.get("lightweight_fetch_reuse") or {}).get("enabled"))
+        if first_responses
+        else False,
+        "first_fetch_miss_count": miss_count,
+        "repeat_fetch_hit_count": hit_count,
+        "rows": rows,
     }
 
 
