@@ -56,6 +56,7 @@ from backend.models import (
     SourceUsePolicy,
     StateMessage,
 )
+from backend.lightweight_page import build_lightweight_overview_response_if_enabled
 from backend.overview import generate_asset_overview
 from backend.retrieval import build_asset_knowledge_pack, build_comparison_knowledge_pack
 from backend.search import search_assets
@@ -93,6 +94,15 @@ def export_asset_page(
 ) -> ExportResponse:
     """Shape an existing deterministic asset overview into an accountless export payload."""
 
+    lightweight_overview = build_lightweight_overview_response_if_enabled(ticker)
+    if lightweight_overview is not None:
+        return _asset_page_export_from_overview(
+            lightweight_overview,
+            export_format,
+            metadata_source="lightweight_fresh_data_overview",
+            generated_output_cache_writer=None,
+        )
+
     blocked = _blocked_asset_response(ticker, ExportContentType.asset_page, export_format)
     if blocked is not None:
         return blocked
@@ -107,6 +117,21 @@ def export_asset_page(
     if not overview.asset.supported:
         return _unavailable_asset_response(overview.asset, overview.state, ExportContentType.asset_page, export_format)
 
+    return _asset_page_export_from_overview(
+        overview,
+        export_format,
+        metadata_source="local_fixture_overview",
+        generated_output_cache_writer=generated_output_cache_writer,
+    )
+
+
+def _asset_page_export_from_overview(
+    overview: OverviewResponse,
+    export_format: ExportFormat | str,
+    *,
+    metadata_source: str,
+    generated_output_cache_writer: Any | None,
+) -> ExportResponse:
     sections = _asset_page_sections(overview)
     citations = _export_citations_from_overview(overview)
     sources = _export_sources(overview.source_documents)
@@ -130,7 +155,8 @@ def export_asset_page(
         metadata={
             "top_risk_count": len(overview.top_risks),
             "recent_developments_separate": True,
-            "source": "local_fixture_overview",
+            "source": metadata_source,
+            **_lightweight_export_metadata(overview),
         },
     )
     response = response.model_copy(update={"export_validation": _build_asset_export_validation(response, overview)})
@@ -149,6 +175,15 @@ def export_asset_source_list(
     persisted_weekly_news_reader: Any | None = None,
 ) -> ExportResponse:
     """Export source metadata for an asset without adding new source material."""
+
+    lightweight_overview = build_lightweight_overview_response_if_enabled(ticker)
+    if lightweight_overview is not None:
+        return _asset_source_list_export_from_overview(
+            lightweight_overview,
+            export_format,
+            metadata_source="lightweight_fresh_data_overview",
+            generated_output_cache_writer=None,
+        )
 
     blocked = _blocked_asset_response(ticker, ExportContentType.asset_source_list, export_format)
     if blocked is not None:
@@ -169,6 +204,21 @@ def export_asset_source_list(
             export_format,
         )
 
+    return _asset_source_list_export_from_overview(
+        overview,
+        export_format,
+        metadata_source="local_fixture_overview",
+        generated_output_cache_writer=generated_output_cache_writer,
+    )
+
+
+def _asset_source_list_export_from_overview(
+    overview: OverviewResponse,
+    export_format: ExportFormat | str,
+    *,
+    metadata_source: str,
+    generated_output_cache_writer: Any | None,
+) -> ExportResponse:
     source_items = [
         ExportedItem(
             item_id=source.source_document_id,
@@ -222,7 +272,11 @@ def export_asset_source_list(
         disclaimer=EDUCATIONAL_DISCLAIMER,
         licensing_note=EXPORT_LICENSING_NOTE,
         rendered_markdown=markdown,
-        metadata={"source_count": len(overview.source_documents), "source": "local_fixture_overview"},
+        metadata={
+            "source_count": len(overview.source_documents),
+            "source": metadata_source,
+            **_lightweight_export_metadata(overview),
+        },
     )
     response = response.model_copy(update={"export_validation": _build_asset_export_validation(response, overview)})
     _maybe_write_asset_source_list_cache(response, generated_output_cache_writer)
@@ -1028,6 +1082,18 @@ def _chat_session_export_metadata(
         "deletion_status": metadata.deletion_status.value,
         "generated_chat_answer": generated_chat_answer,
         "source": "local_accountless_chat_session",
+    }
+
+
+def _lightweight_export_metadata(overview: OverviewResponse) -> dict[str, Any]:
+    diagnostics = overview.fallback_diagnostics
+    if diagnostics is None:
+        return {}
+    return {
+        "lightweight_fresh_data_export": True,
+        "strict_audit_quality_source_approval_granted": False,
+        "generated_output_cache_promoted": False,
+        "fallback_diagnostics": diagnostics.model_dump(mode="json"),
     }
 
 

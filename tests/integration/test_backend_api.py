@@ -14,6 +14,7 @@ from backend.knowledge_pack_repository import (
     knowledge_pack_records_from_acquisition_result,
 )
 from backend.lightweight_data_fetch import clear_lightweight_fetch_reuse_cache, fetch_lightweight_asset_data
+from backend.lightweight_page import build_lightweight_overview_response
 from backend.models import FreshnessState, SourceAllowlistStatus, SourceQuality, SourceUsePolicy, WeeklyNewsEventType
 from backend.overview import (
     _asset_knowledge_pack_from_repository_records,
@@ -1364,6 +1365,52 @@ def test_asset_page_and_source_list_export_routes_return_contract_payloads():
     assert source_body["source_documents"][0]["allowlist_status"] == "allowed"
     assert source_body["source_documents"][0]["source_use_policy"] in {"full_text_allowed", "summary_allowed"}
     assert source_body["source_documents"][0]["permitted_operations"]["can_export_full_text"] is False
+
+
+def test_lightweight_fresh_data_export_routes_use_renderable_local_evidence(monkeypatch):
+    settings = build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+        }
+    )
+    lightweight_response = fetch_lightweight_asset_data(
+        "SPY",
+        settings=settings,
+        fetcher=LocalFreshDataSliceFakeFetcher(),
+        retrieved_at=RETRIEVED_AT,
+    )
+    overview = build_lightweight_overview_response(lightweight_response)
+    monkeypatch.setattr(
+        "backend.export.build_lightweight_overview_response_if_enabled",
+        lambda ticker: overview if ticker.upper() == "SPY" else None,
+    )
+
+    asset_export = client.get("/api/assets/SPY/export", params={"export_format": "json"})
+    source_export = client.get("/api/assets/SPY/sources/export", params={"export_format": "json"})
+
+    assert asset_export.status_code == 200
+    assert source_export.status_code == 200
+    for body in (asset_export.json(), source_export.json()):
+        assert body["export_state"] == "available"
+        assert body["asset"]["ticker"] == "SPY"
+        assert body["metadata"]["source"] == "lightweight_fresh_data_overview"
+        assert body["metadata"]["lightweight_fresh_data_export"] is True
+        assert body["metadata"]["strict_audit_quality_source_approval_granted"] is False
+        assert body["metadata"]["generated_output_cache_promoted"] is False
+        assert body["metadata"]["fallback_diagnostics"]["source_path"] == "issuer_backed_etf_provider_fallback"
+        assert body["export_validation"]["binding_scope"] == "same_asset"
+        assert body["export_validation"]["diagnostics"]["same_asset_citation_bindings_only"] is True
+        assert body["export_validation"]["diagnostics"]["same_asset_source_bindings_only"] is True
+        assert body["citations"]
+        assert body["source_documents"]
+        assert any(source["is_official"] is True for source in body["source_documents"])
+        assert any(source["source_use_policy"] == "metadata_only" for source in body["source_documents"])
+        assert all(source["permitted_operations"]["can_export_full_text"] is False for source in body["source_documents"])
+        assert "raw_payload" not in body["rendered_markdown"]
+        assert not find_forbidden_output_phrases(str(body).lower())
 
 
 def test_trust_metrics_catalog_route_is_validation_only_contract():

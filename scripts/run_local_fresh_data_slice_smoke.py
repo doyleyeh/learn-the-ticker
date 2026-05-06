@@ -341,7 +341,7 @@ def _surface_contract(response: LightweightFetchResponse) -> dict[str, Any]:
         "ai_comprehensive_analysis": overview.ai_comprehensive_analysis.analysis_available
         if overview.ai_comprehensive_analysis
         else False,
-        "export": False,
+        "export": True,
         "generated_risk_summary": bool(overview.top_risks),
         "overview_state": overview.state.status.value,
         "asset_type": overview.asset.asset_type.value,
