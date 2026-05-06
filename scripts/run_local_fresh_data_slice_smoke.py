@@ -19,6 +19,7 @@ from backend.lightweight_page import (
     build_lightweight_overview_response,
     build_lightweight_sources_response,
 )
+from backend.chat import build_lightweight_chat_knowledge_pack, generate_chat_from_pack, validate_chat_response
 from backend.models import AssetType, LightweightFetchResponse, LightweightFetchState
 from backend.settings import build_lightweight_data_settings
 
@@ -304,6 +305,7 @@ def _surface_contract(response: LightweightFetchResponse) -> dict[str, Any]:
     overview = build_lightweight_overview_response(response)
     details = build_lightweight_details_response(response)
     sources = build_lightweight_sources_response(response)
+    chat = _lightweight_chat_surface(response)
     section_states = {
         section.section_id: {
             "evidence_state": section.evidence_state.value,
@@ -335,7 +337,7 @@ def _surface_contract(response: LightweightFetchResponse) -> dict[str, Any]:
             and not response.raw_payload_exposed
         ),
         "generated_page": True,
-        "generated_chat_answer": False,
+        "generated_chat_answer": chat["generated_chat_answer"],
         "generated_comparison": False,
         "weekly_news_focus": overview.weekly_news_focus.selected_item_count > 0 if overview.weekly_news_focus else False,
         "ai_comprehensive_analysis": overview.ai_comprehensive_analysis.analysis_available
@@ -354,6 +356,7 @@ def _surface_contract(response: LightweightFetchResponse) -> dict[str, Any]:
         "source_group_count": len(sources.source_groups),
         "source_drawer_citation_binding_count": len(sources.citation_bindings),
         "source_drawer_related_claim_count": len(sources.related_claims),
+        "chat_contract": chat,
         "detail_fact_keys": detail_fact_keys,
         "partial_section_ids": sorted(
             section_id for section_id, state in section_states.items() if state["evidence_state"] == "partial"
@@ -375,6 +378,54 @@ def _surface_contract(response: LightweightFetchResponse) -> dict[str, Any]:
             "stock_metric_table_ids": [section.table.table_id for section in stock_table_sections if section.table is not None],
         },
     }
+
+
+def _lightweight_chat_surface(response: LightweightFetchResponse) -> dict[str, Any]:
+    try:
+        pack = build_lightweight_chat_knowledge_pack(response)
+        question = "What does it hold?" if response.asset.asset_type is AssetType.etf else "What is this asset?"
+        chat = generate_chat_from_pack(pack, question)
+        validation = validate_chat_response(chat, pack)
+        citation_source_ids = {citation.source_document_id for citation in chat.citations}
+        source_document_ids = {source.source_document_id for source in chat.source_documents}
+        return {
+            "generated_chat_answer": (
+                chat.safety_classification.value == "educational"
+                and bool(chat.citations)
+                and bool(chat.source_documents)
+                and validation.valid
+                and citation_source_ids <= source_document_ids
+            ),
+            "safety_classification": chat.safety_classification.value,
+            "citation_count": len(chat.citations),
+            "source_document_count": len(chat.source_documents),
+            "same_asset_citations_only": all(
+                source.source_document_id in {pack_source.source_document_id for pack_source in pack.source_documents}
+                for source in chat.source_documents
+            ),
+            "source_use_policies": sorted({source.source_use_policy.value for source in chat.source_documents}),
+            "freshness_states": sorted({source.freshness_state.value for source in chat.source_documents}),
+            "fallback_diagnostics_in_uncertainty": any(
+                "Lightweight fallback diagnostics:" in item for item in chat.uncertainty
+            ),
+            "validation_status": validation.status.value,
+            "generated_output_cache_promoted": False,
+            "durable_knowledge_pack_persisted": False,
+        }
+    except Exception as exc:
+        return {
+            "generated_chat_answer": False,
+            "safety_classification": None,
+            "citation_count": 0,
+            "source_document_count": 0,
+            "same_asset_citations_only": False,
+            "source_use_policies": [],
+            "freshness_states": [],
+            "fallback_diagnostics_in_uncertainty": False,
+            "validation_status": f"error:{type(exc).__name__}",
+            "generated_output_cache_promoted": False,
+            "durable_knowledge_pack_persisted": False,
+        }
 
 
 def _row_status(response: LightweightFetchResponse) -> str:
@@ -423,6 +474,9 @@ def _row_blockers(
             blockers.append({"reason_code": "renderable_row_not_pass_or_partial", "status": row_status})
         if not surface.get("renderable"):
             blockers.append({"reason_code": "renderable_surface_contract_failed", "surface": surface})
+        chat_contract = surface.get("chat_contract", {})
+        if not surface.get("generated_chat_answer") or chat_contract.get("generated_output_cache_promoted") is not False:
+            blockers.append({"reason_code": "lightweight_grounded_chat_contract_failed", "chat_contract": chat_contract})
         dashboard = surface.get("dashboard_contract", {})
         if dashboard.get("chart_range") != "6mo" or dashboard.get("chart_point_count", 0) < 6:
             blockers.append({"reason_code": "dashboard_chart_range_or_points_missing", "dashboard_contract": dashboard})
