@@ -1205,9 +1205,13 @@ def _source_documents_have_allowed_metadata(
         and source.get("source_use_policy")
         and source.get("retrieved_at")
         and source.get("freshness_state")
-        and (not allowed_excerpt or (source.get("allowed_excerpt") or {}).get("text"))
+        and (not allowed_excerpt or _allowed_excerpt_or_metadata_present(source.get("allowed_excerpt") or {}))
         for source in source_documents
     )
+
+
+def _allowed_excerpt_or_metadata_present(excerpt: dict[str, Any]) -> bool:
+    return bool(excerpt.get("text")) or excerpt.get("kind") == "excerpt_metadata"
 
 
 def _serialized_forbidden_marker_hits(payload: Any) -> list[str]:

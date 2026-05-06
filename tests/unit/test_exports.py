@@ -14,6 +14,8 @@ from backend.generated_output_cache_repository import (
     GeneratedOutputArtifactCategory,
     InMemoryGeneratedOutputCacheRepository,
 )
+from backend.lightweight_data_fetch import fetch_lightweight_asset_data
+from backend.lightweight_page import build_lightweight_overview_response
 from backend.models import (
     ChatTranscriptExportRequest,
     ComparisonExportRequest,
@@ -26,6 +28,8 @@ from backend.models import (
     FreshnessState,
 )
 from backend.safety import find_forbidden_output_phrases
+from backend.settings import build_lightweight_data_settings
+from scripts.run_local_fresh_data_slice_smoke import LocalFreshDataSliceFakeFetcher, RETRIEVED_AT
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -196,6 +200,52 @@ def test_exports_write_metadata_only_cache_records_when_configured():
     assert len(writer.records_by_entry_id) == 4
     assert all(records.artifacts[0].stores_payload_text is False for records in writer.records_by_entry_id.values())
     assert "submitted_question" not in str([records.artifacts[0].payload_metadata for records in writer.records_by_entry_id.values()])
+
+
+def test_lightweight_fresh_data_asset_and_source_exports_use_rendered_evidence_without_cache_promotion(monkeypatch):
+    overview = _lightweight_overview("SPY")
+    writer = InMemoryGeneratedOutputCacheRepository()
+    monkeypatch.setattr(
+        "backend.export.build_lightweight_overview_response_if_enabled",
+        lambda ticker: overview if ticker.upper() == "SPY" else None,
+    )
+
+    asset_export = ExportResponse.model_validate(
+        export_asset_page("SPY", export_format="json", generated_output_cache_writer=writer).model_dump(mode="json")
+    )
+    source_export = ExportResponse.model_validate(
+        export_asset_source_list("SPY", export_format="json", generated_output_cache_writer=writer).model_dump(mode="json")
+    )
+
+    for export in (asset_export, source_export):
+        assert export.export_state is ExportState.available
+        assert export.asset is not None
+        assert export.asset.ticker == "SPY"
+        assert export.metadata["source"] == "lightweight_fresh_data_overview"
+        assert export.metadata["lightweight_fresh_data_export"] is True
+        assert export.metadata["strict_audit_quality_source_approval_granted"] is False
+        assert export.metadata["generated_output_cache_promoted"] is False
+        assert export.metadata["fallback_diagnostics"]["source_path"] == "issuer_backed_etf_provider_fallback"
+        assert export.export_validation is not None
+        assert export.export_validation.binding_scope is ExportValidationBindingScope.same_asset
+        assert export.export_validation.diagnostics.same_asset_citation_bindings_only is True
+        assert export.export_validation.diagnostics.same_asset_source_bindings_only is True
+        assert export.citations
+        assert export.source_documents
+        assert {citation.source_document_id for citation in export.citations} <= {
+            source.source_document_id for source in export.source_documents
+        }
+        assert any(source.is_official for source in export.source_documents)
+        assert any(source.source_use_policy.value == "metadata_only" for source in export.source_documents)
+        assert all(source.retrieved_at for source in export.source_documents)
+        assert all(source.allowed_excerpt is not None for source in export.source_documents)
+        assert all(source.permitted_operations.can_export_full_text is False for source in export.source_documents)
+        assert "raw_payload" not in _flatten_text(export.rendered_markdown)
+        assert not find_forbidden_output_phrases(_flatten_text(export.model_dump(mode="json")))
+
+    assert source_export.content_type is ExportContentType.asset_source_list
+    assert _section(source_export, "asset_source_list").items
+    assert writer.records_by_entry_id == {}
 
 
 def test_export_source_metadata_limits_restricted_tiers_and_suppresses_rejected_sources():
@@ -422,6 +472,24 @@ def _used_citation_ids(export: ExportResponse) -> set[str]:
         *{citation_id for section in export.sections for citation_id in section.citation_ids},
         *{citation_id for section in export.sections for item in section.items for citation_id in item.citation_ids},
     }
+
+
+def _lightweight_overview(ticker: str):
+    settings = build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+        }
+    )
+    response = fetch_lightweight_asset_data(
+        ticker,
+        settings=settings,
+        fetcher=LocalFreshDataSliceFakeFetcher(),
+        retrieved_at=RETRIEVED_AT,
+    )
+    return build_lightweight_overview_response(response)
 
 
 def _flatten_text(value: Any) -> str:
