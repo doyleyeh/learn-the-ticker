@@ -42,10 +42,15 @@ from backend.models import (
 )
 from backend.retrieval import build_asset_knowledge_pack, build_asset_knowledge_pack_result
 from backend.search import search_assets
+from backend.weekly_news_repository import (
+    WeeklyNewsEventCandidateRow,
+    WeeklyNewsEventEvidenceRepositoryRecords,
+    WeeklyNewsSourceRankTier,
+    acquire_weekly_news_event_evidence_from_fixtures,
+)
 from backend.weekly_news import (
-    WeeklyNewsCandidate,
+    build_weekly_news_focus_from_pack,
     build_ai_comprehensive_analysis,
-    select_weekly_news_focus,
     validate_ai_comprehensive_analysis,
 )
 
@@ -57,12 +62,14 @@ ANALYSIS_CASE_ID = "ai_comprehensive_analysis_threshold_case"
 ANALYSIS_EMPTY_CASE_ID = "ai_comprehensive_analysis_zero_evidence_suppressed"
 ANALYSIS_ONE_ITEM_CASE_ID = "ai_comprehensive_analysis_one_item_insufficient_evidence"
 BLOCKED_REGRESSION_CASE_ID = "blocked_regression_tickers_generated_output_ineligible"
+ANALYSIS_AS_OF = "2026-04-23"
+ANALYSIS_CREATED_AT = "2026-04-23T12:00:00Z"
 CHAT_CASES = (
     (CHAT_STOCK_CASE_ID, "AAPL", "What does this company do?"),
     (CHAT_ETF_CASE_ID, "VOO", "What does this fund hold?"),
 )
 ANALYSIS_TICKER = "QQQ"
-BLOCKED_REGRESSION_TICKERS = ("TQQQ", "ARKK", "BND", "GLD")
+BLOCKED_REGRESSION_TICKERS = ("TQQQ", "ARKK", "BND", "GLD", "BTC", "ZZZZ")
 KNOWN_MVP_SLICE_TICKERS = (
     "AAPL",
     "MSFT",
@@ -94,6 +101,7 @@ class SmokeCaseResult:
     cacheable: bool = False
     selected_item_count: int | None = None
     expected_minimum_item_count: int | None = None
+    threshold_status: str | None = None
     model_tier: str | None = None
     attempt_status: str | None = None
     latency_ms: int | None = None
@@ -125,6 +133,8 @@ class SmokeCaseResult:
             payload["selected_item_count"] = self.selected_item_count
         if self.expected_minimum_item_count is not None:
             payload["expected_minimum_item_count"] = self.expected_minimum_item_count
+        if self.threshold_status is not None:
+            payload["threshold_status"] = self.threshold_status
         if self.model_tier is not None:
             payload["model_tier"] = self.model_tier
         if self.attempt_status is not None:
@@ -354,16 +364,19 @@ def _run_analysis_case(
     transport_factory: TransportFactory,
 ) -> SmokeCaseResult:
     pack = build_asset_knowledge_pack(ANALYSIS_TICKER)
-    focus = select_weekly_news_focus(
-        pack.asset,
-        [
-            _analysis_candidate("official_filing", WeeklyNewsEventType.regulatory_event, "sec_8k", SourceQuality.official),
-            _analysis_candidate("issuer_update", WeeklyNewsEventType.sponsor_update, "issuer_press_release", SourceQuality.issuer),
-        ],
-        as_of="2026-04-23",
+    records = _analysis_weekly_news_records(candidate_count=2)
+    threshold = records.ai_thresholds[0]
+    focus = build_weekly_news_focus_from_pack(
+        pack,
+        as_of=ANALYSIS_AS_OF,
+        persisted_event_reader=_WeeklyNewsSmokeReader(records),
     )
-    if focus.selected_item_count < 2:
-        return _skipped(ANALYSIS_CASE_ID, "insufficient_approved_weekly_news_evidence", selected_item_count=focus.selected_item_count)
+    if focus.selected_item_count < threshold.minimum_weekly_news_item_count:
+        return _skipped(
+            ANALYSIS_CASE_ID,
+            "insufficient_approved_weekly_news_evidence",
+            selected_item_count=focus.selected_item_count,
+        )
 
     canonical_fact_citation_ids = ["c_fact_qqq_asset_identity"]
     analysis = build_ai_comprehensive_analysis(
@@ -371,6 +384,8 @@ def _run_analysis_case(
         focus,
         canonical_fact_citation_ids=canonical_fact_citation_ids,
         canonical_source_document_ids=["src_qqq_fact_sheet_fixture"],
+        approved_weekly_news_item_count=threshold.high_signal_selected_item_count,
+        high_signal_weekly_news_item_count=threshold.high_signal_selected_item_count,
     )
     validate_ai_comprehensive_analysis(analysis, focus)
     allowed_weekly_citations = sorted({citation_id for item in focus.items for citation_id in item.citation_ids})
@@ -505,11 +520,13 @@ def _run_analysis_case(
         cacheable=cache.cacheable,
         selected_item_count=focus.selected_item_count,
         expected_minimum_item_count=analysis.minimum_weekly_news_item_count,
+        threshold_status=threshold.analysis_state,
         attempt=attempt,
         model_tier=_tier(attempt.model_tier),
         live_call_attempted=True,
         validation_contract={
             "weekly_news_threshold_met": focus.selected_item_count >= analysis.minimum_weekly_news_item_count,
+            "weekly_news_repository_records_validated": True,
             "required_section_order": section_ids
             == ["what_changed_this_week", "market_context", "business_or_fund_context", "risk_context"],
             "weekly_news_citations_present": bool(set(section_citations) & set(allowed_weekly_citations)),
@@ -522,15 +539,20 @@ def _run_analysis_case(
 
 def _run_analysis_suppression_case(case_id: str, *, candidate_count: int) -> SmokeCaseResult:
     pack = build_asset_knowledge_pack(ANALYSIS_TICKER)
-    candidates = [
-        _analysis_candidate("single_item", WeeklyNewsEventType.methodology_change, "issuer_press_release", SourceQuality.issuer)
-    ][:candidate_count]
-    focus = select_weekly_news_focus(pack.asset, candidates, as_of="2026-04-23")
+    records = _analysis_weekly_news_records(candidate_count=candidate_count)
+    threshold = records.ai_thresholds[0]
+    focus = build_weekly_news_focus_from_pack(
+        pack,
+        as_of=ANALYSIS_AS_OF,
+        persisted_event_reader=_WeeklyNewsSmokeReader(records),
+    )
     analysis = build_ai_comprehensive_analysis(
         pack.asset,
         focus,
         canonical_fact_citation_ids=["c_fact_qqq_asset_identity"],
         canonical_source_document_ids=["src_qqq_fact_sheet_fixture"],
+        approved_weekly_news_item_count=threshold.high_signal_selected_item_count,
+        high_signal_weekly_news_item_count=threshold.high_signal_selected_item_count,
     )
     validate_ai_comprehensive_analysis(analysis, focus)
     expected_state = "empty" if candidate_count == 0 else "insufficient_evidence"
@@ -562,11 +584,13 @@ def _run_analysis_suppression_case(case_id: str, *, candidate_count: int) -> Smo
         cacheable=False,
         selected_item_count=focus.selected_item_count,
         expected_minimum_item_count=analysis.minimum_weekly_news_item_count,
+        threshold_status=threshold.analysis_state,
         live_call_attempted=False,
         validation_contract={
             "analysis_available": False,
             "sections_absent": True,
             "weekly_news_threshold_met": False,
+            "weekly_news_repository_records_validated": True,
             "generated_output_usable": False,
             "generated_output_cache_write": False,
             "stable_facts_separate": analysis.stable_facts_are_separate,
@@ -683,34 +707,77 @@ def _openrouter_transport_factory(env: Mapping[str, str]) -> TransportFactory:
     return factory
 
 
-def _analysis_candidate(
+@dataclass(frozen=True)
+class _WeeklyNewsSmokeReader:
+    records: WeeklyNewsEventEvidenceRepositoryRecords
+
+    def read_weekly_news_event_evidence_records(self, ticker: str) -> WeeklyNewsEventEvidenceRepositoryRecords | None:
+        return self.records if ticker.upper() == ANALYSIS_TICKER else None
+
+
+def _analysis_weekly_news_records(*, candidate_count: int) -> WeeklyNewsEventEvidenceRepositoryRecords:
+    candidates = [
+        _analysis_evidence_row(
+            "official_filing",
+            WeeklyNewsEventType.regulatory_event,
+            WeeklyNewsSourceRankTier.official_filing,
+            SourceQuality.official,
+        ),
+        _analysis_evidence_row(
+            "issuer_update",
+            WeeklyNewsEventType.sponsor_update,
+            WeeklyNewsSourceRankTier.etf_issuer_announcement,
+            SourceQuality.issuer,
+        ),
+    ][:candidate_count]
+    return acquire_weekly_news_event_evidence_from_fixtures(
+        asset_ticker=ANALYSIS_TICKER,
+        as_of=ANALYSIS_AS_OF,
+        created_at=ANALYSIS_CREATED_AT,
+        candidates=candidates,
+    )
+
+
+def _analysis_evidence_row(
     event_id: str,
     event_type: WeeklyNewsEventType,
-    source_type: str,
+    source_rank_tier: WeeklyNewsSourceRankTier,
     source_quality: SourceQuality,
-) -> WeeklyNewsCandidate:
-    return WeeklyNewsCandidate(
-        event_id=event_id,
+) -> WeeklyNewsEventCandidateRow:
+    citation_id = f"c_weekly_{ANALYSIS_TICKER.lower()}_{event_id}"
+    source_type = (
+        "sec_8k"
+        if source_rank_tier is WeeklyNewsSourceRankTier.official_filing
+        else "issuer_press_release"
+    )
+    return WeeklyNewsEventCandidateRow(
+        candidate_event_id=event_id,
+        window_id=f"wnf_window:{ANALYSIS_TICKER}:{ANALYSIS_AS_OF}",
         asset_ticker=ANALYSIS_TICKER,
-        event_type=event_type,
-        title=f"{event_type.value.replace('_', ' ').title()} fixture",
-        summary=f"Approved {event_type.value.replace('_', ' ')} metadata for {ANALYSIS_TICKER}.",
+        source_asset_ticker=ANALYSIS_TICKER,
+        event_type=event_type.value,
         event_date="2026-04-21",
         published_at="2026-04-21T12:00:00Z",
-        retrieved_at="2026-04-21T13:00:00Z",
+        retrieved_at=ANALYSIS_CREATED_AT,
+        period_bucket="current_week_to_date",
         source_document_id=f"src_{ANALYSIS_TICKER.lower()}_{event_id}",
         source_chunk_id=f"chk_{ANALYSIS_TICKER.lower()}_{event_id}",
+        citation_ids=[citation_id],
+        citation_asset_tickers={citation_id: ANALYSIS_TICKER},
         source_type=source_type,
-        source_rank=1 if source_quality is SourceQuality.official else 2,
-        source_title=f"{ANALYSIS_TICKER} {event_type.value.replace('_', ' ').title()}",
-        publisher="Approved official-source fixture",
-        url=f"local://weekly-news-smoke/{ANALYSIS_TICKER}/{event_id}",
-        source_quality=source_quality,
-        allowlist_status=SourceAllowlistStatus.allowed,
-        source_use_policy=SourceUsePolicy.summary_allowed,
-        freshness_state=FreshnessState.fresh,
+        source_rank=1,
+        source_rank_tier=source_rank_tier.value,
+        source_quality=source_quality.value,
+        allowlist_status=SourceAllowlistStatus.allowed.value,
+        source_use_policy=SourceUsePolicy.summary_allowed.value,
+        source_identity=f"local-weekly-news-smoke:{ANALYSIS_TICKER}:{event_id}",
         is_official=True,
-        supporting_text="Approved local smoke evidence metadata.",
+        freshness_state=FreshnessState.fresh.value,
+        evidence_state="supported",
+        importance_score=10,
+        duplicate_group_id=event_id,
+        title_checksum=f"sha256:title:{ANALYSIS_TICKER}:{event_id}",
+        evidence_checksum=f"sha256:evidence:{ANALYSIS_TICKER}:{event_id}",
     )
 
 
@@ -767,6 +834,7 @@ def _validated_case_result(
     cacheable: bool,
     selected_item_count: int | None = None,
     expected_minimum_item_count: int | None = None,
+    threshold_status: str | None = None,
     attempt: LlmGenerationAttemptMetadata,
     model_tier: str | None,
     live_call_attempted: bool,
@@ -789,6 +857,7 @@ def _validated_case_result(
             cacheable=True,
             selected_item_count=selected_item_count,
             expected_minimum_item_count=expected_minimum_item_count,
+            threshold_status=threshold_status,
             model_tier=model_tier,
             attempt_status=attempt.status.value,
             latency_ms=attempt.latency_ms,
@@ -815,6 +884,7 @@ def _validated_case_result(
         cacheable=cacheable,
         selected_item_count=selected_item_count,
         expected_minimum_item_count=expected_minimum_item_count,
+        threshold_status=threshold_status,
         model_tier=model_tier,
         attempt_status=attempt.status.value,
         latency_ms=attempt.latency_ms,
