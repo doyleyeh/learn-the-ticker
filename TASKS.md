@@ -1,24 +1,27 @@
 ## Current task
 
-### T-160: Add request-scope and short-TTL lightweight live fetch reuse
+### T-161: Wire lightweight fresh-data evidence into asset exports and source-list exports
 
 Goal:
-Reduce repeated SEC/Yahoo/provider work during one asset-page render and local smoke run by adding safe lightweight fetch reuse for overview, details, sources, chart, and search surfaces.
+When lightweight fresh data renders a supported local-MVP asset page, make asset-page and source-list Markdown/JSON exports use the same source-labeled evidence instead of falling back only to static generated packs.
 
 Task scope:
-Add narrowly scoped in-process reuse for the lightweight live-fetch path so repeated backend calls for the same ticker and compatible range can share normalized source-labeled results during one request or a short local TTL. Keep the reuse boundary server-side, deterministic-test friendly, source-policy aware, and easy to disable or bypass when live fetching is off. This task should improve the local personal-MVP fresh-data loop only; it must not broaden public-launch claims, add persistent caching, add production dependencies, or change the frontend v0.4 workflow.
+Add a narrow backend export path that can shape already-renderable lightweight fresh-data responses into asset-page and source-list export contracts for the local personal-MVP slice. The exports should reuse the same normalized facts, citations, source documents, freshness/as-of metadata, source-use policy labels, fallback diagnostics, and uncertainty states that render the lightweight asset page. Keep the work deterministic-test friendly and server-side; do not add live external calls to normal CI, do not add persistent generated-output cache promotion for lightweight rows, and do not change the frontend v0.4 workflow.
 
 Allowed files:
+- `backend/export.py`
+- `backend/lightweight_page.py`
 - `backend/lightweight_data_fetch.py`
-- `backend/provider_adapters.py`
-- `backend/search.py`
-- `backend/routes.py`
+- `backend/models.py`
+- `backend/main.py`
 - `backend/settings.py`
 - `tests/unit/test_lightweight_data_fetch.py`
-- `tests/unit/test_search_classification.py`
+- `tests/unit/test_exports.py`
 - `tests/unit/test_repo_contract.py`
 - `tests/integration/test_backend_api.py`
-- `scripts/run_lightweight_data_fetch_smoke.py`
+- `evals/run_static_evals.py`
+- `evals/export_eval_cases.yaml`
+- `scripts/run_local_fresh_data_slice_smoke.py`
 - `scripts/run_local_fresh_data_rehearsal.py`
 - Minimal adjacent backend helper files only if the existing fetch/search/route boundaries require them.
 
@@ -27,61 +30,49 @@ Do not change:
 - Do not add a home-page two-input comparison builder or promote glossary as a primary home workflow.
 - Do not change supported ETF generated-output authority away from `data/universes/us_equity_etfs_supported.current.json` or ETF/ETP recognition authority away from `data/universes/us_etp_recognition.current.json`.
 - Do not change Top-500 runtime support away from `data/universes/us_common_stocks_top500.current.json` in strict/audit-quality paths.
-- Do not persist raw provider payloads, restricted source text, transcripts, hidden prompts, model reasoning, DSNs, API keys, or secret values.
+- Do not persist raw provider payloads, restricted source text, transcripts, hidden prompts, raw model reasoning, DSNs, API keys, or secret values.
 - Do not introduce live provider, news, market-data, or LLM calls into normal CI or deterministic tests.
-- Do not approve sources, promote manifests, write generated-output cache records, or claim ETF-500, Top-500, Golden Asset Source Handoff, live-AI, production deployment, public-launch, or investment-advice readiness.
+- Do not approve sources, promote manifests, write generated-output cache records for lightweight fresh-data rows, or claim ETF-500, Top-500, Golden Asset Source Handoff, live-AI, production deployment, public-launch, or investment-advice readiness.
+- Do not change comparison exports, chat transcript exports, grounded chat generation, Weekly News Focus acquisition, AI Comprehensive Analysis generation, or durable repository behavior except where an existing export helper must stay shared.
 - Do not add production dependencies unless the task is explicitly stopped and replanned with dependency rationale.
 
 Acceptance criteria:
-- Reuse lightweight live-fetch results across backend page-building surfaces for the same ticker and compatible range within one request or a short local TTL.
-- The reuse key includes enough context to avoid mixing ticker, asset type, range, provider fallback mode, or data-policy mode.
-- Reused results preserve citation/source IDs, source labels, source-use policy, official-vs-provider/fallback labels, freshness/as-of metadata, retrieved-at metadata, fallback diagnostics, no-raw-payload guarantees, and explicit `partial`, `unknown`, `stale`, `unavailable`, or `insufficient_evidence` states.
-- Unsupported, out-of-scope, unknown, and blocked ETF/ETP rows remain blocked from generated pages, generated chat, generated comparisons, exports, Weekly News Focus, AI Comprehensive Analysis, and generated-output cache promotion.
-- The home page remains single stock/ETF search first, and clear `A vs B` search or chat patterns continue to route to `/compare` instead of producing multi-asset home or chat answers.
-- Stock-vs-ETF comparison behavior for `AAPL`/`VOO` keeps relationship badges and `single-company-vs-ETF-basket` structure.
-- Normal CI stays deterministic with `LIGHTWEIGHT_LIVE_FETCH_ENABLED=false` by default and uses fixtures/mocks rather than live network.
-- Deterministic tests prove reuse behavior without live external calls, including cache hit/miss, TTL expiry or bypass, source metadata preservation, and unavailable/partial result handling.
-- The optional live smoke reports enough timing or reuse diagnostics to show whether local `/assets/VOO` rendering and fresh-data smoke avoid repeated work, without suppressing source-use or citation validation failures.
-- No raw provider payloads, restricted source text, hidden/internal diagnostics, transcripts, model reasoning, DSNs, or secret values are logged, returned, cached, exported, or committed.
+- `GET /api/assets/{ticker}/export` returns an available asset-page export for renderable lightweight fresh-data rows such as `AAPL` and `VOO` when the lightweight backend path can render the asset page from normalized evidence.
+- `GET /api/assets/{ticker}/sources/export` returns an available source-list export for the same renderable lightweight fresh-data rows, using the source metadata that backs the lightweight asset page.
+- Lightweight asset exports include citation IDs, same-asset citation bindings, source metadata, source-use policy, freshness/as-of dates, retrieved-at metadata, official-vs-provider/fallback labels, fallback diagnostics where useful, uncertainty labels, educational disclaimer, and no-advice framing.
+- Lightweight source-list exports include allowed source titles, publishers/providers, URLs when available, source types, official-source flags, source-use policy, allowlist/review status, freshness/as-of or explicit unknown/unavailable labels, retrieved timestamps, and allowed excerpts or excerpt metadata only where policy permits.
+- Markdown and JSON export formats both preserve the same export contract shape, export validation schema, binding scope, source/citation counts, and no-raw-output diagnostics.
+- Exports omit raw provider payloads, hidden/internal diagnostics, hidden prompts, raw model reasoning, unrestricted source text, transcripts, DSNs, API keys, secret values, and paid/restricted content without documented rights.
+- Blocked, unsupported, out-of-scope, and unknown tickers such as `TQQQ`, `ARKK`, `BND`, `GLD`, `BTC`, and `ZZZZ` remain unsupported, unavailable, or empty factual-evidence exports and do not unlock generated pages, chat, comparisons, Weekly News Focus, AI Comprehensive Analysis, or generated-output cache promotion.
+- Static generated-pack exports for currently cached supported assets continue to work and keep their existing source/citation validation behavior.
+- Lightweight export fallback does not write generated-output cache records, approve sources, promote manifests, or convert retrieval into strict/audit-quality evidence.
+- Normal CI remains deterministic with `LIGHTWEIGHT_LIVE_FETCH_ENABLED=false` by default and uses fixtures/mocks rather than live network.
+- The local fresh-data slice smoke and rehearsal report the updated export availability for lightweight renderable rows and keep unavailable/empty export states for blocked and non-generated rows.
+- The home page remains single stock/ETF search first; comparison stays separate and connected through `/compare`, asset CTAs, suggestions, chat redirects, and clear `A vs B` redirects.
+- Glossary remains contextual; source drawer, glossary, and asset chat mobile behavior are not redesigned by this task.
+- Stock-vs-ETF comparison behavior for `AAPL`/`VOO` keeps relationship badges and the `single-company-vs-ETF-basket` structure.
+- Weekly News Focus and AI Comprehensive Analysis remain separated from stable facts; Weekly News Focus still shows the configured maximum only when evidence supports it, with smaller or empty states allowed.
+- Important factual claims in exports are cited or labeled `partial`, `unknown`, `stale`, `unavailable`, or `insufficient_evidence`, and all copy remains educational rather than investment advice.
 
 Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py tests/unit/test_repo_contract.py -q`
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_safety_guardrails.py -q`
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_exports.py tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py -q`
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q`
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_slice_smoke.py --json`
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
+- `TMPDIR=/tmp python3 evals/run_static_evals.py`
 - `npm test`
 - `npm run typecheck`
 - `npm run build`
-- `TMPDIR=/tmp python3 scripts/run_lightweight_data_fetch_smoke.py --live --json`
-- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
 - `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
 - `git diff --check`
 
 Iteration budget:
-- One agent-loop cycle. If reuse requires durable persistence, database schema work, generated-output cache promotion, frontend redesign, new production dependencies, or live-AI/provider orchestration beyond the existing lightweight fetch path, stop after documenting the blocker and leave that broader work to the prepared backlog.
+- One agent-loop cycle. If export parity requires durable persistence, database schema work, generated-output cache promotion, frontend redesign, new production dependencies, live provider orchestration beyond the existing deterministic lightweight fetch boundary, or broad export-model refactors, stop after documenting the blocker and leave that broader work to the backlog.
 
 Remaining risk to report:
-- This task may reduce repeated local lightweight fetch work, but it does not prove broad provider reliability, ETF-500 completion, Top-500 completion, source-pack approval, Golden Asset Source Handoff approval, durable persistence, exports, generated-output cache promotion, live-AI readiness, production deployment readiness, or public-launch readiness.
+- This task may make lightweight fresh-data rows exportable for the local MVP slice, but it does not prove broad provider reliability, ETF-500 completion, Top-500 completion, source-pack approval, Golden Asset Source Handoff approval, durable persistence, generated-output cache promotion, live-AI readiness, production deployment readiness, public-launch readiness, or investment-advice readiness.
 
 ## Backlog
-
-### T-161: Wire lightweight fresh-data evidence into asset exports and source-list exports
-
-Goal:
-When lightweight fresh data renders a supported local-MVP asset page, make asset-page and source-list Markdown/JSON exports use the same source-labeled evidence instead of falling back only to static generated packs.
-
-Acceptance criteria:
-- `GET /api/assets/{ticker}/export` and `GET /api/assets/{ticker}/sources/export` return available exports for renderable lightweight fresh-data rows such as `AAPL` and `VOO`.
-- Exports include citation IDs, source metadata, source-use policy, freshness/as-of dates, uncertainty labels, educational disclaimer, and no-advice framing.
-- Exports omit raw provider payloads, hidden prompts, raw model reasoning, unrestricted source text, transcripts, and secrets.
-- Blocked tickers such as `TQQQ`, `ARKK`, `BND`, and `GLD` remain unsupported/unavailable with empty factual evidence exports.
-- Static generated-pack exports continue to work.
-
-Required checks:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_exports.py tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py -q`
-- `npm test`
-- `npm run typecheck`
-- `npm run build`
-- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
 
 ### T-162: Build lightweight knowledge packs for fresh-data-backed grounded chat
 
@@ -177,6 +168,38 @@ Required checks:
 - `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
 
 ## Completed
+
+### T-160: Add request-scope and short-TTL lightweight live fetch reuse
+
+Goal:
+Reduce repeated SEC/Yahoo/provider work during one asset-page render and local smoke run by adding safe lightweight fetch reuse for overview, details, sources, chart, and search surfaces.
+
+Completion details:
+- Implementation commit: `5c6f235 feat(T-160): add request-scope and short-TTL lightweight live fetch reuse`
+- Local merge commit: `ca37511 chore(T-160): merge request-scope and short-TTL lightweight live fetch reuse` from branch `agent/T-160-20260506T025117Z`
+- Added an in-process lightweight fetch reuse cache in `backend/lightweight_data_fetch.py` with `_LightweightFetchReuseKey`, `_LightweightFetchReuseEntry`, `clear_lightweight_fetch_reuse_cache()`, a `bypass_reuse` option on `fetch_lightweight_asset_data()`, and hit/miss/bypass diagnostics under `lightweight_fetch_reuse`.
+- The reuse key includes ticker, chart range, asset-type hint, data-policy mode, live-fetch flag, provider-fallback flag, redacted SEC user-agent, fetch timeout, and fetcher boundary so stock/ETF/range/settings/fetcher contexts do not mix.
+- Cache writes store a deep copied `LightweightFetchResponse`; reused responses preserve citations, source records, source labels, source-use policy, official/provider/fallback labels, freshness/as-of metadata, retrieved-at metadata, fallback diagnostics, explicit partial/unavailable states, and `raw_payload_exposed=false`.
+- `backend/settings.py` added `DEFAULT_LIGHTWEIGHT_FETCH_REUSE_TTL_SECONDS=30`, `fetch_reuse_ttl_seconds`, `fetch_reuse_enabled`, safe diagnostics, and env parsing for `LIGHTWEIGHT_FETCH_REUSE_TTL_SECONDS` / `LTT_LIGHTWEIGHT_FETCH_REUSE_TTL_SECONDS`, with `0` disabling reuse.
+- `scripts/run_lightweight_data_fetch_smoke.py` now clears the reuse cache, fetches the smoke tickers twice, and reports `lightweight-fetch-reuse-smoke-v1` diagnostics with first-fetch miss count, repeat-fetch hit count, stable payload checksums, and no raw payload exposure.
+- `tests/unit/test_lightweight_data_fetch.py` added deterministic coverage for same-ticker/same-range reuse, different-range misses, explicit bypass, TTL expiry, and partial provider-fallback reuse without live external calls.
+- `tests/integration/test_backend_api.py` clears reuse state and proves search, overview, chart, details, and sources can share the same lightweight fetcher work for `SPY` while blocked products remain blocked and do not expose raw payloads.
+- `docs/agent-journal/20260506T025117Z.md` records changed files, deterministic pass status, optional live-smoke blockage for `AAPL`, reuse diagnostics, and remaining risks.
+
+Required commands executed in this task branch:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py tests/unit/test_repo_contract.py -q` - pass, 90 passed
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_safety_guardrails.py -q` - pass, 31 passed
+- `npm test` - pass
+- `npm run typecheck` - pass
+- `npm run build` - pass
+- `TMPDIR=/tmp python3 scripts/run_lightweight_data_fetch_smoke.py --live --json` - blocked/fail because `AAPL` live fetch returned `fetch_state=unavailable`; `VOO` was renderable. Reuse diagnostics still reported two first-fetch misses, two repeat-fetch hits, stable checksums, and no raw payload exposure.
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` - pass
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass, including 505 Python tests, static evals, frontend smoke, typecheck, build, and backend checks
+- `git diff --check` - pass
+
+Remaining risks:
+- The short-TTL reuse is in-process only and does not prove durable persistence, generated-output cache promotion, broad provider reliability, ETF-500 completion, Top-500 completion, source-pack approval, Golden Asset Source Handoff approval, live-AI readiness, production deployment readiness, public-launch readiness, or investment-advice readiness.
+- Operator-only live smoke should be rerun in an environment with reliable SEC/Yahoo access to confirm `AAPL` live rendering.
 
 ### T-159: Fix live local browser/API smoke blockers for the fresh-data MVP slice
 
