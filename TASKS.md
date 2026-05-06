@@ -4,7 +4,7 @@ No current task is prepared. The backlog is empty.
 
 ## Backlog
 
-No backlog task is currently prepared.
+No backlog tasks are currently prepared.
 
 ## Completed
 
