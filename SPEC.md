@@ -11,7 +11,7 @@ A successful answer or asset page helps the user understand:
 - why people may study it
 - the top risks
 - how it compares with another supported asset when the user enters the separate comparison workflow
-- what changed in Weekly News Focus
+- what changed in the reusable Market News Focus and ticker-specific Weekly News Focus
 - which sources support important claims
 - which beginner terms are worth learning next
 
@@ -43,7 +43,7 @@ MVP product scope:
 - stock and ETF asset pages with Beginner section first and Deep-Dive section available
 - separate connected comparison workflow for supported stock-vs-stock, ETF-vs-ETF, and stock-vs-ETF pairs
 - stock-vs-ETF comparison relationship badges and a special single-company-vs-ETF-basket structure
-- Weekly News Focus and AI Comprehensive Analysis as separated timely context
+- reusable Market News Focus plus ticker-specific Weekly News Focus and AI Comprehensive Analysis as separated timely context
 - limited asset-specific grounded chat beta
 - contextual glossary with curated core terms, desktop popovers, mobile bottom sheets, and grounded asset-specific context where supported
 - Markdown/JSON export/download for asset pages, comparison output, source lists, and chat transcripts
@@ -92,11 +92,12 @@ Provider hierarchy for MVP planning:
 - stock canonical facts: SEC EDGAR submissions, SEC XBRL company facts, SEC filings, then company investor relations
 - ETF canonical facts: issuer pages, fact sheets, prospectuses, shareholder reports, holdings files, and exposure files
 - structured enrichment: free-first reference data and optional provider adapters only where licensing, rate limits, caching, display, and export rights allow
-- Weekly News Focus: official filings, investor-relations releases, issuer announcements, prospectus changes, fact-sheet changes, then approved reputable third-party/news sources where rights permit
+- Market News Focus: approved reputable news/RSS/provider metadata sources where rights permit, normalized into reusable market-wide story clusters
+- ticker Weekly News Focus: official filings, investor-relations releases, issuer announcements, prospectus changes, fact-sheet changes, then approved reputable third-party/news sources where rights permit
 
-Weekly News Focus must use the last completed Monday-Sunday market week plus current week-to-date through yesterday, using U.S. Eastern dates. It should show the configured maximum only when enough quality evidence exists, fewer items when evidence is limited, and a clear empty state when no major Weekly News Focus items exist.
+Market News Focus and Weekly News Focus must use the last completed Monday-Sunday market week plus current week-to-date through yesterday, using U.S. Eastern dates. Market News Focus selects up to 20 approved market-wide story clusters, can be reused across supported ticker pages, and should show fewer items or a clear empty state when evidence is limited. Ticker Weekly News Focus keeps its official-first max-8 asset event workflow.
 
-AI Comprehensive Analysis must be suppressed unless at least two approved Weekly News Focus items exist. Approved reputable third-party items may count when source governance permits them and they are clearly labeled as third-party reporting. When present, the analysis starts with What Changed This Week, then Market Context, Business/Fund Context, and Risk Context. It must cite underlying Weekly News Focus items and canonical facts.
+Ticker-specific AI Comprehensive Analysis must be suppressed unless at least two approved Weekly News Focus items exist. Approved reputable third-party items may count when source governance permits them and they are clearly labeled as third-party reporting. When present, the analysis starts with What Changed This Week, then Market Context, Business/Fund Context, and Risk Context. Market AI analysis must be suppressed unless enough approved market clusters exist across multiple topic buckets; when present, it uses thematic lenses including Scenario Lens and Practical Watchpoints, cites selected market news clusters, and avoids predictive or recommendation language.
 
 Source-use policy wins over scoring. Rejected or rights-disallowed sources must not display, summarize, cache, or export. Raw source text storage is rights-tiered across `full_text_allowed`, `summary_allowed`, `metadata_only`, `link_only`, and `rejected`.
 
@@ -111,7 +112,7 @@ ETF strict/audit-quality coverage remains manifest-owned. The implemented v0.5 r
 The product must:
 
 - use source-backed facts before model-written explanations
-- separate stable canonical facts from Weekly News Focus and AI Comprehensive Analysis
+- separate stable canonical facts from Market News Focus, Weekly News Focus, and AI Comprehensive Analysis
 - show visible citations for important factual claims
 - show freshness or as-of information at page and section level
 - say unknown, stale, mixed evidence, unavailable, partial, or insufficient evidence when needed
@@ -132,7 +133,7 @@ The product must not:
 - provide tax advice
 - provide unsupported price targets
 - provide brokerage or trading execution behavior
-- present recent news as stable asset identity
+- present market-wide or ticker-specific recent news as stable asset identity
 - invent facts when evidence is missing
 - present unsupported claims as facts
 - expose provider or LLM secrets to browser code, docs, logs, `/health`, or committed env files
@@ -180,7 +181,8 @@ MVP is ready when:
 - ETF pages cover role, holdings/exposure, construction, cost/trading context, risks, comparison/overlap, Weekly News Focus, AI Comprehensive Analysis, and educational suitability
 - partial pages render verified sections only and label missing evidence
 - top risks show exactly three items first
-- Weekly News Focus and AI Comprehensive Analysis are visually and structurally separate from stable facts
+- Market News Focus, Weekly News Focus, and AI Comprehensive Analysis are visually and structurally separate from stable facts and from each other
+- Market News Focus appears above ticker-specific Weekly News Focus on supported asset pages and is reusable across tickers
 - Weekly News Focus includes source date or as-of date, event date where available, retrieved date, citation/source link, source quality, source-use policy, and freshness state
 - key factual claims have visible citations or explicit uncertainty/unavailable labels
 - source drawer shows source metadata, freshness, source-use policy, related claims, and allowed supporting excerpts

@@ -41,7 +41,7 @@ Verify:
 - source drawer supports desktop drawer behavior and mobile bottom-sheet behavior
 - freshness, stale, unknown, unavailable, partial, and insufficient-evidence states are visible where relevant
 - beginner copy avoids buy/sell/hold, allocation, price-target, tax, and brokerage language
-- Weekly News Focus and AI Comprehensive Analysis remain visually separate from stable facts
+- Market News Focus, ticker-specific Weekly News Focus, and AI Comprehensive Analysis remain visually separate from stable facts and from each other
 - contextual glossary supports desktop hover/click/focus popovers and mobile tap bottom-sheet behavior
 - asset-specific chat remains a helper feature and supports mobile bottom-sheet or full-screen behavior
 - frontend chat, export, and comparison calls use the configured backend API base or a documented Next `/api` proxy instead of silently relying on missing Next API routes
@@ -98,7 +98,7 @@ Verify:
 
 ### Weekly News Focus And Source-Use Tasks
 
-Use for market-week window logic, recent events, source allowlists, Golden Asset Source Handoff, source-use policies, raw text policy, news/event scoring, and AI Comprehensive Analysis inputs.
+Use for market-week window logic, reusable Market News Focus, ticker-specific recent events, source allowlists, Golden Asset Source Handoff, source-use policies, raw text policy, news/event scoring, and AI Comprehensive Analysis inputs.
 
 Required checks:
 
@@ -114,16 +114,23 @@ Verify:
 - evidence use requires approved domain/source identity, source type, official-source status, storage rights, export rights, source-use policy, rationale, parser status, freshness/as-of metadata, and review status
 - unapproved, not-allowlisted, unclear-rights, parser-invalid, hidden/internal, pending-review, rejected, duplicate, promotional, irrelevant, and rights-disallowed sources cannot feed evidence storage, generation, citation, cache, export, Weekly News Focus, or AI Comprehensive Analysis
 - Weekly News Focus uses the last completed Monday-Sunday market week plus current week-to-date through yesterday in U.S. Eastern dates
+- Market News Focus uses the same market-week window, selects up to 20 approved story clusters, preserves topic bucket metadata, and never pads weak evidence to hit 20
+- Market News Focus and AI Comprehensive Analysis: Market News Focus are reusable across supported ticker pages without regenerating per ticker
 - official filings, investor-relations releases, issuer announcements, prospectus updates, and fact-sheet changes rank before approved reputable third-party/news sources
 - Weekly News Focus shows the configured maximum only when evidence supports it, otherwise a smaller verified set or empty state
+- ticker-specific Weekly News Focus keeps the existing max-8 official-first behavior and explicit `Weekly News Focus: {TICKER}` label
 - source-use policy values cover `metadata_only`, `link_only`, `summary_allowed`, `full_text_allowed`, and `rejected`
 - source-use policy wins over score
 - AI Comprehensive Analysis is suppressed unless at least two approved Weekly News Focus items exist; approved reputable third-party items may count when labeled and source-governed
+- AI Comprehensive Analysis: Market News Focus is suppressed unless at least five approved market items across at least three topic buckets exist
 - generated analysis cites selected Weekly News Focus items and canonical facts only
+- Market AI analysis cites selected market story clusters only, uses thematic lenses instead of named personas, and treats Scenario Lens as conditional education rather than prediction
 - yfinance/Yahoo-style news lists are treated as a fallback metadata structure only, not broad production ingestion or canonical fact evidence
 - local Weekly News source rows expose headline/title, publisher, URL, published time, retrieved time, ticker match, event type, source label, source-use policy, and optional bounded summary/snippet only
-- raw article bodies, unrestricted thumbnails/media, provider payloads, trade UX, recommendation copy, secrets, and generated-output cache promotion are absent from local Weekly News output
+- Market News and local Weekly News source rows expose headline/title, publisher, URL, published time, retrieved time, topic/ticker match, source label, source-use policy, cluster/audit metadata, and optional bounded summary/snippet only
+- raw article bodies, unrestricted thumbnails/media, provider payloads, trade UX, recommendation copy, secrets, and generated-output cache promotion are absent from Market News and local Weekly News output
 - `LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED` is off by default, and operator-only live checks remain skipped or mock-backed unless explicitly enabled
+- `MARKET_NEWS_FETCH_ENABLED` and market-news live smoke opt-ins are off by default; RSS/GDELT/keyed provider/yfinance adapters are mocked or skipped in normal CI
 
 ### Ingestion, Provider, Caching, And Freshness Tasks
 

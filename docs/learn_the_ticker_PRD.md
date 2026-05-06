@@ -20,7 +20,7 @@ A user can search one ticker or asset name such as `VOO`, `QQQ`, `Apple`, or `AA
 - why people consider it
 - the top risks
 - how it compares with similar assets
-- what changed in Weekly News Focus
+- what changed in the reusable Market News Focus and the ticker-specific Weekly News Focus
 - which sources support important factual claims
 - which terms a beginner should learn next
 
@@ -75,7 +75,7 @@ The intended product behavior is now:
 | Unsupported assets       | Block clearly out-of-scope, unsupported complex wrappers, unsafe, and unknown assets from generated pages, chat, and comparisons. For recognized in-scope stocks and ETFs with incomplete evidence, render partial or fallback states instead of blocking the whole page. |
 | Market/reference data    | Use a free-first approach: SEC EDGAR/XBRL, official issuer materials, free/reference metadata where available, provider adapters, deterministic mocks, and fixtures for tests. Reputable third-party/provider fallback, including Yahoo Finance/yfinance-derived data, may support personal-project display when labeled clearly and kept server-side. Paid providers remain adapter-gated and secret-safe. |
 | Golden Asset Source Handoff | Treat source handoff as an optional audit-quality/public-launch hardening layer. For personal-project display, a fetched API payload, endpoint, issuer page, filing URL, or provider record may support output when source provenance, freshness, official-vs-third-party label, rights-safe output limits, and uncertainty/fallback states are preserved. |
-| Weekly News Focus and analysis | Use a fixed Monday-Sunday market-week model plus current week-to-date through yesterday, based on U.S. Eastern dates. Use official filings, company investor relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes first, then broaden coverage with reputable third-party/news sources when official sources are sparse. Clearly label source type and official-vs-third-party status. AI Comprehensive Analysis starts with What Changed This Week and then Market Context, Business/Fund Context, and Risk Context, and should render only when enough source-backed evidence exists; otherwise show a partial or insufficient-evidence state. |
+| Market News Focus, Weekly News Focus, and analysis | Use a fixed Monday-Sunday market-week model plus current week-to-date through yesterday, based on U.S. Eastern dates. Market News Focus is a reusable, market-wide timely context pack shared across supported ticker pages; ticker-specific Weekly News Focus remains asset-bound and official-first. Use official filings, company investor relations releases, ETF issuer announcements, prospectus updates, fact-sheet changes, approved reputable news/RSS providers, and rights-safe provider metadata according to each section's source hierarchy. Clearly label market-wide versus ticker-specific scope, source type, official-vs-third-party status, source-use policy, and freshness. AI analysis renders only when enough source-backed evidence exists; otherwise show a partial or insufficient-evidence state. |
 | Grounded chat timing     | Include asset-specific grounded chat in MVP as a beta feature. Local testing should exercise live AI chat fully so the operator can review quality. Public v1 keeps chat beta-limited, asset-bounded, citation-aware, and not a general finance chatbot.                                                                                                                                                                                                                                                                                                 |
 | Citation strictness      | Require citations for important factual claims, not every sentence. Generic educational explanations do not require citations unless they include asset-specific facts.                                                                                                                                                                                                                                       |
 | Frontend workflow        | The home page is single-asset search first. Comparison lives on `/compare` and is reachable from global navigation, asset pages, suggested comparisons, chat compare redirects, and natural `A vs B` search patterns. Glossary is contextual help in reading flows, not a primary home-page workflow for MVP. |
@@ -96,6 +96,14 @@ The intended product behavior is now:
 Weekly News in the local MVP may use Yahoo Finance/yfinance-style news metadata as a fallback list structure, but that structure is not the product goal. Learn the Ticker's product goal is a source-governed Weekly News Focus plus AI Comprehensive Analysis and grounded chat that help beginners understand how timely items relate to the selected ticker without turning recent news into canonical asset identity.
 
 The local MVP source shape is limited to headline/title, publisher, URL, published time, retrieved time, ticker match, event type, source label, source-use policy, and optional bounded summary/snippet. It explicitly excludes raw article bodies, unrestricted thumbnails/media, trade UX, recommendation headlines as generated advice, production recurring ingestion, and normal-CI live news calls.
+
+### 2.0.2 Market News Focus split
+
+Supported asset pages include a reusable **Market News Focus** before ticker-specific news. Market News Focus explains broad U.S./global finance context that may affect the whole market, not the identity or merits of one asset. The same validated market pack can be reused across ticker pages until its freshness hash changes, so the system does not regenerate the same market-wide content for every ticker.
+
+Market News Focus selects up to 20 approved story clusters across macro/Fed, equity markets/earnings, AI/technology/semiconductors, geopolitics/energy/supply chain, and credit/liquidity/sentiment. It may show fewer than 20 items or an empty state when evidence is thin. It must not pad weak, duplicate, promotional, unapproved, rights-disallowed, or source-ambiguous items.
+
+Ticker-specific sections use explicit labels: **Weekly News Focus: {TICKER}** and **AI Comprehensive Analysis: {TICKER}**. They preserve the existing ticker-specific max-8, official-first event workflow and analysis sections. Market-wide news must never unlock or redefine generated output for unsupported assets.
 
 ### 2.1 Deployment and provider constraints
 
@@ -785,18 +793,18 @@ Acceptance criteria:
 
 Stock-vs-ETF comparison must not look like a normal peer comparison. It must clearly explain that a stock is one company while an ETF is a basket, and it should answer: "Am I looking at one company or a basket, and how does that change the kind of risk and exposure I am learning about?"
 
-### 11.7 Weekly News Focus and AI Comprehensive Analysis
+### 11.7 Market News Focus, Weekly News Focus, and AI Comprehensive Analysis
 
-Every asset page includes a clearly labeled Weekly News Focus module with two parts:
+Every supported asset page includes two clearly scoped timely-context modules:
 
-1. **Weekly News Focus**
-2. **AI Comprehensive Analysis**
+1. **Market News Focus** with **AI Comprehensive Analysis: Market News Focus**
+2. **Weekly News Focus: {TICKER}** with **AI Comprehensive Analysis: {TICKER}**
 
-This section provides timely context but remains separate from stable asset facts. It is asset-specific, not a separate market brief page.
+Market News Focus is reusable across supported ticker pages and covers broad U.S./global finance context. Ticker-specific Weekly News Focus remains asset-bound and official-first. Both modules stay visually, structurally, and citation-wise separate from stable asset facts.
 
 | ID   | Requirement                                                                                                                            | Priority |
 | ---- | -------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| RD-1  | Asset page includes a clearly labeled Weekly News Focus and AI Comprehensive Analysis section.                                       | P0       |
+| RD-1  | Asset page includes clearly labeled Market News Focus, Weekly News Focus: {TICKER}, AI Comprehensive Analysis: Market News Focus, and AI Comprehensive Analysis: {TICKER} sections. | P0       |
 | RD-2  | Weekly News Focus uses the last completed Monday-Sunday market week plus current week-to-date through yesterday, using U.S. Eastern dates. | P0       |
 | RD-3  | Weekly News Focus shows the configured maximum only when enough high-quality evidence exists; fewer than 5 items or an empty state is valid when evidence is thin. | P0       |
 | RD-4  | Stock events may include earnings, guidance, major product announcements, M&A, leadership changes, legal events, or regulatory events. | P0       |
@@ -815,18 +823,25 @@ This section provides timely context but remains separate from stable asset fact
 | RD-17 | AI Comprehensive Analysis appears directly after Weekly News Focus and is suppressed unless the backend returns sufficient evidence. | P0       |
 | RD-18 | Reputable third-party/news items are allowed when approved, but the UI labels them as third-party reporting and shows publisher, URL, published date, retrieved date, source type, event classification, and citation link. | P0       |
 | RD-19 | Full third-party article text is not displayed, exported, or stored as public evidence unless the source policy explicitly permits full text use. | P0       |
+| RD-20 | Market News Focus selects up to 20 approved market-wide story clusters and never pads weak evidence to hit 20. | P0 |
+| RD-21 | Market News Focus balances macro/Fed, equity markets/earnings, AI/technology/semiconductors, geopolitics/energy/supply chain, and credit/liquidity/sentiment where evidence supports it. | P0 |
+| RD-22 | Market AI analysis uses thematic lenses, not named analyst personas: What Changed This Week, Macro & Policy, Equity Market Drivers, AI / Technology / Semiconductors, Geopolitical & Energy Risks, Credit / Liquidity / Sentiment, Scenario Lens, and Practical Watchpoints. | P0 |
+| RD-23 | Scenario Lens is conditional and educational only; it must not predict returns or tell users to buy, sell, hold, allocate, trade, or rely on a price target. | P0 |
+| RD-24 | Market News Focus live adapters are server-side, opt-in, key-safe, mock-backed in CI, and limited to rights-safe metadata/snippets/links unless reviewed rights permit more. | P0 |
 
 Acceptance criteria:
 
-- Weekly News Focus and AI Comprehensive Analysis are visually separate from the beginner summary.
+- Market News Focus, ticker-specific Weekly News Focus, and both AI analysis sections are visually separate from the beginner summary and from each other.
 - Each Weekly News Focus item has at least one citation or source link.
+- Each Market News Focus item has at least one citation or source link.
 - AI analysis factual claims have citations or uncertainty labels.
-- The AI analysis labels are educational UI labels, not claims that the system is a real advisor or person.
+- The AI analysis labels are educational UI labels, not claims that the system is a real advisor, person, or independent source.
 - Weekly News Focus items come from official sources first, then reputable third-party/news sources with source labels and rights-safe metadata, summary, storage, display, and export behavior.
+- Market News Focus items come from approved reputable news/RSS/provider metadata sources according to source-use policy and critical-claim corroboration rules.
 - Third-party/news items are clearly labeled as non-official reporting in the section and source drawer.
 - Low-quality, duplicate, promotional, irrelevant, unapproved, and rights-disallowed news is excluded.
 - The section can say "No major Weekly News Focus items found for this window" when appropriate, and this is normal for many broad ETFs.
-- Weekly News Focus appears as timely context after stable facts, not above or inside the canonical asset basics.
+- Market News Focus appears before ticker-specific Weekly News Focus, and both appear as timely context after stable facts, not above or inside the canonical asset basics.
 
 ### 11.8 Asset-specific grounded chat beta
 
@@ -1344,16 +1359,17 @@ Provider-selection requirements:
 - Must have documented rate limits and reliable API behavior.
 - Must allow attribution/source labeling where required.
 
-### 13.4 Recommended Weekly News Focus and analysis stack
+### 13.4 Recommended Market News Focus, Weekly News Focus, and analysis stack
 
 Recommended MVP stack:
 
-1. **Official first:** SEC filings, company IR releases, ETF issuer announcements, prospectus updates, fact-sheet updates, and sponsor notices.
-2. **Reputable third-party/news sources:** curated or source-labeled sources with source metadata, dates, categories, ticker/entity matching, published timestamps, official-vs-third-party labels, and source-use rights when known. These sources broaden coverage but must not be presented as official.
-3. **Weekly News Focus selection:** deduplicate, score, and select up to the configured maximum for the selected asset's Weekly News Focus pack; show fewer items or an empty state when evidence is thin.
-4. **Rights-gated full text:** reputable news reputation does not automatically approve full article text. Full text storage, display, or export requires `full_text_allowed` or explicit reviewed rights.
-5. **Limited or rejected by default:** unrecognized or low-quality sources should not support raw text or confident Weekly News Focus claims until reviewed; metadata/link-only fallback may be used when clearly labeled and rights-safe.
-6. **Paid future option:** ticker-tagged news APIs or premium news providers may be added later when budget and licensing justify them.
+1. **Ticker official first:** SEC filings, company IR releases, ETF issuer announcements, prospectus updates, fact-sheet updates, and sponsor notices remain first for **Weekly News Focus: {TICKER}**.
+2. **Market-wide reputable sources:** RSS/Google News RSS, GDELT, Marketaux, Alpha Vantage News Sentiment, Finnhub, Guardian, GNews, Mediastack, NewsAPI, and yfinance-style fallback may collect broad market candidates only through server-side adapters. Keyed providers are optional and disabled unless configured.
+3. **Reputable third-party/news sources:** curated or source-labeled sources with source metadata, dates, categories, ticker/entity matching, published timestamps, official-vs-third-party labels, and source-use rights when known. These sources broaden coverage but must not be presented as official.
+4. **Market News Focus selection:** normalize candidates, dedupe into story clusters, rank clusters, enforce topic diversity where evidence supports it, and select up to 20 approved market-wide items.
+5. **Ticker Weekly News Focus selection:** deduplicate, score, and select up to the configured maximum for the selected asset's Weekly News Focus pack; show fewer items or an empty state when evidence is thin.
+6. **Rights-gated full text:** reputable news reputation does not automatically approve full article text. Full text storage, display, or export requires `full_text_allowed` or explicit reviewed rights.
+7. **Limited or rejected by default:** unrecognized or low-quality sources should not support raw text or confident Market News Focus or Weekly News Focus claims until reviewed; metadata/link-only fallback may be used when clearly labeled and rights-safe.
 
 Source-use categories:
 
@@ -1386,9 +1402,9 @@ Operational source rule:
 - Allow beginner summaries of reputable third-party/news items, but avoid reproducing full article text unless the source policy permits full text.
 - Mark missing, unclear, hidden/internal, parser-invalid, or low-confidence sources as `pending_review`, `partial`, `unavailable`, or fallback instead of blocking the whole asset.
 
-Weekly News Focus items should be filtered for:
+Market News Focus and Weekly News Focus items should be filtered for:
 
-- relevance to the asset
+- relevance to market-wide finance context or the selected asset, depending on section scope
 - source quality
 - event importance
 - recency
@@ -1396,6 +1412,16 @@ Weekly News Focus items should be filtered for:
 - non-promotional tone
 - allowlist status
 - source-use rights
+
+Market News Focus topic buckets:
+
+- `macro_fed`
+- `markets_earnings`
+- `ai_technology_semiconductors`
+- `geopolitics_energy_supply_chain`
+- `credit_liquidity_sentiment`
+
+Market News Focus critical claims about Fed policy, war, sanctions, or market-moving events require either Reuters/AP/Bloomberg/Wall Street Journal/Financial Times-level source priority or corroboration from at least two approved Tier-1 sources in the same cluster.
 
 Weekly News Focus scoring defaults:
 
@@ -1423,6 +1449,8 @@ Thresholds:
 - Source-use policy wins over score: rejected or rights-disallowed sources never display, regardless of `importance_score`.
 
 AI Comprehensive Analysis should be generated only from the selected asset's Weekly News Focus pack and cited canonical facts. It requires at least two approved Weekly News Focus items, starts with What Changed This Week, then uses Market Context, Business/Fund Context, and Risk Context. It should not introduce uncited market predictions or recommendation language.
+
+AI Comprehensive Analysis for Market News Focus should be generated only from selected market story clusters. It requires at least five approved market items across at least three topic buckets. It uses thematic lenses instead of named analyst personas and does not use separate technical-indicator or market-data provider fetches in the first slice. Any hard number must appear in selected approved news metadata/snippets.
 
 Local fresh-data validation should include assets and time windows where at least two approved Weekly News Focus items exist so the operator can review live AI Comprehensive Analysis quality before public deployment.
 

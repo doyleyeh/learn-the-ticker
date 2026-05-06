@@ -1,10 +1,33 @@
 ## Current task
 
-No current task is prepared. T-167 through T-171 completed the local Weekly News MVP expansion, and production ingestion, recurring jobs, broad paid-provider integrations, and generated-output cache promotion remain unpromoted.
+### T-172: Define Market News Focus and ticker-news split
+
+Goal:
+Update product, technical, source-policy, eval, task, and env docs for reusable Market News Focus, ticker-specific Weekly News Focus labels, market AI thematic lenses, and opt-in live provider boundaries before code work.
+
+Acceptance criteria:
+- PRD, technical design spec, proposal, `SPEC.md`, `EVALS.md`, Lightweight Data Policy, `TASKS.md`, and env examples describe Market News Focus and ticker-specific news separately.
+- Market News Focus selects up to 20 approved market-wide story clusters and never pads weak evidence.
+- AI Comprehensive Analysis: Market News Focus uses thematic lenses, not named personas, and Scenario Lens is conditional education only.
+- Live RSS/GDELT/keyed-provider/yfinance adapter work is documented as server-side, opt-in, key-safe, and mock-backed in normal CI.
+- Ticker-specific Weekly News Focus keeps the existing max-8 official-first behavior.
 
 ## Backlog
 
-No backlog tasks are currently prepared. Production ingestion, recurring production jobs, broad paid-provider integrations, and generated-output cache promotion require a new narrow task after operator/product review.
+### T-173: Add Market News Focus backend contracts and adapters
+
+Goal:
+Add deterministic Market News Focus schemas, provider adapter boundaries, normalization, clustering, ranking, market AI analysis, `/api/market-news`, and focused backend tests.
+
+### T-174: Render Market News Focus on asset pages
+
+Goal:
+Render Market News Focus and AI Comprehensive Analysis: Market News Focus above ticker-specific Weekly News Focus, and rename ticker labels to include `{TICKER}`.
+
+### T-175: Add Market News smoke and quality-gate coverage
+
+Goal:
+Add skipped-by-default opt-in live smoke diagnostics, update eval fixtures/static checks, run the required test/eval/quality gates, and record completion details.
 
 ## Completed
 

@@ -48,7 +48,7 @@ A user can search one ticker or asset name such as `VOO`, `QQQ`, `Apple`, or `AA
 - why people consider it;
 - the main risks;
 - how it compares with another supported asset when comparison is useful;
-- what changed recently;
+- what changed recently in the reusable Market News Focus and the ticker-specific Weekly News Focus;
 - which sources support the important claims.
 
 The product should use official and structured sources as the factual backbone when they are available. When official sources are incomplete, stale, or too costly to recover manually for the personal MVP, the product may use reputable third-party/provider fallback and show that provenance clearly. The language model should not be treated as the source of truth. Instead, the model should translate source-labeled facts, filings, prospectuses, holdings data, provider records, and other supported material into simple explanations for beginners.
@@ -556,10 +556,14 @@ That section should explain the real difference in plain language without tellin
 
 ## 9.5 Weekly News Focus and AI Comprehensive Analysis
 
-Every asset page should include a clearly labeled Weekly News Focus module. This module should replace a generic recent-news feed with two source-grounded parts:
+Every supported asset page should include a reusable **Market News Focus** module before ticker-specific news. This module should help beginners understand broad U.S./global finance context that may affect the whole market. It is not a home-page news feed, and it must not redefine an asset's stable facts.
 
-1. **Weekly News Focus**;
-2. **AI Comprehensive Analysis**.
+Market News Focus should show up to 20 approved, deduplicated story clusters across macro/Fed, equity markets/earnings, AI/technology/semiconductors, geopolitics/energy/supply chain, and credit/liquidity/sentiment. Fewer than 20 items and empty states are valid when evidence is thin. The same validated market-wide pack can be reused across supported ticker pages until the freshness hash changes.
+
+Below Market News Focus, each asset page should include a clearly labeled ticker-specific Weekly News Focus module. This module should replace a generic ticker news feed with two source-grounded parts:
+
+1. **Weekly News Focus: {TICKER}**;
+2. **AI Comprehensive Analysis: {TICKER}**.
 
 The Weekly News Focus should show a source-grounded weekly list of approved items for the selected asset. The default window should use the last completed Monday-Sunday market week plus the current week-to-date through yesterday, using U.S. Eastern dates. For example, if today is Wednesday, the module should include last Monday through Sunday plus this Monday and Tuesday.
 
@@ -577,7 +581,20 @@ Each Weekly News Focus item should include:
 - official-vs-third-party source label;
 - freshness and source-quality metadata.
 
-The AI Comprehensive Analysis should synthesize the Weekly News Focus into educational context. It should appear when enough source-backed Weekly News Focus items exist; otherwise it should show a partial or insufficient-evidence state. Reputable third-party items may count when the UI labels them as third-party reporting. The module should begin with **What Changed This Week**, then use three safer context sections:
+AI Comprehensive Analysis: Market News Focus should synthesize selected market story clusters into thematic lenses, not named analyst personas:
+
+- **What Changed This Week**;
+- **Macro & Policy**;
+- **Equity Market Drivers**;
+- **AI / Technology / Semiconductors**;
+- **Geopolitical & Energy Risks**;
+- **Credit / Liquidity / Sentiment**;
+- **Scenario Lens**;
+- **Practical Watchpoints**.
+
+Scenario Lens should be conditional and educational only. It may explain what beginners can watch if a cited theme persists, but it must not predict returns or recommend buying, selling, holding, trading, allocating, or relying on a price target. The first implementation should be news-only: any hard number must appear in selected approved news metadata/snippets, not from a separate technical-indicator or market-data fetch.
+
+The ticker-specific AI Comprehensive Analysis should synthesize the selected asset's Weekly News Focus into educational context. It should appear when enough source-backed Weekly News Focus items exist; otherwise it should show a partial or insufficient-evidence state. Reputable third-party items may count when the UI labels them as third-party reporting. The module should begin with **What Changed This Week**, then use three safer context sections:
 
 - **Market Context**;
 - **Business/Fund Context**;
@@ -609,6 +626,8 @@ For ETFs, Weekly News Focus items may include:
 This section should include approved events only. It should be treated as context, not the core definition of the asset. If no approved Weekly News Focus items exist, the UI should show a clear empty state and suppress AI Comprehensive Analysis. If only one approved item exists, the UI should show the item but mark AI Comprehensive Analysis as insufficient evidence.
 
 AI Comprehensive Analysis should be reviewed with live AI during local testing when the evidence threshold is met. If live generation fails schema, citation, source-use, or safety validation, the generated section should be suppressed or marked unavailable rather than replaced with uncited text.
+
+Market News Focus live adapters may include RSS/Google News RSS, GDELT, Marketaux, Alpha Vantage News Sentiment, Finnhub, Guardian, GNews, Mediastack, NewsAPI, and yfinance-style fallback. These adapters are server-side, opt-in, key-safe, and mock-backed in CI. They store normalized metadata, snippets, links, dates, source labels, source-use policy, cluster/audit metadata, and allowed excerpts only.
 
 V1 should be English-first. Traditional Chinese localization can be added later. Read-aloud or text-to-speech controls are not part of the v1 requirement.
 

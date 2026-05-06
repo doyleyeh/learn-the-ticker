@@ -11,7 +11,7 @@
 
 ## 1. Executive summary
 
-This system is an accountless web app that lets a beginner search one U.S.-listed common stock or understandable U.S.-listed ETF, then returns a source-grounded educational page with beginner explanations, cited or visibly sourced facts, Weekly News Focus, AI Comprehensive Analysis, contextual glossary help, limited asset-specific grounded chat, connected comparison workflows, and exportable learning outputs. Official sources are preferred first; reputable third-party/provider fallbacks may be used when official data is incomplete, with visible source labels and partial states.
+This system is an accountless web app that lets a beginner search one U.S.-listed common stock or understandable U.S.-listed ETF, then returns a source-grounded educational page with beginner explanations, cited or visibly sourced facts, reusable Market News Focus, ticker-specific Weekly News Focus, AI Comprehensive Analysis, contextual glossary help, limited asset-specific grounded chat, connected comparison workflows, and exportable learning outputs. Official sources are preferred first; reputable third-party/provider fallbacks may be used when official data is incomplete, with visible source labels and partial states.
 
 The core technical challenge is not simply generating good prose. The system must reliably separate:
 
@@ -33,7 +33,7 @@ That three-layer knowledge architecture comes directly from the proposal and rem
 | Lightweight source policy | Try official sources automatically first; when incomplete, use reputable third-party/provider fallback with visible provenance. Golden Asset Source Handoff remains optional audit-quality hardening. |
 | Beginner-friendly language | Generate structured summaries using schemas for the Beginner section and glossary terms. |
 | Visible citations and provenance | Every important claim should map to a `source_document`, `document_chunk`, normalized `fact`, or labeled provider/source metadata. |
-| Stable facts separated from Weekly News Focus and analysis | Maintain separate data tables and UI sections for canonical facts, Weekly News Focus, and AI Comprehensive Analysis. |
+| Stable facts separated from market and ticker news analysis | Maintain separate data tables and UI sections for canonical facts, reusable Market News Focus, ticker-specific Weekly News Focus, and AI Comprehensive Analysis. |
 | Grounded asset-specific chat | Build an `asset_knowledge_pack` per asset and restrict chat retrieval to that pack. |
 | Comparison-capable learning | Support dedicated side-by-side comparison workflows using normalized facts, generated beginner summaries, relationship badges, and source-backed templates. |
 | Education over advice | Add query classification, output validation, and safety filters to avoid buy/sell or allocation instructions. |
@@ -181,6 +181,7 @@ GET  /api/assets/{ticker}/overview
 GET  /api/assets/{ticker}/details
 GET  /api/assets/{ticker}/sources
 GET  /api/citations/{citation_id}
+GET  /api/market-news
 GET  /api/assets/{ticker}/weekly-news
 POST /api/compare
 POST /api/assets/{ticker}/chat
@@ -208,6 +209,8 @@ Runtime feature defaults:
 - `LIGHTWEIGHT_LIVE_FETCH_ENABLED=false` for CI and ordinary local tests; set to `true` only for operator local fresh-data smoke.
 - `LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true`
 - `LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED=false`; set to `true` only for local MVP Weekly News metadata retrieval and deterministic fixture-backed tests.
+- `MARKET_NEWS_FETCH_ENABLED=false`; set to `true` only for explicit server-side Market News Focus live-source retrieval or deterministic fixture-backed tests.
+- `MARKET_NEWS_LIVE_SOURCE_SMOKE_ENABLED=false`; opt-in only, skipped by default.
 - `SEC_EDGAR_USER_AGENT=learn-the-ticker-local/0.1 contact@example.com` as a placeholder; deployments should set an operator-controlled contact string server-side and diagnostics should report only a redacted form.
 - `RETRIEVAL_MODE=keyword`
 - `EMBEDDINGS_ENABLED=false`
@@ -216,7 +219,7 @@ Runtime feature defaults:
 - `LLM_VALIDATION_RETRY_COUNT=1`
 - `LLM_REASONING_SUMMARY_ONLY=true`
 
-Weekly News retrieval uses a server-side adapter boundary. Official filings, investor-relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes are candidate rank tiers before fallback provider/news metadata. Yahoo Finance/yfinance-derived recent context is treated as source-labeled metadata and bounded summary/snippet input only: it may support Weekly News Focus, AI Comprehensive Analysis threshold checks, and grounded recent/news chat when same-asset citations validate, but it cannot support canonical facts or raw article redistribution.
+Market News and Weekly News retrieval use server-side adapter boundaries. Market News Focus collects market-wide RSS/news/provider metadata into reusable story clusters. Weekly News Focus stays asset-bound: official filings, investor-relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes are candidate rank tiers before fallback provider/news metadata. Yahoo Finance/yfinance-derived recent context is treated as source-labeled metadata and bounded summary/snippet input only: it may support Market News Focus fallback, Weekly News Focus, AI Comprehensive Analysis threshold checks, and grounded recent/news chat when citations validate, but it cannot support canonical facts or raw article redistribution.
 
 ### 5.3 Ingestion worker
 
@@ -1008,11 +1011,39 @@ Generate:
 
 Asset-risk generation must separate fund/company risk from source and evidence limitations. The first three risk cards should describe actual asset risks, such as market, concentration, and tracking risk for ETFs or single-company, business/competition, and financial/valuation risk for stocks when supported. Provider fallback warnings, stale or point-in-time facts, parser gaps, and missing fields should be emitted as `evidence_gap` / Evidence Limits sections, not as replacements for risk cards.
 
-### 9.4 Weekly News Focus and AI Comprehensive Analysis ingestion
+### 9.4 Market News Focus, Weekly News Focus, and AI Comprehensive Analysis ingestion
 
-Weekly News Focus and AI Comprehensive Analysis should never overwrite canonical facts. Raw events are stored in `recent_events`; generated Weekly News Focus and AI Comprehensive Analysis outputs are stored in `summaries`.
+Market News Focus, Weekly News Focus, and AI Comprehensive Analysis should never overwrite canonical facts. Market-wide story clusters are reusable across ticker pages and stored separately from asset-bound recent events. Raw events are stored in `recent_events`; generated Weekly News Focus and AI Comprehensive Analysis outputs are stored in `summaries`.
 
 The Weekly News Focus pipeline should prefer official sources, then broaden coverage with reputable third-party/news sources. Reputable third-party/news items must be labeled as non-official reporting and should expose source details rather than being blended into official evidence. Reuters/AP-style and similar publishers are not assumed to be free full-text sources by default. Unrecognized sources should be limited to metadata/link/summary-safe output until reviewed. Events must store source-quality metadata, source-use policy when known, allowlist/review status when known, official-vs-third-party label, event type, freshness state, and citation links.
+
+The Market News Focus pipeline collects market-wide candidates from RSS/Google News RSS, GDELT, Marketaux, Alpha Vantage News Sentiment, Finnhub, Guardian, GNews, Mediastack, NewsAPI, and yfinance-style fallback through server-side adapters. Keyed providers are optional and must not run unless their server-side env var is configured and the live-source opt-in is enabled. Normal CI uses fixtures/mocks and no live provider calls.
+
+#### Market News Focus flow
+
+```text
+1. Collect market-wide candidates by topic bucket through cache, RSS/Google News RSS, GDELT, keyed provider adapters when configured, and yfinance fallback.
+2. Normalize each candidate into a single article schema with provider, source, source domain, title, description/snippet, URL, canonical URL, published timestamp, language, topic bucket, entities, source-use policy, and retrieved timestamp.
+3. Reject non-English, missing-title, missing-URL, stale/outside-window, unrecognized, rights-disallowed, low-quality aggregator, promotional, pure opinion, or source-ambiguous candidates.
+4. Dedupe by canonical URL, normalized-title similarity, and deterministic token overlap into story clusters.
+5. Rank clusters by source quality, freshness, topic relevance, market impact, corroboration, novelty, and penalties.
+6. Select up to 20 approved clusters while preserving topic diversity when evidence supports it; never pad to 20.
+7. Generate one-sentence beginner summaries from selected cluster facts only.
+8. Generate AI Comprehensive Analysis for Market News Focus only when at least five approved items across at least three topic buckets exist.
+9. Validate citations/source labels, safety, source-use policy, no raw article/provider payload exposure, and no hard number outside selected approved news metadata/snippets.
+```
+
+Market News Focus topic buckets:
+
+```text
+macro_fed
+markets_earnings
+ai_technology_semiconductors
+geopolitics_energy_supply_chain
+credit_liquidity_sentiment
+```
+
+Market News Focus should prefer approved Tier-1 publishers for critical claims. Critical claims about Fed policy, war, sanctions, or market-moving events require either Reuters/AP/Bloomberg/Wall Street Journal/Financial Times-level source priority or corroboration from at least two approved Tier-1 sources in the same cluster.
 
 #### Weekly News Focus flow
 
@@ -1027,7 +1058,7 @@ The Weekly News Focus pipeline should prefer official sources, then broaden cove
 8. Validate citations/source labels, safety, source status, source-use policy where known, and freshness labels.
 ```
 
-The default UI copy should say **Weekly News Focus**. The implementation uses the last completed Monday-Sunday market week plus current week-to-date through yesterday for `news_window_start` and `news_window_end`, using U.S. Eastern dates. For example, if today is Wednesday, include last Monday-Sunday plus this Monday and Tuesday.
+The default UI copy should say **Market News Focus** for the reusable market-wide section and **Weekly News Focus: {TICKER}** for the asset-bound section. Both use the last completed Monday-Sunday market week plus current week-to-date through yesterday for `news_window_start` and `news_window_end`, using U.S. Eastern dates. For example, if today is Wednesday, include last Monday-Sunday plus this Monday and Tuesday.
 
 #### Stock event types
 
@@ -1089,13 +1120,26 @@ Only source-labeled events above the configured source-use and relevance thresho
 
 #### AI Comprehensive Analysis sections
 
-The generated analysis should include **What Changed This Week** followed by three educational context sections:
+The generated ticker-specific analysis should include **What Changed This Week** followed by three educational context sections:
 
 - `Market Context`
 - `Business/Fund Context`
 - `Risk Context`
 
 Section labels are UI labels only. They are not real advisors, model identities, or independent sources. Each section must include a compact plain-English paragraph, bullets, citation IDs, and uncertainty notes when evidence is thin. Analysis must not include buy/sell/hold, allocation, tax, guaranteed-return, or price-target advice.
+
+Market News Focus analysis uses thematic lenses instead of named analyst/persona labels:
+
+- `What Changed This Week`
+- `Macro & Policy`
+- `Equity Market Drivers`
+- `AI / Technology / Semiconductors`
+- `Geopolitical & Energy Risks`
+- `Credit / Liquidity / Sentiment`
+- `Scenario Lens`
+- `Practical Watchpoints`
+
+Scenario Lens is conditional and educational only, for example "If a cited risk persists, beginners may watch the cited follow-up evidence." It must not predict returns, recommend positions, or use buy/sell/hold/allocation language.
 
 ---
 
@@ -2547,6 +2591,8 @@ MVP is technically ready when:
 - Weekly News Focus API/UI contracts distinguish official sources from reputable third-party/news sources and expose publisher, URL, published date, retrieved date, source type, event classification, source-use policy, and citation link.
 - Weekly News Focus uses the last completed Monday-Sunday market week plus current week-to-date through yesterday.
 - AI Comprehensive Analysis includes What Changed This Week, Market Context, Business/Fund Context, and Risk Context when at least two approved Weekly News Focus items exist.
+- Market News Focus appears above ticker-specific Weekly News Focus, selects up to 20 approved market-wide story clusters, exposes source-use/freshness metadata, and reuses one validated market pack across ticker pages until its freshness hash changes.
+- AI Comprehensive Analysis: Market News Focus uses thematic lenses, including Scenario Lens and Practical Watchpoints, only from selected market story clusters and without separate market-data or technical-indicator fetches in this slice.
 - Local fresh-data validation exercises live AI generation for grounded chat and for AI Comprehensive Analysis when the evidence threshold is met.
 - Comparison works for ETF-vs-ETF, stock-vs-stock, and stock-vs-ETF.
 - Stock-vs-ETF uses the special single-company-vs-ETF-basket template and relationship badges.
@@ -2578,7 +2624,7 @@ MVP is technically ready when:
 2. MVP should pre-cache a high-demand stock and ETF universe from local manifests and fixtures when available, but recognized in-scope assets may also render through official-source automation or reputable provider fallback with `pending_ingestion`, `partial`, `stale`, or fallback states.
 3. Retrieval should remain keyword/metadata first so citation binding, source freshness, and asset filters stay under application control. Embeddings and pgvector retrieval are optional behind adapters until stable.
 4. Citation strictness is per important factual claim, not per sentence.
-5. Weekly News Focus should prefer official filings, company investor-relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes before reputable third-party/news sources. Reputable third-party/news items must be labeled as non-official reporting, and full article text requires source-use rights review.
+5. Market News Focus should use approved reputable news/RSS/provider metadata through server-side opt-in adapters, select up to 20 market-wide story clusters, and never pad weak evidence. Weekly News Focus should prefer official filings, company investor-relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes before reputable third-party/news sources. Reputable third-party/news items must be labeled as non-official reporting, and full article text requires source-use rights review.
 6. V1 should be accountless, with anonymous chat sessions, 7-day TTL, user deletion, minimal browser storage, and no raw chat transcript analytics/training/evaluation use in MVP.
 7. Markdown/JSON export/download is the v1 save-for-later workflow; exported output must include citations, freshness metadata, uncertainty labels, and the educational disclaimer while respecting provider licensing.
 8. Server-side caching, source-document checksums, generated-summary freshness hashes, and pre-cached knowledge packs should reduce provider and LLM calls.
@@ -2586,7 +2632,7 @@ MVP is technically ready when:
 10. Leveraged ETFs, inverse ETFs, ETNs, fixed income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, single-stock ETFs, option-income/buffer ETFs, crypto, options, international equities, preferred stocks, warrants, rights, and complex products are unsupported or out of scope for generated pages, chat, and comparisons unless explicitly added later through a named scope expansion with its own risk templates, source labels, parser/provider coverage, and acceptance tests.
 11. Local implementation should start with Docker Compose for Next.js, FastAPI, PostgreSQL with pgvector, Redis, and S3-compatible object storage.
 12. LLM integration should be adapter-first with deterministic mocks for CI and ordinary local tests, plus feature-flagged OpenRouter live generation for local operator review and deployment. The explicit free-model chain may use DeepSeek V3.2 paid fallback only when enabled and external OpenRouter platform/API-key limits are configured; the repo does not enforce a separate spend cap.
-13. Weekly News Focus is an asset-page feature with a fixed Monday-Sunday market-week window plus current week-to-date through yesterday; it is not a separate market brief page.
+13. Market News Focus is a reusable asset-page context layer with a fixed Monday-Sunday market-week window plus current week-to-date through yesterday; it is not the home page's primary workflow. Weekly News Focus remains ticker-specific and uses the same window.
 14. Source allowlists are security/provenance controls. New reputable domains should be added through config with validation and a development-log rationale when practical, but an allowlist gap should trigger fallback/review or partial labeling rather than blocking the entire product.
 15. Golden Asset Source Handoff is optional audit-quality hardening for public-launch confidence; lightweight personal display may use source-labeled retrieval/provider records without manual approval when rights-safe output limits and provenance labels are preserved.
 16. Raw source text storage is rights-tiered across official, full-text-allowed, summary-allowed, metadata-only, link-only, and rejected sources. Reputable third-party/news sources may support summaries and metadata, but full article text storage, display, and export remain rights-gated.
