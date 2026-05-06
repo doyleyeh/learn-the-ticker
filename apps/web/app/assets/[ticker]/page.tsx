@@ -12,12 +12,15 @@ import { ComparisonSuggestions } from "../../../components/ComparisonSuggestions
 import { ExportControls } from "../../../components/ExportControls";
 import { FreshnessDisclosure, FreshnessLabel } from "../../../components/FreshnessLabel";
 import { InlineGlossaryText, type InlineGlossaryMatch } from "../../../components/InlineGlossaryText";
+import { MarketAIComprehensiveAnalysisPanel } from "../../../components/MarketAIComprehensiveAnalysisPanel";
+import { MarketNewsPanel } from "../../../components/MarketNewsPanel";
 import { WeeklyNewsPanel } from "../../../components/WeeklyNewsPanel";
 import { fetchSupportedAssetDetails } from "../../../lib/assetDetails";
 import { fetchSupportedAssetGlossaryContexts } from "../../../lib/assetGlossary";
 import { fetchSupportedAssetOverview } from "../../../lib/assetOverview";
 import { fetchSupportedSourceDrawerResponse, sourceDrawerEntriesByDocumentId } from "../../../lib/sourceDrawer";
 import { fetchSupportedAssetWeeklyNews } from "../../../lib/assetWeeklyNews";
+import { fetchMarketNews } from "../../../lib/marketNews";
 import { beginnerGlossaryGroupsByAssetType, type GlossaryTermKey } from "../../../lib/glossary";
 import { getAssetComparisonSuggestions } from "../../../lib/compareSuggestions";
 import { resolveSearchResponse, type LocalSearchResponse } from "../../../lib/search";
@@ -37,8 +40,12 @@ import {
   getAssetFixture,
   toSourceDrawerDocument,
   getWeeklyNewsFocusFixture,
+  marketAIComprehensiveAnalysisFixture,
+  marketNewsFocusFixture,
   type AIComprehensiveAnalysisFixture,
   type AssetFixture,
+  type MarketAIComprehensiveAnalysisFixture,
+  type MarketNewsFocusFixture,
   type WeeklyNewsFocusFixture
 } from "../../../lib/fixtures";
 
@@ -92,6 +99,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
   let asset: AssetFixture | null = fallbackAsset ?? null;
   let overviewRendering: "backend_contract" | "local_fixture" = "local_fixture";
   let detailsRendering: "backend_contract" | "local_fixture" = "local_fixture";
+  let marketNewsRendering: "backend_contract" | "local_fixture" = "local_fixture";
   let weeklyNewsRendering: "backend_contract" | "local_fixture" = "local_fixture";
   let sourceDrawerRendering: "backend_contract" | "mixed_fallback" | "local_fixture" = "local_fixture";
   let glossaryRendering: "backend_contract" | "local_fixture" = "local_fixture";
@@ -118,6 +126,18 @@ export default async function AssetPage({ params }: AssetPageProps) {
     detailsRendering = "backend_contract";
   } catch {
     detailsRendering = "local_fixture";
+  }
+
+  let marketNewsFocus: MarketNewsFocusFixture = marketNewsFocusFixture;
+  let marketAIComprehensiveAnalysis: MarketAIComprehensiveAnalysisFixture = marketAIComprehensiveAnalysisFixture;
+
+  try {
+    const backendMarketNews = await fetchMarketNews(marketNewsFocus, marketAIComprehensiveAnalysis);
+    marketNewsFocus = backendMarketNews.marketNewsFocus;
+    marketAIComprehensiveAnalysis = backendMarketNews.marketAIComprehensiveAnalysis;
+    marketNewsRendering = "backend_contract";
+  } catch {
+    marketNewsRendering = "local_fixture";
   }
 
   let weeklyNewsFocus = getWeeklyNewsFocusFixture(asset.ticker) ?? buildEmptyWeeklyNewsFocus(asset);
@@ -148,11 +168,15 @@ export default async function AssetPage({ params }: AssetPageProps) {
   );
   const mergedCitations = [
     ...asset.citations,
+    ...marketNewsFocus.citations,
+    ...marketAIComprehensiveAnalysis.citations,
     ...weeklyNewsFocus.citations,
     ...aiComprehensiveAnalysis.citations
   ].filter((citation, index, collection) => collection.findIndex((entry) => entry.citationId === citation.citationId) === index);
   const mergedSources = [
     ...asset.sourceDocuments,
+    ...marketNewsFocus.sourceDocuments,
+    ...marketAIComprehensiveAnalysis.sourceDocuments,
     ...weeklyNewsFocus.sourceDocuments,
     ...aiComprehensiveAnalysis.sourceDocuments
   ].filter(
@@ -160,6 +184,8 @@ export default async function AssetPage({ params }: AssetPageProps) {
       collection.findIndex((entry) => entry.sourceDocumentId === source.sourceDocumentId) === index
   );
   const timelyContextSourceDocumentIds = new Set([
+    ...marketNewsFocus.sourceDocuments.map((source) => source.sourceDocumentId),
+    ...marketAIComprehensiveAnalysis.sourceDocumentIds,
     ...weeklyNewsFocus.sourceDocuments.map((source) => source.sourceDocumentId),
     ...aiComprehensiveAnalysis.sourceDocumentIds
   ]);
@@ -174,12 +200,24 @@ export default async function AssetPage({ params }: AssetPageProps) {
       return null;
     }
   })();
-  const timelyContextClaimsBySourceDocumentId = new Map(
-    weeklyNewsFocus.items.map((item) => [
+  const timelyContextClaimsBySourceDocumentId = new Map<string, string>([
+    ...marketNewsFocus.items.map((item) => [
       item.source.sourceDocumentId,
-      `Weekly News Focus: ${item.title}. ${item.summary}`
-    ])
-  );
+      `Market News Focus: ${item.title}. ${item.summary}`
+    ] as const),
+    ...weeklyNewsFocus.items.map((item) => [
+      item.source.sourceDocumentId,
+      `Weekly News Focus: ${asset.ticker}: ${item.title}. ${item.summary}`
+    ] as const)
+  ]);
+  for (const sourceDocumentId of marketAIComprehensiveAnalysis.sourceDocumentIds) {
+    if (!timelyContextClaimsBySourceDocumentId.has(sourceDocumentId)) {
+      timelyContextClaimsBySourceDocumentId.set(
+        sourceDocumentId,
+        "AI Comprehensive Analysis: Market News Focus cites this source while keeping market-wide context separate from ticker-specific facts."
+      );
+    }
+  }
   for (const sourceDocumentId of aiComprehensiveAnalysis.sourceDocumentIds) {
     if (!timelyContextClaimsBySourceDocumentId.has(sourceDocumentId)) {
       timelyContextClaimsBySourceDocumentId.set(
@@ -297,13 +335,14 @@ export default async function AssetPage({ params }: AssetPageProps) {
     <main
       data-asset-overview-rendering={overviewRendering}
       data-asset-details-rendering={detailsRendering}
+      data-asset-market-news-rendering={marketNewsRendering}
       data-asset-weekly-news-rendering={weeklyNewsRendering}
       data-asset-source-drawer-rendering={sourceDrawerRendering}
       data-asset-glossary-rendering={glossaryRendering}
       data-asset-page-export-contract={assetPageExportContract?.rendering ?? "local_fallback"}
       data-asset-source-list-export-contract={assetSourceListExportContract?.rendering ?? "local_fallback"}
       data-prd-layout-marker="supported-asset-page-learning-flow-v1"
-      data-prd-section-order="header,beginner_summary,asset_data_dashboard,top_risks,key_facts_fallback,what_it_does_or_holds_fallback,weekly_news_focus,ai_comprehensive_analysis,deep_dive,ask_about_this_asset,sources,educational_disclaimer"
+      data-prd-section-order="header,beginner_summary,asset_data_dashboard,top_risks,key_facts_fallback,what_it_does_or_holds_fallback,market_news_focus,market_ai_comprehensive_analysis,weekly_news_focus,ai_comprehensive_analysis,deep_dive,ask_about_this_asset,sources,educational_disclaimer"
     >
       <AssetHeader asset={asset} layoutMarker="header" />
       <AssetLearningLayout
@@ -539,9 +578,13 @@ export default async function AssetPage({ params }: AssetPageProps) {
               </>
             ) : null}
 
-            <WeeklyNewsPanel focus={weeklyNewsFocus} citations={mergedCitations} />
+            <MarketNewsPanel focus={marketNewsFocus} citations={mergedCitations} />
 
-            <AIComprehensiveAnalysisPanel analysis={aiComprehensiveAnalysis} citations={mergedCitations} />
+            <MarketAIComprehensiveAnalysisPanel analysis={marketAIComprehensiveAnalysis} citations={mergedCitations} />
+
+            <WeeklyNewsPanel focus={weeklyNewsFocus} citations={mergedCitations} assetTicker={asset.ticker} />
+
+            <AIComprehensiveAnalysisPanel analysis={aiComprehensiveAnalysis} citations={mergedCitations} assetTicker={asset.ticker} />
           </>
         }
         deepDiveSections={

@@ -335,6 +335,98 @@ export type AIComprehensiveAnalysisFixture = {
   stableFactsAreSeparate: true;
 };
 
+export type MarketNewsTopicBucket =
+  | "macro_fed"
+  | "markets_earnings"
+  | "ai_technology_semiconductors"
+  | "geopolitics_energy_supply_chain"
+  | "credit_liquidity_sentiment";
+
+export type MarketNewsItem = {
+  storyId: string;
+  title: string;
+  summary: string;
+  publishedAt: string;
+  topicBucket: MarketNewsTopicBucket;
+  entities: string[];
+  citationIds: string[];
+  source: WeeklyNewsSourceMetadata;
+  freshnessState: FreshnessState;
+  importanceScore: number;
+  cluster: {
+    clusterId: string;
+    representativeArticleId: string;
+    supportingSources: string[];
+    articleCount: number;
+    suppressedDuplicateCount: number;
+    topicBucket: MarketNewsTopicBucket;
+    criticalClaim: boolean;
+    corroborated: boolean;
+  };
+};
+
+export type MarketNewsFocusFixture = {
+  schemaVersion: "market-news-focus-v1";
+  state: WeeklyNewsContractState;
+  window: WeeklyNewsWindow;
+  configuredMaxItemCount: number;
+  selectedItemCount: number;
+  suppressedCandidateCount: number;
+  evidenceState: EvidenceState;
+  evidenceLimitedState: WeeklyNewsEvidenceLimitedState;
+  items: MarketNewsItem[];
+  emptyState: WeeklyNewsEmptyState | null;
+  citations: Citation[];
+  sourceDocuments: SourceDocument[];
+  noLiveExternalCalls: true;
+  stableFactsAreSeparate: true;
+  reusableAcrossTickers: true;
+};
+
+export type MarketAIComprehensiveAnalysisSection = {
+  sectionId:
+    | "what_changed_this_week"
+    | "macro_policy"
+    | "equity_market_drivers"
+    | "ai_technology_semiconductors"
+    | "geopolitical_energy_risks"
+    | "credit_liquidity_sentiment"
+    | "scenario_lens"
+    | "practical_watchpoints";
+  label:
+    | "What Changed This Week"
+    | "Macro & Policy"
+    | "Equity Market Drivers"
+    | "AI / Technology / Semiconductors"
+    | "Geopolitical & Energy Risks"
+    | "Credit / Liquidity / Sentiment"
+    | "Scenario Lens"
+    | "Practical Watchpoints";
+  analysis: string;
+  bullets: string[];
+  citationIds: string[];
+  uncertainty: string[];
+};
+
+export type MarketAIComprehensiveAnalysisFixture = {
+  schemaVersion: "market-ai-comprehensive-analysis-v1";
+  state: WeeklyNewsContractState;
+  analysisAvailable: boolean;
+  minimumMarketNewsItemCount: number;
+  minimumTopicBucketCount: number;
+  marketNewsSelectedItemCount: number;
+  selectedTopicBucketCount: number;
+  suppressionReason: string | null;
+  sections: MarketAIComprehensiveAnalysisSection[];
+  citationIds: string[];
+  sourceDocumentIds: string[];
+  marketNewsStoryIds: string[];
+  citations: Citation[];
+  sourceDocuments: SourceDocument[];
+  noLiveExternalCalls: true;
+  stableFactsAreSeparate: true;
+};
+
 export type AssetFixture = {
   ticker: string;
   name: string;
@@ -450,6 +542,245 @@ function buildSuppressedAIComprehensiveAnalysis(
     stableFactsAreSeparate: true
   };
 }
+
+const marketNewsRows = [
+  {
+    storyId: "market_story_macro_policy",
+    citationId: "c_market_news_macro_policy",
+    sourceDocumentId: "src_market_news_macro_policy",
+    publisher: "Reuters",
+    sourceDomain: "reuters.com",
+    title: "Fed officials describe inflation risks as policy debate continues",
+    summary: "Federal Reserve reporting kept inflation and labor data in focus for the broad market.",
+    publishedAt: "2026-04-22T13:00:00Z",
+    topicBucket: "macro_fed" as const,
+    entities: ["Federal Reserve", "inflation"],
+    importanceScore: 89,
+    criticalClaim: true
+  },
+  {
+    storyId: "market_story_equity_earnings",
+    citationId: "c_market_news_equity_earnings",
+    sourceDocumentId: "src_market_news_equity_earnings",
+    publisher: "CNBC",
+    sourceDomain: "cnbc.com",
+    title: "US stocks end mixed as earnings season drives sector moves",
+    summary: "Equity-market reporting connected index moves with earnings updates and sector leadership.",
+    publishedAt: "2026-04-22T20:30:00Z",
+    topicBucket: "markets_earnings" as const,
+    entities: ["S&P 500", "Nasdaq"],
+    importanceScore: 82,
+    criticalClaim: false
+  },
+  {
+    storyId: "market_story_ai_chips",
+    citationId: "c_market_news_ai_chips",
+    sourceDocumentId: "src_market_news_ai_chips",
+    publisher: "Financial Times",
+    sourceDomain: "ft.com",
+    title: "Chip demand remains central to AI infrastructure spending",
+    summary: "Technology reporting kept AI infrastructure and semiconductor demand in the market-wide discussion.",
+    publishedAt: "2026-04-22T10:00:00Z",
+    topicBucket: "ai_technology_semiconductors" as const,
+    entities: ["AI", "semiconductors"],
+    importanceScore: 86,
+    criticalClaim: false
+  },
+  {
+    storyId: "market_story_energy_shipping",
+    citationId: "c_market_news_energy_shipping",
+    sourceDocumentId: "src_market_news_energy_shipping",
+    publisher: "Associated Press",
+    sourceDomain: "apnews.com",
+    title: "Oil markets watch shipping risk after latest geopolitical flare-up",
+    summary: "Energy reporting linked shipping risk with oil-market uncertainty and inflation watchpoints.",
+    publishedAt: "2026-04-18T12:00:00Z",
+    topicBucket: "geopolitics_energy_supply_chain" as const,
+    entities: ["oil", "shipping"],
+    importanceScore: 80,
+    criticalClaim: true
+  },
+  {
+    storyId: "market_story_credit_banks",
+    citationId: "c_market_news_credit_banks",
+    sourceDocumentId: "src_market_news_credit_banks",
+    publisher: "Wall Street Journal",
+    sourceDomain: "wsj.com",
+    title: "Banks report cautious credit commentary as consumers slow",
+    summary: "Bank coverage highlighted credit quality and consumer-stress commentary as broad-market context.",
+    publishedAt: "2026-04-22T14:00:00Z",
+    topicBucket: "credit_liquidity_sentiment" as const,
+    entities: ["banks", "credit"],
+    importanceScore: 84,
+    criticalClaim: false
+  }
+];
+
+export const marketNewsFocusFixture: MarketNewsFocusFixture = {
+  schemaVersion: "market-news-focus-v1",
+  state: "available",
+  window: weeklyNewsWindow,
+  configuredMaxItemCount: 20,
+  selectedItemCount: marketNewsRows.length,
+  suppressedCandidateCount: 0,
+  evidenceState: "partial",
+  evidenceLimitedState: "limited_verified_set",
+  items: marketNewsRows.map((row) => ({
+    storyId: row.storyId,
+    title: row.title,
+    summary: row.summary,
+    publishedAt: row.publishedAt,
+    topicBucket: row.topicBucket,
+    entities: row.entities,
+    citationIds: [row.citationId],
+    source: {
+      sourceDocumentId: row.sourceDocumentId,
+      sourceType: "market_news_story_cluster",
+      title: row.title,
+      publisher: row.publisher,
+      url: `https://${row.sourceDomain}/markets/${row.storyId}`,
+      publishedAt: row.publishedAt,
+      asOfDate: row.publishedAt.slice(0, 10),
+      retrievedAt: "2026-04-23T12:00:00Z",
+      freshnessState: "fresh",
+      isOfficial: false,
+      sourceQuality: "allowlisted",
+      allowlistStatus: "allowed",
+      sourceUsePolicy: "summary_allowed"
+    },
+    freshnessState: "fresh",
+    importanceScore: row.importanceScore,
+    cluster: {
+      clusterId: `market_cluster_${row.storyId}`,
+      representativeArticleId: `fixture_${row.storyId}`,
+      supportingSources: [row.publisher],
+      articleCount: 1,
+      suppressedDuplicateCount: 0,
+      topicBucket: row.topicBucket,
+      criticalClaim: row.criticalClaim,
+      corroborated: true
+    }
+  })),
+  emptyState: null,
+  citations: marketNewsRows.map((row) => ({
+    citationId: row.citationId,
+    sourceDocumentId: row.sourceDocumentId,
+    title: row.title,
+    publisher: row.publisher,
+    freshnessState: "fresh"
+  })),
+  sourceDocuments: marketNewsRows.map((row) => ({
+    sourceDocumentId: row.sourceDocumentId,
+    sourceType: "market_news_story_cluster",
+    title: row.title,
+    publisher: row.publisher,
+    url: `https://${row.sourceDomain}/markets/${row.storyId}`,
+    publishedAt: row.publishedAt,
+    asOfDate: row.publishedAt.slice(0, 10),
+    retrievedAt: "2026-04-23T12:00:00Z",
+    freshnessState: "fresh",
+    isOfficial: false,
+    supportingPassage: row.summary,
+    sourceQuality: "allowlisted",
+    source_quality: "allowlisted",
+    allowlistStatus: "allowed",
+    allowlist_status: "allowed",
+    sourceUsePolicy: "summary_allowed",
+    source_use_policy: "summary_allowed",
+    permitted_operations: {
+      can_export_full_text: false
+    }
+  })),
+  noLiveExternalCalls: true,
+  stableFactsAreSeparate: true,
+  reusableAcrossTickers: true
+};
+
+export const marketAIComprehensiveAnalysisFixture: MarketAIComprehensiveAnalysisFixture = {
+  schemaVersion: "market-ai-comprehensive-analysis-v1",
+  state: "available",
+  analysisAvailable: true,
+  minimumMarketNewsItemCount: 5,
+  minimumTopicBucketCount: 3,
+  marketNewsSelectedItemCount: marketNewsFocusFixture.selectedItemCount,
+  selectedTopicBucketCount: new Set(marketNewsFocusFixture.items.map((item) => item.topicBucket)).size,
+  suppressionReason: null,
+  sections: [
+    {
+      sectionId: "what_changed_this_week",
+      label: "What Changed This Week",
+      analysis:
+        "The market-wide pack selected macro, equity, technology, geopolitical, and credit items for the shared weekly context layer.",
+      bullets: ["This market context is reused across supported ticker pages and stays separate from ticker-specific facts."],
+      citationIds: marketNewsFocusFixture.citations.map((citation) => citation.citationId),
+      uncertainty: []
+    },
+    {
+      sectionId: "macro_policy",
+      label: "Macro & Policy",
+      analysis: "Policy reporting kept inflation and labor data in focus for beginners reviewing broad market conditions.",
+      bullets: ["Read policy items as current context, not as a forecast or personal instruction."],
+      citationIds: ["c_market_news_macro_policy"],
+      uncertainty: []
+    },
+    {
+      sectionId: "equity_market_drivers",
+      label: "Equity Market Drivers",
+      analysis: "Earnings coverage connected index moves with sector leadership and company results.",
+      bullets: ["Market drivers should be compared with each asset's own holdings or business exposure."],
+      citationIds: ["c_market_news_equity_earnings"],
+      uncertainty: []
+    },
+    {
+      sectionId: "ai_technology_semiconductors",
+      label: "AI / Technology / Semiconductors",
+      analysis: "AI infrastructure and semiconductor demand remained a cross-market technology theme in the selected sources.",
+      bullets: ["The theme is market context and does not replace ticker-specific exposure analysis."],
+      citationIds: ["c_market_news_ai_chips"],
+      uncertainty: []
+    },
+    {
+      sectionId: "geopolitical_energy_risks",
+      label: "Geopolitical & Energy Risks",
+      analysis: "Shipping and oil headlines were selected because they can matter for inflation expectations and sentiment.",
+      bullets: ["Later cited updates may confirm whether these stresses ease, continue, or broaden."],
+      citationIds: ["c_market_news_energy_shipping"],
+      uncertainty: []
+    },
+    {
+      sectionId: "credit_liquidity_sentiment",
+      label: "Credit / Liquidity / Sentiment",
+      analysis: "Bank and consumer-stress commentary formed the credit and liquidity part of the market context pack.",
+      bullets: ["Credit items are watchpoints for learning, not portfolio instructions."],
+      citationIds: ["c_market_news_credit_banks"],
+      uncertainty: []
+    },
+    {
+      sectionId: "scenario_lens",
+      label: "Scenario Lens",
+      analysis:
+        "If cited policy, energy, or credit stresses persist, beginners may watch whether later approved sources show easing, continuation, or broadening.",
+      bullets: ["The scenario lens is conditional education from selected sources, not a return prediction."],
+      citationIds: marketNewsFocusFixture.citations.map((citation) => citation.citationId),
+      uncertainty: []
+    },
+    {
+      sectionId: "practical_watchpoints",
+      label: "Practical Watchpoints",
+      analysis: "Use source dates, topic buckets, and citations to separate market-wide context from ticker-specific facts.",
+      bullets: ["Compare future market updates with the selected asset's own Weekly News Focus before drawing conclusions."],
+      citationIds: marketNewsFocusFixture.citations.map((citation) => citation.citationId),
+      uncertainty: []
+    }
+  ],
+  citationIds: marketNewsFocusFixture.citations.map((citation) => citation.citationId),
+  sourceDocumentIds: marketNewsFocusFixture.sourceDocuments.map((source) => source.sourceDocumentId),
+  marketNewsStoryIds: marketNewsFocusFixture.items.map((item) => item.storyId),
+  citations: marketNewsFocusFixture.citations,
+  sourceDocuments: marketNewsFocusFixture.sourceDocuments,
+  noLiveExternalCalls: true,
+  stableFactsAreSeparate: true
+};
 
 export const weeklyNewsFocusFixtures: Record<string, WeeklyNewsFocusFixture> = {
   VOO: buildEmptyWeeklyNewsFocus(),

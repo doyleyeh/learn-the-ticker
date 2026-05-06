@@ -7,6 +7,7 @@ type FreshnessState = "fresh" | "stale" | "unknown" | "unavailable" | "partial" 
 type AIComprehensiveAnalysisPanelProps = {
   analysis: AIComprehensiveAnalysisFixture;
   citations: Citation[];
+  assetTicker?: string;
 };
 
 function stateToFreshness(state: AIComprehensiveAnalysisFixture["state"]): FreshnessState {
@@ -22,7 +23,7 @@ function stateToFreshness(state: AIComprehensiveAnalysisFixture["state"]): Fresh
   return "unknown";
 }
 
-export function AIComprehensiveAnalysisPanel({ analysis, citations }: AIComprehensiveAnalysisPanelProps) {
+export function AIComprehensiveAnalysisPanel({ analysis, citations, assetTicker }: AIComprehensiveAnalysisPanelProps) {
   const requiredSectionOrder = [
     "What Changed This Week",
     "Market Context",
@@ -42,6 +43,7 @@ export function AIComprehensiveAnalysisPanel({ analysis, citations }: AIComprehe
       : "suppressed";
   const freshnessState = stateToFreshness(analysis.state);
   const shouldRenderSections = analysis.analysisAvailable && analysis.sections.length > 0;
+  const sectionTitle = assetTicker ? `AI Comprehensive Analysis: ${assetTicker}` : "AI Comprehensive Analysis";
 
   return (
     <section
@@ -50,6 +52,7 @@ export function AIComprehensiveAnalysisPanel({ analysis, citations }: AIComprehe
       data-beginner-stable-recent-separation="recent"
       data-beginner-ai-comprehensive-analysis
       data-timely-context-layer="ai-comprehensive-analysis"
+      data-ai-analysis-scope="ticker"
       data-ai-analysis-state={analysis.state}
       data-ai-analysis-available={analysis.analysisAvailable ? "true" : "false"}
       data-ai-analysis-minimum-weekly-news-items={analysis.minimumWeeklyNewsItemCount}
@@ -60,8 +63,8 @@ export function AIComprehensiveAnalysisPanel({ analysis, citations }: AIComprehe
     >
       <div className="section-heading-row">
         <div className="section-heading">
-          <p className="eyebrow">Timely context</p>
-          <h2 id="beginner-ai-comprehensive-analysis">AI Comprehensive Analysis</h2>
+          <p className="eyebrow">Ticker-specific context</p>
+          <h2 id="beginner-ai-comprehensive-analysis">{sectionTitle}</h2>
         </div>
         <div className="state-row">
           <span className="state-pill" data-evidence-state={analysis.analysisAvailable ? "supported" : "insufficient_evidence"}>

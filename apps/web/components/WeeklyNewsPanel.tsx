@@ -47,13 +47,15 @@ function evidenceStateToFreshnessFromFocus(
 type WeeklyNewsPanelProps = {
   focus: WeeklyNewsFocusFixture;
   citations: Citation[];
+  assetTicker?: string;
 };
 
-export function WeeklyNewsPanel({ focus, citations }: WeeklyNewsPanelProps) {
+export function WeeklyNewsPanel({ focus, citations, assetTicker }: WeeklyNewsPanelProps) {
   const windowLabel = `${focus.window.newsWindowStart} to ${focus.window.newsWindowEnd}`;
   const emptyMessage = focus.emptyState?.message ?? "No major Weekly News Focus items found in the current local evidence window.";
   const emptyEvidenceState = evidenceStateToFreshnessFromFocus(focus.emptyState);
   const windowFreshness = stateToFreshness(focus.state);
+  const sectionTitle = assetTicker ? `Weekly News Focus: ${assetTicker}` : "Weekly News Focus";
 
   return (
     <section
@@ -63,6 +65,7 @@ export function WeeklyNewsPanel({ focus, citations }: WeeklyNewsPanelProps) {
       data-beginner-weekly-news-focus
       data-beginner-recent-developments
       data-timely-context-layer="weekly-news-focus"
+      data-weekly-news-scope="ticker"
       data-weekly-news-state={focus.state}
       data-weekly-news-configured-max={focus.configuredMaxItemCount}
       data-weekly-news-selected-count={focus.selectedItemCount}
@@ -73,8 +76,8 @@ export function WeeklyNewsPanel({ focus, citations }: WeeklyNewsPanelProps) {
     >
       <div className="section-heading-row">
         <div className="section-heading">
-          <p className="eyebrow">Timely context</p>
-          <h2 id="beginner-weekly-news-focus">Weekly News Focus</h2>
+          <p className="eyebrow">Ticker-specific context</p>
+          <h2 id="beginner-weekly-news-focus">{sectionTitle}</h2>
         </div>
         <div className="state-row">
           <span className="state-pill compact-state" data-evidence-state={focus.evidenceState}>
