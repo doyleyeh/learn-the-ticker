@@ -621,7 +621,7 @@ export const aiComprehensiveAnalysisFixtures: Record<string, AIComprehensiveAnal
         label: "Risk Context",
         analysis:
           "For a more concentrated ETF, methodology or sponsor changes can deserve attention, but the local fixture does not claim that any single weekly item changes the beginner risk profile by itself.",
-        bullets: ["Concentration and sector tilt remain stable risks that should be learned separately from weekly updates."],
+        bullets: ["Concentration and market exposure remain stable risks that should be learned separately from weekly updates."],
         citationIds: ["c_weekly_qqq_methodology", "c_qqq_profile"],
         uncertainty: ["The local fixture does not quantify any downstream effect from these weekly items."]
       }
@@ -810,17 +810,20 @@ export const assetFixtures: Record<string, AssetFixture> = {
     topRisks: [
       {
         title: "Market risk",
-        plainEnglishExplanation: "The fund can lose value when large U.S. stocks fall.",
+        plainEnglishExplanation:
+          "VOO owns a basket of stocks, so it can lose value when the market or the index segment it tracks declines.",
         citationIds: ["c_voo_profile"]
       },
       {
-        title: "Large-company focus",
-        plainEnglishExplanation: "The fund does not cover every public company or every asset class.",
+        title: "Concentration risk",
+        plainEnglishExplanation:
+          "VOO may hold many stocks, but large companies and larger index weights can still have an outsized effect on what investors experience.",
         citationIds: ["c_voo_profile"]
       },
       {
-        title: "Index tracking limits",
-        plainEnglishExplanation: "The fund aims to follow an index rather than avoid weaker areas of the market.",
+        title: "Tracking risk",
+        plainEnglishExplanation:
+          "An index ETF tries to follow its benchmark, but fees, trading, cash, and implementation details can make fund results differ from the index.",
         citationIds: ["c_voo_profile"]
       }
     ],
@@ -1154,7 +1157,8 @@ export const assetFixtures: Record<string, AssetFixture> = {
           {
             itemId: "risk_1",
             title: "Market risk",
-            summary: "The fund can lose value when large U.S. stocks fall.",
+            summary:
+              "VOO owns a basket of stocks, so it can lose value when the market or the index segment it tracks declines.",
             citationIds: ["c_chk_voo_risks_001"],
             sourceDocumentIds: ["src_voo_prospectus_fixture"],
             freshnessState: "fresh",
@@ -1166,8 +1170,9 @@ export const assetFixtures: Record<string, AssetFixture> = {
           },
           {
             itemId: "risk_2",
-            title: "Large-company focus",
-            summary: "The fund does not cover every public company or every asset class.",
+            title: "Concentration risk",
+            summary:
+              "VOO may hold many stocks, but large companies and larger index weights can still have an outsized effect on what investors experience.",
             citationIds: ["c_chk_voo_risks_001"],
             sourceDocumentIds: ["src_voo_prospectus_fixture"],
             freshnessState: "fresh",
@@ -1179,8 +1184,9 @@ export const assetFixtures: Record<string, AssetFixture> = {
           },
           {
             itemId: "risk_3",
-            title: "Index tracking limits",
-            summary: "The fund aims to follow an index rather than avoid weaker areas of the market.",
+            title: "Tracking risk",
+            summary:
+              "An index ETF tries to follow its benchmark, but fees, trading, cash, and implementation details can make fund results differ from the index.",
             citationIds: ["c_chk_voo_risks_001"],
             sourceDocumentIds: ["src_voo_prospectus_fixture"],
             freshnessState: "fresh",
@@ -1230,6 +1236,50 @@ export const assetFixtures: Record<string, AssetFixture> = {
         retrievedAt: null,
         limitations:
           "The current local fixture does not include asset-specific evidence for similar ETFs, simpler alternatives, holdings overlap, or diversification-addition claims."
+      },
+      {
+        sectionId: "evidence_limits",
+        title: "Evidence Limits",
+        sectionType: "evidence_gap",
+        beginnerSummary:
+          "Evidence limits are separated from ETF risks so beginners can see what the fund risks are before reading source freshness, issuer-coverage, and provider-fallback warnings.",
+        items: [
+          {
+            itemId: "issuer_facts_are_point_in_time",
+            title: "Issuer facts are point-in-time",
+            summary:
+              "Official issuer fact-sheet, prospectus, holdings, and exposure fields are dated evidence; check as-of dates before treating them as current.",
+            citationIds: ["c_voo_profile"],
+            sourceDocumentIds: ["src_voo_fact_sheet_fixture"],
+            freshnessState: "fresh",
+            evidenceState: "partial",
+            eventDate: null,
+            asOfDate: "2026-04-01",
+            retrievedAt: stubTimestamp,
+            limitations: null
+          },
+          {
+            itemId: "provider_fallback_limits",
+            title: "Provider fallback limits",
+            summary:
+              "Provider-derived ETF fields are source-labeled local-test data and should not be confused with official issuer fact sheets, holdings files, or prospectuses.",
+            citationIds: ["c_fact_voo_trading_data_limitation"],
+            sourceDocumentIds: ["src_voo_trading_limitation"],
+            freshnessState: "unavailable",
+            evidenceState: "partial",
+            eventDate: null,
+            asOfDate: null,
+            retrievedAt: stubTimestamp,
+            limitations: null
+          }
+        ],
+        citationIds: ["c_voo_profile", "c_fact_voo_trading_data_limitation"],
+        sourceDocumentIds: ["src_voo_fact_sheet_fixture", "src_voo_trading_limitation"],
+        freshnessState: "fresh",
+        evidenceState: "partial",
+        asOfDate: "2026-04-01",
+        retrievedAt: stubTimestamp,
+        limitations: "This section explains source and freshness limits; it is not one of the asset's Top 3 Risks."
       },
       {
         sectionId: "recent_developments",
@@ -1348,7 +1398,7 @@ export const assetFixtures: Record<string, AssetFixture> = {
         sectionId: "etf_specific_risks",
         sectionTitle: "ETF-Specific Risks",
         claimContext:
-          "Top risks: market risk, large-company focus, and index tracking limits are the three ETF risks shown first.",
+          "Top risks: market risk, concentration risk, and tracking risk are the three ETF risks shown first.",
         supportingPassage:
           "The fund can lose value when U.S. large-company stocks decline, and index tracking does not remove market risk."
       },
@@ -1556,18 +1606,20 @@ export const assetFixtures: Record<string, AssetFixture> = {
     topRisks: [
       {
         title: "Concentration risk",
-        plainEnglishExplanation: "A smaller group of large holdings can have an outsized impact on results.",
-        citationIds: ["c_qqq_profile"]
-      },
-      {
-        title: "Sector tilt",
         plainEnglishExplanation:
-          "The fund can lean heavily toward growth-oriented technology and communication companies.",
+          "QQQ tracks a narrower or more specialized index segment, so a smaller set of companies or sectors can drive more of the fund's results.",
         citationIds: ["c_qqq_profile"]
       },
       {
         title: "Market risk",
-        plainEnglishExplanation: "The fund can fall when the stocks in its index decline.",
+        plainEnglishExplanation:
+          "QQQ owns a basket of stocks, so it can lose value when the market or the index segment it tracks declines.",
+        citationIds: ["c_qqq_profile"]
+      },
+      {
+        title: "Tracking risk",
+        plainEnglishExplanation:
+          "An index ETF tries to follow its benchmark, but fees, trading, cash, and implementation details can make fund results differ from the index.",
         citationIds: ["c_qqq_profile"]
       }
     ],
@@ -1889,7 +1941,8 @@ export const assetFixtures: Record<string, AssetFixture> = {
           {
             itemId: "risk_1",
             title: "Concentration risk",
-            summary: "A smaller group of large holdings can have an outsized impact on results.",
+            summary:
+              "QQQ tracks a narrower or more specialized index segment, so a smaller set of companies or sectors can drive more of the fund's results.",
             citationIds: ["c_chk_qqq_risks_001"],
             sourceDocumentIds: ["src_qqq_prospectus_fixture"],
             freshnessState: "fresh",
@@ -1901,8 +1954,9 @@ export const assetFixtures: Record<string, AssetFixture> = {
           },
           {
             itemId: "risk_2",
-            title: "Sector tilt",
-            summary: "The fund can lean heavily toward growth-oriented technology and communication companies.",
+            title: "Market risk",
+            summary:
+              "QQQ owns a basket of stocks, so it can lose value when the market or the index segment it tracks declines.",
             citationIds: ["c_chk_qqq_risks_001"],
             sourceDocumentIds: ["src_qqq_prospectus_fixture"],
             freshnessState: "fresh",
@@ -1914,8 +1968,9 @@ export const assetFixtures: Record<string, AssetFixture> = {
           },
           {
             itemId: "risk_3",
-            title: "Market risk",
-            summary: "The fund can fall when the stocks in its index decline.",
+            title: "Tracking risk",
+            summary:
+              "An index ETF tries to follow its benchmark, but fees, trading, cash, and implementation details can make fund results differ from the index.",
             citationIds: ["c_chk_qqq_risks_001"],
             sourceDocumentIds: ["src_qqq_prospectus_fixture"],
             freshnessState: "fresh",
@@ -1965,6 +2020,50 @@ export const assetFixtures: Record<string, AssetFixture> = {
         retrievedAt: null,
         limitations:
           "The fixture has enough evidence for a bounded high-level VOO vs QQQ comparison but not a full holdings-overlap calculation, similar ETF list, simpler-alternative claim, or diversification-addition claim."
+      },
+      {
+        sectionId: "evidence_limits",
+        title: "Evidence Limits",
+        sectionType: "evidence_gap",
+        beginnerSummary:
+          "Evidence limits are separated from ETF risks so beginners can see what the fund risks are before reading source freshness, issuer-coverage, and provider-fallback warnings.",
+        items: [
+          {
+            itemId: "issuer_facts_are_point_in_time",
+            title: "Issuer facts are point-in-time",
+            summary:
+              "Official issuer fact-sheet, prospectus, holdings, and exposure fields are dated evidence; check as-of dates before treating them as current.",
+            citationIds: ["c_qqq_profile"],
+            sourceDocumentIds: ["src_qqq_fact_sheet_fixture"],
+            freshnessState: "fresh",
+            evidenceState: "partial",
+            eventDate: null,
+            asOfDate: "2026-04-01",
+            retrievedAt: stubTimestamp,
+            limitations: null
+          },
+          {
+            itemId: "provider_fallback_limits",
+            title: "Provider fallback limits",
+            summary:
+              "Provider-derived ETF fields are source-labeled local-test data and should not be confused with official issuer fact sheets, holdings files, or prospectuses.",
+            citationIds: ["c_fact_qqq_trading_data_limitation"],
+            sourceDocumentIds: ["src_qqq_trading_limitation"],
+            freshnessState: "unavailable",
+            evidenceState: "partial",
+            eventDate: null,
+            asOfDate: null,
+            retrievedAt: stubTimestamp,
+            limitations: null
+          }
+        ],
+        citationIds: ["c_qqq_profile", "c_fact_qqq_trading_data_limitation"],
+        sourceDocumentIds: ["src_qqq_fact_sheet_fixture", "src_qqq_trading_limitation"],
+        freshnessState: "fresh",
+        evidenceState: "partial",
+        asOfDate: "2026-04-01",
+        retrievedAt: stubTimestamp,
+        limitations: "This section explains source and freshness limits; it is not one of the asset's Top 3 Risks."
       },
       {
         sectionId: "recent_developments",
@@ -2084,7 +2183,7 @@ export const assetFixtures: Record<string, AssetFixture> = {
         sourceDocumentId: "src_qqq_prospectus_fixture",
         sectionId: "etf_specific_risks",
         sectionTitle: "ETF-Specific Risks",
-        claimContext: "Top risks: concentration risk, sector tilt, and market risk are the three ETF risks shown first.",
+        claimContext: "Top risks: concentration risk, market risk, and tracking risk are the three ETF risks shown first.",
         supportingPassage:
           "QQQ can be more concentrated than broader equity funds, so a smaller group of companies or sectors can drive more of the fund's results."
       },
@@ -2275,20 +2374,20 @@ export const assetFixtures: Record<string, AssetFixture> = {
     ],
     topRisks: [
       {
-        title: "Company-specific risk",
-        plainEnglishExplanation: "A single company can be affected by its own product demand, execution, and operating problems.",
+        title: "Single-company risk",
+        plainEnglishExplanation: "AAPL represents one company, so company-specific results, filings, competition, and execution can matter a lot.",
         citationIds: ["c_chk_aapl_risks_001"]
       },
       {
-        title: "Competition",
+        title: "Business and competition risk",
         plainEnglishExplanation:
-          "Consumer technology markets can change quickly when competitors release new products or services.",
+          "A company's products, services, customer demand, competitors, and execution can change, so source-backed business facts should be read as a starting point for understanding the company.",
         citationIds: ["c_chk_aapl_risks_001"]
       },
       {
-        title: "Supply chain and regulation",
+        title: "Financial and valuation risk",
         plainEnglishExplanation:
-          "Global operations can be affected by manufacturing, legal, or regulatory issues.",
+          "Reported financial results and valuation context can change over time, and market expectations can move faster than the latest filing or provider snapshot.",
         citationIds: ["c_chk_aapl_risks_001"]
       }
     ],
@@ -2528,8 +2627,8 @@ export const assetFixtures: Record<string, AssetFixture> = {
         items: [
           {
             itemId: "risk_1",
-            title: "Company-specific risk",
-            summary: "A single company can be affected by its own product demand, execution, and operating problems.",
+            title: "Single-company risk",
+            summary: "AAPL represents one company, so company-specific results, filings, competition, and execution can matter a lot.",
             citationIds: ["c_chk_aapl_risks_001"],
             sourceDocumentIds: ["src_aapl_10k_fixture"],
             freshnessState: "fresh",
@@ -2541,8 +2640,9 @@ export const assetFixtures: Record<string, AssetFixture> = {
           },
           {
             itemId: "risk_2",
-            title: "Competition",
-            summary: "Consumer technology markets can change quickly when competitors release new products or services.",
+            title: "Business and competition risk",
+            summary:
+              "A company's products, services, customer demand, competitors, and execution can change, so source-backed business facts should be read as a starting point for understanding the company.",
             citationIds: ["c_chk_aapl_risks_001"],
             sourceDocumentIds: ["src_aapl_10k_fixture"],
             freshnessState: "fresh",
@@ -2554,8 +2654,9 @@ export const assetFixtures: Record<string, AssetFixture> = {
           },
           {
             itemId: "risk_3",
-            title: "Supply chain and regulation",
-            summary: "Global operations can be affected by manufacturing, legal, or regulatory issues.",
+            title: "Financial and valuation risk",
+            summary:
+              "Reported financial results and valuation context can change over time, and market expectations can move faster than the latest filing or provider snapshot.",
             citationIds: ["c_chk_aapl_risks_001"],
             sourceDocumentIds: ["src_aapl_10k_fixture"],
             freshnessState: "fresh",
@@ -2573,6 +2674,50 @@ export const assetFixtures: Record<string, AssetFixture> = {
         asOfDate: "2026-04-01",
         retrievedAt: stubTimestamp,
         limitations: null
+      },
+      {
+        sectionId: "evidence_limits",
+        title: "Evidence Limits",
+        sectionType: "evidence_gap",
+        beginnerSummary:
+          "Evidence limits are separated from the main risk cards so beginners can distinguish asset risk from source freshness, provider fallback, and missing-detail warnings.",
+        items: [
+          {
+            itemId: "reported_facts_are_point_in_time",
+            title: "Reported facts are point-in-time",
+            summary:
+              "SEC identity, filing, and XBRL fields are dated evidence. Check filing and period dates before treating a metric as the latest full picture.",
+            citationIds: ["c_fact_aapl_revenue_trend"],
+            sourceDocumentIds: ["src_aapl_xbrl_fixture"],
+            freshnessState: "fresh",
+            evidenceState: "partial",
+            eventDate: null,
+            asOfDate: "2026-04-01",
+            retrievedAt: stubTimestamp,
+            limitations: null
+          },
+          {
+            itemId: "provider_reference_limits",
+            title: "Provider reference limits",
+            summary:
+              "Provider-derived price, profile, valuation, and quote fields are reference context for learning; they are not official company filings or a valuation conclusion.",
+            citationIds: ["c_fact_aapl_valuation_limitation"],
+            sourceDocumentIds: ["src_aapl_valuation_limitation"],
+            freshnessState: "unavailable",
+            evidenceState: "partial",
+            eventDate: null,
+            asOfDate: null,
+            retrievedAt: stubTimestamp,
+            limitations: null
+          }
+        ],
+        citationIds: ["c_fact_aapl_revenue_trend", "c_fact_aapl_valuation_limitation"],
+        sourceDocumentIds: ["src_aapl_xbrl_fixture", "src_aapl_valuation_limitation"],
+        freshnessState: "fresh",
+        evidenceState: "partial",
+        asOfDate: "2026-04-01",
+        retrievedAt: stubTimestamp,
+        limitations: "This section explains source and freshness limits; it is not one of the asset's Top 3 Risks."
       },
       {
         sectionId: "recent_developments",
@@ -2690,7 +2835,7 @@ export const assetFixtures: Record<string, AssetFixture> = {
         sectionId: "top_risks",
         sectionTitle: "Top Risks",
         claimContext:
-          "Top risks: company-specific risk, competition, and supply chain or regulatory issues are the three risks shown first.",
+          "Top risks: single-company risk, business and competition risk, and financial and valuation risk are the three risks shown first.",
         supportingPassage:
           "Single-company stock results can be affected by product demand, competition, supply chain disruption, regulation, and other company-specific risks."
       },

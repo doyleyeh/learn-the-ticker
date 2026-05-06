@@ -1,8 +1,8 @@
 # Learn the Ticker: Citation-First Beginner U.S. Stock & ETF Research Assistant
 
 **Document type:** Detailed product proposal  
-**Version:** v0.8 lightweight data policy refresh
-**Last updated:** 2026-05-02
+**Version:** v0.9 asset page structure refresh
+**Last updated:** 2026-05-06
 **Project stage:** Side-project MVP / v1 planning
 **Documentation role:** Narrative product vision and product-thesis document. The PRD is the product source of truth, the technical design spec is the implementation source of truth, and the implementation plan plus handoff docs own execution details.
 
@@ -440,50 +440,50 @@ Recommended section order:
 
 1. **Asset Header**;
 2. **Beginner Summary**;
-3. **Top 3 Risks**;
-4. **Key Facts**;
-5. **What it does / What it holds**;
-6. **Weekly News Focus**;
-7. **AI Comprehensive Analysis**;
-8. **Deep Dive**;
-9. **Ask about this asset**;
-10. **Sources**;
-11. **Educational disclaimer**.
+3. **Asset Data Dashboard**;
+4. **Top 3 Risks**;
+5. **Key Facts**;
+6. **What it does / What it holds**;
+7. **Weekly News Focus**;
+8. **AI Comprehensive Analysis**;
+9. **Deep Dive**;
+10. **Ask about this asset**;
+11. **Sources**;
+12. **Educational disclaimer**.
 
-### 9.2.1 Beginner section
+### 9.2.1 Beginner Summary
 
-The Beginner section appears first on the asset page.
+The Beginner Summary appears first on the asset page.
 
 It should show:
 
 - what the asset or company is;
 - why people may look at it;
 - the main thing to be careful about;
-- top three risks;
-- key facts;
 - freshness;
 - key sources;
 - glossary support for important terms.
 
-The goal is to help the user understand the asset quickly without overwhelming them.
+The goal is to help the user understand the asset quickly without overwhelming them. Top 3 Risks, Key Facts, and What it does / What it holds remain nearby sections in the reading flow, while the Asset Data Dashboard handles structured tables and charts.
 
-### 9.2.2 Deep-Dive section
+### 9.2.2 Asset Data Dashboard and Deep-Dive section
 
-The Deep-Dive section expands the asset page for users who want more detail.
+The Asset Data Dashboard is the home for structured facts, tables, charts, and compact metric displays. It should show holdings tables, sector weightings, performance/price charts, ETF quote or cost stats, stock profile snapshots, stock financial snapshots, and stock valuation ratio tables when those fields are available and source-labeled.
 
-It should include:
+The Deep-Dive section expands the asset page for users who want more detail, but it should not repeat the same dashboard tables or metric rows. If the dashboard already shows holdings, sector weightings, profile fields, financial rows, valuation rows, performance, or cost/trading stats, Deep Dive should either add clearly distinct narrative interpretation or omit that subsection.
 
-- detailed financial metrics;
-- business segment breakdowns for stocks;
-- holdings and exposure breakdowns for ETFs;
-- prospectus or filing-based nuance;
-- peer comparison;
-- methodology details;
-- Weekly News Focus evidence and educational AI context;
-- full source list and source dates;
-- Markdown/JSON export controls.
+Deep Dive should prioritize:
+
+- prospectus, filing, or methodology nuance that is not visible in dashboard rows;
+- business, products/services, or strengths discussion for stocks when it adds narrative beyond profile/financial tables;
+- ETF construction/methodology notes and source-scope limits;
+- similar-assets or overlap discussion when evidence exists, or an explicit evidence-gap state when it does not;
+- evidence limits that separate source freshness, provider fallback, and missing-field warnings from asset risks;
+- links to source details and export controls outside the repeated data-table flow.
 
 The Deep-Dive section should add depth without changing the core beginner explanation.
+
+The Top 3 Risks section should focus on actual asset risks. Source freshness, point-in-time filing facts, provider fallback, and missing evidence are important, but they should be rendered as Evidence Limits or evidence-gap context rather than occupying one of the first three risk cards.
 
 ## 9.3 Concept learning
 
@@ -722,6 +722,8 @@ Risk explanations should be:
 - specific to the company where possible;
 - careful about uncertainty.
 
+For stocks, the first three risks should be company/asset risks, such as single-company risk, business and competition risk, and financial or valuation risk when supported. Filing freshness, provider-reference limits, and missing metric warnings should be shown as Evidence Limits, not as top-risk cards.
+
 ### 10.1.7 Valuation context
 
 The valuation context section may include:
@@ -831,6 +833,8 @@ ETF risks may include:
 - tracking risk where relevant.
 
 The product should explain which risks matter most for the specific ETF.
+
+For ETFs, the first three risk cards should describe ETF/fund risks, such as market risk, concentration risk, and tracking risk for broad equity index ETFs, with liquidity, complexity, interest-rate, credit, or currency risk substituted only when relevant to the actual fund. Issuer fact dates, provider fallback limits, parser gaps, and missing premium/discount or spread fields belong in Evidence Limits or evidence-gap sections rather than the Top 3 Risks.
 
 ### 10.2.8 Comparison and overlap
 

@@ -1,10 +1,10 @@
 # PRD: Learn the Ticker - Citation-First Beginner U.S. Stock & ETF Research Assistant
 
-**Document version:** v0.7 lightweight data policy refresh
-**Date:** 2026-05-02
+**Document version:** v0.8 asset page structure refresh
+**Date:** 2026-05-06
 **Product stage:** Side-project MVP / v1 planning  
 **Primary audience:** Product, design, engineering, data/LLM, and compliance reviewers
-**Source basis:** Original proposal, PRD v0.1, technical design spec v0.1, ETF manifest policy update, resolved product decisions from current review, and the 2026-05-02 lightweight data policy.
+**Source basis:** Original proposal, PRD v0.1, technical design spec v0.1, ETF manifest policy update, resolved product decisions from current review, the 2026-05-02 lightweight data policy, and the 2026-05-06 asset page structure refresh.
 **Documentation role:** Product source of truth. The proposal provides narrative vision; the technical design spec translates this PRD into implementation details.
 
 ---
@@ -46,6 +46,8 @@ Search one stock or ETF
 ```
 
 The home page has one primary action: search for a single supported stock or ETF. Comparison is a separate but connected workflow, not the home page's main input pattern.
+
+Asset pages use a clear two-layer detail model. The Asset Data Dashboard owns structured facts, tables, charts, holdings, exposure rows, profile fields, financial rows, valuation rows, performance, and cost/trading stats. Deep Dive owns non-redundant narrative, methodology/source nuance, comparison or overlap context, and Evidence Limits. Deep Dive must not repeat the same dashboard rows or chart content.
 
 ---
 
@@ -614,22 +616,23 @@ Recommended high-level section order:
 ```text
 1. Asset Header
 2. Beginner Summary
-3. Top 3 Risks
-4. Key Facts
-5. What it does / What it holds
-6. Weekly News Focus
-7. AI Comprehensive Analysis
-8. Deep Dive
-9. Ask about this asset
-10. Sources
-11. Educational disclaimer
+3. Asset Data Dashboard
+4. Top 3 Risks
+5. Key Facts
+6. What it does / What it holds
+7. Weekly News Focus
+8. AI Comprehensive Analysis
+9. Deep Dive
+10. Ask about this asset
+11. Sources
+12. Educational disclaimer
 ```
 
 Asset pages must support partial evidence states. If free-first sources cannot verify a section, the page should render verified sections only, label the missing section as unavailable, stale, unknown, or partial, and suppress generated claims that lack source support.
 
 | ID    | Requirement                                                                                      | Priority |
 | ----- | ------------------------------------------------------------------------------------------------ | -------- |
-| AP-1  | Asset page places Beginner Summary, Top 3 Risks, and Key Facts before deep data.                  | P0       |
+| AP-1  | Asset page places Beginner Summary and the Asset Data Dashboard before Top 3 Risks, Key Facts, and narrative Deep Dive. | P0       |
 | AP-2  | Asset header includes ticker, canonical name, asset type, exchange, ETF issuer/provider or stock sector/industry when available, overall status, and page last updated. | P0       |
 | AP-3  | Asset page starts with `BeginnerSummaryCard` using three short cards: what it is, why people look at it, and the main thing to be careful about. | P0       |
 | AP-4  | Asset page includes exactly three top risks before expandable risk detail.                       | P0       |
@@ -637,7 +640,7 @@ Asset pages must support partial evidence states. If free-first sources cannot v
 | AP-6  | Asset page includes source citations for important factual claims.                               | P0       |
 | AP-7  | Asset page includes a source drawer or mobile bottom sheet with source title, type, policy, freshness, dates, related claim, allowed excerpt, and URL. | P0       |
 | AP-8  | Asset page includes contextual glossary terms for important beginner terms.                      | P0       |
-| AP-9  | Asset page includes a Deep-Dive section for more detailed metrics and source context.             | P0       |
+| AP-9  | Asset page includes a Deep-Dive section for non-redundant narrative, methodology/source nuance, and Evidence Limits; dashboard table/chart rows must not repeat there. | P0       |
 | AP-10 | Asset page allows users to export/download page content and source list.                         | P0       |
 | AP-11 | Asset page includes a persistent educational disclaimer at the bottom.                           | P0       |
 | AP-12 | Header actions include Compare this asset, Export, and View sources.                             | P0       |
@@ -1102,9 +1105,12 @@ Each stock page should include:
    - cash
    - ROIC or ROE where available
 
+   Structured profile, financial, and valuation tables belong in the Asset Data Dashboard. Deep Dive may include narrative business or financial-quality discussion only when it adds context beyond the dashboard rows.
+
 6. **Risks**
    - exactly three top risks first
    - expandable detail
+   - source/freshness/provider limitations shown separately as Evidence Limits
 
 7. **Valuation context**
    - P/E
@@ -1113,6 +1119,8 @@ Each stock page should include:
    - price/free cash flow
    - peer context
    - own-history context
+
+   Valuation ratios shown as structured rows belong in the Asset Data Dashboard. Deep Dive should not restate them unless it explains source limits, unavailable evidence, or a cited interpretation beyond the table.
 
 8. **Weekly News Focus and AI Comprehensive Analysis**
    - earnings
@@ -1167,6 +1175,8 @@ Each ETF page should include:
    - country breakdown when relevant
    - largest position
 
+   Structured holdings, sector, country, concentration, and exposure rows belong in the Asset Data Dashboard. Deep Dive should not duplicate those rows unless it adds distinct methodology, concentration, or source-scope explanation.
+
 5. **Construction**
    - weighting method
    - rebalancing frequency
@@ -1180,6 +1190,8 @@ Each ETF page should include:
    - AUM
    - premium/discount information where available
 
+   Structured cost, quote-stat, performance, and trading rows belong in the Asset Data Dashboard. Deep Dive should include only non-redundant cost/trading interpretation or an evidence-limit explanation when fields are unavailable.
+
 7. **Risks**
    - market risk
    - concentration risk
@@ -1187,6 +1199,8 @@ Each ETF page should include:
    - complexity risk
    - interest-rate or credit risk when relevant
    - currency risk when relevant
+   - tracking risk when relevant
+   - source/freshness/provider limitations shown separately as Evidence Limits
 
 8. **Comparison and overlap**
    - similar ETFs
@@ -1509,17 +1523,15 @@ Compare
 
 Do not make Glossary a primary top-nav item for MVP unless the project already has a glossary page. Glossary should primarily appear contextually when users interact with finance terms inside content.
 
-### 15.1 Beginner section
+### 15.1 Beginner Summary section
 
-The Beginner section is the first section on the asset page.
+The Beginner Summary section is the first section on the asset page.
 
 It should prioritize:
 
 - `BeginnerSummaryCard`
 - simple explanations
 - three short summary cards
-- `RiskCards` with exactly three top risks first
-- `KeyFactsGrid`
 - plain-language summaries
 - contextual glossary terms
 - visible citations
@@ -1529,7 +1541,23 @@ It should prioritize:
 Acceptance criteria:
 
 - User does not need to understand filings, ratios, or ETF methodology to get value.
-- Advanced details are available but not forced into the first view.
+- Top 3 Risks and Key Facts remain nearby in the reading flow, but the first section stays focused on a short beginner summary.
+
+### 15.1.1 Asset Data Dashboard
+
+The Asset Data Dashboard appears after Beginner Summary and before Top 3 Risks. It is the canonical UI location for structured tables, charts, and compact metrics that help users scan the asset without turning Deep Dive into a duplicate data dump.
+
+It should include, when available:
+
+- ETF holdings, sector/exposure, performance, quote stats, and cost/trading tables
+- stock profile, financial snapshot, and valuation tables
+- price chart or range chart context
+- source icons, freshness labels, and provider/official-source labels for every row or table
+
+Acceptance criteria:
+
+- Structured dashboard rows do not repeat in Deep Dive.
+- Dashboard rows remain source-labeled and freshness-labeled.
 
 ### 15.2 Deep-Dive section
 
@@ -1537,18 +1565,17 @@ The Deep-Dive section expands the page for users who want more detail.
 
 It should include:
 
-- detailed financial metrics
-- segment or exposure breakdowns
 - source-specific nuance
-- peer comparison
-- methodology details
-- full source list
+- stock business/products/services or strengths discussion when it adds narrative beyond dashboard rows
+- ETF construction or methodology details when they are more than table restatement
+- comparison, overlap, or simpler-alternative discussion when supported by evidence
+- Evidence Limits for source freshness, provider fallback, parser gaps, and missing-field warnings
 - source dates and freshness
-- export controls
 
 Acceptance criteria:
 
 - Deep-Dive section adds depth without changing the beginner summary.
+- Deep-Dive section does not repeat dashboard table/chart content.
 - Users can inspect the evidence behind the summary.
 
 ### 15.3 Source drawer
@@ -1618,6 +1645,7 @@ Acceptance criteria:
 Mobile should emphasize:
 
 - Beginner Summary
+- Asset Data Dashboard
 - Top 3 Risks
 - Key Facts
 - Weekly News Focus and AI Comprehensive Analysis
@@ -1644,6 +1672,7 @@ Sources
 Desktop should emphasize:
 
 - main reading column plus optional helper rail
+- Asset Data Dashboard for structured tables and charts
 - Deep Dive
 - side-by-side comparison
 - source drawer as right panel
@@ -1924,6 +1953,7 @@ Included:
 - Stock page
 - ETF page
 - Beginner section
+- Asset Data Dashboard baseline
 - Deep-Dive section baseline
 - Compare two assets
 - Dedicated comparison builder and comparison pages

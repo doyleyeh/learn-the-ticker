@@ -215,17 +215,25 @@ ASSETS: dict[str, dict[str, Any]] = {
         "risks": [
             RiskItem(
                 title="Market risk",
-                plain_english_explanation="The fund can lose value when large U.S. stocks fall.",
+                plain_english_explanation=(
+                    "VOO owns a basket of stocks, so it can lose value when the market or the index segment it tracks declines."
+                ),
                 citation_ids=["c_voo_profile"],
             ),
             RiskItem(
-                title="Large-company focus",
-                plain_english_explanation="The fund does not cover every public company or every asset class.",
+                title="Concentration risk",
+                plain_english_explanation=(
+                    "VOO may hold many stocks, but large companies and larger index weights can still have an outsized "
+                    "effect on what investors experience."
+                ),
                 citation_ids=["c_voo_profile"],
             ),
             RiskItem(
-                title="Index tracking limits",
-                plain_english_explanation="The fund aims to follow an index rather than avoid weaker areas of the market.",
+                title="Tracking risk",
+                plain_english_explanation=(
+                    "An index ETF tries to follow its benchmark, but fees, trading, cash, and implementation details can "
+                    "make fund results differ from the index."
+                ),
                 citation_ids=["c_voo_profile"],
             ),
         ],
@@ -289,17 +297,25 @@ ASSETS: dict[str, dict[str, Any]] = {
         "risks": [
             RiskItem(
                 title="Concentration risk",
-                plain_english_explanation="A smaller group of large holdings can have an outsized impact on results.",
-                citation_ids=["c_qqq_profile"],
-            ),
-            RiskItem(
-                title="Sector tilt",
-                plain_english_explanation="The fund can lean heavily toward growth-oriented technology and communication companies.",
+                plain_english_explanation=(
+                    "QQQ tracks a narrower or more specialized index segment, so a smaller set of companies or sectors "
+                    "can drive more of the fund's results."
+                ),
                 citation_ids=["c_qqq_profile"],
             ),
             RiskItem(
                 title="Market risk",
-                plain_english_explanation="The fund can fall when the stocks in its index decline.",
+                plain_english_explanation=(
+                    "QQQ owns a basket of stocks, so it can lose value when the market or the index segment it tracks declines."
+                ),
+                citation_ids=["c_qqq_profile"],
+            ),
+            RiskItem(
+                title="Tracking risk",
+                plain_english_explanation=(
+                    "An index ETF tries to follow its benchmark, but fees, trading, cash, and implementation details can "
+                    "make fund results differ from the index."
+                ),
                 citation_ids=["c_qqq_profile"],
             ),
         ],
@@ -361,18 +377,26 @@ ASSETS: dict[str, dict[str, Any]] = {
         ],
         "risks": [
             RiskItem(
-                title="Product concentration",
-                plain_english_explanation="A large business line can matter a lot to overall results.",
+                title="Single-company risk",
+                plain_english_explanation=(
+                    "AAPL represents one company, so company-specific results, filings, competition, and execution can matter a lot."
+                ),
                 citation_ids=["c_aapl_profile"],
             ),
             RiskItem(
-                title="Competition",
-                plain_english_explanation="Consumer technology markets can change quickly as competitors release new products.",
+                title="Business and competition risk",
+                plain_english_explanation=(
+                    "A company's products, services, customer demand, competitors, and execution can change, so source-backed "
+                    "business facts should be read as a starting point for understanding the company."
+                ),
                 citation_ids=["c_aapl_profile"],
             ),
             RiskItem(
-                title="Supply chain and regulation",
-                plain_english_explanation="Global operations can be affected by manufacturing, legal, or regulatory issues.",
+                title="Financial and valuation risk",
+                plain_english_explanation=(
+                    "Reported financial results and valuation context can change over time, and market expectations can move "
+                    "faster than the latest filing or provider snapshot."
+                ),
                 citation_ids=["c_aapl_profile"],
             ),
         ],

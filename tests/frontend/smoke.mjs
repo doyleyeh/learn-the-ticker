@@ -672,6 +672,9 @@ includes("components/AssetStockSections.tsx", "data-stock-section-id");
 includes("components/AssetStockSections.tsx", "data-shared-prd-section-shell");
 includes("components/AssetStockSections.tsx", "data-dashboard-duplicate-sections-filtered");
 includes("components/AssetStockSections.tsx", "provider_metric_tables");
+includes("components/AssetStockSections.tsx", "data-deep-dive-table-chart-policy=\"exclude_table_or_chart_sections\"");
+includes("components/AssetStockSections.tsx", "data-deep-dive-source-status-sections=\"products_services,strengths,market_reference,evidence_limits\"");
+includes("components/AssetStockSections.tsx", "business_overview,financial_quality,valuation_context,price_chart");
 includes("components/AssetStockSections.tsx", "data-stock-stable-recent-separation");
 includes("components/AssetStockSections.tsx", "data-stock-top-risk-count");
 includes("components/AssetStockSections.tsx", "InlineGlossaryText");
@@ -682,6 +685,9 @@ includes("components/AssetEtfSections.tsx", "data-etf-section-id");
 includes("components/AssetEtfSections.tsx", "data-shared-prd-section-shell");
 includes("components/AssetEtfSections.tsx", "data-dashboard-duplicate-sections-filtered");
 includes("components/AssetEtfSections.tsx", "fund_objective_role,holdings_exposure,sector_weightings,performance,price_chart");
+includes("components/AssetEtfSections.tsx", "data-deep-dive-table-chart-policy=\"exclude_table_or_chart_sections\"");
+includes("components/AssetEtfSections.tsx", "data-deep-dive-source-status-sections=\"construction_methodology,similar_assets_alternatives,evidence_limits\"");
+includes("components/AssetEtfSections.tsx", "fund_objective_role,holdings_exposure,sector_weightings,performance,price_chart,cost_trading_context");
 includes("components/AssetEtfSections.tsx", "data-etf-stable-recent-separation");
 includes("components/AssetEtfSections.tsx", "data-etf-top-risk-count");
 includes("components/AssetEtfSections.tsx", "InlineGlossaryText");
@@ -1147,6 +1153,7 @@ for (const sectionId of [
   "financial_quality",
   "valuation_context",
   "top_risks",
+  "evidence_limits",
   "recent_developments",
   "educational_suitability"
 ]) {
@@ -1191,6 +1198,7 @@ for (const [ticker, fixture] of [
     "cost_trading_context",
     "etf_specific_risks",
     "similar_assets_alternatives",
+    "evidence_limits",
     "recent_developments",
     "educational_suitability"
   ]) {
@@ -1243,6 +1251,14 @@ for (const marker of [
   "c_voo_profile",
   "c_qqq_profile",
   "c_aapl_profile",
+  "Single-company risk",
+  "Business and competition risk",
+  "Financial and valuation risk",
+  "Concentration risk",
+  "Tracking risk",
+  "issuer_facts_are_point_in_time",
+  "provider_reference_limits",
+  "provider_fallback_limits",
   "weeklyNewsFocusFixtures",
   "aiComprehensiveAnalysisFixtures",
   "weekly-news-focus-v1",

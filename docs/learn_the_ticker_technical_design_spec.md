@@ -1,10 +1,10 @@
 # Technical Design Spec: Learn the Ticker - Citation-First Beginner U.S. Stock & ETF Research Assistant
 
-**Document version:** v0.7 lightweight data policy refresh
-**Date:** 2026-05-02
+**Document version:** v0.8 asset page structure refresh
+**Date:** 2026-05-06
 **Product stage:** MVP / v1 planning  
-**Related doc:** PRD v0.6 product decision refresh
-**Source basis:** Current project proposal, PRD v0.7, resolved implementation-readiness decisions, and the 2026-05-02 lightweight data policy.
+**Related doc:** PRD v0.8 asset page structure refresh
+**Source basis:** Current project proposal, PRD v0.8, resolved implementation-readiness decisions, the 2026-05-02 lightweight data policy, and the 2026-05-06 asset page structure refresh.
 **Documentation role:** Engineering source of truth for implementation. The PRD remains the product source of truth.
 
 ---
@@ -19,7 +19,7 @@ The core technical challenge is not simply generating good prose. The system mus
 2. **Timely context** - Weekly News Focus, filings, fee changes, earnings, or methodology updates.
 3. **Teaching layer** - AI-written plain-English explanation and chat answers.
 
-That three-layer knowledge architecture comes directly from the proposal and remains the backbone of this design. The current PRD adds frontend workflow direction: home is single-asset search first; comparison is a separate connected workflow; glossary is contextual inline help; mobile source, glossary, and chat surfaces use bottom sheets where appropriate; and all frontend data must flow through the FastAPI backend.
+That three-layer knowledge architecture comes directly from the proposal and remains the backbone of this design. The current PRD adds frontend workflow direction: home is single-asset search first; comparison is a separate connected workflow; glossary is contextual inline help; mobile source, glossary, and chat surfaces use bottom sheets where appropriate; Asset Data Dashboard owns structured table/chart facts; Deep Dive renders only non-redundant narrative and evidence/source limits; and all frontend data must flow through the FastAPI backend.
 
 ---
 
@@ -129,7 +129,7 @@ The system will not support brokerage trading, tax advice, options, crypto, inte
 
 - Home page single-asset search UI with autocomplete.
 - Asset page rendering.
-- Beginner Summary, Top 3 Risks, Key Facts, and Deep Dive rendering.
+- Beginner Summary, Asset Data Dashboard, Top 3 Risks, Key Facts, and Deep Dive rendering.
 - Citation chips.
 - Source drawer on desktop and source bottom sheet on mobile.
 - Contextual glossary popovers and bottom sheets.
@@ -1002,6 +1002,8 @@ Generate:
 - Weekly News Focus
 - AI Comprehensive Analysis
 - suitability summary
+
+Asset-risk generation must separate fund/company risk from source and evidence limitations. The first three risk cards should describe actual asset risks, such as market, concentration, and tracking risk for ETFs or single-company, business/competition, and financial/valuation risk for stocks when supported. Provider fallback warnings, stale or point-in-time facts, parser gaps, and missing fields should be emitted as `evidence_gap` / Evidence Limits sections, not as replacements for risk cards.
 
 ### 9.4 Weekly News Focus and AI Comprehensive Analysis ingestion
 
@@ -1941,18 +1943,21 @@ Section order:
 ```text
 1. Asset Header
 2. Beginner Summary
-3. Top 3 Risks
-4. Key Facts
-5. What it does / What it holds
-6. Weekly News Focus
-7. AI Comprehensive Analysis
-8. Deep Dive
-9. Ask about this asset
-10. Sources
-11. Educational disclaimer
+3. Asset Data Dashboard
+4. Top 3 Risks
+5. Key Facts
+6. What it does / What it holds
+7. Weekly News Focus
+8. AI Comprehensive Analysis
+9. Deep Dive
+10. Ask about this asset
+11. Sources
+12. Educational disclaimer
 ```
 
 Asset header fields: ticker, canonical name, asset type, exchange, ETF issuer/provider or stock sector/industry when available, status, page last updated, and actions for Compare this asset, Export, and View sources.
+
+`AssetDataDashboard` is the rendering owner for structured tables, charts, and compact metric grids. It may consume backend overview sections such as ETF holdings/exposure, sector weightings, performance, cost/trading context, stock business/profile snapshot, financial quality, valuation context, and price chart. `AssetStockSections` and `AssetEtfSections` must filter Deep Dive so sections with `table` or `chart` do not render there unless a future explicit narrative-only exception is added. Deep Dive should keep narrative/source-status sections such as products/services, strengths, market reference, construction methodology, similar-assets/overlap context, and Evidence Limits.
 
 ### 15.5 Frontend components
 
@@ -1962,6 +1967,7 @@ Asset header fields: ticker, canonical name, asset type, exchange, ETF issuer/pr
 | `StatusChip` / `FreshnessBadge` | Supported, pending, partial, stale, unsupported, out-of-scope, unavailable, and unknown states. |
 | `AssetHeader` | Identity, status, freshness, and header actions. |
 | `BeginnerSummaryCard` | Three short cards: what it is, why people look at it, main thing to be careful about. |
+| `AssetDataDashboard` | Structured source-labeled tables, charts, holdings, sector/exposure rows, stock profile/financial/valuation rows, ETF performance, and cost/trading stats. |
 | `RiskCards` | Exactly three top risks first. |
 | `KeyFactsGrid` | Stock and ETF key facts with citation/freshness metadata. |
 | `BusinessOverview` / `FinancialTrendsTable` / `ValuationContextCard` | Stock-specific sections. |

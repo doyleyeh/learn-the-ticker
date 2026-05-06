@@ -560,6 +560,13 @@ def test_lightweight_stock_fetch_builds_overview_details_and_source_drawer_contr
     assert overview.beginner_summary is not None
     assert "SEC" in overview.beginner_summary.what_it_is
     assert len(overview.top_risks) == 3
+    assert [risk.title for risk in overview.top_risks] == [
+        "Single-company risk",
+        "Business and competition risk",
+        "Financial and valuation risk",
+    ]
+    assert all("Provider" not in risk.title for risk in overview.top_risks)
+    assert all("Reported results can change" != risk.title for risk in overview.top_risks)
     assert overview.source_documents
     assert overview.citations
     sections = {section.section_id: section for section in overview.sections}
@@ -577,6 +584,7 @@ def test_lightweight_stock_fetch_builds_overview_details_and_source_drawer_contr
         "price_chart",
         "top_risks",
         "market_reference",
+        "evidence_limits",
         "educational_suitability",
     } <= set(sections)
     assert sections["products_services"].evidence_state is EvidenceState.mixed
@@ -598,6 +606,9 @@ def test_lightweight_stock_fetch_builds_overview_details_and_source_drawer_contr
     assert sections["price_chart"].chart is not None
     assert len(sections["price_chart"].chart.points) >= 6
     assert sections["top_risks"].items[0].citation_ids
+    assert sections["evidence_limits"].section_type.value == "evidence_gap"
+    assert "provider_reference_limits" in {item.item_id for item in sections["evidence_limits"].items}
+    assert "reported_facts_are_point_in_time" in {item.item_id for item in sections["evidence_limits"].items}
     assert {metric.metric_id for metric in sections["financial_quality"].metrics} == {
         "latest_revenue_fact",
         "latest_net_income_fact",
@@ -639,6 +650,13 @@ def test_lightweight_issuer_backed_etf_fetch_builds_supported_page_contracts():
     assert overview.state.status is AssetStatus.supported
     assert overview.beginner_summary is not None
     assert "ETF" in overview.beginner_summary.what_it_is
+    assert [risk.title for risk in overview.top_risks] == [
+        "Market risk",
+        "Concentration risk",
+        "Tracking risk",
+    ]
+    assert "Provider fallback limits" not in {risk.title for risk in overview.top_risks}
+    assert "Issuer facts are point-in-time" not in {risk.title for risk in overview.top_risks}
     sections = {section.section_id: section for section in overview.sections}
     assert {
         "fund_objective_role",
@@ -650,6 +668,7 @@ def test_lightweight_issuer_backed_etf_fetch_builds_supported_page_contracts():
         "cost_trading_context",
         "etf_specific_risks",
         "similar_assets_alternatives",
+        "evidence_limits",
         "educational_suitability",
         "lightweight_evidence_gaps",
     } <= set(sections)
@@ -676,6 +695,9 @@ def test_lightweight_issuer_backed_etf_fetch_builds_supported_page_contracts():
     assert "quote_stats_context" in {item.item_id for item in sections["cost_trading_context"].items}
     assert "premium_discount_or_spread" not in {item.item_id for item in sections["cost_trading_context"].items}
     assert sections["etf_specific_risks"].items[0].citation_ids
+    assert sections["evidence_limits"].section_type.value == "evidence_gap"
+    assert "provider_fallback_limits" in {item.item_id for item in sections["evidence_limits"].items}
+    assert "issuer_facts_are_point_in_time" in {item.item_id for item in sections["evidence_limits"].items}
     assert {metric.metric_id for metric in sections["cost_trading_context"].metrics} == {
         "expense_ratio",
         "provider_market_price",

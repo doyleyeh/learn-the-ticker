@@ -435,59 +435,89 @@ def _top_risks(
                 citation_ids=stable_citation_ids,
             ),
             RiskItem(
-                title="Reported results can change",
+                title="Business and competition risk",
                 plain_english_explanation=(
-                    "SEC/XBRL facts are point-in-time reported data. Beginners should check the filing date and "
-                    "period before treating any metric as current."
+                    "A company's products, services, customer demand, competitors, and execution can change, so "
+                    "source-backed business facts should be read as a starting point for understanding the company."
                 ),
                 citation_ids=stable_citation_ids,
             ),
             RiskItem(
-                title="Market-reference data is not a recommendation",
+                title="Financial and valuation risk",
                 plain_english_explanation=(
-                    "Provider-derived price fields are useful context for local testing, but they are not trading "
-                    "instructions or a valuation conclusion."
+                    "Reported financial results and valuation context can change over time, and market expectations "
+                    "can move faster than the latest filing or provider snapshot."
                 ),
-                citation_ids=provider_citation_ids,
+                citation_ids=_dedupe([*stable_citation_ids, *provider_citation_ids]) or stable_citation_ids,
             ),
         ]
-    if _has_official_etf_issuer_evidence(response):
-        issuer_risk = RiskItem(
-            title="Issuer facts are point-in-time",
+    narrow_or_specialized = _is_narrow_or_specialized_etf(response)
+    concentration_summary = (
+        f"{response.asset.ticker} tracks a narrower or more specialized index segment, so a smaller set of companies "
+        "or sectors can drive more of the fund's results."
+        if narrow_or_specialized
+        else (
+            f"{response.asset.ticker} may hold many stocks, but large companies and larger index weights can still "
+            "have an outsized effect on what investors experience."
+        )
+    )
+    concentration_risk = RiskItem(
+        title="Concentration risk",
+        plain_english_explanation=concentration_summary,
+        citation_ids=stable_citation_ids,
+    )
+    risks: list[RiskItem] = []
+    if narrow_or_specialized:
+        risks.append(concentration_risk)
+    risks.append(
+        RiskItem(
+            title="Market risk",
             plain_english_explanation=(
-                "Official issuer fact-sheet, prospectus, holdings, and exposure fields are dated evidence; beginners "
-                "should check as-of dates before treating them as current."
+                f"{response.asset.ticker} owns a basket of stocks, so it can lose value when the market or the index "
+                "segment it tracks declines."
             ),
             citation_ids=stable_citation_ids,
         )
-    else:
-        issuer_risk = RiskItem(
-            title="Issuer evidence may be partial",
+    )
+    if not narrow_or_specialized:
+        risks.append(concentration_risk)
+    risks.append(
+        RiskItem(
+            title="Tracking risk",
             plain_english_explanation=(
-                "The lightweight ETF path can use manifest and provider fallback while exact issuer holdings, fee, "
-                "or methodology evidence is still incomplete."
+                "An index ETF tries to follow its benchmark, but fees, trading, cash, and implementation details can "
+                "make fund results differ from the index."
             ),
-            citation_ids=stable_citation_ids,
+            citation_ids=_dedupe([*stable_citation_ids, *provider_citation_ids]) or stable_citation_ids,
         )
-    return [
-        RiskItem(
-            title="Market basket risk",
-            plain_english_explanation=(
-                f"{response.asset.ticker} is still exposed to the market or index segment it tracks; diversification "
-                "does not remove the risk of losses."
-            ),
-            citation_ids=stable_citation_ids,
-        ),
-        issuer_risk,
-        RiskItem(
-            title="Provider fallback limits",
-            plain_english_explanation=(
-                "Provider-derived ETF fields are source-labeled local-test data and should not be confused with "
-                "official issuer fact sheets or prospectuses."
-            ),
-            citation_ids=provider_citation_ids,
-        ),
-    ]
+    )
+    return risks
+
+
+def _is_narrow_or_specialized_etf(response: LightweightFetchResponse) -> bool:
+    searchable = " ".join(
+        str(value or "")
+        for value in [
+            response.asset.ticker,
+            response.asset.name,
+            response.asset.issuer,
+            _fact_value(response, "benchmark"),
+            _fact_value(response, "etf_manifest_scope_signal"),
+            _fact_value(response, "provider_profile_overview"),
+        ]
+    ).lower()
+    narrow_markers = (
+        "nasdaq-100",
+        "nasdaq 100",
+        "sector",
+        "technology",
+        "semiconductor",
+        "xlk",
+        "qqq",
+        "specialized",
+        "theme",
+    )
+    return any(marker in searchable for marker in narrow_markers)
 
 
 def _stock_sections(
@@ -660,6 +690,7 @@ def _stock_sections(
             retrieved_at=retrieved_at,
             limitations="Provider-derived market reference is not official company evidence.",
         ),
+        _evidence_limits_section(response, stable_citation_ids, provider_citation_ids, applies_to=[AssetType.stock]),
         _educational_suitability_section(
             response,
             suitability,
@@ -824,6 +855,7 @@ def _etf_sections(
             retrieved_at=retrieved_at,
             limitations="Comparison and overlap context requires verified comparison packs or issuer holdings overlap evidence.",
         ),
+        _evidence_limits_section(response, stable_citation_ids, provider_citation_ids, applies_to=[AssetType.etf]),
         _educational_suitability_section(
             response,
             suitability,
@@ -867,6 +899,114 @@ def _gap_sections(response: LightweightFetchResponse) -> list[OverviewSection]:
             retrieved_at=response.freshness.page_last_updated_at,
         )
     ]
+
+
+def _evidence_limits_section(
+    response: LightweightFetchResponse,
+    stable_citation_ids: list[str],
+    provider_citation_ids: list[str],
+    *,
+    applies_to: list[AssetType],
+) -> OverviewSection:
+    if response.asset.asset_type is AssetType.stock:
+        summary = (
+            "Evidence limits are separated from the main risk cards so beginners can distinguish asset risk from "
+            "source freshness, provider fallback, and missing-detail warnings."
+        )
+        items = [
+            _item(
+                "reported_facts_are_point_in_time",
+                "Reported facts are point-in-time",
+                (
+                    "SEC identity, filing, and XBRL fields are dated evidence. Check filing and period dates before "
+                    "treating a metric as the latest full picture."
+                ),
+                stable_citation_ids,
+                response,
+                evidence_state=EvidenceState.partial,
+                as_of_date=response.freshness.facts_as_of,
+            ),
+            _item(
+                "provider_reference_limits",
+                "Provider reference limits",
+                (
+                    "Provider-derived price, profile, valuation, and quote fields are reference context for learning; "
+                    "they are not official company filings or a valuation conclusion."
+                ),
+                provider_citation_ids,
+                response,
+                evidence_state=EvidenceState.partial if provider_citation_ids else EvidenceState.unavailable,
+                as_of_date=_fact_as_of(response, "provider_market_price"),
+            ),
+        ]
+    else:
+        issuer_summary = (
+            "Official issuer fact-sheet, prospectus, holdings, and exposure fields are dated evidence; check as-of "
+            "dates before treating them as current."
+            if _has_official_etf_issuer_evidence(response)
+            else (
+                "Issuer evidence is partial in this lightweight response, so manifest and provider fallback fields "
+                "are labeled instead of being blended into the ETF's asset-risk cards."
+            )
+        )
+        summary = (
+            "Evidence limits are separated from ETF risks so beginners can see what the fund risks are before reading "
+            "source freshness, issuer-coverage, and provider-fallback warnings."
+        )
+        items = [
+            _item(
+                "issuer_facts_are_point_in_time",
+                "Issuer facts are point-in-time",
+                issuer_summary,
+                stable_citation_ids,
+                response,
+                evidence_state=EvidenceState.partial,
+                as_of_date=response.freshness.holdings_as_of or response.freshness.facts_as_of,
+            ),
+            _item(
+                "provider_fallback_limits",
+                "Provider fallback limits",
+                (
+                    "Provider-derived ETF fields are source-labeled local-test data and should not be confused with "
+                    "official issuer fact sheets, holdings files, or prospectuses."
+                ),
+                provider_citation_ids,
+                response,
+                evidence_state=EvidenceState.partial if provider_citation_ids else EvidenceState.unavailable,
+                as_of_date=_fact_as_of(response, "provider_market_price"),
+            ),
+        ]
+
+    if response.gaps:
+        gap_names = ", ".join(gap.field_name.replace("_", " ") for gap in response.gaps[:3])
+        items.append(
+            _gap_item(
+                "remaining_evidence_gaps",
+                "Remaining evidence gaps",
+                f"The lightweight response still labels these missing or partial fields separately: {gap_names}.",
+                response,
+                evidence_state=EvidenceState.partial,
+            )
+        )
+
+    citation_ids = _dedupe(citation_id for item in items for citation_id in item.citation_ids)
+    section_freshness = FreshnessState.fresh if citation_ids else FreshnessState.unavailable
+    return OverviewSection(
+        section_id="evidence_limits",
+        title="Evidence Limits",
+        section_type=OverviewSectionType.evidence_gap,
+        applies_to=applies_to,
+        beginner_summary=summary,
+        items=items,
+        metrics=[],
+        citation_ids=citation_ids,
+        source_document_ids=_source_ids_for_citations(response, citation_ids),
+        freshness_state=section_freshness,
+        evidence_state=EvidenceState.partial,
+        as_of_date=response.freshness.facts_as_of,
+        retrieved_at=response.freshness.page_last_updated_at,
+        limitations="This section explains source and freshness limits; it is not one of the asset's Top 3 Risks.",
+    )
 
 
 def _item(
