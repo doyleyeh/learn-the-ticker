@@ -1,77 +1,67 @@
 ## Current task
 
-### T-159: Fix live local browser/API smoke blockers for the fresh-data MVP slice
-
-Goal:
-Make the already-implemented optional live local browser/API smoke pass for the lightweight fresh-data MVP slice, without broadening product scope, adding production dependencies, changing strict/audit gates, or making normal CI require live network calls.
-
-Context:
-- The deterministic quality gate currently passes.
-- `TMPDIR=/tmp python3 scripts/run_lightweight_data_fetch_smoke.py --live --json` passed for `AAPL` and `VOO`.
-- A manual local `/assets/VOO` request rendered backend-backed fresh data, citations, source metadata, freshness, and dashboard content.
-- The optional running-service smoke still blocks on local browser/API behavior:
-  - `/assets/VOO` does not include the expected `data-source-drawer-mobile-presentation="bottom-sheet"` marker in the live-rendered asset page.
-  - `POST /api/assets/VOO/chat` can exceed the smoke's 7-second timeout through the Next proxy during live local review.
-  - `AAPL vs VOO` submitted to `POST /api/assets/VOO/chat` does not redirect to `/compare?left=AAPL&right=VOO` under live-fetch-enabled settings, while `Compare AAPL and VOO` does redirect. The likely cause is ticker-token detection treating the word `vs` as ticker `VS` when live search can resolve unknown uppercase tokens.
-
-Acceptance criteria:
-- Preserve the home page as single-asset search first. Do not add a two-input home comparison builder.
-- Preserve comparison as a separate `/compare` workflow, including `AAPL`/`VOO` stock-vs-ETF relationship badges and `single-company-vs-ETF-basket` structure.
-- Restore or intentionally relocate the mobile source drawer/bottom-sheet marker so the asset-page live smoke and frontend workflow contract agree.
-- Fix chat comparison detection so `AAPL vs VOO`, `VOO vs AAPL`, and `Compare AAPL and VOO` all return `safety_classification=compare_route_redirect`, include no factual citations/source documents in the redirect body, and preserve the compare route.
-- Keep single-asset factual chat grounded in the selected asset knowledge pack and preserve advice redirects.
-- Reduce or avoid the observed local Next proxy chat timeout without hiding failures. Prefer a focused server/API fix or smoke-safe warm/retry behavior over increasing all timeouts blindly.
-- Keep `LIGHTWEIGHT_LIVE_FETCH_ENABLED=false` as the default for normal CI and ordinary local tests.
-- Do not call live providers, news, market-data, or LLMs from deterministic tests.
-- Do not expose raw provider payloads, raw source text, transcripts, hidden prompts, model reasoning, DSNs, or secret values.
-
-Files likely involved:
-- `backend/chat.py`
-- `backend/search.py`
-- `backend/chat_sessions.py`
-- `apps/web/app/assets/[ticker]/page.tsx`
-- `components/SourceDrawer.tsx`
-- `tests/frontend/smoke.mjs`
-- focused tests under `tests/unit/` and `tests/integration/`
-
-Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_chat_generation.py tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py tests/integration/test_backend_api.py -q`
-- `npm test`
-- `npm run typecheck`
-- `npm run build`
-- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
-- `TMPDIR=/tmp python3 scripts/run_lightweight_data_fetch_smoke.py --live --json`
-- Start local FastAPI and Next services with lightweight live fetch enabled, then run `LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1 LEARN_TICKER_LOCAL_WEB_BASE=http://127.0.0.1:3000 LEARN_TICKER_LOCAL_API_BASE=<api-base> DATA_POLICY_MODE=lightweight LIGHTWEIGHT_LIVE_FETCH_ENABLED=true LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true SEC_EDGAR_USER_AGENT='learn-the-ticker-local/0.1 contact@example.com' node tests/frontend/smoke.mjs`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
-- `git diff --check`
-
-Iteration budget:
-- One agent-loop cycle. If fixing the live running-service smoke exposes a broader fresh-data cache, export, persistence, or live-AI dependency, stop after documenting the blocker and leave that broader work to the prepared backlog.
-
-Remaining risk to report:
-- This task proves the local running-service fresh-data slice only. It must not claim ETF-500 completion, Top-500 completion, source-pack approval, generated-output cache promotion, live-AI readiness, production deployment readiness, or public-launch readiness.
-
-## Backlog
-
 ### T-160: Add request-scope and short-TTL lightweight live fetch reuse
 
 Goal:
 Reduce repeated SEC/Yahoo/provider work during one asset-page render and local smoke run by adding safe lightweight fetch reuse for overview, details, sources, chart, and search surfaces.
 
-Acceptance criteria:
-- Reuse live lightweight fetch results across backend page-building surfaces for the same ticker/range within a request or short local TTL.
-- Preserve source labels, freshness/as-of metadata, fallback diagnostics, no-raw-payload guarantees, and explicit partial/unavailable states.
-- Keep normal CI deterministic and no-live by default.
-- Do not persist raw provider payloads or restricted source text.
-- Prove local `/assets/VOO` render and fresh-data smoke latency improves without suppressing source-use or citation validation.
+Task scope:
+Add narrowly scoped in-process reuse for the lightweight live-fetch path so repeated backend calls for the same ticker and compatible range can share normalized source-labeled results during one request or a short local TTL. Keep the reuse boundary server-side, deterministic-test friendly, source-policy aware, and easy to disable or bypass when live fetching is off. This task should improve the local personal-MVP fresh-data loop only; it must not broaden public-launch claims, add persistent caching, add production dependencies, or change the frontend v0.4 workflow.
 
-Required checks:
+Allowed files:
+- `backend/lightweight_data_fetch.py`
+- `backend/provider_adapters.py`
+- `backend/search.py`
+- `backend/routes.py`
+- `backend/settings.py`
+- `tests/unit/test_lightweight_data_fetch.py`
+- `tests/unit/test_search_classification.py`
+- `tests/unit/test_repo_contract.py`
+- `tests/integration/test_backend_api.py`
+- `scripts/run_lightweight_data_fetch_smoke.py`
+- `scripts/run_local_fresh_data_rehearsal.py`
+- Minimal adjacent backend helper files only if the existing fetch/search/route boundaries require them.
+
+Do not change:
+- Do not edit frontend UI, page layout, source drawer, glossary, chat UI, comparison UI, or home-page workflow unless a test fixture marker must be adjusted for the backend contract.
+- Do not add a home-page two-input comparison builder or promote glossary as a primary home workflow.
+- Do not change supported ETF generated-output authority away from `data/universes/us_equity_etfs_supported.current.json` or ETF/ETP recognition authority away from `data/universes/us_etp_recognition.current.json`.
+- Do not change Top-500 runtime support away from `data/universes/us_common_stocks_top500.current.json` in strict/audit-quality paths.
+- Do not persist raw provider payloads, restricted source text, transcripts, hidden prompts, model reasoning, DSNs, API keys, or secret values.
+- Do not introduce live provider, news, market-data, or LLM calls into normal CI or deterministic tests.
+- Do not approve sources, promote manifests, write generated-output cache records, or claim ETF-500, Top-500, Golden Asset Source Handoff, live-AI, production deployment, public-launch, or investment-advice readiness.
+- Do not add production dependencies unless the task is explicitly stopped and replanned with dependency rationale.
+
+Acceptance criteria:
+- Reuse lightweight live-fetch results across backend page-building surfaces for the same ticker and compatible range within one request or a short local TTL.
+- The reuse key includes enough context to avoid mixing ticker, asset type, range, provider fallback mode, or data-policy mode.
+- Reused results preserve citation/source IDs, source labels, source-use policy, official-vs-provider/fallback labels, freshness/as-of metadata, retrieved-at metadata, fallback diagnostics, no-raw-payload guarantees, and explicit `partial`, `unknown`, `stale`, `unavailable`, or `insufficient_evidence` states.
+- Unsupported, out-of-scope, unknown, and blocked ETF/ETP rows remain blocked from generated pages, generated chat, generated comparisons, exports, Weekly News Focus, AI Comprehensive Analysis, and generated-output cache promotion.
+- The home page remains single stock/ETF search first, and clear `A vs B` search or chat patterns continue to route to `/compare` instead of producing multi-asset home or chat answers.
+- Stock-vs-ETF comparison behavior for `AAPL`/`VOO` keeps relationship badges and `single-company-vs-ETF-basket` structure.
+- Normal CI stays deterministic with `LIGHTWEIGHT_LIVE_FETCH_ENABLED=false` by default and uses fixtures/mocks rather than live network.
+- Deterministic tests prove reuse behavior without live external calls, including cache hit/miss, TTL expiry or bypass, source metadata preservation, and unavailable/partial result handling.
+- The optional live smoke reports enough timing or reuse diagnostics to show whether local `/assets/VOO` rendering and fresh-data smoke avoid repeated work, without suppressing source-use or citation validation failures.
+- No raw provider payloads, restricted source text, hidden/internal diagnostics, transcripts, model reasoning, DSNs, or secret values are logged, returned, cached, exported, or committed.
+
+Required commands:
 - `TMPDIR=/tmp python3 -m pytest tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py tests/unit/test_repo_contract.py -q`
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_safety_guardrails.py -q`
 - `npm test`
 - `npm run typecheck`
 - `npm run build`
 - `TMPDIR=/tmp python3 scripts/run_lightweight_data_fetch_smoke.py --live --json`
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
 - `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+- `git diff --check`
+
+Iteration budget:
+- One agent-loop cycle. If reuse requires durable persistence, database schema work, generated-output cache promotion, frontend redesign, new production dependencies, or live-AI/provider orchestration beyond the existing lightweight fetch path, stop after documenting the blocker and leave that broader work to the prepared backlog.
+
+Remaining risk to report:
+- This task may reduce repeated local lightweight fetch work, but it does not prove broad provider reliability, ETF-500 completion, Top-500 completion, source-pack approval, Golden Asset Source Handoff approval, durable persistence, exports, generated-output cache promotion, live-AI readiness, production deployment readiness, or public-launch readiness.
+
+## Backlog
 
 ### T-161: Wire lightweight fresh-data evidence into asset exports and source-list exports
 
@@ -187,6 +177,36 @@ Required checks:
 - `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
 
 ## Completed
+
+### T-159: Fix live local browser/API smoke blockers for the fresh-data MVP slice
+
+Goal:
+Make the already-implemented optional live local browser/API smoke pass for the lightweight fresh-data MVP slice, without broadening product scope, adding production dependencies, changing strict/audit gates, or making normal CI require live network calls.
+
+Completion details:
+- Implementation commit: `a8f24da fix(T-159): fix live local browser/API smoke blockers for the fresh-data MVP slice`
+- Local merge commit: `b8fbf7b chore(T-159): merge fix live local browser/API smoke blockers for the fresh-data MVP slice` from branch `agent/T-159-20260506T023838Z`
+- Added `COMPARISON_CONNECTOR_TOKENS` in `backend/chat.py` so connector words such as `VS`, `VERSUS`, `AND`, and `WITH` are skipped during ticker-token extraction. This keeps `AAPL vs VOO`, `AAPL VS VOO`, `VOO vs AAPL`, and `Compare AAPL and VOO` on the compare-route redirect path instead of treating connector text as a ticker.
+- Expanded `tests/unit/test_chat_generation.py` comparison redirect cases to cover uppercase `VS`, reversed selected/comparison ticker order, and `Compare AAPL and VOO`. The tested redirect response keeps `safety_classification=compare_route_redirect`, empty factual citations/source documents, and `/compare?left=...&right=...` route metadata.
+- Restored the live-rendered asset page source marker by adding `data-source-drawer-mobile-presentation="bottom-sheet"` to the compact asset-page source index in `apps/web/app/assets/[ticker]/page.tsx`, aligning the rendered asset page with the frontend v0.4 source drawer mobile contract.
+- Added chat-specific retry helpers in `tests/frontend/smoke.mjs` for local Next-proxy chat POSTs. The smoke retries only chat requests that hit the existing 7-second timeout, reuses the helper for durable and fresh-data browser/API chat probes, and keeps HTML fallback, status, JSON content-type, compare-route payload, citation/source omission, and no-advice assertions intact.
+- `docs/agent-journal/20260506T023838Z.md` records changed files, deterministic pass status, attempted live checks, sandbox blockers, and remaining risks.
+
+Required commands executed in this task branch:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_chat_generation.py tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py tests/integration/test_backend_api.py -q` - pass, 110 passed
+- `npm test` - pass
+- `npm run typecheck` - pass
+- `npm run build` - pass
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` - pass
+- `TMPDIR=/tmp python3 scripts/run_lightweight_data_fetch_smoke.py --live --json` - blocked/fail in the task environment because `AAPL` returned `fetch_state=unavailable` after SEC and Yahoo `URLError` fetch failures; `VOO` rendered with official/partial sources
+- Local FastAPI/Next service start for browser/API smoke - blocked/fail in the task environment because FastAPI could not bind to `127.0.0.1:8000`, `127.0.0.1:8001`, `127.0.0.1:8010`, or `0.0.0.0:8010`
+- `LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1 LEARN_TICKER_LOCAL_WEB_BASE=http://127.0.0.1:3000 LEARN_TICKER_LOCAL_API_BASE=http://127.0.0.1:8001 DATA_POLICY_MODE=lightweight LIGHTWEIGHT_LIVE_FETCH_ENABLED=true LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true SEC_EDGAR_USER_AGENT='learn-the-ticker-local/0.1 contact@example.com' node tests/frontend/smoke.mjs` - blocked/fail because local services could not start
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass, including 501 Python tests, static evals, frontend smoke, typecheck, build, and backend checks
+- `git diff --check` - pass
+
+Remaining risks:
+- The deterministic T-159 code path and quality gate passed, but the operator-only live checks still need to be rerun in an environment that can bind localhost ports and reach SEC/Yahoo live endpoints.
+- This task does not claim ETF-500 completion, Top-500 completion, source-pack approval, Golden Asset Source Handoff approval, generated-output cache promotion, live-AI readiness, production deployment readiness, public-launch readiness, or investment advice readiness.
 
 ### T-158: Add lightweight MVP readiness gate with strict gates marked audit-only
 
