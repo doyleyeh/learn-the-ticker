@@ -9,6 +9,7 @@ PERSISTENCE_SETTINGS_SCHEMA_VERSION = "persistence-settings-v1"
 LOCAL_DURABLE_REPOSITORY_SETTINGS_SCHEMA_VERSION = "local-durable-repository-settings-v1"
 LIVE_ACQUISITION_SETTINGS_SCHEMA_VERSION = "live-acquisition-readiness-settings-v1"
 LIGHTWEIGHT_DATA_SETTINGS_SCHEMA_VERSION = "lightweight-data-settings-v1"
+MARKET_NEWS_SETTINGS_SCHEMA_VERSION = "market-news-settings-v1"
 CORS_SETTINGS_SCHEMA_VERSION = "cors-settings-v1"
 DEFAULT_DATABASE_CONNECT_TIMEOUT_SECONDS = 5
 DEFAULT_DATABASE_POOL_PRE_PING = False
@@ -26,6 +27,10 @@ DEFAULT_LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED = True
 DEFAULT_LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED = False
 DEFAULT_LIGHTWEIGHT_FETCH_TIMEOUT_SECONDS = 15
 DEFAULT_LIGHTWEIGHT_FETCH_REUSE_TTL_SECONDS = 30
+DEFAULT_MARKET_NEWS_FETCH_ENABLED = False
+DEFAULT_MARKET_NEWS_LIVE_SOURCE_SMOKE_ENABLED = False
+DEFAULT_MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED = False
+DEFAULT_MARKET_NEWS_CACHE_TTL_HOURS = 24
 DEFAULT_SEC_EDGAR_USER_AGENT = "learn-the-ticker-local/0.1 contact@example.com"
 DEFAULT_LOCAL_DURABLE_OBJECT_NAMESPACE = "local-private-source-artifacts"
 DEFAULT_OFFLINE_MIGRATION_DATABASE_URL = "postgresql+psycopg://placeholder@localhost:5432/learn_the_ticker"
@@ -47,6 +52,8 @@ LIVE_WEEKLY_NEWS_WRITER_MISSING_REASON = "live_weekly_news_evidence_writer_missi
 LIGHTWEIGHT_LIVE_FETCH_DISABLED_REASON = "lightweight_live_fetch_disabled"
 LIGHTWEIGHT_PROVIDER_FALLBACK_DISABLED_REASON = "lightweight_provider_fallback_disabled"
 LIGHTWEIGHT_WEEKLY_NEWS_FETCH_DISABLED_REASON = "lightweight_weekly_news_fetch_disabled"
+MARKET_NEWS_FETCH_DISABLED_REASON = "market_news_fetch_disabled"
+MARKET_NEWS_LIVE_SOURCE_SMOKE_DISABLED_REASON = "market_news_live_source_smoke_disabled"
 SENSITIVE_QUERY_KEY_MARKERS = ("password", "pass", "token", "secret", "key", "credential")
 _UNSAFE_OBJECT_NAMESPACE_MARKERS = (
     "://",
@@ -210,6 +217,39 @@ class LightweightDataSettings:
             "fetch_reuse_ttl_seconds": self.fetch_reuse_ttl_seconds,
             "missing_reasons": list(self.missing_reasons),
         }
+
+
+@dataclass(frozen=True)
+class MarketNewsSettings:
+    schema_version: str
+    fetch_enabled: bool
+    live_source_smoke_enabled: bool
+    live_source_real_fetch_enabled: bool
+    cache_ttl_hours: int
+    fetch_timeout_seconds: int
+    provider_credentials_configured: dict[str, bool] = field(default_factory=dict)
+    missing_reasons: tuple[str, ...] = ()
+    _credentials: dict[str, str | None] = field(default_factory=dict, repr=False, compare=False)
+
+    @property
+    def can_attempt_live_fetch(self) -> bool:
+        return self.fetch_enabled and self.live_source_real_fetch_enabled
+
+    @property
+    def safe_diagnostics(self) -> dict[str, object]:
+        return {
+            "schema_version": self.schema_version,
+            "fetch_enabled": self.fetch_enabled,
+            "live_source_smoke_enabled": self.live_source_smoke_enabled,
+            "live_source_real_fetch_enabled": self.live_source_real_fetch_enabled,
+            "cache_ttl_hours": self.cache_ttl_hours,
+            "fetch_timeout_seconds": self.fetch_timeout_seconds,
+            "provider_credentials_configured": dict(self.provider_credentials_configured),
+            "missing_reasons": list(self.missing_reasons),
+        }
+
+    def credential_for(self, provider: str) -> str | None:
+        return self._credentials.get(provider)
 
 
 @dataclass(frozen=True)
@@ -519,6 +559,78 @@ def build_lightweight_data_settings(env: dict[str, str] | None = None) -> Lightw
         fetch_reuse_ttl_seconds=fetch_reuse_ttl,
         missing_reasons=tuple(missing_reasons),
         _sec_user_agent=user_agent,
+    )
+
+
+def build_market_news_settings(env: dict[str, str] | None = None) -> MarketNewsSettings:
+    source = os.environ if env is None else env
+    fetch_enabled = _bool_setting(
+        _first_present(source, "MARKET_NEWS_FETCH_ENABLED", "LTT_MARKET_NEWS_FETCH_ENABLED"),
+        DEFAULT_MARKET_NEWS_FETCH_ENABLED,
+    )
+    live_source_smoke_enabled = _bool_setting(
+        _first_present(
+            source,
+            "MARKET_NEWS_LIVE_SOURCE_SMOKE_ENABLED",
+            "LTT_MARKET_NEWS_LIVE_SOURCE_SMOKE_ENABLED",
+        ),
+        DEFAULT_MARKET_NEWS_LIVE_SOURCE_SMOKE_ENABLED,
+    )
+    live_source_real_fetch_enabled = _bool_setting(
+        _first_present(
+            source,
+            "MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED",
+            "LTT_MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED",
+        ),
+        DEFAULT_MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED,
+    )
+    cache_ttl_hours = _int_setting(
+        _first_present(source, "MARKET_NEWS_CACHE_TTL_HOURS", "LTT_MARKET_NEWS_CACHE_TTL_HOURS"),
+        DEFAULT_MARKET_NEWS_CACHE_TTL_HOURS,
+        minimum=1,
+    )
+    fetch_timeout = _int_setting(
+        _first_present(
+            source,
+            "MARKET_NEWS_FETCH_TIMEOUT_SECONDS",
+            "LIGHTWEIGHT_FETCH_TIMEOUT_SECONDS",
+            "LTT_LIGHTWEIGHT_FETCH_TIMEOUT_SECONDS",
+        ),
+        DEFAULT_LIGHTWEIGHT_FETCH_TIMEOUT_SECONDS,
+        minimum=1,
+    )
+    credential_env_by_provider = {
+        "marketaux": "MARKETAUX_API_KEY",
+        "alpha_vantage": "ALPHA_VANTAGE_API_KEY",
+        "finnhub": "FINNHUB_API_KEY",
+        "guardian": "GUARDIAN_API_KEY",
+        "gnews": "GNEWS_API_KEY",
+        "mediastack": "MEDIASTACK_API_KEY",
+        "newsapi": "NEWSAPI_API_KEY",
+    }
+    credentials = {
+        provider: _clean_optional(source.get(env_name))
+        for provider, env_name in credential_env_by_provider.items()
+    }
+    credential_flags = {provider: bool(value) for provider, value in credentials.items()}
+    missing_reasons = []
+    if not fetch_enabled:
+        missing_reasons.append(MARKET_NEWS_FETCH_DISABLED_REASON)
+    if not live_source_smoke_enabled:
+        missing_reasons.append(MARKET_NEWS_LIVE_SOURCE_SMOKE_DISABLED_REASON)
+    if fetch_enabled and live_source_real_fetch_enabled and not any(credential_flags.values()):
+        missing_reasons.append("market_news_keyed_provider_credentials_missing")
+
+    return MarketNewsSettings(
+        schema_version=MARKET_NEWS_SETTINGS_SCHEMA_VERSION,
+        fetch_enabled=fetch_enabled,
+        live_source_smoke_enabled=live_source_smoke_enabled,
+        live_source_real_fetch_enabled=live_source_real_fetch_enabled,
+        cache_ttl_hours=cache_ttl_hours,
+        fetch_timeout_seconds=fetch_timeout,
+        provider_credentials_configured=credential_flags,
+        missing_reasons=tuple(missing_reasons),
+        _credentials=credentials,
     )
 
 

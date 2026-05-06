@@ -2217,6 +2217,14 @@ class WeeklyNewsEvidenceLimitedState(str, Enum):
     insufficient_evidence = "insufficient_evidence"
 
 
+class MarketNewsTopicBucket(str, Enum):
+    macro_fed = "macro_fed"
+    markets_earnings = "markets_earnings"
+    ai_technology_semiconductors = "ai_technology_semiconductors"
+    geopolitics_energy_supply_chain = "geopolitics_energy_supply_chain"
+    credit_liquidity_sentiment = "credit_liquidity_sentiment"
+
+
 class MarketWeekPeriod(BaseModel):
     start: str | None = None
     end: str | None = None
@@ -2345,6 +2353,128 @@ class AIComprehensiveAnalysisResponse(BaseModel):
     canonical_fact_citation_ids: list[str] = Field(default_factory=list)
     no_live_external_calls: bool = True
     stable_facts_are_separate: bool = True
+
+
+class MarketNewsClusterMetadata(BaseModel):
+    cluster_id: str
+    representative_article_id: str
+    supporting_sources: list[str] = Field(default_factory=list)
+    article_count: int = 1
+    suppressed_duplicate_count: int = 0
+    topic_bucket: MarketNewsTopicBucket
+    critical_claim: bool = False
+    corroborated: bool = True
+
+
+class MarketNewsSelectionRationale(BaseModel):
+    source_quality_score: int
+    freshness_score: int
+    topic_relevance_score: int
+    market_impact_score: int
+    corroboration_score: int
+    novelty_score: int
+    penalty_score: int = 0
+    total_score: int
+    selected: bool
+    exclusion_reasons: list[str] = Field(default_factory=list)
+
+
+class MarketNewsItem(BaseModel):
+    story_id: str
+    title: str
+    summary: str
+    published_at: str
+    topic_bucket: MarketNewsTopicBucket
+    entities: list[str] = Field(default_factory=list)
+    citation_ids: list[str]
+    source: WeeklyNewsSourceMetadata
+    freshness_state: FreshnessState
+    importance_score: int
+    cluster: MarketNewsClusterMetadata
+    selection_rationale: MarketNewsSelectionRationale
+
+
+class MarketNewsAuditMetadata(BaseModel):
+    candidate_count: int = 0
+    cluster_count: int = 0
+    selected_cluster_count: int = 0
+    suppressed_candidate_count: int = 0
+    topic_bucket_counts: dict[str, int] = Field(default_factory=dict)
+    provider_counts: dict[str, int] = Field(default_factory=dict)
+    no_raw_article_text: bool = True
+    no_raw_provider_payload: bool = True
+    no_unrestricted_media: bool = True
+    no_generated_output_cache_write: bool = True
+
+
+class MarketNewsFocusResponse(BaseModel):
+    schema_version: Literal["market-news-focus-v1"] = "market-news-focus-v1"
+    state: WeeklyNewsContractState
+    window: WeeklyNewsWindow
+    configured_max_item_count: int = 20
+    selected_item_count: int = 0
+    suppressed_candidate_count: int = 0
+    evidence_state: EvidenceState = EvidenceState.unknown
+    evidence_limited_state: WeeklyNewsEvidenceLimitedState = WeeklyNewsEvidenceLimitedState.unavailable
+    items: list[MarketNewsItem] = Field(default_factory=list)
+    empty_state: WeeklyNewsEmptyState | None = None
+    citations: list[Citation] = Field(default_factory=list)
+    source_documents: list[SourceDocument] = Field(default_factory=list)
+    audit: MarketNewsAuditMetadata = Field(default_factory=MarketNewsAuditMetadata)
+    no_live_external_calls: bool = True
+    stable_facts_are_separate: bool = True
+    reusable_across_tickers: bool = True
+
+
+class MarketAIAnalysisSection(BaseModel):
+    section_id: Literal[
+        "what_changed_this_week",
+        "macro_policy",
+        "equity_market_drivers",
+        "ai_technology_semiconductors",
+        "geopolitical_energy_risks",
+        "credit_liquidity_sentiment",
+        "scenario_lens",
+        "practical_watchpoints",
+    ]
+    label: Literal[
+        "What Changed This Week",
+        "Macro & Policy",
+        "Equity Market Drivers",
+        "AI / Technology / Semiconductors",
+        "Geopolitical & Energy Risks",
+        "Credit / Liquidity / Sentiment",
+        "Scenario Lens",
+        "Practical Watchpoints",
+    ]
+    analysis: str
+    bullets: list[str] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+    uncertainty: list[str] = Field(default_factory=list)
+
+
+class MarketAIComprehensiveAnalysisResponse(BaseModel):
+    schema_version: Literal["market-ai-comprehensive-analysis-v1"] = "market-ai-comprehensive-analysis-v1"
+    state: WeeklyNewsContractState
+    analysis_available: bool
+    minimum_market_news_item_count: int = 5
+    minimum_topic_bucket_count: int = 3
+    market_news_selected_item_count: int = 0
+    selected_topic_bucket_count: int = 0
+    suppression_reason: str | None = None
+    sections: list[MarketAIAnalysisSection] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    market_news_story_ids: list[str] = Field(default_factory=list)
+    no_live_external_calls: bool = True
+    stable_facts_are_separate: bool = True
+
+
+class MarketNewsResponse(BaseModel):
+    schema_version: Literal["market-news-response-v1"] = "market-news-response-v1"
+    state: StateMessage
+    market_news_focus: MarketNewsFocusResponse
+    market_ai_comprehensive_analysis: MarketAIComprehensiveAnalysisResponse
 
 
 class WeeklyNewsResponse(BaseModel):
@@ -2533,6 +2663,8 @@ class OverviewResponse(BaseModel):
     beginner_summary: BeginnerSummary | None = None
     top_risks: list[RiskItem] = Field(default_factory=list)
     recent_developments: list[RecentDevelopment] = Field(default_factory=list)
+    market_news_focus: MarketNewsFocusResponse | None = None
+    market_ai_comprehensive_analysis: MarketAIComprehensiveAnalysisResponse | None = None
     weekly_news_focus: WeeklyNewsFocusResponse | None = None
     ai_comprehensive_analysis: AIComprehensiveAnalysisResponse | None = None
     suitability_summary: SuitabilitySummary | None = None

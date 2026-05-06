@@ -53,6 +53,7 @@ from backend.lightweight_page import (
     persist_lightweight_evidence_if_configured,
 )
 from backend.llm import runtime_diagnostics
+from backend.market_news import build_market_news_response
 from backend.models import (
     AssetChartResponse,
     AssetIdentity,
@@ -73,6 +74,7 @@ from backend.models import (
     KnowledgePackBuildResponse,
     LightweightFetchResponse,
     LlmRuntimeDiagnosticsResponse,
+    MarketNewsResponse,
     OverviewResponse,
     PreCacheBatchResponse,
     PreCacheJobResponse,
@@ -283,6 +285,11 @@ def asset_overview(ticker: str, mode: str = "beginner") -> OverviewResponse:
         source_snapshot_reader=readers.reader("source_snapshot_repository"),
         persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
     )
+
+
+@app.get("/api/market-news", response_model=MarketNewsResponse, tags=["market-news"])
+def market_news() -> MarketNewsResponse:
+    return build_market_news_response()
 
 
 @app.get("/api/assets/{ticker}/chart", response_model=AssetChartResponse, tags=["assets"])

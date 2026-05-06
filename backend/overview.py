@@ -20,6 +20,7 @@ from backend.generated_output_cache_repository import (
     persist_generated_output_cache_records,
     validate_generated_output_cache_records,
 )
+from backend.market_news import build_market_news_response
 from backend.models import (
     AssetIdentity,
     AssetStatus,
@@ -682,6 +683,7 @@ def generate_overview_from_pack(
             weekly_news_read.high_signal_selected_item_count if weekly_news_read.found else None
         ),
     )
+    market_news = build_market_news_response()
     citations = bindings.citations()
     source_documents = bindings.source_documents()
 
@@ -693,6 +695,8 @@ def generate_overview_from_pack(
         beginner_summary=beginner_summary,
         top_risks=top_risks,
         recent_developments=recent_developments,
+        market_news_focus=market_news.market_news_focus,
+        market_ai_comprehensive_analysis=market_news.market_ai_comprehensive_analysis,
         weekly_news_focus=weekly_news_focus,
         ai_comprehensive_analysis=ai_comprehensive_analysis,
         suitability_summary=suitability_summary,
