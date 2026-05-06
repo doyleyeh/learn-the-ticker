@@ -1,72 +1,79 @@
 ## Current task
 
-### T-164: Implement real Weekly News Focus acquisition for the local MVP slice
+### T-165: Add live-AI validation on top of real local evidence packs
 
 Goal:
-Replace the current real-fetch-blocked Weekly News smoke with a narrow, operator-only live source acquisition path for official filings/releases and approved reputable fallback metadata for `AAPL`, `VOO`, and `QQQ`.
+Run local operator-only live AI validation for grounded chat and AI Comprehensive Analysis only after local evidence packs, Weekly News thresholds, citations, and safety gates are in place.
 
 Task scope:
-Add a small opt-in Weekly News Focus acquisition path for the local MVP slice that can collect or shape live official-source metadata for `AAPL`, `VOO`, and `QQQ`, then pass the existing Weekly News selection, source-use, dedupe, freshness-window, and AI Comprehensive Analysis threshold contracts. The deterministic default must remain fixture-backed and CI-safe; live source retrieval must require explicit operator opt-in and emit only rights-safe metadata, checksums, dates, source labels, source-use decisions, and compact diagnostics. This task should turn the current smoke from "real source retrieval not available" into a guarded operator path, not broaden news coverage, not enable live LLM generation, and not make Weekly News Focus a replacement for stable canonical facts.
+Extend the existing live-AI validation smoke so an operator can verify grounded single-asset chat and AI Comprehensive Analysis against the local MVP evidence path after real local evidence packs and T-164 Weekly News source metadata are available. The default path must remain deterministic, mocked, and CI-safe; real LLM calls must require explicit server-side opt-in and must report only sanitized validation diagnostics. This task validates generated-output readiness boundaries, not production deployment, broad live-provider reliability, generated-output cache promotion, or investment advice.
 
 Allowed files:
 - `backend/settings.py`
 - `backend/models.py`
-- `backend/sources.py`
+- `backend/llm.py`
+- `backend/llm_transport.py`
+- `backend/chat.py`
+- `backend/retrieval.py`
 - `backend/source_policy.py`
 - `backend/weekly_news.py`
 - `backend/weekly_news_repository.py`
 - `backend/repositories/weekly_news.py`
-- `backend/repositories/__init__.py`
 - `backend/lightweight_page.py`
-- `backend/main.py`
+- `backend/cache.py`
+- `tests/unit/test_llm_provider.py`
+- `tests/unit/test_chat_generation.py`
 - `tests/unit/test_weekly_news.py`
-- `tests/unit/test_source_policy.py`
+- `tests/unit/test_safety_guardrails.py`
+- `tests/unit/test_repo_contract.py`
 - `tests/integration/test_backend_api.py`
-- `evals/run_static_evals.py`
+- `evals/llm_provider_eval_cases.yaml`
 - `evals/weekly_news_eval_cases.yaml`
-- `evals/source_policy_eval_cases.yaml`
-- `scripts/run_weekly_news_live_source_smoke.py`
+- `evals/run_static_evals.py`
+- `scripts/run_live_ai_validation_smoke.py`
 - `scripts/run_local_fresh_data_rehearsal.py`
 - `scripts/run_lightweight_mvp_readiness_gate.py`
 - `docs/agent-journal/*.md`
-- Minimal adjacent backend Weekly News helper or deterministic fixture files only if the existing acquisition, source-policy, API, or smoke-test boundaries require them.
+- Minimal adjacent deterministic fixture or backend helper files only if the existing live-AI, grounded-chat, Weekly News threshold, citation, cache-eligibility, or smoke-test boundaries require them.
 
 Do not change:
 - Do not edit frontend UI, page layout, source drawer, glossary, chat UI, comparison UI, export UI, or home-page workflow.
 - Do not add a home-page two-input comparison builder or promote glossary as a primary home workflow.
 - Do not change supported ETF generated-output authority away from `data/universes/us_equity_etfs_supported.current.json` or ETF/ETP recognition authority away from `data/universes/us_etp_recognition.current.json`.
 - Do not change Top-500 runtime support away from `data/universes/us_common_stocks_top500.current.json` in strict/audit-quality paths.
-- Do not persist or print raw article text, paid/restricted article text, restricted source text, raw provider payloads, raw transcripts, hidden prompts, raw model reasoning, DSNs, API keys, secret values, or unrestricted source excerpts.
-- Do not introduce live provider, news, market-data, source, or LLM calls into normal CI or deterministic tests; live source retrieval must be operator-only and explicitly opt-in.
-- Do not approve sources by automation, promote manifests, mark sources as strict Golden Asset Source Handoff approved, enable generated-output cache promotion, or claim ETF-500, Top-500, live-AI, production deployment, public-launch, or investment-advice readiness.
-- Do not change asset-page exports, source-list exports, comparison exports, chat transcript export shape, durable source snapshot behavior, generated-output cache behavior, or frontend source drawer behavior except where existing backend Weekly News reads must remain compatible.
+- Do not persist or print raw article text, paid/restricted article text, restricted source text, raw provider payloads, raw transcripts, raw user prompts, hidden prompts, raw model reasoning, DSNs, API keys, secret values, unrestricted source excerpts, or generated live responses.
+- Do not introduce live provider, news, market-data, source, or LLM calls into normal CI or deterministic tests; live AI must be operator-only and explicitly opt-in.
+- Do not put OpenRouter or provider keys in browser code, `NEXT_PUBLIC_*`, `/health`, docs, logs, diagnostics, committed env files, or smoke output.
+- Do not approve sources by automation, promote manifests, mark sources as strict Golden Asset Source Handoff approved, write generated-output cache records, or claim ETF-500, Top-500, broad live-AI, production deployment, public-launch, or investment-advice readiness.
+- Do not change asset-page exports, source-list exports, comparison exports, chat transcript export shape, durable source snapshot behavior, generated-output cache behavior, or frontend source drawer behavior except where existing backend validation reads must remain compatible.
 - Do not broaden Weekly News Focus into a general market-news feed or let recent news redefine the stable identity of a stock or ETF.
 - Do not broaden chat into general finance answers, multi-asset generated answers, portfolio advice, buy/sell/hold guidance, allocation guidance, tax advice, brokerage/trading behavior, unsupported price targets, or provider-memory answers.
 - Do not add schema migration tooling, production database requirements, object storage services, new infrastructure, deployment settings, or production dependencies.
 - Do not add production dependencies unless the task is explicitly stopped and replanned with dependency rationale.
 
 Acceptance criteria:
-- Weekly News Focus acquisition uses the last completed Monday-Sunday market week plus current week-to-date through yesterday in U.S. Eastern dates, based on an explicit as-of date in deterministic tests and operator smoke output.
-- The operator-only live source path supports the local MVP slice assets `AAPL`, `VOO`, and `QQQ` with official-source candidates first: SEC filings/company investor-relations releases for stock context, and ETF issuer announcements, prospectus updates, fact-sheet changes, or issuer materials for ETF context when available.
-- Approved reputable third-party/news fallback metadata can be represented only after official-source candidates and must be clearly labeled as third-party or fallback; fallback metadata must not outrank official filings, investor-relations releases, issuer announcements, prospectus updates, or fact-sheet changes.
-- Source-use filtering suppresses rejected, pending-review, hidden/internal, rights-disallowed, duplicate, promotional, irrelevant, wrong-asset, outside-window, parser-invalid, stale-unlabeled, and license-disallowed candidates before Weekly News Focus selection.
-- Weekly News Focus shows the configured maximum only when enough selected evidence supports it; limited verified evidence returns a smaller partial set, and no high-signal evidence returns a clear empty state without padding.
-- AI Comprehensive Analysis remains suppressed unless at least two approved Weekly News Focus items exist; when available, it starts with What Changed This Week, then Market Context, Business/Fund Context, and Risk Context, and cites selected Weekly News Focus items plus canonical facts only.
-- Important factual claims in Weekly News Focus or AI Comprehensive Analysis are cited to same-asset Weekly News/canonical sources or labeled `partial`, `unknown`, `stale`, `unavailable`, or `insufficient_evidence`.
-- Operator smoke output reports opt-in state, as-of window, candidate counts, selected item counts, suppressed reason counts, source-rank tiers, official-vs-third-party labels, source-use decisions, parser/freshness states, and AI-analysis threshold status without exposing raw article text, raw source text, unrestricted excerpts, raw provider payloads, hidden prompts, raw model reasoning, transcripts, generated live responses, DSNs, or secret values.
-- Default deterministic behavior remains fixture-backed or mocked with no live network, provider, news, market-data, local service, browser, durable repository, database, object storage, or LLM requirement.
-- Real source retrieval is explicitly blocked or skipped unless the task-defined operator opt-in environment is set; when enabled, failures produce `blocked`, `partial`, `unavailable`, or `insufficient_evidence` diagnostics rather than invented news.
-- Unsupported, out-of-scope, unknown, and recognition-only ETF/ETP rows such as `TQQQ`, `ARKK`, `BND`, `GLD`, `BTC`, and `ZZZZ` cannot receive Weekly News Focus, AI Comprehensive Analysis, generated pages, generated chat answers, generated comparisons, exports, generated risk summaries, or generated-output cache entries through this path.
-- Existing asset overview/details/sources/export/chat behavior remains compatible when no Weekly News evidence is available, and stable canonical facts stay visually, structurally, and citation-wise separate from Weekly News Focus.
+- Live AI remains disabled by default. Running `scripts/run_live_ai_validation_smoke.py --json` without opt-in reports skipped or blocked states with `normal_ci_requires_live_calls=false`, no live network attempts, no generated-output cache writes, no source approvals, and no manifest promotions.
+- Real LLM calls require explicit server-side operator opt-in, including the live-AI smoke opt-in, `LLM_LIVE_GENERATION_ENABLED=true`, a supported server-side LLM provider configuration, and server-side key presence. Missing prerequisites produce `skipped`, `blocked`, `unavailable`, or `insufficient_evidence` diagnostics rather than generated output.
+- OpenRouter keys and any other provider secrets remain server-side only and never appear in browser env, logs, docs, health endpoints, diagnostics, committed files, or test output. Diagnostics may report environment variable names and boolean readiness only.
+- Grounded chat validation covers one supported stock and one supported ETF from the local MVP slice, using the selected asset knowledge pack only. Chat output must validate schema, same-asset citations, source-document presence, source-use policy, freshness or uncertainty labels, educational framing, and single-asset scope.
+- Advice-like chat prompts continue to redirect before any live LLM call. Generated or validated chat output must not include buy/sell/hold, allocation, tax, brokerage, trading, personalized recommendation, or unsupported price-target language.
+- AI Comprehensive Analysis validation uses selected Weekly News Focus evidence only when at least two approved same-asset Weekly News Focus items exist. Zero-item and one-item cases remain suppressed with clear insufficient-evidence diagnostics.
+- When AI Comprehensive Analysis is available, it starts with What Changed This Week, then Market Context, Business/Fund Context, and Risk Context, and cites selected Weekly News Focus items plus canonical facts only.
+- Important factual claims in generated or validated live-AI output are cited to same-asset Weekly News/canonical sources or labeled `partial`, `unknown`, `stale`, `unavailable`, or `insufficient_evidence`.
+- Validation rejects or suppresses output with invalid schema, missing citations, wrong-asset citations, unsupported claims, stale-unlabeled claims, invalid section order, prediction/recommendation language, raw model reasoning, or multi-asset single-chat answers.
+- Cache eligibility may be computed for validated outputs, but this task must not write generated-output cache entries. Failed validation, blocked prerequisites, insufficient evidence, or unsafe output must be non-cacheable.
+- Operator smoke output reports readiness state, opt-in state, provider kind, case status, validation status, selected Weekly News item counts, threshold status, model tier, attempt status, token/cost summaries when provided by the transport, and safe reason codes without exposing raw prompts, raw source text, raw provider payloads, raw model reasoning, transcripts, generated live responses, DSNs, or secret values.
+- Unsupported, out-of-scope, unknown, and recognition-only ETF/ETP rows such as `TQQQ`, `ARKK`, `BND`, `GLD`, `BTC`, and `ZZZZ` cannot receive Weekly News Focus, AI Comprehensive Analysis, generated pages, generated chat answers, generated comparisons, exports, generated risk summaries, generated-output cache entries, or live-AI validation output through this path.
+- Existing asset overview/details/sources/export/chat behavior remains compatible when no Weekly News evidence or local evidence pack is available, and stable canonical facts stay visually, structurally, and citation-wise separate from Weekly News Focus and AI Comprehensive Analysis.
 - The home page remains single stock/ETF search first; comparison stays separate and connected through `/compare`, asset CTAs, suggestions, chat redirects, and clear `A vs B` redirects.
 - Glossary remains contextual; source drawer, glossary, and asset chat mobile behavior are not redesigned by this task.
 - Stock-vs-ETF comparison behavior for `AAPL`/`VOO` keeps relationship badges and the `single-company-vs-ETF-basket` structure.
 - All user-facing or generated copy remains educational and avoids buy/sell/hold, allocation, price-target, tax, brokerage, trading, or personalized recommendation language.
 
 Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_source_policy.py tests/integration/test_backend_api.py -q`
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_llm_provider.py tests/unit/test_chat_generation.py tests/unit/test_weekly_news.py tests/unit/test_safety_guardrails.py -q`
 - `TMPDIR=/tmp python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q`
-- `TMPDIR=/tmp python3 scripts/run_weekly_news_live_source_smoke.py --json`
+- `TMPDIR=/tmp python3 scripts/run_live_ai_validation_smoke.py --json`
 - `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
 - `TMPDIR=/tmp python3 scripts/run_lightweight_mvp_readiness_gate.py --json`
 - `TMPDIR=/tmp python3 evals/run_static_evals.py`
@@ -77,30 +84,12 @@ Required commands:
 - `git diff --check`
 
 Iteration budget:
-- One agent-loop cycle. If real Weekly News acquisition requires broad news-provider integration, paid/restricted news licensing, raw article storage, production source approval workflows, schema migration tooling, frontend redesign, live LLM orchestration, generated-output cache promotion, deployment work, or coverage beyond `AAPL`, `VOO`, and `QQQ`, stop after documenting the blocker and leave that broader work to the backlog.
+- One agent-loop cycle. If live-AI validation requires broad prompt-system redesign, paid/restricted news licensing, raw article storage, raw transcript storage, browser UI changes, schema migration tooling, production source approval workflows, generated-output cache writes, deployment work, production monitoring, broad model-provider integration, or coverage beyond the local MVP validation cases, stop after documenting the blocker and leave that broader work to the backlog.
 
 Remaining risk to report:
-- This task may make operator-only Weekly News source acquisition available for the local MVP slice, but it does not prove broad news/provider reliability, ETF-500 completion, Top-500 completion, source-pack approval, Golden Asset Source Handoff approval, generated-output cache promotion, live-AI readiness, production deployment readiness, public-launch readiness, or investment-advice readiness.
+- This task may validate operator-only live-AI behavior for the local MVP slice, but it does not prove broad model/provider reliability, ETF-500 completion, Top-500 completion, source-pack approval, Golden Asset Source Handoff approval, generated-output cache promotion, production deployment readiness, public-launch readiness, or investment-advice readiness.
 
 ## Backlog
-
-### T-165: Add live-AI validation on top of real local evidence packs
-
-Goal:
-Run local operator-only live AI review for grounded chat and AI Comprehensive Analysis only after local evidence packs, Weekly News thresholds, citations, and safety gates are in place.
-
-Acceptance criteria:
-- Live AI remains disabled by default and requires explicit server-side opt-in env vars.
-- OpenRouter keys remain server-side only and never appear in browser env, logs, docs, health endpoints, diagnostics, or committed files.
-- Generated answers validate schema, citations, source-use policy, no-advice rules, uncertainty labels, and no raw model reasoning before being cacheable.
-- AI Comprehensive Analysis starts with What Changed This Week, then Market Context, Business/Fund Context, and Risk Context, and only cites selected Weekly News Focus items plus canonical facts.
-- Failed validation suppresses output or returns safe insufficient-evidence states.
-
-Required checks:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_llm_provider.py tests/unit/test_chat_generation.py tests/unit/test_weekly_news.py tests/unit/test_safety_guardrails.py -q`
-- `TMPDIR=/tmp python3 scripts/run_live_ai_validation_smoke.py --json`
-- `TMPDIR=/tmp python3 evals/run_static_evals.py`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
 
 ### T-166: Expand local MVP coverage manifests after the fresh-data loop is stable
 
@@ -121,6 +110,40 @@ Required checks:
 - `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
 
 ## Completed
+
+### T-164: Implement real Weekly News Focus acquisition for the local MVP slice
+
+Goal:
+Replace the current real-fetch-blocked Weekly News smoke with a narrow, operator-only live source acquisition path for official filings/releases and approved reputable fallback metadata for `AAPL`, `VOO`, and `QQQ`.
+
+Completion details:
+- Implementation commit: `b1c206e feat(T-164): implement real Weekly News Focus acquisition for the local MVP slice`
+- Local merge commit: `e1a535b chore(T-164): merge real Weekly News Focus acquisition for the local MVP slice` from branch `agent/T-164-20260506T035713Z`
+- Added a guarded operator-only Weekly News source metadata path for `AAPL`, `VOO`, and `QQQ` behind `LTT_WEEKLY_NEWS_LIVE_SOURCE_SMOKE_ENABLED=true` and `LTT_WEEKLY_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED=true`.
+- Kept deterministic defaults fixture-backed and CI-safe, with the default Weekly News live-source smoke skipped unless explicitly opted in.
+- Updated `scripts/run_weekly_news_live_source_smoke.py` so the smoke can report source metadata, opt-in state, selected and suppressed evidence states, official-first ranking, and safe diagnostics without raw source text or secret exposure.
+- Updated `backend/repositories/weekly_news.py` to preserve official-source-first ordering and allow approved fallback metadata only after at least one same-asset official candidate is present.
+- Extended blocked regression coverage in the Weekly News smoke to include `BTC` and `ZZZZ`, alongside existing unsupported/out-of-scope ETF/ETP checks.
+- Added deterministic coverage in `tests/unit/test_weekly_news.py`, `tests/unit/test_repo_contract.py`, and `evals/weekly_news_eval_cases.yaml` for the operator-only smoke path, source-use/fallback behavior, and blocked regressions.
+- `docs/agent-journal/20260506T035713Z.md` records changed files, pass status, quality-gate results, opt-in live-source smoke execution, and remaining risks.
+
+Required commands executed in this task branch:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_source_policy.py tests/integration/test_backend_api.py -q` - pass, 79 passed
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q` - pass, 52 passed
+- `TMPDIR=/tmp python3 scripts/run_weekly_news_live_source_smoke.py --json` - pass, skipped by default without opt-in
+- `LTT_WEEKLY_NEWS_LIVE_SOURCE_SMOKE_ENABLED=true LTT_WEEKLY_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED=true TMPDIR=/tmp python3 scripts/run_weekly_news_live_source_smoke.py --json` - pass
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` - pass
+- `TMPDIR=/tmp python3 scripts/run_lightweight_mvp_readiness_gate.py --json` - pass
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `npm test` - pass
+- `npm run typecheck` - pass
+- `npm run build` - pass
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass, 514 Python tests plus static evals, frontend checks, and backend checks
+- `git diff --check` - pass
+
+Remaining risks:
+- The new path is operator-only and metadata-shaped for the local MVP slice; it does not prove broad news/provider reliability.
+- It does not grant Golden Asset Source Handoff approval, source-pack approval, ETF-500 completion, Top-500 completion, generated-output cache promotion, live-AI readiness, production deployment readiness, public-launch readiness, or investment-advice readiness.
 
 ### T-163: Add local durable persistence for lightweight source snapshots and normalized facts
 
@@ -4697,7 +4720,7 @@ Current runtime snapshot:
 - T-130 completed the deterministic local fresh-data MVP rehearsal command.
 - T-131 through T-135 completed the ETF eligible-universe, stock SEC source-pack readiness, ETF issuer source-pack readiness, local MVP readiness-threshold packets, and batchable local ingestion priority planner.
 - The ETF-500 scope update is documented across the product and handoff docs; T-136 completed deterministic ETF-500 candidate manifest review contracts, and T-137 completed ETF-500 issuer source-pack batch planning contracts.
-- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, T-139 completed the local manual fresh-data readiness gate, T-140 completed the backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack, T-141 aligned frontend/API comparison availability, T-142 completed local browser/API smoke coverage, T-143 completed the deterministic stock-vs-ETF readiness-reporting gate, T-144 completed the first local fresh-data MVP slice smoke contract, T-145 completed the local slice browser/API smoke task, T-146 completed optional durable repository smoke coverage for the local slice, T-147 completed issuer-backed ETF source enrichment for the local slice, T-148 completed the lightweight local slice manual-readiness gate, T-149 completed local slice comparison/export parity coverage, T-150 completed the lightweight live browser/API smoke runner, T-151 completed lightweight live API fallback diagnostics, T-152 completed lightweight live durable persistence smoke coverage, T-153 completed lightweight issuer enrichment for `SPY`, `VTI`, and `XLK`, T-154 completed the Weekly News Focus live-source smoke task, T-155 completed lightweight live-AI validation, T-156 completed fresh-data comparison coverage for stock-vs-stock plus non-generated ETF pairs, T-157 completed local deployment/environment smoke coverage, and T-158 completed the local personal-MVP readiness gate with strict/public-launch gates marked audit-only. No current or backlog task is prepared.
+- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, T-139 completed the local manual fresh-data readiness gate, T-140 completed the backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack, T-141 aligned frontend/API comparison availability, T-142 completed local browser/API smoke coverage, T-143 completed the deterministic stock-vs-ETF readiness-reporting gate, T-144 completed the first local fresh-data MVP slice smoke contract, T-145 completed the local slice browser/API smoke task, T-146 completed optional durable repository smoke coverage for the local slice, T-147 completed issuer-backed ETF source enrichment for the local slice, T-148 completed the lightweight local slice manual-readiness gate, T-149 completed local slice comparison/export parity coverage, T-150 completed the lightweight live browser/API smoke runner, T-151 completed lightweight live API fallback diagnostics, T-152 completed lightweight live durable persistence smoke coverage, T-153 completed lightweight issuer enrichment for `SPY`, `VTI`, and `XLK`, T-154 completed the Weekly News Focus live-source smoke task, T-155 completed lightweight live-AI validation, T-156 completed fresh-data comparison coverage for stock-vs-stock plus non-generated ETF pairs, T-157 completed local deployment/environment smoke coverage, T-158 completed the local personal-MVP readiness gate with strict/public-launch gates marked audit-only, T-159 fixed local browser/API smoke blockers, T-160 added short-TTL lightweight fetch reuse, T-161 wired lightweight exports, T-162 added lightweight grounded chat packs, T-163 added local durable persistence for lightweight source snapshots and normalized facts, and T-164 added operator-only real Weekly News Focus source acquisition for the local MVP slice. T-165 is current and T-166 remains the prepared backlog task.
 - T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, full governed source artifacts, admin auth/rate limiting, broader live ingestion, and launch-sized reviewed manifests remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:
@@ -4757,7 +4780,7 @@ Operational defaults for general MVP roadmap tasks:
 - T-128 established deterministic governed golden evidence API/frontend rendering proof. It is completed and must not be reintroduced as runnable backlog.
 - T-129 established launch-manifest operator automation parity. It is completed and must not be reintroduced as runnable backlog.
 - T-130 established the local fresh-data MVP rehearsal command. It is completed and must not be reintroduced as runnable backlog.
-- T-134 through T-158 are completed. No current runnable task or prepared backlog heading remains.
+- T-134 through T-164 are completed. T-165 is current and T-166 remains prepared backlog.
 - For the local personal MVP, use lightweight live fetch and source-labeled partial rendering as the active readiness path. Old strict source-pack, parser, checksum, ETF-500, Top-500, and Golden Asset Source Handoff promotion gates remain audit-quality diagnostics unless a task explicitly says it is strict/audit hardening.
 - Production hardening remains unpromoted until a new narrow launch-readiness task is explicitly prepared.
 - Full production deployment, recurring production jobs, broad paid-provider integrations, and post-MVP features move later until explicit launch readiness work is promoted into a narrow task and passes deterministic CI coverage.
@@ -4851,12 +4874,20 @@ Roadmap integration tracker:
 | Lightweight fresh-data comparison coverage for stock-vs-stock and partial ETF pairs | Completed | T-156 |
 | Lightweight local deployment smoke and environment validation | Completed | T-157 |
 | Lightweight MVP readiness gate with strict gates marked audit-only | Completed | T-158 |
+| Live local browser/API smoke blocker fixes for the fresh-data MVP slice | Completed | T-159 |
+| Request-scope and short-TTL lightweight live fetch reuse | Completed | T-160 |
+| Lightweight fresh-data evidence for asset and source-list exports | Completed | T-161 |
+| Lightweight knowledge packs for fresh-data-backed grounded chat | Completed | T-162 |
+| Local durable persistence for lightweight source snapshots and normalized facts | Completed | T-163 |
+| Real Weekly News Focus acquisition for the local MVP slice | Completed | T-164 |
+| Live-AI validation on real local evidence packs | Current | T-165 |
+| Local MVP coverage manifest expansion after the fresh-data loop | Prepared | T-166 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
 Remaining unpromoted general MVP sequence:
 
 - T-139 produced a deterministic readiness gate that says whether more agent-loop work remains or whether manual local fresh-data testing is the next step.
-- The stock-vs-ETF comparison feature-completion sequence is complete through the final prepared step: T-141 aligned frontend suggestions/fallback with API availability, T-142 added optional localhost browser/API smoke coverage, and T-143 added the deterministic readiness signal. The promoted local fresh-data MVP slice sequence is complete through T-158 local personal-MVP readiness coverage, including strict-gates-audit-only diagnostics without reintroducing old strict source-pack gates as local-MVP blockers.
+- The stock-vs-ETF comparison feature-completion sequence is complete through the final prepared step: T-141 aligned frontend suggestions/fallback with API availability, T-142 added optional localhost browser/API smoke coverage, and T-143 added the deterministic readiness signal. The promoted local fresh-data MVP slice sequence is complete through T-164 Weekly News Focus source acquisition, with T-165 live-AI validation current and T-166 local coverage manifest expansion prepared after live-AI validation.
 - Full production deployment remains unpromoted until a narrow launch-readiness task is added: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
 - Recurring production jobs only after manual official-source acquisition, Top-500 candidate refresh review, and local fresh-data behavior are stable.
 - Broad paid-provider or news-provider integrations only after provider licensing/source-use review, no-secret-exposure tests, mocked CI fixtures, source-rights validation, and export/display constraints are documented.
