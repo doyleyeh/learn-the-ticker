@@ -356,9 +356,11 @@ def test_local_live_ai_validation_smoke_passes_with_mocked_live_transport_and_va
     assert one_case["selected_item_count"] == 1
     assert one_case["validation_contract"]["generated_output_usable"] is False
     blocked_case = next(case for case in result["cases"] if case["case_id"] == "blocked_regression_tickers_generated_output_ineligible")
-    assert blocked_case["blocked_regression_tickers"] == ["TQQQ", "ARKK", "BND", "GLD"]
+    assert blocked_case["blocked_regression_tickers"] == ["TQQQ", "ARKK", "BND", "GLD", "BTC", "ZZZZ"]
     assert blocked_case["live_call_attempted"] is False
     assert blocked_case["validation_contract"]["generated_chat_answers"] is False
+    assert analysis_case["threshold_status"] == "available"
+    assert analysis_case["validation_contract"]["weekly_news_repository_records_validated"] is True
 
 
 def test_local_live_ai_validation_smoke_blocks_invalid_analysis_before_cache_use():

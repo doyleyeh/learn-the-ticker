@@ -1682,6 +1682,8 @@ def test_local_fresh_data_rehearsal_optional_modes_report_blockers_without_secre
         "ARKK",
         "BND",
         "GLD",
+        "BTC",
+        "ZZZZ",
     ]
     threshold = result["local_mvp_threshold_summary"]
     assert threshold["overall_local_approval_status"] == "blocked_for_local_operator_review"

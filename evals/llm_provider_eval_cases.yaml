@@ -113,6 +113,8 @@ live_ai_smoke_blocked_regression_tickers:
   - ARKK
   - BND
   - GLD
+  - BTC
+  - ZZZZ
 
 live_ai_smoke_required_prereq_env_vars:
   - LTT_LIVE_AI_SMOKE_ENABLED
