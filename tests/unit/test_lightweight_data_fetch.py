@@ -894,7 +894,15 @@ def test_local_fresh_data_mvp_slice_smoke_contract_is_deterministic():
         surface = row["surface_contract"]
         assert surface["renderable"] is True
         assert surface["generated_page"] is True
+        assert surface["generated_chat_answer"] is True
         assert surface["source_drawer_state"] == "available"
+        assert surface["chat_contract"]["safety_classification"] == "educational"
+        assert surface["chat_contract"]["citation_count"] > 0
+        assert surface["chat_contract"]["source_document_count"] > 0
+        assert surface["chat_contract"]["same_asset_citations_only"] is True
+        assert surface["chat_contract"]["fallback_diagnostics_in_uncertainty"] is True
+        assert surface["chat_contract"]["generated_output_cache_promoted"] is False
+        assert surface["chat_contract"]["durable_knowledge_pack_persisted"] is False
         assert {"business_model", "provider_market_price"} <= set(surface["detail_fact_keys"])
         assert surface["unavailable_detail_fact_keys"] == []
         assert surface["section_states"]["business_overview"]["evidence_state"] == "supported"
@@ -924,7 +932,15 @@ def test_local_fresh_data_mvp_slice_smoke_contract_is_deterministic():
         assert fallback_diagnostics["official_source_count"] == row["official_source_count"]
         surface = row["surface_contract"]
         assert surface["renderable"] is True
+        assert surface["generated_chat_answer"] is True
         assert surface["source_drawer_state"] == "available"
+        assert surface["chat_contract"]["safety_classification"] == "educational"
+        assert surface["chat_contract"]["citation_count"] > 0
+        assert surface["chat_contract"]["source_document_count"] > 0
+        assert surface["chat_contract"]["same_asset_citations_only"] is True
+        assert surface["chat_contract"]["fallback_diagnostics_in_uncertainty"] is True
+        assert surface["chat_contract"]["generated_output_cache_promoted"] is False
+        assert surface["chat_contract"]["durable_knowledge_pack_persisted"] is False
         assert {"role", "holdings", "cost_context", "manifest_scope_signal", "provider_market_price"} <= set(
             surface["detail_fact_keys"]
         )

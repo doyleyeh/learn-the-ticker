@@ -1413,6 +1413,48 @@ def test_lightweight_fresh_data_export_routes_use_renderable_local_evidence(monk
         assert not find_forbidden_output_phrases(str(body).lower())
 
 
+def test_lightweight_fresh_data_chat_route_uses_renderable_local_evidence(monkeypatch):
+    settings = build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+        }
+    )
+    lightweight_response = fetch_lightweight_asset_data(
+        "SPY",
+        settings=settings,
+        fetcher=LocalFreshDataSliceFakeFetcher(),
+        retrieved_at=RETRIEVED_AT,
+    )
+    monkeypatch.setattr(
+        "backend.lightweight_page.fetch_lightweight_page_data_if_enabled",
+        lambda ticker: lightweight_response if ticker.upper() == "SPY" else None,
+    )
+    generated_repo = InMemoryGeneratedOutputCacheRepository()
+    configure_backend_read_dependencies(app, BackendReadDependencies(generated_output_cache_reader=generated_repo))
+    try:
+        response = client.post("/api/assets/SPY/chat", json={"question": "What does it hold?"})
+    finally:
+        configure_backend_read_dependencies(app, None)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["asset"]["ticker"] == "SPY"
+    assert body["safety_classification"] == "educational"
+    assert body["citations"]
+    assert body["source_documents"]
+    assert {citation["source_document_id"] for citation in body["citations"]} <= {
+        source["source_document_id"] for source in body["source_documents"]
+    }
+    assert any(source["retrieved_at"] == RETRIEVED_AT for source in body["source_documents"])
+    assert all(source["source_use_policy"] != "metadata_only" for source in body["source_documents"])
+    assert any("Lightweight fallback diagnostics:" in item for item in body["uncertainty"])
+    assert body["session"]["lifecycle_state"] == "active"
+    assert generated_repo.read_chat_answer_records("SPY") is None
+
+
 def test_trust_metrics_catalog_route_is_validation_only_contract():
     response = client.get("/api/trust-metrics/catalog")
 

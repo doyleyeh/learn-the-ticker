@@ -39,11 +39,20 @@ from backend.models import (
     ChatCitation,
     ChatCompareRouteSuggestion,
     ChatResponse,
+    EvidenceState,
     Freshness,
     ChatSourceDocument,
     FreshnessState,
+    LightweightFetchFact,
+    LightweightFetchResponse,
+    LightweightFetchSource,
     SafetyClassification,
     SectionFreshnessInput,
+    SourceExportRights,
+    SourceParserStatus,
+    SourceReviewStatus,
+    SourceStorageRights,
+    SourceUsePolicy,
 )
 from backend.retrieval import (
     AssetKnowledgePack,
@@ -139,10 +148,7 @@ def generate_asset_chat(
 
     fixture_pack = build_asset_knowledge_pack(ticker)
     safety_classification = classify_question(question, supported=fixture_pack.asset.supported)
-    if safety_classification in {
-        SafetyClassification.unsupported_asset_redirect,
-        SafetyClassification.personalized_advice_redirect,
-    }:
+    if safety_classification is SafetyClassification.personalized_advice_redirect:
         return generate_chat_from_pack(fixture_pack, question)
 
     compare_route_redirect = _compare_route_redirect(fixture_pack, question)
@@ -158,8 +164,405 @@ def generate_asset_chat(
     if persisted.found and persisted.chat_response is not None:
         return persisted.chat_response
 
+    lightweight_response = generate_lightweight_asset_chat_if_available(ticker, question)
+    if lightweight_response is not None:
+        return lightweight_response
+
+    if safety_classification is SafetyClassification.unsupported_asset_redirect:
+        return generate_chat_from_pack(fixture_pack, question)
+
     response = generate_chat_from_pack(fixture_pack, question)
     _maybe_write_chat_generated_output_cache(response, fixture_pack, generated_output_cache_writer)
+    return response
+
+
+def generate_lightweight_asset_chat_if_available(ticker: str, question: str) -> ChatResponse | None:
+    """Generate chat from already-renderable lightweight page evidence without persistence or cache writes."""
+
+    from backend.lightweight_page import fetch_lightweight_page_data_if_enabled
+
+    response = fetch_lightweight_page_data_if_enabled(ticker)
+    if response is None:
+        return None
+
+    try:
+        pack = build_lightweight_chat_knowledge_pack(response)
+        chat = generate_chat_from_pack(pack, question)
+        if chat.safety_classification is SafetyClassification.educational:
+            report = validate_chat_response(chat, pack)
+            if not report.valid:
+                return _lightweight_insufficient_chat(pack, question, "Lightweight chat citation validation failed.")
+        return chat
+    except (ChatGenerationError, LookupError, StopIteration, ValueError, TypeError):
+        fallback_asset = response.asset.model_copy(update={"status": AssetStatus.supported, "supported": True})
+        pack = AssetKnowledgePack(
+            asset=fallback_asset,
+            freshness=response.freshness,
+            evidence_gaps=_lightweight_evidence_gaps(response),
+        )
+        return _lightweight_insufficient_chat(
+            pack,
+            question,
+            "Lightweight normalized evidence was renderable for the page but insufficient for this chat answer.",
+        )
+
+
+def build_lightweight_chat_knowledge_pack(response: LightweightFetchResponse) -> AssetKnowledgePack:
+    """Shape renderable lightweight page evidence into the existing in-memory chat pack contract."""
+
+    if (
+        not response.generated_output_eligible
+        or not response.asset.supported
+        or response.fetch_state.value not in {"supported", "partial"}
+        or not response.sources
+        or not response.facts
+        or response.raw_payload_exposed
+    ):
+        raise ChatGenerationError("Lightweight response is not eligible for grounded chat.")
+
+    source_fixtures = [_lightweight_source_fixture(source, response.asset.ticker) for source in response.sources]
+    source_by_id = {source.source_document_id: source for source in source_fixtures}
+    chunks: list[RetrievedSourceChunk] = []
+    facts: list[RetrievedFact] = []
+
+    for fact in _lightweight_chat_facts(response):
+        source = _preferred_lightweight_fact_source(fact, response.sources)
+        if source is None:
+            continue
+        source_fixture = source_by_id[source.source_document_id]
+        chunk = _lightweight_fact_chunk(fact, response, source)
+        chunks.append(RetrievedSourceChunk(chunk=chunk, source_document=source_fixture))
+        facts.append(
+            RetrievedFact(
+                fact=NormalizedFactFixture(
+                    fact_id=fact.fact_id,
+                    asset_ticker=response.asset.ticker,
+                    fact_type="lightweight_normalized_fact",
+                    field_name=fact.field_name,
+                    value=fact.value,
+                    unit=_lightweight_fact_unit(fact),
+                    period=None,
+                    as_of_date=fact.as_of_date,
+                    source_document_id=source.source_document_id,
+                    source_chunk_id=chunk.chunk_id,
+                    extraction_method="lightweight_fresh_data_normalized_fact",
+                    confidence=0.8 if fact.evidence_state is EvidenceState.supported else 0.55,
+                    freshness_state=fact.freshness_state,
+                    evidence_state=fact.evidence_state.value,
+                ),
+                source_document=source_fixture,
+                source_chunk=chunk,
+            )
+        )
+
+    return AssetKnowledgePack(
+        asset=response.asset.model_copy(update={"status": AssetStatus.supported, "supported": True}),
+        freshness=response.freshness,
+        source_documents=source_fixtures,
+        normalized_facts=facts,
+        source_chunks=chunks,
+        recent_developments=[],
+        evidence_gaps=_lightweight_evidence_gaps(response),
+    )
+
+
+def _lightweight_source_fixture(source: LightweightFetchSource, ticker: str) -> SourceDocumentFixture:
+    return SourceDocumentFixture(
+        source_document_id=source.source_document_id,
+        asset_ticker=ticker,
+        source_type=_lightweight_chat_source_type(source),
+        source_rank=_lightweight_source_rank(source),
+        title=source.title,
+        publisher=source.publisher,
+        url=source.url or "",
+        published_at=source.published_at,
+        retrieved_at=source.retrieved_at,
+        content_type="normalized_metadata",
+        is_official=source.is_official,
+        freshness_state=source.freshness_state,
+        as_of_date=source.as_of_date,
+        source_quality=source.source_quality,
+        allowlist_status=source.allowlist_status,
+        source_use_policy=source.source_use_policy,
+    )
+
+
+def _lightweight_chat_source_type(source: LightweightFetchSource) -> str:
+    if source.source_type in {"sec_company_tickers_exchange", "sec_submissions", "sec_companyfacts"}:
+        return "sec_filing"
+    if source.source_type == "provider_market_reference":
+        return "structured_market_data"
+    return source.source_type
+
+
+def _lightweight_source_rank(source: LightweightFetchSource) -> int:
+    if source.is_official:
+        return 1
+    if source.source_use_policy is SourceUsePolicy.summary_allowed:
+        return 20
+    return 50
+
+
+def _lightweight_chat_facts(response: LightweightFetchResponse) -> list[LightweightFetchFact]:
+    facts = list(response.facts)
+    canonical = _canonical_lightweight_identity_fact(response)
+    if canonical is not None:
+        facts.insert(0, canonical)
+
+    if response.asset.asset_type is AssetType.stock:
+        primary_business = _stock_primary_business_fact(response)
+        if primary_business is not None:
+            facts.append(primary_business)
+    elif response.asset.asset_type is AssetType.etf:
+        beginner_role = _etf_beginner_role_fact(response)
+        if beginner_role is not None:
+            facts.append(beginner_role)
+
+    return facts
+
+
+def _canonical_lightweight_identity_fact(response: LightweightFetchResponse) -> LightweightFetchFact | None:
+    for field_name in ("sec_identity", "etf_identity", "etf_fact_sheet_metadata", "provider_identity_or_market_reference"):
+        fact = _lightweight_fact_by_field(response, field_name)
+        source_ids = _generated_claim_source_ids(fact, response.sources) if fact is not None else []
+        if fact is not None and source_ids:
+            return LightweightFetchFact(
+                fact_id=f"lw_chat_{response.asset.ticker.lower()}_canonical_identity",
+                field_name="canonical_asset_identity",
+                value={
+                    "ticker": response.asset.ticker,
+                    "name": response.asset.name,
+                    "asset_type": response.asset.asset_type.value,
+                    "exchange": response.asset.exchange,
+                    "issuer": response.asset.issuer,
+                    "source_label": "lightweight_fresh_data",
+                },
+                evidence_state=EvidenceState.supported,
+                freshness_state=fact.freshness_state,
+                as_of_date=fact.as_of_date,
+                retrieved_at=fact.retrieved_at,
+                source_document_ids=source_ids,
+                source_labels=fact.source_labels,
+                fallback_used=fact.fallback_used,
+                limitations=fact.limitations,
+            )
+    return None
+
+
+def _stock_primary_business_fact(response: LightweightFetchResponse) -> LightweightFetchFact | None:
+    profile = _lightweight_fact_by_field(response, "provider_profile_overview")
+    source_ids = _generated_claim_source_ids(profile, response.sources) if profile is not None else []
+    if profile is None or not source_ids or not isinstance(profile.value, dict):
+        return None
+    sector = profile.value.get("sector")
+    industry = profile.value.get("industry")
+    business_summary = profile.value.get("business_summary")
+    parts = [str(item) for item in (sector, industry, business_summary) if item]
+    if not parts:
+        return None
+    return LightweightFetchFact(
+        fact_id=f"lw_chat_{response.asset.ticker.lower()}_primary_business",
+        field_name="primary_business",
+        value="; ".join(parts),
+        evidence_state=EvidenceState.supported,
+        freshness_state=profile.freshness_state,
+        as_of_date=profile.as_of_date,
+        retrieved_at=profile.retrieved_at,
+        source_document_ids=source_ids,
+        source_labels=profile.source_labels,
+        fallback_used=True,
+        limitations=profile.limitations,
+    )
+
+
+def _etf_beginner_role_fact(response: LightweightFetchResponse) -> LightweightFetchFact | None:
+    benchmark = _lightweight_fact_by_field(response, "benchmark")
+    holdings = _lightweight_fact_by_field(response, "holdings_count")
+    source_fact = benchmark or holdings or _lightweight_fact_by_field(response, "etf_identity")
+    source_ids = _generated_claim_source_ids(source_fact, response.sources) if source_fact is not None else []
+    if source_fact is None or not source_ids:
+        return None
+    benchmark_text = f" tracking {benchmark.value}" if benchmark is not None and benchmark.value else ""
+    holdings_text = f" with about {holdings.value} holdings" if holdings is not None and holdings.value else ""
+    return LightweightFetchFact(
+        fact_id=f"lw_chat_{response.asset.ticker.lower()}_beginner_role",
+        field_name="beginner_role",
+        value=f"a U.S.-listed ETF{benchmark_text}{holdings_text}",
+        evidence_state=EvidenceState.supported,
+        freshness_state=source_fact.freshness_state,
+        as_of_date=source_fact.as_of_date,
+        retrieved_at=source_fact.retrieved_at,
+        source_document_ids=source_ids,
+        source_labels=source_fact.source_labels,
+        fallback_used=source_fact.fallback_used,
+        limitations=source_fact.limitations,
+    )
+
+
+def _lightweight_fact_by_field(response: LightweightFetchResponse, field_name: str) -> LightweightFetchFact | None:
+    return next((fact for fact in response.facts if fact.field_name == field_name), None)
+
+
+def _preferred_lightweight_fact_source(
+    fact: LightweightFetchFact,
+    sources: list[LightweightFetchSource],
+) -> LightweightFetchSource | None:
+    source_by_id = {source.source_document_id: source for source in sources}
+    candidates = [source_by_id[source_id] for source_id in fact.source_document_ids if source_id in source_by_id]
+    eligible = [source for source in candidates if _lightweight_source_can_support_chat(source)]
+    if not eligible:
+        return None
+    return sorted(eligible, key=_lightweight_source_rank)[0]
+
+
+def _generated_claim_source_ids(
+    fact: LightweightFetchFact | None,
+    sources: list[LightweightFetchSource],
+) -> list[str]:
+    if fact is None:
+        return []
+    source_by_id = {source.source_document_id: source for source in sources}
+    return [
+        source_id
+        for source_id in fact.source_document_ids
+        if source_id in source_by_id and _lightweight_source_can_support_chat(source_by_id[source_id])
+    ]
+
+
+def _lightweight_source_can_support_chat(source: LightweightFetchSource) -> bool:
+    return (
+        source.allowlist_status.value == "allowed"
+        and source.source_use_policy not in {SourceUsePolicy.metadata_only, SourceUsePolicy.link_only, SourceUsePolicy.rejected}
+        and source.freshness_state not in {FreshnessState.unavailable, FreshnessState.unknown}
+        and not source.raw_payload_exposed
+    )
+
+
+def _lightweight_fact_chunk(
+    fact: LightweightFetchFact,
+    response: LightweightFetchResponse,
+    source: LightweightFetchSource,
+) -> SourceChunkFixture:
+    text = _lightweight_supporting_text(fact, response, source)
+    return SourceChunkFixture(
+        chunk_id=f"chk_{fact.fact_id}",
+        asset_ticker=response.asset.ticker,
+        source_document_id=source.source_document_id,
+        section_name=f"lightweight_{fact.field_name}",
+        chunk_order=0,
+        text=text,
+        token_count=max(1, len(text.split())),
+        char_start=0,
+        char_end=len(text),
+        supported_claim_types=_lightweight_supported_claim_types(fact),
+    )
+
+
+def _lightweight_supporting_text(
+    fact: LightweightFetchFact,
+    response: LightweightFetchResponse,
+    source: LightweightFetchSource,
+) -> str:
+    value = fact.value
+    if isinstance(value, dict):
+        value_text = ", ".join(f"{key}: {_short_chat_value(item)}" for key, item in sorted(value.items())[:8])
+    elif isinstance(value, list):
+        value_text = "; ".join(_short_chat_value(item) for item in value[:5])
+    else:
+        value_text = _short_chat_value(value)
+    labels = ", ".join(label.value for label in fact.source_labels) or source.source_label.value
+    limitations = f" Limitations: {fact.limitations}" if fact.limitations else ""
+    return (
+        f"{response.asset.ticker} lightweight normalized fact {fact.field_name}: {value_text}. "
+        f"Source label: {labels}; source-use policy: {source.source_use_policy.value}; "
+        f"as of: {fact.as_of_date or source.as_of_date or 'unknown'}; retrieved at: {fact.retrieved_at or source.retrieved_at}."
+        f"{limitations}"
+    )
+
+
+def _short_chat_value(value: Any) -> str:
+    text = str(value)
+    return text if len(text) <= 240 else f"{text[:237]}..."
+
+
+def _lightweight_supported_claim_types(fact: LightweightFetchFact) -> list[str]:
+    field = fact.field_name
+    if field in {"canonical_asset_identity", "sec_identity", "etf_identity", "benchmark", "expense_ratio", "holdings_count"}:
+        return ["factual", "interpretation"]
+    if field == "primary_business":
+        return ["factual", "risk", "suitability", "interpretation"]
+    if field == "beginner_role":
+        return ["interpretation", "suitability", "factual"]
+    if field in {"latest_sec_filing", "latest_revenue_fact", "latest_net_income_fact", "latest_assets_fact"}:
+        return ["factual", "risk", "interpretation"]
+    if field.startswith("provider_"):
+        return ["factual", "interpretation"]
+    return ["factual", "interpretation", "risk"]
+
+
+def _lightweight_fact_unit(fact: LightweightFetchFact) -> str | None:
+    value = fact.value
+    if isinstance(value, dict):
+        unit = value.get("unit")
+        return str(unit) if unit else None
+    if fact.field_name == "expense_ratio":
+        return "%"
+    return None
+
+
+def _lightweight_evidence_gaps(response: LightweightFetchResponse) -> list[EvidenceGap]:
+    gaps = [
+        EvidenceGap(
+            gap_id=gap.fact_id,
+            asset_ticker=response.asset.ticker,
+            field_name=gap.field_name,
+            evidence_state=gap.evidence_state.value,
+            message=str(gap.limitations or gap.value or "Lightweight evidence is partial or unavailable for this field."),
+            freshness_state=gap.freshness_state,
+        )
+        for gap in response.gaps
+    ]
+    diagnostics = response.fallback_diagnostics
+    if diagnostics is not None:
+        gaps.append(
+            EvidenceGap(
+                gap_id=f"lw_chat_{response.asset.ticker.lower()}_fallback_diagnostics",
+                asset_ticker=response.asset.ticker,
+                field_name="lightweight_fallback_diagnostics",
+                evidence_state=response.page_render_state.value,
+                message=(
+                    f"Lightweight fallback diagnostics: source_path={diagnostics.source_path}; "
+                    f"reason_codes={', '.join(diagnostics.reason_codes)}; "
+                    f"official_sources={diagnostics.official_source_count}; "
+                    f"provider_fallback_sources={diagnostics.provider_fallback_source_count}; "
+                    f"raw_payload_exposed={diagnostics.raw_payload_exposed}."
+                ),
+                freshness_state=diagnostics.freshness.freshness_state,
+            )
+        )
+    return gaps
+
+
+def _lightweight_insufficient_chat(pack: AssetKnowledgePack, question: str, message: str) -> ChatResponse:
+    safety_classification = classify_question(question, supported=pack.asset.supported)
+    if safety_classification is SafetyClassification.personalized_advice_redirect:
+        return _advice_redirect_chat(pack, safety_classification)
+    compare_route_redirect = _compare_route_redirect(pack, question)
+    if compare_route_redirect is not None:
+        return compare_route_redirect
+    response = ChatResponse(
+        asset=pack.asset,
+        direct_answer=f"Insufficient evidence: {message}",
+        why_it_matters=(
+            "The local lightweight page can show partial source-labeled facts, but chat only answers when the "
+            "selected asset evidence can be bound to same-asset citations."
+        ),
+        citations=[],
+        source_documents=[],
+        uncertainty=[*_fixture_limits(pack), _gap_message(pack, "lightweight_fallback_diagnostics")],
+        safety_classification=safety_classification,
+    )
+    _assert_safe_copy(response)
     return response
 
 
@@ -701,6 +1104,9 @@ class _ChatCitationRegistry:
             source_type=retrieved_chunk.source_document.source_type,
             evidence_kind=EvidenceKind.document_chunk,
             freshness_state=freshness_state or retrieved_chunk.source_document.freshness_state,
+            retrieved_at=retrieved_chunk.source_document.retrieved_at,
+            as_of_date=retrieved_chunk.source_document.as_of_date,
+            published_at=retrieved_chunk.source_document.published_at,
             supported_claim_types=retrieved_chunk.chunk.supported_claim_types,
             supporting_text=retrieved_chunk.chunk.text,
             supports_claim=supports_claim,
@@ -709,6 +1115,18 @@ class _ChatCitationRegistry:
             else retrieved_chunk.source_document.source_type == "recent_development",
             allowlist_status=retrieved_chunk.source_document.allowlist_status,
             source_use_policy=retrieved_chunk.source_document.source_use_policy,
+            source_identity=retrieved_chunk.source_document.url or retrieved_chunk.source_document.source_document_id,
+            is_official=retrieved_chunk.source_document.is_official,
+            source_quality=retrieved_chunk.source_document.source_quality,
+            storage_rights=_storage_rights_for_chat_source(retrieved_chunk.source_document.source_use_policy),
+            export_rights=_export_rights_for_chat_source(retrieved_chunk.source_document.source_use_policy),
+            review_status=SourceReviewStatus.approved,
+            approval_rationale=_chat_source_approval_rationale(retrieved_chunk.source_document),
+            parser_status=(
+                SourceParserStatus.parsed
+                if retrieved_chunk.source_document.is_official
+                else SourceParserStatus.partial
+            ),
         )
         return self._add_binding(citation_id, claim_text, retrieved_chunk, evidence)
 
@@ -1290,11 +1708,25 @@ def _require_fact(facts_by_field: dict[str, RetrievedFact], field_name: str) -> 
 
 
 def _fixture_limits(pack: AssetKnowledgePack) -> list[str]:
-    notes = ["This answer is bounded to the local fixture-backed asset knowledge pack and does not use live market data."]
+    lightweight = any(source.source_document_id.startswith("lw_") for source in pack.source_documents) or any(
+        gap.field_name == "lightweight_fallback_diagnostics" for gap in pack.evidence_gaps
+    )
+    if lightweight:
+        notes = [
+            "This answer is bounded to the lightweight local-MVP normalized facts that rendered the selected asset page.",
+            "Lightweight chat does not approve sources, promote manifests, write generated-output cache records, or create durable knowledge-pack records.",
+        ]
+    else:
+        notes = ["This answer is bounded to the local fixture-backed asset knowledge pack and does not use live market data."]
     if pack.freshness.facts_as_of:
         notes.append(f"Stable facts are as of {pack.freshness.facts_as_of}.")
     if pack.freshness.recent_events_as_of:
         notes.append(f"Recent-development evidence is as of {pack.freshness.recent_events_as_of}.")
+    if lightweight:
+        for gap in pack.evidence_gaps:
+            if gap.field_name == "lightweight_fallback_diagnostics":
+                notes.append(gap.message)
+                break
     return notes
 
 
@@ -1342,8 +1774,71 @@ def _chat_source_document_from_chunk(citation_id: str, retrieved_chunk: Retrieve
         source_quality=source.source_quality,
         allowlist_status=source.allowlist_status,
         source_use_policy=source.source_use_policy,
-        permitted_operations=decision.permitted_operations,
+        permitted_operations=decision.permitted_operations
+        if decision.allowlist_status is source.allowlist_status and decision.source_use_policy is source.source_use_policy
+        else _operations_for_chat_source_policy(source.source_use_policy),
+        source_identity=source.url or source.source_document_id,
+        storage_rights=_storage_rights_for_chat_source(source.source_use_policy),
+        export_rights=_export_rights_for_chat_source(source.source_use_policy),
+        review_status=SourceReviewStatus.approved,
+        approval_rationale=_chat_source_approval_rationale(source),
+        parser_status=SourceParserStatus.parsed if source.is_official else SourceParserStatus.partial,
     )
+
+
+def _operations_for_chat_source_policy(policy: SourceUsePolicy):
+    if policy is SourceUsePolicy.full_text_allowed:
+        from backend.models import DEFAULT_ALLOWED_SOURCE_OPERATIONS
+
+        return DEFAULT_ALLOWED_SOURCE_OPERATIONS.model_copy()
+    from backend.models import SourceOperationPermissions
+
+    return SourceOperationPermissions(
+        can_store_metadata=True,
+        can_store_raw_text=False,
+        can_display_metadata=True,
+        can_display_excerpt=policy is SourceUsePolicy.summary_allowed,
+        can_summarize=policy is SourceUsePolicy.summary_allowed,
+        can_cache=policy is SourceUsePolicy.summary_allowed,
+        can_export_metadata=True,
+        can_export_excerpt=False,
+        can_export_full_text=False,
+        can_support_generated_output=policy is SourceUsePolicy.summary_allowed,
+        can_support_citations=policy is SourceUsePolicy.summary_allowed,
+        can_support_canonical_facts=policy is SourceUsePolicy.summary_allowed,
+        can_support_recent_developments=False,
+    )
+
+
+def _storage_rights_for_chat_source(policy: SourceUsePolicy) -> SourceStorageRights:
+    if policy is SourceUsePolicy.full_text_allowed:
+        return SourceStorageRights.raw_snapshot_allowed
+    if policy is SourceUsePolicy.summary_allowed:
+        return SourceStorageRights.summary_allowed
+    if policy is SourceUsePolicy.link_only:
+        return SourceStorageRights.link_only
+    if policy is SourceUsePolicy.rejected:
+        return SourceStorageRights.rejected
+    return SourceStorageRights.metadata_only
+
+
+def _export_rights_for_chat_source(policy: SourceUsePolicy) -> SourceExportRights:
+    if policy is SourceUsePolicy.full_text_allowed:
+        return SourceExportRights.excerpts_allowed
+    if policy is SourceUsePolicy.link_only:
+        return SourceExportRights.link_only
+    if policy is SourceUsePolicy.rejected:
+        return SourceExportRights.rejected
+    return SourceExportRights.metadata_only
+
+
+def _chat_source_approval_rationale(source: SourceDocumentFixture) -> str:
+    if source.source_document_id.startswith("lw_") or source.source_document_id.startswith("provider_"):
+        return (
+            "Lightweight local-MVP normalized evidence reused from the renderable page response; "
+            "this is not strict audit-quality source approval or generated-output cache promotion."
+        )
+    return "Deterministic fixture source passed local source-use policy review."
 
 
 def _validate_chat_source_documents(response: ChatResponse, pack: AssetKnowledgePack) -> CitationValidationReport:

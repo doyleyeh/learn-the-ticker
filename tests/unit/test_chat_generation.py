@@ -12,6 +12,7 @@ from backend.cache import (
 from backend.chat import (
     CHAT_PERSISTED_READ_BOUNDARY,
     PlannedChatClaim,
+    build_lightweight_chat_knowledge_pack,
     generate_asset_chat,
     read_persisted_chat_response,
     validate_chat_response,
@@ -37,6 +38,9 @@ from backend.models import (
 )
 from backend.retrieval import build_asset_knowledge_pack, build_asset_knowledge_pack_result
 from backend.safety import find_forbidden_output_phrases
+from backend.lightweight_data_fetch import fetch_lightweight_asset_data
+from backend.settings import build_lightweight_data_settings
+from scripts.run_local_fresh_data_slice_smoke import LocalFreshDataSliceFakeFetcher, RETRIEVED_AT
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -143,6 +147,65 @@ def test_default_chat_path_remains_fixture_backed_without_persisted_readers():
     assert read.status == "not_configured"
     assert read.diagnostics == ("reader:not_configured",)
     assert actual == expected
+
+
+def test_lightweight_renderable_row_can_answer_grounded_chat_without_cache_write(monkeypatch):
+    settings = build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+        }
+    )
+    lightweight = fetch_lightweight_asset_data(
+        "SPY",
+        settings=settings,
+        fetcher=LocalFreshDataSliceFakeFetcher(),
+        retrieved_at=RETRIEVED_AT,
+    )
+    pack = build_lightweight_chat_knowledge_pack(lightweight)
+    writer = InMemoryGeneratedOutputCacheRepository()
+    monkeypatch.setattr(
+        "backend.lightweight_page.fetch_lightweight_page_data_if_enabled",
+        lambda ticker: lightweight if ticker.upper() == "SPY" else None,
+    )
+
+    response = generate_asset_chat("SPY", "What does it hold?", generated_output_cache_writer=writer)
+
+    assert response.asset.ticker == "SPY"
+    assert response.safety_classification is SafetyClassification.educational
+    assert response.citations
+    assert response.source_documents
+    assert {citation.source_document_id for citation in response.citations} <= {
+        source.source_document_id for source in response.source_documents
+    }
+    assert all(source.source_document_id.startswith(("provider_", "lw_")) for source in response.source_documents)
+    assert {source.source_use_policy for source in response.source_documents} <= {
+        SourceUsePolicy.full_text_allowed,
+        SourceUsePolicy.summary_allowed,
+    }
+    assert any(source.retrieved_at == RETRIEVED_AT for source in response.source_documents)
+    assert any("Lightweight fallback diagnostics:" in item for item in response.uncertainty)
+    assert validate_chat_response(response, pack).valid
+    assert writer.read_chat_answer_records("SPY") is None
+
+
+def test_lightweight_chat_keeps_advice_and_compare_redirects_before_fetch(monkeypatch):
+    def fail_fetch(_ticker):
+        raise AssertionError("lightweight evidence should not be fetched for redirects")
+
+    monkeypatch.setattr("backend.lightweight_page.fetch_lightweight_page_data_if_enabled", fail_fetch)
+
+    advice = generate_asset_chat("VOO", "Should I buy VOO today?")
+    compare = generate_asset_chat("VOO", "VOO versus QQQ")
+
+    assert advice.safety_classification is SafetyClassification.personalized_advice_redirect
+    assert compare.safety_classification is SafetyClassification.compare_route_redirect
+    assert advice.citations == []
+    assert compare.citations == []
+    assert advice.source_documents == []
+    assert compare.source_documents == []
 
 
 def test_persisted_chat_falls_back_on_missing_failing_and_invalid_cache_records():
