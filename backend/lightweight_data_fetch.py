@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -134,6 +135,32 @@ class UrlLibJsonFetcher:
         return parsed
 
 
+@dataclass(frozen=True)
+class _LightweightFetchReuseKey:
+    ticker: str
+    chart_range: str
+    asset_type_hint: str
+    data_policy_mode: str
+    live_fetch_enabled: bool
+    provider_fallback_enabled: bool
+    sec_user_agent_redacted: str
+    fetch_timeout_seconds: int
+    fetcher_boundary: str
+
+
+@dataclass(frozen=True)
+class _LightweightFetchReuseEntry:
+    response: LightweightFetchResponse
+    stored_at_seconds: float
+
+
+_LIGHTWEIGHT_FETCH_REUSE_CACHE: dict[_LightweightFetchReuseKey, _LightweightFetchReuseEntry] = {}
+
+
+def clear_lightweight_fetch_reuse_cache() -> None:
+    _LIGHTWEIGHT_FETCH_REUSE_CACHE.clear()
+
+
 def fetch_lightweight_asset_data(
     ticker: str,
     *,
@@ -141,10 +168,12 @@ def fetch_lightweight_asset_data(
     fetcher: JsonFetcher | None = None,
     retrieved_at: str | None = None,
     chart_range: str = DEFAULT_CHART_RANGE,
+    bypass_reuse: bool = False,
 ) -> LightweightFetchResponse:
     normalized = normalize_ticker(ticker)
     active_settings = settings or build_lightweight_data_settings()
     now = retrieved_at or _utc_now()
+    normalized_chart_range = normalize_chart_range(chart_range) or DEFAULT_CHART_RANGE
     if active_settings.data_policy_mode != DataPolicyMode.lightweight.value:
         return _unavailable_response(
             normalized,
@@ -165,9 +194,27 @@ def fetch_lightweight_asset_data(
             ),
         )
 
+    reuse_key = _lightweight_fetch_reuse_key(
+        normalized,
+        active_settings,
+        fetcher=fetcher,
+        chart_range=normalized_chart_range,
+    )
+    cache_now = time.monotonic()
+    if not bypass_reuse:
+        reused = _reuse_cache_get(reuse_key, active_settings, now_seconds=cache_now)
+        if reused is not None:
+            return reused
+
     blocked = _manifest_blocked_response(normalized, now, active_settings)
     if blocked is not None:
-        return blocked
+        return _reuse_cache_store_and_mark(
+            reuse_key,
+            blocked,
+            active_settings,
+            now_seconds=cache_now,
+            bypass_reuse=bypass_reuse,
+        )
 
     source_fetcher = fetcher or UrlLibJsonFetcher()
     diagnostics: dict[str, Any] = {
@@ -182,7 +229,7 @@ def fetch_lightweight_asset_data(
         active_settings,
         source_fetcher,
         now,
-        chart_range=chart_range,
+        chart_range=normalized_chart_range,
     )
     diagnostics["provider_fallback_attempted"] = bool(active_settings.provider_fallback_enabled)
     if yahoo_errors:
@@ -190,7 +237,7 @@ def fetch_lightweight_asset_data(
 
     asset_type = _asset_type_from_quote_or_manifest(normalized, yahoo_quote)
     if asset_type is AssetType.stock:
-        return _fetch_stock(
+        response = _fetch_stock(
             normalized,
             active_settings,
             source_fetcher,
@@ -200,8 +247,15 @@ def fetch_lightweight_asset_data(
             yahoo_facts=yahoo_facts,
             diagnostics=diagnostics,
         )
+        return _reuse_cache_store_and_mark(
+            reuse_key,
+            response,
+            active_settings,
+            now_seconds=cache_now,
+            bypass_reuse=bypass_reuse,
+        )
     if asset_type is AssetType.etf:
-        return _fetch_etf(
+        response = _fetch_etf(
             normalized,
             active_settings,
             now,
@@ -211,13 +265,151 @@ def fetch_lightweight_asset_data(
             diagnostics=diagnostics,
             no_live_external_calls=source_fetcher.no_live_external_calls,
         )
+        return _reuse_cache_store_and_mark(
+            reuse_key,
+            response,
+            active_settings,
+            now_seconds=cache_now,
+            bypass_reuse=bypass_reuse,
+        )
 
-    return _unknown_response(
+    response = _unknown_response(
         normalized,
         now,
         active_settings,
         diagnostics={**diagnostics, "quote_type": (yahoo_quote or {}).get("quoteType")},
     )
+    return _reuse_cache_store_and_mark(
+        reuse_key,
+        response,
+        active_settings,
+        now_seconds=cache_now,
+        bypass_reuse=bypass_reuse,
+    )
+
+
+def _lightweight_fetch_reuse_key(
+    ticker: str,
+    settings: LightweightDataSettings,
+    *,
+    fetcher: JsonFetcher | None,
+    chart_range: str,
+) -> _LightweightFetchReuseKey:
+    return _LightweightFetchReuseKey(
+        ticker=ticker,
+        chart_range=chart_range,
+        asset_type_hint=_asset_type_reuse_hint(ticker),
+        data_policy_mode=settings.data_policy_mode,
+        live_fetch_enabled=settings.live_fetch_enabled,
+        provider_fallback_enabled=settings.provider_fallback_enabled,
+        sec_user_agent_redacted=settings.sec_user_agent_redacted,
+        fetch_timeout_seconds=settings.fetch_timeout_seconds,
+        fetcher_boundary=_fetcher_reuse_boundary(fetcher),
+    )
+
+
+def _asset_type_reuse_hint(ticker: str) -> str:
+    if ticker in UNSUPPORTED_ASSETS:
+        return AssetType.unsupported.value
+    metadata = OUT_OF_SCOPE_COMMON_STOCKS.get(ticker)
+    if metadata:
+        return str(metadata.get("asset_type") or AssetType.stock.value)
+    if top500_stock_universe_entry(ticker) is not None:
+        return AssetType.stock.value
+    if etf_universe_entry(ticker) is not None:
+        return AssetType.etf.value
+    return AssetType.unknown.value
+
+
+def _fetcher_reuse_boundary(fetcher: JsonFetcher | None) -> str:
+    if fetcher is None:
+        return "urllib_live_fetcher"
+    fetcher_type = type(fetcher)
+    return f"{fetcher_type.__module__}.{fetcher_type.__qualname__}:{id(fetcher)}"
+
+
+def _reuse_cache_get(
+    key: _LightweightFetchReuseKey,
+    settings: LightweightDataSettings,
+    *,
+    now_seconds: float,
+) -> LightweightFetchResponse | None:
+    if not settings.fetch_reuse_enabled:
+        return None
+    entry = _LIGHTWEIGHT_FETCH_REUSE_CACHE.get(key)
+    if entry is None:
+        return None
+    age_seconds = max(0.0, now_seconds - entry.stored_at_seconds)
+    if age_seconds > settings.fetch_reuse_ttl_seconds:
+        _LIGHTWEIGHT_FETCH_REUSE_CACHE.pop(key, None)
+        return None
+    return _response_with_reuse_diagnostics(
+        entry.response,
+        key,
+        settings,
+        cache_status="hit",
+        age_seconds=age_seconds,
+        stored=False,
+    )
+
+
+def _reuse_cache_store_and_mark(
+    key: _LightweightFetchReuseKey,
+    response: LightweightFetchResponse,
+    settings: LightweightDataSettings,
+    *,
+    now_seconds: float,
+    bypass_reuse: bool,
+) -> LightweightFetchResponse:
+    should_store = settings.fetch_reuse_enabled and not bypass_reuse
+    marked = _response_with_reuse_diagnostics(
+        response,
+        key,
+        settings,
+        cache_status="bypass" if bypass_reuse else "miss",
+        age_seconds=0.0,
+        stored=should_store,
+    )
+    if should_store:
+        _LIGHTWEIGHT_FETCH_REUSE_CACHE[key] = _LightweightFetchReuseEntry(
+            response=marked.model_copy(deep=True),
+            stored_at_seconds=now_seconds,
+        )
+    return marked
+
+
+def _response_with_reuse_diagnostics(
+    response: LightweightFetchResponse,
+    key: _LightweightFetchReuseKey,
+    settings: LightweightDataSettings,
+    *,
+    cache_status: str,
+    age_seconds: float,
+    stored: bool,
+) -> LightweightFetchResponse:
+    diagnostics = {
+        **response.diagnostics,
+        "lightweight_fetch_reuse": {
+            "schema_version": "lightweight-fetch-reuse-v1",
+            "cache_status": cache_status,
+            "enabled": settings.fetch_reuse_enabled,
+            "ttl_seconds": settings.fetch_reuse_ttl_seconds,
+            "age_seconds": round(age_seconds, 6),
+            "stored": stored,
+            "key_context": {
+                "ticker": key.ticker,
+                "chart_range": key.chart_range,
+                "asset_type_hint": key.asset_type_hint,
+                "data_policy_mode": key.data_policy_mode,
+                "live_fetch_enabled": key.live_fetch_enabled,
+                "provider_fallback_enabled": key.provider_fallback_enabled,
+                "fetcher_boundary": key.fetcher_boundary.split(":", 1)[0],
+            },
+            "raw_payload_exposed": False,
+            "secret_values_exposed": False,
+        },
+    }
+    return response.model_copy(deep=True, update={"diagnostics": diagnostics})
 
 
 def _fetch_stock(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.lightweight_data_fetch import fetch_lightweight_asset_data
+from backend.lightweight_data_fetch import clear_lightweight_fetch_reuse_cache, fetch_lightweight_asset_data
 from backend.lightweight_page import (
     build_lightweight_details_response,
     build_lightweight_overview_response,
@@ -224,12 +224,32 @@ class FakeJsonFetcher:
         raise AssertionError(f"Unexpected URL: {url}")
 
 
+class SecUnavailableFakeJsonFetcher(FakeJsonFetcher):
+    def fetch_json(self, url: str, *, user_agent: str, timeout_seconds: int) -> dict[str, Any]:
+        if "sec.gov" in url:
+            self.urls.append(url)
+            raise RuntimeError("sec_unavailable")
+        return super().fetch_json(url, user_agent=user_agent, timeout_seconds=timeout_seconds)
+
+
 def _settings():
     return build_lightweight_data_settings(
         {
             "DATA_POLICY_MODE": "lightweight",
             "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
             "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+        }
+    )
+
+
+def _settings_with_reuse_ttl(ttl_seconds: int):
+    return build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "LIGHTWEIGHT_FETCH_REUSE_TTL_SECONDS": str(ttl_seconds),
             "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
         }
     )
@@ -359,6 +379,106 @@ def _yahoo_money(value: int) -> dict[str, Any]:
 
 def _yahoo_percent(value: float) -> dict[str, Any]:
     return {"raw": value, "fmt": f"{value * 100:.2f}%"}
+
+
+def test_lightweight_fetch_reuses_same_ticker_range_and_preserves_source_metadata():
+    clear_lightweight_fetch_reuse_cache()
+    fetcher = FakeJsonFetcher()
+    settings = _settings_with_reuse_ttl(30)
+
+    first = fetch_lightweight_asset_data("AAPL", settings=settings, fetcher=fetcher, retrieved_at=RETRIEVED_AT)
+    first_url_count = len(fetcher.urls)
+    second = fetch_lightweight_asset_data("AAPL", settings=settings, fetcher=fetcher, retrieved_at="2026-05-02T12:00:10Z")
+
+    assert first.diagnostics["lightweight_fetch_reuse"]["cache_status"] == "miss"
+    assert first.diagnostics["lightweight_fetch_reuse"]["stored"] is True
+    assert second.diagnostics["lightweight_fetch_reuse"]["cache_status"] == "hit"
+    assert second.diagnostics["lightweight_fetch_reuse"]["key_context"] == first.diagnostics["lightweight_fetch_reuse"]["key_context"]
+    assert len(fetcher.urls) == first_url_count
+    assert [source.model_dump(mode="json") for source in second.sources] == [
+        source.model_dump(mode="json") for source in first.sources
+    ]
+    assert [citation.model_dump(mode="json") for citation in second.citations] == [
+        citation.model_dump(mode="json") for citation in first.citations
+    ]
+    assert second.fallback_diagnostics == first.fallback_diagnostics
+    assert second.raw_payload_exposed is False
+    assert second.diagnostics["lightweight_fetch_reuse"]["raw_payload_exposed"] is False
+    assert second.diagnostics["lightweight_fetch_reuse"]["secret_values_exposed"] is False
+
+
+def test_lightweight_fetch_reuse_misses_for_different_range_and_can_bypass():
+    clear_lightweight_fetch_reuse_cache()
+    fetcher = FakeJsonFetcher()
+    settings = _settings_with_reuse_ttl(30)
+
+    fetch_lightweight_asset_data("AAPL", settings=settings, fetcher=fetcher, retrieved_at=RETRIEVED_AT, chart_range="6mo")
+    six_month_url_count = len(fetcher.urls)
+    one_year = fetch_lightweight_asset_data(
+        "AAPL",
+        settings=settings,
+        fetcher=fetcher,
+        retrieved_at=RETRIEVED_AT,
+        chart_range="1y",
+    )
+    one_year_url_count = len(fetcher.urls)
+    bypassed = fetch_lightweight_asset_data(
+        "AAPL",
+        settings=settings,
+        fetcher=fetcher,
+        retrieved_at=RETRIEVED_AT,
+        chart_range="1y",
+        bypass_reuse=True,
+    )
+
+    assert one_year.diagnostics["lightweight_fetch_reuse"]["cache_status"] == "miss"
+    assert one_year.diagnostics["lightweight_fetch_reuse"]["key_context"]["chart_range"] == "1y"
+    assert one_year_url_count > six_month_url_count
+    assert bypassed.diagnostics["lightweight_fetch_reuse"]["cache_status"] == "bypass"
+    assert bypassed.diagnostics["lightweight_fetch_reuse"]["stored"] is False
+    assert len(fetcher.urls) > one_year_url_count
+
+
+def test_lightweight_fetch_reuse_respects_ttl_expiry(monkeypatch):
+    clear_lightweight_fetch_reuse_cache()
+    fetcher = FakeJsonFetcher()
+    settings = _settings_with_reuse_ttl(1)
+    clock = {"value": 10.0}
+    monkeypatch.setattr("backend.lightweight_data_fetch.time.monotonic", lambda: clock["value"])
+
+    fetch_lightweight_asset_data("AAPL", settings=settings, fetcher=fetcher, retrieved_at=RETRIEVED_AT)
+    first_url_count = len(fetcher.urls)
+    clock["value"] = 10.5
+    hit = fetch_lightweight_asset_data("AAPL", settings=settings, fetcher=fetcher, retrieved_at=RETRIEVED_AT)
+    hit_url_count = len(fetcher.urls)
+    clock["value"] = 12.0
+    expired = fetch_lightweight_asset_data("AAPL", settings=settings, fetcher=fetcher, retrieved_at=RETRIEVED_AT)
+
+    assert hit.diagnostics["lightweight_fetch_reuse"]["cache_status"] == "hit"
+    assert hit_url_count == first_url_count
+    assert expired.diagnostics["lightweight_fetch_reuse"]["cache_status"] == "miss"
+    assert len(fetcher.urls) > first_url_count
+
+
+def test_lightweight_fetch_reuse_preserves_partial_provider_fallback_result():
+    clear_lightweight_fetch_reuse_cache()
+    fetcher = SecUnavailableFakeJsonFetcher()
+    settings = _settings_with_reuse_ttl(30)
+
+    first = fetch_lightweight_asset_data("AAPL", settings=settings, fetcher=fetcher, retrieved_at=RETRIEVED_AT)
+    first_url_count = len(fetcher.urls)
+    second = fetch_lightweight_asset_data("AAPL", settings=settings, fetcher=fetcher, retrieved_at=RETRIEVED_AT)
+
+    assert first.fetch_state is LightweightFetchState.partial
+    assert first.page_render_state is EvidenceState.partial
+    assert first.diagnostics["official_source_errors"]
+    assert first.fallback_diagnostics is not None
+    assert first.fallback_diagnostics.source_path == "provider_fallback_only"
+    assert second.diagnostics["lightweight_fetch_reuse"]["cache_status"] == "hit"
+    assert len(fetcher.urls) == first_url_count
+    assert second.fetch_state is first.fetch_state
+    assert second.fallback_diagnostics == first.fallback_diagnostics
+    assert second.raw_payload_exposed is False
 
 
 def test_lightweight_stock_fetch_prefers_sec_and_labels_provider_fallback():

@@ -24,6 +24,7 @@ DEFAULT_DATA_POLICY_MODE = "lightweight"
 DEFAULT_LIGHTWEIGHT_LIVE_FETCH_ENABLED = False
 DEFAULT_LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED = True
 DEFAULT_LIGHTWEIGHT_FETCH_TIMEOUT_SECONDS = 15
+DEFAULT_LIGHTWEIGHT_FETCH_REUSE_TTL_SECONDS = 30
 DEFAULT_SEC_EDGAR_USER_AGENT = "learn-the-ticker-local/0.1 contact@example.com"
 DEFAULT_LOCAL_DURABLE_OBJECT_NAMESPACE = "local-private-source-artifacts"
 DEFAULT_OFFLINE_MIGRATION_DATABASE_URL = "postgresql+psycopg://placeholder@localhost:5432/learn_the_ticker"
@@ -174,6 +175,7 @@ class LightweightDataSettings:
     sec_user_agent_configured: bool
     sec_user_agent_redacted: str
     fetch_timeout_seconds: int
+    fetch_reuse_ttl_seconds: int
     missing_reasons: tuple[str, ...] = ()
     _sec_user_agent: str = field(default=DEFAULT_SEC_EDGAR_USER_AGENT, repr=False, compare=False)
 
@@ -186,6 +188,10 @@ class LightweightDataSettings:
         return self.lightweight_enabled and self.live_fetch_enabled
 
     @property
+    def fetch_reuse_enabled(self) -> bool:
+        return self.fetch_reuse_ttl_seconds > 0
+
+    @property
     def safe_diagnostics(self) -> dict[str, object]:
         return {
             "schema_version": self.schema_version,
@@ -196,6 +202,8 @@ class LightweightDataSettings:
             "sec_user_agent_configured": self.sec_user_agent_configured,
             "sec_user_agent_redacted": self.sec_user_agent_redacted,
             "fetch_timeout_seconds": self.fetch_timeout_seconds,
+            "fetch_reuse_enabled": self.fetch_reuse_enabled,
+            "fetch_reuse_ttl_seconds": self.fetch_reuse_ttl_seconds,
             "missing_reasons": list(self.missing_reasons),
         }
 
@@ -468,6 +476,15 @@ def build_lightweight_data_settings(env: dict[str, str] | None = None) -> Lightw
         DEFAULT_LIGHTWEIGHT_FETCH_TIMEOUT_SECONDS,
         minimum=1,
     )
+    fetch_reuse_ttl = _int_setting(
+        _first_present(
+            source,
+            "LIGHTWEIGHT_FETCH_REUSE_TTL_SECONDS",
+            "LTT_LIGHTWEIGHT_FETCH_REUSE_TTL_SECONDS",
+        ),
+        DEFAULT_LIGHTWEIGHT_FETCH_REUSE_TTL_SECONDS,
+        minimum=0,
+    )
     missing_reasons = []
     if mode != DEFAULT_DATA_POLICY_MODE:
         missing_reasons.append("data_policy_mode_not_lightweight")
@@ -484,6 +501,7 @@ def build_lightweight_data_settings(env: dict[str, str] | None = None) -> Lightw
         sec_user_agent_configured=bool(user_agent),
         sec_user_agent_redacted=_redact_user_agent(user_agent),
         fetch_timeout_seconds=fetch_timeout,
+        fetch_reuse_ttl_seconds=fetch_reuse_ttl,
         missing_reasons=tuple(missing_reasons),
         _sec_user_agent=user_agent,
     )
