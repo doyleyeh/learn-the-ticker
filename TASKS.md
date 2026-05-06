@@ -1,72 +1,84 @@
 ## Current task
 
-### T-162: Build lightweight knowledge packs for fresh-data-backed grounded chat
+### T-163: Add local durable persistence for lightweight source snapshots and normalized facts
 
 Goal:
-Allow renderable lightweight fresh-data rows to answer grounded single-asset chat from the same normalized facts and source metadata that rendered the page, while preserving comparison redirects and advice redirects.
+Move the local MVP slice from in-memory-only lightweight evidence toward a deterministic durable persistence path for source snapshot metadata, normalized facts, and knowledge-pack records, while keeping normal CI fixture-backed and strict/audit-quality promotion gated.
 
 Task scope:
-Add a narrow backend chat path that can shape already-renderable lightweight fresh-data responses into an in-memory selected-asset knowledge pack for local personal-MVP grounded chat. The chat answer should reuse source-labeled normalized facts, source metadata, citation IDs, source-use policy, freshness/as-of metadata, retrieved-at metadata, fallback diagnostics, and uncertainty states from the lightweight page evidence. Keep advice redirects and comparison-route redirects ahead of evidence generation, keep deterministic tests fixture-backed, and do not change frontend v0.4 workflow or live-provider defaults.
+Add a narrow local durable repository path that can persist and re-read rights-safe lightweight source snapshot metadata, normalized facts, and selected-asset knowledge-pack records for renderable local MVP rows. The durable path should reuse existing repository abstractions and settings, default to in-memory/fixture-backed behavior in normal CI, and fail closed for strict/audit-quality use when source-use, review, parser, freshness, checksum, or export-rights metadata is missing. This task should not make lightweight rows audit-quality approved; it only records local durable evidence in a source-labeled, rights-safe form that later tasks can use.
 
 Allowed files:
-- `backend/chat.py`
-- `backend/lightweight_page.py`
-- `backend/lightweight_data_fetch.py`
-- `backend/retrieval.py`
-- `backend/models.py`
-- `backend/main.py`
 - `backend/settings.py`
-- `backend/chat_sessions.py`
+- `backend/db.py`
+- `backend/persistence.py`
+- `backend/source_snapshot_repository.py`
+- `backend/knowledge_pack_repository.py`
+- `backend/retrieval_repository.py`
+- `backend/generated_output_cache_repository.py`
+- `backend/repositories/source_snapshots.py`
+- `backend/repositories/knowledge_packs.py`
+- `backend/repositories/generated_outputs.py`
+- `backend/repositories/__init__.py`
+- `backend/lightweight_data_fetch.py`
+- `backend/lightweight_page.py`
+- `backend/retrieval.py`
+- `backend/chat.py`
+- `backend/main.py`
+- `backend/models.py`
+- `tests/unit/test_persistence_settings.py`
+- `tests/unit/test_source_snapshot_repository.py`
+- `tests/unit/test_knowledge_pack_repository.py`
+- `tests/unit/test_retrieval_repository.py`
 - `tests/unit/test_chat_generation.py`
 - `tests/unit/test_lightweight_data_fetch.py`
 - `tests/unit/test_safety_guardrails.py`
 - `tests/unit/test_repo_contract.py`
 - `tests/integration/test_backend_api.py`
 - `evals/run_static_evals.py`
-- `evals/safety_eval_cases.yaml`
-- `evals/knowledge_pack_eval_cases.yaml`
 - `scripts/run_local_fresh_data_slice_smoke.py`
 - `scripts/run_local_fresh_data_rehearsal.py`
-- Minimal adjacent backend helper or test fixture files only if the existing chat, retrieval, lightweight page, or API boundaries require them.
+- `scripts/run_lightweight_mvp_readiness_gate.py`
+- Minimal adjacent backend repository/helper or test fixture files only if the existing persistence, retrieval, lightweight page, or API boundaries require them.
 
 Do not change:
-- Do not edit frontend UI, page layout, source drawer, glossary, chat UI, comparison UI, export UI, or home-page workflow unless a deterministic test marker must be adjusted for the backend contract.
+- Do not edit frontend UI, page layout, source drawer, glossary, chat UI, comparison UI, export UI, or home-page workflow.
 - Do not add a home-page two-input comparison builder or promote glossary as a primary home workflow.
 - Do not change supported ETF generated-output authority away from `data/universes/us_equity_etfs_supported.current.json` or ETF/ETP recognition authority away from `data/universes/us_etp_recognition.current.json`.
 - Do not change Top-500 runtime support away from `data/universes/us_common_stocks_top500.current.json` in strict/audit-quality paths.
-- Do not persist raw provider payloads, restricted source text, raw transcripts, hidden prompts, raw model reasoning, DSNs, API keys, or secret values.
+- Do not persist raw provider payloads, restricted source text, raw transcripts, hidden prompts, raw model reasoning, DSNs, API keys, secret values, paid/restricted article text, or unrestricted source excerpts.
 - Do not introduce live provider, news, market-data, or LLM calls into normal CI or deterministic tests.
-- Do not approve sources, promote manifests, write generated-output cache records for lightweight fresh-data chat rows, or claim ETF-500, Top-500, Golden Asset Source Handoff, live-AI, production deployment, public-launch, or investment-advice readiness.
-- Do not change asset-page exports, source-list exports, comparison exports, chat transcript export shape, Weekly News Focus acquisition, AI Comprehensive Analysis generation, or durable repository behavior except where an existing chat helper must stay shared.
-- Do not broaden chat into general finance answers, multi-asset generated answers, portfolio advice, buy/sell/hold guidance, allocation guidance, tax advice, brokerage/trading behavior, or unsupported price targets.
+- Do not approve sources, promote manifests, mark lightweight rows as Golden Asset Source Handoff approved, enable generated-output cache promotion, or claim ETF-500, Top-500, live-AI, production deployment, public-launch, or investment-advice readiness.
+- Do not change asset-page exports, source-list exports, comparison exports, chat transcript export shape, Weekly News Focus acquisition, AI Comprehensive Analysis generation, or frontend source drawer behavior except where existing backend repository reads must remain compatible.
+- Do not broaden chat into general finance answers, multi-asset generated answers, portfolio advice, buy/sell/hold guidance, allocation guidance, tax advice, brokerage/trading behavior, unsupported price targets, or provider-memory answers.
+- Do not add schema migration tooling, production database requirements, object storage services, new infrastructure, deployment settings, or production dependencies.
 - Do not add production dependencies unless the task is explicitly stopped and replanned with dependency rationale.
 
 Acceptance criteria:
-- Renderable lightweight fresh-data rows such as `AAPL`, `VOO`, or the deterministic local slice row used by tests can build an in-memory selected-asset knowledge pack from the same normalized facts and source documents used by the lightweight overview/details/source surfaces.
-- `POST /api/assets/{ticker}/chat` can return an educational grounded answer for a renderable lightweight fresh-data row when the lightweight backend path can render the asset page from normalized evidence.
-- Lightweight chat responses include same-asset citation IDs, source documents, source-use policy labels, freshness/as-of dates, retrieved-at metadata, official-vs-provider/fallback labels, fallback diagnostics where the model supports them, uncertainty labels, and no-advice framing.
-- Lightweight chat answers cite only sources from the selected asset's lightweight evidence pack or clearly return `insufficient_evidence`, `unknown`, `partial`, `stale`, or `unavailable` style uncertainty without inventing unsupported facts.
-- Advice-like prompts such as "Should I buy VOO?" redirect before any lightweight evidence generation, generated-output cache write, live provider call, live LLM call, or transcript persistence beyond the existing accountless session contract.
-- Second-ticker and comparison prompts such as `AAPL vs VOO`, `VOO versus QQQ`, or `Compare AAPL and MSFT` return the existing `/compare` route suggestion and do not generate multi-asset chat answers.
-- Unsupported, out-of-scope, unknown, and blocked ETF/ETP rows such as `TQQQ`, `ARKK`, `BND`, `GLD`, `BTC`, and `ZZZZ` remain blocked from generated chat and expose no factual citations, source documents, generated pages, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, or generated-output cache promotion.
-- Static fixture-backed chat for currently cached supported assets continues to work and keeps existing same-asset citation/source validation behavior.
-- Lightweight chat fallback does not write generated-output cache records, approve sources, promote manifests, persist durable knowledge-pack records, or convert retrieval into strict/audit-quality evidence.
-- Normal CI remains deterministic with `LIGHTWEIGHT_LIVE_FETCH_ENABLED=false` by default and uses fixtures/mocks rather than live network.
-- The local fresh-data slice smoke and rehearsal report lightweight grounded chat availability for renderable rows and keep unavailable/empty generated-chat states for blocked and non-generated rows.
-- No raw provider payloads, hidden/internal diagnostics, hidden prompts, raw model reasoning, unrestricted source text, raw transcripts, DSNs, API keys, secret values, or paid/restricted content without documented rights are emitted by chat responses, smoke output, rehearsal output, evals, logs, or exports.
-- Chat validation rejects wrong-asset citations, stale-unlabeled evidence, source-use-policy violations, unsupported claims, advice-like copy, and generated multi-asset answers.
+- Local durable mode can persist and re-read lightweight source snapshot metadata for renderable supported local MVP rows without storing raw restricted provider payloads, paid/restricted article text, hidden/internal diagnostics, raw source text beyond rights-tier limits, or secret values.
+- Local durable mode can persist and re-read normalized facts from lightweight evidence, including asset ticker, asset type, fact identifiers, values or compact display text, same-asset citation/source references, source-use policy, freshness/as-of metadata, retrieved-at metadata, official-vs-provider/fallback labels, uncertainty labels, and fallback diagnostics where already present.
+- Local durable mode can persist and re-read selected-asset knowledge-pack records built from lightweight normalized facts and source metadata, preserving same-asset citation IDs and source document IDs used by the asset page and lightweight grounded chat path.
+- Durable reads remain optional and configuration-gated; default CI behavior remains in-memory/fixture-backed with `LIGHTWEIGHT_LIVE_FETCH_ENABLED=false` and no database, object storage, live network, provider, news, market-data, or LLM requirement.
+- Source records missing source-use policy, review status, parser status, freshness/as-of or retrieved-at metadata, export rights, or checksums where the record type requires them fail closed for strict/audit-quality generated output as `pending_review`, `rejected`, `unavailable`, or `insufficient_evidence`.
+- Persisted lightweight records explicitly distinguish local personal-MVP durable evidence from Golden Asset Source Handoff approved evidence and expose flags or metadata showing `strict_audit_quality_source_approval_granted=false` unless existing approved fixture records already say otherwise.
+- Blocked, unsupported, out-of-scope, unknown, and recognition-only ETF/ETP rows such as `TQQQ`, `ARKK`, `BND`, `GLD`, `BTC`, and `ZZZZ` cannot persist generated evidence, knowledge packs for generated chat, generated comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, or generated-output cache entries.
+- Lightweight durable persistence does not write generated-output cache records unless an existing strict/audit-quality generated-output path already had approval; local MVP lightweight records remain generated-output-cache-ineligible.
+- `POST /api/assets/{ticker}/chat` and existing retrieval paths continue to answer fixture-backed and lightweight renderable rows with same-asset citations only, and they do not cite durable records for the wrong asset or unsupported rows.
+- Asset overview/details/sources/export behavior remains compatible with existing in-memory and static generated-pack paths when durable local records are absent.
+- Rehearsal and slice-smoke output report durable lightweight persistence readiness or availability without printing raw payloads, DSNs, secret values, unrestricted excerpts, raw transcripts, hidden prompts, or raw model reasoning.
 - Accountless chat session behavior, 7-day TTL assumptions, deletion behavior, and no raw transcript analytics/training/evaluation boundaries remain intact.
 - The home page remains single stock/ETF search first; comparison stays separate and connected through `/compare`, asset CTAs, suggestions, chat redirects, and clear `A vs B` redirects.
 - Glossary remains contextual; source drawer, glossary, and asset chat mobile behavior are not redesigned by this task.
 - Stock-vs-ETF comparison behavior for `AAPL`/`VOO` keeps relationship badges and the `single-company-vs-ETF-basket` structure.
 - Weekly News Focus and AI Comprehensive Analysis remain separated from stable facts; Weekly News Focus still shows the configured maximum only when evidence supports it, with smaller or empty states allowed.
-- Important factual claims in chat are cited or labeled `partial`, `unknown`, `stale`, `unavailable`, or `insufficient_evidence`, and all copy remains educational rather than investment advice.
+- Important factual claims in any persisted or rehydrated output are cited or labeled `partial`, `unknown`, `stale`, `unavailable`, or `insufficient_evidence`, and all copy remains educational rather than investment advice.
 
 Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_chat_generation.py tests/unit/test_safety_guardrails.py tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py -q`
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_persistence_settings.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_retrieval_repository.py tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py -q`
 - `TMPDIR=/tmp python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q`
 - `TMPDIR=/tmp python3 scripts/run_local_fresh_data_slice_smoke.py --json`
 - `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
+- `TMPDIR=/tmp python3 scripts/run_lightweight_mvp_readiness_gate.py --json`
 - `TMPDIR=/tmp python3 evals/run_static_evals.py`
 - `npm test`
 - `npm run typecheck`
@@ -75,30 +87,12 @@ Required commands:
 - `git diff --check`
 
 Iteration budget:
-- One agent-loop cycle. If lightweight chat requires durable persistence, database schema work, generated-output cache promotion, frontend redesign, new production dependencies, live LLM/provider orchestration beyond the existing deterministic lightweight fetch boundary, broad retrieval-model refactors, or rewriting accountless chat sessions, stop after documenting the blocker and leave that broader work to the backlog.
+- One agent-loop cycle. If durable lightweight persistence requires production schema migration tooling, live database/object-storage services, new infrastructure, frontend redesign, generated-output cache promotion, broad retrieval rewrites, raw provider payload storage, source approval/promotion workflows, or live provider/LLM orchestration, stop after documenting the blocker and leave that broader work to the backlog.
 
 Remaining risk to report:
-- This task may make lightweight fresh-data rows answer local grounded chat for the MVP slice, but it does not prove broad provider reliability, ETF-500 completion, Top-500 completion, source-pack approval, Golden Asset Source Handoff approval, durable persistence, generated-output cache promotion, live-AI readiness, production deployment readiness, public-launch readiness, or investment-advice readiness.
+- This task may make local durable evidence records available for the deterministic MVP slice, but it does not prove broad provider reliability, ETF-500 completion, Top-500 completion, source-pack approval, Golden Asset Source Handoff approval, generated-output cache promotion, live-AI readiness, production deployment readiness, public-launch readiness, or investment-advice readiness.
 
 ## Backlog
-
-### T-163: Add local durable persistence for lightweight source snapshots and normalized facts
-
-Goal:
-Move from review-only durable smoke toward a real local durable path for source snapshot metadata, normalized facts, knowledge-pack records, and generated-output eligibility for the local MVP slice.
-
-Acceptance criteria:
-- Local durable mode can persist and re-read source snapshot metadata and normalized facts for supported lightweight rows without storing raw restricted provider payloads.
-- Source records include source-use policy, allowlist/review status, parser status, freshness/as-of metadata, checksums where available, and export rights.
-- Missing approval metadata fails closed to `pending_review`, `rejected`, `unavailable`, or `insufficient_evidence` for strict/audit-quality use.
-- Blocked products cannot persist generated evidence, generated chat, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, or generated-output cache entries.
-- Normal CI remains in-memory/fixture-backed and does not require a database.
-
-Required checks:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_persistence_settings.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_retrieval_repository.py tests/integration/test_backend_api.py -q`
-- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
-- `npm test`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
 
 ### T-164: Implement real Weekly News Focus acquisition for the local MVP slice
 
@@ -156,6 +150,37 @@ Required checks:
 - `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
 
 ## Completed
+
+### T-162: Build lightweight knowledge packs for fresh-data-backed grounded chat
+
+Goal:
+Allow renderable lightweight fresh-data rows to answer grounded single-asset chat from the same normalized facts and source metadata that rendered the page, while preserving comparison redirects and advice redirects.
+
+Completion details:
+- Implementation commit: `782c8be feat(T-162): build lightweight knowledge packs for fresh-data-backed grounded chat`
+- Local merge commit: `0b22aab chore(T-162): merge build lightweight knowledge packs for fresh-data-backed grounded chat` from branch `agent/T-162-20260506T032458Z`
+- Added an in-memory lightweight chat knowledge-pack path in `backend/chat.py` that shapes renderable lightweight fresh-data facts and source metadata into the existing grounded chat pack contract.
+- Preserved advice redirects and comparison-route redirects before lightweight evidence generation for supported fixture-backed paths.
+- Preserved same-asset citation validation, source-use policy labels, freshness/as-of dates, retrieved-at metadata, fallback diagnostics in uncertainty text, and no generated-output cache promotion for lightweight chat.
+- Updated `scripts/run_local_fresh_data_slice_smoke.py` so renderable lightweight rows report grounded chat availability while blocked rows remain locked.
+- Added deterministic unit and API coverage in `tests/unit/test_chat_generation.py`, `tests/unit/test_lightweight_data_fetch.py`, and `tests/integration/test_backend_api.py` for lightweight chat availability, same-asset citations/source metadata, uncertainty handling, blocked-row behavior, and no raw payload exposure.
+- `docs/agent-journal/20260506T032458Z.md` records changed files, deterministic pass status, quality-gate pass status, and remaining risks.
+
+Required commands executed in this task branch:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_chat_generation.py tests/unit/test_safety_guardrails.py tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py -q` - pass, 89 passed
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q` - pass, 52 passed
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_slice_smoke.py --json` - pass
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` - pass
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `npm test` - pass
+- `npm run typecheck` - pass
+- `npm run build` - pass
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass, including 510 Python tests, static evals, frontend smoke, typecheck, build, and backend checks
+- `git diff --check` - pass
+
+Remaining risks:
+- Lightweight fresh-data chat is available for the deterministic local MVP slice, but this does not prove broad provider reliability, ETF-500 completion, Top-500 completion, source-pack approval, Golden Asset Source Handoff approval, durable persistence, generated-output cache promotion, live-AI readiness, production deployment readiness, public-launch readiness, or investment-advice readiness.
+- The rehearsal still reports expected review-only blockers for launch-manifest, ETF issuer source-pack, Top-500 SEC source-pack, and local ingestion priority readiness outside this task.
 
 ### T-161: Wire lightweight fresh-data evidence into asset exports and source-list exports
 
