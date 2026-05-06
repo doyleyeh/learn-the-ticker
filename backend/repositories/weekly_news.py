@@ -61,6 +61,10 @@ _OFFICIAL_SOURCE_RANK_TIERS = {
     "prospectus_update",
     "fact_sheet_change",
 }
+_FALLBACK_SOURCE_RANK_TIERS = {
+    "allowlisted_news",
+    "provider_context",
+}
 _SOURCE_POLICY_BLOCKED_REASONS = {
     "source_policy_blocked",
     "license_disallowed",
@@ -1076,10 +1080,10 @@ def acquire_weekly_news_event_evidence_from_official_sources(
             sanitized_diagnostics=readiness.sanitized_diagnostics,
         )
 
-    official_candidates = [
+    acquisition_candidates = [
         candidate
         for candidate in candidates
-        if candidate.source_rank_tier in _OFFICIAL_SOURCE_RANK_TIERS
+        if candidate.source_rank_tier in {*_OFFICIAL_SOURCE_RANK_TIERS, *_FALLBACK_SOURCE_RANK_TIERS}
     ]
     use_mock_fetcher = fetcher is None
     fetch_boundary = fetcher or WeeklyNewsOfficialSourceLiveFetcher()
@@ -1089,7 +1093,7 @@ def acquire_weekly_news_event_evidence_from_official_sources(
     parser_diagnostic_count = 0
     prepared_candidates: list[WeeklyNewsEventCandidateRow] = []
     no_live_external_calls = True
-    for candidate in official_candidates:
+    for candidate in acquisition_candidates:
         fetched = fetch_boundary.fetch(candidate)
         parsed = parser_boundary.parse(fetched, candidate)
         no_live_external_calls &= bool(fetched.no_live_external_calls and parsed.no_live_external_calls)
@@ -1831,15 +1835,26 @@ def _market_week_window_ready(as_of: str) -> bool:
 
 def _official_source_candidates_ready(ticker: str, candidates: list[WeeklyNewsEventCandidateRow]) -> bool:
     normalized = _normalize_ticker(ticker)
+    official_candidate_count = 0
     try:
         for candidate in candidates:
             if _normalize_ticker(candidate.asset_ticker) != normalized:
                 return False
             if _normalize_ticker(candidate.source_asset_ticker) != normalized:
                 return False
-            if candidate.source_rank_tier not in _OFFICIAL_SOURCE_RANK_TIERS:
+            if candidate.source_rank_tier in _OFFICIAL_SOURCE_RANK_TIERS:
+                official_candidate_count += 1
+            elif candidate.source_rank_tier not in _FALLBACK_SOURCE_RANK_TIERS:
                 return False
-            if candidate.source_quality not in {SourceQuality.official.value, SourceQuality.issuer.value}:
+            if candidate.source_rank_tier in _OFFICIAL_SOURCE_RANK_TIERS and candidate.source_quality not in {
+                SourceQuality.official.value,
+                SourceQuality.issuer.value,
+            }:
+                return False
+            if candidate.source_rank_tier in _FALLBACK_SOURCE_RANK_TIERS and candidate.source_quality not in {
+                SourceQuality.allowlisted.value,
+                SourceQuality.provider.value,
+            }:
                 return False
             if candidate.title_checksum is not None and not candidate.title_checksum.startswith("sha256:"):
                 return False
@@ -1849,7 +1864,7 @@ def _official_source_candidates_ready(ticker: str, candidates: list[WeeklyNewsEv
                 return False
             if candidate.stores_raw_article_text or candidate.stores_raw_provider_payload or candidate.stores_unrestricted_source_text:
                 return False
-        return True
+        return official_candidate_count > 0
     except Exception:
         return False
 

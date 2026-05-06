@@ -73,6 +73,8 @@ live_source_smoke_blocked_regression_tickers:
   - ARKK
   - BND
   - GLD
+  - BTC
+  - ZZZZ
 live_source_smoke_required_suppression_reasons:
   - duplicate
   - promotional

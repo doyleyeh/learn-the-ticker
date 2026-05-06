@@ -871,7 +871,7 @@ def test_weekly_news_live_source_smoke_opt_in_exercises_source_use_and_threshold
     assert empty["ai_threshold"]["analysis_allowed"] is False
 
     blocked = cases["blocked_regression_tickers"]
-    assert blocked["blocked_regression_tickers"] == ["TQQQ", "ARKK", "BND", "GLD"]
+    assert blocked["blocked_regression_tickers"] == ["TQQQ", "ARKK", "BND", "GLD", "BTC", "ZZZZ"]
     assert blocked["no_weekly_news_focus"] is True
     assert blocked["no_ai_comprehensive_analysis"] is True
     assert blocked["no_citations_sources_facts_or_exports"] is True
@@ -879,14 +879,42 @@ def test_weekly_news_live_source_smoke_opt_in_exercises_source_use_and_threshold
     assert all(row["generated_output_cache_entries_written"] is False for row in blocked["rows"])
 
 
-def test_weekly_news_live_source_smoke_blocks_real_fetch_request_with_sanitized_diagnostics():
+def test_weekly_news_live_source_smoke_real_fetch_opt_in_runs_metadata_only_operator_path():
     result = run_weekly_news_live_source_smoke(env={SMOKE_OPT_IN_ENV: "true", REAL_SOURCE_OPT_IN_ENV: "true"})
 
-    assert result["status"] == "blocked"
-    assert result["reason_code"] == "weekly_news_real_source_retrieval_not_available_in_ci_safe_smoke"
+    assert result["status"] == "pass"
+    assert result["reason_code"] == "weekly_news_operator_real_source_metadata_smoke_passed"
     assert result["normal_ci_requires_live_calls"] is False
-    assert result["live_network_calls_attempted"] is False
-    assert result["required_env_names_without_values"] == [SMOKE_OPT_IN_ENV, REAL_SOURCE_OPT_IN_ENV]
+    assert result["source_retrieval_mode"] == "operator_real_source_metadata_acquisition"
+    assert result["operator_real_source_path"]["local_mvp_slice_assets"] == ["AAPL", "VOO", "QQQ"]
+    assert result["operator_real_source_path"]["metadata_only"] is True
+    assert result["operator_real_source_path"]["official_sources_first"] is True
+    assert result["operator_real_source_path"]["fallback_metadata_after_official"] is True
+    cases = {case["case_id"]: case for case in result["cases"]}
+    assert cases["operator_real_source_aapl"]["selected_source_rank_tiers"] == [
+        "official_filing",
+        "investor_relations_release",
+    ]
+    assert cases["operator_real_source_voo"]["selected_source_rank_tiers"] == [
+        "etf_issuer_announcement",
+        "fact_sheet_change",
+        "allowlisted_news",
+    ]
+    assert cases["operator_real_source_qqq"]["selected_source_rank_tiers"] == [
+        "prospectus_update",
+        "fact_sheet_change",
+        "allowlisted_news",
+    ]
+    assert cases["operator_real_source_voo"]["operator_real_source_acquisition"]["fallback_metadata_after_official"] is True
+    assert cases["operator_real_source_qqq"]["operator_real_source_acquisition"]["fallback_metadata_after_official"] is True
+    assert cases["blocked_regression_tickers"]["blocked_regression_tickers"] == [
+        "TQQQ",
+        "ARKK",
+        "BND",
+        "GLD",
+        "BTC",
+        "ZZZZ",
+    ]
     serialized = repr(result)
     for forbidden in ["Bearer ", "Authorization", "BEGIN PRIVATE KEY", "raw article body", "provider payload value", "sk-"]:
         assert forbidden not in serialized
