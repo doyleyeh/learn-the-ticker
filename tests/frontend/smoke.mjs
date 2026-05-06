@@ -1745,7 +1745,7 @@ function reportLocalDurableFreshDataSlicePrereqBlockers(blockers) {
   );
 }
 
-const runOptionalLocalDurableSmoke = async ({ webBase, apiBase, requestWithLog }) => {
+const runOptionalLocalDurableSmoke = async ({ webBase, apiBase, requestWithLog, requestChatViaProxyWithRetry }) => {
   const prereqs = localDurablePrereqStatus();
   if (prereqs.blockers.length > 0) {
     console.log("Local durable browser smoke is blocked by missing prerequisites:");
@@ -1774,8 +1774,7 @@ const runOptionalLocalDurableSmoke = async ({ webBase, apiBase, requestWithLog }
       "Local durable VOO page should expose source-list route"
     );
 
-    const [durableChatResponse, durableChatBody] = await requestWithLog(
-      "POST",
+    const [durableChatResponse, durableChatBody] = await requestChatViaProxyWithRetry(
       `${webBase}/api/assets/VOO/chat`,
       {
         headers: { "Content-Type": "application/json" },
@@ -1959,6 +1958,16 @@ if (localBrowserSmokeEnabled) {
       throw error;
     }
   };
+  const requestChatViaProxyWithRetry = async (target, options = {}) => {
+    try {
+      return await requestWithLog("POST", target, options);
+    } catch (error) {
+      if (!String(error).includes("Request timeout after 7000ms")) {
+        throw error;
+      }
+      return requestWithLog("POST", target, options);
+    }
+  };
 
   const assertPathMarkers = (html, markers, label) => {
     for (const marker of markers) {
@@ -1988,6 +1997,21 @@ if (localBrowserSmokeEnabled) {
 
   const requestJsonWithLog = async (method, target, options = {}, label = target) => {
     const response = await requestWithLog(method, target, options);
+    const body = await response.text();
+    assertNoHtmlFallback(body, label);
+    const contentType = response.headers.get("content-type") || "";
+    assert.match(contentType, /application\/json/i, `${label} should return JSON content`);
+
+    let payload;
+    try {
+      payload = JSON.parse(body);
+    } catch (error) {
+      throw new Error(`${label} returned non-JSON payload: ${error}`);
+    }
+    return [response, payload, body];
+  };
+  const requestChatJsonViaProxyWithRetry = async (target, options = {}, label = target) => {
+    const response = await requestChatViaProxyWithRetry(target, options);
     const body = await response.text();
     assertNoHtmlFallback(body, label);
     const contentType = response.headers.get("content-type") || "";
@@ -3019,8 +3043,7 @@ if (localBrowserSmokeEnabled) {
         "VOO asset page"
       );
 
-      const [chatResponse, chatBody] = await requestWithLog(
-        "POST",
+      const [chatResponse, chatBody] = await requestChatViaProxyWithRetry(
         `${webBase}/api/assets/VOO/chat`,
         {
           headers: { "Content-Type": "application/json" },
@@ -3162,8 +3185,7 @@ if (localBrowserSmokeEnabled) {
       assert.equal(stockEtfExportResponse.status, 200, "AAPL vs VOO comparison export should route through API path");
       assertAaplVooExportPayload(stockEtfExportPayload, "AAPL vs VOO comparison export API");
 
-      const [chatCompareResponse, chatComparePayload] = await requestJsonWithLog(
-        "POST",
+      const [chatCompareResponse, chatComparePayload] = await requestChatJsonViaProxyWithRetry(
         `${webBase}/api/assets/VOO/chat`,
         {
           headers: { "Content-Type": "application/json" },
@@ -3221,7 +3243,7 @@ if (localBrowserSmokeEnabled) {
     }
 
     if (localDurableBrowserSmokeEnabled) {
-      await runOptionalLocalDurableSmoke({ webBase, apiBase, requestWithLog });
+      await runOptionalLocalDurableSmoke({ webBase, apiBase, requestWithLog, requestChatViaProxyWithRetry });
     }
   };
 

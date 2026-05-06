@@ -124,6 +124,7 @@ COMPARISON_INTENT_PATTERNS = (
     r"\bthan\b",
 )
 TICKER_TOKEN_PATTERN = re.compile(r"\b[A-Za-z]{1,5}(?:\.[A-Za-z])?\b")
+COMPARISON_CONNECTOR_TOKENS = frozenset({"AND", "VS", "VERSUS", "WITH"})
 
 
 def generate_asset_chat(
@@ -1238,6 +1239,8 @@ def _mentioned_tickers(question: str) -> list[str]:
     mentions: list[str] = []
     for match in TICKER_TOKEN_PATTERN.finditer(question):
         token = match.group(0)
+        if token.upper() in COMPARISON_CONNECTOR_TOKENS:
+            continue
         resolved_ticker = _resolved_ticker_token(token)
         if resolved_ticker is None:
             continue
