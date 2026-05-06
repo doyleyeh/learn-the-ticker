@@ -1,11 +1,9 @@
 import {
-  citationLabel,
-  getCitationById,
   type AssetFixture,
   type StockOverviewSection,
   type StockSectionItem
 } from "../lib/fixtures";
-import { CitationChip } from "./CitationChip";
+import { CompactCitationSources, resolveAssetCitations } from "./CompactCitationSources";
 import { FreshnessDisclosure } from "./FreshnessLabel";
 import { InlineGlossaryText, type InlineGlossaryContextMap, type InlineGlossaryMatch } from "./InlineGlossaryText";
 
@@ -135,8 +133,11 @@ function StockSection({
                   matches={glossaryMatches}
                   contexts={glossaryContexts}
                   sourceSection={`stock.${section.sectionId}.metric_value`}
-                />{" "}
-                <CitationChips asset={asset} citationIds={metric.citationIds} />
+                />
+                <CompactCitationSources
+                  citations={resolveAssetCitations(asset, metric.citationIds)}
+                  label={`${metric.label} sources`}
+                />
               </dd>
             </div>
           ))}
@@ -223,24 +224,13 @@ function StockSectionItemCard({
         {item.retrievedAt ? <FreshnessDisclosure label="Retrieved" value={item.retrievedAt} state={item.freshnessState} /> : null}
       </div>
       {item.citationIds.length ? (
-        <span className="chip-row">
-          <CitationChips asset={asset} citationIds={item.citationIds} />
-        </span>
+        <div className="compact-source-row">
+          <CompactCitationSources citations={resolveAssetCitations(asset, item.citationIds)} label={`${item.title} sources`} />
+        </div>
       ) : (
         <p className="source-gap-note">No citation chip is shown because this item is an explicit evidence gap.</p>
       )}
     </article>
-  );
-}
-
-function CitationChips({ asset, citationIds }: { asset: AssetFixture; citationIds: string[] }) {
-  return (
-    <>
-      {citationIds.map((citationId) => {
-        const citation = getCitationById(asset, citationId);
-        return citation ? <CitationChip key={citationId} citation={citation} label={citationLabel(citationId)} /> : null;
-      })}
-    </>
   );
 }
 

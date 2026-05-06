@@ -1,4 +1,4 @@
-import type { Citation } from "../lib/fixtures";
+import { citationLabel, type Citation } from "../lib/fixtures";
 
 type CitationChipProps = {
   citation: Citation;
@@ -16,7 +16,7 @@ export function CitationChip({ citation, label }: CitationChipProps) {
       data-freshness-state={citation.freshnessState}
       data-governed-golden-citation-binding="same-asset-source"
     >
-      [{label ?? citation.citationId}]
+      [{label ?? citationLabel(citation.citationId)}]
     </a>
   );
 }

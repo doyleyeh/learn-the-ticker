@@ -1,12 +1,10 @@
 import {
-  citationLabel,
-  getCitationById,
   type AssetFixture,
   type OverviewTable,
   type StockOverviewSection
 } from "../lib/fixtures";
 import { AssetPriceRangeChart } from "./AssetPriceRangeChart";
-import { CitationChip } from "./CitationChip";
+import { CompactCitationSources, resolveAssetCitations } from "./CompactCitationSources";
 import { FreshnessDisclosure } from "./FreshnessLabel";
 import { InlineGlossaryText, type InlineGlossaryContextMap, type InlineGlossaryMatch } from "./InlineGlossaryText";
 
@@ -125,9 +123,9 @@ function QuoteStatGrid({
           state={table.freshnessState}
         />
       </div>
-      <span className="chip-row">
-        <CitationChips asset={asset} citationIds={table.citationIds} />
-      </span>
+      <div className="compact-source-row">
+        <CompactCitationSources citations={resolveAssetCitations(asset, table.citationIds)} label="Stats sources" />
+      </div>
       {table.limitations ? <p className="notice-text">{table.limitations}</p> : null}
     </div>
   );
@@ -339,40 +337,16 @@ function dashboardTableSubtitle(table: OverviewTable) {
   }
 }
 
-function CitationChips({ asset, citationIds }: { asset: AssetFixture; citationIds: string[] }) {
-  return (
-    <>
-      {citationIds.map((citationId) => {
-        const citation = getCitationById(asset, citationId);
-        return citation ? <CitationChip key={citationId} citation={citation} label={citationLabel(citationId)} /> : null;
-      })}
-    </>
-  );
-}
-
 function SourceDisclosure({ asset, citationIds }: { asset: AssetFixture; citationIds: string[] }) {
-  const citations = citationIds
-    .map((citationId) => {
-      const citation = getCitationById(asset, citationId);
-      return citation ? { citation, citationId } : null;
-    })
-    .filter((item): item is { citation: NonNullable<ReturnType<typeof getCitationById>>; citationId: string } => Boolean(item));
-  const label = citations.map(({ citationId }) => citationLabel(citationId)).join(", ");
-
-  if (!citations.length) {
-    return <span className="source-icon-empty" aria-label="No source citation">-</span>;
-  }
-
   return (
-    <details className="source-icon-disclosure" data-dashboard-source-icon title={label}>
-      <summary aria-label={`Show ${citations.length} source citation${citations.length === 1 ? "" : "s"}`}>
-        <span aria-hidden="true">i</span>
-        <span className="source-icon-count">{citations.length}</span>
-      </summary>
-      <span className="source-icon-popover">
-        <CitationChips asset={asset} citationIds={citationIds} />
-      </span>
-    </details>
+    <span className="dashboard-source-icon-wrapper" data-dashboard-source-icon>
+      <CompactCitationSources
+        citations={resolveAssetCitations(asset, citationIds)}
+        label="Table row sources"
+        showEmpty
+        dashboardSourceIcon
+      />
+    </span>
   );
 }
 

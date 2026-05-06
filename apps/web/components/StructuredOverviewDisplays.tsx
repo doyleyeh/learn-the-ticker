@@ -1,12 +1,10 @@
 import {
-  citationLabel,
-  getCitationById,
   type AssetFixture,
   type OverviewChart,
   type OverviewTable,
   type StockOverviewSection
 } from "../lib/fixtures";
-import { CitationChip } from "./CitationChip";
+import { CompactCitationSources, resolveAssetCitations } from "./CompactCitationSources";
 import { FreshnessDisclosure } from "./FreshnessLabel";
 
 type StructuredOverviewDisplaysProps = {
@@ -81,9 +79,11 @@ function StructuredTable({
                   );
                 })}
                 <td>
-                  <span className="chip-row">
-                    <CitationChips asset={asset} citationIds={row.citationIds} />
-                  </span>
+                  <CompactCitationSources
+                    citations={resolveAssetCitations(asset, row.citationIds)}
+                    label={`${row.label ?? table.title} sources`}
+                    showEmpty
+                  />
                 </td>
               </tr>
             ))}
@@ -160,22 +160,11 @@ function PriceChartPanel({
           <FreshnessDisclosure label="Provider label" value={chart.delayedOrBestEffortLabel} state={chart.freshnessState} />
         ) : null}
       </div>
-      <span className="chip-row">
-        <CitationChips asset={asset} citationIds={chart.citationIds} />
-      </span>
+      <div className="compact-source-row">
+        <CompactCitationSources citations={resolveAssetCitations(asset, chart.citationIds)} label="Chart sources" />
+      </div>
       {chart.limitations ? <p className="notice-text">{chart.limitations}</p> : null}
     </div>
-  );
-}
-
-function CitationChips({ asset, citationIds }: { asset: AssetFixture; citationIds: string[] }) {
-  return (
-    <>
-      {citationIds.map((citationId) => {
-        const citation = getCitationById(asset, citationId);
-        return citation ? <CitationChip key={citationId} citation={citation} label={citationLabel(citationId)} /> : null;
-      })}
-    </>
   );
 }
 

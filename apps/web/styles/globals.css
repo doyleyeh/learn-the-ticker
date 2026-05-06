@@ -1339,32 +1339,6 @@ main[data-prd-source-list-marker] > .plain-panel:last-child {
   color: var(--accent-strong);
 }
 
-.weekly-news-filter-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-}
-
-.weekly-news-filter-tab {
-  min-height: 34px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--muted);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.weekly-news-filter-tab[aria-selected="true"] {
-  border-color: var(--accent-strong);
-  background: #e8f4f2;
-  color: var(--accent-strong);
-}
-
 .asset-dashboard-chart-canvas {
   position: relative;
   min-height: 320px;
@@ -1593,6 +1567,11 @@ main[data-prd-source-list-marker] > .plain-panel:last-child {
   place-items: center;
 }
 
+.dashboard-source-icon-wrapper {
+  display: inline-grid;
+  place-items: center;
+}
+
 .source-icon-disclosure summary {
   position: relative;
   display: inline-grid;
@@ -1650,12 +1629,83 @@ main[data-prd-source-list-marker] > .plain-panel:last-child {
   font-size: 11px;
 }
 
+.compact-source-row {
+  display: flex;
+  width: 100%;
+  justify-content: flex-end;
+  align-items: center;
+  min-height: 30px;
+}
+
+.timeline-item .compact-source-row,
+.stock-section-item .compact-source-row,
+.etf-section-item .compact-source-row,
+.risk-card .compact-source-row {
+  align-self: end;
+  justify-self: stretch;
+  margin-top: 8px;
+  justify-content: flex-end;
+}
+
+.fact-list dd .compact-citation-sources {
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.compact-citation-popover {
+  min-width: 280px;
+  max-width: min(420px, calc(100vw - 48px));
+}
+
+.compact-citation-source {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid #d8e5e2;
+  border-radius: 6px;
+  background: #f8fbfb;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.compact-citation-source:hover,
+.compact-citation-source:focus {
+  border-color: #b7d7d0;
+  background: #ecfaf7;
+}
+
+.compact-citation-title,
+.compact-citation-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-citation-title {
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.compact-citation-meta {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+}
+
 .source-icon-disclosure[open] .source-icon-popover,
 .source-icon-disclosure:hover .source-icon-popover,
 .source-icon-disclosure:focus-within .source-icon-popover {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.source-icon-disclosure[open] .compact-citation-popover,
+.source-icon-disclosure:hover .compact-citation-popover,
+.source-icon-disclosure:focus-within .compact-citation-popover {
+  flex-direction: column;
+  flex-wrap: nowrap;
 }
 
 .source-icon-empty {

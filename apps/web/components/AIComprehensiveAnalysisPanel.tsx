@@ -1,5 +1,5 @@
 import type { Citation, AIComprehensiveAnalysisFixture } from "../lib/fixtures";
-import { CitationChip } from "./CitationChip";
+import { CompactCitationSources, resolveCitationList } from "./CompactCitationSources";
 import { FreshnessDisclosure } from "./FreshnessLabel";
 
 type FreshnessState = "fresh" | "stale" | "unknown" | "unavailable" | "partial" | "insufficient_evidence";
@@ -112,12 +112,12 @@ export function AIComprehensiveAnalysisPanel({ analysis, citations }: AIComprehe
                   <p className="source-gap-note">Uncertainty: {section.uncertainty.join(" ")}</p>
                 </div>
               ) : null}
-              <span className="chip-row">
-                {section.citationIds.map((citationId) => {
-                  const citation = citations.find((entry) => entry.citationId === citationId);
-                  return citation ? <CitationChip key={`${section.sectionId}-${citationId}`} citation={citation} /> : null;
-                })}
-              </span>
+              <div className="compact-source-row">
+                <CompactCitationSources
+                  citations={resolveCitationList(citations, section.citationIds)}
+                  label={`${section.label} sources`}
+                />
+              </div>
             </article>
           ))}
         </div>
@@ -131,7 +131,17 @@ export function AIComprehensiveAnalysisPanel({ analysis, citations }: AIComprehe
             Analysis requires at least {analysis.minimumWeeklyNewsItemCount} high-signal Weekly News Focus items.
           </p>
           <div className="freshness-disclosure-row">
-            <FreshnessDisclosure label="Canonical evidence" value={analysis.canonicalFactCitationIds.join(", ")} state={freshnessState} />
+            <FreshnessDisclosure
+              label="Canonical evidence"
+              value={`${analysis.canonicalFactCitationIds.length} source${analysis.canonicalFactCitationIds.length === 1 ? "" : "s"} available`}
+              state={freshnessState}
+            />
+          </div>
+          <div className="compact-source-row">
+            <CompactCitationSources
+              citations={resolveCitationList(citations, analysis.canonicalFactCitationIds)}
+              label="Canonical evidence sources"
+            />
           </div>
         </div>
       )}

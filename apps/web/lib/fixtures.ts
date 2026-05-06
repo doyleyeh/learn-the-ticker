@@ -2961,5 +2961,14 @@ export function getAIComprehensiveAnalysisFixture(ticker: string) {
 }
 
 export function citationLabel(citationId: string) {
+  if (citationId.startsWith("lw_cite_yahoo_")) {
+    return "Yahoo/yfinance";
+  }
+  if (citationId.startsWith("lw_cite_provider_issuer_")) {
+    return "Issuer/provider";
+  }
+  if (citationId.length > 42) {
+    return "Source";
+  }
   return citationId.replace("c_", "");
 }

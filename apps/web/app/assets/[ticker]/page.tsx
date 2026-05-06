@@ -7,6 +7,7 @@ import { AssetEtfSections } from "../../../components/AssetEtfSections";
 import { AssetStockSections } from "../../../components/AssetStockSections";
 import { AssetLearningLayout } from "../../../components/AssetModeLayout";
 import { CitationChip } from "../../../components/CitationChip";
+import { CompactCitationSources, resolveAssetCitations } from "../../../components/CompactCitationSources";
 import { ComparisonSuggestions } from "../../../components/ComparisonSuggestions";
 import { ExportControls } from "../../../components/ExportControls";
 import { FreshnessDisclosure, FreshnessLabel } from "../../../components/FreshnessLabel";
@@ -513,14 +514,12 @@ export default async function AssetPage({ params }: AssetPageProps) {
                           sourceSection="what_it_does_or_holds.item_summary"
                         />
                       </p>
-                      <span className="chip-row">
-                        {item.citationIds.map((citationId) => {
-                          const citation = getCitationById(asset, citationId);
-                          return citation ? (
-                            <CitationChip key={citationId} citation={citation} label={citationLabel(citationId)} />
-                          ) : null;
-                        })}
-                      </span>
+                      <div className="compact-source-row">
+                        <CompactCitationSources
+                          citations={resolveAssetCitations(asset, item.citationIds)}
+                          label={`${item.title} sources`}
+                        />
+                      </div>
                     </article>
                   ))}
                 </div>

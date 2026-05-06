@@ -10,13 +10,11 @@ import {
   type ChartRange
 } from "../lib/assetChart";
 import {
-  citationLabel,
-  getCitationById,
   type AssetFixture,
   type OverviewChart,
   type OverviewChartPoint
 } from "../lib/fixtures";
-import { CitationChip } from "./CitationChip";
+import { CompactCitationSources, resolveAssetCitations } from "./CompactCitationSources";
 import { FreshnessDisclosure } from "./FreshnessLabel";
 
 type AssetPriceRangeChartProps = {
@@ -145,12 +143,9 @@ export function AssetPriceRangeChart({ asset, initialChart }: AssetPriceRangeCha
         ) : null}
       </div>
       {chart?.citationIds.length ? (
-        <span className="chip-row">
-          {chart.citationIds.map((citationId) => {
-            const citation = getCitationById(asset, citationId);
-            return citation ? <CitationChip key={citationId} citation={citation} label={citationLabel(citationId)} /> : null;
-          })}
-        </span>
+        <div className="compact-source-row">
+          <CompactCitationSources citations={resolveAssetCitations(asset, chart.citationIds)} label="Chart sources" />
+        </div>
       ) : null}
       {chart?.limitations ? <p className="notice-text">{chart.limitations}</p> : null}
     </div>
