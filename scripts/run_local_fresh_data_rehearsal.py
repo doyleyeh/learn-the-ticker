@@ -1870,6 +1870,7 @@ def _check_launch_manifest_review_packets(root: Path) -> RehearsalCheck:
             "etf500_source_pack_readiness": etf500_diagnostics["source_pack_readiness"],
             "etf500_parser_handoff_readiness": etf500_diagnostics["parser_handoff_readiness"],
             "etf500_checksum_status": etf500_diagnostics["checksum_status"],
+            "etf500_blocked_generated_surface_matrix": etf500_diagnostics["blocked_generated_surface_matrix"],
             "etf500_no_padding_stop_conditions": etf500_review["no_padding_stop_conditions"],
             "etf500_generated_output_blocking_rules": etf500_review["generated_output_blocking_rules"],
         },
