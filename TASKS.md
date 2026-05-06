@@ -1,82 +1,72 @@
 ## Current task
 
-### T-163: Add local durable persistence for lightweight source snapshots and normalized facts
+### T-164: Implement real Weekly News Focus acquisition for the local MVP slice
 
 Goal:
-Move the local MVP slice from in-memory-only lightweight evidence toward a deterministic durable persistence path for source snapshot metadata, normalized facts, and knowledge-pack records, while keeping normal CI fixture-backed and strict/audit-quality promotion gated.
+Replace the current real-fetch-blocked Weekly News smoke with a narrow, operator-only live source acquisition path for official filings/releases and approved reputable fallback metadata for `AAPL`, `VOO`, and `QQQ`.
 
 Task scope:
-Add a narrow local durable repository path that can persist and re-read rights-safe lightweight source snapshot metadata, normalized facts, and selected-asset knowledge-pack records for renderable local MVP rows. The durable path should reuse existing repository abstractions and settings, default to in-memory/fixture-backed behavior in normal CI, and fail closed for strict/audit-quality use when source-use, review, parser, freshness, checksum, or export-rights metadata is missing. This task should not make lightweight rows audit-quality approved; it only records local durable evidence in a source-labeled, rights-safe form that later tasks can use.
+Add a small opt-in Weekly News Focus acquisition path for the local MVP slice that can collect or shape live official-source metadata for `AAPL`, `VOO`, and `QQQ`, then pass the existing Weekly News selection, source-use, dedupe, freshness-window, and AI Comprehensive Analysis threshold contracts. The deterministic default must remain fixture-backed and CI-safe; live source retrieval must require explicit operator opt-in and emit only rights-safe metadata, checksums, dates, source labels, source-use decisions, and compact diagnostics. This task should turn the current smoke from "real source retrieval not available" into a guarded operator path, not broaden news coverage, not enable live LLM generation, and not make Weekly News Focus a replacement for stable canonical facts.
 
 Allowed files:
 - `backend/settings.py`
-- `backend/db.py`
-- `backend/persistence.py`
-- `backend/source_snapshot_repository.py`
-- `backend/knowledge_pack_repository.py`
-- `backend/retrieval_repository.py`
-- `backend/generated_output_cache_repository.py`
-- `backend/repositories/source_snapshots.py`
-- `backend/repositories/knowledge_packs.py`
-- `backend/repositories/generated_outputs.py`
-- `backend/repositories/__init__.py`
-- `backend/lightweight_data_fetch.py`
-- `backend/lightweight_page.py`
-- `backend/retrieval.py`
-- `backend/chat.py`
-- `backend/main.py`
 - `backend/models.py`
-- `tests/unit/test_persistence_settings.py`
-- `tests/unit/test_source_snapshot_repository.py`
-- `tests/unit/test_knowledge_pack_repository.py`
-- `tests/unit/test_retrieval_repository.py`
-- `tests/unit/test_chat_generation.py`
-- `tests/unit/test_lightweight_data_fetch.py`
-- `tests/unit/test_safety_guardrails.py`
-- `tests/unit/test_repo_contract.py`
+- `backend/sources.py`
+- `backend/source_policy.py`
+- `backend/weekly_news.py`
+- `backend/weekly_news_repository.py`
+- `backend/repositories/weekly_news.py`
+- `backend/repositories/__init__.py`
+- `backend/lightweight_page.py`
+- `backend/main.py`
+- `tests/unit/test_weekly_news.py`
+- `tests/unit/test_source_policy.py`
 - `tests/integration/test_backend_api.py`
 - `evals/run_static_evals.py`
-- `scripts/run_local_fresh_data_slice_smoke.py`
+- `evals/weekly_news_eval_cases.yaml`
+- `evals/source_policy_eval_cases.yaml`
+- `scripts/run_weekly_news_live_source_smoke.py`
 - `scripts/run_local_fresh_data_rehearsal.py`
 - `scripts/run_lightweight_mvp_readiness_gate.py`
-- Minimal adjacent backend repository/helper or test fixture files only if the existing persistence, retrieval, lightweight page, or API boundaries require them.
+- `docs/agent-journal/*.md`
+- Minimal adjacent backend Weekly News helper or deterministic fixture files only if the existing acquisition, source-policy, API, or smoke-test boundaries require them.
 
 Do not change:
 - Do not edit frontend UI, page layout, source drawer, glossary, chat UI, comparison UI, export UI, or home-page workflow.
 - Do not add a home-page two-input comparison builder or promote glossary as a primary home workflow.
 - Do not change supported ETF generated-output authority away from `data/universes/us_equity_etfs_supported.current.json` or ETF/ETP recognition authority away from `data/universes/us_etp_recognition.current.json`.
 - Do not change Top-500 runtime support away from `data/universes/us_common_stocks_top500.current.json` in strict/audit-quality paths.
-- Do not persist raw provider payloads, restricted source text, raw transcripts, hidden prompts, raw model reasoning, DSNs, API keys, secret values, paid/restricted article text, or unrestricted source excerpts.
-- Do not introduce live provider, news, market-data, or LLM calls into normal CI or deterministic tests.
-- Do not approve sources, promote manifests, mark lightweight rows as Golden Asset Source Handoff approved, enable generated-output cache promotion, or claim ETF-500, Top-500, live-AI, production deployment, public-launch, or investment-advice readiness.
-- Do not change asset-page exports, source-list exports, comparison exports, chat transcript export shape, Weekly News Focus acquisition, AI Comprehensive Analysis generation, or frontend source drawer behavior except where existing backend repository reads must remain compatible.
+- Do not persist or print raw article text, paid/restricted article text, restricted source text, raw provider payloads, raw transcripts, hidden prompts, raw model reasoning, DSNs, API keys, secret values, or unrestricted source excerpts.
+- Do not introduce live provider, news, market-data, source, or LLM calls into normal CI or deterministic tests; live source retrieval must be operator-only and explicitly opt-in.
+- Do not approve sources by automation, promote manifests, mark sources as strict Golden Asset Source Handoff approved, enable generated-output cache promotion, or claim ETF-500, Top-500, live-AI, production deployment, public-launch, or investment-advice readiness.
+- Do not change asset-page exports, source-list exports, comparison exports, chat transcript export shape, durable source snapshot behavior, generated-output cache behavior, or frontend source drawer behavior except where existing backend Weekly News reads must remain compatible.
+- Do not broaden Weekly News Focus into a general market-news feed or let recent news redefine the stable identity of a stock or ETF.
 - Do not broaden chat into general finance answers, multi-asset generated answers, portfolio advice, buy/sell/hold guidance, allocation guidance, tax advice, brokerage/trading behavior, unsupported price targets, or provider-memory answers.
 - Do not add schema migration tooling, production database requirements, object storage services, new infrastructure, deployment settings, or production dependencies.
 - Do not add production dependencies unless the task is explicitly stopped and replanned with dependency rationale.
 
 Acceptance criteria:
-- Local durable mode can persist and re-read lightweight source snapshot metadata for renderable supported local MVP rows without storing raw restricted provider payloads, paid/restricted article text, hidden/internal diagnostics, raw source text beyond rights-tier limits, or secret values.
-- Local durable mode can persist and re-read normalized facts from lightweight evidence, including asset ticker, asset type, fact identifiers, values or compact display text, same-asset citation/source references, source-use policy, freshness/as-of metadata, retrieved-at metadata, official-vs-provider/fallback labels, uncertainty labels, and fallback diagnostics where already present.
-- Local durable mode can persist and re-read selected-asset knowledge-pack records built from lightweight normalized facts and source metadata, preserving same-asset citation IDs and source document IDs used by the asset page and lightweight grounded chat path.
-- Durable reads remain optional and configuration-gated; default CI behavior remains in-memory/fixture-backed with `LIGHTWEIGHT_LIVE_FETCH_ENABLED=false` and no database, object storage, live network, provider, news, market-data, or LLM requirement.
-- Source records missing source-use policy, review status, parser status, freshness/as-of or retrieved-at metadata, export rights, or checksums where the record type requires them fail closed for strict/audit-quality generated output as `pending_review`, `rejected`, `unavailable`, or `insufficient_evidence`.
-- Persisted lightweight records explicitly distinguish local personal-MVP durable evidence from Golden Asset Source Handoff approved evidence and expose flags or metadata showing `strict_audit_quality_source_approval_granted=false` unless existing approved fixture records already say otherwise.
-- Blocked, unsupported, out-of-scope, unknown, and recognition-only ETF/ETP rows such as `TQQQ`, `ARKK`, `BND`, `GLD`, `BTC`, and `ZZZZ` cannot persist generated evidence, knowledge packs for generated chat, generated comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, or generated-output cache entries.
-- Lightweight durable persistence does not write generated-output cache records unless an existing strict/audit-quality generated-output path already had approval; local MVP lightweight records remain generated-output-cache-ineligible.
-- `POST /api/assets/{ticker}/chat` and existing retrieval paths continue to answer fixture-backed and lightweight renderable rows with same-asset citations only, and they do not cite durable records for the wrong asset or unsupported rows.
-- Asset overview/details/sources/export behavior remains compatible with existing in-memory and static generated-pack paths when durable local records are absent.
-- Rehearsal and slice-smoke output report durable lightweight persistence readiness or availability without printing raw payloads, DSNs, secret values, unrestricted excerpts, raw transcripts, hidden prompts, or raw model reasoning.
-- Accountless chat session behavior, 7-day TTL assumptions, deletion behavior, and no raw transcript analytics/training/evaluation boundaries remain intact.
+- Weekly News Focus acquisition uses the last completed Monday-Sunday market week plus current week-to-date through yesterday in U.S. Eastern dates, based on an explicit as-of date in deterministic tests and operator smoke output.
+- The operator-only live source path supports the local MVP slice assets `AAPL`, `VOO`, and `QQQ` with official-source candidates first: SEC filings/company investor-relations releases for stock context, and ETF issuer announcements, prospectus updates, fact-sheet changes, or issuer materials for ETF context when available.
+- Approved reputable third-party/news fallback metadata can be represented only after official-source candidates and must be clearly labeled as third-party or fallback; fallback metadata must not outrank official filings, investor-relations releases, issuer announcements, prospectus updates, or fact-sheet changes.
+- Source-use filtering suppresses rejected, pending-review, hidden/internal, rights-disallowed, duplicate, promotional, irrelevant, wrong-asset, outside-window, parser-invalid, stale-unlabeled, and license-disallowed candidates before Weekly News Focus selection.
+- Weekly News Focus shows the configured maximum only when enough selected evidence supports it; limited verified evidence returns a smaller partial set, and no high-signal evidence returns a clear empty state without padding.
+- AI Comprehensive Analysis remains suppressed unless at least two approved Weekly News Focus items exist; when available, it starts with What Changed This Week, then Market Context, Business/Fund Context, and Risk Context, and cites selected Weekly News Focus items plus canonical facts only.
+- Important factual claims in Weekly News Focus or AI Comprehensive Analysis are cited to same-asset Weekly News/canonical sources or labeled `partial`, `unknown`, `stale`, `unavailable`, or `insufficient_evidence`.
+- Operator smoke output reports opt-in state, as-of window, candidate counts, selected item counts, suppressed reason counts, source-rank tiers, official-vs-third-party labels, source-use decisions, parser/freshness states, and AI-analysis threshold status without exposing raw article text, raw source text, unrestricted excerpts, raw provider payloads, hidden prompts, raw model reasoning, transcripts, generated live responses, DSNs, or secret values.
+- Default deterministic behavior remains fixture-backed or mocked with no live network, provider, news, market-data, local service, browser, durable repository, database, object storage, or LLM requirement.
+- Real source retrieval is explicitly blocked or skipped unless the task-defined operator opt-in environment is set; when enabled, failures produce `blocked`, `partial`, `unavailable`, or `insufficient_evidence` diagnostics rather than invented news.
+- Unsupported, out-of-scope, unknown, and recognition-only ETF/ETP rows such as `TQQQ`, `ARKK`, `BND`, `GLD`, `BTC`, and `ZZZZ` cannot receive Weekly News Focus, AI Comprehensive Analysis, generated pages, generated chat answers, generated comparisons, exports, generated risk summaries, or generated-output cache entries through this path.
+- Existing asset overview/details/sources/export/chat behavior remains compatible when no Weekly News evidence is available, and stable canonical facts stay visually, structurally, and citation-wise separate from Weekly News Focus.
 - The home page remains single stock/ETF search first; comparison stays separate and connected through `/compare`, asset CTAs, suggestions, chat redirects, and clear `A vs B` redirects.
 - Glossary remains contextual; source drawer, glossary, and asset chat mobile behavior are not redesigned by this task.
 - Stock-vs-ETF comparison behavior for `AAPL`/`VOO` keeps relationship badges and the `single-company-vs-ETF-basket` structure.
-- Weekly News Focus and AI Comprehensive Analysis remain separated from stable facts; Weekly News Focus still shows the configured maximum only when evidence supports it, with smaller or empty states allowed.
-- Important factual claims in any persisted or rehydrated output are cited or labeled `partial`, `unknown`, `stale`, `unavailable`, or `insufficient_evidence`, and all copy remains educational rather than investment advice.
+- All user-facing or generated copy remains educational and avoids buy/sell/hold, allocation, price-target, tax, brokerage, trading, or personalized recommendation language.
 
 Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_persistence_settings.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_retrieval_repository.py tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py -q`
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_source_policy.py tests/integration/test_backend_api.py -q`
 - `TMPDIR=/tmp python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q`
-- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_slice_smoke.py --json`
+- `TMPDIR=/tmp python3 scripts/run_weekly_news_live_source_smoke.py --json`
 - `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json`
 - `TMPDIR=/tmp python3 scripts/run_lightweight_mvp_readiness_gate.py --json`
 - `TMPDIR=/tmp python3 evals/run_static_evals.py`
@@ -87,31 +77,12 @@ Required commands:
 - `git diff --check`
 
 Iteration budget:
-- One agent-loop cycle. If durable lightweight persistence requires production schema migration tooling, live database/object-storage services, new infrastructure, frontend redesign, generated-output cache promotion, broad retrieval rewrites, raw provider payload storage, source approval/promotion workflows, or live provider/LLM orchestration, stop after documenting the blocker and leave that broader work to the backlog.
+- One agent-loop cycle. If real Weekly News acquisition requires broad news-provider integration, paid/restricted news licensing, raw article storage, production source approval workflows, schema migration tooling, frontend redesign, live LLM orchestration, generated-output cache promotion, deployment work, or coverage beyond `AAPL`, `VOO`, and `QQQ`, stop after documenting the blocker and leave that broader work to the backlog.
 
 Remaining risk to report:
-- This task may make local durable evidence records available for the deterministic MVP slice, but it does not prove broad provider reliability, ETF-500 completion, Top-500 completion, source-pack approval, Golden Asset Source Handoff approval, generated-output cache promotion, live-AI readiness, production deployment readiness, public-launch readiness, or investment-advice readiness.
+- This task may make operator-only Weekly News source acquisition available for the local MVP slice, but it does not prove broad news/provider reliability, ETF-500 completion, Top-500 completion, source-pack approval, Golden Asset Source Handoff approval, generated-output cache promotion, live-AI readiness, production deployment readiness, public-launch readiness, or investment-advice readiness.
 
 ## Backlog
-
-### T-164: Implement real Weekly News Focus acquisition for the local MVP slice
-
-Goal:
-Replace the current real-fetch-blocked Weekly News smoke with a narrow, operator-only live source acquisition path for official filings/releases and approved reputable fallback metadata for `AAPL`, `VOO`, and `QQQ`.
-
-Acceptance criteria:
-- Weekly News Focus uses the last completed Monday-Sunday market week plus current week-to-date through yesterday in U.S. Eastern dates.
-- Official filings, investor-relations releases, issuer announcements, prospectus updates, and fact-sheet changes rank before reputable third-party/news items.
-- Source-use filtering suppresses rejected, pending-review, hidden/internal, rights-disallowed, duplicate, promotional, irrelevant, wrong-asset, outside-window, and stale-unlabeled candidates.
-- AI Comprehensive Analysis remains suppressed unless at least two approved Weekly News Focus items exist.
-- No raw article text, restricted source text, hidden prompts, model reasoning, provider payloads, or secret values are emitted.
-- Deterministic tests use fixtures and mocks; live source acquisition remains opt-in.
-
-Required checks:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_source_policy.py tests/integration/test_backend_api.py -q`
-- `TMPDIR=/tmp python3 scripts/run_weekly_news_live_source_smoke.py --json`
-- `TMPDIR=/tmp python3 evals/run_static_evals.py`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
 
 ### T-165: Add live-AI validation on top of real local evidence packs
 
@@ -150,6 +121,40 @@ Required checks:
 - `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
 
 ## Completed
+
+### T-163: Add local durable persistence for lightweight source snapshots and normalized facts
+
+Goal:
+Move the local MVP slice from in-memory-only lightweight evidence toward a deterministic durable persistence path for source snapshot metadata, normalized facts, and knowledge-pack records, while keeping normal CI fixture-backed and strict/audit-quality promotion gated.
+
+Completion details:
+- Implementation commit: `22d80d3 feat(T-163): add local durable persistence for lightweight source snapshots and normalized facts`
+- Local merge commit: `8512be4 chore(T-163): merge local durable persistence for lightweight source snapshots and normalized facts` from branch `agent/T-163-20260506T034044Z`
+- Added optional lightweight durable persistence orchestration in `backend/lightweight_page.py` through `persist_lightweight_evidence_if_configured()`, with schema `lightweight-durable-persistence-v1`, repository-injection gating, no generated-output cache promotion, and explicit `strict_audit_quality_source_approval_granted=false` diagnostics.
+- Added metadata-only lightweight source snapshot records in `backend/repositories/source_snapshots.py`, including checksum metadata artifacts, source-use policy, allowlist/source-quality labels, parser/freshness fields, private storage keys, compact diagnostics, and raw-payload/secret/model-reasoning guard flags.
+- Added lightweight knowledge-pack serialization in `backend/repositories/knowledge_packs.py` for source documents, source chunks, normalized facts, evidence gaps, section freshness inputs, source checksums, citation IDs, and a freshness hash under evidence mode `lightweight_local_mvp_durable_evidence`.
+- Added in-memory and session-backed repository read/write support for source snapshots and knowledge packs, then wired backend lightweight overview/details/sources/chart paths to persist when configured while preserving fixture/in-memory defaults.
+- Updated `scripts/run_local_fresh_data_slice_smoke.py` so renderable supported local MVP rows report persisted source snapshots, persisted knowledge packs, successful re-read checks, no generated-output cache promotion, and no strict audit-quality source approval; blocked rows report skipped persistence.
+- Added deterministic coverage in `tests/unit/test_source_snapshot_repository.py`, `tests/unit/test_knowledge_pack_repository.py`, and `tests/unit/test_lightweight_data_fetch.py` for metadata-only records, normalized fact/citation/source bindings, re-read behavior, blocked-row behavior, and cache/approval guardrails.
+- `docs/agent-journal/20260506T034044Z.md` records changed files, deterministic pass status, quality-gate pass status, one focused revision, and remaining risks.
+
+Required commands executed in this task branch:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_retrieval_repository.py -q` - pass
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_persistence_settings.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_retrieval_repository.py tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py -q` - pass
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q` - pass
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_slice_smoke.py --json` - pass
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` - pass
+- `TMPDIR=/tmp python3 scripts/run_lightweight_mvp_readiness_gate.py --json` - pass
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `npm test` - pass
+- `npm run typecheck` - pass
+- `npm run build` - pass
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass
+- `git diff --check` - pass
+
+Remaining risks:
+- Lightweight durable records are intentionally local-MVP, metadata/fact-only, and cache-ineligible; they do not represent strict Golden Asset Source Handoff approval.
+- Durable persistence is only exercised when repositories are injected/configured; default fixture and in-memory behavior remains the CI baseline.
 
 ### T-162: Build lightweight knowledge packs for fresh-data-backed grounded chat
 
