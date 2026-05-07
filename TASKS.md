@@ -1,81 +1,56 @@
 ## Current task
 
-### T-177: Make local Market News and Weekly News live-source runtime default
-
-Goal:
-Make local asset pages default to live server-side Market News and ticker Weekly News retrieval in local runtime/manual review, with Yahoo/yfinance-style news only as fallback metadata and CI/tests still fixture-backed.
-
-Task scope:
-Update the runtime-default boundary for Market News and lightweight Weekly News only. The change should mirror the T-176 local-runtime pattern: explicit env values win, CI/pytest/static-eval/default `env={}` paths remain no-live, and ordinary local/manual-review runtime can attempt live server-side retrieval when the operator has not disabled it. Keep the v0.4 frontend workflow unchanged: home remains single stock/ETF search first, comparison stays a separate connected workflow, glossary stays contextual, and Market News/Weekly News remain separated from stable canonical facts.
-
-Allowed files:
-- `.env.example`
-- `backend/settings.py`
-- `backend/market_news_runtime.py`
-- `backend/lightweight_data_fetch.py`
-- `backend/weekly_news_sources.py`
-- `backend/overview.py`
-- `backend/main.py`
-- `scripts/run_market_news_live_source_smoke.py`
-- `scripts/run_weekly_news_live_source_smoke.py`
-- `evals/run_static_evals.py`
-- `evals/market_news_eval_cases.yaml`
-- `evals/weekly_news_eval_cases.yaml`
-- `tests/unit/test_persistence_settings.py`
-- `tests/unit/test_market_news.py`
-- `tests/unit/test_weekly_news.py`
-- `tests/unit/test_lightweight_data_fetch.py`
-- `tests/unit/test_repo_contract.py`
-- `tests/integration/test_backend_api.py`
-- `docs/learn_the_ticker_technical_design_spec.md`
-- `docs/agent-journal/<run-id>.md`
-
-Do not change:
-- Do not edit frontend routes/components or alter the home, comparison, glossary, source drawer, or chat workflows.
-- Do not add new providers, production dependencies, production deployment settings, recurring jobs, or broad ingestion infrastructure.
-- Do not change stock or ETF universe manifests, promote generated-output cache entries, approve new sources, or relax source-use rights.
-- Do not store or expose raw article bodies, unrestricted thumbnails/media, raw provider payloads, hidden prompts, model reasoning, API keys, or secret values.
-- Do not make normal CI, pytest, static evals, or the quality gate require live RSS, GDELT, keyed news providers, Yahoo/yfinance, market-data providers, or LLM calls.
-
-Acceptance criteria:
-- Explicit env vars and existing `LTT_*` aliases still override runtime defaults for both enabled and disabled states.
-- CI, pytest, static evals, and explicit `env={}` settings remain no-live by default for Market News and Weekly News.
-- Local runtime/manual review outside CI/test defaults to `MARKET_NEWS_FETCH_ENABLED=true` and `LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED=true` when those vars are unset, without changing `LLM_LIVE_GENERATION_ENABLED`.
-- `/api/market-news` uses the existing server-side Market News runtime boundary and remains reusable across supported ticker pages; it does not unlock unsupported assets or redefine canonical asset facts.
-- `GET /api/assets/{ticker}/weekly-news` and local asset page shaping use the same selected ticker Weekly News pack when local defaults enable retrieval, and ticker labels remain `Weekly News Focus: {TICKER}` with AI Comprehensive Analysis suppressed below the existing evidence threshold.
-- Market News Focus still appears above ticker-specific Weekly News in asset responses, and stable canonical facts remain visually/structurally separate from both timely sections.
-- Yahoo/yfinance-style news remains fallback metadata only: title/headline, publisher, URL, published time, retrieved time, ticker/topic match, event/type or topic bucket, source label, source-use policy, cluster/audit metadata, and optional bounded summary/snippet.
-- Raw article bodies, unrestricted media, raw provider payloads, secrets, generated-output cache writes, recommendation/trade UX, and investment-advice language remain absent from Market News and Weekly News outputs.
-- Source-use policy gates, citation checks, freshness/as-of labels, partial/unknown/unavailable/insufficient-evidence states, configured maximum behavior, and no-padding rules remain unchanged.
-
-Required commands:
-- `python3 -m pytest tests/unit/test_persistence_settings.py tests/unit/test_market_news.py tests/unit/test_weekly_news.py tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py -q`
-- `python3 scripts/run_market_news_live_source_smoke.py --json`
-- `python3 scripts/run_weekly_news_live_source_smoke.py --json`
-- `python3 -m pytest tests -q`
-- `python3 evals/run_static_evals.py`
-- `bash scripts/run_quality_gate.sh`
-
-Iteration budget:
-- Complete this runtime-default task in one agent-loop cycle. Do not expand provider coverage, run real-network opt-in smokes unless the operator explicitly asks, change frontend workflow, promote source evidence, promote generated-output cache entries, or start production deployment work.
-
-## Backlog
-
 ### T-178: Add full-manifest deterministic support smoke
 
 Goal:
 Add a deterministic support/classification smoke proving every current supported stock and ETF row resolves through the correct manifest path, while recognition-only and out-of-scope rows never unlock generated surfaces.
 
+Task scope:
+Implement a no-network manifest support smoke for the current approved stock manifest, supported ETF manifest, and ETF/ETP recognition manifest. The smoke should exercise the existing runtime support/classification loaders or API-safe helpers, report counts for supported, partial, pending-ingestion, unavailable, blocked, and generated-output eligibility states, and feed a concise summary into local readiness output. Keep this as a deterministic classification/readiness task only; it should not fetch live provider data, expand ETF-500 or Top-500 coverage, change frontend workflow, or promote any generated-output cache entries.
+
+Allowed files:
+- `backend/data.py`
+- `backend/etf_universe.py`
+- `backend/search.py`
+- `backend/ingestion.py`
+- `scripts/run_full_manifest_support_smoke.py`
+- `scripts/run_lightweight_mvp_readiness_gate.py`
+- `evals/run_static_evals.py`
+- `tests/unit/test_search_classification.py`
+- `tests/unit/test_repo_contract.py`
+- `tests/integration/test_backend_api.py`
+- `docs/agent-journal/<run-id>.md`
+
+Do not change:
+- Do not edit frontend routes/components or alter the home, comparison, glossary, source drawer, asset chat, Market News Focus, or Weekly News Focus UI workflows.
+- Do not edit `data/universes/us_common_stocks_top500.current.json`, `data/universes/us_equity_etfs_supported.current.json`, `data/universes/us_etp_recognition.current.json`, candidate manifests, fixture manifests, or generated-output cache records.
+- Do not add live provider, news, market-data, SEC, issuer, exchange, or LLM calls; the smoke must be deterministic and fixture/manifest-backed.
+- Do not use recognition-only rows, live listings, provider payloads, holdings files, or rank queries as runtime authority for generated output.
+- Do not approve new sources, relax source-use policy, store raw source text, expose raw provider payloads, expose secrets, or add production dependencies/deployment settings.
+- Do not add buy/sell/hold, allocation, price-target, tax, brokerage, or recommendation behavior.
+
 Acceptance criteria:
-- The smoke iterates `data/universes/us_common_stocks_top500.current.json`, `data/universes/us_equity_etfs_supported.current.json`, and `data/universes/us_etp_recognition.current.json`.
-- The report includes supported, partial, pending ingestion, unavailable, blocked, and generated-output eligibility counts.
-- Recognition-only and out-of-scope rows cannot unlock generated pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, or generated-output cache entries.
-- The smoke is integrated into local readiness output without live calls or secret requirements.
+- The smoke iterates all rows in `data/universes/us_common_stocks_top500.current.json`, `data/universes/us_equity_etfs_supported.current.json`, and `data/universes/us_etp_recognition.current.json` without live calls or secrets.
+- Every supported stock row resolves through the top-500 stock manifest authority and reports generated-output eligibility only through that supported stock path.
+- Every supported ETF row resolves through `data/universes/us_equity_etfs_supported.current.json`; the broader ETF/ETP recognition manifest is never used to unlock supported ETF generated-output coverage.
+- Recognition-only, out-of-scope, unavailable, unknown, pending-review, and blocked ETP rows are reported as generated-output-ineligible for asset pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, and generated-output cache entries.
+- The report includes manifest paths/checksums when available, total row counts, supported counts, partial counts, pending-ingestion counts, unavailable counts, blocked counts, recognition-only counts, and generated-output eligibility counts.
+- The report exposes precise failure rows when any manifest row resolves through the wrong authority or any recognition-only/out-of-scope row appears to unlock a generated surface.
+- The smoke is available as a direct local command with `--json` output and is integrated into local readiness output without changing normal CI to require live provider, news, market-data, SEC, issuer, exchange, or LLM calls.
+- Static eval or focused tests assert the smoke's deterministic schema, expected authority paths, blocked-surface matrix, and no-secret/no-live behavior.
+- Existing support classification behavior for search, ingestion states, comparison redirects, source-use rights, freshness/unknown/stale/unavailable/partial handling, and educational no-advice guardrails remains unchanged.
 
 Required commands:
+- `python3 scripts/run_full_manifest_support_smoke.py --json`
+- `python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_repo_contract.py -q`
 - `python3 -m pytest tests -q`
 - `python3 evals/run_static_evals.py`
 - `bash scripts/run_quality_gate.sh`
+
+Iteration budget:
+- Complete this deterministic support-smoke task in one agent-loop cycle. Keep the implementation narrow: no manifest edits, no live fetches, no new source approvals, no frontend changes, no generated-output cache promotion, no deployment work, and no expansion into T-179/T-180 live fetch pipeline work.
+
+## Backlog
 
 ### T-179: Complete current ETF-list live fetch pipeline before ETF-500 expansion
 
@@ -112,6 +87,39 @@ Required commands:
 - `bash scripts/run_quality_gate.sh`
 
 ## Completed
+
+### T-177: Make local Market News and Weekly News live-source runtime default
+
+Goal:
+Make local asset pages default to live server-side Market News and ticker Weekly News retrieval in local runtime/manual review, with Yahoo/yfinance-style news only as fallback metadata and CI/tests still fixture-backed.
+
+Completion commits:
+- Implementation commit: `b33117f feat(T-177): make local Market News and Weekly News live-source runtime default`
+- Local merge commit: `80de74c chore(T-177): merge make local Market News and Weekly News live-source runtime default` from branch `agent/T-177-20260507T183728Z`
+
+Completion details:
+- Added local-runtime defaults in `backend/settings.py` for `LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED`, `MARKET_NEWS_FETCH_ENABLED`, and `MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED` so ordinary local/manual-review runtime can attempt server-side Weekly News and Market News retrieval when env vars are unset.
+- Generalized the local-runtime default helper through `_default_local_runtime_enabled(...)`, preserving deterministic defaults for explicit `env={}`, CI markers, pytest markers, and static eval paths.
+- Preserved explicit env and `LTT_*` alias overrides for enabled and disabled states, including CI explicit-enabled cases.
+- Kept `MARKET_NEWS_LIVE_SOURCE_SMOKE_ENABLED` opt-in/skipped by default and did not change `LLM_LIVE_GENERATION_ENABLED`.
+- Updated `.env.example` and the technical design runtime defaults to document local/manual-review live Market News and Weekly News behavior while keeping explicit false values for deterministic runs.
+- Set `LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED=false`, `MARKET_NEWS_FETCH_ENABLED=false`, and `MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED=false` inside `evals/run_static_evals.py` so static evals remain fixture-backed and no-live.
+- Added regression coverage in `tests/unit/test_persistence_settings.py` for local runtime defaults, explicit disabled states, CI defaults, CI explicit-enabled states, and no-secret diagnostics for the Market News settings path.
+- `docs/agent-journal/20260507T183728Z.md` records changed files, pass status, test/eval results, and remaining risks.
+
+Required commands executed in this task branch:
+- `python3 -m pytest tests/unit/test_persistence_settings.py -q` - pass, 25 passed
+- `python3 -m pytest tests/unit/test_market_news.py::test_market_news_settings_keep_credentials_private_and_keyed_adapters_skip_when_missing tests/unit/test_lightweight_data_fetch.py::test_lightweight_fetch_disabled_returns_unavailable_without_live_calls -q` - pass, 2 passed
+- `python3 -m pytest tests/unit/test_persistence_settings.py tests/unit/test_market_news.py tests/unit/test_weekly_news.py tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py -q` - pass, 128 passed
+- `python3 scripts/run_market_news_live_source_smoke.py --json` - pass, skipped by default without live source fetches
+- `python3 scripts/run_weekly_news_live_source_smoke.py --json` - pass, skipped by default without live source fetches
+- `python3 -m pytest tests -q` - pass, 543 passed
+- `python3 evals/run_static_evals.py` - pass
+- `bash scripts/run_quality_gate.sh` - pass
+
+Remaining risks:
+- Actual local live Market News and Weekly News retrieval still depends on operator network access and any configured provider credentials.
+- This changed runtime defaults only; it did not approve sources, expand provider coverage, promote generated-output cache entries, change frontend workflows, or change production deployment settings.
 
 ### T-176: Make local fresh-data runtime live by default
 
