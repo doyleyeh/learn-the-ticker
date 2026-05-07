@@ -1,73 +1,69 @@
 ## Current task
 
-### T-178: Add full-manifest deterministic support smoke
+### T-179: Complete current ETF-list live fetch pipeline before ETF-500 expansion
 
 Goal:
-Add a deterministic support/classification smoke proving every current supported stock and ETF row resolves through the correct manifest path, while recognition-only and out-of-scope rows never unlock generated surfaces.
+Make the current supported ETF manifest list exercise the lightweight local ETF fetch path end to end with issuer-first evidence attempts, labeled provider fallback, source/freshness diagnostics, and deterministic blocked-state behavior before any ETF-500 expansion.
 
 Task scope:
-Implement a no-network manifest support smoke for the current approved stock manifest, supported ETF manifest, and ETF/ETP recognition manifest. The smoke should exercise the existing runtime support/classification loaders or API-safe helpers, report counts for supported, partial, pending-ingestion, unavailable, blocked, and generated-output eligibility states, and feed a concise summary into local readiness output. Keep this as a deterministic classification/readiness task only; it should not fetch live provider data, expand ETF-500 or Top-500 coverage, change frontend workflow, or promote any generated-output cache entries.
+Extend the existing lightweight ETF fresh-data pipeline so every current row in `data/universes/us_equity_etfs_supported.current.json` has a deterministic local/manual-review outcome: issuer-backed supported when official issuer fixtures or live issuer retrieval produce enough normalized ETF evidence, source-labeled partial when only manifest/scope plus reputable provider fallback is available, unavailable when required evidence is absent, and blocked only through the recognition/out-of-scope path. This task should improve backend fetch diagnostics, fixture-backed tests, and smoke/readiness reporting for the current supported ETF list only. It may prepare an operator-run live path, but normal tests and quality gates must stay deterministic and must not require network, provider credentials, issuer availability, market-data calls, news calls, or LLM calls.
 
 Allowed files:
-- `backend/data.py`
+- `backend/lightweight_data_fetch.py`
+- `backend/lightweight_page.py`
 - `backend/etf_universe.py`
-- `backend/search.py`
-- `backend/ingestion.py`
-- `scripts/run_full_manifest_support_smoke.py`
+- `backend/etf_issuer_source_packs.py`
+- `backend/provider_adapters/etf_issuer.py`
+- `backend/providers.py`
+- `backend/models.py`
+- `backend/settings.py`
+- `scripts/run_lightweight_data_fetch_smoke.py`
+- `scripts/run_local_fresh_data_slice_smoke.py`
 - `scripts/run_lightweight_mvp_readiness_gate.py`
-- `evals/run_static_evals.py`
-- `tests/unit/test_search_classification.py`
-- `tests/unit/test_repo_contract.py`
+- `tests/unit/test_lightweight_data_fetch.py`
+- `tests/unit/test_etf_issuer_source_packs.py`
+- `tests/unit/test_provider_adapters.py`
 - `tests/integration/test_backend_api.py`
+- `tests/frontend/smoke.mjs`
+- `evals/run_static_evals.py`
 - `docs/agent-journal/<run-id>.md`
 
 Do not change:
-- Do not edit frontend routes/components or alter the home, comparison, glossary, source drawer, asset chat, Market News Focus, or Weekly News Focus UI workflows.
-- Do not edit `data/universes/us_common_stocks_top500.current.json`, `data/universes/us_equity_etfs_supported.current.json`, `data/universes/us_etp_recognition.current.json`, candidate manifests, fixture manifests, or generated-output cache records.
-- Do not add live provider, news, market-data, SEC, issuer, exchange, or LLM calls; the smoke must be deterministic and fixture/manifest-backed.
-- Do not use recognition-only rows, live listings, provider payloads, holdings files, or rank queries as runtime authority for generated output.
-- Do not approve new sources, relax source-use policy, store raw source text, expose raw provider payloads, expose secrets, or add production dependencies/deployment settings.
+- Do not edit frontend routes/components or alter the home, comparison, glossary, source drawer, asset chat, Market News Focus, Weekly News Focus, or AI Comprehensive Analysis UI workflows.
+- Do not edit `data/universes/us_common_stocks_top500.current.json`, `data/universes/us_equity_etfs_supported.current.json`, `data/universes/us_etp_recognition.current.json`, candidate manifests, fixture manifests, golden generated fixtures, or generated-output cache records.
+- Do not expand ETF-500 coverage, promote candidate manifests, approve issuer source packs, or make recognition-only rows authoritative for generated ETF output.
+- Do not introduce normal-CI live provider, SEC, issuer, exchange, market-data, news, or LLM calls. Any operator-run live path must be opt-in/local and skipped or fixture-backed by default.
+- Do not present provider/Yahoo fallback as official issuer evidence, store or export raw provider payloads, store raw article text, expose secrets, relax source-use policy, or add production dependencies/deployment settings.
+- Do not change stock fetch behavior except where shared lightweight helpers require a backwards-compatible fix covered by existing stock tests.
 - Do not add buy/sell/hold, allocation, price-target, tax, brokerage, or recommendation behavior.
 
 Acceptance criteria:
-- The smoke iterates all rows in `data/universes/us_common_stocks_top500.current.json`, `data/universes/us_equity_etfs_supported.current.json`, and `data/universes/us_etp_recognition.current.json` without live calls or secrets.
-- Every supported stock row resolves through the top-500 stock manifest authority and reports generated-output eligibility only through that supported stock path.
-- Every supported ETF row resolves through `data/universes/us_equity_etfs_supported.current.json`; the broader ETF/ETP recognition manifest is never used to unlock supported ETF generated-output coverage.
-- Recognition-only, out-of-scope, unavailable, unknown, pending-review, and blocked ETP rows are reported as generated-output-ineligible for asset pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, and generated-output cache entries.
-- The report includes manifest paths/checksums when available, total row counts, supported counts, partial counts, pending-ingestion counts, unavailable counts, blocked counts, recognition-only counts, and generated-output eligibility counts.
-- The report exposes precise failure rows when any manifest row resolves through the wrong authority or any recognition-only/out-of-scope row appears to unlock a generated surface.
-- The smoke is available as a direct local command with `--json` output and is integrated into local readiness output without changing normal CI to require live provider, news, market-data, SEC, issuer, exchange, or LLM calls.
-- Static eval or focused tests assert the smoke's deterministic schema, expected authority paths, blocked-surface matrix, and no-secret/no-live behavior.
-- Existing support classification behavior for search, ingestion states, comparison redirects, source-use rights, freshness/unknown/stale/unavailable/partial handling, and educational no-advice guardrails remains unchanged.
+- The current supported ETF manifest is iterated by a deterministic smoke or readiness section, and each row reports ticker, issuer/name, support authority, fetch/render state, generated-output eligibility, source labels, official issuer attempt state, provider fallback state, missing evidence gaps, freshness/as-of fields, and payload/source checksum where available.
+- Supported ETF rows continue to resolve through `data/universes/us_equity_etfs_supported.current.json`; `data/universes/us_etp_recognition.current.json` remains recognition/blocking metadata only and never unlocks asset pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, or generated-output cache entries.
+- Issuer-first ETF acquisition attempts distinguish issuer page, fact sheet, prospectus or summary prospectus, holdings, and exposure evidence where the existing adapters can identify them; missing issuer pieces produce precise partial/unavailable gaps instead of invented facts.
+- Provider/Yahoo fallback can fill display facts for lightweight personal-MVP rendering only when it is visibly labeled `provider_derived` or equivalent, has retrieved/as-of metadata where available, and does not become official issuer evidence or audit-quality source-pack approval.
+- ETF page response builders preserve stable table/detail shapes for official, provider fallback, partial, and unavailable states; missing holdings, exposure, cost, performance, or trading fields render as `partial`, `unknown`, `stale`, `unavailable`, or `insufficient_evidence` rather than being padded.
+- Blocked recognition-only and out-of-scope ETP rows such as leveraged, inverse, active, fixed-income, commodity, multi-asset, ETN, unknown, or unavailable fixtures remain generated-output-ineligible across every generated surface and cache/export path.
+- The smoke/readiness output reports current ETF manifest totals, issuer-backed supported count, provider-fallback/partial count, unavailable count, blocked recognition count, generated-output-eligible count, and exact failure rows.
+- Normal CI and local quality gates remain deterministic and fixture-backed; no command required by this task depends on live provider, SEC, issuer, exchange, market-data, news, LLM calls, or real secret values.
+- Source-use rights remain intact: unapproved, unclear-rights, parser-invalid, hidden/internal, pending-review, rejected, and rights-disallowed sources cannot feed strict evidence storage, generated output, citations, generated-output cache entries, source drawer output, or exports.
+- Existing stock search/fetch behavior, comparison redirects including `A vs B`, contextual glossary behavior, source drawer behavior, asset chat safety redirects, Market News Focus, ticker Weekly News Focus, AI Comprehensive Analysis thresholds, freshness/unknown/stale/unavailable/partial handling, and educational no-advice guardrails remain unchanged.
 
 Required commands:
-- `python3 scripts/run_full_manifest_support_smoke.py --json`
-- `python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_repo_contract.py -q`
+- `python3 scripts/run_local_fresh_data_slice_smoke.py --json`
+- `python3 scripts/run_lightweight_data_fetch_smoke.py --ticker VOO --ticker SPY --ticker VTI --ticker QQQ --ticker XLK --json`
+- `python3 scripts/run_lightweight_mvp_readiness_gate.py --json`
+- `python3 -m pytest tests/unit/test_lightweight_data_fetch.py tests/unit/test_etf_issuer_source_packs.py tests/unit/test_provider_adapters.py -q`
+- `python3 -m pytest tests/integration/test_backend_api.py -q`
 - `python3 -m pytest tests -q`
+- `npm test`
 - `python3 evals/run_static_evals.py`
 - `bash scripts/run_quality_gate.sh`
 
 Iteration budget:
-- Complete this deterministic support-smoke task in one agent-loop cycle. Keep the implementation narrow: no manifest edits, no live fetches, no new source approvals, no frontend changes, no generated-output cache promotion, no deployment work, and no expansion into T-179/T-180 live fetch pipeline work.
+- Complete this current-ETF-list pipeline task in one agent-loop cycle. Keep it narrow: no ETF-500 expansion, no manifest promotion, no source approval, no frontend workflow redesign, no generated-output cache promotion, no deployment work, and no broad paid-provider integration.
 
 ## Backlog
-
-### T-179: Complete current ETF-list live fetch pipeline before ETF-500 expansion
-
-Goal:
-Make the current supported ETF list fully exercise issuer-first live fetch, provider fallback, source labels, table parity, and blocked-state behavior before scaling toward ETF-500.
-
-Acceptance criteria:
-- Current supported ETF rows either render source-labeled data or return precise partial, pending, unavailable, or blocked reasons.
-- Issuer page, fact sheet, prospectus or summary prospectus, holdings, and exposure attempts are recorded when available.
-- Provider/Yahoo fallback fills missing display rows without presenting fallback values as official issuer evidence.
-- Frontend table/layout shape remains stable when official, provider, fallback, partial, or unavailable data backs a row.
-- No human review is required for lightweight local display; strict/audit-quality promotion remains separate.
-
-Required commands:
-- `python3 -m pytest tests -q`
-- `python3 evals/run_static_evals.py`
-- `bash scripts/run_quality_gate.sh`
 
 ### T-180: Complete current stock-list live fetch pipeline before Top-500 expansion
 
@@ -87,6 +83,35 @@ Required commands:
 - `bash scripts/run_quality_gate.sh`
 
 ## Completed
+
+### T-178: Add full-manifest deterministic support smoke
+
+Goal:
+Add a deterministic support/classification smoke proving every current supported stock and ETF row resolves through the correct manifest path, while recognition-only and out-of-scope rows never unlock generated surfaces.
+
+Completion commits:
+- Implementation commit: `2218d90 feat(T-178): add full-manifest deterministic support smoke`
+- Local merge commit: `76078db chore(T-178): merge full-manifest deterministic support smoke` from branch `agent/T-178-20260507T184816Z`
+
+Completion details:
+- Added `scripts/run_full_manifest_support_smoke.py` with schema `full-manifest-support-smoke-v1` to iterate the current stock manifest, supported ETF manifest, and ETF/ETP recognition manifest without live provider, SEC, issuer, exchange, news, market-data, or LLM calls.
+- The smoke reports manifest file paths, manifest IDs, SHA-256 checksums, row-level runtime authority, search/support state, generated-surface eligibility, and exact failure rows when authority or generated-output blocking rules are violated.
+- Integrated the full-manifest support smoke summary into `scripts/run_lightweight_mvp_readiness_gate.py`.
+- Added static eval coverage in `evals/run_static_evals.py` and unit coverage in `tests/unit/test_search_classification.py` for deterministic schema, manifest authority paths, recognition-only generated-output blocking, no-live/no-secret behavior, and readiness integration.
+- The task branch smoke reported 32 manifest rows: 10 stock manifest rows, 13 supported ETF manifest rows, 9 recognition manifest rows, 3 generated-output-eligible cached rows, 20 pending-ingestion rows, 8 blocked recognition rows, 1 unavailable recognition row, and no failure rows.
+- Recognition-only rows remained generated-output-ineligible for asset pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, and generated-output cache entries.
+- `docs/agent-journal/20260507T184816Z.md` records changed files, pass status, test/eval results, smoke counts, and remaining risks.
+
+Required commands executed in this task branch:
+- `python3 scripts/run_full_manifest_support_smoke.py --json` - pass
+- `python3 -m pytest tests/unit/test_search_classification.py tests/unit/test_repo_contract.py -q` - pass, 56 passed
+- `python3 -m pytest tests -q` - pass, 544 passed
+- `python3 evals/run_static_evals.py` - pass
+- `bash scripts/run_quality_gate.sh` - pass
+
+Remaining risks:
+- The smoke is deterministic and manifest-backed only; it does not prove live provider, SEC, issuer, exchange, news, market-data, or LLM reliability.
+- Current generated-output eligibility remains limited to cached deterministic assets; uncached supported rows still require later ingestion/source-pack work.
 
 ### T-177: Make local Market News and Weekly News live-source runtime default
 
