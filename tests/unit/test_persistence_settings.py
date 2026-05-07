@@ -29,6 +29,8 @@ from backend.settings import (
     LIGHTWEIGHT_DATA_SETTINGS_SCHEMA_VERSION,
     LIGHTWEIGHT_LIVE_FETCH_DISABLED_REASON,
     LIGHTWEIGHT_WEEKLY_NEWS_FETCH_DISABLED_REASON,
+    MARKET_NEWS_FETCH_DISABLED_REASON,
+    MARKET_NEWS_LIVE_SOURCE_SMOKE_DISABLED_REASON,
     MISSING_DATABASE_URL_REASON,
     build_cors_settings,
     build_lightweight_data_settings,
@@ -337,6 +339,8 @@ def test_lightweight_data_settings_local_runtime_defaults_live_when_not_ci_or_py
     monkeypatch.delenv("JENKINS_URL", raising=False)
     monkeypatch.delenv("LIGHTWEIGHT_LIVE_FETCH_ENABLED", raising=False)
     monkeypatch.delenv("LTT_LIGHTWEIGHT_LIVE_FETCH_ENABLED", raising=False)
+    monkeypatch.delenv("LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED", raising=False)
+    monkeypatch.delenv("LTT_LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED", raising=False)
     monkeypatch.setenv("APP_ENV", "local")
     monkeypatch.setenv("DATA_POLICY_MODE", "lightweight")
     monkeypatch.setenv("LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED", "true")
@@ -345,35 +349,107 @@ def test_lightweight_data_settings_local_runtime_defaults_live_when_not_ci_or_py
     local_default = build_lightweight_data_settings(env={"APP_ENV": "local"})
 
     assert os_environment_default.live_fetch_enabled is True
+    assert os_environment_default.weekly_news_fetch_enabled is True
     assert os_environment_default.provider_fallback_enabled is True
     assert os_environment_default.can_fetch_fresh_data is True
     assert local_default.live_fetch_enabled is True
+    assert local_default.weekly_news_fetch_enabled is True
     assert local_default.provider_fallback_enabled is True
     assert local_default.can_fetch_fresh_data is True
     assert LIGHTWEIGHT_LIVE_FETCH_DISABLED_REASON not in local_default.missing_reasons
+    assert LIGHTWEIGHT_WEEKLY_NEWS_FETCH_DISABLED_REASON not in local_default.missing_reasons
 
     explicit_disabled = build_lightweight_data_settings(
         env={
             "APP_ENV": "local",
             "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "false",
+            "LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED": "false",
         }
     )
     assert explicit_disabled.live_fetch_enabled is False
+    assert explicit_disabled.weekly_news_fetch_enabled is False
     assert explicit_disabled.can_fetch_fresh_data is False
     assert LIGHTWEIGHT_LIVE_FETCH_DISABLED_REASON in explicit_disabled.missing_reasons
+    assert LIGHTWEIGHT_WEEKLY_NEWS_FETCH_DISABLED_REASON in explicit_disabled.missing_reasons
 
     ci_default = build_lightweight_data_settings(env={"CI": "true"})
     assert ci_default.live_fetch_enabled is False
+    assert ci_default.weekly_news_fetch_enabled is False
     assert ci_default.can_fetch_fresh_data is False
 
     ci_explicit_enabled = build_lightweight_data_settings(
         env={
             "CI": "true",
             "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED": "true",
         }
     )
     assert ci_explicit_enabled.live_fetch_enabled is True
+    assert ci_explicit_enabled.weekly_news_fetch_enabled is True
     assert ci_explicit_enabled.can_fetch_fresh_data is True
+
+
+def test_market_news_settings_runtime_defaults_preserve_deterministic_paths(monkeypatch):
+    empty_env = build_market_news_settings(env={})
+    assert empty_env.fetch_enabled is False
+    assert empty_env.live_source_real_fetch_enabled is False
+    assert empty_env.can_attempt_live_fetch is False
+    assert MARKET_NEWS_FETCH_DISABLED_REASON in empty_env.missing_reasons
+
+    pytest_default = build_market_news_settings(env={"APP_ENV": "local"})
+    assert pytest_default.fetch_enabled is False
+    assert pytest_default.live_source_real_fetch_enabled is False
+    assert pytest_default.can_attempt_live_fetch is False
+
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    monkeypatch.delenv("BUILDKITE", raising=False)
+    monkeypatch.delenv("JENKINS_URL", raising=False)
+    monkeypatch.delenv("MARKET_NEWS_FETCH_ENABLED", raising=False)
+    monkeypatch.delenv("LTT_MARKET_NEWS_FETCH_ENABLED", raising=False)
+    monkeypatch.delenv("MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED", raising=False)
+    monkeypatch.delenv("LTT_MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED", raising=False)
+    monkeypatch.setenv("APP_ENV", "local")
+
+    os_environment_default = build_market_news_settings()
+    local_default = build_market_news_settings(env={"APP_ENV": "local"})
+
+    assert os_environment_default.fetch_enabled is True
+    assert os_environment_default.live_source_real_fetch_enabled is True
+    assert os_environment_default.can_attempt_live_fetch is True
+    assert local_default.fetch_enabled is True
+    assert local_default.live_source_real_fetch_enabled is True
+    assert local_default.can_attempt_live_fetch is True
+    assert MARKET_NEWS_FETCH_DISABLED_REASON not in local_default.missing_reasons
+    assert MARKET_NEWS_LIVE_SOURCE_SMOKE_DISABLED_REASON in local_default.missing_reasons
+
+    explicit_disabled = build_market_news_settings(
+        env={
+            "APP_ENV": "local",
+            "MARKET_NEWS_FETCH_ENABLED": "false",
+            "MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED": "false",
+        }
+    )
+    assert explicit_disabled.fetch_enabled is False
+    assert explicit_disabled.live_source_real_fetch_enabled is False
+    assert explicit_disabled.can_attempt_live_fetch is False
+
+    ci_default = build_market_news_settings(env={"CI": "true"})
+    assert ci_default.fetch_enabled is False
+    assert ci_default.live_source_real_fetch_enabled is False
+    assert ci_default.can_attempt_live_fetch is False
+
+    ci_explicit_enabled = build_market_news_settings(
+        env={
+            "CI": "true",
+            "LTT_MARKET_NEWS_FETCH_ENABLED": "true",
+            "LTT_MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED": "true",
+        }
+    )
+    assert ci_explicit_enabled.fetch_enabled is True
+    assert ci_explicit_enabled.live_source_real_fetch_enabled is True
+    assert ci_explicit_enabled.can_attempt_live_fetch is True
 
 
 def test_lightweight_data_settings_explicit_live_fetch_configuration_still_overrides_defaults():

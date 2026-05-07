@@ -208,8 +208,8 @@ Runtime feature defaults:
 - `DATA_POLICY_MODE=lightweight`
 - `LIGHTWEIGHT_LIVE_FETCH_ENABLED` defaults to `true` for local runtime/manual review outside CI and tests when unset; CI, pytest, and `env={}` settings remain no-live by default, and explicit env values still override.
 - `LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true`
-- `LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED=false`; set to `true` only for local MVP Weekly News metadata retrieval and deterministic fixture-backed tests.
-- `MARKET_NEWS_FETCH_ENABLED=false`; set to `true` only for explicit server-side Market News Focus live-source retrieval or deterministic fixture-backed tests.
+- `LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED` defaults to `true` for local runtime/manual review outside CI and tests when unset; CI, pytest, static evals, and explicit `env={}` settings remain no-live by default, and explicit env values still override.
+- `MARKET_NEWS_FETCH_ENABLED` and `MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED` default to `true` for local runtime/manual review outside CI and tests when unset; CI, pytest, static evals, and explicit `env={}` settings remain no-live by default, and explicit env values still override.
 - `MARKET_NEWS_LIVE_SOURCE_SMOKE_ENABLED=false`; opt-in only, skipped by default.
 - `SEC_EDGAR_USER_AGENT=learn-the-ticker-local/0.1 contact@example.com` as a placeholder; deployments should set an operator-controlled contact string server-side and diagnostics should report only a redacted form.
 - `RETRIEVAL_MODE=keyword`
