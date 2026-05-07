@@ -1,16 +1,16 @@
 ## Current task
 
-### T-172: Define Market News Focus and ticker-news split
+### T-176: Make local fresh-data runtime live by default
 
 Goal:
-Update product, technical, source-policy, eval, task, and env docs for reusable Market News Focus, ticker-specific Weekly News Focus labels, market AI thematic lenses, and opt-in live provider boundaries before code work.
+Make `GET /api/assets/{ticker}/fresh-data` and local asset rendering attempt live official-first retrieval by default in local runtime/manual review, while preserving deterministic fixture-backed CI and normal tests.
 
 Acceptance criteria:
-- PRD, technical design spec, proposal, `SPEC.md`, `EVALS.md`, Lightweight Data Policy, `TASKS.md`, and env examples describe Market News Focus and ticker-specific news separately.
-- Market News Focus selects up to 20 approved market-wide story clusters and never pads weak evidence.
-- AI Comprehensive Analysis: Market News Focus uses thematic lenses, not named personas, and Scenario Lens is conditional education only.
-- Live RSS/GDELT/keyed-provider/yfinance adapter work is documented as server-side, opt-in, key-safe, and mock-backed in normal CI.
-- Ticker-specific Weekly News Focus keeps the existing max-8 official-first behavior.
+- Explicit env vars still override runtime defaults.
+- CI, pytest, and `env={}` settings remain no-live by default.
+- Local runtime outside CI/test defaults to `LIGHTWEIGHT_LIVE_FETCH_ENABLED=true` and provider fallback enabled.
+- Fresh data attempts official sources first, then configured provider APIs, then Yahoo/yfinance-style fallback.
+- Existing asset dashboard tables, details, source drawer, exports, and chat pack structures stay stable regardless of source tier; only source labels, freshness, unavailable states, citations, and fallback diagnostics differ.
 
 Required commands:
 - `python3 -m pytest tests -q`
@@ -18,26 +18,144 @@ Required commands:
 - `bash scripts/run_quality_gate.sh`
 
 Iteration budget:
-- Complete the docs, backend, frontend, and test slices in one user-approved implementation pass with conventional commits.
+- Complete this runtime-default task in one agent-loop cycle without broad coverage expansion, generated-output cache promotion, or production deployment changes.
 
 ## Backlog
 
-### T-173: Add Market News Focus backend contracts and adapters
+### T-177: Make local Market News and Weekly News live-source runtime default
 
 Goal:
-Add deterministic Market News Focus schemas, provider adapter boundaries, normalization, clustering, ranking, market AI analysis, `/api/market-news`, and focused backend tests.
+Make local asset pages default to live server-side Market News and ticker Weekly News retrieval in local runtime/manual review, with Yahoo/yfinance-style news only as fallback metadata and CI/tests still fixture-backed.
 
-### T-174: Render Market News Focus on asset pages
+Acceptance criteria:
+- `/api/market-news` and `GET /api/assets/{ticker}/weekly-news` use live local runtime defaults outside CI/test when explicit env vars do not override them.
+- CI, pytest, static evals, and normal quality gates remain deterministic and do not require live RSS, GDELT, keyed news providers, Yahoo/yfinance, market-data providers, or LLM calls.
+- Raw article bodies, unrestricted thumbnails/media, raw provider payloads, secrets, and generated-output cache writes remain absent from Market News and Weekly News output.
+- Market News Focus stays reusable across supported ticker pages and appears above `Weekly News Focus: {TICKER}`.
+- AI Comprehensive Analysis thresholds, citation checks, source-use policy gates, and no-advice validation remain unchanged.
+
+Required commands:
+- `python3 -m pytest tests -q`
+- `python3 evals/run_static_evals.py`
+- `bash scripts/run_quality_gate.sh`
+
+### T-178: Add full-manifest deterministic support smoke
 
 Goal:
-Render Market News Focus and AI Comprehensive Analysis: Market News Focus above ticker-specific Weekly News Focus, and rename ticker labels to include `{TICKER}`.
+Add a deterministic support/classification smoke proving every current supported stock and ETF row resolves through the correct manifest path, while recognition-only and out-of-scope rows never unlock generated surfaces.
+
+Acceptance criteria:
+- The smoke iterates `data/universes/us_common_stocks_top500.current.json`, `data/universes/us_equity_etfs_supported.current.json`, and `data/universes/us_etp_recognition.current.json`.
+- The report includes supported, partial, pending ingestion, unavailable, blocked, and generated-output eligibility counts.
+- Recognition-only and out-of-scope rows cannot unlock generated pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, or generated-output cache entries.
+- The smoke is integrated into local readiness output without live calls or secret requirements.
+
+Required commands:
+- `python3 -m pytest tests -q`
+- `python3 evals/run_static_evals.py`
+- `bash scripts/run_quality_gate.sh`
+
+### T-179: Complete current ETF-list live fetch pipeline before ETF-500 expansion
+
+Goal:
+Make the current supported ETF list fully exercise issuer-first live fetch, provider fallback, source labels, table parity, and blocked-state behavior before scaling toward ETF-500.
+
+Acceptance criteria:
+- Current supported ETF rows either render source-labeled data or return precise partial, pending, unavailable, or blocked reasons.
+- Issuer page, fact sheet, prospectus or summary prospectus, holdings, and exposure attempts are recorded when available.
+- Provider/Yahoo fallback fills missing display rows without presenting fallback values as official issuer evidence.
+- Frontend table/layout shape remains stable when official, provider, fallback, partial, or unavailable data backs a row.
+- No human review is required for lightweight local display; strict/audit-quality promotion remains separate.
+
+Required commands:
+- `python3 -m pytest tests -q`
+- `python3 evals/run_static_evals.py`
+- `bash scripts/run_quality_gate.sh`
+
+### T-180: Complete current stock-list live fetch pipeline before Top-500 expansion
+
+Goal:
+Make the current stock manifest list fully exercise SEC-first live fetch, provider fallback, source labels, table parity, and readiness diagnostics before expanding Top-500 coverage.
+
+Acceptance criteria:
+- Current stock rows either render source-labeled data or return precise partial, pending, unavailable, or blocked reasons.
+- SEC company identity, submissions, XBRL/company facts, filings, and provider fallback attempts are visible in diagnostics without exposing secrets or raw unrestricted payloads.
+- Unsupported and out-of-scope symbols remain blocked from generated pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, and generated-output cache entries.
+- Readiness output includes generated-output cache promotion prerequisites but does not promote generated-output cache entries.
+- Frontend table/layout shape remains stable when official, provider, fallback, partial, or unavailable data backs a row.
+
+Required commands:
+- `python3 -m pytest tests -q`
+- `python3 evals/run_static_evals.py`
+- `bash scripts/run_quality_gate.sh`
+
+## Completed
 
 ### T-175: Add Market News smoke and quality-gate coverage
 
 Goal:
 Add skipped-by-default opt-in live smoke diagnostics, update eval fixtures/static checks, run the required test/eval/quality gates, and record completion details.
 
-## Completed
+Completion details:
+- Reconciled `TASKS.md` with the existing Market News implementation: `scripts/run_market_news_live_source_smoke.py`, `evals/market_news_eval_cases.yaml`, static eval coverage, frontend smoke markers, and quality-gate hooks already exist.
+- The default Market News live-source smoke reports `skipped` without opt-in and `normal_ci_requires_live_calls=false`.
+- The opt-in smoke validates provider adapter coverage, selection safety gates, critical-claim corroboration, AI threshold suppression, no raw article text, no raw provider payload logging, and no generated-output cache writes without real network fetches by default.
+- Required full test/eval/quality-gate commands were rerun for this reconciliation task and recorded by the agent completing this TASKS.md update.
+
+Required commands executed for T-172 through T-175 reconciliation:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_market_news.py tests/integration/test_backend_api.py -q` - pass, 56 passed
+- `TMPDIR=/tmp python3 scripts/run_market_news_live_source_smoke.py --json` - pass, skipped by default without opt-in
+- `TMPDIR=/tmp MARKET_NEWS_LIVE_SOURCE_SMOKE_ENABLED=true python3 scripts/run_market_news_live_source_smoke.py --json` - pass
+- `TMPDIR=/tmp python3 -m pytest tests -q` - pass
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass
+
+Remaining risks:
+- This reconciles and verifies deterministic/local Market News implementation only. It does not make live news broad-runtime default, prove real network reliability, approve paid-provider licensing, promote generated-output cache entries, or establish production readiness.
+
+### T-174: Render Market News Focus on asset pages
+
+Goal:
+Render Market News Focus and AI Comprehensive Analysis: Market News Focus above ticker-specific Weekly News Focus, and rename ticker labels to include `{TICKER}`.
+
+Completion details:
+- Reconciled `TASKS.md` with the existing frontend implementation in `apps/web/app/assets/[ticker]/page.tsx`, `apps/web/components/MarketNewsPanel.tsx`, `apps/web/components/MarketAIComprehensiveAnalysisPanel.tsx`, and `apps/web/lib/marketNews.ts`.
+- Asset pages fetch `/api/market-news` through the backend API-base/proxy path with deterministic fixture fallback.
+- Market News Focus appears after stable asset basics and above ticker-specific Weekly News Focus, with `data-prd-section-order` and frontend smoke markers covering the intended ordering.
+- Ticker-specific labels preserve `Weekly News Focus: {TICKER}` and `AI Comprehensive Analysis: {TICKER}` separation.
+
+Remaining risks:
+- This is existing local/frontend rendering, not proof that live Market News or Weekly News should run by default in every environment. `T-177` owns that runtime-default change.
+
+### T-173: Add Market News Focus backend contracts and adapters
+
+Goal:
+Add deterministic Market News Focus schemas, provider adapter boundaries, normalization, clustering, ranking, market AI analysis, `/api/market-news`, and focused backend tests.
+
+Completion details:
+- Reconciled `TASKS.md` with the existing backend implementation in `backend/market_news.py`, `backend/market_news_runtime.py`, `backend/models.py`, `backend/settings.py`, and `backend/main.py`.
+- `/api/market-news` returns `market-news-response-v1` through `build_runtime_market_news_response()`.
+- Provider adapter boundaries cover RSS, Google News RSS, GDELT, Marketaux, Alpha Vantage, Finnhub, Guardian, GNews, Mediastack, NewsAPI, and Yahoo Finance search metadata with normalized, source-governed candidate rows.
+- Market News selection deduplicates clusters, enforces source-use policy, caps output at 20 items, preserves topic buckets, rejects weak/policy-blocked candidates, and requires priority/corroborated support for critical claims.
+- AI Comprehensive Analysis: Market News Focus uses thematic lenses and is suppressed unless enough approved market breadth exists.
+
+Remaining risks:
+- Existing adapter coverage is deterministic and mock-backed by default. Real live-source reliability and local runtime live defaults are left to `T-177`.
+
+### T-172: Define Market News Focus and ticker-news split
+
+Goal:
+Update product, technical, source-policy, eval, task, and env docs for reusable Market News Focus, ticker-specific Weekly News Focus labels, market AI thematic lenses, and opt-in live provider boundaries before code work.
+
+Completion details:
+- Reconciled `TASKS.md` with the existing product/control-doc baseline: the PRD, technical design spec, proposal, `SPEC.md`, `EVALS.md`, `docs/LIGHTWEIGHT_DATA_POLICY.md`, and `.env.example` now describe reusable Market News Focus separately from ticker-specific Weekly News Focus.
+- Market News Focus selects up to 20 approved market-wide story clusters, may show fewer or empty sets, and must not pad weak evidence.
+- AI Comprehensive Analysis: Market News Focus uses thematic lenses, not named personas, and treats Scenario Lens as conditional education rather than prediction.
+- Live RSS/GDELT/keyed-provider/Yahoo-yfinance adapter work is documented as server-side, key-safe, mock-backed in normal CI, and opt-in under the current docs. `T-177` will intentionally update the local-runtime/manual-review default while keeping CI deterministic.
+- Ticker-specific Weekly News Focus keeps the max-8 official-first behavior and explicit `Weekly News Focus: {TICKER}` label.
+
+Remaining risks:
+- This completion records documentation alignment for the implemented split. It does not approve live news/provider licensing, broad production ingestion, or generated-output cache promotion.
 
 ### T-171: UI and smoke validation for local Weekly News MVP
 
