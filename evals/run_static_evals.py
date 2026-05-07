@@ -10,6 +10,9 @@ EVALS_DIR = ROOT / "evals"
 
 os.environ.setdefault("LTT_FORCE_COMPAT_FASTAPI", "1")
 os.environ.setdefault("LIGHTWEIGHT_LIVE_FETCH_ENABLED", "false")
+os.environ.setdefault("LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED", "false")
+os.environ.setdefault("MARKET_NEWS_FETCH_ENABLED", "false")
+os.environ.setdefault("MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED", "false")
 sys.path.insert(0, str(ROOT))
 
 import backend.models as models

@@ -26,12 +26,15 @@ DEFAULT_LIGHTWEIGHT_LIVE_FETCH_ENABLED = False
 DEFAULT_LOCAL_RUNTIME_LIGHTWEIGHT_LIVE_FETCH_ENABLED = True
 DEFAULT_LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED = True
 DEFAULT_LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED = False
+DEFAULT_LOCAL_RUNTIME_LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED = True
 DEFAULT_LIGHTWEIGHT_FETCH_TIMEOUT_SECONDS = 15
 DEFAULT_LIGHTWEIGHT_FETCH_REUSE_TTL_SECONDS = 30
 DEFAULT_LIGHTWEIGHT_PROVIDER_ORDER = ("fmp", "alpha_vantage", "finnhub", "tiingo", "eodhd", "yahoo")
 DEFAULT_MARKET_NEWS_FETCH_ENABLED = False
+DEFAULT_LOCAL_RUNTIME_MARKET_NEWS_FETCH_ENABLED = True
 DEFAULT_MARKET_NEWS_LIVE_SOURCE_SMOKE_ENABLED = False
 DEFAULT_MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED = False
+DEFAULT_LOCAL_RUNTIME_MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED = True
 DEFAULT_MARKET_NEWS_CACHE_TTL_HOURS = 24
 DEFAULT_SEC_EDGAR_USER_AGENT = "learn-the-ticker-local/0.1 contact@example.com"
 DEFAULT_LOCAL_DURABLE_OBJECT_NAMESPACE = "local-private-source-artifacts"
@@ -537,7 +540,12 @@ def build_lightweight_data_settings(env: dict[str, str] | None = None) -> Lightw
             "LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED",
             "LTT_LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED",
         ),
-        DEFAULT_LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED,
+        _default_local_runtime_enabled(
+            source,
+            env_was_provided=env_was_provided,
+            deterministic_default=DEFAULT_LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED,
+            local_runtime_default=DEFAULT_LOCAL_RUNTIME_LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED,
+        ),
     )
     user_agent = _clean_optional(
         _first_present(source, "SEC_EDGAR_USER_AGENT", "LIGHTWEIGHT_SEC_USER_AGENT")
@@ -614,9 +622,15 @@ def build_lightweight_data_settings(env: dict[str, str] | None = None) -> Lightw
 
 def build_market_news_settings(env: dict[str, str] | None = None) -> MarketNewsSettings:
     source = os.environ if env is None else env
+    env_was_provided = env is not None
     fetch_enabled = _bool_setting(
         _first_present(source, "MARKET_NEWS_FETCH_ENABLED", "LTT_MARKET_NEWS_FETCH_ENABLED"),
-        DEFAULT_MARKET_NEWS_FETCH_ENABLED,
+        _default_local_runtime_enabled(
+            source,
+            env_was_provided=env_was_provided,
+            deterministic_default=DEFAULT_MARKET_NEWS_FETCH_ENABLED,
+            local_runtime_default=DEFAULT_LOCAL_RUNTIME_MARKET_NEWS_FETCH_ENABLED,
+        ),
     )
     live_source_smoke_enabled = _bool_setting(
         _first_present(
@@ -632,7 +646,12 @@ def build_market_news_settings(env: dict[str, str] | None = None) -> MarketNewsS
             "MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED",
             "LTT_MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED",
         ),
-        DEFAULT_MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED,
+        _default_local_runtime_enabled(
+            source,
+            env_was_provided=env_was_provided,
+            deterministic_default=DEFAULT_MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED,
+            local_runtime_default=DEFAULT_LOCAL_RUNTIME_MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED,
+        ),
     )
     cache_ttl_hours = _int_setting(
         _first_present(source, "MARKET_NEWS_CACHE_TTL_HOURS", "LTT_MARKET_NEWS_CACHE_TTL_HOURS"),
@@ -804,11 +823,26 @@ def _default_lightweight_live_fetch_enabled(
     *,
     env_was_provided: bool,
 ) -> bool:
+    return _default_local_runtime_enabled(
+        source,
+        env_was_provided=env_was_provided,
+        deterministic_default=DEFAULT_LIGHTWEIGHT_LIVE_FETCH_ENABLED,
+        local_runtime_default=DEFAULT_LOCAL_RUNTIME_LIGHTWEIGHT_LIVE_FETCH_ENABLED,
+    )
+
+
+def _default_local_runtime_enabled(
+    source: dict[str, str] | os._Environ[str],
+    *,
+    env_was_provided: bool,
+    deterministic_default: bool,
+    local_runtime_default: bool,
+) -> bool:
     if env_was_provided and not source:
-        return DEFAULT_LIGHTWEIGHT_LIVE_FETCH_ENABLED
+        return deterministic_default
     if _running_in_ci_or_pytest(source):
-        return DEFAULT_LIGHTWEIGHT_LIVE_FETCH_ENABLED
-    return DEFAULT_LOCAL_RUNTIME_LIGHTWEIGHT_LIVE_FETCH_ENABLED
+        return deterministic_default
+    return local_runtime_default
 
 
 def _running_in_ci_or_pytest(source: dict[str, str] | os._Environ[str]) -> bool:
