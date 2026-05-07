@@ -32,6 +32,14 @@ from backend.models import SearchResponse
 from backend.models import Top500CandidateManifest
 from backend.provider_adapters.etf_issuer import ETF_ISSUER_FIXTURES
 from backend.search import search_assets
+from scripts.run_full_manifest_support_smoke import (
+    GENERATED_SURFACES,
+    RECOGNITION_ETF_AUTHORITY,
+    SCHEMA_VERSION as FULL_MANIFEST_SUPPORT_SMOKE_SCHEMA_VERSION,
+    STOCK_AUTHORITY,
+    SUPPORTED_ETF_AUTHORITY,
+    run_full_manifest_support_smoke,
+)
 
 
 def test_cached_supported_assets_resolve_by_ticker_and_name():
@@ -617,6 +625,79 @@ def test_unknown_search_returns_no_generated_route_or_invented_asset_facts():
     assert result.ingestion_request_route is None
     assert response.state.blocked_explanation is None
     assert result.blocked_explanation is None
+
+
+def test_full_manifest_support_smoke_preserves_runtime_authorities_and_blocked_surfaces():
+    smoke = run_full_manifest_support_smoke()
+
+    assert smoke["schema_version"] == FULL_MANIFEST_SUPPORT_SMOKE_SCHEMA_VERSION
+    assert smoke["status"] == "pass"
+    assert smoke["normal_ci_requires_live_calls"] is False
+    assert smoke["live_provider_calls_attempted"] is False
+    assert smoke["news_calls_attempted"] is False
+    assert smoke["market_data_calls_attempted"] is False
+    assert smoke["sec_calls_attempted"] is False
+    assert smoke["issuer_calls_attempted"] is False
+    assert smoke["exchange_calls_attempted"] is False
+    assert smoke["llm_calls_attempted"] is False
+    assert smoke["secret_values_reported"] is False
+    assert smoke["failure_rows"] == []
+
+    assert smoke["manifest_paths"] == {
+        "top500_stock": STOCK_AUTHORITY,
+        "supported_etf": SUPPORTED_ETF_AUTHORITY,
+        "etp_recognition": RECOGNITION_ETF_AUTHORITY,
+    }
+    assert all(str(value).startswith("sha256:") for value in smoke["manifest_checksums"].values())
+    assert smoke["recognition_rows_unlock_generated_output"] is False
+
+    counts = smoke["counts"]
+    assert counts["stock_manifest_rows"] == len(load_top500_stock_universe_manifest().entries)
+    assert counts["supported_etf_manifest_rows"] == len(load_supported_etf_universe_manifest().entries)
+    assert counts["recognition_manifest_rows"] == len(load_recognition_etf_universe_manifest().entries)
+    assert counts["recognition_only_count"] == counts["recognition_manifest_rows"]
+    assert counts["generated_output_eligible_by_manifest"] == {
+        "supported_etf": 2,
+        "top500_stock": 1,
+    }
+    assert counts["generated_output_eligible_count"] == 3
+    assert counts["pending_ingestion_count"] >= 1
+    assert counts["blocked_count"] >= 1
+    assert counts["unavailable_count"] >= 1
+    assert counts["partial_count"] == 0
+
+    rows = smoke["rows"]
+    assert {row["ticker"] for row in rows if row["manifest_kind"] == "top500_stock"} == {
+        entry.ticker for entry in load_top500_stock_universe_manifest().entries
+    }
+    assert {row["ticker"] for row in rows if row["manifest_kind"] == "supported_etf"} == {
+        entry.ticker for entry in load_supported_etf_universe_manifest().entries
+    }
+    assert {row["ticker"] for row in rows if row["manifest_kind"] == "etp_recognition"} == {
+        entry.ticker for entry in load_recognition_etf_universe_manifest().entries
+    }
+
+    for row in rows:
+        assert set(row["surface_eligibility"]) == set(GENERATED_SURFACES)
+        if row["manifest_kind"] == "top500_stock":
+            assert row["runtime_authority"] == STOCK_AUTHORITY
+            assert row["resolved_authority"] == STOCK_AUTHORITY
+            assert row["support_classification"] in {"cached_supported", "eligible_not_cached"}
+        if row["manifest_kind"] == "supported_etf":
+            assert row["runtime_authority"] == SUPPORTED_ETF_AUTHORITY
+            assert row["recognition_authority_used_for_generated_output"] is False
+            assert row["support_classification"] in {"cached_supported", "eligible_not_cached"}
+        if row["manifest_kind"] == "etp_recognition":
+            assert row["runtime_authority"] == RECOGNITION_ETF_AUTHORITY
+            assert row["authoritative_for_generated_output"] is False
+            assert row["generated_output_eligible"] is False
+            assert all(value is False for value in row["surface_eligibility"].values())
+            assert row["support_state"] in {
+                "recognized_unsupported",
+                "out_of_scope",
+                "unknown",
+                "unavailable",
+            }
 
 
 def test_eligible_not_cached_assets_require_future_ingestion_only():
