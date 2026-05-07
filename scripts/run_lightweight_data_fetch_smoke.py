@@ -20,6 +20,10 @@ from backend.etf_universe import (
     load_recognition_etf_universe_manifest,
     load_supported_etf_universe_manifest,
 )
+from backend.data import (
+    TOP500_STOCK_UNIVERSE_MANIFEST_PATH,
+    load_top500_stock_universe_manifest,
+)
 from backend.lightweight_data_fetch import (
     clear_lightweight_fetch_reuse_cache,
     fetch_lightweight_asset_data,
@@ -36,6 +40,7 @@ from scripts.run_local_fresh_data_slice_smoke import LocalFreshDataSliceFakeFetc
 
 
 DEFAULT_TICKERS = ("AAPL", "VOO")
+STOCK_AUTHORITY = "data/universes/us_common_stocks_top500.current.json"
 SUPPORTED_ETF_AUTHORITY = "data/universes/us_equity_etfs_supported.current.json"
 RECOGNITION_ETF_AUTHORITY = "data/universes/us_etp_recognition.current.json"
 GENERATED_SURFACES = (
@@ -105,6 +110,7 @@ def run_smoke(tickers: list[str], *, live: bool) -> dict[str, object]:
         "settings": settings.safe_diagnostics,
         "blocked_tickers": blocked,
         "reuse_diagnostics": _reuse_diagnostics(responses, repeated_responses),
+        "current_stock_manifest_fetch": run_current_stock_manifest_fetch_smoke(),
         "surface_contracts": surface_contracts,
         "current_supported_etf_manifest_fetch": run_current_supported_etf_manifest_fetch_smoke(),
         "responses": [
@@ -125,6 +131,184 @@ def run_smoke(tickers: list[str], *, live: bool) -> dict[str, object]:
             }
             for response in responses
         ],
+    }
+
+
+def run_current_stock_manifest_fetch_smoke() -> dict[str, Any]:
+    """Exercise every current stock manifest row through deterministic lightweight fetch diagnostics."""
+
+    settings = build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-current-stock-smoke/0.1 test@example.com",
+        }
+    )
+    manifest = load_top500_stock_universe_manifest()
+    fetcher = LocalFreshDataSliceFakeFetcher()
+    clear_lightweight_fetch_reuse_cache()
+
+    rows = [
+        _current_stock_row(
+            entry,
+            fetch_lightweight_asset_data(
+                entry.ticker,
+                settings=settings,
+                fetcher=fetcher,
+                retrieved_at=RETRIEVED_AT,
+                bypass_reuse=True,
+            ),
+        )
+        for entry in manifest.entries
+    ]
+    failure_rows = _current_stock_failure_rows(rows)
+    counts = {
+        "current_stock_manifest_rows": len(rows),
+        "sec_backed_supported_count": sum(
+            1 for row in rows if row["fetch_state"] == LightweightFetchState.supported.value and row["sec_attempt_state"]["state"] == "supported"
+        ),
+        "provider_fallback_partial_count": sum(
+            1
+            for row in rows
+            if row["fetch_state"] == LightweightFetchState.partial.value
+            and row["provider_fallback_state"]["state"] == "used"
+        ),
+        "unavailable_count": sum(1 for row in rows if row["fetch_state"] == LightweightFetchState.unavailable.value),
+        "blocked_unsupported_or_out_of_scope_count": sum(
+            1 for row in rows if row["fetch_state"] in {LightweightFetchState.unsupported.value, LightweightFetchState.out_of_scope.value}
+        ),
+        "generated_output_eligible_count": sum(1 for row in rows if row["generated_output_eligible"] is True),
+        "failure_count": len(failure_rows),
+    }
+    return {
+        "schema_version": "current-stock-manifest-lightweight-fetch-smoke-v1",
+        "status": "pass" if not failure_rows else "blocked",
+        "deterministic": True,
+        "normal_ci_requires_live_calls": False,
+        "live_provider_calls_attempted": False,
+        "sec_calls_attempted": False,
+        "exchange_calls_attempted": False,
+        "market_data_calls_attempted": False,
+        "news_calls_attempted": False,
+        "llm_calls_attempted": False,
+        "secret_values_reported": False,
+        "raw_payload_values_reported": False,
+        "stock_runtime_authority": STOCK_AUTHORITY,
+        "stock_manifest_file_path": str(TOP500_STOCK_UNIVERSE_MANIFEST_PATH.relative_to(ROOT)),
+        "stock_manifest_checksum": manifest.generated_checksum,
+        "counts": counts,
+        "generated_output_cache_promotion_prerequisites": {
+            "strict_audit_quality_source_approval_required": True,
+            "source_handoff_required_for_promotion": True,
+            "generated_output_cache_promoted": False,
+        },
+        "failure_rows": failure_rows,
+        "rows": rows,
+    }
+
+
+def _current_stock_row(entry: Any, response: Any) -> dict[str, Any]:
+    provider_count = int(response.diagnostics.get("provider_fallback_source_count", 0) or 0)
+    return {
+        "ticker": entry.ticker,
+        "company_name": entry.name,
+        "exchange": entry.exchange,
+        "cik": entry.cik,
+        "rank": entry.rank,
+        "rank_basis": entry.rank_basis,
+        "asset_type": "stock",
+        "support_authority": STOCK_AUTHORITY,
+        "support_state": "top500_manifest_supported",
+        "fetch_state": response.fetch_state.value,
+        "page_render_state": response.page_render_state.value,
+        "generated_output_eligible": response.generated_output_eligible,
+        "source_labels": sorted({source.source_label.value for source in response.sources}),
+        "source_count": len(response.sources),
+        "citation_count": len(response.citations),
+        "fact_count": len(response.facts),
+        "gap_count": len(response.gaps),
+        "official_source_count": int(response.diagnostics.get("official_source_count", 0) or 0),
+        "provider_fallback_source_count": provider_count,
+        "sec_attempt_state": _sec_attempt_state(response),
+        "provider_fallback_state": {
+            "attempted": bool(response.diagnostics.get("provider_fallback_attempted")),
+            "state": "used" if provider_count else "unavailable",
+            "source_count": provider_count,
+            "labels": [
+                source.source_label.value
+                for source in response.sources
+                if source.source_label.value == "provider_derived"
+            ],
+            "source_use_note": "provider_derived display fallback only; not official SEC evidence or source-pack approval",
+        },
+        "missing_evidence_gaps": [
+            {
+                "field_name": gap.field_name,
+                "evidence_state": gap.evidence_state.value,
+                "freshness_state": gap.freshness_state.value,
+                "message": str(gap.limitations or gap.value),
+            }
+            for gap in response.gaps
+        ],
+        "freshness": {
+            "page_last_updated_at": response.freshness.page_last_updated_at,
+            "facts_as_of": response.freshness.facts_as_of,
+            "holdings_as_of": response.freshness.holdings_as_of,
+            "freshness_state": response.freshness.freshness_state.value,
+        },
+        "payload_checksum": lightweight_payload_checksum(response),
+        "source_checksums": _source_checksums(response),
+        "raw_payload_exposed": response.raw_payload_exposed,
+        "no_live_external_calls": response.no_live_external_calls,
+        "fallback_diagnostics": response.fallback_diagnostics.model_dump(mode="json")
+        if response.fallback_diagnostics
+        else None,
+    }
+
+
+def _sec_attempt_state(response: Any) -> dict[str, Any]:
+    facts = {fact.field_name for fact in response.facts}
+    attempted = set(response.diagnostics.get("official_sources_attempted") or [])
+    errors = response.diagnostics.get("official_source_errors") or []
+    components = [
+        {
+            "component_id": "sec_company_identity",
+            "source": "sec_company_tickers_exchange",
+            "attempted": "sec_company_tickers_exchange" in attempted,
+            "state": "supported" if "sec_identity" in facts else "missing",
+        },
+        {
+            "component_id": "sec_submissions",
+            "source": "sec_submissions",
+            "attempted": "sec_submissions" in attempted,
+            "state": "supported" if "latest_sec_filing" in facts else "missing",
+        },
+        {
+            "component_id": "sec_xbrl_companyfacts",
+            "source": "sec_companyfacts",
+            "attempted": "sec_companyfacts" in attempted,
+            "state": "supported"
+            if {"latest_revenue_fact", "latest_net_income_fact", "latest_assets_fact"} & facts
+            else "missing",
+        },
+        {
+            "component_id": "sec_filing_evidence",
+            "source": "sec_submissions_or_filing_fixture",
+            "attempted": "sec_submissions" in attempted,
+            "state": "supported" if "latest_sec_filing" in facts else "missing",
+        },
+    ]
+    return {
+        "attempted": bool(attempted),
+        "state": "supported" if all(component["state"] == "supported" for component in components[:3]) else "partial",
+        "components": components,
+        "missing_components": [
+            component["component_id"] for component in components if component["state"] != "supported"
+        ],
+        "errors": errors,
+        "raw_payload_exposed": False,
+        "source_pack_status": "not_approved_by_smoke",
     }
 
 
@@ -337,6 +521,33 @@ def _current_supported_etf_failure_rows(rows: list[dict[str, Any]], recognition_
     for row in recognition_rows:
         if row["generated_output_eligible"] or any(row["surface_eligibility"].values()):
             failures.append(_failure_row(row, "recognition_row_unlocked_generated_output"))
+    return failures
+
+
+def _current_stock_failure_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    failures: list[dict[str, Any]] = []
+    for row in rows:
+        labels = set(row["source_labels"])
+        if row["support_authority"] != STOCK_AUTHORITY:
+            failures.append(_failure_row(row, "stock_row_wrong_runtime_authority"))
+        if row["fetch_state"] not in {
+            LightweightFetchState.supported.value,
+            LightweightFetchState.partial.value,
+            LightweightFetchState.unavailable.value,
+        }:
+            failures.append(_failure_row(row, "stock_row_unexpected_fetch_state"))
+        if row["fetch_state"] == LightweightFetchState.supported.value and row["sec_attempt_state"]["state"] != "supported":
+            failures.append(_failure_row(row, "stock_supported_without_sec_supported_state"))
+        if row["fetch_state"] == LightweightFetchState.partial.value and "provider_derived" not in labels:
+            failures.append(_failure_row(row, "stock_partial_missing_provider_derived_label"))
+        if row["provider_fallback_state"]["state"] == "used" and "provider_derived" not in labels:
+            failures.append(_failure_row(row, "stock_provider_fallback_used_without_label"))
+        if row["generated_output_eligible"] and not labels:
+            failures.append(_failure_row(row, "stock_generated_output_eligible_without_source_labels"))
+        if row["raw_payload_exposed"] or not row["no_live_external_calls"]:
+            failures.append(_failure_row(row, "stock_unsafe_payload_or_live_call_boundary"))
+        if not str(row["payload_checksum"]).startswith("sha256:"):
+            failures.append(_failure_row(row, "stock_payload_checksum_missing"))
     return failures
 
 
