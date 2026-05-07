@@ -16,6 +16,7 @@ if str(ROOT) not in sys.path:
 os.environ.setdefault("LTT_FORCE_COMPAT_FASTAPI", "1")
 
 from scripts.run_local_fresh_data_rehearsal import run_rehearsal
+from scripts.run_full_manifest_support_smoke import run_full_manifest_support_smoke
 
 
 SCHEMA_VERSION = "lightweight-mvp-readiness-gate-v1"
@@ -84,6 +85,7 @@ FORBIDDEN_VALUE_MARKERS = (
 
 def run_lightweight_mvp_readiness_gate(env: dict[str, str] | None = None, *, root: Path = ROOT) -> dict[str, Any]:
     rehearsal = run_rehearsal(env=env, root=root)
+    full_manifest_smoke = run_full_manifest_support_smoke(root=root)
     checks_by_id = {check["check_id"]: check for check in rehearsal.get("checks", [])}
     threshold = rehearsal.get("local_mvp_threshold_summary", {})
     slice_gate = rehearsal.get("lightweight_local_mvp_slice_manual_readiness_gate", {})
@@ -101,6 +103,14 @@ def run_lightweight_mvp_readiness_gate(env: dict[str, str] | None = None, *, roo
         threshold=threshold,
         slice_gate=slice_gate,
     )
+    if full_manifest_smoke.get("status") != "pass":
+        local_blockers.append(
+            {
+                "reason_code": "full_manifest_support_smoke_not_passed",
+                "smoke_reason_code": full_manifest_smoke.get("reason_code"),
+                "failure_rows": full_manifest_smoke.get("failure_rows", []),
+            }
+        )
     local_ready = not local_blockers
     status_counts = Counter(check["status"] for check in rehearsal.get("checks", []))
 
@@ -156,6 +166,7 @@ def run_lightweight_mvp_readiness_gate(env: dict[str, str] | None = None, *, roo
         "local_manual_review_blockers": local_blockers,
         "strict_public_launch_audit_only_gates": _build_strict_audit_only_gates(manual_gate),
         "readiness_summaries": _build_readiness_summaries(checks_by_id, threshold, slice_gate, manual_gate),
+        "full_manifest_support_smoke": _full_manifest_smoke_summary(full_manifest_smoke),
         "weekly_news_and_ai_boundaries": _build_weekly_news_ai_boundaries(checks_by_id),
         "unsupported_blocked_ticker_boundaries": _build_unsupported_blocked_ticker_boundaries(checks_by_id),
         "no_secret_diagnostics": _build_no_secret_diagnostics(checks_by_id, slice_gate, manual_gate),
@@ -374,6 +385,35 @@ def _build_readiness_summaries(
             "manual_slice_review_ready": slice_gate.get("manual_slice_review_ready"),
             "blocker_count": len(slice_gate.get("blockers", [])),
         },
+    }
+
+
+def _full_manifest_smoke_summary(smoke: dict[str, Any]) -> dict[str, Any]:
+    counts = smoke.get("counts", {})
+    return {
+        "schema_version": smoke.get("schema_version"),
+        "status": smoke.get("status"),
+        "reason_code": smoke.get("reason_code"),
+        "normal_ci_requires_live_calls": smoke.get("normal_ci_requires_live_calls"),
+        "live_provider_calls_attempted": smoke.get("live_provider_calls_attempted"),
+        "secret_values_reported": smoke.get("secret_values_reported"),
+        "manifest_paths": smoke.get("manifest_paths"),
+        "manifest_checksums": smoke.get("manifest_checksums"),
+        "total_rows": counts.get("total_rows"),
+        "stock_manifest_rows": counts.get("stock_manifest_rows"),
+        "supported_etf_manifest_rows": counts.get("supported_etf_manifest_rows"),
+        "recognition_manifest_rows": counts.get("recognition_manifest_rows"),
+        "supported_count": counts.get("supported_count"),
+        "partial_count": counts.get("partial_count"),
+        "pending_ingestion_count": counts.get("pending_ingestion_count"),
+        "unavailable_count": counts.get("unavailable_count"),
+        "blocked_count": counts.get("blocked_count"),
+        "recognition_only_count": counts.get("recognition_only_count"),
+        "generated_output_eligible_count": counts.get("generated_output_eligible_count"),
+        "generated_output_eligible_by_manifest": counts.get("generated_output_eligible_by_manifest"),
+        "recognition_rows_unlock_generated_output": smoke.get("recognition_rows_unlock_generated_output"),
+        "failure_count": smoke.get("failure_count"),
+        "failure_rows": smoke.get("failure_rows", []),
     }
 
 

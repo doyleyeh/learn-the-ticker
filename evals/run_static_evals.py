@@ -176,6 +176,14 @@ from scripts.run_lightweight_mvp_readiness_gate import (
     SCHEMA_VERSION as LIGHTWEIGHT_MVP_READINESS_GATE_SCHEMA_VERSION,
     run_lightweight_mvp_readiness_gate,
 )
+from scripts.run_full_manifest_support_smoke import (
+    GENERATED_SURFACES as FULL_MANIFEST_GENERATED_SURFACES,
+    RECOGNITION_ETF_AUTHORITY as FULL_MANIFEST_RECOGNITION_ETF_AUTHORITY,
+    SCHEMA_VERSION as FULL_MANIFEST_SUPPORT_SMOKE_SCHEMA_VERSION,
+    STOCK_AUTHORITY as FULL_MANIFEST_STOCK_AUTHORITY,
+    SUPPORTED_ETF_AUTHORITY as FULL_MANIFEST_SUPPORTED_ETF_AUTHORITY,
+    run_full_manifest_support_smoke,
+)
 
 
 client = TestClient(app)
@@ -2816,6 +2824,77 @@ def test_local_deployment_env_smoke_cases():
         assert forbidden not in serialized
 
 
+def test_full_manifest_support_smoke_cases():
+    smoke = run_full_manifest_support_smoke()
+    assert smoke["schema_version"] == FULL_MANIFEST_SUPPORT_SMOKE_SCHEMA_VERSION
+    assert smoke["status"] == "pass"
+    assert smoke["normal_ci_requires_live_calls"] is False
+    assert smoke["live_provider_calls_attempted"] is False
+    assert smoke["news_calls_attempted"] is False
+    assert smoke["market_data_calls_attempted"] is False
+    assert smoke["sec_calls_attempted"] is False
+    assert smoke["issuer_calls_attempted"] is False
+    assert smoke["exchange_calls_attempted"] is False
+    assert smoke["llm_calls_attempted"] is False
+    assert smoke["secret_values_reported"] is False
+    assert smoke["failure_count"] == 0
+    assert smoke["failure_rows"] == []
+    assert smoke["manifest_paths"] == {
+        "top500_stock": FULL_MANIFEST_STOCK_AUTHORITY,
+        "supported_etf": FULL_MANIFEST_SUPPORTED_ETF_AUTHORITY,
+        "etp_recognition": FULL_MANIFEST_RECOGNITION_ETF_AUTHORITY,
+    }
+    assert all(str(value).startswith("sha256:") for value in smoke["manifest_checksums"].values())
+    assert smoke["generated_surfaces"] == list(FULL_MANIFEST_GENERATED_SURFACES)
+    assert smoke["recognition_rows_unlock_generated_output"] is False
+
+    counts = smoke["counts"]
+    assert counts["stock_manifest_rows"] == len(load_top500_stock_universe_manifest().entries)
+    assert counts["supported_etf_manifest_rows"] >= 1
+    assert counts["recognition_manifest_rows"] >= 1
+    assert counts["recognition_only_count"] == counts["recognition_manifest_rows"]
+    assert counts["generated_output_eligible_by_manifest"] == {
+        "supported_etf": 2,
+        "top500_stock": 1,
+    }
+    assert counts["generated_output_eligible_count"] == 3
+    assert counts["pending_ingestion_count"] >= 1
+    assert counts["blocked_count"] >= 1
+    assert counts["unavailable_count"] >= 1
+    assert counts["partial_count"] == 0
+
+    recognition_rows = [row for row in smoke["rows"] if row["manifest_kind"] == "etp_recognition"]
+    assert recognition_rows
+    assert all(row["runtime_authority"] == FULL_MANIFEST_RECOGNITION_ETF_AUTHORITY for row in recognition_rows)
+    assert all(row["generated_output_eligible"] is False for row in recognition_rows)
+    assert all(all(value is False for value in row["surface_eligibility"].values()) for row in recognition_rows)
+
+    supported_etf_rows = [row for row in smoke["rows"] if row["manifest_kind"] == "supported_etf"]
+    assert supported_etf_rows
+    assert all(row["runtime_authority"] == FULL_MANIFEST_SUPPORTED_ETF_AUTHORITY for row in supported_etf_rows)
+    assert all(row["recognition_authority_used_for_generated_output"] is False for row in supported_etf_rows)
+
+    stock_rows = [row for row in smoke["rows"] if row["manifest_kind"] == "top500_stock"]
+    assert stock_rows
+    assert all(row["runtime_authority"] == FULL_MANIFEST_STOCK_AUTHORITY for row in stock_rows)
+
+    serialized = json.dumps(smoke, sort_keys=True)
+    for forbidden in [
+        "postgresql://",
+        "postgresql+psycopg://",
+        "Bearer ",
+        "Authorization:",
+        "BEGIN PRIVATE KEY",
+        "sk-",
+        "xoxb-",
+        "ghp_",
+        "raw provider payload",
+        "raw source text",
+        "raw model reasoning",
+    ]:
+        assert forbidden not in serialized
+
+
 def test_lightweight_mvp_readiness_gate_cases():
     gate = run_lightweight_mvp_readiness_gate(env={})
     assert gate["schema_version"] == LIGHTWEIGHT_MVP_READINESS_GATE_SCHEMA_VERSION
@@ -2835,6 +2914,19 @@ def test_lightweight_mvp_readiness_gate_cases():
     assert gate["manifests_promoted"] is False
     assert gate["generated_output_cache_promoted"] is False
     assert gate["rehearsal_integration"]["embedded_local_deployment_env_smoke_consumed"] is True
+    assert gate["full_manifest_support_smoke"]["status"] == "pass"
+    assert gate["full_manifest_support_smoke"]["normal_ci_requires_live_calls"] is False
+    assert gate["full_manifest_support_smoke"]["manifest_paths"] == {
+        "top500_stock": FULL_MANIFEST_STOCK_AUTHORITY,
+        "supported_etf": FULL_MANIFEST_SUPPORTED_ETF_AUTHORITY,
+        "etp_recognition": FULL_MANIFEST_RECOGNITION_ETF_AUTHORITY,
+    }
+    assert gate["full_manifest_support_smoke"]["recognition_rows_unlock_generated_output"] is False
+    assert gate["full_manifest_support_smoke"]["generated_output_eligible_by_manifest"] == {
+        "supported_etf": 2,
+        "top500_stock": 1,
+    }
+    assert gate["full_manifest_support_smoke"]["failure_count"] == 0
     assert gate["readiness_summaries"]["local_fresh_data_mvp_slice_smoke"]["status_counts"] == {
         "pass": 8,
         "partial": 0,
@@ -3000,5 +3092,6 @@ if __name__ == "__main__":
     test_market_news_cases()
     test_llm_provider_cases()
     test_local_deployment_env_smoke_cases()
+    test_full_manifest_support_smoke_cases()
     test_lightweight_mvp_readiness_gate_cases()
     print("Static evals passed.")
