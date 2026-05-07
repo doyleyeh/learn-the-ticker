@@ -206,7 +206,7 @@ Rate limits must be environment-configurable and enforced before expensive provi
 Runtime feature defaults:
 
 - `DATA_POLICY_MODE=lightweight`
-- `LIGHTWEIGHT_LIVE_FETCH_ENABLED=false` for CI and ordinary local tests; set to `true` only for operator local fresh-data smoke.
+- `LIGHTWEIGHT_LIVE_FETCH_ENABLED` defaults to `true` for local runtime/manual review outside CI and tests when unset; CI, pytest, and `env={}` settings remain no-live by default, and explicit env values still override.
 - `LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true`
 - `LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED=false`; set to `true` only for local MVP Weekly News metadata retrieval and deterministic fixture-backed tests.
 - `MARKET_NEWS_FETCH_ENABLED=false`; set to `true` only for explicit server-side Market News Focus live-source retrieval or deterministic fixture-backed tests.

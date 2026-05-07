@@ -281,8 +281,8 @@ def fetch_lightweight_asset_data(
             active_settings,
             reason_code="lightweight_live_fetch_disabled",
             message=(
-                "Fresh lightweight fetching is opt-in. Set LIGHTWEIGHT_LIVE_FETCH_ENABLED=true "
-                "or run the local smoke with --live."
+                "Fresh lightweight fetching is disabled for this runtime. Local runtime defaults enable it "
+                "outside CI/test unless LIGHTWEIGHT_LIVE_FETCH_ENABLED=false is set."
             ),
         )
 
