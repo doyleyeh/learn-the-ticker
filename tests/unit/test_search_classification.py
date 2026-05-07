@@ -393,6 +393,7 @@ def test_etf_issuer_source_pack_readiness_packet_is_supported_manifest_keyed_and
         "insufficient_evidence": 11,
         "blocked": 0,
         "source_backed_partial_rendering_ready": 2,
+        "local_lightweight_generated_surface_eligible": 13,
         "blocked_recognition_only": 9,
         "readiness_packet_unlocks_generated_output": 0,
     }
@@ -402,7 +403,12 @@ def test_etf_issuer_source_pack_readiness_packet_is_supported_manifest_keyed_and
 
     voo = supported_rows["VOO"]
     assert voo["source_pack_status"] == "partial"
+    assert voo["strict_source_pack_status"] == "partial"
     assert voo["source_backed_partial_rendering_ready"] is True
+    assert voo["local_lightweight_generated_surface_eligible"] is True
+    assert voo["fallback_source_tier"] == "official_issuer_provider_yahoo"
+    assert voo["human_review_required_for_lightweight"] is False
+    assert voo["strict_source_pack_blocks_local_lightweight"] is False
     assert voo["readiness_packet_unlocks_generated_output"] is False
     components = {component["component_id"]: component for component in voo["components"]}
     for component_id in [
@@ -433,13 +439,19 @@ def test_etf_issuer_source_pack_readiness_packet_is_supported_manifest_keyed_and
     spy = supported_rows["SPY"]
     assert spy["support_state"] == "eligible_not_cached"
     assert spy["source_pack_status"] == "insufficient_evidence"
+    assert spy["strict_source_pack_status"] == "insufficient_evidence"
     assert spy["source_backed_partial_rendering_ready"] is False
+    assert spy["local_lightweight_generated_surface_eligible"] is True
+    assert spy["fallback_source_tier"] == "provider_api_then_yahoo"
     assert all(component["citation_ready"] is False for component in spy["components"])
     assert all(component["golden_asset_source_handoff_status"] != "approved" for component in spy["components"])
 
     tqqq = recognition_rows["TQQQ"]
     assert tqqq["manifest_kind"] == "recognition_only"
     assert tqqq["source_pack_status"] == "blocked"
+    assert tqqq["strict_source_pack_status"] == "blocked"
+    assert tqqq["local_lightweight_generated_surface_eligible"] is False
+    assert tqqq["fallback_source_tier"] == "blocked_recognition_only"
     assert tqqq["authoritative_for_generated_output"] is False
     assert tqqq["generated_output_eligible"] is False
     assert tqqq["readiness_keyed_from_supported_manifest"] is False
@@ -543,6 +555,8 @@ def test_etf500_issuer_source_pack_batch_plan_groups_fixture_rows_without_unlock
         "source_pack_ready_count": 0,
         "source_pack_partial_count": 2,
         "source_pack_incomplete_count": 11,
+        "local_lightweight_generated_surface_eligible_count": 13,
+        "human_review_required_for_lightweight_count": 0,
         "blocked_generated_surface_count": 9,
     }
     batch_groups = {group["batch"]: group for group in plan["batch_groups"]}
@@ -583,6 +597,10 @@ def test_etf500_issuer_source_pack_batch_plan_groups_fixture_rows_without_unlock
     assert voo["batch_milestone"] == "ETF-50"
     assert "broad_core_us_equity_beta" in voo["category_buckets"]
     assert voo["source_pack_readiness_priority"] == "source_backed_partial_review"
+    assert voo["strict_source_pack_status"] == "partial"
+    assert voo["local_lightweight_generated_surface_eligible"] is True
+    assert voo["fallback_source_tier"] == "official_issuer_provider_yahoo"
+    assert voo["human_review_required_for_lightweight"] is False
     assert voo["plan_unlocks_generated_output"] is False
     assert voo["missing_required_components"] == []
     voo_components = {component["component_id"]: component for component in voo["required_issuer_source_components"]}
@@ -602,6 +620,8 @@ def test_etf500_issuer_source_pack_batch_plan_groups_fixture_rows_without_unlock
     spy = rows["SPY"]
     assert spy["source_pack_readiness_priority"] == "missing_required_issuer_sources"
     assert spy["support_review_state"] == "pending_ingestion_source_pack_incomplete"
+    assert spy["local_lightweight_generated_surface_eligible"] is True
+    assert spy["fallback_source_tier"] == "provider_api_then_yahoo"
     assert "issuer_page" in spy["missing_required_components"]
     assert "generated_output_cache_entries" in spy["blocked_generated_surfaces"]
     assert "generated_chat_answers" in spy["diagnostics"]["blocked_generated_surfaces"]

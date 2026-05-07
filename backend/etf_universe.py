@@ -678,6 +678,12 @@ def build_etf500_issuer_source_pack_batch_plan(
         "source_pack_incomplete_count": sum(
             1 for row in planned_rows if row["source_pack_readiness_priority"] == "missing_required_issuer_sources"
         ),
+        "local_lightweight_generated_surface_eligible_count": sum(
+            1 for row in planned_rows if row["local_lightweight_generated_surface_eligible"]
+        ),
+        "human_review_required_for_lightweight_count": sum(
+            1 for row in planned_rows if row["human_review_required_for_lightweight"]
+        ),
         "blocked_generated_surface_count": len(ETF_ISSUER_BLOCKED_GENERATED_SURFACES),
     }
     return {
@@ -777,6 +783,10 @@ def _etf_issuer_readiness_row(
         )
     source_pack_status = _etf_issuer_row_status(components)
     source_backed_partial_ready = _etf_issuer_source_backed_partial_ready(components)
+    local_lightweight_eligible = entry.support_state in {
+        ETFUniverseSupportState.cached_supported,
+        ETFUniverseSupportState.eligible_not_cached,
+    }
     return {
         "ticker": entry.ticker,
         "fund_name": entry.fund_name,
@@ -786,7 +796,15 @@ def _etf_issuer_readiness_row(
         "support_state": entry.support_state.value,
         "launch_cache_state": entry.launch_cache_state.value,
         "source_pack_status": source_pack_status,
+        "strict_source_pack_status": source_pack_status,
         "source_backed_partial_rendering_ready": source_backed_partial_ready,
+        "local_lightweight_generated_surface_eligible": local_lightweight_eligible,
+        "fallback_source_tier": _etf_lightweight_fallback_source_tier(
+            source_pack_status,
+            source_backed_partial_ready=source_backed_partial_ready,
+        ),
+        "human_review_required_for_lightweight": False,
+        "strict_source_pack_blocks_local_lightweight": False,
         "generated_output_eligible_from_manifest_cache": can_generate_output_for_etf_entry(entry),
         "readiness_packet_unlocks_generated_output": False,
         "source_pack_failures_unlock_generated_output": False,
@@ -805,6 +823,11 @@ def _etf_recognition_only_readiness_row(entry: ETFUniverseEntry) -> dict[str, ob
         "support_state": entry.support_state.value,
         "launch_cache_state": entry.launch_cache_state.value,
         "source_pack_status": "blocked",
+        "strict_source_pack_status": "blocked",
+        "local_lightweight_generated_surface_eligible": False,
+        "fallback_source_tier": "blocked_recognition_only",
+        "human_review_required_for_lightweight": False,
+        "strict_source_pack_blocks_local_lightweight": False,
         "authoritative_for_generated_output": False,
         "generated_output_eligible": False,
         "readiness_keyed_from_supported_manifest": False,
@@ -829,6 +852,18 @@ def _etf_issuer_components_for_fixture(
         )
         for component in ETF_ISSUER_SOURCE_COMPONENTS
     ]
+
+
+def _etf_lightweight_fallback_source_tier(
+    source_pack_status: str,
+    *,
+    source_backed_partial_ready: bool,
+) -> str:
+    if source_pack_status == "pass":
+        return "official_issuer"
+    if source_backed_partial_ready:
+        return "official_issuer_provider_yahoo"
+    return "provider_api_then_yahoo"
 
 
 def _etf_issuer_component_from_fixture(
@@ -1086,6 +1121,9 @@ def _etf_issuer_readiness_counts(
         "source_backed_partial_rendering_ready": sum(
             1 for row in supported_rows if row["source_backed_partial_rendering_ready"]
         ),
+        "local_lightweight_generated_surface_eligible": sum(
+            1 for row in supported_rows if row.get("local_lightweight_generated_surface_eligible")
+        ),
         "blocked_recognition_only": sum(1 for row in recognition_rows if row["source_pack_status"] == "blocked"),
         "readiness_packet_unlocks_generated_output": sum(
             1 for row in supported_rows if row["readiness_packet_unlocks_generated_output"]
@@ -1153,8 +1191,13 @@ def _etf500_source_pack_planning_row(
         "launch_cache_state": row["launch_cache_state"],
         "support_review_state": support_review_state,
         "source_pack_status": source_pack_status,
+        "strict_source_pack_status": row.get("strict_source_pack_status", source_pack_status),
         "source_pack_readiness_priority": readiness_priority,
         "source_backed_partial_rendering_ready": row["source_backed_partial_rendering_ready"],
+        "local_lightweight_generated_surface_eligible": row.get("local_lightweight_generated_surface_eligible", False),
+        "fallback_source_tier": row.get("fallback_source_tier", "provider_api_then_yahoo"),
+        "human_review_required_for_lightweight": False,
+        "strict_source_pack_blocks_local_lightweight": False,
         "generated_output_eligible_from_manifest_cache": row["generated_output_eligible_from_manifest_cache"],
         "plan_unlocks_generated_output": False,
         "missing_required_components": missing_required,
@@ -1175,6 +1218,11 @@ def _etf500_source_pack_planning_row(
             },
             "golden_asset_source_handoff_action": "review_or_confirm_handoff_before_evidence_use",
             "plan_approves_sources": False,
+            "local_lightweight_runtime_can_use_fallback": bool(
+                row.get("local_lightweight_generated_surface_eligible", False)
+            ),
+            "strict_source_pack_status": row.get("strict_source_pack_status", source_pack_status),
+            "fallback_source_tier": row.get("fallback_source_tier", "provider_api_then_yahoo"),
             "blocked_generated_surfaces": list(ETF_ISSUER_BLOCKED_GENERATED_SURFACES)
             if support_review_state != "source_pack_ready"
             else [],

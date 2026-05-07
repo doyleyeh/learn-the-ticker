@@ -52,6 +52,7 @@ from backend.models import (
     CacheEntryKind,
     CacheScope,
     Freshness,
+    OverviewResponse,
 )
 from backend.data import ELIGIBLE_NOT_CACHED_ASSETS, OUT_OF_SCOPE_COMMON_STOCKS
 from backend.generated_output_cache_repository import (
@@ -181,11 +182,17 @@ def generate_comparison(
     right_pack = build_asset_knowledge_pack(right_ticker)
 
     if not left_pack.asset.supported or not right_pack.asset.supported:
+        lightweight_comparison = _generate_lightweight_comparison_if_available(left_ticker, right_ticker)
+        if lightweight_comparison is not None:
+            return lightweight_comparison
         return _unavailable_comparison(left_pack, right_pack)
 
     try:
         pack = build_comparison_knowledge_pack(left_ticker, right_ticker)
     except RetrievalFixtureError:
+        lightweight_comparison = _generate_lightweight_comparison_if_available(left_ticker, right_ticker)
+        if lightweight_comparison is not None:
+            return lightweight_comparison
         return _unavailable_comparison(
             left_pack,
             right_pack,
@@ -299,6 +306,421 @@ def read_persisted_comparison_response(
         comparison=comparison,
         diagnostics=("comparison:persisted_hit",),
     )
+
+
+def _generate_lightweight_comparison_if_available(left_ticker: str, right_ticker: str) -> CompareResponse | None:
+    from backend.lightweight_page import build_lightweight_overview_response_if_enabled
+
+    left = build_lightweight_overview_response_if_enabled(left_ticker)
+    right = build_lightweight_overview_response_if_enabled(right_ticker)
+    if left is None or right is None:
+        return None
+    if not left.asset.supported or not right.asset.supported:
+        return None
+    if not left.citations or not right.citations or not left.source_documents or not right.source_documents:
+        return None
+
+    left_citation = _first_lightweight_citation(left)
+    right_citation = _first_lightweight_citation(right)
+    if left_citation is None or right_citation is None:
+        return None
+
+    citation_ids = [left_citation.citation_id, right_citation.citation_id]
+    citations = _dedupe_citations([left_citation, right_citation])
+    source_documents = _dedupe_source_documents(
+        [
+            *_source_documents_for_citations(left, [left_citation.citation_id]),
+            *_source_documents_for_citations(right, [right_citation.citation_id]),
+        ]
+    )
+    comparison_type = _lightweight_comparison_type(left, right)
+    key_differences = _lightweight_key_differences(left, right, citation_ids, comparison_type)
+    bottom_line = BeginnerBottomLine(
+        summary=(
+            f"{left.asset.ticker} and {right.asset.ticker} are shown as a local lightweight comparison using "
+            "normalized, source-labeled evidence. Official sources are preferred when available; provider or "
+            "Yahoo-style fallback stays labeled as non-official context."
+        ),
+        citation_ids=citation_ids,
+    )
+    response = CompareResponse(
+        left_asset=left.asset,
+        right_asset=right.asset,
+        state=StateMessage(
+            status=AssetStatus.supported,
+            message=(
+                "Comparison is supported by local lightweight runtime evidence with official-first/provider/Yahoo "
+                "fallback labels; strict source-pack approval and cache promotion are not implied."
+            ),
+        ),
+        comparison_type=comparison_type,
+        key_differences=key_differences,
+        bottom_line_for_beginners=bottom_line,
+        citations=citations,
+        source_documents=source_documents,
+        metric_groups=_lightweight_comparison_metric_groups(left, right, citation_ids),
+    )
+    response.evidence_availability = _lightweight_evidence_availability(
+        response=response,
+        left=left,
+        right=right,
+        used_citation_ids=citation_ids,
+    )
+    _assert_safe_copy(response)
+    return response
+
+
+def _first_lightweight_citation(overview: OverviewResponse) -> Citation | None:
+    source_ids = {source.source_document_id for source in overview.source_documents}
+    for citation in overview.citations:
+        if citation.source_document_id in source_ids:
+            return citation
+    return None
+
+
+def _lightweight_comparison_type(left: OverviewResponse, right: OverviewResponse) -> str:
+    asset_types = {left.asset.asset_type, right.asset.asset_type}
+    if asset_types == {AssetType.stock, AssetType.etf}:
+        return "stock_vs_etf"
+    return f"{left.asset.asset_type.value}_vs_{right.asset.asset_type.value}"
+
+
+def _lightweight_key_differences(
+    left: OverviewResponse,
+    right: OverviewResponse,
+    citation_ids: list[str],
+    comparison_type: str,
+) -> list[KeyDifference]:
+    left_kind = _lightweight_asset_kind(left)
+    right_kind = _lightweight_asset_kind(right)
+    left_tier = _lightweight_source_tier(left)
+    right_tier = _lightweight_source_tier(right)
+    return [
+        KeyDifference(
+            dimension="Structure",
+            plain_english_summary=(
+                f"{left.asset.ticker} is shown as {left_kind}, while {right.asset.ticker} is shown as {right_kind} "
+                f"in this {comparison_type.replace('_', ' ')} learning view."
+            ),
+            citation_ids=citation_ids,
+        ),
+        KeyDifference(
+            dimension="Source basis",
+            plain_english_summary=(
+                f"{left.asset.ticker} currently uses {left_tier} evidence and {right.asset.ticker} currently uses "
+                f"{right_tier} evidence; fallback sources are labeled rather than treated as official."
+            ),
+            citation_ids=citation_ids,
+        ),
+        KeyDifference(
+            dimension="Freshness",
+            plain_english_summary=(
+                f"{left.asset.ticker} facts are dated {left.freshness.facts_as_of or 'unknown'}, and "
+                f"{right.asset.ticker} facts are dated {right.freshness.facts_as_of or 'unknown'} in the local "
+                "runtime response."
+            ),
+            citation_ids=citation_ids,
+        ),
+        KeyDifference(
+            dimension="Educational role",
+            plain_english_summary=(
+                "This comparison keeps source-labeled facts separate from strict audit approval and generated-output "
+                "cache promotion, so missing official components do not hide renderable local evidence."
+            ),
+            citation_ids=citation_ids,
+        ),
+    ]
+
+
+def _lightweight_asset_kind(overview: OverviewResponse) -> str:
+    if overview.asset.asset_type is AssetType.stock:
+        return "one U.S.-listed company"
+    if overview.asset.asset_type is AssetType.etf:
+        return "a U.S.-listed ETF basket"
+    return "an asset outside the generated comparison scope"
+
+
+def _lightweight_source_tier(overview: OverviewResponse) -> str:
+    diagnostics = overview.fallback_diagnostics
+    if diagnostics is None:
+        return "source-labeled lightweight"
+    labels = {str(label.value if hasattr(label, "value") else label) for label in diagnostics.source_labels}
+    if "official" in labels and "provider_derived" in labels:
+        return "official plus provider/Yahoo fallback"
+    if "official" in labels:
+        return "official"
+    if "provider_derived" in labels:
+        return "provider/Yahoo fallback"
+    return "partial lightweight"
+
+
+def _lightweight_comparison_metric_groups(
+    left: OverviewResponse,
+    right: OverviewResponse,
+    citation_ids: list[str],
+) -> list[ComparisonMetricGroup]:
+    source_document_ids = _source_document_ids_for_lightweight_citations([left, right], citation_ids)
+    rows = [
+        ComparisonMetricRow(
+            metric_id="asset_type",
+            label="Asset type",
+            left_value=left.asset.asset_type.value,
+            right_value=right.asset.asset_type.value,
+            citation_ids=citation_ids,
+            source_document_ids=source_document_ids,
+            freshness_state=_combined_freshness([left.freshness.freshness_state, right.freshness.freshness_state]),
+            evidence_state=EvidenceState.supported,
+        ),
+        ComparisonMetricRow(
+            metric_id="source_tier",
+            label="Source tier",
+            left_value=_lightweight_source_tier(left),
+            right_value=_lightweight_source_tier(right),
+            citation_ids=citation_ids,
+            source_document_ids=source_document_ids,
+            freshness_state=_combined_freshness([left.freshness.freshness_state, right.freshness.freshness_state]),
+            evidence_state=EvidenceState.partial,
+            limitations="Provider/Yahoo fallback is local display evidence, not strict/audit source-pack approval.",
+        ),
+        ComparisonMetricRow(
+            metric_id="facts_as_of",
+            label="Facts as of",
+            left_value=left.freshness.facts_as_of or "Unknown",
+            right_value=right.freshness.facts_as_of or "Unknown",
+            citation_ids=citation_ids,
+            source_document_ids=source_document_ids,
+            freshness_state=_combined_freshness([left.freshness.freshness_state, right.freshness.freshness_state]),
+            evidence_state=EvidenceState.partial,
+        ),
+    ]
+    return [
+        ComparisonMetricGroup(
+            group_id="lightweight_runtime_evidence",
+            title="Lightweight Runtime Evidence",
+            rows=rows,
+            citation_ids=citation_ids,
+            source_document_ids=source_document_ids,
+            freshness_state=_combined_freshness([row.freshness_state for row in rows]),
+            evidence_state=EvidenceState.partial,
+            limitations="Strict source-pack approval and generated-output cache promotion remain separate.",
+        )
+    ]
+
+
+def _lightweight_evidence_availability(
+    *,
+    response: CompareResponse,
+    left: OverviewResponse,
+    right: OverviewResponse,
+    used_citation_ids: list[str],
+) -> ComparisonEvidenceAvailability:
+    source_documents = _dedupe_source_documents([*left.source_documents, *right.source_documents])
+    source_by_id = {source.source_document_id: source for source in source_documents}
+    citation_by_id = {
+        citation.citation_id: citation
+        for citation in _dedupe_citations([*left.citations, *right.citations])
+        if citation.citation_id in set(used_citation_ids)
+    }
+    source_ids = sorted(
+        {
+            citation.source_document_id
+            for citation in citation_by_id.values()
+            if citation.source_document_id in source_by_id
+        }
+    )
+    dimensions = [
+        ComparisonEvidenceDimension(
+            dimension=dimension,
+            availability_state=ComparisonEvidenceAvailabilityState.available,
+            evidence_state=EvidenceState.partial if dimension != "Structure" else EvidenceState.supported,
+            freshness_state=_combined_freshness([left.freshness.freshness_state, right.freshness.freshness_state]),
+            left_evidence_item_ids=[],
+            right_evidence_item_ids=[],
+            shared_evidence_item_ids=[],
+            citation_ids=used_citation_ids,
+            source_document_ids=source_ids,
+            generated_claim_ids=[f"claim_comparison_{_claim_slug(dimension)}"],
+        )
+        for dimension in [difference.dimension for difference in response.key_differences]
+    ]
+    claim_bindings = [
+        ComparisonEvidenceClaimBinding(
+            claim_id=f"claim_comparison_{_claim_slug(difference.dimension)}",
+            claim_kind="key_difference",
+            dimension=difference.dimension,
+            side_role=ComparisonEvidenceSideRole.shared_comparison_support,
+            citation_ids=difference.citation_ids,
+            source_document_ids=_source_document_ids_for_lightweight_citations([left, right], difference.citation_ids),
+            evidence_item_ids=[],
+            availability_state=ComparisonEvidenceAvailabilityState.available,
+        )
+        for difference in response.key_differences
+    ]
+    if response.bottom_line_for_beginners is not None:
+        claim_bindings.append(
+            ComparisonEvidenceClaimBinding(
+                claim_id="claim_comparison_bottom_line",
+                claim_kind="beginner_bottom_line",
+                dimension="Beginner bottom line",
+                side_role=ComparisonEvidenceSideRole.shared_comparison_support,
+                citation_ids=response.bottom_line_for_beginners.citation_ids,
+                source_document_ids=_source_document_ids_for_lightweight_citations(
+                    [left, right],
+                    response.bottom_line_for_beginners.citation_ids,
+                ),
+                evidence_item_ids=[],
+                availability_state=ComparisonEvidenceAvailabilityState.available,
+            )
+        )
+
+    citation_bindings: list[ComparisonEvidenceCitationBinding] = []
+    for claim in claim_bindings:
+        citation_bindings.extend(
+            _lightweight_citation_bindings_for_claim(
+                claim=claim,
+                citation_by_id=citation_by_id,
+                source_by_id=source_by_id,
+                left_ticker=left.asset.ticker,
+                right_ticker=right.asset.ticker,
+            )
+        )
+
+    return ComparisonEvidenceAvailability(
+        comparison_id=_comparison_id(left.asset.ticker, right.asset.ticker),
+        comparison_type=response.comparison_type,
+        left_asset=left.asset,
+        right_asset=right.asset,
+        availability_state=ComparisonEvidenceAvailabilityState.available,
+        required_dimensions=[dimension.dimension for dimension in dimensions],
+        required_evidence_dimensions=dimensions,
+        evidence_items=[],
+        claim_bindings=claim_bindings,
+        citation_bindings=sorted(citation_bindings, key=lambda item: item.binding_id),
+        source_references=[
+            _source_reference_from_document(
+                source_by_id[source_id],
+                asset_ticker=_asset_ticker_for_lightweight_source_id(
+                    source_id,
+                    left_ticker=left.asset.ticker,
+                    right_ticker=right.asset.ticker,
+                ),
+            )
+            for source_id in source_ids
+        ],
+        diagnostics=ComparisonEvidenceDiagnostics(
+            no_live_external_calls=False,
+            live_provider_calls_attempted=True,
+            generated_comparison_available=True,
+            unavailable_reasons=[],
+        ),
+    )
+
+
+def _lightweight_citation_bindings_for_claim(
+    *,
+    claim: ComparisonEvidenceClaimBinding,
+    citation_by_id: dict[str, Citation],
+    source_by_id: dict[str, SourceDocument],
+    left_ticker: str,
+    right_ticker: str,
+) -> list[ComparisonEvidenceCitationBinding]:
+    bindings: list[ComparisonEvidenceCitationBinding] = []
+    for citation_id in claim.citation_ids:
+        citation = citation_by_id.get(citation_id)
+        if citation is None:
+            continue
+        source = source_by_id.get(citation.source_document_id)
+        if source is None:
+            continue
+        asset_ticker = _asset_ticker_for_lightweight_source_id(
+            source.source_document_id,
+            left_ticker=left_ticker,
+            right_ticker=right_ticker,
+        )
+        bindings.append(
+            ComparisonEvidenceCitationBinding(
+                binding_id=f"lw_{claim.claim_id}_{citation_id}",
+                claim_id=claim.claim_id,
+                dimension=claim.dimension,
+                citation_id=citation_id,
+                source_document_id=source.source_document_id,
+                asset_ticker=asset_ticker,
+                side_role=_side_role_for_asset(asset_ticker, left_ticker, right_ticker),
+                freshness_state=citation.freshness_state,
+                source_quality=source.source_quality,
+                allowlist_status=source.allowlist_status,
+                source_use_policy=source.source_use_policy,
+                permitted_operations=source.permitted_operations,
+                supports_generated_claim=(
+                    source.permitted_operations.can_support_generated_output
+                    and source.permitted_operations.can_support_citations
+                ),
+            )
+        )
+    return bindings
+
+
+def _source_reference_from_document(source: SourceDocument, *, asset_ticker: str) -> ComparisonEvidenceSourceReference:
+    return ComparisonEvidenceSourceReference(
+        source_document_id=source.source_document_id,
+        asset_ticker=asset_ticker,
+        source_type=source.source_type,
+        title=source.title,
+        publisher=source.publisher,
+        url=source.url,
+        published_at=source.published_at,
+        as_of_date=source.as_of_date,
+        retrieved_at=source.retrieved_at,
+        freshness_state=source.freshness_state,
+        is_official=source.is_official,
+        source_quality=source.source_quality,
+        allowlist_status=source.allowlist_status,
+        source_use_policy=source.source_use_policy,
+        permitted_operations=source.permitted_operations,
+    )
+
+
+def _source_documents_for_citations(overview: OverviewResponse, citation_ids: list[str]) -> list[SourceDocument]:
+    source_ids = {
+        citation.source_document_id
+        for citation in overview.citations
+        if citation.citation_id in set(citation_ids)
+    }
+    return [source for source in overview.source_documents if source.source_document_id in source_ids]
+
+
+def _source_document_ids_for_lightweight_citations(
+    overviews: list[OverviewResponse],
+    citation_ids: list[str],
+) -> list[str]:
+    ids: list[str] = []
+    wanted = set(citation_ids)
+    for overview in overviews:
+        ids.extend(citation.source_document_id for citation in overview.citations if citation.citation_id in wanted)
+    return sorted(dict.fromkeys(ids))
+
+
+def _dedupe_citations(citations: list[Citation]) -> list[Citation]:
+    deduped: dict[str, Citation] = {}
+    for citation in citations:
+        deduped.setdefault(citation.citation_id, citation)
+    return list(deduped.values())
+
+
+def _dedupe_source_documents(sources: list[SourceDocument]) -> list[SourceDocument]:
+    deduped: dict[str, SourceDocument] = {}
+    for source in sources:
+        deduped.setdefault(source.source_document_id, source)
+    return list(deduped.values())
+
+
+def _asset_ticker_for_lightweight_source_id(source_document_id: str, *, left_ticker: str, right_ticker: str) -> str:
+    normalized = source_document_id.upper()
+    if left_ticker.upper() in normalized:
+        return left_ticker
+    if right_ticker.upper() in normalized:
+        return right_ticker
+    return left_ticker
 
 
 @dataclass(frozen=True)

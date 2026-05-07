@@ -1635,15 +1635,18 @@ def _try_configured_provider_api_fallback(
     fetcher: JsonFetcher,
     retrieved_at: str,
 ) -> tuple[dict[str, Any] | None, list[LightweightFetchSource], list[LightweightFetchFact], list[dict[str, str]], dict[str, Any]]:
-    diagnostics: dict[str, Any] = {"provider_api_attempted": True, "provider_api_skipped": []}
+    diagnostics: dict[str, Any] = {
+        "provider_api_attempted": True,
+        "provider_api_skipped": [],
+        "provider_api_source_use_reviewed": settings.provider_source_use_reviewed,
+        "provider_api_strict_audit_approved": settings.provider_source_use_reviewed,
+        "provider_api_lightweight_display_allowed_without_review": not settings.provider_source_use_reviewed,
+    }
     if provider not in LIGHTWEIGHT_PROVIDER_API_ADAPTERS:
         diagnostics["provider_api_skipped"].append({"provider": provider, "reason": "adapter_unknown"})
         return None, [], [], [], diagnostics
     if not settings.provider_credentials_configured.get(provider):
         diagnostics["provider_api_skipped"].append({"provider": provider, "reason": "credential_not_configured"})
-        return None, [], [], [], diagnostics
-    if not settings.provider_source_use_reviewed:
-        diagnostics["provider_api_skipped"].append({"provider": provider, "reason": "source_use_not_reviewed"})
         return None, [], [], [], diagnostics
     if provider != "alpha_vantage":
         return _try_reviewed_provider_api_fallback(provider, ticker, settings, fetcher, retrieved_at)
@@ -1659,7 +1662,13 @@ def _try_reviewed_provider_api_fallback(
 ) -> tuple[dict[str, Any] | None, list[LightweightFetchSource], list[LightweightFetchFact], list[dict[str, str]], dict[str, Any]]:
     credential = settings.credential_for(provider)
     if not credential:
-        return None, [], [], [], {"provider_api_attempted": True, "provider_api_skipped": [{"provider": provider, "reason": "credential_not_configured"}]}
+        return None, [], [], [], {
+            "provider_api_attempted": True,
+            "provider_api_skipped": [{"provider": provider, "reason": "credential_not_configured"}],
+            "provider_api_source_use_reviewed": settings.provider_source_use_reviewed,
+            "provider_api_strict_audit_approved": settings.provider_source_use_reviewed,
+            "provider_api_lightweight_display_allowed_without_review": not settings.provider_source_use_reviewed,
+        }
 
     errors: list[dict[str, str]] = []
     payloads: dict[str, Any] = {}
@@ -1678,6 +1687,9 @@ def _try_reviewed_provider_api_fallback(
         return None, [], [], errors, {
             "provider_api_attempted": True,
             "provider_api_skipped": [],
+            "provider_api_source_use_reviewed": settings.provider_source_use_reviewed,
+            "provider_api_strict_audit_approved": settings.provider_source_use_reviewed,
+            "provider_api_lightweight_display_allowed_without_review": not settings.provider_source_use_reviewed,
             f"{provider}_fact_count": 0,
             f"{provider}_raw_payload_exposed": False,
         }
@@ -1687,6 +1699,9 @@ def _try_reviewed_provider_api_fallback(
     return normalized, [source] if facts else [], facts, errors, {
         "provider_api_attempted": True,
         "provider_api_skipped": [],
+        "provider_api_source_use_reviewed": settings.provider_source_use_reviewed,
+        "provider_api_strict_audit_approved": settings.provider_source_use_reviewed,
+        "provider_api_lightweight_display_allowed_without_review": not settings.provider_source_use_reviewed,
         f"{provider}_fact_count": len(facts),
         f"{provider}_raw_payload_exposed": False,
         f"{provider}_adapter_boundary": "lightweight-provider-api-adapter-v1",
@@ -2001,7 +2016,13 @@ def _try_alpha_vantage_provider_fallback(
 ) -> tuple[dict[str, Any] | None, list[LightweightFetchSource], list[LightweightFetchFact], list[dict[str, str]], dict[str, Any]]:
     credential = settings.credential_for("alpha_vantage")
     if not credential:
-        return None, [], [], [], {"provider_api_attempted": True, "provider_api_skipped": [{"provider": "alpha_vantage", "reason": "credential_not_configured"}]}
+        return None, [], [], [], {
+            "provider_api_attempted": True,
+            "provider_api_skipped": [{"provider": "alpha_vantage", "reason": "credential_not_configured"}],
+            "provider_api_source_use_reviewed": settings.provider_source_use_reviewed,
+            "provider_api_strict_audit_approved": settings.provider_source_use_reviewed,
+            "provider_api_lightweight_display_allowed_without_review": not settings.provider_source_use_reviewed,
+        }
 
     errors: list[dict[str, str]] = []
     overview: dict[str, Any] = {}
@@ -2030,6 +2051,9 @@ def _try_alpha_vantage_provider_fallback(
         return None, [], [], errors, {
             "provider_api_attempted": True,
             "provider_api_skipped": [],
+            "provider_api_source_use_reviewed": settings.provider_source_use_reviewed,
+            "provider_api_strict_audit_approved": settings.provider_source_use_reviewed,
+            "provider_api_lightweight_display_allowed_without_review": not settings.provider_source_use_reviewed,
             "alpha_vantage_fact_count": 0,
             "alpha_vantage_raw_payload_exposed": False,
         }
@@ -2126,6 +2150,9 @@ def _try_alpha_vantage_provider_fallback(
     return normalized, [source] if facts else [], facts, errors, {
         "provider_api_attempted": True,
         "provider_api_skipped": [],
+        "provider_api_source_use_reviewed": settings.provider_source_use_reviewed,
+        "provider_api_strict_audit_approved": settings.provider_source_use_reviewed,
+        "provider_api_lightweight_display_allowed_without_review": not settings.provider_source_use_reviewed,
         "alpha_vantage_fact_count": len(facts),
         "alpha_vantage_raw_payload_exposed": False,
     }

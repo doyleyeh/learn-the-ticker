@@ -8,6 +8,22 @@ No backlog tasks are currently prepared.
 
 ## Completed
 
+### T-181: ETF/Stock lightweight source-pack fallback unlock
+
+Goal:
+Separate local lightweight generated-surface eligibility from strict/audit source-pack approval so current manifest stocks and supported ETF rows can render with official-first, provider API, then Yahoo/yfinance-style fallback evidence without waiting on human review.
+
+Completion details:
+- Configured provider API adapters now run in local lightweight mode even when `LIGHTWEIGHT_PROVIDER_SOURCE_USE_REVIEWED=false`; diagnostics mark that provider data is allowed for lightweight display but not strict/audit approved.
+- ETF issuer and Top-500 SEC readiness packets now report `local_lightweight_generated_surface_eligible`, `fallback_source_tier`, `human_review_required_for_lightweight=false`, `strict_source_pack_status`, and `strict_source_pack_blocks_local_lightweight=false`.
+- Lightweight comparison fallback can unlock renderable current-manifest pairs when no deterministic comparison pack exists, while unsupported, out-of-scope, recognition-only, complex, and unknown rows remain blocked.
+- The local fresh-data rehearsal now reports strict source-pack, parser, handoff, checksum, ingestion, and cache-promotion blockers as `strict_audit_stop_conditions` instead of local lightweight stop conditions.
+- Docs now clarify that human review and source-pack approval are strict/audit hardening, not blockers for citation-safe local lightweight display.
+
+Remaining risks:
+- Provider/Yahoo fallback remains non-official and non-cache-promotable.
+- Generated-output cache promotion, manifest promotion, ETF-500 expansion, Top-500 expansion, legal/licensing review, and production deployment hardening remain separate future work.
+
 ### T-180: Complete current stock-list live fetch pipeline before Top-500 expansion
 
 Goal:

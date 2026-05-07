@@ -115,8 +115,6 @@ SLICE_PARITY_COMPARISON_PAIRS = (
     ("AAPL", "MSFT", "stock_vs_stock"),
 )
 SLICE_PARITY_UNAVAILABLE_COMPARISON_CASES = (
-    ("VOO", "SPY", "eligible_not_cached"),
-    ("SPY", "VTI", "eligible_not_cached"),
     ("VOO", "TQQQ", "unsupported"),
     ("AAPL", "TQQQ", "unsupported"),
 )
@@ -373,7 +371,6 @@ def _check_governed_golden_api_rendering() -> RehearsalCheck:
     blocked_searches = {
         "unsupported": unsupported,
         "out_of_scope": out_of_scope,
-        "pending_ingestion": pending_ingestion,
         "unknown": unknown,
     }
     for label, payload in blocked_searches.items():
@@ -385,10 +382,43 @@ def _check_governed_golden_api_rendering() -> RehearsalCheck:
                 {"case_id": label, "ticker": result["ticker"]},
             )
 
+    pending_result = pending_ingestion["results"][0]
+    lightweight_settings = build_lightweight_data_settings()
+    blocked_search_case_ids = sorted(blocked_searches)
+    if lightweight_settings.can_fetch_fresh_data:
+        if (
+            not pending_result["can_open_generated_page"]
+            or not pending_result["can_answer_chat"]
+            or not pending_result["can_compare"]
+        ):
+            return _blocked(
+                "governed_golden_api_rendering",
+                "current_manifest_lightweight_fallback_not_unlocked",
+                {
+                    "case_id": "current_manifest_not_cached",
+                    "ticker": pending_result["ticker"],
+                    "support_classification": pending_result["support_classification"],
+                },
+            )
+        if not pending_result.get("fallback_diagnostics"):
+            return _blocked(
+                "governed_golden_api_rendering",
+                "current_manifest_fallback_diagnostics_missing",
+                {"case_id": "current_manifest_not_cached", "ticker": pending_result["ticker"]},
+            )
+    elif pending_result["can_open_generated_page"] or pending_result["can_answer_chat"] or pending_result["can_compare"]:
+        return _blocked(
+            "governed_golden_api_rendering",
+            "no_live_fixture_boundary_unlocked_pending_ingestion",
+            {"case_id": "current_manifest_not_cached", "ticker": pending_result["ticker"]},
+        )
+    else:
+        blocked_search_case_ids.append("pending_ingestion")
+
     exports = [asset_export, source_export, comparison_export, chat_export]
     if any(export["export_state"] != "available" for export in exports):
         return _blocked("governed_golden_api_rendering", "governed_export_unavailable")
-    serialized_exports = json.dumps(exports, sort_keys=True).lower()
+    forbidden_export_hits = _serialized_forbidden_marker_hits(exports)
     for forbidden in [
         "raw_model_reasoning",
         "hidden_prompt",
@@ -396,7 +426,7 @@ def _check_governed_golden_api_rendering() -> RehearsalCheck:
         "raw_transcript",
         "secret_value",
     ]:
-        if forbidden in serialized_exports:
+        if forbidden in forbidden_export_hits:
             return _blocked("governed_golden_api_rendering", "restricted_export_payload_detected", {"marker": forbidden})
 
     if overview["weekly_news_focus"]["selected_item_count"] != 1:
@@ -411,7 +441,10 @@ def _check_governed_golden_api_rendering() -> RehearsalCheck:
         return _blocked("governed_golden_api_rendering", "source_drawer_not_available")
     if any(group["allowlist_status"] != "allowed" for group in sources["source_groups"]):
         return _blocked("governed_golden_api_rendering", "source_drawer_unapproved_source_visible")
-    if any(not group["allowed_excerpts"] for group in sources["source_groups"]):
+    if any(
+        (group.get("permitted_operations") or {}).get("can_display_excerpt") and not group["allowed_excerpts"]
+        for group in sources["source_groups"]
+    ):
         return _blocked("governed_golden_api_rendering", "source_drawer_allowed_excerpt_missing")
     if comparison["evidence_availability"]["availability_state"] != "available":
         return _blocked("governed_golden_api_rendering", "comparison_evidence_unavailable")
@@ -426,7 +459,10 @@ def _check_governed_golden_api_rendering() -> RehearsalCheck:
             "ai_analysis_minimum_weekly_items": overview["ai_comprehensive_analysis"][
                 "minimum_weekly_news_item_count"
             ],
-            "blocked_search_cases": sorted(blocked_searches),
+            "blocked_search_cases": sorted(blocked_search_case_ids),
+            "local_lightweight_supported_search_cases": (
+                ["current_manifest_not_cached"] if lightweight_settings.can_fetch_fresh_data else []
+            ),
             "export_surfaces": ["asset", "source_list", "comparison", "chat"],
         },
     )
@@ -589,8 +625,21 @@ def _check_local_fresh_data_mvp_slice_comparison_export_parity() -> RehearsalChe
                 }
             )
 
+    lightweight_settings = build_lightweight_data_settings()
+    comparison_pairs = list(SLICE_PARITY_COMPARISON_PAIRS)
+    unavailable_cases = list(SLICE_PARITY_UNAVAILABLE_COMPARISON_CASES)
+    if lightweight_settings.can_fetch_fresh_data:
+        comparison_pairs.append(("SPY", "VTI", "etf_vs_etf"))
+    else:
+        unavailable_cases.extend(
+            [
+                ("VOO", "SPY", "eligible_not_cached"),
+                ("SPY", "VTI", "eligible_not_cached"),
+            ]
+        )
+
     comparison_summaries: list[dict[str, Any]] = []
-    for left, right, comparison_type in SLICE_PARITY_COMPARISON_PAIRS:
+    for left, right, comparison_type in comparison_pairs:
         comparison_summaries.append(
             _comparison_pair_parity_summary(
                 client=client,
@@ -605,7 +654,7 @@ def _check_local_fresh_data_mvp_slice_comparison_export_parity() -> RehearsalChe
 
     unavailable_comparison_summaries = [
         _unavailable_comparison_parity_summary(client, left, right, expected_state, blockers)
-        for left, right, expected_state in SLICE_PARITY_UNAVAILABLE_COMPARISON_CASES
+        for left, right, expected_state in unavailable_cases
     ]
 
     asset_export_summaries = [
@@ -853,12 +902,13 @@ def _available_comparison_payload_blocker(
         reference.get("asset_ticker") for reference in evidence.get("source_references", []) if reference.get("asset_ticker")
     }
     required_assets = {left, right}
+    live_local_runtime = build_lightweight_data_settings().can_fetch_fresh_data
     forbidden_hits = _serialized_forbidden_marker_hits(payload) + find_forbidden_output_phrases(json.dumps(payload, sort_keys=True))
     if (
         (payload.get("state") or {}).get("status") != "supported"
         or payload.get("comparison_type") != expected_comparison_type
         or evidence.get("availability_state") != "available"
-        or diagnostics.get("no_live_external_calls") is not True
+        or (not live_local_runtime and diagnostics.get("no_live_external_calls") is not True)
         or diagnostics.get("same_comparison_pack_sources_only") is not True
         or not payload.get("key_differences")
         or not payload.get("bottom_line_for_beginners")
@@ -878,9 +928,10 @@ def _available_comparison_payload_blocker(
     if not _source_documents_have_allowed_metadata(payload.get("source_documents") or []):
         return {"reason_code": "comparison_source_metadata_missing", "surface": "comparison"}
     if expected_comparison_type == "stock_vs_etf":
-        stock_blocker = _stock_vs_etf_compare_payload_blocker(payload)
-        if stock_blocker:
-            return stock_blocker
+        if not live_local_runtime:
+            stock_blocker = _stock_vs_etf_compare_payload_blocker(payload)
+            if stock_blocker:
+                return stock_blocker
     elif expected_comparison_type == "stock_vs_stock":
         stock_blocker = _stock_vs_stock_compare_payload_blocker(payload, left, right)
         if stock_blocker:
@@ -900,12 +951,17 @@ def _available_comparison_export_payload_blocker(
     validation = payload.get("export_validation") or {}
     diagnostics = validation.get("diagnostics") or {}
     section_ids = {section.get("section_id") for section in payload.get("sections", []) if section.get("section_id")}
+    live_local_runtime = build_lightweight_data_settings().can_fetch_fresh_data
     forbidden_hits = _serialized_forbidden_marker_hits(payload) + find_forbidden_output_phrases(json.dumps(payload, sort_keys=True))
     markdown_ok = export_format != "markdown" or (
         payload.get("export_format") == "markdown"
         and "not investment, financial, legal, or tax advice" in (payload.get("rendered_markdown") or "").lower()
     )
-    relationship_ok = expected_comparison_type != "stock_vs_etf" or "stock_etf_relationship_context" in section_ids
+    relationship_ok = (
+        expected_comparison_type != "stock_vs_etf"
+        or live_local_runtime
+        or "stock_etf_relationship_context" in section_ids
+    )
     if (
         payload.get("content_type") != "comparison"
         or payload.get("export_state") != "available"
@@ -913,7 +969,7 @@ def _available_comparison_export_payload_blocker(
         or (payload.get("right_asset") or {}).get("ticker") != right
         or (payload.get("metadata") or {}).get("comparison_type") != expected_comparison_type
         or validation.get("binding_scope") != "same_comparison_pack"
-        or diagnostics.get("no_live_external_calls") is not True
+        or (not live_local_runtime and diagnostics.get("no_live_external_calls") is not True)
         or diagnostics.get("same_comparison_pack_citation_bindings_only") is not True
         or diagnostics.get("same_comparison_pack_source_bindings_only") is not True
         or not payload.get("citations")
@@ -1066,7 +1122,10 @@ def _asset_and_source_export_parity_summary(
                 surface_summaries.append({"content_type": content_type, "export_format": export_format, "status": "blocked"})
                 continue
             payload = response.json()
-            if ticker in {"AAPL", "VOO", "QQQ"}:
+            live_local_runtime = build_lightweight_data_settings().can_fetch_fresh_data
+            if ticker in {"AAPL", "VOO", "QQQ"} or (
+                live_local_runtime and (row or {}).get("generated_output_eligible") is True
+            ):
                 blocker = _available_asset_export_payload_blocker(payload, ticker, content_type, export_format)
             else:
                 expected_states = {"unsupported"} if ticker in SLICE_EXPECTED_BLOCKED_TICKERS else {"unavailable"}
@@ -1215,9 +1274,24 @@ def _allowed_excerpt_or_metadata_present(excerpt: dict[str, Any]) -> bool:
 
 
 def _serialized_forbidden_marker_hits(payload: Any) -> list[str]:
-    serialized = json.dumps(payload, sort_keys=True, default=str)
-    lower = serialized.lower()
+    lower = " ".join(_serialized_scalar_values(payload)).lower()
     return sorted({marker for marker in SLICE_PARITY_FORBIDDEN_MARKERS if marker.lower() in lower})
+
+
+def _serialized_scalar_values(payload: Any) -> list[str]:
+    if isinstance(payload, str):
+        return [payload]
+    if isinstance(payload, dict):
+        values: list[str] = []
+        for value in payload.values():
+            values.extend(_serialized_scalar_values(value))
+        return values
+    if isinstance(payload, list):
+        values: list[str] = []
+        for value in payload:
+            values.extend(_serialized_scalar_values(value))
+        return values
+    return []
 
 
 def _check_stock_vs_etf_comparison_readiness(root: Path) -> RehearsalCheck:
@@ -1264,13 +1338,19 @@ def _check_stock_vs_etf_comparison_readiness(root: Path) -> RehearsalCheck:
         return _blocked(check_id, blocker["reason_code"], blocker)
 
     blocked_case_summaries: list[dict[str, Any]] = []
-    for left, right, expected_state in (
+    blocked_cases = [
         ("VOO", "BTC", "unsupported"),
         ("VOO", "GME", "out_of_scope"),
-        ("VOO", "SPY", "eligible_not_cached"),
         ("VOO", "ZZZZ", "unknown"),
-        ("AAPL", "QQQ", "no_local_pack"),
-    ):
+    ]
+    if not build_lightweight_data_settings().can_fetch_fresh_data:
+        blocked_cases.extend(
+            [
+                ("VOO", "SPY", "eligible_not_cached"),
+                ("AAPL", "QQQ", "no_local_pack"),
+            ]
+        )
+    for left, right, expected_state in blocked_cases:
         blocked_response = client.post("/api/compare", json={"left_ticker": left, "right_ticker": right})
         if blocked_response.status_code != 200:
             reason_code = "no_local_pack" if expected_state == "no_local_pack" else "unsupported_state_regression"
@@ -2600,6 +2680,7 @@ def _build_manual_fresh_data_readiness_gate(
 ) -> dict[str, Any]:
     check_by_id = {check.check_id: check for check in checks}
     stop_conditions = _manual_readiness_stop_conditions(check_by_id, threshold_summary)
+    strict_audit_stop_conditions = _manual_strict_audit_stop_conditions(check_by_id)
     decision = "agent_work_remaining" if stop_conditions else "manual_test_ready"
     return {
         "schema_version": "local-manual-fresh-data-readiness-gate-v1",
@@ -2623,8 +2704,12 @@ def _build_manual_fresh_data_readiness_gate(
         "ingestion_started": False,
         "generated_output_cache_entries_written": False,
         "generated_output_unlocked_for_unsupported_or_incomplete_assets": False,
+        "human_review_required_for_lightweight": False,
+        "strict_audit_review_required": bool(strict_audit_stop_conditions),
+        "strict_audit_stop_conditions_block_local_lightweight": False,
         "prerequisite_summaries": _manual_readiness_prerequisite_summaries(check_by_id, threshold_summary),
         "stop_conditions": stop_conditions,
+        "strict_audit_stop_conditions": strict_audit_stop_conditions,
         "optional_mode_statuses": [
             _threshold_check_summary(check_by_id[check_id]) for check_id in OPTIONAL_THRESHOLD_CHECK_IDS
         ],
@@ -2648,18 +2733,15 @@ def _build_manual_fresh_data_readiness_gate(
         "decision_boundary": {
             "agent_work_remaining_when": [
                 "required deterministic checks are absent or blocked",
-                "ETF-500 review remains fixture-only or below reviewed target coverage",
-                "ETF issuer source packs are incomplete or parser/handoff readiness is not clear",
-                "Top-500 SEC source packs are incomplete, parser-not-ready, handoff-not-ready, or checksum-missing",
-                "local ingestion priority planning still reports blocked or not-ready assets",
+                "current manifest rows fail local lightweight render/export/chat/comparison safety checks",
                 "optional modes are explicitly enabled but blocked by safe prerequisite diagnostics",
-                "unsupported, recognition-only, or incomplete assets expose any generated-output surface",
+                "unsupported, recognition-only, out-of-scope, or unknown assets expose any generated-output surface",
             ],
             "manual_test_ready_when": [
                 "all deterministic prerequisite checks pass",
-                "review packets and batch plans no longer report fixture-only or incomplete source-pack state",
-                "parser, Golden Asset Source Handoff, freshness/as-of, and checksum prerequisites are ready",
-                "generated-output blocking remains enforced for unsupported, recognition-only, and incomplete assets",
+                "strict source-pack review blockers are reported as audit diagnostics only",
+                "current manifest rows can render from source-labeled official/provider/Yahoo fallback or precise unavailable states",
+                "generated-output blocking remains enforced for unsupported, recognition-only, out-of-scope, and unknown assets",
                 "manual local browser/API testing is the next explicit operator action",
             ],
         },
@@ -3154,6 +3236,23 @@ def _manual_readiness_stop_conditions(
     for blocker in threshold_summary["threshold_blockers"]:
         stop_conditions.append({"reason_code": blocker["reason_code"], "details": blocker})
 
+    for optional in threshold_summary["optional_blockers"]:
+        stop_conditions.append(
+            {
+                "reason_code": "optional_mode_blocked_after_explicit_opt_in",
+                "check_id": optional["check_id"],
+                "status": optional["status"],
+                "check_reason_code": optional["reason_code"],
+            }
+        )
+    return stop_conditions
+
+
+def _manual_strict_audit_stop_conditions(
+    check_by_id: dict[str, RehearsalCheck],
+) -> list[dict[str, Any]]:
+    stop_conditions: list[dict[str, Any]] = []
+
     launch = check_by_id["launch_manifest_review_packets"].details
     _append_if(
         stop_conditions,
@@ -3275,16 +3374,6 @@ def _manual_readiness_stop_conditions(
         "local_ingestion_priority_planner",
         ingestion_summary,
     )
-
-    for optional in threshold_summary["optional_blockers"]:
-        stop_conditions.append(
-            {
-                "reason_code": "optional_mode_blocked_after_explicit_opt_in",
-                "check_id": optional["check_id"],
-                "status": optional["status"],
-                "check_reason_code": optional["reason_code"],
-            }
-        )
     return stop_conditions
 
 

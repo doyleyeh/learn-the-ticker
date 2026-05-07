@@ -66,7 +66,7 @@ Current implementation stage:
 - opt-in official-source acquisition readiness exists for SEC stock, ETF issuer, and Weekly News golden paths, and the lightweight fresh-data fetch path now exposes `/api/assets/{ticker}/fresh-data` plus `scripts/run_lightweight_data_fetch_smoke.py` for local stock/ETF fetch validation; launch-sized governed source artifacts and ETF-500 source-pack approvals remain audit-quality hardening gaps
 - v0.6 local validation expects operator-only live-AI review for grounded chat and AI Comprehensive Analysis when evidence thresholds are met, while CI and ordinary local tests remain deterministic mocks
 - CI and local checks are deterministic and fixture-backed; normal quality gates do not depend on live provider, market-data, news, or LLM calls
-- the local manual fresh-data readiness gate is review-only and reports `agent_work_remaining` until deterministic ETF-500 candidate review, ETF issuer source-pack planning, Top-500 SEC source-pack planning, local MVP thresholds, ingestion priority planning, governed golden rendering, frontend workflow markers, parser readiness, Golden Asset Source Handoff readiness, freshness/as-of metadata, and checksums are ready; it reports `manual_test_ready` only when the next action is explicit operator-run browser/API, durable repository, official-source retrieval, or live-AI validation, without starting services, fetching live sources, approving sources, promoting manifests, exposing secrets, or unlocking generated output
+- the local manual fresh-data readiness gate is review-only and reports `manual_test_ready` when deterministic local lightweight checks pass; strict ETF-500 coverage, ETF issuer source-pack approval, Top-500 SEC source-pack approval, parser readiness, Golden Asset Source Handoff, freshness/as-of metadata, checksums, local ingestion review, and generated-output cache promotion remain visible as `strict_audit_stop_conditions` that do not block lightweight local rendering
 
 Near-term implementation priority order:
 
@@ -76,7 +76,7 @@ Near-term implementation priority order:
 4. preserve the reviewed Top-500 candidate-manifest refresh workflow that uses official IWB holdings first, official SPY/IVV/VOO holdings only as fallback inputs, SEC/Nasdaq validation, checksums, and a diff report before current-manifest promotion
 5. preserve optional browser E2E and local durable smoke for golden assets using the API-base/proxy/CORS path before production deployment work
 6. expand ETF eligible-universe review outputs from the current fixture-sized packet into category, exclusion, source-pack, and generated-output eligibility packets for the ETF-500 reviewed local MVP scope
-7. add stock and ETF source-pack readiness packets that prove SEC core stock evidence and issuer ETF evidence can unlock only source-backed sections with deterministic partial/failure states
+7. keep stock and ETF source-pack readiness packets split between local lightweight generated-surface eligibility and strict/audit source-pack status, so `insufficient_evidence` and `pending_review` remain audit diagnostics rather than local display blockers
 8. add batchable, resumable local ingestion planning so high-demand assets run first, then supported ETFs and top-500 stocks by review priority, while normal CI remains deterministic
 9. defer production deployment hardening, recurring jobs, broad paid-provider integrations, and post-MVP features until the local fresh-data path passes strict quality gates
 

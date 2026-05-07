@@ -584,6 +584,12 @@ def build_top500_sec_source_pack_batch_plan(
             "source_backed_partial_ready_count": sum(
                 1 for row in planned_rows if row["source_backed_partial_rendering_ready"]
             ),
+            "local_lightweight_generated_surface_eligible_count": sum(
+                1 for row in planned_rows if row["local_lightweight_generated_surface_eligible"]
+            ),
+            "human_review_required_for_lightweight_count": sum(
+                1 for row in planned_rows if row["human_review_required_for_lightweight"]
+            ),
             "insufficient_evidence_count": sum(
                 1 for row in planned_rows if row["source_pack_status"] == "insufficient_evidence"
             ),
@@ -688,6 +694,8 @@ def _stock_sec_readiness_row(
             parser_overrides=parser_overrides,
         )
     source_pack_status = _stock_sec_row_status(components)
+    source_backed_partial_ready = _source_backed_partial_rendering_ready(components)
+    local_lightweight_eligible = manifest_kind == "current"
     return {
         "ticker": ticker,
         "name": entry.name,
@@ -698,7 +706,15 @@ def _stock_sec_readiness_row(
         "manifest_path": manifest_path,
         "candidate_month": candidate_month,
         "source_pack_status": source_pack_status,
-        "source_backed_partial_rendering_ready": _source_backed_partial_rendering_ready(components),
+        "strict_source_pack_status": source_pack_status,
+        "source_backed_partial_rendering_ready": source_backed_partial_ready,
+        "local_lightweight_generated_surface_eligible": local_lightweight_eligible,
+        "fallback_source_tier": _stock_sec_lightweight_fallback_source_tier(
+            source_pack_status,
+            source_backed_partial_ready=source_backed_partial_ready,
+        ),
+        "human_review_required_for_lightweight": False,
+        "strict_source_pack_blocks_local_lightweight": False,
         "review_packet_unlocks_generated_output": False,
         "readiness_failures_unlock_generated_output": False,
         "blocked_generated_surfaces": list(STOCK_SEC_BLOCKED_GENERATED_SURFACES),
@@ -961,6 +977,18 @@ def _source_backed_partial_rendering_ready(components: list[dict[str, Any]]) -> 
     )
 
 
+def _stock_sec_lightweight_fallback_source_tier(
+    source_pack_status: str,
+    *,
+    source_backed_partial_ready: bool,
+) -> str:
+    if source_pack_status == "pass":
+        return "sec_official"
+    if source_backed_partial_ready:
+        return "sec_official_provider_yahoo"
+    return "provider_api_then_yahoo"
+
+
 def _stock_sec_readiness_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
     statuses = [str(row["source_pack_status"]) for row in rows]
     return {
@@ -977,6 +1005,9 @@ def _stock_sec_readiness_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
         "blocked": statuses.count("blocked"),
         "source_backed_partial_rendering_ready": sum(
             1 for row in rows if row["source_backed_partial_rendering_ready"]
+        ),
+        "local_lightweight_generated_surface_eligible": sum(
+            1 for row in rows if row.get("local_lightweight_generated_surface_eligible")
         ),
         "review_packet_unlocks_generated_output": sum(
             1 for row in rows if row["review_packet_unlocks_generated_output"]
@@ -1069,9 +1100,16 @@ def _top500_sec_batch_planned_row(
         "local_ingestion_state": (priority_row or {}).get("job_state", (priority_row or {}).get("state", "unknown")),
         "local_ingestion_ready_to_inspect": (priority_row or {}).get("ready_to_inspect", False),
         "source_pack_status": source_pack_status,
+        "strict_source_pack_status": (readiness_row or {}).get("strict_source_pack_status", source_pack_status),
         "source_backed_partial_rendering_ready": bool(
             (readiness_row or {}).get("source_backed_partial_rendering_ready")
         ),
+        "local_lightweight_generated_surface_eligible": bool(
+            (readiness_row or {}).get("local_lightweight_generated_surface_eligible")
+        ),
+        "fallback_source_tier": (readiness_row or {}).get("fallback_source_tier", "provider_api_then_yahoo"),
+        "human_review_required_for_lightweight": False,
+        "strict_source_pack_blocks_local_lightweight": False,
         "readiness_priority": _top500_sec_readiness_priority(source_pack_status, bool(
             (readiness_row or {}).get("source_backed_partial_rendering_ready")
         )),

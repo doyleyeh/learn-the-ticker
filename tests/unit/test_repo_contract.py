@@ -503,7 +503,8 @@ def test_t158_lightweight_mvp_readiness_gate_contract_is_safe_and_audit_only():
     assert summaries["source_pack_planning"]["stock_sec_source_pack_readiness"]["status"] == "pass"
     assert summaries["source_pack_planning"]["etf_issuer_source_pack_readiness"]["status"] == "pass"
     assert summaries["local_ingestion_priority_planning"]["summary"]["blocked_or_not_ready_count"] == 20
-    assert summaries["manual_gate_stop_conditions_audit_only"]["manual_gate_decision"] == "agent_work_remaining"
+    assert summaries["manual_gate_stop_conditions_audit_only"]["manual_gate_decision"] == "manual_test_ready"
+    assert summaries["manual_gate_stop_conditions_audit_only"]["local_stop_condition_count"] == 0
     assert summaries["manual_gate_stop_conditions_audit_only"]["stop_condition_count"] >= 10
 
     weekly = result["weekly_news_and_ai_boundaries"]
@@ -1295,6 +1296,8 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
         "high_demand_pre_cache_count": 1,
         "top500_review_count": 9,
         "source_backed_partial_ready_count": 1,
+        "local_lightweight_generated_surface_eligible_count": 10,
+        "human_review_required_for_lightweight_count": 0,
         "insufficient_evidence_count": 9,
         "blocked_generated_surface_count": 9,
     }
@@ -1338,6 +1341,8 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
         "source_pack_ready_count": 0,
         "source_pack_partial_count": 2,
         "source_pack_incomplete_count": 11,
+        "local_lightweight_generated_surface_eligible_count": 13,
+        "human_review_required_for_lightweight_count": 0,
         "blocked_generated_surface_count": 9,
     }
     assert [group["batch"] for group in etf500_planning["batch_groups"]] == [
@@ -1590,12 +1595,12 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     ]
     gate = result["manual_fresh_data_readiness_gate"]
     assert gate["schema_version"] == "local-manual-fresh-data-readiness-gate-v1"
-    assert gate["decision"] == "agent_work_remaining"
-    assert gate["task_ready_vs_manual_test_ready_decision"] == "agent_work_remaining"
-    assert gate["task_ready_for_manual_testing"] is False
-    assert gate["manual_test_ready"] is False
-    assert gate["agent_work_remaining"] is True
-    assert gate["next_operator_action"] == "finish_deterministic_agent_work_before_manual_fresh_data_testing"
+    assert gate["decision"] == "manual_test_ready"
+    assert gate["task_ready_vs_manual_test_ready_decision"] == "manual_test_ready"
+    assert gate["task_ready_for_manual_testing"] is True
+    assert gate["manual_test_ready"] is True
+    assert gate["agent_work_remaining"] is False
+    assert gate["next_operator_action"] == "run_manual_local_fresh_data_testing_with_explicit_opt_ins"
     assert gate["sanitized_operator_report"] is True
     assert gate["review_only"] is True
     assert gate["production_services_started"] is False
@@ -1606,7 +1611,11 @@ def test_local_fresh_data_rehearsal_default_is_deterministic_and_review_only():
     assert gate["ingestion_started"] is False
     assert gate["generated_output_cache_entries_written"] is False
     assert gate["generated_output_unlocked_for_unsupported_or_incomplete_assets"] is False
-    stop_reasons = {condition["reason_code"] for condition in gate["stop_conditions"]}
+    assert gate["human_review_required_for_lightweight"] is False
+    assert gate["strict_audit_review_required"] is True
+    assert gate["strict_audit_stop_conditions_block_local_lightweight"] is False
+    assert gate["stop_conditions"] == []
+    stop_reasons = {condition["reason_code"] for condition in gate["strict_audit_stop_conditions"]}
     assert {
         "etf500_review_fixture_only_not_launch_coverage",
         "etf500_source_pack_incomplete",
@@ -1867,7 +1876,9 @@ def test_t148_lightweight_local_slice_manual_readiness_gate_reports_ready_and_bl
     assert gate["blockers"] == []
     assert gate["launch_or_public_deployment_ready"] is False
     assert gate["production_ready"] is False
-    assert result["manual_fresh_data_readiness_gate"]["decision"] == "agent_work_remaining"
+    assert result["manual_fresh_data_readiness_gate"]["decision"] == "manual_test_ready"
+    assert result["manual_fresh_data_readiness_gate"]["strict_audit_review_required"] is True
+    assert result["manual_fresh_data_readiness_gate"]["strict_audit_stop_conditions_block_local_lightweight"] is False
 
     prereqs = {item["prerequisite_id"]: item for item in gate["prerequisite_summaries"]}
     slice_prereq = prereqs["deterministic_local_fresh_data_mvp_slice_smoke"]

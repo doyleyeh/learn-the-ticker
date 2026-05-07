@@ -413,11 +413,12 @@ def _build_readiness_summaries(
         },
         "manual_gate_stop_conditions_audit_only": {
             "manual_gate_decision": manual_gate.get("decision"),
-            "stop_condition_count": len(manual_gate.get("stop_conditions", [])),
+            "local_stop_condition_count": len(manual_gate.get("stop_conditions", [])),
+            "stop_condition_count": len(manual_gate.get("strict_audit_stop_conditions", [])),
             "stop_reason_codes": sorted(
                 {
                     condition.get("reason_code")
-                    for condition in manual_gate.get("stop_conditions", [])
+                    for condition in manual_gate.get("strict_audit_stop_conditions", [])
                     if condition.get("reason_code")
                 }
             ),

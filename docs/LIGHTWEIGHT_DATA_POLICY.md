@@ -36,14 +36,16 @@ Human review is useful for suspicious, high-impact, or launch-quality changes, b
 The lightweight path is implemented as an explicit local fresh-data fetch boundary, not as a silent replacement for deterministic CI fixtures:
 
 - `DATA_POLICY_MODE=lightweight` selects this policy.
-- `LIGHTWEIGHT_LIVE_FETCH_ENABLED=true` opts into live local fetching.
+- `LIGHTWEIGHT_LIVE_FETCH_ENABLED=true` enables live local fetching. Local runtime/manual review defaults to enabled when unset; explicit `env={}`, pytest, CI, and static eval paths remain deterministic/no-live unless explicitly enabled.
 - `LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED=true` allows reputable provider fallback when official data is incomplete.
-- `LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED=true` opts into local Weekly News metadata retrieval on the same server-side lightweight boundary. It is off by default so normal CI and ordinary local tests remain deterministic.
-- `MARKET_NEWS_FETCH_ENABLED=true` opts into reusable Market News Focus live-source retrieval. It is off by default; normal CI uses fixtures/mocks and does not call RSS, GDELT, paid/keyed news providers, Yahoo/yfinance, market-data providers, or LLMs.
+- `LIGHTWEIGHT_PROVIDER_SOURCE_USE_REVIEWED=false` does not skip configured provider API adapters for local lightweight display. It means the provider output is not strict/audit approved and cannot support source-pack approval or generated-output cache promotion.
+- `LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED=true` enables local Weekly News metadata retrieval on the same server-side lightweight boundary. Local runtime/manual review defaults to enabled when unset; normal CI and explicit test envs stay fixture-backed.
+- `MARKET_NEWS_FETCH_ENABLED=true` enables reusable Market News Focus live-source retrieval. Local runtime/manual review defaults to enabled when unset; normal CI uses fixtures/mocks and does not call RSS, GDELT, paid/keyed news providers, Yahoo/yfinance, market-data providers, or LLMs.
 - `SEC_EDGAR_USER_AGENT` should identify the local SEC client; diagnostics may report only a redacted form.
 - `GET /api/assets/{ticker}/fresh-data` exposes source-labeled fresh fetch results and returns `unavailable` unless live lightweight fetching is explicitly enabled.
 - When live lightweight fetching is enabled, exact search can open source-labeled local-MVP pages for renderable eligible stocks and ETFs, including assets without deterministic cached packs.
 - `GET /api/assets/{ticker}/overview`, `/details`, and `/sources` use the lightweight response to fill the existing page, detail, and source drawer contracts only when the fetch is renderable and raw payloads remain hidden.
+- Asset pages, chat, comparison fallback, comparison export, asset export, Weekly News, and AI-analysis thresholds may use normalized lightweight fallback evidence for current stock manifest rows and supported ETF manifest rows when citations/source metadata are safe. Recognition-only, unsupported, out-of-scope, complex, and unknown rows remain blocked.
 - `python3 scripts/run_lightweight_data_fetch_smoke.py --live --ticker AAPL --ticker VOO --json` is the local operator smoke for stock and ETF fetching.
 
 Local Weekly News metadata uses a yfinance/Yahoo-style list shape only as a fallback structure. The product goal is not to clone a market-news feed. The local source shape is: headline/title, publisher, URL, published time, retrieved time, ticker match, event type, source label, source-use policy, and optional bounded summary/snippet. It excludes raw article body storage/display, unrestricted thumbnails/media, trade buttons, recommendation framing, production recurring ingestion, and generated-output cache promotion.

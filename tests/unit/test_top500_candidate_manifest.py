@@ -155,11 +155,16 @@ def test_stock_sec_source_pack_readiness_packet_covers_current_and_candidate_man
     assert counts["partial"] == 2
     assert counts["insufficient_evidence"] == 18
     assert counts["source_backed_partial_rendering_ready"] == 2
+    assert counts["local_lightweight_generated_surface_eligible"] == 10
     assert counts["review_packet_unlocks_generated_output"] == 0
 
     current_aapl = next(row for row in packet["rows"] if row["manifest_kind"] == "current" and row["ticker"] == "AAPL")
     assert current_aapl["source_pack_status"] == "partial"
+    assert current_aapl["strict_source_pack_status"] == "partial"
     assert current_aapl["source_backed_partial_rendering_ready"] is True
+    assert current_aapl["local_lightweight_generated_surface_eligible"] is True
+    assert current_aapl["fallback_source_tier"] == "sec_official_provider_yahoo"
+    assert current_aapl["human_review_required_for_lightweight"] is False
     assert current_aapl["review_packet_unlocks_generated_output"] is False
     components = {component["component_id"]: component for component in current_aapl["components"]}
     assert components["sec_submissions"]["status"] == "pass"
@@ -179,7 +184,10 @@ def test_stock_sec_source_pack_readiness_packet_covers_current_and_candidate_man
 
     current_msft = next(row for row in packet["rows"] if row["manifest_kind"] == "current" and row["ticker"] == "MSFT")
     assert current_msft["source_pack_status"] == "insufficient_evidence"
+    assert current_msft["strict_source_pack_status"] == "insufficient_evidence"
     assert current_msft["source_backed_partial_rendering_ready"] is False
+    assert current_msft["local_lightweight_generated_surface_eligible"] is True
+    assert current_msft["fallback_source_tier"] == "provider_api_then_yahoo"
     assert all(component["citation_ready"] is False for component in current_msft["components"])
     assert all(component["golden_asset_source_handoff_status"] != "approved" for component in current_msft["components"])
 
@@ -270,6 +278,8 @@ def test_top500_sec_source_pack_batch_plan_is_review_only_and_current_manifest_a
         "high_demand_pre_cache_count": 1,
         "top500_review_count": 9,
         "source_backed_partial_ready_count": 1,
+        "local_lightweight_generated_surface_eligible_count": 10,
+        "human_review_required_for_lightweight_count": 0,
         "insufficient_evidence_count": 9,
         "blocked_generated_surface_count": 9,
     }
@@ -325,8 +335,12 @@ def test_top500_sec_source_pack_batch_plan_is_review_only_and_current_manifest_a
     assert aapl["batch_name"] == "high-demand-pre-cache"
     assert aapl["high_demand_pre_cache"] is True
     assert aapl["source_pack_status"] == "partial"
+    assert aapl["strict_source_pack_status"] == "partial"
     assert aapl["source_backed_partial_rendering_ready"] is True
     assert aapl["fallback_state"] == "source_backed_partial"
+    assert aapl["local_lightweight_generated_surface_eligible"] is True
+    assert aapl["fallback_source_tier"] == "sec_official_provider_yahoo"
+    assert aapl["human_review_required_for_lightweight"] is False
     assert aapl["generated_output_unlocked_by_plan"] is False
     components = {component["component_id"]: component for component in aapl["required_sec_source_components"]}
     assert components["sec_submissions"]["source_snapshot_requirement"] == "required_before_evidence_use"
@@ -338,6 +352,8 @@ def test_top500_sec_source_pack_batch_plan_is_review_only_and_current_manifest_a
     msft = next(row for row in plan["planned_rows"] if row["ticker"] == "MSFT")
     assert msft["batch_name"] == "TOP500-50"
     assert msft["source_pack_status"] == "insufficient_evidence"
+    assert msft["local_lightweight_generated_surface_eligible"] is True
+    assert msft["fallback_source_tier"] == "provider_api_then_yahoo"
     assert msft["fallback_state"] == "insufficient_evidence"
     assert all(
         component["source_snapshot_requirement"] == "blocked_until_source_available"

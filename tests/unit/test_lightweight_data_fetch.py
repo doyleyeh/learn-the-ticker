@@ -431,6 +431,20 @@ def _settings_with_alpha_provider():
     )
 
 
+def _settings_with_alpha_provider_unreviewed_for_lightweight():
+    return build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_ORDER": "alpha_vantage,yahoo",
+            "LIGHTWEIGHT_PROVIDER_SOURCE_USE_REVIEWED": "false",
+            "ALPHA_VANTAGE_API_KEY": "configured-test-key",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+        }
+    )
+
+
 def _settings_with_reviewed_provider(provider: str):
     env_name = {
         "fmp": "FMP_API_KEY",
@@ -849,6 +863,33 @@ def test_lightweight_provider_api_runs_before_yahoo_and_fills_missing_fields_onl
     assert any(source.publisher == "Alpha Vantage" for source in response.sources)
     assert any(source.publisher == "Yahoo Finance" for source in response.sources)
     assert "configured-test-key" not in str(response.model_dump(mode="json"))
+
+
+def test_unreviewed_provider_api_runs_for_lightweight_display_but_not_strict_audit():
+    fetcher = AlphaVantageFakeJsonFetcher()
+
+    response = fetch_lightweight_asset_data(
+        "AAPL",
+        settings=_settings_with_alpha_provider_unreviewed_for_lightweight(),
+        fetcher=fetcher,
+        retrieved_at=RETRIEVED_AT,
+    )
+
+    alpha_url_indexes = [index for index, url in enumerate(fetcher.urls) if "alphavantage.co" in url]
+    first_yahoo_url = next(index for index, url in enumerate(fetcher.urls) if "finance.yahoo.com" in url)
+    assert alpha_url_indexes
+    assert max(alpha_url_indexes) < first_yahoo_url
+    assert response.diagnostics["fetch_tiers_attempted"] == ["official", "provider_api", "yahoo"]
+    assert response.diagnostics["fetch_tiers_succeeded"] == ["official", "provider_api", "yahoo"]
+    assert response.diagnostics["provider_api_source_use_reviewed"] is False
+    assert response.diagnostics["provider_api_strict_audit_approved"] is False
+    assert response.diagnostics["provider_api_lightweight_display_allowed_without_review"] is True
+    assert response.diagnostics["provider_api_skipped"] == []
+    assert "provider_market_price" in response.diagnostics["fields_filled_by_tier"]["provider_api"]
+    assert any(source.publisher == "Alpha Vantage" for source in response.sources)
+    serialized = str(response.model_dump(mode="json"))
+    assert "configured-test-key" not in serialized
+    assert response.raw_payload_exposed is False
 
 
 def test_reviewed_provider_api_adapters_run_before_yahoo_without_secret_exposure():
