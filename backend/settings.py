@@ -27,6 +27,7 @@ DEFAULT_LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED = True
 DEFAULT_LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED = False
 DEFAULT_LIGHTWEIGHT_FETCH_TIMEOUT_SECONDS = 15
 DEFAULT_LIGHTWEIGHT_FETCH_REUSE_TTL_SECONDS = 30
+DEFAULT_LIGHTWEIGHT_PROVIDER_ORDER = ("fmp", "alpha_vantage", "finnhub", "tiingo", "eodhd", "yahoo")
 DEFAULT_MARKET_NEWS_FETCH_ENABLED = False
 DEFAULT_MARKET_NEWS_LIVE_SOURCE_SMOKE_ENABLED = False
 DEFAULT_MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED = False
@@ -186,7 +187,12 @@ class LightweightDataSettings:
     sec_user_agent_redacted: str
     fetch_timeout_seconds: int
     fetch_reuse_ttl_seconds: int
+    fetch_persistent_cache_dir: str | None = None
+    provider_order: tuple[str, ...] = DEFAULT_LIGHTWEIGHT_PROVIDER_ORDER
+    provider_credentials_configured: dict[str, bool] = field(default_factory=dict)
+    provider_source_use_reviewed: bool = False
     missing_reasons: tuple[str, ...] = ()
+    _provider_credentials: dict[str, str | None] = field(default_factory=dict, repr=False, compare=False)
     _sec_user_agent: str = field(default=DEFAULT_SEC_EDGAR_USER_AGENT, repr=False, compare=False)
 
     @property
@@ -215,8 +221,16 @@ class LightweightDataSettings:
             "fetch_timeout_seconds": self.fetch_timeout_seconds,
             "fetch_reuse_enabled": self.fetch_reuse_enabled,
             "fetch_reuse_ttl_seconds": self.fetch_reuse_ttl_seconds,
+            "fetch_persistent_cache_enabled": self.fetch_persistent_cache_dir is not None,
+            "fetch_persistent_cache_dir_configured": self.fetch_persistent_cache_dir is not None,
+            "provider_order": list(self.provider_order),
+            "provider_credentials_configured": dict(self.provider_credentials_configured),
+            "provider_source_use_reviewed": self.provider_source_use_reviewed,
             "missing_reasons": list(self.missing_reasons),
         }
+
+    def credential_for(self, provider: str) -> str | None:
+        return self._provider_credentials.get(provider)
 
 
 @dataclass(frozen=True)
@@ -537,6 +551,32 @@ def build_lightweight_data_settings(env: dict[str, str] | None = None) -> Lightw
         DEFAULT_LIGHTWEIGHT_FETCH_REUSE_TTL_SECONDS,
         minimum=0,
     )
+    provider_order = _lightweight_provider_order(
+        _first_present(source, "LIGHTWEIGHT_PROVIDER_ORDER", "LTT_LIGHTWEIGHT_PROVIDER_ORDER")
+    )
+    persistent_cache_dir = _clean_optional(
+        _first_present(source, "LIGHTWEIGHT_FETCH_CACHE_DIR", "LTT_LIGHTWEIGHT_FETCH_CACHE_DIR")
+    )
+    provider_source_use_reviewed = _bool_setting(
+        _first_present(
+            source,
+            "LIGHTWEIGHT_PROVIDER_SOURCE_USE_REVIEWED",
+            "LTT_LIGHTWEIGHT_PROVIDER_SOURCE_USE_REVIEWED",
+        ),
+        False,
+    )
+    credential_env_by_provider = {
+        "fmp": "FMP_API_KEY",
+        "alpha_vantage": "ALPHA_VANTAGE_API_KEY",
+        "finnhub": "FINNHUB_API_KEY",
+        "tiingo": "TIINGO_API_KEY",
+        "eodhd": "EODHD_API_KEY",
+    }
+    provider_credentials = {
+        provider: _clean_optional(source.get(env_name))
+        for provider, env_name in credential_env_by_provider.items()
+    }
+    provider_credential_flags = {provider: bool(value) for provider, value in provider_credentials.items()}
     missing_reasons = []
     if mode != DEFAULT_DATA_POLICY_MODE:
         missing_reasons.append("data_policy_mode_not_lightweight")
@@ -557,7 +597,12 @@ def build_lightweight_data_settings(env: dict[str, str] | None = None) -> Lightw
         sec_user_agent_redacted=_redact_user_agent(user_agent),
         fetch_timeout_seconds=fetch_timeout,
         fetch_reuse_ttl_seconds=fetch_reuse_ttl,
+        fetch_persistent_cache_dir=persistent_cache_dir,
+        provider_order=provider_order,
+        provider_credentials_configured=provider_credential_flags,
+        provider_source_use_reviewed=provider_source_use_reviewed,
         missing_reasons=tuple(missing_reasons),
+        _provider_credentials=provider_credentials,
         _sec_user_agent=user_agent,
     )
 
@@ -719,6 +764,22 @@ def _csv_setting(value: str | None) -> tuple[str, ...]:
     if cleaned is None:
         return ()
     return tuple(item.strip() for item in cleaned.split(",") if item.strip())
+
+
+def _lightweight_provider_order(value: str | None) -> tuple[str, ...]:
+    aliases = {"yfinance": "yahoo", "yahoo_finance": "yahoo", "alphavantage": "alpha_vantage"}
+    allowed = {*DEFAULT_LIGHTWEIGHT_PROVIDER_ORDER}
+    requested = _csv_setting(value)
+    if not requested:
+        return DEFAULT_LIGHTWEIGHT_PROVIDER_ORDER
+    normalized: list[str] = []
+    for item in requested:
+        provider = aliases.get(item.strip().lower(), item.strip().lower())
+        if provider in allowed and provider not in normalized:
+            normalized.append(provider)
+    if "yahoo" not in normalized:
+        normalized.append("yahoo")
+    return tuple(normalized) if normalized else DEFAULT_LIGHTWEIGHT_PROVIDER_ORDER
 
 
 def _first_present(source: dict[str, str] | os._Environ[str], *names: str) -> str | None:

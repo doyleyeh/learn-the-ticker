@@ -213,7 +213,7 @@ def weekly_news_candidate_rows_from_lightweight_response(
     response: LightweightFetchResponse,
 ) -> list[WeeklyNewsEventCandidateRow]:
     sources_by_id = {source.source_document_id: source for source in response.sources}
-    candidates: list[WeeklyNewsEventCandidateRow] = []
+    candidates: list[WeeklyNewsEventCandidateRow] = _official_weekly_news_candidate_rows(response, sources_by_id)
     for index, fact in enumerate(response.facts):
         if fact.field_name != LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD or not isinstance(fact.value, dict):
             continue
@@ -272,6 +272,116 @@ def weekly_news_candidate_rows_from_lightweight_response(
                     "Local MVP Weekly News fallback uses source-labeled metadata and bounded summaries only; "
                     "it cannot support canonical facts."
                 ),
+                parser_status=SourceParserStatus.parsed.value,
+                freshness_state=source.freshness_state.value,
+                evidence_state=fact.evidence_state.value,
+                importance_score=0,
+                high_signal=True,
+                important_event_claim=True,
+                license_allowed=True,
+                recognized_source=True,
+                promotional=False,
+                irrelevant=False,
+                duplicate_group_id=_duplicate_group_id(response.asset.ticker, title, event_date),
+                title_checksum=_checksum({"title": title}),
+                evidence_checksum=_checksum(checksum_payload),
+                stores_raw_article_text=False,
+                stores_raw_provider_payload=False,
+                stores_unrestricted_source_text=False,
+                stores_secret=False,
+            )
+        )
+    return candidates
+
+
+def _official_weekly_news_candidate_rows(
+    response: LightweightFetchResponse,
+    sources_by_id: dict[str, LightweightFetchSource],
+) -> list[WeeklyNewsEventCandidateRow]:
+    candidates: list[WeeklyNewsEventCandidateRow] = []
+    for index, fact in enumerate(response.facts):
+        if fact.field_name not in {"latest_sec_filing", "etf_fact_sheet_metadata", "prospectus_reference"}:
+            continue
+        if LightweightSourceLabel.official not in fact.source_labels:
+            continue
+        source = _first_source_for_fact(fact, sources_by_id)
+        if source is None:
+            continue
+        value = fact.value if isinstance(fact.value, dict) else {}
+        if fact.field_name == "latest_sec_filing":
+            form_type = _clean_text(value.get("form_type")) or "filing"
+            event_date = _clean_text(value.get("filing_date")) or fact.as_of_date or source.as_of_date
+            title = f"{response.asset.ticker} filed latest {form_type} with the SEC"
+            summary = (
+                f"Official SEC metadata shows a latest {form_type} filing for {response.asset.ticker}; "
+                "use it as recent context separate from stable company facts."
+            )
+            event_type = WeeklyNewsEventType.regulatory_event
+            rank_tier = WeeklyNewsSourceRankTier.official_filing
+        elif fact.field_name == "prospectus_reference":
+            event_date = _clean_text(value.get("publication_date")) or fact.as_of_date or source.as_of_date
+            title = f"{response.asset.ticker} official prospectus reference is available"
+            summary = (
+                f"Official issuer metadata includes a prospectus reference for {response.asset.ticker}; "
+                "this is issuer context, not a recommendation."
+            )
+            event_type = WeeklyNewsEventType.sponsor_update
+            rank_tier = WeeklyNewsSourceRankTier.prospectus_update
+        else:
+            event_date = _clean_text(value.get("as_of_date")) or fact.as_of_date or source.as_of_date
+            title = f"{response.asset.ticker} official issuer fact sheet metadata is available"
+            summary = (
+                f"Official issuer metadata includes fact-sheet fields for {response.asset.ticker}; "
+                "provider news remains fallback context when official weekly items are sparse."
+            )
+            event_type = WeeklyNewsEventType.sponsor_update
+            rank_tier = WeeklyNewsSourceRankTier.fact_sheet_change
+        if not event_date:
+            continue
+        published_at = source.published_at or f"{event_date}T00:00:00Z"
+        citation_ids = list(fact.citation_ids) or [f"lw_cite_{source.source_document_id.removeprefix('lw_')}"]
+        event_id = f"official_weekly_news_{response.asset.ticker.lower()}_{fact.field_name}_{index}"
+        checksum_payload = {
+            "event_id": event_id,
+            "title": title,
+            "summary": summary,
+            "publisher": source.publisher,
+            "url": source.url,
+            "published_at": published_at,
+            "event_date": event_date,
+        }
+        candidates.append(
+            WeeklyNewsEventCandidateRow(
+                candidate_event_id=event_id,
+                window_id="pending",
+                asset_ticker=response.asset.ticker,
+                source_asset_ticker=response.asset.ticker,
+                event_type=event_type.value,
+                event_title=title,
+                event_summary=summary,
+                event_date=event_date,
+                published_at=published_at,
+                retrieved_at=source.retrieved_at or response.freshness.page_last_updated_at,
+                period_bucket="previous_market_week",
+                source_document_id=source.source_document_id,
+                source_chunk_id=f"chk_{fact.fact_id}",
+                citation_ids=citation_ids,
+                citation_asset_tickers={citation_id: response.asset.ticker for citation_id in citation_ids},
+                source_type=source.source_type,
+                source_title=source.title,
+                source_publisher=source.publisher,
+                source_url=source.url,
+                source_rank=source_rank_tier_priority_for_adapter(rank_tier, index),
+                source_rank_tier=rank_tier.value,
+                source_quality=source.source_quality.value,
+                allowlist_status=source.allowlist_status.value,
+                source_use_policy=source.source_use_policy.value,
+                source_identity=source.url or source.source_document_id,
+                is_official=True,
+                storage_rights=SourceStorageRights.summary_allowed.value,
+                export_rights=SourceExportRights.excerpts_allowed.value,
+                review_status=SourceReviewStatus.approved.value,
+                approval_rationale="Official lightweight source metadata is used as Weekly News context without exposing raw source text.",
                 parser_status=SourceParserStatus.parsed.value,
                 freshness_state=source.freshness_state.value,
                 evidence_state=fact.evidence_state.value,

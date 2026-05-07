@@ -312,6 +312,8 @@ def test_lightweight_data_settings_default_to_policy_mode_but_live_fetch_opt_in(
     assert settings.live_fetch_enabled is False
     assert settings.provider_fallback_enabled is True
     assert settings.weekly_news_fetch_enabled is False
+    assert settings.provider_order == ("fmp", "alpha_vantage", "finnhub", "tiingo", "eodhd", "yahoo")
+    assert settings.provider_source_use_reviewed is False
     assert settings.can_fetch_fresh_data is False
     assert LIGHTWEIGHT_LIVE_FETCH_DISABLED_REASON in settings.missing_reasons
     assert LIGHTWEIGHT_WEEKLY_NEWS_FETCH_DISABLED_REASON in settings.missing_reasons
@@ -325,15 +327,26 @@ def test_lightweight_data_settings_default_to_policy_mode_but_live_fetch_opt_in(
             "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
             "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
             "LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_ORDER": "alpha_vantage,yfinance",
+            "LIGHTWEIGHT_PROVIDER_SOURCE_USE_REVIEWED": "true",
+            "ALPHA_VANTAGE_API_KEY": "super-secret-alpha",
+            "LIGHTWEIGHT_FETCH_CACHE_DIR": "/tmp/ltt-cache",
             "SEC_EDGAR_USER_AGENT": "learn-the-ticker-test/0.1 person@example.com",
             "LIGHTWEIGHT_FETCH_TIMEOUT_SECONDS": "9",
         }
     )
     assert enabled.can_fetch_fresh_data is True
     assert enabled.weekly_news_fetch_enabled is True
+    assert enabled.provider_order == ("alpha_vantage", "yahoo")
+    assert enabled.provider_credentials_configured["alpha_vantage"] is True
+    assert enabled.provider_source_use_reviewed is True
+    assert enabled.credential_for("alpha_vantage") == "super-secret-alpha"
+    assert enabled.fetch_persistent_cache_dir == "/tmp/ltt-cache"
+    assert enabled.safe_diagnostics["fetch_persistent_cache_enabled"] is True
     assert enabled.fetch_timeout_seconds == 9
     assert enabled.sec_user_agent_redacted == "learn-the-ticker-test/0.1 person@<redacted>"
     assert enabled.missing_reasons == ()
+    assert "super-secret-alpha" not in str(enabled.safe_diagnostics)
 
 
 def test_local_durable_repository_factories_are_lazy_and_build_configured_readers():

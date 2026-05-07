@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from backend.lightweight_data_fetch import build_lightweight_api_fallback_diagnostics, fetch_lightweight_asset_data
-from backend.market_news import build_market_news_response
+from backend.market_news_runtime import build_runtime_market_news_response
 from backend.models import (
     AssetStatus,
     AssetType,
@@ -123,7 +123,7 @@ def build_lightweight_overview_response(response: LightweightFetchResponse) -> O
         canonical_fact_citation_ids=stable_citation_ids,
         canonical_source_document_ids=[source.source_document_id for source in sources[:1]],
     )
-    market_news = build_market_news_response()
+    market_news = build_runtime_market_news_response()
 
     return OverviewResponse(
         asset=response.asset.model_copy(update={"status": AssetStatus.supported, "supported": True}),

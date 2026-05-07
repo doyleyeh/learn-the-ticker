@@ -6,6 +6,7 @@ import time
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from http.cookiejar import CookieJar
 from typing import Any, Protocol
 from urllib.error import HTTPError
@@ -61,6 +62,7 @@ CHART_INTERVAL_BY_RANGE = {
     "max": "1mo",
 }
 ALLOWED_LIGHTWEIGHT_HOSTS = {
+    "www.alphavantage.co",
     "data.sec.gov",
     "finance.yahoo.com",
     "www.sec.gov",
@@ -99,6 +101,11 @@ ETF_SCOPE_DISQUALIFIER_MARKERS = (
     "ultra",
     "vix",
 )
+ETF_ISSUER_OFFICIAL_REGISTRY = {
+    "Vanguard": ("investor.vanguard.com",),
+    "Invesco": ("www.invesco.com",),
+    "State Street Global Advisors": ("www.ssga.com",),
+}
 
 
 class LightweightFetchError(ValueError):
@@ -149,6 +156,9 @@ class _LightweightFetchReuseKey:
     live_fetch_enabled: bool
     provider_fallback_enabled: bool
     weekly_news_fetch_enabled: bool
+    provider_order: tuple[str, ...]
+    provider_credentials_configured: tuple[tuple[str, bool], ...]
+    provider_source_use_reviewed: bool
     sec_user_agent_redacted: str
     fetch_timeout_seconds: int
     fetcher_boundary: str
@@ -211,6 +221,13 @@ def fetch_lightweight_asset_data(
         reused = _reuse_cache_get(reuse_key, active_settings, now_seconds=cache_now)
         if reused is not None:
             return reused
+        persisted = _persistent_cache_get(reuse_key, active_settings, now_epoch_seconds=time.time())
+        if persisted is not None:
+            _LIGHTWEIGHT_FETCH_REUSE_CACHE[reuse_key] = _LightweightFetchReuseEntry(
+                response=persisted.model_copy(deep=True),
+                stored_at_seconds=cache_now,
+            )
+            return persisted
 
     blocked = _manifest_blocked_response(normalized, now, active_settings)
     if blocked is not None:
@@ -226,33 +243,27 @@ def fetch_lightweight_asset_data(
     diagnostics: dict[str, Any] = {
         "policy": "official_first_provider_fallback",
         "official_sources_attempted": [],
+        "fetch_tier_order": ["official", "provider_api", "yahoo"],
+        "fetch_tiers_attempted": [],
+        "fetch_tiers_succeeded": [],
+        "fields_filled_by_tier": {},
+        "provider_order": list(active_settings.provider_order),
         "provider_fallback_attempted": False,
+        "provider_api_attempted": False,
+        "provider_api_skipped": [],
         "blocked_by_scope_screen": False,
         "raw_payload_exposed": False,
     }
-    yahoo_quote, yahoo_sources, yahoo_facts, yahoo_errors, yahoo_diagnostics = _try_yahoo_provider_fallback(
-        normalized,
-        active_settings,
-        source_fetcher,
-        now,
-        chart_range=normalized_chart_range,
-    )
-    diagnostics.update(yahoo_diagnostics)
-    diagnostics["provider_fallback_attempted"] = bool(active_settings.provider_fallback_enabled)
-    if yahoo_errors:
-        diagnostics["provider_fallback_errors"] = yahoo_errors
 
-    asset_type = _asset_type_from_quote_or_manifest(normalized, yahoo_quote)
+    asset_type = _asset_type_from_quote_or_manifest(normalized, None)
     if asset_type is AssetType.stock:
         response = _fetch_stock(
             normalized,
             active_settings,
             source_fetcher,
             now,
-            yahoo_quote=yahoo_quote,
-            yahoo_sources=yahoo_sources,
-            yahoo_facts=yahoo_facts,
             diagnostics=diagnostics,
+            chart_range=normalized_chart_range,
         )
         return _reuse_cache_store_and_mark(
             reuse_key,
@@ -265,12 +276,66 @@ def fetch_lightweight_asset_data(
         response = _fetch_etf(
             normalized,
             active_settings,
+            source_fetcher,
             now,
-            yahoo_quote=yahoo_quote,
-            yahoo_sources=yahoo_sources,
-            yahoo_facts=yahoo_facts,
+            diagnostics=diagnostics,
+            chart_range=normalized_chart_range,
+        )
+        return _reuse_cache_store_and_mark(
+            reuse_key,
+            response,
+            active_settings,
+            now_seconds=cache_now,
+            bypass_reuse=bypass_reuse,
+        )
+
+    provider_quote, provider_sources, provider_facts, provider_errors, provider_diagnostics = _try_market_provider_fallbacks(
+        normalized,
+        active_settings,
+        source_fetcher,
+        now,
+        diagnostics=diagnostics,
+        chart_range=normalized_chart_range,
+        allowed_fields=None,
+    )
+    diagnostics.update(provider_diagnostics)
+    if provider_errors:
+        diagnostics["provider_fallback_errors"] = provider_errors
+    asset_type = _asset_type_from_quote_or_manifest(normalized, provider_quote)
+    if asset_type is AssetType.stock:
+        response = _response_from_provider_only_parts(
+            normalized,
+            AssetType.stock,
+            active_settings,
+            now,
+            provider_quote=provider_quote,
+            provider_sources=provider_sources,
+            provider_facts=provider_facts,
+            provider_errors=provider_errors,
             diagnostics=diagnostics,
             no_live_external_calls=source_fetcher.no_live_external_calls,
+            chart_range=normalized_chart_range,
+        )
+        return _reuse_cache_store_and_mark(
+            reuse_key,
+            response,
+            active_settings,
+            now_seconds=cache_now,
+            bypass_reuse=bypass_reuse,
+        )
+    if asset_type is AssetType.etf:
+        response = _fetch_etf(
+            normalized,
+            active_settings,
+            source_fetcher,
+            now,
+            provider_quote=provider_quote,
+            provider_sources=provider_sources,
+            provider_facts=provider_facts,
+            provider_errors=provider_errors,
+            provider_diagnostics=provider_diagnostics,
+            diagnostics=diagnostics,
+            chart_range=normalized_chart_range,
         )
         return _reuse_cache_store_and_mark(
             reuse_key,
@@ -284,7 +349,7 @@ def fetch_lightweight_asset_data(
         normalized,
         now,
         active_settings,
-        diagnostics={**diagnostics, "quote_type": (yahoo_quote or {}).get("quoteType")},
+        diagnostics={**diagnostics, "quote_type": (provider_quote or {}).get("quoteType")},
     )
     return _reuse_cache_store_and_mark(
         reuse_key,
@@ -310,6 +375,9 @@ def _lightweight_fetch_reuse_key(
         live_fetch_enabled=settings.live_fetch_enabled,
         provider_fallback_enabled=settings.provider_fallback_enabled,
         weekly_news_fetch_enabled=settings.weekly_news_fetch_enabled,
+        provider_order=settings.provider_order,
+        provider_credentials_configured=tuple(sorted(settings.provider_credentials_configured.items())),
+        provider_source_use_reviewed=settings.provider_source_use_reviewed,
         sec_user_agent_redacted=settings.sec_user_agent_redacted,
         fetch_timeout_seconds=settings.fetch_timeout_seconds,
         fetcher_boundary=_fetcher_reuse_boundary(fetcher),
@@ -378,12 +446,156 @@ def _reuse_cache_store_and_mark(
         age_seconds=0.0,
         stored=should_store,
     )
+    marked = _persistent_cache_store_and_mark(key, marked, settings, should_store=should_store)
     if should_store:
         _LIGHTWEIGHT_FETCH_REUSE_CACHE[key] = _LightweightFetchReuseEntry(
             response=marked.model_copy(deep=True),
             stored_at_seconds=now_seconds,
         )
     return marked
+
+
+def _persistent_cache_get(
+    key: _LightweightFetchReuseKey,
+    settings: LightweightDataSettings,
+    *,
+    now_epoch_seconds: float,
+) -> LightweightFetchResponse | None:
+    if not settings.fetch_reuse_enabled or not settings.fetch_persistent_cache_dir:
+        return None
+    path = _persistent_cache_path(key, settings)
+    if path is None or not path.exists():
+        return None
+    try:
+        envelope = json.loads(path.read_text(encoding="utf-8"))
+        stored_at = float(envelope.get("stored_at_epoch_seconds"))
+        raw_response = envelope.get("response")
+        if not isinstance(raw_response, dict):
+            return None
+        age_seconds = max(0.0, now_epoch_seconds - stored_at)
+        if age_seconds > settings.fetch_reuse_ttl_seconds:
+            path.unlink(missing_ok=True)
+            return None
+        response = LightweightFetchResponse.model_validate(raw_response)
+    except Exception:
+        return None
+    marked = _response_with_reuse_diagnostics(
+        response,
+        key,
+        settings,
+        cache_status="persistent_hit",
+        age_seconds=age_seconds,
+        stored=False,
+    )
+    return _response_with_persistent_cache_diagnostics(
+        marked,
+        settings,
+        status="hit",
+        path=path,
+        age_seconds=age_seconds,
+    )
+
+
+def _persistent_cache_store_and_mark(
+    key: _LightweightFetchReuseKey,
+    response: LightweightFetchResponse,
+    settings: LightweightDataSettings,
+    *,
+    should_store: bool,
+) -> LightweightFetchResponse:
+    if not should_store or not settings.fetch_persistent_cache_dir:
+        return _response_with_persistent_cache_diagnostics(
+            response,
+            settings,
+            status="disabled" if not settings.fetch_persistent_cache_dir else "skipped",
+            path=None,
+            age_seconds=0.0,
+        )
+    path = _persistent_cache_path(key, settings)
+    if path is None:
+        return _response_with_persistent_cache_diagnostics(
+            response,
+            settings,
+            status="invalid_cache_dir",
+            path=None,
+            age_seconds=0.0,
+        )
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        envelope = {
+            "schema_version": "lightweight-fetch-persistent-cache-v1",
+            "stored_at_epoch_seconds": time.time(),
+            "key_checksum": _persistent_cache_key_checksum(key),
+            "raw_payload_exposed": False,
+            "secret_values_exposed": False,
+            "response": response.model_dump(mode="json"),
+        }
+        path.write_text(json.dumps(envelope, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+        status = "stored"
+    except Exception:
+        status = "store_failed"
+    return _response_with_persistent_cache_diagnostics(
+        response,
+        settings,
+        status=status,
+        path=path,
+        age_seconds=0.0,
+    )
+
+
+def _persistent_cache_path(
+    key: _LightweightFetchReuseKey,
+    settings: LightweightDataSettings,
+) -> Path | None:
+    if not settings.fetch_persistent_cache_dir:
+        return None
+    base = Path(settings.fetch_persistent_cache_dir).expanduser()
+    return base / "lightweight_fetch" / key.ticker / f"{_persistent_cache_key_checksum(key)}.json"
+
+
+def _persistent_cache_key_checksum(key: _LightweightFetchReuseKey) -> str:
+    payload = {
+        "schema_version": LIGHTWEIGHT_FETCH_SCHEMA_VERSION,
+        "ticker": key.ticker,
+        "chart_range": key.chart_range,
+        "asset_type_hint": key.asset_type_hint,
+        "data_policy_mode": key.data_policy_mode,
+        "live_fetch_enabled": key.live_fetch_enabled,
+        "provider_fallback_enabled": key.provider_fallback_enabled,
+        "weekly_news_fetch_enabled": key.weekly_news_fetch_enabled,
+        "provider_order": key.provider_order,
+        "provider_credentials_configured": key.provider_credentials_configured,
+        "provider_source_use_reviewed": key.provider_source_use_reviewed,
+        "fetch_timeout_seconds": key.fetch_timeout_seconds,
+        "fetcher_boundary": key.fetcher_boundary.split(":", 1)[0],
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _response_with_persistent_cache_diagnostics(
+    response: LightweightFetchResponse,
+    settings: LightweightDataSettings,
+    *,
+    status: str,
+    path: Path | None,
+    age_seconds: float,
+) -> LightweightFetchResponse:
+    diagnostics = {
+        **response.diagnostics,
+        "lightweight_fetch_persistent_cache": {
+            "schema_version": "lightweight-fetch-persistent-cache-v1",
+            "enabled": settings.fetch_persistent_cache_dir is not None,
+            "cache_status": status,
+            "ttl_seconds": settings.fetch_reuse_ttl_seconds,
+            "age_seconds": round(age_seconds, 6),
+            "cache_dir_configured": settings.fetch_persistent_cache_dir is not None,
+            "cache_file": path.name if path is not None else None,
+            "raw_payload_exposed": False,
+            "secret_values_exposed": False,
+        },
+    }
+    return response.model_copy(deep=True, update={"diagnostics": diagnostics})
 
 
 def _response_with_reuse_diagnostics(
@@ -397,6 +609,7 @@ def _response_with_reuse_diagnostics(
 ) -> LightweightFetchResponse:
     diagnostics = {
         **response.diagnostics,
+        "cache_status": cache_status,
         "lightweight_fetch_reuse": {
             "schema_version": "lightweight-fetch-reuse-v1",
             "cache_status": cache_status,
@@ -412,6 +625,9 @@ def _response_with_reuse_diagnostics(
                 "live_fetch_enabled": key.live_fetch_enabled,
                 "provider_fallback_enabled": key.provider_fallback_enabled,
                 "weekly_news_fetch_enabled": key.weekly_news_fetch_enabled,
+                "provider_order": list(key.provider_order),
+                "provider_credentials_configured": dict(key.provider_credentials_configured),
+                "provider_source_use_reviewed": key.provider_source_use_reviewed,
                 "fetcher_boundary": key.fetcher_boundary.split(":", 1)[0],
             },
             "raw_payload_exposed": False,
@@ -427,13 +643,12 @@ def _fetch_stock(
     fetcher: JsonFetcher,
     retrieved_at: str,
     *,
-    yahoo_quote: dict[str, Any] | None,
-    yahoo_sources: list[LightweightFetchSource],
-    yahoo_facts: list[LightweightFetchFact],
     diagnostics: dict[str, Any],
+    chart_range: str,
 ) -> LightweightFetchResponse:
-    sources = list(yahoo_sources)
-    facts = list(yahoo_facts)
+    _record_fetch_tier_attempt(diagnostics, "official")
+    sources: list[LightweightFetchSource] = []
+    facts: list[LightweightFetchFact] = []
     gaps: list[LightweightFetchFact] = []
     official_errors: list[dict[str, str]] = []
     sec_row: dict[str, Any] | None = None
@@ -598,12 +813,30 @@ def _fetch_stock(
         )
     if official_errors:
         diagnostics["official_source_errors"] = official_errors
+    if any(source.source_label is LightweightSourceLabel.official for source in sources):
+        _record_fetch_tier_success(diagnostics, "official")
+        _record_fields_by_tier(diagnostics, "official", facts)
+
+    provider_quote, provider_sources, provider_facts, provider_errors, provider_diagnostics = _try_market_provider_fallbacks(
+        ticker,
+        settings,
+        fetcher,
+        retrieved_at,
+        diagnostics=diagnostics,
+        chart_range=chart_range,
+        allowed_fields=_fallback_fields_for_asset(AssetType.stock, facts),
+    )
+    sources.extend(provider_sources)
+    facts.extend(provider_facts)
+    diagnostics.update(provider_diagnostics)
+    if provider_errors:
+        diagnostics["provider_fallback_errors"] = provider_errors
 
     asset = AssetIdentity(
         ticker=ticker,
-        name=str((sec_row or {}).get("name") or (yahoo_quote or {}).get("longname") or (yahoo_quote or {}).get("shortname") or ticker),
+        name=str((sec_row or {}).get("name") or (provider_quote or {}).get("longname") or (provider_quote or {}).get("shortname") or ticker),
         asset_type=AssetType.stock,
-        exchange=str((sec_row or {}).get("exchange") or (yahoo_quote or {}).get("exchange") or ""),
+        exchange=str((sec_row or {}).get("exchange") or (provider_quote or {}).get("exchange") or ""),
         issuer=None,
         status=AssetStatus.supported,
         supported=True,
@@ -626,19 +859,23 @@ def _fetch_stock(
 def _fetch_etf(
     ticker: str,
     settings: LightweightDataSettings,
+    fetcher: JsonFetcher,
     retrieved_at: str,
     *,
-    yahoo_quote: dict[str, Any] | None,
-    yahoo_sources: list[LightweightFetchSource],
-    yahoo_facts: list[LightweightFetchFact],
+    provider_quote: dict[str, Any] | None = None,
+    provider_sources: list[LightweightFetchSource] | None = None,
+    provider_facts: list[LightweightFetchFact] | None = None,
+    provider_errors: list[dict[str, str]] | None = None,
+    provider_diagnostics: dict[str, Any] | None = None,
     diagnostics: dict[str, Any],
-    no_live_external_calls: bool,
+    chart_range: str,
 ) -> LightweightFetchResponse:
+    _record_fetch_tier_attempt(diagnostics, "official")
     entry = etf_universe_entry(ticker)
     sources: list[LightweightFetchSource] = []
     facts: list[LightweightFetchFact] = []
     gaps: list[LightweightFetchFact] = []
-    name = str((yahoo_quote or {}).get("longname") or (yahoo_quote or {}).get("shortname") or (entry.fund_name if entry else ticker))
+    name = str((entry.fund_name if entry else None) or (provider_quote or {}).get("longname") or (provider_quote or {}).get("shortname") or ticker)
     disqualifiers = _etf_scope_disqualifiers(ticker, name)
     if disqualifiers:
         diagnostics["blocked_by_scope_screen"] = True
@@ -705,18 +942,41 @@ def _fetch_etf(
             )
         )
 
-    diagnostics["official_sources_attempted"].append("deterministic_etf_issuer_adapter")
+    diagnostics["official_sources_attempted"].append("etf_issuer_official_adapter")
     issuer_sources, issuer_facts, issuer_gaps, issuer_diagnostics = _try_etf_issuer_enrichment(
         ticker,
         entry,
         retrieved_at,
     )
-    sources = [*issuer_sources, *sources, *yahoo_sources]
-    facts = [*issuer_facts, *facts, *yahoo_facts]
+    sources = [*issuer_sources, *sources]
+    facts = [*issuer_facts, *facts]
     gaps.extend(issuer_gaps)
     diagnostics.update(issuer_diagnostics)
+    if issuer_sources:
+        _record_fetch_tier_success(diagnostics, "official")
+        _record_fields_by_tier(diagnostics, "official", issuer_facts)
 
-    if not yahoo_sources:
+    if provider_sources is None or provider_facts is None:
+        provider_quote, provider_sources, provider_facts, provider_errors, provider_diagnostics = _try_market_provider_fallbacks(
+            ticker,
+            settings,
+            fetcher,
+            retrieved_at,
+            diagnostics=diagnostics,
+            chart_range=chart_range,
+            allowed_fields=_fallback_fields_for_asset(AssetType.etf, facts),
+        )
+    provider_sources = provider_sources or []
+    provider_facts = provider_facts or []
+    provider_errors = provider_errors or []
+    provider_diagnostics = provider_diagnostics or {}
+    sources.extend(provider_sources)
+    facts.extend(provider_facts)
+    diagnostics.update(provider_diagnostics)
+    if provider_errors:
+        diagnostics["provider_fallback_errors"] = provider_errors
+
+    if not provider_sources:
         gaps.append(
             _gap(
                 ticker,
@@ -731,7 +991,7 @@ def _fetch_etf(
         ticker=ticker,
         name=name,
         asset_type=AssetType.etf,
-        exchange=str((yahoo_quote or {}).get("exchange") or (entry.exchange if entry else "") or ""),
+        exchange=str((provider_quote or {}).get("exchange") or (entry.exchange if entry else "") or ""),
         issuer=entry.issuer if entry else None,
         status=AssetStatus.supported,
         supported=True,
@@ -745,7 +1005,7 @@ def _fetch_etf(
         facts=facts,
         gaps=gaps,
         diagnostics=diagnostics,
-        no_live_external_calls=no_live_external_calls,
+        no_live_external_calls=fetcher.no_live_external_calls,
         message=(
             "Lightweight ETF fetch used deterministic issuer evidence before manifest/provider fallback."
             if issuer_sources
@@ -762,8 +1022,11 @@ def _try_etf_issuer_enrichment(
 ) -> tuple[list[LightweightFetchSource], list[LightweightFetchFact], list[LightweightFetchFact], dict[str, Any]]:
     diagnostics: dict[str, Any] = {
         "issuer_enrichment_attempted": True,
-        "issuer_enrichment_source": "deterministic_etf_issuer_adapter",
+        "issuer_enrichment_source": "etf_issuer_official_adapter",
+        "issuer_enrichment_legacy_fixture_adapter_marker": "deterministic_etf_issuer_adapter",
         "issuer_enrichment_state": "unavailable",
+        "issuer_enrichment_live_capable": True,
+        "issuer_enrichment_official_registry_issuers": sorted(ETF_ISSUER_OFFICIAL_REGISTRY),
         "issuer_enrichment_no_live_external_calls": True,
     }
     try:
@@ -785,7 +1048,7 @@ def _try_etf_issuer_enrichment(
                 _gap(
                     ticker,
                     "etf_issuer_evidence",
-                    "Deterministic ETF issuer evidence is unavailable for this local-MVP slice row.",
+                    "ETF issuer evidence is unavailable for this local-MVP slice row.",
                     retrieved_at,
                 )
             ],
@@ -802,7 +1065,7 @@ def _try_etf_issuer_enrichment(
                 _gap(
                     ticker,
                     "etf_issuer_evidence",
-                    "No deterministic issuer fixture is available for this ETF slice row; issuer facts stay partial or unavailable.",
+                    "No issuer fixture or reviewed live issuer response is available for this ETF slice row; issuer facts stay partial or unavailable.",
                     retrieved_at,
                 )
             ],
@@ -818,7 +1081,7 @@ def _try_etf_issuer_enrichment(
                 _gap(
                     ticker,
                     "etf_issuer_evidence",
-                    "Deterministic issuer fixture failed same-ticker, same-fund, same-issuer, or source-use binding checks.",
+                    "Issuer evidence failed same-ticker, same-fund, same-issuer, or source-use binding checks.",
                     retrieved_at,
                 )
             ],
@@ -869,8 +1132,6 @@ def _valid_etf_issuer_response_binding(ticker: str, entry: Any, response: Any) -
     if entry is not None:
         if asset.name != entry.fund_name or asset.issuer != entry.issuer:
             return False
-    if not response.no_live_external_calls:
-        return False
     if not response.source_attributions or not response.facts:
         return False
     for source in response.source_attributions:
@@ -920,7 +1181,7 @@ def _source_from_etf_issuer_attribution(source: Any, retrieved_at: str) -> Light
         freshness_state=source.freshness_state,
         fallback_reason=None,
         rights_note=(
-            "Official issuer fixture metadata is used for lightweight local-MVP display; raw issuer documents "
+            "Official issuer metadata is used for lightweight local-MVP display; raw issuer documents "
             "and unrestricted source text are not exposed by this response."
         ),
         export_allowed=source.permitted_operations.can_export_metadata,
@@ -946,6 +1207,416 @@ def _fact_from_etf_issuer_provider_fact(
         fallback_used=False,
         limitations=None,
     )
+
+
+def _try_market_provider_fallbacks(
+    ticker: str,
+    settings: LightweightDataSettings,
+    fetcher: JsonFetcher,
+    retrieved_at: str,
+    *,
+    diagnostics: dict[str, Any],
+    chart_range: str = DEFAULT_CHART_RANGE,
+    allowed_fields: set[str] | None,
+) -> tuple[dict[str, Any] | None, list[LightweightFetchSource], list[LightweightFetchFact], list[dict[str, str]], dict[str, Any]]:
+    if not settings.provider_fallback_enabled:
+        return None, [], [], [{"source": "provider_fallback", "error_type": "provider_fallback_disabled"}], _empty_provider_diagnostics(settings)
+
+    quote: dict[str, Any] | None = None
+    sources: list[LightweightFetchSource] = []
+    facts: list[LightweightFetchFact] = []
+    errors: list[dict[str, str]] = []
+    merged_diagnostics = _empty_provider_diagnostics(settings)
+    seen_fields: set[str] = set()
+
+    for provider in settings.provider_order:
+        if provider == "yahoo":
+            _record_fetch_tier_attempt(diagnostics, "yahoo")
+            yahoo_quote, yahoo_sources, yahoo_facts, yahoo_errors, yahoo_diagnostics = _try_yahoo_provider_fallback(
+                ticker,
+                settings,
+                fetcher,
+                retrieved_at,
+                chart_range=chart_range,
+            )
+            kept_sources, kept_facts = _dedupe_provider_results(
+                yahoo_sources,
+                yahoo_facts,
+                allowed_fields=allowed_fields,
+                seen_fields=seen_fields,
+            )
+            if yahoo_quote:
+                quote = {**(quote or {}), **yahoo_quote}
+            sources.extend(kept_sources)
+            facts.extend(kept_facts)
+            errors.extend(yahoo_errors)
+            merged_diagnostics.update(yahoo_diagnostics)
+            if kept_facts:
+                _record_fetch_tier_success(diagnostics, "yahoo")
+                _record_fields_by_tier(diagnostics, "yahoo", kept_facts)
+            continue
+
+        _record_fetch_tier_attempt(diagnostics, "provider_api")
+        diagnostics["provider_api_attempted"] = True
+        api_quote, api_sources, api_facts, api_errors, api_diagnostics = _try_configured_provider_api_fallback(
+            provider,
+            ticker,
+            settings,
+            fetcher,
+            retrieved_at,
+        )
+        kept_sources, kept_facts = _dedupe_provider_results(
+            api_sources,
+            api_facts,
+            allowed_fields=allowed_fields,
+            seen_fields=seen_fields,
+        )
+        if api_quote:
+            quote = {**(quote or {}), **api_quote}
+        sources.extend(kept_sources)
+        facts.extend(kept_facts)
+        errors.extend(api_errors)
+        _merge_provider_api_diagnostics(merged_diagnostics, api_diagnostics)
+        if kept_facts:
+            _record_fetch_tier_success(diagnostics, "provider_api")
+            _record_fields_by_tier(diagnostics, "provider_api", kept_facts)
+
+    merged_diagnostics["provider_fallback_attempted"] = True
+    return quote, sources, facts, errors, merged_diagnostics
+
+
+def _empty_provider_diagnostics(settings: LightweightDataSettings) -> dict[str, Any]:
+    return {
+        "provider_fallback_attempted": bool(settings.provider_fallback_enabled),
+        "provider_order": list(settings.provider_order),
+        "provider_api_attempted": False,
+        "provider_api_skipped": [],
+        "weekly_news_adapter_boundary": WEEKLY_NEWS_SOURCE_ADAPTER_BOUNDARY,
+        "weekly_news_fetch_enabled": settings.weekly_news_fetch_enabled,
+        "weekly_news_provider_candidate_count": 0,
+        "weekly_news_provider_suppressed_count": 0,
+        "weekly_news_raw_article_text_collected": False,
+        "weekly_news_raw_provider_payload_exposed": False,
+        "weekly_news_thumbnail_or_media_forwarded": False,
+    }
+
+
+def _merge_provider_api_diagnostics(target: dict[str, Any], update: dict[str, Any]) -> None:
+    target["provider_api_attempted"] = target.get("provider_api_attempted") or update.get("provider_api_attempted", False)
+    target.setdefault("provider_api_skipped", [])
+    target["provider_api_skipped"].extend(update.get("provider_api_skipped", []))
+    for key, value in update.items():
+        if key not in {"provider_api_attempted", "provider_api_skipped"}:
+            target[key] = value
+
+
+def _dedupe_provider_results(
+    sources: list[LightweightFetchSource],
+    facts: list[LightweightFetchFact],
+    *,
+    allowed_fields: set[str] | None,
+    seen_fields: set[str],
+) -> tuple[list[LightweightFetchSource], list[LightweightFetchFact]]:
+    kept_facts: list[LightweightFetchFact] = []
+    for fact in facts:
+        if allowed_fields is not None and fact.field_name not in allowed_fields:
+            continue
+        if fact.field_name != LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD and fact.field_name in seen_fields:
+            continue
+        if fact.field_name != LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD:
+            seen_fields.add(fact.field_name)
+        kept_facts.append(fact)
+    kept_source_ids = {source_id for fact in kept_facts for source_id in fact.source_document_ids}
+    return [source for source in sources if source.source_document_id in kept_source_ids], kept_facts
+
+
+def _fallback_fields_for_asset(asset_type: AssetType, existing_facts: list[LightweightFetchFact]) -> set[str]:
+    existing = {fact.field_name for fact in existing_facts}
+    common = {
+        "provider_identity_or_market_reference",
+        "provider_market_price",
+        "provider_profile_overview",
+        "provider_quote_stats",
+        "provider_price_chart",
+        LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD,
+    }
+    if asset_type is AssetType.stock:
+        common |= {"provider_stock_metric_groups"}
+    if asset_type is AssetType.etf:
+        common |= {"provider_top_holdings", "provider_sector_weightings", "provider_fund_performance"}
+    return common - existing
+
+
+def _record_fetch_tier_attempt(diagnostics: dict[str, Any], tier: str) -> None:
+    attempted = diagnostics.setdefault("fetch_tiers_attempted", [])
+    if tier not in attempted:
+        attempted.append(tier)
+
+
+def _record_fetch_tier_success(diagnostics: dict[str, Any], tier: str) -> None:
+    succeeded = diagnostics.setdefault("fetch_tiers_succeeded", [])
+    if tier not in succeeded:
+        succeeded.append(tier)
+
+
+def _record_fields_by_tier(diagnostics: dict[str, Any], tier: str, facts: list[LightweightFetchFact]) -> None:
+    fields = diagnostics.setdefault("fields_filled_by_tier", {})
+    current = set(fields.get(tier, []))
+    current.update(fact.field_name for fact in facts if fact.evidence_state is not EvidenceState.unavailable)
+    fields[tier] = sorted(current)
+
+
+def _try_configured_provider_api_fallback(
+    provider: str,
+    ticker: str,
+    settings: LightweightDataSettings,
+    fetcher: JsonFetcher,
+    retrieved_at: str,
+) -> tuple[dict[str, Any] | None, list[LightweightFetchSource], list[LightweightFetchFact], list[dict[str, str]], dict[str, Any]]:
+    diagnostics: dict[str, Any] = {"provider_api_attempted": True, "provider_api_skipped": []}
+    if not settings.provider_credentials_configured.get(provider):
+        diagnostics["provider_api_skipped"].append({"provider": provider, "reason": "credential_not_configured"})
+        return None, [], [], [], diagnostics
+    if not settings.provider_source_use_reviewed:
+        diagnostics["provider_api_skipped"].append({"provider": provider, "reason": "source_use_not_reviewed"})
+        return None, [], [], [], diagnostics
+    if provider != "alpha_vantage":
+        diagnostics["provider_api_skipped"].append({"provider": provider, "reason": "adapter_not_reviewed_for_live_lightweight_fetch"})
+        return None, [], [], [], diagnostics
+    return _try_alpha_vantage_provider_fallback(ticker, settings, fetcher, retrieved_at)
+
+
+def _try_alpha_vantage_provider_fallback(
+    ticker: str,
+    settings: LightweightDataSettings,
+    fetcher: JsonFetcher,
+    retrieved_at: str,
+) -> tuple[dict[str, Any] | None, list[LightweightFetchSource], list[LightweightFetchFact], list[dict[str, str]], dict[str, Any]]:
+    credential = settings.credential_for("alpha_vantage")
+    if not credential:
+        return None, [], [], [], {"provider_api_attempted": True, "provider_api_skipped": [{"provider": "alpha_vantage", "reason": "credential_not_configured"}]}
+
+    errors: list[dict[str, str]] = []
+    overview: dict[str, Any] = {}
+    quote_payload: dict[str, Any] = {}
+    try:
+        overview = fetcher.fetch_json(
+            "https://www.alphavantage.co/query?"
+            + urlencode({"function": "OVERVIEW", "symbol": ticker, "apikey": credential}),
+            user_agent=YAHOO_PROVIDER_USER_AGENT,
+            timeout_seconds=settings.fetch_timeout_seconds,
+        )
+    except Exception as exc:
+        errors.append({"source": "alpha_vantage_overview", "error_type": type(exc).__name__})
+    try:
+        quote_payload = fetcher.fetch_json(
+            "https://www.alphavantage.co/query?"
+            + urlencode({"function": "GLOBAL_QUOTE", "symbol": ticker, "apikey": credential}),
+            user_agent=YAHOO_PROVIDER_USER_AGENT,
+            timeout_seconds=settings.fetch_timeout_seconds,
+        )
+    except Exception as exc:
+        errors.append({"source": "alpha_vantage_global_quote", "error_type": type(exc).__name__})
+
+    normalized = _alpha_vantage_market_reference(ticker, overview, quote_payload)
+    if not normalized:
+        return None, [], [], errors, {
+            "provider_api_attempted": True,
+            "provider_api_skipped": [],
+            "alpha_vantage_fact_count": 0,
+            "alpha_vantage_raw_payload_exposed": False,
+        }
+
+    provider_as_of = normalized.get("latest_trading_day")
+    source = LightweightFetchSource(
+        source_document_id=f"lw_alpha_vantage_{ticker.lower()}_market_reference",
+        source_label=LightweightSourceLabel.provider_derived,
+        source_type="provider_market_reference",
+        title=f"{ticker} Alpha Vantage normalized reference",
+        publisher="Alpha Vantage",
+        url=f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={quote(ticker)}",
+        is_official=False,
+        source_quality=SourceQuality.provider,
+        source_use_policy=SourceUsePolicy.summary_allowed,
+        allowlist_status=SourceAllowlistStatus.allowed,
+        as_of_date=provider_as_of,
+        retrieved_at=retrieved_at,
+        date_precision="day" if provider_as_of else "unknown",
+        freshness_state=FreshnessState.fresh,
+        fallback_reason="Official SEC or issuer data was incomplete for some local-test market/reference fields.",
+        rights_note=(
+            "Alpha Vantage provider data is source-labeled and normalized for local display when configured; "
+            "raw provider payloads and API keys are not displayed or exported."
+        ),
+        export_allowed=False,
+    )
+    facts: list[LightweightFetchFact] = []
+    identity = _alpha_vantage_identity_reference(normalized)
+    if identity:
+        facts.append(
+            _fact(
+                ticker,
+                "provider_identity_or_market_reference",
+                identity,
+                EvidenceState.partial,
+                FreshnessState.fresh,
+                retrieved_at,
+                source,
+                as_of_date=source.as_of_date,
+                fallback_used=True,
+                limitations="Alpha Vantage provider-derived identity/reference data is fallback metadata, not official SEC or issuer evidence.",
+            )
+        )
+    market_price = _alpha_vantage_market_price(normalized)
+    if market_price:
+        facts.append(
+            _fact(
+                ticker,
+                "provider_market_price",
+                market_price,
+                EvidenceState.partial,
+                FreshnessState.fresh,
+                retrieved_at,
+                source,
+                as_of_date=source.as_of_date,
+                fallback_used=True,
+                limitations="Provider-derived market price is delayed/reference data for local testing, not trading advice.",
+            )
+        )
+    profile = _alpha_vantage_profile_overview(normalized)
+    if profile:
+        facts.append(
+            _fact(
+                ticker,
+                "provider_profile_overview",
+                profile,
+                EvidenceState.partial,
+                FreshnessState.fresh,
+                retrieved_at,
+                source,
+                as_of_date=source.as_of_date,
+                fallback_used=True,
+                limitations="Provider-derived profile fields are normalized display fallback, not official SEC or issuer evidence.",
+            )
+        )
+    quote_stats = _alpha_vantage_quote_stats(normalized)
+    if quote_stats:
+        facts.append(
+            _fact(
+                ticker,
+                "provider_quote_stats",
+                quote_stats,
+                EvidenceState.partial,
+                FreshnessState.fresh,
+                retrieved_at,
+                source,
+                as_of_date=source.as_of_date,
+                fallback_used=True,
+                limitations="Provider-derived quote stats are normalized display fallback, not official SEC or issuer evidence.",
+            )
+        )
+
+    return normalized, [source] if facts else [], facts, errors, {
+        "provider_api_attempted": True,
+        "provider_api_skipped": [],
+        "alpha_vantage_fact_count": len(facts),
+        "alpha_vantage_raw_payload_exposed": False,
+    }
+
+
+def _alpha_vantage_market_reference(
+    ticker: str,
+    overview: dict[str, Any],
+    quote_payload: dict[str, Any],
+) -> dict[str, Any]:
+    global_quote = quote_payload.get("Global Quote") if isinstance(quote_payload.get("Global Quote"), dict) else {}
+    symbol = _clean_text(overview.get("Symbol")) or _clean_text(global_quote.get("01. symbol")) or ticker
+    name = _clean_text(overview.get("Name"))
+    latest_trading_day = _clean_text(global_quote.get("07. latest trading day"))
+    fields = {
+        "symbol": symbol,
+        "shortname": name,
+        "longname": name,
+        "quoteType": "EQUITY",
+        "exchange": _clean_text(overview.get("Exchange")),
+        "currency": _clean_text(overview.get("Currency")),
+        "sector": _clean_text(overview.get("Sector")),
+        "industry": _clean_text(overview.get("Industry")),
+        "longBusinessSummary": _clean_text(overview.get("Description")),
+        "market_cap": _provider_number(overview.get("MarketCapitalization")),
+        "regularMarketPrice": _provider_number(global_quote.get("05. price")),
+        "chartPreviousClose": _provider_number(global_quote.get("08. previous close")),
+        "regularMarketVolume": _provider_number(global_quote.get("06. volume")),
+        "latest_trading_day": latest_trading_day,
+        "trailing_pe": _provider_number(overview.get("PERatio")),
+        "eps_ttm": _provider_number(overview.get("EPS")),
+        "dividend_yield": _provider_number(overview.get("DividendYield")),
+        "revenue_ttm": _provider_number(overview.get("RevenueTTM")),
+        "profit_margin": _provider_number(overview.get("ProfitMargin")),
+        "source_label": LightweightSourceLabel.provider_derived.value,
+    }
+    return {key: value for key, value in fields.items() if _present(value)}
+
+
+def _alpha_vantage_identity_reference(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: payload.get(key)
+        for key in ("symbol", "shortname", "longname", "quoteType", "exchange", "currency", "sector", "industry", "source_label")
+        if payload.get(key) is not None
+    }
+
+
+def _alpha_vantage_market_price(payload: dict[str, Any]) -> dict[str, Any] | None:
+    if payload.get("regularMarketPrice") is None and payload.get("chartPreviousClose") is None:
+        return None
+    return {
+        key: payload.get(key)
+        for key in ("symbol", "regularMarketPrice", "chartPreviousClose", "currency", "regularMarketVolume", "latest_trading_day")
+        if payload.get(key) is not None
+    }
+
+
+def _alpha_vantage_profile_overview(payload: dict[str, Any]) -> dict[str, Any]:
+    fields = {
+        "symbol": payload.get("symbol"),
+        "name": payload.get("longname") or payload.get("shortname"),
+        "quote_type": payload.get("quoteType"),
+        "exchange": payload.get("exchange"),
+        "currency": payload.get("currency"),
+        "sector": payload.get("sector"),
+        "industry": payload.get("industry"),
+        "long_business_summary": payload.get("longBusinessSummary"),
+        "market_cap": _metric_payload(payload.get("market_cap"), unit="USD"),
+        "trailing_pe": _metric_payload(payload.get("trailing_pe")),
+        "eps_ttm": _metric_payload(payload.get("eps_ttm")),
+        "dividend_yield": _percent_payload(payload.get("dividend_yield")),
+        "revenue_ttm": _metric_payload(payload.get("revenue_ttm"), unit="USD"),
+        "profit_margin": _percent_payload(payload.get("profit_margin")),
+    }
+    return {key: value for key, value in fields.items() if _present(value)}
+
+
+def _alpha_vantage_quote_stats(payload: dict[str, Any]) -> dict[str, Any]:
+    rows = [
+        _quote_stat("previous_close", "Previous Close", payload.get("chartPreviousClose"), value_type="currency"),
+        _quote_stat("volume", "Volume", payload.get("regularMarketVolume"), value_type="number"),
+        _quote_stat("pe_ratio_ttm", "PE Ratio (TTM)", payload.get("trailing_pe"), value_type="number"),
+        _quote_stat("dividend_yield", "Dividend yield", _percent_payload(payload.get("dividend_yield")), value_type="percent"),
+    ]
+    rows = [row for row in rows if row.get("value") not in (None, "")]
+    return {"rows": rows, "source_label": LightweightSourceLabel.provider_derived.value} if rows else {}
+
+
+def _provider_number(value: Any) -> float | int | None:
+    if isinstance(value, bool) or value in (None, "", "None", "null", "-"):
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    try:
+        numeric = float(str(value).replace(",", "").strip())
+    except (TypeError, ValueError):
+        return None
+    return int(numeric) if numeric.is_integer() else numeric
 
 
 def _try_yahoo_provider_fallback(
@@ -1258,6 +1929,12 @@ def _response_from_parts(
     fetch_state = LightweightFetchState.supported if page_state is EvidenceState.supported else LightweightFetchState.partial if facts else LightweightFetchState.unavailable
     as_of = preferred_as_of or _latest_as_of([*sources, *source_by_id.values()])
     weekly_news_as_of = _latest_weekly_news_event_date(facts)
+    hierarchy_diagnostics = _finalize_fetch_hierarchy_diagnostics(
+        diagnostics,
+        sources=sources,
+        facts=facts,
+        fetch_state=fetch_state,
+    )
     return _with_fallback_diagnostics(
         LightweightFetchResponse(
             ticker=ticker,
@@ -1284,7 +1961,7 @@ def _response_from_parts(
             citations=citations,
             gaps=gaps,
             diagnostics={
-                **diagnostics,
+                **hierarchy_diagnostics,
                 "settings": settings.safe_diagnostics,
                 "official_source_count": sum(
                     1 for source in sources if source.source_label is LightweightSourceLabel.official
@@ -1301,6 +1978,104 @@ def _response_from_parts(
             message=message,
         )
     )
+
+
+def _response_from_provider_only_parts(
+    ticker: str,
+    asset_type: AssetType,
+    settings: LightweightDataSettings,
+    retrieved_at: str,
+    *,
+    provider_quote: dict[str, Any] | None,
+    provider_sources: list[LightweightFetchSource],
+    provider_facts: list[LightweightFetchFact],
+    provider_errors: list[dict[str, str]],
+    diagnostics: dict[str, Any],
+    no_live_external_calls: bool,
+    chart_range: str,
+) -> LightweightFetchResponse:
+    if provider_errors:
+        diagnostics["provider_fallback_errors"] = provider_errors
+    if provider_facts:
+        _record_fetch_tier_success(diagnostics, "provider_api" if "provider_api" in diagnostics.get("fetch_tiers_succeeded", []) else "yahoo")
+    gaps = [
+        _gap(
+            ticker,
+            "official_identity",
+            "Official SEC or issuer support metadata was unavailable; provider-derived fallback is labeled and partial.",
+            retrieved_at,
+        )
+    ]
+    asset = AssetIdentity(
+        ticker=ticker,
+        name=str((provider_quote or {}).get("longname") or (provider_quote or {}).get("shortname") or ticker),
+        asset_type=asset_type,
+        exchange=str((provider_quote or {}).get("exchange") or ""),
+        issuer=None,
+        status=AssetStatus.supported,
+        supported=True,
+    )
+    return _response_from_parts(
+        ticker,
+        asset,
+        settings,
+        retrieved_at,
+        sources=provider_sources,
+        facts=provider_facts,
+        gaps=gaps,
+        diagnostics={**diagnostics, "chart_range": chart_range},
+        no_live_external_calls=no_live_external_calls,
+        message="Lightweight fetch used source-labeled provider fallback because official support metadata was unavailable.",
+        preferred_as_of=_latest_as_of(provider_sources),
+    )
+
+
+def _finalize_fetch_hierarchy_diagnostics(
+    diagnostics: dict[str, Any],
+    *,
+    sources: list[LightweightFetchSource],
+    facts: list[LightweightFetchFact],
+    fetch_state: LightweightFetchState,
+) -> dict[str, Any]:
+    finalized = dict(diagnostics)
+    finalized.setdefault("fetch_tier_order", ["official", "provider_api", "yahoo"])
+    finalized.setdefault("fetch_tiers_attempted", [])
+    finalized.setdefault("fetch_tiers_succeeded", [])
+    finalized.setdefault("fields_filled_by_tier", {})
+    if any(source.source_label is LightweightSourceLabel.official for source in sources):
+        _record_fetch_tier_success(finalized, "official")
+        _record_fields_by_tier(
+            finalized,
+            "official",
+            [fact for fact in facts if LightweightSourceLabel.official in fact.source_labels],
+        )
+    if fetch_state in {LightweightFetchState.unsupported, LightweightFetchState.out_of_scope}:
+        finalized["final_fallback_level"] = "blocked"
+    elif any(source.source_label is LightweightSourceLabel.provider_derived for source in sources):
+        if any(source.publisher == "Yahoo Finance" for source in sources):
+            finalized["final_fallback_level"] = "yahoo"
+        else:
+            finalized["final_fallback_level"] = "provider_api"
+    elif any(source.source_label is LightweightSourceLabel.official for source in sources):
+        finalized["final_fallback_level"] = "official"
+    elif fetch_state is LightweightFetchState.partial:
+        finalized["final_fallback_level"] = "partial"
+    else:
+        finalized["final_fallback_level"] = "unavailable"
+    return finalized
+
+
+def _base_fetch_hierarchy_diagnostics(*, final_fallback_level: str) -> dict[str, Any]:
+    return {
+        "policy": "official_first_provider_fallback",
+        "fetch_tier_order": ["official", "provider_api", "yahoo"],
+        "fetch_tiers_attempted": [],
+        "fetch_tiers_succeeded": [],
+        "fields_filled_by_tier": {},
+        "cache_status": "not_checked",
+        "final_fallback_level": final_fallback_level,
+        "raw_payload_exposed": False,
+    }
 
 
 def _unavailable_response(
@@ -1335,7 +2110,11 @@ def _unavailable_response(
                 recent_events_as_of=None,
                 freshness_state=FreshnessState.unavailable,
             ),
-            diagnostics={"reason_code": reason_code, "settings": settings.safe_diagnostics},
+            diagnostics={
+                **_base_fetch_hierarchy_diagnostics(final_fallback_level="unavailable"),
+                "reason_code": reason_code,
+                "settings": settings.safe_diagnostics,
+            },
             no_live_external_calls=True,
             message=message,
         )
@@ -1371,7 +2150,11 @@ def _unknown_response(
                 recent_events_as_of=None,
                 freshness_state=FreshnessState.unknown,
             ),
-            diagnostics={**diagnostics, "settings": settings.safe_diagnostics},
+            diagnostics={
+                **_base_fetch_hierarchy_diagnostics(final_fallback_level="unavailable"),
+                **diagnostics,
+                "settings": settings.safe_diagnostics,
+            },
             no_live_external_calls=False,
             message="No recognized stock or in-scope ETF could be resolved from official or provider fallback metadata.",
         )
@@ -1411,7 +2194,12 @@ def _blocked_response(
                 recent_events_as_of=None,
                 freshness_state=FreshnessState.unavailable,
             ),
-            diagnostics={**(diagnostics or {}), "settings": settings.safe_diagnostics, "blocked_generated_output": True},
+            diagnostics={
+                **_base_fetch_hierarchy_diagnostics(final_fallback_level="blocked"),
+                **(diagnostics or {}),
+                "settings": settings.safe_diagnostics,
+                "blocked_generated_output": True,
+            },
             no_live_external_calls=True,
             message=message,
         )

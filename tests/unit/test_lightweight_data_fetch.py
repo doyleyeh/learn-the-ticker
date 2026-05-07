@@ -8,6 +8,7 @@ from backend.lightweight_page import (
     build_lightweight_overview_response,
     build_lightweight_sources_response,
 )
+from backend.market_news import build_market_news_response
 from backend.models import (
     AssetStatus,
     AssetType,
@@ -235,6 +236,56 @@ class SecUnavailableFakeJsonFetcher(FakeJsonFetcher):
         return super().fetch_json(url, user_agent=user_agent, timeout_seconds=timeout_seconds)
 
 
+class RecentSecFilingFakeJsonFetcher(FakeJsonFetcher):
+    def fetch_json(self, url: str, *, user_agent: str, timeout_seconds: int) -> dict[str, Any]:
+        if "submissions/CIK0000320193" in url:
+            self.urls.append(url)
+            return {
+                "filings": {
+                    "recent": {
+                        "form": ["10-K"],
+                        "filingDate": ["2026-05-01"],
+                        "reportDate": ["2026-04-30"],
+                        "accessionNumber": ["0000320193-26-000777"],
+                    }
+                }
+            }
+        return super().fetch_json(url, user_agent=user_agent, timeout_seconds=timeout_seconds)
+
+
+class AlphaVantageFakeJsonFetcher(FakeJsonFetcher):
+    def fetch_json(self, url: str, *, user_agent: str, timeout_seconds: int) -> dict[str, Any]:
+        if "alphavantage.co" in url and "function=OVERVIEW" in url:
+            self.urls.append(url)
+            return {
+                "Symbol": "AAPL",
+                "Name": "Apple Inc.",
+                "Exchange": "NASDAQ",
+                "Currency": "USD",
+                "Sector": "Technology",
+                "Industry": "Consumer Electronics",
+                "Description": "Apple designs products and services for consumers and businesses.",
+                "MarketCapitalization": "3120000000000",
+                "PERatio": "30.5",
+                "EPS": "6.4",
+                "DividendYield": "0.0045",
+                "RevenueTTM": "391000000000",
+                "ProfitMargin": "0.24",
+            }
+        if "alphavantage.co" in url and "function=GLOBAL_QUOTE" in url:
+            self.urls.append(url)
+            return {
+                "Global Quote": {
+                    "01. symbol": "AAPL",
+                    "05. price": "201.25",
+                    "06. volume": "1234567",
+                    "07. latest trading day": "2026-05-01",
+                    "08. previous close": "199.50",
+                }
+            }
+        return super().fetch_json(url, user_agent=user_agent, timeout_seconds=timeout_seconds)
+
+
 def _settings():
     return build_lightweight_data_settings(
         {
@@ -265,6 +316,33 @@ def _settings_with_reuse_ttl(ttl_seconds: int):
             "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
             "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
             "LIGHTWEIGHT_FETCH_REUSE_TTL_SECONDS": str(ttl_seconds),
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+        }
+    )
+
+
+def _settings_with_persistent_cache(cache_dir: str):
+    return build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "LIGHTWEIGHT_FETCH_REUSE_TTL_SECONDS": "30",
+            "LIGHTWEIGHT_FETCH_CACHE_DIR": cache_dir,
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+        }
+    )
+
+
+def _settings_with_alpha_provider():
+    return build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_ORDER": "alpha_vantage,yahoo",
+            "LIGHTWEIGHT_PROVIDER_SOURCE_USE_REVIEWED": "true",
+            "ALPHA_VANTAGE_API_KEY": "configured-test-key",
             "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
         }
     )
@@ -531,6 +609,30 @@ def test_lightweight_fetch_reuse_respects_ttl_expiry(monkeypatch):
     assert len(fetcher.urls) > first_url_count
 
 
+def test_lightweight_persistent_cache_reuses_response_across_fetchers(tmp_path):
+    clear_lightweight_fetch_reuse_cache()
+    cache_dir = tmp_path / "fetch-cache"
+    first_fetcher = FakeJsonFetcher()
+    settings = _settings_with_persistent_cache(str(cache_dir))
+
+    first = fetch_lightweight_asset_data("AAPL", settings=settings, fetcher=first_fetcher, retrieved_at=RETRIEVED_AT)
+    first_url_count = len(first_fetcher.urls)
+    clear_lightweight_fetch_reuse_cache()
+    second_fetcher = FakeJsonFetcher()
+    second = fetch_lightweight_asset_data("AAPL", settings=settings, fetcher=second_fetcher, retrieved_at=RETRIEVED_AT)
+
+    assert first.diagnostics["lightweight_fetch_persistent_cache"]["cache_status"] == "stored"
+    assert first.diagnostics["cache_status"] == "miss"
+    assert first_url_count > 0
+    assert second_fetcher.urls == []
+    assert second.diagnostics["cache_status"] == "persistent_hit"
+    assert second.diagnostics["lightweight_fetch_persistent_cache"]["cache_status"] == "hit"
+    assert second.raw_payload_exposed is False
+    assert second.diagnostics["lightweight_fetch_persistent_cache"]["raw_payload_exposed"] is False
+    assert second.diagnostics["lightweight_fetch_persistent_cache"]["secret_values_exposed"] is False
+    assert list((cache_dir / "lightweight_fetch" / "AAPL").glob("*.json"))
+
+
 def test_lightweight_fetch_reuse_preserves_partial_provider_fallback_result():
     clear_lightweight_fetch_reuse_cache()
     fetcher = SecUnavailableFakeJsonFetcher()
@@ -586,6 +688,21 @@ def test_lightweight_stock_fetch_prefers_sec_and_labels_provider_fallback():
     assert fields["provider_price_chart"].value["interval"] == "1d"
     assert response.diagnostics["official_source_count"] == 3
     assert response.diagnostics["provider_fallback_source_count"] == 1
+    assert response.diagnostics["fetch_tier_order"] == ["official", "provider_api", "yahoo"]
+    assert response.diagnostics["fetch_tiers_attempted"] == ["official", "provider_api", "yahoo"]
+    assert response.diagnostics["fetch_tiers_succeeded"] == ["official", "yahoo"]
+    assert response.diagnostics["fields_filled_by_tier"]["official"] == [
+        "latest_assets_fact",
+        "latest_net_income_fact",
+        "latest_revenue_fact",
+        "latest_sec_filing",
+        "sec_identity",
+    ]
+    assert response.diagnostics["fields_filled_by_tier"]["yahoo"]
+    assert response.diagnostics["final_fallback_level"] == "yahoo"
+    first_sec_url = next(index for index, url in enumerate(fetcher.urls) if "sec.gov" in url)
+    first_yahoo_url = next(index for index, url in enumerate(fetcher.urls) if "finance.yahoo.com" in url)
+    assert first_sec_url < first_yahoo_url
     assert response.fallback_diagnostics is not None
     assert response.fallback_diagnostics.schema_version == "lightweight-api-fallback-diagnostics-v1"
     assert response.fallback_diagnostics.source_path == "sec_official_provider_fallback"
@@ -595,6 +712,25 @@ def test_lightweight_stock_fetch_prefers_sec_and_labels_provider_fallback():
     assert response.fallback_diagnostics.raw_payload_exposed is False
     assert response.fallback_diagnostics.secret_values_exposed is False
     assert all("raw" not in fact.field_name for fact in response.facts)
+
+
+def test_lightweight_provider_api_runs_before_yahoo_and_fills_missing_fields_only():
+    fetcher = AlphaVantageFakeJsonFetcher()
+
+    response = fetch_lightweight_asset_data("AAPL", settings=_settings_with_alpha_provider(), fetcher=fetcher, retrieved_at=RETRIEVED_AT)
+    fields = {fact.field_name: fact for fact in response.facts}
+
+    alpha_url_indexes = [index for index, url in enumerate(fetcher.urls) if "alphavantage.co" in url]
+    first_yahoo_url = next(index for index, url in enumerate(fetcher.urls) if "finance.yahoo.com" in url)
+    assert alpha_url_indexes
+    assert max(alpha_url_indexes) < first_yahoo_url
+    assert response.diagnostics["fetch_tiers_attempted"] == ["official", "provider_api", "yahoo"]
+    assert response.diagnostics["fetch_tiers_succeeded"] == ["official", "provider_api", "yahoo"]
+    assert "provider_market_price" in response.diagnostics["fields_filled_by_tier"]["provider_api"]
+    assert fields["provider_market_price"].value["regularMarketPrice"] == 201.25
+    assert any(source.publisher == "Alpha Vantage" for source in response.sources)
+    assert any(source.publisher == "Yahoo Finance" for source in response.sources)
+    assert "configured-test-key" not in str(response.model_dump(mode="json"))
 
 
 def test_lightweight_etf_fetch_uses_issuer_fixtures_before_manifest_and_provider_fallback():
@@ -633,6 +769,12 @@ def test_lightweight_etf_fetch_uses_issuer_fixtures_before_manifest_and_provider
     assert fields["provider_price_chart"].value["range"] == "6mo"
     assert response.freshness.holdings_as_of == "2026-04-01"
     assert response.diagnostics["issuer_enrichment_state"] == "supported"
+    assert response.diagnostics["issuer_enrichment_source"] == "etf_issuer_official_adapter"
+    assert response.diagnostics["issuer_enrichment_live_capable"] is True
+    assert response.diagnostics["fetch_tiers_attempted"] == ["official", "provider_api", "yahoo"]
+    assert response.diagnostics["fetch_tiers_succeeded"] == ["official", "yahoo"]
+    assert response.diagnostics["fields_filled_by_tier"]["official"]
+    assert response.diagnostics["final_fallback_level"] == "yahoo"
     assert response.diagnostics["official_source_count"] == 4
     assert response.diagnostics["provider_fallback_source_count"] == 1
     assert response.fallback_diagnostics is not None
@@ -859,6 +1001,46 @@ def test_lightweight_weekly_news_adapter_selects_provider_metadata_when_enabled(
     assert overview.ai_comprehensive_analysis is not None
     assert overview.ai_comprehensive_analysis.analysis_available is True
     assert overview.ai_comprehensive_analysis.weekly_news_selected_item_count == 2
+
+
+def test_lightweight_weekly_news_prefers_recent_official_filing_without_provider_news_flag():
+    response = fetch_lightweight_asset_data(
+        "AAPL",
+        settings=_settings(),
+        fetcher=RecentSecFilingFakeJsonFetcher(),
+        retrieved_at=RETRIEVED_AT,
+    )
+    overview = build_lightweight_overview_response(response)
+
+    assert overview.weekly_news_focus is not None
+    assert overview.weekly_news_focus.selected_item_count == 1
+    item = overview.weekly_news_focus.items[0]
+    assert item.source.is_official is True
+    assert item.source.source_quality.value == "official"
+    assert item.source.source_use_policy.value == "full_text_allowed"
+    assert overview.ai_comprehensive_analysis is not None
+    assert overview.ai_comprehensive_analysis.analysis_available is False
+
+
+def test_lightweight_overview_uses_runtime_market_news_builder(monkeypatch):
+    calls: list[bool] = []
+
+    def fake_runtime_market_news():
+        calls.append(True)
+        return build_market_news_response()
+
+    monkeypatch.setattr("backend.lightweight_page.build_runtime_market_news_response", fake_runtime_market_news)
+    response = fetch_lightweight_asset_data(
+        "VOO",
+        settings=_settings(),
+        fetcher=FakeJsonFetcher(),
+        retrieved_at=RETRIEVED_AT,
+    )
+
+    overview = build_lightweight_overview_response(response)
+
+    assert calls == [True]
+    assert overview.market_news_focus is not None
 
 
 def test_lightweight_issuer_backed_etf_fetch_builds_supported_page_contracts():
