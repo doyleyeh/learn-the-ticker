@@ -1,43 +1,65 @@
 ## Current task
 
-### T-176: Make local fresh-data runtime live by default
-
-Goal:
-Make `GET /api/assets/{ticker}/fresh-data` and local asset rendering attempt live official-first retrieval by default in local runtime/manual review, while preserving deterministic fixture-backed CI and normal tests.
-
-Acceptance criteria:
-- Explicit env vars still override runtime defaults.
-- CI, pytest, and `env={}` settings remain no-live by default.
-- Local runtime outside CI/test defaults to `LIGHTWEIGHT_LIVE_FETCH_ENABLED=true` and provider fallback enabled.
-- Fresh data attempts official sources first, then configured provider APIs, then Yahoo/yfinance-style fallback.
-- Existing asset dashboard tables, details, source drawer, exports, and chat pack structures stay stable regardless of source tier; only source labels, freshness, unavailable states, citations, and fallback diagnostics differ.
-
-Required commands:
-- `python3 -m pytest tests -q`
-- `python3 evals/run_static_evals.py`
-- `bash scripts/run_quality_gate.sh`
-
-Iteration budget:
-- Complete this runtime-default task in one agent-loop cycle without broad coverage expansion, generated-output cache promotion, or production deployment changes.
-
-## Backlog
-
 ### T-177: Make local Market News and Weekly News live-source runtime default
 
 Goal:
 Make local asset pages default to live server-side Market News and ticker Weekly News retrieval in local runtime/manual review, with Yahoo/yfinance-style news only as fallback metadata and CI/tests still fixture-backed.
 
+Task scope:
+Update the runtime-default boundary for Market News and lightweight Weekly News only. The change should mirror the T-176 local-runtime pattern: explicit env values win, CI/pytest/static-eval/default `env={}` paths remain no-live, and ordinary local/manual-review runtime can attempt live server-side retrieval when the operator has not disabled it. Keep the v0.4 frontend workflow unchanged: home remains single stock/ETF search first, comparison stays a separate connected workflow, glossary stays contextual, and Market News/Weekly News remain separated from stable canonical facts.
+
+Allowed files:
+- `.env.example`
+- `backend/settings.py`
+- `backend/market_news_runtime.py`
+- `backend/lightweight_data_fetch.py`
+- `backend/weekly_news_sources.py`
+- `backend/overview.py`
+- `backend/main.py`
+- `scripts/run_market_news_live_source_smoke.py`
+- `scripts/run_weekly_news_live_source_smoke.py`
+- `evals/run_static_evals.py`
+- `evals/market_news_eval_cases.yaml`
+- `evals/weekly_news_eval_cases.yaml`
+- `tests/unit/test_persistence_settings.py`
+- `tests/unit/test_market_news.py`
+- `tests/unit/test_weekly_news.py`
+- `tests/unit/test_lightweight_data_fetch.py`
+- `tests/unit/test_repo_contract.py`
+- `tests/integration/test_backend_api.py`
+- `docs/learn_the_ticker_technical_design_spec.md`
+- `docs/agent-journal/<run-id>.md`
+
+Do not change:
+- Do not edit frontend routes/components or alter the home, comparison, glossary, source drawer, or chat workflows.
+- Do not add new providers, production dependencies, production deployment settings, recurring jobs, or broad ingestion infrastructure.
+- Do not change stock or ETF universe manifests, promote generated-output cache entries, approve new sources, or relax source-use rights.
+- Do not store or expose raw article bodies, unrestricted thumbnails/media, raw provider payloads, hidden prompts, model reasoning, API keys, or secret values.
+- Do not make normal CI, pytest, static evals, or the quality gate require live RSS, GDELT, keyed news providers, Yahoo/yfinance, market-data providers, or LLM calls.
+
 Acceptance criteria:
-- `/api/market-news` and `GET /api/assets/{ticker}/weekly-news` use live local runtime defaults outside CI/test when explicit env vars do not override them.
-- CI, pytest, static evals, and normal quality gates remain deterministic and do not require live RSS, GDELT, keyed news providers, Yahoo/yfinance, market-data providers, or LLM calls.
-- Raw article bodies, unrestricted thumbnails/media, raw provider payloads, secrets, and generated-output cache writes remain absent from Market News and Weekly News output.
-- Market News Focus stays reusable across supported ticker pages and appears above `Weekly News Focus: {TICKER}`.
-- AI Comprehensive Analysis thresholds, citation checks, source-use policy gates, and no-advice validation remain unchanged.
+- Explicit env vars and existing `LTT_*` aliases still override runtime defaults for both enabled and disabled states.
+- CI, pytest, static evals, and explicit `env={}` settings remain no-live by default for Market News and Weekly News.
+- Local runtime/manual review outside CI/test defaults to `MARKET_NEWS_FETCH_ENABLED=true` and `LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED=true` when those vars are unset, without changing `LLM_LIVE_GENERATION_ENABLED`.
+- `/api/market-news` uses the existing server-side Market News runtime boundary and remains reusable across supported ticker pages; it does not unlock unsupported assets or redefine canonical asset facts.
+- `GET /api/assets/{ticker}/weekly-news` and local asset page shaping use the same selected ticker Weekly News pack when local defaults enable retrieval, and ticker labels remain `Weekly News Focus: {TICKER}` with AI Comprehensive Analysis suppressed below the existing evidence threshold.
+- Market News Focus still appears above ticker-specific Weekly News in asset responses, and stable canonical facts remain visually/structurally separate from both timely sections.
+- Yahoo/yfinance-style news remains fallback metadata only: title/headline, publisher, URL, published time, retrieved time, ticker/topic match, event/type or topic bucket, source label, source-use policy, cluster/audit metadata, and optional bounded summary/snippet.
+- Raw article bodies, unrestricted media, raw provider payloads, secrets, generated-output cache writes, recommendation/trade UX, and investment-advice language remain absent from Market News and Weekly News outputs.
+- Source-use policy gates, citation checks, freshness/as-of labels, partial/unknown/unavailable/insufficient-evidence states, configured maximum behavior, and no-padding rules remain unchanged.
 
 Required commands:
+- `python3 -m pytest tests/unit/test_persistence_settings.py tests/unit/test_market_news.py tests/unit/test_weekly_news.py tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py -q`
+- `python3 scripts/run_market_news_live_source_smoke.py --json`
+- `python3 scripts/run_weekly_news_live_source_smoke.py --json`
 - `python3 -m pytest tests -q`
 - `python3 evals/run_static_evals.py`
 - `bash scripts/run_quality_gate.sh`
+
+Iteration budget:
+- Complete this runtime-default task in one agent-loop cycle. Do not expand provider coverage, run real-network opt-in smokes unless the operator explicitly asks, change frontend workflow, promote source evidence, promote generated-output cache entries, or start production deployment work.
+
+## Backlog
 
 ### T-178: Add full-manifest deterministic support smoke
 
@@ -90,6 +112,34 @@ Required commands:
 - `bash scripts/run_quality_gate.sh`
 
 ## Completed
+
+### T-176: Make local fresh-data runtime live by default
+
+Goal:
+Make `GET /api/assets/{ticker}/fresh-data` and local asset rendering attempt live official-first retrieval by default in local runtime/manual review, while preserving deterministic fixture-backed CI and normal tests.
+
+Completion commits:
+- Implementation commit: `333b35a feat(T-176): make local fresh-data runtime live by default`
+- Local merge commit: `5664c98 chore(T-176): merge make local fresh-data runtime live by default` from branch `agent/T-176-20260507T182632Z`
+
+Completion details:
+- Added `DEFAULT_LOCAL_RUNTIME_LIGHTWEIGHT_LIVE_FETCH_ENABLED = True` and runtime detection helpers in `backend/settings.py` so `build_lightweight_data_settings()` defaults live fetch on for local runtime/manual review when `LIGHTWEIGHT_LIVE_FETCH_ENABLED` is unset.
+- Preserved deterministic no-live behavior for explicit `env={}`, CI markers, pytest markers, and static evals; explicit true/false env values still override defaults.
+- Kept lightweight provider fallback enabled by default and updated the disabled fresh-data diagnostic in `backend/lightweight_data_fetch.py` to describe local-runtime default behavior.
+- Updated `.env.example` and the technical design runtime defaults to document the new local/manual-review behavior while keeping deterministic runs explicitly disableable.
+- Set `LIGHTWEIGHT_LIVE_FETCH_ENABLED=false` inside `evals/run_static_evals.py` so static evals remain fixture-backed and no-live.
+- Added settings regression coverage in `tests/unit/test_persistence_settings.py` for empty-env, pytest, local runtime, explicit disabled, CI default, and CI explicit-enabled cases.
+- `docs/agent-journal/20260507T182632Z.md` records changed files, pass status, test/eval results, and remaining risks.
+
+Required commands executed in this task branch:
+- `python3 -m pytest tests/unit/test_persistence_settings.py tests/unit/test_lightweight_data_fetch.py::test_lightweight_fetch_disabled_returns_unavailable_without_live_calls tests/unit/test_lightweight_data_fetch.py::test_lightweight_stock_fetch_prefers_sec_and_labels_provider_fallback tests/unit/test_lightweight_data_fetch.py::test_lightweight_provider_api_runs_before_yahoo_and_fills_missing_fields_only tests/integration/test_backend_api.py::test_details_sources_and_recent_routes_exist -q` - pass, 28 passed
+- `python3 -m pytest tests -q` - pass, 542 passed
+- `python3 evals/run_static_evals.py` - pass
+- `bash scripts/run_quality_gate.sh` - pass
+
+Remaining risks:
+- Actual live SEC/provider/Yahoo reliability still depends on operator network access and configured provider credentials.
+- This did not expand asset coverage, promote generated-output cache entries, approve new sources, or change production deployment defaults.
 
 ### T-175: Add Market News smoke and quality-gate coverage
 
