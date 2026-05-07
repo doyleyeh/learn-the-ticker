@@ -2,15 +2,24 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from backend.etf_universe import (
+    RECOGNITION_ETF_UNIVERSE_MANIFEST_PATH,
+    SUPPORTED_ETF_UNIVERSE_MANIFEST_PATH,
+    can_generate_output_for_etf_entry,
+    load_recognition_etf_universe_manifest,
+    load_supported_etf_universe_manifest,
+)
 from backend.lightweight_data_fetch import (
     clear_lightweight_fetch_reuse_cache,
     fetch_lightweight_asset_data,
@@ -23,9 +32,22 @@ from backend.lightweight_page import (
 )
 from backend.models import LightweightFetchState
 from backend.settings import build_lightweight_data_settings
+from scripts.run_local_fresh_data_slice_smoke import LocalFreshDataSliceFakeFetcher, RETRIEVED_AT
 
 
 DEFAULT_TICKERS = ("AAPL", "VOO")
+SUPPORTED_ETF_AUTHORITY = "data/universes/us_equity_etfs_supported.current.json"
+RECOGNITION_ETF_AUTHORITY = "data/universes/us_etp_recognition.current.json"
+GENERATED_SURFACES = (
+    "asset_pages",
+    "chat_answers",
+    "comparisons",
+    "weekly_news_focus",
+    "ai_comprehensive_analysis",
+    "exports",
+    "generated_risk_summaries",
+    "generated_output_cache_entries",
+)
 
 
 def run_smoke(tickers: list[str], *, live: bool) -> dict[str, object]:
@@ -34,10 +56,36 @@ def run_smoke(tickers: list[str], *, live: bool) -> dict[str, object]:
         env["DATA_POLICY_MODE"] = "lightweight"
         env["LIGHTWEIGHT_LIVE_FETCH_ENABLED"] = "true"
         env.setdefault("LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED", "true")
+    else:
+        env.update(
+            {
+                "DATA_POLICY_MODE": "lightweight",
+                "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+                "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+                "SEC_EDGAR_USER_AGENT": "learn-the-ticker-fetch-smoke/0.1 test@example.com",
+            }
+        )
     settings = build_lightweight_data_settings(env=env)
     clear_lightweight_fetch_reuse_cache()
-    responses = [fetch_lightweight_asset_data(ticker, settings=settings) for ticker in tickers]
-    repeated_responses = [fetch_lightweight_asset_data(ticker, settings=settings) for ticker in tickers]
+    fetcher = None if live else LocalFreshDataSliceFakeFetcher()
+    responses = [
+        fetch_lightweight_asset_data(
+            ticker,
+            settings=settings,
+            fetcher=fetcher,
+            retrieved_at=None if live else RETRIEVED_AT,
+        )
+        for ticker in tickers
+    ]
+    repeated_responses = [
+        fetch_lightweight_asset_data(
+            ticker,
+            settings=settings,
+            fetcher=fetcher,
+            retrieved_at=None if live else RETRIEVED_AT,
+        )
+        for ticker in tickers
+    ]
     surface_contracts = [_surface_contract(response) for response in responses]
     acceptable_states = {LightweightFetchState.supported.value, LightweightFetchState.partial.value}
     blocked = [
@@ -51,11 +99,14 @@ def run_smoke(tickers: list[str], *, live: bool) -> dict[str, object]:
     return {
         "schema_version": "lightweight-data-fetch-smoke-v1",
         "status": "pass" if not blocked else "blocked",
+        "deterministic_fixture_backed": not live,
+        "normal_ci_requires_live_calls": False,
         "live_fetch_enabled": settings.live_fetch_enabled,
         "settings": settings.safe_diagnostics,
         "blocked_tickers": blocked,
         "reuse_diagnostics": _reuse_diagnostics(responses, repeated_responses),
         "surface_contracts": surface_contracts,
+        "current_supported_etf_manifest_fetch": run_current_supported_etf_manifest_fetch_smoke(),
         "responses": [
             {
                 "ticker": response.ticker,
@@ -74,6 +125,229 @@ def run_smoke(tickers: list[str], *, live: bool) -> dict[str, object]:
             }
             for response in responses
         ],
+    }
+
+
+def run_current_supported_etf_manifest_fetch_smoke() -> dict[str, Any]:
+    """Exercise every current supported ETF row through deterministic lightweight fetch diagnostics."""
+
+    settings = build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-current-etf-smoke/0.1 test@example.com",
+        }
+    )
+    supported_manifest = load_supported_etf_universe_manifest()
+    recognition_manifest = load_recognition_etf_universe_manifest()
+    fetcher = LocalFreshDataSliceFakeFetcher()
+    clear_lightweight_fetch_reuse_cache()
+
+    rows = [
+        _current_supported_etf_row(
+            entry,
+            fetch_lightweight_asset_data(
+                entry.ticker,
+                settings=settings,
+                fetcher=fetcher,
+                retrieved_at=RETRIEVED_AT,
+                bypass_reuse=True,
+            ),
+        )
+        for entry in supported_manifest.entries
+    ]
+    recognition_rows = [_recognition_row(entry) for entry in recognition_manifest.entries]
+    failure_rows = _current_supported_etf_failure_rows(rows, recognition_rows)
+    counts = {
+        "current_supported_etf_manifest_rows": len(rows),
+        "issuer_backed_supported_count": sum(1 for row in rows if row["official_issuer_attempt_state"]["state"] == "supported"),
+        "provider_fallback_partial_count": sum(
+            1
+            for row in rows
+            if row["fetch_state"] == LightweightFetchState.partial.value
+            and row["provider_fallback_state"]["state"] == "used"
+        ),
+        "unavailable_count": sum(1 for row in rows if row["fetch_state"] == LightweightFetchState.unavailable.value),
+        "blocked_recognition_count": sum(1 for row in recognition_rows if row["generated_output_eligible"] is False),
+        "generated_output_eligible_count": sum(1 for row in rows if row["generated_output_eligible"] is True),
+        "strict_manifest_generated_output_eligible_count": sum(
+            1 for row in rows if row["strict_manifest_generated_output_eligible"] is True
+        ),
+        "failure_count": len(failure_rows),
+    }
+    return {
+        "schema_version": "current-supported-etf-lightweight-fetch-smoke-v1",
+        "status": "pass" if not failure_rows else "blocked",
+        "deterministic": True,
+        "normal_ci_requires_live_calls": False,
+        "live_provider_calls_attempted": False,
+        "issuer_calls_attempted": False,
+        "market_data_calls_attempted": False,
+        "news_calls_attempted": False,
+        "llm_calls_attempted": False,
+        "secret_values_reported": False,
+        "raw_payload_values_reported": False,
+        "supported_runtime_authority": SUPPORTED_ETF_AUTHORITY,
+        "recognition_runtime_authority": RECOGNITION_ETF_AUTHORITY,
+        "supported_manifest_file_path": str(SUPPORTED_ETF_UNIVERSE_MANIFEST_PATH.relative_to(ROOT)),
+        "recognition_manifest_file_path": str(RECOGNITION_ETF_UNIVERSE_MANIFEST_PATH.relative_to(ROOT)),
+        "supported_manifest_checksum": supported_manifest.generated_checksum,
+        "recognition_manifest_checksum": recognition_manifest.generated_checksum,
+        "recognition_rows_unlock_generated_output": any(row["generated_output_eligible"] for row in recognition_rows),
+        "counts": counts,
+        "failure_rows": failure_rows,
+        "rows": rows,
+        "recognition_rows": recognition_rows,
+    }
+
+
+def _current_supported_etf_row(entry: Any, response: Any) -> dict[str, Any]:
+    provider_count = int(response.diagnostics.get("provider_fallback_source_count", 0) or 0)
+    official_state = _official_issuer_attempt_state(response)
+    return {
+        "ticker": entry.ticker,
+        "issuer": entry.issuer,
+        "name": entry.fund_name,
+        "asset_type": "etf",
+        "support_authority": SUPPORTED_ETF_AUTHORITY,
+        "recognition_authority_used_for_generated_output": False,
+        "support_state": entry.support_state.value,
+        "launch_cache_state": entry.launch_cache_state.value,
+        "fetch_state": response.fetch_state.value,
+        "page_render_state": response.page_render_state.value,
+        "generated_output_eligible": response.generated_output_eligible,
+        "strict_manifest_generated_output_eligible": can_generate_output_for_etf_entry(entry),
+        "source_labels": sorted({source.source_label.value for source in response.sources}),
+        "source_count": len(response.sources),
+        "citation_count": len(response.citations),
+        "fact_count": len(response.facts),
+        "gap_count": len(response.gaps),
+        "official_source_count": int(response.diagnostics.get("official_source_count", 0) or 0),
+        "provider_fallback_source_count": provider_count,
+        "official_issuer_attempt_state": official_state,
+        "provider_fallback_state": {
+            "attempted": bool(response.diagnostics.get("provider_fallback_attempted")),
+            "state": "used" if provider_count else "unavailable",
+            "source_count": provider_count,
+            "labels": [
+                source.source_label.value
+                for source in response.sources
+                if source.source_label.value == "provider_derived"
+            ],
+            "source_use_note": "provider_derived display fallback only; not official issuer evidence",
+        },
+        "missing_evidence_gaps": [
+            {
+                "field_name": gap.field_name,
+                "evidence_state": gap.evidence_state.value,
+                "freshness_state": gap.freshness_state.value,
+                "message": str(gap.limitations or gap.value),
+            }
+            for gap in response.gaps
+        ],
+        "freshness": {
+            "page_last_updated_at": response.freshness.page_last_updated_at,
+            "facts_as_of": response.freshness.facts_as_of,
+            "holdings_as_of": response.freshness.holdings_as_of,
+            "freshness_state": response.freshness.freshness_state.value,
+        },
+        "payload_checksum": lightweight_payload_checksum(response),
+        "source_checksums": _source_checksums(response),
+        "raw_payload_exposed": response.raw_payload_exposed,
+        "no_live_external_calls": response.no_live_external_calls,
+        "fallback_diagnostics": response.fallback_diagnostics.model_dump(mode="json")
+        if response.fallback_diagnostics
+        else None,
+    }
+
+
+def _official_issuer_attempt_state(response: Any) -> dict[str, Any]:
+    components = response.diagnostics.get("issuer_enrichment_components") or []
+    missing = response.diagnostics.get("issuer_enrichment_missing_components") or []
+    return {
+        "attempted": bool(response.diagnostics.get("issuer_enrichment_attempted")),
+        "source": response.diagnostics.get("issuer_enrichment_source"),
+        "state": response.diagnostics.get("issuer_enrichment_state"),
+        "component_state_counts": response.diagnostics.get("issuer_enrichment_component_state_counts") or {},
+        "missing_components": list(missing),
+        "components": components,
+        "raw_payload_exposed": bool(response.diagnostics.get("issuer_enrichment_raw_payload_exposed", False)),
+        "source_pack_status": (response.diagnostics.get("issuer_source_pack_automation") or {}).get("source_pack_status"),
+    }
+
+
+def _source_checksums(response: Any) -> list[dict[str, str]]:
+    records = []
+    for source in response.sources:
+        payload = {
+            "source_document_id": source.source_document_id,
+            "source_label": source.source_label.value,
+            "source_type": source.source_type,
+            "publisher": source.publisher,
+            "url": source.url,
+            "as_of_date": source.as_of_date,
+            "retrieved_at": source.retrieved_at,
+            "source_use_policy": source.source_use_policy.value,
+            "freshness_state": source.freshness_state.value,
+        }
+        records.append(
+            {
+                "source_document_id": source.source_document_id,
+                "source_label": source.source_label.value,
+                "source_checksum": "sha256:"
+                + hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode("utf-8")).hexdigest(),
+            }
+        )
+    return records
+
+
+def _recognition_row(entry: Any) -> dict[str, Any]:
+    return {
+        "ticker": entry.ticker,
+        "name": entry.fund_name,
+        "issuer": entry.issuer,
+        "support_authority": RECOGNITION_ETF_AUTHORITY,
+        "authoritative_for_generated_output": False,
+        "support_state": entry.support_state.value,
+        "launch_cache_state": entry.launch_cache_state.value,
+        "generated_output_eligible": False,
+        "surface_eligibility": {surface: False for surface in GENERATED_SURFACES},
+    }
+
+
+def _current_supported_etf_failure_rows(rows: list[dict[str, Any]], recognition_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    failures: list[dict[str, Any]] = []
+    for row in rows:
+        labels = set(row["source_labels"])
+        if row["support_authority"] != SUPPORTED_ETF_AUTHORITY:
+            failures.append(_failure_row(row, "supported_etf_wrong_authority"))
+        if row["recognition_authority_used_for_generated_output"]:
+            failures.append(_failure_row(row, "supported_etf_used_recognition_authority"))
+        if row["fetch_state"] not in {LightweightFetchState.supported.value, LightweightFetchState.partial.value}:
+            failures.append(_failure_row(row, "supported_etf_fetch_state_not_renderable_or_partial"))
+        if row["generated_output_eligible"] and not labels:
+            failures.append(_failure_row(row, "generated_output_eligible_without_source_labels"))
+        if row["fetch_state"] == LightweightFetchState.partial.value and "provider_derived" not in labels:
+            failures.append(_failure_row(row, "partial_etf_missing_provider_derived_label"))
+        if row["official_issuer_attempt_state"]["state"] == "supported" and "official" not in labels:
+            failures.append(_failure_row(row, "issuer_supported_without_official_label"))
+        if row["raw_payload_exposed"] or not row["no_live_external_calls"]:
+            failures.append(_failure_row(row, "unsafe_payload_or_live_call_boundary"))
+    for row in recognition_rows:
+        if row["generated_output_eligible"] or any(row["surface_eligibility"].values()):
+            failures.append(_failure_row(row, "recognition_row_unlocked_generated_output"))
+    return failures
+
+
+def _failure_row(row: dict[str, Any], reason_code: str) -> dict[str, Any]:
+    return {
+        "reason_code": reason_code,
+        "ticker": row["ticker"],
+        "support_authority": row.get("support_authority"),
+        "support_state": row.get("support_state"),
+        "fetch_state": row.get("fetch_state"),
+        "generated_output_eligible": row.get("generated_output_eligible"),
     }
 
 

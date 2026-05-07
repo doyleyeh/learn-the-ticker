@@ -6,8 +6,9 @@ import json
 import os
 import sys
 from collections import Counter
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -17,9 +18,18 @@ os.environ.setdefault("LTT_FORCE_COMPAT_FASTAPI", "1")
 
 from scripts.run_local_fresh_data_rehearsal import run_rehearsal
 from scripts.run_full_manifest_support_smoke import run_full_manifest_support_smoke
+from scripts.run_lightweight_data_fetch_smoke import run_current_supported_etf_manifest_fetch_smoke
 
 
 SCHEMA_VERSION = "lightweight-mvp-readiness-gate-v1"
+DETERMINISTIC_REHEARSAL_ENV = {
+    "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "false",
+    "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "false",
+    "LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED": "false",
+    "MARKET_NEWS_FETCH_ENABLED": "false",
+    "MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED": "false",
+    "LLM_LIVE_GENERATION_ENABLED": "false",
+}
 
 LOCAL_REQUIRED_CHECK_IDS = (
     "deterministic_default_boundary",
@@ -84,8 +94,11 @@ FORBIDDEN_VALUE_MARKERS = (
 
 
 def run_lightweight_mvp_readiness_gate(env: dict[str, str] | None = None, *, root: Path = ROOT) -> dict[str, Any]:
-    rehearsal = run_rehearsal(env=env, root=root)
+    deterministic_env = {} if env is None else env
+    with _deterministic_rehearsal_env():
+        rehearsal = run_rehearsal(env=deterministic_env, root=root)
     full_manifest_smoke = run_full_manifest_support_smoke(root=root)
+    current_etf_fetch_smoke = run_current_supported_etf_manifest_fetch_smoke()
     checks_by_id = {check["check_id"]: check for check in rehearsal.get("checks", [])}
     threshold = rehearsal.get("local_mvp_threshold_summary", {})
     slice_gate = rehearsal.get("lightweight_local_mvp_slice_manual_readiness_gate", {})
@@ -109,6 +122,13 @@ def run_lightweight_mvp_readiness_gate(env: dict[str, str] | None = None, *, roo
                 "reason_code": "full_manifest_support_smoke_not_passed",
                 "smoke_reason_code": full_manifest_smoke.get("reason_code"),
                 "failure_rows": full_manifest_smoke.get("failure_rows", []),
+            }
+        )
+    if current_etf_fetch_smoke.get("status") != "pass":
+        local_blockers.append(
+            {
+                "reason_code": "current_supported_etf_fetch_smoke_not_passed",
+                "failure_rows": current_etf_fetch_smoke.get("failure_rows", []),
             }
         )
     local_ready = not local_blockers
@@ -167,6 +187,7 @@ def run_lightweight_mvp_readiness_gate(env: dict[str, str] | None = None, *, roo
         "strict_public_launch_audit_only_gates": _build_strict_audit_only_gates(manual_gate),
         "readiness_summaries": _build_readiness_summaries(checks_by_id, threshold, slice_gate, manual_gate),
         "full_manifest_support_smoke": _full_manifest_smoke_summary(full_manifest_smoke),
+        "current_supported_etf_manifest_fetch": _current_supported_etf_fetch_summary(current_etf_fetch_smoke),
         "weekly_news_and_ai_boundaries": _build_weekly_news_ai_boundaries(checks_by_id),
         "unsupported_blocked_ticker_boundaries": _build_unsupported_blocked_ticker_boundaries(checks_by_id),
         "no_secret_diagnostics": _build_no_secret_diagnostics(checks_by_id, slice_gate, manual_gate),
@@ -183,6 +204,20 @@ def run_lightweight_mvp_readiness_gate(env: dict[str, str] | None = None, *, roo
             {"reason_code": "forbidden_value_marker_detected", "markers": forbidden_hits}
         )
     return payload
+
+
+@contextmanager
+def _deterministic_rehearsal_env() -> Iterator[None]:
+    previous = {key: os.environ.get(key) for key in DETERMINISTIC_REHEARSAL_ENV}
+    os.environ.update(DETERMINISTIC_REHEARSAL_ENV)
+    try:
+        yield
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 def _local_check_summary(check: dict[str, Any]) -> dict[str, Any]:
@@ -413,6 +448,29 @@ def _full_manifest_smoke_summary(smoke: dict[str, Any]) -> dict[str, Any]:
         "generated_output_eligible_by_manifest": counts.get("generated_output_eligible_by_manifest"),
         "recognition_rows_unlock_generated_output": smoke.get("recognition_rows_unlock_generated_output"),
         "failure_count": smoke.get("failure_count"),
+        "failure_rows": smoke.get("failure_rows", []),
+    }
+
+
+def _current_supported_etf_fetch_summary(smoke: dict[str, Any]) -> dict[str, Any]:
+    counts = smoke.get("counts", {})
+    return {
+        "schema_version": smoke.get("schema_version"),
+        "status": smoke.get("status"),
+        "normal_ci_requires_live_calls": smoke.get("normal_ci_requires_live_calls"),
+        "supported_runtime_authority": smoke.get("supported_runtime_authority"),
+        "recognition_runtime_authority": smoke.get("recognition_runtime_authority"),
+        "supported_manifest_checksum": smoke.get("supported_manifest_checksum"),
+        "recognition_manifest_checksum": smoke.get("recognition_manifest_checksum"),
+        "recognition_rows_unlock_generated_output": smoke.get("recognition_rows_unlock_generated_output"),
+        "current_supported_etf_manifest_rows": counts.get("current_supported_etf_manifest_rows"),
+        "issuer_backed_supported_count": counts.get("issuer_backed_supported_count"),
+        "provider_fallback_partial_count": counts.get("provider_fallback_partial_count"),
+        "unavailable_count": counts.get("unavailable_count"),
+        "blocked_recognition_count": counts.get("blocked_recognition_count"),
+        "generated_output_eligible_count": counts.get("generated_output_eligible_count"),
+        "strict_manifest_generated_output_eligible_count": counts.get("strict_manifest_generated_output_eligible_count"),
+        "failure_count": counts.get("failure_count"),
         "failure_rows": smoke.get("failure_rows", []),
     }
 

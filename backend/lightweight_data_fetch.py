@@ -1203,6 +1203,13 @@ def _try_etf_issuer_enrichment(
             "automated_policy_can_approve_known_source_patterns": True,
         },
     }
+    diagnostics.update(
+        _etf_issuer_component_diagnostics(
+            getattr(source_pack, "sources", ()) if source_pack is not None else (),
+            state="source_pack_identified" if source_pack is not None else "missing",
+            reason_code="source_pack_candidate_not_fetched" if source_pack is not None else "issuer_family_not_configured",
+        )
+    )
     try:
         from backend.providers import mock_etf_issuer_adapter
 
@@ -1232,6 +1239,13 @@ def _try_etf_issuer_enrichment(
     diagnostics["issuer_enrichment_state"] = response.state.value
     diagnostics["issuer_enrichment_no_live_external_calls"] = response.no_live_external_calls
     if response.state.value != "supported":
+        diagnostics.update(
+            _etf_issuer_component_diagnostics(
+                getattr(source_pack, "sources", ()) if source_pack is not None else (),
+                state=response.state.value,
+                reason_code="issuer_fixture_or_reviewed_live_response_unavailable",
+            )
+        )
         return (
             [],
             [],
@@ -1248,6 +1262,13 @@ def _try_etf_issuer_enrichment(
 
     if not _valid_etf_issuer_response_binding(ticker, entry, response):
         diagnostics["issuer_enrichment_state"] = "binding_rejected"
+        diagnostics.update(
+            _etf_issuer_component_diagnostics(
+                response.source_attributions,
+                state="binding_rejected",
+                reason_code="issuer_evidence_binding_rejected",
+            )
+        )
         return (
             [],
             [],
@@ -1294,9 +1315,76 @@ def _try_etf_issuer_enrichment(
             "issuer_enrichment_fact_count": len(facts),
             "issuer_enrichment_gap_count": len(gaps),
             "issuer_enrichment_raw_payload_exposed": False,
+            **_etf_issuer_component_diagnostics(
+                response.source_attributions,
+                state="supported",
+                reason_code=None,
+            ),
         }
     )
     return list(source_by_id.values()), facts, gaps, diagnostics
+
+
+ETF_ISSUER_COMPONENT_SOURCE_TYPES: dict[str, tuple[str, ...]] = {
+    "issuer_page": ("issuer_page", "product_page", "issuer_fact_sheet", "fact_sheet"),
+    "fact_sheet": ("issuer_fact_sheet", "fact_sheet"),
+    "prospectus_or_summary_prospectus": ("summary_prospectus", "prospectus"),
+    "holdings": ("issuer_holdings_file", "holdings"),
+    "exposures": ("issuer_exposure_file", "exposures"),
+}
+
+
+def _etf_issuer_component_diagnostics(
+    sources: Any,
+    *,
+    state: str,
+    reason_code: str | None,
+) -> dict[str, Any]:
+    source_list = list(sources or ())
+    components: list[dict[str, Any]] = []
+    missing_components: list[str] = []
+    for component_id, source_types in ETF_ISSUER_COMPONENT_SOURCE_TYPES.items():
+        source = _first_source_for_types(source_list, source_types)
+        if source is None:
+            status = "missing"
+            missing_components.append(component_id)
+            source_type = None
+            source_document_id = None
+            as_of_date = None
+            freshness_state = "unavailable"
+        else:
+            status = "supported" if state == "supported" else "attempted_unavailable"
+            source_type = getattr(source, "source_type", None)
+            source_document_id = getattr(source, "source_document_id", None)
+            as_of_date = getattr(source, "as_of_date", None)
+            freshness = getattr(source, "freshness_state", None)
+            freshness_state = freshness.value if hasattr(freshness, "value") else str(freshness or "unknown")
+        components.append(
+            {
+                "component_id": component_id,
+                "required": True,
+                "status": status,
+                "attempt_state": state,
+                "source_type": source_type,
+                "source_document_id": source_document_id,
+                "as_of_date": as_of_date,
+                "freshness_state": freshness_state,
+                "reason_code": None if status == "supported" else reason_code or f"{component_id}_missing",
+            }
+        )
+    return {
+        "issuer_enrichment_components": components,
+        "issuer_enrichment_missing_components": missing_components,
+        "issuer_enrichment_component_state_counts": dict(Counter(str(component["status"]) for component in components)),
+    }
+
+
+def _first_source_for_types(sources: list[Any], source_types: tuple[str, ...]) -> Any | None:
+    for source_type in source_types:
+        for source in sources:
+            if getattr(source, "source_type", None) == source_type:
+                return source
+    return None
 
 
 def _valid_etf_issuer_response_binding(ticker: str, entry: Any, response: Any) -> bool:
