@@ -19,6 +19,7 @@ from backend.market_news import (
     select_market_news_focus,
     serialize_market_news_candidates,
 )
+from backend.market_news_runtime import MarketNewsResponseMemoryCache, build_runtime_market_news_response
 from backend.models import (
     MarketNewsTopicBucket,
     SourceAllowlistStatus,
@@ -209,6 +210,102 @@ def test_market_news_adapters_normalize_all_provider_payload_shapes_without_live
         assert forbidden not in serialized
 
 
+def test_runtime_market_news_fetch_uses_ttl_cache_for_opt_in_live_path():
+    settings = build_market_news_settings(
+        env={
+            "MARKET_NEWS_FETCH_ENABLED": "true",
+            "MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED": "true",
+            "MARKET_NEWS_CACHE_TTL_HOURS": "1",
+            "MARKETAUX_API_KEY": "configured",
+            "ALPHA_VANTAGE_API_KEY": "configured",
+            "FINNHUB_API_KEY": "configured",
+            "GUARDIAN_API_KEY": "configured",
+            "GNEWS_API_KEY": "configured",
+            "MEDIASTACK_API_KEY": "configured",
+            "NEWSAPI_API_KEY": "configured",
+        }
+    )
+    fetcher = CountingMarketNewsFetcher(_provider_payloads())
+    cache = MarketNewsResponseMemoryCache()
+
+    first = build_runtime_market_news_response(as_of=AS_OF, settings=settings, fetcher=fetcher, cache=cache)
+    first_call_count = len(fetcher.urls)
+    second = build_runtime_market_news_response(as_of=AS_OF, settings=settings, fetcher=fetcher, cache=cache)
+
+    assert first.market_news_focus.selected_item_count > 0
+    assert first.market_news_focus.no_live_external_calls is False
+    assert second.market_news_focus.no_live_external_calls is False
+    assert len(fetcher.urls) == first_call_count
+    assert second.model_dump(mode="json") == first.model_dump(mode="json")
+
+
+def test_market_news_selection_prefers_fresher_representative_and_score_on_ties():
+    old = replace(
+        _candidate(
+            "old",
+            source="Reuters",
+            domain="reuters.com",
+            title="Fed policy update shapes market focus",
+            description="Reuters reported policy and market context for the current evidence window.",
+        ),
+        published_at="2026-04-20T12:00:00Z",
+        canonical_url="https://reuters.com/markets/fed-policy-old",
+        url="https://reuters.com/markets/fed-policy-old",
+    )
+    new = replace(
+        old,
+        article_id="test_new",
+        published_at="2026-04-22T12:00:00Z",
+        canonical_url="https://reuters.com/markets/fed-policy-new",
+        url="https://reuters.com/markets/fed-policy-new",
+    )
+
+    focus = select_market_news_focus([old, new], as_of=AS_OF)
+
+    assert focus.selected_item_count == 1
+    assert focus.items[0].published_at == "2026-04-22T12:00:00Z"
+    assert focus.items[0].selection_rationale.freshness_score > 16
+    assert focus.items[0].cluster.representative_article_id == "test_new"
+
+
+def test_market_news_live_provider_language_metadata_is_enforced():
+    settings = build_market_news_settings(
+        env={
+            "MARKET_NEWS_FETCH_ENABLED": "true",
+            "MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED": "true",
+            "MARKETAUX_API_KEY": "configured",
+        }
+    )
+    fetcher = FixtureMarketNewsFetcher(
+        payloads_by_provider={
+            "marketaux": {
+                "data": [
+                    {
+                        "title": "Reuters German-language market update",
+                        "description": "Reuters reported market context through Marketaux metadata.",
+                        "url": "https://www.reuters.com/markets/non-english-market-update",
+                        "published_at": "2026-04-22T12:00:00Z",
+                        "source": "Reuters",
+                        "language": "de",
+                    }
+                ]
+            }
+        }
+    )
+
+    candidates = collect_market_news_candidates(
+        fetcher=fetcher,
+        settings=settings,
+        as_of=AS_OF,
+        retrieved_at=RETRIEVED_AT,
+    )
+    focus = select_market_news_focus(candidates, as_of=AS_OF)
+
+    assert {candidate.language for candidate in candidates} == {"de"}
+    assert focus.selected_item_count == 0
+    assert focus.suppressed_candidate_count >= 1
+
+
 def test_market_news_settings_keep_credentials_private_and_keyed_adapters_skip_when_missing():
     settings = build_market_news_settings(env={})
     assert settings.fetch_enabled is False
@@ -294,6 +391,22 @@ def _candidate(
 
 def _priority_for_source(source: str) -> int:
     return {"Reuters": 1, "CNBC": 8, "MarketWatch": 10}.get(source, 99)
+
+
+class CountingMarketNewsFetcher:
+    no_live_external_calls = False
+
+    def __init__(self, payloads: dict[str, object]) -> None:
+        self.fixture = FixtureMarketNewsFetcher(payloads_by_provider=payloads)
+        self.urls: list[str] = []
+
+    def fetch_json(self, url: str, *, headers: dict[str, str] | None = None, timeout_seconds: int = 15):
+        self.urls.append(url)
+        return self.fixture.fetch_json(url, headers=headers, timeout_seconds=timeout_seconds)
+
+    def fetch_text(self, url: str, *, headers: dict[str, str] | None = None, timeout_seconds: int = 15) -> str:
+        self.urls.append(url)
+        return self.fixture.fetch_text(url, headers=headers, timeout_seconds=timeout_seconds)
 
 
 def _provider_payloads():

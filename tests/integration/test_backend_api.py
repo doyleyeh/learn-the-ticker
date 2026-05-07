@@ -15,6 +15,7 @@ from backend.knowledge_pack_repository import (
 )
 from backend.lightweight_data_fetch import clear_lightweight_fetch_reuse_cache, fetch_lightweight_asset_data
 from backend.lightweight_page import build_lightweight_overview_response
+from backend.market_news import build_market_news_response
 from backend.models import FreshnessState, SourceAllowlistStatus, SourceQuality, SourceUsePolicy, WeeklyNewsEventType
 from backend.overview import (
     _asset_knowledge_pack_from_repository_records,
@@ -325,6 +326,23 @@ def test_market_news_endpoint_returns_reusable_market_context_without_asset_unlo
     rendered = str(body).lower()
     for forbidden in ["you should buy", "you should sell", "raw article body", "provider payload value"]:
         assert forbidden not in rendered
+
+
+def test_market_news_endpoint_uses_runtime_market_news_boundary(monkeypatch):
+    import backend.main as main_module
+
+    calls: list[str] = []
+    sentinel = build_market_news_response(as_of="2026-04-23")
+
+    def fake_runtime_market_news_response():
+        calls.append("runtime")
+        return sentinel
+
+    monkeypatch.setattr(main_module, "build_runtime_market_news_response", fake_runtime_market_news_response)
+    response = client.get("/api/market-news")
+
+    assert response.status_code == 200
+    assert calls == ["runtime"]
 
 
 def test_configured_governed_golden_records_drive_learning_surfaces_end_to_end():

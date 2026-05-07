@@ -308,13 +308,16 @@ def collect_market_news_candidates(
     candidates: list[MarketNewsArticleCandidate] = []
     for topic_bucket in MarketNewsTopicBucket:
         for adapter in market_news_provider_adapters():
-            result = adapter.collect(
-                fetcher=fetcher,
-                settings=settings,
-                topic_bucket=topic_bucket,
-                as_of=as_of,
-                retrieved_at=retrieved_at,
-            )
+            try:
+                result = adapter.collect(
+                    fetcher=fetcher,
+                    settings=settings,
+                    topic_bucket=topic_bucket,
+                    as_of=as_of,
+                    retrieved_at=retrieved_at,
+                )
+            except (MarketNewsFetchError, OSError, TimeoutError, ValueError):
+                continue
             candidates.extend(result.candidates)
     return candidates
 
@@ -589,7 +592,10 @@ def _cluster_market_news_candidates(
     minimum_display_score: int,
 ) -> list[MarketNewsStoryCluster]:
     clusters: list[list[MarketNewsArticleCandidate]] = []
-    for candidate in sorted(candidates, key=lambda row: (row.topic_bucket.value, row.source_priority, row.published_at, row.article_id)):
+    for candidate in sorted(
+        candidates,
+        key=lambda row: (row.topic_bucket.value, row.source_priority, _published_desc_sort_key(row), row.article_id),
+    ):
         matched = False
         for cluster in clusters:
             if _same_story(candidate, cluster[0]):
@@ -601,7 +607,7 @@ def _cluster_market_news_candidates(
 
     story_clusters: list[MarketNewsStoryCluster] = []
     for rows in clusters:
-        ranked_rows = sorted(rows, key=lambda row: (row.source_priority, row.published_at, row.article_id))
+        ranked_rows = sorted(rows, key=lambda row: (row.source_priority, _published_desc_sort_key(row), row.article_id))
         representative = ranked_rows[0]
         critical = _is_critical_claim(representative)
         corroborated = _cluster_corrobated(ranked_rows, critical)
@@ -629,7 +635,7 @@ def _select_market_news_clusters(
         key=lambda cluster: (
             -cluster.rationale.total_score,
             cluster.representative.source_priority,
-            cluster.representative.published_at,
+            _published_desc_sort_key(cluster.representative),
             cluster.cluster_id,
         ),
     )
@@ -742,7 +748,7 @@ def _selection_rationale(
     minimum_display_score: int,
 ) -> MarketNewsSelectionRationale:
     source_quality_score = max(0, 25 - min(representative.source_priority, 20))
-    freshness_score = 20
+    freshness_score = _freshness_score(representative)
     topic_relevance_score = 20 if representative.topic_bucket in MarketNewsTopicBucket else 0
     market_impact_score = _market_impact_score(representative)
     corroboration_score = 10 if len({row.source for row in rows}) >= 2 or representative.source_priority <= 5 else 5
@@ -808,6 +814,7 @@ def _candidate(
     entities: tuple[str, ...] = (),
     symbols: tuple[str, ...] = (),
     article_id: str | None = None,
+    language: str = "en",
 ) -> MarketNewsArticleCandidate:
     clean_source = _clean_source_name(source) or _source_from_domain(source_domain) or provider
     source_priority = _source_priority(clean_source)
@@ -823,7 +830,7 @@ def _candidate(
         canonical_url=canonical_url,
         published_at=_normalize_timestamp(published_at),
         retrieved_at=retrieved_at,
-        language="en",
+        language=_normalize_language(language),
         topic_bucket=topic_bucket,
         entities=tuple(entities),
         symbols=tuple(symbols),
@@ -882,6 +889,7 @@ def _parse_rss_candidates(
     except ElementTree.ParseError:
         return []
     candidates: list[MarketNewsArticleCandidate] = []
+    channel_language = _normalize_language(root.findtext(".//channel/language") or "en")
     for item in root.findall(".//item"):
         title = item.findtext("title") or ""
         url = item.findtext("link") or ""
@@ -899,6 +907,7 @@ def _parse_rss_candidates(
                 published_at=published_at,
                 retrieved_at=retrieved_at,
                 topic_bucket=topic_bucket,
+                language=channel_language,
             )
         )
     return candidates
@@ -914,7 +923,7 @@ def _parse_json_candidates(
     rows = _json_rows(payload, provider)
     candidates: list[MarketNewsArticleCandidate] = []
     for row in rows:
-        title, description, url, published_at, source, symbols, entities = _json_fields(row, provider, retrieved_at)
+        title, description, url, published_at, source, symbols, entities, language = _json_fields(row, provider, retrieved_at)
         if not title or not url:
             continue
         candidates.append(
@@ -930,12 +939,15 @@ def _parse_json_candidates(
                 topic_bucket=topic_bucket,
                 symbols=tuple(symbols),
                 entities=tuple(entities),
+                language=language,
             )
         )
     return candidates
 
 
-def _json_rows(payload: dict[str, Any], provider: str) -> list[dict[str, Any]]:
+def _json_rows(payload: Any, provider: str) -> list[dict[str, Any]]:
+    if provider != "finnhub" and not isinstance(payload, dict):
+        return []
     if provider == "gdelt":
         rows = payload.get("articles")
     elif provider == "alpha_vantage":
@@ -961,7 +973,7 @@ def _json_fields(
     row: dict[str, Any],
     provider: str,
     retrieved_at: str,
-) -> tuple[str, str, str, str, str, list[str], list[str]]:
+) -> tuple[str, str, str, str, str, list[str], list[str], str]:
     symbols: list[str] = []
     entities: list[str] = []
     if provider == "gdelt":
@@ -973,6 +985,7 @@ def _json_fields(
             str(row.get("sourceCommonName") or row.get("domain") or ""),
             symbols,
             entities,
+            str(row.get("language") or "en"),
         )
     if provider == "alpha_vantage":
         symbols = [str(item.get("ticker")) for item in row.get("ticker_sentiment", []) if isinstance(item, dict) and item.get("ticker")]
@@ -984,6 +997,7 @@ def _json_fields(
             str(row.get("source") or ""),
             symbols,
             entities,
+            str(row.get("language") or "en"),
         )
     if provider == "guardian":
         fields = row.get("fields") if isinstance(row.get("fields"), dict) else {}
@@ -995,6 +1009,7 @@ def _json_fields(
             "The Guardian",
             symbols,
             entities,
+            str(row.get("lang") or "en"),
         )
     if provider == "marketaux":
         entities = [str(item.get("name") or item.get("symbol")) for item in row.get("entities", []) if isinstance(item, dict)]
@@ -1006,6 +1021,7 @@ def _json_fields(
             str((row.get("source") or "") if isinstance(row.get("source"), str) else (row.get("source") or {}).get("name") or ""),
             symbols,
             entities,
+            str(row.get("language") or "en"),
         )
     if provider == "finnhub":
         timestamp = row.get("datetime")
@@ -1018,6 +1034,7 @@ def _json_fields(
             str(row.get("source") or ""),
             symbols,
             entities,
+            str(row.get("language") or "en"),
         )
     if provider == "gnews":
         source = row.get("source") if isinstance(row.get("source"), dict) else {}
@@ -1029,6 +1046,7 @@ def _json_fields(
             str(source.get("name") or ""),
             symbols,
             entities,
+            str(row.get("language") or "en"),
         )
     if provider == "mediastack":
         return (
@@ -1039,6 +1057,7 @@ def _json_fields(
             str(row.get("source") or ""),
             symbols,
             entities,
+            str(row.get("language") or "en"),
         )
     if provider == "newsapi":
         source = row.get("source") if isinstance(row.get("source"), dict) else {}
@@ -1050,6 +1069,7 @@ def _json_fields(
             str(source.get("name") or ""),
             symbols,
             entities,
+            str(row.get("language") or "en"),
         )
     if provider == "yahoo_finance_search":
         published = row.get("providerPublishTime")
@@ -1063,8 +1083,9 @@ def _json_fields(
             str(row.get("publisher") or "Yahoo Finance/yfinance-derived news"),
             symbols,
             entities,
+            str(row.get("language") or "en"),
         )
-    return "", "", "", retrieved_at, "", symbols, entities
+    return "", "", "", retrieved_at, "", symbols, entities, "en"
 
 
 def _analysis_section(
@@ -1134,6 +1155,23 @@ def _market_impact_score(candidate: MarketNewsArticleCandidate) -> int:
     text = f" {candidate.title} {candidate.description} ".lower()
     impact_markers = ("market", "fed", "inflation", "rate", "yield", "oil", "earnings", "credit", "liquidity", "ai", "chip")
     return 15 if any(marker in text for marker in impact_markers) else 5
+
+
+def _freshness_score(candidate: MarketNewsArticleCandidate) -> int:
+    published = _parse_datetime(candidate.published_at)
+    retrieved = _parse_datetime(candidate.retrieved_at)
+    if published is None or retrieved is None:
+        return 8
+    age_days = max(0, (retrieved.date() - published.date()).days)
+    if age_days <= 1:
+        return 20
+    if age_days <= 3:
+        return 16
+    if age_days <= 5:
+        return 12
+    if age_days <= 7:
+        return 8
+    return 4
 
 
 def _topic_counts(items: list[MarketNewsItem]) -> dict[str, int]:
@@ -1278,6 +1316,13 @@ def _date_part(value: str) -> str:
     return normalized[:10]
 
 
+def _published_desc_sort_key(candidate: MarketNewsArticleCandidate) -> float:
+    parsed = _parse_datetime(candidate.published_at)
+    if parsed is None:
+        return 0
+    return -parsed.timestamp()
+
+
 def _retrieved_at_for_as_of(as_of: str | date | datetime) -> str:
     as_of_date = compute_weekly_news_window(as_of).as_of_date
     return f"{as_of_date}T12:00:00Z"
@@ -1300,6 +1345,18 @@ def _clean_text(value: Any) -> str | None:
         return None
     text = " ".join(str(value).split())
     return text or None
+
+
+def _normalize_language(value: str | None) -> str:
+    text = _clean_text(value)
+    if not text:
+        return "unknown"
+    normalized = text.lower().replace("_", "-")
+    if normalized.startswith("en"):
+        return "en"
+    if normalized.startswith("zh"):
+        return "zh"
+    return normalized.split("-", 1)[0]
 
 
 def _bounded_words(text: str, max_words: int) -> str:
