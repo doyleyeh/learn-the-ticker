@@ -184,6 +184,7 @@ from scripts.run_full_manifest_support_smoke import (
     SUPPORTED_ETF_AUTHORITY as FULL_MANIFEST_SUPPORTED_ETF_AUTHORITY,
     run_full_manifest_support_smoke,
 )
+from scripts.run_lightweight_data_fetch_smoke import run_current_stock_manifest_fetch_smoke
 from backend.etf_universe import load_recognition_etf_universe_manifest, load_supported_etf_universe_manifest
 
 
@@ -2896,6 +2897,35 @@ def test_full_manifest_support_smoke_cases():
         assert forbidden not in serialized
 
 
+def test_current_stock_manifest_fetch_smoke_cases():
+    smoke = run_current_stock_manifest_fetch_smoke()
+
+    assert smoke["schema_version"] == "current-stock-manifest-lightweight-fetch-smoke-v1"
+    assert smoke["status"] == "pass"
+    assert smoke["normal_ci_requires_live_calls"] is False
+    assert smoke["live_provider_calls_attempted"] is False
+    assert smoke["sec_calls_attempted"] is False
+    assert smoke["stock_runtime_authority"] == FULL_MANIFEST_STOCK_AUTHORITY
+    assert smoke["failure_rows"] == []
+    counts = smoke["counts"]
+    assert counts["current_stock_manifest_rows"] == len(load_top500_stock_universe_manifest().entries)
+    assert counts["sec_backed_supported_count"] == len(load_top500_stock_universe_manifest().entries)
+    assert counts["provider_fallback_partial_count"] == 0
+    assert counts["unavailable_count"] == 0
+    assert counts["blocked_unsupported_or_out_of_scope_count"] == 0
+    assert counts["generated_output_eligible_count"] == len(load_top500_stock_universe_manifest().entries)
+    assert counts["failure_count"] == 0
+    assert {row["ticker"] for row in smoke["rows"]} == {entry.ticker for entry in load_top500_stock_universe_manifest().entries}
+    for row in smoke["rows"]:
+        assert row["support_authority"] == FULL_MANIFEST_STOCK_AUTHORITY
+        assert row["sec_attempt_state"]["state"] == "supported"
+        assert row["provider_fallback_state"]["state"] == "used"
+        assert "provider_derived" in row["source_labels"]
+        assert row["payload_checksum"].startswith("sha256:")
+        assert row["raw_payload_exposed"] is False
+        assert row["no_live_external_calls"] is True
+
+
 def test_lightweight_mvp_readiness_gate_cases():
     gate = run_lightweight_mvp_readiness_gate(env={})
     assert gate["schema_version"] == LIGHTWEIGHT_MVP_READINESS_GATE_SCHEMA_VERSION
@@ -2928,6 +2958,27 @@ def test_lightweight_mvp_readiness_gate_cases():
         "top500_stock": 1,
     }
     assert gate["full_manifest_support_smoke"]["failure_count"] == 0
+    assert gate["current_stock_manifest_fetch"]["status"] == "pass"
+    assert gate["current_stock_manifest_fetch"]["normal_ci_requires_live_calls"] is False
+    assert gate["current_stock_manifest_fetch"]["stock_runtime_authority"] == FULL_MANIFEST_STOCK_AUTHORITY
+    assert gate["current_stock_manifest_fetch"]["current_stock_manifest_rows"] == len(
+        load_top500_stock_universe_manifest().entries
+    )
+    assert gate["current_stock_manifest_fetch"]["sec_backed_supported_count"] == len(
+        load_top500_stock_universe_manifest().entries
+    )
+    assert gate["current_stock_manifest_fetch"]["provider_fallback_partial_count"] == 0
+    assert gate["current_stock_manifest_fetch"]["unavailable_count"] == 0
+    assert gate["current_stock_manifest_fetch"]["blocked_unsupported_or_out_of_scope_count"] == 0
+    assert gate["current_stock_manifest_fetch"]["generated_output_eligible_count"] == len(
+        load_top500_stock_universe_manifest().entries
+    )
+    assert gate["current_stock_manifest_fetch"]["failure_count"] == 0
+    assert gate["current_stock_manifest_fetch"]["generated_output_cache_promotion_prerequisites"] == {
+        "strict_audit_quality_source_approval_required": True,
+        "source_handoff_required_for_promotion": True,
+        "generated_output_cache_promoted": False,
+    }
     assert gate["current_supported_etf_manifest_fetch"]["status"] == "pass"
     assert gate["current_supported_etf_manifest_fetch"]["normal_ci_requires_live_calls"] is False
     assert gate["current_supported_etf_manifest_fetch"]["current_supported_etf_manifest_rows"] == len(
@@ -3109,5 +3160,6 @@ if __name__ == "__main__":
     test_llm_provider_cases()
     test_local_deployment_env_smoke_cases()
     test_full_manifest_support_smoke_cases()
+    test_current_stock_manifest_fetch_smoke_cases()
     test_lightweight_mvp_readiness_gate_cases()
     print("Static evals passed.")

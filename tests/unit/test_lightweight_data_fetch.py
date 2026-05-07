@@ -22,7 +22,10 @@ from backend.models import (
 )
 from backend.search import search_assets
 from backend.settings import build_lightweight_data_settings
-from scripts.run_lightweight_data_fetch_smoke import run_current_supported_etf_manifest_fetch_smoke
+from scripts.run_lightweight_data_fetch_smoke import (
+    run_current_stock_manifest_fetch_smoke,
+    run_current_supported_etf_manifest_fetch_smoke,
+)
 from scripts.run_local_fresh_data_slice_smoke import run_slice_smoke
 
 
@@ -1550,3 +1553,55 @@ def test_current_supported_etf_manifest_fetch_smoke_reports_every_row_without_li
     assert all(row["authoritative_for_generated_output"] is False for row in recognition_rows)
     assert all(row["generated_output_eligible"] is False for row in recognition_rows)
     assert all(all(value is False for value in row["surface_eligibility"].values()) for row in recognition_rows)
+
+
+def test_current_stock_manifest_fetch_smoke_reports_every_row_without_live_calls():
+    result = run_current_stock_manifest_fetch_smoke()
+
+    assert result["schema_version"] == "current-stock-manifest-lightweight-fetch-smoke-v1"
+    assert result["status"] == "pass"
+    assert result["normal_ci_requires_live_calls"] is False
+    assert result["live_provider_calls_attempted"] is False
+    assert result["sec_calls_attempted"] is False
+    assert result["failure_rows"] == []
+    assert result["stock_runtime_authority"] == "data/universes/us_common_stocks_top500.current.json"
+    assert result["generated_output_cache_promotion_prerequisites"] == {
+        "strict_audit_quality_source_approval_required": True,
+        "source_handoff_required_for_promotion": True,
+        "generated_output_cache_promoted": False,
+    }
+
+    counts = result["counts"]
+    assert counts == {
+        "current_stock_manifest_rows": 10,
+        "sec_backed_supported_count": 10,
+        "provider_fallback_partial_count": 0,
+        "unavailable_count": 0,
+        "blocked_unsupported_or_out_of_scope_count": 0,
+        "generated_output_eligible_count": 10,
+        "failure_count": 0,
+    }
+
+    rows = {row["ticker"]: row for row in result["rows"]}
+    assert set(rows) == {"AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "BRK.B", "JPM", "UNH"}
+    amzn = rows["AMZN"]
+    assert amzn["company_name"] == "Amazon.com, Inc."
+    assert amzn["support_authority"] == "data/universes/us_common_stocks_top500.current.json"
+    assert amzn["fetch_state"] == "supported"
+    assert amzn["sec_attempt_state"]["state"] == "supported"
+    assert {
+        component["component_id"]: component["state"]
+        for component in amzn["sec_attempt_state"]["components"]
+    } == {
+        "sec_company_identity": "supported",
+        "sec_submissions": "supported",
+        "sec_xbrl_companyfacts": "supported",
+        "sec_filing_evidence": "supported",
+    }
+    assert amzn["provider_fallback_state"]["state"] == "used"
+    assert "provider_derived display fallback only" in amzn["provider_fallback_state"]["source_use_note"]
+    assert amzn["freshness"]["facts_as_of"] == "2025-10-31"
+    assert amzn["payload_checksum"].startswith("sha256:")
+    assert all(record["source_checksum"].startswith("sha256:") for record in amzn["source_checksums"])
+    assert amzn["raw_payload_exposed"] is False
+    assert amzn["no_live_external_calls"] is True

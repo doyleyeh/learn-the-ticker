@@ -18,7 +18,10 @@ os.environ.setdefault("LTT_FORCE_COMPAT_FASTAPI", "1")
 
 from scripts.run_local_fresh_data_rehearsal import run_rehearsal
 from scripts.run_full_manifest_support_smoke import run_full_manifest_support_smoke
-from scripts.run_lightweight_data_fetch_smoke import run_current_supported_etf_manifest_fetch_smoke
+from scripts.run_lightweight_data_fetch_smoke import (
+    run_current_stock_manifest_fetch_smoke,
+    run_current_supported_etf_manifest_fetch_smoke,
+)
 
 
 SCHEMA_VERSION = "lightweight-mvp-readiness-gate-v1"
@@ -98,6 +101,7 @@ def run_lightweight_mvp_readiness_gate(env: dict[str, str] | None = None, *, roo
     with _deterministic_rehearsal_env():
         rehearsal = run_rehearsal(env=deterministic_env, root=root)
     full_manifest_smoke = run_full_manifest_support_smoke(root=root)
+    current_stock_fetch_smoke = run_current_stock_manifest_fetch_smoke()
     current_etf_fetch_smoke = run_current_supported_etf_manifest_fetch_smoke()
     checks_by_id = {check["check_id"]: check for check in rehearsal.get("checks", [])}
     threshold = rehearsal.get("local_mvp_threshold_summary", {})
@@ -129,6 +133,13 @@ def run_lightweight_mvp_readiness_gate(env: dict[str, str] | None = None, *, roo
             {
                 "reason_code": "current_supported_etf_fetch_smoke_not_passed",
                 "failure_rows": current_etf_fetch_smoke.get("failure_rows", []),
+            }
+        )
+    if current_stock_fetch_smoke.get("status") != "pass":
+        local_blockers.append(
+            {
+                "reason_code": "current_stock_manifest_fetch_smoke_not_passed",
+                "failure_rows": current_stock_fetch_smoke.get("failure_rows", []),
             }
         )
     local_ready = not local_blockers
@@ -187,6 +198,7 @@ def run_lightweight_mvp_readiness_gate(env: dict[str, str] | None = None, *, roo
         "strict_public_launch_audit_only_gates": _build_strict_audit_only_gates(manual_gate),
         "readiness_summaries": _build_readiness_summaries(checks_by_id, threshold, slice_gate, manual_gate),
         "full_manifest_support_smoke": _full_manifest_smoke_summary(full_manifest_smoke),
+        "current_stock_manifest_fetch": _current_stock_fetch_summary(current_stock_fetch_smoke),
         "current_supported_etf_manifest_fetch": _current_supported_etf_fetch_summary(current_etf_fetch_smoke),
         "weekly_news_and_ai_boundaries": _build_weekly_news_ai_boundaries(checks_by_id),
         "unsupported_blocked_ticker_boundaries": _build_unsupported_blocked_ticker_boundaries(checks_by_id),
@@ -470,6 +482,26 @@ def _current_supported_etf_fetch_summary(smoke: dict[str, Any]) -> dict[str, Any
         "blocked_recognition_count": counts.get("blocked_recognition_count"),
         "generated_output_eligible_count": counts.get("generated_output_eligible_count"),
         "strict_manifest_generated_output_eligible_count": counts.get("strict_manifest_generated_output_eligible_count"),
+        "failure_count": counts.get("failure_count"),
+        "failure_rows": smoke.get("failure_rows", []),
+    }
+
+
+def _current_stock_fetch_summary(smoke: dict[str, Any]) -> dict[str, Any]:
+    counts = smoke.get("counts", {})
+    return {
+        "schema_version": smoke.get("schema_version"),
+        "status": smoke.get("status"),
+        "normal_ci_requires_live_calls": smoke.get("normal_ci_requires_live_calls"),
+        "stock_runtime_authority": smoke.get("stock_runtime_authority"),
+        "stock_manifest_checksum": smoke.get("stock_manifest_checksum"),
+        "current_stock_manifest_rows": counts.get("current_stock_manifest_rows"),
+        "sec_backed_supported_count": counts.get("sec_backed_supported_count"),
+        "provider_fallback_partial_count": counts.get("provider_fallback_partial_count"),
+        "unavailable_count": counts.get("unavailable_count"),
+        "blocked_unsupported_or_out_of_scope_count": counts.get("blocked_unsupported_or_out_of_scope_count"),
+        "generated_output_eligible_count": counts.get("generated_output_eligible_count"),
+        "generated_output_cache_promotion_prerequisites": smoke.get("generated_output_cache_promotion_prerequisites"),
         "failure_count": counts.get("failure_count"),
         "failure_rows": smoke.get("failure_rows", []),
     }
