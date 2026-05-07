@@ -158,23 +158,33 @@ def persist_lightweight_evidence_if_configured(
     *,
     source_snapshot_repository: Any | None = None,
     knowledge_pack_repository: Any | None = None,
+    generated_output_cache_repository: Any | None = None,
+    allow_generated_output_cache_promotion: bool = False,
 ) -> dict[str, Any]:
     """Persist rights-safe lightweight metadata when optional durable repositories are injected."""
 
+    promotion = evaluate_lightweight_generated_output_promotion(
+        response,
+        allow_generated_output_cache_promotion=allow_generated_output_cache_promotion,
+    )
     diagnostics: dict[str, Any] = {
         "schema_version": LIGHTWEIGHT_DURABLE_PERSISTENCE_SCHEMA_VERSION,
         "ticker": response.asset.ticker,
-        "attempted": source_snapshot_repository is not None or knowledge_pack_repository is not None,
+        "attempted": source_snapshot_repository is not None
+        or knowledge_pack_repository is not None
+        or generated_output_cache_repository is not None,
         "source_snapshot_persisted": False,
         "knowledge_pack_persisted": False,
+        "generated_output_cache_repository_configured": generated_output_cache_repository is not None,
         "strict_audit_quality_source_approval_granted": False,
-        "generated_output_cache_promoted": False,
+        "generated_output_cache_promoted": promotion["promotion_allowed"],
+        "generated_output_promotion": promotion,
         "raw_payload_exposed": False,
         "secret_values_exposed": False,
         "status": "not_configured",
         "reason_codes": [],
     }
-    if source_snapshot_repository is None and knowledge_pack_repository is None:
+    if source_snapshot_repository is None and knowledge_pack_repository is None and generated_output_cache_repository is None:
         diagnostics["reason_codes"].append("durable_repository_not_configured")
         return diagnostics
     if not _can_render_lightweight_page(response):
@@ -200,6 +210,8 @@ def persist_lightweight_evidence_if_configured(
             diagnostics["normalized_fact_count"] = len(knowledge_records.normalized_facts)
             diagnostics["source_document_count"] = len(knowledge_records.source_documents)
             diagnostics["citation_count"] = len(knowledge_records.envelope.citation_ids)
+        if generated_output_cache_repository is not None and not promotion["promotion_allowed"]:
+            diagnostics["reason_codes"].append("generated_output_cache_promotion_blocked")
         diagnostics["status"] = "persisted"
         return diagnostics
     except Exception as exc:
@@ -208,6 +220,54 @@ def persist_lightweight_evidence_if_configured(
         diagnostics["source_snapshot_persisted"] = False
         diagnostics["knowledge_pack_persisted"] = False
         return diagnostics
+
+
+def evaluate_lightweight_generated_output_promotion(
+    response: LightweightFetchResponse,
+    *,
+    allow_generated_output_cache_promotion: bool = False,
+) -> dict[str, Any]:
+    """Evaluate whether a lightweight response may promote generated-output cache metadata."""
+
+    from backend.source_policy import SourcePolicyAction, validate_source_handoff
+
+    reason_codes: list[str] = []
+    source_documents = [_source_document_from_lightweight(source, response) for source in response.sources]
+    handoff_results = [
+        validate_source_handoff(source, action=SourcePolicyAction.cacheable_generated_output)
+        for source in source_documents
+    ]
+    if not allow_generated_output_cache_promotion:
+        reason_codes.append("explicit_promotion_opt_in_missing")
+    if response.raw_payload_exposed:
+        reason_codes.append("raw_payload_exposed")
+    if not response.generated_output_eligible:
+        reason_codes.append("lightweight_response_not_generated_output_eligible")
+    if response.diagnostics.get("strict_audit_quality_approval") is not True:
+        reason_codes.append("strict_audit_quality_source_approval_not_granted")
+    if response.fetch_state not in {LightweightFetchState.supported, LightweightFetchState.partial}:
+        reason_codes.append(f"fetch_state_{response.fetch_state.value}")
+    if not response.citations:
+        reason_codes.append("citation_support_missing")
+    if any(not result.allowed for result in handoff_results):
+        reason_codes.append("source_handoff_not_approved_for_cacheable_generated_output")
+    if response.freshness.freshness_state in {FreshnessState.unknown, FreshnessState.unavailable}:
+        reason_codes.append(f"freshness_{response.freshness.freshness_state.value}")
+    if response.page_render_state in {EvidenceState.unknown, EvidenceState.unavailable, EvidenceState.insufficient_evidence}:
+        reason_codes.append(f"evidence_{response.page_render_state.value}")
+
+    return {
+        "schema_version": "lightweight-generated-output-promotion-gate-v1",
+        "promotion_allowed": not reason_codes,
+        "source_count": len(source_documents),
+        "citation_count": len(response.citations),
+        "source_handoff_checked": bool(source_documents),
+        "handoff_allowed_source_count": sum(1 for result in handoff_results if result.allowed),
+        "handoff_blocked_source_count": sum(1 for result in handoff_results if not result.allowed),
+        "reason_codes": sorted(dict.fromkeys(reason_codes)),
+        "raw_payload_exposed": response.raw_payload_exposed,
+        "secret_values_exposed": False,
+    }
 
 
 def build_lightweight_details_response(response: LightweightFetchResponse) -> DetailsResponse:

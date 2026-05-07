@@ -20,6 +20,7 @@ from backend.data import (
     top500_stock_universe_entry,
 )
 from backend.etf_universe import ETFUniverseSupportState, etf_universe_entry
+from backend.etf_issuer_source_packs import build_automated_etf_issuer_source_pack
 from backend.models import (
     AssetIdentity,
     AssetStatus,
@@ -62,6 +63,10 @@ CHART_INTERVAL_BY_RANGE = {
     "max": "1mo",
 }
 ALLOWED_LIGHTWEIGHT_HOSTS = {
+    "api.tiingo.com",
+    "eodhd.com",
+    "financialmodelingprep.com",
+    "finnhub.io",
     "www.alphavantage.co",
     "data.sec.gov",
     "finance.yahoo.com",
@@ -105,6 +110,77 @@ ETF_ISSUER_OFFICIAL_REGISTRY = {
     "Vanguard": ("investor.vanguard.com",),
     "Invesco": ("www.invesco.com",),
     "State Street Global Advisors": ("www.ssga.com",),
+}
+STOCK_OFFICIAL_IR_REGISTRY = {
+    "AAPL": {
+        "company": "Apple Inc.",
+        "domain": "investor.apple.com",
+        "events_url": "https://investor.apple.com/news-and-events/news-room/default.aspx",
+        "earnings_url": "https://investor.apple.com/investor-relations/default.aspx",
+    },
+    "MSFT": {
+        "company": "Microsoft Corporation",
+        "domain": "www.microsoft.com",
+        "events_url": "https://www.microsoft.com/en-us/investor/earnings",
+        "earnings_url": "https://www.microsoft.com/en-us/investor/earnings",
+    },
+    "NVDA": {
+        "company": "NVIDIA Corporation",
+        "domain": "investor.nvidia.com",
+        "events_url": "https://investor.nvidia.com/news/default.aspx",
+        "earnings_url": "https://investor.nvidia.com/financial-info/quarterly-results/default.aspx",
+    },
+    "AMZN": {
+        "company": "Amazon.com, Inc.",
+        "domain": "ir.aboutamazon.com",
+        "events_url": "https://ir.aboutamazon.com/news-release/default.aspx",
+        "earnings_url": "https://ir.aboutamazon.com/quarterly-results/default.aspx",
+    },
+    "GOOGL": {
+        "company": "Alphabet Inc.",
+        "domain": "abc.xyz",
+        "events_url": "https://abc.xyz/investor/",
+        "earnings_url": "https://abc.xyz/investor/",
+    },
+    "META": {
+        "company": "Meta Platforms, Inc.",
+        "domain": "investor.fb.com",
+        "events_url": "https://investor.fb.com/investor-news/default.aspx",
+        "earnings_url": "https://investor.fb.com/financials/default.aspx",
+    },
+    "TSLA": {
+        "company": "Tesla, Inc.",
+        "domain": "ir.tesla.com",
+        "events_url": "https://ir.tesla.com/press",
+        "earnings_url": "https://ir.tesla.com/#quarterly-disclosure",
+    },
+}
+LIGHTWEIGHT_PROVIDER_API_ADAPTERS = {
+    "fmp": {
+        "display_name": "Financial Modeling Prep",
+        "source_type": "fmp_market_reference",
+        "public_url": "https://financialmodelingprep.com/",
+    },
+    "alpha_vantage": {
+        "display_name": "Alpha Vantage",
+        "source_type": "alpha_vantage_market_reference",
+        "public_url": "https://www.alphavantage.co/",
+    },
+    "finnhub": {
+        "display_name": "Finnhub",
+        "source_type": "finnhub_market_reference",
+        "public_url": "https://finnhub.io/",
+    },
+    "tiingo": {
+        "display_name": "Tiingo",
+        "source_type": "tiingo_market_reference",
+        "public_url": "https://www.tiingo.com/",
+    },
+    "eodhd": {
+        "display_name": "EODHD",
+        "source_type": "eodhd_market_reference",
+        "public_url": "https://eodhd.com/",
+    },
 }
 
 
@@ -523,9 +599,16 @@ def _persistent_cache_store_and_mark(
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         envelope = {
-            "schema_version": "lightweight-fetch-persistent-cache-v1",
+            "schema_version": "lightweight-fetch-persistent-cache-v2",
             "stored_at_epoch_seconds": time.time(),
             "key_checksum": _persistent_cache_key_checksum(key),
+            "ttl_seconds": settings.fetch_reuse_ttl_seconds,
+            "fallback_tier": response.diagnostics.get("final_fallback_level"),
+            "partial_or_unavailable_state": response.fetch_state.value
+            if response.fetch_state in {LightweightFetchState.partial, LightweightFetchState.unavailable}
+            else None,
+            "source_cache_records": _persistent_source_cache_records(response, settings),
+            "normalized_response_checksum": _normalized_response_checksum(response),
             "raw_payload_exposed": False,
             "secret_values_exposed": False,
             "response": response.model_dump(mode="json"),
@@ -573,6 +656,76 @@ def _persistent_cache_key_checksum(key: _LightweightFetchReuseKey) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _normalized_response_checksum(response: LightweightFetchResponse) -> str:
+    payload = response.model_dump(mode="json")
+    payload.pop("diagnostics", None)
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _persistent_source_cache_records(
+    response: LightweightFetchResponse,
+    settings: LightweightDataSettings,
+) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for source in response.sources:
+        checksum_payload = {
+            "source_document_id": source.source_document_id,
+            "source_label": source.source_label.value,
+            "source_type": source.source_type,
+            "publisher": source.publisher,
+            "url": source.url,
+            "published_at": source.published_at,
+            "as_of_date": source.as_of_date,
+            "retrieved_at": source.retrieved_at,
+            "source_use_policy": source.source_use_policy.value,
+            "freshness_state": source.freshness_state.value,
+        }
+        records.append(
+            {
+                "source_document_id": source.source_document_id,
+                "source_label": source.source_label.value,
+                "source_type": source.source_type,
+                "publisher": source.publisher,
+                "url_checksum": hashlib.sha256(str(source.url or source.source_document_id).encode("utf-8")).hexdigest(),
+                "source_checksum": hashlib.sha256(
+                    json.dumps(checksum_payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+                ).hexdigest(),
+                "source_use_policy": source.source_use_policy.value,
+                "storage_mode": _persistent_storage_mode_for_source(source),
+                "ttl_seconds": settings.fetch_reuse_ttl_seconds,
+                "published_at": source.published_at,
+                "as_of_date": source.as_of_date,
+                "retrieved_at": source.retrieved_at,
+                "freshness_state": source.freshness_state.value,
+                "fallback_tier": _source_fallback_tier(source),
+                "raw_body_stored": False,
+                "secret_values_exposed": False,
+            }
+        )
+    return records
+
+
+def _persistent_storage_mode_for_source(source: LightweightFetchSource) -> str:
+    if source.source_use_policy is SourceUsePolicy.full_text_allowed:
+        return "metadata_checksum_and_normalized_response_only"
+    if source.source_use_policy is SourceUsePolicy.summary_allowed:
+        return "metadata_hashes_and_bounded_excerpts_only"
+    if source.source_use_policy is SourceUsePolicy.link_only:
+        return "link_metadata_only"
+    return "metadata_only"
+
+
+def _source_fallback_tier(source: LightweightFetchSource) -> str:
+    if source.source_label is LightweightSourceLabel.official:
+        return "official"
+    if source.source_label is LightweightSourceLabel.provider_derived:
+        return "yahoo" if source.publisher == "Yahoo Finance" else "provider_api"
+    if source.source_label is LightweightSourceLabel.partial:
+        return "manifest_or_partial"
+    return "unavailable"
+
+
 def _response_with_persistent_cache_diagnostics(
     response: LightweightFetchResponse,
     settings: LightweightDataSettings,
@@ -584,13 +737,17 @@ def _response_with_persistent_cache_diagnostics(
     diagnostics = {
         **response.diagnostics,
         "lightweight_fetch_persistent_cache": {
-            "schema_version": "lightweight-fetch-persistent-cache-v1",
+            "schema_version": "lightweight-fetch-persistent-cache-v2",
             "enabled": settings.fetch_persistent_cache_dir is not None,
             "cache_status": status,
             "ttl_seconds": settings.fetch_reuse_ttl_seconds,
             "age_seconds": round(age_seconds, 6),
             "cache_dir_configured": settings.fetch_persistent_cache_dir is not None,
             "cache_file": path.name if path is not None else None,
+            "source_record_count": len(response.sources),
+            "stores_source_metadata": bool(response.sources),
+            "stores_source_checksums": bool(response.sources),
+            "stores_raw_source_bodies": False,
             "raw_payload_exposed": False,
             "secret_values_exposed": False,
         },
@@ -813,6 +970,7 @@ def _fetch_stock(
         )
     if official_errors:
         diagnostics["official_source_errors"] = official_errors
+    diagnostics.update(_stock_official_ir_discovery_diagnostics(ticker, sec_row, retrieved_at))
     if any(source.source_label is LightweightSourceLabel.official for source in sources):
         _record_fetch_tier_success(diagnostics, "official")
         _record_fields_by_tier(diagnostics, "official", facts)
@@ -1020,6 +1178,15 @@ def _try_etf_issuer_enrichment(
     entry: Any,
     retrieved_at: str,
 ) -> tuple[list[LightweightFetchSource], list[LightweightFetchFact], list[LightweightFetchFact], dict[str, Any]]:
+    source_pack = (
+        build_automated_etf_issuer_source_pack(
+            ticker=ticker,
+            fund_name=str(entry.fund_name),
+            issuer=entry.issuer,
+        )
+        if entry is not None
+        else None
+    )
     diagnostics: dict[str, Any] = {
         "issuer_enrichment_attempted": True,
         "issuer_enrichment_source": "etf_issuer_official_adapter",
@@ -1028,6 +1195,13 @@ def _try_etf_issuer_enrichment(
         "issuer_enrichment_live_capable": True,
         "issuer_enrichment_official_registry_issuers": sorted(ETF_ISSUER_OFFICIAL_REGISTRY),
         "issuer_enrichment_no_live_external_calls": True,
+        "issuer_source_pack_automation": source_pack.diagnostics if source_pack is not None else {
+            "schema_version": "etf-issuer-source-pack-v1",
+            "source_pack_status": "issuer_family_not_configured",
+            "fallback_order": ["official_issuer", "provider_api", "yahoo"],
+            "human_review_required_per_source": False,
+            "automated_policy_can_approve_known_source_patterns": True,
+        },
     }
     try:
         from backend.providers import mock_etf_issuer_adapter
@@ -1374,6 +1548,9 @@ def _try_configured_provider_api_fallback(
     retrieved_at: str,
 ) -> tuple[dict[str, Any] | None, list[LightweightFetchSource], list[LightweightFetchFact], list[dict[str, str]], dict[str, Any]]:
     diagnostics: dict[str, Any] = {"provider_api_attempted": True, "provider_api_skipped": []}
+    if provider not in LIGHTWEIGHT_PROVIDER_API_ADAPTERS:
+        diagnostics["provider_api_skipped"].append({"provider": provider, "reason": "adapter_unknown"})
+        return None, [], [], [], diagnostics
     if not settings.provider_credentials_configured.get(provider):
         diagnostics["provider_api_skipped"].append({"provider": provider, "reason": "credential_not_configured"})
         return None, [], [], [], diagnostics
@@ -1381,9 +1558,351 @@ def _try_configured_provider_api_fallback(
         diagnostics["provider_api_skipped"].append({"provider": provider, "reason": "source_use_not_reviewed"})
         return None, [], [], [], diagnostics
     if provider != "alpha_vantage":
-        diagnostics["provider_api_skipped"].append({"provider": provider, "reason": "adapter_not_reviewed_for_live_lightweight_fetch"})
-        return None, [], [], [], diagnostics
+        return _try_reviewed_provider_api_fallback(provider, ticker, settings, fetcher, retrieved_at)
     return _try_alpha_vantage_provider_fallback(ticker, settings, fetcher, retrieved_at)
+
+
+def _try_reviewed_provider_api_fallback(
+    provider: str,
+    ticker: str,
+    settings: LightweightDataSettings,
+    fetcher: JsonFetcher,
+    retrieved_at: str,
+) -> tuple[dict[str, Any] | None, list[LightweightFetchSource], list[LightweightFetchFact], list[dict[str, str]], dict[str, Any]]:
+    credential = settings.credential_for(provider)
+    if not credential:
+        return None, [], [], [], {"provider_api_attempted": True, "provider_api_skipped": [{"provider": provider, "reason": "credential_not_configured"}]}
+
+    errors: list[dict[str, str]] = []
+    payloads: dict[str, Any] = {}
+    for payload_name, url in _provider_api_urls(provider, ticker, credential).items():
+        try:
+            payloads[payload_name] = fetcher.fetch_json(
+                url,
+                user_agent=YAHOO_PROVIDER_USER_AGENT,
+                timeout_seconds=settings.fetch_timeout_seconds,
+            )
+        except Exception as exc:
+            errors.append({"source": f"{provider}_{payload_name}", "error_type": type(exc).__name__})
+
+    normalized = _normalize_provider_api_reference(provider, ticker, payloads)
+    if not normalized:
+        return None, [], [], errors, {
+            "provider_api_attempted": True,
+            "provider_api_skipped": [],
+            f"{provider}_fact_count": 0,
+            f"{provider}_raw_payload_exposed": False,
+        }
+
+    source = _provider_api_source(provider, ticker, normalized, retrieved_at)
+    facts = _facts_from_provider_api_reference(provider, ticker, normalized, retrieved_at, source)
+    return normalized, [source] if facts else [], facts, errors, {
+        "provider_api_attempted": True,
+        "provider_api_skipped": [],
+        f"{provider}_fact_count": len(facts),
+        f"{provider}_raw_payload_exposed": False,
+        f"{provider}_adapter_boundary": "lightweight-provider-api-adapter-v1",
+    }
+
+
+def _provider_api_urls(provider: str, ticker: str, credential: str) -> dict[str, str]:
+    symbol = quote(ticker)
+    if provider == "fmp":
+        return {
+            "profile": f"https://financialmodelingprep.com/api/v3/profile/{symbol}?apikey={quote(credential)}",
+            "quote": f"https://financialmodelingprep.com/api/v3/quote/{symbol}?apikey={quote(credential)}",
+        }
+    if provider == "finnhub":
+        return {
+            "profile": f"https://finnhub.io/api/v1/stock/profile2?symbol={symbol}&token={quote(credential)}",
+            "quote": f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={quote(credential)}",
+            "metric": f"https://finnhub.io/api/v1/stock/metric?symbol={symbol}&metric=all&token={quote(credential)}",
+        }
+    if provider == "tiingo":
+        return {
+            "profile": f"https://api.tiingo.com/tiingo/daily/{symbol}?token={quote(credential)}",
+            "quote": f"https://api.tiingo.com/iex/{symbol}?token={quote(credential)}",
+        }
+    if provider == "eodhd":
+        return {
+            "fundamentals": f"https://eodhd.com/api/fundamentals/{symbol}.US?api_token={quote(credential)}&fmt=json",
+            "quote": f"https://eodhd.com/api/real-time/{symbol}.US?api_token={quote(credential)}&fmt=json",
+        }
+    return {}
+
+
+def _provider_api_source(
+    provider: str,
+    ticker: str,
+    normalized: dict[str, Any],
+    retrieved_at: str,
+) -> LightweightFetchSource:
+    adapter = LIGHTWEIGHT_PROVIDER_API_ADAPTERS[provider]
+    provider_as_of = _clean_text(normalized.get("latest_trading_day")) or _clean_text(normalized.get("as_of_date"))
+    display_name = str(adapter["display_name"])
+    return LightweightFetchSource(
+        source_document_id=f"lw_{provider}_{ticker.lower()}_market_reference",
+        source_label=LightweightSourceLabel.provider_derived,
+        source_type=str(adapter["source_type"]),
+        title=f"{ticker} {display_name} normalized reference",
+        publisher=display_name,
+        url=f"{adapter['public_url']}?symbol={quote(ticker)}",
+        is_official=False,
+        source_quality=SourceQuality.provider,
+        source_use_policy=SourceUsePolicy.summary_allowed,
+        allowlist_status=SourceAllowlistStatus.allowed,
+        as_of_date=provider_as_of,
+        retrieved_at=retrieved_at,
+        date_precision="day" if provider_as_of else "unknown",
+        freshness_state=FreshnessState.fresh,
+        fallback_reason="Official SEC or issuer data was incomplete for some local-test market/reference fields.",
+        rights_note=(
+            f"{display_name} provider data is source-labeled and normalized when configured; raw provider payloads "
+            "and API keys are not displayed, logged, cached as raw bodies, or exported."
+        ),
+        export_allowed=False,
+    )
+
+
+def _facts_from_provider_api_reference(
+    provider: str,
+    ticker: str,
+    normalized: dict[str, Any],
+    retrieved_at: str,
+    source: LightweightFetchSource,
+) -> list[LightweightFetchFact]:
+    facts: list[LightweightFetchFact] = []
+    identity = _provider_api_identity_reference(normalized)
+    if identity:
+        facts.append(
+            _fact(
+                ticker,
+                "provider_identity_or_market_reference",
+                identity,
+                EvidenceState.partial,
+                FreshnessState.fresh,
+                retrieved_at,
+                source,
+                as_of_date=source.as_of_date,
+                fallback_used=True,
+                limitations=f"{provider} provider-derived identity/reference data is fallback metadata, not official SEC or issuer evidence.",
+            )
+        )
+    market_price = _provider_api_market_price(normalized)
+    if market_price:
+        facts.append(
+            _fact(
+                ticker,
+                "provider_market_price",
+                market_price,
+                EvidenceState.partial,
+                FreshnessState.fresh,
+                retrieved_at,
+                source,
+                as_of_date=source.as_of_date,
+                fallback_used=True,
+                limitations="Provider-derived market price is delayed/reference data for local testing, not trading advice.",
+            )
+        )
+    profile = _provider_api_profile_overview(normalized)
+    if profile:
+        facts.append(
+            _fact(
+                ticker,
+                "provider_profile_overview",
+                profile,
+                EvidenceState.partial,
+                FreshnessState.fresh,
+                retrieved_at,
+                source,
+                as_of_date=source.as_of_date,
+                fallback_used=True,
+                limitations="Provider-derived profile fields are normalized display fallback, not official SEC or issuer evidence.",
+            )
+        )
+    quote_stats = _provider_api_quote_stats(normalized)
+    if quote_stats:
+        facts.append(
+            _fact(
+                ticker,
+                "provider_quote_stats",
+                quote_stats,
+                EvidenceState.partial,
+                FreshnessState.fresh,
+                retrieved_at,
+                source,
+                as_of_date=source.as_of_date,
+                fallback_used=True,
+                limitations="Provider-derived quote stats are normalized display fallback, not official SEC or issuer evidence.",
+            )
+        )
+    return facts
+
+
+def _normalize_provider_api_reference(
+    provider: str,
+    ticker: str,
+    payloads: dict[str, Any],
+) -> dict[str, Any]:
+    if provider == "fmp":
+        return _normalize_fmp_reference(ticker, payloads)
+    if provider == "finnhub":
+        return _normalize_finnhub_reference(ticker, payloads)
+    if provider == "tiingo":
+        return _normalize_tiingo_reference(ticker, payloads)
+    if provider == "eodhd":
+        return _normalize_eodhd_reference(ticker, payloads)
+    return {}
+
+
+def _normalize_fmp_reference(ticker: str, payloads: dict[str, Any]) -> dict[str, Any]:
+    profile = _first_dict(payloads.get("profile"))
+    quote_payload = _first_dict(payloads.get("quote"))
+    symbol = _clean_text(profile.get("symbol")) or _clean_text(quote_payload.get("symbol")) or ticker
+    quote_type = "ETF" if _looks_like_etf_profile(profile, quote_payload) else "EQUITY"
+    fields = {
+        "symbol": symbol,
+        "shortname": _clean_text(profile.get("companyName") or quote_payload.get("name")),
+        "longname": _clean_text(profile.get("companyName") or quote_payload.get("name")),
+        "quoteType": quote_type,
+        "exchange": _clean_text(profile.get("exchangeShortName") or quote_payload.get("exchange")),
+        "currency": _clean_text(profile.get("currency")),
+        "sector": _clean_text(profile.get("sector")),
+        "industry": _clean_text(profile.get("industry")),
+        "longBusinessSummary": _clean_text(profile.get("description")),
+        "market_cap": _provider_number(profile.get("mktCap") or quote_payload.get("marketCap")),
+        "regularMarketPrice": _provider_number(quote_payload.get("price")),
+        "chartPreviousClose": _provider_number(quote_payload.get("previousClose")),
+        "regularMarketVolume": _provider_number(quote_payload.get("volume")),
+        "latest_trading_day": _clean_text(quote_payload.get("timestamp") or profile.get("lastDiv")),
+        "trailing_pe": _provider_number(quote_payload.get("pe") or profile.get("pe")),
+        "eps_ttm": _provider_number(quote_payload.get("eps") or profile.get("eps")),
+        "dividend_yield": _provider_number(profile.get("lastDiv")),
+        "source_label": LightweightSourceLabel.provider_derived.value,
+    }
+    return {key: value for key, value in fields.items() if _present(value)}
+
+
+def _normalize_finnhub_reference(ticker: str, payloads: dict[str, Any]) -> dict[str, Any]:
+    profile = payloads.get("profile") if isinstance(payloads.get("profile"), dict) else {}
+    quote_payload = payloads.get("quote") if isinstance(payloads.get("quote"), dict) else {}
+    metric = payloads.get("metric") if isinstance(payloads.get("metric"), dict) else {}
+    metric_values = metric.get("metric") if isinstance(metric.get("metric"), dict) else {}
+    fields = {
+        "symbol": _clean_text(profile.get("ticker")) or ticker,
+        "shortname": _clean_text(profile.get("name")),
+        "longname": _clean_text(profile.get("name")),
+        "quoteType": "EQUITY",
+        "exchange": _clean_text(profile.get("exchange")),
+        "currency": _clean_text(profile.get("currency")),
+        "industry": _clean_text(profile.get("finnhubIndustry")),
+        "market_cap": _provider_number(profile.get("marketCapitalization")),
+        "regularMarketPrice": _provider_number(quote_payload.get("c")),
+        "chartPreviousClose": _provider_number(quote_payload.get("pc")),
+        "regularMarketVolume": _provider_number(metric_values.get("10DayAverageTradingVolume")),
+        "latest_trading_day": _date_from_epoch(quote_payload.get("t")),
+        "trailing_pe": _provider_number(metric_values.get("peNormalizedAnnual") or metric_values.get("peBasicExclExtraTTM")),
+        "eps_ttm": _provider_number(metric_values.get("epsExclExtraItemsTTM")),
+        "dividend_yield": _provider_number(metric_values.get("currentDividendYieldTTM")),
+        "source_label": LightweightSourceLabel.provider_derived.value,
+    }
+    return {key: value for key, value in fields.items() if _present(value)}
+
+
+def _normalize_tiingo_reference(ticker: str, payloads: dict[str, Any]) -> dict[str, Any]:
+    profile = payloads.get("profile") if isinstance(payloads.get("profile"), dict) else {}
+    quote_payload = _first_dict(payloads.get("quote"))
+    fields = {
+        "symbol": _clean_text(profile.get("ticker")) or _clean_text(quote_payload.get("ticker")) or ticker,
+        "shortname": _clean_text(profile.get("name")),
+        "longname": _clean_text(profile.get("name")),
+        "quoteType": "EQUITY",
+        "exchange": _clean_text(profile.get("exchangeCode")),
+        "longBusinessSummary": _clean_text(profile.get("description")),
+        "regularMarketPrice": _provider_number(quote_payload.get("last") or quote_payload.get("tngoLast")),
+        "chartPreviousClose": _provider_number(quote_payload.get("prevClose")),
+        "regularMarketVolume": _provider_number(quote_payload.get("volume")),
+        "latest_trading_day": _clean_text(quote_payload.get("timestamp") or profile.get("endDate")),
+        "source_label": LightweightSourceLabel.provider_derived.value,
+    }
+    return {key: value for key, value in fields.items() if _present(value)}
+
+
+def _normalize_eodhd_reference(ticker: str, payloads: dict[str, Any]) -> dict[str, Any]:
+    fundamentals = payloads.get("fundamentals") if isinstance(payloads.get("fundamentals"), dict) else {}
+    quote_payload = payloads.get("quote") if isinstance(payloads.get("quote"), dict) else {}
+    general = fundamentals.get("General") if isinstance(fundamentals.get("General"), dict) else {}
+    highlights = fundamentals.get("Highlights") if isinstance(fundamentals.get("Highlights"), dict) else {}
+    valuation = fundamentals.get("Valuation") if isinstance(fundamentals.get("Valuation"), dict) else {}
+    quote_type = "ETF" if _clean_text(general.get("Type")) == "ETF" else "EQUITY"
+    fields = {
+        "symbol": _clean_text(general.get("Code")) or ticker,
+        "shortname": _clean_text(general.get("Name")),
+        "longname": _clean_text(general.get("Name")),
+        "quoteType": quote_type,
+        "exchange": _clean_text(general.get("Exchange")),
+        "currency": _clean_text(general.get("CurrencyCode")),
+        "sector": _clean_text(general.get("Sector")),
+        "industry": _clean_text(general.get("Industry")),
+        "longBusinessSummary": _clean_text(general.get("Description")),
+        "market_cap": _provider_number(highlights.get("MarketCapitalization")),
+        "regularMarketPrice": _provider_number(quote_payload.get("close")),
+        "chartPreviousClose": _provider_number(quote_payload.get("previousClose")),
+        "regularMarketVolume": _provider_number(quote_payload.get("volume")),
+        "latest_trading_day": _clean_text(quote_payload.get("timestamp") or general.get("UpdatedAt")),
+        "trailing_pe": _provider_number(highlights.get("PERatio") or valuation.get("TrailingPE")),
+        "eps_ttm": _provider_number(highlights.get("DilutedEpsTTM")),
+        "dividend_yield": _provider_number(highlights.get("DividendYield")),
+        "source_label": LightweightSourceLabel.provider_derived.value,
+    }
+    return {key: value for key, value in fields.items() if _present(value)}
+
+
+def _provider_api_identity_reference(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: payload.get(key)
+        for key in ("symbol", "shortname", "longname", "quoteType", "exchange", "currency", "sector", "industry", "source_label")
+        if payload.get(key) is not None
+    }
+
+
+def _provider_api_market_price(payload: dict[str, Any]) -> dict[str, Any] | None:
+    if payload.get("regularMarketPrice") is None and payload.get("chartPreviousClose") is None:
+        return None
+    return {
+        key: payload.get(key)
+        for key in ("symbol", "regularMarketPrice", "chartPreviousClose", "currency", "regularMarketVolume", "latest_trading_day")
+        if payload.get(key) is not None
+    }
+
+
+def _provider_api_profile_overview(payload: dict[str, Any]) -> dict[str, Any]:
+    fields = {
+        "symbol": payload.get("symbol"),
+        "name": payload.get("longname") or payload.get("shortname"),
+        "quote_type": payload.get("quoteType"),
+        "exchange": payload.get("exchange"),
+        "currency": payload.get("currency"),
+        "sector": payload.get("sector"),
+        "industry": payload.get("industry"),
+        "long_business_summary": payload.get("longBusinessSummary"),
+        "market_cap": _metric_payload(payload.get("market_cap"), unit="USD"),
+        "trailing_pe": _metric_payload(payload.get("trailing_pe")),
+        "eps_ttm": _metric_payload(payload.get("eps_ttm")),
+        "dividend_yield": _percent_payload(payload.get("dividend_yield")),
+    }
+    return {key: value for key, value in fields.items() if _present(value)}
+
+
+def _provider_api_quote_stats(payload: dict[str, Any]) -> dict[str, Any]:
+    rows = [
+        _quote_stat("previous_close", "Previous Close", payload.get("chartPreviousClose"), value_type="currency"),
+        _quote_stat("volume", "Volume", payload.get("regularMarketVolume"), value_type="number"),
+        _quote_stat("pe_ratio_ttm", "PE Ratio (TTM)", payload.get("trailing_pe"), value_type="number"),
+        _quote_stat("dividend_yield", "Dividend yield", _percent_payload(payload.get("dividend_yield")), value_type="percent"),
+    ]
+    rows = [row for row in rows if row.get("value") not in (None, "")]
+    return {"rows": rows, "source_label": LightweightSourceLabel.provider_derived.value} if rows else {}
 
 
 def _try_alpha_vantage_provider_fallback(
@@ -1617,6 +2136,35 @@ def _provider_number(value: Any) -> float | int | None:
     except (TypeError, ValueError):
         return None
     return int(numeric) if numeric.is_integer() else numeric
+
+
+def _first_dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, list):
+        for item in value:
+            if isinstance(item, dict):
+                return item
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _looks_like_etf_profile(*payloads: dict[str, Any]) -> bool:
+    text = " ".join(
+        str(value or "")
+        for payload in payloads
+        for key, value in payload.items()
+        if key.lower() in {"type", "assettype", "companyname", "name", "industry", "sector", "description"}
+    ).lower()
+    return "etf" in text or "exchange traded fund" in text
+
+
+def _date_from_epoch(value: Any) -> str | None:
+    numeric = _provider_number(value)
+    if numeric is None:
+        return None
+    try:
+        return datetime.fromtimestamp(float(numeric), tz=timezone.utc).date().isoformat()
+    except (OSError, OverflowError, ValueError):
+        return None
 
 
 def _try_yahoo_provider_fallback(
@@ -2388,6 +2936,34 @@ def _sec_source(
         rights_note=SEC_RIGHTS_NOTE,
         export_allowed=True,
     )
+
+
+def _stock_official_ir_discovery_diagnostics(
+    ticker: str,
+    sec_row: dict[str, Any] | None,
+    retrieved_at: str,
+) -> dict[str, Any]:
+    registry = STOCK_OFFICIAL_IR_REGISTRY.get(ticker)
+    return {
+        "stock_official_ir_discovery": {
+            "schema_version": "stock-official-ir-discovery-v1",
+            "attempted": True,
+            "ticker": ticker,
+            "sec_identity_available": sec_row is not None,
+            "retrieved_at": retrieved_at,
+            "status": "registry_ready" if registry else "not_configured_for_ticker",
+            "source_types": ["investor_relations_page", "earnings_releases", "investor_presentations", "official_recent_events"]
+            if registry
+            else [],
+            "company": registry.get("company") if registry else None,
+            "approved_domain": registry.get("domain") if registry else None,
+            "events_url": registry.get("events_url") if registry else None,
+            "earnings_url": registry.get("earnings_url") if registry else None,
+            "raw_body_storage_allowed_by_default": False,
+            "human_review_required_per_source": False,
+            "fallback_order": ["sec", "official_ir", "provider_api", "yahoo"],
+        }
+    }
 
 
 def _fact(

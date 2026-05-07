@@ -180,13 +180,13 @@ def test_market_news_adapters_normalize_all_provider_payload_shapes_without_live
         env={
             "MARKET_NEWS_FETCH_ENABLED": "true",
             "MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED": "true",
-            "MARKETAUX_API_KEY": "configured",
-            "ALPHA_VANTAGE_API_KEY": "configured",
-            "FINNHUB_API_KEY": "configured",
-            "GUARDIAN_API_KEY": "configured",
-            "GNEWS_API_KEY": "configured",
-            "MEDIASTACK_API_KEY": "configured",
-            "NEWSAPI_API_KEY": "configured",
+            "MARKETAUX_API_KEY": "marketaux-secret-value",
+            "ALPHA_VANTAGE_API_KEY": "alpha-secret-value",
+            "FINNHUB_API_KEY": "finnhub-secret-value",
+            "GUARDIAN_API_KEY": "guardian-secret-value",
+            "GNEWS_API_KEY": "gnews-secret-value",
+            "MEDIASTACK_API_KEY": "mediastack-secret-value",
+            "NEWSAPI_API_KEY": "newsapi-secret-value",
         }
     )
     fetcher = FixtureMarketNewsFetcher(payloads_by_provider=_provider_payloads())
@@ -237,6 +237,58 @@ def test_runtime_market_news_fetch_uses_ttl_cache_for_opt_in_live_path():
     assert second.market_news_focus.no_live_external_calls is False
     assert len(fetcher.urls) == first_call_count
     assert second.model_dump(mode="json") == first.model_dump(mode="json")
+
+
+def test_runtime_market_news_persistent_cache_reuses_pack_across_memory_caches(tmp_path):
+    settings = build_market_news_settings(
+        env={
+            "MARKET_NEWS_FETCH_ENABLED": "true",
+            "MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED": "true",
+            "MARKET_NEWS_CACHE_TTL_HOURS": "1",
+            "MARKET_NEWS_CACHE_DIR": str(tmp_path),
+            "MARKETAUX_API_KEY": "configured",
+            "ALPHA_VANTAGE_API_KEY": "configured",
+            "FINNHUB_API_KEY": "configured",
+            "GUARDIAN_API_KEY": "configured",
+            "GNEWS_API_KEY": "configured",
+            "MEDIASTACK_API_KEY": "configured",
+            "NEWSAPI_API_KEY": "configured",
+        }
+    )
+    first_fetcher = CountingMarketNewsFetcher(_provider_payloads())
+
+    first = build_runtime_market_news_response(
+        as_of=AS_OF,
+        settings=settings,
+        fetcher=first_fetcher,
+        cache=MarketNewsResponseMemoryCache(),
+    )
+    second_fetcher = CountingMarketNewsFetcher(_provider_payloads())
+    second = build_runtime_market_news_response(
+        as_of=AS_OF,
+        settings=settings,
+        fetcher=second_fetcher,
+        cache=MarketNewsResponseMemoryCache(),
+    )
+
+    assert first.market_news_focus.selected_item_count > 0
+    assert second.model_dump(mode="json") == first.model_dump(mode="json")
+    assert second_fetcher.urls == []
+    cache_files = list((tmp_path / "market_news").glob("*.json"))
+    assert cache_files
+    serialized = cache_files[0].read_text(encoding="utf-8")
+    for secret in [
+        "marketaux-secret-value",
+        "alpha-secret-value",
+        "finnhub-secret-value",
+        "guardian-secret-value",
+        "gnews-secret-value",
+        "mediastack-secret-value",
+        "newsapi-secret-value",
+    ]:
+        assert secret not in serialized
+    assert "raw article body" not in serialized
+    assert "provider payload value" not in serialized
 
 
 def test_market_news_selection_prefers_fresher_representative_and_score_on_ties():

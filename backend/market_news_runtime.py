@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from urllib.error import URLError
 from urllib.parse import urlsplit
@@ -146,12 +148,17 @@ def build_runtime_market_news_response(
     cached = response_cache.get(cache_key, ttl_seconds=ttl_seconds)
     if cached is not None:
         return cached
+    persisted = _persistent_cache_get(cache_key, active_settings, now_epoch_seconds=time.time())
+    if persisted is not None:
+        response_cache.set(cache_key, persisted)
+        return persisted
 
     response = build_market_news_response(
         as_of=as_of,
         settings=active_settings,
         fetcher=source_fetcher,
     )
+    _persistent_cache_store(cache_key, response, active_settings)
     return response_cache.set(cache_key, response)
 
 
@@ -171,6 +178,117 @@ def _cache_key(
         providers=tuple(adapter.provider for adapter in market_news_provider_adapters()),
         fetcher_boundary=fetcher.__class__.__name__,
     )
+
+
+def _persistent_cache_get(
+    key: MarketNewsRuntimeCacheKey,
+    settings: MarketNewsSettings,
+    *,
+    now_epoch_seconds: float,
+) -> MarketNewsResponse | None:
+    if not settings.persistent_cache_dir:
+        return None
+    path = _persistent_cache_path(key, settings)
+    if path is None or not path.exists():
+        return None
+    try:
+        envelope = json.loads(path.read_text(encoding="utf-8"))
+        stored_at = float(envelope.get("stored_at_epoch_seconds"))
+        age_seconds = max(0.0, now_epoch_seconds - stored_at)
+        if age_seconds > settings.cache_ttl_hours * 60 * 60:
+            path.unlink(missing_ok=True)
+            return None
+        raw_response = envelope.get("response")
+        if not isinstance(raw_response, dict):
+            return None
+        return MarketNewsResponse.model_validate(raw_response)
+    except Exception:
+        return None
+
+
+def _persistent_cache_store(
+    key: MarketNewsRuntimeCacheKey,
+    response: MarketNewsResponse,
+    settings: MarketNewsSettings,
+) -> None:
+    if not settings.persistent_cache_dir:
+        return
+    path = _persistent_cache_path(key, settings)
+    if path is None:
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        source_records = [
+            {
+                "source_document_id": source.source_document_id,
+                "source_checksum": hashlib.sha256(
+                    json.dumps(
+                        {
+                            "source_document_id": source.source_document_id,
+                            "publisher": source.publisher,
+                            "url": source.url,
+                            "published_at": source.published_at,
+                            "as_of_date": source.as_of_date,
+                            "retrieved_at": source.retrieved_at,
+                            "source_use_policy": source.source_use_policy.value,
+                            "freshness_state": source.freshness_state.value,
+                        },
+                        sort_keys=True,
+                        separators=(",", ":"),
+                        default=str,
+                    ).encode("utf-8")
+                ).hexdigest(),
+                "source_use_policy": source.source_use_policy.value,
+                "storage_mode": "metadata_hashes_and_bounded_summaries_only",
+                "ttl_seconds": settings.cache_ttl_hours * 60 * 60,
+                "raw_body_stored": False,
+                "secret_values_exposed": False,
+            }
+            for source in response.market_news_focus.source_documents
+        ]
+        envelope = {
+            "schema_version": "market-news-persistent-cache-v1",
+            "stored_at_epoch_seconds": time.time(),
+            "key_checksum": _persistent_cache_key_checksum(key),
+            "ttl_seconds": settings.cache_ttl_hours * 60 * 60,
+            "source_cache_records": source_records,
+            "response_checksum": hashlib.sha256(
+                json.dumps(response.model_dump(mode="json"), sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+            ).hexdigest(),
+            "raw_article_bodies_stored": False,
+            "raw_provider_payloads_stored": False,
+            "secret_values_exposed": False,
+            "response": response.model_dump(mode="json"),
+        }
+        path.write_text(json.dumps(envelope, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+    except Exception:
+        return
+
+
+def _persistent_cache_path(
+    key: MarketNewsRuntimeCacheKey,
+    settings: MarketNewsSettings,
+) -> Path | None:
+    if not settings.persistent_cache_dir:
+        return None
+    base = Path(settings.persistent_cache_dir).expanduser()
+    return base / "market_news" / f"{_persistent_cache_key_checksum(key)}.json"
+
+
+def _persistent_cache_key_checksum(key: MarketNewsRuntimeCacheKey) -> str:
+    payload = {
+        "schema_version": MARKET_NEWS_RUNTIME_BOUNDARY,
+        "as_of": key.as_of,
+        "settings_schema_version": key.settings_schema_version,
+        "fetch_timeout_seconds": key.fetch_timeout_seconds,
+        "fetch_enabled": key.fetch_enabled,
+        "live_source_real_fetch_enabled": key.live_source_real_fetch_enabled,
+        "provider_credentials_configured": key.provider_credentials_configured,
+        "provider_adapter_boundary": key.provider_adapter_boundary,
+        "providers": key.providers,
+        "fetcher_boundary": key.fetcher_boundary,
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")).hexdigest()
 
 
 def _validate_market_news_url(url: str) -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from backend.lightweight_data_fetch import clear_lightweight_fetch_reuse_cache, fetch_lightweight_asset_data
@@ -7,6 +8,7 @@ from backend.lightweight_page import (
     build_lightweight_details_response,
     build_lightweight_overview_response,
     build_lightweight_sources_response,
+    evaluate_lightweight_generated_output_promotion,
 )
 from backend.market_news import build_market_news_response
 from backend.models import (
@@ -286,6 +288,83 @@ class AlphaVantageFakeJsonFetcher(FakeJsonFetcher):
         return super().fetch_json(url, user_agent=user_agent, timeout_seconds=timeout_seconds)
 
 
+class ReviewedProviderFakeJsonFetcher(FakeJsonFetcher):
+    def fetch_json(self, url: str, *, user_agent: str, timeout_seconds: int) -> dict[str, Any]:
+        if "financialmodelingprep.com/api/v3/profile/AAPL" in url:
+            self.urls.append(url)
+            return [
+                {
+                    "symbol": "AAPL",
+                    "companyName": "Apple Inc.",
+                    "exchangeShortName": "NASDAQ",
+                    "currency": "USD",
+                    "sector": "Technology",
+                    "industry": "Consumer Electronics",
+                    "description": "Apple designs products and services.",
+                    "mktCap": 3120000000000,
+                }
+            ]
+        if "financialmodelingprep.com/api/v3/quote/AAPL" in url:
+            self.urls.append(url)
+            return [
+                {
+                    "symbol": "AAPL",
+                    "name": "Apple Inc.",
+                    "price": 202.4,
+                    "previousClose": 201.2,
+                    "volume": 7654321,
+                    "pe": 31.2,
+                    "eps": 6.49,
+                }
+            ]
+        if "finnhub.io/api/v1/stock/profile2" in url:
+            self.urls.append(url)
+            return {
+                "ticker": "AAPL",
+                "name": "Apple Inc.",
+                "exchange": "NASDAQ NMS",
+                "currency": "USD",
+                "finnhubIndustry": "Technology",
+                "marketCapitalization": 3120000,
+            }
+        if "finnhub.io/api/v1/quote" in url:
+            self.urls.append(url)
+            return {"c": 203.1, "pc": 202.0, "t": 1777665600}
+        if "finnhub.io/api/v1/stock/metric" in url:
+            self.urls.append(url)
+            return {"metric": {"peNormalizedAnnual": 32.1, "epsExclExtraItemsTTM": 6.52, "currentDividendYieldTTM": 0.44}}
+        if "api.tiingo.com/tiingo/daily/AAPL" in url:
+            self.urls.append(url)
+            return {
+                "ticker": "AAPL",
+                "name": "Apple Inc.",
+                "exchangeCode": "NASDAQ",
+                "description": "Apple designs products and services.",
+            }
+        if "api.tiingo.com/iex/AAPL" in url:
+            self.urls.append(url)
+            return [{"ticker": "AAPL", "last": 204.2, "prevClose": 203.0, "volume": 8765432, "timestamp": "2026-05-01T20:00:00Z"}]
+        if "eodhd.com/api/fundamentals/AAPL.US" in url:
+            self.urls.append(url)
+            return {
+                "General": {
+                    "Code": "AAPL",
+                    "Name": "Apple Inc.",
+                    "Exchange": "US",
+                    "CurrencyCode": "USD",
+                    "Sector": "Technology",
+                    "Industry": "Consumer Electronics",
+                    "Description": "Apple designs products and services.",
+                    "UpdatedAt": "2026-05-01",
+                },
+                "Highlights": {"MarketCapitalization": 3120000000000, "PERatio": 33.1, "DilutedEpsTTM": 6.55, "DividendYield": 0.004},
+            }
+        if "eodhd.com/api/real-time/AAPL.US" in url:
+            self.urls.append(url)
+            return {"close": 205.3, "previousClose": 204.0, "volume": 6543210, "timestamp": "2026-05-01"}
+        return super().fetch_json(url, user_agent=user_agent, timeout_seconds=timeout_seconds)
+
+
 def _settings():
     return build_lightweight_data_settings(
         {
@@ -343,6 +422,26 @@ def _settings_with_alpha_provider():
             "LIGHTWEIGHT_PROVIDER_ORDER": "alpha_vantage,yahoo",
             "LIGHTWEIGHT_PROVIDER_SOURCE_USE_REVIEWED": "true",
             "ALPHA_VANTAGE_API_KEY": "configured-test-key",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+        }
+    )
+
+
+def _settings_with_reviewed_provider(provider: str):
+    env_name = {
+        "fmp": "FMP_API_KEY",
+        "finnhub": "FINNHUB_API_KEY",
+        "tiingo": "TIINGO_API_KEY",
+        "eodhd": "EODHD_API_KEY",
+    }[provider]
+    return build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_ORDER": f"{provider},yahoo",
+            "LIGHTWEIGHT_PROVIDER_SOURCE_USE_REVIEWED": "true",
+            env_name: "configured-test-key",
             "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
         }
     )
@@ -630,7 +729,15 @@ def test_lightweight_persistent_cache_reuses_response_across_fetchers(tmp_path):
     assert second.raw_payload_exposed is False
     assert second.diagnostics["lightweight_fetch_persistent_cache"]["raw_payload_exposed"] is False
     assert second.diagnostics["lightweight_fetch_persistent_cache"]["secret_values_exposed"] is False
-    assert list((cache_dir / "lightweight_fetch" / "AAPL").glob("*.json"))
+    cache_files = list((cache_dir / "lightweight_fetch" / "AAPL").glob("*.json"))
+    assert cache_files
+    envelope = json.loads(cache_files[0].read_text(encoding="utf-8"))
+    assert envelope["schema_version"] == "lightweight-fetch-persistent-cache-v2"
+    assert envelope["source_cache_records"]
+    assert envelope["normalized_response_checksum"]
+    assert envelope["raw_payload_exposed"] is False
+    assert all(record["raw_body_stored"] is False for record in envelope["source_cache_records"])
+    assert all(record["secret_values_exposed"] is False for record in envelope["source_cache_records"])
 
 
 def test_lightweight_fetch_reuse_preserves_partial_provider_fallback_result():
@@ -687,6 +794,9 @@ def test_lightweight_stock_fetch_prefers_sec_and_labels_provider_fallback():
     assert fields["provider_price_chart"].value["range"] == "6mo"
     assert fields["provider_price_chart"].value["interval"] == "1d"
     assert response.diagnostics["official_source_count"] == 3
+    assert response.diagnostics["stock_official_ir_discovery"]["status"] == "registry_ready"
+    assert response.diagnostics["stock_official_ir_discovery"]["human_review_required_per_source"] is False
+    assert response.diagnostics["stock_official_ir_discovery"]["fallback_order"] == ["sec", "official_ir", "provider_api", "yahoo"]
     assert response.diagnostics["provider_fallback_source_count"] == 1
     assert response.diagnostics["fetch_tier_order"] == ["official", "provider_api", "yahoo"]
     assert response.diagnostics["fetch_tiers_attempted"] == ["official", "provider_api", "yahoo"]
@@ -713,6 +823,10 @@ def test_lightweight_stock_fetch_prefers_sec_and_labels_provider_fallback():
     assert response.fallback_diagnostics.secret_values_exposed is False
     assert all("raw" not in fact.field_name for fact in response.facts)
 
+    promotion = evaluate_lightweight_generated_output_promotion(response, allow_generated_output_cache_promotion=True)
+    assert promotion["promotion_allowed"] is False
+    assert "strict_audit_quality_source_approval_not_granted" in promotion["reason_codes"]
+
 
 def test_lightweight_provider_api_runs_before_yahoo_and_fills_missing_fields_only():
     fetcher = AlphaVantageFakeJsonFetcher()
@@ -731,6 +845,41 @@ def test_lightweight_provider_api_runs_before_yahoo_and_fills_missing_fields_onl
     assert any(source.publisher == "Alpha Vantage" for source in response.sources)
     assert any(source.publisher == "Yahoo Finance" for source in response.sources)
     assert "configured-test-key" not in str(response.model_dump(mode="json"))
+
+
+def test_reviewed_provider_api_adapters_run_before_yahoo_without_secret_exposure():
+    for provider, expected_publisher in [
+        ("fmp", "Financial Modeling Prep"),
+        ("finnhub", "Finnhub"),
+        ("tiingo", "Tiingo"),
+        ("eodhd", "EODHD"),
+    ]:
+        fetcher = ReviewedProviderFakeJsonFetcher()
+
+        response = fetch_lightweight_asset_data(
+            "AAPL",
+            settings=_settings_with_reviewed_provider(provider),
+            fetcher=fetcher,
+            retrieved_at=RETRIEVED_AT,
+        )
+
+        provider_host_marker = {
+            "fmp": "financialmodelingprep.com",
+            "finnhub": "finnhub.io",
+            "tiingo": "api.tiingo.com",
+            "eodhd": "eodhd.com",
+        }[provider]
+        provider_url_indexes = [index for index, url in enumerate(fetcher.urls) if provider_host_marker in url]
+        first_yahoo_url = next(index for index, url in enumerate(fetcher.urls) if "finance.yahoo.com" in url)
+        assert provider_url_indexes
+        assert max(provider_url_indexes) < first_yahoo_url
+        assert response.diagnostics["fetch_tiers_attempted"] == ["official", "provider_api", "yahoo"]
+        assert "provider_market_price" in response.diagnostics["fields_filled_by_tier"]["provider_api"]
+        assert any(source.publisher == expected_publisher for source in response.sources)
+        serialized = str(response.model_dump(mode="json"))
+        assert "configured-test-key" not in serialized
+        assert "provider payload value" not in serialized.lower()
+        assert response.raw_payload_exposed is False
 
 
 def test_lightweight_etf_fetch_uses_issuer_fixtures_before_manifest_and_provider_fallback():
@@ -771,6 +920,10 @@ def test_lightweight_etf_fetch_uses_issuer_fixtures_before_manifest_and_provider
     assert response.diagnostics["issuer_enrichment_state"] == "supported"
     assert response.diagnostics["issuer_enrichment_source"] == "etf_issuer_official_adapter"
     assert response.diagnostics["issuer_enrichment_live_capable"] is True
+    assert response.diagnostics["issuer_source_pack_automation"]["source_pack_status"] == "automated_policy_ready"
+    assert response.diagnostics["issuer_source_pack_automation"]["human_review_required_per_source"] is False
+    assert response.diagnostics["issuer_source_pack_automation"]["fallback_order"] == ["official_issuer", "provider_api", "yahoo"]
+    assert "holdings" in response.diagnostics["issuer_source_pack_automation"]["source_types"]
     assert response.diagnostics["fetch_tiers_attempted"] == ["official", "provider_api", "yahoo"]
     assert response.diagnostics["fetch_tiers_succeeded"] == ["official", "yahoo"]
     assert response.diagnostics["fields_filled_by_tier"]["official"]

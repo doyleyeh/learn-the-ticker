@@ -300,7 +300,16 @@ def _official_weekly_news_candidate_rows(
 ) -> list[WeeklyNewsEventCandidateRow]:
     candidates: list[WeeklyNewsEventCandidateRow] = []
     for index, fact in enumerate(response.facts):
-        if fact.field_name not in {"latest_sec_filing", "etf_fact_sheet_metadata", "prospectus_reference"}:
+        if fact.field_name not in {
+            "latest_sec_filing",
+            "stock_official_ir_release",
+            "investor_presentation_reference",
+            "etf_fact_sheet_metadata",
+            "prospectus_reference",
+            "issuer_announcement",
+            "issuer_holdings_update",
+            "issuer_shareholder_report",
+        }:
             continue
         if LightweightSourceLabel.official not in fact.source_labels:
             continue
@@ -318,6 +327,15 @@ def _official_weekly_news_candidate_rows(
             )
             event_type = WeeklyNewsEventType.regulatory_event
             rank_tier = WeeklyNewsSourceRankTier.official_filing
+        elif fact.field_name in {"stock_official_ir_release", "investor_presentation_reference"}:
+            event_date = _clean_text(value.get("published_at")) or _clean_text(value.get("event_date")) or fact.as_of_date or source.as_of_date
+            title = _clean_text(value.get("title")) or f"{response.asset.ticker} official investor-relations update is available"
+            summary = (
+                _clean_text(value.get("summary"))
+                or f"Official investor-relations metadata is available for {response.asset.ticker}; read it as recent context separate from stable facts."
+            )
+            event_type = _coerce_event_type(value.get("event_type"), response.asset.asset_type)
+            rank_tier = WeeklyNewsSourceRankTier.investor_relations_release
         elif fact.field_name == "prospectus_reference":
             event_date = _clean_text(value.get("publication_date")) or fact.as_of_date or source.as_of_date
             title = f"{response.asset.ticker} official prospectus reference is available"
@@ -327,6 +345,24 @@ def _official_weekly_news_candidate_rows(
             )
             event_type = WeeklyNewsEventType.sponsor_update
             rank_tier = WeeklyNewsSourceRankTier.prospectus_update
+        elif fact.field_name in {"issuer_announcement", "issuer_shareholder_report"}:
+            event_date = _clean_text(value.get("published_at")) or _clean_text(value.get("event_date")) or fact.as_of_date or source.as_of_date
+            title = _clean_text(value.get("title")) or f"{response.asset.ticker} official issuer announcement is available"
+            summary = (
+                _clean_text(value.get("summary"))
+                or f"Official issuer metadata is available for {response.asset.ticker}; this is fund context separate from stable facts."
+            )
+            event_type = WeeklyNewsEventType.sponsor_update
+            rank_tier = WeeklyNewsSourceRankTier.etf_issuer_announcement
+        elif fact.field_name == "issuer_holdings_update":
+            event_date = _clean_text(value.get("as_of_date")) or fact.as_of_date or source.as_of_date
+            title = f"{response.asset.ticker} official holdings or exposure metadata changed"
+            summary = (
+                f"Official issuer metadata includes holdings or exposure evidence for {response.asset.ticker}; "
+                "use it as fund context, not a recommendation."
+            )
+            event_type = WeeklyNewsEventType.sponsor_update
+            rank_tier = WeeklyNewsSourceRankTier.fact_sheet_change
         else:
             event_date = _clean_text(value.get("as_of_date")) or fact.as_of_date or source.as_of_date
             title = f"{response.asset.ticker} official issuer fact sheet metadata is available"

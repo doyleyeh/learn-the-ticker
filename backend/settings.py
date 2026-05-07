@@ -241,6 +241,7 @@ class MarketNewsSettings:
     live_source_real_fetch_enabled: bool
     cache_ttl_hours: int
     fetch_timeout_seconds: int
+    persistent_cache_dir: str | None = None
     provider_credentials_configured: dict[str, bool] = field(default_factory=dict)
     missing_reasons: tuple[str, ...] = ()
     _credentials: dict[str, str | None] = field(default_factory=dict, repr=False, compare=False)
@@ -258,6 +259,8 @@ class MarketNewsSettings:
             "live_source_real_fetch_enabled": self.live_source_real_fetch_enabled,
             "cache_ttl_hours": self.cache_ttl_hours,
             "fetch_timeout_seconds": self.fetch_timeout_seconds,
+            "persistent_cache_enabled": self.persistent_cache_dir is not None,
+            "persistent_cache_dir_configured": self.persistent_cache_dir is not None,
             "provider_credentials_configured": dict(self.provider_credentials_configured),
             "missing_reasons": list(self.missing_reasons),
         }
@@ -644,6 +647,9 @@ def build_market_news_settings(env: dict[str, str] | None = None) -> MarketNewsS
         DEFAULT_LIGHTWEIGHT_FETCH_TIMEOUT_SECONDS,
         minimum=1,
     )
+    persistent_cache_dir = _clean_optional(
+        _first_present(source, "MARKET_NEWS_CACHE_DIR", "LTT_MARKET_NEWS_CACHE_DIR")
+    )
     credential_env_by_provider = {
         "marketaux": "MARKETAUX_API_KEY",
         "alpha_vantage": "ALPHA_VANTAGE_API_KEY",
@@ -673,6 +679,7 @@ def build_market_news_settings(env: dict[str, str] | None = None) -> MarketNewsS
         live_source_real_fetch_enabled=live_source_real_fetch_enabled,
         cache_ttl_hours=cache_ttl_hours,
         fetch_timeout_seconds=fetch_timeout,
+        persistent_cache_dir=persistent_cache_dir,
         provider_credentials_configured=credential_flags,
         missing_reasons=tuple(missing_reasons),
         _credentials=credentials,
