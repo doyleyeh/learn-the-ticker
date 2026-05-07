@@ -23,6 +23,7 @@ DEFAULT_LIVE_WEEKLY_NEWS_ACQUISITION_ENABLED = False
 DEFAULT_LIVE_SOURCE_RATE_LIMIT_READY = False
 DEFAULT_DATA_POLICY_MODE = "lightweight"
 DEFAULT_LIGHTWEIGHT_LIVE_FETCH_ENABLED = False
+DEFAULT_LOCAL_RUNTIME_LIGHTWEIGHT_LIVE_FETCH_ENABLED = True
 DEFAULT_LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED = True
 DEFAULT_LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED = False
 DEFAULT_LIGHTWEIGHT_FETCH_TIMEOUT_SECONDS = 15
@@ -515,11 +516,12 @@ def build_live_acquisition_settings(env: dict[str, str] | None = None) -> LiveAc
 
 def build_lightweight_data_settings(env: dict[str, str] | None = None) -> LightweightDataSettings:
     source = os.environ if env is None else env
+    env_was_provided = env is not None
     mode = _clean_optional(source.get("DATA_POLICY_MODE")) or DEFAULT_DATA_POLICY_MODE
     mode = mode.strip().lower()
     live_fetch_enabled = _bool_setting(
         _first_present(source, "LIGHTWEIGHT_LIVE_FETCH_ENABLED", "LTT_LIGHTWEIGHT_LIVE_FETCH_ENABLED"),
-        DEFAULT_LIGHTWEIGHT_LIVE_FETCH_ENABLED,
+        _default_lightweight_live_fetch_enabled(source, env_was_provided=env_was_provided),
     )
     provider_fallback_enabled = _bool_setting(
         _first_present(
@@ -795,6 +797,28 @@ def _first_present(source: dict[str, str] | os._Environ[str], *names: str) -> st
         if value is not None:
             return value
     return None
+
+
+def _default_lightweight_live_fetch_enabled(
+    source: dict[str, str] | os._Environ[str],
+    *,
+    env_was_provided: bool,
+) -> bool:
+    if env_was_provided and not source:
+        return DEFAULT_LIGHTWEIGHT_LIVE_FETCH_ENABLED
+    if _running_in_ci_or_pytest(source):
+        return DEFAULT_LIGHTWEIGHT_LIVE_FETCH_ENABLED
+    return DEFAULT_LOCAL_RUNTIME_LIGHTWEIGHT_LIVE_FETCH_ENABLED
+
+
+def _running_in_ci_or_pytest(source: dict[str, str] | os._Environ[str]) -> bool:
+    for name in ("CI", "GITHUB_ACTIONS", "BUILDKITE"):
+        if _bool_setting(source.get(name), False) or _bool_setting(os.environ.get(name), False):
+            return True
+    for name in ("JENKINS_URL", "PYTEST_CURRENT_TEST"):
+        if source.get(name) is not None or os.environ.get(name) is not None:
+            return True
+    return False
 
 
 def _valid_local_object_namespace(value: str) -> bool:

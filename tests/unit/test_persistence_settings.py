@@ -304,7 +304,7 @@ def test_live_acquisition_settings_require_source_rate_limit_and_writer_readines
     assert weekly_ready.etf_issuer_ready is False
 
 
-def test_lightweight_data_settings_default_to_policy_mode_but_live_fetch_opt_in():
+def test_lightweight_data_settings_empty_env_and_pytest_default_to_no_live():
     settings = build_lightweight_data_settings(env={})
 
     assert settings.schema_version == LIGHTWEIGHT_DATA_SETTINGS_SCHEMA_VERSION
@@ -322,6 +322,61 @@ def test_lightweight_data_settings_default_to_policy_mode_but_live_fetch_opt_in(
     assert "test@example.com" not in serialized
     assert "API_KEY" not in serialized
 
+    pytest_default = build_lightweight_data_settings(env={"DATA_POLICY_MODE": "lightweight"})
+    assert pytest_default.live_fetch_enabled is False
+    assert pytest_default.provider_fallback_enabled is True
+    assert pytest_default.can_fetch_fresh_data is False
+    assert LIGHTWEIGHT_LIVE_FETCH_DISABLED_REASON in pytest_default.missing_reasons
+
+
+def test_lightweight_data_settings_local_runtime_defaults_live_when_not_ci_or_pytest(monkeypatch):
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    monkeypatch.delenv("BUILDKITE", raising=False)
+    monkeypatch.delenv("JENKINS_URL", raising=False)
+    monkeypatch.delenv("LIGHTWEIGHT_LIVE_FETCH_ENABLED", raising=False)
+    monkeypatch.delenv("LTT_LIGHTWEIGHT_LIVE_FETCH_ENABLED", raising=False)
+    monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("DATA_POLICY_MODE", "lightweight")
+    monkeypatch.setenv("LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED", "true")
+
+    os_environment_default = build_lightweight_data_settings()
+    local_default = build_lightweight_data_settings(env={"APP_ENV": "local"})
+
+    assert os_environment_default.live_fetch_enabled is True
+    assert os_environment_default.provider_fallback_enabled is True
+    assert os_environment_default.can_fetch_fresh_data is True
+    assert local_default.live_fetch_enabled is True
+    assert local_default.provider_fallback_enabled is True
+    assert local_default.can_fetch_fresh_data is True
+    assert LIGHTWEIGHT_LIVE_FETCH_DISABLED_REASON not in local_default.missing_reasons
+
+    explicit_disabled = build_lightweight_data_settings(
+        env={
+            "APP_ENV": "local",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "false",
+        }
+    )
+    assert explicit_disabled.live_fetch_enabled is False
+    assert explicit_disabled.can_fetch_fresh_data is False
+    assert LIGHTWEIGHT_LIVE_FETCH_DISABLED_REASON in explicit_disabled.missing_reasons
+
+    ci_default = build_lightweight_data_settings(env={"CI": "true"})
+    assert ci_default.live_fetch_enabled is False
+    assert ci_default.can_fetch_fresh_data is False
+
+    ci_explicit_enabled = build_lightweight_data_settings(
+        env={
+            "CI": "true",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+        }
+    )
+    assert ci_explicit_enabled.live_fetch_enabled is True
+    assert ci_explicit_enabled.can_fetch_fresh_data is True
+
+
+def test_lightweight_data_settings_explicit_live_fetch_configuration_still_overrides_defaults():
     enabled = build_lightweight_data_settings(
         env={
             "DATA_POLICY_MODE": "lightweight",
@@ -336,6 +391,7 @@ def test_lightweight_data_settings_default_to_policy_mode_but_live_fetch_opt_in(
             "LIGHTWEIGHT_FETCH_TIMEOUT_SECONDS": "9",
         }
     )
+
     assert enabled.can_fetch_fresh_data is True
     assert enabled.weekly_news_fetch_enabled is True
     assert enabled.provider_order == ("alpha_vantage", "yahoo")

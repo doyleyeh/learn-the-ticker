@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 EVALS_DIR = ROOT / "evals"
 
 os.environ.setdefault("LTT_FORCE_COMPAT_FASTAPI", "1")
+os.environ.setdefault("LIGHTWEIGHT_LIVE_FETCH_ENABLED", "false")
 sys.path.insert(0, str(ROOT))
 
 import backend.models as models
