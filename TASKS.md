@@ -1,71 +1,44 @@
 ## Current task
 
+No current task is prepared. The backlog is empty.
+
+## Backlog
+
+No backlog tasks are currently prepared.
+
+## Completed
+
 ### T-180: Complete current stock-list live fetch pipeline before Top-500 expansion
 
 Goal:
 Make the current stock manifest list fully exercise SEC-first lightweight fetch, source-labeled provider fallback, table/response parity, and readiness diagnostics before any Top-500 expansion.
 
-Task scope:
-Extend the existing lightweight stock fresh-data pipeline so every current row in `data/universes/us_common_stocks_top500.current.json` has a deterministic local/manual-review outcome: SEC-backed supported when SEC identity, submissions, XBRL/company facts, or filing fixtures provide enough normalized evidence; source-labeled partial when only manifest identity plus reputable provider fallback is available; unavailable when required evidence is absent; and blocked only for unsupported, out-of-scope, or unknown symbols. This task should improve backend fetch diagnostics, fixture-backed tests, and smoke/readiness reporting for the current stock manifest list only. It may prepare an operator-run live path, but normal tests and quality gates must stay deterministic and must not require network, provider credentials, SEC availability, exchange availability, market-data calls, news calls, or LLM calls.
+Completion commits:
+- Implementation commit: `1b0b78d feat(T-180): complete current stock-list live fetch pipeline before Top-500 expansion`
+- Local merge commit: `807e542 chore(T-180): merge complete current stock-list live fetch pipeline before Top-500 expansion` from branch `agent/T-180-20260507T191600Z`
 
-Allowed files:
-- `backend/lightweight_data_fetch.py`
-- `backend/lightweight_page.py`
-- `backend/provider_adapters/sec_stock.py`
-- `backend/providers.py`
-- `backend/models.py`
-- `backend/settings.py`
-- `backend/search.py`
-- `scripts/run_lightweight_data_fetch_smoke.py`
-- `scripts/run_local_fresh_data_slice_smoke.py`
-- `scripts/run_lightweight_mvp_readiness_gate.py`
-- `tests/unit/test_lightweight_data_fetch.py`
-- `tests/unit/test_provider_adapters.py`
-- `tests/unit/test_search_classification.py`
-- `tests/integration/test_backend_api.py`
-- `evals/run_static_evals.py`
-- `docs/agent-journal/<run-id>.md`
+Completion details:
+- Added deterministic SEC and provider fallback fixtures for every current row in `data/universes/us_common_stocks_top500.current.json`.
+- Added `current-stock-manifest-lightweight-fetch-smoke-v1` coverage in `scripts/run_lightweight_data_fetch_smoke.py` to iterate all 10 current stock manifest rows with manifest-owned runtime authority, SEC component diagnostics, source labels, freshness fields, checksums, generated-output eligibility, and generated-output cache-promotion prerequisites.
+- Integrated the current stock manifest fetch summary into `scripts/run_local_fresh_data_slice_smoke.py`, `scripts/run_lightweight_mvp_readiness_gate.py`, and `evals/run_static_evals.py`.
+- Added unit coverage in `tests/unit/test_lightweight_data_fetch.py` for the current stock manifest fetch path.
+- Preserved no-live/no-secret behavior and did not edit manifests, frontend workflows, source approvals, generated-output cache records, or Top-500 candidate artifacts.
+- `docs/agent-journal/20260507T191600Z.md` records changed files, pass status, test/eval results, and remaining risks.
 
-Do not change:
-- Do not edit frontend routes/components or alter the home, comparison, glossary, source drawer, asset chat, Market News Focus, Weekly News Focus, or AI Comprehensive Analysis UI workflows.
-- Do not edit `data/universes/us_common_stocks_top500.current.json`, `data/universes/us_equity_etfs_supported.current.json`, `data/universes/us_etp_recognition.current.json`, candidate manifests, fixture manifests, golden generated fixtures, or generated-output cache records.
-- Do not expand Top-500 coverage, generate or promote a candidate manifest, approve SEC source packs, or make live SEC/provider responses authoritative for runtime stock support classification.
-- Do not introduce normal-CI live provider, SEC, exchange, market-data, news, or LLM calls. Any operator-run live path must be opt-in/local and skipped or fixture-backed by default.
-- Do not present provider/Yahoo fallback as SEC official evidence, store or export raw provider payloads, store raw article text, expose secrets, relax source-use policy, or add production dependencies/deployment settings.
-- Do not change ETF fetch behavior except where shared lightweight helpers require a backwards-compatible fix covered by existing ETF tests.
-- Do not add buy/sell/hold, allocation, price-target, tax, brokerage, or recommendation behavior.
+Required commands executed in this task branch:
+- `python3 scripts/run_local_fresh_data_slice_smoke.py --json` - pass
+- `python3 scripts/run_lightweight_data_fetch_smoke.py --ticker AAPL --ticker MSFT --ticker NVDA --ticker AMZN --ticker GOOGL --json` - pass
+- `python3 scripts/run_lightweight_mvp_readiness_gate.py --json` - pass
+- `python3 -m pytest tests/unit/test_lightweight_data_fetch.py tests/unit/test_provider_adapters.py tests/unit/test_search_classification.py -q` - pass, 66 passed
+- `python3 -m pytest tests/integration/test_backend_api.py -q` - pass, 44 passed
+- `python3 -m pytest tests -q` - pass, 546 passed
+- `npm test` - pass
+- `python3 evals/run_static_evals.py` - pass
+- `bash scripts/run_quality_gate.sh` - pass
 
-Acceptance criteria:
-- The current stock manifest is iterated by a deterministic smoke or readiness section, and each row reports ticker, company name, exchange, CIK when available, rank/rank basis, support authority, fetch/render state, generated-output eligibility, source labels, SEC attempt state, provider fallback state, missing evidence gaps, freshness/as-of fields, and payload/source checksum where available.
-- Supported stock rows continue to resolve runtime support through `data/universes/us_common_stocks_top500.current.json`; live SEC, provider, exchange, rank-query, or search responses may enrich display data but must never replace the approved stock manifest as runtime support authority.
-- SEC-first stock acquisition diagnostics distinguish SEC company identity, submissions, XBRL/company facts, and filing evidence where the existing adapters can identify them; missing SEC pieces produce precise partial/unavailable gaps instead of invented facts.
-- Provider/Yahoo fallback can fill display facts for lightweight personal-MVP rendering only when it is visibly labeled `provider_derived` or equivalent, has retrieved/as-of metadata where available, and does not become SEC official evidence or audit-quality source-pack approval.
-- Stock page response builders preserve stable table/detail shapes for SEC-backed, provider fallback, partial, and unavailable states; missing business, profile, financial, valuation, performance, market-data, or trading fields render as `partial`, `unknown`, `stale`, `unavailable`, or `insufficient_evidence` rather than being padded.
-- Unsupported, out-of-scope, unknown, crypto, option, international, preferred, warrant, right, fund, ETF/ETP recognition-only, and unavailable fixtures remain generated-output-ineligible across asset pages, chat answers, comparisons, Weekly News Focus, AI Comprehensive Analysis, exports, generated risk summaries, and generated-output cache entries.
-- The smoke/readiness output reports current stock manifest totals, SEC-backed supported count, provider-fallback/partial count, unavailable count, blocked unsupported/out-of-scope count, generated-output-eligible count, generated-output cache promotion prerequisites, and exact failure rows.
-- Normal CI and local quality gates remain deterministic and fixture-backed; no command required by this task depends on live provider, SEC, issuer, exchange, market-data, news, LLM calls, or real secret values.
-- Source-use rights remain intact: unapproved, unclear-rights, parser-invalid, hidden/internal, pending-review, rejected, and rights-disallowed sources cannot feed strict evidence storage, generated output, citations, generated-output cache entries, source drawer output, or exports.
-- Existing ETF search/fetch behavior, comparison redirects including `A vs B`, contextual glossary behavior, source drawer behavior, asset chat safety redirects, Market News Focus, ticker Weekly News Focus, AI Comprehensive Analysis thresholds, freshness/unknown/stale/unavailable/partial handling, and educational no-advice guardrails remain unchanged.
-
-Required commands:
-- `python3 scripts/run_local_fresh_data_slice_smoke.py --json`
-- `python3 scripts/run_lightweight_data_fetch_smoke.py --ticker AAPL --ticker MSFT --ticker NVDA --ticker AMZN --ticker GOOGL --json`
-- `python3 scripts/run_lightweight_mvp_readiness_gate.py --json`
-- `python3 -m pytest tests/unit/test_lightweight_data_fetch.py tests/unit/test_provider_adapters.py tests/unit/test_search_classification.py -q`
-- `python3 -m pytest tests/integration/test_backend_api.py -q`
-- `python3 -m pytest tests -q`
-- `npm test`
-- `python3 evals/run_static_evals.py`
-- `bash scripts/run_quality_gate.sh`
-
-Iteration budget:
-- Complete this current-stock-list pipeline task in one agent-loop cycle. Keep it narrow: no Top-500 expansion, no candidate-manifest generation or promotion, no source approval, no frontend workflow redesign, no generated-output cache promotion, no deployment work, and no broad paid-provider integration.
-
-## Backlog
-
-No prepared backlog tasks.
-
-## Completed
+Remaining risks:
+- The current stock manifest fetch coverage is deterministic and fixture-backed; it does not prove real SEC, provider, network, or credential reliability.
+- The smoke reports generated-output eligibility for lightweight rendering only; strict audit-quality source approval and generated-output cache promotion remain blocked by the documented source-handoff prerequisites.
 
 ### T-179: Complete current ETF-list live fetch pipeline before ETF-500 expansion
 
