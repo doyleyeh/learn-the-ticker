@@ -22,6 +22,7 @@ from backend.models import (
 )
 from backend.search import search_assets
 from backend.settings import build_lightweight_data_settings
+from scripts.run_lightweight_data_fetch_smoke import run_current_supported_etf_manifest_fetch_smoke
 from scripts.run_local_fresh_data_slice_smoke import run_slice_smoke
 
 
@@ -924,6 +925,16 @@ def test_lightweight_etf_fetch_uses_issuer_fixtures_before_manifest_and_provider
     assert response.diagnostics["issuer_source_pack_automation"]["human_review_required_per_source"] is False
     assert response.diagnostics["issuer_source_pack_automation"]["fallback_order"] == ["official_issuer", "provider_api", "yahoo"]
     assert "holdings" in response.diagnostics["issuer_source_pack_automation"]["source_types"]
+    component_by_id = {
+        component["component_id"]: component
+        for component in response.diagnostics["issuer_enrichment_components"]
+    }
+    assert component_by_id["issuer_page"]["status"] == "supported"
+    assert component_by_id["fact_sheet"]["source_type"] == "issuer_fact_sheet"
+    assert component_by_id["prospectus_or_summary_prospectus"]["source_type"] == "summary_prospectus"
+    assert component_by_id["holdings"]["source_type"] == "issuer_holdings_file"
+    assert component_by_id["exposures"]["source_type"] == "issuer_exposure_file"
+    assert response.diagnostics["issuer_enrichment_missing_components"] == []
     assert response.diagnostics["fetch_tiers_attempted"] == ["official", "provider_api", "yahoo"]
     assert response.diagnostics["fetch_tiers_succeeded"] == ["official", "yahoo"]
     assert response.diagnostics["fields_filled_by_tier"]["official"]
@@ -1475,3 +1486,67 @@ def test_live_lightweight_search_can_open_exact_eligible_not_cached_asset(monkey
     assert result.results[0].fallback_diagnostics.schema_version == "lightweight-api-fallback-diagnostics-v1"
     assert result.results[0].fallback_diagnostics.source_path == "sec_official_provider_fallback"
     assert result.results[0].fallback_diagnostics.raw_payload_exposed is False
+
+
+def test_current_supported_etf_manifest_fetch_smoke_reports_every_row_without_live_calls():
+    result = run_current_supported_etf_manifest_fetch_smoke()
+
+    assert result["schema_version"] == "current-supported-etf-lightweight-fetch-smoke-v1"
+    assert result["status"] == "pass"
+    assert result["normal_ci_requires_live_calls"] is False
+    assert result["live_provider_calls_attempted"] is False
+    assert result["issuer_calls_attempted"] is False
+    assert result["recognition_rows_unlock_generated_output"] is False
+    assert result["failure_rows"] == []
+
+    counts = result["counts"]
+    assert counts == {
+        "current_supported_etf_manifest_rows": 13,
+        "issuer_backed_supported_count": 5,
+        "provider_fallback_partial_count": 8,
+        "unavailable_count": 0,
+        "blocked_recognition_count": 9,
+        "generated_output_eligible_count": 13,
+        "strict_manifest_generated_output_eligible_count": 2,
+        "failure_count": 0,
+    }
+
+    rows = {row["ticker"]: row for row in result["rows"]}
+    assert set(rows) == {"VOO", "QQQ", "SPY", "VTI", "IVV", "IWM", "DIA", "VGT", "XLK", "SOXX", "SMH", "XLF", "XLV"}
+    voo = rows["VOO"]
+    assert voo["support_authority"] == "data/universes/us_equity_etfs_supported.current.json"
+    assert voo["fetch_state"] == "supported"
+    assert voo["official_issuer_attempt_state"]["state"] == "supported"
+    assert voo["official_issuer_attempt_state"]["missing_components"] == []
+    assert {
+        component["component_id"]: component["status"]
+        for component in voo["official_issuer_attempt_state"]["components"]
+    } == {
+        "issuer_page": "supported",
+        "fact_sheet": "supported",
+        "prospectus_or_summary_prospectus": "supported",
+        "holdings": "supported",
+        "exposures": "supported",
+    }
+    assert voo["provider_fallback_state"]["state"] == "used"
+    assert all(record["source_checksum"].startswith("sha256:") for record in voo["source_checksums"])
+    assert voo["payload_checksum"].startswith("sha256:")
+    assert voo["raw_payload_exposed"] is False
+    assert voo["no_live_external_calls"] is True
+
+    ivv = rows["IVV"]
+    assert ivv["fetch_state"] == "partial"
+    assert ivv["page_render_state"] == "partial"
+    assert ivv["official_issuer_attempt_state"]["state"] == "eligible_not_cached"
+    assert ivv["official_issuer_attempt_state"]["missing_components"] == []
+    assert set(ivv["source_labels"]) == {"partial", "provider_derived"}
+    assert ivv["provider_fallback_state"]["state"] == "used"
+    assert "provider_derived display fallback only" in ivv["provider_fallback_state"]["source_use_note"]
+    assert "etf_issuer_evidence" in {gap["field_name"] for gap in ivv["missing_evidence_gaps"]}
+
+    recognition_rows = result["recognition_rows"]
+    assert len(recognition_rows) == 9
+    assert all(row["support_authority"] == "data/universes/us_etp_recognition.current.json" for row in recognition_rows)
+    assert all(row["authoritative_for_generated_output"] is False for row in recognition_rows)
+    assert all(row["generated_output_eligible"] is False for row in recognition_rows)
+    assert all(all(value is False for value in row["surface_eligibility"].values()) for row in recognition_rows)

@@ -184,6 +184,7 @@ from scripts.run_full_manifest_support_smoke import (
     SUPPORTED_ETF_AUTHORITY as FULL_MANIFEST_SUPPORTED_ETF_AUTHORITY,
     run_full_manifest_support_smoke,
 )
+from backend.etf_universe import load_recognition_etf_universe_manifest, load_supported_etf_universe_manifest
 
 
 client = TestClient(app)
@@ -2927,6 +2928,21 @@ def test_lightweight_mvp_readiness_gate_cases():
         "top500_stock": 1,
     }
     assert gate["full_manifest_support_smoke"]["failure_count"] == 0
+    assert gate["current_supported_etf_manifest_fetch"]["status"] == "pass"
+    assert gate["current_supported_etf_manifest_fetch"]["normal_ci_requires_live_calls"] is False
+    assert gate["current_supported_etf_manifest_fetch"]["current_supported_etf_manifest_rows"] == len(
+        load_supported_etf_universe_manifest().entries
+    )
+    assert gate["current_supported_etf_manifest_fetch"]["issuer_backed_supported_count"] == 5
+    assert gate["current_supported_etf_manifest_fetch"]["provider_fallback_partial_count"] == 8
+    assert gate["current_supported_etf_manifest_fetch"]["unavailable_count"] == 0
+    assert gate["current_supported_etf_manifest_fetch"]["blocked_recognition_count"] == len(
+        load_recognition_etf_universe_manifest().entries
+    )
+    assert gate["current_supported_etf_manifest_fetch"]["generated_output_eligible_count"] == 13
+    assert gate["current_supported_etf_manifest_fetch"]["strict_manifest_generated_output_eligible_count"] == 2
+    assert gate["current_supported_etf_manifest_fetch"]["recognition_rows_unlock_generated_output"] is False
+    assert gate["current_supported_etf_manifest_fetch"]["failure_count"] == 0
     assert gate["readiness_summaries"]["local_fresh_data_mvp_slice_smoke"]["status_counts"] == {
         "pass": 8,
         "partial": 0,

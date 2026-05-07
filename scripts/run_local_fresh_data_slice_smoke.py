@@ -153,8 +153,16 @@ QUOTE_FIXTURES = {
     "VOO": QuoteFixture("Vanguard S&P 500 ETF", "ETF", "PCX", "ETF", 662.52),
     "SPY": QuoteFixture("SPDR S&P 500 ETF Trust", "ETF", "PCX", "ETF", 670.01),
     "VTI": QuoteFixture("Vanguard Total Stock Market ETF", "ETF", "PCX", "ETF", 331.44),
+    "IVV": QuoteFixture("iShares Core S&P 500 ETF", "ETF", "PCX", "ETF", 662.10),
+    "IWM": QuoteFixture("iShares Russell 2000 ETF", "ETF", "PCX", "ETF", 226.75),
+    "DIA": QuoteFixture("SPDR Dow Jones Industrial Average ETF Trust", "ETF", "PCX", "ETF", 462.30),
+    "VGT": QuoteFixture("Vanguard Information Technology ETF", "ETF", "PCX", "ETF", 721.45),
     "QQQ": QuoteFixture("Invesco QQQ Trust", "ETF", "NMS", "ETF", 548.20),
     "XLK": QuoteFixture("Technology Select Sector SPDR Fund", "ETF", "PCX", "ETF", 231.08),
+    "SOXX": QuoteFixture("iShares Semiconductor ETF", "ETF", "PCX", "ETF", 248.66),
+    "SMH": QuoteFixture("VanEck Semiconductor ETF", "ETF", "PCX", "ETF", 327.80),
+    "XLF": QuoteFixture("Financial Select Sector SPDR Fund", "ETF", "PCX", "ETF", 54.35),
+    "XLV": QuoteFixture("Health Care Select Sector SPDR Fund", "ETF", "PCX", "ETF", 141.22),
 }
 
 
