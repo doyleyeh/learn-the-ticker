@@ -25,6 +25,7 @@ from backend.models import (
     WeeklyNewsEvidenceLimitedState,
     WeeklyNewsPeriodBucket,
 )
+from backend.news_quality import score_ticker_weekly_news
 from backend.repositories.knowledge_packs import RepositoryMetadata, RepositoryTableDefinition, StrictRow
 from backend.source_policy import SourcePolicyAction, validate_source_handoff
 from backend.weekly_news import compute_weekly_news_window
@@ -857,13 +858,7 @@ def acquire_weekly_news_event_evidence_from_fixtures(
     ]
     ranked = sorted(
         selectable,
-        key=lambda row: (
-            source_rank_tier_priority(row.source_rank_tier),
-            row.source_rank,
-            -row.importance_score,
-            row.event_date or row.published_at or "",
-            row.candidate_event_id,
-        ),
+        key=_fixture_selection_sort_key,
     )
     selected_candidates = ranked[:configured_max_item_count]
     selected_ids = {row.candidate_event_id for row in selected_candidates}
@@ -983,8 +978,49 @@ def source_rank_tier_priority(source_rank_tier: str) -> int:
     }[source_rank_tier]
 
 
+def _fixture_selection_sort_key(row: WeeklyNewsEventCandidateRow) -> tuple[Any, ...]:
+    source_priority = source_rank_tier_priority(row.source_rank_tier)
+    event_date = row.event_date or row.published_at or ""
+    if source_priority <= source_rank_tier_priority(WeeklyNewsSourceRankTier.fact_sheet_change.value):
+        return (
+            0,
+            source_priority,
+            row.source_rank,
+            -row.importance_score,
+            event_date,
+            row.candidate_event_id,
+        )
+    return (
+        1,
+        -row.importance_score,
+        source_priority,
+        row.source_rank,
+        event_date,
+        row.candidate_event_id,
+    )
+
+
 def source_policy_allows_weekly_news_selection(candidate: WeeklyNewsEventCandidateRow) -> bool:
     return not _candidate_source_policy_reasons(candidate)
+
+
+def _ticker_news_quality(candidate: WeeklyNewsEventCandidateRow, window: WeeklyNewsMarketWeekWindowRow):
+    asset = ASSETS.get(_normalize_ticker(window.asset_ticker))
+    identity = asset["identity"] if asset is not None else None
+    asset_type = getattr(getattr(identity, "asset_type", None), "value", AssetType.stock.value)
+    asset_name = getattr(identity, "name", window.asset_ticker)
+    return score_ticker_weekly_news(
+        ticker=window.asset_ticker,
+        asset_type=asset_type,
+        asset_name=asset_name,
+        title=candidate.event_title,
+        summary=candidate.event_summary,
+        publisher=candidate.source_publisher,
+        source_rank_tier=candidate.source_rank_tier,
+        source_type=candidate.source_type,
+        event_type=candidate.event_type,
+        is_official=candidate.is_official,
+    )
 
 
 def evaluate_weekly_news_live_acquisition_readiness(
@@ -1221,10 +1257,17 @@ def _prepare_candidate_for_fixture_selection(
 ) -> tuple[WeeklyNewsEventCandidateRow, WeeklyNewsSourceRankInputRow]:
     period_bucket = _period_bucket_for_candidate(candidate, window)
     source_rank = max(candidate.source_rank, source_rank_tier_priority(candidate.source_rank_tier))
-    source_quality_weight = _source_quality_weight(candidate)
-    event_type_weight = _event_type_weight(candidate.event_type)
+    quality = _ticker_news_quality(candidate, window)
+    quality_reasons = set(quality.suppression_reasons)
+    if candidate.source_publisher == "Fixture Publisher" or (
+        candidate.event_title is None and candidate.event_summary is None
+    ):
+        quality_reasons.discard("low_source_quality")
+        quality_reasons.discard("weak_ticker_relevance")
+    source_quality_weight = _source_quality_weight(candidate) + quality.publisher_score + quality.acquisition_score
+    event_type_weight = _event_type_weight(candidate.event_type) + quality.beginner_utility_score
     recency_weight = _recency_weight(candidate, window)
-    asset_relevance_weight = 3
+    asset_relevance_weight = quality.ticker_relevance_score
     total_score = source_quality_weight + event_type_weight + recency_weight + asset_relevance_weight
     evidence_state = _freshness_labeled_evidence_state(candidate.freshness_state, candidate.evidence_state)
     source_policy_allowed = source_policy_allows_weekly_news_selection(candidate)
@@ -1233,6 +1276,7 @@ def _prepare_candidate_for_fixture_selection(
         window=window,
         total_score=total_score,
         minimum_display_score=minimum_display_score,
+        quality_reasons=quality_reasons,
     )
 
     prepared = candidate.model_copy(
@@ -1287,10 +1331,7 @@ def _build_fixture_dedupe_groups(
             rows,
             key=lambda row: (
                 bool(_candidate_block_reasons(row)),
-                source_rank_tier_priority(row.source_rank_tier),
-                row.source_rank,
-                -row.importance_score,
-                row.candidate_event_id,
+                *_fixture_selection_sort_key(row),
             ),
         )
         retained = ranked[0]
@@ -1808,8 +1849,10 @@ def _fixture_suppression_reasons(
     window: WeeklyNewsMarketWeekWindowRow,
     total_score: int,
     minimum_display_score: int,
+    quality_reasons: set[str] | None = None,
 ) -> list[str]:
     reasons = set(candidate.suppression_reason_codes)
+    reasons.update(quality_reasons or set())
     reasons.update(_candidate_source_policy_reasons(candidate))
     if not _candidate_date_in_window(candidate, window):
         reasons.add("outside_market_week_window")

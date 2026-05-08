@@ -8,6 +8,28 @@ No backlog tasks are currently prepared.
 
 ## Completed
 
+### T-182: Improve news selection quality for Market News and ticker Weekly News
+
+Goal:
+Treat provider APIs and Yahoo/yfinance as news discovery channels while final selection is driven by ticker usefulness, publisher reputation, source-use policy, recency, duplicate status, and beginner utility.
+
+Completion details:
+- Added shared publisher/source normalization and ticker-news quality scoring so Market News and Weekly News use the same reputation vocabulary without changing Market News' broad-context clustering behavior.
+- Updated local ticker Weekly News selection so official sources still preserve source-hierarchy priority, while provider API and Yahoo/yfinance candidates enter one quality-ranked non-official pool.
+- Suppressed generic market-regime, weakly ticker-related, opinion-like, advice-like, duplicate, and low-quality ticker Weekly News candidates; generic market stories remain appropriate for Market News Focus unless they have a clear ticker/fund-specific hook.
+- Demoted publishers such as Seeking Alpha, Motley Fool, Benzinga, MarketBeat, Zacks, IBD, and similar sources are backfill-only and must be strongly ticker-specific and non-advice-like to render.
+- Added diagnostics for Weekly News candidate/selected counts by acquisition source and publisher tier, plus quality suppression reasons including `generic_market_context_for_ticker`, `opinion_or_column`, `advice_like`, `weak_ticker_relevance`, `demoted_publisher_backfill_only`, and `duplicate`.
+- Preserved server-side provider/Yahoo boundaries, no raw article body exposure, no raw provider payload exposure, no secrets, no generated-output cache promotion, and deterministic normal CI behavior.
+
+Required commands executed:
+- `python3 -m pytest tests -q` - pass, 561 passed
+- `python3 evals/run_static_evals.py` - pass
+- `bash scripts/run_quality_gate.sh` - pass
+
+Remaining risks:
+- Live local news quality still depends on provider availability, source metadata quality, and publisher coverage for the selected ticker.
+- This does not approve paid-provider licensing, promote generated-output cache entries, expand ETF-500/Top-500 coverage, or harden production recurring news ingestion.
+
 ### T-181: ETF/Stock lightweight source-pack fallback unlock
 
 Goal:

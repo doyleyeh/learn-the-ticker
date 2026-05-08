@@ -313,6 +313,233 @@ def test_lightweight_weekly_news_uses_yahoo_to_backfill_remaining_slots():
     }
 
 
+def test_weekly_news_suppresses_generic_voo_market_opinion_from_demoted_publisher():
+    response = _lightweight_weekly_news_response(
+        no_live_external_calls=False,
+        ticker="VOO",
+        asset_type=AssetType.etf,
+        name="Vanguard S&P 500 ETF",
+        facts=[
+            _lightweight_weekly_fact(
+                "voo_generic_market_opinion",
+                ticker="VOO",
+                source_type="finnhub_weekly_news_metadata",
+                source_rank_tier=WeeklyNewsSourceRankTier.allowlisted_news,
+                source_quality=SourceQuality.allowlisted,
+                source_label=LightweightSourceLabel.reputable_third_party,
+                publisher="Seeking Alpha",
+                title="No, It's Not Different This Time",
+                summary=(
+                    "The current AI-driven rally in infrastructure and chip stocks echoes late-stage dot-com "
+                    "and 2021 bubbles, with parabolic moves and signs of euphoria."
+                ),
+                event_date="2026-05-08",
+            )
+        ],
+    )
+
+    focus = build_lightweight_weekly_news_focus(response)
+
+    assert focus is not None
+    assert focus.selected_item_count == 0
+    reasons = focus.selection_diagnostics["suppression_reason_counts"]
+    assert reasons["generic_market_context_for_ticker"] == 1
+    assert reasons["weak_ticker_relevance"] == 1
+    assert reasons["demoted_publisher_backfill_only"] == 1
+    assert focus.selection_diagnostics["candidate_counts_by_publisher_tier"] == {"demoted": 1}
+
+
+def test_weekly_news_selects_voo_etf_context_from_reputable_publishers():
+    response = _lightweight_weekly_news_response(
+        no_live_external_calls=False,
+        ticker="VOO",
+        asset_type=AssetType.etf,
+        name="Vanguard S&P 500 ETF",
+        facts=[
+            _lightweight_weekly_fact(
+                "voo_etf_com_flows",
+                ticker="VOO",
+                source_type="fmp_weekly_news_metadata",
+                source_rank_tier=WeeklyNewsSourceRankTier.allowlisted_news,
+                source_quality=SourceQuality.allowlisted,
+                source_label=LightweightSourceLabel.reputable_third_party,
+                publisher="ETF.com",
+                title="VOO and S&P 500 ETFs see weekly inflows",
+                summary="ETF.com reported VOO fund-flow context for broad S&P 500 ETF exposure.",
+                event_date="2026-05-08",
+            ),
+            _lightweight_weekly_fact(
+                "voo_morningstar_holdings",
+                ticker="VOO",
+                source_type="finnhub_weekly_news_metadata",
+                source_rank_tier=WeeklyNewsSourceRankTier.allowlisted_news,
+                source_quality=SourceQuality.allowlisted,
+                source_label=LightweightSourceLabel.reputable_third_party,
+                publisher="Morningstar",
+                title="Morningstar reviews Vanguard S&P 500 ETF holdings and fees",
+                summary="The item discusses VOO holdings, expense ratio, and S&P 500 index exposure.",
+                event_date="2026-05-08",
+            ),
+            _lightweight_weekly_fact(
+                "voo_yahoo_distribution",
+                ticker="VOO",
+                source_type="yahoo_finance_weekly_news_metadata",
+                source_rank_tier=WeeklyNewsSourceRankTier.provider_context,
+                source_quality=SourceQuality.provider,
+                publisher="Yahoo Finance",
+                title="VOO distribution and S&P 500 ETF context this week",
+                summary="Yahoo Finance metadata links VOO distribution timing to broad U.S. large-cap ETF context.",
+                event_date="2026-05-08",
+            ),
+            _lightweight_weekly_fact(
+                "voo_generic_market_opinion",
+                ticker="VOO",
+                source_type="finnhub_weekly_news_metadata",
+                source_rank_tier=WeeklyNewsSourceRankTier.allowlisted_news,
+                source_quality=SourceQuality.allowlisted,
+                source_label=LightweightSourceLabel.reputable_third_party,
+                publisher="Seeking Alpha",
+                title="No, It's Not Different This Time",
+                summary="A broad market bubble column discusses AI euphoria without a fund-specific hook.",
+                event_date="2026-05-08",
+            ),
+        ],
+    )
+
+    focus = build_lightweight_weekly_news_focus(response)
+
+    assert focus is not None
+    assert focus.selected_item_count == 3
+    assert [item.source.publisher for item in focus.items] == ["ETF.com", "Morningstar", "Yahoo Finance"]
+    assert all(item.source.publisher != "Seeking Alpha" for item in focus.items)
+    assert focus.selection_diagnostics["selected_counts_by_publisher_tier"] == {
+        "reputable_finance": 3,
+    }
+
+
+def test_weekly_news_quality_pool_lets_reputable_yahoo_outrank_weak_provider_api():
+    response = _lightweight_weekly_news_response(
+        no_live_external_calls=False,
+        ticker="VOO",
+        asset_type=AssetType.etf,
+        name="Vanguard S&P 500 ETF",
+        facts=[
+            _lightweight_weekly_fact(
+                "voo_provider_demoted_backfill",
+                ticker="VOO",
+                source_type="finnhub_weekly_news_metadata",
+                source_rank_tier=WeeklyNewsSourceRankTier.allowlisted_news,
+                source_quality=SourceQuality.allowlisted,
+                source_label=LightweightSourceLabel.reputable_third_party,
+                publisher="MarketBeat",
+                title="VOO fund flows rise as S&P 500 ETF demand improves",
+                summary="MarketBeat metadata is ticker-specific but from a demoted backfill publisher.",
+                event_date="2026-05-08",
+            ),
+            _lightweight_weekly_fact(
+                "voo_yahoo_etf_com",
+                ticker="VOO",
+                source_type="yahoo_finance_weekly_news_metadata",
+                source_rank_tier=WeeklyNewsSourceRankTier.provider_context,
+                source_quality=SourceQuality.provider,
+                publisher="ETF.com",
+                title="VOO weekly fund flows and Vanguard S&P 500 ETF exposure",
+                summary="A reputable Yahoo-discovered ETF.com item discusses VOO flows and S&P 500 ETF exposure.",
+                event_date="2026-05-08",
+            ),
+        ],
+    )
+
+    focus = build_lightweight_weekly_news_focus(response)
+
+    assert focus is not None
+    assert focus.selected_item_count == 2
+    assert [item.source.publisher for item in focus.items] == ["ETF.com", "MarketBeat"]
+    assert focus.selection_diagnostics["candidate_counts_by_acquisition_source"] == {
+        "provider_api": 1,
+        "yahoo": 1,
+    }
+    assert focus.selection_diagnostics["selected_counts_by_publisher_tier"] == {
+        "reputable_finance": 1,
+        "demoted": 1,
+    }
+
+
+def test_weekly_news_selects_direct_nvda_items_and_suppresses_generic_ai_commentary():
+    response = _lightweight_weekly_news_response(
+        no_live_external_calls=False,
+        facts=[
+            _lightweight_weekly_fact(
+                "nvda_reuters_direct",
+                source_type="fmp_weekly_news_metadata",
+                source_rank_tier=WeeklyNewsSourceRankTier.allowlisted_news,
+                source_quality=SourceQuality.allowlisted,
+                source_label=LightweightSourceLabel.reputable_third_party,
+                publisher="Reuters",
+                title="NVIDIA reports Blackwell revenue growth ahead of earnings",
+                summary="Reuters metadata discusses NVIDIA revenue, product demand, and data-center customer context.",
+                event_date="2026-05-08",
+            ),
+            _lightweight_weekly_fact(
+                "nvda_generic_ai_market",
+                source_type="finnhub_weekly_news_metadata",
+                source_rank_tier=WeeklyNewsSourceRankTier.allowlisted_news,
+                source_quality=SourceQuality.allowlisted,
+                source_label=LightweightSourceLabel.reputable_third_party,
+                publisher="Seeking Alpha",
+                title="AI infrastructure rally shows signs of euphoria",
+                summary="The broad chip-stock rally may resemble earlier market bubbles, but the item does not name the company.",
+                event_date="2026-05-08",
+            ),
+        ],
+    )
+
+    focus = build_lightweight_weekly_news_focus(response)
+
+    assert focus is not None
+    assert focus.selected_item_count == 1
+    assert focus.items[0].source.publisher == "Reuters"
+    reasons = focus.selection_diagnostics["suppression_reason_counts"]
+    assert reasons["weak_ticker_relevance"] == 1
+    assert reasons["demoted_publisher_backfill_only"] == 1
+
+
+def test_weekly_news_allows_demoted_publisher_only_after_stronger_ticker_specific_items():
+    response = _lightweight_weekly_news_response(
+        no_live_external_calls=False,
+        facts=[
+            _lightweight_weekly_fact(
+                "nvda_reuters_direct",
+                source_type="fmp_weekly_news_metadata",
+                source_rank_tier=WeeklyNewsSourceRankTier.allowlisted_news,
+                source_quality=SourceQuality.allowlisted,
+                source_label=LightweightSourceLabel.reputable_third_party,
+                publisher="Reuters",
+                title="NVIDIA revenue and data center customer update",
+                summary="Reuters metadata is directly about NVIDIA revenue, data-center demand, and customers.",
+                event_date="2026-05-08",
+            ),
+            _lightweight_weekly_fact(
+                "nvda_marketbeat_specific",
+                source_type="finnhub_weekly_news_metadata",
+                source_rank_tier=WeeklyNewsSourceRankTier.allowlisted_news,
+                source_quality=SourceQuality.allowlisted,
+                source_label=LightweightSourceLabel.reputable_third_party,
+                publisher="MarketBeat",
+                title="NVIDIA earnings date and revenue update",
+                summary="MarketBeat metadata is directly about NVIDIA earnings and revenue, so it can backfill after stronger sources.",
+                event_date="2026-05-08",
+            ),
+        ],
+    )
+
+    focus = build_lightweight_weekly_news_focus(response)
+
+    assert focus is not None
+    assert [item.source.publisher for item in focus.items] == ["Reuters", "MarketBeat"]
+    assert "demoted_publisher_backfill_only" not in focus.items[1].selection_rationale.exclusion_reasons
+
+
 def test_provider_news_adapter_marks_reputable_api_items_ahead_of_yahoo_fallback():
     result = yahoo_search_payload_to_weekly_news_facts(
         ticker="NVDA",
@@ -1154,18 +1381,22 @@ def _lightweight_weekly_news_response(
     no_live_external_calls: bool,
     facts: list[LightweightFetchFact],
     as_of: str = "2026-05-08T15:00:00Z",
+    ticker: str = "NVDA",
+    asset_type: AssetType = AssetType.stock,
+    name: str | None = None,
 ) -> LightweightFetchResponse:
     source_ids = {source_id for fact in facts for source_id in fact.source_document_ids}
     sources = [_LIGHTWEIGHT_WEEKLY_SOURCES[source_id] for source_id in source_ids]
+    asset_name = name or ("NVIDIA Corporation" if asset_type is AssetType.stock else f"{ticker} ETF")
     return LightweightFetchResponse(
-        ticker="NVDA",
+        ticker=ticker,
         data_policy_mode=DataPolicyMode.lightweight,
         fetch_state=LightweightFetchState.supported,
         asset=AssetIdentity(
-            ticker="NVDA",
-            name="NVIDIA Corporation",
-            asset_type=AssetType.stock,
-            exchange="Nasdaq",
+            ticker=ticker,
+            name=asset_name,
+            asset_type=asset_type,
+            exchange="Nasdaq" if asset_type is AssetType.stock else "NYSE Arca",
             status=AssetStatus.supported,
             supported=True,
         ),
@@ -1196,14 +1427,21 @@ def _lightweight_weekly_fact(
     source_quality: SourceQuality,
     event_date: str,
     source_label: LightweightSourceLabel = LightweightSourceLabel.provider_derived,
+    ticker: str = "NVDA",
+    publisher: str = "Reuters",
+    title: str | None = None,
+    summary: str | None = None,
+    event_type: WeeklyNewsEventType = WeeklyNewsEventType.product_announcement,
 ) -> LightweightFetchFact:
     source_document_id = f"src_{event_id}"
+    event_title = title or f"{ticker} product update for {event_id.replace('_', ' ')}"
+    event_summary = summary or f"Source-labeled Weekly News metadata for {ticker} and {event_id}."
     _LIGHTWEIGHT_WEEKLY_SOURCES[source_document_id] = LightweightFetchSource(
         source_document_id=source_document_id,
         source_label=source_label,
         source_type=source_type,
         title=f"{event_id.replace('_', ' ').title()} source",
-        publisher="Test Publisher",
+        publisher=publisher,
         url=f"https://example.com/{event_id}",
         is_official=False,
         source_quality=source_quality,
@@ -1223,13 +1461,13 @@ def _lightweight_weekly_fact(
         field_name=LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD,
         value={
             "event_id": event_id,
-            "title": f"{event_id.replace('_', ' ').title()} headline",
-            "summary": f"Source-labeled Weekly News metadata for {event_id}.",
-            "publisher": "Test Publisher",
+            "title": event_title,
+            "summary": event_summary,
+            "publisher": publisher,
             "url": f"https://example.com/{event_id}",
             "published_at": f"{event_date}T13:00:00Z",
             "event_date": event_date,
-            "event_type": WeeklyNewsEventType.product_announcement.value,
+            "event_type": event_type.value,
             "source_rank_tier": source_rank_tier.value,
             "source_label": source_label.value,
             "source_quality": source_quality.value,

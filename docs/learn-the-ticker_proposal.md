@@ -571,6 +571,8 @@ It should show the configured maximum only when enough high-quality evidence exi
 
 Weekly News Focus should be official-first while still allowing reputable third-party/news sources to broaden coverage when official sources are sparse. The UI must clearly label whether each item is official, issuer/company-provided, or third-party reporting, and source details should show publisher, URL, published date, retrieval date, source type, topic/event classification, and citation link.
 
+Provider APIs and Yahoo/yfinance should be treated as discovery channels for ticker Weekly News, not as final quality signals. After official in-window items, provider and Yahoo candidates should be pooled and ranked by ticker usefulness, publisher reputation, source-use policy, recency, duplicate status, and beginner utility. A reputable Yahoo-discovered item can outrank a weaker provider-API item. Demoted publishers such as Seeking Alpha, Motley Fool, Benzinga, MarketBeat, Zacks, IBD, and similar sources should be backfill only when strongly ticker-specific and non-advice-like. Generic market-regime or opinion pieces belong in Market News Focus unless they clearly connect to the selected stock, ETF, issuer, S&P 500 or index exposure, holdings, flows, fees, distributions, products, earnings, regulatory events, customers, or supply chain.
+
 Each Weekly News Focus item should include:
 
 - source or publisher;

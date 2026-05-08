@@ -31,6 +31,7 @@ from backend.models import (
     WeeklyNewsWindow,
     MarketWeekPeriod,
 )
+from backend.news_quality import publisher_tier, score_ticker_weekly_news
 from backend.retrieval import AssetKnowledgePack, RetrievedRecentDevelopment
 from backend.safety import find_forbidden_output_phrases
 
@@ -220,8 +221,8 @@ def select_weekly_news_focus(
     ranked_selected_candidates = sorted(
         selected_candidates,
         key=lambda item: (
-            item.selection_rationale.source_priority,
             -item.importance_score,
+            item.selection_rationale.source_priority,
             item.event_date or "",
             item.event_id,
         ),
@@ -504,10 +505,18 @@ def _selection_diagnostics_from_records(records: Any, window_id: str) -> dict[st
     candidates_by_id = {row.candidate_event_id: row for row in candidates}
     candidate_tier_counts: dict[str, int] = {}
     selected_tier_counts: dict[str, int] = {}
+    candidate_publisher_tier_counts: dict[str, int] = {}
+    selected_publisher_tier_counts: dict[str, int] = {}
+    candidate_acquisition_counts: dict[str, int] = {}
+    selected_acquisition_counts: dict[str, int] = {}
     reason_counts: dict[str, int] = {}
 
     for candidate in candidates:
         candidate_tier_counts[candidate.source_rank_tier] = candidate_tier_counts.get(candidate.source_rank_tier, 0) + 1
+        publisher_label = publisher_tier(getattr(candidate, "source_publisher", None))
+        candidate_publisher_tier_counts[publisher_label] = candidate_publisher_tier_counts.get(publisher_label, 0) + 1
+        acquisition_label = _weekly_news_acquisition_source(candidate.source_rank_tier, getattr(candidate, "source_type", ""))
+        candidate_acquisition_counts[acquisition_label] = candidate_acquisition_counts.get(acquisition_label, 0) + 1
         for reason in candidate.suppression_reason_codes:
             reason_counts[reason] = reason_counts.get(reason, 0) + 1
 
@@ -515,17 +524,48 @@ def _selection_diagnostics_from_records(records: Any, window_id: str) -> dict[st
         candidate = candidates_by_id.get(selected_event.candidate_event_id)
         tier = candidate.source_rank_tier if candidate is not None else selected_event.source_type
         selected_tier_counts[tier] = selected_tier_counts.get(tier, 0) + 1
+        publisher_label = publisher_tier(
+            getattr(candidate, "source_publisher", None) if candidate is not None else selected_event.source_publisher
+        )
+        selected_publisher_tier_counts[publisher_label] = selected_publisher_tier_counts.get(publisher_label, 0) + 1
+        acquisition_label = _weekly_news_acquisition_source(
+            tier,
+            getattr(candidate, "source_type", selected_event.source_type) if candidate is not None else selected_event.source_type,
+        )
+        selected_acquisition_counts[acquisition_label] = selected_acquisition_counts.get(acquisition_label, 0) + 1
 
     return {
         "candidate_count": len(candidates),
         "selected_count": len(selected),
         "candidate_counts_by_source_tier": candidate_tier_counts,
         "selected_counts_by_source_tier": selected_tier_counts,
+        "candidate_counts_by_acquisition_source": candidate_acquisition_counts,
+        "selected_counts_by_acquisition_source": selected_acquisition_counts,
+        "candidate_counts_by_publisher_tier": candidate_publisher_tier_counts,
+        "selected_counts_by_publisher_tier": selected_publisher_tier_counts,
         "suppression_reason_counts": reason_counts,
         "raw_article_text_collected": False,
         "raw_provider_payload_exposed": False,
         "secrets_exposed": False,
     }
+
+
+def _weekly_news_acquisition_source(source_rank_tier: str, source_type: str) -> str:
+    if source_rank_tier in {
+        "official_filing",
+        "investor_relations_release",
+        "etf_issuer_announcement",
+        "prospectus_update",
+        "fact_sheet_change",
+    }:
+        return "official"
+    if "yahoo" in source_type.lower():
+        return "yahoo"
+    if source_rank_tier == "allowlisted_news":
+        return "provider_api"
+    if source_rank_tier == "provider_context":
+        return "provider_context"
+    return "unknown"
 
 
 def build_ai_comprehensive_analysis(
@@ -672,12 +712,31 @@ def _selection_rationale(
     minimum_display_score: int,
 ) -> WeeklyNewsSelectionRationale:
     exclusion_reasons: list[str] = []
-    source_quality_weight = _source_quality_weight(candidate)
-    event_type_weight = _event_type_weight(candidate.event_type)
+    quality = score_ticker_weekly_news(
+        ticker=asset.ticker,
+        asset_type=asset.asset_type.value,
+        asset_name=asset.name,
+        title=candidate.title,
+        summary=candidate.summary,
+        publisher=candidate.publisher,
+        source_rank_tier=_source_rank_tier_for_candidate(candidate),
+        source_type=candidate.source_type,
+        event_type=candidate.event_type.value,
+        is_official=candidate.is_official,
+    )
+    quality_reasons = set(quality.suppression_reasons)
+    if candidate.asset_relevance == "exact":
+        quality_reasons.discard("weak_ticker_relevance")
+    if candidate.asset_relevance == "exact" and candidate.source_quality in {SourceQuality.allowlisted, SourceQuality.fixture}:
+        quality_reasons.discard("low_source_quality")
+
+    source_quality_weight = _source_quality_weight(candidate) + quality.publisher_score + quality.acquisition_score
+    event_type_weight = _event_type_weight(candidate.event_type) + quality.beginner_utility_score
     recency_weight = _recency_weight(candidate, window)
-    asset_relevance_weight = _asset_relevance_weight(asset, candidate)
+    asset_relevance_weight = max(_asset_relevance_weight(asset, candidate), quality.ticker_relevance_score)
     duplicate_penalty = 5 if candidate.is_duplicate or candidate.duplicate_of_event_id else 0
     total_score = source_quality_weight + event_type_weight + recency_weight + asset_relevance_weight - duplicate_penalty
+    exclusion_reasons.extend(sorted(quality_reasons))
 
     if _normalize_ticker(candidate.asset_ticker) != _normalize_ticker(asset.ticker):
         exclusion_reasons.append("wrong_asset")
@@ -820,6 +879,16 @@ def _source_quality_weight(candidate: WeeklyNewsCandidate) -> int:
     if candidate.source_quality is SourceQuality.provider:
         return 1
     return 0
+
+
+def _source_rank_tier_for_candidate(candidate: WeeklyNewsCandidate) -> str:
+    if candidate.is_official or candidate.source_quality in {SourceQuality.official, SourceQuality.issuer}:
+        return "investor_relations_release" if candidate.source_type == "issuer_press_release" else "official_filing"
+    if candidate.source_quality in {SourceQuality.allowlisted, SourceQuality.fixture}:
+        return "allowlisted_news"
+    if candidate.source_quality is SourceQuality.provider:
+        return "provider_context"
+    return "unknown"
 
 
 def _event_type_weight(event_type: WeeklyNewsEventType) -> int:

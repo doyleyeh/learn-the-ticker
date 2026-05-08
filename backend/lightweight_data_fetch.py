@@ -251,7 +251,7 @@ class LightweightFetchError(ValueError):
 class JsonFetcher(Protocol):
     no_live_external_calls: bool
 
-    def fetch_json(self, url: str, *, user_agent: str, timeout_seconds: int) -> dict[str, Any]:
+    def fetch_json(self, url: str, *, user_agent: str, timeout_seconds: int) -> Any:
         ...
 
 
@@ -260,7 +260,7 @@ class UrlLibJsonFetcher:
     no_live_external_calls: bool = False
     max_bytes: int = 4_000_000
 
-    def fetch_json(self, url: str, *, user_agent: str, timeout_seconds: int) -> dict[str, Any]:
+    def fetch_json(self, url: str, *, user_agent: str, timeout_seconds: int) -> Any:
         _validate_lightweight_url(url)
         request = Request(url, headers={"User-Agent": user_agent, "Accept": "application/json"})
         try:
@@ -278,8 +278,8 @@ class UrlLibJsonFetcher:
         if len(payload) > self.max_bytes:
             raise LightweightFetchError("lightweight_source_payload_too_large")
         parsed = json.loads(payload.decode("utf-8"))
-        if not isinstance(parsed, dict):
-            raise LightweightFetchError("lightweight_source_payload_not_json_object")
+        if not isinstance(parsed, (dict, list)):
+            raise LightweightFetchError("lightweight_source_payload_not_json_object_or_array")
         return parsed
 
 
@@ -1613,8 +1613,13 @@ def _empty_provider_diagnostics(settings: LightweightDataSettings) -> dict[str, 
         "provider_order": list(settings.provider_order),
         "provider_api_attempted": False,
         "provider_api_skipped": [],
+        "weekly_news_source_order": ["official", "provider_api", "yahoo"],
         "weekly_news_adapter_boundary": WEEKLY_NEWS_SOURCE_ADAPTER_BOUNDARY,
         "weekly_news_fetch_enabled": settings.weekly_news_fetch_enabled,
+        "weekly_news_provider_api_candidate_count": 0,
+        "weekly_news_provider_api_suppressed_count": 0,
+        "weekly_news_yahoo_candidate_count": 0,
+        "weekly_news_yahoo_suppressed_count": 0,
         "weekly_news_provider_candidate_count": 0,
         "weekly_news_provider_suppressed_count": 0,
         "weekly_news_raw_article_text_collected": False,
@@ -1628,7 +1633,9 @@ def _merge_provider_api_diagnostics(target: dict[str, Any], update: dict[str, An
     target.setdefault("provider_api_skipped", [])
     target["provider_api_skipped"].extend(update.get("provider_api_skipped", []))
     for key, value in update.items():
-        if key not in {"provider_api_attempted", "provider_api_skipped"}:
+        if key in {"weekly_news_provider_api_candidate_count", "weekly_news_provider_api_suppressed_count"}:
+            target[key] = int(target.get(key, 0) or 0) + int(value or 0)
+        elif key not in {"provider_api_attempted", "provider_api_skipped"}:
             target[key] = value
 
 
@@ -1831,7 +1838,13 @@ def _try_provider_api_weekly_news_fallback(
     retrieved_at: str,
 ) -> tuple[list[LightweightFetchSource], list[LightweightFetchFact], list[dict[str, str]], dict[str, Any]]:
     if not settings.weekly_news_fetch_enabled:
-        return [], [], [], {f"{provider}_weekly_news_candidate_count": 0, f"{provider}_weekly_news_suppressed_count": 0}
+        return [], [], [], {
+            "weekly_news_provider_api_candidate_count": 0,
+            "weekly_news_provider_api_suppressed_count": 0,
+            f"{provider}_weekly_news_attempted": False,
+            f"{provider}_weekly_news_candidate_count": 0,
+            f"{provider}_weekly_news_suppressed_count": 0,
+        }
     credential = settings.credential_for(provider)
     url = _provider_api_weekly_news_url(
         provider,
@@ -1841,7 +1854,13 @@ def _try_provider_api_weekly_news_fallback(
         include_current_day=not fetcher.no_live_external_calls,
     )
     if not credential or not url:
-        return [], [], [], {f"{provider}_weekly_news_candidate_count": 0, f"{provider}_weekly_news_suppressed_count": 0}
+        return [], [], [], {
+            "weekly_news_provider_api_candidate_count": 0,
+            "weekly_news_provider_api_suppressed_count": 0,
+            f"{provider}_weekly_news_attempted": False,
+            f"{provider}_weekly_news_candidate_count": 0,
+            f"{provider}_weekly_news_suppressed_count": 0,
+        }
     errors: list[dict[str, str]] = []
     payload: Any = {}
     try:
@@ -1854,7 +1873,13 @@ def _try_provider_api_weekly_news_fallback(
         errors.append({"source": f"{provider}_weekly_news", "error_type": type(exc).__name__})
     rows = _provider_api_weekly_news_rows(provider, ticker, payload)
     if not rows:
-        return [], [], errors, {f"{provider}_weekly_news_candidate_count": 0, f"{provider}_weekly_news_suppressed_count": 0}
+        return [], [], errors, {
+            "weekly_news_provider_api_candidate_count": 0,
+            "weekly_news_provider_api_suppressed_count": 0,
+            f"{provider}_weekly_news_attempted": True,
+            f"{provider}_weekly_news_candidate_count": 0,
+            f"{provider}_weekly_news_suppressed_count": 0,
+        }
     asset_type = _asset_type_from_quote_or_manifest(ticker, None)
     weekly_news = yahoo_search_payload_to_weekly_news_facts(
         ticker=ticker,
@@ -1874,6 +1899,9 @@ def _try_provider_api_weekly_news_fallback(
         source_label=LightweightSourceLabel.reputable_third_party,
     )
     return weekly_news.sources, weekly_news.facts, errors, {
+        "weekly_news_provider_api_candidate_count": weekly_news.candidate_count,
+        "weekly_news_provider_api_suppressed_count": weekly_news.suppressed_count,
+        f"{provider}_weekly_news_attempted": True,
         f"{provider}_weekly_news_candidate_count": weekly_news.candidate_count,
         f"{provider}_weekly_news_suppressed_count": weekly_news.suppressed_count,
         f"{provider}_weekly_news_suppression_reason_counts": weekly_news.suppression_reason_counts,
@@ -2640,8 +2668,11 @@ def _try_yahoo_provider_fallback(
 ) -> tuple[dict[str, Any] | None, list[LightweightFetchSource], list[LightweightFetchFact], list[dict[str, str]], dict[str, Any]]:
     if not settings.provider_fallback_enabled:
         return None, [], [], [{"source": "yahoo_finance", "error_type": "provider_fallback_disabled"}], {
+            "weekly_news_source_order": ["official", "provider_api", "yahoo"],
             "weekly_news_adapter_boundary": WEEKLY_NEWS_SOURCE_ADAPTER_BOUNDARY,
             "weekly_news_fetch_enabled": settings.weekly_news_fetch_enabled,
+            "weekly_news_yahoo_candidate_count": 0,
+            "weekly_news_yahoo_suppressed_count": 0,
             "weekly_news_provider_candidate_count": 0,
             "weekly_news_provider_suppressed_count": 0,
         }
@@ -2653,8 +2684,11 @@ def _try_yahoo_provider_fallback(
     chart_payload: dict[str, Any] = {}
     chart_meta: dict[str, Any] = {}
     weekly_news_diagnostics: dict[str, Any] = {
+        "weekly_news_source_order": ["official", "provider_api", "yahoo"],
         "weekly_news_adapter_boundary": WEEKLY_NEWS_SOURCE_ADAPTER_BOUNDARY,
         "weekly_news_fetch_enabled": settings.weekly_news_fetch_enabled,
+        "weekly_news_yahoo_candidate_count": 0,
+        "weekly_news_yahoo_suppressed_count": 0,
         "weekly_news_provider_candidate_count": 0,
         "weekly_news_provider_suppressed_count": 0,
         "weekly_news_raw_article_text_collected": False,
@@ -2685,8 +2719,12 @@ def _try_yahoo_provider_fallback(
             sources.extend(weekly_news.sources)
             facts.extend(weekly_news.facts)
             weekly_news_diagnostics = {
+                "weekly_news_source_order": ["official", "provider_api", "yahoo"],
                 "weekly_news_adapter_boundary": WEEKLY_NEWS_SOURCE_ADAPTER_BOUNDARY,
                 "weekly_news_fetch_enabled": True,
+                "weekly_news_yahoo_candidate_count": weekly_news.candidate_count,
+                "weekly_news_yahoo_suppressed_count": weekly_news.suppressed_count,
+                "weekly_news_yahoo_backfill_after_provider_api": True,
                 "weekly_news_provider_candidate_count": weekly_news.candidate_count,
                 "weekly_news_provider_suppressed_count": weekly_news.suppressed_count,
                 "weekly_news_suppression_reason_counts": weekly_news.suppression_reason_counts,

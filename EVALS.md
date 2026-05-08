@@ -117,6 +117,9 @@ Verify:
 - Market News Focus uses the same market-week window, selects up to 20 approved story clusters, preserves topic bucket metadata, and never pads weak evidence to hit 20
 - Market News Focus and AI Comprehensive Analysis: Market News Focus are reusable across supported ticker pages without regenerating per ticker
 - official filings, investor-relations releases, issuer announcements, prospectus updates, and fact-sheet changes rank before approved reputable third-party/news sources
+- local live ticker Weekly News acquisition attempts official sources first, then configured provider/news APIs, then Yahoo/yfinance fallback, while final non-official selection quality-ranks the pooled candidates by ticker usefulness, publisher tier, source-use policy, recency, duplicate status, and beginner utility
+- generic market-regime or opinion items are suppressed from ticker Weekly News unless they have a clear ticker, issuer, ETF, index exposure, holdings, flows, fees, distributions, products, earnings, regulatory, customer, or supply-chain hook
+- demoted publishers such as Seeking Alpha, Motley Fool, Benzinga, MarketBeat, Zacks, IBD, and similar sources are backfill-only and selected only when strongly ticker-specific and non-advice-like
 - Weekly News Focus shows the configured maximum only when evidence supports it, otherwise a smaller verified set or empty state
 - ticker-specific Weekly News Focus keeps the existing max-8 official-first behavior and explicit `Weekly News Focus: {TICKER}` label
 - source-use policy values cover `metadata_only`, `link_only`, `summary_allowed`, `full_text_allowed`, and `rejected`
@@ -128,9 +131,9 @@ Verify:
 - yfinance/Yahoo-style news lists are treated as a fallback metadata structure only, not broad production ingestion or canonical fact evidence
 - local Weekly News source rows expose headline/title, publisher, URL, published time, retrieved time, ticker match, event type, source label, source-use policy, and optional bounded summary/snippet only
 - Market News and local Weekly News source rows expose headline/title, publisher, URL, published time, retrieved time, topic/ticker match, source label, source-use policy, cluster/audit metadata, and optional bounded summary/snippet only
+- local Weekly News diagnostics report candidate and selected counts by acquisition source and publisher tier, plus suppression reasons such as `generic_market_context_for_ticker`, `opinion_or_column`, `advice_like`, `weak_ticker_relevance`, `demoted_publisher_backfill_only`, and `duplicate`
 - raw article bodies, unrestricted thumbnails/media, provider payloads, trade UX, recommendation copy, secrets, and generated-output cache promotion are absent from Market News and local Weekly News output
-- `LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED` is off by default, and operator-only live checks remain skipped or mock-backed unless explicitly enabled
-- `MARKET_NEWS_FETCH_ENABLED` and market-news live smoke opt-ins are off by default; RSS/GDELT/keyed provider/yfinance adapters are mocked or skipped in normal CI
+- `LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED`, `MARKET_NEWS_FETCH_ENABLED`, and `MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED` may default on for local runtime/manual review outside CI and tests, while normal CI, pytest, static evals, explicit `env={}` settings, and smoke opt-ins remain deterministic, fixture-backed, or skipped unless explicitly enabled
 
 ### Ingestion, Provider, Caching, And Freshness Tasks
 

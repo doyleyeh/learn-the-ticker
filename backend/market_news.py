@@ -37,6 +37,7 @@ from backend.models import (
     WeeklyNewsEvidenceLimitedState,
     WeeklyNewsSourceMetadata,
 )
+from backend.news_quality import clean_news_publisher, news_source_from_domain, publisher_priority
 from backend.safety import find_forbidden_output_phrases
 from backend.settings import MarketNewsSettings, build_market_news_settings
 from backend.weekly_news import DEFAULT_WEEKLY_NEWS_AS_OF, compute_weekly_news_window
@@ -1324,55 +1325,15 @@ def _provider_from_url(url: str) -> str:
 
 
 def _clean_source_name(value: str | None) -> str | None:
-    text = _clean_text(value)
-    if not text:
-        return None
-    replacements = {
-        "Reuters News": "Reuters",
-        "AP News": "Associated Press",
-        "The Associated Press": "Associated Press",
-        "FT.com": "Financial Times",
-        "WSJ.com": "Wall Street Journal",
-    }
-    return replacements.get(text, text)
+    return clean_news_publisher(value)
 
 
 def _source_from_domain(domain: str) -> str | None:
-    normalized = domain.lower().removeprefix("www.")
-    mapping = {
-        "reuters.com": "Reuters",
-        "apnews.com": "Associated Press",
-        "bloomberg.com": "Bloomberg",
-        "wsj.com": "Wall Street Journal",
-        "ft.com": "Financial Times",
-        "cnbc.com": "CNBC",
-        "barrons.com": "Barron's",
-        "marketwatch.com": "MarketWatch",
-        "bbc.com": "BBC",
-        "cnn.com": "CNN",
-        "nytimes.com": "The New York Times",
-        "washingtonpost.com": "The Washington Post",
-        "theguardian.com": "The Guardian",
-        "economist.com": "The Economist",
-        "asia.nikkei.com": "Nikkei Asia",
-        "finance.yahoo.com": "Yahoo Finance",
-        "morningstar.com": "Morningstar",
-        "nasdaq.com": "Nasdaq",
-        "spglobal.com": "S&P Global",
-        "investing.com": "Investing.com",
-        "businessinsider.com": "Business Insider",
-        "fortune.com": "Fortune",
-        "axios.com": "Axios",
-        "prnewswire.com": "PR Newswire",
-        "globenewswire.com": "GlobeNewswire",
-        "benzinga.com": "Benzinga",
-    }
-    return mapping.get(normalized)
+    return news_source_from_domain(domain)
 
 
 def _source_priority(source: str) -> int:
-    normalized = source.lower().strip()
-    return _TIER1_SOURCE_PRIORITY.get(normalized, 99)
+    return publisher_priority(source)
 
 
 def _canonical_url(url: str) -> str:

@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import backend.lightweight_data_fetch as lightweight_data_fetch
 from backend.lightweight_data_fetch import (
     ETF_QUOTE_STAT_ROW_ORDER,
     STOCK_QUOTE_STAT_ROW_ORDER,
+    UrlLibJsonFetcher,
     clear_lightweight_fetch_reuse_cache,
     fetch_lightweight_asset_data,
 )
@@ -401,6 +403,21 @@ class ReviewedProviderFakeJsonFetcher(FakeJsonFetcher):
             self.urls.append(url)
             return {"close": 205.3, "previousClose": 204.0, "volume": 6543210, "timestamp": "2026-05-01"}
         return super().fetch_json(url, user_agent=user_agent, timeout_seconds=timeout_seconds)
+
+
+class _FakeHttpResponse:
+    def __init__(self, payload: bytes) -> None:
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
+    def read(self, max_bytes: int) -> bytes:
+        del max_bytes
+        return self.payload
 
 
 def _settings():
@@ -1076,10 +1093,51 @@ def test_configured_provider_api_weekly_news_runs_before_yahoo_without_raw_paylo
     weekly_facts = [fact for fact in response.facts if fact.field_name == "provider_weekly_news_event"]
     assert len(weekly_facts) >= 4
     assert any(source.source_type == "fmp_weekly_news_metadata" for source in response.sources)
+    assert response.diagnostics["weekly_news_source_order"] == ["official", "provider_api", "yahoo"]
+    assert response.diagnostics["weekly_news_provider_api_candidate_count"] == 2
+    assert response.diagnostics["weekly_news_yahoo_candidate_count"] == 2
     assert response.diagnostics["fmp_weekly_news_candidate_count"] == 2
     assert response.diagnostics["fmp_weekly_news_raw_payload_exposed"] is False
     assert "configured-test-key" not in str(response.model_dump(mode="json"))
     assert "provider payload value" not in str(response.model_dump(mode="json")).lower()
+    overview = build_lightweight_overview_response(response)
+    assert overview.weekly_news_focus is not None
+    assert overview.weekly_news_focus.selection_diagnostics["selected_counts_by_acquisition_source"] == {
+        "provider_api": 2,
+        "yahoo": 2,
+    }
+    assert {item.source.source_type for item in overview.weekly_news_focus.items} >= {
+        "fmp_weekly_news_metadata",
+        "yahoo_finance_weekly_news_metadata",
+    }
+    assert overview.weekly_news_focus.items[0].source.publisher in {"Reuters", "Yahoo Finance"}
+
+
+def test_url_lib_json_fetcher_accepts_provider_news_array_payload(monkeypatch):
+    def fake_urlopen(request, timeout):
+        del timeout
+        assert request.full_url.startswith("https://financialmodelingprep.com/api/v3/stock_news")
+        return _FakeHttpResponse(
+            json.dumps(
+                [
+                    {
+                        "title": "AAPL provider news row",
+                        "url": "https://financialmodelingprep.com/news/aapl-provider-news",
+                    }
+                ]
+            ).encode("utf-8")
+        )
+
+    monkeypatch.setattr(lightweight_data_fetch, "urlopen", fake_urlopen)
+
+    payload = UrlLibJsonFetcher().fetch_json(
+        "https://financialmodelingprep.com/api/v3/stock_news?tickers=AAPL&limit=8&apikey=test",
+        user_agent="learn-the-ticker-tests/0.1",
+        timeout_seconds=1,
+    )
+
+    assert isinstance(payload, list)
+    assert payload[0]["title"] == "AAPL provider news row"
 
 
 def test_lightweight_etf_fetch_uses_issuer_fixtures_before_manifest_and_provider_fallback():
