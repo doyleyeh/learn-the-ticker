@@ -4,11 +4,13 @@ import json
 import hashlib
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.error import URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
 
 from backend.market_news import (
     MARKET_NEWS_SOURCE_ADAPTER_BOUNDARY,
@@ -132,18 +134,19 @@ MARKET_NEWS_RESPONSE_CACHE = MarketNewsResponseMemoryCache()
 
 def build_runtime_market_news_response(
     *,
-    as_of: str = DEFAULT_WEEKLY_NEWS_AS_OF,
+    as_of: str | None = None,
     settings: MarketNewsSettings | None = None,
     fetcher: MarketNewsFetcher | None = None,
     cache: MarketNewsResponseMemoryCache | None = None,
 ) -> MarketNewsResponse:
     active_settings = settings or build_market_news_settings()
+    effective_as_of = as_of or _runtime_market_news_as_of(active_settings)
     if not active_settings.can_attempt_live_fetch:
-        return build_market_news_response(as_of=as_of, settings=active_settings)
+        return build_market_news_response(as_of=effective_as_of, settings=active_settings)
 
     source_fetcher = fetcher or UrlLibMarketNewsFetcher()
     response_cache = cache or MARKET_NEWS_RESPONSE_CACHE
-    cache_key = _cache_key(as_of, active_settings, source_fetcher)
+    cache_key = _cache_key(effective_as_of, active_settings, source_fetcher)
     ttl_seconds = active_settings.cache_ttl_hours * 60 * 60
     cached = response_cache.get(cache_key, ttl_seconds=ttl_seconds)
     if cached is not None:
@@ -154,12 +157,18 @@ def build_runtime_market_news_response(
         return persisted
 
     response = build_market_news_response(
-        as_of=as_of,
+        as_of=effective_as_of,
         settings=active_settings,
         fetcher=source_fetcher,
     )
     _persistent_cache_store(cache_key, response, active_settings)
     return response_cache.set(cache_key, response)
+
+
+def _runtime_market_news_as_of(settings: MarketNewsSettings) -> str:
+    if settings.can_attempt_live_fetch:
+        return datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+    return DEFAULT_WEEKLY_NEWS_AS_OF
 
 
 def _cache_key(

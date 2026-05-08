@@ -210,6 +210,69 @@ def test_market_news_adapters_normalize_all_provider_payload_shapes_without_live
         assert forbidden not in serialized
 
 
+def test_market_news_live_metadata_rebuckets_query_results_by_article_content():
+    settings = build_market_news_settings(
+        env={
+            "MARKET_NEWS_FETCH_ENABLED": "true",
+            "MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED": "true",
+        }
+    )
+    rss_text = """
+    <rss><channel>
+      <item>
+        <title>Oil prices rise as Strait of Hormuz shipping risk returns</title>
+        <link>https://www.reuters.com/markets/oil-hormuz-risk</link>
+        <description>Reuters reported oil and shipping risk as an energy-market issue.</description>
+        <pubDate>Wed, 22 Apr 2026 12:00:00 GMT</pubDate>
+        <source>Reuters</source>
+      </item>
+      <item>
+        <title>Federal Reserve officials discuss inflation and Treasury yields</title>
+        <link>https://www.reuters.com/markets/fed-inflation-yields</link>
+        <description>Reuters reported macro policy context.</description>
+        <pubDate>Wed, 22 Apr 2026 12:00:00 GMT</pubDate>
+        <source>Reuters</source>
+      </item>
+      <item>
+        <title>Nvidia and AMD shares rise as AI chip demand improves</title>
+        <link>https://www.reuters.com/markets/ai-chip-demand</link>
+        <description>Reuters reported semiconductor demand for AI data centers.</description>
+        <pubDate>Wed, 22 Apr 2026 12:00:00 GMT</pubDate>
+        <source>Reuters</source>
+      </item>
+      <item>
+        <title>Bank credit spreads widen as liquidity worries return</title>
+        <link>https://www.reuters.com/markets/bank-credit-liquidity</link>
+        <description>Reuters reported credit and liquidity sentiment.</description>
+        <pubDate>Wed, 22 Apr 2026 12:00:00 GMT</pubDate>
+        <source>Reuters</source>
+      </item>
+      <item>
+        <title>S&amp;P 500 earnings results lift Wall Street stocks</title>
+        <link>https://www.reuters.com/markets/sp500-earnings-results</link>
+        <description>Reuters reported equity-market earnings context.</description>
+        <pubDate>Wed, 22 Apr 2026 12:00:00 GMT</pubDate>
+        <source>Reuters</source>
+      </item>
+    </channel></rss>
+    """
+    fetcher = FixtureMarketNewsFetcher(payloads_by_provider={"rss": rss_text, "google_news_rss": rss_text})
+
+    candidates = collect_market_news_candidates(
+        fetcher=fetcher,
+        settings=settings,
+        as_of=AS_OF,
+        retrieved_at=RETRIEVED_AT,
+    )
+    topics_by_title = {candidate.title: candidate.topic_bucket for candidate in candidates}
+
+    assert topics_by_title["Oil prices rise as Strait of Hormuz shipping risk returns"] is MarketNewsTopicBucket.geopolitics_energy_supply_chain
+    assert topics_by_title["Federal Reserve officials discuss inflation and Treasury yields"] is MarketNewsTopicBucket.macro_fed
+    assert topics_by_title["Nvidia and AMD shares rise as AI chip demand improves"] is MarketNewsTopicBucket.ai_technology_semiconductors
+    assert topics_by_title["Bank credit spreads widen as liquidity worries return"] is MarketNewsTopicBucket.credit_liquidity_sentiment
+    assert topics_by_title["S&P 500 earnings results lift Wall Street stocks"] is MarketNewsTopicBucket.markets_earnings
+
+
 def test_runtime_market_news_fetch_uses_ttl_cache_for_opt_in_live_path():
     settings = build_market_news_settings(
         env={
@@ -466,9 +529,9 @@ def _provider_payloads():
     rss_text = """
     <rss><channel>
       <item>
-        <title>Reuters market update from RSS</title>
+        <title>Reuters Federal Reserve inflation market update from RSS</title>
         <link>https://www.reuters.com/markets/rss-market-update</link>
-        <description>Reuters reported a market update from RSS metadata.</description>
+        <description>Reuters reported Federal Reserve inflation and Treasury yield context from RSS metadata.</description>
         <pubDate>Wed, 22 Apr 2026 12:00:00 GMT</pubDate>
         <source>Reuters</source>
       </item>
@@ -480,7 +543,7 @@ def _provider_payloads():
         "gdelt": {
             "articles": [
                 {
-                    "title": "Reuters GDELT market update",
+                    "title": "Reuters GDELT Federal Reserve inflation market update",
                     "url": "https://www.reuters.com/markets/gdelt-market-update",
                     "seendate": "20260422T120000Z",
                     "sourceCommonName": "Reuters",
@@ -490,8 +553,8 @@ def _provider_payloads():
         "marketaux": {
             "data": [
                 {
-                    "title": "Reuters Marketaux market update",
-                    "description": "Reuters reported market context through Marketaux metadata.",
+                    "title": "Reuters Marketaux Federal Reserve inflation market update",
+                    "description": "Reuters reported Federal Reserve inflation and Treasury yield context through Marketaux metadata.",
                     "url": "https://www.reuters.com/markets/marketaux-market-update",
                     "published_at": "2026-04-22T12:00:00Z",
                     "source": "Reuters",
@@ -502,8 +565,8 @@ def _provider_payloads():
         "alpha_vantage": {
             "feed": [
                 {
-                    "title": "Reuters Alpha Vantage market update",
-                    "summary": "Reuters reported market context through Alpha Vantage metadata.",
+                    "title": "Reuters Alpha Vantage Federal Reserve inflation market update",
+                    "summary": "Reuters reported Federal Reserve inflation and Treasury yield context through Alpha Vantage metadata.",
                     "url": "https://www.reuters.com/markets/alpha-market-update",
                     "time_published": "20260422T120000",
                     "source": "Reuters",
@@ -513,8 +576,8 @@ def _provider_payloads():
         },
         "finnhub": [
             {
-                "headline": "Reuters Finnhub market update",
-                "summary": "Reuters reported market context through Finnhub metadata.",
+                "headline": "Reuters Finnhub Federal Reserve inflation market update",
+                "summary": "Reuters reported Federal Reserve inflation and Treasury yield context through Finnhub metadata.",
                 "url": "https://www.reuters.com/markets/finnhub-market-update",
                 "datetime": finnhub_time,
                 "source": "Reuters",
@@ -524,7 +587,7 @@ def _provider_payloads():
             "response": {
                 "results": [
                     {
-                        "webTitle": "Guardian market update",
+                        "webTitle": "Guardian Federal Reserve inflation market update",
                         "webUrl": "https://www.theguardian.com/business/2026/apr/22/market-update",
                         "webPublicationDate": "2026-04-22T12:00:00Z",
                         "fields": {"trailText": "The Guardian reported global market context."},
@@ -535,8 +598,8 @@ def _provider_payloads():
         "gnews": {
             "articles": [
                 {
-                    "title": "Reuters GNews market update",
-                    "description": "Reuters reported market context through GNews metadata.",
+                    "title": "Reuters GNews Federal Reserve inflation market update",
+                    "description": "Reuters reported Federal Reserve inflation and Treasury yield context through GNews metadata.",
                     "url": "https://www.reuters.com/markets/gnews-market-update",
                     "publishedAt": "2026-04-22T12:00:00Z",
                     "source": {"name": "Reuters"},
@@ -546,8 +609,8 @@ def _provider_payloads():
         "mediastack": {
             "data": [
                 {
-                    "title": "Reuters Mediastack market update",
-                    "description": "Reuters reported market context through Mediastack metadata.",
+                    "title": "Reuters Mediastack Federal Reserve inflation market update",
+                    "description": "Reuters reported Federal Reserve inflation and Treasury yield context through Mediastack metadata.",
                     "url": "https://www.reuters.com/markets/mediastack-market-update",
                     "published_at": "2026-04-22T12:00:00Z",
                     "source": "Reuters",
@@ -557,8 +620,8 @@ def _provider_payloads():
         "newsapi": {
             "articles": [
                 {
-                    "title": "Reuters NewsAPI market update",
-                    "description": "Reuters reported market context through NewsAPI metadata.",
+                    "title": "Reuters NewsAPI Federal Reserve inflation market update",
+                    "description": "Reuters reported Federal Reserve inflation and Treasury yield context through NewsAPI metadata.",
                     "url": "https://www.reuters.com/markets/newsapi-market-update",
                     "publishedAt": "2026-04-22T12:00:00Z",
                     "source": {"name": "Reuters"},
@@ -568,8 +631,8 @@ def _provider_payloads():
         "yahoo_finance_search": {
             "news": [
                 {
-                    "title": "Reuters Yahoo Finance market update",
-                    "summary": "Reuters reported market context through Yahoo metadata.",
+                    "title": "Reuters Yahoo Finance Federal Reserve inflation market update",
+                    "summary": "Reuters reported Federal Reserve inflation and Treasury yield context through Yahoo metadata.",
                     "link": "https://www.reuters.com/markets/yahoo-market-update",
                     "providerPublishTime": finnhub_time,
                     "publisher": "Reuters",

@@ -81,8 +81,12 @@ def yahoo_search_payload_to_weekly_news_facts(
     retrieved_at: str,
     no_live_external_calls: bool,
     max_items: int = 8,
+    provider_name: str = YAHOO_FINANCE_WEEKLY_NEWS_PROVIDER_NAME,
+    source_type: str = "yahoo_finance_weekly_news_metadata",
+    source_id_prefix: str = "lw_yahoo",
+    rights_note: str = YAHOO_WEEKLY_NEWS_RIGHTS_NOTE,
 ) -> WeeklyNewsSourceAdapterResult:
-    """Convert Yahoo/yfinance-style search news metadata into rights-safe lightweight facts."""
+    """Convert rights-safe provider news metadata into lightweight Weekly News facts."""
 
     normalized = _normalize_ticker(ticker)
     sources: list[LightweightFetchSource] = []
@@ -99,7 +103,7 @@ def yahoo_search_payload_to_weekly_news_facts(
             suppressed += 1
             continue
         title = _clean_text(item.get("title"))
-        publisher = _clean_text(item.get("publisher")) or YAHOO_FINANCE_WEEKLY_NEWS_PROVIDER_NAME
+        publisher = _clean_text(item.get("publisher")) or provider_name
         url = _clean_text(item.get("link"))
         if not title or not url or _is_advice_like_title(title):
             suppressed += 1
@@ -112,11 +116,11 @@ def yahoo_search_payload_to_weekly_news_facts(
         event_date = published_at[:10] if published_at else retrieved_at[:10]
         event_type = _classify_event_type(title, asset_type)
         safe_id = _safe_id(str(item.get("uuid") or f"{normalized}-{index}-{title}"))
-        source_document_id = f"lw_yahoo_{normalized.lower()}_weekly_news_{safe_id}"
+        source_document_id = f"{source_id_prefix}_{normalized.lower()}_weekly_news_{safe_id}"
         source = LightweightFetchSource(
             source_document_id=source_document_id,
             source_label=LightweightSourceLabel.provider_derived,
-            source_type="yahoo_finance_weekly_news_metadata",
+            source_type=source_type,
             title=title,
             publisher=publisher,
             url=url,
@@ -130,7 +134,7 @@ def yahoo_search_payload_to_weekly_news_facts(
             date_precision="day",
             freshness_state=FreshnessState.fresh,
             fallback_reason="Official Weekly News Focus sources were sparse or incomplete for this local MVP request.",
-            rights_note=YAHOO_WEEKLY_NEWS_RIGHTS_NOTE,
+            rights_note=rights_note,
             export_allowed=False,
         )
         sources.append(source)
@@ -156,6 +160,7 @@ def yahoo_search_payload_to_weekly_news_facts(
                     "ticker_match": "exact_or_related_ticker",
                     "raw_article_text_collected": False,
                     "thumbnail_or_media_forwarded": False,
+                    "provider_name": provider_name,
                 },
                 evidence_state=EvidenceState.supported,
                 freshness_state=FreshnessState.fresh,

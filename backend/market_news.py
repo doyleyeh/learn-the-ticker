@@ -75,6 +75,18 @@ _TIER1_SOURCE_PRIORITY = {
     "economist": 16,
     "nikkei asia": 17,
     "nikkei": 17,
+    "yahoo finance": 18,
+    "morningstar": 19,
+    "nasdaq": 20,
+    "s&p global": 21,
+    "investing.com": 22,
+    "investing": 22,
+    "business insider": 23,
+    "fortune": 24,
+    "axios": 25,
+    "pr newswire": 26,
+    "globenewswire": 27,
+    "benzinga": 28,
 }
 _CRITICAL_SOURCE_PRIORITY_CUTOFF = 5
 _TOPIC_QUERIES = {
@@ -90,6 +102,80 @@ _BUCKET_TARGETS = {
     MarketNewsTopicBucket.ai_technology_semiconductors: 4,
     MarketNewsTopicBucket.geopolitics_energy_supply_chain: 4,
     MarketNewsTopicBucket.credit_liquidity_sentiment: 3,
+}
+_TOPIC_KEYWORDS = {
+    MarketNewsTopicBucket.macro_fed: (
+        "federal reserve",
+        "fed ",
+        "rate cut",
+        "rate hike",
+        "interest rate",
+        "inflation",
+        "cpi",
+        "labor market",
+        "jobs report",
+        "treasury yield",
+        "bond yield",
+        "us macro",
+    ),
+    MarketNewsTopicBucket.markets_earnings: (
+        "s&p 500",
+        "nasdaq",
+        "dow",
+        "wall street",
+        "stocks",
+        "equities",
+        "earnings",
+        "results",
+        "sectors",
+        "market rally",
+        "market selloff",
+        "record high",
+    ),
+    MarketNewsTopicBucket.ai_technology_semiconductors: (
+        " ai ",
+        "artificial intelligence",
+        "semiconductor",
+        "chip",
+        "chips",
+        "nvidia",
+        "amd",
+        "broadcom",
+        "data center",
+        "datacenter",
+        "cloud",
+    ),
+    MarketNewsTopicBucket.geopolitics_energy_supply_chain: (
+        "oil",
+        "crude",
+        "energy",
+        "opec",
+        "war",
+        "iran",
+        "gulf",
+        "hormuz",
+        "port",
+        "red sea",
+        "shipping",
+        "supply chain",
+        "trade",
+        "tariff",
+        "sanction",
+        "geopolit",
+    ),
+    MarketNewsTopicBucket.credit_liquidity_sentiment: (
+        "credit",
+        "liquidity",
+        "bank",
+        "banks",
+        "dollar",
+        "debt",
+        "loan",
+        "consumer stress",
+        "defaults",
+        "spread",
+        "sentiment",
+    ),
 }
 _CRITICAL_MARKERS = (
     "federal reserve",
@@ -797,6 +883,11 @@ def _candidate_exclusion_reasons(candidate: MarketNewsArticleCandidate, window: 
         reasons.append("promotional")
     if any(lowered.startswith(marker) for marker in _OPINION_MARKERS):
         reasons.append("opinion")
+    if (
+        candidate.provider in {adapter.provider for adapter in market_news_provider_adapters()}
+        and _topic_keyword_score(candidate.topic_bucket, candidate.title, candidate.description) == 0
+    ):
+        reasons.append("topic_relevance_low")
     return sorted(set(reasons))
 
 
@@ -819,23 +910,42 @@ def _candidate(
     clean_source = _clean_source_name(source) or _source_from_domain(source_domain) or provider
     source_priority = _source_priority(clean_source)
     canonical_url = _canonical_url(url)
+    clean_title = _clean_text(title) or "Untitled market news item"
+    clean_description = _bounded_words(_clean_text(description) or "", 50)
+    inferred_topic_bucket = _infer_topic_bucket(clean_title, clean_description, fallback=topic_bucket)
     return MarketNewsArticleCandidate(
         article_id=article_id or f"market_article:{_hash_text(provider + canonical_url + title)[:16]}",
         provider=provider,
         source=clean_source,
         source_domain=(source_domain or _domain(canonical_url)).lower(),
-        title=_clean_text(title) or "Untitled market news item",
-        description=_bounded_words(_clean_text(description) or "", 50),
+        title=clean_title,
+        description=clean_description,
         url=url,
         canonical_url=canonical_url,
         published_at=_normalize_timestamp(published_at),
         retrieved_at=retrieved_at,
         language=_normalize_language(language),
-        topic_bucket=topic_bucket,
+        topic_bucket=inferred_topic_bucket,
         entities=tuple(entities),
         symbols=tuple(symbols),
         source_priority=source_priority,
     )
+
+
+def _infer_topic_bucket(title: str, description: str, *, fallback: MarketNewsTopicBucket) -> MarketNewsTopicBucket:
+    scores = {
+        bucket: _topic_keyword_score(bucket, title, description) for bucket in _TOPIC_KEYWORDS
+    }
+    best_bucket, best_score = max(
+        scores.items(),
+        key=lambda item: (item[1], _BUCKET_TARGETS.get(item[0], 0)),
+    )
+    return best_bucket if best_score > 0 else fallback
+
+
+def _topic_keyword_score(bucket: MarketNewsTopicBucket, title: str, description: str) -> int:
+    text = f" {title} {description} ".lower()
+    return sum(1 for marker in _TOPIC_KEYWORDS.get(bucket, ()) if marker in text)
 
 
 def _provider_url(provider: str, topic_bucket: MarketNewsTopicBucket, credential: str | None) -> str:
@@ -1245,6 +1355,17 @@ def _source_from_domain(domain: str) -> str | None:
         "theguardian.com": "The Guardian",
         "economist.com": "The Economist",
         "asia.nikkei.com": "Nikkei Asia",
+        "finance.yahoo.com": "Yahoo Finance",
+        "morningstar.com": "Morningstar",
+        "nasdaq.com": "Nasdaq",
+        "spglobal.com": "S&P Global",
+        "investing.com": "Investing.com",
+        "businessinsider.com": "Business Insider",
+        "fortune.com": "Fortune",
+        "axios.com": "Axios",
+        "prnewswire.com": "PR Newswire",
+        "globenewswire.com": "GlobeNewswire",
+        "benzinga.com": "Benzinga",
     }
     return mapping.get(normalized)
 

@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.lightweight_data_fetch import build_lightweight_api_fallback_diagnostics, fetch_lightweight_asset_data
+from backend.lightweight_data_fetch import (
+    ETF_QUOTE_STAT_ROW_ORDER,
+    QUOTE_STAT_LABELS,
+    STOCK_QUOTE_STAT_ROW_ORDER,
+    build_lightweight_api_fallback_diagnostics,
+    fetch_lightweight_asset_data,
+)
 from backend.market_news_runtime import build_runtime_market_news_response
 from backend.models import (
     AssetStatus,
@@ -1700,18 +1706,16 @@ def _etf_cost_trading_items(
 
 
 def _quote_stat_metric_labels(response: LightweightFetchResponse, *, limit: int) -> list[str]:
-    quote_stats = _fact_value(response, "provider_quote_stats")
-    provider_rows = quote_stats.get("rows") if isinstance(quote_stats, dict) else None
+    provider_rows = _merged_quote_stat_rows(response)
     labels: list[str] = []
-    if isinstance(provider_rows, list):
-        for row in provider_rows:
-            if not isinstance(row, dict) or row.get("value") in (None, ""):
-                continue
-            label = str(row.get("label") or row.get("metric_id") or "quote stat")
-            if label not in labels:
-                labels.append(label)
-            if len(labels) >= limit:
-                break
+    for row in provider_rows:
+        if not isinstance(row, dict) or row.get("value") in (None, ""):
+            continue
+        label = str(row.get("label") or row.get("metric_id") or "quote stat")
+        if label not in labels:
+            labels.append(label)
+        if len(labels) >= limit:
+            break
     if _fact_value(response, "expense_ratio") not in (None, "") and "Expense Ratio (net)" not in labels:
         labels.append("Expense Ratio (net)")
     return labels[:limit]
@@ -2202,37 +2206,59 @@ def _price_chart_section(
     )
 
 
+def _merged_quote_stat_rows(response: LightweightFetchResponse) -> list[dict[str, Any]]:
+    rows_by_metric: dict[str, dict[str, Any]] = {}
+    for fact in response.facts:
+        if fact.field_name != "provider_quote_stats" or not isinstance(fact.value, dict):
+            continue
+        rows = fact.value.get("rows")
+        if not isinstance(rows, list):
+            continue
+        for item in rows:
+            if not isinstance(item, dict):
+                continue
+            metric_id = str(item.get("metric_id") or "").strip()
+            if not metric_id or item.get("value") in (None, "") or metric_id in rows_by_metric:
+                continue
+            rows_by_metric[metric_id] = {
+                **item,
+                "citation_ids": list(fact.citation_ids),
+                "source_document_ids": list(fact.source_document_ids),
+                "as_of_date": fact.as_of_date,
+            }
+    contract = STOCK_QUOTE_STAT_ROW_ORDER if response.asset.asset_type is AssetType.stock else ETF_QUOTE_STAT_ROW_ORDER
+    return [rows_by_metric[metric_id] for metric_id in contract if metric_id in rows_by_metric]
+
+
 def _quote_stats_table(
     response: LightweightFetchResponse,
     stable_citation_ids: list[str],
     provider_citation_ids: list[str],
 ) -> OverviewTable | None:
-    quote_stats = _fact_value(response, "provider_quote_stats")
-    provider_rows = quote_stats.get("rows") if isinstance(quote_stats, dict) else None
+    provider_rows = _merged_quote_stat_rows(response)
     rows_by_id: dict[str, OverviewTableRow] = {}
-    row_order: list[str] = []
-    if isinstance(provider_rows, list):
-        for item in provider_rows:
-            if not isinstance(item, dict):
-                continue
-            metric_id = str(item.get("metric_id") or "").strip()
-            value = item.get("value")
-            if not metric_id or value in (None, ""):
-                continue
-            rows_by_id[metric_id] = _simple_table_row(
-                response,
-                metric_id,
-                str(item.get("label") or metric_id.replace("_", " ").title()),
-                value,
-                provider_citation_ids,
-                as_of_date=_fact_as_of(response, "provider_quote_stats"),
-                evidence_state=EvidenceState.partial,
-                limitations="Provider-derived quote-stat row.",
-            )
-            row_order.append(metric_id)
+    row_order = list(STOCK_QUOTE_STAT_ROW_ORDER if response.asset.asset_type is AssetType.stock else ETF_QUOTE_STAT_ROW_ORDER)
+    for item in provider_rows:
+        metric_id = str(item.get("metric_id") or "").strip()
+        value = item.get("value")
+        if not metric_id or metric_id not in row_order or value in (None, ""):
+            continue
+        citation_ids = item.get("citation_ids") if isinstance(item.get("citation_ids"), list) else provider_citation_ids
+        source_document_ids = item.get("source_document_ids") if isinstance(item.get("source_document_ids"), list) else []
+        row = _simple_table_row(
+            response,
+            metric_id,
+            str(item.get("label") or QUOTE_STAT_LABELS.get(metric_id) or metric_id.replace("_", " ").title()),
+            value,
+            [str(citation_id) for citation_id in citation_ids],
+            as_of_date=str(item.get("as_of_date")) if item.get("as_of_date") else _fact_as_of(response, "provider_quote_stats"),
+            evidence_state=EvidenceState.partial,
+            limitations="Provider-derived quote-stat row.",
+        )
+        rows_by_id[metric_id] = row.model_copy(update={"source_document_ids": [str(source_id) for source_id in source_document_ids]})
 
     official_expense_ratio = _fact_value(response, "expense_ratio")
-    if official_expense_ratio not in (None, ""):
+    if response.asset.asset_type is AssetType.etf and official_expense_ratio not in (None, ""):
         official_ids = _citation_ids_for_fact(response, "expense_ratio", stable_citation_ids)
         rows_by_id["expense_ratio"] = _simple_table_row(
             response,
@@ -2244,17 +2270,28 @@ def _quote_stats_table(
             evidence_state=EvidenceState.supported,
             limitations="Official issuer expense ratio overrides provider fallback for this dashboard stat.",
         )
-        if "expense_ratio" not in row_order:
-            row_order.append("expense_ratio")
 
-    ordered_rows = [rows_by_id[row_id] for row_id in row_order if row_id in rows_by_id]
-    if not ordered_rows:
-        return None
+    for metric_id in row_order:
+        if metric_id in rows_by_id:
+            continue
+        rows_by_id[metric_id] = _simple_table_row(
+            response,
+            metric_id,
+            QUOTE_STAT_LABELS.get(metric_id) or metric_id.replace("_", " ").title(),
+            None,
+            [],
+            as_of_date=response.freshness.facts_as_of,
+            evidence_state=EvidenceState.unavailable,
+            limitations="Unavailable after official, configured provider API, and Yahoo/yfinance fallback attempts.",
+        )
+
+    ordered_rows = [rows_by_id[row_id] for row_id in row_order]
     citation_ids = _dedupe(citation_id for row in ordered_rows for citation_id in row.citation_ids)
-    all_official = all(row.evidence_state is EvidenceState.supported for row in ordered_rows)
+    usable_rows = [row for row in ordered_rows if row.evidence_state is not EvidenceState.unavailable]
+    all_official = bool(usable_rows) and all(row.evidence_state is EvidenceState.supported for row in usable_rows)
     return OverviewTable(
         table_id="quote_stats",
-        title="Quote And Fund Stats",
+        title="Quote And Stock Stats" if response.asset.asset_type is AssetType.stock else "Quote And Fund Stats",
         columns=[
             OverviewTableColumn(column_id="label", label="Metric"),
             OverviewTableColumn(column_id="value", label="Value", align="right"),
@@ -2263,7 +2300,7 @@ def _quote_stats_table(
         citation_ids=citation_ids,
         source_document_ids=_source_ids_for_citations(response, citation_ids),
         freshness_state=FreshnessState.fresh,
-        evidence_state=EvidenceState.supported if all_official else EvidenceState.mixed,
+        evidence_state=EvidenceState.supported if all_official else EvidenceState.mixed if usable_rows else EvidenceState.unavailable,
         as_of_date=_fact_as_of(response, "provider_quote_stats") or response.freshness.facts_as_of,
         retrieved_at=response.freshness.page_last_updated_at,
         limitations="Official facts override provider fallback where available; remaining rows are provider-derived normalized display fields.",

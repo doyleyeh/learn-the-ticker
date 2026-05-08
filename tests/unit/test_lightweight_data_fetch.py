@@ -3,7 +3,12 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from backend.lightweight_data_fetch import clear_lightweight_fetch_reuse_cache, fetch_lightweight_asset_data
+from backend.lightweight_data_fetch import (
+    ETF_QUOTE_STAT_ROW_ORDER,
+    STOCK_QUOTE_STAT_ROW_ORDER,
+    clear_lightweight_fetch_reuse_cache,
+    fetch_lightweight_asset_data,
+)
 from backend.lightweight_page import (
     build_lightweight_details_response,
     build_lightweight_overview_response,
@@ -321,6 +326,24 @@ class ReviewedProviderFakeJsonFetcher(FakeJsonFetcher):
                     "eps": 6.49,
                 }
             ]
+        if "financialmodelingprep.com/api/v3/stock_news" in url:
+            self.urls.append(url)
+            return [
+                {
+                    "title": "AAPL supplier update supports weekly context",
+                    "url": "https://financialmodelingprep.com/news/aapl-supplier-update",
+                    "publishedDate": "2026-05-01 14:00:00",
+                    "site": "Financial Modeling Prep",
+                    "text": "A source-labeled provider news item connects AAPL to a supplier update in the current weekly window.",
+                },
+                {
+                    "title": "AAPL product update appears in provider metadata",
+                    "url": "https://financialmodelingprep.com/news/aapl-product-update",
+                    "publishedDate": "2026-04-30 13:00:00",
+                    "site": "Financial Modeling Prep",
+                    "text": "A source-labeled provider news item connects AAPL to product context in the current weekly window.",
+                },
+            ]
         if "finnhub.io/api/v1/stock/profile2" in url:
             self.urls.append(url)
             return {
@@ -336,7 +359,18 @@ class ReviewedProviderFakeJsonFetcher(FakeJsonFetcher):
             return {"c": 203.1, "pc": 202.0, "t": 1777665600}
         if "finnhub.io/api/v1/stock/metric" in url:
             self.urls.append(url)
-            return {"metric": {"peNormalizedAnnual": 32.1, "epsExclExtraItemsTTM": 6.52, "currentDividendYieldTTM": 0.44}}
+            return {
+                "metric": {
+                    "10DayAverageTradingVolume": 159.99,
+                    "52WeekLow": 150.2,
+                    "52WeekHigh": 215.9,
+                    "beta": 1.24,
+                    "peNormalizedAnnual": 32.1,
+                    "epsExclExtraItemsTTM": 6.52,
+                    "currentDividendYieldTTM": 0.44,
+                    "targetMean": 269.17,
+                }
+            }
         if "api.tiingo.com/tiingo/daily/AAPL" in url:
             self.urls.append(url)
             return {
@@ -465,6 +499,27 @@ def _settings_with_reviewed_provider(provider: str):
     )
 
 
+def _settings_with_reviewed_provider_weekly(provider: str):
+    env_name = {
+        "fmp": "FMP_API_KEY",
+        "finnhub": "FINNHUB_API_KEY",
+        "tiingo": "TIINGO_API_KEY",
+        "eodhd": "EODHD_API_KEY",
+    }[provider]
+    return build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_ORDER": f"{provider},yahoo",
+            "LIGHTWEIGHT_PROVIDER_SOURCE_USE_REVIEWED": "true",
+            env_name: "configured-test-key",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+        }
+    )
+
+
 def _weekly_news_payload(ticker: str) -> list[dict[str, Any]]:
     normalized = ticker.upper()
     publisher = "Yahoo Finance"
@@ -538,13 +593,28 @@ def _stock_quote_summary_payload(ticker: str) -> dict[str, Any]:
                         "companyOfficers": [{"name": "Tim Cook", "title": "Chief Executive Officer"}],
                     },
                     "summaryDetail": {
+                        "previousClose": _yahoo_number(199.5),
+                        "open": _yahoo_number(201.1),
+                        "bid": _yahoo_number(201.2),
+                        "bidSize": _yahoo_number(4000),
+                        "ask": _yahoo_number(201.4),
+                        "askSize": _yahoo_number(200),
+                        "dayLow": _yahoo_number(198.7),
+                        "dayHigh": _yahoo_number(202.6),
+                        "fiftyTwoWeekLow": _yahoo_number(150.2),
+                        "fiftyTwoWeekHigh": _yahoo_number(215.9),
+                        "volume": _yahoo_number(1234567),
+                        "averageVolume": _yahoo_number(2345678),
                         "trailingPE": _yahoo_number(31.4),
                         "forwardPE": _yahoo_number(27.8),
+                        "dividendRate": _yahoo_number(1.04),
                         "dividendYield": _yahoo_percent(0.0045),
+                        "exDividendDate": {"raw": 1773187200, "fmt": "Mar 11, 2026"},
                         "52WeekChange": _yahoo_percent(0.112),
                     },
                     "defaultKeyStatistics": {
                         "enterpriseValue": _yahoo_money(3_180_000_000_000),
+                        "beta": _yahoo_number(1.24),
                         "trailingEps": _yahoo_number(6.43),
                         "forwardEps": _yahoo_number(7.18),
                         "priceToBook": _yahoo_number(43.5),
@@ -565,6 +635,12 @@ def _stock_quote_summary_payload(ticker: str) -> dict[str, Any]:
                         "profitMargins": _yahoo_percent(0.24),
                         "returnOnAssets": _yahoo_percent(0.22),
                         "returnOnEquity": _yahoo_percent(1.36),
+                        "targetMeanPrice": _yahoo_number(269.17),
+                    },
+                    "calendarEvents": {
+                        "earnings": {
+                            "earningsDate": [{"raw": 1779235200, "fmt": "May 20, 2026"}],
+                        },
                     },
                 }
             ]
@@ -584,9 +660,26 @@ def _etf_quote_summary_payload(ticker: str) -> dict[str, Any]:
                         "legalType": "Exchange Traded Fund",
                     },
                     "summaryDetail": {
+                        "previousClose": _yahoo_number(661.4),
+                        "open": _yahoo_number(662.0),
+                        "bid": _yahoo_number(661.8),
+                        "bidSize": _yahoo_number(16000),
+                        "ask": _yahoo_number(662.1),
+                        "askSize": _yahoo_number(12000),
+                        "dayLow": _yahoo_number(660.5),
+                        "dayHigh": _yahoo_number(665.8),
+                        "fiftyTwoWeekLow": _yahoo_number(510.5),
+                        "fiftyTwoWeekHigh": _yahoo_number(676.7),
+                        "volume": _yahoo_number(5462989),
+                        "averageVolume": _yahoo_number(9831696),
                         "totalAssets": _yahoo_money(1_420_000_000_000),
+                        "navPrice": _yahoo_number(662.7),
+                        "trailingPE": _yahoo_number(29.04),
                         "yield": _yahoo_percent(0.0119),
                         "ytdReturn": _yahoo_percent(0.0598),
+                    },
+                    "defaultKeyStatistics": {
+                        "beta": _yahoo_number(1.0),
                     },
                     "topHoldings": {
                         "holdings": [
@@ -806,7 +899,7 @@ def test_lightweight_stock_fetch_prefers_sec_and_labels_provider_fallback():
     assert fields["provider_market_price"].value["regularMarketPrice"] == 199.5
     assert fields["provider_profile_overview"].value["sector"] == "Technology"
     assert fields["provider_quote_stats"].value["rows"]
-    assert any(row["metric_id"] == "pe_ratio_ttm" for row in fields["provider_quote_stats"].value["rows"])
+    assert {row["metric_id"] for row in fields["provider_quote_stats"].value["rows"]} >= set(STOCK_QUOTE_STAT_ROW_ORDER)
     assert fields["provider_stock_metric_groups"].value["groups"]
     assert len(fields["provider_price_chart"].value["points"]) >= 6
     assert fields["provider_price_chart"].value["range"] == "6mo"
@@ -827,6 +920,8 @@ def test_lightweight_stock_fetch_prefers_sec_and_labels_provider_fallback():
         "sec_identity",
     ]
     assert response.diagnostics["fields_filled_by_tier"]["yahoo"]
+    assert response.diagnostics["quote_stat_merge"]["row_contract"] == list(STOCK_QUOTE_STAT_ROW_ORDER)
+    assert response.diagnostics["quote_stat_merge"]["unavailable_metric_ids"] == []
     assert response.diagnostics["final_fallback_level"] == "yahoo"
     first_sec_url = next(index for index, url in enumerate(fetcher.urls) if "sec.gov" in url)
     first_yahoo_url = next(index for index, url in enumerate(fetcher.urls) if "finance.yahoo.com" in url)
@@ -844,6 +939,13 @@ def test_lightweight_stock_fetch_prefers_sec_and_labels_provider_fallback():
     promotion = evaluate_lightweight_generated_output_promotion(response, allow_generated_output_cache_promotion=True)
     assert promotion["promotion_allowed"] is False
     assert "strict_audit_quality_source_approval_not_granted" in promotion["reason_codes"]
+
+    overview = build_lightweight_overview_response(response)
+    price_section = next(section for section in overview.sections if section.section_id == "price_chart")
+    assert price_section.table is not None
+    assert [row.row_id for row in price_section.table.rows] == list(STOCK_QUOTE_STAT_ROW_ORDER)
+    assert all(row.evidence_state is not EvidenceState.unavailable for row in price_section.table.rows)
+    assert next(row for row in price_section.table.rows if row.row_id == "forward_dividend_yield").values["value"] == "1.04 (0.45%)"
 
 
 def test_lightweight_provider_api_runs_before_yahoo_and_fills_missing_fields_only():
@@ -927,6 +1029,59 @@ def test_reviewed_provider_api_adapters_run_before_yahoo_without_secret_exposure
         assert response.raw_payload_exposed is False
 
 
+def test_quote_stats_merge_by_metric_and_do_not_treat_finnhub_average_volume_as_volume():
+    fetcher = ReviewedProviderFakeJsonFetcher()
+
+    response = fetch_lightweight_asset_data(
+        "AAPL",
+        settings=_settings_with_reviewed_provider("finnhub"),
+        fetcher=fetcher,
+        retrieved_at=RETRIEVED_AT,
+    )
+
+    quote_stat_facts = [fact for fact in response.facts if fact.field_name == "provider_quote_stats"]
+    assert len(quote_stat_facts) >= 2
+    finnhub_fact = next(fact for fact in quote_stat_facts if fact.source_document_ids == ["lw_finnhub_aapl_market_reference"])
+    finnhub_rows = {row["metric_id"]: row for row in finnhub_fact.value["rows"]}
+    assert "volume" not in finnhub_rows
+    assert finnhub_rows["average_volume"]["value"] == "159,990,000"
+    assert "forward_dividend_yield" not in finnhub_rows
+
+    overview = build_lightweight_overview_response(response)
+    price_section = next(section for section in overview.sections if section.section_id == "price_chart")
+    assert price_section.table is not None
+    rows = {row.row_id: row for row in price_section.table.rows}
+    assert list(rows) == list(STOCK_QUOTE_STAT_ROW_ORDER)
+    assert rows["bid"].values["value"] == "201.2 x 4,000"
+    assert rows["ask"].values["value"] == "201.4 x 200"
+    assert rows["volume"].values["value"] == "1,234,567"
+    assert rows["average_volume"].values["value"] == "159,990,000"
+    assert rows["forward_dividend_yield"].values["value"] == "1.04 (0.45%)"
+    assert response.diagnostics["quote_stat_merge"]["unavailable_metric_ids"] == []
+
+
+def test_configured_provider_api_weekly_news_runs_before_yahoo_without_raw_payloads():
+    fetcher = ReviewedProviderFakeJsonFetcher()
+
+    response = fetch_lightweight_asset_data(
+        "AAPL",
+        settings=_settings_with_reviewed_provider_weekly("fmp"),
+        fetcher=fetcher,
+        retrieved_at=RETRIEVED_AT,
+    )
+
+    fmp_news_url = next(index for index, url in enumerate(fetcher.urls) if "financialmodelingprep.com/api/v3/stock_news" in url)
+    first_yahoo_url = next(index for index, url in enumerate(fetcher.urls) if "finance.yahoo.com" in url)
+    assert fmp_news_url < first_yahoo_url
+    weekly_facts = [fact for fact in response.facts if fact.field_name == "provider_weekly_news_event"]
+    assert len(weekly_facts) >= 4
+    assert any(source.source_type == "fmp_weekly_news_metadata" for source in response.sources)
+    assert response.diagnostics["fmp_weekly_news_candidate_count"] == 2
+    assert response.diagnostics["fmp_weekly_news_raw_payload_exposed"] is False
+    assert "configured-test-key" not in str(response.model_dump(mode="json"))
+    assert "provider payload value" not in str(response.model_dump(mode="json")).lower()
+
+
 def test_lightweight_etf_fetch_uses_issuer_fixtures_before_manifest_and_provider_fallback():
     fetcher = FakeJsonFetcher()
 
@@ -982,6 +1137,8 @@ def test_lightweight_etf_fetch_uses_issuer_fixtures_before_manifest_and_provider
     assert response.diagnostics["fetch_tiers_attempted"] == ["official", "provider_api", "yahoo"]
     assert response.diagnostics["fetch_tiers_succeeded"] == ["official", "yahoo"]
     assert response.diagnostics["fields_filled_by_tier"]["official"]
+    assert response.diagnostics["quote_stat_merge"]["row_contract"] == list(ETF_QUOTE_STAT_ROW_ORDER)
+    assert response.diagnostics["quote_stat_merge"]["unavailable_metric_ids"] == []
     assert response.diagnostics["final_fallback_level"] == "yahoo"
     assert response.diagnostics["official_source_count"] == 4
     assert response.diagnostics["provider_fallback_source_count"] == 1
@@ -997,6 +1154,7 @@ def test_lightweight_etf_fetch_uses_issuer_fixtures_before_manifest_and_provider
     price_section = next(section for section in overview.sections if section.section_id == "price_chart")
     assert price_section.table is not None
     assert price_section.table.table_id == "quote_stats"
+    assert [row.row_id for row in price_section.table.rows] == list(ETF_QUOTE_STAT_ROW_ORDER)
     expense_row = next(row for row in price_section.table.rows if row.row_id == "expense_ratio")
     assert expense_row.evidence_state is EvidenceState.supported
     assert expense_row.citation_ids

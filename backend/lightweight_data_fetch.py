@@ -42,6 +42,7 @@ from backend.models import (
     SourceUsePolicy,
 )
 from backend.settings import LightweightDataSettings, build_lightweight_data_settings
+from backend.weekly_news import compute_weekly_news_window
 from backend.weekly_news_sources import (
     LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD,
     WEEKLY_NEWS_SOURCE_ADAPTER_BOUNDARY,
@@ -61,6 +62,64 @@ CHART_INTERVAL_BY_RANGE = {
     "1y": "1d",
     "5y": "1wk",
     "max": "1mo",
+}
+STOCK_QUOTE_STAT_ROW_ORDER = (
+    "previous_close",
+    "open",
+    "bid",
+    "ask",
+    "day_range",
+    "fifty_two_week_range",
+    "volume",
+    "average_volume",
+    "market_cap_intraday",
+    "beta_5y_monthly",
+    "pe_ratio_ttm",
+    "eps_ttm",
+    "earnings_date",
+    "forward_dividend_yield",
+    "ex_dividend_date",
+    "one_year_target_est",
+)
+ETF_QUOTE_STAT_ROW_ORDER = (
+    "previous_close",
+    "open",
+    "bid",
+    "ask",
+    "day_range",
+    "fifty_two_week_range",
+    "volume",
+    "average_volume",
+    "net_assets",
+    "nav",
+    "pe_ratio_ttm",
+    "yield",
+    "ytd_return",
+    "beta_5y_monthly",
+    "expense_ratio",
+)
+QUOTE_STAT_LABELS = {
+    "previous_close": "Previous Close",
+    "open": "Open",
+    "bid": "Bid",
+    "ask": "Ask",
+    "day_range": "Day's Range",
+    "fifty_two_week_range": "52 Week Range",
+    "volume": "Volume",
+    "average_volume": "Avg. Volume",
+    "market_cap_intraday": "Market Cap (intraday)",
+    "beta_5y_monthly": "Beta (5Y Monthly)",
+    "pe_ratio_ttm": "PE Ratio (TTM)",
+    "eps_ttm": "EPS (TTM)",
+    "earnings_date": "Earnings Date",
+    "forward_dividend_yield": "Forward Dividend & Yield",
+    "ex_dividend_date": "Ex-Dividend Date",
+    "one_year_target_est": "1y Target Est",
+    "net_assets": "Net Assets",
+    "nav": "NAV",
+    "yield": "Yield",
+    "ytd_return": "YTD Daily Total Return",
+    "expense_ratio": "Expense Ratio (net)",
 }
 ALLOWED_LIGHTWEIGHT_HOSTS = {
     "api.tiingo.com",
@@ -1583,6 +1642,25 @@ def _dedupe_provider_results(
     for fact in facts:
         if allowed_fields is not None and fact.field_name not in allowed_fields:
             continue
+        if fact.field_name == "provider_quote_stats":
+            rows = _quote_stat_rows(fact.value)
+            kept_rows: list[dict[str, Any]] = []
+            for row in rows:
+                metric_id = str(row.get("metric_id") or "").strip()
+                if not metric_id:
+                    continue
+                metric_key = f"provider_quote_stats:{metric_id}"
+                if metric_key in seen_fields:
+                    continue
+                seen_fields.add(metric_key)
+                kept_rows.append(row)
+            if not kept_rows:
+                continue
+            if len(kept_rows) != len(rows):
+                value = fact.value if isinstance(fact.value, dict) else {}
+                fact = fact.model_copy(update={"value": {**value, "rows": kept_rows}})
+            kept_facts.append(fact)
+            continue
         if fact.field_name != LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD and fact.field_name in seen_fields:
             continue
         if fact.field_name != LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD:
@@ -1696,7 +1774,16 @@ def _try_reviewed_provider_api_fallback(
 
     source = _provider_api_source(provider, ticker, normalized, retrieved_at)
     facts = _facts_from_provider_api_reference(provider, ticker, normalized, retrieved_at, source)
-    return normalized, [source] if facts else [], facts, errors, {
+    weekly_sources, weekly_facts, weekly_errors, weekly_diagnostics = _try_provider_api_weekly_news_fallback(
+        provider,
+        ticker,
+        settings,
+        fetcher,
+        retrieved_at,
+    )
+    facts.extend(weekly_facts)
+    errors.extend(weekly_errors)
+    return normalized, ([source] if _facts_from_source(facts, source.source_document_id) else []) + weekly_sources, facts, errors, {
         "provider_api_attempted": True,
         "provider_api_skipped": [],
         "provider_api_source_use_reviewed": settings.provider_source_use_reviewed,
@@ -1705,6 +1792,7 @@ def _try_reviewed_provider_api_fallback(
         f"{provider}_fact_count": len(facts),
         f"{provider}_raw_payload_exposed": False,
         f"{provider}_adapter_boundary": "lightweight-provider-api-adapter-v1",
+        **weekly_diagnostics,
     }
 
 
@@ -1732,6 +1820,158 @@ def _provider_api_urls(provider: str, ticker: str, credential: str) -> dict[str,
             "quote": f"https://eodhd.com/api/real-time/{symbol}.US?api_token={quote(credential)}&fmt=json",
         }
     return {}
+
+
+def _try_provider_api_weekly_news_fallback(
+    provider: str,
+    ticker: str,
+    settings: LightweightDataSettings,
+    fetcher: JsonFetcher,
+    retrieved_at: str,
+) -> tuple[list[LightweightFetchSource], list[LightweightFetchFact], list[dict[str, str]], dict[str, Any]]:
+    if not settings.weekly_news_fetch_enabled:
+        return [], [], [], {f"{provider}_weekly_news_candidate_count": 0, f"{provider}_weekly_news_suppressed_count": 0}
+    credential = settings.credential_for(provider)
+    url = _provider_api_weekly_news_url(provider, ticker, credential, retrieved_at)
+    if not credential or not url:
+        return [], [], [], {f"{provider}_weekly_news_candidate_count": 0, f"{provider}_weekly_news_suppressed_count": 0}
+    errors: list[dict[str, str]] = []
+    payload: Any = {}
+    try:
+        payload = fetcher.fetch_json(
+            url,
+            user_agent=YAHOO_PROVIDER_USER_AGENT,
+            timeout_seconds=settings.fetch_timeout_seconds,
+        )
+    except Exception as exc:
+        errors.append({"source": f"{provider}_weekly_news", "error_type": type(exc).__name__})
+    rows = _provider_api_weekly_news_rows(provider, ticker, payload)
+    if not rows:
+        return [], [], errors, {f"{provider}_weekly_news_candidate_count": 0, f"{provider}_weekly_news_suppressed_count": 0}
+    asset_type = _asset_type_from_quote_or_manifest(ticker, None)
+    weekly_news = yahoo_search_payload_to_weekly_news_facts(
+        ticker=ticker,
+        asset_type=asset_type if asset_type in {AssetType.stock, AssetType.etf} else AssetType.unknown,
+        payload={"news": rows},
+        retrieved_at=retrieved_at,
+        no_live_external_calls=fetcher.no_live_external_calls,
+        provider_name=str(LIGHTWEIGHT_PROVIDER_API_ADAPTERS.get(provider, {}).get("display_name") or provider),
+        source_type=f"{provider}_weekly_news_metadata",
+        source_id_prefix=f"lw_{provider}",
+        rights_note=(
+            f"{provider} provider news metadata is source-labeled fallback for local Weekly News Focus. "
+            "Only metadata and bounded summaries are used; raw article bodies, media, provider payloads, and API keys are not exposed."
+        ),
+    )
+    return weekly_news.sources, weekly_news.facts, errors, {
+        f"{provider}_weekly_news_candidate_count": weekly_news.candidate_count,
+        f"{provider}_weekly_news_suppressed_count": weekly_news.suppressed_count,
+        f"{provider}_weekly_news_raw_payload_exposed": weekly_news.raw_provider_payload_exposed,
+        f"{provider}_weekly_news_raw_article_text_collected": weekly_news.raw_article_text_collected,
+    }
+
+
+def _provider_api_weekly_news_url(provider: str, ticker: str, credential: str | None, retrieved_at: str) -> str | None:
+    if not credential:
+        return None
+    symbol = quote(ticker)
+    window = compute_weekly_news_window(retrieved_at)
+    start = quote(window.news_window_start)
+    end = quote(window.news_window_end)
+    if provider == "fmp":
+        return f"https://financialmodelingprep.com/api/v3/stock_news?tickers={symbol}&limit=8&apikey={quote(credential)}"
+    if provider == "alpha_vantage":
+        return "https://www.alphavantage.co/query?" + urlencode(
+            {"function": "NEWS_SENTIMENT", "tickers": ticker, "apikey": credential, "limit": "8"}
+        )
+    if provider == "finnhub":
+        return f"https://finnhub.io/api/v1/company-news?symbol={symbol}&from={start}&to={end}&token={quote(credential)}"
+    if provider == "tiingo":
+        return f"https://api.tiingo.com/tiingo/news?tickers={symbol}&startDate={start}&endDate={end}&token={quote(credential)}"
+    if provider == "eodhd":
+        return f"https://eodhd.com/api/news?s={symbol}.US&from={start}&to={end}&api_token={quote(credential)}&fmt=json&limit=8"
+    return None
+
+
+def _provider_api_weekly_news_rows(provider: str, ticker: str, payload: Any) -> list[dict[str, Any]]:
+    rows: list[Any]
+    if provider == "alpha_vantage" and isinstance(payload, dict):
+        rows = payload.get("feed") if isinstance(payload.get("feed"), list) else []
+    elif provider in {"fmp", "finnhub", "tiingo", "eodhd"} and isinstance(payload, list):
+        rows = payload
+    elif provider in {"fmp", "tiingo", "eodhd"} and isinstance(payload, dict):
+        rows = payload.get("data") if isinstance(payload.get("data"), list) else []
+    else:
+        rows = []
+    normalized: list[dict[str, Any]] = []
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            continue
+        item = _provider_api_weekly_news_item(provider, ticker, row, index)
+        if item:
+            normalized.append(item)
+    return normalized
+
+
+def _provider_api_weekly_news_item(provider: str, ticker: str, row: dict[str, Any], index: int) -> dict[str, Any] | None:
+    if provider == "fmp":
+        title = _clean_text(row.get("title"))
+        url = _clean_text(row.get("url"))
+        published = _provider_news_published_at(row.get("publishedDate") or row.get("date"))
+        publisher = _clean_text(row.get("site")) or "Financial Modeling Prep"
+        summary = _clean_text(row.get("text"))
+    elif provider == "alpha_vantage":
+        title = _clean_text(row.get("title"))
+        url = _clean_text(row.get("url"))
+        published = _provider_news_published_at(row.get("time_published"))
+        publisher = _clean_text(row.get("source")) or "Alpha Vantage"
+        summary = _clean_text(row.get("summary"))
+    elif provider == "finnhub":
+        title = _clean_text(row.get("headline"))
+        url = _clean_text(row.get("url"))
+        published = _date_time_from_epoch(row.get("datetime"))
+        publisher = _clean_text(row.get("source")) or "Finnhub"
+        summary = _clean_text(row.get("summary"))
+    elif provider == "tiingo":
+        title = _clean_text(row.get("title"))
+        url = _clean_text(row.get("url"))
+        published = _provider_news_published_at(row.get("publishedDate") or row.get("published_at"))
+        publisher = _clean_text(row.get("source")) or "Tiingo"
+        summary = _clean_text(row.get("description"))
+    elif provider == "eodhd":
+        title = _clean_text(row.get("title"))
+        url = _clean_text(row.get("link") or row.get("url"))
+        published = _provider_news_published_at(row.get("date"))
+        publisher = _clean_text(row.get("source")) or "EODHD"
+        summary = _clean_text(row.get("content"))
+    else:
+        return None
+    if not title or not url:
+        return None
+    return {
+        "uuid": f"{provider}-{ticker}-{index}-{hashlib.sha256((title + url).encode('utf-8')).hexdigest()[:12]}",
+        "title": title,
+        "publisher": publisher,
+        "link": url,
+        "published_at": published,
+        "summary": summary,
+        "relatedTickers": [ticker],
+    }
+
+
+def _provider_news_published_at(value: Any) -> str | None:
+    text = _clean_text(value)
+    if not text:
+        return None
+    if len(text) >= 15 and text[8] == "T" and text[:8].isdigit():
+        return f"{text[:4]}-{text[4:6]}-{text[6:8]}T{text[9:11]}:{text[11:13]}:{text[13:15]}Z"
+    if len(text) >= 10 and text[4:5] == "-" and text[7:8] == "-":
+        return text.replace(" ", "T") if "T" not in text and len(text) > 10 else text
+    return text
+
+
+def _facts_from_source(facts: list[LightweightFetchFact], source_document_id: str) -> bool:
+    return any(source_document_id in fact.source_document_ids for fact in facts)
 
 
 def _provider_api_source(
@@ -1876,11 +2116,19 @@ def _normalize_fmp_reference(ticker: str, payloads: dict[str, Any]) -> dict[str,
         "market_cap": _provider_number(profile.get("mktCap") or quote_payload.get("marketCap")),
         "regularMarketPrice": _provider_number(quote_payload.get("price")),
         "chartPreviousClose": _provider_number(quote_payload.get("previousClose")),
+        "regularMarketOpen": _provider_number(quote_payload.get("open")),
+        "regularMarketDayLow": _provider_number(quote_payload.get("dayLow")),
+        "regularMarketDayHigh": _provider_number(quote_payload.get("dayHigh")),
+        "fiftyTwoWeekLow": _provider_number(quote_payload.get("yearLow")),
+        "fiftyTwoWeekHigh": _provider_number(quote_payload.get("yearHigh")),
         "regularMarketVolume": _provider_number(quote_payload.get("volume")),
+        "averageDailyVolume3Month": _provider_number(quote_payload.get("avgVolume")),
         "latest_trading_day": _clean_text(quote_payload.get("timestamp") or profile.get("lastDiv")),
         "trailing_pe": _provider_number(quote_payload.get("pe") or profile.get("pe")),
         "eps_ttm": _provider_number(quote_payload.get("eps") or profile.get("eps")),
-        "dividend_yield": _provider_number(profile.get("lastDiv")),
+        "beta": _provider_number(profile.get("beta")),
+        "dividend_rate": _provider_number(profile.get("lastDiv")),
+        "earnings_date": _clean_text(quote_payload.get("earningsAnnouncement")),
         "source_label": LightweightSourceLabel.provider_derived.value,
     }
     return {key: value for key, value in fields.items() if _present(value)}
@@ -1899,14 +2147,21 @@ def _normalize_finnhub_reference(ticker: str, payloads: dict[str, Any]) -> dict[
         "exchange": _clean_text(profile.get("exchange")),
         "currency": _clean_text(profile.get("currency")),
         "industry": _clean_text(profile.get("finnhubIndustry")),
-        "market_cap": _provider_number(profile.get("marketCapitalization")),
+        "market_cap": _finnhub_market_cap_usd(profile.get("marketCapitalization")),
         "regularMarketPrice": _provider_number(quote_payload.get("c")),
         "chartPreviousClose": _provider_number(quote_payload.get("pc")),
-        "regularMarketVolume": _provider_number(metric_values.get("10DayAverageTradingVolume")),
+        "regularMarketOpen": _provider_number(quote_payload.get("o")),
+        "regularMarketDayLow": _provider_number(quote_payload.get("l")),
+        "regularMarketDayHigh": _provider_number(quote_payload.get("h")),
+        "fiftyTwoWeekLow": _provider_number(metric_values.get("52WeekLow")),
+        "fiftyTwoWeekHigh": _provider_number(metric_values.get("52WeekHigh")),
+        "averageDailyVolume3Month": _finnhub_average_volume(metric_values.get("10DayAverageTradingVolume")),
         "latest_trading_day": _date_from_epoch(quote_payload.get("t")),
         "trailing_pe": _provider_number(metric_values.get("peNormalizedAnnual") or metric_values.get("peBasicExclExtraTTM")),
         "eps_ttm": _provider_number(metric_values.get("epsExclExtraItemsTTM")),
-        "dividend_yield": _provider_number(metric_values.get("currentDividendYieldTTM")),
+        "beta": _provider_number(metric_values.get("beta")),
+        "dividend_yield": _percent_points_to_ratio(metric_values.get("currentDividendYieldTTM")),
+        "one_year_target_est": _provider_number(metric_values.get("targetMean")),
         "source_label": LightweightSourceLabel.provider_derived.value,
     }
     return {key: value for key, value in fields.items() if _present(value)}
@@ -1925,6 +2180,10 @@ def _normalize_tiingo_reference(ticker: str, payloads: dict[str, Any]) -> dict[s
         "regularMarketPrice": _provider_number(quote_payload.get("last") or quote_payload.get("tngoLast")),
         "chartPreviousClose": _provider_number(quote_payload.get("prevClose")),
         "regularMarketVolume": _provider_number(quote_payload.get("volume")),
+        "bid": _provider_number(quote_payload.get("bidPrice")),
+        "bidSize": _provider_number(quote_payload.get("bidSize")),
+        "ask": _provider_number(quote_payload.get("askPrice")),
+        "askSize": _provider_number(quote_payload.get("askSize")),
         "latest_trading_day": _clean_text(quote_payload.get("timestamp") or profile.get("endDate")),
         "source_label": LightweightSourceLabel.provider_derived.value,
     }
@@ -1937,6 +2196,7 @@ def _normalize_eodhd_reference(ticker: str, payloads: dict[str, Any]) -> dict[st
     general = fundamentals.get("General") if isinstance(fundamentals.get("General"), dict) else {}
     highlights = fundamentals.get("Highlights") if isinstance(fundamentals.get("Highlights"), dict) else {}
     valuation = fundamentals.get("Valuation") if isinstance(fundamentals.get("Valuation"), dict) else {}
+    technicals = fundamentals.get("Technicals") if isinstance(fundamentals.get("Technicals"), dict) else {}
     quote_type = "ETF" if _clean_text(general.get("Type")) == "ETF" else "EQUITY"
     fields = {
         "symbol": _clean_text(general.get("Code")) or ticker,
@@ -1951,11 +2211,18 @@ def _normalize_eodhd_reference(ticker: str, payloads: dict[str, Any]) -> dict[st
         "market_cap": _provider_number(highlights.get("MarketCapitalization")),
         "regularMarketPrice": _provider_number(quote_payload.get("close")),
         "chartPreviousClose": _provider_number(quote_payload.get("previousClose")),
+        "regularMarketOpen": _provider_number(quote_payload.get("open")),
+        "regularMarketDayLow": _provider_number(quote_payload.get("low")),
+        "regularMarketDayHigh": _provider_number(quote_payload.get("high")),
+        "fiftyTwoWeekLow": _provider_number(technicals.get("52WeekLow")),
+        "fiftyTwoWeekHigh": _provider_number(technicals.get("52WeekHigh")),
         "regularMarketVolume": _provider_number(quote_payload.get("volume")),
         "latest_trading_day": _clean_text(quote_payload.get("timestamp") or general.get("UpdatedAt")),
         "trailing_pe": _provider_number(highlights.get("PERatio") or valuation.get("TrailingPE")),
         "eps_ttm": _provider_number(highlights.get("DilutedEpsTTM")),
+        "beta": _provider_number(technicals.get("Beta") or highlights.get("Beta")),
         "dividend_yield": _provider_number(highlights.get("DividendYield")),
+        "one_year_target_est": _provider_number(highlights.get("WallStreetTargetPrice")),
         "source_label": LightweightSourceLabel.provider_derived.value,
     }
     return {key: value for key, value in fields.items() if _present(value)}
@@ -1974,7 +2241,14 @@ def _provider_api_market_price(payload: dict[str, Any]) -> dict[str, Any] | None
         return None
     return {
         key: payload.get(key)
-        for key in ("symbol", "regularMarketPrice", "chartPreviousClose", "currency", "regularMarketVolume", "latest_trading_day")
+        for key in (
+            "symbol",
+            "regularMarketPrice",
+            "chartPreviousClose",
+            "currency",
+            "regularMarketVolume",
+            "latest_trading_day",
+        )
         if payload.get(key) is not None
     }
 
@@ -2000,9 +2274,26 @@ def _provider_api_profile_overview(payload: dict[str, Any]) -> dict[str, Any]:
 def _provider_api_quote_stats(payload: dict[str, Any]) -> dict[str, Any]:
     rows = [
         _quote_stat("previous_close", "Previous Close", payload.get("chartPreviousClose"), value_type="currency"),
-        _quote_stat("volume", "Volume", payload.get("regularMarketVolume"), value_type="number"),
+        _quote_stat("open", "Open", payload.get("regularMarketOpen"), value_type="currency"),
+        _quote_stat("bid", "Bid", _quote_price_size(payload.get("bid"), payload.get("bidSize")), value_type="currency"),
+        _quote_stat("ask", "Ask", _quote_price_size(payload.get("ask"), payload.get("askSize")), value_type="currency"),
+        _quote_stat("day_range", "Day's Range", _range_display(payload.get("regularMarketDayLow"), payload.get("regularMarketDayHigh"))),
+        _quote_stat("fifty_two_week_range", "52 Week Range", _range_display(payload.get("fiftyTwoWeekLow"), payload.get("fiftyTwoWeekHigh"))),
+        _quote_stat("volume", "Volume", _long_number_payload(payload.get("regularMarketVolume")), value_type="number"),
+        _quote_stat("average_volume", "Avg. Volume", _long_number_payload(payload.get("averageDailyVolume3Month")), value_type="number"),
+        _quote_stat("market_cap_intraday", "Market Cap (intraday)", _metric_payload(payload.get("market_cap"), unit="USD"), value_type="currency"),
+        _quote_stat("beta_5y_monthly", "Beta (5Y Monthly)", payload.get("beta"), value_type="number"),
         _quote_stat("pe_ratio_ttm", "PE Ratio (TTM)", payload.get("trailing_pe"), value_type="number"),
-        _quote_stat("dividend_yield", "Dividend yield", _percent_payload(payload.get("dividend_yield")), value_type="percent"),
+        _quote_stat("eps_ttm", "EPS (TTM)", payload.get("eps_ttm"), value_type="number"),
+        _quote_stat("earnings_date", "Earnings Date", payload.get("earnings_date")),
+        _quote_stat(
+            "forward_dividend_yield",
+            "Forward Dividend & Yield",
+            _forward_dividend_and_yield_display(payload.get("dividend_rate"), payload.get("dividend_yield")),
+        ),
+        _quote_stat("ex_dividend_date", "Ex-Dividend Date", payload.get("ex_dividend_date")),
+        _quote_stat("one_year_target_est", "1y Target Est", payload.get("one_year_target_est"), value_type="currency"),
+        _quote_stat("yield", "Yield", _percent_payload(payload.get("dividend_yield")), value_type="percent"),
     ]
     rows = [row for row in rows if row.get("value") not in (None, "")]
     return {"rows": rows, "source_label": LightweightSourceLabel.provider_derived.value} if rows else {}
@@ -2146,8 +2437,17 @@ def _try_alpha_vantage_provider_fallback(
                 limitations="Provider-derived quote stats are normalized display fallback, not official SEC or issuer evidence.",
             )
         )
+    weekly_sources, weekly_facts, weekly_errors, weekly_diagnostics = _try_provider_api_weekly_news_fallback(
+        "alpha_vantage",
+        ticker,
+        settings,
+        fetcher,
+        retrieved_at,
+    )
+    facts.extend(weekly_facts)
+    errors.extend(weekly_errors)
 
-    return normalized, [source] if facts else [], facts, errors, {
+    return normalized, ([source] if _facts_from_source(facts, source.source_document_id) else []) + weekly_sources, facts, errors, {
         "provider_api_attempted": True,
         "provider_api_skipped": [],
         "provider_api_source_use_reviewed": settings.provider_source_use_reviewed,
@@ -2155,6 +2455,7 @@ def _try_alpha_vantage_provider_fallback(
         "provider_api_lightweight_display_allowed_without_review": not settings.provider_source_use_reviewed,
         "alpha_vantage_fact_count": len(facts),
         "alpha_vantage_raw_payload_exposed": False,
+        **weekly_diagnostics,
     }
 
 
@@ -2185,6 +2486,9 @@ def _alpha_vantage_market_reference(
         "trailing_pe": _provider_number(overview.get("PERatio")),
         "eps_ttm": _provider_number(overview.get("EPS")),
         "dividend_yield": _provider_number(overview.get("DividendYield")),
+        "beta": _provider_number(overview.get("Beta")),
+        "ex_dividend_date": _clean_text(overview.get("ExDividendDate")),
+        "one_year_target_est": _provider_number(overview.get("AnalystTargetPrice")),
         "revenue_ttm": _provider_number(overview.get("RevenueTTM")),
         "profit_margin": _provider_number(overview.get("ProfitMargin")),
         "source_label": LightweightSourceLabel.provider_derived.value,
@@ -2231,14 +2535,7 @@ def _alpha_vantage_profile_overview(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _alpha_vantage_quote_stats(payload: dict[str, Any]) -> dict[str, Any]:
-    rows = [
-        _quote_stat("previous_close", "Previous Close", payload.get("chartPreviousClose"), value_type="currency"),
-        _quote_stat("volume", "Volume", payload.get("regularMarketVolume"), value_type="number"),
-        _quote_stat("pe_ratio_ttm", "PE Ratio (TTM)", payload.get("trailing_pe"), value_type="number"),
-        _quote_stat("dividend_yield", "Dividend yield", _percent_payload(payload.get("dividend_yield")), value_type="percent"),
-    ]
-    rows = [row for row in rows if row.get("value") not in (None, "")]
-    return {"rows": rows, "source_label": LightweightSourceLabel.provider_derived.value} if rows else {}
+    return _provider_api_quote_stats(payload)
 
 
 def _provider_number(value: Any) -> float | int | None:
@@ -2251,6 +2548,29 @@ def _provider_number(value: Any) -> float | int | None:
     except (TypeError, ValueError):
         return None
     return int(numeric) if numeric.is_integer() else numeric
+
+
+def _finnhub_market_cap_usd(value: Any) -> float | int | None:
+    market_cap = _provider_number(value)
+    if market_cap is None:
+        return None
+    return market_cap * 1_000_000
+
+
+def _finnhub_average_volume(value: Any) -> float | int | None:
+    volume = _provider_number(value)
+    if volume is None:
+        return None
+    if abs(float(volume)) < 100_000:
+        return volume * 1_000_000
+    return volume
+
+
+def _percent_points_to_ratio(value: Any) -> float | None:
+    percent = _provider_number(value)
+    if percent is None:
+        return None
+    return float(percent) / 100
 
 
 def _first_dict(value: Any) -> dict[str, Any]:
@@ -2278,6 +2598,16 @@ def _date_from_epoch(value: Any) -> str | None:
         return None
     try:
         return datetime.fromtimestamp(float(numeric), tz=timezone.utc).date().isoformat()
+    except (OSError, OverflowError, ValueError):
+        return None
+
+
+def _date_time_from_epoch(value: Any) -> str | None:
+    numeric = _provider_number(value)
+    if numeric is None:
+        return None
+    try:
+        return datetime.fromtimestamp(float(numeric), tz=timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     except (OSError, OverflowError, ValueError):
         return None
 
@@ -2372,6 +2702,7 @@ def _try_yahoo_provider_fallback(
                 "summaryDetail",
                 "defaultKeyStatistics",
                 "financialData",
+                "calendarEvents",
             ]
         )
         quote_summary_payload = fetcher.fetch_json(
@@ -2625,6 +2956,7 @@ def _response_from_parts(
             gaps=gaps,
             diagnostics={
                 **hierarchy_diagnostics,
+                "quote_stat_merge": _quote_stat_merge_diagnostics(asset.asset_type, facts),
                 "settings": settings.safe_diagnostics,
                 "official_source_count": sum(
                     1 for source in sources if source.source_label is LightweightSourceLabel.official
@@ -2867,6 +3199,42 @@ def _blocked_response(
             message=message,
         )
     )
+
+
+def _quote_stat_merge_diagnostics(asset_type: AssetType, facts: list[LightweightFetchFact]) -> dict[str, Any]:
+    contract = STOCK_QUOTE_STAT_ROW_ORDER if asset_type is AssetType.stock else ETF_QUOTE_STAT_ROW_ORDER
+    filled: dict[str, dict[str, Any]] = {}
+    attempted_source_ids: list[str] = []
+    for fact in facts:
+        if fact.field_name == "provider_quote_stats":
+            attempted_source_ids.extend(fact.source_document_ids)
+            for row in _quote_stat_rows(fact.value):
+                metric_id = str(row.get("metric_id") or "").strip()
+                if metric_id in contract and row.get("value") not in (None, "") and metric_id not in filled:
+                    filled[metric_id] = {
+                        "metric_id": metric_id,
+                        "source_tier": "provider_or_yahoo",
+                        "source_document_ids": list(fact.source_document_ids),
+                    }
+        elif asset_type is AssetType.etf and fact.field_name == "expense_ratio" and "expense_ratio" in contract:
+            filled.setdefault(
+                "expense_ratio",
+                {
+                    "metric_id": "expense_ratio",
+                    "source_tier": "official",
+                    "source_document_ids": list(fact.source_document_ids),
+                },
+            )
+    return {
+        "schema_version": "quote-stat-merge-diagnostics-v1",
+        "row_contract": list(contract),
+        "attempted_provider_source_document_ids": sorted(set(attempted_source_ids)),
+        "filled_metric_ids": [metric_id for metric_id in contract if metric_id in filled],
+        "unavailable_metric_ids": [metric_id for metric_id in contract if metric_id not in filled],
+        "filled_rows": [filled[metric_id] for metric_id in contract if metric_id in filled],
+        "raw_payload_exposed": False,
+        "secret_values_exposed": False,
+    }
 
 
 def _with_fallback_diagnostics(response: LightweightFetchResponse) -> LightweightFetchResponse:
@@ -3312,8 +3680,12 @@ def _provider_profile_overview(market_reference: dict[str, Any], quote_summary: 
 
 
 def _provider_quote_stats(market_reference: dict[str, Any], quote_summary: dict[str, Any]) -> dict[str, Any]:
+    price = _module(quote_summary, "price")
     summary_detail = _module(quote_summary, "summaryDetail")
     default_stats = _module(quote_summary, "defaultKeyStatistics")
+    financial_data = _module(quote_summary, "financialData")
+    calendar_events = _module(quote_summary, "calendarEvents")
+    earnings = _module(calendar_events, "earnings")
     fund_profile = _module(quote_summary, "fundProfile")
     profile = _provider_profile_overview(market_reference, quote_summary)
     rows = [
@@ -3345,18 +3717,33 @@ def _provider_quote_stats(market_reference: dict[str, Any], quote_summary: dict[
         _quote_stat(
             "volume",
             "Volume",
-            _first_present(summary_detail.get("volume"), market_reference.get("regularMarketVolume")),
+            _long_number_payload(_first_present(summary_detail.get("volume"), market_reference.get("regularMarketVolume"))),
             value_type="number",
         ),
         _quote_stat(
             "average_volume",
             "Avg. Volume",
-            _first_present(summary_detail.get("averageVolume"), market_reference.get("averageDailyVolume3Month")),
+            _long_number_payload(_first_present(summary_detail.get("averageVolume"), market_reference.get("averageDailyVolume3Month"))),
             value_type="number",
+        ),
+        _quote_stat(
+            "market_cap_intraday",
+            "Market Cap (intraday)",
+            profile.get("market_cap") or _metric_payload(price.get("marketCap"), unit="USD"),
+            value_type="currency",
         ),
         _quote_stat("net_assets", "Net Assets", profile.get("net_assets") or _metric_payload(summary_detail.get("totalAssets"), unit="USD"), value_type="currency"),
         _quote_stat("nav", "NAV", _first_present(summary_detail.get("navPrice"), summary_detail.get("nav")), value_type="currency"),
         _quote_stat("pe_ratio_ttm", "PE Ratio (TTM)", _first_present(summary_detail.get("trailingPE"), profile.get("trailing_pe")), value_type="number"),
+        _quote_stat("eps_ttm", "EPS (TTM)", _first_present(default_stats.get("trailingEps"), profile.get("eps_ttm")), value_type="number"),
+        _quote_stat("earnings_date", "Earnings Date", _first_sequence_value(earnings.get("earningsDate"))),
+        _quote_stat(
+            "forward_dividend_yield",
+            "Forward Dividend & Yield",
+            _forward_dividend_and_yield_display(summary_detail.get("dividendRate"), summary_detail.get("dividendYield")),
+        ),
+        _quote_stat("ex_dividend_date", "Ex-Dividend Date", summary_detail.get("exDividendDate")),
+        _quote_stat("one_year_target_est", "1y Target Est", _first_present(financial_data.get("targetMeanPrice"), financial_data.get("targetMedianPrice")), value_type="currency"),
         _quote_stat("yield", "Yield", profile.get("yield") or _percent_payload(summary_detail.get("yield")), value_type="percent"),
         _quote_stat("ytd_return", "YTD Daily Total Return", profile.get("ytd_return") or _percent_payload(summary_detail.get("ytdReturn")), value_type="percent"),
         _quote_stat("beta_5y_monthly", "Beta (5Y Monthly)", _first_present(default_stats.get("beta"), summary_detail.get("beta")), value_type="number"),
@@ -3712,6 +4099,9 @@ def _metric_payload(value: Any, *, unit: str | None = None) -> dict[str, Any] | 
 def _percent_payload(value: Any) -> dict[str, Any] | None:
     percent = _percent_value(value)
     display = _clean_text(value)
+    has_provider_display = isinstance(value, dict) and any(value.get(key) not in (None, "") for key in ("fmt", "longFmt", "shortFmt", "display"))
+    if percent is not None and not has_provider_display:
+        display = f"{percent:.4f}".rstrip("0").rstrip(".") + "%"
     if percent is None and display is None:
         return None
     return {
@@ -3747,10 +4137,40 @@ def _quote_stat(metric_id: str, label: str, payload: Any, *, value_type: str = "
     }
 
 
+def _quote_stat_rows(value: Any) -> list[dict[str, Any]]:
+    rows = value.get("rows") if isinstance(value, dict) else None
+    return [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+
+
 def _display_payload(payload: Any) -> tuple[Any, str | None]:
     if isinstance(payload, dict):
         return payload.get("display") or payload.get("value") or _display_value(payload), payload.get("unit")
     return _display_value(payload), None
+
+
+def _first_sequence_value(value: Any) -> Any:
+    if isinstance(value, list):
+        for item in value:
+            if _present(item):
+                return item
+        return None
+    return value
+
+
+def _dividend_and_yield_display(dividend: Any, dividend_yield: Any) -> str | None:
+    dividend_display = _clean_text(dividend)
+    yield_payload = _percent_payload(dividend_yield)
+    yield_display = _display_payload(yield_payload)[0] if yield_payload else None
+    yield_display = str(yield_display) if yield_display not in (None, "") else None
+    if dividend_display and yield_display:
+        return f"{dividend_display} ({yield_display})"
+    return dividend_display or yield_display
+
+
+def _forward_dividend_and_yield_display(dividend: Any, dividend_yield: Any) -> str | None:
+    if not _present(dividend):
+        return None
+    return _dividend_and_yield_display(dividend, dividend_yield)
 
 
 def _first_present(*values: Any) -> Any:
@@ -3770,10 +4190,35 @@ def _range_display(low: Any, high: Any) -> str | None:
 
 def _quote_price_size(price: Any, size: Any) -> str | None:
     price_display = _clean_text(price)
-    size_display = _clean_text(size)
+    size_display = _long_number_display(size)
     if price_display and size_display:
         return f"{price_display} x {size_display}"
     return price_display
+
+
+def _long_number_payload(value: Any) -> Any:
+    if value is None:
+        return None
+    display = _long_number_display(value)
+    raw = _number_value(value)
+    if display is None:
+        return value
+    return {"value": raw if raw is not None else display, "display": display}
+
+
+def _long_number_display(value: Any) -> str | None:
+    if isinstance(value, dict):
+        for key in ("longFmt", "fmt", "shortFmt"):
+            display = value.get(key)
+            if display not in (None, ""):
+                return str(display).strip()
+        value = value.get("raw")
+    numeric = _number_value(value)
+    if numeric is None:
+        return _clean_text(value)
+    if float(numeric).is_integer():
+        return f"{int(numeric):,}"
+    return f"{float(numeric):,.2f}".rstrip("0").rstrip(".")
 
 
 def _company_ceo(officers: list[Any]) -> str | None:
