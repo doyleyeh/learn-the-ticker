@@ -298,6 +298,8 @@ class WeeklyNewsMarketWeekWindowRow(StrictRow):
     news_window_start: str
     news_window_end: str
     includes_current_week_to_date: bool
+    includes_current_day: bool = False
+    window_policy: str = "strict_completed_day"
     configured_max_item_count: int = 8
     minimum_ai_analysis_item_count: int = 2
     no_live_external_calls: bool = True
@@ -776,6 +778,7 @@ class WeeklyNewsFixtureAcquisitionBoundary:
         as_of: str,
         created_at: str,
         candidates: list[WeeklyNewsEventCandidateRow],
+        include_current_day: bool = False,
     ) -> WeeklyNewsEventEvidenceRepositoryRecords:
         return acquire_weekly_news_event_evidence_from_fixtures(
             asset_ticker=asset_ticker,
@@ -785,6 +788,7 @@ class WeeklyNewsFixtureAcquisitionBoundary:
             configured_max_item_count=self.configured_max_item_count,
             minimum_ai_analysis_item_count=self.minimum_ai_analysis_item_count,
             minimum_display_score=self.minimum_display_score,
+            include_current_day=include_current_day,
         )
 
 
@@ -797,6 +801,7 @@ def acquire_weekly_news_event_evidence_from_fixtures(
     configured_max_item_count: int = 8,
     minimum_ai_analysis_item_count: int = 2,
     minimum_display_score: int = 7,
+    include_current_day: bool = False,
 ) -> WeeklyNewsEventEvidenceRepositoryRecords:
     """Transform local candidate rows into selected Weekly News Focus evidence rows."""
 
@@ -807,6 +812,7 @@ def acquire_weekly_news_event_evidence_from_fixtures(
         created_at=created_at,
         configured_max_item_count=configured_max_item_count,
         minimum_ai_analysis_item_count=minimum_ai_analysis_item_count,
+        include_current_day=include_current_day,
     )
 
     candidate_rows: list[WeeklyNewsEventCandidateRow] = []
@@ -938,11 +944,15 @@ def build_market_week_window_row(
     configured_max_item_count: int = 8,
     minimum_ai_analysis_item_count: int = 2,
     window_id: str | None = None,
+    include_current_day: bool = False,
 ) -> WeeklyNewsMarketWeekWindowRow:
-    window = compute_weekly_news_window(as_of)
+    window = compute_weekly_news_window(as_of, include_current_day=include_current_day)
     normalized_ticker = _normalize_ticker(asset_ticker)
+    default_window_id = f"wnf_window:{normalized_ticker}:{window.as_of_date}"
+    if include_current_day:
+        default_window_id = f"{default_window_id}:local_live_current_day"
     return WeeklyNewsMarketWeekWindowRow(
-        window_id=window_id or f"wnf_window:{normalized_ticker}:{window.as_of_date}",
+        window_id=window_id or default_window_id,
         asset_ticker=normalized_ticker,
         as_of_date=window.as_of_date,
         previous_market_week_start=window.previous_market_week.start or "",
@@ -952,6 +962,8 @@ def build_market_week_window_row(
         news_window_start=window.news_window_start,
         news_window_end=window.news_window_end,
         includes_current_week_to_date=window.includes_current_week_to_date,
+        includes_current_day=window.includes_current_day,
+        window_policy=window.window_policy,
         configured_max_item_count=configured_max_item_count,
         minimum_ai_analysis_item_count=minimum_ai_analysis_item_count,
         created_at=created_at,
@@ -1599,7 +1611,7 @@ def validate_weekly_news_event_evidence_records(
 def _validate_window_row(row: WeeklyNewsMarketWeekWindowRow) -> None:
     if row.timezone != "America/New_York":
         raise WeeklyNewsEventEvidenceContractError("Weekly News Focus windows must use U.S. Eastern dates.")
-    expected = compute_weekly_news_window(row.as_of_date)
+    expected = compute_weekly_news_window(row.as_of_date, include_current_day=row.includes_current_day)
     if (
         row.previous_market_week_start != expected.previous_market_week.start
         or row.previous_market_week_end != expected.previous_market_week.end
@@ -1608,9 +1620,10 @@ def _validate_window_row(row: WeeklyNewsMarketWeekWindowRow) -> None:
         or row.news_window_start != expected.news_window_start
         or row.news_window_end != expected.news_window_end
         or row.includes_current_week_to_date != expected.includes_current_week_to_date
+        or row.window_policy != expected.window_policy
     ):
         raise WeeklyNewsEventEvidenceContractError(
-            "Market-week metadata must match last completed Monday-Sunday plus current week-to-date through yesterday."
+            "Market-week metadata must match the selected strict or local-live Weekly News Focus window policy."
         )
     if row.configured_max_item_count < 0 or row.minimum_ai_analysis_item_count < 2:
         raise WeeklyNewsEventEvidenceContractError("Weekly News Focus count thresholds are malformed.")
@@ -1800,6 +1813,8 @@ def _fixture_suppression_reasons(
     reasons.update(_candidate_source_policy_reasons(candidate))
     if not _candidate_date_in_window(candidate, window):
         reasons.add("outside_market_week_window")
+        if not window.includes_current_day:
+            reasons.add("outside_strict_window")
     if candidate.promotional:
         reasons.add("promotional")
     if candidate.irrelevant:

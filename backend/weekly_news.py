@@ -100,7 +100,7 @@ class WeeklyNewsCandidate(BaseModel):
     license_allowed: bool = True
 
 
-def compute_weekly_news_window(as_of: str | date | datetime) -> WeeklyNewsWindow:
+def compute_weekly_news_window(as_of: str | date | datetime, *, include_current_day: bool = False) -> WeeklyNewsWindow:
     """Return the deterministic Eastern market-week window for an explicit as-of date."""
 
     as_of_date = _eastern_date(as_of)
@@ -109,9 +109,11 @@ def compute_weekly_news_window(as_of: str | date | datetime) -> WeeklyNewsWindow
     previous_sunday = current_monday - timedelta(days=1)
     yesterday = as_of_date - timedelta(days=1)
 
-    if yesterday >= current_monday:
-        current_period = MarketWeekPeriod(start=current_monday.isoformat(), end=yesterday.isoformat())
-        news_window_end = yesterday
+    current_window_end = as_of_date if include_current_day else yesterday
+
+    if current_window_end >= current_monday:
+        current_period = MarketWeekPeriod(start=current_monday.isoformat(), end=current_window_end.isoformat())
+        news_window_end = current_window_end
         includes_current = True
     else:
         current_period = MarketWeekPeriod(start=None, end=None)
@@ -125,6 +127,8 @@ def compute_weekly_news_window(as_of: str | date | datetime) -> WeeklyNewsWindow
         news_window_start=previous_monday.isoformat(),
         news_window_end=news_window_end.isoformat(),
         includes_current_week_to_date=includes_current,
+        includes_current_day=include_current_day,
+        window_policy="local_live_current_day" if include_current_day else "strict_completed_day",
     )
 
 
@@ -363,6 +367,8 @@ def _weekly_news_focus_from_persisted_records(
             news_window_start=window.news_window_start,
             news_window_end=window.news_window_end,
             includes_current_week_to_date=window.includes_current_week_to_date,
+            includes_current_day=getattr(window, "includes_current_day", False),
+            window_policy=getattr(window, "window_policy", "strict_completed_day"),
         ),
         configured_max_item_count=window.configured_max_item_count,
         selected_item_count=evidence_state.selected_item_count,
@@ -373,6 +379,7 @@ def _weekly_news_focus_from_persisted_records(
         empty_state=empty_state,
         citations=citations,
         source_documents=source_documents,
+        selection_diagnostics=_selection_diagnostics_from_records(records, window.window_id),
     )
     return PersistedWeeklyNewsReadResult(
         status="found",
@@ -489,6 +496,36 @@ def _dedupe_weekly_source_documents(source_documents: list[SourceDocument]) -> l
     for source in source_documents:
         by_id.setdefault(source.source_document_id, source)
     return [by_id[source_id] for source_id in sorted(by_id)]
+
+
+def _selection_diagnostics_from_records(records: Any, window_id: str) -> dict[str, Any]:
+    candidates = [row for row in records.candidates if row.window_id == window_id]
+    selected = [row for row in records.selected_events if row.window_id == window_id]
+    candidates_by_id = {row.candidate_event_id: row for row in candidates}
+    candidate_tier_counts: dict[str, int] = {}
+    selected_tier_counts: dict[str, int] = {}
+    reason_counts: dict[str, int] = {}
+
+    for candidate in candidates:
+        candidate_tier_counts[candidate.source_rank_tier] = candidate_tier_counts.get(candidate.source_rank_tier, 0) + 1
+        for reason in candidate.suppression_reason_codes:
+            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+
+    for selected_event in selected:
+        candidate = candidates_by_id.get(selected_event.candidate_event_id)
+        tier = candidate.source_rank_tier if candidate is not None else selected_event.source_type
+        selected_tier_counts[tier] = selected_tier_counts.get(tier, 0) + 1
+
+    return {
+        "candidate_count": len(candidates),
+        "selected_count": len(selected),
+        "candidate_counts_by_source_tier": candidate_tier_counts,
+        "selected_counts_by_source_tier": selected_tier_counts,
+        "suppression_reason_counts": reason_counts,
+        "raw_article_text_collected": False,
+        "raw_provider_payload_exposed": False,
+        "secrets_exposed": False,
+    }
 
 
 def build_ai_comprehensive_analysis(
@@ -648,6 +685,8 @@ def _selection_rationale(
         exclusion_reasons.append("no_major_recent_development_marker")
     if not _date_in_window(candidate.event_date, window):
         exclusion_reasons.append("outside_market_week_window")
+        if not window.includes_current_day:
+            exclusion_reasons.append("outside_strict_window")
     if candidate.allowlist_status is not SourceAllowlistStatus.allowed:
         exclusion_reasons.append("non_allowlisted_source")
     if candidate.source_use_policy in {SourceUsePolicy.metadata_only, SourceUsePolicy.link_only, SourceUsePolicy.rejected}:

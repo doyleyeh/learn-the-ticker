@@ -5,8 +5,18 @@ from pathlib import Path
 import pytest
 
 from backend.models import (
+    AssetIdentity,
+    AssetStatus,
+    AssetType,
+    DataPolicyMode,
     EvidenceState,
+    Freshness,
     FreshnessState,
+    LightweightFetchFact,
+    LightweightFetchResponse,
+    LightweightFetchSource,
+    LightweightFetchState,
+    LightweightSourceLabel,
     SourceAllowlistStatus,
     SourceParserStatus,
     SourceQuality,
@@ -25,6 +35,11 @@ from backend.weekly_news import (
     read_persisted_weekly_news_focus,
     select_weekly_news_focus,
     validate_ai_comprehensive_analysis,
+)
+from backend.weekly_news_sources import (
+    LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD,
+    build_lightweight_weekly_news_focus,
+    yahoo_search_payload_to_weekly_news_facts,
 )
 from backend.weekly_news_repository import (
     WEEKLY_NEWS_EVENT_EVIDENCE_REPOSITORY_BOUNDARY,
@@ -128,6 +143,12 @@ def test_market_week_window_uses_explicit_eastern_as_of_date():
     assert eastern_from_utc.as_of_date == "2026-04-22"
     assert eastern_from_utc.current_week_to_date.end == "2026-04-21"
 
+    local_live = compute_weekly_news_window("2026-05-08", include_current_day=True)
+    assert local_live.news_window_end == "2026-05-08"
+    assert local_live.current_week_to_date.end == "2026-05-08"
+    assert local_live.includes_current_day is True
+    assert local_live.window_policy == "local_live_current_day"
+
 
 def test_fixture_packs_render_clear_empty_weekly_news_state_without_padding():
     for ticker in ["AAPL", "VOO", "QQQ"]:
@@ -152,6 +173,180 @@ def test_fixture_packs_render_clear_empty_weekly_news_state_without_padding():
         assert analysis.weekly_news_selected_item_count == 0
         assert analysis.sections == []
         assert "fewer than two approved" in analysis.suppression_reason
+
+
+def test_lightweight_weekly_news_local_live_includes_current_day_items():
+    response = _lightweight_weekly_news_response(
+        no_live_external_calls=False,
+        facts=[
+            _lightweight_weekly_fact(
+                "nvda_fmp_current_day",
+                source_type="fmp_weekly_news_metadata",
+                source_rank_tier=WeeklyNewsSourceRankTier.allowlisted_news,
+                source_quality=SourceQuality.allowlisted,
+                source_label=LightweightSourceLabel.reputable_third_party,
+                event_date="2026-05-08",
+            )
+        ],
+    )
+
+    focus = build_lightweight_weekly_news_focus(response)
+
+    assert focus is not None
+    assert focus.selected_item_count == 1
+    assert focus.items[0].event_date == "2026-05-08"
+    assert focus.window.news_window_end == "2026-05-08"
+    assert focus.window.includes_current_day is True
+    assert focus.window.window_policy == "local_live_current_day"
+    assert focus.selection_diagnostics["includes_current_day"] is True
+
+
+def test_lightweight_weekly_news_strict_mode_excludes_current_day_items():
+    response = _lightweight_weekly_news_response(
+        no_live_external_calls=True,
+        facts=[
+            _lightweight_weekly_fact(
+                "nvda_yahoo_current_day",
+                source_type="yahoo_finance_weekly_news_metadata",
+                source_rank_tier=WeeklyNewsSourceRankTier.provider_context,
+                source_quality=SourceQuality.provider,
+                event_date="2026-05-08",
+            )
+        ],
+    )
+
+    focus = build_lightweight_weekly_news_focus(response)
+
+    assert focus is not None
+    assert focus.selected_item_count == 0
+    assert focus.window.news_window_end == "2026-05-07"
+    assert focus.window.includes_current_day is False
+    assert focus.window.window_policy == "strict_completed_day"
+    reasons = focus.selection_diagnostics["suppression_reason_counts"]
+    assert reasons["outside_market_week_window"] == 1
+    assert reasons["outside_strict_window"] == 1
+
+
+def test_lightweight_weekly_news_prefers_provider_news_before_yahoo_fallback():
+    response = _lightweight_weekly_news_response(
+        no_live_external_calls=False,
+        facts=[
+            _lightweight_weekly_fact(
+                "nvda_yahoo_context",
+                source_type="yahoo_finance_weekly_news_metadata",
+                source_rank_tier=WeeklyNewsSourceRankTier.provider_context,
+                source_quality=SourceQuality.provider,
+                event_date="2026-05-08",
+            ),
+            _lightweight_weekly_fact(
+                "nvda_fmp_context",
+                source_type="fmp_weekly_news_metadata",
+                source_rank_tier=WeeklyNewsSourceRankTier.allowlisted_news,
+                source_quality=SourceQuality.allowlisted,
+                source_label=LightweightSourceLabel.reputable_third_party,
+                event_date="2026-05-08",
+            ),
+        ],
+    )
+
+    focus = build_lightweight_weekly_news_focus(response)
+
+    assert focus is not None
+    assert [item.source.source_type for item in focus.items] == [
+        "fmp_weekly_news_metadata",
+        "yahoo_finance_weekly_news_metadata",
+    ]
+    assert focus.items[0].source.source_quality is SourceQuality.allowlisted
+    assert focus.items[1].source.source_quality is SourceQuality.provider
+
+
+def test_lightweight_weekly_news_uses_yahoo_to_backfill_remaining_slots():
+    response = _lightweight_weekly_news_response(
+        no_live_external_calls=False,
+        facts=[
+            _lightweight_weekly_fact(
+                "nvda_fmp_one",
+                source_type="fmp_weekly_news_metadata",
+                source_rank_tier=WeeklyNewsSourceRankTier.allowlisted_news,
+                source_quality=SourceQuality.allowlisted,
+                source_label=LightweightSourceLabel.reputable_third_party,
+                event_date="2026-05-08",
+            ),
+            _lightweight_weekly_fact(
+                "nvda_finnhub_two",
+                source_type="finnhub_weekly_news_metadata",
+                source_rank_tier=WeeklyNewsSourceRankTier.allowlisted_news,
+                source_quality=SourceQuality.allowlisted,
+                source_label=LightweightSourceLabel.reputable_third_party,
+                event_date="2026-05-08",
+            ),
+            _lightweight_weekly_fact(
+                "nvda_yahoo_three",
+                source_type="yahoo_finance_weekly_news_metadata",
+                source_rank_tier=WeeklyNewsSourceRankTier.provider_context,
+                source_quality=SourceQuality.provider,
+                event_date="2026-05-08",
+            ),
+            _lightweight_weekly_fact(
+                "nvda_yahoo_four",
+                source_type="yahoo_finance_weekly_news_metadata",
+                source_rank_tier=WeeklyNewsSourceRankTier.provider_context,
+                source_quality=SourceQuality.provider,
+                event_date="2026-05-08",
+            ),
+        ],
+    )
+
+    focus = build_lightweight_weekly_news_focus(response)
+
+    assert focus is not None
+    assert focus.selected_item_count == 4
+    assert [item.source.source_type for item in focus.items] == [
+        "fmp_weekly_news_metadata",
+        "finnhub_weekly_news_metadata",
+        "yahoo_finance_weekly_news_metadata",
+        "yahoo_finance_weekly_news_metadata",
+    ]
+    assert focus.selection_diagnostics["selected_counts_by_source_tier"] == {
+        "allowlisted_news": 2,
+        "provider_context": 2,
+    }
+
+
+def test_provider_news_adapter_marks_reputable_api_items_ahead_of_yahoo_fallback():
+    result = yahoo_search_payload_to_weekly_news_facts(
+        ticker="NVDA",
+        asset_type=AssetType.stock,
+        payload={
+            "news": [
+                {
+                    "uuid": "provider-nvda-news",
+                    "title": "NVDA reports AI platform update",
+                    "publisher": "Reuters",
+                    "link": "https://example.com/nvda-provider",
+                    "published_at": "2026-05-08T13:00:00Z",
+                    "summary": "Provider metadata summary.",
+                    "relatedTickers": ["NVDA"],
+                }
+            ]
+        },
+        retrieved_at="2026-05-08T15:00:00Z",
+        no_live_external_calls=False,
+        provider_name="Financial Modeling Prep",
+        source_type="fmp_weekly_news_metadata",
+        source_id_prefix="lw_fmp",
+        rights_note="Provider metadata only.",
+        source_rank_tier=WeeklyNewsSourceRankTier.allowlisted_news,
+        source_quality=SourceQuality.allowlisted,
+        source_label=LightweightSourceLabel.reputable_third_party,
+    )
+
+    assert result.candidate_count == 1
+    assert result.sources[0].source_quality is SourceQuality.allowlisted
+    assert result.sources[0].source_label is LightweightSourceLabel.reputable_third_party
+    assert result.facts[0].value["source_rank_tier"] == "allowlisted_news"
+    assert result.raw_article_text_collected is False
+    assert result.raw_provider_payload_exposed is False
 
 
 def test_weekly_news_selection_prioritizes_official_sources_and_excludes_disallowed_items():
@@ -952,6 +1147,109 @@ def test_weekly_news_module_does_not_import_live_network_clients():
     repository_source = (ROOT / "backend" / "repositories" / "weekly_news.py").read_text(encoding="utf-8")
     for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import", "os.environ", "api_key"]:
         assert forbidden not in repository_source
+
+
+def _lightweight_weekly_news_response(
+    *,
+    no_live_external_calls: bool,
+    facts: list[LightweightFetchFact],
+    as_of: str = "2026-05-08T15:00:00Z",
+) -> LightweightFetchResponse:
+    source_ids = {source_id for fact in facts for source_id in fact.source_document_ids}
+    sources = [_LIGHTWEIGHT_WEEKLY_SOURCES[source_id] for source_id in source_ids]
+    return LightweightFetchResponse(
+        ticker="NVDA",
+        data_policy_mode=DataPolicyMode.lightweight,
+        fetch_state=LightweightFetchState.supported,
+        asset=AssetIdentity(
+            ticker="NVDA",
+            name="NVIDIA Corporation",
+            asset_type=AssetType.stock,
+            exchange="Nasdaq",
+            status=AssetStatus.supported,
+            supported=True,
+        ),
+        generated_output_eligible=True,
+        page_render_state=EvidenceState.supported,
+        freshness=Freshness(
+            page_last_updated_at=as_of,
+            recent_events_as_of=max((fact.as_of_date or "" for fact in facts), default=None),
+            freshness_state=FreshnessState.fresh,
+        ),
+        facts=facts,
+        sources=sources,
+        citations=[],
+        diagnostics={},
+        no_live_external_calls=no_live_external_calls,
+        message="Test lightweight Weekly News response.",
+    )
+
+
+_LIGHTWEIGHT_WEEKLY_SOURCES: dict[str, LightweightFetchSource] = {}
+
+
+def _lightweight_weekly_fact(
+    event_id: str,
+    *,
+    source_type: str,
+    source_rank_tier: WeeklyNewsSourceRankTier,
+    source_quality: SourceQuality,
+    event_date: str,
+    source_label: LightweightSourceLabel = LightweightSourceLabel.provider_derived,
+) -> LightweightFetchFact:
+    source_document_id = f"src_{event_id}"
+    _LIGHTWEIGHT_WEEKLY_SOURCES[source_document_id] = LightweightFetchSource(
+        source_document_id=source_document_id,
+        source_label=source_label,
+        source_type=source_type,
+        title=f"{event_id.replace('_', ' ').title()} source",
+        publisher="Test Publisher",
+        url=f"https://example.com/{event_id}",
+        is_official=False,
+        source_quality=source_quality,
+        source_use_policy=SourceUsePolicy.summary_allowed,
+        allowlist_status=SourceAllowlistStatus.allowed,
+        published_at=f"{event_date}T13:00:00Z",
+        as_of_date=event_date,
+        retrieved_at="2026-05-08T15:00:00Z",
+        date_precision="day",
+        freshness_state=FreshnessState.fresh,
+        fallback_reason="Test Weekly News fallback metadata.",
+        rights_note="Metadata-only test source.",
+        export_allowed=False,
+    )
+    return LightweightFetchFact(
+        fact_id=f"fact_{event_id}",
+        field_name=LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD,
+        value={
+            "event_id": event_id,
+            "title": f"{event_id.replace('_', ' ').title()} headline",
+            "summary": f"Source-labeled Weekly News metadata for {event_id}.",
+            "publisher": "Test Publisher",
+            "url": f"https://example.com/{event_id}",
+            "published_at": f"{event_date}T13:00:00Z",
+            "event_date": event_date,
+            "event_type": WeeklyNewsEventType.product_announcement.value,
+            "source_rank_tier": source_rank_tier.value,
+            "source_label": source_label.value,
+            "source_quality": source_quality.value,
+            "source_use_policy": SourceUsePolicy.summary_allowed.value,
+            "official_source": False,
+            "ticker_match": "exact_or_related_ticker",
+            "raw_article_text_collected": False,
+            "thumbnail_or_media_forwarded": False,
+            "provider_name": "Test Provider",
+        },
+        evidence_state=EvidenceState.supported,
+        freshness_state=FreshnessState.fresh,
+        as_of_date=event_date,
+        retrieved_at="2026-05-08T15:00:00Z",
+        source_document_ids=[source_document_id],
+        citation_ids=[f"cite_{event_id}"],
+        source_labels=[source_label],
+        fallback_used=True,
+        limitations="Metadata-only test source.",
+    )
 
 
 def test_weekly_news_event_evidence_repository_metadata_and_migration_are_inspectable():

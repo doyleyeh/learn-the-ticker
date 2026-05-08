@@ -48,6 +48,7 @@ from backend.weekly_news_sources import (
     WEEKLY_NEWS_SOURCE_ADAPTER_BOUNDARY,
     yahoo_search_payload_to_weekly_news_facts,
 )
+from backend.weekly_news_repository import WeeklyNewsSourceRankTier
 
 
 LIGHTWEIGHT_FETCH_SCHEMA_VERSION = "lightweight-asset-fetch-v1"
@@ -1832,7 +1833,13 @@ def _try_provider_api_weekly_news_fallback(
     if not settings.weekly_news_fetch_enabled:
         return [], [], [], {f"{provider}_weekly_news_candidate_count": 0, f"{provider}_weekly_news_suppressed_count": 0}
     credential = settings.credential_for(provider)
-    url = _provider_api_weekly_news_url(provider, ticker, credential, retrieved_at)
+    url = _provider_api_weekly_news_url(
+        provider,
+        ticker,
+        credential,
+        retrieved_at,
+        include_current_day=not fetcher.no_live_external_calls,
+    )
     if not credential or not url:
         return [], [], [], {f"{provider}_weekly_news_candidate_count": 0, f"{provider}_weekly_news_suppressed_count": 0}
     errors: list[dict[str, str]] = []
@@ -1862,20 +1869,31 @@ def _try_provider_api_weekly_news_fallback(
             f"{provider} provider news metadata is source-labeled fallback for local Weekly News Focus. "
             "Only metadata and bounded summaries are used; raw article bodies, media, provider payloads, and API keys are not exposed."
         ),
+        source_rank_tier=WeeklyNewsSourceRankTier.allowlisted_news,
+        source_quality=SourceQuality.allowlisted,
+        source_label=LightweightSourceLabel.reputable_third_party,
     )
     return weekly_news.sources, weekly_news.facts, errors, {
         f"{provider}_weekly_news_candidate_count": weekly_news.candidate_count,
         f"{provider}_weekly_news_suppressed_count": weekly_news.suppressed_count,
+        f"{provider}_weekly_news_suppression_reason_counts": weekly_news.suppression_reason_counts,
         f"{provider}_weekly_news_raw_payload_exposed": weekly_news.raw_provider_payload_exposed,
         f"{provider}_weekly_news_raw_article_text_collected": weekly_news.raw_article_text_collected,
     }
 
 
-def _provider_api_weekly_news_url(provider: str, ticker: str, credential: str | None, retrieved_at: str) -> str | None:
+def _provider_api_weekly_news_url(
+    provider: str,
+    ticker: str,
+    credential: str | None,
+    retrieved_at: str,
+    *,
+    include_current_day: bool = False,
+) -> str | None:
     if not credential:
         return None
     symbol = quote(ticker)
-    window = compute_weekly_news_window(retrieved_at)
+    window = compute_weekly_news_window(retrieved_at, include_current_day=include_current_day)
     start = quote(window.news_window_start)
     end = quote(window.news_window_end)
     if provider == "fmp":
@@ -2671,6 +2689,7 @@ def _try_yahoo_provider_fallback(
                 "weekly_news_fetch_enabled": True,
                 "weekly_news_provider_candidate_count": weekly_news.candidate_count,
                 "weekly_news_provider_suppressed_count": weekly_news.suppressed_count,
+                "weekly_news_suppression_reason_counts": weekly_news.suppression_reason_counts,
                 "weekly_news_fact_field": LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD,
                 "weekly_news_raw_article_text_collected": weekly_news.raw_article_text_collected,
                 "weekly_news_raw_provider_payload_exposed": weekly_news.raw_provider_payload_exposed,

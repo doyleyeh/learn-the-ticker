@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
@@ -68,6 +68,7 @@ class WeeklyNewsSourceAdapterResult:
     candidate_count: int
     suppressed_count: int
     no_live_external_calls: bool
+    suppression_reason_counts: dict[str, int] = field(default_factory=dict)
     raw_article_text_collected: bool = False
     raw_provider_payload_exposed: bool = False
     thumbnail_or_media_forwarded: bool = False
@@ -85,6 +86,9 @@ def yahoo_search_payload_to_weekly_news_facts(
     source_type: str = "yahoo_finance_weekly_news_metadata",
     source_id_prefix: str = "lw_yahoo",
     rights_note: str = YAHOO_WEEKLY_NEWS_RIGHTS_NOTE,
+    source_rank_tier: WeeklyNewsSourceRankTier = WeeklyNewsSourceRankTier.provider_context,
+    source_quality: SourceQuality = SourceQuality.provider,
+    source_label: LightweightSourceLabel = LightweightSourceLabel.provider_derived,
 ) -> WeeklyNewsSourceAdapterResult:
     """Convert rights-safe provider news metadata into lightweight Weekly News facts."""
 
@@ -95,21 +99,29 @@ def yahoo_search_payload_to_weekly_news_facts(
     raw_items = payload.get("news")
     if not isinstance(raw_items, list):
         raw_items = []
+    suppression_reason_counts: dict[str, int] = {}
 
     for index, item in enumerate(raw_items):
         if len(facts) >= max_items:
             break
         if not isinstance(item, dict):
             suppressed += 1
+            _increment_reason(suppression_reason_counts, "invalid_provider_item")
             continue
         title = _clean_text(item.get("title"))
         publisher = _clean_text(item.get("publisher")) or provider_name
         url = _clean_text(item.get("link"))
-        if not title or not url or _is_advice_like_title(title):
+        if not title or not url:
             suppressed += 1
+            _increment_reason(suppression_reason_counts, "missing_required_metadata")
+            continue
+        if _is_advice_like_title(title):
+            suppressed += 1
+            _increment_reason(suppression_reason_counts, "advice_like")
             continue
         if not _item_matches_ticker(item, normalized, title):
             suppressed += 1
+            _increment_reason(suppression_reason_counts, "weak_ticker_match")
             continue
 
         published_at = _published_at(item)
@@ -119,13 +131,13 @@ def yahoo_search_payload_to_weekly_news_facts(
         source_document_id = f"{source_id_prefix}_{normalized.lower()}_weekly_news_{safe_id}"
         source = LightweightFetchSource(
             source_document_id=source_document_id,
-            source_label=LightweightSourceLabel.provider_derived,
+            source_label=source_label,
             source_type=source_type,
             title=title,
             publisher=publisher,
             url=url,
             is_official=False,
-            source_quality=SourceQuality.provider,
+            source_quality=source_quality,
             source_use_policy=SourceUsePolicy.summary_allowed,
             allowlist_status=SourceAllowlistStatus.allowed,
             published_at=published_at,
@@ -146,15 +158,20 @@ def yahoo_search_payload_to_weekly_news_facts(
                     "adapter_boundary": WEEKLY_NEWS_SOURCE_ADAPTER_BOUNDARY,
                     "event_id": f"provider_weekly_news_{normalized.lower()}_{safe_id}",
                     "title": title,
-                    "summary": _summary_for_item(item, ticker=normalized, event_type=event_type),
+                    "summary": _summary_for_item(
+                        item,
+                        ticker=normalized,
+                        event_type=event_type,
+                        provider_name=provider_name,
+                    ),
                     "publisher": publisher,
                     "url": url,
                     "published_at": published_at,
                     "event_date": event_date,
                     "event_type": event_type.value,
-                    "source_rank_tier": WeeklyNewsSourceRankTier.provider_context.value,
-                    "source_label": LightweightSourceLabel.provider_derived.value,
-                    "source_quality": SourceQuality.provider.value,
+                    "source_rank_tier": source_rank_tier.value,
+                    "source_label": source_label.value,
+                    "source_quality": source_quality.value,
                     "source_use_policy": SourceUsePolicy.summary_allowed.value,
                     "official_source": False,
                     "ticker_match": "exact_or_related_ticker",
@@ -184,6 +201,7 @@ def yahoo_search_payload_to_weekly_news_facts(
         candidate_count=len(facts),
         suppressed_count=suppressed,
         no_live_external_calls=no_live_external_calls,
+        suppression_reason_counts=suppression_reason_counts,
     )
 
 
@@ -195,12 +213,14 @@ def build_lightweight_weekly_news_focus(response: LightweightFetchResponse):
         return None
 
     as_of = response.freshness.page_last_updated_at
+    include_current_day = not response.no_live_external_calls
     records = acquire_weekly_news_event_evidence_from_fixtures(
         asset_ticker=response.asset.ticker,
         as_of=as_of,
         created_at=response.freshness.page_last_updated_at,
         candidates=candidates,
         minimum_ai_analysis_item_count=MINIMUM_AI_ANALYSIS_ITEMS,
+        include_current_day=include_current_day,
     )
     repo = InMemoryWeeklyNewsEventEvidenceRepository()
     repo.persist(records)
@@ -211,7 +231,16 @@ def build_lightweight_weekly_news_focus(response: LightweightFetchResponse):
     )
     if not read.found or read.weekly_news_focus is None:
         return None
-    return read.weekly_news_focus.model_copy(update={"no_live_external_calls": response.no_live_external_calls})
+    return read.weekly_news_focus.model_copy(
+        update={
+            "no_live_external_calls": response.no_live_external_calls,
+            "selection_diagnostics": {
+                **read.weekly_news_focus.selection_diagnostics,
+                "window_policy": "local_live_current_day" if include_current_day else "strict_completed_day",
+                "includes_current_day": include_current_day,
+            },
+        }
+    )
 
 
 def weekly_news_candidate_rows_from_lightweight_response(
@@ -496,13 +525,19 @@ def _published_at(item: dict[str, Any]) -> str | None:
     return text
 
 
-def _summary_for_item(item: dict[str, Any], *, ticker: str, event_type: WeeklyNewsEventType) -> str:
+def _summary_for_item(
+    item: dict[str, Any],
+    *,
+    ticker: str,
+    event_type: WeeklyNewsEventType,
+    provider_name: str,
+) -> str:
     snippet = _clean_text(item.get("summary") or item.get("snippet"))
     if snippet:
         return _bounded_words(snippet, 36)
     event_label = event_type.value.replace("_", " ")
     return (
-        f"Yahoo Finance/yfinance-derived metadata surfaced this {event_label} item for {ticker}; "
+        f"{provider_name} metadata surfaced this {event_label} item for {ticker}; "
         "use the publisher link and source label for context."
     )
 
@@ -549,6 +584,10 @@ def _coerce_event_type(value: Any, asset_type: AssetType) -> WeeklyNewsEventType
 def _is_advice_like_title(title: str) -> bool:
     text = f" {title.lower()} "
     return any(marker in text for marker in _ADVICE_LIKE_TITLE_MARKERS)
+
+
+def _increment_reason(counts: dict[str, int], reason: str) -> None:
+    counts[reason] = counts.get(reason, 0) + 1
 
 
 def _duplicate_group_id(ticker: str, title: str, event_date: str) -> str:

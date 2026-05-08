@@ -2238,6 +2238,8 @@ class WeeklyNewsWindow(BaseModel):
     news_window_start: str
     news_window_end: str
     includes_current_week_to_date: bool
+    includes_current_day: bool = False
+    window_policy: Literal["strict_completed_day", "local_live_current_day"] = "strict_completed_day"
 
 
 class WeeklyNewsDeduplicationMetadata(BaseModel):
@@ -2315,6 +2317,7 @@ class WeeklyNewsFocusResponse(BaseModel):
     empty_state: WeeklyNewsEmptyState | None = None
     citations: list[Citation] = Field(default_factory=list)
     source_documents: list[SourceDocument] = Field(default_factory=list)
+    selection_diagnostics: dict[str, Any] = Field(default_factory=dict)
     no_live_external_calls: bool = True
     stable_facts_are_separate: bool = True
 
