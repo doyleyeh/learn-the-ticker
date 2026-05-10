@@ -375,8 +375,20 @@ def _stock_primary_business_fact(response: LightweightFetchResponse) -> Lightwei
         return None
     sector = profile.value.get("sector")
     industry = profile.value.get("industry")
-    business_summary = profile.value.get("business_summary")
-    parts = [str(item) for item in (sector, industry, business_summary) if item]
+    business_summary = (
+        profile.value.get("business_summary")
+        or profile.value.get("long_business_summary")
+        or profile.value.get("longBusinessSummary")
+    )
+    parts: list[str] = []
+    if sector and industry:
+        parts.append(f"sector: {sector}; industry: {industry}")
+    elif sector:
+        parts.append(f"sector: {sector}")
+    elif industry:
+        parts.append(f"industry: {industry}")
+    if business_summary:
+        parts.append(f"business summary: {_short_chat_value(business_summary)}")
     if not parts:
         return None
     return LightweightFetchFact(
@@ -1467,7 +1479,7 @@ def _identity_plan(
         business = facts_by_field.get("primary_business")
         if business is not None:
             claim_text = (
-                f"{identity_claim.claim_text} Its local fixture says its primary business is: {business.fact.value}"
+                f"{identity_claim.claim_text} Source-labeled evidence describes its primary business as: {business.fact.value}"
             )
             citation_id = bindings.for_fact(business, claim_text)
         else:
@@ -1506,7 +1518,7 @@ def _stock_business_plan(
 ) -> tuple[_ChatPlan, _ChatCitationRegistry]:
     identity_claim = _canonical_identity_claim(pack, facts_by_field, bindings)
     business = _require_fact(facts_by_field, "primary_business")
-    claim_text = f"{pack.asset.name}'s local fixture describes its primary business as: {business.fact.value}"
+    claim_text = f"{pack.asset.name}'s source-labeled evidence describes its primary business as: {business.fact.value}"
     citation_id = bindings.for_fact(business, claim_text)
     return (
         _ChatPlan(

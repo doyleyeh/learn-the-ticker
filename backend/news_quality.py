@@ -275,7 +275,7 @@ def score_ticker_weekly_news(
         and not official
     ):
         reasons.add("generic_market_context_for_ticker")
-    if tier == "demoted" and relevance_score < 35 and not official:
+    if tier == "demoted" and (relevance_score < 35 or utility_score < 12) and not official:
         reasons.add("demoted_publisher_backfill_only")
     if priority >= 99 and tier != "demoted" and relevance_score < 35 and not official:
         reasons.add("low_source_quality")

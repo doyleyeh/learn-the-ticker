@@ -892,6 +892,7 @@ function buildSuppressedAnalysis(
     minimumWeeklyNewsItemCount: 2,
     weeklyNewsSelectedItemCount: weeklyNewsFocus.selectedItemCount,
     suppressionReason: "AI Comprehensive Analysis is suppressed until at least two approved Weekly News Focus items exist.",
+    validationReasonCodes: [],
     sections: [],
     citationIds: [],
     sourceDocumentIds: [],

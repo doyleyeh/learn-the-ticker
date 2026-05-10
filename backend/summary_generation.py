@@ -278,7 +278,7 @@ class HybridSummaryGenerationService:
                 "evidence_notes": evidence_notes or [],
             },
         )
-        fallback = {"summary": _deep_dive_fallback(asset, title, base_summary, evidence_state, evidence_notes or [])}
+        fallback = {"summary": _deep_dive_fallback(asset, section_id, title, base_summary, evidence_state, evidence_notes or [])}
         generated = self._payload_or_fallback(request, fallback)
         payload = generated.payload
         summary = _required_text(payload, "summary")
@@ -417,8 +417,21 @@ class HybridSummaryGenerationService:
         )
         event_ids = [item.event_id for item in weekly_news_focus.items]
         asset_kind = "fund" if asset.asset_type.value == "etf" else "business"
-        titles = [item.title for item in weekly_news_focus.items[:3]]
-        item_summaries = [item.summary for item in weekly_news_focus.items[:3] if item.summary]
+        weekly_items = [
+            {
+                "event_id": item.event_id,
+                "event_type": item.event_type.value,
+                "title": item.title,
+                "summary": item.summary,
+                "publisher": item.source.publisher,
+                "source_quality": item.source.source_quality.value,
+                "source_type": item.source.source_type,
+                "is_official": item.source.is_official,
+                "citation_ids": item.citation_ids,
+                "importance_score": item.importance_score,
+            }
+            for item in weekly_news_focus.items
+        ]
         request = SummaryGenerationRequest(
             task_name="ticker_ai_comprehensive_analysis",
             schema_version=TICKER_AI_ANALYSIS_SCHEMA_VERSION,
@@ -426,16 +439,26 @@ class HybridSummaryGenerationService:
             payload={
                 "asset": asset.model_dump(mode="json"),
                 "weekly_news_event_ids": event_ids,
-                "weekly_news_titles": titles,
-                "weekly_news_summaries": item_summaries,
+                "weekly_news_items": weekly_items,
                 "weekly_citation_ids": weekly_citations,
                 "canonical_fact_citation_ids": canonical_fact_citation_ids,
+                "allowed_citation_ids": all_citations,
+                "required_section_order": [section_id for section_id, _label in _TICKER_AI_SECTION_ORDER],
+                "analysis_style": [
+                    "Synthesize patterns across the evidence instead of repeating headlines.",
+                    "Explain what the evidence changes, what it does not change, and what a beginner can check next.",
+                    "Keep recent news separate from stable asset identity.",
+                ],
             },
         )
         fallback = {"sections": _ticker_ai_fallback_sections(asset, weekly_news_focus, all_citations, weekly_citations, asset_kind)}
         generated = self._payload_or_fallback(request, fallback)
         payload = generated.payload
-        sections = _sections_from_payload(payload, allowed_citations=set(all_citations))
+        sections = _sections_from_payload(
+            payload,
+            allowed_citations=set(all_citations),
+            selected_titles=[item.title for item in weekly_news_focus.items],
+        )
         response = AIComprehensiveAnalysisResponse(
             asset=asset,
             state=WeeklyNewsContractState.available,
@@ -845,18 +868,28 @@ def _beginner_fallback_payload(
 
 def _deep_dive_fallback(
     asset: AssetIdentity,
+    section_id: str,
     title: str,
     base_summary: str,
     evidence_state: str,
     evidence_notes: list[str],
 ) -> str:
     notes = _evidence_note_map(evidence_notes)
-    fields = [value for key, value in notes.items() if key not in {"fetch_state", "source_count", "fact_count"}][:4]
+    fields = [
+        value
+        for key, value in notes.items()
+        if key not in {"fetch_state", "source_count", "fact_count", "section_id", "evidence_state", "limitations"}
+    ][:4]
     field_text = _join_human_text(fields)
+    if section_id != "evidence_limits" and not field_text:
+        return base_summary
     if field_text:
         return _join_sentences(
             base_summary,
-            f"For {asset.ticker}, this {title.lower()} section is grounded in {field_text} and is labeled {evidence_state}.",
+            (
+                f"For {asset.ticker}, this {title.lower()} discussion uses {field_text} to add context without "
+                "turning missing or partial details into new facts."
+            ),
         )
     return _join_sentences(
         base_summary,
@@ -871,29 +904,44 @@ def _ticker_ai_fallback_sections(
     weekly_citations: list[str],
     asset_kind: str,
 ) -> list[dict[str, Any]]:
-    item_phrases = [
-        f"{item.title}: {item.summary}" if item.summary else item.title
-        for item in weekly_news_focus.items[:3]
-    ]
-    changed = _join_human_text(item_phrases) or "the approved Weekly News Focus set is available but thin"
+    event_mix = _weekly_event_mix(weekly_news_focus)
+    source_mix = _weekly_source_mix(weekly_news_focus)
+    item_count = len(weekly_news_focus.items)
+    change_anchor = (
+        f"{item_count} approved ticker-specific item{'' if item_count == 1 else 's'} covering {event_mix}"
+        if event_mix
+        else f"{item_count} approved ticker-specific Weekly News Focus item{'' if item_count == 1 else 's'}"
+    )
+    market_lens = (
+        "For a fund, the useful market lens is whether the items relate to flows, fees, index rules, holdings, or sponsor updates."
+        if asset.asset_type.value == "etf"
+        else "For a stock, the useful market lens is whether the items relate to demand, products, customers, regulation, or reported results."
+    )
+    business_lens = (
+        "fund construction, benchmark exposure, costs, and holdings evidence"
+        if asset_kind == "fund"
+        else "the company's products, customers, financial profile, and filing-backed business description"
+    )
     return [
         {
             "section_id": "what_changed_this_week",
             "label": "What Changed This Week",
             "analysis": (
-                f"For {asset.ticker}, the selected weekly evidence centers on {changed}. This is a synthesis of the cited "
-                "weekly items, not a replacement for stable asset facts."
+                f"For {asset.ticker}, the change to study this week is the pattern across {change_anchor}. "
+                f"The source mix is {source_mix}, so this is timely context rather than a new definition of the asset."
             ),
-            "bullets": ["The section summarizes only items that passed the Weekly News Focus evidence rules."],
-            "citation_ids": all_citations,
-            "uncertainty": ["Other relevant items may be absent when they did not pass the evidence rules."],
+            "bullets": [
+                "Use the cited set to identify what new evidence appeared, then compare it with the stable asset facts."
+            ],
+            "citation_ids": weekly_citations,
+            "uncertainty": ["Relevant items may be absent when they did not pass the Weekly News Focus evidence rules."],
         },
         {
             "section_id": "market_context",
             "label": "Market Context",
             "analysis": (
-                f"The weekly items give current context for how beginners might read {asset.ticker} beside broader market themes; "
-                "they do not prove a market trend or define the asset."
+                f"{market_lens} The cited weekly evidence can explain why {asset.ticker} is being discussed now, "
+                "but it does not prove a broad market trend or a future outcome."
             ),
             "bullets": ["Recent context remains separate from canonical identity, holdings, business, and risk facts."],
             "citation_ids": weekly_citations,
@@ -903,8 +951,8 @@ def _ticker_ai_fallback_sections(
             "section_id": "business_or_fund_context",
             "label": "Business/Fund Context",
             "analysis": (
-                f"For this {asset_kind}, the cited weekly items should be compared with canonical facts before drawing lessons. "
-                f"That helps beginners distinguish durable {asset_kind} context from temporary headlines."
+                f"For this {asset_kind}, the beginner question is how the weekly evidence connects to {business_lens}. "
+                "The useful lesson is the relationship between current events and durable facts, not the headline by itself."
             ),
             "bullets": ["Canonical facts and Weekly News Focus use separate citation sets."],
             "citation_ids": all_citations,
@@ -914,14 +962,34 @@ def _ticker_ai_fallback_sections(
             "section_id": "risk_context",
             "label": "Risk Context",
             "analysis": (
-                f"The useful risk lesson is to ask what the weekly evidence changes, what it does not change, and whether later "
-                f"approved sources confirm it for {asset.ticker}."
+                f"The risk lens is to separate what the cited items newly highlight from what remains unchanged about {asset.ticker}. "
+                "Useful watchpoints are confirmation from later approved sources, whether the item affects core facts, and whether the evidence is only metadata-level."
             ),
             "bullets": ["Do not infer returns, suitability, or trading actions from this cited news set."],
             "citation_ids": weekly_citations,
             "uncertainty": ["Risk context is limited to cited weekly-news evidence and canonical facts."],
         },
     ]
+
+
+def _weekly_event_mix(weekly_news_focus: WeeklyNewsFocusResponse) -> str:
+    labels: list[str] = []
+    for item in weekly_news_focus.items:
+        label = item.event_type.value.replace("_", " ")
+        if label not in labels:
+            labels.append(label)
+    return _join_human_text(labels[:4])
+
+
+def _weekly_source_mix(weekly_news_focus: WeeklyNewsFocusResponse) -> str:
+    official_count = sum(1 for item in weekly_news_focus.items if item.source.is_official)
+    third_party_count = len(weekly_news_focus.items) - official_count
+    parts: list[str] = []
+    if official_count:
+        parts.append(f"{official_count} official item{'' if official_count == 1 else 's'}")
+    if third_party_count:
+        parts.append(f"{third_party_count} source-labeled third-party or provider item{'' if third_party_count == 1 else 's'}")
+    return _join_human_text(parts) or "source-labeled weekly evidence"
 
 
 def _market_ai_fallback_sections(focus: MarketNewsFocusResponse, all_citations: list[str]) -> list[dict[str, Any]]:
@@ -1017,7 +1085,12 @@ def _citations_for_market_bucket(focus: MarketNewsFocusResponse, bucket: MarketN
     return sorted({citation_id for item in focus.items if item.topic_bucket is bucket for citation_id in item.citation_ids})
 
 
-def _sections_from_payload(payload: dict[str, Any], *, allowed_citations: set[str]) -> list[AIComprehensiveAnalysisSection]:
+def _sections_from_payload(
+    payload: dict[str, Any],
+    *,
+    allowed_citations: set[str],
+    selected_titles: list[str] | None = None,
+) -> list[AIComprehensiveAnalysisSection]:
     raw_sections = payload.get("sections")
     if not isinstance(raw_sections, list):
         raise SummaryGenerationContractError("Generated ticker analysis requires a sections array.")
@@ -1033,11 +1106,13 @@ def _sections_from_payload(payload: dict[str, Any], *, allowed_citations: set[st
         citation_ids = [str(item) for item in raw.get("citation_ids", [])]
         if not citation_ids or not set(citation_ids) <= allowed_citations:
             raise SummaryGenerationContractError("Generated ticker analysis citations are missing or outside the evidence pack.")
+        analysis = _required_text(raw, "analysis")
+        _reject_headline_repetition(analysis, selected_titles or [])
         sections.append(
             AIComprehensiveAnalysisSection(
                 section_id=expected_id,  # type: ignore[arg-type]
                 label=expected_label,  # type: ignore[arg-type]
-                analysis=_required_text(raw, "analysis"),
+                analysis=analysis,
                 bullets=[str(item) for item in raw.get("bullets", []) if str(item).strip()],
                 citation_ids=citation_ids,
                 uncertainty=[str(item) for item in raw.get("uncertainty", []) if str(item).strip()],
@@ -1136,9 +1211,9 @@ def _reject_headline_repetition(analysis: str, selected_titles: list[str]) -> No
     if not normalized:
         raise SummaryGenerationContractError("Generated analysis is empty.")
     matched_titles = [title for title in selected_titles if _normalize(title) and _normalize(title) in normalized]
-    if len(matched_titles) >= 3 and len(normalized.split()) < sum(len(_normalize(title).split()) for title in matched_titles) + 24:
+    if len(matched_titles) >= 2 and len(normalized.split()) < sum(len(_normalize(title).split()) for title in matched_titles) + 24:
         raise SummaryGenerationContractError("Generated analysis only repeats selected headlines.")
-    if normalized.startswith("the selected market news focus items are"):
+    if normalized.startswith("the selected market news focus items are") or normalized.startswith("the selected weekly news focus items are"):
         raise SummaryGenerationContractError("Generated market analysis repeats headlines instead of synthesizing them.")
 
 

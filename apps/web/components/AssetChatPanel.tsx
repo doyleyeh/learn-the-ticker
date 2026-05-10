@@ -279,8 +279,8 @@ export function AssetChatPanel({ ticker, assetName }: AssetChatPanelProps) {
             <div>
               <h3>Limits and uncertainty</h3>
               <ul>
-                {response.uncertainty.map((note) => (
-                  <li key={note}>{note}</li>
+                {Array.from(new Set(response.uncertainty)).map((note, index) => (
+                  <li key={`${index}-${note}`}>{note}</li>
                 ))}
               </ul>
             </div>

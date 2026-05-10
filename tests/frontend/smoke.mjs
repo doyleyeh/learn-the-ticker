@@ -198,6 +198,7 @@ includesAll("components/AIComprehensiveAnalysisPanel.tsx", [
   "data-ai-analysis-scope=\"ticker\"",
   "data-ai-analysis-minimum-weekly-news-items",
   "data-ai-analysis-weekly-news-selected-count",
+  "data-ai-analysis-validation-reason-codes",
   "data-ai-analysis-threshold-state",
   "AI Comprehensive Analysis:",
   "What Changed This Week",
@@ -292,7 +293,8 @@ includesAll("components/AssetChatPanel.tsx", [
   "data-asset-chat-comparison-redirect=\"/compare\"",
   "data-asset-chat-no-live-external=\"true\"",
   "data-chat-session-contract",
-  "data-chat-session-browser-persistence=\"none\""
+  "data-chat-session-browser-persistence=\"none\"",
+  "Array.from(new Set(response.uncertainty))"
 ], "asset chat helper, safety, accountless, and no-live-call markers");
 includesAll("app/compare/page.tsx", [
   "separate-comparison-workflow-v1",

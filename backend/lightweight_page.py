@@ -1058,7 +1058,7 @@ def _stock_sections(
             evidence_state=EvidenceState.mixed,
             as_of_date=_fact_as_of(response, "latest_sec_filing"),
             retrieved_at=retrieved_at,
-            limitations="Narrative filing parsing remains partial; normalized provider profile fields fill lightweight context gaps.",
+            limitations="Detailed segment, geography, customer, and competitor evidence is tracked in Evidence Limits when unavailable.",
         ),
         OverviewSection(
             section_id="strengths",
@@ -1066,7 +1066,7 @@ def _stock_sections(
             section_type=OverviewSectionType.stable_facts,
             applies_to=[AssetType.stock],
             beginner_summary=(
-                "Lightweight mode does not generate competitive-advantage claims, but provider-normalized profile, "
+                "This section avoids unsupported competitive-advantage claims, but provider-normalized profile, "
                 "financial, margin, return, and ownership fields can give beginners concrete questions to investigate."
             ),
             items=strength_items,
@@ -1252,7 +1252,7 @@ def _etf_sections(
             evidence_state=EvidenceState.mixed if has_issuer else EvidenceState.partial,
             as_of_date=response.freshness.facts_as_of,
             retrieved_at=retrieved_at,
-            limitations="Construction is summarized from available benchmark/prospectus metadata; full methodology parsing remains partial.",
+            limitations="Full rebalancing, screening, and methodology-document evidence is tracked in Evidence Limits when unavailable.",
         ),
         OverviewSection(
             section_id="cost_trading_context",
@@ -1293,7 +1293,7 @@ def _etf_sections(
                 _gap_item(
                     "similar_assets_gap",
                     "Similar assets and overlap",
-                    "Similar ETF, simpler-alternative, and broad-market overlap evidence is unavailable in the lightweight response.",
+                    "Similar ETF, simpler-alternative, and broad-market overlap evidence is unavailable for this page build.",
                     response,
                     evidence_state=EvidenceState.insufficient_evidence,
                 )
@@ -1551,7 +1551,7 @@ def _section_evidence_notes(section: OverviewSection) -> list[str]:
         notes.append(
             f"chart={section.chart.range} {section.chart.interval}: first close {first.close}, latest close {last.close}"
         )
-    if section.limitations:
+    if section.limitations and section.section_id == "evidence_limits":
         notes.append(f"limitations={section.limitations}")
     return notes
 
@@ -1771,14 +1771,14 @@ def _stock_products_services_items(
             "filing_narrative_pointer",
             "Filing narrative pointer",
             (
-                "The lightweight SEC path identifies the latest filing reference; detailed segment, revenue-driver, "
-                "geography, and competitor parsing remains a deeper source-pack task."
+                "The SEC filing reference anchors the official company source trail. Use it with the provider profile "
+                "context to separate the company's stable business description from recent headlines."
             ),
             filing_citations,
             response,
             evidence_state=EvidenceState.partial,
             as_of_date=_fact_as_of(response, "latest_sec_filing"),
-            limitations="Use the source drawer to inspect the filing reference before relying on this partial section.",
+            limitations="Detailed segment, revenue-driver, geography, customer, and competitor parsing may remain incomplete.",
         )
     ]
     provider_summary = _provider_profile_context_summary(response)
@@ -1792,7 +1792,7 @@ def _stock_products_services_items(
                 response,
                 evidence_state=EvidenceState.partial,
                 as_of_date=_fact_as_of(response, "provider_profile_overview"),
-                limitations="Provider-derived profile context is labeled fallback and does not replace filing narrative parsing.",
+                limitations="Provider-derived profile context is labeled fallback and should be checked against official company filings when available.",
             )
         )
     else:
@@ -1800,7 +1800,7 @@ def _stock_products_services_items(
             _gap_item(
                 "products_services_gap",
                 "Products and services detail",
-                "Source-backed product, segment, revenue-driver, geographic-exposure, and competitor detail is unavailable in the lightweight response.",
+                "Source-backed product, segment, revenue-driver, geographic-exposure, and competitor detail is unavailable for this page build.",
                 response,
             )
         )
@@ -1975,6 +1975,13 @@ def _provider_profile_context_summary(response: LightweightFetchResponse) -> str
         parts.append(f"Provider profile fields place {response.asset.ticker} in the {industry} industry")
     if ceo:
         parts.append(f"Provider profile fields list {ceo} as CEO")
+    business_summary = (
+        profile.get("business_summary")
+        or profile.get("long_business_summary")
+        or profile.get("longBusinessSummary")
+    )
+    if business_summary:
+        parts.append("Provider profile summary says " + _short_value(business_summary))
     available_metrics = [
         label
         for key, label in (
@@ -2061,15 +2068,15 @@ def _etf_methodology_items(
             "methodology_scope_note",
             "Methodology scope note",
             (
-                "The lightweight page uses benchmark and prospectus metadata for core index-tracking context. "
-                "Complete rebalancing frequency, screening rules, and methodology documents remain partial until a "
-                "deeper issuer source pack is added."
+                "Benchmark and prospectus metadata explain the fund's core index-tracking context. Rebalancing "
+                "frequency, screening rules, and methodology documents need a dedicated issuer methodology source "
+                "before this section can go deeper."
             ),
             citations,
             response,
             evidence_state=EvidenceState.partial,
             as_of_date=response.freshness.facts_as_of,
-            limitations="Methodology depth remains partial even though the core benchmark/prospectus context is available.",
+            limitations="Detailed methodology depth depends on issuer methodology evidence beyond benchmark and prospectus metadata.",
         ),
     ]
 
@@ -3375,14 +3382,13 @@ def _stock_business_model(response: LightweightFetchResponse) -> str:
 def _stock_products_services_context(response: LightweightFetchResponse) -> str:
     if _provider_profile_context_summary(response):
         return (
-            f"{response.asset.ticker}'s lightweight page keeps SEC identity and filing-reference metadata as the official "
-            "backbone, then uses provider-normalized profile fields for sector, industry, leadership, and scale context "
-            "while detailed filing narrative parsing remains partial."
+            f"{response.asset.ticker}'s products-or-services discussion starts with SEC identity and filing-reference "
+            "metadata, then adds provider-normalized profile context for sector, industry, leadership, scale, and "
+            "business-description clues."
         )
     return (
-        f"{response.asset.ticker}'s lightweight page has SEC identity and filing-reference metadata, but it does not "
-        "yet parse the filing narrative into a full products, services, segment, revenue-driver, geographic-exposure, "
-        "or competitor snapshot."
+        f"{response.asset.ticker}'s products-or-services discussion has SEC identity and filing-reference metadata, "
+        "but lacks enough source-backed narrative detail for a product, segment, revenue-driver, geography, or competitor snapshot."
     )
 
 
@@ -3562,8 +3568,8 @@ def _etf_construction_context(response: LightweightFetchResponse) -> str:
     prospectus = _fact_value(response, "prospectus_reference")
     if benchmark or prospectus:
         return (
-            f"{response.asset.ticker} construction is summarized from available benchmark and prospectus metadata; "
-            "full rebalancing, screening, and methodology detail remains partial in lightweight mode."
+            f"{response.asset.ticker} construction is explained from available benchmark and prospectus metadata, "
+            "with the focus on what index the fund tracks and which issuer source can be checked next."
         )
     return "Construction and methodology evidence is unavailable until issuer benchmark or prospectus metadata is present."
 
@@ -3577,8 +3583,8 @@ def _etf_risk_context(response: LightweightFetchResponse) -> str:
 
 def _etf_comparison_overlap_context(response: LightweightFetchResponse) -> str:
     return (
-        f"{response.asset.ticker} needs verified comparison or overlap evidence before the page can name similar ETFs, "
-        "simpler alternatives, or diversification effects."
+        f"{response.asset.ticker} can only discuss similar ETFs or overlap when verified comparison-pack or holdings-overlap "
+        "evidence is available, so this section avoids naming alternatives from memory."
     )
 
 

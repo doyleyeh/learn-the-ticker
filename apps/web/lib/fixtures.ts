@@ -324,6 +324,7 @@ export type AIComprehensiveAnalysisFixture = {
   minimumWeeklyNewsItemCount: number;
   weeklyNewsSelectedItemCount: number;
   suppressionReason: string | null;
+  validationReasonCodes: string[];
   sections: AIComprehensiveAnalysisSection[];
   citationIds: string[];
   sourceDocumentIds: string[];
@@ -531,6 +532,7 @@ function buildSuppressedAIComprehensiveAnalysis(
     weeklyNewsSelectedItemCount: 0,
     suppressionReason:
       "AI Comprehensive Analysis is suppressed because fewer than two approved Weekly News Focus items are available.",
+    validationReasonCodes: [],
     sections: [],
     citationIds: [],
     sourceDocumentIds: [],
@@ -916,6 +918,7 @@ export const aiComprehensiveAnalysisFixtures: Record<string, AIComprehensiveAnal
     minimumWeeklyNewsItemCount: 2,
     weeklyNewsSelectedItemCount: 2,
     suppressionReason: null,
+    validationReasonCodes: [],
     sections: [
       {
         sectionId: "what_changed_this_week",

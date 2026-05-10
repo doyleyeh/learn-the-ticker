@@ -25,7 +25,7 @@ from backend.models import (
     WeeklyNewsEvidenceLimitedState,
     WeeklyNewsPeriodBucket,
 )
-from backend.news_quality import score_ticker_weekly_news
+from backend.news_quality import publisher_tier, score_ticker_weekly_news
 from backend.repositories.knowledge_packs import RepositoryMetadata, RepositoryTableDefinition, StrictRow
 from backend.source_policy import SourcePolicyAction, validate_source_handoff
 from backend.weekly_news import compute_weekly_news_window
@@ -849,6 +849,7 @@ def acquire_weekly_news_event_evidence_from_fixtures(
         else rank
         for rank in rank_rows
     ]
+    candidate_rows, rank_rows = _apply_demoted_backfill_floor(candidate_rows, rank_rows)
 
     selectable = [
         candidate
@@ -1311,6 +1312,47 @@ def _prepare_candidate_for_fixture_selection(
         source_policy_allowed=source_policy_allowed,
         created_at=created_at,
     )
+
+
+def _apply_demoted_backfill_floor(
+    candidate_rows: list[WeeklyNewsEventCandidateRow],
+    rank_rows: list[WeeklyNewsSourceRankInputRow],
+) -> tuple[list[WeeklyNewsEventCandidateRow], list[WeeklyNewsSourceRankInputRow]]:
+    rank_by_id = {rank.candidate_event_id: rank for rank in rank_rows}
+    otherwise_selectable = [
+        candidate
+        for candidate in candidate_rows
+        if not _candidate_block_reasons(candidate)
+        and rank_by_id[candidate.candidate_event_id].selected_by_score
+    ]
+    has_non_demoted_candidate = any(
+        publisher_tier(candidate.source_publisher) != "demoted"
+        for candidate in otherwise_selectable
+    )
+    if has_non_demoted_candidate:
+        return candidate_rows, rank_rows
+
+    demoted_ids = {
+        candidate.candidate_event_id
+        for candidate in otherwise_selectable
+        if publisher_tier(candidate.source_publisher) == "demoted"
+    }
+    if not demoted_ids:
+        return candidate_rows, rank_rows
+
+    updated_candidates = [
+        _mark_candidate_suppressed(candidate, "demoted_publisher_backfill_only")
+        if candidate.candidate_event_id in demoted_ids
+        else candidate
+        for candidate in candidate_rows
+    ]
+    updated_ranks = [
+        rank.model_copy(update={"selected_by_score": False})
+        if rank.candidate_event_id in demoted_ids
+        else rank
+        for rank in rank_rows
+    ]
+    return updated_candidates, updated_ranks
 
 
 def _build_fixture_dedupe_groups(

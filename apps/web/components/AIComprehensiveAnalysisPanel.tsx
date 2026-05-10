@@ -57,6 +57,7 @@ export function AIComprehensiveAnalysisPanel({ analysis, citations, assetTicker 
       data-ai-analysis-available={analysis.analysisAvailable ? "true" : "false"}
       data-ai-analysis-minimum-weekly-news-items={analysis.minimumWeeklyNewsItemCount}
       data-ai-analysis-weekly-news-selected-count={analysis.weeklyNewsSelectedItemCount}
+      data-ai-analysis-validation-reason-codes={analysis.validationReasonCodes.join(",") || "none"}
       data-ai-analysis-threshold-state={
         analysis.weeklyNewsSelectedItemCount >= analysis.minimumWeeklyNewsItemCount ? "threshold_met" : "threshold_not_met"
       }

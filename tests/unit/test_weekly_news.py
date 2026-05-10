@@ -540,6 +540,31 @@ def test_weekly_news_allows_demoted_publisher_only_after_stronger_ticker_specifi
     assert "demoted_publisher_backfill_only" not in focus.items[1].selection_rationale.exclusion_reasons
 
 
+def test_weekly_news_suppresses_demoted_publisher_when_no_stronger_backfill_anchor():
+    response = _lightweight_weekly_news_response(
+        no_live_external_calls=False,
+        facts=[
+            _lightweight_weekly_fact(
+                "nvda_marketbeat_specific",
+                source_type="finnhub_weekly_news_metadata",
+                source_rank_tier=WeeklyNewsSourceRankTier.allowlisted_news,
+                source_quality=SourceQuality.allowlisted,
+                source_label=LightweightSourceLabel.reputable_third_party,
+                publisher="MarketBeat",
+                title="NVIDIA earnings date and revenue update",
+                summary="MarketBeat metadata is directly about NVIDIA earnings and revenue, but remains demoted backfill.",
+                event_date="2026-05-08",
+            ),
+        ],
+    )
+
+    focus = build_lightweight_weekly_news_focus(response)
+
+    assert focus is not None
+    assert focus.selected_item_count == 0
+    assert focus.selection_diagnostics["suppression_reason_counts"]["demoted_publisher_backfill_only"] == 1
+
+
 def test_provider_news_adapter_marks_reputable_api_items_ahead_of_yahoo_fallback():
     result = yahoo_search_payload_to_weekly_news_facts(
         ticker="NVDA",
@@ -574,6 +599,40 @@ def test_provider_news_adapter_marks_reputable_api_items_ahead_of_yahoo_fallback
     assert result.facts[0].value["source_rank_tier"] == "allowlisted_news"
     assert result.raw_article_text_collected is False
     assert result.raw_provider_payload_exposed is False
+
+
+def test_yahoo_weekly_news_suppresses_title_only_items_without_useful_hook():
+    result = yahoo_search_payload_to_weekly_news_facts(
+        ticker="NVDA",
+        asset_type=AssetType.stock,
+        payload={
+            "news": [
+                {
+                    "uuid": "unhelpful-related",
+                    "title": "Chevron returned cash to shareholders for several quarters",
+                    "publisher": "Yahoo Finance",
+                    "link": "https://example.com/unhelpful",
+                    "published_at": "2026-05-08T13:00:00Z",
+                    "relatedTickers": ["NVDA"],
+                },
+                {
+                    "uuid": "useful-related",
+                    "title": "NVIDIA data center product update reaches new customers",
+                    "publisher": "Reuters",
+                    "link": "https://example.com/useful",
+                    "published_at": "2026-05-08T14:00:00Z",
+                    "relatedTickers": ["NVDA"],
+                },
+            ]
+        },
+        retrieved_at="2026-05-08T15:00:00Z",
+        no_live_external_calls=False,
+    )
+
+    assert result.candidate_count == 1
+    assert result.suppression_reason_counts["metadata_only_without_useful_summary"] == 1
+    assert "headline-only" in result.facts[0].value["summary"]
+    assert result.facts[0].value["summary_is_metadata_only"] is True
 
 
 def test_weekly_news_selection_prioritizes_official_sources_and_excludes_disallowed_items():

@@ -81,7 +81,7 @@ def yahoo_search_payload_to_weekly_news_facts(
     payload: dict[str, Any],
     retrieved_at: str,
     no_live_external_calls: bool,
-    max_items: int = 8,
+    max_items: int = 24,
     provider_name: str = YAHOO_FINANCE_WEEKLY_NEWS_PROVIDER_NAME,
     source_type: str = "yahoo_finance_weekly_news_metadata",
     source_id_prefix: str = "lw_yahoo",
@@ -127,6 +127,16 @@ def yahoo_search_payload_to_weekly_news_facts(
         published_at = _published_at(item)
         event_date = published_at[:10] if published_at else retrieved_at[:10]
         event_type = _classify_event_type(title, asset_type)
+        summary = _summary_for_item(
+            item,
+            ticker=normalized,
+            event_type=event_type,
+            provider_name=provider_name,
+        )
+        if summary is None:
+            suppressed += 1
+            _increment_reason(suppression_reason_counts, "metadata_only_without_useful_summary")
+            continue
         safe_id = _safe_id(str(item.get("uuid") or f"{normalized}-{index}-{title}"))
         source_document_id = f"{source_id_prefix}_{normalized.lower()}_weekly_news_{safe_id}"
         source = LightweightFetchSource(
@@ -158,12 +168,8 @@ def yahoo_search_payload_to_weekly_news_facts(
                     "adapter_boundary": WEEKLY_NEWS_SOURCE_ADAPTER_BOUNDARY,
                     "event_id": f"provider_weekly_news_{normalized.lower()}_{safe_id}",
                     "title": title,
-                    "summary": _summary_for_item(
-                        item,
-                        ticker=normalized,
-                        event_type=event_type,
-                        provider_name=provider_name,
-                    ),
+                    "summary": summary,
+                    "summary_is_metadata_only": _summary_is_metadata_only(item),
                     "publisher": publisher,
                     "url": url,
                     "published_at": published_at,
@@ -531,14 +537,17 @@ def _summary_for_item(
     ticker: str,
     event_type: WeeklyNewsEventType,
     provider_name: str,
-) -> str:
+) -> str | None:
     snippet = _clean_text(item.get("summary") or item.get("snippet"))
     if snippet:
         return _bounded_words(snippet, 36)
+    title = _clean_text(item.get("title"))
+    if not title or not _title_has_useful_news_hook(title, event_type):
+        return None
     event_label = event_type.value.replace("_", " ")
     return (
-        f"{provider_name} metadata surfaced this {event_label} item for {ticker}; "
-        "use the publisher link and source label for context."
+        f"{provider_name} supplied headline-only {event_label} metadata for {ticker}: "
+        f"{_bounded_words(title, 18)}. Treat it as source-labeled context, not an article summary."
     )
 
 
@@ -547,6 +556,39 @@ def _item_matches_ticker(item: dict[str, Any], ticker: str, title: str) -> bool:
     if isinstance(related, list) and related:
         return ticker in {_normalize_ticker(str(value)) for value in related}
     return ticker in title.upper()
+
+
+def _summary_is_metadata_only(item: dict[str, Any]) -> bool:
+    return _clean_text(item.get("summary") or item.get("snippet")) is None
+
+
+def _title_has_useful_news_hook(title: str, event_type: WeeklyNewsEventType) -> bool:
+    text = f" {title.lower()} "
+    if event_type is not WeeklyNewsEventType.other:
+        return True
+    markers = (
+        "earnings",
+        "revenue",
+        "guidance",
+        "product",
+        "launch",
+        "data center",
+        "customer",
+        "regulatory",
+        "filing",
+        "expense ratio",
+        "fee",
+        "flow",
+        "holding",
+        "holdings",
+        "index",
+        "rebalance",
+        "distribution",
+        "dividend",
+        "benchmark",
+        "prospectus",
+    )
+    return any(marker in text for marker in markers)
 
 
 def _classify_event_type(title: str, asset_type: AssetType) -> WeeklyNewsEventType:

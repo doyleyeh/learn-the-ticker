@@ -307,6 +307,38 @@ def test_lightweight_chat_answers_stock_valuation_without_buy_sell_label(monkeyp
     assert validate_chat_response(response, pack).valid
 
 
+def test_lightweight_chat_answers_nvda_products_from_provider_profile_summary(monkeypatch):
+    settings = build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+        }
+    )
+    lightweight = fetch_lightweight_asset_data(
+        "NVDA",
+        settings=settings,
+        fetcher=LocalFreshDataSliceFakeFetcher(),
+        retrieved_at=RETRIEVED_AT,
+    )
+    pack = build_lightweight_chat_knowledge_pack(lightweight)
+    monkeypatch.setattr(
+        "backend.lightweight_page.fetch_lightweight_page_data_if_enabled",
+        lambda ticker: lightweight if ticker.upper() == "NVDA" else None,
+    )
+
+    response = generate_asset_chat("NVDA", "What products does NVDA have?")
+
+    assert response.asset.ticker == "NVDA"
+    assert response.safety_classification is SafetyClassification.educational
+    assert "Insufficient evidence" not in response.direct_answer
+    assert "primary business" in response.direct_answer
+    assert "provider profile summary fixture" in response.direct_answer
+    assert response.citations
+    assert validate_chat_response(response, pack).valid
+
+
 def test_lightweight_chat_keeps_advice_and_compare_redirects_before_fetch(monkeypatch):
     def fail_fetch(_ticker):
         raise AssertionError("lightweight evidence should not be fetched for redirects")

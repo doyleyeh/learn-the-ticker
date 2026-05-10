@@ -34,6 +34,7 @@ from backend.news_quality import publisher_tier, score_ticker_weekly_news
 from backend.retrieval import AssetKnowledgePack, RetrievedRecentDevelopment
 from backend.safety import find_forbidden_output_phrases
 from backend.summary_generation import (
+    HybridSummaryGenerationService,
     SummaryGenerationContractError,
     SummaryGenerationService,
     build_default_summary_generation_service,
@@ -221,6 +222,10 @@ def select_weekly_news_focus(
             rejected_candidate_count += 1
             continue
         selected_candidates.append(_item_from_candidate(candidate, window, rationale))
+
+    if selected_candidates and not any(publisher_tier(item.source.publisher) != "demoted" for item in selected_candidates):
+        rejected_candidate_count += len(selected_candidates)
+        selected_candidates = []
 
     ranked_selected_candidates = sorted(
         selected_candidates,
@@ -625,7 +630,29 @@ def build_ai_comprehensive_analysis(
         )
         validate_ai_comprehensive_analysis(response, weekly_news_focus)
         return response
-    except (SummaryGenerationContractError, WeeklyNewsContractError):
+    except (SummaryGenerationContractError, WeeklyNewsContractError) as exc:
+        reason_codes = _ai_validation_reason_codes(exc)
+        if "safety_validation_failed" not in reason_codes and "prediction_language" not in reason_codes:
+            try:
+                repaired = HybridSummaryGenerationService().generate_ticker_ai_comprehensive_analysis(
+                    asset=asset,
+                    weekly_news_focus=weekly_news_focus,
+                    canonical_fact_citation_ids=canonical_fact_citation_ids,
+                    canonical_source_document_ids=canonical_source_document_ids,
+                    minimum_weekly_news_item_count=minimum_weekly_news_item_count,
+                    weekly_news_selected_item_count=weekly_news_focus.selected_item_count,
+                )
+                validate_ai_comprehensive_analysis(repaired, weekly_news_focus)
+                return repaired.model_copy(
+                    update={
+                        "validation_reason_codes": [
+                            "live_generation_repaired_with_deterministic_fallback",
+                            *reason_codes,
+                        ],
+                    }
+                )
+            except (SummaryGenerationContractError, WeeklyNewsContractError) as fallback_exc:
+                reason_codes = [*reason_codes, *_ai_validation_reason_codes(fallback_exc), "deterministic_fallback_failed"]
         return AIComprehensiveAnalysisResponse(
             asset=asset,
             state=WeeklyNewsContractState.suppressed,
@@ -636,6 +663,7 @@ def build_ai_comprehensive_analysis(
                 "AI Comprehensive Analysis is suppressed because generated analysis failed schema, citation, "
                 "freshness, or safety validation."
             ),
+            validation_reason_codes=sorted(set(reason_codes)),
             citation_ids=all_citations,
             source_document_ids=source_ids,
             weekly_news_event_ids=event_ids,
@@ -690,6 +718,26 @@ def validate_ai_comprehensive_analysis(
             raise WeeklyNewsContractError(f"AI Comprehensive Analysis includes prediction or recommendation language: {phrase}")
 
     return analysis
+
+
+def _ai_validation_reason_codes(exc: Exception) -> list[str]:
+    text = str(exc).lower()
+    codes: list[str] = []
+    if "citation" in text or "outside the weekly/canonical packs" in text:
+        codes.append("citation_validation_failed")
+    if "section" in text or "schema" in text or "object" in text or "json" in text:
+        codes.append("schema_validation_failed")
+    if "freshness" in text:
+        codes.append("freshness_validation_failed")
+    if "forbidden" in text or "advice" in text or "generated prose failed validation" in text:
+        codes.append("safety_validation_failed")
+    if "prediction" in text or "price target" in text or "guaranteed" in text or "forecast" in text:
+        codes.append("prediction_language")
+    if "headline" in text or "repeats" in text:
+        codes.append("headline_repetition")
+    if not codes:
+        codes.append("analysis_contract_validation_failed")
+    return sorted(set(codes))
 
 
 def _selection_rationale(

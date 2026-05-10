@@ -107,6 +107,7 @@ type BackendAIComprehensiveAnalysis = {
   minimum_weekly_news_item_count: number;
   weekly_news_selected_item_count: number;
   suppression_reason: string | null;
+  validation_reason_codes?: string[];
   sections: Array<{
     section_id: "what_changed_this_week" | "market_context" | "business_or_fund_context" | "risk_context";
     label: "What Changed This Week" | "Market Context" | "Business/Fund Context" | "Risk Context";
@@ -280,6 +281,7 @@ function toAIComprehensiveAnalysis(
     minimumWeeklyNewsItemCount: analysis.minimum_weekly_news_item_count,
     weeklyNewsSelectedItemCount: analysis.weekly_news_selected_item_count,
     suppressionReason: analysis.suppression_reason,
+    validationReasonCodes: analysis.validation_reason_codes ?? [],
     sections: analysis.sections.map((section) => ({
       sectionId: section.section_id,
       label: section.label,

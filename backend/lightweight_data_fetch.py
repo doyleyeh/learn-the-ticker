@@ -1925,17 +1925,17 @@ def _provider_api_weekly_news_url(
     start = quote(window.news_window_start)
     end = quote(window.news_window_end)
     if provider == "fmp":
-        return f"https://financialmodelingprep.com/api/v3/stock_news?tickers={symbol}&limit=8&apikey={quote(credential)}"
+        return f"https://financialmodelingprep.com/api/v3/stock_news?tickers={symbol}&limit=24&apikey={quote(credential)}"
     if provider == "alpha_vantage":
         return "https://www.alphavantage.co/query?" + urlencode(
-            {"function": "NEWS_SENTIMENT", "tickers": ticker, "apikey": credential, "limit": "8"}
+            {"function": "NEWS_SENTIMENT", "tickers": ticker, "apikey": credential, "limit": "24"}
         )
     if provider == "finnhub":
         return f"https://finnhub.io/api/v1/company-news?symbol={symbol}&from={start}&to={end}&token={quote(credential)}"
     if provider == "tiingo":
         return f"https://api.tiingo.com/tiingo/news?tickers={symbol}&startDate={start}&endDate={end}&token={quote(credential)}"
     if provider == "eodhd":
-        return f"https://eodhd.com/api/news?s={symbol}.US&from={start}&to={end}&api_token={quote(credential)}&fmt=json&limit=8"
+        return f"https://eodhd.com/api/news?s={symbol}.US&from={start}&to={end}&api_token={quote(credential)}&fmt=json&limit=24"
     return None
 
 
@@ -2700,7 +2700,7 @@ def _try_yahoo_provider_fallback(
     chart_interval = chart_interval_for_range(normalized_chart_range)
 
     try:
-        news_count = 8 if settings.weekly_news_fetch_enabled else 0
+        news_count = 24 if settings.weekly_news_fetch_enabled else 0
         search_payload = fetcher.fetch_json(
             f"https://query1.finance.yahoo.com/v1/finance/search?q={quote(ticker)}&quotesCount=5&newsCount={news_count}",
             user_agent=provider_user_agent,

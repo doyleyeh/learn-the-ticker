@@ -2349,6 +2349,7 @@ class AIComprehensiveAnalysisResponse(BaseModel):
     minimum_weekly_news_item_count: int = 2
     weekly_news_selected_item_count: int = 0
     suppression_reason: str | None = None
+    validation_reason_codes: list[str] = Field(default_factory=list)
     sections: list[AIComprehensiveAnalysisSection] = Field(default_factory=list)
     citation_ids: list[str] = Field(default_factory=list)
     source_document_ids: list[str] = Field(default_factory=list)

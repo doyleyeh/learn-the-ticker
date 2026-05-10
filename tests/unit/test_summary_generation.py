@@ -60,6 +60,7 @@ def test_default_hybrid_summary_service_generates_valid_ticker_ai_analysis_witho
     ]
     assert "c_fact_qqq_asset_identity" in analysis.citation_ids
     assert validate_ai_comprehensive_analysis(analysis, focus) == analysis
+    assert all("fixture" not in section.analysis.lower() for section in analysis.sections)
 
 
 def test_beginner_summary_fallback_uses_asset_specific_evidence_notes():
@@ -387,6 +388,30 @@ def test_market_ai_generation_rejects_headline_repetition():
         )
 
 
+def test_ticker_ai_generation_rejects_headline_repetition():
+    focus = _two_item_weekly_news_focus()
+    repeated_titles = "; ".join(item.title for item in focus.items)
+    first_citation = focus.items[0].citation_ids[0]
+
+    def payload(request: Any) -> dict[str, Any]:
+        return _ticker_analysis_payload(
+            citation_ids=[first_citation],
+            analysis_text="The selected Weekly News Focus items are " + repeated_titles,
+        )
+
+    service = HybridSummaryGenerationService(runtime=_ready_runtime(), structured_generator=payload)
+
+    with pytest.raises(SummaryGenerationContractError):
+        service.generate_ticker_ai_comprehensive_analysis(
+            asset=build_asset_knowledge_pack("QQQ").asset,
+            weekly_news_focus=focus,
+            canonical_fact_citation_ids=["c_fact_qqq_asset_identity"],
+            canonical_source_document_ids=["src_qqq_fact_sheet_fixture"],
+            minimum_weekly_news_item_count=2,
+            weekly_news_selected_item_count=focus.selected_item_count,
+        )
+
+
 def test_gated_structured_summary_output_rejects_bad_citations_before_rendering():
     focus = _two_item_weekly_news_focus()
     service = HybridSummaryGenerationService(
@@ -403,6 +428,28 @@ def test_gated_structured_summary_output_rejects_bad_citations_before_rendering(
             minimum_weekly_news_item_count=2,
             weekly_news_selected_item_count=focus.selected_item_count,
         )
+
+
+def test_weekly_news_ai_analysis_repairs_citation_failure_with_deterministic_fallback():
+    focus = _two_item_weekly_news_focus()
+    service = HybridSummaryGenerationService(
+        runtime=_ready_runtime(),
+        structured_generator=lambda request: _ticker_analysis_payload(citation_ids=["outside_pack_citation"]),
+    )
+
+    analysis = build_ai_comprehensive_analysis(
+        build_asset_knowledge_pack("QQQ").asset,
+        focus,
+        canonical_fact_citation_ids=["c_fact_qqq_asset_identity"],
+        canonical_source_document_ids=["src_qqq_fact_sheet_fixture"],
+        summary_generation_service=service,
+    )
+
+    assert analysis.analysis_available is True
+    assert analysis.state is WeeklyNewsContractState.available
+    assert "live_generation_repaired_with_deterministic_fallback" in analysis.validation_reason_codes
+    assert "citation_validation_failed" in analysis.validation_reason_codes
+    assert validate_ai_comprehensive_analysis(analysis, focus) == analysis
 
 
 def test_weekly_news_ai_analysis_suppresses_invalid_generated_output():

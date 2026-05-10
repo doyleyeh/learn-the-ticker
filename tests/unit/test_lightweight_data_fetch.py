@@ -1348,6 +1348,7 @@ def test_lightweight_stock_fetch_builds_overview_details_and_source_drawer_contr
     assert sections["products_services"].evidence_state is EvidenceState.mixed
     assert "provider_profile_context" in {item.item_id for item in sections["products_services"].items}
     assert "products_services_gap" not in {item.item_id for item in sections["products_services"].items}
+    assert "lightweight response" not in sections["products_services"].beginner_summary.lower()
     assert sections["strengths"].evidence_state is EvidenceState.partial
     assert "provider_learning_context" in {item.item_id for item in sections["strengths"].items}
     assert "strengths_gap" not in {item.item_id for item in sections["strengths"].items}
@@ -1557,6 +1558,7 @@ def test_lightweight_issuer_backed_etf_fetch_builds_supported_page_contracts():
     assert sections["construction_methodology"].evidence_state is EvidenceState.mixed
     assert "methodology_scope_note" in {item.item_id for item in sections["construction_methodology"].items}
     assert "methodology_detail_gap" not in {item.item_id for item in sections["construction_methodology"].items}
+    assert "lightweight mode" not in sections["construction_methodology"].beginner_summary.lower()
     assert sections["cost_trading_context"].evidence_state is EvidenceState.mixed
     assert "quote_stats_context" in {item.item_id for item in sections["cost_trading_context"].items}
     assert "premium_discount_or_spread" not in {item.item_id for item in sections["cost_trading_context"].items}
