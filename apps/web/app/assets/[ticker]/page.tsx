@@ -21,15 +21,17 @@ import { fetchSupportedAssetOverview } from "../../../lib/assetOverview";
 import { fetchSupportedSourceDrawerResponse, sourceDrawerEntriesByDocumentId } from "../../../lib/sourceDrawer";
 import { fetchSupportedAssetWeeklyNews } from "../../../lib/assetWeeklyNews";
 import { fetchMarketNews } from "../../../lib/marketNews";
+import { optionalBackendFetcher } from "../../../lib/optionalBackendFetch";
 import { beginnerGlossaryGroupsByAssetType, type GlossaryTermKey } from "../../../lib/glossary";
 import { getAssetComparisonSuggestions } from "../../../lib/compareSuggestions";
 import { resolveSearchResponse, type LocalSearchResponse } from "../../../lib/search";
 import {
   assetPageExportUrl,
   assetSourceListExportUrl,
-  fetchSupportedAssetExportContract,
   type AssetExportContractValidation
 } from "../../../lib/exportControls";
+// fetchSupportedAssetExportContract is intentionally not called during asset-page SSR;
+// export URLs remain available and validate through the backend when the user opens them.
 import {
   getAIComprehensiveAnalysisFixture,
   assetFixtures,
@@ -89,6 +91,10 @@ function sourceDrawerStateFromFreshness(freshnessState: string): SourceDrawerSta
   return "unknown";
 }
 
+function exportContractRendering(contract: AssetExportContractValidation | null) {
+  return contract?.rendering ?? "deferred_until_opened";
+}
+
 export function generateStaticParams() {
   return Object.keys(assetFixtures).map((ticker) => ({ ticker }));
 }
@@ -131,101 +137,9 @@ export default async function AssetPage({ params }: AssetPageProps) {
   let marketNewsFocus: MarketNewsFocusFixture = marketNewsFocusFixture;
   let marketAIComprehensiveAnalysis: MarketAIComprehensiveAnalysisFixture = marketAIComprehensiveAnalysisFixture;
 
-  try {
-    const backendMarketNews = await fetchMarketNews(marketNewsFocus, marketAIComprehensiveAnalysis);
-    marketNewsFocus = backendMarketNews.marketNewsFocus;
-    marketAIComprehensiveAnalysis = backendMarketNews.marketAIComprehensiveAnalysis;
-    marketNewsRendering = "backend_contract";
-  } catch {
-    marketNewsRendering = "local_fixture";
-  }
-
   let weeklyNewsFocus = getWeeklyNewsFocusFixture(asset.ticker) ?? buildEmptyWeeklyNewsFocus(asset);
   let aiComprehensiveAnalysis = getAIComprehensiveAnalysisFixture(asset.ticker) ?? buildSuppressedAnalysis(asset, weeklyNewsFocus);
 
-  try {
-    const backendWeeklyNews = await fetchSupportedAssetWeeklyNews(
-      asset.ticker,
-      weeklyNewsFocus,
-      aiComprehensiveAnalysis,
-      asset.assetType
-    );
-    weeklyNewsFocus = backendWeeklyNews.weeklyNewsFocus;
-    aiComprehensiveAnalysis = backendWeeklyNews.aiComprehensiveAnalysis;
-    weeklyNewsRendering = "backend_contract";
-  } catch {
-    weeklyNewsRendering = "local_fixture";
-  }
-
-  const primarySource = getPrimarySource(asset);
-  const firstClaim = asset.claims[0];
-  const firstClaimCitation = getCitationById(asset, firstClaim.citationIds[0]) ?? asset.citations[0];
-  const hasStockPrdSections = asset.assetType === "stock" && Boolean(asset.stockSections?.length);
-  const hasEtfPrdSections = asset.assetType === "etf" && Boolean(asset.etfSections?.length);
-  const hasPrdSections = hasStockPrdSections || hasEtfPrdSections;
-  const sectionSourceDocumentIds = new Set(
-    [...(asset.stockSections ?? []), ...(asset.etfSections ?? [])].flatMap((section) => section.sourceDocumentIds)
-  );
-  const mergedCitations = [
-    ...asset.citations,
-    ...marketNewsFocus.citations,
-    ...marketAIComprehensiveAnalysis.citations,
-    ...weeklyNewsFocus.citations,
-    ...aiComprehensiveAnalysis.citations
-  ].filter((citation, index, collection) => collection.findIndex((entry) => entry.citationId === citation.citationId) === index);
-  const mergedSources = [
-    ...asset.sourceDocuments,
-    ...marketNewsFocus.sourceDocuments,
-    ...marketAIComprehensiveAnalysis.sourceDocuments,
-    ...weeklyNewsFocus.sourceDocuments,
-    ...aiComprehensiveAnalysis.sourceDocuments
-  ].filter(
-    (source, index, collection) =>
-      collection.findIndex((entry) => entry.sourceDocumentId === source.sourceDocumentId) === index
-  );
-  const timelyContextSourceDocumentIds = new Set([
-    ...marketNewsFocus.sourceDocuments.map((source) => source.sourceDocumentId),
-    ...marketAIComprehensiveAnalysis.sourceDocumentIds,
-    ...weeklyNewsFocus.sourceDocuments.map((source) => source.sourceDocumentId),
-    ...aiComprehensiveAnalysis.sourceDocumentIds
-  ]);
-  const drawerSourceDocumentIds = new Set([...sectionSourceDocumentIds, ...timelyContextSourceDocumentIds]);
-  const drawerSources = mergedSources
-    .filter((source) => drawerSourceDocumentIds.has(source.sourceDocumentId))
-    .map(toSourceDrawerDocument);
-  const backendSourceDrawer = await (async () => {
-    try {
-      return await fetchSupportedSourceDrawerResponse(asset.ticker);
-    } catch {
-      return null;
-    }
-  })();
-  const timelyContextClaimsBySourceDocumentId = new Map<string, string>([
-    ...marketNewsFocus.items.map((item) => [
-      item.source.sourceDocumentId,
-      `Market News Focus: ${item.title}. ${item.summary}`
-    ] as const),
-    ...weeklyNewsFocus.items.map((item) => [
-      item.source.sourceDocumentId,
-      `Weekly News Focus: ${asset.ticker}: ${item.title}. ${item.summary}`
-    ] as const)
-  ]);
-  for (const sourceDocumentId of marketAIComprehensiveAnalysis.sourceDocumentIds) {
-    if (!timelyContextClaimsBySourceDocumentId.has(sourceDocumentId)) {
-      timelyContextClaimsBySourceDocumentId.set(
-        sourceDocumentId,
-        "AI Comprehensive Analysis: Market News Focus cites this source while keeping market-wide context separate from ticker-specific facts."
-      );
-    }
-  }
-  for (const sourceDocumentId of aiComprehensiveAnalysis.sourceDocumentIds) {
-    if (!timelyContextClaimsBySourceDocumentId.has(sourceDocumentId)) {
-      timelyContextClaimsBySourceDocumentId.set(
-        sourceDocumentId,
-        `AI Comprehensive Analysis cites this source while keeping timely context separate from stable facts for ${asset.ticker}.`
-      );
-    }
-  }
   const glossaryGroups = beginnerGlossaryGroupsByAssetType[asset.assetType];
   const dashboardGlossaryTerms: GlossaryTermKey[] = [
     "net assets",
@@ -272,27 +186,104 @@ export default async function AssetPage({ params }: AssetPageProps) {
     { match: "Yield", term: "yield" },
     { match: "Expense Ratio (net)", term: "expense ratio" }
   );
-  const backendGlossaryContexts = await (async () => {
-    try {
-      return await fetchSupportedAssetGlossaryContexts(asset.ticker, glossaryTermsForBackend);
-    } catch {
-      return null;
-    }
-  })();
+
+  const [
+    backendMarketNews,
+    backendWeeklyNews,
+    backendSourceDrawer,
+    backendGlossaryContexts
+  ] = await Promise.all([
+    fetchMarketNews(marketNewsFocus, marketAIComprehensiveAnalysis, optionalBackendFetcher(1000)).catch(() => null),
+    fetchSupportedAssetWeeklyNews(
+      asset.ticker,
+      weeklyNewsFocus,
+      aiComprehensiveAnalysis,
+      asset.assetType,
+      optionalBackendFetcher()
+    ).catch(() => null),
+    fetchSupportedSourceDrawerResponse(asset.ticker, optionalBackendFetcher()).catch(() => null),
+    fetchSupportedAssetGlossaryContexts(asset.ticker, glossaryTermsForBackend, optionalBackendFetcher()).catch(() => null)
+  ]);
+
+  if (backendMarketNews) {
+    marketNewsFocus = backendMarketNews.marketNewsFocus;
+    marketAIComprehensiveAnalysis = backendMarketNews.marketAIComprehensiveAnalysis;
+    marketNewsRendering = "backend_contract";
+  }
+
+  if (backendWeeklyNews) {
+    weeklyNewsFocus = backendWeeklyNews.weeklyNewsFocus;
+    aiComprehensiveAnalysis = backendWeeklyNews.aiComprehensiveAnalysis;
+    weeklyNewsRendering = "backend_contract";
+  }
+
   if (backendGlossaryContexts) {
     glossaryRendering = "backend_contract";
   }
+
+  const primarySource = getPrimarySource(asset);
+  const firstClaim = asset.claims[0];
+  const firstClaimCitation = getCitationById(asset, firstClaim.citationIds[0]) ?? asset.citations[0];
+  const hasStockPrdSections = asset.assetType === "stock" && Boolean(asset.stockSections?.length);
+  const hasEtfPrdSections = asset.assetType === "etf" && Boolean(asset.etfSections?.length);
+  const hasPrdSections = hasStockPrdSections || hasEtfPrdSections;
+  const sectionSourceDocumentIds = new Set(
+    [...(asset.stockSections ?? []), ...(asset.etfSections ?? [])].flatMap((section) => section.sourceDocumentIds)
+  );
+  const mergedCitations = [
+    ...asset.citations,
+    ...marketNewsFocus.citations,
+    ...marketAIComprehensiveAnalysis.citations,
+    ...weeklyNewsFocus.citations,
+    ...aiComprehensiveAnalysis.citations
+  ].filter((citation, index, collection) => collection.findIndex((entry) => entry.citationId === citation.citationId) === index);
+  const mergedSources = [
+    ...asset.sourceDocuments,
+    ...marketNewsFocus.sourceDocuments,
+    ...marketAIComprehensiveAnalysis.sourceDocuments,
+    ...weeklyNewsFocus.sourceDocuments,
+    ...aiComprehensiveAnalysis.sourceDocuments
+  ].filter(
+    (source, index, collection) =>
+      collection.findIndex((entry) => entry.sourceDocumentId === source.sourceDocumentId) === index
+  );
+  const timelyContextSourceDocumentIds = new Set([
+    ...marketNewsFocus.sourceDocuments.map((source) => source.sourceDocumentId),
+    ...marketAIComprehensiveAnalysis.sourceDocumentIds,
+    ...weeklyNewsFocus.sourceDocuments.map((source) => source.sourceDocumentId),
+    ...aiComprehensiveAnalysis.sourceDocumentIds
+  ]);
+  const drawerSourceDocumentIds = new Set([...sectionSourceDocumentIds, ...timelyContextSourceDocumentIds]);
+  const drawerSources = mergedSources
+    .filter((source) => drawerSourceDocumentIds.has(source.sourceDocumentId))
+    .map(toSourceDrawerDocument);
+  const timelyContextClaimsBySourceDocumentId = new Map<string, string>([
+    ...marketNewsFocus.items.map((item) => [
+      item.source.sourceDocumentId,
+      `Market News Focus: ${item.title}. ${item.summary}`
+    ] as const),
+    ...weeklyNewsFocus.items.map((item) => [
+      item.source.sourceDocumentId,
+      `Weekly News Focus: ${asset.ticker}: ${item.title}. ${item.summary}`
+    ] as const)
+  ]);
+  for (const sourceDocumentId of marketAIComprehensiveAnalysis.sourceDocumentIds) {
+    if (!timelyContextClaimsBySourceDocumentId.has(sourceDocumentId)) {
+      timelyContextClaimsBySourceDocumentId.set(
+        sourceDocumentId,
+        "AI Comprehensive Analysis: Market News Focus cites this source while keeping market-wide context separate from ticker-specific facts."
+      );
+    }
+  }
+  for (const sourceDocumentId of aiComprehensiveAnalysis.sourceDocumentIds) {
+    if (!timelyContextClaimsBySourceDocumentId.has(sourceDocumentId)) {
+      timelyContextClaimsBySourceDocumentId.set(
+        sourceDocumentId,
+        `AI Comprehensive Analysis cites this source while keeping timely context separate from stable facts for ${asset.ticker}.`
+      );
+    }
+  }
   const comparisonSuggestions = getAssetComparisonSuggestions(asset.ticker);
-  try {
-    assetPageExportContract = await fetchSupportedAssetExportContract(asset.ticker, "asset_page");
-  } catch {
-    assetPageExportContract = null;
-  }
-  try {
-    assetSourceListExportContract = await fetchSupportedAssetExportContract(asset.ticker, "asset_source_list");
-  } catch {
-    assetSourceListExportContract = null;
-  }
   const localDrawerEntries = drawerSources.map((source) => {
     const sourceContexts = getCitationContextsForSource(asset, source.source_document_id);
     return {
@@ -339,8 +330,8 @@ export default async function AssetPage({ params }: AssetPageProps) {
       data-asset-weekly-news-rendering={weeklyNewsRendering}
       data-asset-source-drawer-rendering={sourceDrawerRendering}
       data-asset-glossary-rendering={glossaryRendering}
-      data-asset-page-export-contract={assetPageExportContract?.rendering ?? "local_fallback"}
-      data-asset-source-list-export-contract={assetSourceListExportContract?.rendering ?? "local_fallback"}
+      data-asset-page-export-contract={exportContractRendering(assetPageExportContract)}
+      data-asset-source-list-export-contract={exportContractRendering(assetSourceListExportContract)}
       data-prd-layout-marker="supported-asset-page-learning-flow-v1"
       data-prd-section-order="header,beginner_summary,asset_data_dashboard,top_risks,key_facts_fallback,what_it_does_or_holds_fallback,market_news_focus,market_ai_comprehensive_analysis,weekly_news_focus,ai_comprehensive_analysis,deep_dive,ask_about_this_asset,sources,educational_disclaimer"
     >

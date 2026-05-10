@@ -138,6 +138,7 @@ def build_runtime_market_news_response(
     settings: MarketNewsSettings | None = None,
     fetcher: MarketNewsFetcher | None = None,
     cache: MarketNewsResponseMemoryCache | None = None,
+    cache_only: bool = False,
 ) -> MarketNewsResponse:
     active_settings = settings or build_market_news_settings()
     effective_as_of = as_of or _runtime_market_news_as_of(active_settings)
@@ -155,6 +156,8 @@ def build_runtime_market_news_response(
     if persisted is not None:
         response_cache.set(cache_key, persisted)
         return persisted
+    if cache_only:
+        return build_market_news_response(as_of=effective_as_of, settings=active_settings)
 
     response = build_market_news_response(
         as_of=effective_as_of,

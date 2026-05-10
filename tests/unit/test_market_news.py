@@ -27,6 +27,7 @@ from backend.models import (
     WeeklyNewsContractState,
 )
 from backend.settings import build_market_news_settings
+from backend.summary_generation import SummaryGenerationContractError
 from scripts.run_market_news_live_source_smoke import (
     SMOKE_OPT_IN_ENV,
     SMOKE_SCHEMA_VERSION,
@@ -175,6 +176,25 @@ def test_market_ai_analysis_suppresses_until_enough_approved_market_breadth():
     assert analysis.suppression_reason
 
 
+def test_market_ai_analysis_falls_back_when_live_generation_repeats_headlines():
+    class RepeatingHeadlineService:
+        def generate_market_ai_comprehensive_analysis(self, **kwargs):
+            raise SummaryGenerationContractError("Generated analysis only repeats selected headlines.")
+
+    focus = select_market_news_focus(fixture_market_news_candidates(as_of=AS_OF), as_of=AS_OF)
+
+    analysis = build_market_ai_comprehensive_analysis(
+        focus,
+        summary_generation_service=RepeatingHeadlineService(),
+    )
+
+    assert analysis.state is WeeklyNewsContractState.available
+    assert analysis.analysis_available is True
+    assert analysis.sections
+    rendered = " ".join(section.analysis for section in analysis.sections).lower()
+    assert "selected market news focus items are" not in rendered
+
+
 def test_market_news_adapters_normalize_all_provider_payload_shapes_without_live_calls():
     settings = build_market_news_settings(
         env={
@@ -300,6 +320,30 @@ def test_runtime_market_news_fetch_uses_ttl_cache_for_opt_in_live_path():
     assert second.market_news_focus.no_live_external_calls is False
     assert len(fetcher.urls) == first_call_count
     assert second.model_dump(mode="json") == first.model_dump(mode="json")
+
+
+def test_runtime_market_news_cache_only_returns_fixture_without_cold_live_fetch():
+    settings = build_market_news_settings(
+        env={
+            "MARKET_NEWS_FETCH_ENABLED": "true",
+            "MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED": "true",
+            "MARKET_NEWS_CACHE_TTL_HOURS": "1",
+            "MARKETAUX_API_KEY": "configured",
+        }
+    )
+    fetcher = CountingMarketNewsFetcher(_provider_payloads())
+
+    response = build_runtime_market_news_response(
+        as_of=AS_OF,
+        settings=settings,
+        fetcher=fetcher,
+        cache=MarketNewsResponseMemoryCache(),
+        cache_only=True,
+    )
+
+    assert fetcher.urls == []
+    assert response.market_news_focus.selected_item_count > 0
+    assert response.market_news_focus.no_live_external_calls is True
 
 
 def test_runtime_market_news_persistent_cache_reuses_pack_across_memory_caches(tmp_path):

@@ -71,6 +71,11 @@ from backend.retrieval_repository import KnowledgePackRecordReader, read_persist
 from backend.safety import classify_question, educational_redirect, find_forbidden_output_phrases
 from backend.search import search_assets
 from backend.source_policy import resolve_source_policy
+from backend.summary_generation import (
+    SummaryGenerationContractError,
+    SummaryGenerationService,
+    build_default_summary_generation_service,
+)
 from backend.weekly_news_sources import LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD
 
 
@@ -999,7 +1004,12 @@ def _validate_chat_cache_covers_response(
         raise GeneratedOutputCacheContractError("Chat cache citation bindings do not cover generated response citations.")
 
 
-def generate_chat_from_pack(pack: AssetKnowledgePack, question: str) -> ChatResponse:
+def generate_chat_from_pack(
+    pack: AssetKnowledgePack,
+    question: str,
+    *,
+    summary_generation_service: SummaryGenerationService | None = None,
+) -> ChatResponse:
     safety_classification = classify_question(question, supported=pack.asset.supported)
 
     if safety_classification is SafetyClassification.unsupported_asset_redirect:
@@ -1013,6 +1023,13 @@ def generate_chat_from_pack(pack: AssetKnowledgePack, question: str) -> ChatResp
         return compare_route_redirect
 
     plan, bindings = _plan_supported_chat(pack, question)
+    plan = _maybe_generate_chat_plan(
+        pack,
+        question,
+        plan,
+        bindings,
+        summary_generation_service=summary_generation_service,
+    )
     evidence = bindings.evidence()
     report = validate_generated_chat_claims(pack, plan.planned_claims, evidence)
     if not report.valid:
@@ -1133,7 +1150,7 @@ class _ChatCitationRegistry:
         return self.for_chunk(
             RetrievedSourceChunk(chunk=retrieved_fact.source_chunk, source_document=retrieved_fact.source_document),
             claim_text,
-            supports_claim=retrieved_fact.fact.evidence_state == "supported",
+            supports_claim=retrieved_fact.fact.evidence_state in {"supported", "partial"},
             freshness_state=retrieved_fact.fact.freshness_state,
         )
 
@@ -1324,7 +1341,11 @@ def _compare_route_redirect(pack: AssetKnowledgePack, question: str) -> ChatResp
 
 
 def _plan_supported_chat(pack: AssetKnowledgePack, question: str) -> tuple[_ChatPlan, _ChatCitationRegistry]:
-    facts_by_field = {item.fact.field_name: item for item in pack.normalized_facts if item.fact.evidence_state == "supported"}
+    facts_by_field = {
+        item.fact.field_name: item
+        for item in pack.normalized_facts
+        if item.fact.evidence_state in {"supported", "partial"}
+    }
     chunks_by_claim_type = _chunks_by_claim_type(pack)
     bindings = _ChatCitationRegistry(pack)
     intent = _classify_intent(question)
@@ -1343,10 +1364,86 @@ def _plan_supported_chat(pack: AssetKnowledgePack, question: str) -> tuple[_Chat
         if pack.asset.asset_type is AssetType.etf:
             return _etf_basics_plan(pack, facts_by_field, bindings, intent)
         return _insufficient_plan(pack, "etf_profile", "This local stock fixture does not contain ETF holdings, benchmark, breadth, or cost evidence.")
+    if intent == "price_position":
+        return _price_position_plan(pack, facts_by_field, bindings)
+    if intent == "trading_volume":
+        return _quote_stat_plan(pack, facts_by_field, bindings, "average_volume")
+    if intent == "performance":
+        return _performance_plan(pack, facts_by_field, bindings)
+    if intent == "methodology":
+        if pack.asset.asset_type is AssetType.etf:
+            return _methodology_plan(pack, facts_by_field, bindings)
+        return _insufficient_plan(pack, "methodology", "Methodology and index-construction evidence is an ETF concept; this stock pack does not contain that evidence.")
+    if intent == "evidence_gap":
+        return _evidence_gap_plan(pack, facts_by_field, bindings)
     if intent == "valuation":
-        return _insufficient_plan(pack, "valuation_context", _gap_message(pack, "valuation_context"))
+        return _valuation_plan(pack, facts_by_field, bindings)
 
     return _identity_plan(pack, facts_by_field, bindings)
+
+
+def _maybe_generate_chat_plan(
+    pack: AssetKnowledgePack,
+    question: str,
+    plan: _ChatPlan,
+    bindings: _ChatCitationRegistry,
+    *,
+    summary_generation_service: SummaryGenerationService | None = None,
+) -> _ChatPlan:
+    if not plan.planned_claims or plan.direct_answer.lower().startswith("insufficient evidence"):
+        return plan
+
+    service = summary_generation_service or build_default_summary_generation_service()
+    citation_ids = _dedupe(citation_id for claim in plan.planned_claims for citation_id in claim.citation_ids)
+    required_claim_texts = [claim.claim_text for claim in plan.planned_claims if claim.claim_text]
+    evidence_summaries = [_chat_evidence_summary(evidence) for evidence in bindings.evidence()]
+    try:
+        generated = service.generate_chat_answer(
+            asset=pack.asset,
+            question=question,
+            intent=_classify_intent(question),
+            base_direct_answer=plan.direct_answer,
+            base_why_it_matters=plan.why_it_matters,
+            citation_ids=citation_ids,
+            required_claim_texts=required_claim_texts,
+            evidence_summaries=evidence_summaries,
+            uncertainty=plan.uncertainty,
+        )
+    except SummaryGenerationContractError:
+        return _ChatPlan(
+            direct_answer=plan.direct_answer,
+            why_it_matters=plan.why_it_matters,
+            planned_claims=plan.planned_claims,
+            uncertainty=[
+                *plan.uncertainty,
+                "Hybrid chat synthesis failed validation, so the deterministic citation-bound answer was used.",
+            ],
+        )
+
+    return _ChatPlan(
+        direct_answer=generated.direct_answer,
+        why_it_matters=generated.why_it_matters,
+        planned_claims=plan.planned_claims,
+        uncertainty=generated.uncertainty,
+    )
+
+
+def _chat_evidence_summary(evidence: CitationEvidence) -> str:
+    text = " ".join(str(evidence.supporting_text or "").split())
+    if len(text) > 180:
+        text = f"{text[:177]}..."
+    return (
+        f"{evidence.citation_id}: {evidence.source_type}; "
+        f"freshness={evidence.freshness_state.value}; text={text}"
+    )
+
+
+def _dedupe(values: Iterable[str]) -> list[str]:
+    result: list[str] = []
+    for value in values:
+        if value and value not in result:
+            result.append(value)
+    return result
 
 
 def _identity_plan(
@@ -1483,6 +1580,245 @@ def _etf_basics_plan(
                 )
             ],
             uncertainty=_fixture_limits(pack),
+        ),
+        bindings,
+    )
+
+
+def _price_position_plan(
+    pack: AssetKnowledgePack,
+    facts_by_field: dict[str, RetrievedFact],
+    bindings: _ChatCitationRegistry,
+) -> tuple[_ChatPlan, _ChatCitationRegistry]:
+    identity_claim = _canonical_identity_claim(pack, facts_by_field, bindings)
+    price_fact = facts_by_field.get("provider_market_price")
+    quote_fact = facts_by_field.get("provider_quote_stats")
+    chart_fact = facts_by_field.get("provider_price_chart")
+    price = _provider_market_price_value(price_fact)
+    range_text = _quote_stat_value(quote_fact, "fifty_two_week_range")
+    if price is None and not range_text:
+        return _insufficient_plan(pack, "provider_market_price", "The selected asset pack does not contain provider price or 52-week range evidence.")
+
+    claim_parts = []
+    if price is not None:
+        claim_parts.append(f"provider market price is {_format_metric(price, _provider_market_price_unit(price_fact))}")
+    if range_text:
+        claim_parts.append(f"52-week range is {range_text}")
+    chart_phrase = _chart_position_phrase(chart_fact)
+    if chart_phrase:
+        claim_parts.append(chart_phrase)
+    claim_text = (
+        f"For {pack.asset.ticker}, the selected evidence says the "
+        + "; ".join(claim_parts)
+        + ". This can help frame whether the current quote is near a cited range, but it is not a buy/sell signal."
+    )
+    citation_ids: list[str] = []
+    for fact in [item for item in [price_fact, quote_fact, chart_fact] if item is not None]:
+        citation_ids.append(bindings.for_fact(fact, claim_text))
+    return (
+        _ChatPlan(
+            direct_answer=f"{identity_claim.claim_text} {claim_text}",
+            why_it_matters=(
+                "A high-point question is safest when framed against cited price, 52-week range, and chart evidence, not as a prediction or recommendation."
+            ),
+            planned_claims=[
+                identity_claim,
+                PlannedChatClaim(
+                    claim_id="chat_price_position",
+                    claim_text=claim_text,
+                    citation_ids=sorted(set(citation_ids)),
+                    claim_type="factual",
+                ),
+            ],
+            uncertainty=_fixture_limits(pack),
+        ),
+        bindings,
+    )
+
+
+def _quote_stat_plan(
+    pack: AssetKnowledgePack,
+    facts_by_field: dict[str, RetrievedFact],
+    bindings: _ChatCitationRegistry,
+    metric_id: str,
+) -> tuple[_ChatPlan, _ChatCitationRegistry]:
+    identity_claim = _canonical_identity_claim(pack, facts_by_field, bindings)
+    quote_fact = facts_by_field.get("provider_quote_stats")
+    value = _quote_stat_value(quote_fact, metric_id)
+    label = _quote_stat_label(quote_fact, metric_id) or metric_id.replace("_", " ")
+    if value is None:
+        return _insufficient_plan(pack, metric_id, f"The selected asset pack does not contain supported {label} evidence.")
+    claim_text = (
+        f"The provider quote-stat evidence lists {pack.asset.ticker}'s {label} as {value}. "
+        "This is trading-context evidence, not a liquidity recommendation or instruction."
+    )
+    citation_id = bindings.for_fact(_require_fact(facts_by_field, "provider_quote_stats"), claim_text)
+    return (
+        _ChatPlan(
+            direct_answer=f"{identity_claim.claim_text} {claim_text}",
+            why_it_matters="Volume fields help beginners understand trading context, but provider-derived rows should stay separate from official issuer or company facts.",
+            planned_claims=[
+                identity_claim,
+                PlannedChatClaim(
+                    claim_id=f"chat_quote_stat_{metric_id}",
+                    claim_text=claim_text,
+                    citation_ids=[citation_id],
+                    claim_type="factual",
+                ),
+            ],
+            uncertainty=_fixture_limits(pack),
+        ),
+        bindings,
+    )
+
+
+def _valuation_plan(
+    pack: AssetKnowledgePack,
+    facts_by_field: dict[str, RetrievedFact],
+    bindings: _ChatCitationRegistry,
+) -> tuple[_ChatPlan, _ChatCitationRegistry]:
+    identity_claim = _canonical_identity_claim(pack, facts_by_field, bindings)
+    valuation_fact = facts_by_field.get("provider_stock_metric_groups")
+    profile_fact = facts_by_field.get("provider_profile_overview")
+    if valuation_fact is None and profile_fact is None:
+        return _insufficient_plan(pack, "valuation_context", _gap_message(pack, "valuation_context"))
+    valuation_rows = _provider_metric_values(valuation_fact, "valuation_ratios", limit=4)
+    profile_values = _profile_valuation_values(profile_fact)
+    parts = [*valuation_rows, *profile_values]
+    if not parts:
+        return _insufficient_plan(pack, "valuation_context", "The selected asset pack has provider valuation sources but no supported valuation rows.")
+    claim_text = (
+        f"For {pack.asset.ticker}, provider valuation context includes {_join_human(parts)}. "
+        "That gives vocabulary and current context, but this answer does not label the stock cheap or expensive."
+    )
+    citation_ids = [
+        bindings.for_fact(fact, claim_text)
+        for fact in [valuation_fact, profile_fact]
+        if fact is not None
+    ]
+    return (
+        _ChatPlan(
+            direct_answer=f"{identity_claim.claim_text} {claim_text}",
+            why_it_matters="Valuation questions need cited ratios, business context, and comparisons; a single provider snapshot is not enough for a personal decision.",
+            planned_claims=[
+                identity_claim,
+                PlannedChatClaim(
+                    claim_id="chat_valuation_context",
+                    claim_text=claim_text,
+                    citation_ids=sorted(set(citation_ids)),
+                    claim_type="factual",
+                ),
+            ],
+            uncertainty=[*_fixture_limits(pack), "Provider valuation rows are educational context, not a cheap-or-expensive conclusion."],
+        ),
+        bindings,
+    )
+
+
+def _performance_plan(
+    pack: AssetKnowledgePack,
+    facts_by_field: dict[str, RetrievedFact],
+    bindings: _ChatCitationRegistry,
+) -> tuple[_ChatPlan, _ChatCitationRegistry]:
+    identity_claim = _canonical_identity_claim(pack, facts_by_field, bindings)
+    performance_fact = facts_by_field.get("provider_fund_performance")
+    price_performance = _provider_metric_values(facts_by_field.get("provider_stock_metric_groups"), "price_performance", limit=4)
+    if performance_fact is not None and isinstance(performance_fact.fact.value, dict):
+        returns = [
+            f"{item.get('period')}: {_format_metric(item.get('return'), '%')}"
+            for item in performance_fact.fact.value.get("trailing_returns") or []
+            if isinstance(item, dict) and item.get("return") not in (None, "")
+        ][:4]
+        if returns:
+            claim_text = (
+                f"Provider performance evidence for {pack.asset.ticker} lists {_join_human(returns)}. "
+                "These are historical return fields, not a return estimate."
+            )
+            citation_id = bindings.for_fact(performance_fact, claim_text)
+            return (
+                _ChatPlan(
+                    direct_answer=f"{identity_claim.claim_text} {claim_text}",
+                    why_it_matters="Historical performance can help beginners read context, but it does not predict future returns.",
+                    planned_claims=[
+                        identity_claim,
+                        PlannedChatClaim("chat_performance", claim_text, [citation_id], "factual"),
+                    ],
+                    uncertainty=_fixture_limits(pack),
+                ),
+                bindings,
+            )
+    if price_performance:
+        fact = _require_fact(facts_by_field, "provider_stock_metric_groups")
+        claim_text = (
+            f"Provider price-performance rows for {pack.asset.ticker} include {_join_human(price_performance)}. "
+            "These rows describe past or current context and do not estimate what comes next."
+        )
+        citation_id = bindings.for_fact(fact, claim_text)
+        return (
+            _ChatPlan(
+                direct_answer=f"{identity_claim.claim_text} {claim_text}",
+                why_it_matters="Performance rows are useful for context only when their date, period, and source are clear.",
+                planned_claims=[identity_claim, PlannedChatClaim("chat_performance", claim_text, [citation_id], "factual")],
+                uncertainty=_fixture_limits(pack),
+            ),
+            bindings,
+        )
+    return _insufficient_plan(pack, "performance", "The selected asset pack does not contain supported historical performance evidence.")
+
+
+def _methodology_plan(
+    pack: AssetKnowledgePack,
+    facts_by_field: dict[str, RetrievedFact],
+    bindings: _ChatCitationRegistry,
+) -> tuple[_ChatPlan, _ChatCitationRegistry]:
+    identity_claim = _canonical_identity_claim(pack, facts_by_field, bindings)
+    benchmark = facts_by_field.get("benchmark")
+    prospectus = facts_by_field.get("prospectus_reference")
+    if benchmark is None and prospectus is None:
+        return _insufficient_plan(pack, "methodology", "The selected ETF pack does not contain supported benchmark or prospectus evidence.")
+    parts = []
+    if benchmark is not None:
+        parts.append(f"tracks {benchmark.fact.value}")
+    if prospectus is not None:
+        parts.append(f"has prospectus reference {prospectus.fact.value}")
+    claim_text = (
+        f"{pack.asset.ticker}'s methodology context says it {_join_human(parts)}. "
+        "Full screening, rebalancing, and methodology rules may still be partial unless the source pack includes them."
+    )
+    citation_ids = [bindings.for_fact(fact, claim_text) for fact in [benchmark, prospectus] if fact is not None]
+    return (
+        _ChatPlan(
+            direct_answer=f"{identity_claim.claim_text} {claim_text}",
+            why_it_matters="ETF methodology tells beginners what the fund is designed to follow and what details remain missing.",
+            planned_claims=[
+                identity_claim,
+                PlannedChatClaim("chat_methodology", claim_text, sorted(set(citation_ids)), "factual"),
+            ],
+            uncertainty=_fixture_limits(pack),
+        ),
+        bindings,
+    )
+
+
+def _evidence_gap_plan(
+    pack: AssetKnowledgePack,
+    facts_by_field: dict[str, RetrievedFact],
+    bindings: _ChatCitationRegistry,
+) -> tuple[_ChatPlan, _ChatCitationRegistry]:
+    identity_claim = _canonical_identity_claim(pack, facts_by_field, bindings)
+    gaps = [gap for gap in pack.evidence_gaps[:4] if gap.message]
+    if not gaps:
+        claim_text = f"The selected {pack.asset.ticker} pack has no explicit evidence-gap rows in the current response."
+    else:
+        claim_text = f"The selected {pack.asset.ticker} pack labels these evidence gaps: " + "; ".join(
+            f"{gap.field_name}: {gap.message}" for gap in gaps
+        )
+    return (
+        _ChatPlan(
+            direct_answer=f"{identity_claim.claim_text} {claim_text}",
+            why_it_matters="Evidence gaps tell beginners where the page is intentionally saying unknown, unavailable, or partial instead of inventing detail.",
+            planned_claims=[identity_claim],
+            uncertainty=[*_fixture_limits(pack), claim_text],
         ),
         bindings,
     )
@@ -1659,6 +1995,10 @@ def _canonical_identity_claim(
 
 def _classify_intent(question: str) -> str:
     text = " ".join(question.lower().split())
+    if any(term in text for term in ["high point", "near high", "at a high", "52-week", "52 week", "range", "current price", "price now", "right now"]):
+        return "price_position"
+    if any(term in text for term in ["average daily trading volume", "average volume", "trading volume", "volume", "liquidity"]):
+        return "trading_volume"
     if any(term in text for term in ["recent", "changed", "change", "news", "latest", "new development", "development"]):
         return "recent"
     if any(term in text for term in ["risk", "risks", "biggest catch", "main catch", "what can go wrong", "downside"]):
@@ -1675,6 +2015,12 @@ def _classify_intent(question: str) -> str:
         return "cost"
     if any(term in text for term in ["broad", "breadth", "diversified", "narrow", "concentrated", "concentration"]):
         return "breadth"
+    if any(term in text for term in ["performance", "return", "returns", "up", "down", "ytd", "past year"]):
+        return "performance"
+    if any(term in text for term in ["methodology", "construction", "rebalance", "rebalancing", "screening", "rules"]):
+        return "methodology"
+    if any(term in text for term in ["missing", "unknown", "unavailable", "evidence gap", "source gap", "why can't", "cannot answer"]):
+        return "evidence_gap"
     if any(term in text for term in ["valuation", "valued", "p/e", "pe ratio", "multiple", "expensive", "cheap"]):
         return "valuation"
     return "identity"
@@ -1760,6 +2106,110 @@ def _first_chunk(
     if not chunks:
         return None
     return sorted(chunks, key=lambda item: (item.source_document.source_rank, item.chunk.chunk_order))[0]
+
+
+def _provider_market_price_value(fact: RetrievedFact | None) -> Any | None:
+    if fact is None or not isinstance(fact.fact.value, dict):
+        return None
+    return fact.fact.value.get("regularMarketPrice") or fact.fact.value.get("chartPreviousClose")
+
+
+def _provider_market_price_unit(fact: RetrievedFact | None) -> str | None:
+    if fact is None or not isinstance(fact.fact.value, dict):
+        return None
+    currency = fact.fact.value.get("currency")
+    return f" {currency}" if currency else None
+
+
+def _quote_stat_value(fact: RetrievedFact | None, metric_id: str) -> str | None:
+    row = _quote_stat_row(fact, metric_id)
+    if row is None or row.get("value") in (None, ""):
+        return None
+    return str(row.get("value"))
+
+
+def _quote_stat_label(fact: RetrievedFact | None, metric_id: str) -> str | None:
+    row = _quote_stat_row(fact, metric_id)
+    if row is None:
+        return None
+    return str(row.get("label") or metric_id.replace("_", " "))
+
+
+def _quote_stat_row(fact: RetrievedFact | None, metric_id: str) -> dict[str, Any] | None:
+    if fact is None or not isinstance(fact.fact.value, dict):
+        return None
+    rows = fact.fact.value.get("rows")
+    if not isinstance(rows, list):
+        return None
+    return next(
+        (
+            row
+            for row in rows
+            if isinstance(row, dict) and str(row.get("metric_id") or "") == metric_id
+        ),
+        None,
+    )
+
+
+def _chart_position_phrase(fact: RetrievedFact | None) -> str | None:
+    if fact is None or not isinstance(fact.fact.value, dict):
+        return None
+    points = [
+        point
+        for point in fact.fact.value.get("points") or []
+        if isinstance(point, dict) and isinstance(point.get("close"), (int, float))
+    ]
+    if len(points) < 2:
+        return None
+    first = points[0]["close"]
+    last = points[-1]["close"]
+    return f"{fact.fact.value.get('range') or 'recent'} chart closes moved from {first} to {last}"
+
+
+def _provider_metric_values(fact: RetrievedFact | None, group_id: str, *, limit: int) -> list[str]:
+    if fact is None or not isinstance(fact.fact.value, dict):
+        return []
+    groups = fact.fact.value.get("groups")
+    if not isinstance(groups, list):
+        return []
+    group = next((item for item in groups if isinstance(item, dict) and item.get("group_id") == group_id), None)
+    if not isinstance(group, dict):
+        return []
+    values: list[str] = []
+    for metric in group.get("metrics") or []:
+        if not isinstance(metric, dict) or metric.get("value") in (None, ""):
+            continue
+        values.append(f"{metric.get('label') or metric.get('metric_id')}: {metric.get('value')}")
+        if len(values) >= limit:
+            break
+    return values
+
+
+def _profile_valuation_values(fact: RetrievedFact | None) -> list[str]:
+    if fact is None or not isinstance(fact.fact.value, dict):
+        return []
+    labels = (
+        ("trailing_pe", "trailing P/E"),
+        ("forward_pe", "forward P/E"),
+        ("market_cap", "market cap"),
+        ("enterprise_value", "enterprise value"),
+    )
+    return [
+        f"{label}: {fact.fact.value[key]}"
+        for key, label in labels
+        if fact.fact.value.get(key) not in (None, "")
+    ]
+
+
+def _join_human(values: list[str]) -> str:
+    values = [value for value in values if value]
+    if not values:
+        return ""
+    if len(values) == 1:
+        return values[0]
+    if len(values) == 2:
+        return f"{values[0]} and {values[1]}"
+    return ", ".join(values[:-1]) + f", and {values[-1]}"
 
 
 def _require_fact(facts_by_field: dict[str, RetrievedFact], field_name: str) -> RetrievedFact:

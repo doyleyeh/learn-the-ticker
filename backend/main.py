@@ -49,6 +49,7 @@ from backend.lightweight_page import (
     build_lightweight_details_response,
     build_lightweight_overview_response,
     build_lightweight_sources_response,
+    build_lightweight_weekly_news_response,
     fetch_lightweight_page_data_if_enabled,
     persist_lightweight_evidence_if_configured,
 )
@@ -472,13 +473,7 @@ def asset_weekly_news(ticker: str) -> WeeklyNewsResponse:
             source_snapshot_repository=readers.reader("source_snapshot_repository"),
             knowledge_pack_repository=readers.reader("knowledge_pack_reader"),
         )
-        overview = build_lightweight_overview_response(lightweight_response)
-        return WeeklyNewsResponse(
-            asset=overview.asset,
-            state=overview.state,
-            weekly_news_focus=overview.weekly_news_focus,
-            ai_comprehensive_analysis=overview.ai_comprehensive_analysis,
-        )
+        return build_lightweight_weekly_news_response(lightweight_response)
 
     overview = generate_asset_overview(
         ticker,

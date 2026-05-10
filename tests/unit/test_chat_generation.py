@@ -236,6 +236,77 @@ def test_lightweight_chat_answers_recent_questions_from_weekly_news(monkeypatch)
     assert validate_chat_response(response, pack).valid
 
 
+def test_price_position_question_does_not_fall_back_to_identity_when_evidence_is_missing():
+    response = generate_asset_chat("QQQ", "Is QQQ at a high point?")
+
+    assert response.safety_classification is SafetyClassification.educational
+    assert response.direct_answer.startswith("Insufficient evidence")
+    assert "provider price or 52-week range" in response.direct_answer
+    assert "plain-vanilla ETF" not in response.direct_answer
+    assert response.citations == []
+
+
+def test_lightweight_chat_answers_average_volume_from_quote_stats(monkeypatch):
+    settings = build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+        }
+    )
+    lightweight = fetch_lightweight_asset_data(
+        "VOO",
+        settings=settings,
+        fetcher=FakeJsonFetcher(),
+        retrieved_at=RETRIEVED_AT,
+    )
+    pack = build_lightweight_chat_knowledge_pack(lightweight)
+    monkeypatch.setattr(
+        "backend.lightweight_page.fetch_lightweight_page_data_if_enabled",
+        lambda ticker: lightweight if ticker.upper() == "VOO" else None,
+    )
+
+    response = generate_asset_chat("VOO", "What is the average daily trading volume?")
+
+    assert response.asset.ticker == "VOO"
+    assert "Avg. Volume" in response.direct_answer
+    assert "plain-vanilla ETF" in response.direct_answer
+    assert response.citations
+    assert validate_chat_response(response, pack).valid
+
+
+def test_lightweight_chat_answers_stock_valuation_without_buy_sell_label(monkeypatch):
+    settings = build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+        }
+    )
+    lightweight = fetch_lightweight_asset_data(
+        "AAPL",
+        settings=settings,
+        fetcher=FakeJsonFetcher(),
+        retrieved_at=RETRIEVED_AT,
+    )
+    pack = build_lightweight_chat_knowledge_pack(lightweight)
+    monkeypatch.setattr(
+        "backend.lightweight_page.fetch_lightweight_page_data_if_enabled",
+        lambda ticker: lightweight if ticker.upper() == "AAPL" else None,
+    )
+
+    response = generate_asset_chat("AAPL", "Is AAPL expensive?")
+
+    assert response.asset.ticker == "AAPL"
+    assert "provider valuation context includes" in response.direct_answer
+    assert "does not label the stock cheap or expensive" in response.direct_answer
+    assert not find_forbidden_output_phrases(response.direct_answer)
+    assert response.citations
+    assert validate_chat_response(response, pack).valid
+
+
 def test_lightweight_chat_keeps_advice_and_compare_redirects_before_fetch(monkeypatch):
     def fail_fetch(_ticker):
         raise AssertionError("lightweight evidence should not be fetched for redirects")

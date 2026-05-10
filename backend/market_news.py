@@ -40,6 +40,12 @@ from backend.models import (
 from backend.news_quality import clean_news_publisher, news_source_from_domain, publisher_priority
 from backend.safety import find_forbidden_output_phrases
 from backend.settings import MarketNewsSettings, build_market_news_settings
+from backend.summary_generation import (
+    HybridSummaryGenerationService,
+    SummaryGenerationContractError,
+    SummaryGenerationService,
+    build_default_summary_generation_service,
+)
 from backend.weekly_news import DEFAULT_WEEKLY_NEWS_AS_OF, compute_weekly_news_window
 
 
@@ -497,6 +503,7 @@ def build_market_ai_comprehensive_analysis(
     *,
     minimum_market_news_item_count: int = MINIMUM_MARKET_AI_ITEMS,
     minimum_topic_bucket_count: int = MINIMUM_MARKET_AI_BUCKETS,
+    summary_generation_service: SummaryGenerationService | None = None,
 ) -> MarketAIComprehensiveAnalysisResponse:
     selected_bucket_count = len({item.topic_bucket for item in focus.items})
     if focus.selected_item_count < minimum_market_news_item_count or selected_bucket_count < minimum_topic_bucket_count:
@@ -513,85 +520,33 @@ def build_market_ai_comprehensive_analysis(
             ),
         )
 
-    all_citations = sorted({citation_id for item in focus.items for citation_id in item.citation_ids})
-    source_ids = sorted({source.source_document_id for source in focus.source_documents})
-    story_ids = [item.story_id for item in focus.items]
-    titles_by_bucket = {
-        bucket: [item.title for item in focus.items if item.topic_bucket is bucket]
-        for bucket in MarketNewsTopicBucket
-    }
-
-    sections = [
-        _analysis_section(
-            "what_changed_this_week",
-            "What Changed This Week",
-            "The selected Market News Focus items point to broad policy, equity, technology, geopolitical, and credit themes in the current evidence window.",
-            ["This market-wide layer is shared across ticker pages and stays separate from each asset's stable facts."],
-            all_citations,
-        ),
-        _analysis_section(
-            "macro_policy",
-            "Macro & Policy",
-            _bucket_sentence(titles_by_bucket, MarketNewsTopicBucket.macro_fed, "macro and policy"),
-            ["Read policy headlines as context for market conditions, not as a forecast."],
-            _citations_for_bucket(focus, MarketNewsTopicBucket.macro_fed) or all_citations,
-        ),
-        _analysis_section(
-            "equity_market_drivers",
-            "Equity Market Drivers",
-            _bucket_sentence(titles_by_bucket, MarketNewsTopicBucket.markets_earnings, "equity market"),
-            ["The section highlights reported drivers beginners may compare with asset-specific facts."],
-            _citations_for_bucket(focus, MarketNewsTopicBucket.markets_earnings) or all_citations,
-        ),
-        _analysis_section(
-            "ai_technology_semiconductors",
-            "AI / Technology / Semiconductors",
-            _bucket_sentence(titles_by_bucket, MarketNewsTopicBucket.ai_technology_semiconductors, "technology and semiconductor"),
-            ["Technology themes are market context and do not replace ticker-specific exposure analysis."],
-            _citations_for_bucket(focus, MarketNewsTopicBucket.ai_technology_semiconductors) or all_citations,
-        ),
-        _analysis_section(
-            "geopolitical_energy_risks",
-            "Geopolitical & Energy Risks",
-            _bucket_sentence(titles_by_bucket, MarketNewsTopicBucket.geopolitics_energy_supply_chain, "geopolitical and energy"),
-            ["Supply and energy headlines can affect inflation and sentiment, but the evidence remains news-bound."],
-            _citations_for_bucket(focus, MarketNewsTopicBucket.geopolitics_energy_supply_chain) or all_citations,
-        ),
-        _analysis_section(
-            "credit_liquidity_sentiment",
-            "Credit / Liquidity / Sentiment",
-            _bucket_sentence(titles_by_bucket, MarketNewsTopicBucket.credit_liquidity_sentiment, "credit and liquidity"),
-            ["Credit and sentiment items are watchpoints, not personal portfolio instructions."],
-            _citations_for_bucket(focus, MarketNewsTopicBucket.credit_liquidity_sentiment) or all_citations,
-        ),
-        _analysis_section(
-            "scenario_lens",
-            "Scenario Lens",
-            "If cited market stresses persist, beginners may watch whether later approved sources confirm easing, continuation, or broadening of those stresses.",
-            ["This lens is conditional education from the selected sources and is not a return prediction."],
-            all_citations,
-        ),
-        _analysis_section(
-            "practical_watchpoints",
-            "Practical Watchpoints",
-            "The practical next step is to compare future cited updates against the same topic buckets and the selected ticker's own evidence.",
-            ["Use source dates, topic buckets, and citations to separate market-wide context from ticker-specific facts."],
-            all_citations,
-        ),
-    ]
-    response = MarketAIComprehensiveAnalysisResponse(
-        state=WeeklyNewsContractState.available,
-        analysis_available=True,
-        minimum_market_news_item_count=minimum_market_news_item_count,
-        minimum_topic_bucket_count=minimum_topic_bucket_count,
-        market_news_selected_item_count=focus.selected_item_count,
-        selected_topic_bucket_count=selected_bucket_count,
-        sections=sections,
-        citation_ids=all_citations,
-        source_document_ids=source_ids,
-        market_news_story_ids=story_ids,
-        no_live_external_calls=focus.no_live_external_calls,
-    )
+    service = summary_generation_service or build_default_summary_generation_service()
+    try:
+        response = service.generate_market_ai_comprehensive_analysis(
+            focus=focus,
+            minimum_market_news_item_count=minimum_market_news_item_count,
+            minimum_topic_bucket_count=minimum_topic_bucket_count,
+        )
+    except SummaryGenerationContractError:
+        try:
+            response = HybridSummaryGenerationService().generate_market_ai_comprehensive_analysis(
+                focus=focus,
+                minimum_market_news_item_count=minimum_market_news_item_count,
+                minimum_topic_bucket_count=minimum_topic_bucket_count,
+            )
+        except SummaryGenerationContractError:
+            return MarketAIComprehensiveAnalysisResponse(
+                state=WeeklyNewsContractState.suppressed,
+                analysis_available=False,
+                minimum_market_news_item_count=minimum_market_news_item_count,
+                minimum_topic_bucket_count=minimum_topic_bucket_count,
+                market_news_selected_item_count=focus.selected_item_count,
+                selected_topic_bucket_count=selected_bucket_count,
+                suppression_reason=(
+                    "AI Comprehensive Analysis: Market News Focus is suppressed because generated analysis failed "
+                    "schema, citation, freshness, headline-repetition, or safety validation."
+                ),
+            )
     validate_market_ai_comprehensive_analysis(response, focus)
     return response
 

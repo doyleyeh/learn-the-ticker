@@ -55,8 +55,14 @@ from backend.models import (
     WeeklyNewsEmptyState,
     WeeklyNewsEvidenceLimitedState,
     WeeklyNewsFocusResponse,
+    WeeklyNewsResponse,
 )
 from backend.settings import LightweightDataSettings, build_lightweight_data_settings
+from backend.summary_generation import (
+    SummaryGenerationContractError,
+    build_default_summary_generation_service,
+    deterministic_summary_generation,
+)
 from backend.weekly_news import build_ai_comprehensive_analysis, compute_weekly_news_window
 from backend.weekly_news_sources import build_lightweight_weekly_news_focus
 
@@ -105,6 +111,30 @@ def build_lightweight_sources_response_if_enabled(
     )
 
 
+def build_lightweight_weekly_news_response(response: LightweightFetchResponse) -> WeeklyNewsResponse:
+    stable_citation_ids = _preferred_citation_ids(response) or [citation.citation_id for citation in response.citations[:1]]
+    source_documents = [_source_document_from_lightweight(source, response) for source in response.sources]
+    weekly_news_focus = build_lightweight_weekly_news_focus(response) or _empty_weekly_news_focus(response)
+    ai_analysis = build_ai_comprehensive_analysis(
+        response.asset,
+        weekly_news_focus,
+        canonical_fact_citation_ids=stable_citation_ids,
+        canonical_source_document_ids=[source.source_document_id for source in source_documents[:1]],
+    )
+    return WeeklyNewsResponse(
+        asset=response.asset.model_copy(update={"status": AssetStatus.supported, "supported": True}),
+        state=StateMessage(
+            status=AssetStatus.supported,
+            message=(
+                "Live lightweight Weekly News Focus is available when enough source-labeled ticker evidence passes "
+                "the selection rules."
+            ),
+        ),
+        weekly_news_focus=weekly_news_focus,
+        ai_comprehensive_analysis=ai_analysis,
+    )
+
+
 def build_lightweight_overview_response(response: LightweightFetchResponse) -> OverviewResponse:
     sources = [_source_document_from_lightweight(source, response) for source in response.sources]
     citations = [
@@ -129,7 +159,8 @@ def build_lightweight_overview_response(response: LightweightFetchResponse) -> O
         canonical_fact_citation_ids=stable_citation_ids,
         canonical_source_document_ids=[source.source_document_id for source in sources[:1]],
     )
-    market_news = build_runtime_market_news_response()
+    with deterministic_summary_generation():
+        market_news = build_runtime_market_news_response(cache_only=True)
 
     return OverviewResponse(
         asset=response.asset.model_copy(update={"status": AssetStatus.supported, "supported": True}),
@@ -339,7 +370,8 @@ def build_lightweight_sources_response(
     citation_id: str | None = None,
     source_document_id: str | None = None,
 ) -> SourcesResponse:
-    overview = build_lightweight_overview_response(response)
+    with deterministic_summary_generation():
+        overview = build_lightweight_overview_response(response)
     source_groups = [_source_group(source, overview) for source in overview.source_documents]
     bindings = [_citation_binding(citation, response, overview) for citation in overview.citations]
     related_claims = _related_claims(overview)
@@ -503,49 +535,132 @@ def _supporting_passage(source: LightweightFetchSource, response: LightweightFet
 
 def _beginner_summary(response: LightweightFetchResponse) -> BeginnerSummary:
     if response.asset.asset_type is AssetType.stock:
-        return BeginnerSummary(
-            what_it_is=(
-                f"{response.asset.name} ({response.asset.ticker}) is a U.S.-listed common stock resolved through "
-                "the lightweight SEC-first fetch pipeline."
-            ),
-            why_people_consider_it=(
-                "Beginners may study it to understand a single company's SEC filings, reported financial facts, "
-                "and current provider-labeled market-reference context."
-            ),
-            main_catch=(
-                "A stock is one company, so the page separates source-backed company facts from provider-derived "
-                "market reference data and does not make buy, sell, hold, or allocation recommendations."
+        return _generated_beginner_summary(
+            response,
+            BeginnerSummary(
+                what_it_is=(
+                    f"{response.asset.name} ({response.asset.ticker}) is a U.S.-listed common stock resolved through "
+                    "the lightweight SEC-first fetch pipeline."
+                ),
+                why_people_consider_it=(
+                    "Beginners may study it to understand a single company's SEC filings, reported financial facts, "
+                    "and current provider-labeled market-reference context."
+                ),
+                main_catch=(
+                    "A stock is one company, so the page separates source-backed company facts from provider-derived "
+                    "market reference data and does not make buy, sell, hold, or allocation recommendations."
+                ),
             ),
         )
     if _has_official_etf_issuer_evidence(response):
-        return BeginnerSummary(
-            what_it_is=(
-                f"{response.asset.name} ({response.asset.ticker}) is a U.S.-listed ETF with deterministic official "
-                "issuer evidence in the lightweight local-MVP fetch pipeline."
-            ),
-            why_people_consider_it=(
-                "Beginners may study it to understand the fund's benchmark, cost, holdings or exposure examples, "
-                "and separately labeled provider market-reference context."
-            ),
-            main_catch=(
-                "Issuer facts are point-in-time and do not make the ETF suitable for any specific person; provider-derived "
-                "fields stay separately labeled and complex products remain blocked."
+        return _generated_beginner_summary(
+            response,
+            BeginnerSummary(
+                what_it_is=(
+                    f"{response.asset.name} ({response.asset.ticker}) is a U.S.-listed ETF with deterministic official "
+                    "issuer evidence in the lightweight local-MVP fetch pipeline."
+                ),
+                why_people_consider_it=(
+                    "Beginners may study it to understand the fund's benchmark, cost, holdings or exposure examples, "
+                    "and separately labeled provider market-reference context."
+                ),
+                main_catch=(
+                    "Issuer facts are point-in-time and do not make the ETF suitable for any specific person; provider-derived "
+                    "fields stay separately labeled and complex products remain blocked."
+                ),
             ),
         )
-    return BeginnerSummary(
-        what_it_is=(
-            f"{response.asset.name} ({response.asset.ticker}) is a U.S.-listed ETF rendered through the "
-            "lightweight local-MVP fetch pipeline."
-        ),
-        why_people_consider_it=(
-            "Beginners may study it to understand the fund's role, broad scope, current market-reference context, "
-            "and where issuer evidence is still partial."
-        ),
-        main_catch=(
-            "ETF issuer holdings, fee, and methodology fields may be partial in lightweight mode; provider-derived "
-            "fields are labeled and complex products remain blocked."
+    return _generated_beginner_summary(
+        response,
+        BeginnerSummary(
+            what_it_is=(
+                f"{response.asset.name} ({response.asset.ticker}) is a U.S.-listed ETF rendered through the "
+                "lightweight local-MVP fetch pipeline."
+            ),
+            why_people_consider_it=(
+                "Beginners may study it to understand the fund's role, broad scope, current market-reference context, "
+                "and where issuer evidence is still partial."
+            ),
+            main_catch=(
+                "ETF issuer holdings, fee, and methodology fields may be partial in lightweight mode; provider-derived "
+                "fields are labeled and complex products remain blocked."
+            ),
         ),
     )
+
+
+def _generated_beginner_summary(
+    response: LightweightFetchResponse,
+    base_summary: BeginnerSummary,
+) -> BeginnerSummary:
+    try:
+        return build_default_summary_generation_service().generate_beginner_summary(
+            asset=response.asset,
+            base_summary=base_summary,
+            citation_ids=_preferred_citation_ids(response) or [citation.citation_id for citation in response.citations[:1]],
+            evidence_notes=[diagnostic for diagnostic in _lightweight_evidence_note_candidates(response) if diagnostic],
+        )
+    except SummaryGenerationContractError:
+        return base_summary
+
+
+def _lightweight_evidence_note_candidates(response: LightweightFetchResponse) -> list[str]:
+    notes = [
+        f"fetch_state={response.fetch_state.value}",
+        f"source_count={len(response.sources)}",
+        f"fact_count={len(response.facts)}",
+    ]
+    for field_name in (
+        "benchmark",
+        "holdings_count",
+        "expense_ratio",
+        "provider_market_price",
+        "provider_quote_stats",
+        "provider_profile_overview",
+        "latest_revenue_fact",
+        "latest_net_income_fact",
+        "latest_assets_fact",
+    ):
+        fact = _fact(response, field_name)
+        if fact is not None and fact.value not in (None, ""):
+            notes.append(f"{field_name}={_compact_evidence_value(fact.value)}")
+    if response.gaps:
+        notes.append("evidence_gaps=" + ",".join(gap.field_name for gap in response.gaps[:3]))
+    if response.fallback_diagnostics is not None:
+        notes.append("source_path=" + response.fallback_diagnostics.source_path)
+    return notes
+
+
+def _compact_evidence_value(value: Any) -> str:
+    if isinstance(value, dict):
+        parts: list[str] = []
+        for key in (
+            "regularMarketPrice",
+            "currency",
+            "sector",
+            "industry",
+            "business_summary",
+            "market_cap",
+            "trailing_pe",
+            "forward_pe",
+        ):
+            if value.get(key) not in (None, ""):
+                parts.append(f"{key}: {_short_value(value.get(key))}")
+        rows = value.get("rows")
+        if isinstance(rows, list):
+            labels = [
+                str(row.get("label") or row.get("metric_id"))
+                for row in rows
+                if isinstance(row, dict) and row.get("value") not in (None, "")
+            ][:5]
+            if labels:
+                parts.append("rows: " + _join_human(labels))
+        if not parts:
+            parts = [f"{key}: {_short_value(item)}" for key, item in list(value.items())[:4]]
+        return "; ".join(parts)[:360]
+    if isinstance(value, list):
+        return "; ".join(_short_value(item) for item in value[:4])[:360]
+    return _short_value(value)[:360]
 
 
 def _top_risks(
@@ -553,40 +668,73 @@ def _top_risks(
     stable_citation_ids: list[str],
     provider_citation_ids: list[str],
 ) -> list[RiskItem]:
+    allowed_citation_ids = _dedupe([*stable_citation_ids, *provider_citation_ids])
     if response.asset.asset_type is AssetType.stock:
-        return [
+        profile = _fact_value(response, "provider_profile_overview")
+        sector = profile.get("sector") if isinstance(profile, dict) else None
+        industry = profile.get("industry") if isinstance(profile, dict) else None
+        valuation_labels = _provider_metric_labels(response, "valuation_ratios", limit=4)
+        fallback = [
             RiskItem(
                 title="Single-company risk",
                 plain_english_explanation=(
-                    f"{response.asset.ticker} represents one company, so company-specific results, filings, "
-                    "competition, and execution can matter a lot."
+                    f"{response.asset.ticker} represents one company, so its filings, execution, customer demand, and "
+                    "company-specific news can matter much more than they would inside a diversified ETF."
                 ),
                 citation_ids=stable_citation_ids,
             ),
             RiskItem(
                 title="Business and competition risk",
                 plain_english_explanation=(
-                    "A company's products, services, customer demand, competitors, and execution can change, so "
-                    "source-backed business facts should be read as a starting point for understanding the company."
+                    (
+                        f"Provider profile fields place {response.asset.ticker} in {sector}"
+                        + (f" / {industry}" if industry else "")
+                        + ", so beginners should connect the company profile with demand, competition, regulation, and execution risk."
+                    )
+                    if sector
+                    else (
+                        "A company's products, services, customer demand, competitors, and execution can change, so "
+                        "source-backed business facts should be read as a starting point for understanding the company."
+                    )
                 ),
-                citation_ids=stable_citation_ids,
+                citation_ids=provider_citation_ids or stable_citation_ids,
             ),
             RiskItem(
                 title="Financial and valuation risk",
                 plain_english_explanation=(
-                    "Reported financial results and valuation context can change over time, and market expectations "
-                    "can move faster than the latest filing or provider snapshot."
+                    (
+                        f"Provider-derived valuation rows include {_join_human(valuation_labels)}; those fields can change with price and fundamentals and do not by themselves prove whether the stock is cheap or expensive."
+                    )
+                    if valuation_labels
+                    else (
+                        "Reported financial results and valuation context can change over time, and market expectations "
+                        "can move faster than the latest filing or provider snapshot."
+                    )
                 ),
-                citation_ids=_dedupe([*stable_citation_ids, *provider_citation_ids]) or stable_citation_ids,
+                citation_ids=allowed_citation_ids or stable_citation_ids,
             ),
         ]
+        candidates = [
+            *fallback,
+            RiskItem(
+                title="Provider-data limitation",
+                plain_english_explanation=(
+                    "Some market, profile, and valuation fields are provider-derived local-test context, so unsupported or stale fields should stay labeled instead of becoming conclusions."
+                ),
+                citation_ids=provider_citation_ids or stable_citation_ids,
+            ),
+        ]
+        return _generated_top_risks(response, candidates, fallback, allowed_citation_ids)
     narrow_or_specialized = _is_narrow_or_specialized_etf(response)
+    benchmark = _fact_value(response, "benchmark")
+    holdings_count = _fact_value(response, "holdings_count")
+    expense_ratio = _fact_value(response, "expense_ratio")
     concentration_summary = (
-        f"{response.asset.ticker} tracks a narrower or more specialized index segment, so a smaller set of companies "
+        f"{response.asset.ticker} tracks {benchmark or 'a narrower or more specialized index segment'}, so a smaller set of companies "
         "or sectors can drive more of the fund's results."
         if narrow_or_specialized
         else (
-            f"{response.asset.ticker} may hold many stocks, but large companies and larger index weights can still "
+            f"{response.asset.ticker} may hold {holdings_count or 'many'} stocks, but large companies and larger index weights can still "
             "have an outsized effect on what investors experience."
         )
     )
@@ -595,32 +743,71 @@ def _top_risks(
         plain_english_explanation=concentration_summary,
         citation_ids=stable_citation_ids,
     )
-    risks: list[RiskItem] = []
+    fallback: list[RiskItem] = []
     if narrow_or_specialized:
-        risks.append(concentration_risk)
-    risks.append(
+        fallback.append(concentration_risk)
+    fallback.append(
         RiskItem(
             title="Market risk",
             plain_english_explanation=(
-                f"{response.asset.ticker} owns a basket of stocks, so it can lose value when the market or the index "
-                "segment it tracks declines."
+                f"{response.asset.ticker} owns a basket of stocks tied to {benchmark or 'its index segment'}, so it can lose value when that market exposure declines."
             ),
             citation_ids=stable_citation_ids,
         )
     )
     if not narrow_or_specialized:
-        risks.append(concentration_risk)
-    risks.append(
+        fallback.append(concentration_risk)
+    fallback.append(
         RiskItem(
             title="Tracking risk",
             plain_english_explanation=(
-                "An index ETF tries to follow its benchmark, but fees, trading, cash, and implementation details can "
-                "make fund results differ from the index."
+                (
+                    f"The fund reports an expense ratio of {expense_ratio}%, and fees, trading, cash, and implementation details can make results differ from the benchmark."
+                    if expense_ratio not in (None, "")
+                    else "An index ETF tries to follow its benchmark, but fees, trading, cash, and implementation details can make fund results differ from the index."
+                )
             ),
-            citation_ids=_dedupe([*stable_citation_ids, *provider_citation_ids]) or stable_citation_ids,
+            citation_ids=allowed_citation_ids or stable_citation_ids,
         )
     )
-    return risks
+    candidates = [
+        *fallback,
+        RiskItem(
+            title="Trading and liquidity context",
+            plain_english_explanation=(
+                "Quote and volume fields are provider-derived reference data; beginners should keep them separate from issuer facts and avoid treating them as trading instructions."
+            ),
+            citation_ids=provider_citation_ids or stable_citation_ids,
+        ),
+        RiskItem(
+            title="Methodology evidence limit",
+            plain_english_explanation=(
+                "Benchmark and prospectus metadata identify the index-tracking context, but complete rebalancing, screening, and methodology details may remain partial in lightweight mode."
+            ),
+            citation_ids=stable_citation_ids,
+        ),
+    ]
+    return _generated_top_risks(response, candidates, fallback, allowed_citation_ids)
+
+
+def _generated_top_risks(
+    response: LightweightFetchResponse,
+    candidates: list[RiskItem],
+    fallback: list[RiskItem],
+    allowed_citation_ids: list[str],
+) -> list[RiskItem]:
+    if len(fallback) != 3 or not allowed_citation_ids:
+        return fallback[:3]
+    try:
+        return build_default_summary_generation_service().generate_top_risks(
+            asset=response.asset,
+            candidate_risks=candidates,
+            fallback_risks=fallback,
+            allowed_citation_ids=allowed_citation_ids,
+            evidence_notes=[diagnostic for diagnostic in _lightweight_evidence_note_candidates(response) if diagnostic],
+        )
+    except SummaryGenerationContractError:
+        return fallback[:3]
 
 
 def _is_narrow_or_specialized_etf(response: LightweightFetchResponse) -> bool:
@@ -827,7 +1014,7 @@ def _stock_sections(
             applies_to=[AssetType.stock],
         ),
     ]
-    return [*sections, *_gap_sections(response)]
+    return _generated_section_summaries(response, [*sections, *_gap_sections(response)])
 
 
 def _etf_sections(
@@ -849,7 +1036,7 @@ def _etf_sections(
     holdings_table = _etf_holdings_table(response, stable_citation_ids, provider_citation_ids)
     overview_citation_ids = _dedupe([*stable_citation_ids, *((overview_table.citation_ids if overview_table else []))])
     holdings_citation_ids = _dedupe([*stable_citation_ids, *((holdings_table.citation_ids if holdings_table else []))])
-    return [
+    sections = [
         OverviewSection(
             section_id="fund_objective_role",
             title="Fund Objective And Role",
@@ -993,6 +1180,7 @@ def _etf_sections(
         ),
         *_gap_sections(response),
     ]
+    return _generated_section_summaries(response, sections)
 
 
 def _gap_sections(response: LightweightFetchResponse) -> list[OverviewSection]:
@@ -1120,6 +1308,14 @@ def _evidence_limits_section(
 
     citation_ids = _dedupe(citation_id for item in items for citation_id in item.citation_ids)
     section_freshness = FreshnessState.fresh if citation_ids else FreshnessState.unavailable
+    summary = _generated_deep_dive_summary(
+        response,
+        section_id="evidence_limits",
+        title="Evidence Limits",
+        base_summary=summary,
+        citation_ids=citation_ids,
+        evidence_state=EvidenceState.partial,
+    )
     return OverviewSection(
         section_id="evidence_limits",
         title="Evidence Limits",
@@ -1136,6 +1332,93 @@ def _evidence_limits_section(
         retrieved_at=response.freshness.page_last_updated_at,
         limitations="This section explains source and freshness limits; it is not one of the asset's Top 3 Risks.",
     )
+
+
+def _generated_deep_dive_summary(
+    response: LightweightFetchResponse,
+    *,
+    section_id: str,
+    title: str,
+    base_summary: str | None,
+    citation_ids: list[str],
+    evidence_state: EvidenceState,
+    evidence_notes: list[str] | None = None,
+) -> str | None:
+    try:
+        return build_default_summary_generation_service().generate_deep_dive_summary(
+            asset=response.asset,
+            section_id=section_id,
+            title=title,
+            base_summary=base_summary,
+            citation_ids=citation_ids,
+            evidence_state=evidence_state.value,
+            evidence_notes=evidence_notes or [],
+        )
+    except SummaryGenerationContractError:
+        return base_summary
+
+
+def _generated_section_summaries(
+    response: LightweightFetchResponse,
+    sections: list[OverviewSection],
+) -> list[OverviewSection]:
+    refined: list[OverviewSection] = []
+    for section in sections:
+        if section.section_type in {OverviewSectionType.risk, OverviewSectionType.educational_suitability}:
+            refined.append(section)
+            continue
+        summary = _generated_deep_dive_summary(
+            response,
+            section_id=section.section_id,
+            title=section.title,
+            base_summary=section.beginner_summary,
+            citation_ids=section.citation_ids,
+            evidence_state=section.evidence_state,
+            evidence_notes=_section_evidence_notes(section),
+        )
+        refined.append(section.model_copy(update={"beginner_summary": summary}))
+    return refined
+
+
+def _section_evidence_notes(section: OverviewSection) -> list[str]:
+    notes: list[str] = [
+        f"section_id={section.section_id}",
+        f"evidence_state={section.evidence_state.value}",
+    ]
+    if section.items:
+        notes.append(
+            "items="
+            + "; ".join(
+                f"{item.title}: {_short_value(item.summary)}"
+                for item in section.items[:4]
+                if item.summary
+            )
+        )
+    if section.metrics:
+        metric_text = "; ".join(
+            f"{metric.label}: {_short_value(metric.value)}"
+            for metric in section.metrics[:4]
+            if metric.value not in (None, "")
+        )
+        if metric_text:
+            notes.append(f"metrics={metric_text}")
+    if section.table is not None:
+        row_text = "; ".join(
+            f"{row.label or row.row_id}: {_short_value(row.values.get('value'))}"
+            for row in section.table.rows[:5]
+            if row.values.get("value") not in (None, "")
+        )
+        if row_text:
+            notes.append(f"table={section.table.title}: {row_text}")
+    if section.chart is not None and section.chart.points:
+        first = section.chart.points[0]
+        last = section.chart.points[-1]
+        notes.append(
+            f"chart={section.chart.range} {section.chart.interval}: first close {first.close}, latest close {last.close}"
+        )
+    if section.limitations:
+        notes.append(f"limitations={section.limitations}")
+    return notes
 
 
 def _item(

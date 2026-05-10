@@ -79,6 +79,7 @@ from backend.retrieval_repository import (
 )
 from backend.safety import find_forbidden_output_phrases
 from backend.source_policy import resolve_source_policy
+from backend.summary_generation import SummaryGenerationContractError, build_default_summary_generation_service
 from backend.weekly_news import (
     DEFAULT_WEEKLY_NEWS_AS_OF,
     WeeklyNewsEventEvidenceRecordReader,
@@ -1391,24 +1392,45 @@ def _build_beginner_summary(pack: AssetKnowledgePack, facts_by_field: dict[str, 
         else:
             main_catch = "The main catch is that this is still stock-market exposure; index tracking does not remove the risk of losses when large U.S. stocks fall."
 
-        return BeginnerSummary(
-            what_it_is=f"{pack.asset.ticker} is a U.S.-listed ETF from {pack.asset.issuer} that seeks to track the {benchmark}.",
-            why_people_consider_it=(
-                f"Beginners often study it to understand {role}; the local fixture records about {holdings} holdings "
-                f"and a {expense_ratio} expense ratio."
+        return _generated_beginner_summary(
+            pack,
+            BeginnerSummary(
+                what_it_is=(
+                    f"{pack.asset.ticker} is a U.S.-listed ETF from {pack.asset.issuer} "
+                    f"that seeks to track the {benchmark}."
+                ),
+                why_people_consider_it=(
+                    f"Beginners often study it to understand {role}; the local fixture records about {holdings} "
+                    f"holdings and a {expense_ratio} expense ratio."
+                ),
+                main_catch=main_catch,
             ),
-            main_catch=main_catch,
         )
 
     primary_business = _fact_value(facts_by_field, "primary_business")
-    return BeginnerSummary(
-        what_it_is=f"{pack.asset.name} is a U.S.-listed company; the local fixture describes its primary business as: {primary_business}",
-        why_people_consider_it=(
-            "Beginners often study it because the business is familiar and the fixture separates stable business facts "
-            "from recent developments."
+    return _generated_beginner_summary(
+        pack,
+        BeginnerSummary(
+            what_it_is=f"{pack.asset.name} is a U.S.-listed company; the local fixture describes its primary business as: {primary_business}",
+            why_people_consider_it=(
+                "Beginners often study it because the business is familiar and the fixture separates stable business facts "
+                "from recent developments."
+            ),
+            main_catch="A single-company stock is less diversified than an ETF, so company-specific issues can matter more.",
         ),
-        main_catch="A single-company stock is less diversified than an ETF, so company-specific issues can matter more.",
     )
+
+
+def _generated_beginner_summary(pack: AssetKnowledgePack, base_summary: BeginnerSummary) -> BeginnerSummary:
+    try:
+        return build_default_summary_generation_service().generate_beginner_summary(
+            asset=pack.asset,
+            base_summary=base_summary,
+            citation_ids=[],
+            evidence_notes=_pack_evidence_notes(pack),
+        )
+    except SummaryGenerationContractError:
+        return base_summary
 
 
 def _build_top_risks(pack: AssetKnowledgePack, risk_citation_id: str) -> list[RiskItem]:
@@ -1431,10 +1453,42 @@ def _build_top_risks(pack: AssetKnowledgePack, risk_citation_id: str) -> list[Ri
             ("Large-company focus", "The fund focuses on large U.S. companies rather than every public company or every asset class."),
         ]
 
-    return [
+    fallback = [
         RiskItem(title=title, plain_english_explanation=explanation, citation_ids=[risk_citation_id])
         for title, explanation in risks
     ]
+    try:
+        return build_default_summary_generation_service().generate_top_risks(
+            asset=pack.asset,
+            candidate_risks=fallback,
+            fallback_risks=fallback,
+            allowed_citation_ids=[risk_citation_id],
+            evidence_notes=_pack_evidence_notes(pack),
+        )
+    except SummaryGenerationContractError:
+        return fallback
+
+
+def _pack_evidence_notes(pack: AssetKnowledgePack) -> list[str]:
+    notes = [f"source_count={len(pack.source_documents)}", f"fact_count={len(pack.normalized_facts)}"]
+    for fact in pack.normalized_facts:
+        if fact.fact.field_name in {
+            "benchmark",
+            "holdings_count",
+            "expense_ratio",
+            "beginner_role",
+            "primary_business",
+            "company_specific_risk",
+        }:
+            notes.append(f"{fact.fact.field_name}={_short_note_value(fact.fact.value)}")
+    if pack.evidence_gaps:
+        notes.append("evidence_gaps=" + ",".join(gap.field_name for gap in pack.evidence_gaps[:3]))
+    return notes
+
+
+def _short_note_value(value: Any) -> str:
+    text = " ".join(str(value).split())
+    return text[:240]
 
 
 def _build_recent_developments(pack: AssetKnowledgePack, bindings: _CitationRegistry) -> list[RecentDevelopment]:

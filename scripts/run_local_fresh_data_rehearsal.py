@@ -345,6 +345,12 @@ def _check_governed_golden_api_rendering() -> RehearsalCheck:
             source_snapshot_repository=source_snapshot_repo,
         ),
     )
+    previous_lightweight_live_fetch = os.environ.get("LIGHTWEIGHT_LIVE_FETCH_ENABLED")
+    previous_weekly_news_fetch = os.environ.get("LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED")
+    previous_market_news_fetch = os.environ.get("MARKET_NEWS_FETCH_ENABLED")
+    os.environ["LIGHTWEIGHT_LIVE_FETCH_ENABLED"] = "false"
+    os.environ["LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED"] = "false"
+    os.environ["MARKET_NEWS_FETCH_ENABLED"] = "false"
     try:
         overview = client.get("/api/assets/QQQ/overview").json()
         empty_weekly = client.get("/api/assets/AAPL/weekly-news").json()
@@ -366,6 +372,9 @@ def _check_governed_golden_api_rendering() -> RehearsalCheck:
         pending_ingestion = client.get("/api/search", params={"q": "SPY"}).json()
         unknown = client.get("/api/search", params={"q": "ZZZZ"}).json()
     finally:
+        _restore_optional_env("LIGHTWEIGHT_LIVE_FETCH_ENABLED", previous_lightweight_live_fetch)
+        _restore_optional_env("LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED", previous_weekly_news_fetch)
+        _restore_optional_env("MARKET_NEWS_FETCH_ENABLED", previous_market_news_fetch)
         configure_backend_read_dependencies(app, None)
 
     blocked_searches = {
@@ -755,7 +764,7 @@ def _check_local_fresh_data_mvp_slice_comparison_export_parity() -> RehearsalChe
 
 def _check_local_deployment_env_smoke() -> RehearsalCheck:
     check_id = "local_deployment_env_smoke"
-    result = run_local_deployment_env_smoke()
+    result = run_local_deployment_env_smoke(run_docker_config=False)
     details = {
         "schema_version": result.get("schema_version"),
         "status": result.get("status"),
@@ -780,6 +789,13 @@ def _check_local_deployment_env_smoke() -> RehearsalCheck:
     if result.get("status") == "blocked":
         return _blocked(check_id, "local_deployment_env_smoke_blocked", details)
     return _pass(check_id, "local_deployment_env_smoke_passed", details)
+
+
+def _restore_optional_env(name: str, previous: str | None) -> None:
+    if previous is None:
+        os.environ.pop(name, None)
+    else:
+        os.environ[name] = previous
 
 
 def _representative_asset_summaries(row_by_ticker: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:

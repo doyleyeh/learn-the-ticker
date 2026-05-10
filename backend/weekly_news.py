@@ -9,7 +9,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from backend.models import (
     AIComprehensiveAnalysisResponse,
-    AIComprehensiveAnalysisSection,
     AssetIdentity,
     Citation,
     EvidenceState,
@@ -34,6 +33,11 @@ from backend.models import (
 from backend.news_quality import publisher_tier, score_ticker_weekly_news
 from backend.retrieval import AssetKnowledgePack, RetrievedRecentDevelopment
 from backend.safety import find_forbidden_output_phrases
+from backend.summary_generation import (
+    SummaryGenerationContractError,
+    SummaryGenerationService,
+    build_default_summary_generation_service,
+)
 
 
 DEFAULT_WEEKLY_NEWS_AS_OF = "2026-04-23"
@@ -577,6 +581,7 @@ def build_ai_comprehensive_analysis(
     minimum_weekly_news_item_count: int = MINIMUM_AI_ANALYSIS_ITEMS,
     approved_weekly_news_item_count: int | None = None,
     high_signal_weekly_news_item_count: int | None = None,
+    summary_generation_service: SummaryGenerationService | None = None,
 ) -> AIComprehensiveAnalysisResponse:
     canonical_fact_citation_ids = sorted(set(canonical_fact_citation_ids or []))
     canonical_source_document_ids = sorted(set(canonical_source_document_ids or []))
@@ -608,57 +613,34 @@ def build_ai_comprehensive_analysis(
         }
     )
     event_ids = [item.event_id for item in weekly_news_focus.items]
-    first_titles = "; ".join(item.title for item in weekly_news_focus.items[:2])
-    asset_kind = "fund" if asset.asset_type.value == "etf" else "business"
-
-    sections = [
-        AIComprehensiveAnalysisSection(
-            section_id="what_changed_this_week",
-            label="What Changed This Week",
-            analysis=f"The local Weekly News Focus pack selected these approved items for {asset.ticker}: {first_titles}.",
-            bullets=["The analysis is limited to selected Weekly News Focus items and cited canonical facts."],
+    try:
+        service = summary_generation_service or build_default_summary_generation_service()
+        response = service.generate_ticker_ai_comprehensive_analysis(
+            asset=asset,
+            weekly_news_focus=weekly_news_focus,
+            canonical_fact_citation_ids=canonical_fact_citation_ids,
+            canonical_source_document_ids=canonical_source_document_ids,
+            minimum_weekly_news_item_count=minimum_weekly_news_item_count,
+            weekly_news_selected_item_count=weekly_news_focus.selected_item_count,
+        )
+        validate_ai_comprehensive_analysis(response, weekly_news_focus)
+        return response
+    except (SummaryGenerationContractError, WeeklyNewsContractError):
+        return AIComprehensiveAnalysisResponse(
+            asset=asset,
+            state=WeeklyNewsContractState.suppressed,
+            analysis_available=False,
+            minimum_weekly_news_item_count=minimum_weekly_news_item_count,
+            weekly_news_selected_item_count=weekly_news_focus.selected_item_count,
+            suppression_reason=(
+                "AI Comprehensive Analysis is suppressed because generated analysis failed schema, citation, "
+                "freshness, or safety validation."
+            ),
             citation_ids=all_citations,
-            uncertainty=["This is deterministic fixture context, not live news coverage."],
-        ),
-        AIComprehensiveAnalysisSection(
-            section_id="market_context",
-            label="Market Context",
-            analysis="The selected items provide timely context for understanding the asset, while stable facts remain the source for identity and structure.",
-            bullets=["Recent context is kept outside the canonical asset facts."],
-            citation_ids=weekly_citations,
-            uncertainty=[],
-        ),
-        AIComprehensiveAnalysisSection(
-            section_id="business_or_fund_context",
-            label="Business/Fund Context",
-            analysis=f"For a beginner, the items should be read beside the cited stable {asset_kind} facts rather than as a replacement for them.",
-            bullets=["Canonical facts and Weekly News Focus use separate citation sets."],
-            citation_ids=all_citations,
-            uncertainty=[],
-        ),
-        AIComprehensiveAnalysisSection(
-            section_id="risk_context",
-            label="Risk Context",
-            analysis="The items can highlight what to review next, but they do not predict returns or provide a personal decision.",
-            bullets=["Use this context to inspect risks and source evidence, not as a trading instruction."],
-            citation_ids=weekly_citations,
-            uncertainty=["The fixture may omit other approved items that are not represented locally."],
-        ),
-    ]
-    response = AIComprehensiveAnalysisResponse(
-        asset=asset,
-        state=WeeklyNewsContractState.available,
-        analysis_available=True,
-        minimum_weekly_news_item_count=minimum_weekly_news_item_count,
-        weekly_news_selected_item_count=weekly_news_focus.selected_item_count,
-        sections=sections,
-        citation_ids=all_citations,
-        source_document_ids=source_ids,
-        weekly_news_event_ids=event_ids,
-        canonical_fact_citation_ids=canonical_fact_citation_ids,
-    )
-    validate_ai_comprehensive_analysis(response, weekly_news_focus)
-    return response
+            source_document_ids=source_ids,
+            weekly_news_event_ids=event_ids,
+            canonical_fact_citation_ids=canonical_fact_citation_ids,
+        )
 
 
 def validate_ai_comprehensive_analysis(
@@ -684,6 +666,11 @@ def validate_ai_comprehensive_analysis(
     allowed_citations = weekly_citations | set(analysis.canonical_fact_citation_ids)
     if not weekly_citations:
         raise WeeklyNewsContractError("AI Comprehensive Analysis requires Weekly News Focus citations.")
+    if analysis.citation_ids and not set(analysis.citation_ids) <= allowed_citations:
+        raise WeeklyNewsContractError("AI Comprehensive Analysis cites evidence outside the weekly/canonical packs.")
+    weekly_event_ids = {item.event_id for item in weekly_news_focus.items}
+    if analysis.weekly_news_event_ids and not set(analysis.weekly_news_event_ids) <= weekly_event_ids:
+        raise WeeklyNewsContractError("AI Comprehensive Analysis references events outside the Weekly News Focus pack.")
 
     for section in analysis.sections:
         if not section.citation_ids:

@@ -1449,8 +1449,8 @@ def test_lightweight_weekly_news_prefers_recent_official_filing_without_provider
 def test_lightweight_overview_uses_runtime_market_news_builder(monkeypatch):
     calls: list[bool] = []
 
-    def fake_runtime_market_news():
-        calls.append(True)
+    def fake_runtime_market_news(*, cache_only: bool = False):
+        calls.append(cache_only)
         return build_market_news_response()
 
     monkeypatch.setattr("backend.lightweight_page.build_runtime_market_news_response", fake_runtime_market_news)
