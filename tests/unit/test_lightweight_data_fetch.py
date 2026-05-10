@@ -15,6 +15,7 @@ from backend.lightweight_page import (
     build_lightweight_details_response,
     build_lightweight_overview_response,
     build_lightweight_sources_response,
+    clear_lightweight_page_build_cache,
     evaluate_lightweight_generated_output_promotion,
 )
 from backend.market_news import build_market_news_response
@@ -1447,6 +1448,7 @@ def test_lightweight_weekly_news_prefers_recent_official_filing_without_provider
 
 
 def test_lightweight_overview_uses_runtime_market_news_builder(monkeypatch):
+    clear_lightweight_page_build_cache()
     calls: list[bool] = []
 
     def fake_runtime_market_news(*, cache_only: bool = False):
@@ -1467,7 +1469,39 @@ def test_lightweight_overview_uses_runtime_market_news_builder(monkeypatch):
     assert overview.market_news_focus is not None
 
 
+def test_lightweight_page_build_cache_reuses_validated_overview(monkeypatch):
+    clear_lightweight_page_build_cache()
+    calls: list[bool] = []
+
+    def fake_runtime_market_news(*, cache_only: bool = False):
+        calls.append(cache_only)
+        return build_market_news_response()
+
+    monkeypatch.setattr("backend.lightweight_page.build_runtime_market_news_response", fake_runtime_market_news)
+    response = fetch_lightweight_asset_data(
+        "VOO",
+        settings=_settings(),
+        fetcher=FakeJsonFetcher(),
+        retrieved_at=RETRIEVED_AT,
+    )
+    refreshed_response = response.model_copy(deep=True)
+    refreshed_response.freshness.page_last_updated_at = "2026-05-10T05:00:00Z"
+    for source in refreshed_response.sources:
+        source.retrieved_at = "2026-05-10T05:00:00Z"
+    for fact in refreshed_response.facts:
+        if fact.retrieved_at is not None:
+            fact.retrieved_at = "2026-05-10T05:00:00Z"
+
+    first = build_lightweight_overview_response(response)
+    second = build_lightweight_overview_response(refreshed_response)
+
+    assert calls == [True]
+    assert first == second
+    assert first is not second
+
+
 def test_lightweight_issuer_backed_etf_fetch_builds_supported_page_contracts():
+    clear_lightweight_page_build_cache()
     response = fetch_lightweight_asset_data(
         "VOO",
         settings=_settings(),

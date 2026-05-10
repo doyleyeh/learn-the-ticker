@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import os
+import time
+from dataclasses import dataclass
 from typing import Any
 
 from backend.lightweight_data_fetch import (
@@ -69,6 +74,36 @@ from backend.weekly_news_sources import build_lightweight_weekly_news_focus
 
 LIGHTWEIGHT_PAGE_SCHEMA_VERSION = "lightweight-local-mvp-page-v1"
 LIGHTWEIGHT_DURABLE_PERSISTENCE_SCHEMA_VERSION = "lightweight-durable-persistence-v1"
+LIGHTWEIGHT_PAGE_BUILD_CACHE_TTL_SECONDS_ENV = "LIGHTWEIGHT_PAGE_BUILD_CACHE_TTL_SECONDS"
+DEFAULT_LIGHTWEIGHT_PAGE_BUILD_CACHE_TTL_SECONDS = 600
+_VOLATILE_PAGE_BUILD_CACHE_FIELDS = frozenset(
+    {
+        "page_last_updated_at",
+        "retrieved_at",
+        "diagnostics",
+        "fallback_diagnostics",
+    }
+)
+
+
+@dataclass(frozen=True)
+class _LightweightPageBuildCacheKey:
+    response_kind: str
+    evidence_digest: str
+    generation_signature: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class _LightweightPageBuildCacheEntry:
+    response: Any
+    stored_at_seconds: float
+
+
+_LIGHTWEIGHT_PAGE_BUILD_CACHE: dict[_LightweightPageBuildCacheKey, _LightweightPageBuildCacheEntry] = {}
+
+
+def clear_lightweight_page_build_cache() -> None:
+    _LIGHTWEIGHT_PAGE_BUILD_CACHE.clear()
 
 
 def fetch_lightweight_page_data_if_enabled(
@@ -112,6 +147,10 @@ def build_lightweight_sources_response_if_enabled(
 
 
 def build_lightweight_weekly_news_response(response: LightweightFetchResponse) -> WeeklyNewsResponse:
+    cached = _page_build_cache_get("weekly_news", response)
+    if cached is not None:
+        return cached
+
     stable_citation_ids = _preferred_citation_ids(response) or [citation.citation_id for citation in response.citations[:1]]
     source_documents = [_source_document_from_lightweight(source, response) for source in response.sources]
     weekly_news_focus = build_lightweight_weekly_news_focus(response) or _empty_weekly_news_focus(response)
@@ -121,7 +160,7 @@ def build_lightweight_weekly_news_response(response: LightweightFetchResponse) -
         canonical_fact_citation_ids=stable_citation_ids,
         canonical_source_document_ids=[source.source_document_id for source in source_documents[:1]],
     )
-    return WeeklyNewsResponse(
+    weekly_response = WeeklyNewsResponse(
         asset=response.asset.model_copy(update={"status": AssetStatus.supported, "supported": True}),
         state=StateMessage(
             status=AssetStatus.supported,
@@ -133,9 +172,15 @@ def build_lightweight_weekly_news_response(response: LightweightFetchResponse) -
         weekly_news_focus=weekly_news_focus,
         ai_comprehensive_analysis=ai_analysis,
     )
+    _page_build_cache_set("weekly_news", response, weekly_response)
+    return weekly_response
 
 
 def build_lightweight_overview_response(response: LightweightFetchResponse) -> OverviewResponse:
+    cached = _page_build_cache_get("overview", response)
+    if cached is not None:
+        return cached
+
     sources = [_source_document_from_lightweight(source, response) for source in response.sources]
     citations = [
         Citation(
@@ -162,7 +207,7 @@ def build_lightweight_overview_response(response: LightweightFetchResponse) -> O
     with deterministic_summary_generation():
         market_news = build_runtime_market_news_response(cache_only=True)
 
-    return OverviewResponse(
+    overview = OverviewResponse(
         asset=response.asset.model_copy(update={"status": AssetStatus.supported, "supported": True}),
         state=StateMessage(
             status=AssetStatus.supported,
@@ -188,6 +233,8 @@ def build_lightweight_overview_response(response: LightweightFetchResponse) -> O
         section_freshness_validation=[],
         fallback_diagnostics=_fallback_diagnostics(response),
     )
+    _page_build_cache_set("overview", response, overview)
+    return overview
 
 
 def persist_lightweight_evidence_if_configured(
@@ -308,6 +355,10 @@ def evaluate_lightweight_generated_output_promotion(
 
 
 def build_lightweight_details_response(response: LightweightFetchResponse) -> DetailsResponse:
+    cached = _page_build_cache_get("details", response)
+    if cached is not None:
+        return cached
+
     citation_ids = _preferred_citation_ids(response)
     provider_citation_ids = _citation_ids_for_source_label(response, "provider_derived")
     if response.asset.asset_type is AssetType.stock:
@@ -342,7 +393,7 @@ def build_lightweight_details_response(response: LightweightFetchResponse) -> De
             "educational_suitability": _suitability_summary(response, citation_ids).learn_next,
         }
 
-    return DetailsResponse(
+    details = DetailsResponse(
         asset=response.asset.model_copy(update={"status": AssetStatus.supported, "supported": True}),
         state=StateMessage(
             status=AssetStatus.supported,
@@ -362,6 +413,8 @@ def build_lightweight_details_response(response: LightweightFetchResponse) -> De
         ],
         fallback_diagnostics=_fallback_diagnostics(response),
     )
+    _page_build_cache_set("details", response, details)
+    return details
 
 
 def build_lightweight_sources_response(
@@ -370,6 +423,11 @@ def build_lightweight_sources_response(
     citation_id: str | None = None,
     source_document_id: str | None = None,
 ) -> SourcesResponse:
+    response_kind = f"sources:{(citation_id or '').strip()}:{(source_document_id or '').strip()}"
+    cached = _page_build_cache_get(response_kind, response)
+    if cached is not None:
+        return cached
+
     with deterministic_summary_generation():
         overview = build_lightweight_overview_response(response)
     source_groups = [_source_group(source, overview) for source in overview.source_documents]
@@ -384,7 +442,7 @@ def build_lightweight_sources_response(
         citation_id=(citation_id or "").strip(),
         source_document_id=(source_document_id or "").strip(),
     )
-    return SourcesResponse(
+    sources_response = SourcesResponse(
         schema_version="asset-source-drawer-v1",
         asset=overview.asset,
         state=overview.state,
@@ -407,6 +465,83 @@ def build_lightweight_sources_response(
         ),
         fallback_diagnostics=_fallback_diagnostics(response),
     )
+    _page_build_cache_set(response_kind, response, sources_response)
+    return sources_response
+
+
+def _page_build_cache_get(response_kind: str, response: LightweightFetchResponse) -> Any | None:
+    ttl = _page_build_cache_ttl_seconds()
+    if ttl <= 0:
+        return None
+    key = _page_build_cache_key(response_kind, response)
+    entry = _LIGHTWEIGHT_PAGE_BUILD_CACHE.get(key)
+    if entry is None:
+        return None
+    if time.monotonic() - entry.stored_at_seconds > ttl:
+        _LIGHTWEIGHT_PAGE_BUILD_CACHE.pop(key, None)
+        return None
+    return entry.response.model_copy(deep=True)
+
+
+def _page_build_cache_set(response_kind: str, response: LightweightFetchResponse, rendered_response: Any) -> None:
+    ttl = _page_build_cache_ttl_seconds()
+    if ttl <= 0:
+        return
+    _LIGHTWEIGHT_PAGE_BUILD_CACHE[_page_build_cache_key(response_kind, response)] = _LightweightPageBuildCacheEntry(
+        response=rendered_response.model_copy(deep=True),
+        stored_at_seconds=time.monotonic(),
+    )
+
+
+def _page_build_cache_key(response_kind: str, response: LightweightFetchResponse) -> _LightweightPageBuildCacheKey:
+    evidence_payload = _stable_page_build_evidence_payload(response.model_dump(mode="json"))
+    evidence_digest = hashlib.sha256(
+        json.dumps(evidence_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return _LightweightPageBuildCacheKey(
+        response_kind=response_kind,
+        evidence_digest=evidence_digest,
+        generation_signature=_page_build_generation_signature(),
+    )
+
+
+def _page_build_generation_signature() -> tuple[tuple[str, str], ...]:
+    names = (
+        "LLM_PROVIDER",
+        "LLM_LIVE_GENERATION_ENABLED",
+        "LLM_LIVE_TASK_ALLOWLIST",
+        "LLM_VALIDATION_RETRY_COUNT",
+        "OPENROUTER_FREE_MODEL_ORDER",
+        "OPENROUTER_MODEL",
+        "OPENROUTER_PAID_FALLBACK_ENABLED",
+        "OPENROUTER_PAID_FALLBACK_MODEL",
+    )
+    values = [(name, os.environ.get(name, "")) for name in names]
+    values.append(("summary_generation_service_id", str(id(build_default_summary_generation_service))))
+    values.append(("market_news_builder_id", str(id(build_runtime_market_news_response))))
+    return tuple(values)
+
+
+def _page_build_cache_ttl_seconds() -> int:
+    raw = os.environ.get(LIGHTWEIGHT_PAGE_BUILD_CACHE_TTL_SECONDS_ENV)
+    if raw is None:
+        return DEFAULT_LIGHTWEIGHT_PAGE_BUILD_CACHE_TTL_SECONDS
+    try:
+        return max(0, int(raw.strip()))
+    except ValueError:
+        return DEFAULT_LIGHTWEIGHT_PAGE_BUILD_CACHE_TTL_SECONDS
+
+
+def _stable_page_build_evidence_payload(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _stable_page_build_evidence_payload(child)
+            for key, child in value.items()
+            if key not in _VOLATILE_PAGE_BUILD_CACHE_FIELDS
+        }
+    if isinstance(value, list):
+        return [_stable_page_build_evidence_payload(item) for item in value]
+    return value
 
 
 def _can_render_lightweight_page(response: LightweightFetchResponse) -> bool:
