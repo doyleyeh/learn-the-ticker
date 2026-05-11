@@ -2,12 +2,13 @@
 
 This guide explains the Codex-assisted analysis pack flow for Learn the Ticker.
 The current implementation supports structured JSON import through the backend,
-operator-approved live adapters, and optional backend-owned durable bundle
-storage through `ANALYSIS_PACK_REPOSITORY_PATH`.
+local live-by-default operator adapters, optional backend-owned durable bundle
+storage through `ANALYSIS_PACK_REPOSITORY_PATH`, and append-only import history.
 
 It does not yet support cryptographic signed-bundle verification, production
-admin auth hardening, import history, rollback controls, or a cloud-native
-database/object-store adapter beyond the file-backed durable store.
+admin auth hardening, rollback controls, or a cloud-native database/object-store
+adapter beyond the file-backed durable store. Those are future hardening items
+for a broader production deployment.
 
 ## Current Pipeline
 
@@ -22,7 +23,8 @@ workflow.
    visible persona labels, and required U.S. Economic Indicators rows.
 4. If `ANALYSIS_PACK_REPOSITORY_PATH` or `LTT_ANALYSIS_PACK_REPOSITORY_PATH` is
    set before backend startup, the accepted bundle is also written to a durable
-   backend-owned JSON store and can be reloaded after process restart.
+   backend-owned JSON store and can be reloaded after process restart. The same
+   import appends a safe JSONL history record beside the active store.
 5. Runtime routes read a fresh imported pack first. If the imported pack is
    missing, invalid, expired, or outside the ticker allowlist, the backend falls
    back to the existing deterministic/runtime generation path.
@@ -43,6 +45,7 @@ Current imported bundle contents may include:
 - `ticker_packs`: optional high-demand ticker `WeeklyNewsResponse` entries
 - source documents, citations, validation metadata, checksums, `prompt_version`,
   `generated_at`, and `freshness_expires_at`
+- `ai_context.json` metadata and checksum in `validation_metadata`
 
 Imported packs are fresh only while both conditions hold:
 
@@ -65,7 +68,8 @@ ANALYSIS_PACK_REPOSITORY_PATH=/tmp/learn-the-ticker-analysis-pack-store.json \
 uvicorn backend.main:app --reload
 ```
 
-Build a deterministic producer artifact set without invoking Codex:
+Build a live producer artifact set without invoking Codex. This is the local
+operator default outside CI/tests/evals:
 
 ```bash
 bash scripts/run_analysis_pack_codex.sh \
@@ -80,12 +84,13 @@ This writes the following files under `.agent-runs/analysis-packs/<run-id>/`:
 - `analysis-pack-summary.json`
 - `technical_data.json`
 - `macro_cache.json`
+- `ai_context.json`
 
-Build a live local producer artifact set without invoking Codex:
+Build a deterministic producer artifact set without invoking Codex:
 
 ```bash
 bash scripts/run_analysis_pack_codex.sh \
-  --live \
+  --deterministic \
   --skip-codex \
   --ticker QQQ \
   --ticker VOO
@@ -106,11 +111,12 @@ Live mode stores computed values, source metadata, bounded summaries, citations,
 and checksums only. It does not store raw article bodies, unrestricted provider
 payloads, hidden prompts, raw model reasoning, or secrets.
 
-Run the Codex-assisted operator flow:
+Run the Codex-assisted operator flow. This builds live seed artifacts first,
+then asks Codex to review and improve the JSON artifacts under the documented
+research-reviewer rules:
 
 ```bash
 bash scripts/run_analysis_pack_codex.sh \
-  --live \
   --ticker QQQ \
   --ticker VOO
 ```
@@ -118,7 +124,10 @@ bash scripts/run_analysis_pack_codex.sh \
 The script builds initial artifacts, gives Codex the instructions in
 `docs/ANALYSIS_PACK_CODEX_INSTRUCTIONS.md`, and validates the final bundle.
 Codex must leave repo-tracked files unchanged and keep generated artifacts under
-`.agent-runs/analysis-packs/...`.
+`.agent-runs/analysis-packs/...`. It should review Tier-1 market news, official
+macro source metadata, Economic Indicators, technical indicators, and AI
+analysis context, but it must not store raw article bodies or raw provider
+payloads.
 
 Generate a fixture-shaped bundle for local import testing:
 
@@ -176,10 +185,14 @@ endpoint. The other artifacts are operator diagnostics:
   validation status, source/citation counts, source mode, live/fixture status,
   technical-indicator status, and remaining limitations.
 - `technical_data.json` computes KD, RSI, MACD, BIAS, DMI/ADX, moving averages,
-  and volume-change fields in `--live` mode. Deterministic mode still reserves
+  and volume-change fields in live mode. Deterministic mode still reserves
   those fields without live fetching.
 - `macro_cache.json` mirrors the U.S. Economic Indicators pack in an upsert-safe
-  cache shape for future producer workflows.
+  cache shape. Existing rows are preserved, newer validated rows are updated,
+  and suspicious count drops are blocked.
+- `ai_context.json` is the validated context that market and ticker AI analysis
+  may cite. It contains selected news, Economic Indicators, technical facts,
+  canonical citation/source IDs, and allowed numeric facts.
 
 The current producer can assemble Market News Focus, Market AI, high-demand
 ticker Weekly News Focus, ticker AI, Economic Indicators, and technical
@@ -225,8 +238,13 @@ Current limitations:
   full cloud database implementation.
 - Multi-instance cloud deployments need shared storage or a DB-backed adapter.
 - Validation uses a deterministic checksum, not cryptographic signature
-  verification.
-- The admin import endpoint does not yet include production auth hardening.
+  verification. This is intentional for MVP/v1 because the data is not
+  confidential, but it is not a malicious-actor security boundary.
+- The admin import endpoint does not yet include production auth hardening. For
+  MVP/v1 personal deployment, keep it local/private or environment-gated.
+- Append-only import history exists for file-backed storage, but there is no
+  rollback command; re-uploading a prior bundle is the manual recovery path.
+- Operator identity is optional metadata only through `operator_label`.
 - There is no packaged operator CLI for prepare, validate, sign, upload,
   verify, and rollback.
 
@@ -235,8 +253,8 @@ Current limitations:
 Before using this path as a production cloud operator workflow, add:
 
 - durable backend-owned storage for accepted bundles
-- import history with bundle ID, operator identity, timestamps, validation
-  result, checksum, and reason codes
+- production-grade import history with required operator identity, review state,
+  and audit querying
 - rollback or promotion controls for the active bundle
 - cryptographic signed JSON or detached-signature verification
 - `signing_key_id`, public-key lookup, and server-side signature validation

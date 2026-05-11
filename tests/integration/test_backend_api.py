@@ -4,7 +4,12 @@ os.environ.setdefault("LTT_FORCE_COMPAT_FASTAPI", "1")
 
 import pytest
 
-from backend.analysis_packs import analysis_pack_repository, build_fixture_analysis_pack_import_bundle
+from backend.analysis_packs import (
+    DurableAnalysisPackRepository,
+    analysis_pack_repository,
+    build_fixture_analysis_pack_import_bundle,
+    configure_analysis_pack_repository,
+)
 from backend.main import app
 from backend.chat import generate_asset_chat
 from backend.comparison import generate_comparison
@@ -381,6 +386,26 @@ def test_admin_analysis_pack_import_routes_choose_fresh_imported_packs():
     assert weekly["analysis_pack_metadata"]["import_bundle_id"] == "route-import-fixture"
     assert indicators["analysis_pack_metadata"]["analysis_source"] == "imported_local_pack"
     assert indicators["analysis_pack_metadata"]["freshness_expires_at"] == "2999-01-08T00:00:00Z"
+
+
+def test_admin_analysis_pack_import_writes_file_backed_history(tmp_path):
+    repository = DurableAnalysisPackRepository(tmp_path / "analysis-pack-store.json")
+    configure_analysis_pack_repository(repository)
+    bundle = build_fixture_analysis_pack_import_bundle(
+        bundle_id="route-import-history-fixture",
+        generated_at="2999-01-01T00:00:00Z",
+        freshness_expires_at="2999-01-08T00:00:00Z",
+    )
+
+    try:
+        imported = client.post("/api/admin/analysis-packs/import", json=bundle.model_dump(mode="json")).json()
+
+        assert imported["imported"] is True
+        assert repository.storage_path.exists()
+        assert repository.history_path.exists()
+        assert "route-import-history-fixture" in repository.history_path.read_text(encoding="utf-8")
+    finally:
+        configure_analysis_pack_repository(None)
 
 
 def test_market_news_endpoint_uses_runtime_market_news_boundary(monkeypatch):

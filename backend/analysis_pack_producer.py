@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from backend.analysis_pack_context import build_ai_context_artifact, compute_ai_context_checksum
 from backend.analysis_packs import (
     ANALYSIS_PACK_VALIDATOR_VERSION,
     HIGH_DEMAND_ANALYSIS_PACK_TICKERS,
@@ -22,8 +25,17 @@ from backend.models import (
     AnalysisPackValidationMetadata,
     Citation,
     AssetStatus,
+    FreshnessState,
     StateMessage,
+    SourceAllowlistStatus,
     SourceDocument,
+    SourceExportRights,
+    SourceOperationPermissions,
+    SourceParserStatus,
+    SourceQuality,
+    SourceReviewStatus,
+    SourceStorageRights,
+    SourceUsePolicy,
     WeeklyNewsResponse,
 )
 from backend.overview import generate_asset_overview
@@ -54,19 +66,20 @@ def build_analysis_pack_bundle(
     freshness_expires_at: str | None = None,
     expires_days: int = 7,
     fail_on_skipped: bool = False,
-    live: bool = False,
+    live: bool | None = None,
     market_fetcher: Any | None = None,
     lightweight_fetcher: Any | None = None,
     technical_fetcher: Any | None = None,
     economic_fetcher: Any | None = None,
 ) -> tuple[AnalysisPackImportBundle, dict[str, Any]]:
-    requested_tickers = _normalize_tickers(tickers or (default_live_analysis_pack_tickers() if live else default_analysis_pack_tickers()))
+    live_mode = resolve_analysis_pack_live_default() if live is None else bool(live)
+    requested_tickers = _normalize_tickers(tickers or (default_live_analysis_pack_tickers() if live_mode else default_analysis_pack_tickers()))
     generated_at_value = generated_at or _utc_now_iso()
     expires_at_value = freshness_expires_at or _expires_at(generated_at_value, days=expires_days)
     bundle_id_value = bundle_id or f"analysis-pack-{generated_at_value.replace(':', '').replace('-', '').replace('+0000', 'Z')}"
 
     live_diagnostics: dict[str, Any] = {}
-    if live:
+    if live_mode:
         market_settings = build_market_news_settings(
             env={
                 "MARKET_NEWS_FETCH_ENABLED": "true",
@@ -81,13 +94,13 @@ def build_analysis_pack_bundle(
     else:
         market_context_pack = build_market_news_response()
     market_context_pack = market_context_pack.model_copy(update={"analysis_pack_metadata": None})
-    if live:
+    if live_mode:
         try:
             economic_indicators = build_live_economic_indicators_pack(
                 generated_at=generated_at_value,
                 fetcher=economic_fetcher,
             )
-            live_diagnostics["economic_indicators_source_mode"] = "live_fred_csv"
+            live_diagnostics["economic_indicators_source_mode"] = "live_official_with_fred_cross_check"
         except Exception as exc:
             economic_indicators = build_economic_indicators_pack(metadata=None)
             live_diagnostics["economic_indicators_source_mode"] = "deterministic_fixture_fallback"
@@ -102,7 +115,7 @@ def build_analysis_pack_bundle(
         if ticker not in HIGH_DEMAND_ANALYSIS_PACK_TICKERS:
             skipped_tickers.append({"ticker": ticker, "reason": "not_high_demand_allowlisted"})
             continue
-        if live:
+        if live_mode:
             live_pack = _build_live_ticker_pack(
                 ticker,
                 generated_at=generated_at_value,
@@ -134,7 +147,7 @@ def build_analysis_pack_bundle(
             generated_at=generated_at_value,
             fetcher=technical_fetcher,
         )
-        if live
+        if live_mode
         else None
     )
 
@@ -142,10 +155,12 @@ def build_analysis_pack_bundle(
         skipped = ", ".join(f"{item['ticker']}:{item['reason']}" for item in skipped_tickers)
         raise ValueError(f"Analysis pack producer skipped requested ticker(s): {skipped}")
 
+    technical_sources, technical_citations = _technical_source_documents_and_citations(technical_data_artifact)
     source_documents = _dedupe_sources(
         [
             *market_context_pack.market_news_focus.source_documents,
             *economic_indicators.source_documents,
+            *technical_sources,
             *[
                 source
                 for pack in ticker_packs.values()
@@ -157,6 +172,7 @@ def build_analysis_pack_bundle(
         [
             *market_context_pack.market_news_focus.citations,
             *economic_indicators.citations,
+            *technical_citations,
             *[citation for pack in ticker_packs.values() for citation in pack.weekly_news_focus.citations],
         ]
     )
@@ -179,8 +195,8 @@ def build_analysis_pack_bundle(
         validation_metadata={
             "producer_schema_version": ANALYSIS_PACK_PRODUCER_SCHEMA_VERSION,
             "codex_instruction_path": CODEX_INSTRUCTIONS_PATH,
-            "source_mode": "live_operator" if live else "deterministic_fixture",
-            "no_live_external_calls": not live,
+            "source_mode": "live_operator" if live_mode else "deterministic_fixture",
+            "no_live_external_calls": not live_mode,
             "no_html_injection": True,
             "no_raw_article_or_provider_payload_storage": True,
             "visible_persona_labels_allowed": False,
@@ -191,10 +207,22 @@ def build_analysis_pack_bundle(
         checksums={},
         longer_ticker_candidate_history=_build_candidate_history_summary(ticker_packs),
     )
+    ai_context_artifact = build_ai_context_artifact(draft)
+    draft = draft.model_copy(
+        deep=True,
+        update={
+            "validation_metadata": {
+                **draft.validation_metadata,
+                "ai_context_artifact": ai_context_artifact,
+                "ai_context_checksum": compute_ai_context_checksum(ai_context_artifact),
+            }
+        },
+    )
     checksums = {
         "market_context_pack": _stable_digest(market_context_pack.model_dump(mode="json")),
         "economic_indicators": _stable_digest(economic_indicators.model_dump(mode="json")),
         **({"technical_data_artifact": _stable_digest(technical_data_artifact)} if technical_data_artifact else {}),
+        "ai_context_artifact": _stable_digest(ai_context_artifact),
         **{
             f"ticker_pack:{ticker}": _stable_digest(pack.model_dump(mode="json"))
             for ticker, pack in ticker_packs.items()
@@ -250,6 +278,8 @@ def build_analysis_pack_producer_summary(
             if isinstance(bundle.validation_metadata.get("technical_data_artifact"), dict)
             else "not_computed_without_live_market_data_adapter"
         ),
+        "ai_context_included": isinstance(bundle.validation_metadata.get("ai_context_artifact"), dict),
+        "ai_context_checksum": bundle.validation_metadata.get("ai_context_checksum"),
         "raw_article_text_collected": bundle.raw_article_text_collected,
         "raw_provider_payload_exposed": bundle.raw_provider_payload_exposed,
         "current_limitations": _current_limitations(bundle),
@@ -329,6 +359,78 @@ def _build_live_ticker_pack(
     )
 
 
+def _technical_source_documents_and_citations(technical_data_artifact: dict[str, Any] | None) -> tuple[list[SourceDocument], list[Citation]]:
+    if not isinstance(technical_data_artifact, dict):
+        return [], []
+    sources: list[SourceDocument] = []
+    citations: list[Citation] = []
+    rows = technical_data_artifact.get("tickers") if isinstance(technical_data_artifact.get("tickers"), dict) else {}
+    for ticker, row in rows.items():
+        if not isinstance(row, dict) or not isinstance(row.get("source"), dict):
+            continue
+        source_payload = row["source"]
+        source_document_id = str(source_payload.get("source_document_id") or f"src_technical_{str(ticker).lower()}_price_series")
+        citation_id = str(source_payload.get("citation_id") or f"c_technical_{str(ticker).lower()}_price_series")
+        publisher = str(source_payload.get("publisher") or "Source-labeled technical data")
+        title = str(source_payload.get("title") or f"{str(ticker).upper()} OHLCV price-series metadata")
+        retrieved_at = str(source_payload.get("retrieved_at") or technical_data_artifact.get("generated_at") or _utc_now_iso())
+        as_of_date = str(row.get("as_of_date") or source_payload.get("as_of_date") or retrieved_at[:10])
+        url = str(source_payload.get("url") or source_payload.get("source_url") or f"local://technical/{str(ticker).upper()}")
+        sources.append(
+            SourceDocument(
+                source_document_id=source_document_id,
+                source_type="technical_price_series_metadata",
+                title=title,
+                publisher=publisher,
+                url=url,
+                published_at=as_of_date,
+                as_of_date=as_of_date,
+                retrieved_at=retrieved_at,
+                freshness_state=FreshnessState.fresh,
+                is_official=False,
+                supporting_passage=(
+                    f"{str(ticker).upper()} technical indicators were computed from source-labeled OHLCV metadata; "
+                    "full provider responses are not stored."
+                ),
+                source_quality=SourceQuality.provider,
+                allowlist_status=SourceAllowlistStatus.allowed,
+                source_use_policy=SourceUsePolicy.summary_allowed,
+                permitted_operations=SourceOperationPermissions(
+                    can_store_metadata=True,
+                    can_store_raw_text=False,
+                    can_display_metadata=True,
+                    can_display_excerpt=True,
+                    can_summarize=True,
+                    can_cache=True,
+                    can_export_metadata=True,
+                    can_export_excerpt=True,
+                    can_export_full_text=False,
+                    can_support_generated_output=True,
+                    can_support_citations=True,
+                    can_support_canonical_facts=False,
+                    can_support_recent_developments=True,
+                ),
+                source_identity=url,
+                storage_rights=SourceStorageRights.summary_allowed,
+                export_rights=SourceExportRights.excerpts_allowed,
+                review_status=SourceReviewStatus.approved,
+                approval_rationale="Technical artifact stores computed indicator metadata only and excludes full provider responses.",
+                parser_status=SourceParserStatus.parsed if row.get("state") == "computed" else SourceParserStatus.failed,
+                parser_failure_diagnostics=str(row.get("reason")) if row.get("state") != "computed" and row.get("reason") else None,
+            )
+        )
+        citations.append(
+            Citation(
+                citation_id=citation_id,
+                source_document_id=source_document_id,
+                title=title,
+                publisher=publisher,
+                freshness_state=FreshnessState.fresh,
+            )
+        )
+    return sources, citations
+
+
 def _current_limitations(bundle: AnalysisPackImportBundle) -> list[str]:
     if bundle.validation_metadata.get("source_mode") == "live_operator":
         limitations = ["normal_ci_still_uses_deterministic_no_live_path"]
@@ -369,12 +471,72 @@ def build_macro_cache_artifact(bundle: AnalysisPackImportBundle) -> dict[str, An
                 "retrieved_at": item.retrieved_at,
                 "source_document_ids": item.source_document_ids,
                 "citation_ids": item.citation_ids,
+                "primary_source": _primary_macro_source(item),
+                "cross_check_sources": _cross_check_macro_sources(item),
                 "freshness_state": item.freshness_state.value,
                 "trend_direction": item.trend_direction.value,
             }
             for item in indicators
         },
     }
+
+
+def upsert_macro_cache_artifact(
+    previous: dict[str, Any] | None,
+    current: dict[str, Any],
+    *,
+    minimum_current_coverage_ratio: float = 0.8,
+) -> dict[str, Any]:
+    if not previous or not isinstance(previous.get("indicators"), dict):
+        return current
+    previous_indicators = previous["indicators"]
+    current_indicators = current.get("indicators") if isinstance(current.get("indicators"), dict) else {}
+    previous_count = len(previous_indicators)
+    current_count = len(current_indicators)
+    if previous_count and current_count < previous_count * minimum_current_coverage_ratio:
+        raise ValueError("macro_cache_indicator_count_drop_blocked")
+    merged = dict(previous_indicators)
+    for indicator_id, new_row in current_indicators.items():
+        old_row = merged.get(indicator_id)
+        if not isinstance(old_row, dict) or _macro_row_is_newer_or_equal(new_row, old_row):
+            merged[indicator_id] = new_row
+    return {
+        **current,
+        "upsert_guard": {
+            "previous_indicator_count": previous_count,
+            "current_indicator_count": current_count,
+            "merged_indicator_count": len(merged),
+            "minimum_current_coverage_ratio": minimum_current_coverage_ratio,
+            "large_count_drop_blocked": True,
+        },
+        "indicators": merged,
+    }
+
+
+def build_ai_context_artifact_from_bundle(bundle: AnalysisPackImportBundle) -> dict[str, Any]:
+    return build_ai_context_artifact(bundle)
+
+
+def resolve_analysis_pack_live_default(
+    env: dict[str, str] | None = None,
+    argv: list[str] | tuple[str, ...] | None = None,
+) -> bool:
+    source = os.environ if env is None else env
+    args = list(sys.argv if argv is None else argv)
+    if _truthy(source.get("CI")) or _truthy(source.get("GITHUB_ACTIONS")) or _truthy(source.get("BUILDKITE")):
+        return False
+    if source.get("JENKINS_URL") is not None or source.get("PYTEST_CURRENT_TEST") is not None:
+        return False
+    if _truthy(source.get("LTT_STATIC_EVALS_RUNNING")) or _truthy(source.get("LTT_QUALITY_GATE_RUNNING")):
+        return False
+    if any("run_static_evals.py" in arg or "run_quality_gate.sh" in arg for arg in args):
+        return False
+    if _truthy(source.get("ANALYSIS_PACK_DETERMINISTIC")) or _truthy(source.get("LTT_ANALYSIS_PACK_DETERMINISTIC")):
+        return False
+    explicit = source.get("ANALYSIS_PACK_LIVE_DEFAULT") or source.get("LTT_ANALYSIS_PACK_LIVE_DEFAULT")
+    if explicit is not None:
+        return _truthy(explicit)
+    return True
 
 
 def load_analysis_pack_bundle(path: str) -> AnalysisPackImportBundle:
@@ -443,3 +605,48 @@ def _build_candidate_history_summary(ticker_packs: dict[str, WeeklyNewsResponse]
         ]
         for ticker, pack in ticker_packs.items()
     }
+
+
+def _primary_macro_source(item: Any) -> dict[str, str | None]:
+    source_map = {
+        "gdp": ("BEA", "https://www.bea.gov/data/gdp/gross-domestic-product"),
+        "private_investment": ("BEA", "https://www.bea.gov/data/gdp/gross-domestic-product"),
+        "cpi": ("BLS", "https://www.bls.gov/cpi/"),
+        "ppi": ("BLS", "https://www.bls.gov/ppi/"),
+        "nonfarm_payrolls": ("BLS", "https://www.bls.gov/ces/"),
+        "unemployment": ("BLS", "https://www.bls.gov/cps/"),
+        "retail_sales": ("U.S. Census Bureau", "https://www.census.gov/retail/"),
+        "jobless_claims": ("U.S. Department of Labor", "https://www.dol.gov/ui/data.pdf"),
+        "m2": ("Federal Reserve", "https://www.federalreserve.gov/releases/h6/"),
+        "credit_card_delinquency": ("Federal Reserve", "https://www.federalreserve.gov/releases/chargeoff/"),
+        "treasury_3m": ("U.S. Treasury", "https://home.treasury.gov/resource-center/data-chart-center/interest-rates"),
+        "treasury_10y": ("U.S. Treasury", "https://home.treasury.gov/resource-center/data-chart-center/interest-rates"),
+        "treasury_30y": ("U.S. Treasury", "https://home.treasury.gov/resource-center/data-chart-center/interest-rates"),
+        "dxy": ("Federal Reserve", "https://www.federalreserve.gov/releases/h10/"),
+        "vix": ("Cboe", "https://www.cboe.com/tradable_products/vix/"),
+        "wti_oil": ("EIA", "https://www.eia.gov/petroleum/"),
+    }
+    publisher, url = source_map.get(getattr(item, "indicator_id", ""), (getattr(item.source, "publisher", None), getattr(item.source, "url", None)))
+    return {"publisher": publisher, "url": url}
+
+
+def _cross_check_macro_sources(item: Any) -> list[dict[str, str | None]]:
+    return [
+        {
+            "publisher": getattr(item.source, "publisher", None),
+            "url": getattr(item.source, "url", None),
+            "role": "structured_cross_check_or_fallback",
+        }
+    ]
+
+
+def _macro_row_is_newer_or_equal(new_row: Any, old_row: dict[str, Any]) -> bool:
+    if not isinstance(new_row, dict):
+        return False
+    new_date = str(new_row.get("as_of_date") or new_row.get("period") or "")
+    old_date = str(old_row.get("as_of_date") or old_row.get("period") or "")
+    return new_date >= old_date
+
+
+def _truthy(value: str | None) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}

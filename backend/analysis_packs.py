@@ -8,6 +8,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from backend.analysis_pack_context import (
+    build_ai_context_artifact,
+    compute_ai_context_checksum,
+    validate_ai_context_artifact,
+)
+from backend.analysis_pack_numeric_validation import validate_analysis_pack_numeric_integrity
 from backend.data import STUB_TIMESTAMP
 from backend.market_news import build_market_news_response
 from backend.models import (
@@ -47,6 +53,7 @@ MARKET_CONTEXT_PACK_SCHEMA_VERSION = "market_context_pack-v1"
 ANALYSIS_PACK_VALIDATOR_VERSION = "analysis-pack-import-validator-v1"
 ANALYSIS_PACK_MAX_AGE_DAYS = 7
 ANALYSIS_PACK_DURABLE_STORE_SCHEMA_VERSION = "analysis-pack-durable-store-v1"
+ANALYSIS_PACK_IMPORT_HISTORY_SCHEMA_VERSION = "analysis-pack-import-history-record-v1"
 HIGH_DEMAND_ANALYSIS_PACK_TICKERS = (
     "AAPL",
     "MSFT",
@@ -107,7 +114,9 @@ class AnalysisPackRepository:
         bundle: AnalysisPackImportBundle,
         *,
         now: datetime | str | None = None,
+        operator_label: str | None = None,
     ) -> AnalysisPackImportResponse:
+        del operator_label
         reason_codes = validate_analysis_pack_import_bundle(bundle, now=now)
         imported_tickers = [
             ticker
@@ -202,11 +211,13 @@ class DurableAnalysisPackRepository(AnalysisPackRepository):
     def __init__(self, storage_path: str | Path) -> None:
         super().__init__()
         self.storage_path = Path(storage_path).expanduser()
+        self.history_path = _default_history_path(self.storage_path)
 
     def clear(self) -> None:
         super().clear()
         try:
             self.storage_path.unlink(missing_ok=True)
+            self.history_path.unlink(missing_ok=True)
         except OSError:
             return
 
@@ -215,10 +226,12 @@ class DurableAnalysisPackRepository(AnalysisPackRepository):
         bundle: AnalysisPackImportBundle,
         *,
         now: datetime | str | None = None,
+        operator_label: str | None = None,
     ) -> AnalysisPackImportResponse:
-        response = super().import_bundle(bundle, now=now)
+        response = super().import_bundle(bundle, now=now, operator_label=operator_label)
         if response.imported and self._bundle is not None:
             self._persist_bundle(self._bundle)
+        self._append_import_history(bundle, response, now=now, operator_label=operator_label)
         return response
 
     def _fresh_bundle(self, *, now: datetime | str | None = None) -> AnalysisPackImportBundle | None:
@@ -257,6 +270,42 @@ class DurableAnalysisPackRepository(AnalysisPackRepository):
             return bundle
         except Exception:
             return None
+
+    def _append_import_history(
+        self,
+        bundle: AnalysisPackImportBundle,
+        response: AnalysisPackImportResponse,
+        *,
+        now: datetime | str | None,
+        operator_label: str | None,
+    ) -> None:
+        imported_at = _history_timestamp(now)
+        safe_operator_label = _safe_operator_label(
+            operator_label or _metadata_operator_label(bundle.validation_metadata)
+        )
+        record = {
+            "schema_version": ANALYSIS_PACK_IMPORT_HISTORY_SCHEMA_VERSION,
+            "history_record_id": _history_record_id(bundle.bundle_id, imported_at, response.reason_codes),
+            "bundle_id": bundle.bundle_id,
+            "imported_at": imported_at,
+            "generated_at": bundle.generated_at,
+            "freshness_expires_at": bundle.freshness_expires_at,
+            "validation_status": response.validation_status,
+            "reason_codes": list(response.reason_codes),
+            "checksum": bundle.validation.checksum,
+            "source_mode": bundle.validation_metadata.get("source_mode"),
+            "included_tickers": list(response.imported_ticker_packs),
+            "operator_label": safe_operator_label,
+            "raw_article_text_stored": False,
+            "raw_provider_payload_stored": False,
+            "secret_values_stored": False,
+        }
+        try:
+            self.history_path.parent.mkdir(parents=True, exist_ok=True)
+            with self.history_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n")
+        except OSError:
+            return
 
 
 def build_analysis_pack_repository_from_env(env: dict[str, str] | None = None) -> AnalysisPackRepository:
@@ -332,6 +381,8 @@ def validate_analysis_pack_import_bundle(
     if bundle.economic_indicators is not None:
         reason_codes.extend(_validate_economic_indicators(bundle.economic_indicators))
     reason_codes.extend(_validate_source_sets(bundle))
+    reason_codes.extend(validate_ai_context_artifact(bundle))
+    reason_codes.extend(validate_analysis_pack_numeric_integrity(bundle))
     return list(dict.fromkeys(reason_codes))
 
 
@@ -352,6 +403,7 @@ def build_economic_indicators_pack(
         ("private_investment", "Real Private Fixed Investment", EconomicIndicatorCategory.official_historical_actual, "2.9%", 2.9, "percent annualized", "2026-Q1", "2026-04-30", "BEA", "https://www.bea.gov/data/gdp/gross-domestic-product", "up"),
         ("treasury_10y", "10-Year Treasury Yield", EconomicIndicatorCategory.official_historical_actual, "4.43%", 4.43, "percent", "2026-05-07", "2026-05-07", "U.S. Treasury", "https://home.treasury.gov/resource-center/data-chart-center/interest-rates", "up"),
         ("treasury_3m", "3-Month Treasury Yield", EconomicIndicatorCategory.official_historical_actual, "3.68%", 3.68, "percent", "2026-05-07", "2026-05-07", "U.S. Treasury", "https://home.treasury.gov/resource-center/data-chart-center/interest-rates", "up"),
+        ("treasury_30y", "30-Year Treasury Yield", EconomicIndicatorCategory.official_historical_actual, "4.60%", 4.6, "percent", "2026-05-07", "2026-05-07", "U.S. Treasury", "https://home.treasury.gov/resource-center/data-chart-center/interest-rates", "up"),
         ("dxy", "U.S. Dollar Index (DXY)", EconomicIndicatorCategory.market_reference, "97.80", 97.8, "index level", "2026-05-07", "2026-05-07", "Market reference fixture", "local://fixtures/economic-indicators/dxy", "down"),
         ("vix", "Cboe Volatility Index (VIX)", EconomicIndicatorCategory.market_reference, "17.19", 17.19, "index level", "2026-05-07", "2026-05-07", "Market reference fixture", "local://fixtures/economic-indicators/vix", "down"),
         ("wti_oil", "WTI Crude Oil", EconomicIndicatorCategory.market_reference, "120.50", 120.5, "USD per barrel", "2026-05-09", "2026-05-09", "Market reference fixture", "local://fixtures/economic-indicators/wti", "up"),
@@ -415,6 +467,7 @@ def build_fixture_analysis_pack_import_bundle(
             "no_visible_persona_labels": True,
             "no_raw_article_or_provider_payload_storage": True,
             "normal_ci_no_live_external_calls": True,
+            "source_mode": "deterministic_fixture",
         },
         checksums={},
         longer_ticker_candidate_history={
@@ -425,6 +478,17 @@ def build_fixture_analysis_pack_import_bundle(
                     "may_support_current_claims": False,
                 }
             ]
+        },
+    )
+    ai_context = build_ai_context_artifact(bundle)
+    bundle = bundle.model_copy(
+        deep=True,
+        update={
+            "validation_metadata": {
+                **bundle.validation_metadata,
+                "ai_context_artifact": ai_context,
+                "ai_context_checksum": compute_ai_context_checksum(ai_context),
+            }
         },
     )
     checksum = compute_analysis_pack_bundle_checksum(bundle)
@@ -642,3 +706,44 @@ def _iter_text_values(value: Any):
     elif isinstance(value, list):
         for child in value:
             yield from _iter_text_values(child)
+
+
+def _default_history_path(storage_path: Path) -> Path:
+    if storage_path.suffix:
+        return storage_path.with_suffix(".history.jsonl")
+    return storage_path.parent / f"{storage_path.name}.history.jsonl"
+
+
+def _history_timestamp(value: datetime | str | None) -> str:
+    if value is None:
+        return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    if isinstance(value, datetime):
+        parsed = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+        return parsed.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return _coerce_datetime(value).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _history_record_id(bundle_id: str, imported_at: str, reason_codes: list[str]) -> str:
+    payload = json.dumps(
+        {"bundle_id": bundle_id, "imported_at": imported_at, "reason_codes": reason_codes},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return "analysis-pack-import:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:20]
+
+
+def _metadata_operator_label(metadata: dict[str, Any]) -> str | None:
+    value = metadata.get("operator_label")
+    return str(value) if value is not None else None
+
+
+def _safe_operator_label(value: str | None) -> str | None:
+    if value is None:
+        return None
+    label = re.sub(r"[^A-Za-z0-9_.:@ -]", "", value).strip()[:80]
+    if not label:
+        return None
+    lowered = label.lower()
+    if any(marker.strip() and marker in lowered for marker in _FORBIDDEN_VALUE_MARKERS):
+        return None
+    return label

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
+
 from backend.analysis_packs import (
+    ANALYSIS_PACK_IMPORT_HISTORY_SCHEMA_VERSION,
     HIGH_DEMAND_ANALYSIS_PACK_TICKERS,
     AnalysisPackRepository,
     DurableAnalysisPackRepository,
@@ -102,6 +105,42 @@ def test_durable_analysis_pack_repository_reloads_imported_bundle(tmp_path):
     assert weekly.analysis_pack_metadata.import_bundle_id == bundle.bundle_id
     assert market is not None
     assert "raw_article_text_stored" in storage_path.read_text(encoding="utf-8")
+
+
+def test_durable_analysis_pack_repository_appends_safe_import_history(tmp_path):
+    storage_path = tmp_path / "analysis-pack-store.json"
+    bundle = build_fixture_analysis_pack_import_bundle()
+    bundle = bundle.model_copy(
+        update={"validation_metadata": {**bundle.validation_metadata, "operator_label": "local-operator"}}
+    )
+    bundle = _with_current_checksum(bundle)
+
+    writer = DurableAnalysisPackRepository(storage_path)
+    result = writer.import_bundle(bundle, now=NOW)
+
+    assert result.imported is True
+    assert writer.history_path.exists()
+    records = [
+        json.loads(line)
+        for line in writer.history_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert len(records) == 1
+    record = records[0]
+    assert record["schema_version"] == ANALYSIS_PACK_IMPORT_HISTORY_SCHEMA_VERSION
+    assert record["bundle_id"] == bundle.bundle_id
+    assert record["imported_at"] == NOW
+    assert record["generated_at"] == bundle.generated_at
+    assert record["freshness_expires_at"] == bundle.freshness_expires_at
+    assert record["validation_status"] == "passed"
+    assert record["reason_codes"] == []
+    assert record["checksum"] == bundle.validation.checksum
+    assert record["source_mode"] == "deterministic_fixture"
+    assert record["included_tickers"] == ["QQQ"]
+    assert record["operator_label"] == "local-operator"
+    assert record["raw_article_text_stored"] is False
+    assert record["raw_provider_payload_stored"] is False
+    assert record["secret_values_stored"] is False
 
 
 def test_import_bundle_checksum_raw_payload_and_persona_validation():

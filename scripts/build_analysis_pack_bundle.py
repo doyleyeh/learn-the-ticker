@@ -12,11 +12,14 @@ sys.path.insert(0, str(ROOT))
 from backend.analysis_pack_producer import (
     build_analysis_pack_bundle,
     build_analysis_pack_producer_summary,
+    build_ai_context_artifact_from_bundle,
     build_macro_cache_artifact,
     build_technical_data_artifact,
     default_analysis_pack_tickers,
     default_live_analysis_pack_tickers,
     load_analysis_pack_bundle,
+    resolve_analysis_pack_live_default,
+    upsert_macro_cache_artifact,
 )
 from backend.analysis_packs import validate_analysis_pack_import_bundle
 
@@ -37,7 +40,10 @@ def main() -> int:
         print(json.dumps(summary, indent=2, sort_keys=True))
         return 0 if not reason_codes else 1
 
-    tickers = args.ticker or list(default_live_analysis_pack_tickers() if args.live else default_analysis_pack_tickers())
+    if args.live and args.deterministic:
+        raise SystemExit("--live and --deterministic cannot be used together.")
+    live_mode = args.live or (False if args.deterministic else resolve_analysis_pack_live_default())
+    tickers = args.ticker or list(default_live_analysis_pack_tickers() if live_mode else default_analysis_pack_tickers())
     bundle, summary = build_analysis_pack_bundle(
         tickers=tickers,
         bundle_id=args.bundle_id,
@@ -45,7 +51,7 @@ def main() -> int:
         freshness_expires_at=args.freshness_expires_at,
         expires_days=args.expires_days,
         fail_on_skipped=args.fail_on_skipped,
-        live=args.live,
+        live=live_mode,
     )
 
     if args.output is None:
@@ -56,7 +62,13 @@ def main() -> int:
     if args.technical_output is not None:
         _write_json(args.technical_output, build_technical_data_artifact(bundle))
     if args.macro_output is not None:
-        _write_json(args.macro_output, build_macro_cache_artifact(bundle))
+        macro = build_macro_cache_artifact(bundle)
+        if args.macro_output.exists():
+            previous_macro = _read_json(args.macro_output)
+            macro = upsert_macro_cache_artifact(previous_macro, macro)
+        _write_json(args.macro_output, macro)
+    if args.ai_context_output is not None:
+        _write_json(args.ai_context_output, build_ai_context_artifact_from_bundle(bundle))
 
     if args.print_summary:
         print(json.dumps(summary, indent=2, sort_keys=True))
@@ -72,6 +84,14 @@ def _write_json(path: Path | None, payload: object) -> None:
         handle.write("\n")
 
 
+def _read_json(path: Path) -> object | None:
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Build and validate a structured Codex-assisted analysis pack import bundle."
@@ -85,9 +105,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--summary-output", type=Path, help="Optional path for producer summary JSON.")
     parser.add_argument("--technical-output", type=Path, help="Optional path for technical_data.json-style artifact.")
     parser.add_argument("--macro-output", type=Path, help="Optional path for macro_cache.json-style artifact.")
+    parser.add_argument("--ai-context-output", type=Path, help="Optional path for ai_context.json artifact.")
     parser.add_argument("--print-summary", action="store_true", help="Print producer summary to stdout.")
     parser.add_argument("--fail-on-skipped", action="store_true", help="Fail if any requested ticker is skipped.")
-    parser.add_argument("--live", action="store_true", help="Use operator-approved live market/news/economic/technical adapters.")
+    parser.add_argument("--live", action="store_true", help="Use live market/news/economic/technical adapters. This is the local operator default outside CI/tests.")
+    parser.add_argument("--deterministic", action="store_true", help="Force fixture/no-live mode even in local operator runs.")
     parser.add_argument("--validate-only", action="store_true", help="Validate an existing bundle instead of building one.")
     parser.add_argument("--input", type=Path, help="Existing bundle path for --validate-only.")
     parser.add_argument("--now", help="Validation timestamp for --validate-only. Defaults to bundle generated_at.")

@@ -74,24 +74,27 @@ class _SeriesSpec:
     unit: str
     publisher: str
     transform: str
+    primary_publisher: str
+    primary_url: str
 
 
 _SERIES_SPECS = (
-    _SeriesSpec("gdp", "GDP", "Gross Domestic Product", EconomicIndicatorCategory.official_historical_actual, "USD billions annualized", "BEA via FRED", "level"),
-    _SeriesSpec("cpi", "CPIAUCSL", "Consumer Price Index", EconomicIndicatorCategory.official_historical_actual, "percent year over year", "BLS via FRED", "yoy_percent"),
-    _SeriesSpec("ppi", "PPIACO", "Producer Price Index", EconomicIndicatorCategory.official_historical_actual, "percent year over year", "BLS via FRED", "yoy_percent"),
-    _SeriesSpec("retail_sales", "RSAFS", "Retail Sales", EconomicIndicatorCategory.official_historical_actual, "percent month over month", "U.S. Census Bureau via FRED", "mom_percent"),
-    _SeriesSpec("nonfarm_payrolls", "PAYEMS", "Nonfarm Payrolls", EconomicIndicatorCategory.official_historical_actual, "jobs monthly change", "BLS via FRED", "monthly_change_thousands_to_jobs"),
-    _SeriesSpec("unemployment", "UNRATE", "Unemployment Rate", EconomicIndicatorCategory.official_historical_actual, "percent", "BLS via FRED", "level"),
-    _SeriesSpec("jobless_claims", "ICSA", "Initial Jobless Claims", EconomicIndicatorCategory.official_historical_actual, "claims", "U.S. Department of Labor via FRED", "level"),
-    _SeriesSpec("m2", "M2SL", "M2 Money Supply", EconomicIndicatorCategory.official_historical_actual, "USD billions", "Federal Reserve via FRED", "level"),
-    _SeriesSpec("credit_card_delinquency", "DRCCLACBS", "Credit Card Delinquency Rate", EconomicIndicatorCategory.official_historical_actual, "percent", "Federal Reserve via FRED", "level"),
-    _SeriesSpec("private_investment", "GPDIC1", "Real Private Domestic Investment", EconomicIndicatorCategory.official_historical_actual, "percent quarter over quarter annualized", "BEA via FRED", "qoq_annualized_percent"),
-    _SeriesSpec("treasury_10y", "DGS10", "10-Year Treasury Yield", EconomicIndicatorCategory.official_historical_actual, "percent", "U.S. Treasury via FRED", "level"),
-    _SeriesSpec("treasury_3m", "DGS3MO", "3-Month Treasury Yield", EconomicIndicatorCategory.official_historical_actual, "percent", "U.S. Treasury via FRED", "level"),
-    _SeriesSpec("dxy", "DTWEXBGS", "U.S. Dollar Index Proxy", EconomicIndicatorCategory.market_reference, "index level", "Federal Reserve via FRED", "level"),
-    _SeriesSpec("vix", "VIXCLS", "Cboe Volatility Index (VIX)", EconomicIndicatorCategory.market_reference, "index level", "Cboe via FRED", "level"),
-    _SeriesSpec("wti_oil", "DCOILWTICO", "WTI Crude Oil", EconomicIndicatorCategory.market_reference, "USD per barrel", "EIA via FRED", "level"),
+    _SeriesSpec("gdp", "GDP", "Gross Domestic Product", EconomicIndicatorCategory.official_historical_actual, "USD billions annualized", "BEA via FRED", "level", "BEA", "https://www.bea.gov/data/gdp/gross-domestic-product"),
+    _SeriesSpec("cpi", "CPIAUCSL", "Consumer Price Index", EconomicIndicatorCategory.official_historical_actual, "percent year over year", "BLS via FRED", "yoy_percent", "BLS", "https://www.bls.gov/cpi/"),
+    _SeriesSpec("ppi", "PPIACO", "Producer Price Index", EconomicIndicatorCategory.official_historical_actual, "percent year over year", "BLS via FRED", "yoy_percent", "BLS", "https://www.bls.gov/ppi/"),
+    _SeriesSpec("retail_sales", "RSAFS", "Retail Sales", EconomicIndicatorCategory.official_historical_actual, "percent month over month", "U.S. Census Bureau via FRED", "mom_percent", "U.S. Census Bureau", "https://www.census.gov/retail/"),
+    _SeriesSpec("nonfarm_payrolls", "PAYEMS", "Nonfarm Payrolls", EconomicIndicatorCategory.official_historical_actual, "jobs monthly change", "BLS via FRED", "monthly_change_thousands_to_jobs", "BLS", "https://www.bls.gov/ces/"),
+    _SeriesSpec("unemployment", "UNRATE", "Unemployment Rate", EconomicIndicatorCategory.official_historical_actual, "percent", "BLS via FRED", "level", "BLS", "https://www.bls.gov/cps/"),
+    _SeriesSpec("jobless_claims", "ICSA", "Initial Jobless Claims", EconomicIndicatorCategory.official_historical_actual, "claims", "U.S. Department of Labor via FRED", "level", "U.S. Department of Labor", "https://www.dol.gov/ui/data.pdf"),
+    _SeriesSpec("m2", "M2SL", "M2 Money Supply", EconomicIndicatorCategory.official_historical_actual, "USD billions", "Federal Reserve via FRED", "level", "Federal Reserve", "https://www.federalreserve.gov/releases/h6/"),
+    _SeriesSpec("credit_card_delinquency", "DRCCLACBS", "Credit Card Delinquency Rate", EconomicIndicatorCategory.official_historical_actual, "percent", "Federal Reserve via FRED", "level", "Federal Reserve", "https://www.federalreserve.gov/releases/chargeoff/"),
+    _SeriesSpec("private_investment", "GPDIC1", "Real Private Domestic Investment", EconomicIndicatorCategory.official_historical_actual, "percent quarter over quarter annualized", "BEA via FRED", "qoq_annualized_percent", "BEA", "https://www.bea.gov/data/gdp/gross-domestic-product"),
+    _SeriesSpec("treasury_10y", "DGS10", "10-Year Treasury Yield", EconomicIndicatorCategory.official_historical_actual, "percent", "U.S. Treasury via FRED", "level", "U.S. Treasury", "https://home.treasury.gov/resource-center/data-chart-center/interest-rates"),
+    _SeriesSpec("treasury_3m", "DGS3MO", "3-Month Treasury Yield", EconomicIndicatorCategory.official_historical_actual, "percent", "U.S. Treasury via FRED", "level", "U.S. Treasury", "https://home.treasury.gov/resource-center/data-chart-center/interest-rates"),
+    _SeriesSpec("treasury_30y", "DGS30", "30-Year Treasury Yield", EconomicIndicatorCategory.official_historical_actual, "percent", "U.S. Treasury via FRED", "level", "U.S. Treasury", "https://home.treasury.gov/resource-center/data-chart-center/interest-rates"),
+    _SeriesSpec("dxy", "DTWEXBGS", "U.S. Dollar Index Proxy", EconomicIndicatorCategory.market_reference, "index level", "Federal Reserve via FRED", "level", "Federal Reserve", "https://www.federalreserve.gov/releases/h10/"),
+    _SeriesSpec("vix", "VIXCLS", "Cboe Volatility Index (VIX)", EconomicIndicatorCategory.market_reference, "index level", "Cboe via FRED", "level", "Cboe", "https://www.cboe.com/tradable_products/vix/"),
+    _SeriesSpec("wti_oil", "DCOILWTICO", "WTI Crude Oil", EconomicIndicatorCategory.market_reference, "USD per barrel", "EIA via FRED", "level", "EIA", "https://www.eia.gov/petroleum/"),
 )
 
 
@@ -191,17 +194,22 @@ def _item_from_observations(
         freshness_state=FreshnessState.fresh,
         is_official=not is_market_reference,
         supporting_passage=(
-            f"Latest {spec.series_id} observation used for {spec.name}; source stores metadata and computed value only."
+            f"Latest {spec.series_id} observation used for {spec.name}; primary source metadata: "
+            f"{spec.primary_publisher} ({spec.primary_url}); FRED is recorded as structured cross-check/fallback; "
+            "source stores metadata and computed value only."
         ),
         source_quality=source_quality,
         allowlist_status=SourceAllowlistStatus.allowed,
         source_use_policy=SourceUsePolicy.summary_allowed,
         permitted_operations=_SUMMARY_ONLY_OPERATIONS,
-        source_identity=f"fred:{spec.series_id}",
+        source_identity=f"{spec.primary_publisher.lower().replace(' ', '_')}:fred:{spec.series_id}",
         storage_rights=SourceStorageRights.summary_allowed,
         export_rights=SourceExportRights.excerpts_allowed,
         review_status=SourceReviewStatus.approved,
-        approval_rationale="FRED CSV endpoint is used as a source-labeled structured time-series record for local operator packs.",
+        approval_rationale=(
+            f"{spec.primary_publisher} is the named primary source; FRED CSV is used as a structured "
+            "cross-check/fallback time-series record for local operator packs."
+        ),
         parser_status=SourceParserStatus.parsed,
     )
     citation = Citation(

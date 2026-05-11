@@ -8,12 +8,16 @@ from backend.analysis_pack_producer import (
     CODEX_INSTRUCTIONS_PATH,
     ANALYSIS_PACK_PRODUCER_SCHEMA_VERSION,
     build_analysis_pack_bundle,
+    build_ai_context_artifact_from_bundle,
     build_macro_cache_artifact,
     build_technical_data_artifact,
     default_analysis_pack_tickers,
     default_live_analysis_pack_tickers,
+    resolve_analysis_pack_live_default,
+    upsert_macro_cache_artifact,
 )
-from backend.analysis_packs import validate_analysis_pack_import_bundle
+from backend.analysis_packs import compute_analysis_pack_bundle_checksum, validate_analysis_pack_import_bundle
+from backend.analysis_pack_numeric_validation import validate_analysis_pack_numeric_integrity
 from backend.economic_indicators_live import parse_fred_csv
 
 
@@ -82,6 +86,52 @@ def test_producer_writes_technical_and_macro_artifacts_without_live_calls():
     assert macro["schema_version"] == "analysis-pack-macro-cache-artifact-v1"
     assert macro["upsert_only"] is True
     assert {"gdp", "cpi", "treasury_10y"} <= set(macro["indicators"])
+    assert macro["indicators"]["gdp"]["primary_source"]["publisher"] == "BEA"
+    assert macro["indicators"]["gdp"]["cross_check_sources"]
+
+
+def test_analysis_pack_live_default_resolver_is_live_locally_and_deterministic_for_automation():
+    assert resolve_analysis_pack_live_default(env={}, argv=["scripts/build_analysis_pack_bundle.py"]) is True
+    assert resolve_analysis_pack_live_default(env={"CI": "true"}, argv=["scripts/build_analysis_pack_bundle.py"]) is False
+    assert resolve_analysis_pack_live_default(env={"PYTEST_CURRENT_TEST": "x"}, argv=["scripts/build_analysis_pack_bundle.py"]) is False
+    assert resolve_analysis_pack_live_default(env={}, argv=["evals/run_static_evals.py"]) is False
+    assert resolve_analysis_pack_live_default(env={"LTT_ANALYSIS_PACK_DETERMINISTIC": "true"}, argv=[]) is False
+
+
+def test_macro_cache_upsert_preserves_existing_rows_and_blocks_large_count_drop():
+    bundle, _ = build_analysis_pack_bundle(
+        tickers=["QQQ"],
+        bundle_id="macro-upsert-test",
+        generated_at=NOW,
+        freshness_expires_at=EXPIRES,
+        live=False,
+    )
+    current = build_macro_cache_artifact(bundle)
+    previous = {
+        **current,
+        "indicators": {
+            **current["indicators"],
+            "legacy_indicator": {
+                "name": "Legacy Indicator",
+                "value": "1.0",
+                "as_of_date": "2026-01",
+            },
+        },
+    }
+
+    merged = upsert_macro_cache_artifact(previous, current)
+
+    assert "legacy_indicator" in merged["indicators"]
+    assert merged["upsert_guard"]["previous_indicator_count"] == len(previous["indicators"])
+    assert merged["upsert_guard"]["merged_indicator_count"] == len(previous["indicators"])
+
+    sparse = {**current, "indicators": {"gdp": current["indicators"]["gdp"]}}
+    try:
+        upsert_macro_cache_artifact(previous, sparse)
+    except ValueError as exc:
+        assert "macro_cache_indicator_count_drop_blocked" in str(exc)
+    else:
+        raise AssertionError("Expected sparse macro cache update to be blocked.")
 
 
 def test_fred_csv_parser_accepts_series_id_value_column():
@@ -95,6 +145,7 @@ def test_build_analysis_pack_bundle_cli_writes_expected_files(tmp_path):
     summary_path = tmp_path / "analysis-pack-summary.json"
     technical_path = tmp_path / "technical_data.json"
     macro_path = tmp_path / "macro_cache.json"
+    ai_context_path = tmp_path / "ai_context.json"
 
     result = subprocess.run(
         [
@@ -116,6 +167,8 @@ def test_build_analysis_pack_bundle_cli_writes_expected_files(tmp_path):
             str(technical_path),
             "--macro-output",
             str(macro_path),
+            "--ai-context-output",
+            str(ai_context_path),
         ],
         check=True,
         capture_output=True,
@@ -127,10 +180,12 @@ def test_build_analysis_pack_bundle_cli_writes_expected_files(tmp_path):
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     technical = json.loads(technical_path.read_text(encoding="utf-8"))
     macro = json.loads(macro_path.read_text(encoding="utf-8"))
+    ai_context = json.loads(ai_context_path.read_text(encoding="utf-8"))
     assert bundle["schema_version"] == "analysis-pack-import-bundle-v1"
     assert summary["validation_status"] == "passed"
     assert technical["schema_version"] == "analysis-pack-technical-data-artifact-v1"
     assert macro["schema_version"] == "analysis-pack-macro-cache-artifact-v1"
+    assert ai_context["schema_version"] == "analysis-pack-ai-context-v1"
 
     validate = subprocess.run(
         [
@@ -174,6 +229,14 @@ def test_live_analysis_pack_producer_uses_live_adapters_with_fixture_fetchers():
     assert bundle.economic_indicators is not None
     assert bundle.economic_indicators.no_live_external_calls is False
     assert set(bundle.ticker_packs) == {"QQQ"}
+    ai_context = build_ai_context_artifact_from_bundle(bundle)
+    assert ai_context["schema_version"] == "analysis-pack-ai-context-v1"
+    assert "selected_items" in ai_context["market_news"]
+    assert ai_context["tickers"]["QQQ"]["weekly_news_items"]
+    assert ai_context["economic_indicators"]
+    assert ai_context["technical_indicators"]["QQQ"]["state"] == "computed"
+    assert any(fact["fact_id"] == "economic:vix" for fact in ai_context["allowed_numeric_facts"])
+    assert any(fact["fact_id"] == "technical:QQQ:ADX" for fact in ai_context["allowed_numeric_facts"])
 
     technical = build_technical_data_artifact(bundle)
     qqq = technical["tickers"]["QQQ"]
@@ -197,11 +260,56 @@ def test_codex_operator_script_and_instructions_have_required_markers():
     assert "analysis-pack-bundle.json" in script
     assert "technical_data.json" in script
     assert "macro_cache.json" in script
+    assert "ai_context.json" in script
+    assert "--deterministic" in script
     assert "Generate English educational content for v1." in instructions
     assert "Do not inject HTML into app pages." in instructions
     assert "Market News Focus is reusable market-wide context." in instructions
     assert "Ticker imported packs are high-demand only" in instructions
     assert "technical_data.json" in instructions
+    assert "Global Macro/Fed" in instructions
+    assert "official historical actuals" in instructions
+    assert "AI Context And Numeric Integrity" in instructions
+    assert "Do not copy article bodies" in instructions
+
+
+def test_numeric_validator_rejects_deviating_values_and_technical_field_misuse():
+    bundle, _ = build_analysis_pack_bundle(
+        tickers=["QQQ"],
+        bundle_id="numeric-validation-test",
+        generated_at=NOW,
+        freshness_expires_at=EXPIRES,
+        live=False,
+    )
+    assert bundle.market_context_pack is not None
+    analysis = bundle.market_context_pack.market_ai_comprehensive_analysis
+    bad_sections = [
+        section.model_copy(update={"analysis": "The VIX is 60 and QQQ ADX price is 40."})
+        if section.section_id == "macro_policy"
+        else section
+        for section in analysis.sections
+    ]
+    bad_analysis = analysis.model_copy(update={"sections": bad_sections})
+    bad_bundle = bundle.model_copy(
+        deep=True,
+        update={
+            "market_context_pack": bundle.market_context_pack.model_copy(
+                update={"market_ai_comprehensive_analysis": bad_analysis}
+            )
+        },
+    )
+    bad_bundle = bad_bundle.model_copy(
+        update={
+            "validation": bad_bundle.validation.model_copy(
+                update={"checksum": compute_analysis_pack_bundle_checksum(bad_bundle)}
+            )
+        }
+    )
+
+    reason_codes = validate_analysis_pack_numeric_integrity(bad_bundle)
+
+    assert "unsupported_or_deviating_numeric_claim" in reason_codes
+    assert "technical_indicator_field_misused_as_price" in reason_codes
 
 
 class _FakeMarketNewsFetcher:

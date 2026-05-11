@@ -8,6 +8,36 @@ No backlog tasks are currently prepared.
 
 ## Completed
 
+### T-185: Complete live Codex analysis pack pipeline
+
+Goal:
+Complete the U.S.-only, English-first Codex-assisted analysis-pack producer slice by making local operator builders live by default outside CI/tests/evals, adding import history, writing `ai_context.json`, enforcing macro-cache upsert and numeric-integrity rules, and strengthening the Codex research-reviewer workflow.
+
+Completion details:
+- Updated PRD, technical design spec, proposal, SPEC, EVALS, TASKS, the operator guide, and Codex instructions before implementation to document live-by-default local operator behavior, U.S.-only/English-first scope, deferred admin/auth and signing, import history, macro-cache upsert, `ai_context.json`, Tier-1 research-review rules, and numeric integrity.
+- Added live-default resolution for analysis-pack builders: local operator runs default to live, while CI, pytest, static evals, quality gates, `--deterministic`, and deterministic env overrides remain fixture/no-live.
+- Added `ai_context.json` generation and bundle metadata/checksum entries containing selected market news, ticker Weekly News, Economic Indicators, technical indicators, source IDs, citation IDs, canonical citation IDs, and allowed numeric facts.
+- Added numeric validation for VIX, DXY, Treasury yields, close price, KD, RSI, MACD, BIAS, ADX, moving averages, and volume-change claims, including rejection for technical field misuse such as treating ADX or volume as price.
+- Added macro-cache upsert behavior that preserves existing rows, updates newer rows, records primary/cross-check source metadata, and blocks suspicious large count drops.
+- Added file-backed append-only JSONL import history with safe metadata: bundle ID, imported/generated/expires timestamps, validation status, reason codes, checksum, source mode, included tickers, and optional operator label.
+- Extended live Economic Indicators metadata to name primary U.S. official sources and record FRED as a structured cross-check/fallback, including 30-year Treasury yield support for yield-curve rules.
+- Updated the operator shell and builder CLI so `--deterministic` forces fixture mode, `--live` remains accepted, and the operator run writes `analysis-pack-bundle.json`, `analysis-pack-summary.json`, `technical_data.json`, `macro_cache.json`, and `ai_context.json`.
+
+Required commands executed:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_analysis_pack_producer.py tests/unit/test_analysis_packs.py tests/integration/test_backend_api.py::test_admin_analysis_pack_import_routes_choose_fresh_imported_packs tests/integration/test_backend_api.py::test_admin_analysis_pack_import_writes_file_backed_history -q` - pass, 19 passed
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_repo_contract.py -q` - pass, 38 passed
+- `TMPDIR=/tmp bash scripts/run_analysis_pack_codex.sh --deterministic --skip-codex --ticker QQQ --output-dir /tmp/ltt-analysis-pack-deterministic-smoke-t185` - pass, deterministic source mode, `ai_context.json` included, validation passed
+- `TMPDIR=/tmp bash scripts/run_analysis_pack_codex.sh --skip-codex --ticker QQQ --output-dir /tmp/ltt-analysis-pack-live-smoke-t185` - pass, live source mode, technical indicators computed, `ai_context.json` included, validation passed
+- `TMPDIR=/tmp python3 -m pytest tests -q` - pass, 607 passed
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `export TMPDIR=/tmp; source scripts/activate_agent_env.sh; bash scripts/run_quality_gate.sh` - pass
+- `git diff --check` - pass
+
+Remaining risks:
+- Live output quality still depends on external source availability, publisher metadata, and optional provider credentials.
+- File-backed storage and history are sufficient for local/private personal deployment paths, but multi-instance cloud deployment still needs a shared DB/object-store adapter.
+- Admin auth, cryptographic signed-bundle verification, rollback UI/API, and required operator identity remain future hardening by design.
+
 ### T-184: Add live analysis-pack producer adapters and durable import storage
 
 Goal:
