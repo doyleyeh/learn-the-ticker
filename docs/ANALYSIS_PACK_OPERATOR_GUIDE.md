@@ -51,6 +51,35 @@ example is:
 LTT_FORCE_COMPAT_FASTAPI=1 uvicorn backend.main:app --reload
 ```
 
+Build a full local producer artifact set without invoking Codex:
+
+```bash
+bash scripts/run_analysis_pack_codex.sh \
+  --skip-codex \
+  --ticker QQQ \
+  --ticker VOO
+```
+
+This writes the following files under `.agent-runs/analysis-packs/<run-id>/`:
+
+- `analysis-pack-bundle.json`
+- `analysis-pack-summary.json`
+- `technical_data.json`
+- `macro_cache.json`
+
+Run the Codex-assisted operator flow:
+
+```bash
+bash scripts/run_analysis_pack_codex.sh \
+  --ticker QQQ \
+  --ticker VOO
+```
+
+The script builds deterministic seed artifacts, gives Codex the instructions in
+`docs/ANALYSIS_PACK_CODEX_INSTRUCTIONS.md`, and validates the final bundle.
+Codex must leave repo-tracked files unchanged and keep generated artifacts under
+`.agent-runs/analysis-packs/...`.
+
 Generate a fixture-shaped bundle for local import testing:
 
 ```bash
@@ -76,6 +105,13 @@ curl -sS -X POST http://127.0.0.1:8000/api/admin/analysis-packs/import \
   --data-binary @/tmp/analysis-pack-fixture.json
 ```
 
+Or upload a generated bundle with local validation first:
+
+```bash
+python3 scripts/upload_analysis_pack_bundle.py \
+  --bundle .agent-runs/analysis-packs/<run-id>/analysis-pack-bundle.json
+```
+
 Verify route behavior:
 
 ```bash
@@ -90,6 +126,26 @@ Expected local behavior after a successful import:
 - `/api/market-news` returns imported local-pack metadata.
 - `/api/assets/QQQ/weekly-news` returns imported local-pack metadata.
 - unsupported or non-allowlisted ticker packs are ignored or fall back.
+
+## Producer Artifacts
+
+`analysis-pack-bundle.json` is the only artifact accepted by the backend import
+endpoint. The other artifacts are operator diagnostics:
+
+- `analysis-pack-summary.json` reports included tickers, skipped tickers,
+  validation status, source/citation counts, and current deterministic
+  limitations.
+- `technical_data.json` reserves KD, RSI, MACD, BIAS, DMI/ADX, moving averages,
+  and volume-change fields. The current committed producer does not fetch live
+  price series or compute those indicators in normal CI.
+- `macro_cache.json` mirrors the U.S. Economic Indicators pack in an upsert-safe
+  cache shape for future producer workflows.
+
+The current producer can assemble Market News Focus, Market AI, high-demand
+ticker Weekly News Focus, ticker AI, and Economic Indicators from existing repo
+evidence. Live Tier-1 news search, live technical indicator calculation, and
+official macro refresh are future operator-approved adapters, not normal CI
+behavior.
 
 ## Ticker Pack Scope
 
