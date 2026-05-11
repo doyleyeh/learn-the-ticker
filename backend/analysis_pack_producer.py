@@ -13,15 +13,24 @@ from backend.analysis_packs import (
     validate_analysis_pack_import_bundle,
 )
 from backend.data import ASSETS
+from backend.economic_indicators_live import build_live_economic_indicators_pack
+from backend.lightweight_data_fetch import fetch_lightweight_asset_data
+from backend.market_news_runtime import build_runtime_market_news_response
 from backend.market_news import build_market_news_response
 from backend.models import (
     AnalysisPackImportBundle,
     AnalysisPackValidationMetadata,
     Citation,
+    AssetStatus,
+    StateMessage,
     SourceDocument,
     WeeklyNewsResponse,
 )
 from backend.overview import generate_asset_overview
+from backend.settings import build_lightweight_data_settings, build_market_news_settings
+from backend.technical_indicators import build_live_technical_data_artifact
+from backend.weekly_news import build_ai_comprehensive_analysis
+from backend.weekly_news_sources import build_lightweight_weekly_news_focus
 
 
 ANALYSIS_PACK_PRODUCER_SCHEMA_VERSION = "analysis-pack-producer-report-v1"
@@ -33,6 +42,10 @@ def default_analysis_pack_tickers() -> tuple[str, ...]:
     return tuple(ticker for ticker in HIGH_DEMAND_ANALYSIS_PACK_TICKERS if ticker in ASSETS)
 
 
+def default_live_analysis_pack_tickers() -> tuple[str, ...]:
+    return HIGH_DEMAND_ANALYSIS_PACK_TICKERS
+
+
 def build_analysis_pack_bundle(
     *,
     tickers: list[str] | tuple[str, ...] | None = None,
@@ -41,21 +54,64 @@ def build_analysis_pack_bundle(
     freshness_expires_at: str | None = None,
     expires_days: int = 7,
     fail_on_skipped: bool = False,
+    live: bool = False,
+    market_fetcher: Any | None = None,
+    lightweight_fetcher: Any | None = None,
+    technical_fetcher: Any | None = None,
+    economic_fetcher: Any | None = None,
 ) -> tuple[AnalysisPackImportBundle, dict[str, Any]]:
-    requested_tickers = _normalize_tickers(tickers or default_analysis_pack_tickers())
+    requested_tickers = _normalize_tickers(tickers or (default_live_analysis_pack_tickers() if live else default_analysis_pack_tickers()))
     generated_at_value = generated_at or _utc_now_iso()
     expires_at_value = freshness_expires_at or _expires_at(generated_at_value, days=expires_days)
     bundle_id_value = bundle_id or f"analysis-pack-{generated_at_value.replace(':', '').replace('-', '').replace('+0000', 'Z')}"
 
-    market_context_pack = build_market_news_response()
+    live_diagnostics: dict[str, Any] = {}
+    if live:
+        market_settings = build_market_news_settings(
+            env={
+                "MARKET_NEWS_FETCH_ENABLED": "true",
+                "MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED": "true",
+            }
+        )
+        market_context_pack = build_runtime_market_news_response(
+            as_of=generated_at_value[:10],
+            settings=market_settings,
+            fetcher=market_fetcher,
+        )
+    else:
+        market_context_pack = build_market_news_response()
     market_context_pack = market_context_pack.model_copy(update={"analysis_pack_metadata": None})
-    economic_indicators = build_economic_indicators_pack(metadata=None)
+    if live:
+        try:
+            economic_indicators = build_live_economic_indicators_pack(
+                generated_at=generated_at_value,
+                fetcher=economic_fetcher,
+            )
+            live_diagnostics["economic_indicators_source_mode"] = "live_fred_csv"
+        except Exception as exc:
+            economic_indicators = build_economic_indicators_pack(metadata=None)
+            live_diagnostics["economic_indicators_source_mode"] = "deterministic_fixture_fallback"
+            live_diagnostics["economic_indicators_fallback_reason"] = type(exc).__name__
+    else:
+        economic_indicators = build_economic_indicators_pack(metadata=None)
+        live_diagnostics["economic_indicators_source_mode"] = "deterministic_fixture"
 
     ticker_packs: dict[str, WeeklyNewsResponse] = {}
     skipped_tickers: list[dict[str, str]] = []
     for ticker in requested_tickers:
         if ticker not in HIGH_DEMAND_ANALYSIS_PACK_TICKERS:
             skipped_tickers.append({"ticker": ticker, "reason": "not_high_demand_allowlisted"})
+            continue
+        if live:
+            live_pack = _build_live_ticker_pack(
+                ticker,
+                generated_at=generated_at_value,
+                fetcher=lightweight_fetcher,
+            )
+            if live_pack is None:
+                skipped_tickers.append({"ticker": ticker, "reason": "live_weekly_news_or_ai_analysis_unavailable"})
+                continue
+            ticker_packs[ticker] = live_pack
             continue
         if ticker not in ASSETS:
             skipped_tickers.append({"ticker": ticker, "reason": "not_available_in_current_fixture_universe"})
@@ -70,6 +126,17 @@ def build_analysis_pack_bundle(
             weekly_news_focus=overview.weekly_news_focus,
             ai_comprehensive_analysis=overview.ai_comprehensive_analysis,
         )
+
+    technical_data_artifact = (
+        build_live_technical_data_artifact(
+            [ticker for ticker in requested_tickers if ticker in HIGH_DEMAND_ANALYSIS_PACK_TICKERS],
+            bundle_id=bundle_id_value,
+            generated_at=generated_at_value,
+            fetcher=technical_fetcher,
+        )
+        if live
+        else None
+    )
 
     if fail_on_skipped and skipped_tickers:
         skipped = ", ".join(f"{item['ticker']}:{item['reason']}" for item in skipped_tickers)
@@ -112,11 +179,14 @@ def build_analysis_pack_bundle(
         validation_metadata={
             "producer_schema_version": ANALYSIS_PACK_PRODUCER_SCHEMA_VERSION,
             "codex_instruction_path": CODEX_INSTRUCTIONS_PATH,
-            "source_mode": "deterministic_fixture",
+            "source_mode": "live_operator" if live else "deterministic_fixture",
+            "no_live_external_calls": not live,
             "no_html_injection": True,
             "no_raw_article_or_provider_payload_storage": True,
             "visible_persona_labels_allowed": False,
             "skipped_tickers": skipped_tickers,
+            "live_diagnostics": live_diagnostics,
+            "technical_data_artifact": technical_data_artifact,
         },
         checksums={},
         longer_ticker_candidate_history=_build_candidate_history_summary(ticker_packs),
@@ -124,6 +194,7 @@ def build_analysis_pack_bundle(
     checksums = {
         "market_context_pack": _stable_digest(market_context_pack.model_dump(mode="json")),
         "economic_indicators": _stable_digest(economic_indicators.model_dump(mode="json")),
+        **({"technical_data_artifact": _stable_digest(technical_data_artifact)} if technical_data_artifact else {}),
         **{
             f"ticker_pack:{ticker}": _stable_digest(pack.model_dump(mode="json"))
             for ticker, pack in ticker_packs.items()
@@ -172,19 +243,23 @@ def build_analysis_pack_producer_summary(
         "citation_count": len(bundle.citations),
         "validation_status": "passed" if not reason_codes else "failed",
         "validation_reason_codes": reason_codes,
-        "no_live_external_calls": True,
+        "no_live_external_calls": bool(bundle.validation_metadata.get("no_live_external_calls", True)),
+        "source_mode": bundle.validation_metadata.get("source_mode", "deterministic_fixture"),
+        "technical_indicator_status": (
+            (bundle.validation_metadata.get("technical_data_artifact") or {}).get("technical_indicator_status")
+            if isinstance(bundle.validation_metadata.get("technical_data_artifact"), dict)
+            else "not_computed_without_live_market_data_adapter"
+        ),
         "raw_article_text_collected": bundle.raw_article_text_collected,
         "raw_provider_payload_exposed": bundle.raw_provider_payload_exposed,
-        "current_limitations": [
-            "deterministic_fixture_source_mode",
-            "no_live_technical_indicator_fetch",
-            "no_live_official_macro_fetch",
-            "no_tier1_news_search_in_ci",
-        ],
+        "current_limitations": _current_limitations(bundle),
     }
 
 
 def build_technical_data_artifact(bundle: AnalysisPackImportBundle) -> dict[str, Any]:
+    technical = bundle.validation_metadata.get("technical_data_artifact")
+    if isinstance(technical, dict):
+        return technical
     return {
         "schema_version": "analysis-pack-technical-data-artifact-v1",
         "bundle_id": bundle.bundle_id,
@@ -209,6 +284,67 @@ def build_technical_data_artifact(bundle: AnalysisPackImportBundle) -> dict[str,
             for ticker in sorted(bundle.ticker_packs)
         },
     }
+
+
+def _build_live_ticker_pack(
+    ticker: str,
+    *,
+    generated_at: str,
+    fetcher: Any | None,
+) -> WeeklyNewsResponse | None:
+    settings = build_lightweight_data_settings(
+        env={
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+        }
+    )
+    response = fetch_lightweight_asset_data(
+        ticker,
+        settings=settings,
+        fetcher=fetcher,
+        chart_range="1y",
+        bypass_reuse=True,
+        retrieved_at=generated_at,
+    )
+    if response.asset.status is not AssetStatus.supported:
+        return None
+    weekly_focus = build_lightweight_weekly_news_focus(response)
+    if weekly_focus is None:
+        return None
+    analysis = build_ai_comprehensive_analysis(
+        response.asset,
+        weekly_focus,
+        canonical_fact_citation_ids=[citation.citation_id for citation in response.citations[:4]],
+        canonical_source_document_ids=[source.source_document_id for source in response.sources[:4]],
+    )
+    return WeeklyNewsResponse(
+        asset=response.asset,
+        state=StateMessage(
+            status=response.asset.status,
+            message=f"Live local analysis pack evidence is available for {response.asset.ticker}.",
+        ),
+        weekly_news_focus=weekly_focus,
+        ai_comprehensive_analysis=analysis,
+    )
+
+
+def _current_limitations(bundle: AnalysisPackImportBundle) -> list[str]:
+    if bundle.validation_metadata.get("source_mode") == "live_operator":
+        limitations = ["normal_ci_still_uses_deterministic_no_live_path"]
+        live_diagnostics = bundle.validation_metadata.get("live_diagnostics")
+        if isinstance(live_diagnostics, dict) and live_diagnostics.get("economic_indicators_source_mode") == "deterministic_fixture_fallback":
+            limitations.append("economic_indicators_used_fixture_fallback")
+        technical = bundle.validation_metadata.get("technical_data_artifact")
+        if not isinstance(technical, dict) or technical.get("technical_indicator_status") not in {"computed", "partial"}:
+            limitations.append("technical_indicator_fetch_unavailable")
+        return limitations
+    return [
+        "deterministic_fixture_source_mode",
+        "no_live_technical_indicator_fetch",
+        "no_live_official_macro_fetch",
+        "no_tier1_news_search_in_ci",
+    ]
 
 
 def build_macro_cache_artifact(bundle: AnalysisPackImportBundle) -> dict[str, Any]:

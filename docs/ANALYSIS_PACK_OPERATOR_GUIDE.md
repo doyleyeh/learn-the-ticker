@@ -1,9 +1,13 @@
 # Analysis Pack Operator Guide
 
 This guide explains the Codex-assisted analysis pack flow for Learn the Ticker.
-The current implementation supports structured JSON import through the backend.
-It does not yet support cryptographic signed-bundle verification or durable cloud
-storage for imported bundles.
+The current implementation supports structured JSON import through the backend,
+operator-approved live adapters, and optional backend-owned durable bundle
+storage through `ANALYSIS_PACK_REPOSITORY_PATH`.
+
+It does not yet support cryptographic signed-bundle verification, production
+admin auth hardening, import history, rollback controls, or a cloud-native
+database/object-store adapter beyond the file-backed durable store.
 
 ## Current Pipeline
 
@@ -16,7 +20,10 @@ workflow.
 3. The backend validates schema version, validator version, checksum, freshness,
    source-use policy, citation/source IDs, raw payload guards, secret-like values,
    visible persona labels, and required U.S. Economic Indicators rows.
-4. Runtime routes read a fresh imported pack first. If the imported pack is
+4. If `ANALYSIS_PACK_REPOSITORY_PATH` or `LTT_ANALYSIS_PACK_REPOSITORY_PATH` is
+   set before backend startup, the accepted bundle is also written to a durable
+   backend-owned JSON store and can be reloaded after process restart.
+5. Runtime routes read a fresh imported pack first. If the imported pack is
    missing, invalid, expired, or outside the ticker allowlist, the backend falls
    back to the existing deterministic/runtime generation path.
 
@@ -48,10 +55,17 @@ Start the backend with the repo's normal local backend command. One simple local
 example is:
 
 ```bash
-LTT_FORCE_COMPAT_FASTAPI=1 uvicorn backend.main:app --reload
+uvicorn backend.main:app --reload
 ```
 
-Build a full local producer artifact set without invoking Codex:
+Start the backend with durable imported-pack storage:
+
+```bash
+ANALYSIS_PACK_REPOSITORY_PATH=/tmp/learn-the-ticker-analysis-pack-store.json \
+uvicorn backend.main:app --reload
+```
+
+Build a deterministic producer artifact set without invoking Codex:
 
 ```bash
 bash scripts/run_analysis_pack_codex.sh \
@@ -67,15 +81,41 @@ This writes the following files under `.agent-runs/analysis-packs/<run-id>/`:
 - `technical_data.json`
 - `macro_cache.json`
 
-Run the Codex-assisted operator flow:
+Build a live local producer artifact set without invoking Codex:
 
 ```bash
 bash scripts/run_analysis_pack_codex.sh \
+  --live \
+  --skip-codex \
   --ticker QQQ \
   --ticker VOO
 ```
 
-The script builds deterministic seed artifacts, gives Codex the instructions in
+Live mode uses server-side adapters only:
+
+- Market News: RSS, Google News RSS, GDELT, Yahoo Finance search, and optional
+  keyed providers when configured.
+- Ticker Weekly News: official/provider/Yahoo metadata through the lightweight
+  weekly-news adapter.
+- Economic Indicators: FRED CSV time-series records for U.S. official
+  historical actuals and source-labeled market references.
+- Technical data: Yahoo chart OHLCV metadata, then computed KD, RSI, MACD,
+  BIAS, DMI/ADX, moving averages, and volume change.
+
+Live mode stores computed values, source metadata, bounded summaries, citations,
+and checksums only. It does not store raw article bodies, unrestricted provider
+payloads, hidden prompts, raw model reasoning, or secrets.
+
+Run the Codex-assisted operator flow:
+
+```bash
+bash scripts/run_analysis_pack_codex.sh \
+  --live \
+  --ticker QQQ \
+  --ticker VOO
+```
+
+The script builds initial artifacts, gives Codex the instructions in
 `docs/ANALYSIS_PACK_CODEX_INSTRUCTIONS.md`, and validates the final bundle.
 Codex must leave repo-tracked files unchanged and keep generated artifacts under
 `.agent-runs/analysis-packs/...`.
@@ -133,19 +173,18 @@ Expected local behavior after a successful import:
 endpoint. The other artifacts are operator diagnostics:
 
 - `analysis-pack-summary.json` reports included tickers, skipped tickers,
-  validation status, source/citation counts, and current deterministic
-  limitations.
-- `technical_data.json` reserves KD, RSI, MACD, BIAS, DMI/ADX, moving averages,
-  and volume-change fields. The current committed producer does not fetch live
-  price series or compute those indicators in normal CI.
+  validation status, source/citation counts, source mode, live/fixture status,
+  technical-indicator status, and remaining limitations.
+- `technical_data.json` computes KD, RSI, MACD, BIAS, DMI/ADX, moving averages,
+  and volume-change fields in `--live` mode. Deterministic mode still reserves
+  those fields without live fetching.
 - `macro_cache.json` mirrors the U.S. Economic Indicators pack in an upsert-safe
   cache shape for future producer workflows.
 
 The current producer can assemble Market News Focus, Market AI, high-demand
-ticker Weekly News Focus, ticker AI, and Economic Indicators from existing repo
-evidence. Live Tier-1 news search, live technical indicator calculation, and
-official macro refresh are future operator-approved adapters, not normal CI
-behavior.
+ticker Weekly News Focus, ticker AI, Economic Indicators, and technical
+indicator diagnostics. Live adapters are operator-approved runtime paths, not
+normal CI behavior.
 
 ## Ticker Pack Scope
 
@@ -179,13 +218,17 @@ contract testing, but it is not production-complete.
 
 Current limitations:
 
-- Imported bundles are held in an in-memory repository.
-- Imported bundles are lost when the backend process restarts.
-- Multi-instance cloud deployments will not share imported bundles.
+- Imported bundles are in-memory unless `ANALYSIS_PACK_REPOSITORY_PATH` or
+  `LTT_ANALYSIS_PACK_REPOSITORY_PATH` is configured before backend startup.
+- The durable implementation is file-backed JSON. It is enough for local runs,
+  a mounted private volume, or a simple object-store bridge, but it is not a
+  full cloud database implementation.
+- Multi-instance cloud deployments need shared storage or a DB-backed adapter.
 - Validation uses a deterministic checksum, not cryptographic signature
   verification.
 - The admin import endpoint does not yet include production auth hardening.
-- There is no packaged operator CLI for prepare, validate, sign, and upload.
+- There is no packaged operator CLI for prepare, validate, sign, upload,
+  verify, and rollback.
 
 ## Production Hardening Roadmap
 

@@ -15,6 +15,7 @@ from backend.analysis_pack_producer import (
     build_macro_cache_artifact,
     build_technical_data_artifact,
     default_analysis_pack_tickers,
+    default_live_analysis_pack_tickers,
     load_analysis_pack_bundle,
 )
 from backend.analysis_packs import validate_analysis_pack_import_bundle
@@ -36,7 +37,7 @@ def main() -> int:
         print(json.dumps(summary, indent=2, sort_keys=True))
         return 0 if not reason_codes else 1
 
-    tickers = args.ticker or list(default_analysis_pack_tickers())
+    tickers = args.ticker or list(default_live_analysis_pack_tickers() if args.live else default_analysis_pack_tickers())
     bundle, summary = build_analysis_pack_bundle(
         tickers=tickers,
         bundle_id=args.bundle_id,
@@ -44,6 +45,7 @@ def main() -> int:
         freshness_expires_at=args.freshness_expires_at,
         expires_days=args.expires_days,
         fail_on_skipped=args.fail_on_skipped,
+        live=args.live,
     )
 
     if args.output is None:
@@ -85,6 +87,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--macro-output", type=Path, help="Optional path for macro_cache.json-style artifact.")
     parser.add_argument("--print-summary", action="store_true", help="Print producer summary to stdout.")
     parser.add_argument("--fail-on-skipped", action="store_true", help="Fail if any requested ticker is skipped.")
+    parser.add_argument("--live", action="store_true", help="Use operator-approved live market/news/economic/technical adapters.")
     parser.add_argument("--validate-only", action="store_true", help="Validate an existing bundle instead of building one.")
     parser.add_argument("--input", type=Path, help="Existing bundle path for --validate-only.")
     parser.add_argument("--now", help="Validation timestamp for --validate-only. Defaults to bundle generated_at.")

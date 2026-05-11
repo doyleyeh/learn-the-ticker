@@ -687,6 +687,10 @@ Learn the Ticker may accept local Codex-prepared structured JSON bundles as a fr
 
 Runtime behavior is two-path. Market News Focus first checks for a fresh, valid imported `market_context_pack-v1`; if it is missing, invalid, or older than seven days, the backend falls back to the existing runtime Market News pipeline. Ticker Weekly News may use imported packs only for high-demand supported assets: `AAPL`, `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `VOO`, `QQQ`, `SPY`, `VTI`, `IVV`, and `XLK`. Long-tail supported tickers use the backend pipeline unless a later reviewed scope expands this seed list.
 
+The producer pipeline supports two operator modes. Deterministic mode remains the normal CI-safe path and uses fixtures/mocks. Live mode is explicit operator-only and may fetch source-labeled market/news metadata, FRED economic time-series records, and Yahoo chart OHLCV metadata for technical indicators. Live mode may compute KD, RSI, MACD, BIAS, DMI/ADX, moving averages, and volume change into structured artifacts, but these computed indicators remain context evidence only and must not become buy/sell/hold guidance. Raw article bodies, raw provider payloads, hidden prompts, model reasoning, secrets, and signed URLs must not be stored.
+
+Imported bundles may be held in memory for local development or persisted through backend-owned durable storage when configured. Durable storage must preserve the same validation, freshness, citation, source-use, no-raw-payload, and no-persona-label rules before runtime routes can serve an imported pack.
+
 User-facing analysis must keep the product's existing labels. Persona-style roles may guide internal prompt lenses, but Atlas, Sophia, Kenji, Crow, Rain, or similar persona labels must not appear in the UI, exports, or API analysis labels. Longer ticker candidate history may be stored for dedupe and scoring, but generated claims may cite only selected Weekly News items and canonical facts.
 
 ### 11.4 Stock page

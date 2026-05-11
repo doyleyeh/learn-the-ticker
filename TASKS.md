@@ -8,6 +8,35 @@ No backlog tasks are currently prepared.
 
 ## Completed
 
+### T-184: Add live analysis-pack producer adapters and durable import storage
+
+Goal:
+Upgrade the Codex-assisted analysis-pack producer from fixture-only artifacts to an operator-approved live local pipeline for Market News, ticker Weekly News, Economic Indicators, technical indicators, and durable imported-bundle storage while preserving deterministic normal CI.
+
+Completion details:
+- Added live producer mode behind explicit `--live` flags in `scripts/build_analysis_pack_bundle.py` and `scripts/run_analysis_pack_codex.sh`.
+- Added Yahoo chart OHLCV technical-indicator calculation for KD, RSI, MACD, BIAS, DMI/ADX, moving averages, and volume change, stored as structured computed metadata rather than raw provider payloads.
+- Added a FRED CSV live Economic Indicators adapter for U.S. official historical actuals and source-labeled market references, including support for FRED series-id CSV value columns.
+- Wired live producer mode to Market News runtime search, ticker lightweight Weekly News metadata, ticker AI Comprehensive Analysis generation, source/citation dedupe, technical-artifact checksums, and validation summaries.
+- Added optional file-backed durable analysis-pack import storage through `ANALYSIS_PACK_REPOSITORY_PATH` or `LTT_ANALYSIS_PACK_REPOSITORY_PATH`; in-memory remains the default.
+- Updated PRD, technical design spec, SPEC, EVALS, analysis-pack Codex instructions, and the operator guide for live mode, durable storage, commands, and remaining production hardening.
+- Added unit coverage for live producer adapters, technical indicator outputs, FRED CSV parsing, and durable repository reload.
+
+Required commands executed:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_analysis_pack_producer.py tests/unit/test_analysis_packs.py tests/integration/test_backend_api.py::test_admin_analysis_pack_import_routes_choose_fresh_imported_packs -q` - pass, 14 passed
+- `TMPDIR=/tmp bash scripts/run_analysis_pack_codex.sh --skip-codex --ticker QQQ --output-dir /tmp/ltt-analysis-pack-deterministic-smoke` - pass
+- `TMPDIR=/tmp bash scripts/run_analysis_pack_codex.sh --live --skip-codex --ticker QQQ --output-dir /tmp/ltt-analysis-pack-live-smoke-2` - pass, live source mode, technical indicators computed, validation passed
+- Local API durable import smoke with `ANALYSIS_PACK_REPOSITORY_PATH=/tmp/ltt-analysis-pack-api-store.json` and `uvicorn backend.main:app --host 127.0.0.1 --port 8021` - pass; imported market and ticker routes served `imported_local_pack`, durable JSON store written
+- `TMPDIR=/tmp python3 -m pytest tests -q` - pass, 602 passed
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `export TMPDIR=/tmp; source scripts/activate_agent_env.sh; bash scripts/run_quality_gate.sh` - pass
+- `git diff --check` - pass
+
+Remaining risks:
+- Live news and market-data quality depends on external provider availability, publisher metadata, and configured provider keys for optional keyed sources.
+- The durable store is file-backed JSON for local or mounted-storage use; production multi-instance deployments still need admin auth, import history, rollback controls, signed JSON verification, and a shared DB/object-store adapter.
+- Live technical indicators are educational context only and must not be turned into advice or uncited generated claims.
+
 ### T-183: Add Codex-assisted analysis packs and Economic Indicators
 
 Goal:

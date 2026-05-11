@@ -6,6 +6,7 @@ cd "$ROOT"
 
 RUN_CODEX=1
 UPLOAD_ENDPOINT=""
+LIVE_MODE=0
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 OUTPUT_DIR=".agent-runs/analysis-packs/$RUN_ID"
 TICKERS=()
@@ -20,6 +21,7 @@ the draft under docs/ANALYSIS_PACK_CODEX_INSTRUCTIONS.md.
 Options:
   --ticker <TICKER>        Include a high-demand ticker. Repeat for many.
   --output-dir <PATH>      Output directory. Default: .agent-runs/analysis-packs/<utc-run-id>
+  --live                   Use live local adapters for news, Economic Indicators, and technical indicators.
   --skip-codex             Build and validate deterministic artifacts only.
   --upload-endpoint <URL>  Upload the final bundle after validation.
   -h, --help               Show this help.
@@ -38,6 +40,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --skip-codex)
       RUN_CODEX=0
+      shift
+      ;;
+    --live)
+      LIVE_MODE=1
       shift
       ;;
     --upload-endpoint)
@@ -73,8 +79,14 @@ for ticker in "${TICKERS[@]}"; do
   fi
 done
 
+LIVE_ARGS=()
+if [ "$LIVE_MODE" -eq 1 ]; then
+  LIVE_ARGS+=(--live)
+fi
+
 python3 scripts/build_analysis_pack_bundle.py \
   "${TICKER_ARGS[@]}" \
+  "${LIVE_ARGS[@]}" \
   --output "$BUNDLE_PATH" \
   --summary-output "$SUMMARY_PATH" \
   --technical-output "$TECHNICAL_PATH" \
@@ -96,6 +108,7 @@ Working files for this run:
 - Summary: $SUMMARY_PATH
 - Technical artifact: $TECHNICAL_PATH
 - Macro artifact: $MACRO_PATH
+- Live adapters enabled: $LIVE_MODE
 
 Tasks:
 1. Inspect the generated bundle and summary.

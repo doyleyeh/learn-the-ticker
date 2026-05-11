@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from backend.data import STUB_TIMESTAMP
@@ -44,6 +46,7 @@ ECONOMIC_INDICATORS_PACK_SCHEMA_VERSION = "economic-indicators-pack-v1"
 MARKET_CONTEXT_PACK_SCHEMA_VERSION = "market_context_pack-v1"
 ANALYSIS_PACK_VALIDATOR_VERSION = "analysis-pack-import-validator-v1"
 ANALYSIS_PACK_MAX_AGE_DAYS = 7
+ANALYSIS_PACK_DURABLE_STORE_SCHEMA_VERSION = "analysis-pack-durable-store-v1"
 HIGH_DEMAND_ANALYSIS_PACK_TICKERS = (
     "AAPL",
     "MSFT",
@@ -195,11 +198,85 @@ class AnalysisPackRepository:
         return self._bundle
 
 
-_ANALYSIS_PACK_REPOSITORY = AnalysisPackRepository()
+class DurableAnalysisPackRepository(AnalysisPackRepository):
+    def __init__(self, storage_path: str | Path) -> None:
+        super().__init__()
+        self.storage_path = Path(storage_path).expanduser()
+
+    def clear(self) -> None:
+        super().clear()
+        try:
+            self.storage_path.unlink(missing_ok=True)
+        except OSError:
+            return
+
+    def import_bundle(
+        self,
+        bundle: AnalysisPackImportBundle,
+        *,
+        now: datetime | str | None = None,
+    ) -> AnalysisPackImportResponse:
+        response = super().import_bundle(bundle, now=now)
+        if response.imported and self._bundle is not None:
+            self._persist_bundle(self._bundle)
+        return response
+
+    def _fresh_bundle(self, *, now: datetime | str | None = None) -> AnalysisPackImportBundle | None:
+        if self._bundle is None:
+            self._bundle = self._load_bundle()
+        return super()._fresh_bundle(now=now)
+
+    def _persist_bundle(self, bundle: AnalysisPackImportBundle) -> None:
+        envelope = {
+            "schema_version": ANALYSIS_PACK_DURABLE_STORE_SCHEMA_VERSION,
+            "bundle_id": bundle.bundle_id,
+            "stored_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+            "raw_article_text_stored": False,
+            "raw_provider_payload_stored": False,
+            "secret_values_stored": False,
+            "bundle": bundle.model_dump(mode="json"),
+        }
+        self.storage_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = self.storage_path.with_suffix(self.storage_path.suffix + ".tmp")
+        temp_path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        temp_path.replace(self.storage_path)
+
+    def _load_bundle(self) -> AnalysisPackImportBundle | None:
+        if not self.storage_path.exists():
+            return None
+        try:
+            envelope = json.loads(self.storage_path.read_text(encoding="utf-8"))
+            if envelope.get("schema_version") != ANALYSIS_PACK_DURABLE_STORE_SCHEMA_VERSION:
+                return None
+            bundle_payload = envelope.get("bundle")
+            if not isinstance(bundle_payload, dict):
+                return None
+            bundle = AnalysisPackImportBundle.model_validate(bundle_payload)
+            if validate_analysis_pack_import_bundle(bundle, now=bundle.generated_at):
+                return None
+            return bundle
+        except Exception:
+            return None
+
+
+def build_analysis_pack_repository_from_env(env: dict[str, str] | None = None) -> AnalysisPackRepository:
+    source = os.environ if env is None else env
+    storage_path = (source.get("ANALYSIS_PACK_REPOSITORY_PATH") or source.get("LTT_ANALYSIS_PACK_REPOSITORY_PATH") or "").strip()
+    if storage_path:
+        return DurableAnalysisPackRepository(storage_path)
+    return AnalysisPackRepository()
+
+
+_ANALYSIS_PACK_REPOSITORY = build_analysis_pack_repository_from_env()
 
 
 def analysis_pack_repository() -> AnalysisPackRepository:
     return _ANALYSIS_PACK_REPOSITORY
+
+
+def configure_analysis_pack_repository(repository: AnalysisPackRepository | None) -> None:
+    global _ANALYSIS_PACK_REPOSITORY
+    _ANALYSIS_PACK_REPOSITORY = repository or build_analysis_pack_repository_from_env()
 
 
 def build_backend_generated_metadata() -> AnalysisPackRuntimeMetadata:

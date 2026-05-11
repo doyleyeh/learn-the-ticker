@@ -3,6 +3,7 @@ from __future__ import annotations
 from backend.analysis_packs import (
     HIGH_DEMAND_ANALYSIS_PACK_TICKERS,
     AnalysisPackRepository,
+    DurableAnalysisPackRepository,
     build_economic_indicators_pack,
     build_fixture_analysis_pack_import_bundle,
     compute_analysis_pack_bundle_checksum,
@@ -81,6 +82,26 @@ def test_analysis_pack_import_accepts_fresh_bundle_and_exposes_metadata():
     assert indicators is not None
     assert indicators.analysis_pack_metadata is not None
     assert indicators.analysis_pack_metadata.validation_status == "passed"
+
+
+def test_durable_analysis_pack_repository_reloads_imported_bundle(tmp_path):
+    storage_path = tmp_path / "analysis-pack-store.json"
+    bundle = build_fixture_analysis_pack_import_bundle()
+
+    writer = DurableAnalysisPackRepository(storage_path)
+    result = writer.import_bundle(bundle, now=NOW)
+    assert result.imported is True
+    assert storage_path.exists()
+
+    reader = DurableAnalysisPackRepository(storage_path)
+    weekly = reader.read_fresh_weekly_news_response("QQQ", now=NOW)
+    market = reader.read_fresh_market_news_response(now=NOW)
+
+    assert weekly is not None
+    assert weekly.analysis_pack_metadata is not None
+    assert weekly.analysis_pack_metadata.import_bundle_id == bundle.bundle_id
+    assert market is not None
+    assert "raw_article_text_stored" in storage_path.read_text(encoding="utf-8")
 
 
 def test_import_bundle_checksum_raw_payload_and_persona_validation():

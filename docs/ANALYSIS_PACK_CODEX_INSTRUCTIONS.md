@@ -20,7 +20,7 @@ the Ticker. The output is structured JSON for backend validation, not HTML.
 
 ## Producer Workflow
 
-1. Build the deterministic seed bundle first:
+1. Build the bundle first. Use deterministic mode for CI-safe rehearsal:
 
    ```bash
    python3 scripts/build_analysis_pack_bundle.py \
@@ -32,9 +32,22 @@ the Ticker. The output is structured JSON for backend validation, not HTML.
      --print-summary
    ```
 
-2. Improve only the JSON artifacts in `.agent-runs/analysis-packs/...` when
+2. Use live mode only for an operator-approved local run:
+
+   ```bash
+   python3 scripts/build_analysis_pack_bundle.py \
+     --live \
+     --ticker QQQ \
+     --output .agent-runs/analysis-packs/manual/analysis-pack-bundle.json \
+     --summary-output .agent-runs/analysis-packs/manual/analysis-pack-summary.json \
+     --technical-output .agent-runs/analysis-packs/manual/technical_data.json \
+     --macro-output .agent-runs/analysis-packs/manual/macro_cache.json \
+     --print-summary
+   ```
+
+3. Improve only the JSON artifacts in `.agent-runs/analysis-packs/...` when
    operator-approved live research is available.
-3. Validate before upload:
+4. Validate before upload:
 
    ```bash
    python3 scripts/build_analysis_pack_bundle.py \
@@ -43,7 +56,7 @@ the Ticker. The output is structured JSON for backend validation, not HTML.
      --summary-output .agent-runs/analysis-packs/manual/analysis-pack-summary.json
    ```
 
-4. Upload only after validation passes:
+5. Upload only after validation passes:
 
    ```bash
    python3 scripts/upload_analysis_pack_bundle.py \
@@ -104,11 +117,11 @@ AAPL, MSFT, NVDA, AMZN, GOOGL, VOO, QQQ, SPY, VTI, IVV, XLK
 
 ## Technical Data
 
-The current committed producer reserves `technical_data.json` fields for KD,
-RSI, MACD, BIAS, DMI/ADX, moving averages, and volume change, but it does not
-perform live price-series fetching in normal CI. A future live adapter may fill
-those values only when source-use, licensing, freshness, and no-live-CI rules
-are satisfied.
+Deterministic mode reserves `technical_data.json` fields for KD, RSI, MACD,
+BIAS, DMI/ADX, moving averages, and volume change without external calls.
+Operator-approved `--live` mode fetches Yahoo chart OHLCV metadata and computes
+those indicators into the technical artifact. Store only computed indicator
+values and source metadata, not raw provider payloads.
 
 Never quote a technical number in generated analysis unless that number is
 present in the validated fact repository or structured bundle.

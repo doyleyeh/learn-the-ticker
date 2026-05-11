@@ -118,6 +118,7 @@ Verify:
 - Market News Focus and AI Comprehensive Analysis: Market News Focus are reusable across supported ticker pages without regenerating per ticker
 - `economic-indicators-pack-v1` is U.S.-only, cited, source-labeled, rights-safe, and rendered after stable asset facts but before Market News Focus
 - `analysis-pack-import-bundle-v1` validates schema, freshness, checksums, citations/source IDs, source-use policy, no raw article/provider payload storage, no secret exposure, and no visible persona labels
+- analysis-pack live producer mode is explicit operator-only, computes technical indicators from source-labeled OHLCV metadata, writes durable imported bundles only through backend-owned storage, and preserves deterministic no-live normal CI behavior
 - `/api/economic-indicators`, `/api/market-news`, and `/api/assets/{ticker}/weekly-news` select fresh imported packs only when valid, otherwise falling back to deterministic fixtures or the existing backend runtime pipeline
 - imported ticker packs are accepted only for high-demand supported assets: `AAPL`, `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `VOO`, `QQQ`, `SPY`, `VTI`, `IVV`, and `XLK`
 - official filings, investor-relations releases, issuer announcements, prospectus updates, and fact-sheet changes rank before approved reputable third-party/news sources

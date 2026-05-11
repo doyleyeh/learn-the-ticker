@@ -11,8 +11,10 @@ from backend.analysis_pack_producer import (
     build_macro_cache_artifact,
     build_technical_data_artifact,
     default_analysis_pack_tickers,
+    default_live_analysis_pack_tickers,
 )
 from backend.analysis_packs import validate_analysis_pack_import_bundle
+from backend.economic_indicators_live import parse_fred_csv
 
 
 NOW = "2026-05-10T12:00:00Z"
@@ -48,6 +50,19 @@ def test_analysis_pack_producer_builds_valid_market_and_ticker_bundle():
 
 def test_analysis_pack_producer_default_tickers_follow_current_supported_seed():
     assert default_analysis_pack_tickers() == ("AAPL", "VOO", "QQQ")
+    assert default_live_analysis_pack_tickers() == (
+        "AAPL",
+        "MSFT",
+        "NVDA",
+        "AMZN",
+        "GOOGL",
+        "VOO",
+        "QQQ",
+        "SPY",
+        "VTI",
+        "IVV",
+        "XLK",
+    )
 
 
 def test_producer_writes_technical_and_macro_artifacts_without_live_calls():
@@ -67,6 +82,12 @@ def test_producer_writes_technical_and_macro_artifacts_without_live_calls():
     assert macro["schema_version"] == "analysis-pack-macro-cache-artifact-v1"
     assert macro["upsert_only"] is True
     assert {"gdp", "cpi", "treasury_10y"} <= set(macro["indicators"])
+
+
+def test_fred_csv_parser_accepts_series_id_value_column():
+    observations = parse_fred_csv("observation_date,GDP\n2026-01-01,31856.3\n")
+
+    assert observations == [("2026-01-01", 31856.3)]
 
 
 def test_build_analysis_pack_bundle_cli_writes_expected_files(tmp_path):
@@ -130,6 +151,42 @@ def test_build_analysis_pack_bundle_cli_writes_expected_files(tmp_path):
     assert validate.returncode == 0
 
 
+def test_live_analysis_pack_producer_uses_live_adapters_with_fixture_fetchers():
+    bundle, summary = build_analysis_pack_bundle(
+        tickers=["QQQ"],
+        bundle_id="live-producer-test",
+        generated_at=NOW,
+        freshness_expires_at=EXPIRES,
+        live=True,
+        market_fetcher=_FakeMarketNewsFetcher(),
+        lightweight_fetcher=_FakeLightweightFetcher(),
+        technical_fetcher=_FakeTechnicalFetcher(),
+        economic_fetcher=_FakeEconomicFetcher(),
+    )
+
+    assert validate_analysis_pack_import_bundle(bundle, now=NOW) == []
+    assert summary["validation_status"] == "passed"
+    assert summary["source_mode"] == "live_operator"
+    assert summary["no_live_external_calls"] is False
+    assert summary["technical_indicator_status"] == "computed"
+    assert bundle.market_context_pack is not None
+    assert bundle.market_context_pack.market_news_focus.no_live_external_calls is False
+    assert bundle.economic_indicators is not None
+    assert bundle.economic_indicators.no_live_external_calls is False
+    assert set(bundle.ticker_packs) == {"QQQ"}
+
+    technical = build_technical_data_artifact(bundle)
+    qqq = technical["tickers"]["QQQ"]
+    assert qqq["state"] == "computed"
+    assert qqq["KD"]["D"] is not None
+    assert qqq["RSI"]["value"] is not None
+    assert qqq["MACD"]["macd"] is not None
+    assert qqq["BIAS"]["20"] is not None
+    assert qqq["DMI_ADX"]["ADX"] is not None
+    assert qqq["moving_averages"]["50"] is not None
+    assert qqq["volume_change"]["percent_change"] is not None
+
+
 def test_codex_operator_script_and_instructions_have_required_markers():
     script = open("scripts/run_analysis_pack_codex.sh", "r", encoding="utf-8").read()
     instructions = open(CODEX_INSTRUCTIONS_PATH, "r", encoding="utf-8").read()
@@ -145,3 +202,114 @@ def test_codex_operator_script_and_instructions_have_required_markers():
     assert "Market News Focus is reusable market-wide context." in instructions
     assert "Ticker imported packs are high-demand only" in instructions
     assert "technical_data.json" in instructions
+
+
+class _FakeMarketNewsFetcher:
+    no_live_external_calls = False
+
+    def fetch_text(self, url, *, headers=None, timeout_seconds=15):
+        del url, headers, timeout_seconds
+        items = [
+            ("Reuters", "Federal Reserve inflation Treasury yields move after jobs report", "Fed policy and inflation expectations shaped Treasury yield trading.", "https://www.reuters.com/markets/fed-yields"),
+            ("Bloomberg", "S&P 500 and Nasdaq stocks react to earnings week", "Major US equity indexes moved as earnings updates reset sector expectations.", "https://www.bloomberg.com/markets/stocks-earnings"),
+            ("CNBC", "AI semiconductor chips stay in focus for big technology companies", "AI infrastructure and semiconductor demand remained a central market theme.", "https://www.cnbc.com/technology/ai-chips"),
+            ("Reuters", "Oil and Red Sea shipping risk keep supply chain concerns visible", "Energy and shipping headlines kept geopolitical risk in the market discussion.", "https://www.reuters.com/world/oil-shipping"),
+            ("Wall Street Journal", "Banks credit liquidity and consumer stress watched by investors", "Credit and liquidity conditions remained a sentiment input for markets.", "https://www.wsj.com/markets/credit-liquidity"),
+        ]
+        body = "".join(
+            f"<item><title>{title}</title><link>{link}</link><description>{desc}</description>"
+            f"<pubDate>Sat, 09 May 2026 12:00:00 GMT</pubDate><source>{source}</source></item>"
+            for source, title, desc, link in items
+        )
+        return f"<rss><channel><language>en</language>{body}</channel></rss>"
+
+    def fetch_json(self, url, *, headers=None, timeout_seconds=15):
+        del url, headers, timeout_seconds
+        return {}
+
+
+class _FakeLightweightFetcher:
+    no_live_external_calls = False
+
+    def fetch_json(self, url, *, user_agent, timeout_seconds):
+        del user_agent, timeout_seconds
+        if "finance/search" in url:
+            return {
+                "quotes": [{"symbol": "QQQ", "quoteType": "ETF", "shortname": "Invesco QQQ Trust"}],
+                "news": [
+                    {
+                        "uuid": "qqq-live-1",
+                        "title": "QQQ tracks technology stocks as Nasdaq earnings dominate the week",
+                        "summary": "The fund remained tied to large technology and communications names during an earnings-heavy week.",
+                        "publisher": "Reuters",
+                        "link": "https://www.reuters.com/markets/qqq-tech-earnings",
+                        "providerPublishTime": 1778241600,
+                        "relatedTickers": ["QQQ"],
+                    },
+                    {
+                        "uuid": "qqq-live-2",
+                        "title": "Invesco QQQ volume rises as AI chip headlines lift index funds",
+                        "summary": "AI and semiconductor headlines kept QQQ-linked trading activity elevated.",
+                        "publisher": "Bloomberg",
+                        "link": "https://www.bloomberg.com/markets/qqq-ai-chips",
+                        "providerPublishTime": 1778328000,
+                        "relatedTickers": ["QQQ"],
+                    },
+                ],
+            }
+        if "finance/chart" in url:
+            return _chart_payload()
+        if "quoteSummary" in url:
+            return {"quoteSummary": {"result": [{"summaryDetail": {}, "defaultKeyStatistics": {}, "financialData": {}}]}}
+        return {}
+
+
+class _FakeTechnicalFetcher:
+    no_live_external_calls = False
+
+    def fetch_json(self, url, *, timeout_seconds=15):
+        del url, timeout_seconds
+        return _chart_payload(day_count=260)
+
+
+class _FakeEconomicFetcher:
+    no_live_external_calls = False
+
+    def fetch_text(self, url, *, timeout_seconds=15):
+        del url, timeout_seconds
+        rows = ["observation_date,value"]
+        for index in range(18):
+            year = 2024 + ((index + 6) // 12)
+            month = ((index + 6) % 12) + 1
+            rows.append(f"{year:04d}-{month:02d}-01,{100 + index * 1.5:.2f}")
+        return "\n".join(rows)
+
+
+def _chart_payload(day_count: int = 80) -> dict:
+    timestamps = [1770000000 + day * 86400 for day in range(day_count)]
+    opens = [100.0 + day * 0.4 for day in range(day_count)]
+    highs = [value + 1.2 for value in opens]
+    lows = [value - 1.1 for value in opens]
+    closes = [value + (0.25 if day % 2 == 0 else -0.15) for day, value in enumerate(opens)]
+    volumes = [1_000_000 + day * 2000 for day in range(day_count)]
+    return {
+        "chart": {
+            "result": [
+                {
+                    "timestamp": timestamps,
+                    "indicators": {
+                        "quote": [
+                            {
+                                "open": opens,
+                                "high": highs,
+                                "low": lows,
+                                "close": closes,
+                                "volume": volumes,
+                            }
+                        ]
+                    },
+                    "meta": {"currency": "USD"},
+                }
+            ]
+        }
+    }

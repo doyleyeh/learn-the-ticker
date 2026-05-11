@@ -223,7 +223,7 @@ Runtime feature defaults:
 
 Market News and Weekly News retrieval use server-side adapter boundaries. Market News Focus collects market-wide RSS/news/provider metadata into reusable story clusters. Weekly News Focus stays asset-bound: official filings, investor-relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes are candidate rank tiers before fallback provider/news metadata. Yahoo Finance/yfinance-derived recent context is treated as source-labeled metadata and bounded summary/snippet input only: it may support Market News Focus fallback, Weekly News Focus, AI Comprehensive Analysis threshold checks, and grounded recent/news chat when citations validate, but it cannot support canonical facts or raw article redistribution.
 
-Codex-assisted analysis packs use the same backend validation boundary. A local Codex agent may prepare an `analysis-pack-import-bundle-v1`, but the bundle is imported only through backend/admin validation code and never through direct HTML injection or direct database writes. Imported responses expose optional runtime metadata: `analysis_source`, `freshness_expires_at`, `import_bundle_id`, and `validation_status`.
+Codex-assisted analysis packs use the same backend validation boundary. A local Codex agent may prepare an `analysis-pack-import-bundle-v1`, but the bundle is imported only through backend/admin validation code and never through direct HTML injection or direct database writes. The producer has a deterministic CI-safe mode and an explicit operator-only live mode. Live mode may use server-side adapters for market/news metadata, FRED economic time series, Yahoo chart OHLCV metadata, and computed technical indicators. Imported responses expose optional runtime metadata: `analysis_source`, `freshness_expires_at`, `import_bundle_id`, and `validation_status`. Accepted bundles remain in memory unless `ANALYSIS_PACK_REPOSITORY_PATH` or `LTT_ANALYSIS_PACK_REPOSITORY_PATH` configures the file-backed durable store before backend startup.
 
 Ticker Weekly News acquisition remains official -> configured provider/news APIs -> Yahoo/yfinance fallback. Final selection is separate from acquisition order: official in-window items keep source-hierarchy priority, while non-official provider API and Yahoo candidates are pooled and ranked by ticker usefulness, publisher tier, source-use policy, recency, duplicate status, and beginner utility. Diagnostics should report candidate and selected counts by acquisition source and publisher tier, plus suppression reasons such as `generic_market_context_for_ticker`, `opinion_or_column`, `advice_like`, `weak_ticker_relevance`, `demoted_publisher_backfill_only`, and `duplicate`.
 
@@ -1069,11 +1069,12 @@ Official historical actuals for v1 include GDP, CPI, PPI, retail sales, nonfarm 
 #### Codex-assisted import bundle flow
 
 ```text
-1. Local Codex prepares structured JSON only: economic indicators, market context pack, optional high-demand ticker packs, source documents, citations, prompt version, generated_at, freshness_expires_at, checksums, and validation metadata.
+1. Local Codex or the operator script prepares structured JSON only: economic indicators, market context pack, optional high-demand ticker packs, source documents, citations, prompt version, generated_at, freshness_expires_at, checksums, validation metadata, and optional technical-indicator diagnostics.
 2. Admin import validates `analysis-pack-import-bundle-v1`, source-use policy, citation/source IDs, checksum metadata, no raw article/provider payload exposure, no secret exposure, no visible persona labels, and freshness.
 3. Valid imported market packs may serve `/api/market-news` until `freshness_expires_at` or the seven-day max age is reached.
 4. Valid imported ticker packs may serve `/api/assets/{ticker}/weekly-news` only for the high-demand seed: `AAPL`, `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `VOO`, `QQQ`, `SPY`, `VTI`, `IVV`, and `XLK`.
-5. Missing, invalid, stale, or non-seed imported packs fall back to the existing backend runtime pipeline.
+5. If durable storage is configured, accepted bundles are written to backend-owned JSON storage and reloaded after process restart; otherwise they are process-local memory only.
+6. Missing, invalid, stale, or non-seed imported packs fall back to the existing backend runtime pipeline.
 ```
 
 Longer ticker candidate history can be imported for dedupe/scoring diagnostics and future context, but current generated claims may cite only selected Weekly News items and canonical facts. Persona-style responsibilities may be used as prompt lenses internally; user-facing API labels, UI labels, and exports must not expose named personas.
@@ -2625,7 +2626,7 @@ MVP is technically ready when:
 - Weekly News Focus uses the last completed Monday-Sunday market week plus current week-to-date through yesterday.
 - AI Comprehensive Analysis includes What Changed This Week, Market Context, Business/Fund Context, and Risk Context when at least two approved Weekly News Focus items exist.
 - Market News Focus appears above ticker-specific Weekly News Focus, selects up to 20 approved market-wide story clusters, exposes source-use/freshness metadata, and reuses one validated market pack across ticker pages until its freshness hash changes.
-- AI Comprehensive Analysis: Market News Focus uses thematic lenses, including Scenario Lens and Practical Watchpoints, only from selected market story clusters and without separate market-data or technical-indicator fetches in this slice.
+- AI Comprehensive Analysis: Market News Focus uses thematic lenses, including Scenario Lens and Practical Watchpoints, only from selected market story clusters. Operator live analysis packs may attach technical-indicator diagnostics as structured context, but user-facing claims may use those numbers only when they are present in the validated artifact and citations/source metadata remain intact.
 - Local fresh-data validation exercises live AI generation for grounded chat and for AI Comprehensive Analysis when the evidence threshold is met.
 - Comparison works for ETF-vs-ETF, stock-vs-stock, and stock-vs-ETF.
 - Stock-vs-ETF uses the special single-company-vs-ETF-basket template and relationship badges.
