@@ -181,12 +181,14 @@ GET  /api/assets/{ticker}/overview
 GET  /api/assets/{ticker}/details
 GET  /api/assets/{ticker}/sources
 GET  /api/citations/{citation_id}
+GET  /api/economic-indicators
 GET  /api/market-news
 GET  /api/assets/{ticker}/weekly-news
 POST /api/compare
 POST /api/assets/{ticker}/chat
 GET  /api/assets/{ticker}/export
 GET  /api/compare/export?left=VOO&right=QQQ
+POST /api/admin/analysis-packs/import
 POST /api/admin/ingest/{ticker}
 GET  /api/jobs/{job_id}
 ```
@@ -220,6 +222,8 @@ Runtime feature defaults:
 - `LLM_REASONING_SUMMARY_ONLY=true`
 
 Market News and Weekly News retrieval use server-side adapter boundaries. Market News Focus collects market-wide RSS/news/provider metadata into reusable story clusters. Weekly News Focus stays asset-bound: official filings, investor-relations releases, ETF issuer announcements, prospectus updates, and fact-sheet changes are candidate rank tiers before fallback provider/news metadata. Yahoo Finance/yfinance-derived recent context is treated as source-labeled metadata and bounded summary/snippet input only: it may support Market News Focus fallback, Weekly News Focus, AI Comprehensive Analysis threshold checks, and grounded recent/news chat when citations validate, but it cannot support canonical facts or raw article redistribution.
+
+Codex-assisted analysis packs use the same backend validation boundary. A local Codex agent may prepare an `analysis-pack-import-bundle-v1`, but the bundle is imported only through backend/admin validation code and never through direct HTML injection or direct database writes. Imported responses expose optional runtime metadata: `analysis_source`, `freshness_expires_at`, `import_bundle_id`, and `validation_status`.
 
 Ticker Weekly News acquisition remains official -> configured provider/news APIs -> Yahoo/yfinance fallback. Final selection is separate from acquisition order: official in-window items keep source-hierarchy priority, while non-official provider API and Yahoo candidates are pooled and ranked by ticker usefulness, publisher tier, source-use policy, recency, duplicate status, and beginner utility. Diagnostics should report candidate and selected counts by acquisition source and publisher tier, plus suppression reasons such as `generic_market_context_for_ticker`, `opinion_or_column`, `advice_like`, `weak_ticker_relevance`, `demoted_publisher_backfill_only`, and `duplicate`.
 
@@ -1046,6 +1050,33 @@ credit_liquidity_sentiment
 ```
 
 Market News Focus should prefer approved Tier-1 publishers for critical claims. Critical claims about Fed policy, war, sanctions, or market-moving events require either Reuters/AP/Bloomberg/Wall Street Journal/Financial Times-level source priority or corroboration from at least two approved Tier-1 sources in the same cluster.
+
+#### Economic Indicators pack
+
+`economic-indicators-pack-v1` is a common U.S.-only context layer for stock and ETF pages. It renders after stable asset facts and before Market News Focus so beginners can see broad macro conditions without letting those conditions redefine the selected asset.
+
+Each indicator row stores:
+
+- indicator ID and display name;
+- category: official historical actual or source-labeled market reference;
+- value, optional numeric value, unit, period, as-of date, published date, and retrieved date;
+- source metadata with source type, publisher, URL, official flag, source quality, allowlist status, source-use policy, freshness, and rights-safe supporting passage;
+- trend direction: up, down, neutral, or unknown;
+- citation IDs and source document IDs.
+
+Official historical actuals for v1 include GDP, CPI, PPI, retail sales, nonfarm payrolls, unemployment, jobless claims, M2, credit card delinquency, private investment, and Treasury yields. DXY, VIX, WTI/oil, and similar market references may appear only as source-labeled market references when source-use policy permits display. The pack must not store unrestricted provider payloads or raw article text.
+
+#### Codex-assisted import bundle flow
+
+```text
+1. Local Codex prepares structured JSON only: economic indicators, market context pack, optional high-demand ticker packs, source documents, citations, prompt version, generated_at, freshness_expires_at, checksums, and validation metadata.
+2. Admin import validates `analysis-pack-import-bundle-v1`, source-use policy, citation/source IDs, checksum metadata, no raw article/provider payload exposure, no secret exposure, no visible persona labels, and freshness.
+3. Valid imported market packs may serve `/api/market-news` until `freshness_expires_at` or the seven-day max age is reached.
+4. Valid imported ticker packs may serve `/api/assets/{ticker}/weekly-news` only for the high-demand seed: `AAPL`, `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `VOO`, `QQQ`, `SPY`, `VTI`, `IVV`, and `XLK`.
+5. Missing, invalid, stale, or non-seed imported packs fall back to the existing backend runtime pipeline.
+```
+
+Longer ticker candidate history can be imported for dedupe/scoring diagnostics and future context, but current generated claims may cite only selected Weekly News items and canonical facts. Persona-style responsibilities may be used as prompt lenses internally; user-facing API labels, UI labels, and exports must not expose named personas.
 
 #### Weekly News Focus flow
 

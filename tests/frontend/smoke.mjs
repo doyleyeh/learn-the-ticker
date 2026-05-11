@@ -53,6 +53,7 @@ function orderedMarkers(path, markers, label) {
   "components/AssetChatPanel.tsx",
   "components/AssetEtfSections.tsx",
   "components/AssetStockSections.tsx",
+  "components/EconomicIndicatorsPanel.tsx",
   "components/StructuredOverviewDisplays.tsx",
   "components/AssetModeLayout.tsx",
   "components/CitationChip.tsx",
@@ -74,6 +75,7 @@ function orderedMarkers(path, markers, label) {
   "lib/assetWeeklyNews.ts",
   "lib/compare.ts",
   "lib/compareSuggestions.ts",
+  "lib/economicIndicators.ts",
   "lib/exportControls.ts",
   "lib/fixtures.ts",
   "lib/glossary.ts",
@@ -161,6 +163,7 @@ orderedMarkers("app/assets/[ticker]/page.tsx", [
   "data-prd-section=\"top_risks\"",
   "data-prd-section=\"key_facts\"",
   "data-prd-section=\"what_it_does_or_holds\"",
+  "<EconomicIndicatorsPanel",
   "<MarketNewsPanel",
   "<MarketAIComprehensiveAnalysisPanel",
   "<WeeklyNewsPanel",
@@ -217,6 +220,17 @@ includesAll("components/MarketNewsPanel.tsx", [
   "Source-use policy:",
   "Supporting sources:"
 ], "Market News Focus reusable market context markers");
+includesAll("components/EconomicIndicatorsPanel.tsx", [
+  "Economic Indicators",
+  "data-economic-indicators",
+  "data-economic-indicators-schema",
+  "data-economic-indicators-region",
+  "data-economic-indicators-official-count",
+  "data-economic-indicators-market-reference-count",
+  "data-economic-indicators-analysis-source",
+  "Official historical actual",
+  "Market reference"
+], "Economic Indicators common context markers");
 includesAll("components/MarketAIComprehensiveAnalysisPanel.tsx", [
   "AI Comprehensive Analysis: Market News Focus",
   "data-market-ai-comprehensive-analysis",
@@ -330,12 +344,13 @@ includes("app/assets/[ticker]/page.tsx", "Stable facts");
 includes("app/assets/[ticker]/page.tsx", "Stale and unknown treatment");
 includes("app/assets/[ticker]/page.tsx", "AssetLearningLayout");
 includes("app/assets/[ticker]/page.tsx", "MarketNewsPanel");
+includes("app/assets/[ticker]/page.tsx", "EconomicIndicatorsPanel");
 includes("app/assets/[ticker]/page.tsx", "MarketAIComprehensiveAnalysisPanel");
 includes("app/assets/[ticker]/page.tsx", "WeeklyNewsPanel");
 includes("app/assets/[ticker]/page.tsx", "AIComprehensiveAnalysisPanel");
 includes("app/assets/[ticker]/page.tsx", "data-prd-layout-marker");
 includes("app/assets/[ticker]/page.tsx", "supported-asset-page-learning-flow-v1");
-includes("app/assets/[ticker]/page.tsx", "header,beginner_summary,asset_data_dashboard,top_risks,key_facts_fallback,what_it_does_or_holds_fallback,market_news_focus,market_ai_comprehensive_analysis,weekly_news_focus,ai_comprehensive_analysis,deep_dive,ask_about_this_asset,sources,educational_disclaimer");
+includes("app/assets/[ticker]/page.tsx", "header,beginner_summary,asset_data_dashboard,top_risks,key_facts_fallback,what_it_does_or_holds_fallback,economic_indicators,market_news_focus,market_ai_comprehensive_analysis,weekly_news_focus,ai_comprehensive_analysis,deep_dive,ask_about_this_asset,sources,educational_disclaimer");
 includes("app/assets/[ticker]/page.tsx", "data-prd-section=\"beginner_summary\"");
 includes("app/assets/[ticker]/page.tsx", "AssetDataDashboard");
 includes("app/assets/[ticker]/page.tsx", "hasAssetDataDashboard");
@@ -402,15 +417,18 @@ includes("app/assets/[ticker]/page.tsx", "AssetChatPanel");
 includes("app/assets/[ticker]/page.tsx", "fetchSupportedAssetDetails");
 includes("app/assets/[ticker]/page.tsx", "fetchSupportedAssetOverview");
 includes("app/assets/[ticker]/page.tsx", "fetchMarketNews");
+includes("app/assets/[ticker]/page.tsx", "fetchEconomicIndicators");
 includes("app/assets/[ticker]/page.tsx", "fetchSupportedAssetWeeklyNews");
 includes("app/assets/[ticker]/page.tsx", "fetchSupportedSourceDrawerResponse");
 includes("app/assets/[ticker]/page.tsx", "data-asset-details-rendering");
 includes("app/assets/[ticker]/page.tsx", "data-asset-overview-rendering");
+includes("app/assets/[ticker]/page.tsx", "data-asset-economic-indicators-rendering");
 includes("app/assets/[ticker]/page.tsx", "data-asset-source-drawer-rendering");
 includes("app/assets/[ticker]/page.tsx", "data-asset-market-news-rendering");
 includes("app/assets/[ticker]/page.tsx", "data-asset-weekly-news-rendering");
 includes("app/assets/[ticker]/page.tsx", "marketNewsFocusFixture");
 includes("app/assets/[ticker]/page.tsx", "marketAIComprehensiveAnalysisFixture");
+includes("app/assets/[ticker]/page.tsx", "economicIndicatorsPackFixture");
 includes("app/assets/[ticker]/page.tsx", "getWeeklyNewsFocusFixture");
 includes("app/assets/[ticker]/page.tsx", "getAIComprehensiveAnalysisFixture");
 includes("app/assets/[ticker]/page.tsx", "assetPageExportUrl");
@@ -495,6 +513,7 @@ includes("lib/assetOverview.ts", "etfSections: backendSections");
 includesAll("app/assets/[ticker]/page.tsx", [
   "data-asset-overview-rendering={overviewRendering}",
   "data-asset-details-rendering={detailsRendering}",
+  "data-asset-economic-indicators-rendering={economicIndicatorsRendering}",
   "data-asset-market-news-rendering={marketNewsRendering}",
   "data-asset-weekly-news-rendering={weeklyNewsRendering}",
   "data-asset-source-drawer-rendering={sourceDrawerRendering}",

@@ -5,6 +5,7 @@ import { AssetChatPanel } from "../../../components/AssetChatPanel";
 import { AssetDataDashboard, hasAssetDataDashboard } from "../../../components/AssetDataDashboard";
 import { AssetEtfSections } from "../../../components/AssetEtfSections";
 import { AssetStockSections } from "../../../components/AssetStockSections";
+import { EconomicIndicatorsPanel } from "../../../components/EconomicIndicatorsPanel";
 import { AssetLearningLayout } from "../../../components/AssetModeLayout";
 import { CitationChip } from "../../../components/CitationChip";
 import { CompactCitationSources, resolveAssetCitations } from "../../../components/CompactCitationSources";
@@ -20,6 +21,7 @@ import { fetchSupportedAssetGlossaryContexts } from "../../../lib/assetGlossary"
 import { fetchSupportedAssetOverview } from "../../../lib/assetOverview";
 import { fetchSupportedSourceDrawerResponse, sourceDrawerEntriesByDocumentId } from "../../../lib/sourceDrawer";
 import { fetchSupportedAssetWeeklyNews } from "../../../lib/assetWeeklyNews";
+import { fetchEconomicIndicators } from "../../../lib/economicIndicators";
 import { fetchMarketNews } from "../../../lib/marketNews";
 import { optionalBackendFetcher } from "../../../lib/optionalBackendFetch";
 import { beginnerGlossaryGroupsByAssetType, type GlossaryTermKey } from "../../../lib/glossary";
@@ -42,10 +44,12 @@ import {
   getAssetFixture,
   toSourceDrawerDocument,
   getWeeklyNewsFocusFixture,
+  economicIndicatorsPackFixture,
   marketAIComprehensiveAnalysisFixture,
   marketNewsFocusFixture,
   type AIComprehensiveAnalysisFixture,
   type AssetFixture,
+  type EconomicIndicatorsPackFixture,
   type MarketAIComprehensiveAnalysisFixture,
   type MarketNewsFocusFixture,
   type WeeklyNewsFocusFixture
@@ -105,6 +109,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
   let asset: AssetFixture | null = fallbackAsset ?? null;
   let overviewRendering: "backend_contract" | "local_fixture" = "local_fixture";
   let detailsRendering: "backend_contract" | "local_fixture" = "local_fixture";
+  let economicIndicatorsRendering: "backend_contract" | "local_fixture" = "local_fixture";
   let marketNewsRendering: "backend_contract" | "local_fixture" = "local_fixture";
   let weeklyNewsRendering: "backend_contract" | "local_fixture" = "local_fixture";
   let sourceDrawerRendering: "backend_contract" | "mixed_fallback" | "local_fixture" = "local_fixture";
@@ -136,6 +141,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
 
   let marketNewsFocus: MarketNewsFocusFixture = marketNewsFocusFixture;
   let marketAIComprehensiveAnalysis: MarketAIComprehensiveAnalysisFixture = marketAIComprehensiveAnalysisFixture;
+  let economicIndicators: EconomicIndicatorsPackFixture = economicIndicatorsPackFixture;
 
   let weeklyNewsFocus = getWeeklyNewsFocusFixture(asset.ticker) ?? buildEmptyWeeklyNewsFocus(asset);
   let aiComprehensiveAnalysis = getAIComprehensiveAnalysisFixture(asset.ticker) ?? buildSuppressedAnalysis(asset, weeklyNewsFocus);
@@ -188,11 +194,13 @@ export default async function AssetPage({ params }: AssetPageProps) {
   );
 
   const [
+    backendEconomicIndicators,
     backendMarketNews,
     backendWeeklyNews,
     backendSourceDrawer,
     backendGlossaryContexts
   ] = await Promise.all([
+    fetchEconomicIndicators(economicIndicators, optionalBackendFetcher(1000)).catch(() => null),
     fetchMarketNews(marketNewsFocus, marketAIComprehensiveAnalysis, optionalBackendFetcher(1000)).catch(() => null),
     fetchSupportedAssetWeeklyNews(
       asset.ticker,
@@ -204,6 +212,11 @@ export default async function AssetPage({ params }: AssetPageProps) {
     fetchSupportedSourceDrawerResponse(asset.ticker, optionalBackendFetcher()).catch(() => null),
     fetchSupportedAssetGlossaryContexts(asset.ticker, glossaryTermsForBackend, optionalBackendFetcher()).catch(() => null)
   ]);
+
+  if (backendEconomicIndicators) {
+    economicIndicators = backendEconomicIndicators;
+    economicIndicatorsRendering = "backend_contract";
+  }
 
   if (backendMarketNews) {
     marketNewsFocus = backendMarketNews.marketNewsFocus;
@@ -232,6 +245,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
   );
   const mergedCitations = [
     ...asset.citations,
+    ...economicIndicators.citations,
     ...marketNewsFocus.citations,
     ...marketAIComprehensiveAnalysis.citations,
     ...weeklyNewsFocus.citations,
@@ -239,6 +253,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
   ].filter((citation, index, collection) => collection.findIndex((entry) => entry.citationId === citation.citationId) === index);
   const mergedSources = [
     ...asset.sourceDocuments,
+    ...economicIndicators.sourceDocuments,
     ...marketNewsFocus.sourceDocuments,
     ...marketAIComprehensiveAnalysis.sourceDocuments,
     ...weeklyNewsFocus.sourceDocuments,
@@ -248,6 +263,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
       collection.findIndex((entry) => entry.sourceDocumentId === source.sourceDocumentId) === index
   );
   const timelyContextSourceDocumentIds = new Set([
+    ...economicIndicators.sourceDocuments.map((source) => source.sourceDocumentId),
     ...marketNewsFocus.sourceDocuments.map((source) => source.sourceDocumentId),
     ...marketAIComprehensiveAnalysis.sourceDocumentIds,
     ...weeklyNewsFocus.sourceDocuments.map((source) => source.sourceDocumentId),
@@ -258,6 +274,15 @@ export default async function AssetPage({ params }: AssetPageProps) {
     .filter((source) => drawerSourceDocumentIds.has(source.sourceDocumentId))
     .map(toSourceDrawerDocument);
   const timelyContextClaimsBySourceDocumentId = new Map<string, string>([
+    ...economicIndicators.items.flatMap((item) =>
+      item.sourceDocumentIds.map(
+        (sourceDocumentId) =>
+          [
+            sourceDocumentId,
+            `Economic Indicators: ${item.name} was ${item.value}${item.unit ? ` ${item.unit}` : ""} for ${item.period}.`
+          ] as const
+      )
+    ),
     ...marketNewsFocus.items.map((item) => [
       item.source.sourceDocumentId,
       `Market News Focus: ${item.title}. ${item.summary}`
@@ -326,6 +351,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
     <main
       data-asset-overview-rendering={overviewRendering}
       data-asset-details-rendering={detailsRendering}
+      data-asset-economic-indicators-rendering={economicIndicatorsRendering}
       data-asset-market-news-rendering={marketNewsRendering}
       data-asset-weekly-news-rendering={weeklyNewsRendering}
       data-asset-source-drawer-rendering={sourceDrawerRendering}
@@ -333,7 +359,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
       data-asset-page-export-contract={exportContractRendering(assetPageExportContract)}
       data-asset-source-list-export-contract={exportContractRendering(assetSourceListExportContract)}
       data-prd-layout-marker="supported-asset-page-learning-flow-v1"
-      data-prd-section-order="header,beginner_summary,asset_data_dashboard,top_risks,key_facts_fallback,what_it_does_or_holds_fallback,market_news_focus,market_ai_comprehensive_analysis,weekly_news_focus,ai_comprehensive_analysis,deep_dive,ask_about_this_asset,sources,educational_disclaimer"
+      data-prd-section-order="header,beginner_summary,asset_data_dashboard,top_risks,key_facts_fallback,what_it_does_or_holds_fallback,economic_indicators,market_news_focus,market_ai_comprehensive_analysis,weekly_news_focus,ai_comprehensive_analysis,deep_dive,ask_about_this_asset,sources,educational_disclaimer"
     >
       <AssetHeader asset={asset} layoutMarker="header" />
       <AssetLearningLayout
@@ -568,6 +594,8 @@ export default async function AssetPage({ params }: AssetPageProps) {
                 </section>
               </>
             ) : null}
+
+            <EconomicIndicatorsPanel pack={economicIndicators} citations={mergedCitations} />
 
             <MarketNewsPanel focus={marketNewsFocus} citations={mergedCitations} />
 

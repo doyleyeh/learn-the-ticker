@@ -98,7 +98,7 @@ Verify:
 
 ### Weekly News Focus And Source-Use Tasks
 
-Use for market-week window logic, reusable Market News Focus, ticker-specific recent events, source allowlists, Golden Asset Source Handoff, source-use policies, raw text policy, news/event scoring, and AI Comprehensive Analysis inputs.
+Use for market-week window logic, reusable Market News Focus, ticker-specific recent events, Economic Indicators, Codex-assisted analysis pack imports, source allowlists, Golden Asset Source Handoff, source-use policies, raw text policy, news/event scoring, and AI Comprehensive Analysis inputs.
 
 Required checks:
 
@@ -116,6 +116,10 @@ Verify:
 - Weekly News Focus uses the last completed Monday-Sunday market week plus current week-to-date through yesterday in U.S. Eastern dates
 - Market News Focus uses the same market-week window, selects up to 20 approved story clusters, preserves topic bucket metadata, and never pads weak evidence to hit 20
 - Market News Focus and AI Comprehensive Analysis: Market News Focus are reusable across supported ticker pages without regenerating per ticker
+- `economic-indicators-pack-v1` is U.S.-only, cited, source-labeled, rights-safe, and rendered after stable asset facts but before Market News Focus
+- `analysis-pack-import-bundle-v1` validates schema, freshness, checksums, citations/source IDs, source-use policy, no raw article/provider payload storage, no secret exposure, and no visible persona labels
+- `/api/economic-indicators`, `/api/market-news`, and `/api/assets/{ticker}/weekly-news` select fresh imported packs only when valid, otherwise falling back to deterministic fixtures or the existing backend runtime pipeline
+- imported ticker packs are accepted only for high-demand supported assets: `AAPL`, `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `VOO`, `QQQ`, `SPY`, `VTI`, `IVV`, and `XLK`
 - official filings, investor-relations releases, issuer announcements, prospectus updates, and fact-sheet changes rank before approved reputable third-party/news sources
 - local live ticker Weekly News acquisition attempts official sources first, then configured provider/news APIs, then Yahoo/yfinance fallback, while final non-official selection quality-ranks the pooled candidates by ticker usefulness, publisher tier, source-use policy, recency, duplicate status, and beginner utility
 - generic market-regime or opinion items are suppressed from ticker Weekly News unless they have a clear ticker, issuer, ETF, index exposure, holdings, flows, fees, distributions, products, earnings, regulatory, customer, or supply-chain hook
@@ -131,6 +135,7 @@ Verify:
 - yfinance/Yahoo-style news lists are treated as a fallback metadata structure only, not broad production ingestion or canonical fact evidence
 - local Weekly News source rows expose headline/title, publisher, URL, published time, retrieved time, ticker match, event type, source label, source-use policy, and optional bounded summary/snippet only
 - Market News and local Weekly News source rows expose headline/title, publisher, URL, published time, retrieved time, topic/ticker match, source label, source-use policy, cluster/audit metadata, and optional bounded summary/snippet only
+- longer ticker candidate history is allowed only for dedupe/scoring diagnostics; current generated claims cite selected Weekly News items and canonical facts only
 - local Weekly News diagnostics report candidate and selected counts by acquisition source and publisher tier, plus suppression reasons such as `generic_market_context_for_ticker`, `opinion_or_column`, `advice_like`, `weak_ticker_relevance`, `demoted_publisher_backfill_only`, and `duplicate`
 - raw article bodies, unrestricted thumbnails/media, provider payloads, trade UX, recommendation copy, secrets, and generated-output cache promotion are absent from Market News and local Weekly News output
 - `LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED`, `MARKET_NEWS_FETCH_ENABLED`, and `MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED` may default on for local runtime/manual review outside CI and tests, while normal CI, pytest, static evals, explicit `env={}` settings, and smoke opt-ins remain deterministic, fixture-backed, or skipped unless explicitly enabled

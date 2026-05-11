@@ -92,10 +92,13 @@ Provider hierarchy for MVP planning:
 - stock canonical facts: SEC EDGAR submissions, SEC XBRL company facts, SEC filings, then company investor relations
 - ETF canonical facts: issuer pages, fact sheets, prospectuses, shareholder reports, holdings files, and exposure files
 - structured enrichment: free-first reference data and optional provider adapters only where licensing, rate limits, caching, display, and export rights allow
+- Economic Indicators: U.S.-only official historical actuals plus source-labeled market references where source-use policy allows, rendered as common context before market/ticker news
 - Market News Focus: approved reputable news/RSS/provider metadata sources where rights permit, normalized into reusable market-wide story clusters
 - ticker Weekly News Focus: official filings, investor-relations releases, issuer announcements, prospectus changes, fact-sheet changes, then approved reputable third-party/news sources where rights permit
 
 Market News Focus and Weekly News Focus must use the last completed Monday-Sunday market week plus current week-to-date through yesterday, using U.S. Eastern dates. Market News Focus selects up to 20 approved market-wide story clusters, can be reused across supported ticker pages, and should show fewer items or a clear empty state when evidence is limited. Ticker Weekly News Focus keeps its official-first max-8 asset event workflow.
+
+Codex-assisted analysis packs are structured JSON imports, not generated HTML artifacts. `analysis-pack-import-bundle-v1` may provide a fresh `market_context_pack-v1`, high-demand ticker packs, and `economic-indicators-pack-v1` through an admin validation/import path. Imported market packs are used only while valid and fresh; imported ticker packs are limited to high-demand supported assets (`AAPL`, `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `VOO`, `QQQ`, `SPY`, `VTI`, `IVV`, `XLK`). Missing, stale, invalid, non-seed, or rights-unsafe imported packs fall back to the backend runtime pipeline.
 
 For local live ticker Weekly News, configured provider APIs and Yahoo/yfinance are candidate-discovery channels. Acquisition order remains official -> provider API -> Yahoo/yfinance, but final non-official selection is quality-ranked by ticker relevance, beginner utility, publisher reputation, source-use policy, recency, and duplicate status. A reputable Yahoo-discovered item may outrank a weak provider-API item. Generic market-regime or opinion pieces should stay in Market News Focus unless they have a clear ticker, issuer, ETF, index, holding, flow, fee, distribution, product, earnings, regulatory, customer, or supply-chain hook. Lower-reputation publishers are backfill only when strongly ticker-specific and non-advice-like.
 
@@ -115,6 +118,7 @@ The product must:
 
 - use source-backed facts before model-written explanations
 - separate stable canonical facts from Market News Focus, Weekly News Focus, and AI Comprehensive Analysis
+- render Economic Indicators as a cited common context layer, separate from stable asset identity and timely news analysis
 - show visible citations for important factual claims
 - show freshness or as-of information at page and section level
 - say unknown, stale, mixed evidence, unavailable, partial, or insufficient evidence when needed
@@ -125,6 +129,7 @@ The product must:
 - run Golden Asset Source Handoff before evidence storage, generation, citation, cache, or export use
 - resolve top-500 stock support from the approved manifest rather than live runtime provider data
 - keep live provider, market-data, news, and LLM calls out of normal CI
+- reject imported analysis packs that expose raw article text, unrestricted provider payloads, secrets, hidden prompts, raw model reasoning, or visible persona labels
 
 The product must not:
 

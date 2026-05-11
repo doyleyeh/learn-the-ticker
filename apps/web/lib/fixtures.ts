@@ -251,6 +251,45 @@ export type WeeklyNewsSourceMetadata = {
   sourceUsePolicy: "metadata_only" | "link_only" | "summary_allowed" | "full_text_allowed" | "rejected";
 };
 
+export type AnalysisPackRuntimeMetadata = {
+  analysisSource: "imported_local_pack" | "backend_generated" | "deterministic_fixture";
+  freshnessExpiresAt?: string | null;
+  importBundleId?: string | null;
+  validationStatus: "passed" | "failed" | "not_applicable";
+};
+
+export type EconomicIndicatorItem = {
+  indicatorId: string;
+  name: string;
+  category: "official_historical_actual" | "market_reference";
+  value: string;
+  numericValue?: number | null;
+  unit?: string | null;
+  period: string;
+  asOfDate: string;
+  publishedAt?: string | null;
+  retrievedAt: string;
+  source: WeeklyNewsSourceMetadata;
+  freshnessState: FreshnessState;
+  trendDirection: "up" | "down" | "neutral" | "unknown";
+  citationIds: string[];
+  sourceDocumentIds: string[];
+  evidenceState: EvidenceState;
+};
+
+export type EconomicIndicatorsPackFixture = {
+  schemaVersion: "economic-indicators-pack-v1";
+  state: WeeklyNewsContractState;
+  region: "US";
+  asOfDate: string;
+  items: EconomicIndicatorItem[];
+  citations: Citation[];
+  sourceDocuments: SourceDocument[];
+  analysisPackMetadata?: AnalysisPackRuntimeMetadata | null;
+  noLiveExternalCalls: true;
+  stableFactsAreSeparate: true;
+};
+
 export type WeeklyNewsItem = {
   eventId: string;
   assetTicker: string;
@@ -780,6 +819,113 @@ export const marketAIComprehensiveAnalysisFixture: MarketAIComprehensiveAnalysis
   marketNewsStoryIds: marketNewsFocusFixture.items.map((item) => item.storyId),
   citations: marketNewsFocusFixture.citations,
   sourceDocuments: marketNewsFocusFixture.sourceDocuments,
+  noLiveExternalCalls: true,
+  stableFactsAreSeparate: true
+};
+
+const economicIndicatorRows = [
+  ["gdp", "Gross Domestic Product", "official_historical_actual", "2.0%", 2.0, "percent annualized", "2026-Q1", "2026-04-30", "BEA", "https://www.bea.gov/", "up"],
+  ["cpi", "Consumer Price Index", "official_historical_actual", "3.3%", 3.3, "percent year over year", "2026-03", "2026-04-10", "BLS", "https://www.bls.gov/cpi/", "up"],
+  ["ppi", "Producer Price Index", "official_historical_actual", "4.0%", 4.0, "percent year over year", "2026-03", "2026-04-11", "BLS", "https://www.bls.gov/ppi/", "up"],
+  ["retail_sales", "Retail Sales", "official_historical_actual", "1.7%", 1.7, "percent month over month", "2026-03", "2026-04-15", "U.S. Census Bureau", "https://www.census.gov/retail/", "up"],
+  ["nonfarm_payrolls", "Nonfarm Payrolls", "official_historical_actual", "115,000", 115000, "jobs", "2026-04", "2026-05-01", "BLS", "https://www.bls.gov/ces/", "up"],
+  ["unemployment", "Unemployment Rate", "official_historical_actual", "4.3%", 4.3, "percent", "2026-04", "2026-05-01", "BLS", "https://www.bls.gov/cps/", "neutral"],
+  ["jobless_claims", "Initial Jobless Claims", "official_historical_actual", "200,000", 200000, "claims", "2026-05-02", "2026-05-07", "U.S. Department of Labor", "https://www.dol.gov/ui/data.pdf", "up"],
+  ["m2", "M2 Money Supply", "official_historical_actual", "22.69T", 22.69, "USD trillions", "2026-03", "2026-04-22", "Federal Reserve", "https://www.federalreserve.gov/releases/h6/", "up"],
+  ["credit_card_delinquency", "Credit Card Delinquency Rate", "official_historical_actual", "2.94%", 2.94, "percent", "2026-Q1", "2026-05-01", "Federal Reserve", "https://www.federalreserve.gov/releases/chargeoff/", "neutral"],
+  ["private_investment", "Real Private Fixed Investment", "official_historical_actual", "2.9%", 2.9, "percent annualized", "2026-Q1", "2026-04-30", "BEA", "https://www.bea.gov/data/gdp/gross-domestic-product", "up"],
+  ["treasury_10y", "10-Year Treasury Yield", "official_historical_actual", "4.43%", 4.43, "percent", "2026-05-07", "2026-05-07", "U.S. Treasury", "https://home.treasury.gov/resource-center/data-chart-center/interest-rates", "up"],
+  ["treasury_3m", "3-Month Treasury Yield", "official_historical_actual", "3.68%", 3.68, "percent", "2026-05-07", "2026-05-07", "U.S. Treasury", "https://home.treasury.gov/resource-center/data-chart-center/interest-rates", "up"],
+  ["dxy", "U.S. Dollar Index (DXY)", "market_reference", "97.80", 97.8, "index level", "2026-05-07", "2026-05-07", "Market reference fixture", "local://fixtures/economic-indicators/dxy", "down"],
+  ["vix", "Cboe Volatility Index (VIX)", "market_reference", "17.19", 17.19, "index level", "2026-05-07", "2026-05-07", "Market reference fixture", "local://fixtures/economic-indicators/vix", "down"],
+  ["wti_oil", "WTI Crude Oil", "market_reference", "120.50", 120.5, "USD per barrel", "2026-05-09", "2026-05-09", "Market reference fixture", "local://fixtures/economic-indicators/wti", "up"]
+] as const;
+
+export const economicIndicatorsPackFixture: EconomicIndicatorsPackFixture = {
+  schemaVersion: "economic-indicators-pack-v1",
+  state: "available",
+  region: "US",
+  asOfDate: "2026-05-10",
+  items: economicIndicatorRows.map(
+    ([
+      indicatorId,
+      name,
+      category,
+      value,
+      numericValue,
+      unit,
+      period,
+      publishedAt,
+      publisher,
+      url,
+      trendDirection
+    ]) => ({
+      indicatorId,
+      name,
+      category,
+      value,
+      numericValue,
+      unit,
+      period,
+      asOfDate: period,
+      publishedAt,
+      retrievedAt: "2026-05-10T12:00:00Z",
+      source: {
+        sourceDocumentId: `src_economic_${indicatorId}`,
+        sourceType: category === "market_reference" ? "market_reference" : "official_macro_release",
+        title: `${name} source record`,
+        publisher,
+        url,
+        publishedAt,
+        asOfDate: period,
+        retrievedAt: "2026-05-10T12:00:00Z",
+        freshnessState: "fresh",
+        isOfficial: category !== "market_reference",
+        sourceQuality: category === "market_reference" ? "provider" : "official",
+        allowlistStatus: "allowed",
+        sourceUsePolicy: "summary_allowed"
+      },
+      freshnessState: "fresh",
+      trendDirection,
+      citationIds: [`c_economic_${indicatorId}`],
+      sourceDocumentIds: [`src_economic_${indicatorId}`],
+      evidenceState: "supported"
+    })
+  ),
+  citations: economicIndicatorRows.map(([indicatorId, name, , , , , , , publisher]) => ({
+    citationId: `c_economic_${indicatorId}`,
+    sourceDocumentId: `src_economic_${indicatorId}`,
+    title: `${name} source record`,
+    publisher,
+    freshnessState: "fresh"
+  })),
+  sourceDocuments: economicIndicatorRows.map(([indicatorId, name, category, , , , period, publishedAt, publisher, url]) => ({
+    sourceDocumentId: `src_economic_${indicatorId}`,
+    sourceType: category === "market_reference" ? "market_reference" : "official_macro_release",
+    title: `${name} source record`,
+    publisher,
+    url,
+    publishedAt,
+    asOfDate: period,
+    retrievedAt: "2026-05-10T12:00:00Z",
+    freshnessState: "fresh",
+    isOfficial: category !== "market_reference",
+    supportingPassage:
+      "Deterministic economic indicator fixture for contract validation; imported packs should replace it with validated current source records.",
+    sourceQuality: category === "market_reference" ? "provider" : "official",
+    source_quality: category === "market_reference" ? "provider" : "official",
+    allowlistStatus: "allowed",
+    allowlist_status: "allowed",
+    sourceUsePolicy: "summary_allowed",
+    source_use_policy: "summary_allowed",
+    permitted_operations: {
+      can_export_full_text: false
+    }
+  })),
+  analysisPackMetadata: {
+    analysisSource: "deterministic_fixture",
+    validationStatus: "passed"
+  },
   noLiveExternalCalls: true,
   stableFactsAreSeparate: true
 };

@@ -63,6 +63,14 @@ from backend.llm import (
     validate_llm_generated_output,
 )
 from backend.main import app
+from backend.analysis_packs import (
+    HIGH_DEMAND_ANALYSIS_PACK_TICKERS,
+    AnalysisPackRepository,
+    build_economic_indicators_pack,
+    build_fixture_analysis_pack_import_bundle,
+    compute_analysis_pack_bundle_checksum,
+    validate_analysis_pack_import_bundle,
+)
 from backend.market_news import (
     build_market_ai_comprehensive_analysis,
     build_market_news_response,
@@ -2554,6 +2562,53 @@ def test_market_news_cases():
         assert forbidden not in serialized
 
 
+def test_analysis_pack_cases():
+    pack = build_economic_indicators_pack()
+    assert pack.schema_version == "economic-indicators-pack-v1"
+    assert pack.region == "US"
+    assert pack.no_live_external_calls is True
+    assert pack.stable_facts_are_separate is True
+    assert {"gdp", "cpi", "ppi", "retail_sales", "nonfarm_payrolls", "treasury_10y"} <= {
+        item.indicator_id for item in pack.items
+    }
+    source_ids = {source.source_document_id for source in pack.source_documents}
+    citation_ids = {citation.citation_id for citation in pack.citations}
+    assert source_ids
+    assert citation_ids
+    for item in pack.items:
+        assert item.citation_ids
+        assert set(item.citation_ids) <= citation_ids
+        assert item.source_document_ids
+        assert set(item.source_document_ids) <= source_ids
+        assert item.source.source_use_policy is not SourceUsePolicy.rejected
+
+    bundle = build_fixture_analysis_pack_import_bundle()
+    assert validate_analysis_pack_import_bundle(bundle, now="2026-05-10T12:00:00Z") == []
+    raw_payload = bundle.model_copy(update={"raw_article_text_collected": True})
+    raw_payload = raw_payload.model_copy(
+        update={"validation": raw_payload.validation.model_copy(update={"checksum": compute_analysis_pack_bundle_checksum(raw_payload)})}
+    )
+    assert "raw_article_text_collected" in validate_analysis_pack_import_bundle(raw_payload, now="2026-05-10T12:00:00Z")
+
+    persona_payload = bundle.model_copy(update={"validation_metadata": {"prompt_lens": "Sophia"}})
+    persona_payload = persona_payload.model_copy(
+        update={
+            "validation": persona_payload.validation.model_copy(
+                update={"checksum": compute_analysis_pack_bundle_checksum(persona_payload)}
+            )
+        }
+    )
+    assert "visible_persona_label" in validate_analysis_pack_import_bundle(persona_payload, now="2026-05-10T12:00:00Z")
+
+    repo = AnalysisPackRepository()
+    assert repo.import_bundle(bundle, now="2026-05-10T12:00:00Z").imported is True
+    assert repo.read_fresh_market_news_response(now="2026-05-10T12:00:00Z") is not None
+    assert repo.read_fresh_economic_indicators_pack(now="2026-05-10T12:00:00Z") is not None
+    assert repo.read_fresh_weekly_news_response("QQQ", now="2026-05-10T12:00:00Z") is not None
+    assert repo.read_fresh_weekly_news_response("TSLA", now="2026-05-10T12:00:00Z") is None
+    assert set(HIGH_DEMAND_ANALYSIS_PACK_TICKERS) >= {"AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "VOO", "QQQ", "SPY", "VTI", "IVV", "XLK"}
+
+
 def test_llm_provider_cases():
     data = load_yaml("llm_provider_eval_cases.yaml")
     assert data.get("schema_version") == "llm-provider-evals-v1"
@@ -3157,6 +3212,7 @@ if __name__ == "__main__":
     test_export_cases()
     test_weekly_news_cases()
     test_market_news_cases()
+    test_analysis_pack_cases()
     test_llm_provider_cases()
     test_local_deployment_env_smoke_cases()
     test_full_manifest_support_smoke_cases()

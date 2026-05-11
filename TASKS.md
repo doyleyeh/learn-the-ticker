@@ -8,6 +8,30 @@ No backlog tasks are currently prepared.
 
 ## Completed
 
+### T-183: Add Codex-assisted analysis packs and Economic Indicators
+
+Goal:
+Add repo-native structured JSON analysis packs, U.S.-only Economic Indicators, admin import validation, and two-path runtime fallback for market and high-demand ticker analysis.
+
+Completion details:
+- Updated PRD, technical design spec, proposal, SPEC, EVALS, and TASKS before implementation to document structured JSON import bundles, U.S.-only Economic Indicators, high-demand ticker two-path scope, and no visible persona labels.
+- Added `economic-indicators-pack-v1`, `analysis-pack-import-bundle-v1`, runtime analysis-pack metadata, checksum validation, source-use validation, raw payload/secret/persona rejection, and seven-day freshness fallback.
+- Added `GET /api/economic-indicators` and `POST /api/admin/analysis-packs/import`; `/api/market-news` now uses fresh imported market packs before backend runtime fallback, and `/api/assets/{ticker}/weekly-news` uses imported packs only for the high-demand seed.
+- Added an Economic Indicators asset-page section after stable facts and before Market News Focus, with citations, source drawer integration, freshness labels, deterministic fallback fixture, and frontend contract checks.
+- Added unit, integration, frontend smoke, and static eval coverage for import bundle validation, checksum handling, freshness fallback, high-demand ticker limits, no raw article/provider payload storage, and no visible persona labels.
+
+Required commands executed:
+- `TMPDIR=/tmp python3 -m pytest tests -q` - pass, 594 passed
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `source scripts/activate_agent_env.sh && npm test` - pass
+- `source scripts/activate_agent_env.sh && npm run typecheck` - pass
+- `source scripts/activate_agent_env.sh && npm run build` - pass
+- `TMPDIR=/tmp source scripts/activate_agent_env.sh && bash scripts/run_quality_gate.sh` - pass
+
+Remaining risks:
+- The default Economic Indicators values are deterministic contract fixtures; production-quality values still require a real validated import bundle populated from allowed official/source-labeled records.
+- The analysis-pack repository is in-memory for this slice; durable cloud storage/DB wiring and operator auth hardening remain future deployment work.
+
 ### T-182: Improve news selection quality for Market News and ticker Weekly News
 
 Goal:

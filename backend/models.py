@@ -1895,6 +1895,13 @@ class SourceDocument(BaseModel):
     parser_failure_diagnostics: str | None = None
 
 
+class AnalysisPackRuntimeMetadata(BaseModel):
+    analysis_source: Literal["imported_local_pack", "backend_generated", "deterministic_fixture"]
+    freshness_expires_at: str | None = None
+    import_bundle_id: str | None = None
+    validation_status: Literal["passed", "failed", "not_applicable"] = "not_applicable"
+
+
 class SourceDrawerState(str, Enum):
     available = "available"
     unsupported = "unsupported"
@@ -2278,6 +2285,50 @@ class WeeklyNewsSourceMetadata(BaseModel):
     source_use_policy: SourceUsePolicy
 
 
+class EconomicIndicatorCategory(str, Enum):
+    official_historical_actual = "official_historical_actual"
+    market_reference = "market_reference"
+
+
+class EconomicIndicatorTrendDirection(str, Enum):
+    up = "up"
+    down = "down"
+    neutral = "neutral"
+    unknown = "unknown"
+
+
+class EconomicIndicatorItem(BaseModel):
+    indicator_id: str
+    name: str
+    category: EconomicIndicatorCategory
+    value: str
+    numeric_value: float | None = None
+    unit: str | None = None
+    period: str
+    as_of_date: str
+    published_at: str | None = None
+    retrieved_at: str
+    source: WeeklyNewsSourceMetadata
+    freshness_state: FreshnessState
+    trend_direction: EconomicIndicatorTrendDirection = EconomicIndicatorTrendDirection.unknown
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    evidence_state: EvidenceState = EvidenceState.supported
+
+
+class EconomicIndicatorsPackResponse(BaseModel):
+    schema_version: Literal["economic-indicators-pack-v1"] = "economic-indicators-pack-v1"
+    state: WeeklyNewsContractState
+    region: Literal["US"] = "US"
+    as_of_date: str
+    items: list[EconomicIndicatorItem] = Field(default_factory=list)
+    citations: list[Citation] = Field(default_factory=list)
+    source_documents: list[SourceDocument] = Field(default_factory=list)
+    analysis_pack_metadata: AnalysisPackRuntimeMetadata | None = None
+    no_live_external_calls: bool = True
+    stable_facts_are_separate: bool = True
+
+
 class WeeklyNewsItem(BaseModel):
     event_id: str
     asset_ticker: str
@@ -2479,6 +2530,7 @@ class MarketNewsResponse(BaseModel):
     state: StateMessage
     market_news_focus: MarketNewsFocusResponse
     market_ai_comprehensive_analysis: MarketAIComprehensiveAnalysisResponse
+    analysis_pack_metadata: AnalysisPackRuntimeMetadata | None = None
 
 
 class WeeklyNewsResponse(BaseModel):
@@ -2486,6 +2538,47 @@ class WeeklyNewsResponse(BaseModel):
     state: StateMessage
     weekly_news_focus: WeeklyNewsFocusResponse
     ai_comprehensive_analysis: AIComprehensiveAnalysisResponse
+    analysis_pack_metadata: AnalysisPackRuntimeMetadata | None = None
+
+
+class AnalysisPackValidationMetadata(BaseModel):
+    validation_status: Literal["passed", "failed"]
+    validator_version: str = "analysis-pack-import-validator-v1"
+    checksum_algorithm: Literal["sha256"] = "sha256"
+    checksum: str | None = None
+    checked_at: str | None = None
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class AnalysisPackImportBundle(BaseModel):
+    schema_version: Literal["analysis-pack-import-bundle-v1"] = "analysis-pack-import-bundle-v1"
+    bundle_id: str
+    generated_at: str
+    freshness_expires_at: str
+    prompt_version: str
+    validation: AnalysisPackValidationMetadata
+    market_context_pack_schema_version: Literal["market_context_pack-v1"] = "market_context_pack-v1"
+    market_context_pack: MarketNewsResponse | None = None
+    ticker_packs: dict[str, WeeklyNewsResponse] = Field(default_factory=dict)
+    economic_indicators: EconomicIndicatorsPackResponse | None = None
+    source_documents: list[SourceDocument] = Field(default_factory=list)
+    citations: list[Citation] = Field(default_factory=list)
+    validation_metadata: dict[str, Any] = Field(default_factory=dict)
+    checksums: dict[str, str] = Field(default_factory=dict)
+    longer_ticker_candidate_history: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
+    raw_article_text_collected: bool = False
+    raw_provider_payload_exposed: bool = False
+
+
+class AnalysisPackImportResponse(BaseModel):
+    schema_version: Literal["analysis-pack-import-response-v1"] = "analysis-pack-import-response-v1"
+    imported: bool
+    bundle_id: str
+    validation_status: Literal["passed", "failed"]
+    reason_codes: list[str] = Field(default_factory=list)
+    imported_market_context_pack: bool = False
+    imported_ticker_packs: list[str] = Field(default_factory=list)
+    imported_economic_indicators: bool = False
 
 
 class SuitabilitySummary(BaseModel):
@@ -2669,6 +2762,7 @@ class OverviewResponse(BaseModel):
     recent_developments: list[RecentDevelopment] = Field(default_factory=list)
     market_news_focus: MarketNewsFocusResponse | None = None
     market_ai_comprehensive_analysis: MarketAIComprehensiveAnalysisResponse | None = None
+    economic_indicators: EconomicIndicatorsPackResponse | None = None
     weekly_news_focus: WeeklyNewsFocusResponse | None = None
     ai_comprehensive_analysis: AIComprehensiveAnalysisResponse | None = None
     suitability_summary: SuitabilitySummary | None = None

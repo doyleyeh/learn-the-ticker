@@ -631,6 +631,12 @@ AI Comprehensive Analysis should be reviewed with live AI during local testing w
 
 Market News Focus live adapters may include RSS/Google News RSS, GDELT, Marketaux, Alpha Vantage News Sentiment, Finnhub, Guardian, GNews, Mediastack, NewsAPI, and yfinance-style fallback. These adapters are server-side, opt-in, key-safe, and mock-backed in CI. They store normalized metadata, snippets, links, dates, source labels, source-use policy, cluster/audit metadata, and allowed excerpts only.
 
+Learn the Ticker should use the reference investment-analysis repo as a workflow pattern, not as an HTML-injection model. The compatible shape is a structured `analysis-pack-import-bundle-v1` prepared by local Codex and imported through backend validation. Imported bundles may carry `economic-indicators-pack-v1`, a market-wide `market_context_pack-v1`, optional high-demand ticker packs, source documents, citations, validation metadata, checksums, prompt version, `generated_at`, and `freshness_expires_at`.
+
+The runtime should stay two-path. Market News Focus checks for a fresh validated imported market pack first, then falls back to the backend runtime pipeline when the pack is missing, invalid, or older than seven days. Ticker Weekly News uses imported packs only for the high-demand seed `AAPL`, `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `VOO`, `QQQ`, `SPY`, `VTI`, `IVV`, and `XLK`; long-tail supported assets continue to use the backend pipeline. User-facing analysis keeps product section labels and never exposes Atlas/Sophia/Kenji/Crow/Rain-style personas.
+
+Economic Indicators should become a common U.S.-only page section after stable facts and before Market News Focus. It should show official historical actuals and source-labeled market references with citation/source IDs, freshness labels, trend direction, and rights-safe source metadata. These indicators can inform market and ticker AI analysis, but they must remain a context layer rather than advice or stable asset identity.
+
 V1 should be English-first. Traditional Chinese localization can be added later. Read-aloud or text-to-speech controls are not part of the v1 requirement.
 
 ## 9.6 Asset-specific grounded chat

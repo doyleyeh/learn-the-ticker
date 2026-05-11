@@ -2,6 +2,9 @@ import os
 
 os.environ.setdefault("LTT_FORCE_COMPAT_FASTAPI", "1")
 
+import pytest
+
+from backend.analysis_packs import analysis_pack_repository, build_fixture_analysis_pack_import_bundle
 from backend.main import app
 from backend.chat import generate_asset_chat
 from backend.comparison import generate_comparison
@@ -49,6 +52,13 @@ from scripts.run_local_fresh_data_slice_smoke import LocalFreshDataSliceFakeFetc
 
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def clear_analysis_pack_repository_between_route_tests():
+    analysis_pack_repository().clear()
+    yield
+    analysis_pack_repository().clear()
 
 
 class RouteReaderSpy:
@@ -326,6 +336,51 @@ def test_market_news_endpoint_returns_reusable_market_context_without_asset_unlo
     rendered = str(body).lower()
     for forbidden in ["you should buy", "you should sell", "raw article body", "provider payload value"]:
         assert forbidden not in rendered
+
+
+def test_economic_indicators_endpoint_returns_us_only_cited_pack():
+    response = client.get("/api/economic-indicators")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["schema_version"] == "economic-indicators-pack-v1"
+    assert body["region"] == "US"
+    assert body["no_live_external_calls"] is True
+    assert body["stable_facts_are_separate"] is True
+    assert body["analysis_pack_metadata"]["analysis_source"] == "deterministic_fixture"
+    assert {"gdp", "cpi", "ppi", "nonfarm_payrolls", "treasury_10y"} <= {
+        item["indicator_id"] for item in body["items"]
+    }
+    citation_ids = {citation["citation_id"] for citation in body["citations"]}
+    source_ids = {source["source_document_id"] for source in body["source_documents"]}
+    for item in body["items"]:
+        assert set(item["citation_ids"]) <= citation_ids
+        assert set(item["source_document_ids"]) <= source_ids
+        assert item["source"]["source_use_policy"] != "rejected"
+
+
+def test_admin_analysis_pack_import_routes_choose_fresh_imported_packs():
+    bundle = build_fixture_analysis_pack_import_bundle(
+        bundle_id="route-import-fixture",
+        generated_at="2999-01-01T00:00:00Z",
+        freshness_expires_at="2999-01-08T00:00:00Z",
+    )
+
+    imported = client.post("/api/admin/analysis-packs/import", json=bundle.model_dump(mode="json")).json()
+    market = client.get("/api/market-news").json()
+    weekly = client.get("/api/assets/QQQ/weekly-news").json()
+    indicators = client.get("/api/economic-indicators").json()
+
+    assert imported["imported"] is True
+    assert imported["imported_market_context_pack"] is True
+    assert imported["imported_ticker_packs"] == ["QQQ"]
+    assert imported["imported_economic_indicators"] is True
+    assert market["analysis_pack_metadata"]["analysis_source"] == "imported_local_pack"
+    assert market["analysis_pack_metadata"]["import_bundle_id"] == "route-import-fixture"
+    assert weekly["analysis_pack_metadata"]["analysis_source"] == "imported_local_pack"
+    assert weekly["analysis_pack_metadata"]["import_bundle_id"] == "route-import-fixture"
+    assert indicators["analysis_pack_metadata"]["analysis_source"] == "imported_local_pack"
+    assert indicators["analysis_pack_metadata"]["freshness_expires_at"] == "2999-01-08T00:00:00Z"
 
 
 def test_market_news_endpoint_uses_runtime_market_news_boundary(monkeypatch):

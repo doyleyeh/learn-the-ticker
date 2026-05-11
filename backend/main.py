@@ -54,11 +54,18 @@ from backend.lightweight_page import (
     persist_lightweight_evidence_if_configured,
 )
 from backend.llm import runtime_diagnostics
+from backend.analysis_packs import (
+    analysis_pack_repository,
+    build_backend_generated_metadata,
+    build_economic_indicators_pack,
+)
 from backend.market_news_runtime import build_runtime_market_news_response
 from backend.models import (
     AssetChartResponse,
     AssetIdentity,
     AssetStatus,
+    AnalysisPackImportBundle,
+    AnalysisPackImportResponse,
     ChatRequest,
     ChatResponse,
     ChatSessionDeleteResponse,
@@ -71,6 +78,7 @@ from backend.models import (
     ExportFormat,
     ExportResponse,
     GlossaryResponse,
+    EconomicIndicatorsPackResponse,
     IngestionJobResponse,
     KnowledgePackBuildResponse,
     LightweightFetchResponse,
@@ -138,6 +146,13 @@ def _asset_payload(ticker: str) -> tuple[AssetIdentity, dict[str, Any] | None]:
 
 def _read_dependencies() -> BackendReadDependencies:
     return backend_read_dependencies_from_app(app)
+
+
+def _current_economic_indicators_pack() -> EconomicIndicatorsPackResponse:
+    imported = analysis_pack_repository().read_fresh_economic_indicators_pack()
+    if imported is not None:
+        return imported
+    return build_economic_indicators_pack()
 
 
 def _asset_chart_response_from_overview(
@@ -277,20 +292,40 @@ def asset_overview(ticker: str, mode: str = "beginner") -> OverviewResponse:
             source_snapshot_repository=readers.reader("source_snapshot_repository"),
             knowledge_pack_repository=readers.reader("knowledge_pack_reader"),
         )
-        return build_lightweight_overview_response(lightweight_response)
+        overview = build_lightweight_overview_response(lightweight_response)
+        return overview.model_copy(update={"economic_indicators": _current_economic_indicators_pack()})
 
-    return generate_asset_overview(
+    overview = generate_asset_overview(
         ticker,
         persisted_pack_reader=readers.reader("knowledge_pack_reader"),
         generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
         source_snapshot_reader=readers.reader("source_snapshot_repository"),
         persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
     )
+    return overview.model_copy(update={"economic_indicators": _current_economic_indicators_pack()})
+
+
+@app.get("/api/economic-indicators", response_model=EconomicIndicatorsPackResponse, tags=["market-news"])
+def economic_indicators() -> EconomicIndicatorsPackResponse:
+    return _current_economic_indicators_pack()
+
+
+@app.post(
+    "/api/admin/analysis-packs/import",
+    response_model=AnalysisPackImportResponse,
+    tags=["market-news"],
+)
+def import_analysis_pack_bundle(bundle: AnalysisPackImportBundle) -> AnalysisPackImportResponse:
+    return analysis_pack_repository().import_bundle(bundle)
 
 
 @app.get("/api/market-news", response_model=MarketNewsResponse, tags=["market-news"])
 def market_news() -> MarketNewsResponse:
-    return build_runtime_market_news_response()
+    imported = analysis_pack_repository().read_fresh_market_news_response()
+    if imported is not None:
+        return imported
+    response = build_runtime_market_news_response()
+    return response.model_copy(update={"analysis_pack_metadata": build_backend_generated_metadata()})
 
 
 @app.get("/api/assets/{ticker}/chart", response_model=AssetChartResponse, tags=["assets"])
@@ -465,6 +500,10 @@ def asset_recent(ticker: str) -> RecentResponse:
 
 @app.get("/api/assets/{ticker}/weekly-news", response_model=WeeklyNewsResponse, tags=["assets"])
 def asset_weekly_news(ticker: str) -> WeeklyNewsResponse:
+    imported = analysis_pack_repository().read_fresh_weekly_news_response(ticker)
+    if imported is not None:
+        return imported
+
     readers = _read_dependencies()
     lightweight_response = fetch_lightweight_page_data_if_enabled(ticker)
     if lightweight_response is not None:
@@ -473,7 +512,8 @@ def asset_weekly_news(ticker: str) -> WeeklyNewsResponse:
             source_snapshot_repository=readers.reader("source_snapshot_repository"),
             knowledge_pack_repository=readers.reader("knowledge_pack_reader"),
         )
-        return build_lightweight_weekly_news_response(lightweight_response)
+        response = build_lightweight_weekly_news_response(lightweight_response)
+        return response.model_copy(update={"analysis_pack_metadata": build_backend_generated_metadata()})
 
     overview = generate_asset_overview(
         ticker,
@@ -487,6 +527,7 @@ def asset_weekly_news(ticker: str) -> WeeklyNewsResponse:
         state=overview.state,
         weekly_news_focus=overview.weekly_news_focus,
         ai_comprehensive_analysis=overview.ai_comprehensive_analysis,
+        analysis_pack_metadata=build_backend_generated_metadata(),
     )
 
 

@@ -636,12 +636,15 @@ Recommended high-level section order:
 4. Top 3 Risks
 5. Key Facts
 6. What it does / What it holds
-7. Weekly News Focus
-8. AI Comprehensive Analysis
-9. Deep Dive
-10. Ask about this asset
-11. Sources
-12. Educational disclaimer
+7. Economic Indicators
+8. Market News Focus
+9. AI Comprehensive Analysis: Market News Focus
+10. Weekly News Focus
+11. AI Comprehensive Analysis
+12. Deep Dive
+13. Ask about this asset
+14. Sources
+15. Educational disclaimer
 ```
 
 Asset pages must support partial evidence states. If free-first sources cannot verify a section, the page should render verified sections only, label the missing section as unavailable, stale, unknown, or partial, and suppress generated claims that lack source support.
@@ -652,7 +655,7 @@ Asset pages must support partial evidence states. If free-first sources cannot v
 | AP-2  | Asset header includes ticker, canonical name, asset type, exchange, ETF issuer/provider or stock sector/industry when available, overall status, and page last updated. | P0       |
 | AP-3  | Asset page starts with `BeginnerSummaryCard` using three short cards: what it is, why people look at it, and the main thing to be careful about. | P0       |
 | AP-4  | Asset page includes exactly three top risks before expandable risk detail.                       | P0       |
-| AP-5  | Asset page includes Weekly News Focus and AI Comprehensive Analysis separate from asset basics. | P0       |
+| AP-5  | Asset page includes Economic Indicators after stable asset facts and before market/ticker news context. | P0       |
 | AP-6  | Asset page includes source citations for important factual claims.                               | P0       |
 | AP-7  | Asset page includes a source drawer or mobile bottom sheet with source title, type, policy, freshness, dates, related claim, allowed excerpt, and URL. | P0       |
 | AP-8  | Asset page includes contextual glossary terms for important beginner terms.                      | P0       |
@@ -663,16 +666,28 @@ Asset pages must support partial evidence states. If free-first sources cannot v
 | AP-13 | Desktop may use a right helper rail for Ask about this asset, Compare this asset, Freshness summary, and Key sources. | P1       |
 | AP-14 | Mobile uses sticky actions for Ask, Compare, and Sources, with source, chat, and glossary surfaces as bottom sheets or full-screen panels. | P0       |
 | AP-15 | Freshness near the top stays compact and includes page last updated, facts as of, Weekly News Focus checked, holdings as of for ETFs, and delayed/unavailable quote/reference copy when relevant. | P0       |
+| AP-16 | Asset page includes Market News Focus and ticker-specific Weekly News Focus with separate AI Comprehensive Analysis sections where evidence thresholds are met. | P0       |
 
 Acceptance criteria:
 
 - A beginner can read the top section without needing advanced finance vocabulary.
 - Important claims have visible citations.
+- Economic Indicators are U.S.-only in v1, source-labeled, cited, and visually separate from stable asset facts and recent-news context.
 - Weekly News Focus and AI Comprehensive Analysis are clearly labeled as timely context, separate from asset basics.
 - Source drawer exposes where claims came from.
 - Missing, stale, unavailable, or mixed evidence is displayed honestly.
 - Quote/reference data never implies real-time coverage unless the backend can verify it.
 - Partial pages show verified sections only and label missing sections as unavailable, stale, insufficient evidence, or could not verify from allowed sources.
+
+### 11.3.1 Codex-assisted analysis packs and Economic Indicators
+
+Learn the Ticker may accept local Codex-prepared structured JSON bundles as a freshness and quality assist, but local agents must not inject HTML into cloud pages or write directly to production databases. The import artifact is `analysis-pack-import-bundle-v1`, reviewed through an admin import path that validates schema, source-use policy, citations, checksums, freshness, and the absence of raw article/provider payloads before storage.
+
+`economic-indicators-pack-v1` is U.S.-only for v1. It should include official historical actuals such as GDP, CPI, PPI, retail sales, nonfarm payrolls, unemployment, jobless claims, M2, credit card delinquency, private investment, and Treasury yields, plus source-labeled market references such as DXY, VIX, and WTI/oil only when source-use policy allows. Each row must carry value, unit, period or as-of date, published and retrieved dates, source metadata, freshness state, trend direction, citation IDs, and source document IDs.
+
+Runtime behavior is two-path. Market News Focus first checks for a fresh, valid imported `market_context_pack-v1`; if it is missing, invalid, or older than seven days, the backend falls back to the existing runtime Market News pipeline. Ticker Weekly News may use imported packs only for high-demand supported assets: `AAPL`, `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `VOO`, `QQQ`, `SPY`, `VTI`, `IVV`, and `XLK`. Long-tail supported tickers use the backend pipeline unless a later reviewed scope expands this seed list.
+
+User-facing analysis must keep the product's existing labels. Persona-style roles may guide internal prompt lenses, but Atlas, Sophia, Kenji, Crow, Rain, or similar persona labels must not appear in the UI, exports, or API analysis labels. Longer ticker candidate history may be stored for dedupe and scoring, but generated claims may cite only selected Weekly News items and canonical facts.
 
 ### 11.4 Stock page
 
