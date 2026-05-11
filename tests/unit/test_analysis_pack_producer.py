@@ -262,13 +262,29 @@ def test_codex_operator_script_and_instructions_have_required_markers():
     assert "macro_cache.json" in script
     assert "ai_context.json" in script
     assert "--deterministic" in script
+    assert "Stage 0 - Technical Artifact Gate" in script
+    assert "Stage 1 - Macro Data Gate" in script
+    assert "Stage 2 - Tier-1 News Gate" in script
+    assert "Stage 3 - AI Comprehensive Analysis Gate" in script
+    assert "Stage 4 - Final Validation Gate" in script
     assert "Generate English educational content for v1." in instructions
     assert "Do not inject HTML into app pages." in instructions
+    assert "Codex Research And Analysis Workflow" in instructions
+    assert "Stage 0: Technical Artifact Gate" in instructions
+    assert "Stage 1: Macro Data Gate" in instructions
+    assert "Stage 2: Tier-1 News Gate" in instructions
+    assert "Stage 3: AI Comprehensive Analysis Gate" in instructions
+    assert "Stage 4: Final Validation Gate" in instructions
     assert "Market News Focus is reusable market-wide context." in instructions
     assert "Ticker imported packs are high-demand only" in instructions
     assert "technical_data.json" in instructions
     assert "Global Macro/Fed" in instructions
     assert "official historical actuals" in instructions
+    assert "Data period rules are based on the operator run date" in instructions
+    assert "Reuters/AP/Bloomberg/WSJ/FT-level priority" in instructions
+    assert "Anti-template rule" in instructions
+    assert "Yield-curve rule" in instructions
+    assert "Geopolitical and supply-chain warning rule" in instructions
     assert "AI Context And Numeric Integrity" in instructions
     assert "Do not copy article bodies" in instructions
 

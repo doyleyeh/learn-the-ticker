@@ -126,18 +126,33 @@ Working files for this run:
 - AI context artifact: $AI_CONTEXT_PATH
 - Live adapters enabled: $LIVE_MODE
 
-Tasks:
-1. Inspect the generated bundle and summary.
-2. Inspect technical_data.json, macro_cache.json, and ai_context.json before changing analysis fields.
-3. Review/augment only JSON artifacts in this output directory. Do not write HTML.
-4. Follow the Tier-1-only market news searches in docs/ANALYSIS_PACK_CODEX_INSTRUCTIONS.md: Global Macro/Fed, Geopolitical Risks, and Energy Supply & Global Shipping.
-5. Do not store raw article text, raw provider payloads, hidden prompts, raw model reasoning, or secrets.
-6. Keep visible labels product-native: no Atlas, Sophia, Kenji, Crow, or Rain labels in user-facing fields.
-7. Preserve citations and source-document IDs for every important generated claim.
-8. Numeric claims must match ai_context.json allowed_numeric_facts; never treat ADX, DMI, volume, or volume-change as prices.
-9. If you modify the bundle, run:
+Stage-gated tasks:
+1. Stage 0 - Technical Artifact Gate:
+   Inspect the generated bundle, summary, technical_data.json, macro_cache.json, and ai_context.json before changing analysis fields.
+   Use only computed technical fields from technical_data.json and ai_context.json. Never treat ADX, DMI, true range, volume, or volume-change as prices.
+   Do not claim divergence, support/resistance, breakouts, or historical highs/lows unless the exact supporting fields exist in the artifacts.
+2. Stage 1 - Macro Data Gate:
+   Use official U.S. historical actuals only. GDP/private investment normally need a completed-quarter lag; monthly indicators must use completed official periods; jobless claims use the latest completed official week.
+   Cross-check primary agency values against source metadata. Prioritize BEA, BLS, Census, Department of Labor, Federal Reserve, Treasury, ISM, Cboe/EIA or approved market-data sources as documented; FRED is a cross-check/fallback unless it is the approved market-reference path.
+   Preserve macro_cache.json with upsert behavior only; do not overwrite unrelated indicators or allow suspicious count drops.
+3. Stage 2 - Tier-1 News Gate:
+   Follow the required U.S. market searches in docs/ANALYSIS_PACK_CODEX_INSTRUCTIONS.md: Global Macro/Fed, Geopolitical Risks, and Energy Supply & Global Shipping.
+   Use only approved Tier-1 or official sources such as Reuters, AP, Bloomberg, WSJ, FT, CNBC, Barron's, BBC, CNN, official government releases, company IR, SEC filings, and ETF issuer materials.
+   Keep only source-verifiable items from the last seven days. Critical claims need Reuters/AP/Bloomberg/WSJ/FT priority or corroboration from at least two approved sources. Select up to 20 items only when evidence supports them.
+4. Stage 3 - AI Comprehensive Analysis Gate:
+   Use internal macro/policy, business or fund-quality, technical, sentiment/flow, and scenario-synthesis lenses, but keep visible labels product-native.
+   Market AI should use sections such as What Changed This Week, Macro & Policy, Equity Market Drivers, AI / Technology / Semiconductors, Geopolitical & Energy Risks, Credit / Liquidity / Sentiment, Scenario Lens, and Practical Watchpoints.
+   Ticker AI should use What Changed This Week, Market Context, Business/Fund Context, and Risk Context.
+   Preserve citations and source-document IDs for every important generated claim. Numeric claims must match ai_context.json allowed_numeric_facts and include a descriptive label.
+   Apply the yield-curve rule and geopolitical/supply-chain warning rule from docs/ANALYSIS_PACK_CODEX_INSTRUCTIONS.md.
+   Do not use fixed template prose, unsupported causal claims, predictions, price targets, or buy/sell/hold/allocation advice.
+5. Stage 4 - Final Validation Gate:
+   Review/augment only JSON artifacts in this output directory. Do not write HTML or repo-tracked files.
+   Do not store raw article text, raw provider payloads, hidden prompts, raw model reasoning, signed URLs, tokens, or secrets.
+   Keep visible labels product-native: no Atlas, Sophia, Kenji, Crow, or Rain labels in user-facing fields.
+   If you modify the bundle, run:
    python3 scripts/build_analysis_pack_bundle.py --validate-only --input "$BUNDLE_PATH" --summary-output "$SUMMARY_PATH"
-10. Leave repo-tracked files unchanged. Artifacts must stay inside $OUTPUT_DIR.
+   Inspect reason codes and fix failures before finishing. Artifacts must stay inside $OUTPUT_DIR.
 EOF
 
 if [ "$RUN_CODEX" -eq 1 ]; then

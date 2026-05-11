@@ -8,6 +8,47 @@ No backlog tasks are currently prepared.
 
 ## Completed
 
+### T-186: Strengthen Codex analysis workflow instructions
+
+Goal:
+Make the local Codex-assisted analysis-pack workflow reference-grade enough for
+consistent operator runs by adding explicit technical, macro, news, AI analysis,
+and final validation gates to the instructions and runner prompt.
+
+Completion details:
+- Added a dedicated `Codex Research And Analysis Workflow` section to
+  `docs/ANALYSIS_PACK_CODEX_INSTRUCTIONS.md` with stage gates for technical
+  artifact inspection, official U.S. macro actuals, Tier-1 news selection, AI
+  Comprehensive Analysis writing, and validate-only upload readiness.
+- Expanded macro instructions with data-period lag rules, primary source
+  mapping, FRED cross-check/fallback behavior, conflict priority, exact
+  verification fields, and macro-cache upsert preservation.
+- Expanded news instructions with a U.S. English v1 Tier-1/default allowlist,
+  required search buckets, query examples, seven-day freshness checks,
+  critical-claim corroboration, rejection rules, rights-safe storage, and
+  source metadata requirements.
+- Expanded AI Comprehensive Analysis instructions with internal lenses,
+  section-by-section required inputs, anti-template and fact-only rules,
+  numeric-description requirements, yield-curve and geopolitical warning rules,
+  citation requirements, and advice-boundary guards.
+- Updated `scripts/run_analysis_pack_codex.sh` so the generated local Codex
+  prompt embeds the same stage-gated workflow.
+- Updated the operator guide to point operators at the stage gates and added a
+  marker test to prevent the instructions from regressing to a thin prompt.
+
+Required commands executed:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_analysis_pack_producer.py::test_codex_operator_script_and_instructions_have_required_markers tests/unit/test_repo_contract.py -q` - pass, 39 passed
+- `git diff --check` - pass
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `export TMPDIR=/tmp; source scripts/activate_agent_env.sh; bash scripts/run_quality_gate.sh` - pass
+
+Remaining risks:
+- The strengthened workflow improves local Codex consistency, but live output
+  quality still depends on source availability, operator review, and provider
+  metadata quality.
+- This slice does not add new live-source integrations, production auth,
+  cryptographic signing, rollback, or a cloud DB/object-store adapter.
+
 ### T-185: Complete live Codex analysis pack pipeline
 
 Goal:

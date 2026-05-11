@@ -129,6 +129,12 @@ macro source metadata, Economic Indicators, technical indicators, and AI
 analysis context, but it must not store raw article bodies or raw provider
 payloads.
 
+The local Codex prompt embeds the same stage gates as the instruction doc:
+Technical Artifact Gate, Macro Data Gate, Tier-1 News Gate, AI Comprehensive
+Analysis Gate, and Final Validation Gate. Operators should treat a run as
+incomplete if Codex changes JSON without re-running validate-only and inspecting
+the updated summary reason codes.
+
 Generate a fixture-shaped bundle for local import testing:
 
 ```bash
