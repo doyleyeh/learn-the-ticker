@@ -89,6 +89,33 @@ def test_beginner_summary_fallback_uses_asset_specific_evidence_notes():
     assert "Nasdaq-100" in joined
     assert "101 holdings" in joined
     assert "0.20" in joined
+    assert "regularMarketPrice" not in joined
+    assert "provider market-reference" not in joined.lower()
+    assert "available evidence" not in joined.lower()
+
+
+def test_beginner_summary_rejects_internal_copy_from_live_generation():
+    asset = build_asset_knowledge_pack("QQQ").asset
+
+    def payload(request: Any) -> dict[str, Any]:
+        return {
+            "what_it_is": "QQQ is an ETF whose available evidence uses regularMarketPrice.",
+            "why_people_consider_it": "Beginners can study the fund.",
+            "main_catch": "Issuer facts are point-in-time.",
+            "supporting_claims": [
+                _supporting_claim("QQQ is an ETF.", ["c1"]),
+            ],
+        }
+
+    service = HybridSummaryGenerationService(runtime=_ready_runtime(), structured_generator=payload)
+
+    with pytest.raises(SummaryGenerationContractError):
+        service.generate_beginner_summary(
+            asset=asset,
+            base_summary=BeginnerSummary(what_it_is="QQQ is an ETF.", why_people_consider_it="Study it.", main_catch="Risk."),
+            citation_ids=["c1"],
+            generation_evidence_pack=_simple_generation_evidence_pack("QQQ", ["c1"]),
+        )
 
 
 def test_default_live_task_allowlist_runs_deep_dive_generation_with_evidence_contract():
@@ -490,6 +517,8 @@ def test_live_prompt_payload_includes_task_spec_and_generation_evidence_pack():
     assert safe_payload["task_prompt_spec"]["objective"]
     evidence_pack = safe_payload["payload"]["generation_evidence_pack"]
     assert evidence_pack["schema_version"] == "generation-evidence-pack-v1"
+    assert evidence_pack["generation_context"]["schema_version"] == "generation-context-v1"
+    assert any("generation_context" in rule for rule in safe_payload["output_rules"])
     assert evidence_pack["citation_evidence"][0]["citation_id"] == "c1"
     assert "allowed_numeric_facts" in evidence_pack
 
@@ -765,6 +794,27 @@ def _simple_generation_evidence_pack(ticker: str, citation_ids: list[str]) -> di
         "economic_indicators": [],
         "technical_indicators": {},
         "allowed_numeric_facts": [],
+        "generation_context": {
+            "schema_version": "generation-context-v1",
+            "asset_ticker": normalized,
+            "scope": "asset" if normalized != "MARKET" else "market",
+            "asset_profile": {
+                "ticker": normalized,
+                "name": normalized,
+                "asset_type": "etf" if normalized in {"QQQ", "VOO", "MARKET"} else "stock",
+                "sector": "Technology" if normalized == "AAPL" else None,
+                "industry": "Consumer Electronics" if normalized == "AAPL" else None,
+            },
+            "identity_context": {
+                "ticker": normalized,
+                "name": normalized,
+                "asset_type": "etf" if normalized in {"QQQ", "VOO", "MARKET"} else "stock",
+            },
+            "exposure_context": {},
+            "market_context": {},
+            "ticker_context": {},
+            "evidence_limits": {"missing_fields": [], "partial_fields": [], "fallback_labels": [], "notes": []},
+        },
         "citation_evidence": [
             {
                 "citation_id": citation_id,

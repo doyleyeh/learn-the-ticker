@@ -14,11 +14,13 @@ from typing import Any, Callable, Protocol
 from backend.analysis_pack_numeric_validation import validate_generated_numeric_integrity
 from backend.citations import CitationValidationClaim, CitationValidationContext
 from backend.generation_evidence import (
+    GENERATION_CONTEXT_SCHEMA_VERSION,
     GENERATION_EVIDENCE_PACK_SCHEMA_VERSION,
     empty_generation_evidence_pack,
     generation_pack_allowed_asset_tickers,
     generation_pack_allowed_numeric_facts,
     generation_pack_citation_evidence,
+    generation_pack_generation_context,
 )
 from backend.llm import (
     DEFAULT_OPENROUTER_BASE_URL,
@@ -51,7 +53,7 @@ from backend.safety import find_forbidden_output_phrases
 
 
 SUMMARY_GENERATION_BOUNDARY = "hybrid-summary-generation-orchestrator-v1"
-SUMMARY_GENERATION_PROMPT_VERSION = "hybrid-summary-generation-prompt-v1"
+SUMMARY_GENERATION_PROMPT_VERSION = "hybrid-summary-generation-prompt-v2"
 TICKER_AI_ANALYSIS_SCHEMA_VERSION = "ticker-ai-comprehensive-analysis-hybrid-v1"
 CHAT_ANSWER_SCHEMA_VERSION = "grounded-chat-hybrid-answer-v1"
 BEGINNER_SUMMARY_SCHEMA_VERSION = "beginner-summary-hybrid-v1"
@@ -92,7 +94,7 @@ _MARKET_AI_SECTION_ORDER = (
 )
 _TASK_PROMPT_SPECS: dict[str, dict[str, Any]] = {
     "beginner_summary": {
-        "objective": "Write a concise asset-specific explanation from canonical facts, not a generic restatement.",
+        "objective": "Write a concise asset explanation for beginners using curated asset/profile context, not the data pipeline.",
         "output_shape": {
             "what_it_is": "string",
             "why_people_consider_it": "string",
@@ -100,9 +102,10 @@ _TASK_PROMPT_SPECS: dict[str, dict[str, Any]] = {
             "supporting_claims": [{"claim_text": "string", "claim_type": "factual|interpretation|risk", "citation_ids": ["id"]}],
         },
         "instructions": [
-            "Use canonical_facts and source_passages before market/news context.",
+            "Use generation_context.asset_profile, identity_context, exposure_context, and canonical_facts before any timely context.",
             "Make every asset-specific factual phrase traceable to supporting_claims.",
-            "Do not repeat page labels or local fixture wording unless it is the only supported evidence.",
+            "Do not mention quote, chart, price, volume, RSI, MACD, KD, ADX, provider key names, fixtures, local MVP, or available evidence.",
+            "Explain what the company or fund is and what a beginner can learn from it.",
         ],
     },
     "deep_dive_summary": {
@@ -115,6 +118,7 @@ _TASK_PROMPT_SPECS: dict[str, dict[str, Any]] = {
             "Connect section facts to business, fund, risk, or evidence-limit implications.",
             "Do not duplicate dashboard rows without explaining why they matter.",
             "If evidence_state is partial, name the limitation in plain English.",
+            "Do not describe the section as using evidence, pipeline fields, fixtures, local tests, or provider market-reference data.",
         ],
     },
     "top_3_risks": {
@@ -147,8 +151,9 @@ _TASK_PROMPT_SPECS: dict[str, dict[str, Any]] = {
             ]
         },
         "instructions": [
-            "Use selected market_news and economic_indicators only; never infer from unselected headlines.",
+            "Use selected market_news, generation_context.market_context, economic_indicators, and allowed_numeric_facts only; never infer from unselected headlines.",
             "Every explicit number must appear in allowed_numeric_facts.",
+            "Synthesize themes across selected stories and macro indicators; do not only count buckets or repeat headlines.",
             "Use Scenario Lens as conditional education, not prediction.",
         ],
     },
@@ -168,7 +173,7 @@ _TASK_PROMPT_SPECS: dict[str, dict[str, Any]] = {
             ]
         },
         "instructions": [
-            "Start from weekly_news, then connect only to supplied canonical_facts, market_news, economic_indicators, and technical_indicators.",
+            "Start from weekly_news, then connect only to supplied canonical_facts, generation_context asset profile/exposure, market_news, economic_indicators, and technical_indicators.",
             "Keep stable asset identity separate from timely context.",
             "Mention technical indicators only as educational context and only when supplied.",
         ],
@@ -185,7 +190,7 @@ _TASK_PROMPT_SPECS: dict[str, dict[str, Any]] = {
     },
 }
 _PREDICTION_MARKERS = ("price target", "guaranteed", "will outperform", "will rise", "will fall", "forecast")
-_GENERIC_BEGINNER_MARKERS = ("u.s.-listed etf", "u.s.-listed common stock", "local-mvp fetch pipeline")
+_GENERIC_BEGINNER_MARKERS = ("u.s.-listed etf", "u.s.-listed common stock")
 _ENV_KEY = "OPENROUTER" + "_API_KEY"
 _DETERMINISTIC_SUMMARY_GENERATION = ContextVar("deterministic_summary_generation", default=False)
 _SUMMARY_GENERATION_CACHE_LOCK = RLock()
@@ -350,7 +355,7 @@ class HybridSummaryGenerationService:
                 "generation_evidence_pack": evidence_pack,
             },
         )
-        fallback = _beginner_fallback_payload(asset, base_summary, evidence_notes or [])
+        fallback = _beginner_fallback_payload(asset, base_summary, evidence_notes or [], evidence_pack)
         generated = self._payload_or_fallback(request, fallback)
         payload = generated.payload
         summary = BeginnerSummary(
@@ -362,6 +367,7 @@ class HybridSummaryGenerationService:
             " ".join([summary.what_it_is, summary.why_people_consider_it, summary.main_catch]),
             weekly_news_rules_valid=True,
             generation_evidence_pack=evidence_pack,
+            copy_quality_task="beginner_summary",
         )
         _validate_supporting_claims(payload, evidence_pack, output_text=" ".join(summary.model_dump().values()), required=generated.cacheable)
         self._remember_valid_payload(generated)
@@ -400,7 +406,12 @@ class HybridSummaryGenerationService:
         generated = self._payload_or_fallback(request, fallback)
         payload = generated.payload
         summary = _required_text(payload, "summary")
-        _validate_text_blob(summary, weekly_news_rules_valid=True, generation_evidence_pack=evidence_pack)
+        _validate_text_blob(
+            summary,
+            weekly_news_rules_valid=True,
+            generation_evidence_pack=evidence_pack,
+            copy_quality_task="deep_dive_summary",
+        )
         _validate_supporting_claims(payload, evidence_pack, output_text=summary, required=generated.cacheable)
         self._remember_valid_payload(generated)
         return summary
@@ -496,7 +507,7 @@ class HybridSummaryGenerationService:
                 "generation_evidence_pack": evidence_pack,
             },
         )
-        fallback = {"sections": _market_ai_fallback_sections(focus, all_citations)}
+        fallback = {"sections": _market_ai_fallback_sections(focus, all_citations, evidence_pack)}
         generated = self._payload_or_fallback(request, fallback)
         payload = generated.payload
         sections = _market_sections_from_payload(
@@ -523,6 +534,7 @@ class HybridSummaryGenerationService:
             " ".join([section.analysis for section in sections] + [bullet for section in sections for bullet in section.bullets]),
             weekly_news_rules_valid=True,
             generation_evidence_pack=evidence_pack,
+            copy_quality_task="market_ai_comprehensive_analysis",
         )
         self._remember_valid_payload(generated)
         return response
@@ -584,7 +596,7 @@ class HybridSummaryGenerationService:
                 "generation_evidence_pack": evidence_pack,
             },
         )
-        fallback = {"sections": _ticker_ai_fallback_sections(asset, weekly_news_focus, all_citations, weekly_citations, asset_kind)}
+        fallback = {"sections": _ticker_ai_fallback_sections(asset, weekly_news_focus, all_citations, weekly_citations, asset_kind, evidence_pack)}
         generated = self._payload_or_fallback(request, fallback)
         payload = generated.payload
         sections = _sections_from_payload(
@@ -611,6 +623,7 @@ class HybridSummaryGenerationService:
             " ".join([section.analysis for section in sections] + [bullet for section in sections for bullet in section.bullets]),
             weekly_news_rules_valid=weekly_news_selected_item_count >= minimum_weekly_news_item_count,
             generation_evidence_pack=evidence_pack,
+            copy_quality_task="ticker_ai_comprehensive_analysis",
         )
         self._remember_valid_payload(generated)
         return response
@@ -798,6 +811,7 @@ def _summary_generation_cache_key(request: SummaryGenerationRequest, runtime: Ll
     raw = json.dumps(
         {
             "asset_ticker": request.asset_ticker,
+            "generation_context_schema_version": GENERATION_CONTEXT_SCHEMA_VERSION,
             "model_names": model_names,
             "payload": request.payload,
             "prompt_version": SUMMARY_GENERATION_PROMPT_VERSION,
@@ -864,11 +878,11 @@ def _live_structured_generator_from_env(
                         "role": "system",
                         "content": (
                             "Return compact JSON only. Act as Learn the Ticker's evidence-bound educational "
-                            "analysis layer: use only the supplied generation evidence pack, citation ids, "
-                            "allowed numeric facts, selected news, macro data, and compact technical context. "
+                            "analysis layer: use only the supplied generation evidence pack, curated generation "
+                            "context, citation ids, allowed numeric facts, selected news, macro data, and compact technical context. "
                             "Do not include recommendations, predictions, raw reasoning, hidden prompts, raw "
-                            "transcripts, raw OHLCV series, raw provider payloads, or article bodies. If evidence "
-                            "is missing, label the limitation in the requested JSON fields."
+                            "transcripts, raw OHLCV series, raw provider payloads, raw provider key names, article bodies, "
+                            "or internal pipeline wording. If evidence is missing, label the limitation in the requested JSON fields."
                         ),
                     },
                     {"role": "user", "content": json.dumps(prompt_payload, sort_keys=True)},
@@ -942,6 +956,10 @@ def _safe_prompt_payload(request: SummaryGenerationRequest) -> dict[str, Any]:
             "Separate timely news context from stable canonical facts.",
             "Use a more analytical plain-English style: connect facts, news, macro, and technical context without forecasting.",
             "Include uncertainty when evidence is partial or missing.",
+            "Use generation_context for clean asset/profile/exposure framing and generation_evidence_pack for citations and validation.",
+            "Do not use internal wording such as fixture, local MVP, available evidence, provider market-reference, raw provider keys, or this section uses.",
+            "Beginner Summary must explain the asset and must not use raw quote, chart, price, volume, or technical indicators as its main evidence.",
+            "Market AI must synthesize selected stories with Economic Indicators and allowed numeric facts; do not merely count buckets or repeat headlines.",
         ],
         "payload": request.payload,
     }
@@ -951,59 +969,80 @@ def _beginner_fallback_payload(
     asset: AssetIdentity,
     base_summary: BeginnerSummary,
     evidence_notes: list[str],
+    generation_evidence_pack: dict[str, Any] | None = None,
 ) -> dict[str, str]:
     notes = _evidence_note_map(evidence_notes)
-    benchmark = notes.get("benchmark")
-    holdings = notes.get("holdings_count")
-    expense = notes.get("expense_ratio")
-    price = notes.get("provider_market_price")
-    profile = notes.get("provider_profile_overview")
+    context = generation_pack_generation_context(generation_evidence_pack)
+    asset_profile = _context_dict(context, "asset_profile")
+    identity_context = _context_dict(context, "identity_context")
+    exposure_context = _context_dict(context, "exposure_context")
+    evidence_limits = _context_dict(context, "evidence_limits")
+    benchmark = _first_text(identity_context.get("benchmark"), notes.get("benchmark"))
+    holdings = _first_text(exposure_context.get("holdings_count"), notes.get("holdings_count"))
+    expense = _first_text(identity_context.get("expense_ratio"), notes.get("expense_ratio"))
+    fund_family = _first_text(asset_profile.get("fund_family"), identity_context.get("issuer"), getattr(asset, "issuer", None))
+    category = _first_text(asset_profile.get("category"))
+    fund_summary = _first_text(asset_profile.get("fund_summary"))
+    sector = _first_text(asset_profile.get("sector"), _profile_note_value(notes.get("provider_profile_overview"), "sector"))
+    industry = _first_text(asset_profile.get("industry"), _profile_note_value(notes.get("provider_profile_overview"), "industry"))
+    business_summary = _first_text(asset_profile.get("business_summary"))
     gaps = notes.get("evidence_gaps")
     if asset.asset_type.value == "etf":
+        holdings_phrase = f"{holdings} holdings" if holdings else ""
+        cost_phrase = f"an expense ratio of {expense}" if expense else ""
         fact_bits = _join_human_text(
             [
                 f"tracks {benchmark}" if benchmark else "",
-                f"lists about {holdings} holdings" if holdings else "",
-                f"shows an expense ratio of {expense}" if expense else "",
-                f"has provider market-reference price context around {price}" if price else "",
+                holdings_phrase,
+                cost_phrase,
+                f"is categorized as {category}" if category else "",
             ]
         )
+        issuer_phrase = f" from {fund_family}" if fund_family else ""
         what_it_is = (
-            f"{asset.name} ({asset.ticker}) is explained here as an ETF whose available evidence {fact_bits}."
+            f"{asset.name} ({asset.ticker}) is an ETF{issuer_phrase}"
+            + (f" that {fact_bits}." if fact_bits else ".")
             if fact_bits
-            else base_summary.what_it_is
+            else _join_sentences(base_summary.what_it_is, _truncate(fund_summary, 180) if fund_summary else "")
         )
         why = (
-            f"Beginners can use {asset.ticker} to study how its benchmark, holdings breadth, cost, and market-reference fields fit together."
-            if fact_bits
-            else base_summary.why_people_consider_it
+            f"Beginners can use {asset.ticker} to study how a fund's benchmark, holdings breadth"
+            + (", category" if category else "")
+            + (", and cost" if expense else "")
+            + " shape exposure in one ticker."
         )
         catch = (
-            f"The main catch is that issuer facts are point-in-time and evidence gaps remain labeled"
-            + (f" ({gaps})" if gaps else "")
+            "The main catch is that ETF facts are point-in-time and missing fields stay labeled"
+            + (f" ({gaps or _join_human_text([str(item) for item in evidence_limits.get('missing_fields', [])[:3]])})" if (gaps or evidence_limits.get("missing_fields")) else "")
             + "; this page does not turn the fund into a personal recommendation."
         )
     else:
+        business_phrase = _truncate(business_summary, 220) if business_summary else ""
+        sector_phrase = _join_human_text([sector or "", industry or ""])
+        official_fact_phrase = (
+            " using SEC-filed facts"
+            if notes.get("latest_revenue_fact") or notes.get("latest_net_income_fact")
+            else ""
+        )
         fact_bits = _join_human_text(
             [
-                profile or "",
-                f"provider market-reference price context around {price}" if price else "",
-                f"latest revenue fact {notes.get('latest_revenue_fact')}" if notes.get("latest_revenue_fact") else "",
-                f"latest net-income fact {notes.get('latest_net_income_fact')}" if notes.get("latest_net_income_fact") else "",
+                f"in {sector_phrase}" if sector_phrase else "",
+                business_phrase,
             ]
         )
         what_it_is = (
-            f"{asset.name} ({asset.ticker}) is explained here as a single-company stock with SEC and provider evidence on {fact_bits}."
+            f"{asset.name} ({asset.ticker}) is a single-company stock{official_fact_phrase}"
+            + (f" {fact_bits}." if fact_bits else ".")
             if fact_bits
-            else base_summary.what_it_is
+            else _join_sentences(base_summary.what_it_is, "SEC facts are preferred when available.")
         )
         why = (
-            f"Beginners can use {asset.ticker} to connect the company's business/profile context with reported financial facts and provider-labeled valuation or market data."
+            f"Beginners can use {asset.ticker} to connect what the company does with reported financial facts, business context, and clearly labeled valuation context."
             if fact_bits
             else base_summary.why_people_consider_it
         )
         catch = (
-            "The main catch is single-company risk: business, financial, and valuation evidence can change, and provider fields are context rather than a cheap-or-expensive conclusion."
+            "The main catch is single-company risk: business, financial, and valuation evidence can change, and context fields do not prove whether the stock is cheap or expensive."
         )
     return {
         "what_it_is": _avoid_generic_only(what_it_is, base_summary.what_it_is),
@@ -1024,7 +1063,17 @@ def _deep_dive_fallback(
     fields = [
         value
         for key, value in notes.items()
-        if key not in {"fetch_state", "source_count", "fact_count", "section_id", "evidence_state", "limitations"}
+        if key not in {
+            "fetch_state",
+            "source_count",
+            "fact_count",
+            "section_id",
+            "evidence_state",
+            "limitations",
+            "provider_market_price",
+            "provider_quote_stats",
+            "provider_price_chart",
+        }
     ][:4]
     field_text = _join_human_text(fields)
     if section_id != "evidence_limits" and not field_text:
@@ -1033,8 +1082,8 @@ def _deep_dive_fallback(
         return _join_sentences(
             base_summary,
             (
-                f"For {asset.ticker}, this {title.lower()} discussion uses {field_text} to add context without "
-                "turning missing or partial details into new facts."
+                f"For {asset.ticker}, the useful beginner takeaway is {field_text}. "
+                "Missing or partial details stay labeled instead of becoming conclusions."
             ),
         )
     return _join_sentences(
@@ -1049,7 +1098,12 @@ def _ticker_ai_fallback_sections(
     all_citations: list[str],
     weekly_citations: list[str],
     asset_kind: str,
+    generation_evidence_pack: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
+    context = generation_pack_generation_context(generation_evidence_pack)
+    profile_phrase = _asset_profile_phrase(asset, context)
+    exposure_phrase = _exposure_context_phrase(context)
+    market_phrase = _market_context_phrase(context)
     event_mix = _weekly_event_mix(weekly_news_focus)
     source_mix = _weekly_source_mix(weekly_news_focus)
     item_count = len(weekly_news_focus.items)
@@ -1086,7 +1140,7 @@ def _ticker_ai_fallback_sections(
             "section_id": "market_context",
             "label": "Market Context",
             "analysis": (
-                f"{market_lens} The cited weekly evidence can explain why {asset.ticker} is being discussed now, "
+                f"{market_lens} {market_phrase} The cited weekly evidence can explain why {asset.ticker} is being discussed now, "
                 "but it does not prove a broad market trend or a future outcome."
             ),
             "bullets": ["Recent context remains separate from canonical identity, holdings, business, and risk facts."],
@@ -1098,6 +1152,7 @@ def _ticker_ai_fallback_sections(
             "label": "Business/Fund Context",
             "analysis": (
                 f"For this {asset_kind}, the beginner question is how the weekly evidence connects to {business_lens}. "
+                f"{profile_phrase}{exposure_phrase} "
                 "The useful lesson is the relationship between current events and durable facts, not the headline by itself."
             ),
             "bullets": ["Canonical facts and Weekly News Focus use separate citation sets."],
@@ -1138,7 +1193,13 @@ def _weekly_source_mix(weekly_news_focus: WeeklyNewsFocusResponse) -> str:
     return _join_human_text(parts) or "source-labeled weekly evidence"
 
 
-def _market_ai_fallback_sections(focus: MarketNewsFocusResponse, all_citations: list[str]) -> list[dict[str, Any]]:
+def _market_ai_fallback_sections(
+    focus: MarketNewsFocusResponse,
+    all_citations: list[str],
+    generation_evidence_pack: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    context = generation_pack_generation_context(generation_evidence_pack)
+    macro_phrase = _market_context_phrase(context)
     bucket_titles = {
         bucket: [item.title for item in focus.items if item.topic_bucket is bucket]
         for bucket in MarketNewsTopicBucket
@@ -1149,10 +1210,8 @@ def _market_ai_fallback_sections(focus: MarketNewsFocusResponse, all_citations: 
         if titles:
             examples = _join_human_text([_short_headline_hint(title) for title in titles[:2]])
             return (
-                f"The cited {label} bucket has {len(titles)} approved item"
-                f"{'' if len(titles) == 1 else 's'}"
-                + (f", including {examples}" if examples else "")
-                + "; beginners can compare the shared theme with later approved updates instead of treating any one headline as the whole story."
+                f"The cited {label} stories point to {examples or 'a shared market theme'}. "
+                "Beginners can compare that theme with later approved updates instead of treating any one headline as the whole story."
             )
         return f"No selected {label} item passed strongly enough to anchor a standalone claim, so this section stays limited to the broader cited set."
 
@@ -1161,8 +1220,8 @@ def _market_ai_fallback_sections(focus: MarketNewsFocusResponse, all_citations: 
             "section_id": "what_changed_this_week",
             "label": "What Changed This Week",
             "analysis": (
-                f"The selected Market News Focus set spans {len({item.topic_bucket for item in focus.items})} topic buckets. "
-                "The useful change is not one headline by itself, but the combination of policy, equity, technology, geopolitical, and credit signals in the approved window."
+                "The useful change this week is the mix of policy, equity, technology, geopolitical, and credit signals in the approved market window. "
+                f"{macro_phrase}"
             ),
             "bullets": ["This market-wide layer is shared across ticker pages and stays separate from each asset's stable facts."],
             "citation_ids": all_citations,
@@ -1413,6 +1472,7 @@ def _validate_text_blob(
     *,
     weekly_news_rules_valid: bool = True,
     generation_evidence_pack: dict[str, Any] | None = None,
+    copy_quality_task: str | None = None,
 ) -> None:
     validation = validate_llm_generated_output(
         output_text=text,
@@ -1429,6 +1489,8 @@ def _validate_text_blob(
     forbidden = find_forbidden_output_phrases(text)
     if forbidden:
         raise SummaryGenerationContractError(f"Generated prose includes forbidden advice language: {', '.join(forbidden)}")
+    if copy_quality_task:
+        _validate_copy_quality(text, copy_quality_task)
     numeric_reason_codes = validate_generated_numeric_integrity(
         [text],
         generation_pack_allowed_numeric_facts(generation_evidence_pack),
@@ -1448,6 +1510,40 @@ def _reject_headline_repetition(analysis: str, selected_titles: list[str]) -> No
         raise SummaryGenerationContractError("Generated analysis only repeats selected headlines.")
     if normalized.startswith("the selected market news focus items are") or normalized.startswith("the selected weekly news focus items are"):
         raise SummaryGenerationContractError("Generated market analysis repeats headlines instead of synthesizing them.")
+
+
+def _validate_copy_quality(text: str, task_name: str) -> None:
+    normalized = _normalize(text)
+    internal_markers = {
+        "fixture",
+        "local mvp",
+        "local-mvp",
+        "local test",
+        "local-test",
+        "available evidence",
+        "provider market-reference",
+        "regularmarketprice",
+        "chartpreviousclose",
+        "fetch pipeline",
+        "this section uses",
+    }
+    for marker in internal_markers:
+        if marker in normalized:
+            raise SummaryGenerationContractError(f"Generated {task_name} copy includes internal wording: {marker}")
+    if task_name == "beginner_summary":
+        quote_only_markers = ("provider market price", "provider quote", "quote field", "chart field", "raw price", "raw quote")
+        if any(marker in normalized for marker in quote_only_markers):
+            raise SummaryGenerationContractError("Beginner Summary cannot be based on chart or quote-only facts.")
+    if task_name == "market_ai_comprehensive_analysis":
+        low_value_markers = (
+            "selected market news focus set spans",
+            "topic bucket has",
+            "bucket has",
+            "approved items, including",
+            "approved item, including",
+        )
+        if any(marker in normalized for marker in low_value_markers):
+            raise SummaryGenerationContractError("Market AI analysis must synthesize evidence instead of counting buckets.")
 
 
 def _short_headline_hint(title: str) -> str:
@@ -1483,6 +1579,85 @@ def _evidence_note_map(evidence_notes: list[str]) -> dict[str, str]:
         if key and value:
             result[key] = value
     return result
+
+
+def _context_dict(context: dict[str, Any], key: str) -> dict[str, Any]:
+    value = context.get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def _first_text(*values: Any) -> str | None:
+    for value in values:
+        if value in (None, ""):
+            continue
+        text = " ".join(str(value).split())
+        if text:
+            return text
+    return None
+
+
+def _profile_note_value(note: str | None, field_name: str) -> str | None:
+    if not note:
+        return None
+    marker = field_name + ":"
+    lowered = note.lower()
+    start = lowered.find(marker)
+    if start < 0:
+        return None
+    raw = note[start + len(marker):].split(";", 1)[0].strip()
+    return raw or None
+
+
+def _asset_profile_phrase(asset: AssetIdentity, context: dict[str, Any]) -> str:
+    profile = _context_dict(context, "asset_profile")
+    if asset.asset_type.value == "etf":
+        pieces = [
+            f"Fund profile context identifies {profile.get('fund_family')} as the fund family" if profile.get("fund_family") else "",
+            f"{profile.get('category')} as the category" if profile.get("category") else "",
+        ]
+        phrase = _join_human_text(pieces)
+        return f"{phrase}." if phrase else ""
+    pieces = [
+        f"{profile.get('sector')} sector" if profile.get("sector") else "",
+        f"{profile.get('industry')} industry" if profile.get("industry") else "",
+    ]
+    phrase = _join_human_text(pieces)
+    return f"Profile context places {asset.ticker} in {phrase}." if phrase else ""
+
+
+def _exposure_context_phrase(context: dict[str, Any]) -> str:
+    exposure = _context_dict(context, "exposure_context")
+    pieces = [
+        f"{exposure.get('holdings_count')} holdings" if exposure.get("holdings_count") else "",
+        str(exposure.get("concentration_signal") or ""),
+    ]
+    phrase = _join_human_text(pieces)
+    return f" Exposure context highlights {phrase}." if phrase else ""
+
+
+def _market_context_phrase(context: dict[str, Any]) -> str:
+    market = _context_dict(context, "market_context")
+    indicators = market.get("economic_indicators")
+    if isinstance(indicators, list) and indicators:
+        names = [
+            str(item.get("name"))
+            for item in indicators
+            if isinstance(item, dict) and item.get("name")
+        ][:4]
+        if names:
+            return "Economic Indicators in the context include " + _join_human_text(names) + "."
+    topic_coverage = market.get("topic_coverage")
+    if isinstance(topic_coverage, dict) and topic_coverage:
+        labels = [key.replace("_", " ") for key in topic_coverage.keys()]
+        return "The selected market context covers " + _join_human_text(labels[:4]) + "."
+    return "Market context remains limited to the selected cited stories."
+
+
+def _truncate(value: Any, limit: int = 240) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 1)].rstrip() + "..."
 
 
 def _join_human_text(values: list[str]) -> str:

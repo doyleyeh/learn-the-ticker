@@ -1189,6 +1189,23 @@ Market News Focus analysis uses thematic lenses instead of named analyst/persona
 
 Scenario Lens is conditional and educational only, for example "If a cited risk persists, beginners may watch the cited follow-up evidence." It must not predict returns, recommend positions, or use buy/sell/hold/allocation language.
 
+#### Runtime generation context
+
+Backend summary and analysis generation uses `generation_evidence_pack` for citations and validation, plus a curated `generation_context` for prompt quality. `generation_context` is assembled from source-labeled normalized facts and selected timely context; it is not a raw provider payload and must not expose raw provider keys in generated copy.
+
+Required top-level groups:
+
+- `asset_profile`: company business description or ETF/fund summary, stock sector/industry, website, full-time employees, and headquarters when available; ETF fund family, category, legal type, net assets, and fund summary when available.
+- `identity_context`: stock versus ETF identity, issuer or exchange, benchmark/index, business or fund role, and asset-type-specific labels needed for beginner explanation.
+- `exposure_context`: holdings count, top holdings, sector/exposure rows, concentration signals, and missing exposure labels when available.
+- `market_context`: selected Market News Focus clusters, Economic Indicators, VIX/DXY/Treasury/oil rows when allowed, topic coverage, and market-news quality diagnostics.
+- `ticker_context`: selected ticker Weekly News, canonical fact references, technical context, asset-specific relevance mapping, and evidence thresholds.
+- `evidence_limits`: missing fields, partial states, stale/unavailable labels, source-use constraints, and fallback labels.
+
+Beginner Summary generation may use `asset_profile`, `identity_context`, `exposure_context`, and `evidence_limits`. It should not receive raw quote/chart/price fields, raw OHLCV series, technical indicators, volume-change values, or raw provider key names unless a field is explicitly needed for identity. Deep Dive may use section-specific profile, exposure, financial, valuation, and risk context, but should not repeat dashboard rows or describe the retrieval pipeline. Market AI may use selected Market News Focus items, Economic Indicators, and allowed numeric facts. Ticker AI may use selected Weekly News Focus items, canonical facts, asset profile/exposure, market context, and technical context only when supplied in the validated pack.
+
+Prompt validators must reject generated text that leaks internal implementation language or low-value copy, including `fixture`, `local MVP`, `available evidence`, `provider market-reference`, raw provider keys such as `regularMarketPrice`, and "this section uses..." phrasing. Validators must also reject Beginner Summary text that is chart/quote-only, Market AI text that merely counts buckets or repeats headlines, unsupported numeric claims, and technical fields misused as price levels.
+
 ---
 
 ## 10. Asset knowledge pack
@@ -1365,6 +1382,8 @@ If the free chain errors, rate-limits, cannot satisfy strict structured output, 
 The `LlmOrchestrator` sits above provider adapters and performs validation-aware fallback. It builds a cache key from task, ticker or conversation scope, knowledge-pack hash, prompt version, schema version, safety-policy version, source freshness hash, and model-chain version. Chat cache TTL defaults to 24 hours. Asset analysis cache invalidates when freshness hash, prompt version, schema version, or source pack changes.
 
 The orchestrator caches only validated outputs. It returns `answer_state=complete` for validated generations and `answer_state=partial` or `answer_state=unavailable` when all attempts fail validation. Advice-like prompts are blocked before LLM calls, and advice-like generated content fails validation even when schema and citations appear valid.
+
+Generated-summary cache keys must include the evidence-pack schema version, generation-context schema version, prompt version, and freshness hash. Cache reuse is allowed only when the curated `generation_context` and citation evidence still match the selected asset or market pack. Failed raw model responses, hidden prompts, unrestricted provider payloads, and raw model reasoning must not be cached or returned.
 
 ### 11.3 Page summary schema
 

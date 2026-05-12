@@ -5,6 +5,7 @@ from typing import Any
 
 import backend.lightweight_data_fetch as lightweight_data_fetch
 from backend.analysis_packs import build_economic_indicators_pack
+from backend.generation_evidence import evidence_pack_from_lightweight_response
 from backend.lightweight_data_fetch import (
     ETF_QUOTE_STAT_ROW_ORDER,
     STOCK_QUOTE_STAT_ROW_ORDER,
@@ -954,6 +955,13 @@ def test_lightweight_stock_fetch_prefers_sec_and_labels_provider_fallback():
     assert response.fallback_diagnostics.raw_payload_exposed is False
     assert response.fallback_diagnostics.secret_values_exposed is False
     assert all("raw" not in fact.field_name for fact in response.facts)
+
+    generation_pack = evidence_pack_from_lightweight_response(response)
+    generation_context = generation_pack["generation_context"]
+    assert generation_context["schema_version"] == "generation-context-v1"
+    assert generation_context["asset_profile"]["sector"] == "Technology"
+    assert "regularMarketPrice" not in json.dumps(generation_context)
+    assert "provider_market_price" not in generation_context["evidence_limits"].get("notes", [])
 
     promotion = evaluate_lightweight_generated_output_promotion(response, allow_generated_output_cache_promotion=True)
     assert promotion["promotion_allowed"] is False

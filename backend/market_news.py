@@ -39,7 +39,7 @@ from backend.models import (
     WeeklyNewsSourceMetadata,
 )
 from backend.generation_evidence import evidence_pack_from_market_news
-from backend.news_quality import clean_news_publisher, news_source_from_domain, publisher_priority
+from backend.news_quality import clean_news_publisher, news_source_from_domain, publisher_priority, publisher_tier
 from backend.safety import find_forbidden_output_phrases
 from backend.settings import MarketNewsSettings, build_market_news_settings
 from backend.summary_generation import (
@@ -209,7 +209,82 @@ _PROMOTIONAL_MARKERS = (
     "should you buy",
     "price target",
 )
-_OPINION_MARKERS = ("opinion:", "column:", "editorial:", "op-ed")
+_OPINION_MARKERS = ("opinion:", "column:", "editorial:", "op-ed", "commentary:")
+_PUNDIT_OR_LOW_VALUE_MARKERS = (
+    "jim cramer",
+    "cramer's",
+    "mad money",
+    "final trades",
+    "stocks to watch",
+    "watch these stocks",
+)
+_US_MARKET_RELEVANCE_MARKERS = (
+    "u.s.",
+    "us ",
+    "wall street",
+    "s&p 500",
+    "sp 500",
+    "nasdaq",
+    "dow",
+    "federal reserve",
+    "fed ",
+    "treasury",
+    "yield",
+    "inflation",
+    "cpi",
+    "ppi",
+    "jobs",
+    "payroll",
+    "earnings",
+    "stocks",
+    "equities",
+    "dollar",
+    "vix",
+    "credit",
+    "liquidity",
+    "ai",
+    "semiconductor",
+    "chip",
+    "oil",
+    "wti",
+)
+_GLOBAL_MARKET_BRIDGE_MARKERS = (
+    "oil",
+    "energy",
+    "shipping",
+    "supply chain",
+    "tariff",
+    "sanction",
+    "trade",
+    "hormuz",
+    "red sea",
+    "suez",
+    "iran",
+    "opec",
+)
+_LOCAL_FOREIGN_MARKET_ONLY_MARKERS = (
+    "indian rupee",
+    "rupee",
+    "sensex",
+    "nifty",
+    "china stocks",
+    "hong kong stocks",
+    "european shares",
+)
+_KNOWN_TITLE_SOURCE_SUFFIXES = (
+    "reuters",
+    "bloomberg",
+    "cnbc",
+    "marketwatch",
+    "associated press",
+    "ap",
+    "wall street journal",
+    "financial times",
+    "the guardian",
+    "bbc",
+    "cnn",
+    "yahoo finance",
+)
 
 
 class MarketNewsContractError(ValueError):
@@ -800,6 +875,7 @@ def _selection_rationale(
     freshness_score = _freshness_score(representative)
     topic_relevance_score = 20 if representative.topic_bucket in MarketNewsTopicBucket else 0
     market_impact_score = _market_impact_score(representative)
+    us_relevance_score = _us_market_relevance_score(representative)
     corroboration_score = 10 if len({row.source for row in rows}) >= 2 or representative.source_priority <= 5 else 5
     novelty_score = 10
     penalty_score = 0
@@ -807,7 +883,19 @@ def _selection_rationale(
     if critical and not corroborated:
         penalty_score += 30
         reasons.append("critical_claim_not_corrobated")
-    total_score = source_quality_score + freshness_score + topic_relevance_score + market_impact_score + corroboration_score + novelty_score - penalty_score
+    if publisher_tier(representative.source) == "demoted":
+        penalty_score += 10
+        reasons.append("demoted_publisher_backfill_only")
+    total_score = (
+        source_quality_score
+        + freshness_score
+        + topic_relevance_score
+        + market_impact_score
+        + us_relevance_score
+        + corroboration_score
+        + novelty_score
+        - penalty_score
+    )
     selected = total_score >= minimum_display_score and not reasons
     if total_score < minimum_display_score:
         reasons.append("below_minimum_display_score")
@@ -846,6 +934,14 @@ def _candidate_exclusion_reasons(candidate: MarketNewsArticleCandidate, window: 
         reasons.append("promotional")
     if any(lowered.startswith(marker) for marker in _OPINION_MARKERS):
         reasons.append("opinion")
+    if any(marker in lowered for marker in _PUNDIT_OR_LOW_VALUE_MARKERS):
+        reasons.append("opinion_or_pundit")
+    if publisher_tier(candidate.source) == "demoted" and _us_market_relevance_score(candidate) < 8:
+        reasons.append("demoted_publisher_backfill_only")
+    if any(marker in lowered for marker in _LOCAL_FOREIGN_MARKET_ONLY_MARKERS) and _us_market_relevance_score(candidate) < 8:
+        reasons.append("us_market_relevance_low")
+    if _us_market_relevance_score(candidate) == 0 and _topic_keyword_score(candidate.topic_bucket, candidate.title, candidate.description) <= 1:
+        reasons.append("us_market_relevance_low")
     if (
         candidate.provider in {adapter.provider for adapter in market_news_provider_adapters()}
         and _topic_keyword_score(candidate.topic_bucket, candidate.title, candidate.description) == 0
@@ -873,7 +969,7 @@ def _candidate(
     clean_source = _clean_source_name(source) or _source_from_domain(source_domain) or provider
     source_priority = _source_priority(clean_source)
     canonical_url = _canonical_url(url)
-    clean_title = _clean_text(title) or "Untitled market news item"
+    clean_title = _clean_market_title(_clean_text(title) or "Untitled market news item")
     clean_description = _bounded_words(_clean_text(description) or "", 50)
     inferred_topic_bucket = _infer_topic_bucket(clean_title, clean_description, fallback=topic_bucket)
     return MarketNewsArticleCandidate(
@@ -1227,7 +1323,26 @@ def _is_critical_claim(candidate: MarketNewsArticleCandidate) -> bool:
 def _market_impact_score(candidate: MarketNewsArticleCandidate) -> int:
     text = f" {candidate.title} {candidate.description} ".lower()
     impact_markers = ("market", "fed", "inflation", "rate", "yield", "oil", "earnings", "credit", "liquidity", "ai", "chip")
-    return 15 if any(marker in text for marker in impact_markers) else 5
+    score = 15 if any(marker in text for marker in impact_markers) else 5
+    if any(marker in text for marker in _PUNDIT_OR_LOW_VALUE_MARKERS):
+        return 0
+    return score
+
+
+def _us_market_relevance_score(candidate: MarketNewsArticleCandidate) -> int:
+    text = f" {candidate.title} {candidate.description} {' '.join(candidate.entities)} {' '.join(candidate.symbols)} ".lower()
+    score = 0
+    if any(marker in text for marker in _US_MARKET_RELEVANCE_MARKERS):
+        score += 8
+    if any(marker in text for marker in _GLOBAL_MARKET_BRIDGE_MARKERS):
+        score += 4
+    if any(symbol.upper() in {"SPY", "QQQ", "DIA", "IWM", "VOO", "VTI"} for symbol in candidate.symbols):
+        score += 4
+    if any(marker in text for marker in _LOCAL_FOREIGN_MARKET_ONLY_MARKERS):
+        score -= 6
+    if any(marker in text for marker in _PUNDIT_OR_LOW_VALUE_MARKERS):
+        score -= 8
+    return max(0, min(score, 14))
 
 
 def _freshness_score(candidate: MarketNewsArticleCandidate) -> int:
@@ -1389,6 +1504,14 @@ def _clean_text(value: Any) -> str | None:
         return None
     text = " ".join(str(value).split())
     return text or None
+
+
+def _clean_market_title(value: str) -> str:
+    text = " ".join(str(value or "").split())
+    for suffix in _KNOWN_TITLE_SOURCE_SUFFIXES:
+        pattern = re.compile(rf"\s+-\s+{re.escape(suffix)}$", re.IGNORECASE)
+        text = pattern.sub("", text)
+    return text.strip() or "Untitled market news item"
 
 
 def _normalize_language(value: str | None) -> str:
