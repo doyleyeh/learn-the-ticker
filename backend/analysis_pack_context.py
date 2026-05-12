@@ -220,9 +220,16 @@ def _allowed_numeric_facts(
     bundle: AnalysisPackImportBundle,
     technical_rows: Any,
 ) -> list[dict[str, Any]]:
+    return build_allowed_numeric_facts(bundle.economic_indicators, technical_rows)
+
+
+def build_allowed_numeric_facts(
+    economic_indicators: Any | None,
+    technical_rows: Any,
+) -> list[dict[str, Any]]:
     facts: list[dict[str, Any]] = []
-    if bundle.economic_indicators is not None:
-        for item in bundle.economic_indicators.items:
+    if economic_indicators is not None:
+        for item in economic_indicators.items:
             facts.extend(_economic_numeric_fact(item))
     if isinstance(technical_rows, dict):
         for ticker, row in sorted(technical_rows.items()):

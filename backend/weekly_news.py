@@ -11,6 +11,7 @@ from backend.models import (
     AIComprehensiveAnalysisResponse,
     AssetIdentity,
     Citation,
+    EconomicIndicatorsPackResponse,
     EvidenceState,
     FreshnessState,
     SourceAllowlistStatus,
@@ -28,8 +29,10 @@ from backend.models import (
     WeeklyNewsSelectionRationale,
     WeeklyNewsSourceMetadata,
     WeeklyNewsWindow,
+    MarketNewsFocusResponse,
     MarketWeekPeriod,
 )
+from backend.generation_evidence import evidence_pack_from_weekly_news
 from backend.news_quality import publisher_tier, score_ticker_weekly_news
 from backend.retrieval import AssetKnowledgePack, RetrievedRecentDevelopment
 from backend.safety import find_forbidden_output_phrases
@@ -587,6 +590,10 @@ def build_ai_comprehensive_analysis(
     approved_weekly_news_item_count: int | None = None,
     high_signal_weekly_news_item_count: int | None = None,
     summary_generation_service: SummaryGenerationService | None = None,
+    economic_indicators: EconomicIndicatorsPackResponse | None = None,
+    market_news_focus: MarketNewsFocusResponse | None = None,
+    technical_context: dict[str, Any] | None = None,
+    generation_evidence_pack: dict[str, Any] | None = None,
 ) -> AIComprehensiveAnalysisResponse:
     canonical_fact_citation_ids = sorted(set(canonical_fact_citation_ids or []))
     canonical_source_document_ids = sorted(set(canonical_source_document_ids or []))
@@ -618,6 +625,15 @@ def build_ai_comprehensive_analysis(
         }
     )
     event_ids = [item.event_id for item in weekly_news_focus.items]
+    evidence_pack = generation_evidence_pack or evidence_pack_from_weekly_news(
+        asset,
+        weekly_news_focus,
+        canonical_fact_citation_ids=canonical_fact_citation_ids,
+        canonical_source_document_ids=canonical_source_document_ids,
+        economic_indicators=economic_indicators,
+        market_news_focus=market_news_focus,
+        technical_context=technical_context,
+    )
     try:
         service = summary_generation_service or build_default_summary_generation_service()
         response = service.generate_ticker_ai_comprehensive_analysis(
@@ -627,6 +643,7 @@ def build_ai_comprehensive_analysis(
             canonical_source_document_ids=canonical_source_document_ids,
             minimum_weekly_news_item_count=minimum_weekly_news_item_count,
             weekly_news_selected_item_count=weekly_news_focus.selected_item_count,
+            generation_evidence_pack=evidence_pack,
         )
         validate_ai_comprehensive_analysis(response, weekly_news_focus)
         return response
@@ -641,6 +658,7 @@ def build_ai_comprehensive_analysis(
                     canonical_source_document_ids=canonical_source_document_ids,
                     minimum_weekly_news_item_count=minimum_weekly_news_item_count,
                     weekly_news_selected_item_count=weekly_news_focus.selected_item_count,
+                    generation_evidence_pack=evidence_pack,
                 )
                 validate_ai_comprehensive_analysis(repaired, weekly_news_focus)
                 return repaired.model_copy(
@@ -729,7 +747,7 @@ def _ai_validation_reason_codes(exc: Exception) -> list[str]:
         codes.append("schema_validation_failed")
     if "freshness" in text:
         codes.append("freshness_validation_failed")
-    if "forbidden" in text or "advice" in text or "generated prose failed validation" in text:
+    if "forbidden" in text or "advice" in text or "generated prose failed validation" in text or "invalid_safety" in text:
         codes.append("safety_validation_failed")
     if "prediction" in text or "price target" in text or "guaranteed" in text or "forecast" in text:
         codes.append("prediction_language")

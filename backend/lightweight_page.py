@@ -21,6 +21,7 @@ from backend.models import (
     BeginnerSummary,
     Citation,
     DetailsResponse,
+    EconomicIndicatorsPackResponse,
     EvidenceState,
     FreshnessState,
     LightweightFetchFact,
@@ -62,6 +63,7 @@ from backend.models import (
     WeeklyNewsFocusResponse,
     WeeklyNewsResponse,
 )
+from backend.generation_evidence import evidence_pack_from_lightweight_response
 from backend.settings import LightweightDataSettings, build_lightweight_data_settings
 from backend.summary_generation import (
     SummaryGenerationContractError,
@@ -146,19 +148,39 @@ def build_lightweight_sources_response_if_enabled(
     )
 
 
-def build_lightweight_weekly_news_response(response: LightweightFetchResponse) -> WeeklyNewsResponse:
-    cached = _page_build_cache_get("weekly_news", response)
+def build_lightweight_weekly_news_response(
+    response: LightweightFetchResponse,
+    *,
+    economic_indicators: EconomicIndicatorsPackResponse | None = None,
+    market_news_focus: Any | None = None,
+    technical_context: dict[str, Any] | None = None,
+) -> WeeklyNewsResponse:
+    has_context_override = (
+        economic_indicators is not None or market_news_focus is not None or technical_context is not None
+    )
+    cached = None if has_context_override else _page_build_cache_get("weekly_news", response)
     if cached is not None:
         return cached
 
     stable_citation_ids = _preferred_citation_ids(response) or [citation.citation_id for citation in response.citations[:1]]
     source_documents = [_source_document_from_lightweight(source, response) for source in response.sources]
     weekly_news_focus = build_lightweight_weekly_news_focus(response) or _empty_weekly_news_focus(response)
+    generation_evidence_pack = evidence_pack_from_lightweight_response(
+        response,
+        economic_indicators=economic_indicators,
+        market_news_focus=market_news_focus,
+        weekly_news_focus=weekly_news_focus,
+        technical_context=technical_context,
+    )
     ai_analysis = build_ai_comprehensive_analysis(
         response.asset,
         weekly_news_focus,
         canonical_fact_citation_ids=stable_citation_ids,
         canonical_source_document_ids=[source.source_document_id for source in source_documents[:1]],
+        economic_indicators=economic_indicators,
+        market_news_focus=market_news_focus,
+        technical_context=technical_context,
+        generation_evidence_pack=generation_evidence_pack,
     )
     weekly_response = WeeklyNewsResponse(
         asset=response.asset.model_copy(update={"status": AssetStatus.supported, "supported": True}),
@@ -172,12 +194,19 @@ def build_lightweight_weekly_news_response(response: LightweightFetchResponse) -
         weekly_news_focus=weekly_news_focus,
         ai_comprehensive_analysis=ai_analysis,
     )
-    _page_build_cache_set("weekly_news", response, weekly_response)
+    if not has_context_override:
+        _page_build_cache_set("weekly_news", response, weekly_response)
     return weekly_response
 
 
-def build_lightweight_overview_response(response: LightweightFetchResponse) -> OverviewResponse:
-    cached = _page_build_cache_get("overview", response)
+def build_lightweight_overview_response(
+    response: LightweightFetchResponse,
+    *,
+    economic_indicators: EconomicIndicatorsPackResponse | None = None,
+    technical_context: dict[str, Any] | None = None,
+) -> OverviewResponse:
+    has_context_override = economic_indicators is not None or technical_context is not None
+    cached = None if has_context_override else _page_build_cache_get("overview", response)
     if cached is not None:
         return cached
 
@@ -195,17 +224,35 @@ def build_lightweight_overview_response(response: LightweightFetchResponse) -> O
     default_citation_ids = [citation.citation_id for citation in citations[:1]]
     provider_citation_ids = _citation_ids_for_source_label(response, "provider_derived") or default_citation_ids
     stable_citation_ids = _preferred_citation_ids(response) or default_citation_ids
-    sections = _stock_sections(response, stable_citation_ids, provider_citation_ids) if response.asset.asset_type is AssetType.stock else _etf_sections(response, stable_citation_ids, provider_citation_ids)
-    claims = _claims(response, stable_citation_ids, provider_citation_ids)
     weekly_news_focus = build_lightweight_weekly_news_focus(response) or _empty_weekly_news_focus(response)
+    with deterministic_summary_generation():
+        market_news_kwargs: dict[str, Any] = {"cache_only": True}
+        if economic_indicators is not None:
+            market_news_kwargs["economic_indicators"] = economic_indicators
+        market_news = build_runtime_market_news_response(**market_news_kwargs)
+    generation_evidence_pack = evidence_pack_from_lightweight_response(
+        response,
+        economic_indicators=economic_indicators,
+        market_news_focus=market_news.market_news_focus,
+        weekly_news_focus=weekly_news_focus,
+        technical_context=technical_context,
+    )
+    sections = (
+        _stock_sections(response, stable_citation_ids, provider_citation_ids, generation_evidence_pack=generation_evidence_pack)
+        if response.asset.asset_type is AssetType.stock
+        else _etf_sections(response, stable_citation_ids, provider_citation_ids, generation_evidence_pack=generation_evidence_pack)
+    )
+    claims = _claims(response, stable_citation_ids, provider_citation_ids)
     ai_analysis = build_ai_comprehensive_analysis(
         response.asset,
         weekly_news_focus,
         canonical_fact_citation_ids=stable_citation_ids,
         canonical_source_document_ids=[source.source_document_id for source in sources[:1]],
+        economic_indicators=economic_indicators,
+        market_news_focus=market_news.market_news_focus,
+        technical_context=technical_context,
+        generation_evidence_pack=generation_evidence_pack,
     )
-    with deterministic_summary_generation():
-        market_news = build_runtime_market_news_response(cache_only=True)
 
     overview = OverviewResponse(
         asset=response.asset.model_copy(update={"status": AssetStatus.supported, "supported": True}),
@@ -218,8 +265,13 @@ def build_lightweight_overview_response(response: LightweightFetchResponse) -> O
         ),
         freshness=response.freshness,
         snapshot=_snapshot(response, stable_citation_ids, provider_citation_ids),
-        beginner_summary=_beginner_summary(response),
-        top_risks=_top_risks(response, stable_citation_ids, provider_citation_ids),
+        beginner_summary=_beginner_summary(response, generation_evidence_pack=generation_evidence_pack),
+        top_risks=_top_risks(
+            response,
+            stable_citation_ids,
+            provider_citation_ids,
+            generation_evidence_pack=generation_evidence_pack,
+        ),
         recent_developments=[],
         market_news_focus=market_news.market_news_focus,
         market_ai_comprehensive_analysis=market_news.market_ai_comprehensive_analysis,
@@ -233,7 +285,8 @@ def build_lightweight_overview_response(response: LightweightFetchResponse) -> O
         section_freshness_validation=[],
         fallback_diagnostics=_fallback_diagnostics(response),
     )
-    _page_build_cache_set("overview", response, overview)
+    if not has_context_override:
+        _page_build_cache_set("overview", response, overview)
     return overview
 
 
@@ -668,7 +721,11 @@ def _supporting_passage(source: LightweightFetchSource, response: LightweightFet
     return source.fallback_reason or source.rights_note
 
 
-def _beginner_summary(response: LightweightFetchResponse) -> BeginnerSummary:
+def _beginner_summary(
+    response: LightweightFetchResponse,
+    *,
+    generation_evidence_pack: dict[str, Any] | None = None,
+) -> BeginnerSummary:
     if response.asset.asset_type is AssetType.stock:
         return _generated_beginner_summary(
             response,
@@ -686,6 +743,7 @@ def _beginner_summary(response: LightweightFetchResponse) -> BeginnerSummary:
                     "market reference data and does not make buy, sell, hold, or allocation recommendations."
                 ),
             ),
+            generation_evidence_pack=generation_evidence_pack,
         )
     if _has_official_etf_issuer_evidence(response):
         return _generated_beginner_summary(
@@ -704,6 +762,7 @@ def _beginner_summary(response: LightweightFetchResponse) -> BeginnerSummary:
                     "fields stay separately labeled and complex products remain blocked."
                 ),
             ),
+            generation_evidence_pack=generation_evidence_pack,
         )
     return _generated_beginner_summary(
         response,
@@ -721,19 +780,30 @@ def _beginner_summary(response: LightweightFetchResponse) -> BeginnerSummary:
                 "fields are labeled and complex products remain blocked."
             ),
         ),
+        generation_evidence_pack=generation_evidence_pack,
     )
 
 
 def _generated_beginner_summary(
     response: LightweightFetchResponse,
     base_summary: BeginnerSummary,
+    *,
+    generation_evidence_pack: dict[str, Any] | None = None,
 ) -> BeginnerSummary:
+    evidence_pack = generation_evidence_pack or evidence_pack_from_lightweight_response(response)
     try:
         return build_default_summary_generation_service().generate_beginner_summary(
             asset=response.asset,
             base_summary=base_summary,
-            citation_ids=_preferred_citation_ids(response) or [citation.citation_id for citation in response.citations[:1]],
+            citation_ids=[
+                str(item["citation_id"])
+                for item in evidence_pack.get("citation_evidence", [])
+                if isinstance(item, dict) and item.get("citation_id")
+            ]
+            or _preferred_citation_ids(response)
+            or [citation.citation_id for citation in response.citations[:1]],
             evidence_notes=[diagnostic for diagnostic in _lightweight_evidence_note_candidates(response) if diagnostic],
+            generation_evidence_pack=evidence_pack,
         )
     except SummaryGenerationContractError:
         return base_summary
@@ -802,6 +872,8 @@ def _top_risks(
     response: LightweightFetchResponse,
     stable_citation_ids: list[str],
     provider_citation_ids: list[str],
+    *,
+    generation_evidence_pack: dict[str, Any] | None = None,
 ) -> list[RiskItem]:
     allowed_citation_ids = _dedupe([*stable_citation_ids, *provider_citation_ids])
     if response.asset.asset_type is AssetType.stock:
@@ -859,7 +931,13 @@ def _top_risks(
                 citation_ids=provider_citation_ids or stable_citation_ids,
             ),
         ]
-        return _generated_top_risks(response, candidates, fallback, allowed_citation_ids)
+        return _generated_top_risks(
+            response,
+            candidates,
+            fallback,
+            allowed_citation_ids,
+            generation_evidence_pack=generation_evidence_pack,
+        )
     narrow_or_specialized = _is_narrow_or_specialized_etf(response)
     benchmark = _fact_value(response, "benchmark")
     holdings_count = _fact_value(response, "holdings_count")
@@ -922,7 +1000,13 @@ def _top_risks(
             citation_ids=stable_citation_ids,
         ),
     ]
-    return _generated_top_risks(response, candidates, fallback, allowed_citation_ids)
+    return _generated_top_risks(
+        response,
+        candidates,
+        fallback,
+        allowed_citation_ids,
+        generation_evidence_pack=generation_evidence_pack,
+    )
 
 
 def _generated_top_risks(
@@ -930,6 +1014,8 @@ def _generated_top_risks(
     candidates: list[RiskItem],
     fallback: list[RiskItem],
     allowed_citation_ids: list[str],
+    *,
+    generation_evidence_pack: dict[str, Any] | None = None,
 ) -> list[RiskItem]:
     if len(fallback) != 3 or not allowed_citation_ids:
         return fallback[:3]
@@ -940,6 +1026,7 @@ def _generated_top_risks(
             fallback_risks=fallback,
             allowed_citation_ids=allowed_citation_ids,
             evidence_notes=[diagnostic for diagnostic in _lightweight_evidence_note_candidates(response) if diagnostic],
+            generation_evidence_pack=generation_evidence_pack or evidence_pack_from_lightweight_response(response),
         )
     except SummaryGenerationContractError:
         return fallback[:3]
@@ -975,13 +1062,20 @@ def _stock_sections(
     response: LightweightFetchResponse,
     stable_citation_ids: list[str],
     provider_citation_ids: list[str],
+    *,
+    generation_evidence_pack: dict[str, Any] | None = None,
 ) -> list[OverviewSection]:
     retrieved_at = response.freshness.page_last_updated_at
     filing_citations = _citation_ids_for_fact(response, "latest_sec_filing", stable_citation_ids)
     identity_citations = _citation_ids_for_fact(response, "sec_identity", stable_citation_ids)
     financial_metrics = _stock_metrics(response, stable_citation_ids)
     has_market_reference = bool(provider_citation_ids)
-    risks = _top_risks(response, stable_citation_ids, provider_citation_ids)
+    risks = _top_risks(
+        response,
+        stable_citation_ids,
+        provider_citation_ids,
+        generation_evidence_pack=generation_evidence_pack,
+    )
     suitability = _suitability_summary(response, stable_citation_ids)
     profile_table = _stock_profile_table(response, provider_citation_ids)
     financial_table = _stock_financial_table(response, stable_citation_ids, provider_citation_ids)
@@ -1141,7 +1235,13 @@ def _stock_sections(
             retrieved_at=retrieved_at,
             limitations="Provider-derived market reference is not official company evidence.",
         ),
-        _evidence_limits_section(response, stable_citation_ids, provider_citation_ids, applies_to=[AssetType.stock]),
+        _evidence_limits_section(
+            response,
+            stable_citation_ids,
+            provider_citation_ids,
+            applies_to=[AssetType.stock],
+            generation_evidence_pack=generation_evidence_pack,
+        ),
         _educational_suitability_section(
             response,
             suitability,
@@ -1149,13 +1249,19 @@ def _stock_sections(
             applies_to=[AssetType.stock],
         ),
     ]
-    return _generated_section_summaries(response, [*sections, *_gap_sections(response)])
+    return _generated_section_summaries(
+        response,
+        [*sections, *_gap_sections(response)],
+        generation_evidence_pack=generation_evidence_pack,
+    )
 
 
 def _etf_sections(
     response: LightweightFetchResponse,
     stable_citation_ids: list[str],
     provider_citation_ids: list[str],
+    *,
+    generation_evidence_pack: dict[str, Any] | None = None,
 ) -> list[OverviewSection]:
     retrieved_at = response.freshness.page_last_updated_at
     has_issuer = _has_official_etf_issuer_evidence(response)
@@ -1165,7 +1271,12 @@ def _etf_sections(
     benchmark_metric = _etf_metric(response, "benchmark", "Benchmark", stable_citation_ids)
     holdings_count_metric = _etf_metric(response, "holdings_count", "Holdings count", stable_citation_ids)
     prospectus_citations = _citation_ids_for_fact(response, "prospectus_reference", stable_citation_ids)
-    risks = _top_risks(response, stable_citation_ids, provider_citation_ids)
+    risks = _top_risks(
+        response,
+        stable_citation_ids,
+        provider_citation_ids,
+        generation_evidence_pack=generation_evidence_pack,
+    )
     suitability = _suitability_summary(response, stable_citation_ids)
     overview_table = _etf_overview_table(response, stable_citation_ids, provider_citation_ids)
     holdings_table = _etf_holdings_table(response, stable_citation_ids, provider_citation_ids)
@@ -1306,7 +1417,13 @@ def _etf_sections(
             retrieved_at=retrieved_at,
             limitations="Comparison and overlap context requires verified comparison packs or issuer holdings overlap evidence.",
         ),
-        _evidence_limits_section(response, stable_citation_ids, provider_citation_ids, applies_to=[AssetType.etf]),
+        _evidence_limits_section(
+            response,
+            stable_citation_ids,
+            provider_citation_ids,
+            applies_to=[AssetType.etf],
+            generation_evidence_pack=generation_evidence_pack,
+        ),
         _educational_suitability_section(
             response,
             suitability,
@@ -1315,7 +1432,7 @@ def _etf_sections(
         ),
         *_gap_sections(response),
     ]
-    return _generated_section_summaries(response, sections)
+    return _generated_section_summaries(response, sections, generation_evidence_pack=generation_evidence_pack)
 
 
 def _gap_sections(response: LightweightFetchResponse) -> list[OverviewSection]:
@@ -1359,6 +1476,7 @@ def _evidence_limits_section(
     provider_citation_ids: list[str],
     *,
     applies_to: list[AssetType],
+    generation_evidence_pack: dict[str, Any] | None = None,
 ) -> OverviewSection:
     if response.asset.asset_type is AssetType.stock:
         summary = (
@@ -1450,6 +1568,7 @@ def _evidence_limits_section(
         base_summary=summary,
         citation_ids=citation_ids,
         evidence_state=EvidenceState.partial,
+        generation_evidence_pack=generation_evidence_pack,
     )
     return OverviewSection(
         section_id="evidence_limits",
@@ -1478,7 +1597,9 @@ def _generated_deep_dive_summary(
     citation_ids: list[str],
     evidence_state: EvidenceState,
     evidence_notes: list[str] | None = None,
+    generation_evidence_pack: dict[str, Any] | None = None,
 ) -> str | None:
+    evidence_pack = generation_evidence_pack or evidence_pack_from_lightweight_response(response)
     try:
         return build_default_summary_generation_service().generate_deep_dive_summary(
             asset=response.asset,
@@ -1488,6 +1609,7 @@ def _generated_deep_dive_summary(
             citation_ids=citation_ids,
             evidence_state=evidence_state.value,
             evidence_notes=evidence_notes or [],
+            generation_evidence_pack=evidence_pack,
         )
     except SummaryGenerationContractError:
         return base_summary
@@ -1496,6 +1618,8 @@ def _generated_deep_dive_summary(
 def _generated_section_summaries(
     response: LightweightFetchResponse,
     sections: list[OverviewSection],
+    *,
+    generation_evidence_pack: dict[str, Any] | None = None,
 ) -> list[OverviewSection]:
     refined: list[OverviewSection] = []
     for section in sections:
@@ -1510,6 +1634,7 @@ def _generated_section_summaries(
             citation_ids=section.citation_ids,
             evidence_state=section.evidence_state,
             evidence_notes=_section_evidence_notes(section),
+            generation_evidence_pack=generation_evidence_pack,
         )
         refined.append(section.model_copy(update={"beginner_summary": summary}))
     return refined

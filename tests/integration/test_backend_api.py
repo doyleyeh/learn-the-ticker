@@ -414,8 +414,9 @@ def test_market_news_endpoint_uses_runtime_market_news_boundary(monkeypatch):
     calls: list[str] = []
     sentinel = build_market_news_response(as_of="2026-04-23")
 
-    def fake_runtime_market_news_response():
+    def fake_runtime_market_news_response(**kwargs):
         calls.append("runtime")
+        assert "economic_indicators" in kwargs
         return sentinel
 
     monkeypatch.setattr(main_module, "build_runtime_market_news_response", fake_runtime_market_news_response)

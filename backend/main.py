@@ -285,6 +285,7 @@ def pre_cache_asset(ticker: str) -> PreCacheJobResponse:
 @app.get("/api/assets/{ticker}/overview", response_model=OverviewResponse, tags=["assets"])
 def asset_overview(ticker: str, mode: str = "beginner") -> OverviewResponse:
     readers = _read_dependencies()
+    economic_pack = _current_economic_indicators_pack()
     lightweight_response = fetch_lightweight_page_data_if_enabled(ticker)
     if lightweight_response is not None:
         persist_lightweight_evidence_if_configured(
@@ -292,8 +293,8 @@ def asset_overview(ticker: str, mode: str = "beginner") -> OverviewResponse:
             source_snapshot_repository=readers.reader("source_snapshot_repository"),
             knowledge_pack_repository=readers.reader("knowledge_pack_reader"),
         )
-        overview = build_lightweight_overview_response(lightweight_response)
-        return overview.model_copy(update={"economic_indicators": _current_economic_indicators_pack()})
+        overview = build_lightweight_overview_response(lightweight_response, economic_indicators=economic_pack)
+        return overview.model_copy(update={"economic_indicators": economic_pack})
 
     overview = generate_asset_overview(
         ticker,
@@ -301,8 +302,9 @@ def asset_overview(ticker: str, mode: str = "beginner") -> OverviewResponse:
         generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
         source_snapshot_reader=readers.reader("source_snapshot_repository"),
         persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
+        economic_indicators=economic_pack,
     )
-    return overview.model_copy(update={"economic_indicators": _current_economic_indicators_pack()})
+    return overview.model_copy(update={"economic_indicators": economic_pack})
 
 
 @app.get("/api/economic-indicators", response_model=EconomicIndicatorsPackResponse, tags=["market-news"])
@@ -324,7 +326,7 @@ def market_news() -> MarketNewsResponse:
     imported = analysis_pack_repository().read_fresh_market_news_response()
     if imported is not None:
         return imported
-    response = build_runtime_market_news_response()
+    response = build_runtime_market_news_response(economic_indicators=_current_economic_indicators_pack())
     return response.model_copy(update={"analysis_pack_metadata": build_backend_generated_metadata()})
 
 
@@ -505,6 +507,7 @@ def asset_weekly_news(ticker: str) -> WeeklyNewsResponse:
         return imported
 
     readers = _read_dependencies()
+    economic_pack = _current_economic_indicators_pack()
     lightweight_response = fetch_lightweight_page_data_if_enabled(ticker)
     if lightweight_response is not None:
         persist_lightweight_evidence_if_configured(
@@ -512,7 +515,7 @@ def asset_weekly_news(ticker: str) -> WeeklyNewsResponse:
             source_snapshot_repository=readers.reader("source_snapshot_repository"),
             knowledge_pack_repository=readers.reader("knowledge_pack_reader"),
         )
-        response = build_lightweight_weekly_news_response(lightweight_response)
+        response = build_lightweight_weekly_news_response(lightweight_response, economic_indicators=economic_pack)
         return response.model_copy(update={"analysis_pack_metadata": build_backend_generated_metadata()})
 
     overview = generate_asset_overview(
@@ -521,6 +524,7 @@ def asset_weekly_news(ticker: str) -> WeeklyNewsResponse:
         generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
         source_snapshot_reader=readers.reader("source_snapshot_repository"),
         persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
+        economic_indicators=economic_pack,
     )
     return WeeklyNewsResponse(
         asset=overview.asset,

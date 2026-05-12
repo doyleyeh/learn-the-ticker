@@ -20,8 +20,12 @@ def validate_analysis_pack_numeric_integrity(bundle: AnalysisPackImportBundle) -
         fact for fact in context.get("allowed_numeric_facts", [])
         if isinstance(fact, dict) and isinstance(fact.get("value"), (int, float))
     ]
+    return validate_generated_numeric_integrity(_analysis_texts(bundle), allowed_facts)
+
+
+def validate_generated_numeric_integrity(texts: list[str], allowed_facts: list[dict[str, Any]]) -> list[str]:
     reason_codes: list[str] = []
-    for text in _analysis_texts(bundle):
+    for text in texts:
         lowered = text.lower()
         if _technical_field_misuse(lowered):
             reason_codes.append("technical_indicator_field_misused_as_price")

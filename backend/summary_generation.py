@@ -11,6 +11,15 @@ import time
 from collections.abc import Mapping
 from typing import Any, Callable, Protocol
 
+from backend.analysis_pack_numeric_validation import validate_generated_numeric_integrity
+from backend.citations import CitationValidationClaim, CitationValidationContext
+from backend.generation_evidence import (
+    GENERATION_EVIDENCE_PACK_SCHEMA_VERSION,
+    empty_generation_evidence_pack,
+    generation_pack_allowed_asset_tickers,
+    generation_pack_allowed_numeric_facts,
+    generation_pack_citation_evidence,
+)
 from backend.llm import (
     DEFAULT_OPENROUTER_BASE_URL,
     DEFAULT_OPENROUTER_FREE_MODEL_ORDER,
@@ -57,6 +66,7 @@ DEFAULT_GENERATION_CACHE_TTL_SECONDS = 60 * 60
 DEFAULT_LIVE_GENERATION_TASK_ALLOWLIST = frozenset(
     {
         "beginner_summary",
+        "deep_dive_summary",
         "top_3_risks",
         "market_ai_comprehensive_analysis",
         "ticker_ai_comprehensive_analysis",
@@ -80,6 +90,100 @@ _MARKET_AI_SECTION_ORDER = (
     ("scenario_lens", "Scenario Lens"),
     ("practical_watchpoints", "Practical Watchpoints"),
 )
+_TASK_PROMPT_SPECS: dict[str, dict[str, Any]] = {
+    "beginner_summary": {
+        "objective": "Write a concise asset-specific explanation from canonical facts, not a generic restatement.",
+        "output_shape": {
+            "what_it_is": "string",
+            "why_people_consider_it": "string",
+            "main_catch": "string",
+            "supporting_claims": [{"claim_text": "string", "claim_type": "factual|interpretation|risk", "citation_ids": ["id"]}],
+        },
+        "instructions": [
+            "Use canonical_facts and source_passages before market/news context.",
+            "Make every asset-specific factual phrase traceable to supporting_claims.",
+            "Do not repeat page labels or local fixture wording unless it is the only supported evidence.",
+        ],
+    },
+    "deep_dive_summary": {
+        "objective": "Add non-redundant analytical context for one section using the section evidence.",
+        "output_shape": {
+            "summary": "string",
+            "supporting_claims": [{"claim_text": "string", "claim_type": "factual|interpretation|risk", "citation_ids": ["id"]}],
+        },
+        "instructions": [
+            "Connect section facts to business, fund, risk, or evidence-limit implications.",
+            "Do not duplicate dashboard rows without explaining why they matter.",
+            "If evidence_state is partial, name the limitation in plain English.",
+        ],
+    },
+    "top_3_risks": {
+        "objective": "Select exactly three evidence-derived risks and explain them without advice.",
+        "output_shape": {
+            "risks": [
+                {
+                    "title": "candidate title",
+                    "plain_english_explanation": "string",
+                    "citation_ids": ["id"],
+                    "supporting_claims": [{"claim_text": "string", "claim_type": "risk", "citation_ids": ["id"]}],
+                }
+            ]
+        },
+        "instructions": ["Use only candidate risk titles.", "No trading, allocation, or suitability recommendations."],
+    },
+    "market_ai_comprehensive_analysis": {
+        "objective": "Synthesize selected Market News with macro indicators and allowed numeric facts.",
+        "output_shape": {
+            "sections": [
+                {
+                    "section_id": "required id",
+                    "label": "required label",
+                    "analysis": "string",
+                    "bullets": ["string"],
+                    "citation_ids": ["id"],
+                    "uncertainty": ["string"],
+                    "supporting_claims": [{"claim_text": "string", "claim_type": "recent|interpretation|factual", "citation_ids": ["id"]}],
+                }
+            ]
+        },
+        "instructions": [
+            "Use selected market_news and economic_indicators only; never infer from unselected headlines.",
+            "Every explicit number must appear in allowed_numeric_facts.",
+            "Use Scenario Lens as conditional education, not prediction.",
+        ],
+    },
+    "ticker_ai_comprehensive_analysis": {
+        "objective": "Connect ticker Weekly News to canonical facts, market context, macro context, and compact technical context.",
+        "output_shape": {
+            "sections": [
+                {
+                    "section_id": "required id",
+                    "label": "required label",
+                    "analysis": "string",
+                    "bullets": ["string"],
+                    "citation_ids": ["id"],
+                    "uncertainty": ["string"],
+                    "supporting_claims": [{"claim_text": "string", "claim_type": "recent|interpretation|risk|factual", "citation_ids": ["id"]}],
+                }
+            ]
+        },
+        "instructions": [
+            "Start from weekly_news, then connect only to supplied canonical_facts, market_news, economic_indicators, and technical_indicators.",
+            "Keep stable asset identity separate from timely context.",
+            "Mention technical indicators only as educational context and only when supplied.",
+        ],
+    },
+    "grounded_chat_answer": {
+        "objective": "Answer from selected same-asset evidence while preserving required claims.",
+        "output_shape": {
+            "direct_answer": "string",
+            "why_it_matters": "string",
+            "uncertainty": ["string"],
+            "supporting_claims": [{"claim_text": "string", "claim_type": "factual|interpretation|risk|recent", "citation_ids": ["id"]}],
+        },
+        "instructions": ["Keep all required_claim_texts in direct_answer.", "No second-ticker comparison unless routed elsewhere."],
+    },
+}
 _PREDICTION_MARKERS = ("price target", "guaranteed", "will outperform", "will rise", "will fall", "forecast")
 _GENERIC_BEGINNER_MARKERS = ("u.s.-listed etf", "u.s.-listed common stock", "local-mvp fetch pipeline")
 _ENV_KEY = "OPENROUTER" + "_API_KEY"
@@ -134,6 +238,7 @@ class SummaryGenerationService(Protocol):
         base_summary: BeginnerSummary,
         citation_ids: list[str],
         evidence_notes: list[str] | None = None,
+        generation_evidence_pack: dict[str, Any] | None = None,
     ) -> BeginnerSummary:
         ...
 
@@ -147,6 +252,7 @@ class SummaryGenerationService(Protocol):
         citation_ids: list[str],
         evidence_state: str,
         evidence_notes: list[str] | None = None,
+        generation_evidence_pack: dict[str, Any] | None = None,
     ) -> str | None:
         ...
 
@@ -158,6 +264,7 @@ class SummaryGenerationService(Protocol):
         fallback_risks: list[RiskItem],
         allowed_citation_ids: list[str],
         evidence_notes: list[str] | None = None,
+        generation_evidence_pack: dict[str, Any] | None = None,
     ) -> list[RiskItem]:
         ...
 
@@ -167,6 +274,7 @@ class SummaryGenerationService(Protocol):
         focus: MarketNewsFocusResponse,
         minimum_market_news_item_count: int,
         minimum_topic_bucket_count: int,
+        generation_evidence_pack: dict[str, Any] | None = None,
     ) -> MarketAIComprehensiveAnalysisResponse:
         ...
 
@@ -179,6 +287,7 @@ class SummaryGenerationService(Protocol):
         canonical_source_document_ids: list[str],
         minimum_weekly_news_item_count: int,
         weekly_news_selected_item_count: int,
+        generation_evidence_pack: dict[str, Any] | None = None,
     ) -> AIComprehensiveAnalysisResponse:
         ...
 
@@ -194,6 +303,7 @@ class SummaryGenerationService(Protocol):
         required_claim_texts: list[str],
         evidence_summaries: list[str],
         uncertainty: list[str],
+        generation_evidence_pack: dict[str, Any] | None = None,
     ) -> GeneratedChatAnswer:
         ...
 
@@ -226,7 +336,9 @@ class HybridSummaryGenerationService:
         base_summary: BeginnerSummary,
         citation_ids: list[str],
         evidence_notes: list[str] | None = None,
+        generation_evidence_pack: dict[str, Any] | None = None,
     ) -> BeginnerSummary:
+        evidence_pack = _generation_evidence_pack(generation_evidence_pack, asset_ticker=asset.ticker)
         request = SummaryGenerationRequest(
             task_name="beginner_summary",
             schema_version=BEGINNER_SUMMARY_SCHEMA_VERSION,
@@ -235,6 +347,7 @@ class HybridSummaryGenerationService:
                 "base_summary": base_summary.model_dump(mode="json"),
                 "citation_ids": sorted(set(citation_ids)),
                 "evidence_notes": evidence_notes or [],
+                "generation_evidence_pack": evidence_pack,
             },
         )
         fallback = _beginner_fallback_payload(asset, base_summary, evidence_notes or [])
@@ -248,7 +361,9 @@ class HybridSummaryGenerationService:
         _validate_text_blob(
             " ".join([summary.what_it_is, summary.why_people_consider_it, summary.main_catch]),
             weekly_news_rules_valid=True,
+            generation_evidence_pack=evidence_pack,
         )
+        _validate_supporting_claims(payload, evidence_pack, output_text=" ".join(summary.model_dump().values()), required=generated.cacheable)
         self._remember_valid_payload(generated)
         return summary
 
@@ -262,9 +377,11 @@ class HybridSummaryGenerationService:
         citation_ids: list[str],
         evidence_state: str,
         evidence_notes: list[str] | None = None,
+        generation_evidence_pack: dict[str, Any] | None = None,
     ) -> str | None:
         if not base_summary:
             return base_summary
+        evidence_pack = _generation_evidence_pack(generation_evidence_pack, asset_ticker=asset.ticker)
         request = SummaryGenerationRequest(
             task_name="deep_dive_summary",
             schema_version=DEEP_DIVE_SCHEMA_VERSION,
@@ -276,13 +393,15 @@ class HybridSummaryGenerationService:
                 "citation_ids": sorted(set(citation_ids)),
                 "evidence_state": evidence_state,
                 "evidence_notes": evidence_notes or [],
+                "generation_evidence_pack": evidence_pack,
             },
         )
         fallback = {"summary": _deep_dive_fallback(asset, section_id, title, base_summary, evidence_state, evidence_notes or [])}
         generated = self._payload_or_fallback(request, fallback)
         payload = generated.payload
         summary = _required_text(payload, "summary")
-        _validate_text_blob(summary, weekly_news_rules_valid=True)
+        _validate_text_blob(summary, weekly_news_rules_valid=True, generation_evidence_pack=evidence_pack)
+        _validate_supporting_claims(payload, evidence_pack, output_text=summary, required=generated.cacheable)
         self._remember_valid_payload(generated)
         return summary
 
@@ -294,10 +413,12 @@ class HybridSummaryGenerationService:
         fallback_risks: list[RiskItem],
         allowed_citation_ids: list[str],
         evidence_notes: list[str] | None = None,
+        generation_evidence_pack: dict[str, Any] | None = None,
     ) -> list[RiskItem]:
         if len(fallback_risks) != 3:
             raise SummaryGenerationContractError("Top risk fallback must contain exactly three risks.")
         allowed = set(allowed_citation_ids)
+        evidence_pack = _generation_evidence_pack(generation_evidence_pack, asset_ticker=asset.ticker)
         fallback = {"risks": [risk.model_dump(mode="json") for risk in fallback_risks]}
         request = SummaryGenerationRequest(
             task_name="top_3_risks",
@@ -308,6 +429,7 @@ class HybridSummaryGenerationService:
                 "candidate_risks": [risk.model_dump(mode="json") for risk in candidate_risks],
                 "allowed_citation_ids": sorted(allowed),
                 "evidence_notes": evidence_notes or [],
+                "generation_evidence_pack": evidence_pack,
             },
         )
         generated = self._payload_or_fallback(request, fallback)
@@ -319,7 +441,9 @@ class HybridSummaryGenerationService:
         )
         if len({risk.title.lower() for risk in risks}) != 3:
             raise SummaryGenerationContractError("Top risks must have three distinct titles.")
-        _validate_text_blob(" ".join([risk.title + " " + risk.plain_english_explanation for risk in risks]))
+        risks_text = " ".join([risk.title + " " + risk.plain_english_explanation for risk in risks])
+        _validate_text_blob(risks_text, generation_evidence_pack=evidence_pack)
+        _validate_supporting_claims(payload, evidence_pack, output_text=risks_text, required=generated.cacheable)
         self._remember_valid_payload(generated)
         return risks
 
@@ -329,6 +453,7 @@ class HybridSummaryGenerationService:
         focus: MarketNewsFocusResponse,
         minimum_market_news_item_count: int,
         minimum_topic_bucket_count: int,
+        generation_evidence_pack: dict[str, Any] | None = None,
     ) -> MarketAIComprehensiveAnalysisResponse:
         selected_bucket_count = len({item.topic_bucket for item in focus.items})
         if focus.selected_item_count < minimum_market_news_item_count or selected_bucket_count < minimum_topic_bucket_count:
@@ -348,6 +473,7 @@ class HybridSummaryGenerationService:
         all_citations = sorted({citation_id for item in focus.items for citation_id in item.citation_ids})
         source_ids = sorted({source.source_document_id for source in focus.source_documents})
         story_ids = [item.story_id for item in focus.items]
+        evidence_pack = _generation_evidence_pack(generation_evidence_pack, asset_ticker="MARKET", scope="market")
         request = SummaryGenerationRequest(
             task_name="market_ai_comprehensive_analysis",
             schema_version=MARKET_AI_ANALYSIS_SCHEMA_VERSION,
@@ -367,6 +493,7 @@ class HybridSummaryGenerationService:
                 ],
                 "allowed_citation_ids": all_citations,
                 "required_section_order": [section_id for section_id, _label in _MARKET_AI_SECTION_ORDER],
+                "generation_evidence_pack": evidence_pack,
             },
         )
         fallback = {"sections": _market_ai_fallback_sections(focus, all_citations)}
@@ -376,6 +503,8 @@ class HybridSummaryGenerationService:
             payload,
             allowed_citations=set(all_citations),
             selected_titles=[item.title for item in focus.items],
+            generation_evidence_pack=evidence_pack,
+            require_supporting_claims=generated.cacheable,
         )
         response = MarketAIComprehensiveAnalysisResponse(
             state=WeeklyNewsContractState.available,
@@ -393,6 +522,7 @@ class HybridSummaryGenerationService:
         _validate_text_blob(
             " ".join([section.analysis for section in sections] + [bullet for section in sections for bullet in section.bullets]),
             weekly_news_rules_valid=True,
+            generation_evidence_pack=evidence_pack,
         )
         self._remember_valid_payload(generated)
         return response
@@ -406,6 +536,7 @@ class HybridSummaryGenerationService:
         canonical_source_document_ids: list[str],
         minimum_weekly_news_item_count: int,
         weekly_news_selected_item_count: int,
+        generation_evidence_pack: dict[str, Any] | None = None,
     ) -> AIComprehensiveAnalysisResponse:
         weekly_citations = sorted({citation_id for item in weekly_news_focus.items for citation_id in item.citation_ids})
         all_citations = sorted({*weekly_citations, *canonical_fact_citation_ids})
@@ -432,6 +563,7 @@ class HybridSummaryGenerationService:
             }
             for item in weekly_news_focus.items
         ]
+        evidence_pack = _generation_evidence_pack(generation_evidence_pack, asset_ticker=asset.ticker, scope="ticker")
         request = SummaryGenerationRequest(
             task_name="ticker_ai_comprehensive_analysis",
             schema_version=TICKER_AI_ANALYSIS_SCHEMA_VERSION,
@@ -449,6 +581,7 @@ class HybridSummaryGenerationService:
                     "Explain what the evidence changes, what it does not change, and what a beginner can check next.",
                     "Keep recent news separate from stable asset identity.",
                 ],
+                "generation_evidence_pack": evidence_pack,
             },
         )
         fallback = {"sections": _ticker_ai_fallback_sections(asset, weekly_news_focus, all_citations, weekly_citations, asset_kind)}
@@ -458,6 +591,8 @@ class HybridSummaryGenerationService:
             payload,
             allowed_citations=set(all_citations),
             selected_titles=[item.title for item in weekly_news_focus.items],
+            generation_evidence_pack=evidence_pack,
+            require_supporting_claims=generated.cacheable,
         )
         response = AIComprehensiveAnalysisResponse(
             asset=asset,
@@ -475,6 +610,7 @@ class HybridSummaryGenerationService:
         _validate_text_blob(
             " ".join([section.analysis for section in sections] + [bullet for section in sections for bullet in section.bullets]),
             weekly_news_rules_valid=weekly_news_selected_item_count >= minimum_weekly_news_item_count,
+            generation_evidence_pack=evidence_pack,
         )
         self._remember_valid_payload(generated)
         return response
@@ -491,7 +627,9 @@ class HybridSummaryGenerationService:
         required_claim_texts: list[str],
         evidence_summaries: list[str],
         uncertainty: list[str],
+        generation_evidence_pack: dict[str, Any] | None = None,
     ) -> GeneratedChatAnswer:
+        evidence_pack = _generation_evidence_pack(generation_evidence_pack, asset_ticker=asset.ticker, scope="chat")
         request = SummaryGenerationRequest(
             task_name="grounded_chat_answer",
             schema_version=CHAT_ANSWER_SCHEMA_VERSION,
@@ -504,6 +642,7 @@ class HybridSummaryGenerationService:
                 "citation_ids": sorted(set(citation_ids)),
                 "required_claim_texts": required_claim_texts,
                 "evidence_summaries": evidence_summaries,
+                "generation_evidence_pack": evidence_pack,
             },
         )
         if not citation_ids or base_direct_answer.lower().startswith("insufficient evidence"):
@@ -526,7 +665,9 @@ class HybridSummaryGenerationService:
             why_it_matters=_required_text(payload, "why_it_matters"),
             uncertainty=[str(item) for item in payload.get("uncertainty", []) if str(item).strip()],
         )
-        _validate_text_blob(f"{answer.direct_answer} {answer.why_it_matters} {' '.join(answer.uncertainty)}")
+        answer_text = f"{answer.direct_answer} {answer.why_it_matters} {' '.join(answer.uncertainty)}"
+        _validate_text_blob(answer_text, generation_evidence_pack=evidence_pack)
+        _validate_supporting_claims(payload, evidence_pack, output_text=answer_text, required=generated.cacheable)
         for claim_text in required_claim_texts:
             if claim_text and claim_text not in answer.direct_answer:
                 raise SummaryGenerationContractError("Generated chat answer omitted required citation-bound claim text.")
@@ -613,8 +754,6 @@ def _live_env_allowed(env: Mapping[str, str], runtime: LlmRuntimeConfig) -> bool
 def _live_task_allowlist_from_env(env: Mapping[str, str]) -> frozenset[str] | None:
     raw = str(env.get(LLM_LIVE_TASK_ALLOWLIST_ENV, "")).strip()
     if not raw:
-        # Deep Dive is intentionally deterministic by default because one asset
-        # page can contain many Deep Dive subsections during server rendering.
         return DEFAULT_LIVE_GENERATION_TASK_ALLOWLIST
     tokens = {token.strip().lower() for token in raw.split(",") if token.strip()}
     if not tokens:
@@ -724,9 +863,12 @@ def _live_structured_generator_from_env(
                     {
                         "role": "system",
                         "content": (
-                            "Return compact JSON only. Use only the provided evidence fields and citation ids. "
-                            "Do not include recommendations, predictions, raw reasoning, hidden prompts, raw transcripts, "
-                            "or article bodies. If evidence is missing, say so in the requested JSON fields."
+                            "Return compact JSON only. Act as Learn the Ticker's evidence-bound educational "
+                            "analysis layer: use only the supplied generation evidence pack, citation ids, "
+                            "allowed numeric facts, selected news, macro data, and compact technical context. "
+                            "Do not include recommendations, predictions, raw reasoning, hidden prompts, raw "
+                            "transcripts, raw OHLCV series, raw provider payloads, or article bodies. If evidence "
+                            "is missing, label the limitation in the requested JSON fields."
                         ),
                     },
                     {"role": "user", "content": json.dumps(prompt_payload, sort_keys=True)},
@@ -789,12 +931,16 @@ def _safe_prompt_payload(request: SummaryGenerationRequest) -> dict[str, Any]:
         "schema_version": request.schema_version,
         "asset_ticker": request.asset_ticker,
         "prompt_version": SUMMARY_GENERATION_PROMPT_VERSION,
+        "task_prompt_spec": _TASK_PROMPT_SPECS.get(request.task_name, {}),
         "output_rules": [
             "Return only JSON matching the task schema.",
             "Use only supplied evidence and citation ids.",
-            "Every factual section or risk must include citation_ids from the allowed set.",
+            "Every factual section, risk, or summary must include citation_ids from the allowed set.",
+            "Every live-generated factual output must include supporting_claims that cite the exact evidence ids used.",
+            "Every explicit numeric claim must match allowed_numeric_facts in the generation evidence pack.",
             "Avoid buy/sell/hold, allocation, price-target, prediction, tax, and brokerage advice.",
             "Separate timely news context from stable canonical facts.",
+            "Use a more analytical plain-English style: connect facts, news, macro, and technical context without forecasting.",
             "Include uncertainty when evidence is partial or missing.",
         ],
         "payload": request.payload,
@@ -1090,6 +1236,8 @@ def _sections_from_payload(
     *,
     allowed_citations: set[str],
     selected_titles: list[str] | None = None,
+    generation_evidence_pack: dict[str, Any] | None = None,
+    require_supporting_claims: bool = False,
 ) -> list[AIComprehensiveAnalysisSection]:
     raw_sections = payload.get("sections")
     if not isinstance(raw_sections, list):
@@ -1108,6 +1256,7 @@ def _sections_from_payload(
             raise SummaryGenerationContractError("Generated ticker analysis citations are missing or outside the evidence pack.")
         analysis = _required_text(raw, "analysis")
         _reject_headline_repetition(analysis, selected_titles or [])
+        _validate_supporting_claims(raw, generation_evidence_pack, output_text=analysis, required=require_supporting_claims)
         sections.append(
             AIComprehensiveAnalysisSection(
                 section_id=expected_id,  # type: ignore[arg-type]
@@ -1126,6 +1275,8 @@ def _market_sections_from_payload(
     *,
     allowed_citations: set[str],
     selected_titles: list[str],
+    generation_evidence_pack: dict[str, Any] | None = None,
+    require_supporting_claims: bool = False,
 ) -> list[MarketAIAnalysisSection]:
     raw_sections = payload.get("sections")
     if not isinstance(raw_sections, list):
@@ -1145,6 +1296,7 @@ def _market_sections_from_payload(
         analysis = _required_text(raw, "analysis")
         bullets = [str(item) for item in raw.get("bullets", []) if str(item).strip()]
         _reject_headline_repetition(analysis, selected_titles)
+        _validate_supporting_claims(raw, generation_evidence_pack, output_text=" ".join([analysis, *bullets]), required=require_supporting_claims)
         sections.append(
             MarketAIAnalysisSection(
                 section_id=expected_id,  # type: ignore[arg-type]
@@ -1188,7 +1340,80 @@ def _risks_from_payload(
     return risks
 
 
-def _validate_text_blob(text: str, *, weekly_news_rules_valid: bool = True) -> None:
+def _generation_evidence_pack(
+    pack: dict[str, Any] | None,
+    *,
+    asset_ticker: str,
+    scope: str = "asset",
+) -> dict[str, Any]:
+    if isinstance(pack, dict) and pack.get("schema_version") == GENERATION_EVIDENCE_PACK_SCHEMA_VERSION:
+        return pack
+    return empty_generation_evidence_pack(asset_ticker=asset_ticker, scope=scope)
+
+
+def _validate_supporting_claims(
+    payload: dict[str, Any],
+    generation_evidence_pack: dict[str, Any] | None,
+    *,
+    output_text: str,
+    required: bool,
+) -> None:
+    if not required:
+        return
+    supporting_claims = _collect_supporting_claims(payload)
+    if not supporting_claims:
+        raise SummaryGenerationContractError("Live generated output requires supporting_claims.")
+    evidence = generation_pack_citation_evidence(generation_evidence_pack)
+    if not evidence:
+        raise SummaryGenerationContractError("Live generated output requires citation evidence.")
+    claims = [
+        CitationValidationClaim(
+            claim_id=f"generated_supporting_claim_{index}",
+            claim_text=_required_text(claim, "claim_text"),
+            claim_type=str(claim.get("claim_type") or "factual"),
+            citation_ids=[str(item) for item in claim.get("citation_ids", [])],
+        )
+        for index, claim in enumerate(supporting_claims, start=1)
+        if isinstance(claim, dict)
+    ]
+    if len(claims) != len(supporting_claims):
+        raise SummaryGenerationContractError("supporting_claims must be objects.")
+    allowed_assets = generation_pack_allowed_asset_tickers(
+        generation_evidence_pack,
+        fallback=str((generation_evidence_pack or {}).get("asset_ticker") or "MARKET"),
+    )
+    validation = validate_llm_generated_output(
+        output_text=output_text,
+        schema_valid=True,
+        claims=claims,
+        evidence=evidence,
+        citation_context=CitationValidationContext(allowed_asset_tickers=allowed_assets),
+    )
+    if not validation.valid:
+        raise SummaryGenerationContractError(f"Generated supporting claims failed validation: {validation.status.value}")
+
+
+def _collect_supporting_claims(value: Any) -> list[dict[str, Any]]:
+    claims: list[dict[str, Any]] = []
+    if isinstance(value, dict):
+        raw = value.get("supporting_claims")
+        if isinstance(raw, list):
+            claims.extend(item for item in raw if isinstance(item, dict))
+        for child in value.values():
+            if child is not raw:
+                claims.extend(_collect_supporting_claims(child))
+    elif isinstance(value, list):
+        for child in value:
+            claims.extend(_collect_supporting_claims(child))
+    return claims
+
+
+def _validate_text_blob(
+    text: str,
+    *,
+    weekly_news_rules_valid: bool = True,
+    generation_evidence_pack: dict[str, Any] | None = None,
+) -> None:
     validation = validate_llm_generated_output(
         output_text=text,
         schema_valid=True,
@@ -1204,6 +1429,14 @@ def _validate_text_blob(text: str, *, weekly_news_rules_valid: bool = True) -> N
     forbidden = find_forbidden_output_phrases(text)
     if forbidden:
         raise SummaryGenerationContractError(f"Generated prose includes forbidden advice language: {', '.join(forbidden)}")
+    numeric_reason_codes = validate_generated_numeric_integrity(
+        [text],
+        generation_pack_allowed_numeric_facts(generation_evidence_pack),
+    )
+    if numeric_reason_codes:
+        raise SummaryGenerationContractError(
+            "Generated prose failed numeric validation: " + ", ".join(numeric_reason_codes)
+        )
 
 
 def _reject_headline_repetition(analysis: str, selected_titles: list[str]) -> None:

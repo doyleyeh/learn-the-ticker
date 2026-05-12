@@ -17,6 +17,7 @@ from backend.analysis_packs import (
 )
 from backend.data import ASSETS
 from backend.economic_indicators_live import build_live_economic_indicators_pack
+from backend.generation_evidence import evidence_pack_from_lightweight_response
 from backend.lightweight_data_fetch import fetch_lightweight_asset_data
 from backend.market_news_runtime import build_runtime_market_news_response
 from backend.market_news import build_market_news_response
@@ -109,6 +110,22 @@ def build_analysis_pack_bundle(
         economic_indicators = build_economic_indicators_pack(metadata=None)
         live_diagnostics["economic_indicators_source_mode"] = "deterministic_fixture"
 
+    technical_data_artifact = (
+        build_live_technical_data_artifact(
+            [ticker for ticker in requested_tickers if ticker in HIGH_DEMAND_ANALYSIS_PACK_TICKERS],
+            bundle_id=bundle_id_value,
+            generated_at=generated_at_value,
+            fetcher=technical_fetcher,
+        )
+        if live_mode
+        else None
+    )
+    technical_rows = (
+        technical_data_artifact.get("tickers")
+        if isinstance(technical_data_artifact, dict) and isinstance(technical_data_artifact.get("tickers"), dict)
+        else {}
+    )
+
     ticker_packs: dict[str, WeeklyNewsResponse] = {}
     skipped_tickers: list[dict[str, str]] = []
     for ticker in requested_tickers:
@@ -120,6 +137,9 @@ def build_analysis_pack_bundle(
                 ticker,
                 generated_at=generated_at_value,
                 fetcher=lightweight_fetcher,
+                economic_indicators=economic_indicators,
+                market_news_focus=market_context_pack.market_news_focus,
+                technical_context=technical_rows.get(ticker) if isinstance(technical_rows, dict) else None,
             )
             if live_pack is None:
                 skipped_tickers.append({"ticker": ticker, "reason": "live_weekly_news_or_ai_analysis_unavailable"})
@@ -129,7 +149,7 @@ def build_analysis_pack_bundle(
         if ticker not in ASSETS:
             skipped_tickers.append({"ticker": ticker, "reason": "not_available_in_current_fixture_universe"})
             continue
-        overview = generate_asset_overview(ticker)
+        overview = generate_asset_overview(ticker, economic_indicators=economic_indicators)
         if overview.weekly_news_focus is None or overview.ai_comprehensive_analysis is None:
             skipped_tickers.append({"ticker": ticker, "reason": "weekly_news_or_ai_analysis_unavailable"})
             continue
@@ -139,17 +159,6 @@ def build_analysis_pack_bundle(
             weekly_news_focus=overview.weekly_news_focus,
             ai_comprehensive_analysis=overview.ai_comprehensive_analysis,
         )
-
-    technical_data_artifact = (
-        build_live_technical_data_artifact(
-            [ticker for ticker in requested_tickers if ticker in HIGH_DEMAND_ANALYSIS_PACK_TICKERS],
-            bundle_id=bundle_id_value,
-            generated_at=generated_at_value,
-            fetcher=technical_fetcher,
-        )
-        if live_mode
-        else None
-    )
 
     if fail_on_skipped and skipped_tickers:
         skipped = ", ".join(f"{item['ticker']}:{item['reason']}" for item in skipped_tickers)
@@ -321,6 +330,9 @@ def _build_live_ticker_pack(
     *,
     generated_at: str,
     fetcher: Any | None,
+    economic_indicators: Any | None = None,
+    market_news_focus: Any | None = None,
+    technical_context: dict[str, Any] | None = None,
 ) -> WeeklyNewsResponse | None:
     settings = build_lightweight_data_settings(
         env={
@@ -342,11 +354,22 @@ def _build_live_ticker_pack(
     weekly_focus = build_lightweight_weekly_news_focus(response)
     if weekly_focus is None:
         return None
+    generation_evidence_pack = evidence_pack_from_lightweight_response(
+        response,
+        economic_indicators=economic_indicators,
+        market_news_focus=market_news_focus,
+        weekly_news_focus=weekly_focus,
+        technical_context=technical_context,
+    )
     analysis = build_ai_comprehensive_analysis(
         response.asset,
         weekly_focus,
         canonical_fact_citation_ids=[citation.citation_id for citation in response.citations[:4]],
         canonical_source_document_ids=[source.source_document_id for source in response.sources[:4]],
+        economic_indicators=economic_indicators,
+        market_news_focus=market_news_focus,
+        technical_context=technical_context,
+        generation_evidence_pack=generation_evidence_pack,
     )
     return WeeklyNewsResponse(
         asset=response.asset,

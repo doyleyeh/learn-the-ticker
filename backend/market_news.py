@@ -12,6 +12,7 @@ from xml.etree import ElementTree
 from backend.models import (
     Citation,
     EvidenceState,
+    EconomicIndicatorsPackResponse,
     FreshnessState,
     MarketAIAnalysisSection,
     MarketAIComprehensiveAnalysisResponse,
@@ -37,6 +38,7 @@ from backend.models import (
     WeeklyNewsEvidenceLimitedState,
     WeeklyNewsSourceMetadata,
 )
+from backend.generation_evidence import evidence_pack_from_market_news
 from backend.news_quality import clean_news_publisher, news_source_from_domain, publisher_priority
 from backend.safety import find_forbidden_output_phrases
 from backend.settings import MarketNewsSettings, build_market_news_settings
@@ -361,6 +363,7 @@ def build_market_news_response(
     candidates: list[MarketNewsArticleCandidate] | None = None,
     settings: MarketNewsSettings | None = None,
     fetcher: MarketNewsFetcher | None = None,
+    economic_indicators: EconomicIndicatorsPackResponse | None = None,
 ) -> MarketNewsResponse:
     settings = settings or build_market_news_settings()
     retrieved_at = _retrieved_at_for_as_of(as_of)
@@ -380,7 +383,7 @@ def build_market_news_response(
         as_of=as_of,
         no_live_external_calls=(fetcher.no_live_external_calls if fetcher is not None else True),
     )
-    analysis = build_market_ai_comprehensive_analysis(focus)
+    analysis = build_market_ai_comprehensive_analysis(focus, economic_indicators=economic_indicators)
     return MarketNewsResponse(
         state=StateMessage(
             status="supported",
@@ -504,6 +507,7 @@ def build_market_ai_comprehensive_analysis(
     minimum_market_news_item_count: int = MINIMUM_MARKET_AI_ITEMS,
     minimum_topic_bucket_count: int = MINIMUM_MARKET_AI_BUCKETS,
     summary_generation_service: SummaryGenerationService | None = None,
+    economic_indicators: EconomicIndicatorsPackResponse | None = None,
 ) -> MarketAIComprehensiveAnalysisResponse:
     selected_bucket_count = len({item.topic_bucket for item in focus.items})
     if focus.selected_item_count < minimum_market_news_item_count or selected_bucket_count < minimum_topic_bucket_count:
@@ -521,11 +525,13 @@ def build_market_ai_comprehensive_analysis(
         )
 
     service = summary_generation_service or build_default_summary_generation_service()
+    generation_evidence_pack = evidence_pack_from_market_news(focus, economic_indicators=economic_indicators)
     try:
         response = service.generate_market_ai_comprehensive_analysis(
             focus=focus,
             minimum_market_news_item_count=minimum_market_news_item_count,
             minimum_topic_bucket_count=minimum_topic_bucket_count,
+            generation_evidence_pack=generation_evidence_pack,
         )
     except SummaryGenerationContractError:
         try:
@@ -533,6 +539,7 @@ def build_market_ai_comprehensive_analysis(
                 focus=focus,
                 minimum_market_news_item_count=minimum_market_news_item_count,
                 minimum_topic_bucket_count=minimum_topic_bucket_count,
+                generation_evidence_pack=generation_evidence_pack,
             )
         except SummaryGenerationContractError:
             return MarketAIComprehensiveAnalysisResponse(

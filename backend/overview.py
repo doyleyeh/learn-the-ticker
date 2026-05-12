@@ -30,6 +30,7 @@ from backend.models import (
     BeginnerSummary,
     Citation,
     Claim,
+    EconomicIndicatorsPackResponse,
     EvidenceState,
     FreshnessState,
     MetricValue,
@@ -51,6 +52,7 @@ from backend.models import (
     StateMessage,
     SuitabilitySummary,
 )
+from backend.generation_evidence import evidence_pack_from_knowledge_pack
 from backend.retrieval import (
     AssetKnowledgePack,
     EvidenceGap,
@@ -152,6 +154,7 @@ def generate_asset_overview(
     source_snapshot_reader: Any | None = None,
     generated_output_cache_writer: Any | None = None,
     persisted_weekly_news_reader: WeeklyNewsEventEvidenceRecordReader | Any | None = None,
+    economic_indicators: EconomicIndicatorsPackResponse | None = None,
 ) -> OverviewResponse:
     """Build an OverviewResponse-compatible payload from the local retrieval pack."""
 
@@ -161,6 +164,7 @@ def generate_asset_overview(
         generated_output_cache_reader=generated_output_cache_reader,
         source_snapshot_reader=source_snapshot_reader,
         persisted_weekly_news_reader=persisted_weekly_news_reader,
+        economic_indicators=economic_indicators,
     )
     if persisted.found and persisted.overview is not None:
         return persisted.overview
@@ -169,6 +173,7 @@ def generate_asset_overview(
     overview = generate_overview_from_pack(
         pack,
         persisted_weekly_news_reader=persisted_weekly_news_reader,
+        economic_indicators=economic_indicators,
     )
     _maybe_write_overview_generated_output_cache(overview, pack, generated_output_cache_writer)
     return overview
@@ -181,6 +186,7 @@ def read_persisted_overview_response(
     generated_output_cache_reader: GeneratedOutputCacheRecordReader | Any | None = None,
     source_snapshot_reader: Any | None = None,
     persisted_weekly_news_reader: WeeklyNewsEventEvidenceRecordReader | Any | None = None,
+    economic_indicators: EconomicIndicatorsPackResponse | None = None,
 ) -> PersistedOverviewReadResult:
     normalized = ticker.strip().upper()
     if persisted_pack_reader is None or generated_output_cache_reader is None:
@@ -228,7 +234,11 @@ def read_persisted_overview_response(
             pack_records=pack_read.records,
             cache_records=cache_records_result.records,
         )
-        overview = generate_overview_from_pack(pack, persisted_weekly_news_reader=persisted_weekly_news_reader)
+        overview = generate_overview_from_pack(
+            pack,
+            persisted_weekly_news_reader=persisted_weekly_news_reader,
+            economic_indicators=economic_indicators,
+        )
         report = validate_overview_response(overview, pack)
         if not report.valid:
             return PersistedOverviewReadResult(
@@ -617,6 +627,7 @@ def generate_overview_from_pack(
     pack: AssetKnowledgePack,
     *,
     persisted_weekly_news_reader: WeeklyNewsEventEvidenceRecordReader | Any | None = None,
+    economic_indicators: EconomicIndicatorsPackResponse | None = None,
 ) -> OverviewResponse:
     if not pack.asset.supported:
         return _unsupported_overview(pack)
@@ -628,7 +639,12 @@ def generate_overview_from_pack(
     identity_citation_id = bindings.for_fact(identity_fact).citation.citation_id
 
     snapshot = _build_snapshot(pack, facts_by_field, bindings, identity_citation_id)
-    beginner_summary = _build_beginner_summary(pack, facts_by_field)
+    page_evidence_pack = evidence_pack_from_knowledge_pack(pack, economic_indicators=economic_indicators)
+    beginner_summary = _build_beginner_summary(
+        pack,
+        facts_by_field,
+        generation_evidence_pack=page_evidence_pack,
+    )
     risk_chunk = _select_risk_chunk(pack)
     risk_citation_id = bindings.for_chunk(risk_chunk).citation.citation_id
     top_risks = _build_top_risks(pack, risk_citation_id)
@@ -674,6 +690,13 @@ def generate_overview_from_pack(
         )
 
     canonical_citation_ids = [identity_citation_id]
+    market_news = build_market_news_response(economic_indicators=economic_indicators)
+    ai_evidence_pack = evidence_pack_from_knowledge_pack(
+        pack,
+        economic_indicators=economic_indicators,
+        market_news_focus=market_news.market_news_focus,
+        weekly_news_focus=weekly_news_focus,
+    )
     ai_comprehensive_analysis = build_ai_comprehensive_analysis(
         pack.asset,
         weekly_news_focus,
@@ -683,8 +706,10 @@ def generate_overview_from_pack(
         approved_weekly_news_item_count=(
             weekly_news_read.high_signal_selected_item_count if weekly_news_read.found else None
         ),
+        economic_indicators=economic_indicators,
+        market_news_focus=market_news.market_news_focus,
+        generation_evidence_pack=ai_evidence_pack,
     )
-    market_news = build_market_news_response()
     citations = bindings.citations()
     source_documents = bindings.source_documents()
 
@@ -1381,7 +1406,12 @@ def _build_snapshot(
     return snapshot
 
 
-def _build_beginner_summary(pack: AssetKnowledgePack, facts_by_field: dict[str, RetrievedFact]) -> BeginnerSummary:
+def _build_beginner_summary(
+    pack: AssetKnowledgePack,
+    facts_by_field: dict[str, RetrievedFact],
+    *,
+    generation_evidence_pack: dict[str, Any] | None = None,
+) -> BeginnerSummary:
     if pack.asset.asset_type is AssetType.etf:
         benchmark = _fact_value(facts_by_field, "benchmark")
         role = str(_fact_value(facts_by_field, "beginner_role")).lower()
@@ -1405,6 +1435,7 @@ def _build_beginner_summary(pack: AssetKnowledgePack, facts_by_field: dict[str, 
                 ),
                 main_catch=main_catch,
             ),
+            generation_evidence_pack=generation_evidence_pack,
         )
 
     primary_business = _fact_value(facts_by_field, "primary_business")
@@ -1418,16 +1449,26 @@ def _build_beginner_summary(pack: AssetKnowledgePack, facts_by_field: dict[str, 
             ),
             main_catch="A single-company stock is less diversified than an ETF, so company-specific issues can matter more.",
         ),
+        generation_evidence_pack=generation_evidence_pack,
     )
 
 
-def _generated_beginner_summary(pack: AssetKnowledgePack, base_summary: BeginnerSummary) -> BeginnerSummary:
+def _generated_beginner_summary(
+    pack: AssetKnowledgePack,
+    base_summary: BeginnerSummary,
+    *,
+    generation_evidence_pack: dict[str, Any] | None = None,
+) -> BeginnerSummary:
     try:
+        citation_evidence = [
+            item for item in (generation_evidence_pack or {}).get("citation_evidence", []) if isinstance(item, dict)
+        ]
         return build_default_summary_generation_service().generate_beginner_summary(
             asset=pack.asset,
             base_summary=base_summary,
-            citation_ids=[],
+            citation_ids=[str(item["citation_id"]) for item in citation_evidence if item.get("citation_id")],
             evidence_notes=_pack_evidence_notes(pack),
+            generation_evidence_pack=generation_evidence_pack,
         )
     except SummaryGenerationContractError:
         return base_summary

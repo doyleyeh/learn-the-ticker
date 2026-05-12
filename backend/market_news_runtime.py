@@ -19,7 +19,7 @@ from backend.market_news import (
     build_market_news_response,
     market_news_provider_adapters,
 )
-from backend.models import MarketNewsResponse
+from backend.models import EconomicIndicatorsPackResponse, MarketNewsResponse
 from backend.settings import MarketNewsSettings, build_market_news_settings
 from backend.weekly_news import DEFAULT_WEEKLY_NEWS_AS_OF
 
@@ -84,6 +84,7 @@ class MarketNewsRuntimeCacheKey:
     provider_adapter_boundary: str
     providers: tuple[str, ...]
     fetcher_boundary: str
+    economic_indicators_signature: str = ""
 
 
 @dataclass(frozen=True)
@@ -139,15 +140,16 @@ def build_runtime_market_news_response(
     fetcher: MarketNewsFetcher | None = None,
     cache: MarketNewsResponseMemoryCache | None = None,
     cache_only: bool = False,
+    economic_indicators: EconomicIndicatorsPackResponse | None = None,
 ) -> MarketNewsResponse:
     active_settings = settings or build_market_news_settings()
     effective_as_of = as_of or _runtime_market_news_as_of(active_settings)
     if not active_settings.can_attempt_live_fetch:
-        return build_market_news_response(as_of=effective_as_of, settings=active_settings)
+        return build_market_news_response(as_of=effective_as_of, settings=active_settings, economic_indicators=economic_indicators)
 
     source_fetcher = fetcher or UrlLibMarketNewsFetcher()
     response_cache = cache or MARKET_NEWS_RESPONSE_CACHE
-    cache_key = _cache_key(effective_as_of, active_settings, source_fetcher)
+    cache_key = _cache_key(effective_as_of, active_settings, source_fetcher, economic_indicators=economic_indicators)
     ttl_seconds = active_settings.cache_ttl_hours * 60 * 60
     cached = response_cache.get(cache_key, ttl_seconds=ttl_seconds)
     if cached is not None:
@@ -157,12 +159,13 @@ def build_runtime_market_news_response(
         response_cache.set(cache_key, persisted)
         return persisted
     if cache_only:
-        return build_market_news_response(as_of=effective_as_of, settings=active_settings)
+        return build_market_news_response(as_of=effective_as_of, settings=active_settings, economic_indicators=economic_indicators)
 
     response = build_market_news_response(
         as_of=effective_as_of,
         settings=active_settings,
         fetcher=source_fetcher,
+        economic_indicators=economic_indicators,
     )
     _persistent_cache_store(cache_key, response, active_settings)
     return response_cache.set(cache_key, response)
@@ -178,6 +181,8 @@ def _cache_key(
     as_of: str,
     settings: MarketNewsSettings,
     fetcher: MarketNewsFetcher,
+    *,
+    economic_indicators: EconomicIndicatorsPackResponse | None = None,
 ) -> MarketNewsRuntimeCacheKey:
     return MarketNewsRuntimeCacheKey(
         as_of=str(as_of),
@@ -189,7 +194,21 @@ def _cache_key(
         provider_adapter_boundary=MARKET_NEWS_SOURCE_ADAPTER_BOUNDARY,
         providers=tuple(adapter.provider for adapter in market_news_provider_adapters()),
         fetcher_boundary=fetcher.__class__.__name__,
+        economic_indicators_signature=_economic_indicators_signature(economic_indicators),
     )
+
+
+def _economic_indicators_signature(pack: EconomicIndicatorsPackResponse | None) -> str:
+    if pack is None:
+        return ""
+    payload = {
+        "as_of_date": pack.as_of_date,
+        "items": [
+            (item.indicator_id, item.value, item.as_of_date, item.published_at)
+            for item in pack.items
+        ],
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:16]
 
 
 def _persistent_cache_get(

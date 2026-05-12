@@ -23,7 +23,9 @@ from backend.summary_generation import (
     SUMMARY_GENERATION_BOUNDARY,
     SummaryGenerationContractError,
     HybridSummaryGenerationService,
+    SummaryGenerationRequest,
     clear_summary_generation_cache,
+    _safe_prompt_payload,
 )
 from backend.weekly_news import (
     WeeklyNewsCandidate,
@@ -89,13 +91,18 @@ def test_beginner_summary_fallback_uses_asset_specific_evidence_notes():
     assert "0.20" in joined
 
 
-def test_default_live_task_allowlist_skips_deep_dive_generation_to_bound_page_load():
+def test_default_live_task_allowlist_runs_deep_dive_generation_with_evidence_contract():
     asset = build_asset_knowledge_pack("VOO").asset
     calls: list[str] = []
 
     def payload(request: Any) -> dict[str, Any]:
         calls.append(request.task_name)
-        return {"summary": "Live generated Deep Dive text should not run by default."}
+        return {
+            "summary": "Live generated Deep Dive text is grounded in supplied citation evidence.",
+            "supporting_claims": [
+                _supporting_claim("Deep Dive text is grounded in supplied citation evidence.", ["c1"])
+            ],
+        }
 
     service = HybridSummaryGenerationService(
         runtime=_ready_runtime(),
@@ -111,12 +118,12 @@ def test_default_live_task_allowlist_skips_deep_dive_generation_to_bound_page_lo
         citation_ids=["c1"],
         evidence_state="partial",
         evidence_notes=["benchmark=S&P 500 Index"],
+        generation_evidence_pack=_simple_generation_evidence_pack("VOO", ["c1"]),
     )
 
-    assert calls == []
+    assert calls == ["deep_dive_summary"]
     assert summary is not None
-    assert "Base section summary" in summary
-    assert "S&P 500" in summary
+    assert "grounded in supplied citation evidence" in summary
 
 
 def test_deep_dive_live_generation_can_be_explicitly_enabled_for_local_review():
@@ -125,7 +132,12 @@ def test_deep_dive_live_generation_can_be_explicitly_enabled_for_local_review():
 
     def payload(request: Any) -> dict[str, Any]:
         calls.append(request.task_name)
-        return {"summary": "Generated section summary grounded in supplied citation ids."}
+        return {
+            "summary": "Generated section summary grounded in supplied citation ids.",
+            "supporting_claims": [
+                _supporting_claim("Generated section summary grounded in supplied citation ids.", ["c1"])
+            ],
+        }
 
     service = HybridSummaryGenerationService(
         runtime=_ready_runtime(),
@@ -141,6 +153,7 @@ def test_deep_dive_live_generation_can_be_explicitly_enabled_for_local_review():
         citation_ids=["c1"],
         evidence_state="partial",
         evidence_notes=[],
+        generation_evidence_pack=_simple_generation_evidence_pack("VOO", ["c1"]),
     )
 
     assert calls == ["deep_dive_summary"]
@@ -154,7 +167,12 @@ def test_valid_live_generation_is_reused_from_summary_cache():
 
     def payload(request: Any) -> dict[str, Any]:
         calls.append(request.task_name)
-        return {"summary": "Cached live section summary grounded in supplied evidence."}
+        return {
+            "summary": "Cached live section summary grounded in supplied evidence.",
+            "supporting_claims": [
+                _supporting_claim("Cached live section summary grounded in supplied evidence.", ["c1"])
+            ],
+        }
 
     service = HybridSummaryGenerationService(
         runtime=_ready_runtime(),
@@ -171,6 +189,7 @@ def test_valid_live_generation_is_reused_from_summary_cache():
         citation_ids=["c1"],
         evidence_state="mixed",
         evidence_notes=["expense_ratio=0.03"],
+        generation_evidence_pack=_simple_generation_evidence_pack("VOO", ["c1"]),
     )
     second = service.generate_deep_dive_summary(
         asset=asset,
@@ -180,6 +199,7 @@ def test_valid_live_generation_is_reused_from_summary_cache():
         citation_ids=["c1"],
         evidence_state="mixed",
         evidence_notes=["expense_ratio=0.03"],
+        generation_evidence_pack=_simple_generation_evidence_pack("VOO", ["c1"]),
     )
 
     assert first == second
@@ -212,6 +232,7 @@ def test_invalid_live_generation_is_not_cached():
                 citation_ids=["c1"],
                 evidence_state="mixed",
                 evidence_notes=["expense_ratio=0.03"],
+                generation_evidence_pack=_simple_generation_evidence_pack("VOO", ["c1"]),
             )
 
     assert calls == ["deep_dive_summary", "deep_dive_summary"]
@@ -291,16 +312,19 @@ def test_top_risk_generation_selects_from_evidence_candidates_and_validates_cita
                     "title": "Concentration risk",
                     "plain_english_explanation": "QQQ tracks Nasdaq-100 exposure, so fewer large companies can drive more of the outcome.",
                     "citation_ids": ["c1"],
+                    "supporting_claims": [_supporting_claim("QQQ tracks Nasdaq-100 exposure.", ["c1"], claim_type="risk")],
                 },
                 {
                     "title": "Methodology risk",
                     "plain_english_explanation": "The fund follows an index methodology, so benchmark rules shape what the ETF owns.",
                     "citation_ids": ["c1"],
+                    "supporting_claims": [_supporting_claim("Benchmark rules shape what the ETF owns.", ["c1"], claim_type="risk")],
                 },
                 {
                     "title": "Trading context risk",
                     "plain_english_explanation": "Provider quote fields are context only and should not be treated as trading guidance.",
                     "citation_ids": ["c2"],
+                    "supporting_claims": [_supporting_claim("Provider quote fields are context only.", ["c2"], claim_type="risk")],
                 },
             ]
         },
@@ -316,6 +340,7 @@ def test_top_risk_generation_selects_from_evidence_candidates_and_validates_cita
         candidate_risks=candidates,
         fallback_risks=candidates,
         allowed_citation_ids=["c1", "c2"],
+        generation_evidence_pack=_simple_generation_evidence_pack("QQQ", ["c1", "c2"]),
     )
 
     assert [risk.title for risk in risks] == ["Concentration risk", "Methodology risk", "Trading context risk"]
@@ -427,6 +452,101 @@ def test_gated_structured_summary_output_rejects_bad_citations_before_rendering(
             canonical_source_document_ids=["src_qqq_fact_sheet_fixture"],
             minimum_weekly_news_item_count=2,
             weekly_news_selected_item_count=focus.selected_item_count,
+        )
+
+
+def test_live_prompt_payload_includes_task_spec_and_generation_evidence_pack():
+    asset = build_asset_knowledge_pack("VOO").asset
+    seen_request: SummaryGenerationRequest | None = None
+
+    def payload(request: SummaryGenerationRequest) -> dict[str, Any]:
+        nonlocal seen_request
+        seen_request = request
+        return {
+            "summary": "Live generated Deep Dive text is grounded in supplied citation evidence.",
+            "supporting_claims": [
+                _supporting_claim("Live generated Deep Dive text is grounded in supplied citation evidence.", ["c1"])
+            ],
+        }
+
+    service = HybridSummaryGenerationService(
+        runtime=_ready_runtime(),
+        structured_generator=payload,
+        live_task_allowlist=frozenset({"deep_dive_summary"}),
+    )
+
+    service.generate_deep_dive_summary(
+        asset=asset,
+        section_id="cost_trading_context",
+        title="Cost And Trading Context",
+        base_summary="Base summary.",
+        citation_ids=["c1"],
+        evidence_state="supported",
+        generation_evidence_pack=_simple_generation_evidence_pack("VOO", ["c1"]),
+    )
+
+    assert seen_request is not None
+    safe_payload = _safe_prompt_payload(seen_request)
+    assert safe_payload["task_prompt_spec"]["objective"]
+    evidence_pack = safe_payload["payload"]["generation_evidence_pack"]
+    assert evidence_pack["schema_version"] == "generation-evidence-pack-v1"
+    assert evidence_pack["citation_evidence"][0]["citation_id"] == "c1"
+    assert "allowed_numeric_facts" in evidence_pack
+
+
+def test_generated_market_ai_rejects_unsupported_numeric_claims():
+    focus = select_market_news_focus(fixture_market_news_candidates(as_of="2026-04-23"), as_of="2026-04-23")
+    first_citation = focus.items[0].citation_ids[0]
+    evidence_pack = _simple_generation_evidence_pack("MARKET", [first_citation])
+    evidence_pack["allowed_numeric_facts"] = [
+        {
+            "fact_id": "economic:vix",
+            "scope": "market",
+            "label": "VIX Index Closing Price",
+            "value": 21.0,
+            "unit": "index_points",
+            "aliases": ["vix", "volatility index"],
+            "tolerance_abs": 0.1,
+            "citation_ids": [first_citation],
+            "source_document_ids": ["src_test_c1"],
+        }
+    ]
+
+    def payload(request: Any) -> dict[str, Any]:
+        return {
+            "sections": [
+                {
+                    "section_id": section_id,
+                    "label": label,
+                    "analysis": "The VIX level is 60, which is not supported by the supplied numeric facts.",
+                    "bullets": ["The VIX level is 60."],
+                    "citation_ids": [first_citation],
+                    "uncertainty": [],
+                    "supporting_claims": [
+                        _supporting_claim("The VIX level is supplied in the evidence pack.", [first_citation])
+                    ],
+                }
+                for section_id, label in [
+                    ("what_changed_this_week", "What Changed This Week"),
+                    ("macro_policy", "Macro & Policy"),
+                    ("equity_market_drivers", "Equity Market Drivers"),
+                    ("ai_technology_semiconductors", "AI / Technology / Semiconductors"),
+                    ("geopolitical_energy_risks", "Geopolitical & Energy Risks"),
+                    ("credit_liquidity_sentiment", "Credit / Liquidity / Sentiment"),
+                    ("scenario_lens", "Scenario Lens"),
+                    ("practical_watchpoints", "Practical Watchpoints"),
+                ]
+            ]
+        }
+
+    service = HybridSummaryGenerationService(runtime=_ready_runtime(), structured_generator=payload)
+
+    with pytest.raises(SummaryGenerationContractError):
+        service.generate_market_ai_comprehensive_analysis(
+            focus=focus,
+            minimum_market_news_item_count=5,
+            minimum_topic_bucket_count=3,
+            generation_evidence_pack=evidence_pack,
         )
 
 
@@ -581,6 +701,7 @@ def _ticker_analysis_payload(
                 "bullets": ["A cited weekly item anchors this section."],
                 "citation_ids": citation_ids,
                 "uncertainty": [],
+                "supporting_claims": [_supporting_claim("A cited weekly item anchors this section.", citation_ids)],
             },
             {
                 "section_id": "market_context",
@@ -589,6 +710,7 @@ def _ticker_analysis_payload(
                 "bullets": ["No market-wide claim is added without cited evidence."],
                 "citation_ids": citation_ids,
                 "uncertainty": [],
+                "supporting_claims": [_supporting_claim("Market context is limited to the same selected evidence.", citation_ids)],
             },
             {
                 "section_id": "business_or_fund_context",
@@ -597,6 +719,7 @@ def _ticker_analysis_payload(
                 "bullets": ["Canonical facts remain distinct from weekly news."],
                 "citation_ids": citation_ids,
                 "uncertainty": [],
+                "supporting_claims": [_supporting_claim("Fund context stays separate from stable asset identity.", citation_ids)],
             },
             {
                 "section_id": "risk_context",
@@ -605,6 +728,81 @@ def _ticker_analysis_payload(
                 "bullets": ["The cited items define the scope of this context."],
                 "citation_ids": citation_ids,
                 "uncertainty": [],
+                "supporting_claims": [_supporting_claim("Risk context is educational.", citation_ids, claim_type="risk")],
             },
         ]
     }
+
+
+def _simple_generation_evidence_pack(ticker: str, citation_ids: list[str]) -> dict[str, Any]:
+    normalized = ticker.upper()
+    allowed_assets = [normalized]
+    if normalized != "MARKET":
+        allowed_assets.append("MARKET")
+    return {
+        "schema_version": "generation-evidence-pack-v1",
+        "scope": "asset" if normalized != "MARKET" else "market",
+        "asset_ticker": normalized,
+        "allowed_asset_tickers": allowed_assets,
+        "source_documents": [
+            {
+                "source_document_id": f"src_test_{citation_id}",
+                "source_type": "normalized_fact",
+                "title": "Test source",
+                "publisher": "Fixture Publisher",
+                "freshness_state": "fresh",
+                "is_official": True,
+                "source_quality": "fixture",
+                "allowlist_status": "allowed",
+                "source_use_policy": "summary_allowed",
+            }
+            for citation_id in citation_ids
+        ],
+        "canonical_facts": [],
+        "source_passages": [],
+        "market_news": [],
+        "weekly_news": [],
+        "economic_indicators": [],
+        "technical_indicators": {},
+        "allowed_numeric_facts": [],
+        "citation_evidence": [
+            {
+                "citation_id": citation_id,
+                "asset_ticker": normalized,
+                "source_document_id": f"src_test_{citation_id}",
+                "source_type": "normalized_fact",
+                "evidence_kind": "normalized_fact",
+                "freshness_state": "fresh",
+                "supported_claim_types": ["factual", "interpretation", "risk", "recent"],
+                "supporting_text": "Test citation evidence supports generated factual and analytical claims.",
+                "supports_claim": True,
+                "is_recent": True,
+                "allowlist_status": "allowed",
+                "source_use_policy": "summary_allowed",
+                "source_identity": f"local://test/{citation_id}",
+                "is_official": True,
+                "source_quality": "fixture",
+                "storage_rights": "summary_allowed",
+                "export_rights": "excerpts_allowed",
+                "review_status": "approved",
+                "approval_rationale": "Unit-test evidence pack fixture.",
+                "parser_status": "parsed",
+            }
+            for citation_id in citation_ids
+        ],
+        "evidence_notes": [],
+        "rules": {
+            "use_supplied_evidence_only": True,
+            "numeric_claims_must_match_allowed_numeric_facts": True,
+            "no_buy_sell_hold_allocation_tax_brokerage_or_price_target": True,
+        },
+    }
+
+
+def _supporting_claim(
+    claim_text: str,
+    citation_ids: list[str],
+    *,
+    claim_type: str = "factual",
+) -> dict[str, Any]:
+    return {"claim_text": claim_text, "claim_type": claim_type, "citation_ids": citation_ids}

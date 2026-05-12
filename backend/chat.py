@@ -30,6 +30,7 @@ from backend.generated_output_cache_repository import (
     persist_generated_output_cache_records,
     validate_generated_output_cache_records,
 )
+from backend.generation_evidence import evidence_pack_from_citation_evidence
 from backend.models import (
     AssetIdentity,
     AssetStatus,
@@ -1408,7 +1409,14 @@ def _maybe_generate_chat_plan(
     service = summary_generation_service or build_default_summary_generation_service()
     citation_ids = _dedupe(citation_id for claim in plan.planned_claims for citation_id in claim.citation_ids)
     required_claim_texts = [claim.claim_text for claim in plan.planned_claims if claim.claim_text]
-    evidence_summaries = [_chat_evidence_summary(evidence) for evidence in bindings.evidence()]
+    citation_evidence = bindings.evidence()
+    evidence_summaries = [_chat_evidence_summary(evidence) for evidence in citation_evidence]
+    generation_evidence_pack = evidence_pack_from_citation_evidence(
+        asset=pack.asset,
+        evidence=citation_evidence,
+        evidence_summaries=evidence_summaries,
+        evidence_notes=plan.uncertainty,
+    )
     try:
         generated = service.generate_chat_answer(
             asset=pack.asset,
@@ -1420,6 +1428,7 @@ def _maybe_generate_chat_plan(
             required_claim_texts=required_claim_texts,
             evidence_summaries=evidence_summaries,
             uncertainty=plan.uncertainty,
+            generation_evidence_pack=generation_evidence_pack,
         )
     except SummaryGenerationContractError:
         return _ChatPlan(
