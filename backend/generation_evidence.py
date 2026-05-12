@@ -20,6 +20,7 @@ from backend.retrieval import AssetKnowledgePack
 
 
 GENERATION_EVIDENCE_PACK_SCHEMA_VERSION = "generation-evidence-pack-v1"
+GENERATION_CONTEXT_SCHEMA_VERSION = "generation-context-v1"
 MAX_PROMPT_TEXT_CHARS = 420
 
 
@@ -40,6 +41,7 @@ def empty_generation_evidence_pack(*, asset_ticker: str, scope: str = "asset") -
         "allowed_numeric_facts": [],
         "citation_evidence": [],
         "evidence_notes": [],
+        "generation_context": _default_generation_context(asset_ticker=normalized, scope=scope),
         "rules": _rules(),
     }
 
@@ -81,6 +83,7 @@ def evidence_pack_from_knowledge_pack(
         technical_context=technical_context,
         evidence_notes=evidence_notes,
     )
+    _add_knowledge_generation_context(result, pack)
     return _dedupe_pack(result)
 
 
@@ -122,6 +125,7 @@ def evidence_pack_from_lightweight_response(
         technical_context=technical_context or _technical_context_from_lightweight(response),
         evidence_notes=evidence_notes,
     )
+    _add_lightweight_generation_context(result, response)
     return _dedupe_pack(result)
 
 
@@ -138,6 +142,7 @@ def evidence_pack_from_market_news(
         for item in focus.items
     ]
     _add_common_context(result, economic_indicators=economic_indicators)
+    _refresh_generation_context_from_pack(result)
     return _dedupe_pack(result)
 
 
@@ -164,6 +169,7 @@ def evidence_pack_from_weekly_news(
         market_news_focus=market_news_focus,
         technical_context=technical_context,
     )
+    _refresh_generation_context_from_pack(result)
     return _dedupe_pack(result)
 
 
@@ -195,6 +201,13 @@ def generation_pack_allowed_numeric_facts(pack: dict[str, Any] | None) -> list[d
     if not isinstance(pack, dict):
         return []
     return [item for item in pack.get("allowed_numeric_facts", []) if isinstance(item, dict)]
+
+
+def generation_pack_generation_context(pack: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(pack, dict):
+        return {}
+    context = pack.get("generation_context")
+    return context if isinstance(context, dict) else {}
 
 
 def generation_pack_citation_evidence(pack: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -239,6 +252,7 @@ def _add_common_context(
     result["allowed_numeric_facts"] = build_allowed_numeric_facts(economic_indicators, _technical_rows(result["technical_indicators"]))
     if evidence_notes:
         result["evidence_notes"] = list(dict.fromkeys(str(note) for note in evidence_notes if str(note).strip()))[:24]
+    _refresh_generation_context_from_pack(result)
 
 
 def _dedupe_pack(pack: dict[str, Any]) -> dict[str, Any]:
@@ -247,6 +261,7 @@ def _dedupe_pack(pack: dict[str, Any]) -> dict[str, Any]:
     pack["canonical_facts"] = _dedupe_dicts(pack.get("canonical_facts", []), "fact_id")
     pack["source_passages"] = _dedupe_dicts(pack.get("source_passages", []), "citation_id")
     pack["allowed_numeric_facts"] = _dedupe_dicts(pack.get("allowed_numeric_facts", []), "fact_id")
+    _refresh_generation_context_from_pack(pack)
     return pack
 
 
@@ -257,6 +272,360 @@ def _dedupe_dicts(items: Iterable[dict[str, Any]], key: str) -> list[dict[str, A
         if value and value not in result:
             result[value] = item
     return list(result.values())
+
+
+def _default_generation_context(*, asset_ticker: str, scope: str) -> dict[str, Any]:
+    normalized = asset_ticker.strip().upper() or "MARKET"
+    return {
+        "schema_version": GENERATION_CONTEXT_SCHEMA_VERSION,
+        "asset_ticker": normalized,
+        "scope": scope,
+        "asset_profile": {},
+        "identity_context": {},
+        "exposure_context": {},
+        "market_context": {},
+        "ticker_context": {},
+        "evidence_limits": {
+            "missing_fields": [],
+            "partial_fields": [],
+            "fallback_labels": [],
+            "notes": [],
+        },
+    }
+
+
+def _generation_context(result: dict[str, Any]) -> dict[str, Any]:
+    context = result.get("generation_context")
+    if not isinstance(context, dict):
+        context = _default_generation_context(
+            asset_ticker=str(result.get("asset_ticker") or "MARKET"),
+            scope=str(result.get("scope") or "asset"),
+        )
+        result["generation_context"] = context
+    context.setdefault("schema_version", GENERATION_CONTEXT_SCHEMA_VERSION)
+    context.setdefault("asset_ticker", str(result.get("asset_ticker") or "MARKET"))
+    context.setdefault("scope", str(result.get("scope") or "asset"))
+    context.setdefault("asset_profile", {})
+    context.setdefault("identity_context", {})
+    context.setdefault("exposure_context", {})
+    context.setdefault("market_context", {})
+    context.setdefault("ticker_context", {})
+    context.setdefault(
+        "evidence_limits",
+        {"missing_fields": [], "partial_fields": [], "fallback_labels": [], "notes": []},
+    )
+    return context
+
+
+def _add_knowledge_generation_context(result: dict[str, Any], pack: AssetKnowledgePack) -> None:
+    context = _generation_context(result)
+    asset_profile = context.setdefault("asset_profile", {})
+    asset_profile.update(
+        _drop_empty(
+            {
+                "ticker": pack.asset.ticker,
+                "name": pack.asset.name,
+                "asset_type": _value(pack.asset.asset_type),
+                "issuer": getattr(pack.asset, "issuer", None),
+                "exchange": getattr(pack.asset, "exchange", None),
+            }
+        )
+    )
+    identity_context = context.setdefault("identity_context", {})
+    identity_context.update(
+        _drop_empty(
+            {
+                "ticker": pack.asset.ticker,
+                "name": pack.asset.name,
+                "asset_type": _value(pack.asset.asset_type),
+                "issuer": getattr(pack.asset, "issuer", None),
+                "exchange": getattr(pack.asset, "exchange", None),
+            }
+        )
+    )
+    facts = {item.fact.field_name: item.fact for item in pack.normalized_facts}
+    _apply_fact_context(context, facts)
+    _refresh_generation_context_from_pack(result)
+
+
+def _add_lightweight_generation_context(result: dict[str, Any], response: LightweightFetchResponse) -> None:
+    context = _generation_context(result)
+    facts = {fact.field_name: fact for fact in response.facts}
+    profile = _fact_value_from_map(facts, "provider_profile_overview")
+    asset_profile = context.setdefault("asset_profile", {})
+    asset_profile.update(
+        _drop_empty(
+            {
+                "ticker": response.asset.ticker,
+                "name": response.asset.name,
+                "asset_type": _value(response.asset.asset_type),
+                "issuer": response.asset.issuer,
+                "exchange": response.asset.exchange,
+            }
+        )
+    )
+    if isinstance(profile, dict):
+        asset_profile.update(_profile_context_fields(profile, response.asset.asset_type.value))
+    identity_context = context.setdefault("identity_context", {})
+    identity_context.update(
+        _drop_empty(
+            {
+                "ticker": response.asset.ticker,
+                "name": response.asset.name,
+                "asset_type": _value(response.asset.asset_type),
+                "issuer": response.asset.issuer,
+                "exchange": response.asset.exchange,
+                "source_path": getattr(response.fallback_diagnostics, "source_path", None),
+            }
+        )
+    )
+    _apply_fact_context(context, facts)
+    evidence_limits = context.setdefault("evidence_limits", {})
+    evidence_limits["missing_fields"] = [
+        str(gap.field_name)
+        for gap in response.gaps[:12]
+        if getattr(gap, "field_name", None)
+    ]
+    evidence_limits["partial_fields"] = [
+        fact.field_name
+        for fact in response.facts
+        if _value(fact.evidence_state) == "partial"
+    ][:12]
+    labels: list[str] = []
+    for fact in response.facts:
+        if getattr(fact, "fallback_used", False):
+            labels.extend(_value(label) for label in getattr(fact, "source_labels", []) or [])
+    evidence_limits["fallback_labels"] = sorted({label for label in labels if label})[:12]
+    evidence_limits["beginner_summary_excluded_context"] = [
+        "raw_quote_fields",
+        "raw_chart_fields",
+        "price",
+        "volume",
+        "technical_indicators",
+    ]
+    _refresh_generation_context_from_pack(result)
+
+
+def _apply_fact_context(context: dict[str, Any], facts: dict[str, Any]) -> None:
+    identity_context = context.setdefault("identity_context", {})
+    exposure_context = context.setdefault("exposure_context", {})
+    for field_name in ("canonical_asset_identity", "sec_identity", "etf_identity", "provider_identity_or_market_reference"):
+        value = _fact_value_from_map(facts, field_name)
+        if isinstance(value, dict):
+            identity_context.update(_identity_fields_from_value(field_name, value))
+    for field_name, target in (
+        ("benchmark", "benchmark"),
+        ("expense_ratio", "expense_ratio"),
+        ("holdings_count", "holdings_count"),
+    ):
+        value = _fact_value_from_map(facts, field_name)
+        if value not in (None, ""):
+            if field_name == "holdings_count":
+                exposure_context[target] = value
+            else:
+                identity_context[target] = value
+    top_holdings: list[dict[str, Any]] = []
+    exposures: list[dict[str, Any]] = []
+    for fact in facts.values():
+        field_name = getattr(fact, "field_name", "")
+        value = getattr(fact, "value", None)
+        if field_name.startswith("top_holding_"):
+            top_holdings.append(_holding_or_exposure_context(value, field_name))
+        elif field_name.endswith("_exposure") or field_name == "equity_exposure":
+            exposures.append(_holding_or_exposure_context(value, field_name))
+    if top_holdings:
+        exposure_context["top_holdings"] = top_holdings[:10]
+    if exposures:
+        exposure_context["exposures"] = exposures[:10]
+    concentration = _concentration_signal(exposure_context)
+    if concentration:
+        exposure_context["concentration_signal"] = concentration
+
+
+def _refresh_generation_context_from_pack(result: dict[str, Any]) -> None:
+    context = _generation_context(result)
+    market_context = context.setdefault("market_context", {})
+    ticker_context = context.setdefault("ticker_context", {})
+    evidence_limits = context.setdefault("evidence_limits", {})
+    if result.get("market_news"):
+        market_context["selected_market_news"] = [
+            _drop_empty(
+                {
+                    "title": item.get("title"),
+                    "summary": item.get("summary"),
+                    "topic_bucket": item.get("topic_bucket"),
+                    "published_at": item.get("published_at"),
+                    "citation_ids": item.get("citation_ids"),
+                }
+            )
+            for item in result.get("market_news", [])
+            if isinstance(item, dict)
+        ][:20]
+        counts: dict[str, int] = {}
+        for item in market_context["selected_market_news"]:
+            bucket = str(item.get("topic_bucket") or "")
+            if bucket:
+                counts[bucket] = counts.get(bucket, 0) + 1
+        market_context["topic_coverage"] = counts
+    if result.get("economic_indicators"):
+        market_context["economic_indicators"] = [
+            _drop_empty(
+                {
+                    "indicator_id": item.get("indicator_id"),
+                    "name": item.get("name"),
+                    "category": item.get("category"),
+                    "value": item.get("value"),
+                    "unit": item.get("unit"),
+                    "period": item.get("period"),
+                    "as_of_date": item.get("as_of_date"),
+                    "citation_ids": item.get("citation_ids"),
+                }
+            )
+            for item in result.get("economic_indicators", [])
+            if isinstance(item, dict)
+        ][:20]
+    if result.get("allowed_numeric_facts"):
+        market_context["allowed_numeric_facts"] = [
+            _drop_empty(
+                {
+                    "label": item.get("label"),
+                    "value": item.get("value"),
+                    "unit": item.get("unit"),
+                    "citation_ids": item.get("citation_ids"),
+                }
+            )
+            for item in result.get("allowed_numeric_facts", [])
+            if isinstance(item, dict)
+        ][:20]
+    if result.get("weekly_news"):
+        ticker_context["selected_weekly_news"] = [
+            _drop_empty(
+                {
+                    "title": item.get("title"),
+                    "summary": item.get("summary"),
+                    "event_type": item.get("event_type"),
+                    "published_at": item.get("published_at"),
+                    "citation_ids": item.get("citation_ids"),
+                    "is_official": item.get("is_official"),
+                }
+            )
+            for item in result.get("weekly_news", [])
+            if isinstance(item, dict)
+        ][:8]
+    if result.get("technical_indicators"):
+        ticker_context["technical_context"] = result.get("technical_indicators")
+    if result.get("canonical_fact_citation_ids"):
+        ticker_context["canonical_fact_citation_ids"] = result.get("canonical_fact_citation_ids")
+    if result.get("evidence_notes"):
+        evidence_limits["notes"] = list(result.get("evidence_notes") or [])[:24]
+
+
+def _profile_context_fields(profile: dict[str, Any], asset_type: str) -> dict[str, Any]:
+    if asset_type == "etf":
+        return _drop_empty(
+            {
+                "fund_summary": _truncate(
+                    profile.get("long_business_summary")
+                    or profile.get("longBusinessSummary")
+                    or profile.get("business_summary")
+                ),
+                "fund_family": profile.get("fund_family") or profile.get("fundFamily"),
+                "category": profile.get("category"),
+                "legal_type": profile.get("legal_type") or profile.get("legalType"),
+                "net_assets": profile.get("net_assets") or profile.get("totalAssets"),
+                "website": profile.get("website"),
+            }
+        )
+    return _drop_empty(
+        {
+            "business_summary": _truncate(
+                profile.get("long_business_summary")
+                or profile.get("longBusinessSummary")
+                or profile.get("business_summary")
+            ),
+            "sector": profile.get("sector"),
+            "industry": profile.get("industry"),
+            "website": profile.get("website"),
+            "full_time_employees": profile.get("full_time_employees") or profile.get("fullTimeEmployees"),
+            "headquarters": profile.get("headquarters"),
+        }
+    )
+
+
+def _identity_fields_from_value(field_name: str, value: dict[str, Any]) -> dict[str, Any]:
+    if field_name == "etf_identity":
+        return _drop_empty(
+            {
+                "fund_name": value.get("fund_name"),
+                "issuer": value.get("issuer"),
+                "support_state": value.get("support_state"),
+                "etf_classification": value.get("etf_classification"),
+            }
+        )
+    if field_name == "sec_identity":
+        return _drop_empty(
+            {
+                "cik": value.get("cik"),
+                "exchange": value.get("exchange"),
+                "company_name": value.get("company_name") or value.get("name"),
+            }
+        )
+    if field_name == "canonical_asset_identity":
+        return _drop_empty(
+            {
+                "name": value.get("name"),
+                "ticker": value.get("ticker"),
+                "asset_type": value.get("asset_type"),
+                "issuer": value.get("issuer"),
+                "exchange": value.get("exchange"),
+            }
+        )
+    return _drop_empty(
+        {
+            "provider_symbol": value.get("symbol"),
+            "quote_type": value.get("quoteType") or value.get("instrumentType"),
+            "exchange": value.get("fullExchangeName") or value.get("exchangeName") or value.get("exchange"),
+        }
+    )
+
+
+def _holding_or_exposure_context(value: Any, field_name: str) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return _drop_empty(
+            {
+                "field_name": field_name,
+                "ticker": value.get("holding_ticker") or value.get("ticker") or value.get("symbol"),
+                "name": value.get("name"),
+                "weight": value.get("weight"),
+                "unit": value.get("unit"),
+                "label": value.get("label") or value.get("category"),
+            }
+        )
+    return {"field_name": field_name, "value": _truncate(value)}
+
+
+def _concentration_signal(exposure_context: dict[str, Any]) -> str | None:
+    holdings_count = exposure_context.get("holdings_count")
+    try:
+        count = float(str(holdings_count).replace(",", ""))
+    except (TypeError, ValueError):
+        count = 0
+    if count and count <= 120:
+        return "fewer holdings than a broad total-market fund; large positions can matter more"
+    if count and count >= 400:
+        return "broad holdings count, though index weights can still concentrate exposure"
+    if exposure_context.get("top_holdings"):
+        return "top holdings are available for concentration review"
+    return None
+
+
+def _fact_value_from_map(facts: dict[str, Any], field_name: str) -> Any:
+    fact = facts.get(field_name)
+    return getattr(fact, "value", None)
+
+
+def _drop_empty(values: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in values.items() if value not in (None, "", [], {})}
 
 
 def _source_document(source: Any) -> dict[str, Any]:

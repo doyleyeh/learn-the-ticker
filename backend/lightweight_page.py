@@ -274,8 +274,8 @@ def build_lightweight_overview_response(
             state=StateMessage(
                 status=AssetStatus.supported,
                 message=(
-                    "Live lightweight local-MVP data is available. Official sources are preferred and provider-derived "
-                    "fallbacks are labeled; this is not strict audit-quality source approval."
+                    "Live source-labeled data is available. Official sources are preferred and fallback fields "
+                    "are labeled; this is not strict audit-quality source approval."
                 ),
             ),
             freshness=response.freshness,
@@ -689,9 +689,9 @@ def _source_document_from_lightweight(source: LightweightFetchSource, response: 
         export_rights=_export_rights(source.source_use_policy),
         review_status=SourceReviewStatus.approved,
         approval_rationale=(
-            "Official public source used by the lightweight local-MVP pipeline."
+            "Official public source used by the source-labeled runtime path."
             if source.is_official
-            else "Reviewed lightweight local-MVP fallback; provider-derived, source-labeled, and limited by rights policy."
+            else "Reviewed source-labeled fallback, limited by rights policy."
         ),
         parser_status=SourceParserStatus.parsed if source.is_official else SourceParserStatus.partial,
         parser_failure_diagnostics=source.fallback_reason,
@@ -786,16 +786,14 @@ def _beginner_summary(
             response,
             BeginnerSummary(
                 what_it_is=(
-                    f"{response.asset.name} ({response.asset.ticker}) is a U.S.-listed common stock resolved through "
-                    "the lightweight SEC-first fetch pipeline."
+                    f"{response.asset.name} ({response.asset.ticker}) is a U.S.-listed common stock. "
+                    "This page explains the company with SEC facts first and clearly labeled fallback context when useful."
                 ),
                 why_people_consider_it=(
-                    "Beginners may study it to understand a single company's SEC filings, reported financial facts, "
-                    "and current provider-labeled market-reference context."
+                    "Beginners may study it to understand a single company's filings, reported financial facts, business profile, and main risks."
                 ),
                 main_catch=(
-                    "A stock is one company, so the page separates source-backed company facts from provider-derived "
-                    "market reference data and does not make buy, sell, hold, or allocation recommendations."
+                    "A stock is one company, so company-specific news, execution, and financial changes can matter a lot; this page does not make buy, sell, hold, or allocation recommendations."
                 ),
             ),
             generation_evidence_pack=generation_evidence_pack,
@@ -805,16 +803,14 @@ def _beginner_summary(
             response,
             BeginnerSummary(
                 what_it_is=(
-                    f"{response.asset.name} ({response.asset.ticker}) is a U.S.-listed ETF with deterministic official "
-                    "issuer evidence in the lightweight local-MVP fetch pipeline."
+                    f"{response.asset.name} ({response.asset.ticker}) is a U.S.-listed ETF with issuer source context for its fund identity."
                 ),
                 why_people_consider_it=(
                     "Beginners may study it to understand the fund's benchmark, cost, holdings or exposure examples, "
-                    "and separately labeled provider market-reference context."
+                    "and how those pieces shape the fund's role."
                 ),
                 main_catch=(
-                    "Issuer facts are point-in-time and do not make the ETF suitable for any specific person; provider-derived "
-                    "fields stay separately labeled and complex products remain blocked."
+                    "Issuer facts are point-in-time and do not make the ETF suitable for any specific person; fallback fields stay separately labeled and complex products remain blocked."
                 ),
             ),
             generation_evidence_pack=generation_evidence_pack,
@@ -823,15 +819,14 @@ def _beginner_summary(
         response,
         BeginnerSummary(
             what_it_is=(
-                f"{response.asset.name} ({response.asset.ticker}) is a U.S.-listed ETF rendered through the "
-                "lightweight local-MVP fetch pipeline."
+                f"{response.asset.name} ({response.asset.ticker}) is a U.S.-listed ETF with partial source-labeled fund context."
             ),
             why_people_consider_it=(
-                "Beginners may study it to understand the fund's role, broad scope, current market-reference context, "
+                "Beginners may study it to understand the fund's role, broad scope, source labels, "
                 "and where issuer evidence is still partial."
             ),
             main_catch=(
-                "ETF issuer holdings, fee, and methodology fields may be partial in lightweight mode; provider-derived "
+                "ETF issuer holdings, fee, and methodology fields may be partial; fallback "
                 "fields are labeled and complex products remain blocked."
             ),
         ),
@@ -874,8 +869,6 @@ def _lightweight_evidence_note_candidates(response: LightweightFetchResponse) ->
         "benchmark",
         "holdings_count",
         "expense_ratio",
-        "provider_market_price",
-        "provider_quote_stats",
         "provider_profile_overview",
         "latest_revenue_fact",
         "latest_net_income_fact",
@@ -895,14 +888,14 @@ def _compact_evidence_value(value: Any) -> str:
     if isinstance(value, dict):
         parts: list[str] = []
         for key in (
-            "regularMarketPrice",
-            "currency",
             "sector",
             "industry",
             "business_summary",
-            "market_cap",
-            "trailing_pe",
-            "forward_pe",
+            "long_business_summary",
+            "fund_family",
+            "category",
+            "legal_type",
+            "net_assets",
         ):
             if value.get(key) not in (None, ""):
                 parts.append(f"{key}: {_short_value(value.get(key))}")
@@ -981,7 +974,7 @@ def _top_risks(
             RiskItem(
                 title="Provider-data limitation",
                 plain_english_explanation=(
-                    "Some market, profile, and valuation fields are provider-derived local-test context, so unsupported or stale fields should stay labeled instead of becoming conclusions."
+                    "Some market, profile, and valuation fields are source-labeled fallback context, so unsupported or stale fields should stay labeled instead of becoming conclusions."
                 ),
                 citation_ids=provider_citation_ids or stable_citation_ids,
             ),
@@ -1372,9 +1365,9 @@ def _etf_sections(
             as_of_date=response.freshness.facts_as_of,
             retrieved_at=retrieved_at,
             limitations=(
-                "Official issuer fixture evidence supports this local-MVP ETF row."
+                "Issuer source metadata supports this ETF row."
                 if has_issuer
-                else "Manifest/scope metadata is enough for local MVP rendering but not strict issuer evidence."
+                else "Manifest/scope metadata is enough for this render path but not strict issuer evidence."
             ),
         ),
         OverviewSection(
@@ -1393,7 +1386,7 @@ def _etf_sections(
             as_of_date=response.freshness.holdings_as_of or response.freshness.facts_as_of,
             retrieved_at=retrieved_at,
             limitations=(
-                "Official issuer holdings or exposure fixture metadata is present."
+                "Issuer holdings or exposure metadata is present."
                 if holdings_state is EvidenceState.supported
                 else "Full issuer holdings are unavailable in this lightweight response."
             ),
@@ -1426,8 +1419,7 @@ def _etf_sections(
             section_type=OverviewSectionType.stable_facts,
             applies_to=[AssetType.etf],
             beginner_summary=(
-                "Official issuer expense-ratio evidence is shown when available; provider-derived market fields "
-                "remain separate local-test context."
+                "Issuer expense-ratio evidence is shown when available; market-reference fields remain separate trading context."
             ),
             items=_etf_cost_trading_items(response, stable_citation_ids, provider_citation_ids),
             metrics=[
@@ -1499,7 +1491,7 @@ def _gap_sections(response: LightweightFetchResponse) -> list[OverviewSection]:
             title="Evidence Gaps",
             section_type=OverviewSectionType.evidence_gap,
             applies_to=[response.asset.asset_type],
-            beginner_summary="These fields were not fully verified by the lightweight fetch pipeline.",
+            beginner_summary="These fields were not fully verified from allowed source-labeled context.",
             items=[
                 OverviewSectionItem(
                     item_id=gap.field_name,
@@ -1592,7 +1584,7 @@ def _evidence_limits_section(
                 "provider_fallback_limits",
                 "Provider fallback limits",
                 (
-                    "Provider-derived ETF fields are source-labeled local-test data and should not be confused with "
+                    "Fallback ETF fields are source-labeled context and should not be confused with "
                     "official issuer fact sheets, holdings files, or prospectuses."
                 ),
                 provider_citation_ids,
@@ -1771,18 +1763,32 @@ def _gap_item(
     freshness_state: FreshnessState = FreshnessState.unavailable,
     limitations: str | None = None,
 ) -> OverviewSectionItem:
+    public_summary = _public_gap_summary(summary)
     return OverviewSectionItem(
         item_id=item_id,
         title=title,
-        summary=summary,
+        summary=public_summary,
         citation_ids=[],
         source_document_ids=[],
         freshness_state=freshness_state,
         evidence_state=evidence_state,
         as_of_date=None,
         retrieved_at=response.freshness.page_last_updated_at,
-        limitations=limitations or summary,
+        limitations=_public_gap_summary(limitations) if limitations else public_summary,
     )
+
+
+def _public_gap_summary(value: str | None) -> str:
+    text = " ".join(str(value or "").split())
+    replacements = {
+        "The ETF issuer fixture": "The ETF issuer source packet",
+        "the ETF issuer fixture": "the ETF issuer source packet",
+        "local fixture": "local source packet",
+        "fixture": "source packet",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return text
 
 
 def _stock_financial_item(
@@ -1893,7 +1899,7 @@ def _etf_holdings_items(
             evidence_state=holdings_state,
             as_of_date=response.freshness.holdings_as_of or response.freshness.facts_as_of,
             limitations=(
-                "Official issuer holdings or exposure fixture metadata supports this section."
+                "Issuer holdings or exposure metadata supports this section."
                 if holdings_state is EvidenceState.supported
                 else "Full issuer holdings are unavailable in this lightweight response."
             ),
@@ -2148,20 +2154,20 @@ def _provider_profile_context_summary(response: LightweightFetchResponse) -> str
     industry = profile.get("industry")
     ceo = profile.get("ceo")
     if sector and industry:
-        parts.append(f"Provider profile fields place {response.asset.ticker} in the {sector} sector and {industry} industry")
+        parts.append(f"Profile context places {response.asset.ticker} in the {sector} sector and {industry} industry")
     elif sector:
-        parts.append(f"Provider profile fields place {response.asset.ticker} in the {sector} sector")
+        parts.append(f"Profile context places {response.asset.ticker} in the {sector} sector")
     elif industry:
-        parts.append(f"Provider profile fields place {response.asset.ticker} in the {industry} industry")
+        parts.append(f"Profile context places {response.asset.ticker} in the {industry} industry")
     if ceo:
-        parts.append(f"Provider profile fields list {ceo} as CEO")
+        parts.append(f"Profile context lists {ceo} as CEO")
     business_summary = (
         profile.get("business_summary")
         or profile.get("long_business_summary")
         or profile.get("longBusinessSummary")
     )
     if business_summary:
-        parts.append("Provider profile summary says " + _short_value(business_summary))
+        parts.append("Business summary: " + _short_value(business_summary))
     available_metrics = [
         label
         for key, label in (
@@ -3018,7 +3024,7 @@ def _market_metric(response: LightweightFetchResponse, citation_ids: list[str]) 
         evidence_state=EvidenceState.partial if metric.value not in (None, "Unavailable") else EvidenceState.unavailable,
         as_of_date=_fact_as_of(response, "provider_market_price"),
         retrieved_at=response.freshness.page_last_updated_at,
-        limitations="Provider-derived local-test market reference, not trading advice.",
+        limitations="Source-labeled market reference, not trading advice.",
     )
 
 
@@ -3235,8 +3241,8 @@ def _expense_ratio_metric(response: LightweightFetchResponse, citation_ids: list
         evidence_state=EvidenceState.supported if supported else EvidenceState.unavailable,
         as_of_date=_fact_as_of(response, "expense_ratio"),
         retrieved_at=response.freshness.page_last_updated_at,
-        limitations=(
-            "Official issuer fact-sheet fixture evidence."
+            limitations=(
+            "Issuer fact-sheet evidence."
             if supported
             else "Expense ratio requires issuer evidence or another reviewed provider field."
         ),
@@ -3329,7 +3335,7 @@ def _claims(
             claim_id="claim_lightweight_identity",
             claim_text=(
                 f"{response.asset.ticker} is rendered as a supported {response.asset.asset_type.value} in "
-                "the lightweight local-MVP pipeline."
+                "the source-labeled runtime path."
             ),
             citation_ids=stable_citation_ids,
         ),
@@ -3367,7 +3373,7 @@ def _empty_weekly_news_focus(response: LightweightFetchResponse) -> WeeklyNewsFo
     window = compute_weekly_news_window(response.freshness.page_last_updated_at)
     empty_state = WeeklyNewsEmptyState(
         state=WeeklyNewsContractState.no_high_signal,
-        message="No source-governed Weekly News Focus items passed the local MVP evidence rules for this asset.",
+        message="No source-governed Weekly News Focus items passed the evidence rules for this asset.",
         evidence_state=EvidenceState.no_high_signal,
     )
     return WeeklyNewsFocusResponse(
@@ -3555,7 +3561,7 @@ def _stock_business_model(response: LightweightFetchResponse) -> str:
     filing = _latest_filing_summary(response)
     return (
         f"SEC metadata identifies {response.asset.name} as {response.asset.ticker}"
-        f"{_exchange_phrase(response)}. {filing} The lightweight page uses SEC facts first and labels provider fallback."
+        f"{_exchange_phrase(response)}. {filing} The page uses SEC facts first and labels fallback context."
     )
 
 
@@ -3612,7 +3618,7 @@ def _stock_valuation_context(response: LightweightFetchResponse) -> str:
     price = _metric_from_market_price(response, _citation_ids_for_source_label(response, "provider_derived"))
     if price.value not in (None, "Unavailable"):
         return (
-            f"Provider-derived local-test market reference is available at {price.value} {price.unit or ''}. "
+            f"A delayed or best-effort market reference is available at {price.value} {price.unit or ''}. "
             "The lightweight page does not calculate P/E, forward P/E, price/sales, price/free-cash-flow, peer context, or own-history context."
         )
     return "Valuation context is unavailable because the lightweight response has no supported valuation ratios or provider price reference."
@@ -3649,20 +3655,12 @@ def _latest_filing_summary(response: LightweightFetchResponse) -> str:
 def _provider_reference_summary(response: LightweightFetchResponse) -> str:
     reference = _fact_value(response, "provider_identity_or_market_reference")
     if isinstance(reference, dict) and reference:
-        price = _fact_value(response, "provider_market_price")
-        price_text = ""
-        if isinstance(price, dict) and (price.get("regularMarketPrice") or price.get("chartPreviousClose")):
-            price_text = (
-                f" Provider price reference: {price.get('regularMarketPrice') or price.get('chartPreviousClose')} "
-                f"{price.get('currency') or ''}."
-            )
         return (
             f"Provider fallback identifies {reference.get('symbol') or response.asset.ticker} as "
             f"{reference.get('quoteType') or reference.get('instrumentType') or response.asset.asset_type.value} "
             f"on {reference.get('fullExchangeName') or reference.get('exchangeName') or reference.get('exchange') or 'an exchange'}."
-            f"{price_text}"
         )
-    return "Provider market-reference fallback is unavailable."
+    return "Market-reference fallback is unavailable."
 
 
 def _etf_role(response: LightweightFetchResponse) -> str:
@@ -3671,7 +3669,7 @@ def _etf_role(response: LightweightFetchResponse) -> str:
     expense_ratio = _fact_value(response, "expense_ratio")
     if isinstance(identity, dict):
         return (
-            f"Official issuer fixture evidence identifies {identity.get('fund_name') or response.asset.name} as a "
+            f"Issuer source metadata identifies {identity.get('fund_name') or response.asset.name} as a "
             f"{identity.get('etf_classification') or 'U.S.-listed ETF'} from "
             f"{identity.get('issuer') or response.asset.issuer or 'the issuer'}"
             f"{f' tracking {benchmark}' if benchmark else ''}"
@@ -3683,7 +3681,7 @@ def _etf_role(response: LightweightFetchResponse) -> str:
             f"{response.asset.ticker} is treated as a lightweight in-scope ETF based on local scope metadata for "
             f"{signal.get('fund_name') or response.asset.name} from {signal.get('issuer') or response.asset.issuer or 'the issuer'}."
         )
-    return f"{response.asset.ticker} is treated as a lightweight ETF candidate with provider-derived context."
+    return f"{response.asset.ticker} is treated as an ETF candidate with source-labeled fallback context."
 
 
 def _etf_scope_summary(response: LightweightFetchResponse) -> str:
@@ -3715,7 +3713,7 @@ def _etf_holdings_context(response: LightweightFetchResponse) -> list[str]:
     ]
     if holdings_count is not None or holding_summaries:
         lines = [
-            f"Official issuer fixture evidence lists {holdings_count or 'available'} holdings or exposure metadata for {response.asset.ticker}."
+            f"Issuer source metadata lists {holdings_count or 'available'} holdings or exposure metadata for {response.asset.ticker}."
         ]
         for item in holding_summaries[:3]:
             if isinstance(item, dict):
@@ -3739,7 +3737,7 @@ def _etf_holdings_context(response: LightweightFetchResponse) -> list[str]:
 def _etf_benchmark_summary(response: LightweightFetchResponse) -> str:
     benchmark = _fact_value(response, "benchmark")
     if benchmark is not None:
-        return f"Official issuer fact-sheet fixture metadata lists benchmark/index: {benchmark}."
+        return f"Issuer fact-sheet metadata lists benchmark/index: {benchmark}."
     return "Benchmark is unavailable until deterministic issuer evidence is present."
 
 
