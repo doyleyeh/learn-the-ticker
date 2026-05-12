@@ -322,6 +322,26 @@ def test_golden_asset_source_handoff_requires_approval_parser_rights_and_freshne
     assert hidden.allowed is False
     assert "hidden_or_internal_source" in hidden.reason_codes
 
+    public_hidden_slug = validate_source_handoff(
+        {
+            **source,
+            "source_identity": "https://finance.yahoo.com/m/example/the-hidden-drag-of-spy.html",
+            "source_type": "yahoo_finance_weekly_news_metadata",
+            "is_official": False,
+            "source_quality": SourceQuality.provider,
+        },
+        action=SourcePolicyAction.generated_claim_support,
+    )
+    assert public_hidden_slug.allowed is True
+    assert "hidden_or_internal_source" not in public_hidden_slug.reason_codes
+
+    localhost = validate_source_handoff(
+        {**source, "source_identity": "http://localhost:8000/internal/source"},
+        action=SourcePolicyAction.generated_claim_support,
+    )
+    assert localhost.allowed is False
+    assert "hidden_or_internal_source" in localhost.reason_codes
+
     metadata_only = validate_source_handoff(
         {
             **source,

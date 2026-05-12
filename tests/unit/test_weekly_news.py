@@ -417,6 +417,81 @@ def test_weekly_news_selects_voo_etf_context_from_reputable_publishers():
     }
 
 
+def test_yahoo_weekly_news_suppresses_advice_like_voo_headlines():
+    result = yahoo_search_payload_to_weekly_news_facts(
+        ticker="VOO",
+        asset_type=AssetType.etf,
+        retrieved_at="2026-05-08T15:00:00Z",
+        no_live_external_calls=False,
+        payload={
+            "news": [
+                {
+                    "uuid": "voo-should-invest",
+                    "title": "Should You Invest $1,000 In VOO Right Now?",
+                    "publisher": "Motley Fool",
+                    "link": "https://finance.yahoo.com/m/example/should-you-invest-in-voo.html",
+                    "providerPublishTime": 1778245200,
+                    "summary": "A provider metadata item framed as personal investing advice.",
+                    "relatedTickers": ["VOO"],
+                },
+                {
+                    "uuid": "voo-better-buy",
+                    "title": "VOO vs. QQQ: Which Index Fund Is the Better Buy Right Now?",
+                    "publisher": "Motley Fool",
+                    "link": "https://finance.yahoo.com/m/example/voo-vs-qqq-better-buy.html",
+                    "providerPublishTime": 1778245200,
+                    "summary": "A provider metadata item framed as a buy decision.",
+                    "relatedTickers": ["VOO", "QQQ"],
+                },
+                {
+                    "uuid": "voo-hidden-public",
+                    "title": "The Hidden Drag of SPY's Structure and VOO Fee Context",
+                    "publisher": "ETF.com",
+                    "link": "https://finance.yahoo.com/m/example/the-hidden-drag-of-spy.html",
+                    "providerPublishTime": 1778245200,
+                    "summary": "A source-labeled ETF.com item discusses VOO fees and S&P 500 ETF structure.",
+                    "relatedTickers": ["VOO"],
+                },
+            ]
+        },
+    )
+
+    assert result.candidate_count == 1
+    assert result.suppressed_count == 2
+    assert result.suppression_reason_counts["advice_like"] == 2
+    assert result.facts[0].value["title"] == "The Hidden Drag of SPY's Structure and VOO Fee Context"
+
+
+def test_lightweight_weekly_news_invalid_private_source_does_not_crash():
+    fact = _lightweight_weekly_fact(
+        "voo_private_source",
+        ticker="VOO",
+        source_type="yahoo_finance_weekly_news_metadata",
+        source_rank_tier=WeeklyNewsSourceRankTier.provider_context,
+        source_quality=SourceQuality.provider,
+        publisher="Yahoo Finance",
+        title="VOO fee and S&P 500 ETF context this week",
+        summary="Yahoo Finance metadata links VOO fees to broad S&P 500 ETF context.",
+        event_date="2026-05-08",
+    )
+    source = _LIGHTWEIGHT_WEEKLY_SOURCES[fact.source_document_ids[0]]
+    try:
+        _LIGHTWEIGHT_WEEKLY_SOURCES[fact.source_document_ids[0]] = source.model_copy(
+            update={"url": "private://internal/voo-weekly-news"}
+        )
+        response = _lightweight_weekly_news_response(
+            no_live_external_calls=False,
+            ticker="VOO",
+            asset_type=AssetType.etf,
+            name="Vanguard S&P 500 ETF",
+            facts=[fact],
+        )
+
+        assert build_lightweight_weekly_news_focus(response) is None
+    finally:
+        _LIGHTWEIGHT_WEEKLY_SOURCES[fact.source_document_ids[0]] = source
+
+
 def test_weekly_news_quality_pool_lets_reputable_yahoo_outrank_weak_provider_api():
     response = _lightweight_weekly_news_response(
         no_live_external_calls=False,

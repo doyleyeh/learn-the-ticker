@@ -31,10 +31,12 @@ from backend.weekly_news import (
 )
 from backend.weekly_news_repository import (
     InMemoryWeeklyNewsEventEvidenceRepository,
+    WeeklyNewsEventEvidenceContractError,
     WeeklyNewsEventCandidateRow,
     WeeklyNewsSourceRankTier,
     acquire_weekly_news_event_evidence_from_fixtures,
 )
+from backend.source_policy import SourcePolicyAction, validate_source_handoff
 
 
 WEEKLY_NEWS_SOURCE_ADAPTER_BOUNDARY = "weekly-news-source-adapter-v1"
@@ -46,8 +48,15 @@ YAHOO_WEEKLY_NEWS_RIGHTS_NOTE = (
 )
 
 _ADVICE_LIKE_TITLE_MARKERS = (
+    " to buy ",
+    "before it soars",
+    "better buy",
+    "buy right now",
+    "invest $",
     "should you buy",
     "should i buy",
+    "should you invest",
+    "should i invest",
     "worth buying",
     "stocks to buy",
     "etfs to buy",
@@ -215,19 +224,27 @@ def build_lightweight_weekly_news_focus(response: LightweightFetchResponse):
     """Build a Weekly News Focus response from selected lightweight Weekly News facts."""
 
     candidates = weekly_news_candidate_rows_from_lightweight_response(response)
+    candidates = [
+        candidate
+        for candidate in candidates
+        if validate_source_handoff(candidate, action=SourcePolicyAction.generated_claim_support).allowed
+    ]
     if not candidates:
         return None
 
     as_of = response.freshness.page_last_updated_at
     include_current_day = not response.no_live_external_calls
-    records = acquire_weekly_news_event_evidence_from_fixtures(
-        asset_ticker=response.asset.ticker,
-        as_of=as_of,
-        created_at=response.freshness.page_last_updated_at,
-        candidates=candidates,
-        minimum_ai_analysis_item_count=MINIMUM_AI_ANALYSIS_ITEMS,
-        include_current_day=include_current_day,
-    )
+    try:
+        records = acquire_weekly_news_event_evidence_from_fixtures(
+            asset_ticker=response.asset.ticker,
+            as_of=as_of,
+            created_at=response.freshness.page_last_updated_at,
+            candidates=candidates,
+            minimum_ai_analysis_item_count=MINIMUM_AI_ANALYSIS_ITEMS,
+            include_current_day=include_current_day,
+        )
+    except WeeklyNewsEventEvidenceContractError:
+        return None
     repo = InMemoryWeeklyNewsEventEvidenceRepository()
     repo.persist(records)
     read = read_persisted_weekly_news_focus(

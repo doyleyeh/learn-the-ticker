@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 import backend.lightweight_data_fetch as lightweight_data_fetch
+from backend.analysis_packs import build_economic_indicators_pack
 from backend.lightweight_data_fetch import (
     ETF_QUOTE_STAT_ROW_ORDER,
     STOCK_QUOTE_STAT_ROW_ORDER,
@@ -1495,6 +1496,32 @@ def test_lightweight_page_build_cache_reuses_validated_overview(monkeypatch):
 
     first = build_lightweight_overview_response(response)
     second = build_lightweight_overview_response(refreshed_response)
+
+    assert calls == [True]
+    assert first == second
+    assert first is not second
+
+
+def test_lightweight_page_build_cache_reuses_overview_with_same_economic_context(monkeypatch):
+    clear_lightweight_page_build_cache()
+    calls: list[bool] = []
+
+    def fake_runtime_market_news(*, cache_only: bool = False, economic_indicators=None):  # noqa: ANN001
+        assert economic_indicators is not None
+        calls.append(cache_only)
+        return build_market_news_response(economic_indicators=economic_indicators)
+
+    monkeypatch.setattr("backend.lightweight_page.build_runtime_market_news_response", fake_runtime_market_news)
+    response = fetch_lightweight_asset_data(
+        "VOO",
+        settings=_settings(),
+        fetcher=FakeJsonFetcher(),
+        retrieved_at=RETRIEVED_AT,
+    )
+    economic_indicators = build_economic_indicators_pack()
+
+    first = build_lightweight_overview_response(response, economic_indicators=economic_indicators)
+    second = build_lightweight_overview_response(response, economic_indicators=economic_indicators.model_copy(deep=True))
 
     assert calls == [True]
     assert first == second

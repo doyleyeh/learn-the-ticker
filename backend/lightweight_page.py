@@ -92,6 +92,7 @@ _VOLATILE_PAGE_BUILD_CACHE_FIELDS = frozenset(
 class _LightweightPageBuildCacheKey:
     response_kind: str
     evidence_digest: str
+    context_digest: str
     generation_signature: tuple[tuple[str, str], ...]
 
 
@@ -155,10 +156,12 @@ def build_lightweight_weekly_news_response(
     market_news_focus: Any | None = None,
     technical_context: dict[str, Any] | None = None,
 ) -> WeeklyNewsResponse:
-    has_context_override = (
-        economic_indicators is not None or market_news_focus is not None or technical_context is not None
+    cache_context = _page_build_cache_context(
+        economic_indicators=economic_indicators,
+        market_news_focus=market_news_focus,
+        technical_context=technical_context,
     )
-    cached = None if has_context_override else _page_build_cache_get("weekly_news", response)
+    cached = _page_build_cache_get("weekly_news", response, context_payload=cache_context)
     if cached is not None:
         return cached
 
@@ -194,8 +197,7 @@ def build_lightweight_weekly_news_response(
         weekly_news_focus=weekly_news_focus,
         ai_comprehensive_analysis=ai_analysis,
     )
-    if not has_context_override:
-        _page_build_cache_set("weekly_news", response, weekly_response)
+    _page_build_cache_set("weekly_news", response, weekly_response, context_payload=cache_context)
     return weekly_response
 
 
@@ -205,8 +207,11 @@ def build_lightweight_overview_response(
     economic_indicators: EconomicIndicatorsPackResponse | None = None,
     technical_context: dict[str, Any] | None = None,
 ) -> OverviewResponse:
-    has_context_override = economic_indicators is not None or technical_context is not None
-    cached = None if has_context_override else _page_build_cache_get("overview", response)
+    cache_context = _page_build_cache_context(
+        economic_indicators=economic_indicators,
+        technical_context=technical_context,
+    )
+    cached = _page_build_cache_get("overview", response, context_payload=cache_context)
     if cached is not None:
         return cached
 
@@ -224,69 +229,78 @@ def build_lightweight_overview_response(
     default_citation_ids = [citation.citation_id for citation in citations[:1]]
     provider_citation_ids = _citation_ids_for_source_label(response, "provider_derived") or default_citation_ids
     stable_citation_ids = _preferred_citation_ids(response) or default_citation_ids
-    weekly_news_focus = build_lightweight_weekly_news_focus(response) or _empty_weekly_news_focus(response)
     with deterministic_summary_generation():
+        weekly_news_focus = build_lightweight_weekly_news_focus(response) or _empty_weekly_news_focus(response)
         market_news_kwargs: dict[str, Any] = {"cache_only": True}
         if economic_indicators is not None:
             market_news_kwargs["economic_indicators"] = economic_indicators
         market_news = build_runtime_market_news_response(**market_news_kwargs)
-    generation_evidence_pack = evidence_pack_from_lightweight_response(
-        response,
-        economic_indicators=economic_indicators,
-        market_news_focus=market_news.market_news_focus,
-        weekly_news_focus=weekly_news_focus,
-        technical_context=technical_context,
-    )
-    sections = (
-        _stock_sections(response, stable_citation_ids, provider_citation_ids, generation_evidence_pack=generation_evidence_pack)
-        if response.asset.asset_type is AssetType.stock
-        else _etf_sections(response, stable_citation_ids, provider_citation_ids, generation_evidence_pack=generation_evidence_pack)
-    )
-    claims = _claims(response, stable_citation_ids, provider_citation_ids)
-    ai_analysis = build_ai_comprehensive_analysis(
-        response.asset,
-        weekly_news_focus,
-        canonical_fact_citation_ids=stable_citation_ids,
-        canonical_source_document_ids=[source.source_document_id for source in sources[:1]],
-        economic_indicators=economic_indicators,
-        market_news_focus=market_news.market_news_focus,
-        technical_context=technical_context,
-        generation_evidence_pack=generation_evidence_pack,
-    )
-
-    overview = OverviewResponse(
-        asset=response.asset.model_copy(update={"status": AssetStatus.supported, "supported": True}),
-        state=StateMessage(
-            status=AssetStatus.supported,
-            message=(
-                "Live lightweight local-MVP data is available. Official sources are preferred and provider-derived "
-                "fallbacks are labeled; this is not strict audit-quality source approval."
-            ),
-        ),
-        freshness=response.freshness,
-        snapshot=_snapshot(response, stable_citation_ids, provider_citation_ids),
-        beginner_summary=_beginner_summary(response, generation_evidence_pack=generation_evidence_pack),
-        top_risks=_top_risks(
+        generation_evidence_pack = evidence_pack_from_lightweight_response(
             response,
-            stable_citation_ids,
-            provider_citation_ids,
+            economic_indicators=economic_indicators,
+            market_news_focus=market_news.market_news_focus,
+            weekly_news_focus=weekly_news_focus,
+            technical_context=technical_context,
+        )
+        sections = (
+            _stock_sections(
+                response,
+                stable_citation_ids,
+                provider_citation_ids,
+                generation_evidence_pack=generation_evidence_pack,
+            )
+            if response.asset.asset_type is AssetType.stock
+            else _etf_sections(
+                response,
+                stable_citation_ids,
+                provider_citation_ids,
+                generation_evidence_pack=generation_evidence_pack,
+            )
+        )
+        claims = _claims(response, stable_citation_ids, provider_citation_ids)
+        ai_analysis = build_ai_comprehensive_analysis(
+            response.asset,
+            weekly_news_focus,
+            canonical_fact_citation_ids=stable_citation_ids,
+            canonical_source_document_ids=[source.source_document_id for source in sources[:1]],
+            economic_indicators=economic_indicators,
+            market_news_focus=market_news.market_news_focus,
+            technical_context=technical_context,
             generation_evidence_pack=generation_evidence_pack,
-        ),
-        recent_developments=[],
-        market_news_focus=market_news.market_news_focus,
-        market_ai_comprehensive_analysis=market_news.market_ai_comprehensive_analysis,
-        weekly_news_focus=weekly_news_focus,
-        ai_comprehensive_analysis=ai_analysis,
-        suitability_summary=_suitability_summary(response, stable_citation_ids),
-        claims=claims,
-        citations=citations,
-        source_documents=sources,
-        sections=sections,
-        section_freshness_validation=[],
-        fallback_diagnostics=_fallback_diagnostics(response),
-    )
-    if not has_context_override:
-        _page_build_cache_set("overview", response, overview)
+        )
+
+        overview = OverviewResponse(
+            asset=response.asset.model_copy(update={"status": AssetStatus.supported, "supported": True}),
+            state=StateMessage(
+                status=AssetStatus.supported,
+                message=(
+                    "Live lightweight local-MVP data is available. Official sources are preferred and provider-derived "
+                    "fallbacks are labeled; this is not strict audit-quality source approval."
+                ),
+            ),
+            freshness=response.freshness,
+            snapshot=_snapshot(response, stable_citation_ids, provider_citation_ids),
+            beginner_summary=_beginner_summary(response, generation_evidence_pack=generation_evidence_pack),
+            top_risks=_top_risks(
+                response,
+                stable_citation_ids,
+                provider_citation_ids,
+                generation_evidence_pack=generation_evidence_pack,
+            ),
+            recent_developments=[],
+            market_news_focus=market_news.market_news_focus,
+            market_ai_comprehensive_analysis=market_news.market_ai_comprehensive_analysis,
+            weekly_news_focus=weekly_news_focus,
+            ai_comprehensive_analysis=ai_analysis,
+            suitability_summary=_suitability_summary(response, stable_citation_ids),
+            claims=claims,
+            citations=citations,
+            source_documents=sources,
+            sections=sections,
+            section_freshness_validation=[],
+            fallback_diagnostics=_fallback_diagnostics(response),
+        )
+    _page_build_cache_set("overview", response, overview, context_payload=cache_context)
     return overview
 
 
@@ -522,11 +536,16 @@ def build_lightweight_sources_response(
     return sources_response
 
 
-def _page_build_cache_get(response_kind: str, response: LightweightFetchResponse) -> Any | None:
+def _page_build_cache_get(
+    response_kind: str,
+    response: LightweightFetchResponse,
+    *,
+    context_payload: Any | None = None,
+) -> Any | None:
     ttl = _page_build_cache_ttl_seconds()
     if ttl <= 0:
         return None
-    key = _page_build_cache_key(response_kind, response)
+    key = _page_build_cache_key(response_kind, response, context_payload=context_payload)
     entry = _LIGHTWEIGHT_PAGE_BUILD_CACHE.get(key)
     if entry is None:
         return None
@@ -536,26 +555,62 @@ def _page_build_cache_get(response_kind: str, response: LightweightFetchResponse
     return entry.response.model_copy(deep=True)
 
 
-def _page_build_cache_set(response_kind: str, response: LightweightFetchResponse, rendered_response: Any) -> None:
+def _page_build_cache_set(
+    response_kind: str,
+    response: LightweightFetchResponse,
+    rendered_response: Any,
+    *,
+    context_payload: Any | None = None,
+) -> None:
     ttl = _page_build_cache_ttl_seconds()
     if ttl <= 0:
         return
-    _LIGHTWEIGHT_PAGE_BUILD_CACHE[_page_build_cache_key(response_kind, response)] = _LightweightPageBuildCacheEntry(
-        response=rendered_response.model_copy(deep=True),
-        stored_at_seconds=time.monotonic(),
-    )
+    _LIGHTWEIGHT_PAGE_BUILD_CACHE[
+        _page_build_cache_key(response_kind, response, context_payload=context_payload)
+    ] = _LightweightPageBuildCacheEntry(response=rendered_response.model_copy(deep=True), stored_at_seconds=time.monotonic())
 
 
-def _page_build_cache_key(response_kind: str, response: LightweightFetchResponse) -> _LightweightPageBuildCacheKey:
+def _page_build_cache_key(
+    response_kind: str,
+    response: LightweightFetchResponse,
+    *,
+    context_payload: Any | None = None,
+) -> _LightweightPageBuildCacheKey:
     evidence_payload = _stable_page_build_evidence_payload(response.model_dump(mode="json"))
     evidence_digest = hashlib.sha256(
         json.dumps(evidence_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
+    context_digest = hashlib.sha256(
+        json.dumps(
+            _stable_page_build_evidence_payload(_jsonable_page_build_context(context_payload)),
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
     return _LightweightPageBuildCacheKey(
         response_kind=response_kind,
         evidence_digest=evidence_digest,
+        context_digest=context_digest,
         generation_signature=_page_build_generation_signature(),
     )
+
+
+def _page_build_cache_context(**values: Any) -> dict[str, Any] | None:
+    context = {key: _jsonable_page_build_context(value) for key, value in values.items() if value is not None}
+    return context or None
+
+
+def _jsonable_page_build_context(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if hasattr(value, "model_dump"):
+        return value.model_dump(mode="json")
+    if isinstance(value, dict):
+        return {str(key): _jsonable_page_build_context(child) for key, child in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable_page_build_context(child) for child in value]
+    return str(value)
 
 
 def _page_build_generation_signature() -> tuple[tuple[str, str], ...]:

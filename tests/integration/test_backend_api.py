@@ -1028,8 +1028,23 @@ def test_lightweight_weekly_news_endpoint_matches_overview_when_enabled(monkeypa
     monkeypatch.setattr("backend.lightweight_page.fetch_lightweight_asset_data", fake_fetch)
     monkeypatch.setattr("backend.main.fetch_lightweight_asset_data", fake_fetch)
 
-    overview = client.get("/api/assets/VOO/overview").json()
-    weekly = client.get("/api/assets/VOO/weekly-news").json()
+    overview_response = client.get("/api/assets/VOO/overview")
+    details_response = client.get("/api/assets/VOO/details")
+    weekly_response = client.get("/api/assets/VOO/weekly-news")
+    sources_response = client.get("/api/assets/VOO/sources")
+    chart_response = client.get("/api/assets/VOO/chart", params={"range": "6mo"})
+
+    assert overview_response.status_code == 200
+    assert details_response.status_code == 200
+    assert weekly_response.status_code == 200
+    assert sources_response.status_code == 200
+    assert chart_response.status_code == 200
+
+    overview = overview_response.json()
+    weekly = weekly_response.json()
+    details = details_response.json()
+    sources = sources_response.json()
+    chart = chart_response.json()
 
     assert overview["weekly_news_focus"]["selected_item_count"] == 2
     assert overview["weekly_news_focus"]["items"][0]["source"]["source_quality"] == "provider"
@@ -1037,6 +1052,12 @@ def test_lightweight_weekly_news_endpoint_matches_overview_when_enabled(monkeypa
     assert weekly["weekly_news_focus"] == overview["weekly_news_focus"]
     assert weekly["ai_comprehensive_analysis"] == overview["ai_comprehensive_analysis"]
     assert weekly["weekly_news_focus"]["stable_facts_are_separate"] is True
+    assert details["facts"]["holdings"]
+    assert sources["sources"]
+    assert chart["chart"]["points"]
+    assert any(section.get("chart") for section in overview["sections"])
+    assert any((section.get("table") or {}).get("table_id") == "etf_overview" for section in overview["sections"])
+    assert any((section.get("table") or {}).get("table_id") == "top_holdings" for section in overview["sections"])
 
 
 def test_ingestion_request_route_returns_deterministic_job_or_non_job_states():

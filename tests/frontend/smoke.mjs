@@ -1501,12 +1501,15 @@ orderedMarkers("lib/search.ts", [
 ], "backend search preference before fixture fallback");
 includesAll("app/assets/[ticker]/page.tsx", [
   "fetchSupportedAssetOverview(fallbackAsset?.ticker ?? ticker, fallbackAsset)",
+  "RecoverableBackendAssetStatePage",
+  "data-asset-supported-backend-unavailable",
   "LimitedAssetStatePage",
   "data-asset-pending-ingestion-state",
   "data-asset-no-generated-output-for-blocked-state",
   "buildEmptyWeeklyNewsFocus",
   "buildSuppressedAnalysis"
 ], "dynamic backend asset page and limited-state fallback");
+includes("app/layout.tsx", "suppressHydrationWarning");
 includes("app/assets/[ticker]/sources/page.tsx", "resolveSearchResponse");
 assert.equal(
   read("components/SearchBox.tsx").includes("https://") || read("components/SearchBox.tsx").includes("http://"),

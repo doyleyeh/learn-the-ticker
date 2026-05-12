@@ -116,18 +116,24 @@ export default async function AssetPage({ params }: AssetPageProps) {
   let glossaryRendering: "backend_contract" | "local_fixture" = "local_fixture";
   let assetPageExportContract: AssetExportContractValidation | null = null;
   let assetSourceListExportContract: AssetExportContractValidation | null = null;
+  const backendApiConfigured = Boolean(process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || process.env.API_BASE_URL?.trim());
+  let overviewFetchFailed = false;
 
   try {
     asset = await fetchSupportedAssetOverview(fallbackAsset?.ticker ?? ticker, fallbackAsset);
     overviewRendering = "backend_contract";
   } catch {
-    asset = fallbackAsset ?? null;
+    overviewFetchFailed = true;
+    asset = backendApiConfigured ? null : fallbackAsset ?? null;
   }
 
   if (!asset) {
     const search = await resolveSearchResponse(ticker);
     if (search.state.status === "unknown" && search.results[0]?.ticker === "") {
       notFound();
+    }
+    if (overviewFetchFailed && (search.state.status === "supported" || search.results[0]?.supported)) {
+      return <RecoverableBackendAssetStatePage ticker={ticker} search={search} />;
     }
     return <LimitedAssetStatePage ticker={ticker} search={search} />;
   }
@@ -207,10 +213,10 @@ export default async function AssetPage({ params }: AssetPageProps) {
       weeklyNewsFocus,
       aiComprehensiveAnalysis,
       asset.assetType,
-      optionalBackendFetcher()
+      optionalBackendFetcher(1000)
     ).catch(() => null),
-    fetchSupportedSourceDrawerResponse(asset.ticker, optionalBackendFetcher()).catch(() => null),
-    fetchSupportedAssetGlossaryContexts(asset.ticker, glossaryTermsForBackend, optionalBackendFetcher()).catch(() => null)
+    fetchSupportedSourceDrawerResponse(asset.ticker, optionalBackendFetcher(1000)).catch(() => null),
+    fetchSupportedAssetGlossaryContexts(asset.ticker, glossaryTermsForBackend, optionalBackendFetcher(1000)).catch(() => null)
   ]);
 
   if (backendEconomicIndicators) {
@@ -816,12 +822,59 @@ export default async function AssetPage({ params }: AssetPageProps) {
   );
 }
 
+function RecoverableBackendAssetStatePage({ ticker, search }: { ticker: string; search: LocalSearchResponse }) {
+  const result = search.results[0];
+  const titleTicker = result?.ticker || ticker.toUpperCase();
+  const supportClassification = search.state.support_classification ?? result?.support_classification ?? "cached_supported";
+
+  return (
+    <main
+      data-prd-layout-marker="asset-page-backend-temporarily-unavailable-v1"
+      data-asset-overview-rendering="backend_unavailable"
+      data-asset-dynamic-fallback-state="supported_backend_unavailable"
+      data-asset-support-classification={supportClassification}
+      data-asset-generated-page-blocked="false"
+      data-asset-supported-backend-unavailable
+    >
+      <section className="plain-panel unknown-state" data-dynamic-asset-state="supported_backend_unavailable">
+        <div className="section-heading">
+          <p className="eyebrow">Backend data temporarily unavailable</p>
+          <h1>{titleTicker} learning page</h1>
+        </div>
+        <div className="state-row">
+          <span className="state-pill" data-evidence-state="supported">
+            State: supported
+          </span>
+          <span className="state-pill" data-support-classification={supportClassification}>
+            {supportClassification.replaceAll("_", " ")}
+          </span>
+        </div>
+        <p className="source-gap-note">
+          This asset is supported, but the local backend did not return a valid overview quickly enough for this page
+          render. Try refreshing after the backend finishes its source-labeled fetch, or open search while the cache warms.
+        </p>
+        <p className="source-gap-note" data-asset-supported-recoverable-backend-state>
+          No generated facts are shown from frontend memory in this state; the page waits for a same-asset backend
+          evidence response before rendering charts, tables, chat, comparisons, exports, or Weekly News Focus.
+        </p>
+        <nav className="source-list-nav" aria-label="Asset availability navigation">
+          <a href="/">Back to search</a>
+          <a href="/compare">Open comparison workflow</a>
+        </nav>
+      </section>
+    </main>
+  );
+}
+
 function LimitedAssetStatePage({ ticker, search }: { ticker: string; search: LocalSearchResponse }) {
   const result = search.results[0];
   const status = search.state.status;
   const supportClassification = search.state.support_classification ?? result?.support_classification ?? "unknown";
   const titleTicker = result?.ticker || ticker.toUpperCase();
   const stateLabel = status.replaceAll("_", " ");
+  if (status === "supported" || result?.supported) {
+    return <RecoverableBackendAssetStatePage ticker={ticker} search={search} />;
+  }
   const message =
     search.state.blocked_explanation?.summary ??
     result?.blocked_explanation?.summary ??
@@ -834,7 +887,7 @@ function LimitedAssetStatePage({ ticker, search }: { ticker: string; search: Loc
       data-asset-overview-rendering="local_fixture"
       data-asset-dynamic-fallback-state={status}
       data-asset-support-classification={supportClassification}
-      data-asset-generated-page-blocked={status !== "supported"}
+      data-asset-generated-page-blocked
     >
       <section className="plain-panel unknown-state" data-dynamic-asset-state={status}>
         <div className="section-heading">

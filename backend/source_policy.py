@@ -5,6 +5,7 @@ from enum import Enum
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 try:
     import yaml
@@ -693,5 +694,14 @@ def _review_status_for_decision(decision: SourcePolicyDecision) -> SourceReviewS
 
 
 def _is_hidden_or_internal_source(source_type: str, source_identity: str) -> bool:
-    text = f"{source_type} {source_identity}".lower()
-    return any(marker in text for marker in ("hidden", "internal", "private://", "localhost", "127.0.0.1"))
+    normalized_source_type = source_type.lower()
+    if "hidden" in normalized_source_type or "internal" in normalized_source_type:
+        return True
+
+    normalized_identity = source_identity.strip().lower()
+    if normalized_identity.startswith("private://"):
+        return True
+
+    parsed = urlsplit(normalized_identity)
+    host = (parsed.hostname or "").lower()
+    return host in {"localhost", "127.0.0.1", "::1"} or host.startswith("127.")

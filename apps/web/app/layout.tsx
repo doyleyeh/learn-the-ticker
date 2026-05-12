@@ -13,8 +13,8 @@ export default function RootLayout({
   children: ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body>
+    <html lang="en" suppressHydrationWarning>
+      <body suppressHydrationWarning>
         <div className="app-shell">
           <header className="topbar" data-global-navigation-workflow="single-search-separate-compare">
             <a className="brand" href="/">
