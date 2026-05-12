@@ -11,6 +11,10 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
   && python -m pip install --no-cache-dir -r requirements.txt
 
 COPY backend ./backend
+COPY data ./data
+COPY alembic ./alembic
+COPY alembic.ini ./
+COPY scripts ./scripts
 
 EXPOSE 8000
 

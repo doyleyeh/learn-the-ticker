@@ -47,11 +47,16 @@ services:
       - worker
     command:
       - python
-      - -c
-      - print("ingestion worker scaffold - no live ingestion is started by docker compose")
+      - -m
+      - backend.cloud_job
+      - run-pre-cache
+      - --ticker
+      - VOO
+      - --allow-fixture-fallback
     environment:
       APP_ENV: local
       DATABASE_URL: postgresql://learn_the_ticker:learn_the_ticker@postgres:5432/learn_the_ticker
+      ADMIN_ROUTES_ENABLED: "true"
       TOP500_UNIVERSE_MANIFEST_URI: data/universes/us_common_stocks_top500.current.json
       LLM_PROVIDER: mock
       LLM_LIVE_GENERATION_ENABLED: "false"

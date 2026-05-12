@@ -2811,6 +2811,15 @@ class SourcesResponse(BaseModel):
     fallback_diagnostics: LightweightApiFallbackDiagnostics | None = None
 
 
+class AssetPageResponse(BaseModel):
+    schema_version: str = "asset-page-aggregate-v1"
+    asset: AssetIdentity
+    state: StateMessage
+    overview: OverviewResponse
+    details: DetailsResponse
+    sources: SourcesResponse
+
+
 class RecentResponse(BaseModel):
     asset: AssetIdentity
     state: StateMessage

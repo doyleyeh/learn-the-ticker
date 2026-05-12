@@ -4,12 +4,12 @@ import os
 from typing import Any
 
 if os.environ.get("LTT_FORCE_COMPAT_FASTAPI") == "1":
-    from backend.compat import FastAPI
+    from backend.compat import FastAPI, HTTPException
 else:
     try:
-        from fastapi import FastAPI
+        from fastapi import FastAPI, HTTPException
     except ModuleNotFoundError:  # pragma: no cover - exercised only in dependency-free local gates.
-        from backend.compat import FastAPI
+        from backend.compat import FastAPI, HTTPException
 try:
     from fastapi.middleware.cors import CORSMiddleware
 except ModuleNotFoundError:  # pragma: no cover - exercised only when FastAPI is unavailable.
@@ -63,6 +63,7 @@ from backend.market_news_runtime import build_runtime_market_news_response
 from backend.models import (
     AssetChartResponse,
     AssetIdentity,
+    AssetPageResponse,
     AssetStatus,
     AnalysisPackImportBundle,
     AnalysisPackImportResponse,
@@ -108,7 +109,7 @@ from backend.persistence import (
 from backend.retrieval import build_asset_knowledge_pack_result
 from backend.retrieval_repository import read_persisted_knowledge_pack_response
 from backend.search import search_assets
-from backend.settings import build_cors_settings, build_lightweight_data_settings
+from backend.settings import build_admin_route_settings, build_cors_settings, build_lightweight_data_settings
 from backend.sources import build_asset_source_drawer_response
 from backend.trust_metrics import get_trust_metric_event_catalog, validate_trust_metric_events
 
@@ -146,6 +147,13 @@ def _asset_payload(ticker: str) -> tuple[AssetIdentity, dict[str, Any] | None]:
 
 def _read_dependencies() -> BackendReadDependencies:
     return backend_read_dependencies_from_app(app)
+
+
+def _require_admin_routes_enabled() -> None:
+    settings = build_admin_route_settings()
+    app.state.admin_route_settings = settings.safe_diagnostics
+    if not settings.enabled:
+        raise HTTPException(status_code=404, detail="Admin routes are disabled in this environment.")
 
 
 def _current_economic_indicators_pack() -> EconomicIndicatorsPackResponse:
@@ -248,6 +256,7 @@ def search(q: str) -> SearchResponse:
 
 @app.post("/api/admin/ingest/{ticker}", response_model=IngestionJobResponse, tags=["ingestion"])
 def ingest_asset(ticker: str) -> IngestionJobResponse:
+    _require_admin_routes_enabled()
     readers = _read_dependencies()
     return request_ingestion(ticker, ingestion_job_ledger=readers.reader("ingestion_job_ledger"))
 
@@ -260,24 +269,28 @@ def ingestion_job_status(job_id: str) -> IngestionJobResponse:
 
 @app.post("/api/admin/pre-cache/launch-universe", response_model=PreCacheBatchResponse, tags=["ingestion"])
 def launch_universe_pre_cache() -> PreCacheBatchResponse:
+    _require_admin_routes_enabled()
     readers = _read_dependencies()
     return request_launch_universe_pre_cache(ingestion_job_ledger=readers.reader("ingestion_job_ledger"))
 
 
 @app.get("/api/admin/pre-cache/launch-universe", response_model=PreCacheBatchResponse, tags=["ingestion"])
 def launch_universe_pre_cache_status() -> PreCacheBatchResponse:
+    _require_admin_routes_enabled()
     readers = _read_dependencies()
     return request_launch_universe_pre_cache(ingestion_job_ledger=readers.reader("ingestion_job_ledger"))
 
 
 @app.get("/api/admin/pre-cache/jobs/{job_id}", response_model=PreCacheJobResponse, tags=["ingestion"])
 def pre_cache_job_status(job_id: str) -> PreCacheJobResponse:
+    _require_admin_routes_enabled()
     readers = _read_dependencies()
     return get_pre_cache_job_status(job_id, ingestion_job_ledger=readers.reader("ingestion_job_ledger"))
 
 
 @app.post("/api/admin/pre-cache/{ticker}", response_model=PreCacheJobResponse, tags=["ingestion"])
 def pre_cache_asset(ticker: str) -> PreCacheJobResponse:
+    _require_admin_routes_enabled()
     readers = _read_dependencies()
     return request_pre_cache_for_asset(ticker, ingestion_job_ledger=readers.reader("ingestion_job_ledger"))
 
@@ -318,6 +331,7 @@ def economic_indicators() -> EconomicIndicatorsPackResponse:
     tags=["market-news"],
 )
 def import_analysis_pack_bundle(bundle: AnalysisPackImportBundle) -> AnalysisPackImportResponse:
+    _require_admin_routes_enabled()
     return analysis_pack_repository().import_bundle(bundle)
 
 
@@ -447,6 +461,20 @@ def asset_sources(
         generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
         source_snapshot_reader=readers.reader("source_snapshot_repository"),
         persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
+    )
+
+
+@app.get("/api/assets/{ticker}", response_model=AssetPageResponse, tags=["assets"])
+def asset_page(ticker: str) -> AssetPageResponse:
+    overview = asset_overview(ticker)
+    details = asset_details(ticker)
+    sources = asset_sources(ticker)
+    return AssetPageResponse(
+        asset=overview.asset,
+        state=overview.state,
+        overview=overview,
+        details=details,
+        sources=sources,
     )
 
 

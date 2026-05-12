@@ -4,7 +4,7 @@ from logging.config import fileConfig
 
 from backend.db import build_engine_factory
 from backend.persistence import target_metadata
-from backend.settings import build_persistence_settings, offline_migration_database_url
+from backend.settings import build_migration_persistence_settings, build_persistence_settings, offline_migration_database_url
 
 try:
     from alembic import context
@@ -40,7 +40,7 @@ def run_migrations_online() -> None:
     if context is None:
         raise RuntimeError("Alembic is required to run migrations.")
 
-    settings = build_persistence_settings()
+    settings = build_migration_persistence_settings()
     engine = build_engine_factory(settings).create_engine()
 
     with engine.connect() as connection:

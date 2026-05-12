@@ -18,6 +18,7 @@ if str(ROOT) not in sys.path:
 os.environ.setdefault("LTT_FORCE_COMPAT_FASTAPI", "1")
 
 from backend.settings import (
+    build_admin_route_settings,
     build_cors_settings,
     build_lightweight_data_settings,
     build_market_news_settings,
@@ -32,6 +33,7 @@ PLACEHOLDER_ENV_FILES = (*SERVER_ENV_FILES, *BROWSER_ENV_FILES)
 BROWSER_SAFE_ENV_NAMES = ("NEXT_PUBLIC_API_BASE_URL",)
 SERVER_ONLY_ENV_NAMES = (
     "DATABASE_URL",
+    "MIGRATION_DATABASE_URL",
     "OPENROUTER_API_KEY",
     "FMP_API_KEY",
     "ALPHA_VANTAGE_API_KEY",
@@ -48,7 +50,13 @@ API_REQUIRED_ENV_NAMES = (
     "PORT",
     "CORS_ALLOWED_ORIGINS",
     "DATABASE_URL",
+    "MIGRATION_DATABASE_URL",
     "DATA_POLICY_MODE",
+    "ADMIN_ROUTES_ENABLED",
+    "LOCAL_DURABLE_REPOSITORIES_ENABLED",
+    "LOCAL_DURABLE_REPOSITORIES_FAIL_FAST",
+    "LOCAL_DURABLE_REPOSITORY_COMMIT_ON_WRITE",
+    "LOCAL_DURABLE_OBJECT_NAMESPACE",
     "LIGHTWEIGHT_LIVE_FETCH_ENABLED",
     "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED",
     "LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED",
@@ -65,7 +73,13 @@ API_REQUIRED_ENV_NAMES = (
 )
 WORKER_REQUIRED_ENV_NAMES = (
     "DATABASE_URL",
+    "MIGRATION_DATABASE_URL",
     "DATA_POLICY_MODE",
+    "ADMIN_ROUTES_ENABLED",
+    "LOCAL_DURABLE_REPOSITORIES_ENABLED",
+    "LOCAL_DURABLE_REPOSITORIES_FAIL_FAST",
+    "LOCAL_DURABLE_REPOSITORY_COMMIT_ON_WRITE",
+    "LOCAL_DURABLE_OBJECT_NAMESPACE",
     "LIGHTWEIGHT_LIVE_FETCH_ENABLED",
     "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED",
     "LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED",
@@ -82,7 +96,13 @@ ROOT_REQUIRED_ENV_NAMES = (
     "PORT",
     "CORS_ALLOWED_ORIGINS",
     "DATABASE_URL",
+    "MIGRATION_DATABASE_URL",
     "TOP500_UNIVERSE_MANIFEST_URI",
+    "ADMIN_ROUTES_ENABLED",
+    "LOCAL_DURABLE_REPOSITORIES_ENABLED",
+    "LOCAL_DURABLE_REPOSITORIES_FAIL_FAST",
+    "LOCAL_DURABLE_REPOSITORY_COMMIT_ON_WRITE",
+    "LOCAL_DURABLE_OBJECT_NAMESPACE",
     "DATA_POLICY_MODE",
     "LIGHTWEIGHT_LIVE_FETCH_ENABLED",
     "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED",
@@ -312,6 +332,8 @@ def _check_settings_defaults() -> dict[str, Any]:
     lightweight = build_lightweight_data_settings(env={})
     market_news = build_market_news_settings(env={})
     cors = build_cors_settings(env={})
+    admin_local = build_admin_route_settings(env={})
+    admin_production = build_admin_route_settings(env={"APP_ENV": "production"})
     blockers = []
     if persistence.database_url_configured:
         blockers.append("default_database_url_should_be_missing")
@@ -333,6 +355,10 @@ def _check_settings_defaults() -> dict[str, Any]:
         blockers.append("sec_user_agent_placeholder_missing")
     if not cors.enabled:
         blockers.append("cors_local_origins_missing")
+    if not admin_local.enabled:
+        blockers.append("admin_routes_should_default_on_outside_production")
+    if admin_production.enabled:
+        blockers.append("admin_routes_should_default_off_in_production")
     status = "blocked" if blockers else "pass"
     return {
         "check_id": "backend_settings_defaults",
@@ -353,6 +379,8 @@ def _check_settings_defaults() -> dict[str, Any]:
         "database_url_value_reported": False,
         "cors_allowed_origins_configured": cors.enabled,
         "cors_origin_values_reported": False,
+        "admin_routes_enabled_default_local": admin_local.enabled,
+        "admin_routes_enabled_default_production": admin_production.enabled,
         "blockers": blockers,
     }
 
@@ -375,6 +403,11 @@ def _check_repo_local_scaffolding(root: Path) -> dict[str, Any]:
         blockers.append("next_api_base_env_fallback_missing")
     if "ENV PORT=8000" not in api_dockerfile or "--port ${PORT:-8000}" not in api_dockerfile:
         blockers.append("api_dockerfile_port_contract_missing")
+    for required_copy in ("COPY data ./data", "COPY alembic ./alembic", "COPY scripts ./scripts"):
+        if required_copy not in api_dockerfile:
+            blockers.append(f"api_dockerfile_{required_copy.split()[1].lower()}_copy_missing")
+    if "backend.cloud_job" not in compose:
+        blockers.append("docker_compose_worker_real_entrypoint_missing")
     if 'COPY apps/web ./apps/web' not in web_dockerfile or '["npm", "--workspace", "apps/web"' not in web_dockerfile:
         blockers.append("web_dockerfile_next_workspace_build_missing")
     for service in ("web:", "api:", "ingestion-worker:", "postgres:", "redis:", "minio:"):

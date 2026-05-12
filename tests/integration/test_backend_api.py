@@ -243,6 +243,34 @@ def _persist_weekly_news(
     )
 
 
+def test_asset_aggregate_route_supports_deployment_smoke():
+    response = client.get("/api/assets/VOO")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["schema_version"] == "asset-page-aggregate-v1"
+    assert body["asset"]["ticker"] == "VOO"
+    assert body["overview"]["asset"]["ticker"] == "VOO"
+    assert body["details"]["asset"]["ticker"] == "VOO"
+    assert body["sources"]["asset"]["ticker"] == "VOO"
+
+
+def test_admin_routes_default_disabled_in_production(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.delenv("ADMIN_ROUTES_ENABLED", raising=False)
+    bundle = build_fixture_analysis_pack_import_bundle().model_dump(mode="json")
+
+    ingest = client.post("/api/admin/ingest/SPY")
+    pre_cache = client.post("/api/admin/pre-cache/SPY")
+    import_route = client.post("/api/admin/analysis-packs/import", json=bundle)
+    public_status = client.get("/api/jobs/missing-job")
+
+    assert ingest.status_code == 404
+    assert pre_cache.status_code == 404
+    assert import_route.status_code == 404
+    assert public_status.status_code == 200
+
+
 def _configured_golden_repositories():
     knowledge_repo = RecordingKnowledgePackRepository()
     generated_repo = RecordingGeneratedOutputRepository()

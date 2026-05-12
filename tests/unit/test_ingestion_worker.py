@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from argparse import Namespace
 from pathlib import Path
 
+from backend.cloud_job import CloudJobConfigurationError, run_from_args
 from backend.ingestion import execute_ingestion_job_through_ledger, get_pre_cache_job_status, request_ingestion
 from backend.ingestion_job_repository import (
     IngestionJobCategory,
@@ -57,6 +59,43 @@ from backend.weekly_news_repository import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_cloud_job_entrypoint_can_run_deterministic_fixture_fallback_locally():
+    payload = run_from_args(
+        Namespace(
+            operation="run-pre-cache",
+            ticker="SPY",
+            job_id=None,
+            require_durable=False,
+            allow_fixture_fallback=True,
+        )
+    )
+
+    assert payload["operation"] == "request_and_run"
+    assert payload["executed_worker"] is True
+    assert payload["execution_summary"]["job_id"] == "pre-cache-launch-spy"
+    assert payload["execution_summary"]["terminal_state"] == "succeeded"
+
+
+def test_cloud_job_entrypoint_fails_closed_in_production_without_durable_ledger(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.delenv("LOCAL_DURABLE_REPOSITORIES_ENABLED", raising=False)
+
+    try:
+        run_from_args(
+            Namespace(
+                operation="run-ingestion",
+                ticker="SPY",
+                job_id=None,
+                require_durable=False,
+                allow_fixture_fallback=False,
+            )
+        )
+    except CloudJobConfigurationError as exc:
+        assert str(exc) == "durable_ingestion_job_ledger_required"
+    else:
+        raise AssertionError("production Cloud Run Jobs must require durable job storage")
 
 
 def test_pending_approved_on_demand_job_transitions_without_generated_output():

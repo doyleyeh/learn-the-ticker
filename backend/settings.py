@@ -11,12 +11,16 @@ LIVE_ACQUISITION_SETTINGS_SCHEMA_VERSION = "live-acquisition-readiness-settings-
 LIGHTWEIGHT_DATA_SETTINGS_SCHEMA_VERSION = "lightweight-data-settings-v1"
 MARKET_NEWS_SETTINGS_SCHEMA_VERSION = "market-news-settings-v1"
 CORS_SETTINGS_SCHEMA_VERSION = "cors-settings-v1"
+ADMIN_ROUTE_SETTINGS_SCHEMA_VERSION = "admin-route-settings-v1"
 DEFAULT_DATABASE_CONNECT_TIMEOUT_SECONDS = 5
 DEFAULT_DATABASE_POOL_PRE_PING = False
 DEFAULT_DATABASE_ECHO_SQL = False
 DEFAULT_DATABASE_MIGRATIONS_ENABLED = False
 DEFAULT_LOCAL_DURABLE_REPOSITORIES_ENABLED = False
 DEFAULT_LOCAL_DURABLE_REPOSITORY_COMMIT_ON_WRITE = False
+DEFAULT_LOCAL_DURABLE_REPOSITORIES_FAIL_FAST = False
+DEFAULT_NON_PRODUCTION_ADMIN_ROUTES_ENABLED = True
+DEFAULT_PRODUCTION_ADMIN_ROUTES_ENABLED = False
 DEFAULT_LIVE_SEC_STOCK_ACQUISITION_ENABLED = False
 DEFAULT_LIVE_ETF_ISSUER_ACQUISITION_ENABLED = False
 DEFAULT_LIVE_WEEKLY_NEWS_ACQUISITION_ENABLED = False
@@ -281,6 +285,7 @@ class LocalDurableRepositorySettings:
     object_namespace: str | None
     object_namespace_configured: bool
     commit_on_write: bool
+    fail_fast: bool
     missing_reasons: tuple[str, ...] = ()
     invalid_reasons: tuple[str, ...] = ()
 
@@ -317,8 +322,26 @@ class LocalDurableRepositorySettings:
             "object_namespace_configured": self.object_namespace_configured,
             "object_namespace": self.object_namespace,
             "commit_on_write": self.commit_on_write,
+            "fail_fast": self.fail_fast,
             "missing_reasons": list(self.missing_reasons),
             "invalid_reasons": list(self.invalid_reasons),
+        }
+
+
+@dataclass(frozen=True)
+class AdminRouteSettings:
+    schema_version: str
+    enabled: bool
+    app_env: str
+    explicit_env_value: bool
+
+    @property
+    def safe_diagnostics(self) -> dict[str, object]:
+        return {
+            "schema_version": self.schema_version,
+            "enabled": self.enabled,
+            "app_env": self.app_env,
+            "explicit_env_value": self.explicit_env_value,
         }
 
 
@@ -369,6 +392,14 @@ def build_persistence_settings(env: dict[str, str] | None = None) -> Persistence
     )
 
 
+def build_migration_persistence_settings(env: dict[str, str] | None = None) -> PersistenceSettings:
+    source = dict(os.environ if env is None else env)
+    migration_url = _clean_optional(source.get("MIGRATION_DATABASE_URL"))
+    if migration_url is not None:
+        source["DATABASE_URL"] = migration_url
+    return build_persistence_settings(env=source)
+
+
 def build_cors_settings(env: dict[str, str] | None = None) -> CorsSettings:
     source = os.environ if env is None else env
     raw_origins = source.get("CORS_ALLOWED_ORIGINS")
@@ -411,8 +442,29 @@ def build_local_durable_repository_settings(env: dict[str, str] | None = None) -
             source.get("LOCAL_DURABLE_REPOSITORY_COMMIT_ON_WRITE"),
             DEFAULT_LOCAL_DURABLE_REPOSITORY_COMMIT_ON_WRITE,
         ),
+        fail_fast=_bool_setting(
+            source.get("LOCAL_DURABLE_REPOSITORIES_FAIL_FAST"),
+            DEFAULT_LOCAL_DURABLE_REPOSITORIES_FAIL_FAST,
+        ),
         missing_reasons=tuple(missing_reasons),
         invalid_reasons=tuple(invalid_reasons),
+    )
+
+
+def build_admin_route_settings(env: dict[str, str] | None = None) -> AdminRouteSettings:
+    source = os.environ if env is None else env
+    app_env = (_clean_optional(source.get("APP_ENV")) or "local").strip().lower()
+    explicit = source.get("ADMIN_ROUTES_ENABLED") is not None
+    default = (
+        DEFAULT_PRODUCTION_ADMIN_ROUTES_ENABLED
+        if app_env == "production"
+        else DEFAULT_NON_PRODUCTION_ADMIN_ROUTES_ENABLED
+    )
+    return AdminRouteSettings(
+        schema_version=ADMIN_ROUTE_SETTINGS_SCHEMA_VERSION,
+        enabled=_bool_setting(source.get("ADMIN_ROUTES_ENABLED"), default),
+        app_env=app_env,
+        explicit_env_value=explicit,
     )
 
 

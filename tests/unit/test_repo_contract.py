@@ -254,6 +254,11 @@ def test_environment_scaffolds_are_placeholder_only():
         text = path.read_text(encoding="utf-8")
         assert (
             "LLM_LIVE_GENERATION_ENABLED=false" in text
+            or (
+                filename in {"deploy/env/api.example.env", "deploy/env/worker.example.env"}
+                and "LLM_LIVE_GENERATION_ENABLED=true" in text
+                and "OPENROUTER_API_KEY=" in text
+            )
             or 'LLM_LIVE_GENERATION_ENABLED: "false"' in text
             or filename in {
             "apps/web/.env.example",
@@ -303,6 +308,8 @@ def test_t157_local_deployment_env_smoke_contract_is_safe_and_deterministic():
     assert checks["backend_settings_defaults"]["market_news_fetch_enabled"] is False
     assert checks["backend_settings_defaults"]["market_news_live_source_smoke_enabled"] is False
     assert checks["backend_settings_defaults"]["market_news_live_source_real_fetch_enabled"] is False
+    assert checks["backend_settings_defaults"]["admin_routes_enabled_default_local"] is True
+    assert checks["backend_settings_defaults"]["admin_routes_enabled_default_production"] is False
     assert checks["repo_local_deployment_scaffolding"]["apps_web_is_vercel_project_root"] is True
     assert checks["repo_local_deployment_scaffolding"]["root_npm_scripts_delegate_to_apps_web"] is True
     assert checks["repo_local_deployment_scaffolding"]["next_api_rewrite_or_api_base_behavior_present"] is True

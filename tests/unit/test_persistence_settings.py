@@ -32,10 +32,12 @@ from backend.settings import (
     MARKET_NEWS_FETCH_DISABLED_REASON,
     MARKET_NEWS_LIVE_SOURCE_SMOKE_DISABLED_REASON,
     MISSING_DATABASE_URL_REASON,
+    build_admin_route_settings,
     build_cors_settings,
     build_lightweight_data_settings,
     build_live_acquisition_settings,
     build_local_durable_repository_settings,
+    build_migration_persistence_settings,
     build_market_news_settings,
     build_persistence_settings,
     offline_migration_database_url,
@@ -558,6 +560,30 @@ def test_backend_read_dependencies_fall_back_when_local_durable_config_is_absent
     assert invalid.active is False
 
 
+def test_local_durable_repository_fail_fast_blocks_silent_production_fallback():
+    with pytest.raises(RuntimeError):
+        build_backend_read_dependencies_from_local_durable_config(
+            env={
+                "LOCAL_DURABLE_REPOSITORIES_ENABLED": "true",
+                "LOCAL_DURABLE_REPOSITORIES_FAIL_FAST": "true",
+                "DATABASE_URL": "postgresql+psycopg://placeholder@localhost:5432/learn_the_ticker",
+                "LOCAL_DURABLE_OBJECT_NAMESPACE": "public/snapshots",
+            },
+            session_factory=FakeDurableSession,
+        )
+
+
+def test_admin_routes_default_on_locally_and_off_in_production():
+    local = build_admin_route_settings(env={})
+    production = build_admin_route_settings(env={"APP_ENV": "production"})
+    explicit = build_admin_route_settings(env={"APP_ENV": "production", "ADMIN_ROUTES_ENABLED": "true"})
+
+    assert local.enabled is True
+    assert production.enabled is False
+    assert explicit.enabled is True
+    assert production.safe_diagnostics["explicit_env_value"] is False
+
+
 def test_persistence_metadata_boundary_is_dormant():
     diagnostics = persistence_metadata_diagnostics()
 
@@ -628,6 +654,19 @@ def test_offline_migration_url_never_returns_configured_secret():
     assert "app_user" not in offline_url
 
 
+def test_migration_persistence_settings_prefer_direct_migration_url():
+    settings = build_migration_persistence_settings(
+        env={
+            "DATABASE_URL": "postgresql+psycopg://runtime:runtime-secret@pooler.example/neondb?sslmode=require",
+            "MIGRATION_DATABASE_URL": "postgresql+psycopg://migrator:migration-secret@direct.example/neondb?sslmode=require",
+        }
+    )
+
+    assert settings.database_host == "direct.example"
+    assert "migration-secret" not in str(settings.safe_diagnostics)
+    assert "runtime-secret" not in str(settings.safe_diagnostics)
+
+
 def test_database_env_placeholders_are_server_side_only():
     root_env = (ROOT / ".env.example").read_text(encoding="utf-8")
     api_env = (ROOT / "deploy/env/api.example.env").read_text(encoding="utf-8")
@@ -636,8 +675,11 @@ def test_database_env_placeholders_are_server_side_only():
 
     for text in [root_env, api_env, worker_env]:
         assert "DATABASE_URL" in text
+        assert "MIGRATION_DATABASE_URL" in text
         assert "DATABASE_CONNECT_TIMEOUT_SECONDS" in text
         assert "DATABASE_POOL_PRE_PING" in text
+        assert "ADMIN_ROUTES_ENABLED" in text
+        assert "LOCAL_DURABLE_REPOSITORIES_FAIL_FAST" in text
         assert "DATABASE_ECHO_SQL" in text
         assert "DATABASE_MIGRATIONS_ENABLED" in text
 

@@ -231,10 +231,14 @@ def build_backend_read_dependencies_from_local_durable_config(
         engine_factory=engine_factory,
     )
     if not factories.active:
+        if factories.settings.enabled and factories.settings.fail_fast:
+            raise RuntimeError("Local durable repositories were requested but repository factories are inactive.")
         return default_backend_read_dependencies()
     try:
         return factories.build_backend_read_dependencies()
     except Exception:
+        if factories.settings.fail_fast:
+            raise
         return default_backend_read_dependencies()
 
 

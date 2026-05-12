@@ -25,6 +25,13 @@ class Response:
         return self._payload
 
 
+class HTTPException(Exception):
+    def __init__(self, status_code: int, detail: Any = None):
+        super().__init__(detail)
+        self.status_code = status_code
+        self.detail = detail
+
+
 class FastAPI:
     """Small local fallback used only when the FastAPI package is unavailable."""
 
@@ -54,6 +61,8 @@ class FastAPI:
                 continue
             try:
                 payload = route.endpoint(**_build_kwargs(route.endpoint, path_params, params or {}, json or {}))
+            except HTTPException as exc:
+                return Response(exc.status_code, {"detail": exc.detail})
             except ValidationError as exc:
                 return Response(422, {"detail": exc.errors()})
             return Response(200, _to_jsonable(payload))
