@@ -1,6 +1,20 @@
 ## Current task
 
-No current task is prepared. The backlog is empty.
+### T-187: Upgrade backend summary and analysis generation context
+
+Goal:
+Improve backend-generated Beginner Summary, Deep Dive, Market AI Comprehensive Analysis, and ticker AI Comprehensive Analysis by adding a curated runtime `generation_context`, strengthening prompts and validators, improving Market News selection quality, and preserving deterministic no-live CI behavior.
+
+Acceptance criteria:
+- Backend generation evidence includes a summary-friendly `generation_context` with asset profile, identity, exposure, market, ticker, and evidence-limit groups.
+- Beginner Summary inputs exclude raw quote/chart/price/volume/technical fields unless required for identity, and generated copy explains the asset instead of the data pipeline.
+- Deep Dive copy avoids internal pipeline wording and states missing evidence plainly.
+- Market AI synthesizes selected Market News Focus items with Economic Indicators and allowed numeric facts instead of bucket-count-only summaries.
+- Ticker AI connects Weekly News to the asset profile, exposure, market context, and technical context only when those inputs are present and validated.
+- Validators reject internal or low-value phrases, raw provider field names, unsupported numeric claims, technical-field price misuse, and noisy Market AI summaries.
+- Market News selection suppresses low-relevance, opinion-like, duplicate, promotional, or demoted-publisher items and returns fewer than 20 items when quality does not support 20.
+- Normal CI remains deterministic and does not require live provider, news, market-data, or LLM calls.
+- Focused backend tests, safety/static evals, and the full quality gate pass.
 
 ## Backlog
 

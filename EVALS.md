@@ -91,6 +91,11 @@ Verify:
 
 - important factual claims have citations or explicit uncertainty
 - Weekly News Focus and AI Comprehensive Analysis claims cite the correct evidence layer
+- generated Beginner Summary, Deep Dive, Market AI, and ticker AI use curated `generation_context` instead of raw provider payloads
+- Beginner Summary explains the asset in plain English and does not depend on quote, chart, volume, price, or technical-indicator facts unless required for identity
+- generated copy does not include internal or low-value wording such as fixtures, local MVP, available evidence, provider market-reference, raw provider keys like `regularMarketPrice`, or "this section uses..." phrasing
+- Market AI synthesizes selected Market News Focus items with Economic Indicators and allowed numeric facts instead of only counting topic buckets or repeating headlines
+- ticker AI connects selected Weekly News to the asset profile, holdings/exposure, market context, and technical context only when those inputs are supplied and validated
 - stale sources are labeled stale or suppressed according to section behavior
 - advice-like prompts redirect into educational framing before LLM calls
 - no output tells the user to buy, sell, hold, allocate, trade, use a broker, rely on tax advice, or accept a price target
@@ -115,6 +120,7 @@ Verify:
 - unapproved, not-allowlisted, unclear-rights, parser-invalid, hidden/internal, pending-review, rejected, duplicate, promotional, irrelevant, and rights-disallowed sources cannot feed evidence storage, generation, citation, cache, export, Weekly News Focus, or AI Comprehensive Analysis
 - Weekly News Focus uses the last completed Monday-Sunday market week plus current week-to-date through yesterday in U.S. Eastern dates
 - Market News Focus uses the same market-week window, selects up to 20 approved story clusters, preserves topic bucket metadata, and never pads weak evidence to hit 20
+- Market News Focus selection demotes low-relevance market items, opinion/pundit pieces, duplicate headlines, and demoted publishers unless they have a clear U.S. market relevance hook
 - Market News Focus and AI Comprehensive Analysis: Market News Focus are reusable across supported ticker pages without regenerating per ticker
 - `economic-indicators-pack-v1` is U.S.-only, cited, source-labeled, rights-safe, and rendered after stable asset facts but before Market News Focus
 - `analysis-pack-import-bundle-v1` validates schema, freshness, checksums, citations/source IDs, source-use policy, no raw article/provider payload storage, no secret exposure, and no visible persona labels

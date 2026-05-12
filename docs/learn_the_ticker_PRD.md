@@ -257,6 +257,8 @@ The product should make users feel more informed, not more pressured to trade.
 
 Every asset page should start with a plain-English summary that explains the asset without assuming finance knowledge.
 
+Runtime summaries must explain the asset itself, not the app's data pipeline. Beginner Summary and Deep Dive generation should use a curated `generation_context` built from approved or source-labeled facts, including company or fund description, sector/industry or fund category, issuer/fund family, benchmark or business role, holdings/exposure context, and clearly labeled missing fields. Beginner Summary should not rely on raw quote, chart, price, volume, or technical-indicator fields unless a field is explicitly needed for identity.
+
 #### G2. Make citations part of the product experience
 
 Important factual claims should be backed by visible citations. Citations should appear as citation chips, source drawers, and source/freshness metadata, not only in a footer.
@@ -694,6 +696,10 @@ Imported bundles may be held in memory for local development or persisted throug
 Every producer run should write a structured `ai_context.json` artifact and include its checksum/metadata in the bundle. The context contains selected Market News items, ticker Weekly News items, Economic Indicators, technical indicators, canonical fact citation IDs, source IDs, and allowed numeric facts. Market AI and ticker AI may use only this context and must pass numeric-integrity validation for VIX, DXY, Treasury yields, close price, KD, RSI, MACD, BIAS, ADX, moving averages, and volume-change references. Yield-curve flattening or inversion should be mentioned only when the validated 3-month/10-year/30-year spread is below 25 bps or inverted. Geopolitical and supply-chain warning language should appear only when selected news contains configured risk keywords.
 
 User-facing analysis must keep the product's existing labels. Persona-style roles may guide internal prompt lenses, but Atlas, Sophia, Kenji, Crow, Rain, or similar persona labels must not appear in the UI, exports, or API analysis labels. Longer ticker candidate history may be stored for dedupe and scoring, but generated claims may cite only selected Weekly News items, canonical facts, and validated analysis-context records.
+
+Backend runtime generation should construct a summary-friendly `generation_context` alongside the existing evidence pack. This layer is not raw provider data; it is a curated view containing `asset_profile`, `identity_context`, `exposure_context`, `market_context`, `ticker_context`, and `evidence_limits`. It may reuse already normalized Yahoo/yfinance-derived adapter fields such as `long_business_summary`, `sector`, `industry`, `website`, `full_time_employees`, `fund_family`, `category`, `legal_type`, and `net_assets` when source labels and rights-safe output rules are preserved. It must exclude raw provider payloads and raw field names from user-facing copy.
+
+Generated Beginner Summary and Deep Dive copy must avoid internal wording such as fixtures, local MVP, available evidence, provider market-reference, raw provider key names, and "this section uses..." phrasing. Market AI should synthesize selected market stories with Economic Indicators and allowed numeric facts instead of merely counting topic buckets. Ticker AI should connect selected Weekly News to the asset's business or fund profile, holdings/exposure, market context, and technical context only when those inputs are supplied and validated.
 
 ### 11.4 Stock page
 
