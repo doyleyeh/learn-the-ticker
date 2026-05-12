@@ -163,6 +163,36 @@ def test_critical_claims_need_priority_source_or_two_tier_one_sources():
     assert priority_focus.items[0].cluster.critical_claim is True
 
 
+def test_market_news_selection_suppresses_pundit_and_low_us_relevance_items():
+    strong = _candidate(
+        "strong",
+        source="Reuters",
+        domain="reuters.com",
+        title="Federal Reserve inflation update shapes S&P 500 market focus",
+        description="Reuters reported U.S. inflation and Treasury yield context for Wall Street.",
+    )
+    pundit = _candidate(
+        "pundit",
+        source="CNBC",
+        domain="cnbc.com",
+        title="Jim Cramer's approach to the latest market rally",
+        description="A TV segment discussed stocks to watch.",
+    )
+    foreign_local = _candidate(
+        "foreign_local",
+        source="Reuters",
+        domain="reuters.com",
+        title="Indian rupee and bonds look to inflation prints",
+        description="Local currency traders watched domestic data without a U.S. market hook.",
+    )
+
+    focus = select_market_news_focus([strong, pundit, foreign_local], as_of=AS_OF)
+
+    assert focus.selected_item_count == 1
+    assert focus.items[0].title == strong.title
+    assert focus.suppressed_candidate_count >= 2
+
+
 def test_market_ai_analysis_suppresses_until_enough_approved_market_breadth():
     focus = select_market_news_focus(
         fixture_market_news_candidates(as_of=AS_OF, retrieved_at=RETRIEVED_AT)[:2],
@@ -193,6 +223,8 @@ def test_market_ai_analysis_falls_back_when_live_generation_repeats_headlines():
     assert analysis.sections
     rendered = " ".join(section.analysis for section in analysis.sections).lower()
     assert "selected market news focus items are" not in rendered
+    assert "bucket has" not in rendered
+    assert "set spans" not in rendered
 
 
 def test_market_news_adapters_normalize_all_provider_payload_shapes_without_live_calls():

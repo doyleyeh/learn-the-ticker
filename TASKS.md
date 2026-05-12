@@ -1,26 +1,44 @@
 ## Current task
 
-### T-187: Upgrade backend summary and analysis generation context
-
-Goal:
-Improve backend-generated Beginner Summary, Deep Dive, Market AI Comprehensive Analysis, and ticker AI Comprehensive Analysis by adding a curated runtime `generation_context`, strengthening prompts and validators, improving Market News selection quality, and preserving deterministic no-live CI behavior.
-
-Acceptance criteria:
-- Backend generation evidence includes a summary-friendly `generation_context` with asset profile, identity, exposure, market, ticker, and evidence-limit groups.
-- Beginner Summary inputs exclude raw quote/chart/price/volume/technical fields unless required for identity, and generated copy explains the asset instead of the data pipeline.
-- Deep Dive copy avoids internal pipeline wording and states missing evidence plainly.
-- Market AI synthesizes selected Market News Focus items with Economic Indicators and allowed numeric facts instead of bucket-count-only summaries.
-- Ticker AI connects Weekly News to the asset profile, exposure, market context, and technical context only when those inputs are present and validated.
-- Validators reject internal or low-value phrases, raw provider field names, unsupported numeric claims, technical-field price misuse, and noisy Market AI summaries.
-- Market News selection suppresses low-relevance, opinion-like, duplicate, promotional, or demoted-publisher items and returns fewer than 20 items when quality does not support 20.
-- Normal CI remains deterministic and does not require live provider, news, market-data, or LLM calls.
-- Focused backend tests, safety/static evals, and the full quality gate pass.
+No current task is prepared. The backlog is empty.
 
 ## Backlog
 
 No backlog tasks are currently prepared.
 
 ## Completed
+
+### T-187: Upgrade backend summary and analysis generation context
+
+Goal:
+Improve backend-generated Beginner Summary, Deep Dive, Market AI Comprehensive Analysis, and ticker AI Comprehensive Analysis by adding a curated runtime `generation_context`, strengthening prompts and validators, improving Market News selection quality, and preserving deterministic no-live CI behavior.
+
+Completion details:
+- Added `generation_context` to generation evidence packs with asset profile, identity, exposure, market, ticker, and evidence-limit groups.
+- Reused normalized provider/profile fields already available in the lightweight backend path without adding a new `yfinance` production dependency.
+- Removed raw quote/chart/price fields from Beginner Summary evidence notes and kept those fields in market-reference and technical contexts.
+- Strengthened Beginner Summary, Deep Dive, Market AI, and ticker AI prompts, fallbacks, cache-key versioning, and copy-quality validators.
+- Updated Market AI fallback synthesis to use Economic Indicators and selected market themes instead of bucket-count summaries.
+- Connected ticker AI fallback sections to asset profile/exposure, market context, and technical context when supplied.
+- Tightened Market News candidate cleanup and selection to suppress pundit/opinion, low-U.S.-relevance, demoted-publisher, and noisy global-local items.
+- Preserved deterministic CI behavior and no-live defaults.
+
+Required commands executed:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_summary_generation.py tests/unit/test_lightweight_data_fetch.py tests/unit/test_market_news.py tests/unit/test_weekly_news.py -q` - pass, 105 passed
+- `TMPDIR=/tmp python3 -m pytest tests/integration/test_backend_api.py -q` - pass, 49 passed
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_safety_guardrails.py -q` - pass, 14 passed
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_summary_generation.py tests/unit/test_lightweight_data_fetch.py tests/unit/test_market_news.py tests/unit/test_weekly_news.py tests/integration/test_backend_api.py -q` - pass, 154 passed
+- `export TMPDIR=/tmp; source scripts/activate_agent_env.sh; bash scripts/run_quality_gate.sh` - pass, including 621 backend tests, static evals, frontend smoke, typecheck, build, and backend checks
+
+Manual inspection:
+- Local API output for `QQQ`, `VOO`, and `AAPL` returns Beginner Summary copy without internal generated-copy markers such as fixture, local MVP, available evidence, raw provider keys, or bucket-count language.
+- Current local Market AI is suppressed because the runtime Market News selection found no high-signal items in the active window; deterministic fixture Market AI renders eight synthesized sections with Economic Indicators.
+- Current local ticker AI renders four sections for `QQQ`, `VOO`, and `AAPL` and connects weekly evidence to fund/business context without redefining stable facts.
+
+Remaining risks:
+- Live provider/profile richness still depends on available source metadata; some current stock pages may have SEC-first explanations when provider business summaries are unavailable.
+- Market News is intentionally stricter and may show fewer or zero items until high-signal source-labeled candidates are available.
 
 ### T-186: Strengthen Codex analysis workflow instructions
 
