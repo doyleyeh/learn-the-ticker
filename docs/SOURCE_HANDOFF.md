@@ -10,7 +10,7 @@ Golden Asset Source Handoff is the audit-quality approval layer between retrieva
 
 The repo now enforces the core machine-readable Golden Asset Source Handoff fields for governed-source ingestion.
 
-- Implemented: allowlist domain/source-type/source-quality checks, storage rights, export rights, source-use policy, allowlist review status, parser-validation requirement, freshness/as-of requirement, SSRF-style URL safety, SEC and issuer fetch CLIs, draft/finalized governed source manifests, governed manifest preflight, one-shot governed ingestion, persisted source documents/chunks, and deterministic source-handoff/worker smoke scripts.
+- Implemented: allowlist domain/source-type/source-quality checks, storage rights, export rights, source-use policy, allowlist review status, parser-validation requirement, freshness/as-of requirement, SSRF-style URL safety, SEC and issuer fetch CLIs, draft/finalized governed source manifests, governed manifest preflight, one-shot governed ingestion, persisted source documents/chunks, deterministic source-handoff/worker smoke scripts, and the Weekly News official document handoff proof for `AAPL`, `VOO`, and `QQQ`.
 - Enforced before governed ingestion: non-allowlisted URLs, rejected policies, incompatible source types, mismatched storage/export rights, non-approved review status, parser-invalid sources, and missing as-of metadata fail before jobs are claimed or source rows are persisted.
 - Still missing for MVP: governed source artifacts for the full golden set, deployed/automated worker execution, governed-text normalized fact extraction, and proof that governed evidence drives golden API/frontend output.
 
@@ -61,6 +61,29 @@ For every supported ETF, including ETF-500 rows beyond `VOO`, `QQQ`, and `SOXX`,
 V1 supported ETF source packs are limited to ETF-500: around 500 reviewed U.S.-listed, active, non-leveraged, non-inverse, passive/index-based U.S. equity ETFs with primary U.S. equity exposure and validated issuer source packs, with 475-525 accepted after review quality gates. Golden Asset Source Handoff must reject or leave pending review any issuer/provider payload for leveraged, inverse, active, fixed income, commodity, multi-asset, single-stock, option-income/buffer, ETN, ETV, CEF, crypto, international equity, or other unsupported exchange-traded products unless a future named scope expansion changes the product policy.
 
 FMP, Finnhub, Tiingo, Alpha Vantage, EODHD, yfinance, and similar provider payloads are allowed fallback/enrichment for the personal MVP. They must stay server-side, preserve attribution/provenance, avoid unrestricted raw payload display/export, and not hide when official SEC or issuer evidence is unavailable. If licensing, caching rights, attribution, display rights, or export rights are unclear, prefer metadata, normalized facts, summaries, links, and clear provider labels over raw payload redistribution.
+
+## Weekly News Official Document Flow
+
+Weekly News Focus now has a narrow strict proof for official-source acquisition on `AAPL`, `VOO`, and `QQQ`. The default CI path remains deterministic; the real-document proof is exercised with injected fixtures by:
+
+```bash
+LTT_WEEKLY_NEWS_LIVE_SOURCE_SMOKE_ENABLED=true LTT_WEEKLY_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED=true TMPDIR=/tmp python3 scripts/run_weekly_news_live_source_smoke.py --json
+```
+
+The repository path is `acquire_weekly_news_event_evidence_from_official_sources(..., candidates=None)`. Prepared candidate rows still exercise the older metadata-handoff guardrail, while `candidates=None` triggers real discovery, retrieval, parser output, snapshot construction, handoff validation, and optional injected persistence.
+
+The strict Weekly News document flow is:
+
+1. `WeeklyNewsOfficialSourceDiscoverer` builds only golden-scope official requests for `AAPL`, `VOO`, and `QQQ`.
+2. `WeeklyNewsOfficialDocumentFetcher` accepts only allowlisted HTTPS URLs and blocks unsafe schemes, credentials, localhost/private/link-local hosts, sensitive query keys, redirect-to-disallowed-host chains, unsupported content types, and oversized payloads.
+3. The fetcher computes the source document checksum from fetched bytes and reports sanitized diagnostics without secrets, raw text, signed URLs, or provider payload values.
+4. `WeeklyNewsOfficialSourceParserAdapter` parses SEC submissions JSON and issuer/IR HTML into same-asset `WeeklyNewsEventCandidateRow` records with event dates, source metadata, citation bindings, parser status, freshness labels, and source-use fields derived from the allowlist.
+5. Weekly News evidence checksums are derived from the fetched document checksum plus parsed event payload, not from pre-existing candidate metadata.
+6. Golden Asset Source Handoff validates each parsed candidate for `generated_claim_support` before selection, snapshot creation, evidence persistence, citation support, cache eligibility, or export eligibility.
+7. `source_snapshot_records_from_weekly_news_documents` creates private raw/parsed snapshot metadata for `full_text_allowed` official sources and validates that the snapshot records do not expose raw text or public/signed storage references.
+8. Weekly News event evidence is persisted only after parser success, source-use approval, freshness metadata, source snapshot construction, and handoff validation pass.
+
+Parser-failed, pending-review, rejected, metadata-only, link-only, non-allowlisted, hidden/internal, wrong-asset, stale-unlabeled, rights-disallowed, and raw-text-in-contract candidates must fail closed before generated Weekly News claims can use them. The proof does not broaden runtime asset support, approve source packs, promote manifests, write production storage, or make live external calls in normal CI.
 
 ## Reviewed Issuer Handoff
 

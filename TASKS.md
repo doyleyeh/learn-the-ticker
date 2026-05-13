@@ -8,6 +8,40 @@ No backlog tasks are currently prepared.
 
 ## Completed
 
+### T-188: Add Weekly News official document handoff proof
+
+Goal:
+Replace the metadata-only Weekly News official live-source proof with a narrow strict/audit-quality document acquisition path for `AAPL`, `VOO`, and `QQQ` that performs allowlisted retrieval, parser-derived candidate generation, source snapshot construction, Golden Asset Source Handoff validation, and durable evidence writes before Weekly News claims can use the source.
+
+Completion details:
+- Added `backend/weekly_news_official_sources.py` with golden-scope official source discovery, SSRF/allowlist/redirect/content-type/byte-limit guarded document fetching, checksum generation from fetched bytes, SEC JSON parsing, issuer/IR HTML parsing, parsed-event evidence checksum generation, sanitized diagnostics, and private source snapshot metadata construction.
+- Updated the Weekly News repository official-source acquisition path so `candidates=None` triggers real discovery/retrieval/parsing/snapshot/evidence persistence, while prepared candidate rows continue to exercise the existing metadata handoff guardrail.
+- Extended official acquisition readiness/result metadata with explicit source snapshot writer readiness, retrieved document counts, document checksum counts, snapshot records/counts, sanitized retrieval diagnostics, and persistence flags.
+- Added reviewed Apple investor relations source-use policy to `config/source_allowlist.yaml` for `investor.apple.com`.
+- Updated the Weekly News live-source smoke so the operator real-source opt-in uses injected official document fixtures to exercise the real pipeline without CI network calls.
+- Fixed the local fresh-data rehearsal deterministic governed-golden check so the raw CLI command evaluates its forced no-live request against no-live settings outside pytest.
+- Updated source handoff and local fresh-data runbook documentation for the Weekly News official document retrieval/parsing/snapshot flow.
+- Added unit coverage for SSRF/source allowlist blocking, redirect-to-disallowed-host blocking, content-type validation, byte limits, checksum generation from actual fetched content, SEC/issuer parser output, strict snapshot/evidence persistence after handoff, parser-failed fail-closed behavior, and real-source smoke diagnostics.
+
+Required commands executed:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_weekly_news.py tests/unit/test_source_policy.py tests/unit/test_repo_contract.py tests/integration/test_backend_api.py -q` - pass, 143 passed
+- `TMPDIR=/tmp python3 scripts/run_weekly_news_live_source_smoke.py --json` - pass, skipped by default with no-live diagnostics
+- `LTT_WEEKLY_NEWS_LIVE_SOURCE_SMOKE_ENABLED=true LTT_WEEKLY_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED=true TMPDIR=/tmp python3 scripts/run_weekly_news_live_source_smoke.py --json` - pass, strict injected official document path
+- `TMPDIR=/tmp python3 scripts/run_local_fresh_data_rehearsal.py --json` - pass
+- `TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `source scripts/activate_agent_env.sh && npm test` - pass
+- `source scripts/activate_agent_env.sh && npm run typecheck` - pass
+- `source scripts/activate_agent_env.sh && npm run build` - pass
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass, including 631 backend tests, static evals, frontend smoke, typecheck, build, and backend checks
+
+Setup note:
+- This isolated worktree had no `node_modules`; `npm ci` could not run because the existing lockfile lacks the current workspace entry, so the local frontend toolchain was installed with `source scripts/activate_agent_env.sh && npm install --no-package-lock --no-audit --no-fund` without changing package metadata.
+
+Remaining risks:
+- The proof is intentionally limited to `AAPL`, `VOO`, and `QQQ`; broader Weekly News source acquisition still needs reviewed adapters and parser coverage.
+- PDF/prospectus binary parsing remains out of scope; unparseable PDFs should stay blocked from generated-claim support until a reviewed parser dependency and source-use policy are approved.
+- The smoke uses injected official document fixtures to keep CI deterministic; operator live network execution still requires explicit runtime configuration and reviewed production persistence.
+
 ### T-187: Upgrade backend summary and analysis generation context
 
 Goal:
