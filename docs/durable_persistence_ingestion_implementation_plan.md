@@ -81,6 +81,7 @@ Concrete changes:
   - analysis-pack import history
   - rollback/import ledger
 - Add a deterministic migration smoke that can run against a temporary local database or the existing local durable test boundary without secrets.
+- Add the local `durable_repository_records` adapter as the first restart-proof repository-record smoke path for validated source snapshot, knowledge-pack, Weekly News, generated-output cache, and ingestion ledger records.
 - Add object-artifact storage abstractions for private `raw/`, `parsed/`, `generated/`, and `diagnostics/` key families.
 - Enforce object namespace validation: no public URLs, signed URLs, browser-readable paths, or credential-bearing links in source drawer, exports, generated-output cache, logs, or diagnostics.
 

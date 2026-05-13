@@ -282,6 +282,17 @@ MIGRATION_DATABASE_URL="<direct Neon URL from Secret Manager>" \
 alembic upgrade head
 ```
 
+Local deterministic schema smoke without real secrets:
+
+```bash
+TMPDIR=/tmp python3 scripts/run_durable_schema_smoke.py
+```
+
+For local restart-proof repository checks, `DATABASE_URL=sqlite:////tmp/learn-the-ticker-durable.db` plus
+`LOCAL_DURABLE_REPOSITORIES_ENABLED=true` routes configured repository readers/writers through the private
+`durable_repository_records` adapter. This is a local smoke path only; do not use SQLite or public filesystem paths as a
+production database/object-store substitute.
+
 ## Storage
 
 Local Docker Compose uses MinIO-compatible S3-style placeholders:

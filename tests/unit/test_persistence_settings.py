@@ -1,16 +1,56 @@
 from __future__ import annotations
 
 import importlib.util
+import sqlite3
 from pathlib import Path
 
 import pytest
 
 from backend import db
+from backend.cache import compute_source_document_checksum
+from backend.durable_repository_records import (
+    DURABLE_REPOSITORY_RECORDS_SCHEMA_VERSION,
+    DURABLE_REPOSITORY_RECORD_TABLE,
+    DURABLE_REPOSITORY_RECORD_TABLES,
+    DurableRepositoryRecordError,
+    DurableRepositoryRecordSession,
+    execute_durable_repository_record_schema,
+    inspect_durable_repository_record_schema,
+)
+from backend.generated_output_cache_repository import (
+    GeneratedOutputArtifactCategory,
+    GeneratedOutputCacheRepository,
+    build_deterministic_generated_output_cache_records,
+)
+from backend.knowledge_pack_repository import knowledge_pack_records_from_acquisition_result
+from backend.models import (
+    CacheEntryKind,
+    CacheScope,
+    EvidenceState,
+    FreshnessFactInput,
+    FreshnessState,
+    KnowledgePackFreshnessInput,
+    SectionFreshnessInput,
+    SourceAllowlistStatus,
+    SourceQuality,
+    SourceUsePolicy,
+    SourceChecksumInput,
+    WeeklyNewsEventType,
+)
 from backend.persistence import persistence_metadata_diagnostics, target_metadata
 from backend.persistence import (
     LOCAL_DURABLE_REPOSITORY_FACTORY_BOUNDARY,
     build_backend_read_dependencies_from_local_durable_config,
     build_local_durable_repository_factories,
+)
+from backend.provider_adapters.etf_issuer import build_etf_issuer_acquisition_result
+from backend.providers import fetch_mock_provider_response, mock_etf_issuer_adapter
+from backend.source_snapshot_repository import source_snapshot_records_from_acquisition_result
+from backend.weekly_news_repository import (
+    WeeklyNewsEventCandidateRow,
+    WeeklyNewsEventEvidenceRepository,
+    WeeklyNewsSourceRankTier,
+    acquire_weekly_news_event_evidence_from_fixtures,
 )
 from backend.ingestion import request_ingestion
 from backend.settings import (
@@ -43,6 +83,7 @@ from backend.settings import (
     offline_migration_database_url,
     redact_database_url,
 )
+from scripts.run_durable_schema_smoke import run_durable_schema_smoke
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -65,6 +106,113 @@ class FakeDurableSession:
 
     def commit(self):
         self.commits += 1
+
+
+def _golden_voo_acquisition():
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(adapter.provider_kind, "VOO").licensing
+    return build_etf_issuer_acquisition_result(adapter, adapter.request("VOO"), licensing)
+
+
+def _weekly_news_candidate() -> WeeklyNewsEventCandidateRow:
+    return WeeklyNewsEventCandidateRow(
+        candidate_event_id="durable_schema_weekly_event",
+        window_id="wnf_window:VOO:2026-04-23",
+        asset_ticker="VOO",
+        source_asset_ticker="VOO",
+        event_type=WeeklyNewsEventType.methodology_change.value,
+        event_title="Durable schema weekly event persisted headline",
+        event_summary="Persisted Weekly News Focus summary for durable schema smoke.",
+        event_date="2026-04-21",
+        published_at="2026-04-21T12:00:00Z",
+        retrieved_at="2026-04-23T12:00:00Z",
+        period_bucket="current_week_to_date",
+        source_document_id="src_durable_schema_weekly_event",
+        source_chunk_id="chk_durable_schema_weekly_event",
+        citation_ids=["c_weekly_durable_schema_event"],
+        citation_asset_tickers={"c_weekly_durable_schema_event": "VOO"},
+        source_type=WeeklyNewsSourceRankTier.official_filing.value,
+        source_title="Durable Schema Weekly Event Source",
+        source_publisher="Fixture Publisher",
+        source_url="local://fixtures/voo/weekly-news/durable-schema-event",
+        source_rank=1,
+        source_rank_tier=WeeklyNewsSourceRankTier.official_filing.value,
+        source_quality=SourceQuality.official.value,
+        allowlist_status=SourceAllowlistStatus.allowed.value,
+        source_use_policy=SourceUsePolicy.summary_allowed.value,
+        freshness_state=FreshnessState.fresh.value,
+        evidence_state=EvidenceState.supported.value,
+        importance_score=10,
+        high_signal=True,
+        promotional=False,
+        irrelevant=False,
+        duplicate_group_id="durable_schema_weekly_event",
+        candidate_decision="selected",
+        suppression_reason_codes=[],
+        title_checksum="sha256:title:durable-schema-weekly-event",
+        evidence_checksum="sha256:evidence:durable-schema-weekly-event",
+    )
+
+
+def _generated_cache_records_for_voo():
+    source_checksum = compute_source_document_checksum(
+        SourceChecksumInput(
+            source_document_id="src_voo_durable_schema",
+            asset_ticker="VOO",
+            source_type="issuer_fact_sheet",
+            source_rank=1,
+            publisher="Issuer Fixture",
+            retrieved_at="2026-04-25T18:04:25Z",
+            freshness_state=FreshnessState.fresh,
+            citation_ids=["c_voo_durable_schema"],
+            fact_bindings=["fact_voo_durable_schema"],
+            cache_allowed=True,
+            export_allowed=False,
+        )
+    )
+    knowledge_input = KnowledgePackFreshnessInput(
+        asset_ticker="VOO",
+        pack_identity="VOO",
+        source_checksums=[source_checksum],
+        canonical_facts=[
+            FreshnessFactInput(
+                fact_id="fact_voo_durable_schema",
+                asset_ticker="VOO",
+                field_name="overview",
+                value="Fixture overview fact",
+                freshness_state=FreshnessState.fresh,
+                evidence_state="supported",
+                source_document_ids=["src_voo_durable_schema"],
+                citation_ids=["c_voo_durable_schema"],
+            )
+        ],
+        recent_events=[],
+        evidence_gaps=[],
+        page_freshness_state=FreshnessState.fresh,
+        section_freshness_labels=[
+            SectionFreshnessInput(
+                section_id="beginner_summary",
+                freshness_state=FreshnessState.fresh,
+                evidence_state="supported",
+            )
+        ],
+    )
+    return build_deterministic_generated_output_cache_records(
+        cache_entry_id="generated-output-voo-durable-schema",
+        output_identity="asset:VOO",
+        mode_or_output_type="beginner-overview",
+        artifact_category=GeneratedOutputArtifactCategory.asset_overview_section,
+        entry_kind=CacheEntryKind.asset_page,
+        scope=CacheScope.asset,
+        schema_version="asset-page-v1",
+        prompt_version="asset-page-prompt-v1",
+        knowledge_input=knowledge_input,
+        citation_ids=["c_voo_durable_schema"],
+        created_at="2026-04-25T18:04:25Z",
+        expires_at="2026-05-02T18:04:25Z",
+        ttl_seconds=604800,
+        asset_ticker="VOO",
+    )
 
 
 def test_persistence_settings_default_to_missing_config_without_secrets():
@@ -558,6 +706,111 @@ def test_backend_read_dependencies_fall_back_when_local_durable_config_is_absent
 
     assert disabled.active is False
     assert invalid.active is False
+
+
+def test_durable_repository_record_schema_smoke_applies_and_inspects_throwaway_sqlite(tmp_path):
+    database_path = tmp_path / "durable-schema-smoke.db"
+
+    result = run_durable_schema_smoke(database_path=database_path)
+
+    assert result["schema_version"] == "durable-schema-smoke-v1"
+    assert result["status"] == "passed"
+    assert result["repository_record_schema_version"] == DURABLE_REPOSITORY_RECORDS_SCHEMA_VERSION
+    assert result["applied_tables"] == [DURABLE_REPOSITORY_RECORD_TABLE]
+    assert result["restart_read_succeeded"] is True
+    assert result["secret_values_stored"] is False
+
+    with sqlite3.connect(database_path) as connection:
+        connection.row_factory = sqlite3.Row
+        schema = inspect_durable_repository_record_schema(connection)
+
+    assert schema[DURABLE_REPOSITORY_RECORD_TABLE] == [
+        "collection",
+        "record_key",
+        "schema_version",
+        "model_type",
+        "payload_json",
+        "payload_checksum",
+        "created_at",
+        "updated_at",
+    ]
+
+
+def test_durable_repository_record_migration_revision_is_importable_and_limited():
+    revision_path = ROOT / "alembic/versions/20260513_0009_durable_repository_record_contracts.py"
+    source = revision_path.read_text(encoding="utf-8")
+    spec = importlib.util.spec_from_file_location("durable_repository_record_revision", revision_path)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    assert module.revision == "20260513_0009"
+    assert module.down_revision == "20260425_0008"
+    assert module.DURABLE_REPOSITORY_RECORD_TABLE_NAMES == DURABLE_REPOSITORY_RECORD_TABLES
+    assert '"durable_repository_records"' in source
+    for forbidden in ["provider_secrets", "public_snapshot_urls", "signed_urls", "user_accounts"]:
+        assert forbidden not in source
+
+
+def test_sqlite_durable_repository_records_survive_restart_for_core_repositories(tmp_path):
+    database_path = tmp_path / "durable-repositories.db"
+    env = {
+        "LOCAL_DURABLE_REPOSITORIES_ENABLED": "true",
+        "LOCAL_DURABLE_REPOSITORY_COMMIT_ON_WRITE": "true",
+        "LOCAL_DURABLE_OBJECT_NAMESPACE": "local-private-source-artifacts",
+        "DATABASE_URL": f"sqlite:///{database_path}",
+    }
+
+    acquisition = _golden_voo_acquisition()
+    source_records = source_snapshot_records_from_acquisition_result(acquisition, ingestion_job_id="pre-cache-launch-voo")
+    knowledge_records = knowledge_pack_records_from_acquisition_result(acquisition, source_records)
+    weekly_records = acquire_weekly_news_event_evidence_from_fixtures(
+        asset_ticker="VOO",
+        as_of="2026-04-23",
+        created_at="2026-04-23T12:00:00Z",
+        candidates=[_weekly_news_candidate()],
+    )
+    cache_records = _generated_cache_records_for_voo()
+
+    writer_dependencies = build_backend_read_dependencies_from_local_durable_config(env=env)
+    assert writer_dependencies.active is True
+    writer_dependencies.source_snapshot_repository.persist(source_records)
+    writer_dependencies.knowledge_pack_reader.persist(knowledge_records)
+    writer_dependencies.weekly_news_reader.persist(weekly_records)
+    writer_dependencies.generated_output_cache_reader.persist(cache_records)
+    writer_dependencies.ingestion_job_ledger.save(
+        writer_dependencies.ingestion_job_ledger.serialize_response(request_ingestion("SPY"))
+    )
+
+    reader_dependencies = build_backend_read_dependencies_from_local_durable_config(env=env)
+    assert reader_dependencies.source_snapshot_repository.read_source_snapshot_records("VOO").artifacts
+    assert reader_dependencies.knowledge_pack_reader.read_knowledge_pack_records("VOO").envelope.ticker == "VOO"
+    assert reader_dependencies.weekly_news_reader.read_weekly_news_event_evidence_records("VOO").selected_events
+    assert reader_dependencies.generated_output_cache_reader.read_asset_overview_records("VOO").envelopes[0].asset_ticker == "VOO"
+    assert reader_dependencies.ingestion_job_ledger.get("ingest-on-demand-spy").ledger.ticker == "SPY"
+
+    with sqlite3.connect(database_path) as connection:
+        connection.row_factory = sqlite3.Row
+        rows = connection.execute(
+            f"select collection, record_key, payload_checksum from {DURABLE_REPOSITORY_RECORD_TABLE} order by collection, record_key"
+        ).fetchall()
+
+    assert {(row["collection"], row["record_key"]) for row in rows} >= {
+        ("asset_knowledge_pack", "VOO"),
+        ("generated_output_cache_lookup", "asset:VOO:asset_overview_section"),
+        ("ingestion_job_ledger", "ingest-on-demand-spy"),
+        ("source_snapshot_artifacts", "source_snapshot_artifacts"),
+        ("weekly_news_event_evidence", "VOO"),
+    }
+    assert all(str(row["payload_checksum"]).startswith("sha256:") for row in rows)
+
+
+def test_durable_repository_record_session_rejects_obvious_secret_payloads(tmp_path):
+    session = DurableRepositoryRecordSession(tmp_path / "durable-records.db")
+
+    with pytest.raises(DurableRepositoryRecordError):
+        session.save_repository_record("unsafe", "secret", {"api_key": "placeholder"})
 
 
 def test_local_durable_repository_fail_fast_blocks_silent_production_fallback():

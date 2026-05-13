@@ -803,6 +803,15 @@ Indexes:
 
 pgvector can remain installed for future migration compatibility, but vector indexes and embedding jobs stay disabled until retrieval moves beyond keyword-first.
 
+### 8.3 Local durable repository-record smoke
+
+The local durable MVP path includes a SQLite-backed `durable_repository_records` adapter for deterministic smoke and
+restart-proof repository checks. It implements the existing repository session protocol
+(`save_repository_record(collection, key, records)` and `get_repository_record(collection, key)`) and stores only
+already-validated repository record payloads with checksums and timestamps. This adapter is for local durable execution
+and CI-safe smoke coverage; production Postgres/object-storage hardening still requires the governed migrations,
+private artifact storage, auth, rate limits, and rollout controls described in deployment docs.
+
 ---
 
 ## 9. Ingestion pipeline

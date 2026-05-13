@@ -1,28 +1,5 @@
 ## Current task
 
-### T-189: Add durable schema execution smoke and restart-proof repository checks
-
-Goal:
-Move durable persistence from contract/read-boundary proof toward verified schema execution by adding local migration smoke coverage and restart-proof repository read/write checks for source snapshots, knowledge packs, Weekly News events, generated-output cache metadata, ingestion jobs, and import history.
-
-Acceptance criteria:
-- A deterministic local durable smoke can apply and inspect migrations in a throwaway/local test context without real secrets.
-- Repository writes can be read after a simulated process restart when durable repositories are explicitly enabled.
-- Default CI and local tests remain fixture-backed when durable env settings are absent.
-- Placeholder env files do not expose database, object storage, provider, or LLM secrets to browser code.
-
-Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_persistence_settings.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_weekly_news.py tests/unit/test_cache_contracts.py tests/unit/test_ingestion_job_repository.py -q`
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_repo_contract.py tests/unit/test_safety_guardrails.py -q`
-- `TMPDIR=/tmp python3 evals/run_static_evals.py`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
-- `git diff --check`
-
-Iteration budget:
-One backend persistence cycle. Do not add live production database credentials, production object-storage clients, Cloud Run deployment wiring, provider calls, or generated user-facing content.
-
-## Backlog
-
 ### T-190: Enforce durable source snapshot and handoff promotion gates
 
 Goal:
@@ -43,6 +20,8 @@ Required commands:
 
 Iteration budget:
 One source-governance cycle. Do not broaden the source allowlist or approve new domains unless the task also updates policy, rationale, tests, and development-log justification.
+
+## Backlog
 
 ### T-191: Convert launch pre-cache into durable job creation and manual worker execution
 
@@ -91,6 +70,29 @@ Iteration budget:
 One API/frontend integration cycle. If cache invalidation requires a schema migration, finish the backend metadata contract first and prepare a follow-up migration task.
 
 ## Completed
+
+### T-189: Add durable schema execution smoke and restart-proof repository checks
+
+Goal:
+Move durable persistence from contract/read-boundary proof toward verified schema execution by adding local migration smoke coverage and restart-proof repository read/write checks for source snapshots, knowledge packs, Weekly News events, generated-output cache metadata, ingestion jobs, and import history.
+
+Completion details:
+- Added a local `durable_repository_records` SQLite adapter implementing the existing repository session protocol with checksums and restart-safe JSON payloads.
+- Added an Alembic durable repository-record contract revision and a deterministic `scripts/run_durable_schema_smoke.py` smoke that applies and inspects a throwaway local schema without secrets.
+- Wired local durable repository factories to use the SQLite adapter when `DATABASE_URL=sqlite:///...` and durable repositories are explicitly enabled.
+- Added restart-proof checks for source snapshots, knowledge packs, Weekly News event evidence, generated-output cache metadata, and ingestion job ledger records.
+- Updated deployment and technical docs to describe the local-only durable schema smoke path without claiming production database/object storage is complete.
+
+Required commands executed:
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/unit/test_persistence_settings.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_weekly_news.py tests/unit/test_cache_contracts.py tests/unit/test_ingestion_job_repository.py -q` - pass, 150 passed
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/unit/test_repo_contract.py tests/unit/test_safety_guardrails.py -q` - pass, 52 passed
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 scripts/run_durable_schema_smoke.py` - pass
+- `git diff --check` - pass
+
+Remaining risks:
+- The SQLite adapter is a deterministic local smoke path, not the production Postgres/object-storage adapter.
+- SQLAlchemy/Alembic are still optional in the current local test environment; production migration execution remains an operator/deployment concern.
 
 ### T-188: Surface asset-page backend section states and fallback notices
 
@@ -5442,8 +5444,8 @@ Roadmap integration tracker:
 | Grounded chat with stable facts plus Weekly News | Completed | T-170 |
 | Weekly News UI filters and local smoke validation | Completed | T-171 |
 | Asset-page backend section state and fallback notices | Completed | T-188 |
-| Durable schema execution smoke and repository checks | Current | T-189 |
-| Durable source snapshot and handoff promotion gates | Prepared | T-190 |
+| Durable schema execution smoke and repository checks | Completed | T-189 |
+| Durable source snapshot and handoff promotion gates | Current | T-190 |
 | Durable launch pre-cache job creation and worker execution | Prepared | T-191 |
 | Durable section-state route reads and generated-output cache authority | Prepared | T-192 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
