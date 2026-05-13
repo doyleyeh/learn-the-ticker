@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 
+import backend.summary_generation as summary_generation_module
 from backend.chat import generate_chat_from_pack, validate_chat_response
 from backend.llm import build_llm_runtime_config, default_openrouter_settings
 from backend.market_news import fixture_market_news_candidates, select_market_news_focus
@@ -25,6 +26,7 @@ from backend.summary_generation import (
     HybridSummaryGenerationService,
     SummaryGenerationRequest,
     clear_summary_generation_cache,
+    clear_summary_generation_live_circuit,
     _safe_prompt_payload,
 )
 from backend.weekly_news import (
@@ -183,6 +185,7 @@ def test_default_live_task_allowlist_runs_deep_dive_generation_with_evidence_con
 
 def test_live_generation_accepts_common_payload_wrapper_shape():
     clear_summary_generation_cache()
+    clear_summary_generation_live_circuit()
     asset = build_asset_knowledge_pack("VOO").asset
 
     def payload(request: Any) -> dict[str, Any]:
@@ -213,6 +216,113 @@ def test_live_generation_accepts_common_payload_wrapper_shape():
     )
 
     assert summary == "Wrapped live Deep Dive text is grounded in supplied citation evidence."
+
+
+def test_live_generation_timeout_opens_short_circuit_for_followup_calls():
+    clear_summary_generation_cache()
+    clear_summary_generation_live_circuit()
+    asset = build_asset_knowledge_pack("VOO").asset
+    calls: list[str] = []
+
+    def timeout_payload(request: Any) -> dict[str, Any]:
+        calls.append(request.task_name)
+        raise TimeoutError("provider timed out")
+
+    service = HybridSummaryGenerationService(
+        runtime=_ready_runtime(),
+        structured_generator=timeout_payload,
+        live_task_allowlist=frozenset({"deep_dive_summary"}),
+        live_failure_cooldown_seconds=60,
+    )
+
+    try:
+        first = service.generate_deep_dive_summary(
+            asset=asset,
+            section_id="construction_methodology",
+            title="Construction Or Methodology",
+            base_summary="First fallback summary.",
+            citation_ids=["c1"],
+            evidence_state="partial",
+            evidence_notes=["benchmark=S&P 500 Index"],
+            generation_evidence_pack=_simple_generation_evidence_pack("VOO", ["c1"]),
+        )
+        second = service.generate_deep_dive_summary(
+            asset=asset,
+            section_id="cost_trading_context",
+            title="Cost And Trading Context",
+            base_summary="Second fallback summary.",
+            citation_ids=["c1"],
+            evidence_state="partial",
+            evidence_notes=["expense_ratio=0.03"],
+            generation_evidence_pack=_simple_generation_evidence_pack("VOO", ["c1"]),
+        )
+
+        assert first is not None and first.startswith("First fallback summary.")
+        assert second is not None and second.startswith("Second fallback summary.")
+        assert calls == ["deep_dive_summary"]
+    finally:
+        clear_summary_generation_live_circuit()
+
+
+def test_live_generation_slow_success_opens_short_circuit_for_followup_calls(monkeypatch: pytest.MonkeyPatch):
+    clear_summary_generation_cache()
+    clear_summary_generation_live_circuit()
+    asset = build_asset_knowledge_pack("VOO").asset
+    calls: list[str] = []
+    monotonic_values = [100.0, 100.0, 103.0, 103.0, 103.1]
+
+    def fake_monotonic() -> float:
+        if monotonic_values:
+            return monotonic_values.pop(0)
+        return 103.1
+
+    monkeypatch.setattr(summary_generation_module.time, "monotonic", fake_monotonic)
+
+    def slow_payload(request: Any) -> dict[str, Any]:
+        calls.append(request.task_name)
+        return {
+            "summary": "Slow live Deep Dive text is grounded in supplied citation evidence.",
+            "supporting_claims": [
+                _supporting_claim("Slow live Deep Dive text is grounded in supplied citation evidence.", ["c1"])
+            ],
+        }
+
+    service = HybridSummaryGenerationService(
+        runtime=_ready_runtime(),
+        structured_generator=slow_payload,
+        live_task_allowlist=frozenset({"deep_dive_summary"}),
+        cache_ttl_seconds=0,
+        live_failure_cooldown_seconds=60,
+        live_slow_response_threshold_seconds=2,
+    )
+
+    try:
+        first = service.generate_deep_dive_summary(
+            asset=asset,
+            section_id="construction_methodology",
+            title="Construction Or Methodology",
+            base_summary="First fallback summary.",
+            citation_ids=["c1"],
+            evidence_state="partial",
+            evidence_notes=["benchmark=S&P 500 Index"],
+            generation_evidence_pack=_simple_generation_evidence_pack("VOO", ["c1"]),
+        )
+        second = service.generate_deep_dive_summary(
+            asset=asset,
+            section_id="cost_trading_context",
+            title="Cost And Trading Context",
+            base_summary="Second fallback summary.",
+            citation_ids=["c1"],
+            evidence_state="partial",
+            evidence_notes=["expense_ratio=0.03"],
+            generation_evidence_pack=_simple_generation_evidence_pack("VOO", ["c1"]),
+        )
+
+        assert first == "Slow live Deep Dive text is grounded in supplied citation evidence."
+        assert second is not None and second.startswith("Second fallback summary.")
+        assert calls == ["deep_dive_summary"]
+    finally:
+        clear_summary_generation_live_circuit()
 
 
 def test_summary_copy_validator_rejects_raw_snake_case_field_names():

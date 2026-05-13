@@ -40,6 +40,8 @@ DEFAULT_MARKET_NEWS_LIVE_SOURCE_SMOKE_ENABLED = False
 DEFAULT_MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED = False
 DEFAULT_LOCAL_RUNTIME_MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED = True
 DEFAULT_MARKET_NEWS_CACHE_TTL_HOURS = 24
+DEFAULT_MARKET_NEWS_FETCH_TIMEOUT_SECONDS = 3
+DEFAULT_MARKET_NEWS_FETCH_BUDGET_SECONDS = 8
 DEFAULT_SEC_EDGAR_USER_AGENT = "learn-the-ticker-local/0.1 contact@example.com"
 DEFAULT_LOCAL_DURABLE_OBJECT_NAMESPACE = "local-private-source-artifacts"
 DEFAULT_OFFLINE_MIGRATION_DATABASE_URL = "postgresql+psycopg://placeholder@localhost:5432/learn_the_ticker"
@@ -249,6 +251,7 @@ class MarketNewsSettings:
     live_source_real_fetch_enabled: bool
     cache_ttl_hours: int
     fetch_timeout_seconds: int
+    fetch_budget_seconds: int = DEFAULT_MARKET_NEWS_FETCH_BUDGET_SECONDS
     persistent_cache_dir: str | None = None
     provider_credentials_configured: dict[str, bool] = field(default_factory=dict)
     missing_reasons: tuple[str, ...] = ()
@@ -267,6 +270,7 @@ class MarketNewsSettings:
             "live_source_real_fetch_enabled": self.live_source_real_fetch_enabled,
             "cache_ttl_hours": self.cache_ttl_hours,
             "fetch_timeout_seconds": self.fetch_timeout_seconds,
+            "fetch_budget_seconds": self.fetch_budget_seconds,
             "persistent_cache_enabled": self.persistent_cache_dir is not None,
             "persistent_cache_dir_configured": self.persistent_cache_dir is not None,
             "provider_credentials_configured": dict(self.provider_credentials_configured),
@@ -714,10 +718,18 @@ def build_market_news_settings(env: dict[str, str] | None = None) -> MarketNewsS
         _first_present(
             source,
             "MARKET_NEWS_FETCH_TIMEOUT_SECONDS",
-            "LIGHTWEIGHT_FETCH_TIMEOUT_SECONDS",
-            "LTT_LIGHTWEIGHT_FETCH_TIMEOUT_SECONDS",
+            "LTT_MARKET_NEWS_FETCH_TIMEOUT_SECONDS",
         ),
-        DEFAULT_LIGHTWEIGHT_FETCH_TIMEOUT_SECONDS,
+        DEFAULT_MARKET_NEWS_FETCH_TIMEOUT_SECONDS,
+        minimum=1,
+    )
+    fetch_budget = _int_setting(
+        _first_present(
+            source,
+            "MARKET_NEWS_FETCH_BUDGET_SECONDS",
+            "LTT_MARKET_NEWS_FETCH_BUDGET_SECONDS",
+        ),
+        DEFAULT_MARKET_NEWS_FETCH_BUDGET_SECONDS,
         minimum=1,
     )
     persistent_cache_dir = _clean_optional(
@@ -752,6 +764,7 @@ def build_market_news_settings(env: dict[str, str] | None = None) -> MarketNewsS
         live_source_real_fetch_enabled=live_source_real_fetch_enabled,
         cache_ttl_hours=cache_ttl_hours,
         fetch_timeout_seconds=fetch_timeout,
+        fetch_budget_seconds=fetch_budget,
         persistent_cache_dir=persistent_cache_dir,
         provider_credentials_configured=credential_flags,
         missing_reasons=tuple(missing_reasons),

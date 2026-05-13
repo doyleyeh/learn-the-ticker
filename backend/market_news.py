@@ -3,7 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass, field
+import time
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timezone
 from typing import Any, Protocol
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
@@ -479,12 +480,20 @@ def collect_market_news_candidates(
     retrieved_at: str,
 ) -> list[MarketNewsArticleCandidate]:
     candidates: list[MarketNewsArticleCandidate] = []
+    deadline_seconds = time.monotonic() + max(1, settings.fetch_budget_seconds)
     for topic_bucket in MarketNewsTopicBucket:
         for adapter in market_news_provider_adapters():
+            remaining_seconds = deadline_seconds - time.monotonic()
+            if remaining_seconds <= 0:
+                return candidates
+            adapter_settings = replace(
+                settings,
+                fetch_timeout_seconds=max(1, min(settings.fetch_timeout_seconds, int(remaining_seconds))),
+            )
             try:
                 result = adapter.collect(
                     fetcher=fetcher,
-                    settings=settings,
+                    settings=adapter_settings,
                     topic_bucket=topic_bucket,
                     as_of=as_of,
                     retrieved_at=retrieved_at,

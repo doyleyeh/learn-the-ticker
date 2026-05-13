@@ -78,6 +78,7 @@ class MarketNewsRuntimeCacheKey:
     as_of: str
     settings_schema_version: str
     fetch_timeout_seconds: int
+    fetch_budget_seconds: int
     fetch_enabled: bool
     live_source_real_fetch_enabled: bool
     provider_credentials_configured: tuple[tuple[str, bool], ...]
@@ -188,6 +189,7 @@ def _cache_key(
         as_of=str(as_of),
         settings_schema_version=settings.schema_version,
         fetch_timeout_seconds=settings.fetch_timeout_seconds,
+        fetch_budget_seconds=settings.fetch_budget_seconds,
         fetch_enabled=settings.fetch_enabled,
         live_source_real_fetch_enabled=settings.live_source_real_fetch_enabled,
         provider_credentials_configured=tuple(sorted(settings.provider_credentials_configured.items())),

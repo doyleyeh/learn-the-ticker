@@ -1500,7 +1500,9 @@ orderedMarkers("lib/search.ts", [
   "return resolveLocalSearchResponse"
 ], "backend search preference before fixture fallback");
 includesAll("app/assets/[ticker]/page.tsx", [
-  "fetchSupportedAssetOverview(fallbackAsset?.ticker ?? ticker, fallbackAsset)",
+  "fetchSupportedAssetOverview(",
+  "OVERVIEW_FETCH_TIMEOUT_MS = 12_000",
+  "optionalBackendFetcher(OVERVIEW_FETCH_TIMEOUT_MS)",
   "RecoverableBackendAssetStatePage",
   "data-asset-supported-backend-unavailable",
   "LimitedAssetStatePage",

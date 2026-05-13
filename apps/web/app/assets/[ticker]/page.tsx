@@ -61,6 +61,9 @@ type AssetPageProps = {
   }>;
 };
 
+const OVERVIEW_FETCH_TIMEOUT_MS = 12_000;
+const DETAILS_FETCH_TIMEOUT_MS = 5_000;
+
 type SourceDrawerState =
   | "available"
   | "unsupported"
@@ -120,7 +123,11 @@ export default async function AssetPage({ params }: AssetPageProps) {
   let overviewFetchFailed = false;
 
   try {
-    asset = await fetchSupportedAssetOverview(fallbackAsset?.ticker ?? ticker, fallbackAsset);
+    asset = await fetchSupportedAssetOverview(
+      fallbackAsset?.ticker ?? ticker,
+      fallbackAsset,
+      optionalBackendFetcher(OVERVIEW_FETCH_TIMEOUT_MS)
+    );
     overviewRendering = "backend_contract";
   } catch {
     overviewFetchFailed = true;
@@ -139,7 +146,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
   }
 
   try {
-    asset = await fetchSupportedAssetDetails(asset.ticker, asset);
+    asset = await fetchSupportedAssetDetails(asset.ticker, asset, optionalBackendFetcher(DETAILS_FETCH_TIMEOUT_MS));
     detailsRendering = "backend_contract";
   } catch {
     detailsRendering = "local_fixture";
