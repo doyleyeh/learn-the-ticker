@@ -392,7 +392,12 @@ def _check_governed_golden_api_rendering() -> RehearsalCheck:
             )
 
     pending_result = pending_ingestion["results"][0]
-    lightweight_settings = build_lightweight_data_settings()
+    lightweight_settings = build_lightweight_data_settings(
+        {
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "false",
+            "LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED": "false",
+        }
+    )
     blocked_search_case_ids = sorted(blocked_searches)
     if lightweight_settings.can_fetch_fresh_data:
         if (
