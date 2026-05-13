@@ -47,6 +47,8 @@ from backend.summary_generation import (
     SummaryGenerationContractError,
     SummaryGenerationService,
     build_default_summary_generation_service,
+    summary_generation_diagnostics,
+    summary_generation_reason_codes,
 )
 from backend.weekly_news import DEFAULT_WEEKLY_NEWS_AS_OF, compute_weekly_news_window
 
@@ -608,13 +610,27 @@ def build_market_ai_comprehensive_analysis(
             minimum_topic_bucket_count=minimum_topic_bucket_count,
             generation_evidence_pack=generation_evidence_pack,
         )
-    except SummaryGenerationContractError:
+    except SummaryGenerationContractError as exc:
         try:
             response = HybridSummaryGenerationService().generate_market_ai_comprehensive_analysis(
                 focus=focus,
                 minimum_market_news_item_count=minimum_market_news_item_count,
                 minimum_topic_bucket_count=minimum_topic_bucket_count,
                 generation_evidence_pack=generation_evidence_pack,
+            )
+            response = response.model_copy(
+                update={
+                    "generation_diagnostics": summary_generation_diagnostics(
+                        service,
+                        task_name="market_ai_comprehensive_analysis",
+                        used_fallback=True,
+                        fallback_reason_codes=[
+                            "live_generation_repaired_with_deterministic_fallback",
+                            *summary_generation_reason_codes(exc),
+                        ],
+                    ),
+                    "no_live_external_calls": True,
+                }
             )
         except SummaryGenerationContractError:
             return MarketAIComprehensiveAnalysisResponse(
@@ -627,6 +643,16 @@ def build_market_ai_comprehensive_analysis(
                 suppression_reason=(
                     "AI Comprehensive Analysis: Market News Focus is suppressed because generated analysis failed "
                     "schema, citation, freshness, headline-repetition, or safety validation."
+                ),
+                generation_diagnostics=summary_generation_diagnostics(
+                    service,
+                    task_name="market_ai_comprehensive_analysis",
+                    used_fallback=True,
+                    fallback_reason_codes=[
+                        "live_generation_failed",
+                        *summary_generation_reason_codes(exc),
+                        "deterministic_fallback_failed",
+                    ],
                 ),
             )
     validate_market_ai_comprehensive_analysis(response, focus)

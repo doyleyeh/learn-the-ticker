@@ -94,6 +94,34 @@ def test_beginner_summary_fallback_uses_asset_specific_evidence_notes():
     assert "available evidence" not in joined.lower()
 
 
+def test_beginner_summary_fallback_humanizes_missing_field_names():
+    service = HybridSummaryGenerationService()
+    asset = build_asset_knowledge_pack("VOO").asset
+
+    summary = service.generate_beginner_summary(
+        asset=asset,
+        base_summary=BeginnerSummary(
+            what_it_is="Vanguard S&P 500 ETF (VOO) is an ETF.",
+            why_people_consider_it="Beginners may study it.",
+            main_catch="Issuer facts are point-in-time.",
+        ),
+        citation_ids=["c1"],
+        evidence_notes=[
+            "benchmark=S&P 500 Index",
+            "holdings_count=500",
+            "expense_ratio=0.03",
+            "evidence_gaps=premium_discount_or_spread, summary_prospectus",
+        ],
+        generation_evidence_pack=_simple_generation_evidence_pack("VOO", ["c1"]),
+    )
+
+    joined = " ".join(summary.model_dump().values())
+    assert "premium_discount_or_spread" not in joined
+    assert "summary_prospectus" not in joined
+    assert "premium/discount spread data" in joined
+    assert "summary prospectus" in joined
+
+
 def test_beginner_summary_rejects_internal_copy_from_live_generation():
     asset = build_asset_knowledge_pack("QQQ").asset
 
@@ -151,6 +179,70 @@ def test_default_live_task_allowlist_runs_deep_dive_generation_with_evidence_con
     assert calls == ["deep_dive_summary"]
     assert summary is not None
     assert "grounded in supplied citation evidence" in summary
+
+
+def test_live_generation_accepts_common_payload_wrapper_shape():
+    clear_summary_generation_cache()
+    asset = build_asset_knowledge_pack("VOO").asset
+
+    def payload(request: Any) -> dict[str, Any]:
+        return {
+            "payload": {
+                "summary": "Wrapped live Deep Dive text is grounded in supplied citation evidence.",
+                "supporting_claims": [
+                    _supporting_claim("Wrapped live Deep Dive text is grounded in supplied citation evidence.", ["c1"])
+                ],
+            }
+        }
+
+    service = HybridSummaryGenerationService(
+        runtime=_ready_runtime(),
+        structured_generator=payload,
+        live_task_allowlist=frozenset({"deep_dive_summary"}),
+    )
+
+    summary = service.generate_deep_dive_summary(
+        asset=asset,
+        section_id="construction_methodology",
+        title="Construction Or Methodology",
+        base_summary="Base section summary from structured evidence.",
+        citation_ids=["c1"],
+        evidence_state="partial",
+        evidence_notes=["benchmark=S&P 500 Index"],
+        generation_evidence_pack=_simple_generation_evidence_pack("VOO", ["c1"]),
+    )
+
+    assert summary == "Wrapped live Deep Dive text is grounded in supplied citation evidence."
+
+
+def test_summary_copy_validator_rejects_raw_snake_case_field_names():
+    asset = build_asset_knowledge_pack("VOO").asset
+
+    def payload(request: Any) -> dict[str, Any]:
+        return {
+            "summary": "The premium_discount_or_spread field is unavailable in the supplied context.",
+            "supporting_claims": [
+                _supporting_claim("A limitation is present in the supplied context.", ["c1"])
+            ],
+        }
+
+    service = HybridSummaryGenerationService(
+        runtime=_ready_runtime(),
+        structured_generator=payload,
+        live_task_allowlist=frozenset({"deep_dive_summary"}),
+    )
+
+    with pytest.raises(SummaryGenerationContractError, match="raw field names"):
+        service.generate_deep_dive_summary(
+            asset=asset,
+            section_id="cost_trading_context",
+            title="Cost And Trading Context",
+            base_summary="Base section summary from structured evidence.",
+            citation_ids=["c1"],
+            evidence_state="partial",
+            evidence_notes=["premium/discount spread data is unavailable"],
+            generation_evidence_pack=_simple_generation_evidence_pack("VOO", ["c1"]),
+        )
 
 
 def test_deep_dive_live_generation_can_be_explicitly_enabled_for_local_review():
@@ -598,6 +690,12 @@ def test_weekly_news_ai_analysis_repairs_citation_failure_with_deterministic_fal
     assert analysis.state is WeeklyNewsContractState.available
     assert "live_generation_repaired_with_deterministic_fallback" in analysis.validation_reason_codes
     assert "citation_validation_failed" in analysis.validation_reason_codes
+    assert analysis.no_live_external_calls is True
+    assert analysis.generation_diagnostics.attempted_live is True
+    assert analysis.generation_diagnostics.used_fallback is True
+    assert "live_generation_repaired_with_deterministic_fallback" in analysis.generation_diagnostics.fallback_reason_codes
+    assert "citation_validation_failed" in analysis.generation_diagnostics.fallback_reason_codes
+    assert analysis.generation_diagnostics.model_name == "openai/gpt-oss-120b:free"
     assert validate_ai_comprehensive_analysis(analysis, focus) == analysis
 
 

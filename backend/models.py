@@ -2392,6 +2392,13 @@ class AIComprehensiveAnalysisSection(BaseModel):
     uncertainty: list[str] = Field(default_factory=list)
 
 
+class GenerationDiagnostics(BaseModel):
+    attempted_live: bool = False
+    used_fallback: bool = True
+    fallback_reason_codes: list[str] = Field(default_factory=list)
+    model_name: str | None = None
+
+
 class AIComprehensiveAnalysisResponse(BaseModel):
     schema_version: Literal["ai-comprehensive-analysis-v1"] = "ai-comprehensive-analysis-v1"
     asset: AssetIdentity
@@ -2408,6 +2415,7 @@ class AIComprehensiveAnalysisResponse(BaseModel):
     canonical_fact_citation_ids: list[str] = Field(default_factory=list)
     no_live_external_calls: bool = True
     stable_facts_are_separate: bool = True
+    generation_diagnostics: GenerationDiagnostics = Field(default_factory=GenerationDiagnostics)
 
 
 class MarketNewsClusterMetadata(BaseModel):
@@ -2523,6 +2531,7 @@ class MarketAIComprehensiveAnalysisResponse(BaseModel):
     market_news_story_ids: list[str] = Field(default_factory=list)
     no_live_external_calls: bool = True
     stable_facts_are_separate: bool = True
+    generation_diagnostics: GenerationDiagnostics = Field(default_factory=GenerationDiagnostics)
 
 
 class MarketNewsResponse(BaseModel):
@@ -2772,6 +2781,7 @@ class OverviewResponse(BaseModel):
     sections: list[OverviewSection] = Field(default_factory=list)
     section_freshness_validation: list[OverviewSectionFreshnessValidation] = Field(default_factory=list)
     fallback_diagnostics: LightweightApiFallbackDiagnostics | None = None
+    generation_diagnostics: dict[str, GenerationDiagnostics] = Field(default_factory=dict)
 
 
 class AssetChartResponse(BaseModel):

@@ -664,4 +664,14 @@ def trust_metrics_validate(request: TrustMetricValidationRequest) -> TrustMetric
 
 @app.get("/api/llm/runtime", response_model=LlmRuntimeDiagnosticsResponse, tags=["llm"])
 def llm_runtime() -> LlmRuntimeDiagnosticsResponse:
-    return runtime_diagnostics()
+    settings = {
+        "LLM_PROVIDER": os.environ.get("LLM_PROVIDER", "mock"),
+        "LLM_LIVE_GENERATION_ENABLED": os.environ.get("LLM_LIVE_GENERATION_ENABLED", "false"),
+        "OPENROUTER_BASE_URL": os.environ.get("OPENROUTER_BASE_URL"),
+        "OPENROUTER_FREE_MODEL_ORDER": os.environ.get("OPENROUTER_FREE_MODEL_ORDER"),
+        "OPENROUTER_PAID_FALLBACK_MODEL": os.environ.get("OPENROUTER_PAID_FALLBACK_MODEL"),
+        "OPENROUTER_PAID_FALLBACK_ENABLED": os.environ.get("OPENROUTER_PAID_FALLBACK_ENABLED", "true"),
+        "LLM_VALIDATION_RETRY_COUNT": os.environ.get("LLM_VALIDATION_RETRY_COUNT", "1"),
+        "LLM_REASONING_SUMMARY_ONLY": os.environ.get("LLM_REASONING_SUMMARY_ONLY", "true"),
+    }
+    return runtime_diagnostics(settings, server_side_key_present=bool(os.environ.get("OPENROUTER_API_KEY")))

@@ -41,6 +41,7 @@ from backend.summary_generation import (
     SummaryGenerationContractError,
     SummaryGenerationService,
     build_default_summary_generation_service,
+    summary_generation_diagnostics,
 )
 
 
@@ -634,8 +635,8 @@ def build_ai_comprehensive_analysis(
         market_news_focus=market_news_focus,
         technical_context=technical_context,
     )
+    service = summary_generation_service or build_default_summary_generation_service()
     try:
-        service = summary_generation_service or build_default_summary_generation_service()
         response = service.generate_ticker_ai_comprehensive_analysis(
             asset=asset,
             weekly_news_focus=weekly_news_focus,
@@ -667,6 +668,16 @@ def build_ai_comprehensive_analysis(
                             "live_generation_repaired_with_deterministic_fallback",
                             *reason_codes,
                         ],
+                        "generation_diagnostics": summary_generation_diagnostics(
+                            service,
+                            task_name="ticker_ai_comprehensive_analysis",
+                            used_fallback=True,
+                            fallback_reason_codes=[
+                                "live_generation_repaired_with_deterministic_fallback",
+                                *reason_codes,
+                            ],
+                        ),
+                        "no_live_external_calls": True,
                     }
                 )
             except (SummaryGenerationContractError, WeeklyNewsContractError) as fallback_exc:
@@ -686,6 +697,12 @@ def build_ai_comprehensive_analysis(
             source_document_ids=source_ids,
             weekly_news_event_ids=event_ids,
             canonical_fact_citation_ids=canonical_fact_citation_ids,
+            generation_diagnostics=summary_generation_diagnostics(
+                service,
+                task_name="ticker_ai_comprehensive_analysis",
+                used_fallback=True,
+                fallback_reason_codes=sorted(set(reason_codes)),
+            ),
         )
 
 

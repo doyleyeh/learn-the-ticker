@@ -345,6 +345,7 @@ def _add_knowledge_generation_context(result: dict[str, Any], pack: AssetKnowled
     )
     facts = {item.fact.field_name: item.fact for item in pack.normalized_facts}
     _apply_fact_context(context, facts)
+    _apply_asset_profile_fallbacks(context, facts)
     _refresh_generation_context_from_pack(result)
 
 
@@ -380,6 +381,7 @@ def _add_lightweight_generation_context(result: dict[str, Any], response: Lightw
         )
     )
     _apply_fact_context(context, facts)
+    _apply_asset_profile_fallbacks(context, facts)
     evidence_limits = context.setdefault("evidence_limits", {})
     evidence_limits["missing_fields"] = [
         str(gap.field_name)
@@ -440,6 +442,53 @@ def _apply_fact_context(context: dict[str, Any], facts: dict[str, Any]) -> None:
     concentration = _concentration_signal(exposure_context)
     if concentration:
         exposure_context["concentration_signal"] = concentration
+
+
+def _apply_asset_profile_fallbacks(context: dict[str, Any], facts: dict[str, Any]) -> None:
+    asset_profile = context.setdefault("asset_profile", {})
+    identity_context = context.setdefault("identity_context", {})
+    exposure_context = context.setdefault("exposure_context", {})
+    asset_type = str(asset_profile.get("asset_type") or identity_context.get("asset_type") or "").lower()
+    if asset_type != "etf":
+        return
+
+    etf_identity = _fact_value_from_map(facts, "etf_identity")
+    fact_sheet = _fact_value_from_map(facts, "etf_fact_sheet_metadata")
+    if isinstance(etf_identity, dict):
+        issuer = etf_identity.get("issuer")
+        if issuer:
+            asset_profile.setdefault("fund_family", issuer)
+        asset_profile.setdefault("legal_type", "exchange-traded fund")
+        classification = etf_identity.get("etf_classification")
+        if classification:
+            asset_profile.setdefault("category", _human_label(classification))
+    if isinstance(fact_sheet, dict):
+        publisher = fact_sheet.get("official_publisher")
+        if publisher:
+            asset_profile.setdefault("fund_family", publisher)
+        if not asset_profile.get("fund_summary"):
+            benchmark = fact_sheet.get("benchmark") or identity_context.get("benchmark")
+            holdings_count = fact_sheet.get("holdings_count") or exposure_context.get("holdings_count")
+            issuer = asset_profile.get("fund_family") or identity_context.get("issuer")
+            parts = []
+            if benchmark:
+                parts.append(f"tracks the {benchmark}")
+            if holdings_count:
+                parts.append(f"reports {holdings_count} holdings")
+            if issuer:
+                parts.append(f"is issued by {issuer}")
+            if parts:
+                asset_profile["fund_summary"] = "The fund " + ", ".join(parts) + "."
+
+
+def _human_label(value: Any) -> str:
+    normalized = str(value).strip().lower()
+    overrides = {
+        "non_leveraged_us_equity_index_etf": "U.S. equity index ETF",
+    }
+    if normalized in overrides:
+        return overrides[normalized]
+    return " ".join(str(value).replace("_", " ").split())
 
 
 def _refresh_generation_context_from_pack(result: dict[str, Any]) -> None:

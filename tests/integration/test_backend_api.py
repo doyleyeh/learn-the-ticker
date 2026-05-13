@@ -356,6 +356,7 @@ def test_market_news_endpoint_returns_reusable_market_context_without_asset_unlo
     assert focus["audit"]["no_generated_output_cache_write"] is True
     assert analysis["schema_version"] == "market-ai-comprehensive-analysis-v1"
     assert analysis["analysis_available"] is True
+    assert analysis["generation_diagnostics"]["used_fallback"] is True
     assert [section["label"] for section in analysis["sections"]] == [
         "What Changed This Week",
         "Macro & Policy",
@@ -1316,6 +1317,10 @@ def test_overview_has_beginner_sections_and_citations():
     assert body["market_news_focus"]["selected_item_count"] <= 20
     assert body["market_ai_comprehensive_analysis"]["schema_version"] == "market-ai-comprehensive-analysis-v1"
     assert body["market_ai_comprehensive_analysis"]["analysis_available"] is True
+    assert body["market_ai_comprehensive_analysis"]["generation_diagnostics"]["used_fallback"] is True
+    assert "market_ai_comprehensive_analysis" in body["generation_diagnostics"]
+    assert "beginner_summary" in body["generation_diagnostics"]
+    assert body["generation_diagnostics"]["beginner_summary"]["used_fallback"] is True
     assert body["weekly_news_focus"]["window"]["news_window_start"] == "2026-04-13"
     assert body["weekly_news_focus"]["window"]["news_window_end"] == "2026-04-22"
     assert body["weekly_news_focus"]["configured_max_item_count"] == 8
@@ -1330,6 +1335,7 @@ def test_overview_has_beginner_sections_and_citations():
     assert body["ai_comprehensive_analysis"]["minimum_weekly_news_item_count"] == 2
     assert body["ai_comprehensive_analysis"]["weekly_news_selected_item_count"] == 0
     assert body["ai_comprehensive_analysis"]["sections"] == []
+    assert body["ai_comprehensive_analysis"]["generation_diagnostics"]["used_fallback"] is True
     assert "src_voo_fact_sheet_fixture" in source_ids
     assert "src_voo_recent_review" in source_ids
     sections = {section["section_id"]: section for section in body["sections"]}
