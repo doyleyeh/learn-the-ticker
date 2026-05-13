@@ -1,3 +1,4 @@
+import hashlib
 from datetime import datetime, timezone
 import importlib.util
 from pathlib import Path
@@ -46,6 +47,7 @@ from backend.weekly_news_repository import (
     WEEKLY_NEWS_FIXTURE_ACQUISITION_BOUNDARY,
     WEEKLY_NEWS_LIVE_ACQUISITION_READINESS_BOUNDARY,
     WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_ACQUISITION_BOUNDARY,
+    WEEKLY_NEWS_OFFICIAL_SOURCE_REAL_ACQUISITION_BOUNDARY,
     WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_FETCH_BOUNDARY,
     WEEKLY_NEWS_OFFICIAL_SOURCE_LIVE_FETCH_BOUNDARY,
     WEEKLY_NEWS_OFFICIAL_SOURCE_PARSER_ADAPTER_BOUNDARY,
@@ -75,6 +77,17 @@ from backend.weekly_news_repository import (
     source_rank_tier_priority,
     validate_weekly_news_event_evidence_records,
     weekly_news_event_evidence_repository_metadata,
+)
+from backend.source_policy import SourcePolicyAction, validate_source_handoff
+from backend.source_snapshot_repository import InMemorySourceSnapshotArtifactRepository
+from backend.weekly_news_official_sources import (
+    WeeklyNewsOfficialDocumentFetcher,
+    WeeklyNewsOfficialFetchedDocument,
+    WeeklyNewsOfficialHttpResponse,
+    WeeklyNewsOfficialSourceDiscoverer,
+    WeeklyNewsOfficialSourceParserAdapter as WeeklyNewsOfficialDocumentParserAdapter,
+    WeeklyNewsOfficialSourceRequest,
+    WeeklyNewsOfficialSourceRetrievalError,
 )
 from scripts.run_weekly_news_live_source_smoke import (
     REAL_SOURCE_OPT_IN_ENV,
@@ -1368,6 +1381,223 @@ def test_weekly_news_official_source_live_acquisition_blocks_invalid_checksum_an
     assert "official_source_use_validation_failed" in bad_checksum.readiness.blocked_reasons
 
 
+def test_weekly_news_official_document_fetcher_enforces_source_boundaries_and_actual_checksums():
+    request = _official_source_request("https://data.sec.gov/submissions/CIK0000320193.json")
+    body = b'{"filings":{"recent":{"form":["10-Q"],"filingDate":["2026-04-21"]}}}'
+
+    fetched = WeeklyNewsOfficialDocumentFetcher(
+        transport=lambda url, headers, timeout: WeeklyNewsOfficialHttpResponse(
+            url=url,
+            status=200,
+            headers={"content-type": "application/json"},
+            body=body,
+        )
+    ).fetch(request, retrieved_at="2026-04-23T12:00:00Z")
+
+    assert fetched.checksum == "sha256:" + hashlib.sha256(body).hexdigest()
+    assert fetched.byte_size == len(body)
+    assert fetched.no_live_external_calls is True
+
+    blocked_requests = [
+        _official_source_request("http://data.sec.gov/submissions/CIK0000320193.json"),
+        _official_source_request("https://127.0.0.1/private"),
+        _official_source_request("https://example.com/news"),
+        _official_source_request("https://data.sec.gov/submissions/CIK0000320193.json?token=secret"),
+    ]
+    for blocked_request in blocked_requests:
+        with pytest.raises(WeeklyNewsOfficialSourceRetrievalError):
+            WeeklyNewsOfficialDocumentFetcher(transport=lambda url, headers, timeout: fetched).fetch(
+                blocked_request,
+                retrieved_at="2026-04-23T12:00:00Z",
+            )
+
+    redirect_fetcher = WeeklyNewsOfficialDocumentFetcher(
+        transport=lambda url, headers, timeout: WeeklyNewsOfficialHttpResponse(
+            url=url,
+            status=302,
+            headers={"location": "https://127.0.0.1/private"},
+            body=b"",
+        )
+    )
+    with pytest.raises(WeeklyNewsOfficialSourceRetrievalError) as redirect_error:
+        redirect_fetcher.fetch(request, retrieved_at="2026-04-23T12:00:00Z")
+    assert redirect_error.value.reason_code == "weekly_news_source_host_not_allowed"
+
+    invalid_type_fetcher = WeeklyNewsOfficialDocumentFetcher(
+        transport=lambda url, headers, timeout: WeeklyNewsOfficialHttpResponse(
+            url=url,
+            status=200,
+            headers={"content-type": "image/png"},
+            body=b"not-a-document",
+        )
+    )
+    with pytest.raises(WeeklyNewsOfficialSourceRetrievalError) as type_error:
+        invalid_type_fetcher.fetch(request, retrieved_at="2026-04-23T12:00:00Z")
+    assert type_error.value.reason_code == "weekly_news_source_content_type_not_allowed"
+
+    too_large_fetcher = WeeklyNewsOfficialDocumentFetcher(
+        max_bytes=4,
+        transport=lambda url, headers, timeout: WeeklyNewsOfficialHttpResponse(
+            url=url,
+            status=200,
+            headers={"content-type": "text/html"},
+            body=b"12345",
+        ),
+    )
+    with pytest.raises(WeeklyNewsOfficialSourceRetrievalError) as size_error:
+        too_large_fetcher.fetch(request, retrieved_at="2026-04-23T12:00:00Z")
+    assert size_error.value.reason_code == "weekly_news_source_payload_too_large"
+
+
+def test_weekly_news_official_parser_derives_candidates_from_sec_and_issuer_documents():
+    documents = [
+        _fetched_document(
+            _official_source_request(
+                "https://data.sec.gov/submissions/CIK0000320193.json",
+                source_document_id="aapl-sec-submissions-json",
+                tier=WeeklyNewsSourceRankTier.official_filing,
+                event_type=WeeklyNewsEventType.earnings,
+                publisher="SEC",
+                source_quality=SourceQuality.official,
+            ),
+            "application/json",
+            b'{"filings":{"recent":{"form":["10-Q"],"filingDate":["2026-04-21"],"reportDate":["2026-03-28"],"accessionNumber":["0000320193-26-000041"],"primaryDocument":["aapl-20260328.htm"]}}}',
+        ),
+        _fetched_document(
+            _official_source_request(
+                "https://investor.apple.com/news-and-events/news-room/default.aspx",
+                source_document_id="aapl-investor-newsroom",
+                tier=WeeklyNewsSourceRankTier.investor_relations_release,
+                event_type=WeeklyNewsEventType.product_announcement,
+                publisher="Apple Investor Relations",
+                source_quality=SourceQuality.issuer,
+                source_rank=2,
+            ),
+            "text/html",
+            b'<html><head><title>Apple reports second quarter results</title><meta name="description" content="Apple investor relations release dated April 22, 2026."></head><body><time datetime="2026-04-22">April 22, 2026</time></body></html>',
+        ),
+    ]
+
+    parsed = WeeklyNewsOfficialDocumentParserAdapter().parse(
+        documents,
+        ticker="AAPL",
+        as_of="2026-04-23",
+        created_at="2026-04-23T12:00:00Z",
+    )
+
+    assert parsed.parser_diagnostic_count == 2
+    assert len(parsed.candidates) == 2
+    assert {candidate.source_rank_tier for candidate in parsed.candidates} == {
+        WeeklyNewsSourceRankTier.official_filing.value,
+        WeeklyNewsSourceRankTier.investor_relations_release.value,
+    }
+    for candidate in parsed.candidates:
+        assert candidate.asset_ticker == "AAPL"
+        assert candidate.source_asset_ticker == "AAPL"
+        assert candidate.parser_status == SourceParserStatus.parsed.value
+        assert candidate.freshness_state == FreshnessState.fresh.value
+        assert candidate.allowlist_status == SourceAllowlistStatus.allowed.value
+        assert candidate.source_use_policy == SourceUsePolicy.full_text_allowed.value
+        assert candidate.evidence_checksum.startswith("sha256:")
+        assert "sha256:evidence:" not in candidate.evidence_checksum
+        assert validate_source_handoff(candidate, action=SourcePolicyAction.generated_claim_support).allowed is True
+
+
+def test_weekly_news_real_official_document_acquisition_persists_after_strict_handoff():
+    missing_snapshot_writer = acquire_weekly_news_event_evidence_from_official_sources(
+        asset_ticker="AAPL",
+        as_of="2026-04-23",
+        created_at="2026-04-23T12:00:00Z",
+        candidates=None,
+        opt_in_enabled=True,
+        official_source_configured=True,
+        rate_limit_ready=True,
+        repository_writer_ready=True,
+        document_fetcher=WeeklyNewsOfficialDocumentFetcher(transport=_official_transport(_aapl_official_payloads())),
+    )
+    assert missing_snapshot_writer.status == "blocked"
+    assert "source_snapshot_writer_not_ready" in missing_snapshot_writer.readiness.blocked_reasons
+
+    source_repo = InMemorySourceSnapshotArtifactRepository()
+    weekly_repo = InMemoryWeeklyNewsEventEvidenceRepository()
+    result = acquire_weekly_news_event_evidence_from_official_sources(
+        asset_ticker="AAPL",
+        as_of="2026-04-23",
+        created_at="2026-04-23T12:00:00Z",
+        candidates=None,
+        opt_in_enabled=True,
+        official_source_configured=True,
+        rate_limit_ready=True,
+        repository_writer_ready=True,
+        source_snapshot_writer_ready=True,
+        source_snapshot_repository=source_repo,
+        weekly_news_repository=weekly_repo,
+        document_fetcher=WeeklyNewsOfficialDocumentFetcher(transport=_official_transport(_aapl_official_payloads())),
+    )
+
+    assert result.boundary == WEEKLY_NEWS_OFFICIAL_SOURCE_REAL_ACQUISITION_BOUNDARY
+    assert result.status == "acquired"
+    assert result.records is not None
+    assert result.retrieved_document_count == 2
+    assert result.document_checksum_count == 2
+    assert result.handoff_approved_source_count == 2
+    assert result.handoff_blocked_source_count == 0
+    assert result.source_snapshot_artifact_count == 4
+    assert result.source_snapshot_diagnostic_count == 2
+    assert result.persisted_source_snapshots is True
+    assert result.persisted_weekly_news_evidence is True
+    assert result.no_live_external_calls is True
+    assert weekly_repo.read_weekly_news_event_evidence_records("AAPL") is not None
+    persisted_snapshots = source_repo.read_source_snapshot_records("AAPL")
+    assert persisted_snapshots is not None
+    assert all(artifact.no_public_snapshot_access for artifact in persisted_snapshots.artifacts)
+    assert all(artifact.can_feed_generated_output for artifact in persisted_snapshots.artifacts)
+    assert all(not artifact.raw_text_stored_in_contract for artifact in persisted_snapshots.artifacts)
+    assert [event.source_use_policy for event in result.records.selected_events] == [
+        SourceUsePolicy.full_text_allowed.value,
+        SourceUsePolicy.full_text_allowed.value,
+    ]
+
+
+def test_weekly_news_real_official_document_acquisition_blocks_parser_failed_before_persistence():
+    source_repo = InMemorySourceSnapshotArtifactRepository()
+    weekly_repo = InMemoryWeeklyNewsEventEvidenceRepository()
+    result = acquire_weekly_news_event_evidence_from_official_sources(
+        asset_ticker="AAPL",
+        as_of="2026-04-23",
+        created_at="2026-04-23T12:00:00Z",
+        candidates=None,
+        opt_in_enabled=True,
+        official_source_configured=True,
+        rate_limit_ready=True,
+        repository_writer_ready=True,
+        source_snapshot_writer_ready=True,
+        source_snapshot_repository=source_repo,
+        weekly_news_repository=weekly_repo,
+        discoverer=_SingleOfficialRequestDiscoverer(),
+        document_fetcher=WeeklyNewsOfficialDocumentFetcher(
+            transport=_official_transport(
+                {
+                    "https://data.sec.gov/submissions/CIK0000320193.json": (
+                        "application/json",
+                        b'{"filings":{"recent":{"form":[],"filingDate":[]}}}',
+                    )
+                }
+            )
+        ),
+    )
+
+    assert result.boundary == WEEKLY_NEWS_OFFICIAL_SOURCE_REAL_ACQUISITION_BOUNDARY
+    assert result.status == "blocked"
+    assert result.records is None
+    assert result.retrieved_document_count == 1
+    assert result.parser_diagnostic_count == 1
+    assert result.persisted_source_snapshots is False
+    assert result.persisted_weekly_news_evidence is False
+    assert source_repo.records().artifacts == []
+    assert weekly_repo.read_weekly_news_event_evidence_records("AAPL") is None
+
+
 def test_weekly_news_live_source_smoke_is_skipped_by_default_without_live_requirements():
     result = run_weekly_news_live_source_smoke(env={})
 
@@ -1467,17 +1697,23 @@ def test_weekly_news_live_source_smoke_opt_in_exercises_source_use_and_threshold
     assert all(row["generated_output_cache_entries_written"] is False for row in blocked["rows"])
 
 
-def test_weekly_news_live_source_smoke_real_fetch_opt_in_runs_metadata_only_operator_path():
+def test_weekly_news_live_source_smoke_real_fetch_opt_in_runs_document_operator_path():
     result = run_weekly_news_live_source_smoke(env={SMOKE_OPT_IN_ENV: "true", REAL_SOURCE_OPT_IN_ENV: "true"})
 
     assert result["status"] == "pass"
-    assert result["reason_code"] == "weekly_news_operator_real_source_metadata_smoke_passed"
+    assert result["reason_code"] == "weekly_news_operator_real_source_document_smoke_passed"
     assert result["normal_ci_requires_live_calls"] is False
-    assert result["source_retrieval_mode"] == "operator_real_source_metadata_acquisition"
+    assert result["source_retrieval_mode"] == "operator_real_source_document_acquisition"
     assert result["operator_real_source_path"]["local_mvp_slice_assets"] == ["AAPL", "VOO", "QQQ"]
-    assert result["operator_real_source_path"]["metadata_only"] is True
+    assert result["operator_real_source_path"]["metadata_only"] is False
+    assert result["operator_real_source_path"]["document_retrieval"] is True
+    assert result["operator_real_source_path"]["parser_outputs_from_fetched_documents"] is True
+    assert result["operator_real_source_path"]["source_snapshot_artifacts"] is True
+    assert result["operator_real_source_path"]["strict_handoff_before_selection"] is True
     assert result["operator_real_source_path"]["official_sources_first"] is True
-    assert result["operator_real_source_path"]["fallback_metadata_after_official"] is True
+    assert result["operator_real_source_path"]["fallback_metadata_after_official"] is False
+    assert result["operator_real_source_path"]["raw_text_collected"] is True
+    assert result["operator_real_source_path"]["raw_text_exposed"] is False
     cases = {case["case_id"]: case for case in result["cases"]}
     assert result["case_status_counts"] == {"pass": 5, "blocked": 0, "skipped": 0}
     assert cases["operator_real_source_aapl"]["selected_source_rank_tiers"] == [
@@ -1487,15 +1723,19 @@ def test_weekly_news_live_source_smoke_real_fetch_opt_in_runs_metadata_only_oper
     assert cases["operator_real_source_voo"]["selected_source_rank_tiers"] == [
         "etf_issuer_announcement",
         "fact_sheet_change",
-        "allowlisted_news",
     ]
     assert cases["operator_real_source_qqq"]["selected_source_rank_tiers"] == [
+        "etf_issuer_announcement",
         "prospectus_update",
-        "fact_sheet_change",
-        "allowlisted_news",
     ]
-    assert cases["operator_real_source_voo"]["operator_real_source_acquisition"]["fallback_metadata_after_official"] is True
-    assert cases["operator_real_source_qqq"]["operator_real_source_acquisition"]["fallback_metadata_after_official"] is True
+    for case_id in ["operator_real_source_aapl", "operator_real_source_voo", "operator_real_source_qqq"]:
+        acquisition = cases[case_id]["operator_real_source_acquisition"]
+        assert acquisition["retrieved_document_count"] == 2
+        assert acquisition["document_checksum_count"] == 2
+        assert acquisition["source_snapshot_artifact_count"] == 4
+        assert acquisition["persisted_source_snapshots"] is True
+        assert acquisition["persisted_weekly_news_evidence"] is True
+        assert acquisition["fallback_metadata_after_official"] is False
     assert cases["provider_metadata_adapter"]["provider_metadata_adapter"]["candidate_count"] == 2
     assert cases["provider_metadata_adapter"]["provider_metadata_adapter"]["raw_article_text_reported"] is False
     assert cases["blocked_regression_tickers"]["blocked_regression_tickers"] == [
@@ -1520,6 +1760,84 @@ def test_weekly_news_module_does_not_import_live_network_clients():
     repository_source = (ROOT / "backend" / "repositories" / "weekly_news.py").read_text(encoding="utf-8")
     for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import", "os.environ", "api_key"]:
         assert forbidden not in repository_source
+
+
+def _official_source_request(
+    url: str,
+    *,
+    source_document_id: str = "aapl-sec-submissions-json",
+    tier: WeeklyNewsSourceRankTier = WeeklyNewsSourceRankTier.official_filing,
+    event_type: WeeklyNewsEventType = WeeklyNewsEventType.earnings,
+    publisher: str = "SEC",
+    source_quality: SourceQuality = SourceQuality.official,
+    source_rank: int = 1,
+) -> WeeklyNewsOfficialSourceRequest:
+    return WeeklyNewsOfficialSourceRequest(
+        ticker="AAPL",
+        source_document_id=source_document_id,
+        url=url,
+        source_rank_tier=tier.value,
+        source_type=tier.value,
+        source_title=source_document_id.replace("-", " ").title(),
+        source_publisher=publisher,
+        event_type=event_type.value,
+        source_rank=source_rank,
+        source_quality=source_quality.value,
+    )
+
+
+def _fetched_document(
+    request: WeeklyNewsOfficialSourceRequest,
+    content_type: str,
+    payload: bytes,
+) -> WeeklyNewsOfficialFetchedDocument:
+    return WeeklyNewsOfficialFetchedDocument(
+        boundary="weekly-news-official-document-fetch-boundary-v1",
+        request=request,
+        status="fetched",
+        final_url=request.url,
+        content_type=content_type,
+        payload=payload,
+        text=payload.decode("utf-8"),
+        checksum="sha256:" + hashlib.sha256(payload).hexdigest(),
+        retrieved_at="2026-04-23T12:00:00Z",
+        byte_size=len(payload),
+        no_live_external_calls=True,
+        sanitized_diagnostics={"source_document_id": request.source_document_id},
+    )
+
+
+def _official_transport(
+    payloads: dict[str, tuple[str, bytes]],
+):
+    def transport(url: str, headers: dict[str, str], timeout: float) -> WeeklyNewsOfficialHttpResponse:
+        content_type, payload = payloads[url]
+        return WeeklyNewsOfficialHttpResponse(
+            url=url,
+            status=200,
+            headers={"content-type": content_type},
+            body=payload,
+        )
+
+    return transport
+
+
+def _aapl_official_payloads() -> dict[str, tuple[str, bytes]]:
+    return {
+        "https://data.sec.gov/submissions/CIK0000320193.json": (
+            "application/json",
+            b'{"filings":{"recent":{"form":["10-Q"],"filingDate":["2026-04-21"],"reportDate":["2026-03-28"],"accessionNumber":["0000320193-26-000041"],"primaryDocument":["aapl-20260328.htm"]}}}',
+        ),
+        "https://investor.apple.com/news-and-events/news-room/default.aspx": (
+            "text/html",
+            b'<html><head><title>Apple reports second quarter results</title><meta name="description" content="Apple investor relations release dated April 22, 2026."></head><body><time datetime="2026-04-22">April 22, 2026</time></body></html>',
+        ),
+    }
+
+
+class _SingleOfficialRequestDiscoverer(WeeklyNewsOfficialSourceDiscoverer):
+    def discover(self, ticker: str, *, as_of: str) -> list[WeeklyNewsOfficialSourceRequest]:
+        return [_official_source_request("https://data.sec.gov/submissions/CIK0000320193.json")]
 
 
 def _lightweight_weekly_news_response(

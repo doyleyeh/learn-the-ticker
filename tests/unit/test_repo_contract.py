@@ -1802,7 +1802,7 @@ def test_t154_weekly_news_live_source_smoke_is_optional_in_rehearsal():
     assert real_source["status"] == "pass"
     assert real_source_checks["optional_weekly_news_live_source_smoke"]["status"] == "pass"
     real_details = real_source_checks["optional_weekly_news_live_source_smoke"]["details"]
-    assert real_details["source_retrieval_mode"] == "operator_real_source_metadata_acquisition"
+    assert real_details["source_retrieval_mode"] == "operator_real_source_document_acquisition"
     assert real_details["case_status_counts"] == {"pass": 5, "blocked": 0, "skipped": 0}
     assert real_details["case_summaries"][0]["case_id"] == "operator_real_source_aapl"
     assert real_source["lightweight_local_mvp_slice_manual_readiness_gate"]["decision"] == (
