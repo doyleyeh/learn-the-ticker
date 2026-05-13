@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -65,8 +66,12 @@ MARKET_AI_ANALYSIS_SCHEMA_VERSION = "market-ai-comprehensive-analysis-hybrid-v1"
 LLM_LIVE_TASK_ALLOWLIST_ENV = "LLM_LIVE_TASK_ALLOWLIST"
 LLM_LIVE_TIMEOUT_SECONDS_ENV = "LLM_LIVE_TIMEOUT_SECONDS"
 LLM_GENERATION_CACHE_TTL_SECONDS_ENV = "LLM_GENERATION_CACHE_TTL_SECONDS"
-DEFAULT_LIVE_SUMMARY_TIMEOUT_SECONDS = 12
+LLM_LIVE_FAILURE_COOLDOWN_SECONDS_ENV = "LLM_LIVE_FAILURE_COOLDOWN_SECONDS"
+LLM_LIVE_SLOW_RESPONSE_THRESHOLD_SECONDS_ENV = "LLM_LIVE_SLOW_RESPONSE_THRESHOLD_SECONDS"
+DEFAULT_LIVE_SUMMARY_TIMEOUT_SECONDS = 4
 DEFAULT_GENERATION_CACHE_TTL_SECONDS = 60 * 60
+DEFAULT_LIVE_FAILURE_COOLDOWN_SECONDS = 60
+DEFAULT_LIVE_SLOW_RESPONSE_THRESHOLD_SECONDS = 2
 DEFAULT_LIVE_GENERATION_TASK_ALLOWLIST = frozenset(
     {
         "beginner_summary",
@@ -220,6 +225,9 @@ _ENV_KEY = "OPENROUTER" + "_API_KEY"
 _DETERMINISTIC_SUMMARY_GENERATION = ContextVar("deterministic_summary_generation", default=False)
 _SUMMARY_GENERATION_CACHE_LOCK = RLock()
 _SUMMARY_GENERATION_CACHE: dict[str, "_SummaryGenerationCacheEntry"] = {}
+_LIVE_GENERATION_CIRCUIT_LOCK = RLock()
+_LIVE_GENERATION_CIRCUIT_OPEN_UNTIL_SECONDS = 0.0
+_LIVE_GENERATION_CIRCUIT_REASON: str | None = None
 
 
 class SummaryGenerationContractError(ValueError):
@@ -354,11 +362,17 @@ class HybridSummaryGenerationService:
         structured_generator: StructuredSummaryGenerator | None = None,
         live_task_allowlist: frozenset[str] | set[str] | None = None,
         cache_ttl_seconds: int = DEFAULT_GENERATION_CACHE_TTL_SECONDS,
+        live_call_timeout_seconds: int = DEFAULT_LIVE_SUMMARY_TIMEOUT_SECONDS,
+        live_failure_cooldown_seconds: int = DEFAULT_LIVE_FAILURE_COOLDOWN_SECONDS,
+        live_slow_response_threshold_seconds: int = DEFAULT_LIVE_SLOW_RESPONSE_THRESHOLD_SECONDS,
     ) -> None:
         self.runtime = runtime or build_llm_runtime_config()
         self.structured_generator = structured_generator
         self.live_task_allowlist = None if live_task_allowlist is None else frozenset(live_task_allowlist)
         self.cache_ttl_seconds = max(0, int(cache_ttl_seconds))
+        self.live_call_timeout_seconds = max(1, int(live_call_timeout_seconds))
+        self.live_failure_cooldown_seconds = max(0, int(live_failure_cooldown_seconds))
+        self.live_slow_response_threshold_seconds = max(0, int(live_slow_response_threshold_seconds))
 
     def generate_beginner_summary(
         self,
@@ -559,7 +573,7 @@ class HybridSummaryGenerationService:
             citation_ids=all_citations,
             source_document_ids=source_ids,
             market_news_story_ids=story_ids,
-            no_live_external_calls=self.runtime.readiness_status is not LlmReadinessStatus.ready_for_explicit_live_call,
+            no_live_external_calls=not generated.diagnostics.attempted_live,
             generation_diagnostics=generated.diagnostics,
         )
         _validate_text_blob(
@@ -649,7 +663,7 @@ class HybridSummaryGenerationService:
             source_document_ids=source_ids,
             weekly_news_event_ids=event_ids,
             canonical_fact_citation_ids=canonical_fact_citation_ids,
-            no_live_external_calls=self.runtime.readiness_status is not LlmReadinessStatus.ready_for_explicit_live_call,
+            no_live_external_calls=not generated.diagnostics.attempted_live,
             generation_diagnostics=generated.diagnostics,
         )
         _validate_text_blob(
@@ -739,10 +753,35 @@ class HybridSummaryGenerationService:
                         model_name=model_name,
                     ),
                 )
+            circuit_reason = _live_generation_circuit_reason()
+            if circuit_reason:
+                return _GeneratedPayload(
+                    payload=fallback,
+                    diagnostics=GenerationDiagnostics(
+                        attempted_live=False,
+                        used_fallback=True,
+                        fallback_reason_codes=["live_generation_circuit_open", circuit_reason],
+                        model_name=model_name,
+                    ),
+                )
             try:
-                payload = self.structured_generator(request)
+                started_seconds = time.monotonic()
+                payload = _call_structured_generator_with_deadline(
+                    self.structured_generator,
+                    request,
+                    timeout_seconds=self.live_call_timeout_seconds,
+                )
+                elapsed_seconds = time.monotonic() - started_seconds
                 if isinstance(payload, dict):
                     payload = _normalize_live_payload_shape(request, payload)
+                    if (
+                        self.live_slow_response_threshold_seconds > 0
+                        and elapsed_seconds >= self.live_slow_response_threshold_seconds
+                    ):
+                        _open_live_generation_circuit(
+                            "live_generation_slow_response",
+                            cooldown_seconds=self.live_failure_cooldown_seconds,
+                        )
                     return _GeneratedPayload(
                         payload=payload,
                         cache_key=cache_key,
@@ -755,6 +794,10 @@ class HybridSummaryGenerationService:
                     )
                 raise SummaryGenerationContractError("Structured summary generator returned a non-object payload.")
             except TimeoutError:
+                _open_live_generation_circuit(
+                    "live_generation_timeout",
+                    cooldown_seconds=self.live_failure_cooldown_seconds,
+                )
                 return _GeneratedPayload(
                     payload=fallback,
                     diagnostics=GenerationDiagnostics(
@@ -820,6 +863,9 @@ def build_default_summary_generation_service() -> SummaryGenerationService:
         structured_generator=generator,
         live_task_allowlist=_live_task_allowlist_from_env(env),
         cache_ttl_seconds=_generation_cache_ttl_seconds_from_env(env),
+        live_call_timeout_seconds=timeout_seconds,
+        live_failure_cooldown_seconds=_live_failure_cooldown_seconds_from_env(env),
+        live_slow_response_threshold_seconds=_live_slow_response_threshold_seconds_from_env(env),
     )
 
 
@@ -930,9 +976,76 @@ def _generation_cache_ttl_seconds_from_env(env: Mapping[str, str]) -> int:
         return DEFAULT_GENERATION_CACHE_TTL_SECONDS
 
 
+def _live_failure_cooldown_seconds_from_env(env: Mapping[str, str]) -> int:
+    raw = str(env.get(LLM_LIVE_FAILURE_COOLDOWN_SECONDS_ENV, "")).strip()
+    if not raw:
+        return DEFAULT_LIVE_FAILURE_COOLDOWN_SECONDS
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return DEFAULT_LIVE_FAILURE_COOLDOWN_SECONDS
+
+
+def _live_slow_response_threshold_seconds_from_env(env: Mapping[str, str]) -> int:
+    raw = str(env.get(LLM_LIVE_SLOW_RESPONSE_THRESHOLD_SECONDS_ENV, "")).strip()
+    if not raw:
+        return DEFAULT_LIVE_SLOW_RESPONSE_THRESHOLD_SECONDS
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return DEFAULT_LIVE_SLOW_RESPONSE_THRESHOLD_SECONDS
+
+
 def clear_summary_generation_cache() -> None:
     with _SUMMARY_GENERATION_CACHE_LOCK:
         _SUMMARY_GENERATION_CACHE.clear()
+
+
+def clear_summary_generation_live_circuit() -> None:
+    global _LIVE_GENERATION_CIRCUIT_OPEN_UNTIL_SECONDS, _LIVE_GENERATION_CIRCUIT_REASON
+    with _LIVE_GENERATION_CIRCUIT_LOCK:
+        _LIVE_GENERATION_CIRCUIT_OPEN_UNTIL_SECONDS = 0.0
+        _LIVE_GENERATION_CIRCUIT_REASON = None
+
+
+def _call_structured_generator_with_deadline(
+    generator: StructuredSummaryGenerator,
+    request: SummaryGenerationRequest,
+    *,
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ltt-live-summary")
+    future = executor.submit(generator, request)
+    try:
+        payload = future.result(timeout=max(1, int(timeout_seconds)))
+    except FutureTimeoutError as exc:
+        future.cancel()
+        executor.shutdown(wait=False, cancel_futures=True)
+        raise TimeoutError("live_summary_generation_timeout") from exc
+    except Exception:
+        executor.shutdown(wait=True, cancel_futures=True)
+        raise
+    executor.shutdown(wait=True, cancel_futures=True)
+    return payload
+
+
+def _live_generation_circuit_reason() -> str | None:
+    global _LIVE_GENERATION_CIRCUIT_OPEN_UNTIL_SECONDS, _LIVE_GENERATION_CIRCUIT_REASON
+    with _LIVE_GENERATION_CIRCUIT_LOCK:
+        if _LIVE_GENERATION_CIRCUIT_OPEN_UNTIL_SECONDS <= time.monotonic():
+            _LIVE_GENERATION_CIRCUIT_OPEN_UNTIL_SECONDS = 0.0
+            _LIVE_GENERATION_CIRCUIT_REASON = None
+            return None
+        return _LIVE_GENERATION_CIRCUIT_REASON or "live_generation_recent_failure"
+
+
+def _open_live_generation_circuit(reason: str, *, cooldown_seconds: int) -> None:
+    global _LIVE_GENERATION_CIRCUIT_OPEN_UNTIL_SECONDS, _LIVE_GENERATION_CIRCUIT_REASON
+    if cooldown_seconds <= 0:
+        return
+    with _LIVE_GENERATION_CIRCUIT_LOCK:
+        _LIVE_GENERATION_CIRCUIT_OPEN_UNTIL_SECONDS = time.monotonic() + cooldown_seconds
+        _LIVE_GENERATION_CIRCUIT_REASON = reason
 
 
 def _summary_generation_cache_key(request: SummaryGenerationRequest, runtime: LlmRuntimeConfig) -> str:
