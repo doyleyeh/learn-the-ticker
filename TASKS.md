@@ -1,10 +1,118 @@
 ## Current task
 
-No current task is prepared. The backlog is empty.
+### T-188: Surface asset-page backend section states and fallback notices
+
+Goal:
+Make the supported asset page visibly distinguish backend-loaded sections, backend timeouts, backend errors, invalid contracts, missing API configuration, stale cached data, local fixture fallback, partial pages, and valid empty evidence states.
+
+Acceptance criteria:
+- Asset page section fetching no longer collapses every optional backend failure into `null` and complete-looking local/default content.
+- Weekly News Focus distinguishes "valid empty evidence" from "backend timed out or failed."
+- Details, Economic Indicators, Market News Focus, Weekly News Focus, source drawer, and glossary sections expose visible user-facing partial/unavailable/fallback notices where trust would otherwise be ambiguous.
+- Existing `data-asset-*-rendering` attributes stay available for smoke tests, but visible copy is the primary trust signal.
+- The timeout for live-ish asset sections is configurable or raised enough that a slow valid local backend is not indistinguishable from absent data.
+- No frontend path calls providers, news services, LLMs, ingestion workers, or secrets directly from browser code.
+
+Required commands:
+- `npm test`
+- `npm run typecheck`
+- `npm run build`
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+- `git diff --check`
+
+Iteration budget:
+One focused frontend/control-doc cycle. If the section-state adapter requires broad API contract changes, stop after adding typed frontend fallback notices and prepare the backend metadata task separately.
 
 ## Backlog
 
-No backlog tasks are currently prepared.
+### T-189: Add durable schema execution smoke and restart-proof repository checks
+
+Goal:
+Move durable persistence from contract/read-boundary proof toward verified schema execution by adding local migration smoke coverage and restart-proof repository read/write checks for source snapshots, knowledge packs, Weekly News events, generated-output cache metadata, ingestion jobs, and import history.
+
+Acceptance criteria:
+- A deterministic local durable smoke can apply and inspect migrations in a throwaway/local test context without real secrets.
+- Repository writes can be read after a simulated process restart when durable repositories are explicitly enabled.
+- Default CI and local tests remain fixture-backed when durable env settings are absent.
+- Placeholder env files do not expose database, object storage, provider, or LLM secrets to browser code.
+
+Required commands:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_persistence_settings.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_weekly_news.py tests/unit/test_cache_contracts.py tests/unit/test_ingestion_job_repository.py -q`
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_repo_contract.py tests/unit/test_safety_guardrails.py -q`
+- `TMPDIR=/tmp python3 evals/run_static_evals.py`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+- `git diff --check`
+
+Iteration budget:
+One backend persistence cycle. Do not add live production database credentials, production object-storage clients, Cloud Run deployment wiring, provider calls, or generated user-facing content.
+
+### T-190: Enforce durable source snapshot and handoff promotion gates
+
+Goal:
+Make durable source snapshots and Golden Asset Source Handoff records the enforced promotion gate for strict evidence, generated-output cache entries, citations, source drawer support, and exports.
+
+Acceptance criteria:
+- Retrieved sources without approved identity, source type, official-source status, storage rights, export rights, source-use policy, parser status, freshness/as-of metadata, review status, and approval rationale default closed.
+- Pending-review, rejected, unclear-rights, parser-invalid, hidden/internal, metadata-only, and link-only sources cannot feed strict generated evidence, unrestricted excerpts, generated-output cache writes, or exports.
+- Lightweight personal-MVP display can still use source-labeled fallback only where `docs/LIGHTWEIGHT_DATA_POLICY.md` allows it and while raw payloads stay hidden.
+- Source drawer, export, generated-output cache, and knowledge-pack records expose only approved metadata and allowed excerpts.
+
+Required commands:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_source_policy.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_cache_contracts.py tests/unit/test_exports.py tests/unit/test_source_drawer.py -q`
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q`
+- `TMPDIR=/tmp python3 evals/run_static_evals.py`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+- `git diff --check`
+
+Iteration budget:
+One source-governance cycle. Do not broaden the source allowlist or approve new domains unless the task also updates policy, rationale, tests, and development-log justification.
+
+### T-191: Convert launch pre-cache into durable job creation and manual worker execution
+
+Goal:
+Replace deterministic launch pre-cache status-only behavior with an explicitly gated durable job-creation path and manual worker execution loop backed by the Postgres-style ingestion ledger.
+
+Acceptance criteria:
+- Durable mode launch pre-cache creates queued ledger jobs for supported high-demand assets instead of only returning static status fixtures.
+- The manual worker can claim, run, retry, and finish jobs idempotently through injected durable repositories.
+- Worker diagnostics are sanitized and never include secrets, raw provider payloads, unrestricted source text, hidden prompts, raw model reasoning, or transcripts.
+- Unsupported, out-of-scope, unknown, unavailable, pending-review, and source-policy-blocked rows remain generated-output-ineligible.
+- Normal CI uses mocked repositories and deterministic provider/source fixtures only.
+
+Required commands:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_ingestion_jobs.py tests/unit/test_ingestion_job_repository.py tests/unit/test_ingestion_worker.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_cache_contracts.py -q`
+- `TMPDIR=/tmp python3 -m pytest tests/integration/test_backend_api.py -q`
+- `TMPDIR=/tmp python3 evals/run_static_evals.py`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+- `git diff --check`
+
+Iteration budget:
+One worker/ledger cycle. Keep Cloud Run Jobs, schedulers, production credentials, broad live provider calls, and recurring ingestion out of scope unless a later deployment task promotes them.
+
+### T-192: Route asset surfaces through durable section state metadata
+
+Goal:
+Make backend routes prefer valid durable packs/generated-output cache entries and return explicit section-state metadata so the frontend can render durable, stale cache, lightweight fallback, fixture fallback, partial, unavailable, and valid empty evidence states without guessing.
+
+Acceptance criteria:
+- Asset overview/details, Weekly News Focus, Market News Focus, source drawer, glossary, chat, comparison, and exports expose compatible `data_origin`, `section_status`, `fallback_reason`, `freshness_state`, `source_handoff_state`, `cache_state`, or equivalent metadata.
+- Routes prefer current valid generated-output cache, then durable knowledge packs/facts/events, then explicitly labeled lightweight fallback, then deterministic fixture fallback only when configured.
+- Generated-output cache entries are invalidated or suppressed when source checksums, fact versions, Weekly News event IDs, prompt/schema/model versions, citation validation, source-use policy, freshness, or safety status changes.
+- Frontend asset pages consume backend section state metadata for user-facing notices prepared in T-188.
+
+Required commands:
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_overview_generation.py tests/unit/test_weekly_news.py tests/unit/test_market_news.py tests/unit/test_source_drawer.py tests/unit/test_glossary_context.py tests/unit/test_chat_generation.py tests/unit/test_comparison_generation.py tests/unit/test_exports.py tests/unit/test_cache_contracts.py -q`
+- `TMPDIR=/tmp python3 -m pytest tests/integration/test_backend_api.py -q`
+- `npm test`
+- `npm run typecheck`
+- `npm run build`
+- `TMPDIR=/tmp python3 evals/run_static_evals.py`
+- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
+- `git diff --check`
+
+Iteration budget:
+One API/frontend integration cycle. If cache invalidation requires a schema migration, finish the backend metadata contract first and prepare a follow-up migration task.
 
 ## Completed
 
@@ -5167,7 +5275,7 @@ Current runtime snapshot:
 - T-130 completed the deterministic local fresh-data MVP rehearsal command.
 - T-131 through T-135 completed the ETF eligible-universe, stock SEC source-pack readiness, ETF issuer source-pack readiness, local MVP readiness-threshold packets, and batchable local ingestion priority planner.
 - The ETF-500 scope update is documented across the product and handoff docs; T-136 completed deterministic ETF-500 candidate manifest review contracts, and T-137 completed ETF-500 issuer source-pack batch planning contracts.
-- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, T-139 completed the local manual fresh-data readiness gate, T-140 completed the backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack, T-141 aligned frontend/API comparison availability, T-142 completed local browser/API smoke coverage, T-143 completed the deterministic stock-vs-ETF readiness-reporting gate, T-144 completed the first local fresh-data MVP slice smoke contract, T-145 completed the local slice browser/API smoke task, T-146 completed optional durable repository smoke coverage for the local slice, T-147 completed issuer-backed ETF source enrichment for the local slice, T-148 completed the lightweight local slice manual-readiness gate, T-149 completed local slice comparison/export parity coverage, T-150 completed the lightweight live browser/API smoke runner, T-151 completed lightweight live API fallback diagnostics, T-152 completed lightweight live durable persistence smoke coverage, T-153 completed lightweight issuer enrichment for `SPY`, `VTI`, and `XLK`, T-154 completed the Weekly News Focus live-source smoke task, T-155 completed lightweight live-AI validation, T-156 completed fresh-data comparison coverage for stock-vs-stock plus non-generated ETF pairs, T-157 completed local deployment/environment smoke coverage, T-158 completed the local personal-MVP readiness gate with strict/public-launch gates marked audit-only, T-159 fixed local browser/API smoke blockers, T-160 added short-TTL lightweight fetch reuse, T-161 wired lightweight exports, T-162 added lightweight grounded chat packs, T-163 added local durable persistence for lightweight source snapshots and normalized facts, T-164 added operator-only real Weekly News Focus source acquisition for the local MVP slice, T-165 added live-AI validation on real local evidence packs, T-166 added deterministic ETF-500 blocked generated-surface diagnostics for local coverage-manifest review, and T-167 through T-171 moved Weekly News into local MVP page, analysis, chat, UI, and smoke-validation surfaces with fallback provider metadata kept non-canonical. No current task is prepared and the backlog is empty.
+- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, T-139 completed the local manual fresh-data readiness gate, T-140 completed the backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack, T-141 aligned frontend/API comparison availability, T-142 completed local browser/API smoke coverage, T-143 completed the deterministic stock-vs-ETF readiness-reporting gate, T-144 completed the first local fresh-data MVP slice smoke contract, T-145 completed the local slice browser/API smoke task, T-146 completed optional durable repository smoke coverage for the local slice, T-147 completed issuer-backed ETF source enrichment for the local slice, T-148 completed the lightweight local slice manual-readiness gate, T-149 completed local slice comparison/export parity coverage, T-150 completed the lightweight live browser/API smoke runner, T-151 completed lightweight live API fallback diagnostics, T-152 completed lightweight live durable persistence smoke coverage, T-153 completed lightweight issuer enrichment for `SPY`, `VTI`, and `XLK`, T-154 completed the Weekly News Focus live-source smoke task, T-155 completed lightweight live-AI validation, T-156 completed fresh-data comparison coverage for stock-vs-stock plus non-generated ETF pairs, T-157 completed local deployment/environment smoke coverage, T-158 completed the local personal-MVP readiness gate with strict/public-launch gates marked audit-only, T-159 fixed local browser/API smoke blockers, T-160 added short-TTL lightweight fetch reuse, T-161 wired lightweight exports, T-162 added lightweight grounded chat packs, T-163 added local durable persistence for lightweight source snapshots and normalized facts, T-164 added operator-only real Weekly News Focus source acquisition for the local MVP slice, T-165 added live-AI validation on real local evidence packs, T-166 added deterministic ETF-500 blocked generated-surface diagnostics for local coverage-manifest review, and T-167 through T-171 moved Weekly News into local MVP page, analysis, chat, UI, and smoke-validation surfaces with fallback provider metadata kept non-canonical. T-188 through T-192 are prepared as the next durable persistence, ingestion, generated-output cache, route-read, and frontend trust-state hardening sequence.
 - T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, full governed source artifacts, admin auth/rate limiting, broader live ingestion, and launch-sized reviewed manifests remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:
@@ -5334,12 +5442,17 @@ Roadmap integration tracker:
 | Lightweight Weekly News page and AI analysis wiring | Completed | T-169 |
 | Grounded chat with stable facts plus Weekly News | Completed | T-170 |
 | Weekly News UI filters and local smoke validation | Completed | T-171 |
+| Asset-page backend section state and fallback notices | Current | T-188 |
+| Durable schema execution smoke and repository checks | Prepared | T-189 |
+| Durable source snapshot and handoff promotion gates | Prepared | T-190 |
+| Durable launch pre-cache job creation and worker execution | Prepared | T-191 |
+| Durable section-state route reads and generated-output cache authority | Prepared | T-192 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
 Remaining unpromoted general MVP sequence:
 
 - T-139 produced a deterministic readiness gate that says whether more agent-loop work remains or whether manual local fresh-data testing is the next step.
-- The stock-vs-ETF comparison feature-completion sequence is complete through the final prepared step: T-141 aligned frontend suggestions/fallback with API availability, T-142 added optional localhost browser/API smoke coverage, and T-143 added the deterministic readiness signal. The promoted local fresh-data MVP slice sequence is complete through T-171 local Weekly News MVP expansion, and no next agent-loop task is currently prepared.
+- The stock-vs-ETF comparison feature-completion sequence is complete through the final prepared step: T-141 aligned frontend suggestions/fallback with API availability, T-142 added optional localhost browser/API smoke coverage, and T-143 added the deterministic readiness signal. The promoted local fresh-data MVP slice sequence is complete through T-171 local Weekly News MVP expansion. T-188 through T-192 are the next prepared agent-loop tasks for frontend section-state transparency, durable schema execution, source handoff promotion gates, durable worker execution, and durable route-read authority.
 - Full production deployment remains unpromoted until a narrow launch-readiness task is added: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
 - Recurring production jobs only after manual official-source acquisition, Top-500 candidate refresh review, and local fresh-data behavior are stable.
 - Broad paid-provider or news-provider integrations only after provider licensing/source-use review, no-secret-exposure tests, mocked CI fixtures, source-rights validation, and export/display constraints are documented.

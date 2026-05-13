@@ -15,6 +15,7 @@ This directory is organized around one source-of-truth chain and a small set of 
 ## Current Operational Docs
 
 - `docs/mvp_functional_gap_review.md`: current development progress, MVP fresh-data gaps, and the near-term Codex agent-loop track.
+- `docs/durable_persistence_ingestion_implementation_plan.md`: implementation plan for making persistence, ingestion/pre-cache, generated-output cache, and asset-page fallback states authoritative and user-visible.
 - `docs/local_fresh_data_ingest_to_render_runbook.md`: local golden-asset smoke procedure for API/backend/frontend rendering.
 - `docs/SOURCE_HANDOFF.md`: operator guide for Golden Asset Source Handoff and governed source ingestion boundaries.
 - `docs/TOP500_MANIFEST_HANDOFF.md`: operator guide for Top-500 stock candidate, review, and promotion handoff.
