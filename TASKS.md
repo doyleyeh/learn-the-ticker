@@ -116,7 +116,7 @@ One API/frontend integration cycle. If cache invalidation requires a schema migr
 
 ## Completed
 
-### T-188: Add Weekly News official document handoff proof
+### T-193: Add Weekly News official document handoff proof
 
 Goal:
 Replace the metadata-only Weekly News official live-source proof with a narrow strict/audit-quality document acquisition path for `AAPL`, `VOO`, and `QQQ` that performs allowlisted retrieval, parser-derived candidate generation, source snapshot construction, Golden Asset Source Handoff validation, and durable evidence writes before Weekly News claims can use the source.
