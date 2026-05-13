@@ -2318,7 +2318,7 @@ def _etf_methodology_items(
             "methodology_scope_note",
             "Methodology scope note",
             (
-                "Benchmark and prospectus metadata explain the fund's core index-tracking context. Rebalancing "
+                "Benchmark and prospectus evidence explain the fund's core index-tracking context. Rebalancing "
                 "frequency, screening rules, and methodology documents need a dedicated issuer methodology source "
                 "before this section can go deeper."
             ),
@@ -2326,7 +2326,7 @@ def _etf_methodology_items(
             response,
             evidence_state=EvidenceState.partial,
             as_of_date=response.freshness.facts_as_of,
-            limitations="Detailed methodology depth depends on issuer methodology evidence beyond benchmark and prospectus metadata.",
+            limitations="Detailed methodology depth depends on issuer methodology evidence beyond benchmark and prospectus sources.",
         ),
     ]
 
@@ -3801,7 +3801,7 @@ def _etf_holdings_context(response: LightweightFetchResponse) -> list[str]:
 def _etf_benchmark_summary(response: LightweightFetchResponse) -> str:
     benchmark = _fact_value(response, "benchmark")
     if benchmark is not None:
-        return f"Issuer fact-sheet metadata lists benchmark/index: {benchmark}."
+        return f"Issuer fact-sheet evidence lists the benchmark/index as {benchmark}."
     return "Benchmark is unavailable until deterministic issuer evidence is present."
 
 
@@ -3810,8 +3810,8 @@ def _etf_construction_context(response: LightweightFetchResponse) -> str:
     prospectus = _fact_value(response, "prospectus_reference")
     if benchmark or prospectus:
         return (
-            f"{response.asset.ticker} construction is explained from available benchmark and prospectus metadata, "
-            "with the focus on what index the fund tracks and which issuer source can be checked next."
+            f"{response.asset.ticker}'s construction section explains which index the fund tracks "
+            "and which issuer document supports that fund identity."
         )
     return "Construction and methodology evidence is unavailable until issuer benchmark or prospectus metadata is present."
 

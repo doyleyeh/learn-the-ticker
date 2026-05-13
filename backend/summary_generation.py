@@ -1354,6 +1354,14 @@ def _deep_dive_fallback(
     if section_id != "evidence_limits" and not field_text:
         return base_summary
     if field_text:
+        if section_id != "evidence_limits":
+            return _join_sentences(
+                base_summary,
+                (
+                    f"For {asset.ticker}, these details matter because they connect the section to the "
+                    "asset's business or fund structure while keeping partial fields labeled."
+                ),
+            )
         return _join_sentences(
             base_summary,
             (
