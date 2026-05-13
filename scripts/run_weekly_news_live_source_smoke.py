@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -36,7 +37,13 @@ from backend.models import (
     WeeklyNewsEventType,
 )
 from backend.weekly_news import build_ai_comprehensive_analysis, compute_weekly_news_window
+from backend.source_snapshot_repository import InMemorySourceSnapshotArtifactRepository
+from backend.weekly_news_official_sources import (
+    WEEKLY_NEWS_OFFICIAL_DOCUMENT_FETCH_BOUNDARY,
+    WeeklyNewsOfficialFetchedDocument,
+)
 from backend.weekly_news_repository import (
+    InMemoryWeeklyNewsEventEvidenceRepository,
     WeeklyNewsEventCandidateRow,
     WeeklyNewsEventEvidenceRepositoryRecords,
     WeeklyNewsSourceRankTier,
@@ -90,7 +97,7 @@ def run_weekly_news_live_source_smoke(env: dict[str, str] | None = None) -> dict
         }
 
     if real_source_enabled:
-        return _operator_real_source_metadata_smoke(base)
+        return _operator_real_source_document_smoke(base)
 
     cases = [
         _source_backed_official_first_case(),
@@ -120,90 +127,13 @@ def run_weekly_news_live_source_smoke(env: dict[str, str] | None = None) -> dict
     }
 
 
-def _operator_real_source_metadata_smoke(base: dict[str, Any]) -> dict[str, Any]:
-    """Run the operator-only live-source metadata path for the local MVP slice."""
+def _operator_real_source_document_smoke(base: dict[str, Any]) -> dict[str, Any]:
+    """Run the operator-only strict document retrieval path with injected official-source fixtures."""
 
     cases = [
-        _operator_real_source_case(
-            "operator_real_source_aapl",
-            "AAPL",
-            [
-                _candidate(
-                    "aapl_sec_filing_metadata",
-                    asset_ticker="AAPL",
-                    tier=WeeklyNewsSourceRankTier.official_filing,
-                    event_type=WeeklyNewsEventType.earnings,
-                    source_quality=SourceQuality.official,
-                ),
-                _candidate(
-                    "aapl_investor_relations_metadata",
-                    asset_ticker="AAPL",
-                    tier=WeeklyNewsSourceRankTier.investor_relations_release,
-                    source_rank=2,
-                    event_type=WeeklyNewsEventType.product_announcement,
-                    source_quality=SourceQuality.issuer,
-                ),
-            ],
-        ),
-        _operator_real_source_case(
-            "operator_real_source_voo",
-            "VOO",
-            [
-                _candidate(
-                    "voo_issuer_announcement_metadata",
-                    asset_ticker="VOO",
-                    tier=WeeklyNewsSourceRankTier.etf_issuer_announcement,
-                    source_rank=3,
-                    event_type=WeeklyNewsEventType.sponsor_update,
-                    source_quality=SourceQuality.issuer,
-                ),
-                _candidate(
-                    "voo_fact_sheet_change_metadata",
-                    asset_ticker="VOO",
-                    tier=WeeklyNewsSourceRankTier.fact_sheet_change,
-                    source_rank=5,
-                    event_type=WeeklyNewsEventType.methodology_change,
-                    source_quality=SourceQuality.issuer,
-                ),
-                _candidate(
-                    "voo_allowlisted_context_metadata",
-                    asset_ticker="VOO",
-                    tier=WeeklyNewsSourceRankTier.allowlisted_news,
-                    source_rank=20,
-                    event_type=WeeklyNewsEventType.sponsor_update,
-                    source_quality=SourceQuality.allowlisted,
-                    is_official=False,
-                ),
-            ],
-        ),
-        _operator_real_source_case(
-            "operator_real_source_qqq",
-            "QQQ",
-            [
-                _candidate(
-                    "qqq_prospectus_update_metadata",
-                    tier=WeeklyNewsSourceRankTier.prospectus_update,
-                    source_rank=4,
-                    event_type=WeeklyNewsEventType.methodology_change,
-                    source_quality=SourceQuality.issuer,
-                ),
-                _candidate(
-                    "qqq_fact_sheet_change_metadata",
-                    tier=WeeklyNewsSourceRankTier.fact_sheet_change,
-                    source_rank=5,
-                    event_type=WeeklyNewsEventType.index_change,
-                    source_quality=SourceQuality.issuer,
-                ),
-                _candidate(
-                    "qqq_allowlisted_context_metadata",
-                    tier=WeeklyNewsSourceRankTier.allowlisted_news,
-                    source_rank=20,
-                    event_type=WeeklyNewsEventType.sponsor_update,
-                    source_quality=SourceQuality.allowlisted,
-                    is_official=False,
-                ),
-            ],
-        ),
+        _operator_real_source_case("operator_real_source_aapl", "AAPL"),
+        _operator_real_source_case("operator_real_source_voo", "VOO"),
+        _operator_real_source_case("operator_real_source_qqq", "QQQ"),
         _provider_metadata_adapter_case(),
         _blocked_regression_case(),
     ]
@@ -213,9 +143,9 @@ def _operator_real_source_metadata_smoke(base: dict[str, Any]) -> dict[str, Any]
         **base,
         "status": status,
         "reason_code": (
-            "weekly_news_operator_real_source_metadata_smoke_passed"
+            "weekly_news_operator_real_source_document_smoke_passed"
             if status == "pass"
-            else "weekly_news_operator_real_source_metadata_smoke_blocked"
+            else "weekly_news_operator_real_source_document_smoke_blocked"
         ),
         "cases": cases,
         "case_status_counts": {
@@ -227,10 +157,15 @@ def _operator_real_source_metadata_smoke(base: dict[str, Any]) -> dict[str, Any]
         "operator_real_source_path": {
             "enabled": True,
             "local_mvp_slice_assets": ["AAPL", "VOO", "QQQ"],
-            "metadata_only": True,
+            "metadata_only": False,
             "official_sources_first": True,
-            "fallback_metadata_after_official": True,
-            "raw_text_collected": False,
+            "document_retrieval": True,
+            "parser_outputs_from_fetched_documents": True,
+            "source_snapshot_artifacts": True,
+            "strict_handoff_before_selection": True,
+            "fallback_metadata_after_official": False,
+            "raw_text_collected": True,
+            "raw_text_exposed": False,
             "generated_output_cache_written": False,
             "live_llm_generation_enabled": False,
         },
@@ -241,23 +176,28 @@ def _operator_real_source_metadata_smoke(base: dict[str, Any]) -> dict[str, Any]
 def _operator_real_source_case(
     case_id: str,
     ticker: str,
-    candidates: list[WeeklyNewsEventCandidateRow],
 ) -> dict[str, Any]:
+    source_snapshot_repository = InMemorySourceSnapshotArtifactRepository()
+    weekly_news_repository = InMemoryWeeklyNewsEventEvidenceRepository()
     result = acquire_weekly_news_event_evidence_from_official_sources(
         asset_ticker=ticker,
         as_of=DEFAULT_AS_OF,
         created_at=DEFAULT_CREATED_AT,
-        candidates=candidates,
+        candidates=None,
         opt_in_enabled=True,
         official_source_configured=True,
         rate_limit_ready=True,
         repository_writer_ready=True,
+        source_snapshot_writer_ready=True,
+        source_snapshot_repository=source_snapshot_repository,
+        weekly_news_repository=weekly_news_repository,
+        document_fetcher=_FixtureOfficialDocumentFetcher(_official_document_fixtures()),
     )
     if result.records is None:
         return {
             "case_id": case_id,
             "status": "blocked",
-            "reason_code": "operator_real_source_metadata_acquisition_blocked",
+            "reason_code": "operator_real_source_document_acquisition_blocked",
             "asset_ticker": normalize_ticker(ticker),
             "readiness_status": result.readiness.status,
             "blocked_reasons": list(result.readiness.blocked_reasons),
@@ -274,14 +214,17 @@ def _operator_real_source_case(
     case["operator_real_source_acquisition"] = {
         "readiness_status": result.readiness.status,
         "fetched_source_count": result.fetched_source_count,
+        "retrieved_document_count": result.retrieved_document_count,
+        "document_checksum_count": result.document_checksum_count,
         "parser_diagnostic_count": result.parser_diagnostic_count,
         "handoff_approved_source_count": result.handoff_approved_source_count,
         "handoff_blocked_source_count": result.handoff_blocked_source_count,
+        "source_snapshot_artifact_count": result.source_snapshot_artifact_count,
+        "source_snapshot_diagnostic_count": result.source_snapshot_diagnostic_count,
+        "persisted_source_snapshots": result.persisted_source_snapshots,
+        "persisted_weekly_news_evidence": result.persisted_weekly_news_evidence,
         "official_sources_first": True,
-        "fallback_metadata_after_official": any(
-            row["source_rank_tier"] == WeeklyNewsSourceRankTier.allowlisted_news.value
-            for row in case["selected_events"]
-        ),
+        "fallback_metadata_after_official": False,
         "raw_article_text_reported": False,
         "raw_source_text_reported": False,
         "raw_provider_payload_reported": False,
@@ -290,6 +233,105 @@ def _operator_real_source_case(
     }
     case["no_live_external_calls"] = result.no_live_external_calls
     return case
+
+
+class _FixtureOfficialDocumentFetcher:
+    def __init__(self, fixtures: dict[str, tuple[str, str]]) -> None:
+        self.fixtures = fixtures
+
+    def fetch(self, request: Any, *, retrieved_at: str) -> WeeklyNewsOfficialFetchedDocument:
+        content_type, text = self.fixtures[request.source_document_id]
+        payload = text.encode("utf-8")
+        checksum = "sha256:" + hashlib.sha256(payload).hexdigest()
+        return WeeklyNewsOfficialFetchedDocument(
+            boundary=WEEKLY_NEWS_OFFICIAL_DOCUMENT_FETCH_BOUNDARY,
+            request=request,
+            status="fetched",
+            final_url=request.url,
+            content_type=content_type,
+            payload=payload,
+            text=text,
+            checksum=checksum,
+            retrieved_at=retrieved_at,
+            byte_size=len(payload),
+            no_live_external_calls=True,
+            sanitized_diagnostics={
+                "source_document_id": request.source_document_id,
+                "status": "fixture_fetched",
+                "content_type": content_type,
+                "byte_size": len(payload),
+                "checksum": checksum,
+            },
+        )
+
+
+def _official_document_fixtures() -> dict[str, tuple[str, str]]:
+    return {
+        "aapl-sec-submissions-json": (
+            "application/json",
+            json.dumps(
+                {
+                    "cik": "0000320193",
+                    "name": "Apple Inc.",
+                    "filings": {
+                        "recent": {
+                            "accessionNumber": ["0000320193-26-000041"],
+                            "filingDate": ["2026-04-21"],
+                            "reportDate": ["2026-03-28"],
+                            "form": ["10-Q"],
+                            "primaryDocument": ["aapl-20260328.htm"],
+                        }
+                    },
+                },
+                sort_keys=True,
+            ),
+        ),
+        "aapl-investor-newsroom": (
+            "text/html",
+            """
+            <html><head>
+              <title>Apple reports second quarter results</title>
+              <meta name="description" content="Apple investor relations posted a quarterly results release for AAPL on April 22, 2026.">
+            </head><body><time datetime="2026-04-22">April 22, 2026</time></body></html>
+            """,
+        ),
+        "voo-vanguard-profile": (
+            "text/html",
+            """
+            <html><head>
+              <title>Vanguard VOO issuer profile update</title>
+              <meta name="description" content="Vanguard issuer materials identify a VOO profile update dated April 21, 2026.">
+            </head><body><time datetime="2026-04-21">April 21, 2026</time></body></html>
+            """,
+        ),
+        "voo-vanguard-fact-sheet": (
+            "text/html",
+            """
+            <html><head>
+              <title>Vanguard VOO fact sheet as of April 22, 2026</title>
+              <meta name="description" content="Vanguard fact sheet metadata for VOO carries an as-of date of 2026-04-22.">
+            </head><body><time datetime="2026-04-22">April 22, 2026</time></body></html>
+            """,
+        ),
+        "qqq-invesco-product": (
+            "text/html",
+            """
+            <html><head>
+              <title>Invesco QQQ issuer product update</title>
+              <meta name="description" content="Invesco issuer materials identify a QQQ product update dated April 21, 2026.">
+            </head><body><time datetime="2026-04-21">April 21, 2026</time></body></html>
+            """,
+        ),
+        "qqq-invesco-prospectus": (
+            "text/html",
+            """
+            <html><head>
+              <title>Invesco QQQ prospectus update</title>
+              <meta name="description" content="Invesco posted QQQ prospectus metadata with an effective update date of 2026-04-22.">
+            </head><body><time datetime="2026-04-22">April 22, 2026</time></body></html>
+            """,
+        ),
+    }
 
 
 def _base_payload(
@@ -302,7 +344,7 @@ def _base_payload(
         "schema_version": SMOKE_SCHEMA_VERSION,
         "default_mode": "deterministic_mocked_or_fixture_backed",
         "source_retrieval_mode": (
-            "operator_real_source_metadata_acquisition"
+            "operator_real_source_document_acquisition"
             if real_source_enabled
             else "deterministic_fixture_backed_source_candidates"
         ),

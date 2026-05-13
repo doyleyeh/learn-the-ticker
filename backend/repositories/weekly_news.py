@@ -35,6 +35,7 @@ WEEKLY_NEWS_EVENT_EVIDENCE_REPOSITORY_BOUNDARY = "weekly-news-event-evidence-rep
 WEEKLY_NEWS_FIXTURE_ACQUISITION_BOUNDARY = "weekly-news-fixture-acquisition-boundary-v1"
 WEEKLY_NEWS_LIVE_ACQUISITION_READINESS_BOUNDARY = "weekly-news-live-acquisition-readiness-boundary-v1"
 WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_ACQUISITION_BOUNDARY = "weekly-news-official-source-mocked-acquisition-boundary-v1"
+WEEKLY_NEWS_OFFICIAL_SOURCE_REAL_ACQUISITION_BOUNDARY = "weekly-news-official-source-real-acquisition-boundary-v1"
 WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_FETCH_BOUNDARY = "weekly-news-official-source-mocked-fetch-boundary-v1"
 WEEKLY_NEWS_OFFICIAL_SOURCE_LIVE_FETCH_BOUNDARY = "weekly-news-official-source-live-fetch-boundary-v1"
 WEEKLY_NEWS_OFFICIAL_SOURCE_PARSER_ADAPTER_BOUNDARY = "weekly-news-official-source-parser-adapter-boundary-v1"
@@ -168,6 +169,7 @@ class WeeklyNewsLiveAcquisitionReadiness:
     official_source_configured: bool
     rate_limit_ready: bool
     repository_writer_ready: bool
+    source_snapshot_writer_ready: bool
     same_asset_support_state_valid: bool
     source_use_ready: bool
     market_week_window_ready: bool
@@ -192,6 +194,14 @@ class WeeklyNewsOfficialSourceAcquisitionResult:
     parser_adapter_boundary: str | None = None
     fetched_source_count: int = 0
     parser_diagnostic_count: int = 0
+    retrieved_document_count: int = 0
+    document_checksum_count: int = 0
+    source_snapshot_records: Any | None = None
+    source_snapshot_artifact_count: int = 0
+    source_snapshot_diagnostic_count: int = 0
+    persisted_weekly_news_evidence: bool = False
+    persisted_source_snapshots: bool = False
+    sanitized_retrieval_diagnostics: list[dict[str, object]] = field(default_factory=list)
     handoff_approved_source_count: int = 0
     handoff_blocked_source_count: int = 0
     sanitized_diagnostics: dict[str, object] | None = None
@@ -1032,6 +1042,7 @@ def evaluate_weekly_news_live_acquisition_readiness(
     official_source_configured: bool | None = None,
     rate_limit_ready: bool | None = None,
     repository_writer_ready: bool | None = None,
+    source_snapshot_writer_ready: bool | None = None,
     as_of: str = "2026-04-23",
     candidates: list[WeeklyNewsEventCandidateRow] | None = None,
 ) -> WeeklyNewsLiveAcquisitionReadiness:
@@ -1045,6 +1056,12 @@ def evaluate_weekly_news_live_acquisition_readiness(
     )
     rate_ready = _setting_bool(settings, "rate_limit_ready", rate_limit_ready, False)
     writer_ready = _setting_bool(settings, "weekly_news_evidence_writer_ready", repository_writer_ready, False)
+    snapshot_writer_ready = _setting_bool(
+        settings,
+        "source_snapshot_writer_ready",
+        source_snapshot_writer_ready,
+        candidates is not None,
+    )
     support_valid = _same_asset_support_state_valid(normalized)
     golden_supported = normalized in {"AAPL", "VOO", "QQQ"} and support_valid
     window_ready = _market_week_window_ready(as_of)
@@ -1059,6 +1076,8 @@ def evaluate_weekly_news_live_acquisition_readiness(
         blocked.append("source_rate_limit_not_ready")
     if not writer_ready:
         blocked.append("weekly_news_evidence_repository_writer_not_ready")
+    if not snapshot_writer_ready:
+        blocked.append("source_snapshot_writer_not_ready")
     if not support_valid:
         if normalized in UNSUPPORTED_ASSETS:
             blocked.append("unsupported_asset")
@@ -1080,6 +1099,7 @@ def evaluate_weekly_news_live_acquisition_readiness(
         "blocked_reasons": list(blocked),
         "ticker": normalized,
         "candidate_count": len(candidates or []),
+        "source_snapshot_writer_ready": snapshot_writer_ready,
         "no_live_external_calls": True,
     }
     return WeeklyNewsLiveAcquisitionReadiness(
@@ -1092,6 +1112,7 @@ def evaluate_weekly_news_live_acquisition_readiness(
         official_source_configured=source_configured,
         rate_limit_ready=rate_ready,
         repository_writer_ready=writer_ready,
+        source_snapshot_writer_ready=snapshot_writer_ready,
         same_asset_support_state_valid=support_valid,
         source_use_ready=source_ready,
         market_week_window_ready=window_ready,
@@ -1105,19 +1126,26 @@ def acquire_weekly_news_event_evidence_from_official_sources(
     asset_ticker: str,
     as_of: str,
     created_at: str,
-    candidates: list[WeeklyNewsEventCandidateRow],
+    candidates: list[WeeklyNewsEventCandidateRow] | None = None,
     settings=None,
     opt_in_enabled: bool | None = None,
     official_source_configured: bool | None = None,
     rate_limit_ready: bool | None = None,
     repository_writer_ready: bool | None = None,
+    source_snapshot_writer_ready: bool | None = None,
+    source_snapshot_repository: Any | None = None,
+    weekly_news_repository: Any | None = None,
     fetcher: WeeklyNewsOfficialSourceMockFetcher | None = None,
     parser: WeeklyNewsOfficialSourceParserAdapter | None = None,
+    discoverer: Any | None = None,
+    document_fetcher: Any | None = None,
+    document_parser: Any | None = None,
     configured_max_item_count: int = 8,
     minimum_ai_analysis_item_count: int = 2,
     minimum_display_score: int = 7,
 ) -> WeeklyNewsOfficialSourceAcquisitionResult:
     normalized = _normalize_ticker(asset_ticker)
+    real_document_path = candidates is None
     readiness = evaluate_weekly_news_live_acquisition_readiness(
         normalized,
         settings=settings,
@@ -1125,23 +1153,45 @@ def acquire_weekly_news_event_evidence_from_official_sources(
         official_source_configured=official_source_configured,
         rate_limit_ready=rate_limit_ready,
         repository_writer_ready=repository_writer_ready,
+        source_snapshot_writer_ready=source_snapshot_writer_ready if real_document_path else None,
         as_of=as_of,
         candidates=candidates,
     )
     if not readiness.can_attempt_live_acquisition:
         return WeeklyNewsOfficialSourceAcquisitionResult(
-            boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_ACQUISITION_BOUNDARY,
+            boundary=(
+                WEEKLY_NEWS_OFFICIAL_SOURCE_REAL_ACQUISITION_BOUNDARY
+                if real_document_path
+                else WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_ACQUISITION_BOUNDARY
+            ),
             ticker=normalized,
             status="blocked",
             readiness=readiness,
-            candidate_count=len(candidates),
+            candidate_count=len(candidates or []),
             configured_max_item_count=configured_max_item_count,
             sanitized_diagnostics=readiness.sanitized_diagnostics,
         )
 
+    if real_document_path:
+        return _acquire_weekly_news_event_evidence_from_real_official_documents(
+            asset_ticker=normalized,
+            as_of=as_of,
+            created_at=created_at,
+            readiness=readiness,
+            source_snapshot_repository=source_snapshot_repository,
+            weekly_news_repository=weekly_news_repository,
+            discoverer=discoverer,
+            document_fetcher=document_fetcher,
+            document_parser=document_parser,
+            configured_max_item_count=configured_max_item_count,
+            minimum_ai_analysis_item_count=minimum_ai_analysis_item_count,
+            minimum_display_score=minimum_display_score,
+        )
+
+    candidate_rows = candidates or []
     acquisition_candidates = [
         candidate
-        for candidate in candidates
+        for candidate in candidate_rows
         if candidate.source_rank_tier in {*_OFFICIAL_SOURCE_RANK_TIERS, *_FALLBACK_SOURCE_RANK_TIERS}
     ]
     use_mock_fetcher = fetcher is None
@@ -1172,7 +1222,7 @@ def acquire_weekly_news_event_evidence_from_official_sources(
                     ticker=normalized,
                     status="blocked",
                     readiness=readiness,
-                    candidate_count=len(candidates),
+                    candidate_count=len(candidate_rows),
                     configured_max_item_count=configured_max_item_count,
                     mocked_fetch_boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_MOCK_FETCH_BOUNDARY if use_mock_fetcher else None,
                     parser_adapter_boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_PARSER_ADAPTER_BOUNDARY,
@@ -1242,6 +1292,230 @@ def acquire_weekly_news_event_evidence_from_official_sources(
         parser_adapter_boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_PARSER_ADAPTER_BOUNDARY,
         fetched_source_count=parser_diagnostic_count,
         parser_diagnostic_count=parser_diagnostic_count,
+        handoff_approved_source_count=handoff_approved_count,
+        handoff_blocked_source_count=handoff_blocked_count,
+        no_live_external_calls=no_live_external_calls,
+        sanitized_diagnostics=diagnostics,
+    )
+
+
+def _acquire_weekly_news_event_evidence_from_real_official_documents(
+    *,
+    asset_ticker: str,
+    as_of: str,
+    created_at: str,
+    readiness: WeeklyNewsLiveAcquisitionReadiness,
+    source_snapshot_repository: Any | None,
+    weekly_news_repository: Any | None,
+    discoverer: Any | None,
+    document_fetcher: Any | None,
+    document_parser: Any | None,
+    configured_max_item_count: int,
+    minimum_ai_analysis_item_count: int,
+    minimum_display_score: int,
+) -> WeeklyNewsOfficialSourceAcquisitionResult:
+    from backend.weekly_news_official_sources import (
+        WeeklyNewsOfficialDocumentFetcher,
+        WeeklyNewsOfficialSourceDiscoverer,
+        WeeklyNewsOfficialSourceParserAdapter as WeeklyNewsOfficialDocumentParserAdapter,
+        WeeklyNewsOfficialSourceRetrievalError,
+        source_snapshot_records_from_weekly_news_documents,
+    )
+
+    normalized = _normalize_ticker(asset_ticker)
+    source_discoverer = discoverer or WeeklyNewsOfficialSourceDiscoverer()
+    source_fetcher = document_fetcher or WeeklyNewsOfficialDocumentFetcher()
+    source_parser = document_parser or WeeklyNewsOfficialDocumentParserAdapter()
+    requests = source_discoverer.discover(normalized, as_of=as_of)
+    if not requests:
+        return WeeklyNewsOfficialSourceAcquisitionResult(
+            boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_REAL_ACQUISITION_BOUNDARY,
+            ticker=normalized,
+            status="blocked",
+            readiness=readiness,
+            configured_max_item_count=configured_max_item_count,
+            sanitized_diagnostics={
+                "boundary": WEEKLY_NEWS_OFFICIAL_SOURCE_REAL_ACQUISITION_BOUNDARY,
+                "status": "blocked",
+                "ticker": normalized,
+                "blocked_reason": "weekly_news_official_source_discovery_empty",
+                "no_live_external_calls": True,
+            },
+        )
+
+    documents = []
+    retrieval_diagnostics: list[dict[str, object]] = []
+    no_live_external_calls = True
+    try:
+        for request in requests:
+            document = source_fetcher.fetch(request, retrieved_at=created_at)
+            documents.append(document)
+            retrieval_diagnostics.append(document.sanitized_diagnostics)
+            no_live_external_calls &= bool(document.no_live_external_calls)
+    except WeeklyNewsOfficialSourceRetrievalError as exc:
+        return WeeklyNewsOfficialSourceAcquisitionResult(
+            boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_REAL_ACQUISITION_BOUNDARY,
+            ticker=normalized,
+            status="blocked",
+            readiness=readiness,
+            configured_max_item_count=configured_max_item_count,
+            retrieved_document_count=len(documents),
+            document_checksum_count=len({document.checksum for document in documents}),
+            sanitized_retrieval_diagnostics=[*retrieval_diagnostics, exc.diagnostics],
+            handoff_blocked_source_count=1,
+            no_live_external_calls=no_live_external_calls,
+            sanitized_diagnostics={
+                "boundary": WEEKLY_NEWS_OFFICIAL_SOURCE_REAL_ACQUISITION_BOUNDARY,
+                "status": "blocked",
+                "ticker": normalized,
+                "blocked_reason": exc.reason_code,
+                "retrieved_document_count": len(documents),
+                "no_live_external_calls": no_live_external_calls,
+            },
+        )
+
+    parsed = source_parser.parse(documents, ticker=normalized, as_of=as_of, created_at=created_at)
+    parser_diagnostic_count = parsed.parser_diagnostic_count
+    no_live_external_calls &= bool(parsed.no_live_external_calls)
+    prepared_candidates = list(parsed.candidates)
+    if not _official_source_candidates_ready(normalized, prepared_candidates):
+        return WeeklyNewsOfficialSourceAcquisitionResult(
+            boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_REAL_ACQUISITION_BOUNDARY,
+            ticker=normalized,
+            status="blocked",
+            readiness=readiness,
+            candidate_count=len(prepared_candidates),
+            configured_max_item_count=configured_max_item_count,
+            retrieved_document_count=len(documents),
+            document_checksum_count=len({document.checksum for document in documents}),
+            parser_adapter_boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_PARSER_ADAPTER_BOUNDARY,
+            fetched_source_count=len(documents),
+            parser_diagnostic_count=parser_diagnostic_count,
+            sanitized_retrieval_diagnostics=retrieval_diagnostics,
+            handoff_blocked_source_count=max(1, len(documents) - len(prepared_candidates)),
+            no_live_external_calls=no_live_external_calls,
+            sanitized_diagnostics={
+                "boundary": WEEKLY_NEWS_OFFICIAL_SOURCE_REAL_ACQUISITION_BOUNDARY,
+                "status": "blocked",
+                "ticker": normalized,
+                "blocked_reason": "weekly_news_official_source_parser_or_candidate_validation_failed",
+                "retrieved_document_count": len(documents),
+                "parsed_candidate_count": len(prepared_candidates),
+                "no_live_external_calls": no_live_external_calls,
+            },
+        )
+
+    handoff_approved_count = 0
+    handoff_blocked_count = 0
+    handoff_candidates: list[WeeklyNewsEventCandidateRow] = []
+    for candidate in prepared_candidates:
+        handoff = validate_source_handoff(candidate, action=SourcePolicyAction.generated_claim_support)
+        if not handoff.allowed:
+            handoff_blocked_count += 1
+            if SourceParserStatus(candidate.parser_status) in {SourceParserStatus.failed, SourceParserStatus.pending_review}:
+                return WeeklyNewsOfficialSourceAcquisitionResult(
+                    boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_REAL_ACQUISITION_BOUNDARY,
+                    ticker=normalized,
+                    status="blocked",
+                    readiness=readiness,
+                    candidate_count=len(prepared_candidates),
+                    configured_max_item_count=configured_max_item_count,
+                    retrieved_document_count=len(documents),
+                    document_checksum_count=len({document.checksum for document in documents}),
+                    parser_adapter_boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_PARSER_ADAPTER_BOUNDARY,
+                    fetched_source_count=len(documents),
+                    parser_diagnostic_count=parser_diagnostic_count,
+                    sanitized_retrieval_diagnostics=retrieval_diagnostics,
+                    handoff_approved_source_count=handoff_approved_count,
+                    handoff_blocked_source_count=handoff_blocked_count,
+                    no_live_external_calls=no_live_external_calls,
+                    sanitized_diagnostics={
+                        "boundary": WEEKLY_NEWS_OFFICIAL_SOURCE_REAL_ACQUISITION_BOUNDARY,
+                        "status": "blocked",
+                        "ticker": normalized,
+                        "blocked_reason": "weekly_news_source_handoff_failed",
+                        "handoff_reason_codes": list(handoff.reason_codes),
+                        "no_live_external_calls": no_live_external_calls,
+                    },
+                )
+            handoff_candidates.append(
+                candidate.model_copy(
+                    update={"suppression_reason_codes": sorted({*candidate.suppression_reason_codes, "source_policy_blocked"})}
+                )
+            )
+            continue
+        handoff_approved_count += 1
+        handoff_candidates.append(candidate)
+
+    snapshot_records = source_snapshot_records_from_weekly_news_documents(
+        documents,
+        handoff_candidates,
+        ticker=normalized,
+        created_at=created_at,
+    )
+    persisted_source_snapshots = False
+    if source_snapshot_repository is not None:
+        source_snapshot_repository.persist(snapshot_records)
+        persisted_source_snapshots = True
+
+    records = acquire_weekly_news_event_evidence_from_fixtures(
+        asset_ticker=normalized,
+        as_of=as_of,
+        created_at=created_at,
+        candidates=handoff_candidates,
+        configured_max_item_count=configured_max_item_count,
+        minimum_ai_analysis_item_count=minimum_ai_analysis_item_count,
+        minimum_display_score=minimum_display_score,
+    )
+    persisted_weekly_news_evidence = False
+    if weekly_news_repository is not None:
+        weekly_news_repository.persist(records)
+        persisted_weekly_news_evidence = True
+
+    evidence_state = records.evidence_states[0] if records.evidence_states else None
+    threshold = records.ai_thresholds[0] if records.ai_thresholds else None
+    diagnostics = {
+        "boundary": WEEKLY_NEWS_OFFICIAL_SOURCE_REAL_ACQUISITION_BOUNDARY,
+        "status": "acquired",
+        "ticker": normalized,
+        "candidate_count": len(records.candidates),
+        "selected_event_count": len(records.selected_events),
+        "retrieved_document_count": len(documents),
+        "document_checksum_count": len({document.checksum for document in documents}),
+        "source_snapshot_artifact_count": len(snapshot_records.artifacts),
+        "source_snapshot_diagnostic_count": len(snapshot_records.diagnostics),
+        "persisted_source_snapshots": persisted_source_snapshots,
+        "persisted_weekly_news_evidence": persisted_weekly_news_evidence,
+        "configured_max_item_count": configured_max_item_count,
+        "evidence_limited_state": evidence_state.evidence_limited_state if evidence_state else None,
+        "ai_analysis_allowed": threshold.analysis_allowed if threshold else False,
+        "parser_adapter_boundary": WEEKLY_NEWS_OFFICIAL_SOURCE_PARSER_ADAPTER_BOUNDARY,
+        "handoff_approved_source_count": handoff_approved_count,
+        "handoff_blocked_source_count": handoff_blocked_count,
+        "no_live_external_calls": no_live_external_calls,
+    }
+    return WeeklyNewsOfficialSourceAcquisitionResult(
+        boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_REAL_ACQUISITION_BOUNDARY,
+        ticker=normalized,
+        status="acquired",
+        readiness=readiness,
+        records=records,
+        selected_event_count=len(records.selected_events),
+        candidate_count=len(records.candidates),
+        configured_max_item_count=configured_max_item_count,
+        evidence_limited_state=evidence_state.evidence_limited_state if evidence_state else None,
+        ai_analysis_allowed=threshold.analysis_allowed if threshold else False,
+        parser_adapter_boundary=WEEKLY_NEWS_OFFICIAL_SOURCE_PARSER_ADAPTER_BOUNDARY,
+        fetched_source_count=len(documents),
+        parser_diagnostic_count=parser_diagnostic_count,
+        retrieved_document_count=len(documents),
+        document_checksum_count=len({document.checksum for document in documents}),
+        source_snapshot_records=snapshot_records,
+        source_snapshot_artifact_count=len(snapshot_records.artifacts),
+        source_snapshot_diagnostic_count=len(snapshot_records.diagnostics),
+        persisted_weekly_news_evidence=persisted_weekly_news_evidence,
+        persisted_source_snapshots=persisted_source_snapshots,
+        sanitized_retrieval_diagnostics=retrieval_diagnostics,
         handoff_approved_source_count=handoff_approved_count,
         handoff_blocked_source_count=handoff_blocked_count,
         no_live_external_calls=no_live_external_calls,
