@@ -329,6 +329,41 @@ def test_market_news_live_metadata_rebuckets_query_results_by_article_content():
     assert topics_by_title["S&P 500 earnings results lift Wall Street stocks"] is MarketNewsTopicBucket.markets_earnings
 
 
+def test_market_news_rss_sanitizes_escaped_html_descriptions():
+    settings = build_market_news_settings(
+        env={
+            "MARKET_NEWS_FETCH_ENABLED": "true",
+            "MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED": "true",
+        }
+    )
+    rss_text = """
+    <rss><channel>
+      <item>
+        <title>Gold: CPI Print in Focus as Real Yields and US Dollar Shape Positioning - Investing.com</title>
+        <link>https://news.google.com/rss/articles/example?oc=5</link>
+        <description>&lt;a href="https://news.google.com/rss/articles/example?oc=5" target="_blank"&gt;Gold: CPI Print in Focus as Real Yields and US Dollar Shape Positioning&lt;/a&gt;&amp;nbsp;&amp;nbsp;&lt;font color="#6f6f6f"&gt;Investing.com&lt;/font&gt;</description>
+        <pubDate>Wed, 22 Apr 2026 12:00:00 GMT</pubDate>
+        <source>Investing.com</source>
+      </item>
+    </channel></rss>
+    """
+    fetcher = FixtureMarketNewsFetcher(payloads_by_provider={"rss": rss_text, "google_news_rss": rss_text})
+
+    candidates = collect_market_news_candidates(
+        fetcher=fetcher,
+        settings=settings,
+        as_of=AS_OF,
+        retrieved_at=RETRIEVED_AT,
+    )
+
+    assert candidates
+    descriptions = [candidate.description for candidate in candidates]
+    assert any("Gold: CPI Print in Focus" in description for description in descriptions)
+    rendered = " ".join(descriptions)
+    for forbidden in ["<a", "href=", "</a>", "<font", "&nbsp;", "target="]:
+        assert forbidden not in rendered
+
+
 def test_runtime_market_news_fetch_uses_ttl_cache_for_opt_in_live_path():
     settings = build_market_news_settings(
         env={

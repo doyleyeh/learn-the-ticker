@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import re
 from dataclasses import dataclass, field
@@ -66,6 +67,23 @@ _ADVICE_LIKE_TITLE_MARKERS = (
     "trade ",
     "trading ",
 )
+_HTML_SCRIPT_STYLE_RE = re.compile(r"(?is)<(script|style)\b[^>]*>.*?</\1>")
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_TICKER_TEXT_ALIASES = {
+    "AAPL": ("apple",),
+    "AMZN": ("amazon",),
+    "GOOG": ("alphabet", "google"),
+    "GOOGL": ("alphabet", "google"),
+    "IVV": ("ishares core s&p 500", "s&p 500"),
+    "META": ("meta platforms", "meta"),
+    "MSFT": ("microsoft",),
+    "NVDA": ("nvidia",),
+    "QQQ": ("invesco qqq", "nasdaq-100", "nasdaq 100"),
+    "SPY": ("spdr s&p 500", "s&p 500"),
+    "TSLA": ("tesla",),
+    "VOO": ("vanguard s&p 500", "s&p 500"),
+    "VTI": ("vanguard total stock market", "total stock market"),
+}
 
 
 @dataclass(frozen=True)
@@ -128,7 +146,9 @@ def yahoo_search_payload_to_weekly_news_facts(
             suppressed += 1
             _increment_reason(suppression_reason_counts, "advice_like")
             continue
-        if not _item_matches_ticker(item, normalized, title):
+        snippet = _clean_text(item.get("summary") or item.get("snippet"))
+        ticker_match = _ticker_match_quality(normalized, title, snippet)
+        if ticker_match is None:
             suppressed += 1
             _increment_reason(suppression_reason_counts, "weak_ticker_match")
             continue
@@ -189,7 +209,7 @@ def yahoo_search_payload_to_weekly_news_facts(
                     "source_quality": source_quality.value,
                     "source_use_policy": SourceUsePolicy.summary_allowed.value,
                     "official_source": False,
-                    "ticker_match": "exact_or_related_ticker",
+                    "ticker_match": ticker_match,
                     "raw_article_text_collected": False,
                     "thumbnail_or_media_forwarded": False,
                     "provider_name": provider_name,
@@ -562,17 +582,54 @@ def _summary_for_item(
     if not title or not _title_has_useful_news_hook(title, event_type):
         return None
     event_label = event_type.value.replace("_", " ")
+    publisher = _display_provider_name(_clean_text(item.get("publisher")) or provider_name)
+    headline = _bounded_words(title.rstrip("."), 22)
+    learning_hook = _event_learning_hook(event_type)
     return (
-        f"{provider_name} supplied headline-only {event_label} metadata for {ticker}: "
-        f"{_bounded_words(title, 18)}. Treat it as source-labeled context, not an article summary."
+        f"{publisher} covered a {event_label} item: {headline}. "
+        f"{learning_hook} Use the linked source for article details."
     )
 
 
-def _item_matches_ticker(item: dict[str, Any], ticker: str, title: str) -> bool:
-    related = item.get("relatedTickers") or item.get("related_tickers")
-    if isinstance(related, list) and related:
-        return ticker in {_normalize_ticker(str(value)) for value in related}
-    return ticker in title.upper()
+def _ticker_match_quality(ticker: str, title: str, snippet: str | None) -> str | None:
+    text = f"{title} {snippet or ''}"
+    if _text_mentions_ticker(text, ticker):
+        return "explicit_title_or_summary"
+    return None
+
+
+def _text_mentions_ticker(text: str, ticker: str) -> bool:
+    normalized = _normalize_ticker(ticker)
+    upper_text = text.upper()
+    if re.search(rf"(?<![A-Z0-9]){re.escape(normalized)}(?![A-Z0-9])", upper_text):
+        return True
+    lowered = text.lower()
+    return any(alias in lowered for alias in _TICKER_TEXT_ALIASES.get(normalized, ()))
+
+
+def _display_provider_name(value: str) -> str:
+    if "yfinance" in value.lower():
+        return "Yahoo Finance"
+    return value
+
+
+def _event_learning_hook(event_type: WeeklyNewsEventType) -> str:
+    if event_type is WeeklyNewsEventType.earnings:
+        return "The beginner hook is earnings timing, results, or expectations."
+    if event_type is WeeklyNewsEventType.guidance:
+        return "The beginner hook is how company outlook is being discussed."
+    if event_type in {
+        WeeklyNewsEventType.fee_change,
+        WeeklyNewsEventType.index_change,
+        WeeklyNewsEventType.methodology_change,
+        WeeklyNewsEventType.sponsor_update,
+    }:
+        return "The beginner hook is whether the fund structure, sponsor, cost, or index context changed."
+    if event_type is WeeklyNewsEventType.product_announcement:
+        return "The beginner hook is how products or services connect to the business profile."
+    if event_type is WeeklyNewsEventType.regulatory_event:
+        return "The beginner hook is whether official or regulatory context changed."
+    return "The beginner hook is the asset-specific topic named in the headline."
 
 
 def _summary_is_metadata_only(item: dict[str, Any]) -> bool:
@@ -674,7 +731,12 @@ def _bounded_words(text: str, max_words: int) -> str:
 def _clean_text(value: Any) -> str | None:
     if value is None:
         return None
-    text = " ".join(str(value).split())
+    text = html.unescape(str(value)).replace("\xa0", " ")
+    text = _HTML_SCRIPT_STYLE_RE.sub(" ", text)
+    text = re.sub(r"(?i)<br\s*/?>", " ", text)
+    text = _HTML_TAG_RE.sub(" ", text)
+    text = html.unescape(text).replace("\xa0", " ")
+    text = " ".join(text.split())
     return text or None
 
 

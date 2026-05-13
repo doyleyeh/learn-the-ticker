@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import re
 import time
@@ -221,6 +222,8 @@ _PUNDIT_OR_LOW_VALUE_MARKERS = (
     "stocks to watch",
     "watch these stocks",
 )
+_HTML_SCRIPT_STYLE_RE = re.compile(r"(?is)<(script|style)\b[^>]*>.*?</\1>")
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
 _US_MARKET_RELEVANCE_MARKERS = (
     "u.s.",
     "us ",
@@ -1537,7 +1540,12 @@ def _normalized_title(value: str) -> str:
 def _clean_text(value: Any) -> str | None:
     if value is None:
         return None
-    text = " ".join(str(value).split())
+    text = html.unescape(str(value)).replace("\xa0", " ")
+    text = _HTML_SCRIPT_STYLE_RE.sub(" ", text)
+    text = re.sub(r"(?i)<br\s*/?>", " ", text)
+    text = _HTML_TAG_RE.sub(" ", text)
+    text = html.unescape(text).replace("\xa0", " ")
+    text = " ".join(text.split())
     return text or None
 
 

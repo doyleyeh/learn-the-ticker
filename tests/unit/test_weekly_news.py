@@ -691,6 +691,14 @@ def test_yahoo_weekly_news_suppresses_title_only_items_without_useful_hook():
                     "relatedTickers": ["NVDA"],
                 },
                 {
+                    "uuid": "broad-related-earnings",
+                    "title": "Oklo Sinks On Earnings. Why Nuclear Startup Is Revving Up For July 4.",
+                    "publisher": "Yahoo Finance",
+                    "link": "https://example.com/oklo",
+                    "published_at": "2026-05-08T13:30:00Z",
+                    "relatedTickers": ["NVDA"],
+                },
+                {
                     "uuid": "useful-related",
                     "title": "NVIDIA data center product update reaches new customers",
                     "publisher": "Reuters",
@@ -705,9 +713,13 @@ def test_yahoo_weekly_news_suppresses_title_only_items_without_useful_hook():
     )
 
     assert result.candidate_count == 1
-    assert result.suppression_reason_counts["metadata_only_without_useful_summary"] == 1
-    assert "headline-only" in result.facts[0].value["summary"]
+    assert result.suppression_reason_counts["weak_ticker_match"] == 2
+    summary = result.facts[0].value["summary"]
+    assert "Reuters covered a product announcement item" in summary
+    for forbidden in ["headline-only", "metadata", "source-labeled", "not an article summary"]:
+        assert forbidden not in summary
     assert result.facts[0].value["summary_is_metadata_only"] is True
+    assert result.facts[0].value["ticker_match"] == "explicit_title_or_summary"
 
 
 def test_weekly_news_selection_prioritizes_official_sources_and_excludes_disallowed_items():
@@ -1607,7 +1619,7 @@ def _lightweight_weekly_fact(
             "source_quality": source_quality.value,
             "source_use_policy": SourceUsePolicy.summary_allowed.value,
             "official_source": False,
-            "ticker_match": "exact_or_related_ticker",
+            "ticker_match": "explicit_title_or_summary",
             "raw_article_text_collected": False,
             "thumbnail_or_media_forwarded": False,
             "provider_name": "Test Provider",
