@@ -221,6 +221,10 @@ def test_market_ai_analysis_falls_back_when_live_generation_repeats_headlines():
     assert analysis.state is WeeklyNewsContractState.available
     assert analysis.analysis_available is True
     assert analysis.sections
+    assert analysis.no_live_external_calls is True
+    assert analysis.generation_diagnostics.used_fallback is True
+    assert "live_generation_repaired_with_deterministic_fallback" in analysis.generation_diagnostics.fallback_reason_codes
+    assert "headline_repetition_validation_failed" in analysis.generation_diagnostics.fallback_reason_codes
     rendered = " ".join(section.analysis for section in analysis.sections).lower()
     assert "selected market news focus items are" not in rendered
     assert "bucket has" not in rendered

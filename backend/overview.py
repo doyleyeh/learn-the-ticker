@@ -33,6 +33,7 @@ from backend.models import (
     EconomicIndicatorsPackResponse,
     EvidenceState,
     FreshnessState,
+    GenerationDiagnostics,
     MetricValue,
     OverviewMetric,
     OverviewResponse,
@@ -731,6 +732,10 @@ def generate_overview_from_pack(
         source_documents=source_documents,
         sections=sections,
         section_freshness_validation=[],
+        generation_diagnostics=_overview_generation_diagnostics(
+            market_ai=market_news.market_ai_comprehensive_analysis,
+            ticker_ai=ai_comprehensive_analysis,
+        ),
     )
     response = response.model_copy(
         update={
@@ -742,6 +747,33 @@ def generate_overview_from_pack(
     )
     _assert_safe_copy(response)
     return response
+
+
+def _overview_generation_diagnostics(
+    *,
+    market_ai: Any | None,
+    ticker_ai: Any | None,
+) -> dict[str, GenerationDiagnostics]:
+    service = build_default_summary_generation_service()
+    runtime = service.runtime
+    model_name = runtime.configured_model_chain[0].model_name if runtime.configured_model_chain else None
+    live_ready = runtime.readiness_status.value == "ready_for_explicit_live_call"
+    fallback_reason_codes = [] if live_ready else [f"live_generation_not_ready:{runtime.readiness_status.value}"]
+    default_diagnostic = GenerationDiagnostics(
+        attempted_live=live_ready,
+        used_fallback=not live_ready,
+        fallback_reason_codes=fallback_reason_codes,
+        model_name=model_name if live_ready else None,
+    )
+    diagnostics: dict[str, GenerationDiagnostics] = {
+        "beginner_summary": default_diagnostic,
+        "deep_dive_summary": default_diagnostic.model_copy(),
+    }
+    if market_ai is not None and getattr(market_ai, "generation_diagnostics", None) is not None:
+        diagnostics["market_ai_comprehensive_analysis"] = market_ai.generation_diagnostics
+    if ticker_ai is not None and getattr(ticker_ai, "generation_diagnostics", None) is not None:
+        diagnostics["ticker_ai_comprehensive_analysis"] = ticker_ai.generation_diagnostics
+    return diagnostics
 
 
 def validate_overview_response(overview: OverviewResponse, pack: AssetKnowledgePack) -> CitationValidationReport:

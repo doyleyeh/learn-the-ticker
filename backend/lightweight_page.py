@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any
 
@@ -24,6 +25,7 @@ from backend.models import (
     EconomicIndicatorsPackResponse,
     EvidenceState,
     FreshnessState,
+    GenerationDiagnostics,
     LightweightFetchFact,
     LightweightFetchResponse,
     LightweightFetchSource,
@@ -69,6 +71,7 @@ from backend.summary_generation import (
     SummaryGenerationContractError,
     build_default_summary_generation_service,
     deterministic_summary_generation,
+    live_summary_generation_ready_from_env,
 )
 from backend.weekly_news import build_ai_comprehensive_analysis, compute_weekly_news_window
 from backend.weekly_news_sources import build_lightweight_weekly_news_focus
@@ -229,7 +232,9 @@ def build_lightweight_overview_response(
     default_citation_ids = [citation.citation_id for citation in citations[:1]]
     provider_citation_ids = _citation_ids_for_source_label(response, "provider_derived") or default_citation_ids
     stable_citation_ids = _preferred_citation_ids(response) or default_citation_ids
-    with deterministic_summary_generation():
+    live_generation_ready = live_summary_generation_ready_from_env()
+    generation_context_manager = nullcontext()
+    with generation_context_manager:
         weekly_news_focus = build_lightweight_weekly_news_focus(response) or _empty_weekly_news_focus(response)
         market_news_kwargs: dict[str, Any] = {"cache_only": True}
         if economic_indicators is not None:
@@ -268,6 +273,7 @@ def build_lightweight_overview_response(
             technical_context=technical_context,
             generation_evidence_pack=generation_evidence_pack,
         )
+        beginner_summary = _beginner_summary(response, generation_evidence_pack=generation_evidence_pack)
 
         overview = OverviewResponse(
             asset=response.asset.model_copy(update={"status": AssetStatus.supported, "supported": True}),
@@ -280,7 +286,7 @@ def build_lightweight_overview_response(
             ),
             freshness=response.freshness,
             snapshot=_snapshot(response, stable_citation_ids, provider_citation_ids),
-            beginner_summary=_beginner_summary(response, generation_evidence_pack=generation_evidence_pack),
+            beginner_summary=beginner_summary,
             top_risks=_top_risks(
                 response,
                 stable_citation_ids,
@@ -299,6 +305,13 @@ def build_lightweight_overview_response(
             sections=sections,
             section_freshness_validation=[],
             fallback_diagnostics=_fallback_diagnostics(response),
+            generation_diagnostics=_overview_generation_diagnostics(
+                live_generation_ready=live_generation_ready,
+                beginner_summary=beginner_summary,
+                sections=sections,
+                market_ai=market_news.market_ai_comprehensive_analysis,
+                ticker_ai=ai_analysis,
+            ),
         )
     _page_build_cache_set("overview", response, overview, context_payload=cache_context)
     return overview
@@ -599,6 +612,55 @@ def _page_build_cache_key(
 def _page_build_cache_context(**values: Any) -> dict[str, Any] | None:
     context = {key: _jsonable_page_build_context(value) for key, value in values.items() if value is not None}
     return context or None
+
+
+def _overview_generation_diagnostics(
+    *,
+    live_generation_ready: bool,
+    beginner_summary: BeginnerSummary | None,
+    sections: list[OverviewSection],
+    market_ai: Any | None,
+    ticker_ai: Any | None,
+) -> dict[str, GenerationDiagnostics]:
+    fallback_reason = [] if live_generation_ready else [_configured_generation_fallback_reason()]
+    overview_diagnostic = GenerationDiagnostics(
+        attempted_live=live_generation_ready,
+        used_fallback=not live_generation_ready,
+        fallback_reason_codes=fallback_reason,
+        model_name=_configured_generation_model_name() if live_generation_ready else None,
+    )
+    diagnostics: dict[str, GenerationDiagnostics] = {
+        "beginner_summary": overview_diagnostic,
+        "deep_dive_summary": overview_diagnostic.model_copy(),
+    }
+    if market_ai is not None and getattr(market_ai, "generation_diagnostics", None) is not None:
+        diagnostics["market_ai_comprehensive_analysis"] = market_ai.generation_diagnostics
+    if ticker_ai is not None and getattr(ticker_ai, "generation_diagnostics", None) is not None:
+        diagnostics["ticker_ai_comprehensive_analysis"] = ticker_ai.generation_diagnostics
+    if beginner_summary is None:
+        diagnostics["beginner_summary"] = GenerationDiagnostics(
+            attempted_live=False,
+            used_fallback=True,
+            fallback_reason_codes=["beginner_summary_unavailable"],
+        )
+    if not sections:
+        diagnostics["deep_dive_summary"] = GenerationDiagnostics(
+            attempted_live=False,
+            used_fallback=True,
+            fallback_reason_codes=["deep_dive_sections_unavailable"],
+        )
+    return diagnostics
+
+
+def _configured_generation_model_name() -> str | None:
+    raw = os.environ.get("OPENROUTER_FREE_MODEL_ORDER", "")
+    first = raw.split(",", 1)[0].strip()
+    return first or None
+
+
+def _configured_generation_fallback_reason() -> str:
+    service = build_default_summary_generation_service()
+    return f"live_generation_not_ready:{service.runtime.readiness_status.value}"
 
 
 def _jsonable_page_build_context(value: Any) -> Any:
@@ -1785,6 +1847,8 @@ def _public_gap_summary(value: str | None) -> str:
         "the ETF issuer fixture": "the ETF issuer source packet",
         "local fixture": "local source packet",
         "fixture": "source packet",
+        "premium_discount_or_spread": "premium/discount spread data",
+        "summary_prospectus": "summary prospectus",
     }
     for old, new in replacements.items():
         text = text.replace(old, new)
@@ -3781,7 +3845,7 @@ def _etf_holding_or_exposure_summary(value: Any) -> str:
 def _etf_prospectus_reference(response: LightweightFetchResponse, citation_ids: list[str]) -> MetricValue:
     value = _fact_value(response, "prospectus_reference")
     if isinstance(value, dict):
-        document_type = value.get("document_type") or "prospectus"
+        document_type = _public_gap_summary(value.get("document_type") or "prospectus")
         publication_date = value.get("publication_date") or value.get("effective_date") or "unknown date"
         return MetricValue(value=f"{document_type} published {publication_date}", unit=None, citation_ids=citation_ids)
     return MetricValue(value="Unavailable", unit=None, citation_ids=citation_ids)
@@ -3891,7 +3955,7 @@ def _short_value(value: Any) -> str:
         return ", ".join(f"{key}={item}" for key, item in compact.items())
     if isinstance(value, list):
         return "; ".join(str(item) for item in value[:3])
-    text = str(value)
+    text = _public_gap_summary(str(value))
     return text if len(text) <= 220 else text[:217] + "..."
 
 

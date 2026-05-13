@@ -6,9 +6,10 @@ from dataclasses import dataclass, field
 import hashlib
 import json
 import os
+import re
 from threading import RLock
 import time
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any, Callable, Protocol
 
 from backend.analysis_pack_numeric_validation import validate_generated_numeric_integrity
@@ -36,6 +37,7 @@ from backend.models import (
     AIComprehensiveAnalysisSection,
     AssetIdentity,
     BeginnerSummary,
+    GenerationDiagnostics,
     LlmReadinessStatus,
     LlmRuntimeConfig,
     LlmTransportMode,
@@ -107,6 +109,12 @@ _TASK_PROMPT_SPECS: dict[str, dict[str, Any]] = {
             "Do not mention quote, chart, price, volume, RSI, MACD, KD, ADX, provider key names, fixtures, local MVP, or available evidence.",
             "Explain what the company or fund is and what a beginner can learn from it.",
         ],
+        "example_output": {
+            "what_it_is": "Plain-English asset identity.",
+            "why_people_consider_it": "Plain-English learning reason.",
+            "main_catch": "Plain-English risk or limitation.",
+            "supporting_claims": [{"claim_text": "Short cited claim.", "claim_type": "factual", "citation_ids": ["allowed_id"]}],
+        },
     },
     "deep_dive_summary": {
         "objective": "Add non-redundant analytical context for one section using the section evidence.",
@@ -120,6 +128,10 @@ _TASK_PROMPT_SPECS: dict[str, dict[str, Any]] = {
             "If evidence_state is partial, name the limitation in plain English.",
             "Do not describe the section as using evidence, pipeline fields, fixtures, local tests, or provider market-reference data.",
         ],
+        "example_output": {
+            "summary": "Plain-English section explanation.",
+            "supporting_claims": [{"claim_text": "Short cited claim.", "claim_type": "factual", "citation_ids": ["allowed_id"]}],
+        },
     },
     "top_3_risks": {
         "objective": "Select exactly three evidence-derived risks and explain them without advice.",
@@ -156,6 +168,7 @@ _TASK_PROMPT_SPECS: dict[str, dict[str, Any]] = {
             "Synthesize themes across selected stories and macro indicators; do not only count buckets or repeat headlines.",
             "Use Scenario Lens as conditional education, not prediction.",
         ],
+        "schema_hint": "Return a root object with exactly one sections array. Each section must include section_id, label, analysis, bullets, citation_ids, uncertainty, and supporting_claims.",
     },
     "ticker_ai_comprehensive_analysis": {
         "objective": "Connect ticker Weekly News to canonical facts, market context, macro context, and compact technical context.",
@@ -177,6 +190,7 @@ _TASK_PROMPT_SPECS: dict[str, dict[str, Any]] = {
             "Keep stable asset identity separate from timely context.",
             "Mention technical indicators only as educational context and only when supplied.",
         ],
+        "schema_hint": "Return a root object with exactly one sections array. Each section must include section_id, label, analysis, bullets, citation_ids, uncertainty, and supporting_claims.",
     },
     "grounded_chat_answer": {
         "objective": "Answer from selected same-asset evidence while preserving required claims.",
@@ -191,6 +205,17 @@ _TASK_PROMPT_SPECS: dict[str, dict[str, Any]] = {
 }
 _PREDICTION_MARKERS = ("price target", "guaranteed", "will outperform", "will rise", "will fall", "forecast")
 _GENERIC_BEGINNER_MARKERS = ("u.s.-listed etf", "u.s.-listed common stock")
+_RAW_FIELD_NAME_PATTERN = re.compile(r"\b[a-z][a-z0-9]+(?:_[a-z0-9]+)+\b")
+_FIELD_LABEL_OVERRIDES = {
+    "premium_discount_or_spread": "premium/discount spread data",
+    "summary_prospectus": "summary prospectus",
+    "provider_profile_overview": "provider profile overview",
+    "provider_quote_stats": "provider quote statistics",
+    "provider_price_chart": "provider price chart",
+    "latest_revenue_fact": "latest revenue fact",
+    "latest_net_income_fact": "latest net income fact",
+    "latest_assets_fact": "latest assets fact",
+}
 _ENV_KEY = "OPENROUTER" + "_API_KEY"
 _DETERMINISTIC_SUMMARY_GENERATION = ContextVar("deterministic_summary_generation", default=False)
 _SUMMARY_GENERATION_CACHE_LOCK = RLock()
@@ -214,6 +239,7 @@ class _GeneratedPayload:
     payload: dict[str, Any]
     cache_key: str | None = None
     cacheable: bool = False
+    diagnostics: GenerationDiagnostics = field(default_factory=GenerationDiagnostics)
 
 
 @dataclass(frozen=True)
@@ -479,6 +505,11 @@ class HybridSummaryGenerationService:
                     "AI Comprehensive Analysis: Market News Focus is suppressed until enough approved market items "
                     "span multiple topic buckets."
                 ),
+                generation_diagnostics=GenerationDiagnostics(
+                    attempted_live=False,
+                    used_fallback=True,
+                    fallback_reason_codes=["insufficient_market_news_evidence"],
+                ),
             )
 
         all_citations = sorted({citation_id for item in focus.items for citation_id in item.citation_ids})
@@ -529,6 +560,7 @@ class HybridSummaryGenerationService:
             source_document_ids=source_ids,
             market_news_story_ids=story_ids,
             no_live_external_calls=self.runtime.readiness_status is not LlmReadinessStatus.ready_for_explicit_live_call,
+            generation_diagnostics=generated.diagnostics,
         )
         _validate_text_blob(
             " ".join([section.analysis for section in sections] + [bullet for section in sections for bullet in section.bullets]),
@@ -618,6 +650,7 @@ class HybridSummaryGenerationService:
             weekly_news_event_ids=event_ids,
             canonical_fact_citation_ids=canonical_fact_citation_ids,
             no_live_external_calls=self.runtime.readiness_status is not LlmReadinessStatus.ready_for_explicit_live_call,
+            generation_diagnostics=generated.diagnostics,
         )
         _validate_text_blob(
             " ".join([section.analysis for section in sections] + [bullet for section in sections for bullet in section.bullets]),
@@ -688,23 +721,58 @@ class HybridSummaryGenerationService:
         return answer
 
     def _payload_or_fallback(self, request: SummaryGenerationRequest, fallback: dict[str, Any]) -> _GeneratedPayload:
+        live_ready = self.runtime.readiness_status is LlmReadinessStatus.ready_for_explicit_live_call
+        model_name = _active_generation_model_name(self.runtime)
         if (
-            self.runtime.readiness_status is LlmReadinessStatus.ready_for_explicit_live_call
+            live_ready
             and self.structured_generator
             and self._live_allowed_for_task(request.task_name)
         ):
             cache_key = _summary_generation_cache_key(request, self.runtime)
             cached = _summary_generation_cache_get(cache_key, ttl_seconds=self.cache_ttl_seconds)
             if cached is not None:
-                return _GeneratedPayload(payload=cached)
+                return _GeneratedPayload(
+                    payload=cached,
+                    diagnostics=GenerationDiagnostics(
+                        attempted_live=True,
+                        used_fallback=False,
+                        model_name=model_name,
+                    ),
+                )
             try:
                 payload = self.structured_generator(request)
                 if isinstance(payload, dict):
-                    return _GeneratedPayload(payload=payload, cache_key=cache_key, cacheable=True)
+                    payload = _normalize_live_payload_shape(request, payload)
+                    return _GeneratedPayload(
+                        payload=payload,
+                        cache_key=cache_key,
+                        cacheable=True,
+                        diagnostics=GenerationDiagnostics(
+                            attempted_live=True,
+                            used_fallback=False,
+                            model_name=model_name,
+                        ),
+                    )
                 raise SummaryGenerationContractError("Structured summary generator returned a non-object payload.")
             except TimeoutError:
-                return _GeneratedPayload(payload=fallback)
-        return _GeneratedPayload(payload=fallback)
+                return _GeneratedPayload(
+                    payload=fallback,
+                    diagnostics=GenerationDiagnostics(
+                        attempted_live=True,
+                        used_fallback=True,
+                        fallback_reason_codes=["live_generation_timeout"],
+                        model_name=model_name,
+                    ),
+                )
+        return _GeneratedPayload(
+            payload=fallback,
+            diagnostics=GenerationDiagnostics(
+                attempted_live=False,
+                used_fallback=True,
+                fallback_reason_codes=[self._fallback_reason_for_task(request.task_name, live_ready=live_ready)],
+                model_name=model_name if live_ready else None,
+            ),
+        )
 
     def _remember_valid_payload(self, generated: _GeneratedPayload) -> None:
         if generated.cacheable and generated.cache_key and self.cache_ttl_seconds > 0:
@@ -714,6 +782,17 @@ class HybridSummaryGenerationService:
         if self.live_task_allowlist is None:
             return True
         return task_name in self.live_task_allowlist
+
+    def _fallback_reason_for_task(self, task_name: str, *, live_ready: bool) -> str:
+        if _DETERMINISTIC_SUMMARY_GENERATION.get():
+            return "deterministic_summary_generation"
+        if not live_ready:
+            return f"live_generation_not_ready:{self.runtime.readiness_status.value}"
+        if self.structured_generator is None:
+            return "live_generator_unavailable"
+        if not self._live_allowed_for_task(task_name):
+            return "task_not_allowlisted_for_live_generation"
+        return "deterministic_fallback"
 
 
 @contextmanager
@@ -758,6 +837,53 @@ def _runtime_from_env(env: Mapping[str, str]) -> LlmRuntimeConfig:
     return build_llm_runtime_config(settings, server_side_key_present=bool(str(env.get(_ENV_KEY, "")).strip()))
 
 
+def live_summary_generation_ready_from_env(env: Mapping[str, str] | None = None) -> bool:
+    values = dict(os.environ if env is None else env)
+    if values.get("CI") or values.get("PYTEST_CURRENT_TEST"):
+        return False
+    return _runtime_from_env(values).readiness_status is LlmReadinessStatus.ready_for_explicit_live_call
+
+
+def summary_generation_diagnostics(
+    service: Any | None,
+    *,
+    task_name: str,
+    used_fallback: bool,
+    fallback_reason_codes: Iterable[str] | None = None,
+    attempted_live: bool | None = None,
+) -> GenerationDiagnostics:
+    runtime = getattr(service, "runtime", None)
+    live_ready = isinstance(runtime, LlmRuntimeConfig) and runtime.readiness_status is LlmReadinessStatus.ready_for_explicit_live_call
+    generator_available = bool(getattr(service, "structured_generator", None))
+    allowlist = getattr(service, "live_task_allowlist", DEFAULT_LIVE_GENERATION_TASK_ALLOWLIST)
+    if attempted_live is None:
+        attempted_live = bool(live_ready and generator_available and (allowlist is None or task_name in allowlist))
+    return GenerationDiagnostics(
+        attempted_live=attempted_live,
+        used_fallback=used_fallback,
+        fallback_reason_codes=list(fallback_reason_codes or []),
+        model_name=_active_generation_model_name(runtime) if isinstance(runtime, LlmRuntimeConfig) else None,
+    )
+
+
+def summary_generation_reason_codes(exc: Exception) -> list[str]:
+    message = str(exc).lower()
+    codes: list[str] = []
+    if "schema" in message or "wrong section" in message or "sections array" in message or "required text" in message:
+        codes.append("schema_validation_failed")
+    if "citation" in message or "supporting claim" in message:
+        codes.append("citation_validation_failed")
+    if "numeric" in message:
+        codes.append("numeric_validation_failed")
+    if "headline" in message:
+        codes.append("headline_repetition_validation_failed")
+    if "safety" in message or "advice" in message or "prediction" in message:
+        codes.append("safety_validation_failed")
+    if "internal wording" in message or "copy" in message:
+        codes.append("copy_quality_validation_failed")
+    return codes or ["summary_generation_validation_failed"]
+
+
 def _live_env_allowed(env: Mapping[str, str], runtime: LlmRuntimeConfig) -> bool:
     if env.get("CI") or env.get("PYTEST_CURRENT_TEST"):
         return False
@@ -776,6 +902,12 @@ def _live_task_allowlist_from_env(env: Mapping[str, str]) -> frozenset[str] | No
     if "none" in tokens or "off" in tokens or "false" in tokens:
         return frozenset()
     return frozenset(tokens)
+
+
+def _active_generation_model_name(runtime: LlmRuntimeConfig | None) -> str | None:
+    if runtime is None or not runtime.configured_model_chain:
+        return None
+    return runtime.configured_model_chain[0].model_name
 
 
 def _live_timeout_seconds_from_env(env: Mapping[str, str]) -> int:
@@ -934,9 +1066,33 @@ def _live_structured_generator_from_env(
             raise SummaryGenerationContractError("Live structured generator returned non-JSON content.") from exc
         if not isinstance(payload, dict):
             raise SummaryGenerationContractError("Live structured generator returned a non-object payload.")
-        return payload
+        return _normalize_live_payload_shape(request, payload)
 
     return generator
+
+
+def _normalize_live_payload_shape(request: SummaryGenerationRequest, payload: dict[str, Any]) -> dict[str, Any]:
+    if _payload_matches_task_shape(request.task_name, payload):
+        return payload
+    for wrapper_key in ("payload", "output", "result", "data"):
+        wrapped = payload.get(wrapper_key)
+        if isinstance(wrapped, dict) and _payload_matches_task_shape(request.task_name, wrapped):
+            return wrapped
+    return payload
+
+
+def _payload_matches_task_shape(task_name: str, payload: dict[str, Any]) -> bool:
+    if task_name in {"market_ai_comprehensive_analysis", "ticker_ai_comprehensive_analysis"}:
+        return isinstance(payload.get("sections"), list)
+    if task_name == "beginner_summary":
+        return all(isinstance(payload.get(key), str) for key in ("what_it_is", "why_people_consider_it", "main_catch"))
+    if task_name == "deep_dive_summary":
+        return isinstance(payload.get("summary"), str)
+    if task_name == "top_3_risks":
+        return isinstance(payload.get("risks"), list)
+    if task_name == "grounded_chat_answer":
+        return all(isinstance(payload.get(key), str) for key in ("direct_answer", "why_it_matters"))
+    return True
 
 
 def _safe_prompt_payload(request: SummaryGenerationRequest) -> dict[str, Any]:
@@ -960,6 +1116,8 @@ def _safe_prompt_payload(request: SummaryGenerationRequest) -> dict[str, Any]:
             "Do not use internal wording such as fixture, local MVP, available evidence, provider market-reference, raw provider keys, or this section uses.",
             "Beginner Summary must explain the asset and must not use raw quote, chart, price, volume, or technical indicators as its main evidence.",
             "Market AI must synthesize selected stories with Economic Indicators and allowed numeric facts; do not merely count buckets or repeat headlines.",
+            "Return the task output as the JSON root object; do not wrap it inside payload, data, output, result, markdown, or prose.",
+            "For AI analysis sections, include every required section exactly once in the provided order.",
         ],
         "payload": request.payload,
     }
@@ -986,7 +1144,7 @@ def _beginner_fallback_payload(
     sector = _first_text(asset_profile.get("sector"), _profile_note_value(notes.get("provider_profile_overview"), "sector"))
     industry = _first_text(asset_profile.get("industry"), _profile_note_value(notes.get("provider_profile_overview"), "industry"))
     business_summary = _first_text(asset_profile.get("business_summary"))
-    gaps = notes.get("evidence_gaps")
+    gaps = _humanize_field_list(notes.get("evidence_gaps"))
     if asset.asset_type.value == "etf":
         holdings_phrase = f"{holdings} holdings" if holdings else ""
         cost_phrase = f"an expense ratio of {expense}" if expense else ""
@@ -1013,7 +1171,11 @@ def _beginner_fallback_payload(
         )
         catch = (
             "The main catch is that ETF facts are point-in-time and missing fields stay labeled"
-            + (f" ({gaps or _join_human_text([str(item) for item in evidence_limits.get('missing_fields', [])[:3]])})" if (gaps or evidence_limits.get("missing_fields")) else "")
+            + (
+                f" ({gaps or _humanize_field_list(evidence_limits.get('missing_fields', [])[:3])})"
+                if (gaps or evidence_limits.get("missing_fields"))
+                else ""
+            )
             + "; this page does not turn the fund into a personal recommendation."
         )
     else:
@@ -1061,7 +1223,7 @@ def _deep_dive_fallback(
 ) -> str:
     notes = _evidence_note_map(evidence_notes)
     fields = [
-        value
+        _humanize_public_text(value)
         for key, value in notes.items()
         if key not in {
             "fetch_state",
@@ -1530,6 +1692,17 @@ def _validate_copy_quality(text: str, task_name: str) -> None:
     for marker in internal_markers:
         if marker in normalized:
             raise SummaryGenerationContractError(f"Generated {task_name} copy includes internal wording: {marker}")
+    if task_name in {
+        "beginner_summary",
+        "deep_dive_summary",
+        "market_ai_comprehensive_analysis",
+        "ticker_ai_comprehensive_analysis",
+    }:
+        raw_field_names = sorted({match.group(0) for match in _RAW_FIELD_NAME_PATTERN.finditer(text)})
+        if raw_field_names:
+            raise SummaryGenerationContractError(
+                "Generated copy includes raw field names: " + ", ".join(raw_field_names[:5])
+            )
     if task_name == "beginner_summary":
         quote_only_markers = ("provider market price", "provider quote", "quote field", "chart field", "raw price", "raw quote")
         if any(marker in normalized for marker in quote_only_markers):
@@ -1549,6 +1722,32 @@ def _validate_copy_quality(text: str, task_name: str) -> None:
 def _short_headline_hint(title: str) -> str:
     words = [word.strip(" ,.;:!?") for word in str(title).split() if word.strip(" ,.;:!?")]
     return " ".join(words[:7])
+
+
+def _humanize_field_name(value: str) -> str:
+    text = str(value).strip()
+    if not text:
+        return ""
+    return _FIELD_LABEL_OVERRIDES.get(text, text.replace("_", " "))
+
+
+def _humanize_field_list(value: Any) -> str:
+    if value in (None, ""):
+        return ""
+    if isinstance(value, str):
+        raw_items = [item.strip() for item in value.split(",") if item.strip()]
+    elif isinstance(value, Iterable) and not isinstance(value, (dict, bytes)):
+        raw_items = [str(item).strip() for item in value if str(item).strip()]
+    else:
+        raw_items = [str(value).strip()]
+    return _join_human_text([_humanize_field_name(item) for item in raw_items if item])
+
+
+def _humanize_public_text(value: str) -> str:
+    text = str(value)
+    for raw in sorted(set(_RAW_FIELD_NAME_PATTERN.findall(text)), key=len, reverse=True):
+        text = text.replace(raw, _humanize_field_name(raw))
+    return text
 
 
 def _required_text(payload: dict[str, Any], key: str) -> str:

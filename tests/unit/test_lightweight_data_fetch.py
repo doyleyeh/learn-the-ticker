@@ -1547,11 +1547,29 @@ def test_lightweight_issuer_backed_etf_fetch_builds_supported_page_contracts():
 
     overview = build_lightweight_overview_response(response)
     details = build_lightweight_details_response(response)
+    thin_profile_response = response.model_copy(
+        update={
+            "facts": [
+                fact.model_copy(update={"value": {"symbol": "VOO", "quote_type": "ETF"}})
+                if fact.field_name == "provider_profile_overview"
+                else fact
+                for fact in response.facts
+            ]
+        }
+    )
+    thin_profile_context = evidence_pack_from_lightweight_response(thin_profile_response)["generation_context"]
+    thin_asset_profile = thin_profile_context["asset_profile"]
 
     assert overview.asset.asset_type is AssetType.etf
     assert overview.state.status is AssetStatus.supported
     assert overview.beginner_summary is not None
     assert "ETF" in overview.beginner_summary.what_it_is
+    assert "premium_discount_or_spread" not in " ".join(overview.beginner_summary.model_dump().values())
+    assert thin_asset_profile["fund_family"] == "Vanguard"
+    assert thin_asset_profile["category"] == "U.S. equity index ETF"
+    assert thin_asset_profile["legal_type"] == "exchange-traded fund"
+    assert "S&P 500 Index" in thin_asset_profile["fund_summary"]
+    assert "500 holdings" in thin_asset_profile["fund_summary"]
     assert [risk.title for risk in overview.top_risks] == [
         "Market risk",
         "Concentration risk",
@@ -1610,7 +1628,7 @@ def test_lightweight_issuer_backed_etf_fetch_builds_supported_page_contracts():
     assert details.facts["construction_methodology"]
     assert details.facts["benchmark"].value == "S&P 500 Index"
     assert details.facts["cost_context"].value == 0.03
-    assert details.facts["prospectus_reference"].value == "summary_prospectus published 2026-04-01"
+    assert details.facts["prospectus_reference"].value == "summary prospectus published 2026-04-01"
     assert details.facts["risk_context"]
     assert details.facts["comparison_overlap_context"]
 
