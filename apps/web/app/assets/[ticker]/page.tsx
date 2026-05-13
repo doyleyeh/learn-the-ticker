@@ -63,6 +63,37 @@ type AssetPageProps = {
 
 const OVERVIEW_FETCH_TIMEOUT_MS = 12_000;
 const DETAILS_FETCH_TIMEOUT_MS = 5_000;
+const LIVE_SECTION_FETCH_TIMEOUT_MS = 5_000;
+
+type BackendSectionRendering = "backend_contract" | "mixed_fallback" | "local_fixture";
+type BackendSectionFailureReason =
+  | "api_base_unconfigured"
+  | "timeout_or_aborted"
+  | "backend_status_error"
+  | "invalid_contract"
+  | "unexpected_error";
+type BackendSectionReason = "backend_contract" | "partial_backend_contract" | BackendSectionFailureReason;
+
+type BackendSectionFetchState = {
+  sectionId: string;
+  label: string;
+  rendering: BackendSectionRendering;
+  evidenceState: "live" | "partial" | "unavailable";
+  reason: BackendSectionReason;
+  message: string;
+};
+
+type BackendSectionFetchSuccess<T> = {
+  data: T;
+  state: BackendSectionFetchState;
+};
+
+type BackendSectionFetchFailure = {
+  data: null;
+  state: BackendSectionFetchState;
+};
+
+type BackendSectionFetchResult<T> = BackendSectionFetchSuccess<T> | BackendSectionFetchFailure;
 
 type SourceDrawerState =
   | "available"
@@ -102,6 +133,200 @@ function exportContractRendering(contract: AssetExportContractValidation | null)
   return contract?.rendering ?? "deferred_until_opened";
 }
 
+function backendSectionLiveState(sectionId: string, label: string): BackendSectionFetchState {
+  return {
+    sectionId,
+    label,
+    rendering: "backend_contract",
+    evidenceState: "live",
+    reason: "backend_contract",
+    message: "Backend evidence returned for this section."
+  };
+}
+
+function backendSectionFallbackState(sectionId: string, label: string, error: unknown): BackendSectionFetchState {
+  const reason = classifyBackendSectionFailure(error);
+  return {
+    sectionId,
+    label,
+    rendering: "local_fixture",
+    evidenceState: reason === "api_base_unconfigured" ? "partial" : "unavailable",
+    reason,
+    message: backendSectionFallbackMessage(reason)
+  };
+}
+
+async function fetchBackendSection<T>(
+  sectionId: string,
+  label: string,
+  request: () => Promise<T>
+): Promise<BackendSectionFetchResult<T>> {
+  try {
+    return {
+      data: await request(),
+      state: backendSectionLiveState(sectionId, label)
+    };
+  } catch (error) {
+    return {
+      data: null,
+      state: backendSectionFallbackState(sectionId, label, error)
+    };
+  }
+}
+
+function classifyBackendSectionFailure(error: unknown): BackendSectionFailureReason {
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    if (message.includes("no api base url is configured")) {
+      return "api_base_unconfigured";
+    }
+    if (error.name === "AbortError" || message.includes("aborted") || message.includes("timed out")) {
+      return "timeout_or_aborted";
+    }
+    if (message.includes("request failed with status")) {
+      return "backend_status_error";
+    }
+    if (message.includes("did not match the expected backend response contract")) {
+      return "invalid_contract";
+    }
+  }
+  return "unexpected_error";
+}
+
+function backendSectionFallbackMessage(reason: BackendSectionFailureReason) {
+  if (reason === "api_base_unconfigured") {
+    return "The live backend is not connected for this render, so this section is showing deterministic local fallback content.";
+  }
+  if (reason === "timeout_or_aborted") {
+    return "The backend request did not finish before the page timeout, so this section is marked unavailable for live evidence.";
+  }
+  if (reason === "backend_status_error") {
+    return "The backend returned an error for this section, so live evidence is unavailable on this render.";
+  }
+  if (reason === "invalid_contract") {
+    return "The backend response did not match the expected contract, so this section is not treated as live evidence.";
+  }
+  return "Something went wrong loading this section, so live evidence is unavailable on this render.";
+}
+
+function hasBackendSectionFallback(states: readonly BackendSectionFetchState[]) {
+  return states.some((state) => state.rendering !== "backend_contract");
+}
+
+function AssetBackendEvidenceSummary({ states }: { states: readonly BackendSectionFetchState[] }) {
+  const fallbackStates = states.filter((state) => state.rendering !== "backend_contract");
+
+  if (!fallbackStates.length) {
+    return (
+      <section
+        className="plain-panel stable-section"
+        aria-labelledby="asset-backend-evidence-summary"
+        data-asset-backend-evidence-summary
+        data-asset-backend-evidence-summary-state="live"
+      >
+        <div className="section-heading-row">
+          <div className="section-heading">
+            <p className="eyebrow">Evidence availability</p>
+            <h2 id="asset-backend-evidence-summary">Live backend evidence loaded</h2>
+          </div>
+          <div className="state-row">
+            <span className="state-pill compact-state" data-evidence-state="live">
+              live
+            </span>
+          </div>
+        </div>
+        <p className="notice-text">
+          The asset overview and live page sections returned backend evidence for this render.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section
+      className="plain-panel unknown-state"
+      aria-labelledby="asset-backend-evidence-summary"
+      data-asset-backend-evidence-summary
+      data-asset-backend-evidence-summary-state="partial_or_unavailable"
+      data-asset-backend-fallback-section-count={fallbackStates.length}
+    >
+      <div className="section-heading-row">
+        <div className="section-heading">
+          <p className="eyebrow">Evidence availability</p>
+          <h2 id="asset-backend-evidence-summary">Some sections are using fallback content</h2>
+        </div>
+        <div className="state-row">
+          <span className="state-pill compact-state" data-evidence-state="partial">
+            partial
+          </span>
+        </div>
+      </div>
+      <p className="notice-text">
+        This page can still be useful for learning, but the sections below should not be read as complete live backend
+        evidence for this render.
+      </p>
+      <div className="section-stack" data-asset-backend-fallback-sections>
+        {fallbackStates.map((state) => (
+          <div
+            key={state.sectionId}
+            className="source-gap-note"
+            data-asset-section-fetch-state={state.sectionId}
+            data-asset-section-rendering={state.rendering}
+            data-asset-section-failure-reason={state.reason}
+          >
+            <strong>{state.label}:</strong> {state.message}
+          </div>
+        ))}
+      </div>
+      <p className="source-gap-note" data-weekly-news-backend-failure-distinct-from-empty-state>
+        Weekly News distinguishes a normal no-high-signal result from a backend failure or timeout. If Weekly News is
+        listed above, its empty state is not proof that no high-signal items exist.
+      </p>
+    </section>
+  );
+}
+
+function SectionFallbackNotice({ state }: { state: BackendSectionFetchState }) {
+  if (state.rendering === "backend_contract") {
+    return null;
+  }
+
+  return (
+    <section
+      className="plain-panel unknown-state"
+      aria-label={`${state.label} evidence availability`}
+      data-asset-section-fallback-notice={state.sectionId}
+      data-asset-section-rendering={state.rendering}
+      data-asset-section-failure-reason={state.reason}
+      data-asset-section-evidence-state={state.evidenceState}
+    >
+      <div className="section-heading-row">
+        <div className="section-heading">
+          <p className="eyebrow">Section evidence state</p>
+          <h2>{state.label}</h2>
+        </div>
+        <div className="state-row">
+          <span className="state-pill compact-state" data-evidence-state={state.evidenceState}>
+            {state.evidenceState}
+          </span>
+        </div>
+      </div>
+      <p className="notice-text">
+        {state.reason === "partial_backend_contract"
+          ? "This section loaded with partial fallback coverage."
+          : "Something went wrong loading this section."}
+      </p>
+      <p className="source-gap-note">{state.message}</p>
+      {state.sectionId === "weekly_news" ? (
+        <p className="source-gap-note" data-weekly-news-fetch-failure-notice>
+          This is different from a verified no-high-signal Weekly News result; the backend section did not return live
+          evidence for this render.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 export function generateStaticParams() {
   return Object.keys(assetFixtures).map((ticker) => ({ ticker }));
 }
@@ -121,6 +346,16 @@ export default async function AssetPage({ params }: AssetPageProps) {
   let assetSourceListExportContract: AssetExportContractValidation | null = null;
   const backendApiConfigured = Boolean(process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || process.env.API_BASE_URL?.trim());
   let overviewFetchFailed = false;
+  let overviewFetchState = backendSectionFallbackState(
+    "asset_overview",
+    "Asset overview",
+    new Error("No API base URL is configured for supported asset overview fetches.")
+  );
+  let detailsFetchState = backendSectionFallbackState(
+    "asset_details",
+    "Asset details",
+    new Error("No API base URL is configured for supported asset detail fetches.")
+  );
 
   try {
     asset = await fetchSupportedAssetOverview(
@@ -129,6 +364,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
       optionalBackendFetcher(OVERVIEW_FETCH_TIMEOUT_MS)
     );
     overviewRendering = "backend_contract";
+    overviewFetchState = backendSectionLiveState("asset_overview", "Asset overview");
   } catch {
     overviewFetchFailed = true;
     asset = backendApiConfigured ? null : fallbackAsset ?? null;
@@ -148,8 +384,10 @@ export default async function AssetPage({ params }: AssetPageProps) {
   try {
     asset = await fetchSupportedAssetDetails(asset.ticker, asset, optionalBackendFetcher(DETAILS_FETCH_TIMEOUT_MS));
     detailsRendering = "backend_contract";
-  } catch {
+    detailsFetchState = backendSectionLiveState("asset_details", "Asset details");
+  } catch (error) {
     detailsRendering = "local_fixture";
+    detailsFetchState = backendSectionFallbackState("asset_details", "Asset details", error);
   }
 
   let marketNewsFocus: MarketNewsFocusFixture = marketNewsFocusFixture;
@@ -207,45 +445,66 @@ export default async function AssetPage({ params }: AssetPageProps) {
   );
 
   const [
-    backendEconomicIndicators,
-    backendMarketNews,
-    backendWeeklyNews,
-    backendSourceDrawer,
-    backendGlossaryContexts
+    economicIndicatorsResult,
+    marketNewsResult,
+    weeklyNewsResult,
+    sourceDrawerResult,
+    glossaryContextsResult
   ] = await Promise.all([
-    fetchEconomicIndicators(economicIndicators, optionalBackendFetcher(1000)).catch(() => null),
-    fetchMarketNews(marketNewsFocus, marketAIComprehensiveAnalysis, optionalBackendFetcher(1000)).catch(() => null),
-    fetchSupportedAssetWeeklyNews(
-      asset.ticker,
-      weeklyNewsFocus,
-      aiComprehensiveAnalysis,
-      asset.assetType,
-      optionalBackendFetcher(1000)
-    ).catch(() => null),
-    fetchSupportedSourceDrawerResponse(asset.ticker, optionalBackendFetcher(1000)).catch(() => null),
-    fetchSupportedAssetGlossaryContexts(asset.ticker, glossaryTermsForBackend, optionalBackendFetcher(1000)).catch(() => null)
+    fetchBackendSection("economic_indicators", "Economic Indicators", () =>
+      fetchEconomicIndicators(economicIndicators, optionalBackendFetcher(LIVE_SECTION_FETCH_TIMEOUT_MS))
+    ),
+    fetchBackendSection("market_news", "Market News Focus", () =>
+      fetchMarketNews(marketNewsFocus, marketAIComprehensiveAnalysis, optionalBackendFetcher(LIVE_SECTION_FETCH_TIMEOUT_MS))
+    ),
+    fetchBackendSection("weekly_news", `Weekly News Focus: ${asset.ticker}`, () =>
+      fetchSupportedAssetWeeklyNews(
+        asset.ticker,
+        weeklyNewsFocus,
+        aiComprehensiveAnalysis,
+        asset.assetType,
+        optionalBackendFetcher(LIVE_SECTION_FETCH_TIMEOUT_MS)
+      )
+    ),
+    fetchBackendSection("source_drawer", "Source drawer", () =>
+      fetchSupportedSourceDrawerResponse(asset.ticker, optionalBackendFetcher(LIVE_SECTION_FETCH_TIMEOUT_MS))
+    ),
+    fetchBackendSection("glossary_context", "Glossary context", () =>
+      fetchSupportedAssetGlossaryContexts(
+        asset.ticker,
+        glossaryTermsForBackend,
+        optionalBackendFetcher(LIVE_SECTION_FETCH_TIMEOUT_MS)
+      )
+    )
   ]);
 
-  if (backendEconomicIndicators) {
-    economicIndicators = backendEconomicIndicators;
+  if (economicIndicatorsResult.data) {
+    economicIndicators = economicIndicatorsResult.data;
     economicIndicatorsRendering = "backend_contract";
   }
 
-  if (backendMarketNews) {
-    marketNewsFocus = backendMarketNews.marketNewsFocus;
-    marketAIComprehensiveAnalysis = backendMarketNews.marketAIComprehensiveAnalysis;
+  if (marketNewsResult.data) {
+    marketNewsFocus = marketNewsResult.data.marketNewsFocus;
+    marketAIComprehensiveAnalysis = marketNewsResult.data.marketAIComprehensiveAnalysis;
     marketNewsRendering = "backend_contract";
   }
 
-  if (backendWeeklyNews) {
-    weeklyNewsFocus = backendWeeklyNews.weeklyNewsFocus;
-    aiComprehensiveAnalysis = backendWeeklyNews.aiComprehensiveAnalysis;
+  if (weeklyNewsResult.data) {
+    weeklyNewsFocus = weeklyNewsResult.data.weeklyNewsFocus;
+    aiComprehensiveAnalysis = weeklyNewsResult.data.aiComprehensiveAnalysis;
     weeklyNewsRendering = "backend_contract";
   }
 
-  if (backendGlossaryContexts) {
+  if (glossaryContextsResult.data) {
     glossaryRendering = "backend_contract";
   }
+
+  const backendEconomicIndicatorsState = economicIndicatorsResult.state;
+  const backendMarketNewsState = marketNewsResult.state;
+  const backendWeeklyNewsState = weeklyNewsResult.state;
+  let backendSourceDrawerState = sourceDrawerResult.state;
+  const backendGlossaryState = glossaryContextsResult.state;
+  const backendGlossaryContexts = glossaryContextsResult.data;
 
   const primarySource = getPrimarySource(asset);
   const firstClaim = asset.claims[0];
@@ -340,7 +599,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
     contexts: getCitationContextsForSource(asset, primarySource.sourceDocumentId),
     drawerState: sourceDrawerStateFromFreshness(primarySource.freshnessState)
   };
-  const backendDrawerEntries = backendSourceDrawer ? sourceDrawerEntriesByDocumentId(backendSourceDrawer) : null;
+  const backendDrawerEntries = sourceDrawerResult.data ? sourceDrawerEntriesByDocumentId(sourceDrawerResult.data) : null;
   const overlaySourceDrawerEntry = <T extends { source: { source_document_id: string } }>(entry: T) =>
     backendDrawerEntries?.get(entry.source.source_document_id) ?? entry;
   const renderedDrawerEntries = hasPrdSections
@@ -355,10 +614,31 @@ export default async function AssetPage({ params }: AssetPageProps) {
   const hasDashboard = hasAssetDataDashboard(asset);
 
   if (backendDrawerEntries) {
-    sourceDrawerRendering = renderedDrawerEntries.every((entry) => backendDrawerEntries.has(entry.source.source_document_id))
-      ? "backend_contract"
-      : "mixed_fallback";
+    const allRenderedDrawerEntriesBackendBacked = renderedDrawerEntries.every((entry) =>
+      backendDrawerEntries.has(entry.source.source_document_id)
+    );
+    sourceDrawerRendering = allRenderedDrawerEntriesBackendBacked ? "backend_contract" : "mixed_fallback";
+    if (!allRenderedDrawerEntriesBackendBacked) {
+      backendSourceDrawerState = {
+        ...backendSourceDrawerState,
+        rendering: "mixed_fallback",
+        evidenceState: "partial",
+        reason: "partial_backend_contract",
+        message: "The backend source drawer returned, but some source entries still use local fallback metadata."
+      };
+    }
   }
+
+  const backendSectionStates = [
+    overviewFetchState,
+    detailsFetchState,
+    backendEconomicIndicatorsState,
+    backendMarketNewsState,
+    backendWeeklyNewsState,
+    backendSourceDrawerState,
+    backendGlossaryState
+  ];
+  const backendEvidenceHasFallback = hasBackendSectionFallback(backendSectionStates);
 
   return (
     <main
@@ -371,6 +651,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
       data-asset-glossary-rendering={glossaryRendering}
       data-asset-page-export-contract={exportContractRendering(assetPageExportContract)}
       data-asset-source-list-export-contract={exportContractRendering(assetSourceListExportContract)}
+      data-asset-backend-evidence-has-fallback={backendEvidenceHasFallback ? "true" : "false"}
       data-prd-layout-marker="supported-asset-page-learning-flow-v1"
       data-prd-section-order="header,beginner_summary,asset_data_dashboard,top_risks,key_facts_fallback,what_it_does_or_holds_fallback,economic_indicators,market_news_focus,market_ai_comprehensive_analysis,weekly_news_focus,ai_comprehensive_analysis,deep_dive,ask_about_this_asset,sources,educational_disclaimer"
     >
@@ -435,6 +716,8 @@ export default async function AssetPage({ params }: AssetPageProps) {
                 <FreshnessDisclosure label="Beginner overview as of" value={asset.freshness.factsAsOf} state="fresh" />
               </div>
             </section>
+
+            <AssetBackendEvidenceSummary states={backendSectionStates} />
 
             <AssetDataDashboard
               asset={asset}
@@ -608,11 +891,17 @@ export default async function AssetPage({ params }: AssetPageProps) {
               </>
             ) : null}
 
+            <SectionFallbackNotice state={backendEconomicIndicatorsState} />
+
             <EconomicIndicatorsPanel pack={economicIndicators} citations={mergedCitations} />
+
+            <SectionFallbackNotice state={backendMarketNewsState} />
 
             <MarketNewsPanel focus={marketNewsFocus} citations={mergedCitations} />
 
             <MarketAIComprehensiveAnalysisPanel analysis={marketAIComprehensiveAnalysis} citations={mergedCitations} />
+
+            <SectionFallbackNotice state={backendWeeklyNewsState} />
 
             <WeeklyNewsPanel focus={weeklyNewsFocus} citations={mergedCitations} assetTicker={asset.ticker} />
 
@@ -621,6 +910,8 @@ export default async function AssetPage({ params }: AssetPageProps) {
         }
         deepDiveSections={
           <>
+            <SectionFallbackNotice state={detailsFetchState} />
+
             {hasStockPrdSections ? (
               <AssetStockSections
                 asset={asset}
@@ -659,6 +950,8 @@ export default async function AssetPage({ params }: AssetPageProps) {
         }
         sourceTools={
           <>
+            <SectionFallbackNotice state={backendSourceDrawerState} />
+
             <ExportControls
               title={`Save ${asset.ticker} learning output`}
               marker={`asset-export-${asset.ticker.toLowerCase()}`}

@@ -518,9 +518,26 @@ includesAll("app/assets/[ticker]/page.tsx", [
   "data-asset-weekly-news-rendering={weeklyNewsRendering}",
   "data-asset-source-drawer-rendering={sourceDrawerRendering}",
   "data-asset-glossary-rendering={glossaryRendering}",
+  "data-asset-backend-evidence-summary",
+  "data-asset-backend-evidence-has-fallback",
+  "data-asset-section-fallback-notice",
+  "data-asset-section-failure-reason",
+  "data-weekly-news-backend-failure-distinct-from-empty-state",
+  "data-weekly-news-fetch-failure-notice",
+  "LIVE_SECTION_FETCH_TIMEOUT_MS = 5_000",
+  "fetchBackendSection",
+  "timeout_or_aborted",
+  "api_base_unconfigured",
+  "partial_backend_contract",
+  "mixed_fallback",
   "backend_contract",
   "local_fixture"
-], "T-118 frontend API-backed rendering markers with deterministic fallback");
+], "T-118 frontend API-backed rendering markers with explicit fallback states");
+assert.equal(
+  read("app/assets/[ticker]/page.tsx").includes(".catch(() => null)"),
+  false,
+  "Asset page optional backend fetches should preserve visible failure states instead of swallowing failures to null"
+);
 includesAll("lib/assetOverview.ts", [
   "isSupportedAssetOverviewResponse",
   "mergeAssetFixtureWithOverview",

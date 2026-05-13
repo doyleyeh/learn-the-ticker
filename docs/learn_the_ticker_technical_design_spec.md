@@ -2165,6 +2165,8 @@ Something went wrong loading this section.
 Try again, or review the available sources below.
 ```
 
+Frontend SSR may continue to render deterministic local fallback content for supported development and CI pages, but backend section failures must be represented in a typed section fetch state and surfaced in the UI. A timeout, HTTP error, invalid backend contract, or missing API base URL must not collapse into the same display state as a verified empty Weekly News Focus result.
+
 ### 15.11 Export UX
 
 `ExportMenu` is available on asset pages, comparison pages, chat transcripts, and source lists. MVP formats are Markdown and JSON only. Exports include educational disclaimer, citations, freshness metadata, uncertainty labels, source list, Weekly News Focus, and AI Comprehensive Analysis when present. Exports must not include restricted source text, unrestricted provider payloads, hidden prompts, raw model reasoning, or secrets.
