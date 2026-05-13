@@ -1,31 +1,5 @@
 ## Current task
 
-### T-188: Surface asset-page backend section states and fallback notices
-
-Goal:
-Make the supported asset page visibly distinguish backend-loaded sections, backend timeouts, backend errors, invalid contracts, missing API configuration, stale cached data, local fixture fallback, partial pages, and valid empty evidence states.
-
-Acceptance criteria:
-- Asset page section fetching no longer collapses every optional backend failure into `null` and complete-looking local/default content.
-- Weekly News Focus distinguishes "valid empty evidence" from "backend timed out or failed."
-- Details, Economic Indicators, Market News Focus, Weekly News Focus, source drawer, and glossary sections expose visible user-facing partial/unavailable/fallback notices where trust would otherwise be ambiguous.
-- Existing `data-asset-*-rendering` attributes stay available for smoke tests, but visible copy is the primary trust signal.
-- The timeout for live-ish asset sections is configurable or raised enough that a slow valid local backend is not indistinguishable from absent data.
-- No frontend path calls providers, news services, LLMs, ingestion workers, or secrets directly from browser code.
-
-Required commands:
-- `npm test`
-- `npm run typecheck`
-- `npm run build`
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
-- `git diff --check`
-
-Iteration budget:
-One focused frontend/control-doc cycle. If the section-state adapter requires broad API contract changes, stop after adding typed frontend fallback notices and prepare the backend metadata task separately.
-
-## Backlog
-
 ### T-189: Add durable schema execution smoke and restart-proof repository checks
 
 Goal:
@@ -46,6 +20,8 @@ Required commands:
 
 Iteration budget:
 One backend persistence cycle. Do not add live production database credentials, production object-storage clients, Cloud Run deployment wiring, provider calls, or generated user-facing content.
+
+## Backlog
 
 ### T-190: Enforce durable source snapshot and handoff promotion gates
 
@@ -115,6 +91,29 @@ Iteration budget:
 One API/frontend integration cycle. If cache invalidation requires a schema migration, finish the backend metadata contract first and prepare a follow-up migration task.
 
 ## Completed
+
+### T-188: Surface asset-page backend section states and fallback notices
+
+Goal:
+Make the supported asset page visibly distinguish backend-loaded sections, backend timeouts, backend errors, invalid contracts, missing API configuration, stale cached data, local fixture fallback, partial pages, and valid empty evidence states.
+
+Completion details:
+- Preserved typed asset-page backend section fetch states instead of collapsing optional section failures to `null`.
+- Kept visible fallback notices for details, Economic Indicators, Market News Focus, Weekly News Focus, source drawer, and glossary-context failures.
+- Added a configurable live-section timeout with a deterministic 5-second default so local slow backend sections do not look identical to absent backend data.
+- Preserved and extended frontend smoke markers for backend failure reasons, overview fetch failure copy, and Weekly News failure-vs-empty distinction.
+- Classified overview fetch failures before rendering the recoverable backend-unavailable supported-asset page, so timeout/error/contract messages remain visible.
+
+Required commands executed:
+- `source scripts/activate_agent_env.sh && npm test` - pass
+- `source scripts/activate_agent_env.sh && npm run typecheck` - pass
+- `source scripts/activate_agent_env.sh && npm run build` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q` - pass, 52 passed
+- `git diff --check` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass, including 627 backend tests, static evals, frontend smoke, typecheck, build, and backend checks
+
+Remaining risks:
+- Backend section-state metadata is still added in T-192; until then, the frontend uses typed fetch classification and existing section contracts.
 
 ### T-187: Upgrade backend summary and analysis generation context
 
@@ -5442,8 +5441,8 @@ Roadmap integration tracker:
 | Lightweight Weekly News page and AI analysis wiring | Completed | T-169 |
 | Grounded chat with stable facts plus Weekly News | Completed | T-170 |
 | Weekly News UI filters and local smoke validation | Completed | T-171 |
-| Asset-page backend section state and fallback notices | Current | T-188 |
-| Durable schema execution smoke and repository checks | Prepared | T-189 |
+| Asset-page backend section state and fallback notices | Completed | T-188 |
+| Durable schema execution smoke and repository checks | Current | T-189 |
 | Durable source snapshot and handoff promotion gates | Prepared | T-190 |
 | Durable launch pre-cache job creation and worker execution | Prepared | T-191 |
 | Durable section-state route reads and generated-output cache authority | Prepared | T-192 |

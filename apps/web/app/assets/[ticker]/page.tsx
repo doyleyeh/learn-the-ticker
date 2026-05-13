@@ -63,7 +63,11 @@ type AssetPageProps = {
 
 const OVERVIEW_FETCH_TIMEOUT_MS = 12_000;
 const DETAILS_FETCH_TIMEOUT_MS = 5_000;
-const LIVE_SECTION_FETCH_TIMEOUT_MS = 5_000;
+const DEFAULT_LIVE_SECTION_FETCH_TIMEOUT_MS = 5_000;
+const LIVE_SECTION_FETCH_TIMEOUT_MS = readPositiveTimeoutMs(
+  "NEXT_PUBLIC_LIVE_SECTION_FETCH_TIMEOUT_MS",
+  DEFAULT_LIVE_SECTION_FETCH_TIMEOUT_MS
+);
 
 type BackendSectionRendering = "backend_contract" | "mixed_fallback" | "local_fixture";
 type BackendSectionFailureReason =
@@ -209,6 +213,37 @@ function backendSectionFallbackMessage(reason: BackendSectionFailureReason) {
   return "Something went wrong loading this section, so live evidence is unavailable on this render.";
 }
 
+function sectionFallbackNoticeLead(state: BackendSectionFetchState) {
+  if (state.reason === "api_base_unconfigured") {
+    return "This section is using deterministic local fallback content because the live backend is not connected.";
+  }
+  if (state.reason === "timeout_or_aborted") {
+    return "This section timed out before backend evidence returned.";
+  }
+  if (state.reason === "backend_status_error") {
+    return "The backend returned an error for this section.";
+  }
+  if (state.reason === "invalid_contract") {
+    return "The backend returned data, but it did not match the expected section contract.";
+  }
+  if (state.reason === "partial_backend_contract") {
+    return "This section loaded with partial backend coverage.";
+  }
+  return "This section could not load backend evidence for this render.";
+}
+
+function readPositiveTimeoutMs(envName: string, fallbackMs: number) {
+  const rawValue = process.env[envName]?.trim();
+  if (!rawValue) {
+    return fallbackMs;
+  }
+  const parsed = Number.parseInt(rawValue, 10);
+  if (!Number.isFinite(parsed) || parsed < 1_000) {
+    return fallbackMs;
+  }
+  return parsed;
+}
+
 function hasBackendSectionFallback(states: readonly BackendSectionFetchState[]) {
   return states.some((state) => state.rendering !== "backend_contract");
 }
@@ -311,11 +346,7 @@ function SectionFallbackNotice({ state }: { state: BackendSectionFetchState }) {
           </span>
         </div>
       </div>
-      <p className="notice-text">
-        {state.reason === "partial_backend_contract"
-          ? "This section loaded with partial fallback coverage."
-          : "Something went wrong loading this section."}
-      </p>
+      <p className="notice-text">{sectionFallbackNoticeLead(state)}</p>
       <p className="source-gap-note">{state.message}</p>
       {state.sectionId === "weekly_news" ? (
         <p className="source-gap-note" data-weekly-news-fetch-failure-notice>
@@ -365,8 +396,9 @@ export default async function AssetPage({ params }: AssetPageProps) {
     );
     overviewRendering = "backend_contract";
     overviewFetchState = backendSectionLiveState("asset_overview", "Asset overview");
-  } catch {
+  } catch (error) {
     overviewFetchFailed = true;
+    overviewFetchState = backendSectionFallbackState("asset_overview", "Asset overview", error);
     asset = backendApiConfigured ? null : fallbackAsset ?? null;
   }
 
@@ -376,7 +408,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
       notFound();
     }
     if (overviewFetchFailed && (search.state.status === "supported" || search.results[0]?.supported)) {
-      return <RecoverableBackendAssetStatePage ticker={ticker} search={search} />;
+      return <RecoverableBackendAssetStatePage ticker={ticker} search={search} failureState={overviewFetchState} />;
     }
     return <LimitedAssetStatePage ticker={ticker} search={search} />;
   }
@@ -718,6 +750,8 @@ export default async function AssetPage({ params }: AssetPageProps) {
             </section>
 
             <AssetBackendEvidenceSummary states={backendSectionStates} />
+
+            <SectionFallbackNotice state={backendGlossaryState} />
 
             <AssetDataDashboard
               asset={asset}
@@ -1122,7 +1156,15 @@ export default async function AssetPage({ params }: AssetPageProps) {
   );
 }
 
-function RecoverableBackendAssetStatePage({ ticker, search }: { ticker: string; search: LocalSearchResponse }) {
+function RecoverableBackendAssetStatePage({
+  ticker,
+  search,
+  failureState
+}: {
+  ticker: string;
+  search: LocalSearchResponse;
+  failureState?: BackendSectionFetchState;
+}) {
   const result = search.results[0];
   const titleTicker = result?.ticker || ticker.toUpperCase();
   const supportClassification = search.state.support_classification ?? result?.support_classification ?? "cached_supported";
@@ -1134,6 +1176,7 @@ function RecoverableBackendAssetStatePage({ ticker, search }: { ticker: string; 
       data-asset-dynamic-fallback-state="supported_backend_unavailable"
       data-asset-support-classification={supportClassification}
       data-asset-generated-page-blocked="false"
+      data-asset-overview-failure-reason={failureState?.reason ?? "unknown"}
       data-asset-supported-backend-unavailable
     >
       <section className="plain-panel unknown-state" data-dynamic-asset-state="supported_backend_unavailable">
@@ -1153,6 +1196,11 @@ function RecoverableBackendAssetStatePage({ ticker, search }: { ticker: string; 
           This asset is supported, but the local backend did not return a valid overview quickly enough for this page
           render. Try refreshing after the backend finishes its source-labeled fetch, or open search while the cache warms.
         </p>
+        {failureState ? (
+          <p className="source-gap-note" data-asset-overview-fetch-failure-notice>
+            {failureState.message}
+          </p>
+        ) : null}
         <p className="source-gap-note" data-asset-supported-recoverable-backend-state>
           No generated facts are shown from frontend memory in this state; the page waits for a same-asset backend
           evidence response before rendering charts, tables, chat, comparisons, exports, or Weekly News Focus.
