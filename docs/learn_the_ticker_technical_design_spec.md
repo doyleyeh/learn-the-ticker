@@ -1405,7 +1405,7 @@ Backend route responses that feed generated or evidence-sensitive surfaces now e
 - `fallback_reason`, when a route used deterministic fixture, lightweight fallback, unavailable, or partial behavior
 - `freshness_state`, `source_handoff_state`, `cache_state`, and `evidence_state`
 
-The metadata is backward-compatible: existing response bodies keep their primary fields, while asset overview/details, Weekly News, Market News, source drawer, glossary, chat, comparison, and export routes include route-level `section_states`. Frontend asset pages consume this metadata when present and fall back to typed request failure classification when it is absent. A valid empty Weekly News result is `section_status=empty`, which is distinct from timeout, invalid-contract, backend-error, or unavailable states.
+The metadata is backward-compatible: existing response bodies keep their primary fields, while asset overview/details, Weekly News, Market News, source drawer, glossary, chat, comparison, and export routes include route-level `section_states`. Frontend asset pages consume this metadata when present and fall back to typed request failure classification when it is absent. A valid empty Weekly News result is `section_status=empty`, which is distinct from timeout, invalid-contract, backend-error, or unavailable states. When `data_origin=lightweight_fallback`, `source_handoff_state=lightweight_labeled`, and the section is available and fresh, the frontend may preserve the raw origin for diagnostics while displaying it as source-labeled local evidence instead of user-facing fallback.
 
 ### 11.3 Page summary schema
 
@@ -2224,7 +2224,7 @@ Something went wrong loading this section.
 Try again, or review the available sources below.
 ```
 
-Frontend SSR may continue to render deterministic local fallback content for supported development and CI pages, but backend section failures must be represented in a typed section fetch state and surfaced in the UI. A timeout, HTTP error, invalid backend contract, or missing API base URL must not collapse into the same display state as a verified empty Weekly News Focus result.
+Frontend SSR may continue to render deterministic local fallback content for supported development and CI pages, but backend section failures must be represented in a typed section fetch state and surfaced in the UI. Source-labeled lightweight local evidence should use inline source-state copy, not standalone fallback cards. A timeout, HTTP error, invalid backend contract, or missing API base URL must not collapse into the same display state as a verified empty Weekly News Focus result.
 
 ### 15.11 Export UX
 

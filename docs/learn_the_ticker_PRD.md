@@ -1766,7 +1766,7 @@ Something went wrong loading this section.
 Try again, or review the available sources below.
 ```
 
-If a backend-backed asset section times out, returns an error, returns an invalid contract, or cannot run because no API base URL is configured, the page may keep deterministic local fallback content visible for development and CI, but it must label that section as fallback, partial, or unavailable. Weekly News Focus must distinguish a verified "no high-signal items" result from a backend failure or timeout.
+If a backend-backed asset section times out, returns an error, returns an invalid contract, or cannot run because no API base URL is configured, the page may keep deterministic local fallback content visible for development and CI, but it must label that section as fallback, partial, or unavailable. Source-labeled lightweight local evidence that is available, fresh, and marked `lightweight_labeled` is the active personal-MVP evidence path and should be described to users as source-labeled evidence rather than fallback content. Weekly News Focus must distinguish a verified "no high-signal items" result from a backend failure or timeout.
 
 Error states must not expose internal provider, model, API-key, infrastructure, queue, or secret details.
 

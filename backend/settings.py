@@ -10,6 +10,7 @@ LOCAL_DURABLE_REPOSITORY_SETTINGS_SCHEMA_VERSION = "local-durable-repository-set
 LIVE_ACQUISITION_SETTINGS_SCHEMA_VERSION = "live-acquisition-readiness-settings-v1"
 LIGHTWEIGHT_DATA_SETTINGS_SCHEMA_VERSION = "lightweight-data-settings-v1"
 MARKET_NEWS_SETTINGS_SCHEMA_VERSION = "market-news-settings-v1"
+ECONOMIC_INDICATORS_SETTINGS_SCHEMA_VERSION = "economic-indicators-settings-v1"
 CORS_SETTINGS_SCHEMA_VERSION = "cors-settings-v1"
 ADMIN_ROUTE_SETTINGS_SCHEMA_VERSION = "admin-route-settings-v1"
 DEFAULT_DATABASE_CONNECT_TIMEOUT_SECONDS = 5
@@ -42,6 +43,9 @@ DEFAULT_LOCAL_RUNTIME_MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED = True
 DEFAULT_MARKET_NEWS_CACHE_TTL_HOURS = 24
 DEFAULT_MARKET_NEWS_FETCH_TIMEOUT_SECONDS = 3
 DEFAULT_MARKET_NEWS_FETCH_BUDGET_SECONDS = 8
+DEFAULT_ECONOMIC_INDICATORS_LIVE_FETCH_ENABLED = False
+DEFAULT_LOCAL_RUNTIME_ECONOMIC_INDICATORS_LIVE_FETCH_ENABLED = True
+DEFAULT_ECONOMIC_INDICATORS_FETCH_TIMEOUT_SECONDS = 15
 DEFAULT_SEC_EDGAR_USER_AGENT = "learn-the-ticker-local/0.1 contact@example.com"
 DEFAULT_LOCAL_DURABLE_OBJECT_NAMESPACE = "local-private-source-artifacts"
 DEFAULT_OFFLINE_MIGRATION_DATABASE_URL = "postgresql+psycopg://placeholder@localhost:5432/learn_the_ticker"
@@ -65,6 +69,7 @@ LIGHTWEIGHT_PROVIDER_FALLBACK_DISABLED_REASON = "lightweight_provider_fallback_d
 LIGHTWEIGHT_WEEKLY_NEWS_FETCH_DISABLED_REASON = "lightweight_weekly_news_fetch_disabled"
 MARKET_NEWS_FETCH_DISABLED_REASON = "market_news_fetch_disabled"
 MARKET_NEWS_LIVE_SOURCE_SMOKE_DISABLED_REASON = "market_news_live_source_smoke_disabled"
+ECONOMIC_INDICATORS_LIVE_FETCH_DISABLED_REASON = "economic_indicators_live_fetch_disabled"
 SENSITIVE_QUERY_KEY_MARKERS = ("password", "pass", "token", "secret", "key", "credential")
 _UNSAFE_OBJECT_NAMESPACE_MARKERS = (
     "://",
@@ -279,6 +284,23 @@ class MarketNewsSettings:
 
     def credential_for(self, provider: str) -> str | None:
         return self._credentials.get(provider)
+
+
+@dataclass(frozen=True)
+class EconomicIndicatorsSettings:
+    schema_version: str
+    live_fetch_enabled: bool
+    fetch_timeout_seconds: int
+    missing_reasons: tuple[str, ...] = ()
+
+    @property
+    def safe_diagnostics(self) -> dict[str, object]:
+        return {
+            "schema_version": self.schema_version,
+            "live_fetch_enabled": self.live_fetch_enabled,
+            "fetch_timeout_seconds": self.fetch_timeout_seconds,
+            "missing_reasons": list(self.missing_reasons),
+        }
 
 
 @dataclass(frozen=True)
@@ -769,6 +791,43 @@ def build_market_news_settings(env: dict[str, str] | None = None) -> MarketNewsS
         provider_credentials_configured=credential_flags,
         missing_reasons=tuple(missing_reasons),
         _credentials=credentials,
+    )
+
+
+def build_economic_indicators_settings(env: dict[str, str] | None = None) -> EconomicIndicatorsSettings:
+    source = os.environ if env is None else env
+    env_was_provided = env is not None
+    live_fetch_enabled = _bool_setting(
+        _first_present(
+            source,
+            "ECONOMIC_INDICATORS_LIVE_FETCH_ENABLED",
+            "LTT_ECONOMIC_INDICATORS_LIVE_FETCH_ENABLED",
+        ),
+        _default_local_runtime_enabled(
+            source,
+            env_was_provided=env_was_provided,
+            deterministic_default=DEFAULT_ECONOMIC_INDICATORS_LIVE_FETCH_ENABLED,
+            local_runtime_default=DEFAULT_LOCAL_RUNTIME_ECONOMIC_INDICATORS_LIVE_FETCH_ENABLED,
+        ),
+    )
+    fetch_timeout = _int_setting(
+        _first_present(
+            source,
+            "ECONOMIC_INDICATORS_FETCH_TIMEOUT_SECONDS",
+            "LTT_ECONOMIC_INDICATORS_FETCH_TIMEOUT_SECONDS",
+        ),
+        DEFAULT_ECONOMIC_INDICATORS_FETCH_TIMEOUT_SECONDS,
+        minimum=1,
+    )
+    missing_reasons = []
+    if not live_fetch_enabled:
+        missing_reasons.append(ECONOMIC_INDICATORS_LIVE_FETCH_DISABLED_REASON)
+
+    return EconomicIndicatorsSettings(
+        schema_version=ECONOMIC_INDICATORS_SETTINGS_SCHEMA_VERSION,
+        live_fetch_enabled=live_fetch_enabled,
+        fetch_timeout_seconds=fetch_timeout,
+        missing_reasons=tuple(missing_reasons),
     )
 
 

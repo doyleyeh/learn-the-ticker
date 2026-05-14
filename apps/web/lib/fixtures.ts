@@ -291,7 +291,7 @@ export type EconomicIndicatorsPackFixture = {
   sourceDocuments: SourceDocument[];
   analysisPackMetadata?: AnalysisPackRuntimeMetadata | null;
   sectionStates?: RuntimeSectionState[];
-  noLiveExternalCalls: true;
+  noLiveExternalCalls: boolean;
   stableFactsAreSeparate: true;
 };
 
@@ -3452,10 +3452,10 @@ export function getAIComprehensiveAnalysisFixture(ticker: string) {
 
 export function citationLabel(citationId: string) {
   if (citationId.startsWith("lw_cite_yahoo_")) {
-    return "Yahoo/yfinance";
+    return "Provider";
   }
   if (citationId.startsWith("lw_cite_provider_issuer_")) {
-    return "Issuer/provider";
+    return "Issuer";
   }
   if (citationId.length > 42) {
     return "Source";

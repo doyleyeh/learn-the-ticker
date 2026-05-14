@@ -1,12 +1,39 @@
 ## Current task
 
-No current task is prepared. The durable trust-state slice T-188 through T-192 is complete; prepare the next narrow task before implementation.
+No current task is prepared. T-194 is complete; prepare the next narrow task before implementation.
 
 ## Backlog
 
 No backlog tasks are currently prepared.
 
 ## Completed
+
+### T-194: Fix asset-page evidence-state display labels
+
+Goal:
+Make supported asset pages show source-labeled lightweight evidence as normal local MVP evidence, move fallback/status copy inline with the affected section, and keep Economic Indicators live/imported/fixture provenance visible in one section.
+
+Completion details:
+- Added a frontend display-state mapper that keeps raw `data_origin=lightweight_fallback` diagnostics but displays available/fresh `lightweight_labeled` sections as `source_labeled_live`.
+- Removed the normal supported-page global fallback card and redundant standalone Glossary context, Economic Indicators, Asset details, and Source drawer status panels; section-state copy now appears inline where needed.
+- Updated citation chips to prefer source metadata labels (`SEC`, `Issuer`, `Provider`, `Fixture`) before citation-id prefixes and sanitized official issuer source titles that contained deterministic fixture wording.
+- Wired `/api/economic-indicators` to prefer fresh imported packs, then live FRED-backed local packs when enabled, then deterministic fixtures for CI/no-live/fetch-failure paths.
+- Added Economic Indicators live env knobs, frontend smoke checks, integration coverage, PRD/TDS/EVALS notes, env examples, and a favicon SVG to remove the local browser 404.
+
+Required commands executed:
+- `source scripts/activate_agent_env.sh && npm test` - pass
+- `source scripts/activate_agent_env.sh && npm run typecheck` - pass
+- `source scripts/activate_agent_env.sh && npm run build` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py -q` - pass, 79 passed
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass, 643 backend tests plus static evals, frontend smoke, typecheck, build, and backend checks
+- `git diff --check` - pass
+
+Manual browser acceptance:
+- VOO desktop and mobile passed: first citation rendered `[Issuer]`, no `[Issuer/provider]`, no global fallback card, no standalone Glossary context/Asset details/Source drawer status cards, one visible Economic Indicators section, Weekly News empty state remained distinct from failure copy, and console errors were cleared.
+
+Remaining risks:
+- Economic Indicators live fetch is route-wired and tested with a fake live pack; real FRED availability/rate behavior still depends on local operator runtime conditions.
 
 ### T-192: Route asset surfaces through durable section state metadata
 

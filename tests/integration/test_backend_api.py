@@ -7,9 +7,11 @@ import pytest
 from backend.analysis_packs import (
     DurableAnalysisPackRepository,
     analysis_pack_repository,
+    build_economic_indicators_pack,
     build_fixture_analysis_pack_import_bundle,
     configure_analysis_pack_repository,
 )
+from backend.economic_indicators_live import EconomicIndicatorFetchError
 from backend.main import app
 from backend.chat import generate_asset_chat
 from backend.comparison import generate_comparison
@@ -407,6 +409,58 @@ def test_economic_indicators_endpoint_returns_us_only_cited_pack():
         assert set(item["citation_ids"]) <= citation_ids
         assert set(item["source_document_ids"]) <= source_ids
         assert item["source"]["source_use_policy"] != "rejected"
+
+
+def test_economic_indicators_endpoint_prefers_live_pack_when_enabled(monkeypatch):
+    import backend.main as main_module
+
+    calls: list[tuple[str, int]] = []
+
+    def fake_live_economic_indicators_pack(*, generated_at: str, timeout_seconds: int):
+        calls.append((generated_at, timeout_seconds))
+        return build_economic_indicators_pack().model_copy(
+            update={
+                "analysis_pack_metadata": None,
+                "no_live_external_calls": False,
+            }
+        )
+
+    monkeypatch.setenv("ECONOMIC_INDICATORS_LIVE_FETCH_ENABLED", "true")
+    monkeypatch.setenv("ECONOMIC_INDICATORS_FETCH_TIMEOUT_SECONDS", "7")
+    monkeypatch.setattr(main_module, "build_live_economic_indicators_pack", fake_live_economic_indicators_pack)
+
+    response = client.get("/api/economic-indicators")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert calls
+    assert calls[0][1] == 7
+    assert body["no_live_external_calls"] is False
+    assert body["analysis_pack_metadata"]["analysis_source"] == "backend_generated"
+    state = _assert_runtime_section_state(body, "economic_indicators")
+    assert state["data_origin"] == "backend_generated"
+    assert state["source_handoff_state"] == "approved"
+
+
+def test_economic_indicators_endpoint_uses_fixture_when_live_pack_fails(monkeypatch):
+    import backend.main as main_module
+
+    def fake_live_economic_indicators_pack(*, generated_at: str, timeout_seconds: int):
+        raise EconomicIndicatorFetchError("economic_indicator_live_fetch_failed")
+
+    monkeypatch.setenv("ECONOMIC_INDICATORS_LIVE_FETCH_ENABLED", "true")
+    monkeypatch.setattr(main_module, "build_live_economic_indicators_pack", fake_live_economic_indicators_pack)
+
+    response = client.get("/api/economic-indicators")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["no_live_external_calls"] is True
+    assert body["analysis_pack_metadata"]["analysis_source"] == "deterministic_fixture"
+    state = _assert_runtime_section_state(body, "economic_indicators")
+    assert state["data_origin"] == "deterministic_fixture"
+    assert state["fallback_reason"] == "economic_indicators_live_fetch_failed"
+    assert state["freshness_state"] == "unknown"
 
 
 def test_route_contracts_expose_runtime_section_states():

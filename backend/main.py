@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 from typing import Any
 
 if os.environ.get("LTT_FORCE_COMPAT_FASTAPI") == "1":
@@ -59,6 +60,7 @@ from backend.analysis_packs import (
     build_backend_generated_metadata,
     build_economic_indicators_pack,
 )
+from backend.economic_indicators_live import EconomicIndicatorFetchError, build_live_economic_indicators_pack
 from backend.market_news_runtime import build_runtime_market_news_response
 from backend.models import (
     AssetChartResponse,
@@ -110,7 +112,12 @@ from backend.retrieval import build_asset_knowledge_pack_result
 from backend.retrieval_repository import read_persisted_knowledge_pack_response
 from backend.search import search_assets
 from backend.section_states import response_section_state, with_section_states
-from backend.settings import build_admin_route_settings, build_cors_settings, build_lightweight_data_settings
+from backend.settings import (
+    build_admin_route_settings,
+    build_cors_settings,
+    build_economic_indicators_settings,
+    build_lightweight_data_settings,
+)
 from backend.sources import build_asset_source_drawer_response
 from backend.trust_metrics import get_trust_metric_event_catalog, validate_trust_metric_events
 
@@ -214,7 +221,44 @@ def _current_economic_indicators_pack() -> EconomicIndicatorsPackResponse:
     imported = analysis_pack_repository().read_fresh_economic_indicators_pack()
     if imported is not None:
         return _with_route_section_state(imported, "economic_indicators", "Economic Indicators")
-    return _with_route_section_state(build_economic_indicators_pack(), "economic_indicators", "Economic Indicators")
+
+    settings = build_economic_indicators_settings()
+    app.state.economic_indicators_settings = settings.safe_diagnostics
+    if settings.live_fetch_enabled:
+        try:
+            live_pack = build_live_economic_indicators_pack(
+                generated_at=_utc_now_iso(),
+                timeout_seconds=settings.fetch_timeout_seconds,
+            )
+            return _with_route_section_state(
+                live_pack.model_copy(update={"analysis_pack_metadata": build_backend_generated_metadata()}),
+                "economic_indicators",
+                "Economic Indicators",
+                data_origin="backend_generated",
+                fallback_reason=None,
+                freshness_state="fresh",
+            )
+        except EconomicIndicatorFetchError:
+            return _with_route_section_state(
+                build_economic_indicators_pack(),
+                "economic_indicators",
+                "Economic Indicators",
+                data_origin="deterministic_fixture",
+                fallback_reason="economic_indicators_live_fetch_failed",
+                freshness_state="unknown",
+            )
+
+    return _with_route_section_state(
+        build_economic_indicators_pack(),
+        "economic_indicators",
+        "Economic Indicators",
+        data_origin="deterministic_fixture",
+        fallback_reason="economic_indicators_live_fetch_disabled",
+    )
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _asset_chart_response_from_overview(

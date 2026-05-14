@@ -4,7 +4,10 @@ import "../styles/globals.css";
 
 export const metadata: Metadata = {
   title: "Learn the Ticker",
-  description: "Citation-first beginner stock and ETF learning assistant"
+  description: "Citation-first beginner stock and ETF learning assistant",
+  icons: {
+    icon: "/favicon.svg"
+  }
 };
 
 export default function RootLayout({

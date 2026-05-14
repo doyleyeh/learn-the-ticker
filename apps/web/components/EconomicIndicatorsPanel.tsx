@@ -5,6 +5,20 @@ import { FreshnessDisclosure } from "./FreshnessLabel";
 type EconomicIndicatorsPanelProps = {
   pack: EconomicIndicatorsPackFixture;
   citations: Citation[];
+  sectionState?: EconomicIndicatorsSectionState;
+};
+
+type EconomicIndicatorsSectionState = {
+  rendering: string;
+  evidenceState: string;
+  reason: string;
+  message: string;
+  dataOrigin: string;
+  sectionStatus: string;
+  fallbackReason: string | null;
+  freshnessState: string | null;
+  sourceHandoffState: string;
+  cacheState: string | null;
 };
 
 function trendSymbol(direction: EconomicIndicatorsPackFixture["items"][number]["trendDirection"]) {
@@ -20,9 +34,10 @@ function trendSymbol(direction: EconomicIndicatorsPackFixture["items"][number]["
   return "unknown";
 }
 
-export function EconomicIndicatorsPanel({ pack, citations }: EconomicIndicatorsPanelProps) {
+export function EconomicIndicatorsPanel({ pack, citations, sectionState }: EconomicIndicatorsPanelProps) {
   const officialCount = pack.items.filter((item) => item.category === "official_historical_actual").length;
   const marketReferenceCount = pack.items.length - officialCount;
+  const sourceStateCopy = economicIndicatorsSourceStateCopy(pack, sectionState);
 
   return (
     <section
@@ -39,6 +54,8 @@ export function EconomicIndicatorsPanel({ pack, citations }: EconomicIndicatorsP
       data-economic-indicators-analysis-source={pack.analysisPackMetadata?.analysisSource ?? "deterministic_fixture"}
       data-economic-indicators-validation-status={pack.analysisPackMetadata?.validationStatus ?? "passed"}
       data-economic-indicators-no-live-external={pack.noLiveExternalCalls ? "true" : "false"}
+      data-economic-indicators-section-rendering={sectionState?.rendering ?? "unknown"}
+      data-economic-indicators-section-data-origin={sectionState?.dataOrigin ?? "unknown"}
     >
       <div className="section-heading-row">
         <div className="section-heading">
@@ -54,6 +71,14 @@ export function EconomicIndicatorsPanel({ pack, citations }: EconomicIndicatorsP
 
       <p className="notice-text">
         Economic Indicators are shared context for learning and stay separate from the asset's own source-backed facts.
+      </p>
+      <p
+        className="source-gap-note"
+        data-economic-indicators-inline-source-state
+        data-economic-indicators-source-state={sectionState?.rendering ?? "unknown"}
+        data-economic-indicators-data-origin={sectionState?.dataOrigin ?? "unknown"}
+      >
+        {sourceStateCopy}
       </p>
 
       <div className="freshness-disclosure-row">
@@ -130,4 +155,26 @@ export function EconomicIndicatorsPanel({ pack, citations }: EconomicIndicatorsP
       </div>
     </section>
   );
+}
+
+function economicIndicatorsSourceStateCopy(
+  pack: EconomicIndicatorsPackFixture,
+  sectionState: EconomicIndicatorsSectionState | undefined
+) {
+  if (pack.analysisPackMetadata?.analysisSource === "imported_local_pack") {
+    return "Imported analysis-pack evidence is loaded for this U.S. context section.";
+  }
+  if (pack.analysisPackMetadata?.analysisSource === "backend_generated" || pack.noLiveExternalCalls === false) {
+    return "Live local official and market-reference indicator evidence is loaded for this U.S. context section.";
+  }
+  if (sectionState?.dataOrigin === "deterministic_fixture" || pack.analysisPackMetadata?.analysisSource === "deterministic_fixture") {
+    return "Deterministic fixture indicators are shown for this render because live indicator evidence is disabled or unavailable.";
+  }
+  if (sectionState?.rendering === "source_labeled_live") {
+    return "Source-labeled local indicator evidence is loaded for this U.S. context section.";
+  }
+  if (sectionState?.rendering === "backend_contract") {
+    return "Backend indicator evidence is loaded for this U.S. context section.";
+  }
+  return "Indicator source state is shown inline with this section.";
 }

@@ -299,7 +299,12 @@ function mergeAssetFixtureWithOverview(fallbackAsset: AssetFixture | undefined, 
     fallbackSources,
     (source) => source.sourceDocumentId
   );
-  const citations = mergeUniqueBy(overview.citations.map(toCitation), fallbackCitations, (citation) => citation.citationId);
+  const sourceDocumentById = new Map(sourceDocuments.map((source) => [source.sourceDocumentId, source]));
+  const citations = mergeUniqueBy(
+    overview.citations.map((citation) => toCitation(citation, sourceDocumentById.get(citation.source_document_id))),
+    fallbackCitations,
+    (citation) => citation.citationId
+  );
 
   return {
     ...(fallbackAsset ?? {}),
@@ -351,11 +356,11 @@ function toAssetType(value: string): AssetType {
   return value === "stock" ? "stock" : "etf";
 }
 
-function toCitation(citation: BackendCitation): Citation {
+function toCitation(citation: BackendCitation, source?: SourceDocument): Citation {
   return {
     citationId: citation.citation_id,
     sourceDocumentId: citation.source_document_id,
-    title: citation.title,
+    title: sanitizeSourceDisplayTitle(citation.title, source),
     publisher: citation.publisher,
     freshnessState: toFreshnessState(citation.freshness_state)
   };
@@ -365,7 +370,7 @@ function toSourceDocument(source: BackendSourceDocument): SourceDocument {
   return {
     sourceDocumentId: source.source_document_id,
     sourceType: source.source_type,
-    title: source.title,
+    title: sanitizeSourceDisplayTitle(source.title, source),
     publisher: source.publisher,
     url: source.url,
     publishedAt: source.published_at ?? source.as_of_date ?? "Unknown",
@@ -384,6 +389,34 @@ function toSourceDocument(source: BackendSourceDocument): SourceDocument {
       can_export_full_text: source.permitted_operations.can_export_full_text
     }
   };
+}
+
+function sanitizeSourceDisplayTitle(
+  title: string,
+  source?: Pick<SourceDocument, "isOfficial" | "sourceType" | "sourceQuality" | "source_quality"> | BackendSourceDocument
+) {
+  const candidate = source as
+    | (Partial<SourceDocument> & Partial<BackendSourceDocument>)
+    | undefined;
+  const sourceQuality = candidate?.source_quality ?? candidate?.sourceQuality;
+  const sourceType = candidate?.source_type ?? candidate?.sourceType;
+  const isOfficial = Boolean(candidate?.isOfficial ?? candidate?.is_official);
+  const isIssuerEvidence =
+    isOfficial ||
+    sourceQuality === "issuer" ||
+    sourceQuality === "official" ||
+    String(sourceType ?? "").includes("issuer") ||
+    String(sourceType ?? "").includes("fact_sheet");
+
+  if (!isIssuerEvidence) {
+    return title;
+  }
+
+  return title
+    .replace(/\s+deterministic provider fixture\b/gi, "")
+    .replace(/\s+deterministic fixture\b/gi, "")
+    .replace(/\s+provider fixture\b/gi, "")
+    .trim();
 }
 
 function factsFromOverviewSections(sections: StockOverviewSection[]): AssetFixture["facts"] {

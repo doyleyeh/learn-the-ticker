@@ -117,7 +117,7 @@ function isEconomicIndicatorsPackResponse(value: unknown): value is BackendEcono
     Array.isArray(candidate.items) &&
     Array.isArray(candidate.citations) &&
     Array.isArray(candidate.source_documents) &&
-    candidate.no_live_external_calls === true &&
+    typeof candidate.no_live_external_calls === "boolean" &&
     candidate.stable_facts_are_separate === true
   );
 }
@@ -168,7 +168,7 @@ function toEconomicIndicatorsPack(
         }
       : null,
     sectionStates: runtimeSectionStatesFromPayload(pack),
-    noLiveExternalCalls: true,
+    noLiveExternalCalls: pack.no_live_external_calls,
     stableFactsAreSeparate: true
   };
 }

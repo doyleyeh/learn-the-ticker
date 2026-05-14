@@ -520,10 +520,10 @@ includesAll("app/assets/[ticker]/page.tsx", [
   "data-asset-glossary-rendering={glossaryRendering}",
   "data-asset-backend-evidence-summary",
   "data-asset-backend-evidence-has-fallback",
-  "data-asset-section-fallback-notice",
+  "data-asset-inline-section-state",
   "data-asset-section-failure-reason",
-  "data-weekly-news-backend-failure-distinct-from-empty-state",
   "data-weekly-news-fetch-failure-notice",
+  "source_labeled_live",
   "DEFAULT_LIVE_SECTION_FETCH_TIMEOUT_MS = 5_000",
   "NEXT_PUBLIC_LIVE_SECTION_FETCH_TIMEOUT_MS",
   "data-asset-overview-fetch-failure-notice",
@@ -532,9 +532,37 @@ includesAll("app/assets/[ticker]/page.tsx", [
   "api_base_unconfigured",
   "partial_backend_contract",
   "mixed_fallback",
+  "source_labeled_live",
   "backend_contract",
   "local_fixture"
-], "T-118 frontend API-backed rendering markers with explicit fallback states");
+], "T-118 frontend API-backed rendering markers with inline evidence states");
+assert.equal(
+  read("app/assets/[ticker]/page.tsx").includes("Some sections are using fallback content"),
+  false,
+  "Asset page should not render a global fallback-content card for normal supported assets"
+);
+assert.equal(
+  read("app/assets/[ticker]/page.tsx").includes("data-asset-section-fallback-notice"),
+  false,
+  "Asset page should use inline section-state notices instead of standalone section fallback cards"
+);
+assert.equal(
+  read("app/assets/[ticker]/page.tsx").includes("Issuer/provider"),
+  false,
+  "Asset page citation labels should not expose the old issuer/provider prefix label"
+);
+includesAll("components/CitationChip.tsx", [
+  "citationLabelFromSource",
+  "return \"SEC\"",
+  "return \"Issuer\"",
+  "return \"Provider\"",
+  "return \"Fixture\""
+], "citation chips prefer source metadata labels before id-prefix labels");
+includesAll("components/EconomicIndicatorsPanel.tsx", [
+  "data-economic-indicators-inline-source-state",
+  "Live local official and market-reference indicator evidence",
+  "Deterministic fixture indicators are shown"
+], "economic indicator source state is inline in the single Economic Indicators section");
 assert.equal(
   read("app/assets/[ticker]/page.tsx").includes(".catch(() => null)"),
   false,

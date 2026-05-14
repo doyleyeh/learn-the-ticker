@@ -41,6 +41,9 @@ Verify:
 - source drawer supports desktop drawer behavior and mobile bottom-sheet behavior
 - freshness, stale, unknown, unavailable, partial, and insufficient-evidence states are visible where relevant
 - asset pages visibly distinguish backend/API timeout, invalid-contract, unavailable, and no-API-base fallback states from verified `no_high_signal` or empty Weekly News Focus states
+- asset pages show section-state notices inline with their sections and do not render redundant standalone Glossary context, Economic Indicators, Asset details, or Source drawer status panels
+- source-labeled lightweight local evidence is not shown as a page-level fallback card, while deterministic fixture or backend-failure content remains labeled where displayed
+- Economic Indicators appears as one visible section with inline live/imported/fixture source-state copy
 - beginner copy avoids buy/sell/hold, allocation, price-target, tax, and brokerage language
 - Market News Focus, ticker-specific Weekly News Focus, and AI Comprehensive Analysis remain visually separate from stable facts and from each other
 - contextual glossary supports desktop hover/click/focus popovers and mobile tap bottom-sheet behavior
