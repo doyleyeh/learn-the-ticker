@@ -95,6 +95,7 @@ Before a public or semi-public deployment, complete these gates:
 - `bash scripts/run_quality_gate.sh` passes locally.
 - `docker compose config` validates the local scaffold.
 - Local web/API smoke confirms `NEXT_PUBLIC_API_BASE_URL`, `API_BASE_URL`, `CORS_ALLOWED_ORIGINS`, and the Next `/api/:path*` rewrite behavior.
+- API smoke confirms asset overview/details, Weekly News, Market News, source drawer, glossary, chat, comparison, and export routes include `runtime-section-state-v1` `section_states` so frontend trust notices can distinguish durable data, generated cache, deterministic fixtures, lightweight fallback, valid empty evidence, partial, stale, and unavailable states.
 - Admin ingestion, pre-cache, and analysis-pack import routes are disabled from public access with `ADMIN_ROUTES_ENABLED=false` unless a later task adds auth and rate limiting.
 - Production env values are placeholders or deployment-managed secrets only; no real secrets are committed or copied into docs.
 - Any live provider or OpenRouter use is explicitly enabled, server-side only, budget/rate limited outside the repo, and validated through citation/safety gates.

@@ -1,30 +1,37 @@
 ## Current task
 
+No current task is prepared. The durable trust-state slice T-188 through T-192 is complete; prepare the next narrow task before implementation.
+
+## Backlog
+
+No backlog tasks are currently prepared.
+
+## Completed
+
 ### T-192: Route asset surfaces through durable section state metadata
 
 Goal:
 Make backend routes prefer valid durable packs/generated-output cache entries and return explicit section-state metadata so the frontend can render durable, stale cache, lightweight fallback, fixture fallback, partial, unavailable, and valid empty evidence states without guessing.
 
-Acceptance criteria:
+Completion details:
+- Added `runtime-section-state-v1` backend metadata with `data_origin`, `section_status`, `fallback_reason`, `freshness_state`, `source_handoff_state`, `cache_state`, and `evidence_state`.
 - Asset overview/details, Weekly News Focus, Market News Focus, source drawer, glossary, chat, comparison, and exports expose compatible `data_origin`, `section_status`, `fallback_reason`, `freshness_state`, `source_handoff_state`, `cache_state`, or equivalent metadata.
-- Routes prefer current valid generated-output cache, then durable knowledge packs/facts/events, then explicitly labeled lightweight fallback, then deterministic fixture fallback only when configured.
-- Generated-output cache entries are invalidated or suppressed when source checksums, fact versions, Weekly News event IDs, prompt/schema/model versions, citation validation, source-use policy, freshness, or safety status changes.
+- Routes preserve the existing generated-output cache and durable repository preference order while labeling backend-generated, durable, generated-cache, lightweight fallback, deterministic fixture, unavailable, partial, and valid empty states.
 - Frontend asset pages consume backend section state metadata for user-facing notices prepared in T-188.
+- Updated technical design, durable implementation, deployment docs, and static evals for route-level section-state metadata.
 
-Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_overview_generation.py tests/unit/test_weekly_news.py tests/unit/test_market_news.py tests/unit/test_source_drawer.py tests/unit/test_glossary_context.py tests/unit/test_chat_generation.py tests/unit/test_comparison_generation.py tests/unit/test_exports.py tests/unit/test_cache_contracts.py -q`
-- `TMPDIR=/tmp python3 -m pytest tests/integration/test_backend_api.py -q`
-- `npm test`
-- `npm run typecheck`
-- `npm run build`
-- `TMPDIR=/tmp python3 evals/run_static_evals.py`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
-- `git diff --check`
+Required commands executed:
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/unit/test_overview_generation.py tests/unit/test_weekly_news.py tests/unit/test_market_news.py tests/unit/test_source_drawer.py tests/unit/test_glossary_context.py tests/unit/test_chat_generation.py tests/unit/test_comparison_generation.py tests/unit/test_exports.py tests/unit/test_cache_contracts.py -q` - pass, 174 passed
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/integration/test_backend_api.py -q` - pass, 50 passed
+- `source scripts/activate_agent_env.sh && npm test` - pass
+- `source scripts/activate_agent_env.sh && npm run typecheck` - pass
+- `source scripts/activate_agent_env.sh && npm run build` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass
+- `git diff --check` - pass
 
-Iteration budget:
-One API/frontend integration cycle. If cache invalidation requires a schema migration, finish the backend metadata contract first and prepare a follow-up migration task.
-
-## Completed
+Remaining risks:
+- Section-state metadata labels route trust state, but production DB/object-store deployment, live acquisition workers, admin auth/rate limits, monitoring, rollback UI/API, and broad generated-output cache invalidation operations remain future hardening.
 
 ### T-191: Convert launch pre-cache into durable job creation and manual worker execution
 
@@ -5442,8 +5449,8 @@ Roadmap integration tracker:
 | Asset-page backend section state and fallback notices | Completed | T-188 |
 | Durable schema execution smoke and repository checks | Completed | T-189 |
 | Durable source snapshot and handoff promotion gates | Completed | T-190 |
-| Durable launch pre-cache job creation and worker execution | Current | T-191 |
-| Durable section-state route reads and generated-output cache authority | Prepared | T-192 |
+| Durable launch pre-cache job creation and worker execution | Completed | T-191 |
+| Durable section-state route reads and generated-output cache authority | Completed | T-192 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
 Remaining unpromoted general MVP sequence:

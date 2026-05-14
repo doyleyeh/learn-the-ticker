@@ -10,6 +10,7 @@ import {
   type WeeklyNewsEvidenceLimitedState,
   type WeeklyNewsFocusFixture
 } from "./fixtures";
+import { runtimeSectionStatesFromPayload, type RuntimeSectionState } from "./runtimeSectionStates";
 
 type Fetcher = typeof fetch;
 
@@ -131,11 +132,13 @@ type BackendWeeklyNewsResponse = {
   };
   weekly_news_focus: BackendWeeklyNewsFocus;
   ai_comprehensive_analysis: BackendAIComprehensiveAnalysis;
+  section_states?: unknown[];
 };
 
 type SupportedWeeklyNewsResponse = {
   weeklyNewsFocus: WeeklyNewsFocusFixture;
   aiComprehensiveAnalysis: AIComprehensiveAnalysisFixture;
+  sectionStates?: RuntimeSectionState[];
 };
 
 export async function fetchSupportedAssetWeeklyNews(
@@ -164,7 +167,8 @@ export async function fetchSupportedAssetWeeklyNews(
       payload.ai_comprehensive_analysis,
       payload.weekly_news_focus,
       fallbackAnalysis
-    )
+    ),
+    sectionStates: runtimeSectionStatesFromPayload(payload)
   };
 }
 

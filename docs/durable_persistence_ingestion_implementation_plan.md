@@ -209,7 +209,7 @@ Acceptance gates:
 5. Route asset, chat, comparison, source drawer, export, and glossary reads through durable state metadata.
 6. Add admin auth, rate limits, deployment runbooks, monitoring, and rollback controls.
 
-The first five tasks are prepared in `TASKS.md` so the agent loop can make progress without jumping straight to broad production deployment.
+The first five tasks are implemented as the durable trust-state slice: local/default execution can remain fixture-backed, durable repositories and queued jobs activate only when configured, and route responses now expose `runtime-section-state-v1` metadata for asset overview/details, Weekly News, Market News, source drawer, glossary, chat, comparison, and exports. The next step is still production hardening around auth, rate limits, monitoring, rollback operations, and live acquisition workers.
 
 ## Required Verification By Task Type
 

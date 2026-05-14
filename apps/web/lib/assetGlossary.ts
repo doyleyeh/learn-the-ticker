@@ -1,5 +1,6 @@
 import { normalizeTicker, type FreshnessState } from "./fixtures";
 import { type GlossaryTermKey } from "./glossary";
+import { runtimeSectionStatesFromPayload, type RuntimeSectionState } from "./runtimeSectionStates";
 
 type Fetcher = typeof fetch;
 
@@ -58,6 +59,10 @@ export type AssetGlossaryContext = {
   sourceReferences: AssetGlossarySourceReference[];
   uncertaintyLabels: string[];
   suppressionReasons: string[];
+};
+
+export type AssetGlossaryContextMap = Map<GlossaryTermKey, AssetGlossaryContext> & {
+  sectionStates?: RuntimeSectionState[];
 };
 
 type BackendAssetIdentity = {
@@ -133,13 +138,14 @@ type BackendGlossaryResponse = {
     same_asset_evidence_only: boolean;
     restricted_text_exposed: boolean;
   };
+  section_states?: unknown[];
 };
 
 export async function fetchSupportedAssetGlossaryContexts(
   ticker: string,
   terms: readonly GlossaryTermKey[],
   fetcher: Fetcher = fetch
-): Promise<Map<GlossaryTermKey, AssetGlossaryContext>> {
+): Promise<AssetGlossaryContextMap> {
   const normalizedTicker = normalizeTicker(ticker);
   const endpoint = assetGlossaryEndpoint(normalizedTicker);
   const response = await fetcher(endpoint);
@@ -158,7 +164,7 @@ export async function fetchSupportedAssetGlossaryContexts(
     throw new Error("Asset glossary response did not include usable same-asset context for rendered terms.");
   }
 
-  return contexts;
+  return Object.assign(contexts, { sectionStates: runtimeSectionStatesFromPayload(payload) });
 }
 
 function assetGlossaryEndpoint(ticker: string) {

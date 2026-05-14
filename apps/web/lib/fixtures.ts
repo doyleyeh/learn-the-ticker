@@ -1,3 +1,7 @@
+import type { RuntimeSectionState } from "./runtimeSectionStates";
+
+export type { RuntimeSectionState } from "./runtimeSectionStates";
+
 export type FreshnessState =
   | "fresh"
   | "stale"
@@ -286,6 +290,7 @@ export type EconomicIndicatorsPackFixture = {
   citations: Citation[];
   sourceDocuments: SourceDocument[];
   analysisPackMetadata?: AnalysisPackRuntimeMetadata | null;
+  sectionStates?: RuntimeSectionState[];
   noLiveExternalCalls: true;
   stableFactsAreSeparate: true;
 };
@@ -343,6 +348,7 @@ export type WeeklyNewsFocusFixture = {
   emptyState: WeeklyNewsEmptyState | null;
   citations: Citation[];
   sourceDocuments: SourceDocument[];
+  sectionStates?: RuntimeSectionState[];
   noLiveExternalCalls: true;
   stableFactsAreSeparate: true;
 };
@@ -371,6 +377,7 @@ export type AIComprehensiveAnalysisFixture = {
   canonicalFactCitationIds: string[];
   citations: Citation[];
   sourceDocuments: SourceDocument[];
+  sectionStates?: RuntimeSectionState[];
   noLiveExternalCalls: true;
   stableFactsAreSeparate: true;
 };
@@ -418,6 +425,7 @@ export type MarketNewsFocusFixture = {
   emptyState: WeeklyNewsEmptyState | null;
   citations: Citation[];
   sourceDocuments: SourceDocument[];
+  sectionStates?: RuntimeSectionState[];
   noLiveExternalCalls: true;
   stableFactsAreSeparate: true;
   reusableAcrossTickers: true;
@@ -463,6 +471,7 @@ export type MarketAIComprehensiveAnalysisFixture = {
   marketNewsStoryIds: string[];
   citations: Citation[];
   sourceDocuments: SourceDocument[];
+  sectionStates?: RuntimeSectionState[];
   noLiveExternalCalls: true;
   stableFactsAreSeparate: true;
 };
@@ -516,6 +525,7 @@ export type AssetFixture = {
   stockSections?: StockOverviewSection[];
   etfSections?: EtfOverviewSection[];
   citationContexts?: CitationContext[];
+  sectionStates?: RuntimeSectionState[];
 };
 
 const stubTimestamp = "2026-04-20T00:00:00Z";

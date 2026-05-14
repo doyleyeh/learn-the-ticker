@@ -9,6 +9,7 @@ import {
   type StockOverviewSection,
   type StockSectionType
 } from "./fixtures";
+import { runtimeSectionStatesFromPayload } from "./runtimeSectionStates";
 
 type Fetcher = typeof fetch;
 
@@ -202,6 +203,7 @@ type BackendOverviewResponse = {
   citations: BackendCitation[];
   source_documents: BackendSourceDocument[];
   sections: BackendOverviewSection[];
+  section_states?: unknown[];
 };
 
 export async function fetchSupportedAssetOverview(
@@ -340,6 +342,7 @@ function mergeAssetFixtureWithOverview(fallbackAsset: AssetFixture | undefined, 
     citations,
     sourceDocuments,
     citationContexts: fallbackAsset?.citationContexts ?? citationContextsFromOverview(backendSections, citations, sourceDocuments),
+    sectionStates: runtimeSectionStatesFromPayload(overview),
     ...backendSectionFields
   };
 }

@@ -1396,6 +1396,17 @@ The orchestrator caches only validated outputs. It returns `answer_state=complet
 
 Generated-summary cache keys must include the evidence-pack schema version, generation-context schema version, prompt version, and freshness hash. Cache reuse is allowed only when the curated `generation_context` and citation evidence still match the selected asset or market pack. Failed raw model responses, hidden prompts, unrestricted provider payloads, and raw model reasoning must not be cached or returned.
 
+### 11.2.2 Runtime section-state metadata
+
+Backend route responses that feed generated or evidence-sensitive surfaces now expose `section_states` using schema version `runtime-section-state-v1`. Each state is a small route-level trust record with:
+
+- `data_origin`: `durable_repository`, `generated_output_cache`, `backend_generated`, `lightweight_fallback`, `deterministic_fixture`, or `unavailable`
+- `section_status`: `available`, `empty`, `partial`, `stale`, `unknown`, `unavailable`, `insufficient_evidence`, `suppressed`, or a blocked support state
+- `fallback_reason`, when a route used deterministic fixture, lightweight fallback, unavailable, or partial behavior
+- `freshness_state`, `source_handoff_state`, `cache_state`, and `evidence_state`
+
+The metadata is backward-compatible: existing response bodies keep their primary fields, while asset overview/details, Weekly News, Market News, source drawer, glossary, chat, comparison, and export routes include route-level `section_states`. Frontend asset pages consume this metadata when present and fall back to typed request failure classification when it is absent. A valid empty Weekly News result is `section_status=empty`, which is distinct from timeout, invalid-contract, backend-error, or unavailable states.
+
 ### 11.3 Page summary schema
 
 Example simplified schema:
@@ -1423,8 +1434,24 @@ Example simplified schema:
       }
     },
     "section_states": {
-      "type": "object",
-      "description": "Per-section evidence and freshness state for complete or partial pages."
+      "type": "array",
+      "description": "Per-section runtime trust states using runtime-section-state-v1.",
+      "items": {
+        "type": "object",
+        "required": ["schema_version", "section_id", "data_origin", "section_status", "source_handoff_state"],
+        "properties": {
+          "schema_version": {"const": "runtime-section-state-v1"},
+          "section_id": {"type": "string"},
+          "label": {"type": ["string", "null"]},
+          "data_origin": {"type": "string"},
+          "section_status": {"type": "string"},
+          "fallback_reason": {"type": ["string", "null"]},
+          "freshness_state": {"type": ["string", "null"]},
+          "source_handoff_state": {"type": "string"},
+          "cache_state": {"type": ["string", "null"]},
+          "evidence_state": {"type": ["string", "null"]}
+        }
+      }
     },
     "top_risks": {
       "type": "array",
@@ -1795,11 +1822,32 @@ GET /api/assets/VOO/overview?section=beginner
     "asset_type": "etf",
     "status": "partial"
   },
-  "section_states": {
-    "snapshot": {"evidence_state": "complete", "freshness_state": "fresh"},
-    "holdings": {"evidence_state": "partial", "freshness_state": "stale"},
-    "weekly_news_focus": {"evidence_state": "complete", "freshness_state": "fresh"}
-  },
+  "section_states": [
+    {
+      "schema_version": "runtime-section-state-v1",
+      "section_id": "asset_overview",
+      "label": "Asset overview",
+      "data_origin": "durable_repository",
+      "section_status": "available",
+      "fallback_reason": null,
+      "freshness_state": "fresh",
+      "source_handoff_state": "approved",
+      "cache_state": "not_applicable",
+      "evidence_state": "supported"
+    },
+    {
+      "schema_version": "runtime-section-state-v1",
+      "section_id": "weekly_news",
+      "label": "Weekly News Focus",
+      "data_origin": "generated_output_cache",
+      "section_status": "empty",
+      "fallback_reason": null,
+      "freshness_state": "fresh",
+      "source_handoff_state": "approved",
+      "cache_state": "hit",
+      "evidence_state": "no_high_signal"
+    }
+  ],
   "freshness": {
     "page_last_updated_at": "2026-04-19T14:30:00Z",
     "facts_as_of": "2026-04-18",

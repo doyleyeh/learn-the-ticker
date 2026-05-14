@@ -644,6 +644,23 @@ class StateMessage(BaseModel):
     message: str
 
 
+RUNTIME_SECTION_STATE_SCHEMA_VERSION = "runtime-section-state-v1"
+
+
+class RuntimeSectionState(BaseModel):
+    schema_version: Literal["runtime-section-state-v1"] = RUNTIME_SECTION_STATE_SCHEMA_VERSION
+    section_id: str
+    label: str | None = None
+    data_origin: str
+    section_status: str
+    fallback_reason: str | None = None
+    freshness_state: str | None = None
+    source_handoff_state: str = "not_applicable"
+    cache_state: str | None = None
+    evidence_state: str | None = None
+    diagnostics: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+
+
 class SearchBlockedCapabilityFlags(BaseModel):
     can_open_generated_page: bool = False
     can_answer_chat: bool = False
@@ -2153,6 +2170,7 @@ class GlossaryResponse(BaseModel):
     selected_asset: AssetIdentity
     state: StateMessage
     glossary_state: GlossaryResponseState
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
     terms: list[GlossaryTermResponse] = Field(default_factory=list)
     evidence_references: list[GlossaryEvidenceReference] = Field(default_factory=list)
     citation_bindings: list[GlossaryCitationBinding] = Field(default_factory=list)
@@ -2324,6 +2342,7 @@ class EconomicIndicatorsPackResponse(BaseModel):
     state: WeeklyNewsContractState
     region: Literal["US"] = "US"
     as_of_date: str
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
     items: list[EconomicIndicatorItem] = Field(default_factory=list)
     citations: list[Citation] = Field(default_factory=list)
     source_documents: list[SourceDocument] = Field(default_factory=list)
@@ -2367,6 +2386,7 @@ class WeeklyNewsFocusResponse(BaseModel):
     suppressed_candidate_count: int = 0
     evidence_state: EvidenceState = EvidenceState.unknown
     evidence_limited_state: WeeklyNewsEvidenceLimitedState = WeeklyNewsEvidenceLimitedState.unavailable
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
     items: list[WeeklyNewsItem] = Field(default_factory=list)
     empty_state: WeeklyNewsEmptyState | None = None
     citations: list[Citation] = Field(default_factory=list)
@@ -2411,6 +2431,7 @@ class AIComprehensiveAnalysisResponse(BaseModel):
     weekly_news_selected_item_count: int = 0
     suppression_reason: str | None = None
     validation_reason_codes: list[str] = Field(default_factory=list)
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
     sections: list[AIComprehensiveAnalysisSection] = Field(default_factory=list)
     citation_ids: list[str] = Field(default_factory=list)
     source_document_ids: list[str] = Field(default_factory=list)
@@ -2482,6 +2503,7 @@ class MarketNewsFocusResponse(BaseModel):
     suppressed_candidate_count: int = 0
     evidence_state: EvidenceState = EvidenceState.unknown
     evidence_limited_state: WeeklyNewsEvidenceLimitedState = WeeklyNewsEvidenceLimitedState.unavailable
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
     items: list[MarketNewsItem] = Field(default_factory=list)
     empty_state: WeeklyNewsEmptyState | None = None
     citations: list[Citation] = Field(default_factory=list)
@@ -2528,6 +2550,7 @@ class MarketAIComprehensiveAnalysisResponse(BaseModel):
     market_news_selected_item_count: int = 0
     selected_topic_bucket_count: int = 0
     suppression_reason: str | None = None
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
     sections: list[MarketAIAnalysisSection] = Field(default_factory=list)
     citation_ids: list[str] = Field(default_factory=list)
     source_document_ids: list[str] = Field(default_factory=list)
@@ -2543,6 +2566,7 @@ class MarketNewsResponse(BaseModel):
     market_news_focus: MarketNewsFocusResponse
     market_ai_comprehensive_analysis: MarketAIComprehensiveAnalysisResponse
     analysis_pack_metadata: AnalysisPackRuntimeMetadata | None = None
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
 
 
 class WeeklyNewsResponse(BaseModel):
@@ -2551,6 +2575,7 @@ class WeeklyNewsResponse(BaseModel):
     weekly_news_focus: WeeklyNewsFocusResponse
     ai_comprehensive_analysis: AIComprehensiveAnalysisResponse
     analysis_pack_metadata: AnalysisPackRuntimeMetadata | None = None
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
 
 
 class AnalysisPackValidationMetadata(BaseModel):
@@ -2783,6 +2808,7 @@ class OverviewResponse(BaseModel):
     source_documents: list[SourceDocument] = Field(default_factory=list)
     sections: list[OverviewSection] = Field(default_factory=list)
     section_freshness_validation: list[OverviewSectionFreshnessValidation] = Field(default_factory=list)
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
     fallback_diagnostics: LightweightApiFallbackDiagnostics | None = None
     generation_diagnostics: dict[str, GenerationDiagnostics] = Field(default_factory=dict)
 
@@ -2797,6 +2823,7 @@ class AssetChartResponse(BaseModel):
     chart: OverviewChart | None = None
     citations: list[Citation] = Field(default_factory=list)
     source_documents: list[SourceDocument] = Field(default_factory=list)
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
     fallback_diagnostics: LightweightApiFallbackDiagnostics | None = None
 
 
@@ -2806,6 +2833,7 @@ class DetailsResponse(BaseModel):
     freshness: Freshness
     facts: dict[str, MetricValue | str | int | float | list[Any] | None]
     citations: list[Citation] = Field(default_factory=list)
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
     fallback_diagnostics: LightweightApiFallbackDiagnostics | None = None
 
 
@@ -2821,6 +2849,7 @@ class SourcesResponse(BaseModel):
     related_claims: list[SourceDrawerRelatedClaim] = Field(default_factory=list)
     section_references: list[SourceDrawerSectionReference] = Field(default_factory=list)
     diagnostics: SourceDrawerDiagnostics = Field(default_factory=SourceDrawerDiagnostics)
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
     fallback_diagnostics: LightweightApiFallbackDiagnostics | None = None
 
 
@@ -2831,6 +2860,7 @@ class AssetPageResponse(BaseModel):
     overview: OverviewResponse
     details: DetailsResponse
     sources: SourcesResponse
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
 
 
 class RecentResponse(BaseModel):
@@ -3077,6 +3107,7 @@ class CompareResponse(BaseModel):
     evidence_availability: ComparisonEvidenceAvailability | None = None
     stock_etf_relationship: StockEtfRelationshipModel | None = None
     metric_groups: list[ComparisonMetricGroup] = Field(default_factory=list)
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
 
 
 class ChatRequest(BaseModel):
@@ -3216,6 +3247,7 @@ class ChatResponse(BaseModel):
     safety_classification: SafetyClassification
     compare_route_suggestion: ChatCompareRouteSuggestion | None = None
     session: ChatSessionPublicMetadata | None = None
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
 
 
 class ExportExcerpt(BaseModel):
@@ -3438,3 +3470,4 @@ class ExportResponse(BaseModel):
     rendered_markdown: str
     metadata: dict[str, Any] = Field(default_factory=dict)
     export_validation: ExportValidation | None = None
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)

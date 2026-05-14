@@ -14,6 +14,7 @@ import {
   type WeeklyNewsContractState,
   type WeeklyNewsEvidenceLimitedState
 } from "./fixtures";
+import { runtimeSectionStatesFromPayload, type RuntimeSectionState } from "./runtimeSectionStates";
 
 type Fetcher = typeof fetch;
 
@@ -135,11 +136,13 @@ type BackendMarketNewsResponse = {
   };
   market_news_focus: BackendMarketNewsFocus;
   market_ai_comprehensive_analysis: BackendMarketAIComprehensiveAnalysis;
+  section_states?: unknown[];
 };
 
 type SupportedMarketNewsResponse = {
   marketNewsFocus: MarketNewsFocusFixture;
   marketAIComprehensiveAnalysis: MarketAIComprehensiveAnalysisFixture;
+  sectionStates?: RuntimeSectionState[];
 };
 
 export async function fetchMarketNews(
@@ -164,7 +167,8 @@ export async function fetchMarketNews(
       payload.market_ai_comprehensive_analysis,
       payload.market_news_focus,
       fallbackAnalysis
-    )
+    ),
+    sectionStates: runtimeSectionStatesFromPayload(payload)
   };
 }
 
