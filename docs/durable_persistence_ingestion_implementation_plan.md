@@ -112,6 +112,7 @@ Concrete changes:
   - approval rationale or rejection reason
 - Default missing, unclear, parser-invalid, hidden/internal, unreviewed, or rights-disallowed records to closed states.
 - Block unapproved sources from generated-output cache writes, citation support, exports, source drawer supporting excerpts, and strict/audit-quality knowledge packs.
+- Implemented in the durable trust-state slice: strict generated evidence, generated-output cache, citation validation, allowed excerpt export, markdown/JSON section export, source snapshots, and knowledge-pack records share the same handoff validator, while local lightweight metadata remains cache-ineligible display evidence.
 - Preserve lightweight personal-MVP fallback labels where allowed by `docs/LIGHTWEIGHT_DATA_POLICY.md`.
 
 Acceptance gates:

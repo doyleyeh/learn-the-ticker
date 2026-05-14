@@ -81,7 +81,7 @@ from backend.retrieval_repository import (
     read_persisted_knowledge_pack_response,
 )
 from backend.safety import find_forbidden_output_phrases
-from backend.source_policy import resolve_source_policy
+from backend.source_policy import resolve_source_policy, source_handoff_fields_from_policy
 from backend.summary_generation import SummaryGenerationContractError, build_default_summary_generation_service
 from backend.weekly_news import (
     DEFAULT_WEEKLY_NEWS_AS_OF,
@@ -1003,16 +1003,28 @@ class _CitationRegistry:
         evidence = CitationEvidence(
             citation_id=citation_id,
             asset_ticker=self._pack.asset.ticker,
-            source_document_id=retrieved_fact.source_document.source_document_id,
-            source_type=retrieved_fact.source_document.source_type,
+            source_document_id=source_document.source_document_id,
+            source_type=source_document.source_type,
             evidence_kind=EvidenceKind.normalized_fact,
             freshness_state=retrieved_fact.fact.freshness_state,
+            retrieved_at=source_document.retrieved_at,
+            as_of_date=source_document.as_of_date,
+            published_at=source_document.published_at,
             supported_claim_types=retrieved_fact.source_chunk.supported_claim_types,
             supporting_text=retrieved_fact.source_chunk.text,
             supports_claim=retrieved_fact.fact.evidence_state == "supported",
             is_recent=False,
-            allowlist_status=retrieved_fact.source_document.allowlist_status,
-            source_use_policy=retrieved_fact.source_document.source_use_policy,
+            allowlist_status=source_document.allowlist_status,
+            source_use_policy=source_document.source_use_policy,
+            source_identity=source_document.source_identity,
+            is_official=source_document.is_official,
+            source_quality=source_document.source_quality,
+            storage_rights=source_document.storage_rights,
+            export_rights=source_document.export_rights,
+            review_status=source_document.review_status,
+            approval_rationale=source_document.approval_rationale,
+            parser_status=source_document.parser_status,
+            parser_failure_diagnostics=source_document.parser_failure_diagnostics,
         )
         return self._add_binding(citation_id, retrieved_fact.source_document, source_document, evidence)
 
@@ -1022,16 +1034,28 @@ class _CitationRegistry:
         evidence = CitationEvidence(
             citation_id=citation_id,
             asset_ticker=self._pack.asset.ticker,
-            source_document_id=retrieved_chunk.source_document.source_document_id,
-            source_type=retrieved_chunk.source_document.source_type,
+            source_document_id=source_document.source_document_id,
+            source_type=source_document.source_type,
             evidence_kind=EvidenceKind.document_chunk,
             freshness_state=retrieved_chunk.source_document.freshness_state,
+            retrieved_at=source_document.retrieved_at,
+            as_of_date=source_document.as_of_date,
+            published_at=source_document.published_at,
             supported_claim_types=retrieved_chunk.chunk.supported_claim_types,
             supporting_text=retrieved_chunk.chunk.text,
             supports_claim=True,
-            is_recent=retrieved_chunk.source_document.source_type == "recent_development",
-            allowlist_status=retrieved_chunk.source_document.allowlist_status,
-            source_use_policy=retrieved_chunk.source_document.source_use_policy,
+            is_recent=source_document.source_type == "recent_development",
+            allowlist_status=source_document.allowlist_status,
+            source_use_policy=source_document.source_use_policy,
+            source_identity=source_document.source_identity,
+            is_official=source_document.is_official,
+            source_quality=source_document.source_quality,
+            storage_rights=source_document.storage_rights,
+            export_rights=source_document.export_rights,
+            review_status=source_document.review_status,
+            approval_rationale=source_document.approval_rationale,
+            parser_status=source_document.parser_status,
+            parser_failure_diagnostics=source_document.parser_failure_diagnostics,
         )
         return self._add_binding(citation_id, retrieved_chunk.source_document, source_document, evidence)
 
@@ -1041,16 +1065,28 @@ class _CitationRegistry:
         evidence = CitationEvidence(
             citation_id=citation_id,
             asset_ticker=self._pack.asset.ticker,
-            source_document_id=retrieved_recent.source_document.source_document_id,
-            source_type=retrieved_recent.source_document.source_type,
+            source_document_id=source_document.source_document_id,
+            source_type=source_document.source_type,
             evidence_kind=EvidenceKind.document_chunk,
             freshness_state=retrieved_recent.recent_development.freshness_state,
+            retrieved_at=source_document.retrieved_at,
+            as_of_date=source_document.as_of_date,
+            published_at=source_document.published_at,
             supported_claim_types=retrieved_recent.source_chunk.supported_claim_types,
             supporting_text=retrieved_recent.source_chunk.text,
             supports_claim=retrieved_recent.recent_development.evidence_state == "no_major_recent_development",
             is_recent=True,
-            allowlist_status=retrieved_recent.source_document.allowlist_status,
-            source_use_policy=retrieved_recent.source_document.source_use_policy,
+            allowlist_status=source_document.allowlist_status,
+            source_use_policy=source_document.source_use_policy,
+            source_identity=source_document.source_identity,
+            is_official=source_document.is_official,
+            source_quality=source_document.source_quality,
+            storage_rights=source_document.storage_rights,
+            export_rights=source_document.export_rights,
+            review_status=source_document.review_status,
+            approval_rationale=source_document.approval_rationale,
+            parser_status=source_document.parser_status,
+            parser_failure_diagnostics=source_document.parser_failure_diagnostics,
         )
         return self._add_binding(citation_id, retrieved_recent.source_document, source_document, evidence)
 
@@ -2547,6 +2583,11 @@ def _source_document_from_fixture(source: SourceDocumentFixture, supporting_pass
         allowlist_status=source.allowlist_status,
         source_use_policy=source.source_use_policy,
         permitted_operations=decision.permitted_operations,
+        **source_handoff_fields_from_policy(
+            decision,
+            source_identity=source.url or source.source_document_id,
+            approval_rationale="Deterministic fixture source passed local source-use policy review.",
+        ),
     )
 
 
@@ -2559,51 +2600,90 @@ def _evidence_from_overview(pack: AssetKnowledgePack, overview: OverviewResponse
     for citation in overview.citations:
         if citation.citation_id in facts_by_citation_id:
             item = facts_by_citation_id[citation.citation_id]
+            source_document = _source_document_from_fixture(item.source_document, item.source_chunk.text)
             evidence_by_id[citation.citation_id] = CitationEvidence(
                 citation_id=citation.citation_id,
                 asset_ticker=pack.asset.ticker,
-                source_document_id=item.source_document.source_document_id,
-                source_type=item.source_document.source_type,
+                source_document_id=source_document.source_document_id,
+                source_type=source_document.source_type,
                 evidence_kind=EvidenceKind.normalized_fact,
                 freshness_state=item.fact.freshness_state,
+                retrieved_at=source_document.retrieved_at,
+                as_of_date=source_document.as_of_date,
+                published_at=source_document.published_at,
                 supported_claim_types=item.source_chunk.supported_claim_types,
                 supporting_text=item.source_chunk.text,
                 supports_claim=item.fact.evidence_state == "supported",
                 is_recent=False,
-                allowlist_status=item.source_document.allowlist_status,
-                source_use_policy=item.source_document.source_use_policy,
+                allowlist_status=source_document.allowlist_status,
+                source_use_policy=source_document.source_use_policy,
+                source_identity=source_document.source_identity,
+                is_official=source_document.is_official,
+                source_quality=source_document.source_quality,
+                storage_rights=source_document.storage_rights,
+                export_rights=source_document.export_rights,
+                review_status=source_document.review_status,
+                approval_rationale=source_document.approval_rationale,
+                parser_status=source_document.parser_status,
+                parser_failure_diagnostics=source_document.parser_failure_diagnostics,
             )
         elif citation.citation_id in chunks_by_citation_id:
             item = chunks_by_citation_id[citation.citation_id]
+            source_document = _source_document_from_fixture(item.source_document, item.chunk.text)
             evidence_by_id[citation.citation_id] = CitationEvidence(
                 citation_id=citation.citation_id,
                 asset_ticker=pack.asset.ticker,
-                source_document_id=item.source_document.source_document_id,
-                source_type=item.source_document.source_type,
+                source_document_id=source_document.source_document_id,
+                source_type=source_document.source_type,
                 evidence_kind=EvidenceKind.document_chunk,
                 freshness_state=item.source_document.freshness_state,
+                retrieved_at=source_document.retrieved_at,
+                as_of_date=source_document.as_of_date,
+                published_at=source_document.published_at,
                 supported_claim_types=item.chunk.supported_claim_types,
                 supporting_text=item.chunk.text,
                 supports_claim=True,
-                is_recent=item.source_document.source_type == "recent_development",
-                allowlist_status=item.source_document.allowlist_status,
-                source_use_policy=item.source_document.source_use_policy,
+                is_recent=source_document.source_type == "recent_development",
+                allowlist_status=source_document.allowlist_status,
+                source_use_policy=source_document.source_use_policy,
+                source_identity=source_document.source_identity,
+                is_official=source_document.is_official,
+                source_quality=source_document.source_quality,
+                storage_rights=source_document.storage_rights,
+                export_rights=source_document.export_rights,
+                review_status=source_document.review_status,
+                approval_rationale=source_document.approval_rationale,
+                parser_status=source_document.parser_status,
+                parser_failure_diagnostics=source_document.parser_failure_diagnostics,
             )
         elif citation.citation_id in recent_by_citation_id:
             item = recent_by_citation_id[citation.citation_id]
+            source_document = _source_document_from_fixture(item.source_document, item.source_chunk.text)
             evidence_by_id[citation.citation_id] = CitationEvidence(
                 citation_id=citation.citation_id,
                 asset_ticker=pack.asset.ticker,
-                source_document_id=item.source_document.source_document_id,
-                source_type=item.source_document.source_type,
+                source_document_id=source_document.source_document_id,
+                source_type=source_document.source_type,
                 evidence_kind=EvidenceKind.document_chunk,
                 freshness_state=item.recent_development.freshness_state,
+                retrieved_at=source_document.retrieved_at,
+                as_of_date=source_document.as_of_date,
+                published_at=source_document.published_at,
                 supported_claim_types=item.source_chunk.supported_claim_types,
                 supporting_text=item.source_chunk.text,
                 supports_claim=item.recent_development.evidence_state == "no_major_recent_development",
                 is_recent=True,
-                allowlist_status=item.source_document.allowlist_status,
-                source_use_policy=item.source_document.source_use_policy,
+                allowlist_status=source_document.allowlist_status,
+                source_use_policy=source_document.source_use_policy,
+                source_identity=source_document.source_identity,
+                is_official=source_document.is_official,
+                source_quality=source_document.source_quality,
+                storage_rights=source_document.storage_rights,
+                export_rights=source_document.export_rights,
+                review_status=source_document.review_status,
+                approval_rationale=source_document.approval_rationale,
+                parser_status=source_document.parser_status,
+                parser_failure_diagnostics=source_document.parser_failure_diagnostics,
             )
 
     return list(evidence_by_id.values())

@@ -39,7 +39,7 @@ from backend.models import (
     SourceUsePolicy,
     StateMessage,
 )
-from backend.source_policy import resolve_source_policy, source_can_support_generated_output
+from backend.source_policy import resolve_source_policy, source_can_support_generated_output, source_handoff_fields_from_policy
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -613,6 +613,11 @@ def _source_metadata(pack: AssetKnowledgePack) -> list[KnowledgePackSourceMetada
             allowlist_status=source.allowlist_status,
             source_use_policy=source.source_use_policy,
             permitted_operations=_policy_decision_for_source(source).permitted_operations,
+            **source_handoff_fields_from_policy(
+                _policy_decision_for_source(source),
+                source_identity=source.url or source.source_document_id,
+                approval_rationale="Deterministic retrieval fixture source passed local source-use policy review.",
+            ),
             citation_ids=sorted(set(citation_ids_by_source.get(source.source_document_id, []))),
             fact_ids=sorted(set(fact_ids_by_source.get(source.source_document_id, []))),
             recent_event_ids=sorted(set(recent_ids_by_source.get(source.source_document_id, []))),

@@ -383,6 +383,7 @@ Golden Asset Source Handoff is the strict/audit-quality approval layer between r
 - Approval/evidence layer: allowlisted domain, source type, official-source status, storage rights, export rights, source-use policy, rationale, parser validity, freshness/as-of metadata, and review status.
 - Approval statuses: `approved`, `pending_review`, and `rejected`.
 - In strict mode, missing, unclear, hidden/internal, parser-invalid, or unapproved sources default to `pending_review` or `rejected` and cannot support generated output.
+- The implemented strict promotion gate lives in `backend/source_policy.py`. It validates generated claim support, generated-output cacheability, allowed excerpt export, and markdown/JSON section export through one handoff path, including compatible storage/export rights, approved review status, parser status, freshness/as-of metadata, source-use policy, and sanitized hidden/internal source checks.
 - In lightweight mode, unresolved official-source gaps should trigger alternate official discovery, reputable fallback, `partial`, `unavailable`, or fallback labels rather than a whole-page block.
 - The operational rule is fetch only through SSRF-safe server-side retrieval/provider adapters, store raw text according to source-use policy, generate only from source-labeled facts/evidence, and export only rights-safe content.
 

@@ -1,28 +1,5 @@
 ## Current task
 
-### T-190: Enforce durable source snapshot and handoff promotion gates
-
-Goal:
-Make durable source snapshots and Golden Asset Source Handoff records the enforced promotion gate for strict evidence, generated-output cache entries, citations, source drawer support, and exports.
-
-Acceptance criteria:
-- Retrieved sources without approved identity, source type, official-source status, storage rights, export rights, source-use policy, parser status, freshness/as-of metadata, review status, and approval rationale default closed.
-- Pending-review, rejected, unclear-rights, parser-invalid, hidden/internal, metadata-only, and link-only sources cannot feed strict generated evidence, unrestricted excerpts, generated-output cache writes, or exports.
-- Lightweight personal-MVP display can still use source-labeled fallback only where `docs/LIGHTWEIGHT_DATA_POLICY.md` allows it and while raw payloads stay hidden.
-- Source drawer, export, generated-output cache, and knowledge-pack records expose only approved metadata and allowed excerpts.
-
-Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_source_policy.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_cache_contracts.py tests/unit/test_exports.py tests/unit/test_source_drawer.py -q`
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q`
-- `TMPDIR=/tmp python3 evals/run_static_evals.py`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
-- `git diff --check`
-
-Iteration budget:
-One source-governance cycle. Do not broaden the source allowlist or approve new domains unless the task also updates policy, rationale, tests, and development-log justification.
-
-## Backlog
-
 ### T-191: Convert launch pre-cache into durable job creation and manual worker execution
 
 Goal:
@@ -44,6 +21,8 @@ Required commands:
 
 Iteration budget:
 One worker/ledger cycle. Keep Cloud Run Jobs, schedulers, production credentials, broad live provider calls, and recurring ingestion out of scope unless a later deployment task promotes them.
+
+## Backlog
 
 ### T-192: Route asset surfaces through durable section state metadata
 
@@ -70,6 +49,24 @@ Iteration budget:
 One API/frontend integration cycle. If cache invalidation requires a schema migration, finish the backend metadata contract first and prepare a follow-up migration task.
 
 ## Completed
+
+### T-190: Enforce durable source snapshot and handoff promotion gates
+
+Goal:
+Make durable source snapshots and Golden Asset Source Handoff records the enforced promotion gate for strict evidence, generated-output cache entries, citations, source drawer support, and exports.
+
+Completion details:
+- Added a shared strict source-promotion action set and helper in `backend/source_policy.py` for generated claim support, generated-output cacheability, allowed excerpt export, and markdown/JSON section export.
+- Enforced compatible source-use/storage/export rights across source snapshots, knowledge-pack rows, generated-output cache inputs, citation validation, exports, source drawer excerpts, chat, comparison, overview, Weekly News, and live-AI smoke evidence.
+- Preserved lightweight personal-MVP fallback behavior by keeping lightweight records source-labeled, raw-payload-safe, and generated-output-cache-ineligible while allowing approved full-text sources to be handled with less-permissive summary storage.
+- Updated source-handoff, lightweight policy, technical design, and durable implementation docs to reflect the strict promotion gate and local lightweight exception.
+
+Required commands executed:
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/unit/test_source_policy.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_cache_contracts.py tests/unit/test_exports.py tests/unit/test_source_drawer.py -q` - pass, 88 passed
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q` - pass, 52 passed
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass, 632 backend tests plus static evals and frontend checks
+- `git diff --check` - pass
 
 ### T-189: Add durable schema execution smoke and restart-proof repository checks
 
@@ -5445,8 +5442,8 @@ Roadmap integration tracker:
 | Weekly News UI filters and local smoke validation | Completed | T-171 |
 | Asset-page backend section state and fallback notices | Completed | T-188 |
 | Durable schema execution smoke and repository checks | Completed | T-189 |
-| Durable source snapshot and handoff promotion gates | Current | T-190 |
-| Durable launch pre-cache job creation and worker execution | Prepared | T-191 |
+| Durable source snapshot and handoff promotion gates | Completed | T-190 |
+| Durable launch pre-cache job creation and worker execution | Current | T-191 |
 | Durable section-state route reads and generated-output cache authority | Prepared | T-192 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 

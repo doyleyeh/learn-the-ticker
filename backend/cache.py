@@ -27,6 +27,8 @@ from backend.models import (
     SourceAllowlistStatus,
     SourceChecksumInput,
     SourceChecksumRecord,
+    SourceExportRights,
+    SourceStorageRights,
     SourceUsePolicy,
 )
 
@@ -269,8 +271,8 @@ def source_checksum_from_retrieval_source(
         source_identity=_optional_attr(source, "source_identity") or _optional_attr(source, "url"),
         is_official=_optional_attr(source, "is_official"),
         source_quality=_optional_attr(source, "source_quality", "fixture"),
-        storage_rights=_optional_attr(source, "storage_rights", "raw_snapshot_allowed"),
-        export_rights=_optional_attr(source, "export_rights", "excerpts_allowed"),
+        storage_rights=_source_storage_rights(source),
+        export_rights=_source_export_rights(source),
         review_status=_optional_attr(source, "review_status", "approved"),
         approval_rationale=_optional_attr(
             source,
@@ -315,8 +317,8 @@ def source_checksum_from_provider_attribution(
         source_identity=_optional_attr(source, "source_identity") or _optional_attr(source, "url"),
         is_official=_optional_attr(source, "is_official"),
         source_quality=_optional_attr(source, "source_quality", "provider"),
-        storage_rights=_optional_attr(source, "storage_rights", "raw_snapshot_allowed"),
-        export_rights=_optional_attr(source, "export_rights", "excerpts_allowed"),
+        storage_rights=_source_storage_rights(source),
+        export_rights=_source_export_rights(source),
         review_status=_optional_attr(source, "review_status", "approved"),
         approval_rationale=_optional_attr(
             source,
@@ -494,6 +496,48 @@ def _checksum_can_feed_generated_output_cache(checksum: SourceChecksumRecord) ->
         and checksum.allowlist_status is SourceAllowlistStatus.allowed
         and checksum.source_use_policy in {SourceUsePolicy.summary_allowed, SourceUsePolicy.full_text_allowed}
     )
+
+
+def _source_storage_rights(source: Any) -> SourceStorageRights:
+    explicit = _optional_attr(source, "storage_rights")
+    policy = _source_use_policy(source)
+    if explicit is not None and not _default_raw_storage_for_limited_policy(explicit, policy):
+        return explicit if isinstance(explicit, SourceStorageRights) else SourceStorageRights(str(explicit))
+    if policy is SourceUsePolicy.summary_allowed:
+        return SourceStorageRights.summary_allowed
+    if policy is SourceUsePolicy.metadata_only:
+        return SourceStorageRights.metadata_only
+    if policy is SourceUsePolicy.link_only:
+        return SourceStorageRights.link_only
+    if policy is SourceUsePolicy.rejected:
+        return SourceStorageRights.rejected
+    return SourceStorageRights.raw_snapshot_allowed
+
+
+def _source_export_rights(source: Any) -> SourceExportRights:
+    explicit = _optional_attr(source, "export_rights")
+    policy = _source_use_policy(source)
+    if explicit is not None:
+        return explicit if isinstance(explicit, SourceExportRights) else SourceExportRights(str(explicit))
+    if policy in {SourceUsePolicy.full_text_allowed, SourceUsePolicy.summary_allowed}:
+        return SourceExportRights.excerpts_allowed
+    if policy is SourceUsePolicy.metadata_only:
+        return SourceExportRights.metadata_only
+    if policy is SourceUsePolicy.link_only:
+        return SourceExportRights.link_only
+    return SourceExportRights.rejected
+
+
+def _source_use_policy(source: Any) -> SourceUsePolicy:
+    policy = _optional_attr(source, "source_use_policy", SourceUsePolicy.rejected)
+    return policy if isinstance(policy, SourceUsePolicy) else SourceUsePolicy(str(policy))
+
+
+def _default_raw_storage_for_limited_policy(value: Any, policy: SourceUsePolicy) -> bool:
+    if policy not in {SourceUsePolicy.summary_allowed, SourceUsePolicy.metadata_only, SourceUsePolicy.link_only}:
+        return False
+    normalized = value if isinstance(value, SourceStorageRights) else SourceStorageRights(str(value))
+    return normalized is SourceStorageRights.raw_snapshot_allowed
 
 
 def cache_entry_metadata_from_llm_generation(

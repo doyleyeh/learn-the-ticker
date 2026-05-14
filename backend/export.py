@@ -1615,11 +1615,14 @@ def _export_sources(sources: list[Any]) -> list[ExportSourceMetadata]:
         decision = _decision_from_source_like(source)
         if decision.decision is not SourcePolicyDecisionState.allowed:
             continue
-        handoff = validate_source_handoff(_source_like_with_policy(source, decision), action=SourcePolicyAction.diagnostics)
+        source_like = _source_like_with_policy(source, decision)
+        handoff = validate_source_handoff(source_like, action=SourcePolicyAction.diagnostics)
         if not handoff.allowed:
             continue
-        excerpt_text = excerpt_text_for_policy(supporting_passage, decision)
-        excerpt_decision = decision if source_can_export_excerpt(decision) else _resolved_decision_from_source_like(source)
+        excerpt_handoff = validate_source_handoff(source_like, action=SourcePolicyAction.allowed_excerpt_export)
+        excerpt_allowed = source_can_export_excerpt(decision) and excerpt_handoff.allowed
+        excerpt_text = excerpt_text_for_policy(supporting_passage, decision) if excerpt_allowed else None
+        excerpt_decision = decision if excerpt_allowed else _resolved_decision_from_source_like(source)
         exported.append(
             ExportSourceMetadata(
                 source_document_id=source.source_document_id,
@@ -1649,11 +1652,11 @@ def _export_sources(sources: list[Any]) -> list[ExportSourceMetadata]:
                 parser_failure_diagnostics=getattr(source, "parser_failure_diagnostics", None),
                 allowed_excerpt=ExportExcerpt(
                     excerpt_id=f"excerpt_{citation_id or source.source_document_id}",
-                    kind="supporting_passage" if source_can_export_excerpt(decision) else "excerpt_metadata",
+                    kind="supporting_passage" if excerpt_allowed else "excerpt_metadata",
                     text=excerpt_text,
                     citation_id=citation_id,
                     chunk_id=chunk_id,
-                    redistribution_allowed=decision.permitted_operations.can_export_excerpt,
+                    redistribution_allowed=decision.permitted_operations.can_export_excerpt and excerpt_allowed,
                     source_use_policy=excerpt_decision.source_use_policy,
                     allowlist_status=excerpt_decision.allowlist_status,
                     note=excerpt_decision.allowed_excerpt.note,

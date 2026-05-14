@@ -36,6 +36,7 @@ from backend.generation_evidence import evidence_pack_from_weekly_news
 from backend.news_quality import publisher_tier, score_ticker_weekly_news
 from backend.retrieval import AssetKnowledgePack, RetrievedRecentDevelopment
 from backend.safety import find_forbidden_output_phrases
+from backend.source_policy import resolve_source_policy, source_handoff_fields_from_policy
 from backend.summary_generation import (
     HybridSummaryGenerationService,
     SummaryGenerationContractError,
@@ -919,6 +920,10 @@ def _candidate_from_recent_development(item: RetrievedRecentDevelopment) -> Week
 
 
 def _source_document_from_item(item: WeeklyNewsItem) -> SourceDocument:
+    decision = resolve_source_policy(
+        url=item.source.url,
+        source_identifier=item.source.url if item.source.url.startswith("local://") else None,
+    )
     return SourceDocument(
         source_document_id=item.source.source_document_id,
         source_type=item.source.source_type,
@@ -934,6 +939,12 @@ def _source_document_from_item(item: WeeklyNewsItem) -> SourceDocument:
         source_quality=item.source.source_quality,
         allowlist_status=item.source.allowlist_status,
         source_use_policy=item.source.source_use_policy,
+        permitted_operations=decision.permitted_operations,
+        **source_handoff_fields_from_policy(
+            decision,
+            source_identity=item.source.url or item.source.source_document_id,
+            approval_rationale="Weekly News Focus source passed local source-use policy review.",
+        ),
     )
 
 
