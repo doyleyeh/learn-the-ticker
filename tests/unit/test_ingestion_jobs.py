@@ -70,8 +70,10 @@ def test_configured_ledger_backs_pre_cache_creation_status_and_worker_execution(
     completed_status = get_pre_cache_job_status("pre-cache-launch-spy", ingestion_job_ledger=ledger)
 
     assert created.job_id == "pre-cache-launch-spy"
-    assert queued_status.job_state.value == "pending"
-    assert execution.summary.transitions == ["pending", "running", "succeeded"]
+    assert queued_status.job_state.value == "queued"
+    assert queued_status.generated_route is None
+    assert queued_status.generated_output_available is False
+    assert execution.summary.transitions == ["queued", "running", "succeeded"]
     assert completed_status.job_state.value == "succeeded"
     assert completed_status.generated_route is None
     assert completed_status.generated_output_available is False
@@ -299,6 +301,28 @@ def test_launch_universe_pre_cache_batch_is_deterministic_and_covers_control_set
         assert job.job_id == f"pre-cache-launch-{ticker.lower()}"
         assert job.status_url == f"/api/admin/pre-cache/jobs/pre-cache-launch-{ticker.lower()}"
         assert job.launch_group
+
+
+def test_launch_pre_cache_with_configured_ledger_queues_durable_jobs_without_static_outputs():
+    ledger = InMemoryIngestionWorkerLedger()
+
+    batch = request_launch_universe_pre_cache(ingestion_job_ledger=ledger)
+    jobs_by_ticker = {job.ticker: job for job in batch.jobs}
+
+    assert "durable launch-universe pre-cache queued ledger jobs" in batch.message.lower()
+    for ticker in ["AAPL", "VOO", "QQQ", "SPY", "NVDA"]:
+        job = jobs_by_ticker[ticker]
+        persisted = ledger.get(job.job_id)
+        assert job.job_state.value == "queued"
+        assert job.worker_status.value == "queued"
+        assert job.generated_route is None
+        assert job.generated_output_available is False
+        assert job.capabilities.can_open_generated_page is False
+        assert job.capabilities.can_answer_chat is False
+        assert job.capabilities.can_compare is False
+        assert persisted is not None
+        assert persisted.ledger.job_state == "queued"
+        assert persisted.ledger.generated_output_available is False
 
 
 def test_local_ingestion_priority_plan_is_review_only_batchable_and_manifest_ordered():

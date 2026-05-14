@@ -221,13 +221,15 @@ gcloud run services update-traffic learn-the-ticker-api \
 The API image includes a manual job entrypoint:
 
 ```bash
+python -m backend.cloud_job plan-launch-pre-cache
 python -m backend.cloud_job run-pre-cache --ticker VOO
 python -m backend.cloud_job run-ingestion --ticker SPY
 python -m backend.cloud_job run-job --job-id ingest-on-demand-spy
+python -m backend.cloud_job retry-job --job-id ingest-on-demand-spy
 python -m backend.cloud_job status --job-id ingest-on-demand-spy
 ```
 
-In `APP_ENV=production`, the entrypoint fails closed unless a durable `ingestion_jobs` ledger is configured through `LOCAL_DURABLE_REPOSITORIES_ENABLED=true`, `LOCAL_DURABLE_REPOSITORIES_FAIL_FAST=true`, and `DATABASE_URL`. Use `--allow-fixture-fallback` only for local/docker-compose deterministic smoke, never for production Cloud Run Jobs.
+In `APP_ENV=production`, the entrypoint fails closed unless a durable `ingestion_jobs` ledger is configured through `LOCAL_DURABLE_REPOSITORIES_ENABLED=true`, `LOCAL_DURABLE_REPOSITORIES_FAIL_FAST=true`, and `DATABASE_URL`. Use `--allow-fixture-fallback` only for local/docker-compose deterministic smoke, never for production Cloud Run Jobs. With a durable ledger configured, `plan-launch-pre-cache` creates queued ledger rows without provider calls or generated outputs, `run-job` claims and finishes one queued/running row idempotently, and `retry-job` requeues retryable failed, stale, unavailable, or partial rows after sanitized diagnostics have been recorded.
 
 Create a manual Cloud Run Job from the same image:
 
@@ -256,7 +258,7 @@ gcloud run jobs execute learn-the-ticker-pre-cache --region="${REGION}" --wait
 Remaining hardening before recurring jobs:
 
 - app-level auth/rate limiting if admin-triggered job routes are re-enabled;
-- source snapshot, knowledge-pack, Weekly News, and generated-output cache persistence review;
+- source snapshot, knowledge-pack, Weekly News, and generated-output cache persistence review before live acquisition writes are enabled for a job;
 - live acquisition readiness checks for the exact job being scheduled.
 
 For the top-500 manifest refresh specifically, prefer GitHub Actions first because the output is a source-controlled candidate manifest and diff report that requires manual approval. Cloud Scheduler plus Cloud Run Job is a later option and must still require manual approval before promotion to `us_common_stocks_top500.current.json`.

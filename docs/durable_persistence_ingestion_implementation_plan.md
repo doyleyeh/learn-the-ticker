@@ -130,6 +130,7 @@ Concrete changes:
 
 - Use `ingestion_jobs` as the first queue/ledger with statuses such as `queued`, `running`, `succeeded`, `failed`, `cancelled`, `unsupported`, `out_of_scope`, `unknown`, `unavailable`, `partial`, and `stale`.
 - Add safe job claiming with retry/lease metadata so manual Cloud Run Jobs can execute idempotently.
+- Current local implementation note: with durable repositories configured, `request_launch_universe_pre_cache` writes queued ledger records, `DeterministicIngestionWorker` exposes claim/retry helpers, and `backend.cloud_job` supports `plan-launch-pre-cache`, `run-job`, `retry-job`, `run-pre-cache`, status inspection, and production fail-closed durable-ledger checks. The worker remains deterministic and fixture-backed until a later task enables live acquisition for specific jobs.
 - Execute worker steps in order:
   - classify asset from manifests/recognition data;
   - fetch official sources first;

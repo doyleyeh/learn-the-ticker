@@ -243,7 +243,8 @@ Ticker Weekly News acquisition remains official -> configured provider/news APIs
 - Generate embeddings when the embedding adapter is enabled.
 - Refresh stale assets.
 - Support pre-cache jobs for high-demand stocks and ETFs, source/provider fallback jobs, and explicit `pending_ingestion` states for assets outside the pre-cache set.
-- Track ingestion job status.
+- Track ingestion job status across `queued`, `pending`, `running`, `succeeded`, `failed`, `cancelled`, `partial`, `unsupported`, `out_of_scope`, `unknown`, `unavailable`, and `stale` ledger states while preserving `pending` compatibility for older deterministic fixtures.
+- When durable repositories are configured, launch pre-cache enqueue requests create queued ledger rows and do not claim that provider calls, source snapshots, citations, generated outputs, or generated-output cache records already exist.
 
 **Recommended queue model**
 
@@ -2521,6 +2522,7 @@ Cloud Run Jobs requirements:
 
 - Use the same API/worker image family and production env settings where possible.
 - Use the Postgres `ingestion_jobs` table as the job ledger and queue for v1.
+- Use `backend.cloud_job plan-launch-pre-cache` to enqueue launch jobs, `run-job` to claim and finish one queued/running job, `retry-job` to requeue retryable sanitized failures, and `status` to inspect the durable ledger record.
 - Add Cloud Scheduler later only after manual job execution is reliable and recurring ingestion is needed.
 
 Storage requirements:

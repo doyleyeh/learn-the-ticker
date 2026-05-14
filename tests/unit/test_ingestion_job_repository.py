@@ -5,9 +5,11 @@ from pathlib import Path
 
 import pytest
 
+from backend.models import IngestionWorkerStatus
 from backend.ingestion import (
     get_ingestion_job_status,
     get_pre_cache_job_status,
+    request_pre_cache_for_asset,
     request_ingestion,
 )
 from backend.ingestion_job_repository import (
@@ -78,10 +80,13 @@ def test_ingestion_job_ledger_supports_required_categories_and_states():
         "source_revalidation",
     }
     assert {state.value for state in IngestionLedgerJobState} == {
+        "queued",
         "pending",
         "running",
         "succeeded",
         "failed",
+        "cancelled",
+        "partial",
         "unsupported",
         "out_of_scope",
         "unknown",
@@ -184,6 +189,38 @@ def test_durable_ingestion_ledger_save_and_read_preserve_validated_records():
     assert session.commits == 1
     assert repository.read(records.ledger.job_id) == records
     assert repository.get("missing") is None
+
+
+def test_queued_durable_pre_cache_record_is_non_generated_and_restart_safe():
+    session = FakeDurableSession()
+    repository = IngestionJobLedgerRepository(session=session)
+    response = request_pre_cache_for_asset("AAPL")
+    queued_response = response.model_copy(
+        update={
+            "job_state": IngestionLedgerJobState.queued,
+            "worker_status": IngestionWorkerStatus.queued,
+            "retryable": True,
+            "generated_route": None,
+            "generated_output_available": False,
+            "capabilities": response.capabilities.model_copy(
+                update={
+                    "can_open_generated_page": False,
+                    "can_answer_chat": False,
+                    "can_compare": False,
+                    "can_request_ingestion": True,
+                }
+            ),
+        }
+    )
+
+    records = repository.serialize_response(queued_response)
+    repository.save(records)
+
+    assert records.ledger.job_state == "queued"
+    assert records.scope.support_status == "supported"
+    assert records.ledger.generated_route is None
+    assert records.ledger.generated_output_available is False
+    assert repository.get("pre-cache-launch-aapl") == records
 
 
 def test_ledger_serializes_manual_pre_cache_blocked_assets_without_generated_output():

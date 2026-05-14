@@ -83,10 +83,13 @@ class IngestionJobType(str, Enum):
 
 
 class IngestionJobState(str, Enum):
+    queued = "queued"
     pending = "pending"
     running = "running"
     succeeded = "succeeded"
     failed = "failed"
+    cancelled = "cancelled"
+    partial = "partial"
     refresh_needed = "refresh_needed"
     no_ingestion_needed = "no_ingestion_needed"
     unsupported = "unsupported"

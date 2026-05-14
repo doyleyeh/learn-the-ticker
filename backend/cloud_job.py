@@ -19,7 +19,7 @@ from backend.ingestion_worker import DeterministicIngestionWorker
 from backend.persistence import BackendReadDependencies, build_backend_read_dependencies_from_local_durable_config
 
 
-PENDING_JOB_STATES = {"pending", "running", "refresh_needed"}
+PENDING_JOB_STATES = {"queued", "pending", "running", "refresh_needed"}
 
 
 class CloudJobConfigurationError(RuntimeError):
@@ -67,6 +67,10 @@ def run_from_args(args: argparse.Namespace) -> dict[str, Any]:
         if args.job_id is None:
             raise CloudJobConfigurationError("job_id_required")
         return _execute_job_payload(args.job_id, dependencies=dependencies, allow_fixture_fallback=args.allow_fixture_fallback)
+    if args.operation == "retry-job":
+        if args.job_id is None:
+            raise CloudJobConfigurationError("job_id_required")
+        return _retry_job_payload(args.job_id, dependencies=dependencies)
     if args.operation == "run-ingestion":
         if args.ticker is None:
             raise CloudJobConfigurationError("ticker_required")
@@ -140,6 +144,24 @@ def _execute_job_payload(
     }
 
 
+def _retry_job_payload(
+    job_id: str,
+    *,
+    dependencies: BackendReadDependencies,
+) -> dict[str, Any]:
+    ledger = dependencies.reader("ingestion_job_ledger")
+    if ledger is None:
+        raise CloudJobConfigurationError("durable_ingestion_job_ledger_required")
+    retried = DeterministicIngestionWorker(ledger_boundary=ledger).retry(job_id)
+    return {
+        "status": retried.ledger.job_state,
+        "operation": "retry-job",
+        "durable_ledger_configured": True,
+        "executed_worker": False,
+        "ledger_record": _jsonable(retried.ledger),
+    }
+
+
 def _execute_job(
     job_id: str,
     *,
@@ -176,7 +198,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run Learn the Ticker Cloud Run Job operations.")
     parser.add_argument(
         "operation",
-        choices=("status", "run-job", "run-ingestion", "run-pre-cache", "plan-launch-pre-cache"),
+        choices=("status", "run-job", "retry-job", "run-ingestion", "run-pre-cache", "plan-launch-pre-cache"),
     )
     parser.add_argument("--ticker")
     parser.add_argument("--job-id")

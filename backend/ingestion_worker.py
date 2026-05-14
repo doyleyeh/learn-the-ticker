@@ -23,6 +23,8 @@ INGESTION_WORKER_EXECUTION_BOUNDARY = "deterministic-ingestion-worker-execution-
 _TERMINAL_STATES = {
     IngestionLedgerJobState.succeeded.value,
     IngestionLedgerJobState.failed.value,
+    IngestionLedgerJobState.cancelled.value,
+    IngestionLedgerJobState.partial.value,
     IngestionLedgerJobState.unsupported.value,
     IngestionLedgerJobState.out_of_scope.value,
     IngestionLedgerJobState.unknown.value,
@@ -31,6 +33,8 @@ _TERMINAL_STATES = {
 }
 _BLOCKED_OUTPUT_STATES = {
     IngestionLedgerJobState.failed.value,
+    IngestionLedgerJobState.cancelled.value,
+    IngestionLedgerJobState.partial.value,
     IngestionLedgerJobState.unsupported.value,
     IngestionLedgerJobState.out_of_scope.value,
     IngestionLedgerJobState.unknown.value,
@@ -40,6 +44,16 @@ _BLOCKED_SCOPE_DECISIONS = {
     "blocked_unsupported_asset",
     "blocked_out_of_scope_asset",
     "unknown_or_unavailable_asset",
+}
+_CLAIMABLE_STATES = {
+    IngestionLedgerJobState.queued.value,
+    IngestionLedgerJobState.pending.value,
+}
+_RETRYABLE_TERMINAL_STATES = {
+    IngestionLedgerJobState.failed.value,
+    IngestionLedgerJobState.unavailable.value,
+    IngestionLedgerJobState.stale.value,
+    IngestionLedgerJobState.partial.value,
 }
 _SENSITIVE_MESSAGE_MARKERS = ("secret", "password", "token", "provider payload", "raw text")
 
@@ -162,10 +176,29 @@ class DeterministicIngestionWorker:
     generated_output_cache_repository: GeneratedOutputCacheWriterBoundary | None = None
     timestamp: str = STUB_TIMESTAMP
 
+    def claim(self, job_id: str) -> IngestionJobLedgerRecords:
+        records = self.ledger_boundary.get(job_id)
+        if records is None:
+            raise IngestionWorkerContractError("Injected ingestion ledger has no record for job_id.")
+        claimed = claim_ingestion_worker_record(records, timestamp=self.timestamp)
+        self.ledger_boundary.save(claimed)
+        return claimed
+
+    def retry(self, job_id: str) -> IngestionJobLedgerRecords:
+        records = self.ledger_boundary.get(job_id)
+        if records is None:
+            raise IngestionWorkerContractError("Injected ingestion ledger has no record for job_id.")
+        retried = retry_ingestion_worker_record(records, timestamp=self.timestamp)
+        self.ledger_boundary.save(retried)
+        return retried
+
     def execute(self, job_id: str) -> IngestionWorkerExecutionResult:
         records = self.ledger_boundary.get(job_id)
         if records is None:
-            raise IngestionWorkerContractError("Injected in-memory ingestion ledger has no record for job_id.")
+            raise IngestionWorkerContractError("Injected ingestion ledger has no record for job_id.")
+        claimed = claim_ingestion_worker_record(records, timestamp=self.timestamp)
+        if claimed != records and records.ledger.job_state not in _TERMINAL_STATES:
+            self.ledger_boundary.save(claimed)
         outcome = self.fixture_outcomes.get(job_id)
         result = execute_ingestion_worker_record(records, fixture_outcome=outcome, timestamp=self.timestamp)
         if _should_fail_closed_live_acquisition(outcome, self):
@@ -267,11 +300,87 @@ def execute_ingestion_worker_record(
     if initial_state in _TERMINAL_STATES:
         return _result(records, initial_state=initial_state, transitions=[initial_state])
 
+    claimed = claim_ingestion_worker_record(records, timestamp=timestamp)
     outcome = fixture_outcome or _default_fixture_outcome(records)
     transitions = _transitions(initial_state, outcome.terminal_state.value)
-    updated = _apply_terminal_outcome(records, outcome, timestamp=timestamp)
+    updated = _apply_terminal_outcome(claimed, outcome, timestamp=timestamp)
     validate_ingestion_job_ledger_records(updated)
     return _result(updated, initial_state=initial_state, transitions=transitions)
+
+
+def claim_ingestion_worker_record(
+    records: IngestionJobLedgerRecords,
+    *,
+    timestamp: str = STUB_TIMESTAMP,
+) -> IngestionJobLedgerRecords:
+    validate_ingestion_job_ledger_records(records)
+    if records.ledger.job_state in _TERMINAL_STATES:
+        return records
+    if records.ledger.job_state == IngestionLedgerJobState.running.value:
+        return records
+    if records.ledger.job_state not in _CLAIMABLE_STATES:
+        raise IngestionWorkerContractError(f"Job state {records.ledger.job_state!r} cannot be claimed.")
+    metadata = {
+        **records.ledger.compact_metadata,
+        "worker_execution_boundary": INGESTION_WORKER_EXECUTION_BOUNDARY,
+        "claimed_at": records.ledger.compact_metadata.get("claimed_at") or timestamp,
+    }
+    ledger = records.ledger.model_copy(
+        update={
+            "job_state": IngestionLedgerJobState.running.value,
+            "worker_status": "running",
+            "updated_at": timestamp,
+            "started_at": records.ledger.started_at or timestamp,
+            "compact_metadata": metadata,
+        }
+    )
+    return IngestionJobLedgerRecords(
+        ledger=ledger,
+        scope=records.scope,
+        source_refs=records.source_refs,
+        diagnostics=records.diagnostics,
+    )
+
+
+def retry_ingestion_worker_record(
+    records: IngestionJobLedgerRecords,
+    *,
+    timestamp: str = STUB_TIMESTAMP,
+) -> IngestionJobLedgerRecords:
+    validate_ingestion_job_ledger_records(records)
+    if records.ledger.job_state not in _RETRYABLE_TERMINAL_STATES or not records.ledger.retryable:
+        return records
+    retry_count = int(records.ledger.compact_metadata.get("retry_count") or 0) + 1
+    metadata = {
+        **records.ledger.compact_metadata,
+        "worker_execution_boundary": INGESTION_WORKER_EXECUTION_BOUNDARY,
+        "retry_count": retry_count,
+        "last_retry_requested_at": timestamp,
+    }
+    ledger = records.ledger.model_copy(
+        update={
+            "job_state": IngestionLedgerJobState.queued.value,
+            "worker_status": "queued",
+            "generated_route": None,
+            "generated_output_available": False,
+            "can_open_generated_page": False,
+            "can_answer_chat": False,
+            "can_compare": False,
+            "can_request_ingestion": True,
+            "updated_at": timestamp,
+            "started_at": None,
+            "finished_at": None,
+            "compact_metadata": metadata,
+        }
+    )
+    retried = IngestionJobLedgerRecords(
+        ledger=ledger,
+        scope=records.scope,
+        source_refs=records.source_refs,
+        diagnostics=records.diagnostics,
+    )
+    validate_ingestion_job_ledger_records(retried)
+    return retried
 
 
 def _default_fixture_outcome(records: IngestionJobLedgerRecords) -> IngestionWorkerFixtureOutcome:
@@ -384,6 +493,8 @@ def _diagnostic_for_outcome(
 ) -> IngestionJobLedgerDiagnosticRow | None:
     if outcome.error_category is None and outcome.terminal_state not in {
         IngestionLedgerJobState.failed,
+        IngestionLedgerJobState.cancelled,
+        IngestionLedgerJobState.partial,
         IngestionLedgerJobState.unavailable,
         IngestionLedgerJobState.stale,
     }:
@@ -418,10 +529,14 @@ def _worker_status_for_terminal_state(terminal_state: str) -> str | None:
         return "succeeded"
     if terminal_state == "failed":
         return "failed"
+    if terminal_state == "cancelled":
+        return "cancelled"
     return None
 
 
 def _transitions(initial_state: str, terminal_state: str) -> list[str]:
+    if initial_state == "queued":
+        return ["queued", "running", terminal_state]
     if initial_state == "pending":
         return ["pending", "running", terminal_state]
     if initial_state == "running":

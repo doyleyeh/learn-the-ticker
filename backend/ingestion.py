@@ -45,10 +45,12 @@ LOCAL_INGESTION_PRIORITY_PLAN_BOUNDARY = "local-ingestion-priority-planner-revie
 LOCAL_INGESTION_PRIORITY_PLAN_BATCH_SIZE = 5
 HIGH_DEMAND_PRE_CACHE_TICKERS: tuple[str, ...] = ("AAPL", "VOO", "QQQ")
 PLANNER_DIAGNOSTIC_STATE_KEYS: tuple[str, ...] = (
+    "queued",
     "pending",
     "running",
     "succeeded",
     "failed",
+    "cancelled",
     "unsupported",
     "out_of_scope",
     "unknown",
@@ -159,10 +161,7 @@ def request_launch_universe_pre_cache(
         updated_at=STUB_TIMESTAMP,
         summary=_pre_cache_summary(jobs),
         jobs=jobs,
-        message=(
-            "Deterministic launch-universe pre-cache contract only. No workers, queues, provider calls, "
-            "source facts, citations, or generated outputs are created by this request."
-        ),
+        message=_pre_cache_batch_message(jobs, ingestion_job_ledger=ingestion_job_ledger),
     )
 
 
@@ -324,6 +323,10 @@ def request_pre_cache_for_asset(
         existing = _configured_pre_cache_job_response(ingestion_job_ledger, job_id, expected_ticker=normalized)
         if existing:
             return existing
+        if ingestion_job_ledger is not None:
+            durable_job = _queued_pre_cache_job_for_supported_ticker(normalized)
+            if _try_save_pre_cache_job_response(durable_job, ingestion_job_ledger):
+                return durable_job
         return _save_pre_cache_job_response(_pre_cache_job_for_launch_ticker(normalized), ingestion_job_ledger)
     if normalized in UNSUPPORTED_ASSETS:
         return _save_pre_cache_job_response(_pre_cache_unsupported_job(normalized), ingestion_job_ledger)
@@ -486,13 +489,21 @@ def _save_pre_cache_job_response(
     response: PreCacheJobResponse,
     ingestion_job_ledger: IngestionWorkerLedgerBoundary | None,
 ) -> PreCacheJobResponse:
+    _try_save_pre_cache_job_response(response, ingestion_job_ledger)
+    return response
+
+
+def _try_save_pre_cache_job_response(
+    response: PreCacheJobResponse,
+    ingestion_job_ledger: IngestionWorkerLedgerBoundary | None,
+) -> bool:
     if ingestion_job_ledger is None:
-        return response
+        return False
     try:
         ingestion_job_ledger.save(serialize_ingestion_job_response(response))
     except Exception:
-        return response
-    return response
+        return False
+    return True
 
 
 def _fallback_records_for_worker(job_id: str) -> IngestionJobLedgerRecords:
@@ -697,6 +708,46 @@ def _pre_cache_job_for_launch_ticker(ticker: str) -> PreCacheJobResponse:
     )
 
 
+def _queued_pre_cache_job_for_supported_ticker(ticker: str) -> PreCacheJobResponse:
+    cached_asset = ASSETS.get(ticker)
+    if cached_asset:
+        identity: AssetIdentity = cached_asset["identity"]
+        return _pre_cache_job_response(
+            ticker=identity.ticker,
+            name=identity.name,
+            asset_type=identity.asset_type,
+            launch_group=_CACHED_LAUNCH_GROUPS[identity.ticker],
+            job_state=IngestionJobState.queued,
+            worker_status=IngestionWorkerStatus.queued,
+            retryable=True,
+            capabilities=_capabilities(can_request_ingestion=True),
+            generated_output_available=False,
+            message=(
+                f"{identity.ticker} has a durable pre-cache ledger job queued for manual worker execution. "
+                "No provider call, source snapshot, citation, generated output, or reusable generated-output cache entry "
+                "was created by the enqueue request."
+            ),
+        )
+
+    metadata = ELIGIBLE_NOT_CACHED_ASSETS[ticker]
+    return _pre_cache_job_response(
+        ticker=ticker,
+        name=str(metadata["name"]),
+        asset_type=AssetType(str(metadata["asset_type"])),
+        launch_group=str(metadata["launch_group"]),
+        job_state=IngestionJobState.queued,
+        worker_status=IngestionWorkerStatus.queued,
+        retryable=True,
+        capabilities=_capabilities(can_request_ingestion=True),
+        generated_output_available=False,
+        message=(
+            f"{ticker} has a durable pre-cache ledger job queued for manual worker execution. "
+            "No provider call, source snapshot, citation, generated output, or reusable generated-output cache entry "
+            "was created by the enqueue request."
+        ),
+    )
+
+
 def _pre_cache_unsupported_job(ticker: str) -> PreCacheJobResponse:
     return _pre_cache_job_response(
         ticker=ticker,
@@ -753,13 +804,34 @@ def _pre_cache_summary(jobs: list[PreCacheJobResponse]) -> PreCacheBatchSummary:
         queued_or_pending_assets=sum(
             1
             for job in jobs
-            if job.job_state is IngestionJobState.pending or job.worker_status is IngestionWorkerStatus.queued
+            if job.job_state in {IngestionJobState.queued, IngestionJobState.pending}
+            or job.worker_status is IngestionWorkerStatus.queued
         ),
         running_assets=sum(1 for job in jobs if job.job_state is IngestionJobState.running),
         failed_assets=sum(1 for job in jobs if job.job_state is IngestionJobState.failed),
         unsupported_assets=sum(1 for job in jobs if job.job_state is IngestionJobState.unsupported),
         unknown_assets=sum(1 for job in jobs if job.job_state is IngestionJobState.unknown),
         generated_output_available_assets=sum(1 for job in jobs if job.generated_output_available),
+    )
+
+
+def _pre_cache_batch_message(
+    jobs: list[PreCacheJobResponse],
+    *,
+    ingestion_job_ledger: IngestionWorkerLedgerBoundary | None,
+) -> str:
+    durable_queued = ingestion_job_ledger is not None and any(
+        job.job_state is IngestionJobState.queued for job in jobs
+    )
+    if durable_queued:
+        return (
+            "Durable launch-universe pre-cache queued ledger jobs for manual worker execution. "
+            "The enqueue request itself made no provider calls, source facts, citations, generated outputs, "
+            "or reusable generated-output cache entries."
+        )
+    return (
+        "Deterministic launch-universe pre-cache contract only. No workers, queues, provider calls, "
+        "source facts, citations, or generated outputs are created by this request."
     )
 
 
@@ -952,7 +1024,9 @@ def _planner_readiness_state(readiness_row: dict[str, object] | None) -> str:
 
 def _planner_blocker_reason_codes(job: PreCacheJobResponse, readiness_row: dict[str, object] | None) -> list[str]:
     reasons: list[str] = []
-    if job.job_state is IngestionJobState.pending:
+    if job.job_state is IngestionJobState.queued:
+        reasons.append("queued_ingestion")
+    elif job.job_state is IngestionJobState.pending:
         reasons.append("pending_ingestion")
     elif job.job_state is IngestionJobState.running:
         reasons.append("running_job")

@@ -1,29 +1,5 @@
 ## Current task
 
-### T-191: Convert launch pre-cache into durable job creation and manual worker execution
-
-Goal:
-Replace deterministic launch pre-cache status-only behavior with an explicitly gated durable job-creation path and manual worker execution loop backed by the Postgres-style ingestion ledger.
-
-Acceptance criteria:
-- Durable mode launch pre-cache creates queued ledger jobs for supported high-demand assets instead of only returning static status fixtures.
-- The manual worker can claim, run, retry, and finish jobs idempotently through injected durable repositories.
-- Worker diagnostics are sanitized and never include secrets, raw provider payloads, unrestricted source text, hidden prompts, raw model reasoning, or transcripts.
-- Unsupported, out-of-scope, unknown, unavailable, pending-review, and source-policy-blocked rows remain generated-output-ineligible.
-- Normal CI uses mocked repositories and deterministic provider/source fixtures only.
-
-Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_ingestion_jobs.py tests/unit/test_ingestion_job_repository.py tests/unit/test_ingestion_worker.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_cache_contracts.py -q`
-- `TMPDIR=/tmp python3 -m pytest tests/integration/test_backend_api.py -q`
-- `TMPDIR=/tmp python3 evals/run_static_evals.py`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
-- `git diff --check`
-
-Iteration budget:
-One worker/ledger cycle. Keep Cloud Run Jobs, schedulers, production credentials, broad live provider calls, and recurring ingestion out of scope unless a later deployment task promotes them.
-
-## Backlog
-
 ### T-192: Route asset surfaces through durable section state metadata
 
 Goal:
@@ -49,6 +25,29 @@ Iteration budget:
 One API/frontend integration cycle. If cache invalidation requires a schema migration, finish the backend metadata contract first and prepare a follow-up migration task.
 
 ## Completed
+
+### T-191: Convert launch pre-cache into durable job creation and manual worker execution
+
+Goal:
+Replace deterministic launch pre-cache status-only behavior with an explicitly gated durable job-creation path and manual worker execution loop backed by the Postgres-style ingestion ledger.
+
+Completion details:
+- Added `queued`, `cancelled`, and `partial` ingestion job states to the backend response and ledger enums while preserving existing `pending` fixture compatibility.
+- Made configured durable launch pre-cache enqueue queued ledger jobs with no generated route, generated output, citations, provider calls, source snapshots, or cache entries; no-ledger local/CI behavior remains deterministic fixture-backed.
+- Added explicit deterministic worker claim/retry helpers, queued-to-running-to-terminal transitions, retry metadata, and idempotent repeat execution for terminal jobs.
+- Extended `backend.cloud_job` with durable `retry-job` support and ensured `plan-launch-pre-cache`, `run-job`, `run-pre-cache`, status, and production fail-closed checks use the injected durable ledger.
+- Updated deployment, technical design, and durable implementation docs with the manual worker runbook and remaining live-acquisition hardening boundary.
+
+Required commands executed:
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/unit/test_ingestion_jobs.py tests/unit/test_ingestion_job_repository.py tests/unit/test_ingestion_worker.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_cache_contracts.py -q` - pass, 126 passed
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/integration/test_backend_api.py -q` - pass, 49 passed
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass, 636 backend tests plus static evals and frontend checks
+- `git diff --check` - pass
+
+Remaining risks:
+- The worker still uses deterministic fixtures and mocked writers; live acquisition, recurring schedulers, public admin exposure, and production object-storage writes remain intentionally out of scope.
+- Durable queued jobs are local repository-protocol records until a production Postgres/object-storage deployment executes the corresponding migration and operator setup.
 
 ### T-190: Enforce durable source snapshot and handoff promotion gates
 
