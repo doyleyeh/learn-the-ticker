@@ -41,8 +41,10 @@ Verify:
 - source drawer supports desktop drawer behavior and mobile bottom-sheet behavior
 - freshness, stale, unknown, unavailable, partial, and insufficient-evidence states are visible where relevant
 - asset pages visibly distinguish backend/API timeout, invalid-contract, unavailable, and no-API-base fallback states from verified `no_high_signal` or empty Weekly News Focus states
+- supported asset pages show a progressive loading shell or section-local loading placeholders for normal slow backend responses instead of the old whole-page temporary-unavailable state
 - asset pages show section-state notices inline with their sections and do not render redundant standalone Glossary context, Economic Indicators, Asset details, or Source drawer status panels
 - source-labeled lightweight local evidence is not shown as a page-level fallback card, while deterministic fixture or backend-failure content remains labeled where displayed
+- Beginner Summary, Deep Dive summaries, Market AI, and ticker AI expose inline generation-state notes for live generation, deterministic fallback, timeout fallback, insufficient evidence, or backend error
 - Economic Indicators appears as one visible section with inline live/imported/fixture source-state copy
 - beginner copy avoids buy/sell/hold, allocation, price-target, tax, and brokerage language
 - Market News Focus, ticker-specific Weekly News Focus, and AI Comprehensive Analysis remain visually separate from stable facts and from each other
@@ -96,6 +98,7 @@ Verify:
 - important factual claims have citations or explicit uncertainty
 - Weekly News Focus and AI Comprehensive Analysis claims cite the correct evidence layer
 - generated Beginner Summary, Deep Dive, Market AI, and ticker AI use curated `generation_context` instead of raw provider payloads
+- generated-section diagnostics do not mask deterministic or timeout fallback as plain success; fallback analysis renders as partial and insufficient-evidence suppression is distinct from backend failure
 - Beginner Summary explains the asset in plain English and does not depend on quote, chart, volume, price, or technical-indicator facts unless required for identity
 - generated copy does not include internal or low-value wording such as fixtures, local MVP, available evidence, provider market-reference, raw provider keys like `regularMarketPrice`, or "this section uses..." phrasing
 - Market AI synthesizes selected Market News Focus items with Economic Indicators and allowed numeric facts instead of only counting topic buckets or repeating headlines

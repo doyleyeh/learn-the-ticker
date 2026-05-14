@@ -1,12 +1,45 @@
 ## Current task
 
-No current task is prepared. T-194 is complete; prepare the next narrow task before implementation.
+No current task is prepared. T-195 is complete; prepare the next narrow task before implementation.
 
 ## Backlog
 
 No backlog tasks are currently prepared.
 
 ## Completed
+
+### T-195: Stream supported asset loading and generation states
+
+Goal:
+Make supported asset pages avoid the all-or-nothing backend-unavailable screen for ordinary slow local responses, expose generation provenance inline, and keep backend/live/fixture states visible inside the affected sections.
+
+Completion details:
+- Added a supported-asset loading shell under a React `Suspense` boundary, increased the hard overview cap, and made the asset-page overview route request stable-only backend data with `mode=asset_page_stable` so slow Market News/Weekly News work does not block the first supported page shell.
+- Kept blocked, unsupported, out-of-scope, and true hard-failure supported states distinct while preserving inline section-state notices for overview, details, Economic Indicators, Market News, Weekly News, Sources, and generation-heavy sections.
+- Added inline generation-state notes for Beginner Summary, Top Risks, Deep Dive summaries, Market AI, and ticker AI, including labels for live generation, deterministic fallback, timeout fallback, insufficient evidence, and backend error.
+- Added safe generation diagnostics to backend runtime section-state metadata and marked AI sections with fallback diagnostics as `partial` or `insufficient_evidence` instead of plain available.
+- Added shared frontend source-title sanitization and applied it to overview, details, weekly news, market news, Economic Indicators, source drawer, and citation chip aria paths so official issuer evidence does not display deterministic provider-fixture wording.
+- Updated frontend smoke checks, backend integration coverage, PRD/TDS, and EVALS.md for progressive supported-page loading and inline generation provenance.
+
+Observed timings addressed:
+- QQQ stable overview can return from the isolated local backend quickly in `asset_page_stable` mode, avoiding the prior 12-second SSR abort path.
+- Slow Weekly News and market/AI sections now carry inline source/generation state instead of causing a global fallback evidence card.
+
+Required commands executed:
+- `source scripts/activate_agent_env.sh && npm test` - pass
+- `source scripts/activate_agent_env.sh && npm run typecheck` - pass
+- `source scripts/activate_agent_env.sh && npm run build` - pass
+- `TMPDIR=/tmp python3 -m pytest tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py -q` - pass, 80 passed
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass, 644 backend tests plus static evals, frontend smoke, typecheck, build, and backend checks
+- `git diff --check` - pass
+
+Manual browser acceptance:
+- QQQ and VOO mobile-width browser checks passed against isolated local API/web ports: no old whole-page backend-unavailable copy, no global fallback card, no `[Issuer/provider]`, no visible deterministic provider-fixture source title, one Economic Indicators heading, visible Beginner Summary generation note, visible non-unknown generation states, visible Weekly News Focus, and no console errors or 4xx responses.
+
+Remaining risks:
+- The page now streams a supported loading shell and uses a stable overview route before slow timely sections, but deeper independent server streaming for every live section can still be refined if future UX testing needs each slow region to reveal separately after the stable page is visible.
+- Live LLM output quality still depends on operator-provided server-side OpenRouter settings and validation gates; deterministic fallback remains expected in CI and no-live local runs.
 
 ### T-194: Fix asset-page evidence-state display labels
 
@@ -5340,7 +5373,7 @@ Current runtime snapshot:
 - T-130 completed the deterministic local fresh-data MVP rehearsal command.
 - T-131 through T-135 completed the ETF eligible-universe, stock SEC source-pack readiness, ETF issuer source-pack readiness, local MVP readiness-threshold packets, and batchable local ingestion priority planner.
 - The ETF-500 scope update is documented across the product and handoff docs; T-136 completed deterministic ETF-500 candidate manifest review contracts, and T-137 completed ETF-500 issuer source-pack batch planning contracts.
-- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, T-139 completed the local manual fresh-data readiness gate, T-140 completed the backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack, T-141 aligned frontend/API comparison availability, T-142 completed local browser/API smoke coverage, T-143 completed the deterministic stock-vs-ETF readiness-reporting gate, T-144 completed the first local fresh-data MVP slice smoke contract, T-145 completed the local slice browser/API smoke task, T-146 completed optional durable repository smoke coverage for the local slice, T-147 completed issuer-backed ETF source enrichment for the local slice, T-148 completed the lightweight local slice manual-readiness gate, T-149 completed local slice comparison/export parity coverage, T-150 completed the lightweight live browser/API smoke runner, T-151 completed lightweight live API fallback diagnostics, T-152 completed lightweight live durable persistence smoke coverage, T-153 completed lightweight issuer enrichment for `SPY`, `VTI`, and `XLK`, T-154 completed the Weekly News Focus live-source smoke task, T-155 completed lightweight live-AI validation, T-156 completed fresh-data comparison coverage for stock-vs-stock plus non-generated ETF pairs, T-157 completed local deployment/environment smoke coverage, T-158 completed the local personal-MVP readiness gate with strict/public-launch gates marked audit-only, T-159 fixed local browser/API smoke blockers, T-160 added short-TTL lightweight fetch reuse, T-161 wired lightweight exports, T-162 added lightweight grounded chat packs, T-163 added local durable persistence for lightweight source snapshots and normalized facts, T-164 added operator-only real Weekly News Focus source acquisition for the local MVP slice, T-165 added live-AI validation on real local evidence packs, T-166 added deterministic ETF-500 blocked generated-surface diagnostics for local coverage-manifest review, and T-167 through T-171 moved Weekly News into local MVP page, analysis, chat, UI, and smoke-validation surfaces with fallback provider metadata kept non-canonical. T-188 through T-192 are prepared as the next durable persistence, ingestion, generated-output cache, route-read, and frontend trust-state hardening sequence.
+- T-138 completed deterministic Top-500 SEC source-pack batch planning contracts, T-139 completed the local manual fresh-data readiness gate, T-140 completed the backend/API-backed `AAPL` vs `VOO` stock-vs-ETF comparison pack, T-141 aligned frontend/API comparison availability, T-142 completed local browser/API smoke coverage, T-143 completed the deterministic stock-vs-ETF readiness-reporting gate, T-144 completed the first local fresh-data MVP slice smoke contract, T-145 completed the local slice browser/API smoke task, T-146 completed optional durable repository smoke coverage for the local slice, T-147 completed issuer-backed ETF source enrichment for the local slice, T-148 completed the lightweight local slice manual-readiness gate, T-149 completed local slice comparison/export parity coverage, T-150 completed the lightweight live browser/API MVP slice smoke runner, T-151 completed lightweight live API fallback diagnostics, T-152 completed lightweight live durable persistence smoke coverage, T-153 completed lightweight issuer enrichment for `SPY`, `VTI`, and `XLK`, T-154 completed the Weekly News Focus live-source smoke task, T-155 completed lightweight live-AI validation, T-156 completed fresh-data comparison coverage for stock-vs-stock plus non-generated ETF pairs, T-157 completed local deployment/environment smoke coverage, T-158 completed the local personal-MVP readiness gate with strict/public-launch gates marked audit-only, T-159 fixed local browser/API smoke blockers, T-160 added short-TTL lightweight fetch reuse, T-161 wired lightweight exports, T-162 added lightweight grounded chat packs, T-163 added local durable persistence for lightweight source snapshots and normalized facts, T-164 added operator-only real Weekly News Focus source acquisition for the local MVP slice, T-165 added live-AI validation on real local evidence packs, T-166 added deterministic ETF-500 blocked generated-surface diagnostics for local coverage-manifest review, T-167 through T-171 moved Weekly News into local MVP page, analysis, chat, UI, and smoke-validation surfaces with fallback provider metadata kept non-canonical, and T-188 through T-195 completed the durable persistence, route-state, asset-page evidence-state, progressive-loading, and inline-generation-state hardening sequence.
 - T-118 documented and regression-covered the deterministic local fresh-data ingest-to-render smoke path before production hardening. Production deployment, production durable storage, scheduled jobs, full governed source artifacts, admin auth/rate limiting, broader live ingestion, and launch-sized reviewed manifests remain unpromoted.
 
 Operational defaults for general MVP roadmap tasks:
@@ -5512,12 +5545,13 @@ Roadmap integration tracker:
 | Durable source snapshot and handoff promotion gates | Completed | T-190 |
 | Durable launch pre-cache job creation and worker execution | Completed | T-191 |
 | Durable section-state route reads and generated-output cache authority | Completed | T-192 |
+| Asset-page progressive loading and inline generation states | Completed | T-195 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
 Remaining unpromoted general MVP sequence:
 
 - T-139 produced a deterministic readiness gate that says whether more agent-loop work remains or whether manual local fresh-data testing is the next step.
-- The stock-vs-ETF comparison feature-completion sequence is complete through the final prepared step: T-141 aligned frontend suggestions/fallback with API availability, T-142 added optional localhost browser/API smoke coverage, and T-143 added the deterministic readiness signal. The promoted local fresh-data MVP slice sequence is complete through T-171 local Weekly News MVP expansion. T-188 through T-192 are the next prepared agent-loop tasks for frontend section-state transparency, durable schema execution, source handoff promotion gates, durable worker execution, and durable route-read authority.
+- The stock-vs-ETF comparison feature-completion sequence is complete through the final prepared step: T-141 aligned frontend suggestions/fallback with API availability, T-142 added optional localhost browser/API smoke coverage, and T-143 added the deterministic readiness signal. The promoted local fresh-data MVP slice sequence is complete through T-171 local Weekly News MVP expansion. T-188 through T-195 completed the latest frontend section-state transparency, durable schema execution, source handoff promotion gates, durable worker execution, route-read authority, asset-page evidence labels, progressive loading, and inline generation-state work.
 - Full production deployment remains unpromoted until a narrow launch-readiness task is added: admin auth enforcement, rate limiting, deployment env validation, private object storage, database migration execution, Cloud Run/Job settings, monitoring, and rollback/go-no-go procedures.
 - Recurring production jobs only after manual official-source acquisition, Top-500 candidate refresh review, and local fresh-data behavior are stable.
 - Broad paid-provider or news-provider integrations only after provider licensing/source-use review, no-secret-exposure tests, mocked CI fixtures, source-rights validation, and export/display constraints are documented.

@@ -70,8 +70,14 @@ from backend.settings import LightweightDataSettings, build_lightweight_data_set
 from backend.summary_generation import (
     SummaryGenerationContractError,
     build_default_summary_generation_service,
+    current_summary_generation_diagnostics,
     deterministic_summary_generation,
     live_summary_generation_ready_from_env,
+    record_summary_generation_diagnostics,
+    start_summary_generation_diagnostics_capture,
+    stop_summary_generation_diagnostics_capture,
+    summary_generation_diagnostics,
+    summary_generation_reason_codes,
 )
 from backend.weekly_news import build_ai_comprehensive_analysis, compute_weekly_news_window
 from backend.weekly_news_sources import build_lightweight_weekly_news_focus
@@ -209,10 +215,12 @@ def build_lightweight_overview_response(
     *,
     economic_indicators: EconomicIndicatorsPackResponse | None = None,
     technical_context: dict[str, Any] | None = None,
+    include_timely_context: bool = True,
 ) -> OverviewResponse:
     cache_context = _page_build_cache_context(
         economic_indicators=economic_indicators,
         technical_context=technical_context,
+        include_timely_context=include_timely_context,
     )
     cached = _page_build_cache_get("overview", response, context_payload=cache_context)
     if cached is not None:
@@ -234,85 +242,100 @@ def build_lightweight_overview_response(
     stable_citation_ids = _preferred_citation_ids(response) or default_citation_ids
     live_generation_ready = live_summary_generation_ready_from_env()
     generation_context_manager = nullcontext()
-    with generation_context_manager:
-        weekly_news_focus = build_lightweight_weekly_news_focus(response) or _empty_weekly_news_focus(response)
-        market_news_kwargs: dict[str, Any] = {"cache_only": True}
-        if economic_indicators is not None:
-            market_news_kwargs["economic_indicators"] = economic_indicators
-        market_news = build_runtime_market_news_response(**market_news_kwargs)
-        generation_evidence_pack = evidence_pack_from_lightweight_response(
-            response,
-            economic_indicators=economic_indicators,
-            market_news_focus=market_news.market_news_focus,
-            weekly_news_focus=weekly_news_focus,
-            technical_context=technical_context,
-        )
-        sections = (
-            _stock_sections(
+    diagnostics_token = start_summary_generation_diagnostics_capture()
+    try:
+        with generation_context_manager:
+            weekly_news_focus = None
+            if include_timely_context:
+                weekly_news_focus = build_lightweight_weekly_news_focus(response) or _empty_weekly_news_focus(response)
+            market_news = None
+            if include_timely_context:
+                market_news_kwargs: dict[str, Any] = {"cache_only": True}
+                if economic_indicators is not None:
+                    market_news_kwargs["economic_indicators"] = economic_indicators
+                market_news = build_runtime_market_news_response(**market_news_kwargs)
+            generation_evidence_pack = evidence_pack_from_lightweight_response(
+                response,
+                economic_indicators=economic_indicators,
+                market_news_focus=market_news.market_news_focus if market_news is not None else None,
+                weekly_news_focus=weekly_news_focus,
+                technical_context=technical_context,
+            )
+            sections = (
+                _stock_sections(
+                    response,
+                    stable_citation_ids,
+                    provider_citation_ids,
+                    generation_evidence_pack=generation_evidence_pack,
+                )
+                if response.asset.asset_type is AssetType.stock
+                else _etf_sections(
+                    response,
+                    stable_citation_ids,
+                    provider_citation_ids,
+                    generation_evidence_pack=generation_evidence_pack,
+                )
+            )
+            claims = _claims(response, stable_citation_ids, provider_citation_ids)
+            ai_analysis = (
+                build_ai_comprehensive_analysis(
+                    response.asset,
+                    weekly_news_focus,
+                    canonical_fact_citation_ids=stable_citation_ids,
+                    canonical_source_document_ids=[source.source_document_id for source in sources[:1]],
+                    economic_indicators=economic_indicators,
+                    market_news_focus=market_news.market_news_focus if market_news is not None else None,
+                    technical_context=technical_context,
+                    generation_evidence_pack=generation_evidence_pack,
+                )
+                if weekly_news_focus is not None
+                else None
+            )
+            beginner_summary = _beginner_summary(response, generation_evidence_pack=generation_evidence_pack)
+            top_risks = _top_risks(
                 response,
                 stable_citation_ids,
                 provider_citation_ids,
                 generation_evidence_pack=generation_evidence_pack,
             )
-            if response.asset.asset_type is AssetType.stock
-            else _etf_sections(
-                response,
-                stable_citation_ids,
-                provider_citation_ids,
-                generation_evidence_pack=generation_evidence_pack,
-            )
-        )
-        claims = _claims(response, stable_citation_ids, provider_citation_ids)
-        ai_analysis = build_ai_comprehensive_analysis(
-            response.asset,
-            weekly_news_focus,
-            canonical_fact_citation_ids=stable_citation_ids,
-            canonical_source_document_ids=[source.source_document_id for source in sources[:1]],
-            economic_indicators=economic_indicators,
-            market_news_focus=market_news.market_news_focus,
-            technical_context=technical_context,
-            generation_evidence_pack=generation_evidence_pack,
-        )
-        beginner_summary = _beginner_summary(response, generation_evidence_pack=generation_evidence_pack)
+            summary_diagnostics = current_summary_generation_diagnostics()
 
-        overview = OverviewResponse(
-            asset=response.asset.model_copy(update={"status": AssetStatus.supported, "supported": True}),
-            state=StateMessage(
-                status=AssetStatus.supported,
-                message=(
-                    "Live source-labeled data is available. Official sources are preferred and fallback fields "
-                    "are labeled; this is not strict audit-quality source approval."
+            overview = OverviewResponse(
+                asset=response.asset.model_copy(update={"status": AssetStatus.supported, "supported": True}),
+                state=StateMessage(
+                    status=AssetStatus.supported,
+                    message=(
+                        "Live source-labeled data is available. Official sources are preferred and fallback fields "
+                        "are labeled; this is not strict audit-quality source approval."
+                    ),
                 ),
-            ),
-            freshness=response.freshness,
-            snapshot=_snapshot(response, stable_citation_ids, provider_citation_ids),
-            beginner_summary=beginner_summary,
-            top_risks=_top_risks(
-                response,
-                stable_citation_ids,
-                provider_citation_ids,
-                generation_evidence_pack=generation_evidence_pack,
-            ),
-            recent_developments=[],
-            market_news_focus=market_news.market_news_focus,
-            market_ai_comprehensive_analysis=market_news.market_ai_comprehensive_analysis,
-            weekly_news_focus=weekly_news_focus,
-            ai_comprehensive_analysis=ai_analysis,
-            suitability_summary=_suitability_summary(response, stable_citation_ids),
-            claims=claims,
-            citations=citations,
-            source_documents=sources,
-            sections=sections,
-            section_freshness_validation=[],
-            fallback_diagnostics=_fallback_diagnostics(response),
-            generation_diagnostics=_overview_generation_diagnostics(
-                live_generation_ready=live_generation_ready,
+                freshness=response.freshness,
+                snapshot=_snapshot(response, stable_citation_ids, provider_citation_ids),
                 beginner_summary=beginner_summary,
+                top_risks=top_risks,
+                recent_developments=[],
+                market_news_focus=market_news.market_news_focus if market_news is not None else None,
+                market_ai_comprehensive_analysis=market_news.market_ai_comprehensive_analysis if market_news is not None else None,
+                weekly_news_focus=weekly_news_focus,
+                ai_comprehensive_analysis=ai_analysis,
+                suitability_summary=_suitability_summary(response, stable_citation_ids),
+                claims=claims,
+                citations=citations,
+                source_documents=sources,
                 sections=sections,
-                market_ai=market_news.market_ai_comprehensive_analysis,
-                ticker_ai=ai_analysis,
-            ),
-        )
+                section_freshness_validation=[],
+                fallback_diagnostics=_fallback_diagnostics(response),
+                generation_diagnostics=_overview_generation_diagnostics(
+                    live_generation_ready=live_generation_ready,
+                    beginner_summary=beginner_summary,
+                    sections=sections,
+                    market_ai=market_news.market_ai_comprehensive_analysis if market_news is not None else None,
+                    ticker_ai=ai_analysis,
+                    summary_diagnostics=summary_diagnostics,
+                ),
+            )
+    finally:
+        stop_summary_generation_diagnostics_capture(diagnostics_token)
     _page_build_cache_set("overview", response, overview, context_payload=cache_context)
     return overview
 
@@ -621,7 +644,9 @@ def _overview_generation_diagnostics(
     sections: list[OverviewSection],
     market_ai: Any | None,
     ticker_ai: Any | None,
+    summary_diagnostics: dict[str, GenerationDiagnostics] | None = None,
 ) -> dict[str, GenerationDiagnostics]:
+    recorded = summary_diagnostics or {}
     fallback_reason = [] if live_generation_ready else [_configured_generation_fallback_reason()]
     overview_diagnostic = GenerationDiagnostics(
         attempted_live=live_generation_ready,
@@ -630,8 +655,9 @@ def _overview_generation_diagnostics(
         model_name=_configured_generation_model_name() if live_generation_ready else None,
     )
     diagnostics: dict[str, GenerationDiagnostics] = {
-        "beginner_summary": overview_diagnostic,
-        "deep_dive_summary": overview_diagnostic.model_copy(),
+        "beginner_summary": recorded.get("beginner_summary", overview_diagnostic),
+        "deep_dive_summary": recorded.get("deep_dive_summary", overview_diagnostic.model_copy()),
+        "top_3_risks": recorded.get("top_3_risks", overview_diagnostic.model_copy()),
     }
     if market_ai is not None and getattr(market_ai, "generation_diagnostics", None) is not None:
         diagnostics["market_ai_comprehensive_analysis"] = market_ai.generation_diagnostics
@@ -903,8 +929,9 @@ def _generated_beginner_summary(
     generation_evidence_pack: dict[str, Any] | None = None,
 ) -> BeginnerSummary:
     evidence_pack = generation_evidence_pack or evidence_pack_from_lightweight_response(response)
+    service = build_default_summary_generation_service()
     try:
-        return build_default_summary_generation_service().generate_beginner_summary(
+        return service.generate_beginner_summary(
             asset=response.asset,
             base_summary=base_summary,
             citation_ids=[
@@ -917,7 +944,19 @@ def _generated_beginner_summary(
             evidence_notes=[diagnostic for diagnostic in _lightweight_evidence_note_candidates(response) if diagnostic],
             generation_evidence_pack=evidence_pack,
         )
-    except SummaryGenerationContractError:
+    except SummaryGenerationContractError as exc:
+        record_summary_generation_diagnostics(
+            "beginner_summary",
+            summary_generation_diagnostics(
+                service,
+                task_name="beginner_summary",
+                used_fallback=True,
+                fallback_reason_codes=[
+                    "live_generation_repaired_with_deterministic_fallback",
+                    *summary_generation_reason_codes(exc),
+                ],
+            ),
+        )
         return base_summary
 
 
@@ -1129,8 +1168,9 @@ def _generated_top_risks(
 ) -> list[RiskItem]:
     if len(fallback) != 3 or not allowed_citation_ids:
         return fallback[:3]
+    service = build_default_summary_generation_service()
     try:
-        return build_default_summary_generation_service().generate_top_risks(
+        return service.generate_top_risks(
             asset=response.asset,
             candidate_risks=candidates,
             fallback_risks=fallback,
@@ -1138,7 +1178,19 @@ def _generated_top_risks(
             evidence_notes=[diagnostic for diagnostic in _lightweight_evidence_note_candidates(response) if diagnostic],
             generation_evidence_pack=generation_evidence_pack or evidence_pack_from_lightweight_response(response),
         )
-    except SummaryGenerationContractError:
+    except SummaryGenerationContractError as exc:
+        record_summary_generation_diagnostics(
+            "top_3_risks",
+            summary_generation_diagnostics(
+                service,
+                task_name="top_3_risks",
+                used_fallback=True,
+                fallback_reason_codes=[
+                    "live_generation_repaired_with_deterministic_fallback",
+                    *summary_generation_reason_codes(exc),
+                ],
+            ),
+        )
         return fallback[:3]
 
 
@@ -1709,8 +1761,9 @@ def _generated_deep_dive_summary(
     generation_evidence_pack: dict[str, Any] | None = None,
 ) -> str | None:
     evidence_pack = generation_evidence_pack or evidence_pack_from_lightweight_response(response)
+    service = build_default_summary_generation_service()
     try:
-        return build_default_summary_generation_service().generate_deep_dive_summary(
+        return service.generate_deep_dive_summary(
             asset=response.asset,
             section_id=section_id,
             title=title,
@@ -1720,7 +1773,19 @@ def _generated_deep_dive_summary(
             evidence_notes=evidence_notes or [],
             generation_evidence_pack=evidence_pack,
         )
-    except SummaryGenerationContractError:
+    except SummaryGenerationContractError as exc:
+        record_summary_generation_diagnostics(
+            "deep_dive_summary",
+            summary_generation_diagnostics(
+                service,
+                task_name="deep_dive_summary",
+                used_fallback=True,
+                fallback_reason_codes=[
+                    "live_generation_repaired_with_deterministic_fallback",
+                    *summary_generation_reason_codes(exc),
+                ],
+            ),
+        )
         return base_summary
 
 

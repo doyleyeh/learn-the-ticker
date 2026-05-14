@@ -62,6 +62,7 @@ function orderedMarkers(path, markers, label) {
   "components/ExportControls.tsx",
   "components/SourceDrawer.tsx",
   "components/FreshnessLabel.tsx",
+  "components/GenerationStateNote.tsx",
   "components/GlossaryPopover.tsx",
   "components/InlineGlossaryText.tsx",
   "components/MarketAIComprehensiveAnalysisPanel.tsx",
@@ -82,6 +83,7 @@ function orderedMarkers(path, markers, label) {
   "lib/marketNews.ts",
   "lib/trustMetrics.ts",
   "lib/sourceDrawer.ts",
+  "lib/sourceDisplay.ts",
   "styles/globals.css"
 ].forEach(exists);
 
@@ -518,15 +520,16 @@ includesAll("app/assets/[ticker]/page.tsx", [
   "data-asset-weekly-news-rendering={weeklyNewsRendering}",
   "data-asset-source-drawer-rendering={sourceDrawerRendering}",
   "data-asset-glossary-rendering={glossaryRendering}",
-  "data-asset-backend-evidence-summary",
   "data-asset-backend-evidence-has-fallback",
+  "data-asset-progressive-loading-shell",
+  "data-asset-section-loading-boundary",
   "data-asset-inline-section-state",
   "data-asset-section-failure-reason",
+  "Beginner Summary generation",
   "data-weekly-news-fetch-failure-notice",
   "source_labeled_live",
-  "DEFAULT_LIVE_SECTION_FETCH_TIMEOUT_MS = 5_000",
+  "DEFAULT_LIVE_SECTION_FETCH_TIMEOUT_MS = 12_000",
   "NEXT_PUBLIC_LIVE_SECTION_FETCH_TIMEOUT_MS",
-  "data-asset-overview-fetch-failure-notice",
   "fetchBackendSection",
   "timeout_or_aborted",
   "api_base_unconfigured",
@@ -536,6 +539,16 @@ includesAll("app/assets/[ticker]/page.tsx", [
   "backend_contract",
   "local_fixture"
 ], "T-118 frontend API-backed rendering markers with inline evidence states");
+assert.equal(
+  read("app/assets/[ticker]/page.tsx").includes("data-asset-backend-evidence-summary"),
+  false,
+  "Supported asset pages should not include a standalone backend evidence summary card"
+);
+assert.equal(
+  read("app/assets/[ticker]/page.tsx").includes("Backend data temporarily unavailable"),
+  false,
+  "Supported asset pages should not render the old whole-page temporary backend-unavailable copy"
+);
 assert.equal(
   read("app/assets/[ticker]/page.tsx").includes("Some sections are using fallback content"),
   false,
@@ -558,6 +571,16 @@ includesAll("components/CitationChip.tsx", [
   "return \"Provider\"",
   "return \"Fixture\""
 ], "citation chips prefer source metadata labels before id-prefix labels");
+includesAll("components/GenerationStateNote.tsx", [
+  "data-generation-state",
+  "data-generation-label",
+  "data-generation-used-fallback",
+  "live_generated",
+  "deterministic_fallback",
+  "live_timeout_fallback",
+  "suppressed_insufficient_evidence",
+  "backend_error"
+], "generation-state markers render from the inline generation provenance component");
 includesAll("components/EconomicIndicatorsPanel.tsx", [
   "data-economic-indicators-inline-source-state",
   "Live local official and market-reference indicator evidence",
@@ -1548,10 +1571,11 @@ orderedMarkers("lib/search.ts", [
 ], "backend search preference before fixture fallback");
 includesAll("app/assets/[ticker]/page.tsx", [
   "fetchSupportedAssetOverview(",
-  "OVERVIEW_FETCH_TIMEOUT_MS = 12_000",
+  "OVERVIEW_FETCH_TIMEOUT_MS = 30_000",
   "optionalBackendFetcher(OVERVIEW_FETCH_TIMEOUT_MS)",
-  "RecoverableBackendAssetStatePage",
-  "data-asset-supported-backend-unavailable",
+  "<Suspense",
+  "SupportedAssetLoadingPage",
+  "SupportedAssetEvidenceUnavailablePage",
   "LimitedAssetStatePage",
   "data-asset-pending-ingestion-state",
   "data-asset-no-generated-output-for-blocked-state",

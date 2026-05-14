@@ -50,6 +50,8 @@ Default engineering behavior:
 - locator pages, dynamic issuer pages, date extraction, and alternate documents are handled by code as much as practical;
 - reputable third-party/provider fallback is allowed for stocks, ETFs, and news when official data is absent, incomplete, stale, or too expensive to recover manually;
 - source metadata must preserve `source_quality`, `publisher_or_provider`, URL when available, `retrieved_at`, `as_of_date` or date precision when available, and a fallback/partial label;
+- available and fresh lightweight source-labeled local evidence is a first-class personal-MVP display state, not a user-facing fallback card; preserve raw `data_origin` for diagnostics while showing source state inline;
+- supported asset pages should render a progressive loading shell and section-local loading/error/partial states when backend sections are slow, instead of replacing the whole supported page with a temporary backend-unavailable state during normal local response latency;
 - missing full dates should not block a page when `retrieved_at` and a clear date-quality label can be shown;
 - operators review suspicious results and repeated failure patterns rather than manually approving every exact URL before display;
 - clearly unsupported complex products remain blocked unless a future scope expansion adds templates, risk copy, and data handling.
@@ -1404,8 +1406,11 @@ Backend route responses that feed generated or evidence-sensitive surfaces now e
 - `section_status`: `available`, `empty`, `partial`, `stale`, `unknown`, `unavailable`, `insufficient_evidence`, `suppressed`, or a blocked support state
 - `fallback_reason`, when a route used deterministic fixture, lightweight fallback, unavailable, or partial behavior
 - `freshness_state`, `source_handoff_state`, `cache_state`, and `evidence_state`
+- safe `diagnostics` for generated sections, including whether live generation was attempted, whether deterministic fallback was used, fallback reason codes, and a sanitized public model name when one is already user-safe
 
 The metadata is backward-compatible: existing response bodies keep their primary fields, while asset overview/details, Weekly News, Market News, source drawer, glossary, chat, comparison, and export routes include route-level `section_states`. Frontend asset pages consume this metadata when present and fall back to typed request failure classification when it is absent. A valid empty Weekly News result is `section_status=empty`, which is distinct from timeout, invalid-contract, backend-error, or unavailable states. When `data_origin=lightweight_fallback`, `source_handoff_state=lightweight_labeled`, and the section is available and fresh, the frontend may preserve the raw origin for diagnostics while displaying it as source-labeled local evidence instead of user-facing fallback.
+
+AI-related sections must not mask generation fallback as plain success. If generation diagnostics report `used_fallback=true`, the section state should be `partial` with reason codes. If evidence thresholds are not met, the state should be `insufficient_evidence`, not a backend failure.
 
 ### 11.3 Page summary schema
 
@@ -2225,6 +2230,8 @@ Try again, or review the available sources below.
 ```
 
 Frontend SSR may continue to render deterministic local fallback content for supported development and CI pages, but backend section failures must be represented in a typed section fetch state and surfaced in the UI. Source-labeled lightweight local evidence should use inline source-state copy, not standalone fallback cards. A timeout, HTTP error, invalid backend contract, or missing API base URL must not collapse into the same display state as a verified empty Weekly News Focus result.
+
+Supported asset pages should stream a normal loading shell while same-asset backend evidence resolves. Slow regions such as Economic Indicators, Market News, Weekly News, AI analysis, Deep Dive, and Sources own their visible loading, live, partial, insufficient-evidence, or error copy. The old whole-page backend-unavailable presentation is reserved for true supported-asset evidence failure after the hard cap, not ordinary slow local backend responses.
 
 ### 15.11 Export UX
 

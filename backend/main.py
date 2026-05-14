@@ -183,7 +183,7 @@ def _with_market_news_section_states(response: MarketNewsResponse) -> MarketNews
             data_origin=origin_state.data_origin,
             fallback_reason=origin_state.fallback_reason,
         ).model_copy(update={"source_handoff_state": origin_state.source_handoff_state}),
-        response_section_state(
+        _ai_generation_section_state(
             response.market_ai_comprehensive_analysis,
             "market_ai_comprehensive_analysis",
             "Market AI Comprehensive Analysis",
@@ -206,7 +206,7 @@ def _with_weekly_news_section_states(response: WeeklyNewsResponse) -> WeeklyNews
                 data_origin=origin_state.data_origin,
                 fallback_reason=origin_state.fallback_reason,
             ),
-            response_section_state(
+            _ai_generation_section_state(
                 response.ai_comprehensive_analysis,
                 "ai_comprehensive_analysis",
                 "AI Comprehensive Analysis",
@@ -215,6 +215,73 @@ def _with_weekly_news_section_states(response: WeeklyNewsResponse) -> WeeklyNews
             ),
         ],
     )
+
+
+def _ai_generation_section_state(
+    response: Any,
+    section_id: str,
+    label: str,
+    *,
+    data_origin: str,
+    fallback_reason: str | None = None,
+) -> Any:
+    diagnostics = _generation_diagnostics_payload(response)
+    generation_fallback_reason = fallback_reason or _generation_fallback_reason(response)
+    analysis_available = bool(getattr(response, "analysis_available", False))
+    state_value = str(getattr(getattr(response, "state", None), "value", getattr(response, "state", "")))
+
+    if not analysis_available or state_value in {"suppressed", "no_high_signal", "insufficient_evidence"}:
+        return response_section_state(
+            response,
+            section_id,
+            label,
+            data_origin=data_origin,
+            section_status="insufficient_evidence",
+            fallback_reason=generation_fallback_reason or getattr(response, "suppression_reason", None),
+            evidence_state="insufficient_evidence",
+            diagnostics=diagnostics,
+        )
+
+    if bool(getattr(getattr(response, "generation_diagnostics", None), "used_fallback", False)):
+        return response_section_state(
+            response,
+            section_id,
+            label,
+            data_origin=data_origin,
+            section_status="partial",
+            fallback_reason=generation_fallback_reason or "deterministic_generation_fallback",
+            evidence_state="partial",
+            diagnostics=diagnostics,
+        )
+
+    return response_section_state(
+        response,
+        section_id,
+        label,
+        data_origin=data_origin,
+        fallback_reason=fallback_reason,
+        diagnostics=diagnostics,
+    )
+
+
+def _generation_diagnostics_payload(response: Any) -> dict[str, str | int | float | bool | None | list[str]]:
+    diagnostics = getattr(response, "generation_diagnostics", None)
+    if diagnostics is None:
+        return {}
+    return {
+        "attempted_live": bool(getattr(diagnostics, "attempted_live", False)),
+        "used_fallback": bool(getattr(diagnostics, "used_fallback", False)),
+        "fallback_reason_codes": list(getattr(diagnostics, "fallback_reason_codes", []) or []),
+        "model_name": getattr(diagnostics, "model_name", None),
+    }
+
+
+def _generation_fallback_reason(response: Any) -> str | None:
+    diagnostics = getattr(response, "generation_diagnostics", None)
+    if diagnostics is None:
+        return None
+    reason_codes = list(getattr(diagnostics, "fallback_reason_codes", []) or [])
+    return ",".join(reason_codes) if reason_codes else None
 
 
 def _current_economic_indicators_pack() -> EconomicIndicatorsPackResponse:
@@ -396,7 +463,8 @@ def pre_cache_asset(ticker: str) -> PreCacheJobResponse:
 @app.get("/api/assets/{ticker}/overview", response_model=OverviewResponse, tags=["assets"])
 def asset_overview(ticker: str, mode: str = "beginner") -> OverviewResponse:
     readers = _read_dependencies()
-    economic_pack = _current_economic_indicators_pack()
+    stable_asset_page_mode = mode in {"asset_page_stable", "stable"}
+    economic_pack = None if stable_asset_page_mode else _current_economic_indicators_pack()
     lightweight_response = fetch_lightweight_page_data_if_enabled(ticker)
     if lightweight_response is not None:
         persist_lightweight_evidence_if_configured(
@@ -404,7 +472,11 @@ def asset_overview(ticker: str, mode: str = "beginner") -> OverviewResponse:
             source_snapshot_repository=readers.reader("source_snapshot_repository"),
             knowledge_pack_repository=readers.reader("knowledge_pack_reader"),
         )
-        overview = build_lightweight_overview_response(lightweight_response, economic_indicators=economic_pack)
+        overview = build_lightweight_overview_response(
+            lightweight_response,
+            economic_indicators=economic_pack,
+            include_timely_context=not stable_asset_page_mode,
+        )
         return _with_route_section_state(
             overview.model_copy(update={"economic_indicators": economic_pack}),
             "asset_overview",

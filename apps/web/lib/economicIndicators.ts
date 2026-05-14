@@ -11,6 +11,7 @@ import {
   type WeeklyNewsContractState
 } from "./fixtures";
 import { runtimeSectionStatesFromPayload } from "./runtimeSectionStates";
+import { sanitizeSourceDisplayTitle } from "./sourceDisplay";
 
 type Fetcher = typeof fetch;
 
@@ -177,7 +178,7 @@ function toEconomicIndicatorSource(source: BackendSourceDocument): EconomicIndic
   return {
     sourceDocumentId: source.source_document_id,
     sourceType: source.source_type,
-    title: source.title,
+    title: sanitizeSourceDisplayTitle(source.title, source),
     publisher: source.publisher,
     url: source.url,
     publishedAt: source.published_at ?? null,
@@ -195,7 +196,10 @@ function toCitation(citation: BackendCitation): Citation {
   return {
     citationId: citation.citation_id,
     sourceDocumentId: citation.source_document_id,
-    title: citation.title,
+    title: sanitizeSourceDisplayTitle(citation.title, {
+      source_type: citation.source_document_id,
+      source_quality: citation.source_document_id.includes("provider_issuer") ? "issuer" : undefined
+    }),
     publisher: citation.publisher,
     freshnessState: toFreshnessState(citation.freshness_state)
   };
@@ -205,7 +209,7 @@ function toSourceDocument(source: BackendSourceDocument): SourceDocument {
   return {
     sourceDocumentId: source.source_document_id,
     sourceType: source.source_type,
-    title: source.title,
+    title: sanitizeSourceDisplayTitle(source.title, source),
     publisher: source.publisher,
     url: source.url,
     publishedAt: source.published_at ?? source.as_of_date ?? "Unknown",

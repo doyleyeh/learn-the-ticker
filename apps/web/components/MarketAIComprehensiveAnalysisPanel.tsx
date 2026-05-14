@@ -1,6 +1,7 @@
 import type { Citation, MarketAIComprehensiveAnalysisFixture } from "../lib/fixtures";
 import { CompactCitationSources, resolveCitationList } from "./CompactCitationSources";
 import { FreshnessDisclosure } from "./FreshnessLabel";
+import { GenerationStateNote } from "./GenerationStateNote";
 
 type FreshnessState = "fresh" | "stale" | "unknown" | "unavailable" | "partial" | "insufficient_evidence";
 
@@ -42,6 +43,8 @@ export function MarketAIComprehensiveAnalysisPanel({
   const sectionOrderState = orderedSections.length === requiredSectionOrder.length ? "matched" : analysis.sections.length ? "mismatch" : "suppressed";
   const freshnessState = stateToFreshness(analysis.state);
   const shouldRenderSections = analysis.analysisAvailable && analysis.sections.length > 0;
+  const sectionState =
+    analysis.sectionStates?.find((state) => state.sectionId === "market_ai_comprehensive_analysis") ?? null;
 
   return (
     <section
@@ -77,6 +80,12 @@ export function MarketAIComprehensiveAnalysisPanel({
         />
         <FreshnessDisclosure label="Topic buckets" value={`${analysis.selectedTopicBucketCount} covered`} state={freshnessState} />
       </div>
+      <GenerationStateNote
+        label="Market AI generation"
+        diagnostics={analysis.generationDiagnostics}
+        sectionState={sectionState}
+        analysisAvailable={analysis.analysisAvailable}
+      />
 
       {shouldRenderSections ? (
         <div

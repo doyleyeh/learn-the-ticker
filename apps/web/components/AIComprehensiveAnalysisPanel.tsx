@@ -1,6 +1,7 @@
 import type { Citation, AIComprehensiveAnalysisFixture } from "../lib/fixtures";
 import { CompactCitationSources, resolveCitationList } from "./CompactCitationSources";
 import { FreshnessDisclosure } from "./FreshnessLabel";
+import { GenerationStateNote } from "./GenerationStateNote";
 
 type FreshnessState = "fresh" | "stale" | "unknown" | "unavailable" | "partial" | "insufficient_evidence";
 
@@ -44,6 +45,7 @@ export function AIComprehensiveAnalysisPanel({ analysis, citations, assetTicker 
   const freshnessState = stateToFreshness(analysis.state);
   const shouldRenderSections = analysis.analysisAvailable && analysis.sections.length > 0;
   const sectionTitle = assetTicker ? `AI Comprehensive Analysis: ${assetTicker}` : "AI Comprehensive Analysis";
+  const sectionState = analysis.sectionStates?.find((state) => state.sectionId === "ai_comprehensive_analysis") ?? null;
 
   return (
     <section
@@ -88,6 +90,12 @@ export function AIComprehensiveAnalysisPanel({ analysis, citations, assetTicker 
           state={freshnessState}
         />
       </div>
+      <GenerationStateNote
+        label="Ticker AI generation"
+        diagnostics={analysis.generationDiagnostics}
+        sectionState={sectionState}
+        analysisAvailable={analysis.analysisAvailable}
+      />
 
       {shouldRenderSections ? (
         <div

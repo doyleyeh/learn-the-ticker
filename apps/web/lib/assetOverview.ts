@@ -10,6 +10,7 @@ import {
   type StockSectionType
 } from "./fixtures";
 import { runtimeSectionStatesFromPayload } from "./runtimeSectionStates";
+import { sanitizeSourceDisplayTitle } from "./sourceDisplay";
 
 type Fetcher = typeof fetch;
 
@@ -35,6 +36,13 @@ type BackendBeginnerSummary = {
   what_it_is: string;
   why_people_consider_it: string;
   main_catch: string;
+};
+
+type BackendGenerationDiagnostics = {
+  attempted_live: boolean;
+  used_fallback: boolean;
+  fallback_reason_codes: string[];
+  model_name: string | null;
 };
 
 type BackendRiskItem = {
@@ -204,6 +212,7 @@ type BackendOverviewResponse = {
   source_documents: BackendSourceDocument[];
   sections: BackendOverviewSection[];
   section_states?: unknown[];
+  generation_diagnostics?: Record<string, BackendGenerationDiagnostics>;
 };
 
 export async function fetchSupportedAssetOverview(
@@ -235,7 +244,9 @@ function assetOverviewEndpoint(ticker: string) {
   if (!apiBaseUrl) {
     throw new Error("No API base URL is configured for supported asset overview fetches.");
   }
-  return new URL(`/api/assets/${encodeURIComponent(ticker)}/overview`, apiBaseUrl).toString();
+  const endpoint = new URL(`/api/assets/${encodeURIComponent(ticker)}/overview`, apiBaseUrl);
+  endpoint.searchParams.set("mode", "asset_page_stable");
+  return endpoint.toString();
 }
 
 function isSupportedAssetOverviewResponse(value: unknown, requestedTicker: string): value is BackendOverviewResponse {
@@ -348,6 +359,7 @@ function mergeAssetFixtureWithOverview(fallbackAsset: AssetFixture | undefined, 
     sourceDocuments,
     citationContexts: fallbackAsset?.citationContexts ?? citationContextsFromOverview(backendSections, citations, sourceDocuments),
     sectionStates: runtimeSectionStatesFromPayload(overview),
+    generationDiagnostics: generationDiagnosticsFromOverview(overview.generation_diagnostics),
     ...backendSectionFields
   };
 }
@@ -391,34 +403,6 @@ function toSourceDocument(source: BackendSourceDocument): SourceDocument {
   };
 }
 
-function sanitizeSourceDisplayTitle(
-  title: string,
-  source?: Pick<SourceDocument, "isOfficial" | "sourceType" | "sourceQuality" | "source_quality"> | BackendSourceDocument
-) {
-  const candidate = source as
-    | (Partial<SourceDocument> & Partial<BackendSourceDocument>)
-    | undefined;
-  const sourceQuality = candidate?.source_quality ?? candidate?.sourceQuality;
-  const sourceType = candidate?.source_type ?? candidate?.sourceType;
-  const isOfficial = Boolean(candidate?.isOfficial ?? candidate?.is_official);
-  const isIssuerEvidence =
-    isOfficial ||
-    sourceQuality === "issuer" ||
-    sourceQuality === "official" ||
-    String(sourceType ?? "").includes("issuer") ||
-    String(sourceType ?? "").includes("fact_sheet");
-
-  if (!isIssuerEvidence) {
-    return title;
-  }
-
-  return title
-    .replace(/\s+deterministic provider fixture\b/gi, "")
-    .replace(/\s+deterministic fixture\b/gi, "")
-    .replace(/\s+provider fixture\b/gi, "")
-    .trim();
-}
-
 function factsFromOverviewSections(sections: StockOverviewSection[]): AssetFixture["facts"] {
   const facts: AssetFixture["facts"] = [];
   const seen = new Set<string>();
@@ -450,6 +434,25 @@ function factsFromOverviewSections(sections: StockOverviewSection[]): AssetFixtu
   }
 
   return facts.slice(0, 6);
+}
+
+function generationDiagnosticsFromOverview(
+  diagnostics: BackendOverviewResponse["generation_diagnostics"]
+): AssetFixture["generationDiagnostics"] {
+  if (!diagnostics) {
+    return undefined;
+  }
+  return Object.fromEntries(
+    Object.entries(diagnostics).map(([key, value]) => [
+      key,
+      {
+        attemptedLive: Boolean(value.attempted_live),
+        usedFallback: Boolean(value.used_fallback),
+        fallbackReasonCodes: Array.isArray(value.fallback_reason_codes) ? value.fallback_reason_codes : [],
+        modelName: value.model_name ?? null
+      }
+    ])
+  );
 }
 
 function citationContextsFromOverview(

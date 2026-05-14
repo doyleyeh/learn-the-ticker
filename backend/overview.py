@@ -768,6 +768,7 @@ def _overview_generation_diagnostics(
     diagnostics: dict[str, GenerationDiagnostics] = {
         "beginner_summary": default_diagnostic,
         "deep_dive_summary": default_diagnostic.model_copy(),
+        "top_3_risks": default_diagnostic.model_copy(),
     }
     if market_ai is not None and getattr(market_ai, "generation_diagnostics", None) is not None:
         diagnostics["market_ai_comprehensive_analysis"] = market_ai.generation_diagnostics

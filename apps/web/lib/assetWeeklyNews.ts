@@ -4,6 +4,7 @@ import {
   type AssetType,
   type Citation,
   type FreshnessState,
+  type GenerationDiagnostics,
   type SourceDocument,
   type WeeklyNewsContractState,
   type WeeklyNewsEmptyState,
@@ -11,6 +12,7 @@ import {
   type WeeklyNewsFocusFixture
 } from "./fixtures";
 import { runtimeSectionStatesFromPayload, type RuntimeSectionState } from "./runtimeSectionStates";
+import { sanitizeSourceDisplayTitle } from "./sourceDisplay";
 
 type Fetcher = typeof fetch;
 
@@ -123,6 +125,14 @@ type BackendAIComprehensiveAnalysis = {
   canonical_fact_citation_ids: string[];
   no_live_external_calls: boolean;
   stable_facts_are_separate: boolean;
+  generation_diagnostics?: BackendGenerationDiagnostics;
+};
+
+type BackendGenerationDiagnostics = {
+  attempted_live: boolean;
+  used_fallback: boolean;
+  fallback_reason_codes: string[];
+  model_name: string | null;
 };
 
 type BackendWeeklyNewsResponse = {
@@ -161,14 +171,19 @@ export async function fetchSupportedAssetWeeklyNews(
     throw new Error("Asset weekly-news response did not match the expected backend response contract.");
   }
 
+  const sectionStates = runtimeSectionStatesFromPayload(payload);
+
   return {
     weeklyNewsFocus: toWeeklyNewsFocus(payload.weekly_news_focus, fallbackWeeklyNewsFocus),
-    aiComprehensiveAnalysis: toAIComprehensiveAnalysis(
-      payload.ai_comprehensive_analysis,
-      payload.weekly_news_focus,
-      fallbackAnalysis
-    ),
-    sectionStates: runtimeSectionStatesFromPayload(payload)
+    aiComprehensiveAnalysis: {
+      ...toAIComprehensiveAnalysis(
+        payload.ai_comprehensive_analysis,
+        payload.weekly_news_focus,
+        fallbackAnalysis
+      ),
+      sectionStates: sectionStates.filter((state) => state.sectionId === "ai_comprehensive_analysis")
+    },
+    sectionStates
   };
 }
 
@@ -268,7 +283,7 @@ function toWeeklyNewsFocus(
       fallbackFocus.sourceDocuments,
       (source) => source.sourceDocumentId
     ),
-    noLiveExternalCalls: true,
+    noLiveExternalCalls: focus.no_live_external_calls,
     stableFactsAreSeparate: true
   };
 }
@@ -308,7 +323,8 @@ function toAIComprehensiveAnalysis(
       fallbackAnalysis.sourceDocuments,
       (source) => source.sourceDocumentId
     ),
-    noLiveExternalCalls: true,
+    generationDiagnostics: toGenerationDiagnostics(analysis.generation_diagnostics),
+    noLiveExternalCalls: analysis.no_live_external_calls,
     stableFactsAreSeparate: true
   };
 }
@@ -317,7 +333,7 @@ function toWeeklyNewsSource(source: BackendSourceDocument): WeeklyNewsFocusFixtu
   return {
     sourceDocumentId: source.source_document_id,
     sourceType: source.source_type,
-    title: source.title,
+    title: sanitizeSourceDisplayTitle(source.title, source),
     publisher: source.publisher,
     url: source.url,
     publishedAt: source.published_at ?? null,
@@ -352,7 +368,10 @@ function toCitation(citation: BackendCitation): Citation {
   return {
     citationId: citation.citation_id,
     sourceDocumentId: citation.source_document_id,
-    title: citation.title,
+    title: sanitizeSourceDisplayTitle(citation.title, {
+      source_type: citation.source_document_id,
+      source_quality: citation.source_document_id.includes("provider_issuer") ? "issuer" : undefined
+    }),
     publisher: citation.publisher,
     freshnessState: toFreshnessState(citation.freshness_state)
   };
@@ -362,7 +381,7 @@ function toSourceDocument(source: BackendSourceDocument): SourceDocument {
   return {
     sourceDocumentId: source.source_document_id,
     sourceType: source.source_type,
-    title: source.title,
+    title: sanitizeSourceDisplayTitle(source.title, source),
     publisher: source.publisher,
     url: source.url,
     publishedAt: source.published_at ?? source.as_of_date ?? "Unknown",
@@ -380,6 +399,20 @@ function toSourceDocument(source: BackendSourceDocument): SourceDocument {
     permitted_operations: {
       can_export_full_text: source.permitted_operations?.can_export_full_text
     }
+  };
+}
+
+function toGenerationDiagnostics(
+  diagnostics: BackendGenerationDiagnostics | undefined
+): GenerationDiagnostics | null {
+  if (!diagnostics) {
+    return null;
+  }
+  return {
+    attemptedLive: Boolean(diagnostics.attempted_live),
+    usedFallback: Boolean(diagnostics.used_fallback),
+    fallbackReasonCodes: Array.isArray(diagnostics.fallback_reason_codes) ? diagnostics.fallback_reason_codes : [],
+    modelName: diagnostics.model_name ?? null
   };
 }
 

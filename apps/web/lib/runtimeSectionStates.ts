@@ -9,6 +9,7 @@ export type RuntimeSectionState = {
   sourceHandoffState: string;
   cacheState: string | null;
   evidenceState: string | null;
+  diagnostics: Record<string, string | number | boolean | null | string[]>;
 };
 
 type BackendRuntimeSectionState = {
@@ -22,6 +23,7 @@ type BackendRuntimeSectionState = {
   source_handoff_state?: string;
   cache_state?: string | null;
   evidence_state?: string | null;
+  diagnostics?: Record<string, string | number | boolean | null | string[]>;
 };
 
 export function runtimeSectionStatesFromPayload(value: unknown): RuntimeSectionState[] {
@@ -42,7 +44,8 @@ export function runtimeSectionStatesFromPayload(value: unknown): RuntimeSectionS
     freshnessState: state.freshness_state ?? null,
     sourceHandoffState: state.source_handoff_state ?? "unknown",
     cacheState: state.cache_state ?? null,
-    evidenceState: state.evidence_state ?? null
+    evidenceState: state.evidence_state ?? null,
+    diagnostics: state.diagnostics ?? {}
   }));
 }
 

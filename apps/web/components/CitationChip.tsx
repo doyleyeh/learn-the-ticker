@@ -1,4 +1,5 @@
 import { citationLabel, type Citation, type SourceDocument } from "../lib/fixtures";
+import { sanitizeSourceDisplayTitle } from "../lib/sourceDisplay";
 
 type CitationChipProps = {
   citation: Citation;
@@ -7,11 +8,13 @@ type CitationChipProps = {
 };
 
 export function CitationChip({ citation, label, source }: CitationChipProps) {
+  const title = sanitizeSourceDisplayTitle(citation.title, source);
+
   return (
     <a
       className="citation-chip"
       href={`#source-${citation.sourceDocumentId}`}
-      aria-label={`Open source details for ${citation.title}`}
+      aria-label={`Open source details for ${title}`}
       data-citation-id={citation.citationId}
       data-source-document-id={citation.sourceDocumentId}
       data-freshness-state={citation.freshnessState}

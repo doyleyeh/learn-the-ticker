@@ -262,6 +262,13 @@ export type AnalysisPackRuntimeMetadata = {
   validationStatus: "passed" | "failed" | "not_applicable";
 };
 
+export type GenerationDiagnostics = {
+  attemptedLive: boolean;
+  usedFallback: boolean;
+  fallbackReasonCodes: string[];
+  modelName?: string | null;
+};
+
 export type EconomicIndicatorItem = {
   indicatorId: string;
   name: string;
@@ -349,7 +356,7 @@ export type WeeklyNewsFocusFixture = {
   citations: Citation[];
   sourceDocuments: SourceDocument[];
   sectionStates?: RuntimeSectionState[];
-  noLiveExternalCalls: true;
+  noLiveExternalCalls: boolean;
   stableFactsAreSeparate: true;
 };
 
@@ -378,7 +385,8 @@ export type AIComprehensiveAnalysisFixture = {
   citations: Citation[];
   sourceDocuments: SourceDocument[];
   sectionStates?: RuntimeSectionState[];
-  noLiveExternalCalls: true;
+  generationDiagnostics?: GenerationDiagnostics | null;
+  noLiveExternalCalls: boolean;
   stableFactsAreSeparate: true;
 };
 
@@ -426,7 +434,7 @@ export type MarketNewsFocusFixture = {
   citations: Citation[];
   sourceDocuments: SourceDocument[];
   sectionStates?: RuntimeSectionState[];
-  noLiveExternalCalls: true;
+  noLiveExternalCalls: boolean;
   stableFactsAreSeparate: true;
   reusableAcrossTickers: true;
 };
@@ -472,7 +480,8 @@ export type MarketAIComprehensiveAnalysisFixture = {
   citations: Citation[];
   sourceDocuments: SourceDocument[];
   sectionStates?: RuntimeSectionState[];
-  noLiveExternalCalls: true;
+  generationDiagnostics?: GenerationDiagnostics | null;
+  noLiveExternalCalls: boolean;
   stableFactsAreSeparate: true;
 };
 
@@ -526,6 +535,7 @@ export type AssetFixture = {
   etfSections?: EtfOverviewSection[];
   citationContexts?: CitationContext[];
   sectionStates?: RuntimeSectionState[];
+  generationDiagnostics?: Record<string, GenerationDiagnostics>;
 };
 
 const stubTimestamp = "2026-04-20T00:00:00Z";

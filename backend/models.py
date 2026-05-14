@@ -658,7 +658,7 @@ class RuntimeSectionState(BaseModel):
     source_handoff_state: str = "not_applicable"
     cache_state: str | None = None
     evidence_state: str | None = None
-    diagnostics: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+    diagnostics: dict[str, str | int | float | bool | None | list[str]] = Field(default_factory=dict)
 
 
 class SearchBlockedCapabilityFlags(BaseModel):

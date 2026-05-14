@@ -478,18 +478,62 @@ def test_route_contracts_expose_runtime_section_states():
     assert _assert_runtime_section_state(overview, "asset_overview")["data_origin"] == "deterministic_fixture"
     assert _assert_runtime_section_state(details, "asset_details")["data_origin"] == "deterministic_fixture"
     assert _assert_runtime_section_state(weekly, "weekly_news")["section_status"] in {"available", "empty"}
-    assert _assert_runtime_section_state(weekly, "ai_comprehensive_analysis")["section_status"] in {
-        "available",
-        "suppressed",
-    }
+    weekly_ai_state = _assert_runtime_section_state(weekly, "ai_comprehensive_analysis")
+    assert weekly_ai_state["section_status"] in {"available", "partial", "insufficient_evidence"}
+    assert "used_fallback" in weekly_ai_state["diagnostics"]
     assert _assert_runtime_section_state(market, "market_news")["data_origin"] == "backend_generated"
-    assert _assert_runtime_section_state(market, "market_ai_comprehensive_analysis")["data_origin"] == "backend_generated"
+    market_ai_state = _assert_runtime_section_state(market, "market_ai_comprehensive_analysis")
+    assert market_ai_state["data_origin"] == "backend_generated"
+    assert market_ai_state["section_status"] in {"available", "partial", "insufficient_evidence"}
+    assert "fallback_reason_codes" in market_ai_state["diagnostics"]
     assert _assert_runtime_section_state(indicators, "economic_indicators")["data_origin"] == "deterministic_fixture"
     assert _assert_runtime_section_state(sources, "source_drawer")["section_status"] == "available"
     assert _assert_runtime_section_state(glossary, "glossary_context")["section_status"] == "available"
     assert _assert_runtime_section_state(chat, "asset_chat")["section_status"] == "available"
     assert _assert_runtime_section_state(comparison, "comparison")["section_status"] == "available"
     assert _assert_runtime_section_state(export, "export")["section_status"] == "available"
+
+
+def test_asset_page_stable_overview_omits_slow_timely_context_but_keeps_generation_diagnostics(monkeypatch):
+    clear_lightweight_fetch_reuse_cache()
+    settings_override = build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+        }
+    )
+    shared_fetcher = LocalFreshDataSliceFakeFetcher()
+
+    def fake_fetch(ticker, settings=None, chart_range="6mo"):  # noqa: ANN001 - monkeypatch target matches production call shapes.
+        del settings
+        return fetch_lightweight_asset_data(
+            ticker,
+            settings=settings_override,
+            fetcher=shared_fetcher,
+            retrieved_at=RETRIEVED_AT,
+            chart_range=chart_range,
+        )
+
+    monkeypatch.setenv("DATA_POLICY_MODE", "lightweight")
+    monkeypatch.setenv("LIGHTWEIGHT_LIVE_FETCH_ENABLED", "true")
+    monkeypatch.setenv("LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED", "true")
+    monkeypatch.setenv("SEC_EDGAR_USER_AGENT", "learn-the-ticker-tests/0.1 test@example.com")
+    monkeypatch.setattr("backend.lightweight_page.fetch_lightweight_asset_data", fake_fetch)
+    monkeypatch.setattr("backend.main.fetch_lightweight_asset_data", fake_fetch)
+
+    response = client.get("/api/assets/VOO/overview", params={"mode": "asset_page_stable"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["asset"]["ticker"] == "VOO"
+    assert body["market_news_focus"] is None
+    assert body["market_ai_comprehensive_analysis"] is None
+    assert body["weekly_news_focus"] is None
+    assert body["ai_comprehensive_analysis"] is None
+    assert "beginner_summary" in body["generation_diagnostics"]
+    assert "top_3_risks" in body["generation_diagnostics"]
 
 
 def test_admin_analysis_pack_import_routes_choose_fresh_imported_packs():

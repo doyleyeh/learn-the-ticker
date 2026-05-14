@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { AssetHeader } from "../../../components/AssetHeader";
 import { AIComprehensiveAnalysisPanel } from "../../../components/AIComprehensiveAnalysisPanel";
@@ -12,6 +13,7 @@ import { CompactCitationSources, resolveAssetCitations } from "../../../componen
 import { ComparisonSuggestions } from "../../../components/ComparisonSuggestions";
 import { ExportControls } from "../../../components/ExportControls";
 import { FreshnessDisclosure, FreshnessLabel } from "../../../components/FreshnessLabel";
+import { GenerationStateNote } from "../../../components/GenerationStateNote";
 import { InlineGlossaryText, type InlineGlossaryMatch } from "../../../components/InlineGlossaryText";
 import { MarketAIComprehensiveAnalysisPanel } from "../../../components/MarketAIComprehensiveAnalysisPanel";
 import { MarketNewsPanel } from "../../../components/MarketNewsPanel";
@@ -62,9 +64,9 @@ type AssetPageProps = {
   }>;
 };
 
-const OVERVIEW_FETCH_TIMEOUT_MS = 12_000;
-const DETAILS_FETCH_TIMEOUT_MS = 5_000;
-const DEFAULT_LIVE_SECTION_FETCH_TIMEOUT_MS = 5_000;
+const OVERVIEW_FETCH_TIMEOUT_MS = 30_000;
+const DETAILS_FETCH_TIMEOUT_MS = 8_000;
+const DEFAULT_LIVE_SECTION_FETCH_TIMEOUT_MS = 12_000;
 const LIVE_SECTION_FETCH_TIMEOUT_MS = readPositiveTimeoutMs(
   "NEXT_PUBLIC_LIVE_SECTION_FETCH_TIMEOUT_MS",
   DEFAULT_LIVE_SECTION_FETCH_TIMEOUT_MS
@@ -93,6 +95,7 @@ type BackendSectionFetchState = {
   sourceHandoffState: string;
   cacheState: string | null;
   runtimeSectionState?: RuntimeSectionState;
+  diagnostics: Record<string, string | number | boolean | null | string[]>;
 };
 
 type BackendSectionFetchSuccess<T> = {
@@ -158,7 +161,8 @@ function backendSectionLiveState(sectionId: string, label: string): BackendSecti
     fallbackReason: null,
     freshnessState: null,
     sourceHandoffState: "not_applicable",
-    cacheState: null
+    cacheState: null,
+    diagnostics: {}
   };
 }
 
@@ -176,7 +180,8 @@ function backendSectionFallbackState(sectionId: string, label: string, error: un
     fallbackReason: reason,
     freshnessState: reason === "api_base_unconfigured" ? "unknown" : "unavailable",
     sourceHandoffState: "not_applicable",
-    cacheState: "not_applicable"
+    cacheState: "not_applicable",
+    diagnostics: {}
   };
 }
 
@@ -262,7 +267,8 @@ function backendSectionStateFromRuntime(
     freshnessState: runtimeState.freshnessState,
     sourceHandoffState: runtimeState.sourceHandoffState,
     cacheState: runtimeState.cacheState,
-    runtimeSectionState: runtimeState
+    runtimeSectionState: runtimeState,
+    diagnostics: runtimeState.diagnostics
   };
 }
 
@@ -378,10 +384,6 @@ function isBackendSectionRequestFailure(state: BackendSectionFetchState) {
   );
 }
 
-function shouldShowPageLevelBackendNotice(states: readonly BackendSectionFetchState[]) {
-  return states.some((state) => state.sectionId === "asset_overview" && isBackendSectionRequestFailure(state));
-}
-
 function shouldShowInlineSectionNotice(state: BackendSectionFetchState) {
   if (state.sectionId === "glossary_context") {
     return false;
@@ -394,55 +396,6 @@ function shouldShowInlineSectionNotice(state: BackendSectionFetchState) {
 
 function hasUserFacingBackendIssue(states: readonly BackendSectionFetchState[]) {
   return states.some((state) => isBackendSectionRequestFailure(state));
-}
-
-function AssetBackendEvidenceSummary({ states }: { states: readonly BackendSectionFetchState[] }) {
-  const problemStates = states.filter((state) => state.sectionId === "asset_overview" && isBackendSectionRequestFailure(state));
-
-  if (!problemStates.length || !shouldShowPageLevelBackendNotice(states)) {
-    return null;
-  }
-
-  return (
-    <section
-      className="plain-panel unknown-state"
-      aria-labelledby="asset-backend-evidence-summary"
-      data-asset-backend-evidence-summary
-      data-asset-backend-evidence-summary-state="backend_issue"
-      data-asset-backend-issue-section-count={problemStates.length}
-    >
-      <div className="section-heading-row">
-        <div className="section-heading">
-          <p className="eyebrow">Evidence availability</p>
-          <h2 id="asset-backend-evidence-summary">Live evidence issue</h2>
-        </div>
-        <div className="state-row">
-          <span className="state-pill compact-state" data-evidence-state="unavailable">
-            unavailable
-          </span>
-        </div>
-      </div>
-      <p className="notice-text">
-        The asset overview did not return a valid backend evidence response for this render.
-      </p>
-      <div className="section-stack" data-asset-backend-issue-sections>
-        {problemStates.map((state) => (
-          <div
-            key={state.sectionId}
-            className="source-gap-note"
-            data-asset-section-fetch-state={state.sectionId}
-            data-asset-section-rendering={state.rendering}
-            data-asset-section-failure-reason={state.reason}
-            data-asset-section-data-origin={state.dataOrigin}
-            data-asset-section-status={state.sectionStatus}
-            data-asset-section-fallback-reason={state.fallbackReason ?? state.reason}
-          >
-            <strong>{state.label}:</strong> {state.message}
-          </div>
-        ))}
-      </div>
-    </section>
-  );
 }
 
 function InlineSectionStateNotice({ state }: { state: BackendSectionFetchState }) {
@@ -462,6 +415,9 @@ function InlineSectionStateNotice({ state }: { state: BackendSectionFetchState }
       data-asset-section-data-origin={state.dataOrigin}
       data-asset-section-status={state.sectionStatus}
       data-asset-section-fallback-reason={state.fallbackReason ?? state.reason}
+      data-asset-section-generation-used-fallback={
+        state.diagnostics.used_fallback === true ? "true" : state.diagnostics.used_fallback === false ? "false" : "unknown"
+      }
     >
       <strong>{state.label}:</strong> {sectionInlineNoticeCopy(state)}
       {state.sectionId === "weekly_news" ? (
@@ -481,6 +437,21 @@ export function generateStaticParams() {
 export default async function AssetPage({ params }: AssetPageProps) {
   const { ticker } = await params;
   const fallbackAsset = getAssetFixture(ticker);
+
+  return (
+    <Suspense fallback={<SupportedAssetLoadingPage ticker={ticker} fallbackAsset={fallbackAsset ?? null} />}>
+      <SupportedAssetPageContent ticker={ticker} fallbackAsset={fallbackAsset ?? null} />
+    </Suspense>
+  );
+}
+
+async function SupportedAssetPageContent({
+  ticker,
+  fallbackAsset
+}: {
+  ticker: string;
+  fallbackAsset: AssetFixture | null;
+}) {
   let asset: AssetFixture | null = fallbackAsset ?? null;
   let overviewRendering: BackendSectionRendering = "local_fixture";
   let detailsRendering: BackendSectionRendering = "local_fixture";
@@ -491,7 +462,6 @@ export default async function AssetPage({ params }: AssetPageProps) {
   let glossaryRendering: BackendSectionRendering = "local_fixture";
   let assetPageExportContract: AssetExportContractValidation | null = null;
   let assetSourceListExportContract: AssetExportContractValidation | null = null;
-  const backendApiConfigured = Boolean(process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || process.env.API_BASE_URL?.trim());
   let overviewFetchFailed = false;
   let overviewFetchState = backendSectionFallbackState(
     "asset_overview",
@@ -507,7 +477,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
   try {
     asset = await fetchSupportedAssetOverview(
       fallbackAsset?.ticker ?? ticker,
-      fallbackAsset,
+      fallbackAsset ?? undefined,
       optionalBackendFetcher(OVERVIEW_FETCH_TIMEOUT_MS)
     );
     overviewFetchState = backendSectionStateFromData("asset_overview", "Asset overview", asset);
@@ -515,7 +485,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
   } catch (error) {
     overviewFetchFailed = true;
     overviewFetchState = backendSectionFallbackState("asset_overview", "Asset overview", error);
-    asset = backendApiConfigured ? null : fallbackAsset ?? null;
+    asset = fallbackAsset ?? null;
   }
 
   if (!asset) {
@@ -524,7 +494,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
       notFound();
     }
     if (overviewFetchFailed && (search.state.status === "supported" || search.results[0]?.supported)) {
-      return <RecoverableBackendAssetStatePage ticker={ticker} search={search} failureState={overviewFetchState} />;
+      return <SupportedAssetEvidenceUnavailablePage ticker={ticker} search={search} failureState={overviewFetchState} />;
     }
     return <LimitedAssetStatePage ticker={ticker} search={search} />;
   }
@@ -824,6 +794,12 @@ export default async function AssetPage({ params }: AssetPageProps) {
                 <p className="eyebrow">Stable facts</p>
                 <h2 id="beginner-overview">Beginner Summary</h2>
               </div>
+              <InlineSectionStateNotice state={overviewFetchState} />
+              <GenerationStateNote
+                label="Beginner Summary generation"
+                diagnostics={asset.generationDiagnostics?.beginner_summary}
+                compact
+              />
               <div
                 className="beginner-summary-grid"
                 data-beginner-summary-card-count="3"
@@ -870,8 +846,6 @@ export default async function AssetPage({ params }: AssetPageProps) {
               </div>
             </section>
 
-            <AssetBackendEvidenceSummary states={backendSectionStates} />
-
             <AssetDataDashboard
               asset={asset}
               glossaryMatches={inlineGlossaryMatches}
@@ -889,6 +863,11 @@ export default async function AssetPage({ params }: AssetPageProps) {
                 <p className="eyebrow">Exactly three shown first</p>
                 <h2 id="beginner-top-risks">Top 3 Risks</h2>
               </div>
+              <GenerationStateNote
+                label="Top risks generation"
+                diagnostics={asset.generationDiagnostics?.top_3_risks}
+                compact
+              />
               <div className="risk-grid" data-beginner-top-risk-count={asset.topRisks.slice(0, 3).length}>
                 {asset.topRisks.slice(0, 3).map((risk) => {
                   const citation = getCitationById(asset, risk.citationIds[0]);
@@ -1067,6 +1046,11 @@ export default async function AssetPage({ params }: AssetPageProps) {
         }
         deepDiveSections={
           <>
+            <GenerationStateNote
+              label="Deep Dive summaries"
+              diagnostics={asset.generationDiagnostics?.deep_dive_summary}
+              compact
+            />
             <InlineSectionStateNotice state={detailsFetchState} />
 
             {hasStockPrdSections ? (
@@ -1278,7 +1262,52 @@ export default async function AssetPage({ params }: AssetPageProps) {
   );
 }
 
-function RecoverableBackendAssetStatePage({
+function SupportedAssetLoadingPage({
+  ticker,
+  fallbackAsset
+}: {
+  ticker: string;
+  fallbackAsset: AssetFixture | null;
+}) {
+  const titleTicker = fallbackAsset?.ticker ?? ticker.toUpperCase();
+  const title = fallbackAsset ? `${fallbackAsset.name} ${fallbackAsset.ticker}` : `${titleTicker} learning page`;
+
+  return (
+    <main
+      data-prd-layout-marker="asset-page-progressive-loading-v1"
+      data-asset-progressive-loading-shell
+      data-asset-overview-rendering="loading"
+      data-asset-section-loading-boundary="overview"
+      data-asset-generated-page-blocked="false"
+    >
+      <section className="plain-panel unknown-state" data-asset-supported-loading-state>
+        <div className="section-heading">
+          <p className="eyebrow">Loading source-labeled evidence</p>
+          <h1>{title}</h1>
+        </div>
+        <p className="source-gap-note">
+          The page is waiting for same-asset backend evidence. Sections that are still loading will show their own
+          live, partial, insufficient-evidence, or error state when they resolve.
+        </p>
+        <div className="section-stack" aria-label="Loading asset sections">
+          {["Beginner Summary", "Asset Data Dashboard", "Economic Indicators", "Weekly News Focus", "AI Comprehensive Analysis", "Sources"].map(
+            (label) => (
+              <div
+                key={label}
+                className="source-gap-note"
+                data-asset-section-loading-boundary={label.toLowerCase().replaceAll(" ", "_")}
+              >
+                <strong>{label}:</strong> loading backend evidence
+              </div>
+            )
+          )}
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function SupportedAssetEvidenceUnavailablePage({
   ticker,
   search,
   failureState
@@ -1293,7 +1322,7 @@ function RecoverableBackendAssetStatePage({
 
   return (
     <main
-      data-prd-layout-marker="asset-page-backend-temporarily-unavailable-v1"
+      data-prd-layout-marker="asset-page-supported-evidence-unavailable-v1"
       data-asset-overview-rendering="backend_unavailable"
       data-asset-dynamic-fallback-state="supported_backend_unavailable"
       data-asset-support-classification={supportClassification}
@@ -1303,7 +1332,7 @@ function RecoverableBackendAssetStatePage({
     >
       <section className="plain-panel unknown-state" data-dynamic-asset-state="supported_backend_unavailable">
         <div className="section-heading">
-          <p className="eyebrow">Backend data temporarily unavailable</p>
+          <p className="eyebrow">Asset evidence unavailable</p>
           <h1>{titleTicker} learning page</h1>
         </div>
         <div className="state-row">
@@ -1315,8 +1344,8 @@ function RecoverableBackendAssetStatePage({
           </span>
         </div>
         <p className="source-gap-note">
-          This asset is supported, but the local backend did not return a valid overview quickly enough for this page
-          render. Try refreshing after the backend finishes its source-labeled fetch, or open search while the cache warms.
+          This asset is supported, but the page does not have same-asset evidence to render the learning sections in this
+          request.
         </p>
         {failureState ? (
           <p className="source-gap-note" data-asset-overview-fetch-failure-notice>
@@ -1324,8 +1353,7 @@ function RecoverableBackendAssetStatePage({
           </p>
         ) : null}
         <p className="source-gap-note" data-asset-supported-recoverable-backend-state>
-          No generated facts are shown from frontend memory in this state; the page waits for a same-asset backend
-          evidence response before rendering charts, tables, chat, comparisons, exports, or Weekly News Focus.
+          No generated facts are shown from frontend memory in this state.
         </p>
         <nav className="source-list-nav" aria-label="Asset availability navigation">
           <a href="/">Back to search</a>
@@ -1343,7 +1371,7 @@ function LimitedAssetStatePage({ ticker, search }: { ticker: string; search: Loc
   const titleTicker = result?.ticker || ticker.toUpperCase();
   const stateLabel = status.replaceAll("_", " ");
   if (status === "supported" || result?.supported) {
-    return <RecoverableBackendAssetStatePage ticker={ticker} search={search} />;
+    return <SupportedAssetEvidenceUnavailablePage ticker={ticker} search={search} />;
   }
   const message =
     search.state.blocked_explanation?.summary ??

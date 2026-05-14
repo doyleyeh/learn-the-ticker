@@ -1,5 +1,6 @@
 import { normalizeTicker, type CitationContext, type SourceDrawerSourceDocument } from "./fixtures";
 import { runtimeSectionStatesFromPayload, type RuntimeSectionState } from "./runtimeSectionStates";
+import { sanitizeSourceDisplayTitle } from "./sourceDisplay";
 
 type Fetcher = typeof fetch;
 
@@ -188,7 +189,7 @@ function toSourceDrawerContractData(response: BackendAssetSourceDrawerResponse):
       source: {
         sourceDocumentId: group.source_document_id,
         sourceType: group.source_type,
-        title: group.title,
+        title: sanitizeSourceDisplayTitle(group.title, group),
         publisher: group.publisher,
         url: group.url,
         publishedAt: group.published_at ?? "Unknown",
@@ -217,7 +218,7 @@ function toSourceDrawerContractData(response: BackendAssetSourceDrawerResponse):
       claim:
         contexts[0]?.claimContext ??
         relatedClaims[0]?.claim_text ??
-        `${group.title} is included in this backend-aligned deterministic source list.`,
+        `${sanitizeSourceDisplayTitle(group.title, group)} is included in this backend-aligned source list.`,
       contexts,
       drawerState: sourceDrawerStateFromFreshness(group.freshness_state)
     };

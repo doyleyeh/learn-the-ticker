@@ -223,6 +223,7 @@ _FIELD_LABEL_OVERRIDES = {
 }
 _ENV_KEY = "OPENROUTER" + "_API_KEY"
 _DETERMINISTIC_SUMMARY_GENERATION = ContextVar("deterministic_summary_generation", default=False)
+_SUMMARY_GENERATION_DIAGNOSTICS = ContextVar("summary_generation_diagnostics", default=None)
 _SUMMARY_GENERATION_CACHE_LOCK = RLock()
 _SUMMARY_GENERATION_CACHE: dict[str, "_SummaryGenerationCacheEntry"] = {}
 _LIVE_GENERATION_CIRCUIT_LOCK = RLock()
@@ -410,6 +411,7 @@ class HybridSummaryGenerationService:
             copy_quality_task="beginner_summary",
         )
         _validate_supporting_claims(payload, evidence_pack, output_text=" ".join(summary.model_dump().values()), required=generated.cacheable)
+        record_summary_generation_diagnostics(request.task_name, generated.diagnostics)
         self._remember_valid_payload(generated)
         return summary
 
@@ -453,6 +455,7 @@ class HybridSummaryGenerationService:
             copy_quality_task="deep_dive_summary",
         )
         _validate_supporting_claims(payload, evidence_pack, output_text=summary, required=generated.cacheable)
+        record_summary_generation_diagnostics(request.task_name, generated.diagnostics)
         self._remember_valid_payload(generated)
         return summary
 
@@ -495,6 +498,7 @@ class HybridSummaryGenerationService:
         risks_text = " ".join([risk.title + " " + risk.plain_english_explanation for risk in risks])
         _validate_text_blob(risks_text, generation_evidence_pack=evidence_pack)
         _validate_supporting_claims(payload, evidence_pack, output_text=risks_text, required=generated.cacheable)
+        record_summary_generation_diagnostics(request.task_name, generated.diagnostics)
         self._remember_valid_payload(generated)
         return risks
 
@@ -845,6 +849,27 @@ def deterministic_summary_generation():
         yield
     finally:
         _DETERMINISTIC_SUMMARY_GENERATION.reset(token)
+
+
+def start_summary_generation_diagnostics_capture():
+    return _SUMMARY_GENERATION_DIAGNOSTICS.set({})
+
+
+def stop_summary_generation_diagnostics_capture(token: Any) -> None:
+    _SUMMARY_GENERATION_DIAGNOSTICS.reset(token)
+
+
+def current_summary_generation_diagnostics() -> dict[str, GenerationDiagnostics]:
+    diagnostics = _SUMMARY_GENERATION_DIAGNOSTICS.get()
+    if not isinstance(diagnostics, dict):
+        return {}
+    return dict(diagnostics)
+
+
+def record_summary_generation_diagnostics(task_name: str, diagnostics: GenerationDiagnostics) -> None:
+    captured = _SUMMARY_GENERATION_DIAGNOSTICS.get()
+    if isinstance(captured, dict):
+        captured[task_name] = diagnostics
 
 
 def build_default_summary_generation_service() -> SummaryGenerationService:

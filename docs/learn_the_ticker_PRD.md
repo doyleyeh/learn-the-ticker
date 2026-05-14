@@ -67,6 +67,9 @@ The intended product behavior is now:
 - local fresh-data validation uses the explicit `GET /api/assets/{ticker}/fresh-data` boundary and `scripts/run_lightweight_data_fetch_smoke.py` so CI remains deterministic while the operator can test fresh stock and ETF fetching;
 - every page, chat answer, comparison, Weekly News Focus item, and export shows source provenance and freshness clearly;
 - missing fields render as `partial`, `unavailable`, `stale`, or fallback states instead of blocking the whole asset;
+- supported asset pages should progressively render a normal learning-page shell while backend sections load, with section-level loading, live, stale, partial, insufficient-evidence, or error states instead of a whole-page temporary-unavailable screen for ordinary slow responses;
+- source-labeled lightweight local evidence is the active personal-MVP display path and should not be described to users as fallback when it is fresh, available, and clearly labeled; deterministic fixtures or backend failures must still be labeled inline where displayed;
+- generated Beginner Summary, Deep Dive, Market AI, and ticker AI sections should show compact generation provenance inline, distinguishing live generation, deterministic fallback, timeout fallback, insufficient evidence, and backend error without making the educational copy more speculative;
 - operator review focuses on checking suspicious results and improving repeated failure patterns, not manually filling every URL and as-of date.
 
 | Area                     | Decision                                                                                                                                                                                                                                                                                                                                                                                                      |
