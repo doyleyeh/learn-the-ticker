@@ -2511,12 +2511,23 @@ def _evidence_from_chat_response(pack: AssetKnowledgePack, response: ChatRespons
             source_type=item.source_document.source_type,
             evidence_kind=EvidenceKind.document_chunk,
             freshness_state=item.source_document.freshness_state,
+            retrieved_at=item.source_document.retrieved_at,
+            as_of_date=item.source_document.as_of_date,
+            published_at=item.source_document.published_at,
             supported_claim_types=item.chunk.supported_claim_types,
             supporting_text=item.chunk.text,
             supports_claim=True,
             is_recent=item.source_document.source_type == "recent_development",
             allowlist_status=item.source_document.allowlist_status,
             source_use_policy=item.source_document.source_use_policy,
+            source_identity=item.source_document.url or item.source_document.source_document_id,
+            is_official=item.source_document.is_official,
+            source_quality=item.source_document.source_quality,
+            storage_rights=_storage_rights_for_chat_source(item.source_document.source_use_policy),
+            export_rights=_export_rights_for_chat_source(item.source_document.source_use_policy),
+            review_status=SourceReviewStatus.approved,
+            approval_rationale=_chat_source_approval_rationale(item.source_document),
+            parser_status=SourceParserStatus.parsed if item.source_document.is_official else SourceParserStatus.partial,
         )
     return list(evidence_by_id.values())
 

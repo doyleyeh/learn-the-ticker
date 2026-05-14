@@ -36,7 +36,11 @@ from backend.models import (
     LlmValidationStatus,
     SafetyClassification,
     SourceAllowlistStatus,
+    SourceExportRights,
+    SourceParserStatus,
     SourceQuality,
+    SourceReviewStatus,
+    SourceStorageRights,
     SourceUsePolicy,
     WeeklyNewsEventType,
 )
@@ -86,6 +90,28 @@ LIVE_GENERATION_ENV = "LLM_LIVE_GENERATION_ENABLED"
 LLM_PROVIDER_ENV = "LLM_PROVIDER"
 PROVIDER_KEY_ENV = "OPENROUTER_API_KEY"
 TransportFactory = Callable[[str, Mapping[str, Any]], TransportCallable]
+
+
+def _storage_rights_for_policy(policy: SourceUsePolicy) -> SourceStorageRights:
+    if policy is SourceUsePolicy.full_text_allowed:
+        return SourceStorageRights.raw_snapshot_allowed
+    if policy is SourceUsePolicy.summary_allowed:
+        return SourceStorageRights.summary_allowed
+    if policy is SourceUsePolicy.link_only:
+        return SourceStorageRights.link_only
+    if policy is SourceUsePolicy.rejected:
+        return SourceStorageRights.rejected
+    return SourceStorageRights.metadata_only
+
+
+def _export_rights_for_policy(policy: SourceUsePolicy) -> SourceExportRights:
+    if policy in {SourceUsePolicy.full_text_allowed, SourceUsePolicy.summary_allowed}:
+        return SourceExportRights.excerpts_allowed
+    if policy is SourceUsePolicy.link_only:
+        return SourceExportRights.link_only
+    if policy is SourceUsePolicy.rejected:
+        return SourceExportRights.rejected
+    return SourceExportRights.metadata_only
 
 
 @dataclass(frozen=True)
@@ -401,8 +427,14 @@ def _run_analysis_case(
             is_recent=True,
             allowlist_status=item.source.allowlist_status,
             source_use_policy=item.source.source_use_policy,
+            source_identity=item.source.url or item.source.source_document_id,
             is_official=item.source.is_official,
             source_quality=item.source.source_quality,
+            storage_rights=_storage_rights_for_policy(item.source.source_use_policy),
+            export_rights=_export_rights_for_policy(item.source.source_use_policy),
+            review_status=SourceReviewStatus.approved,
+            approval_rationale="Local live-AI smoke uses selected source-labeled Weekly News evidence.",
+            parser_status=SourceParserStatus.parsed if item.source.is_official else SourceParserStatus.partial,
         )
         for item in focus.items
         for citation_id in item.citation_ids
@@ -418,6 +450,12 @@ def _run_analysis_case(
             is_official=True,
             source_quality=SourceQuality.issuer,
             source_use_policy=SourceUsePolicy.full_text_allowed,
+            source_identity="local://fixtures/qqq/fact-sheet",
+            storage_rights=SourceStorageRights.raw_snapshot_allowed,
+            export_rights=SourceExportRights.excerpts_allowed,
+            review_status=SourceReviewStatus.approved,
+            approval_rationale="Deterministic QQQ canonical fact fixture passed source-use policy review.",
+            parser_status=SourceParserStatus.parsed,
         )
     )
 

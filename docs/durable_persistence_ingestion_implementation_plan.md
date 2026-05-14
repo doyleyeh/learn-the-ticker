@@ -81,6 +81,7 @@ Concrete changes:
   - analysis-pack import history
   - rollback/import ledger
 - Add a deterministic migration smoke that can run against a temporary local database or the existing local durable test boundary without secrets.
+- Add the local `durable_repository_records` adapter as the first restart-proof repository-record smoke path for validated source snapshot, knowledge-pack, Weekly News, generated-output cache, and ingestion ledger records.
 - Add object-artifact storage abstractions for private `raw/`, `parsed/`, `generated/`, and `diagnostics/` key families.
 - Enforce object namespace validation: no public URLs, signed URLs, browser-readable paths, or credential-bearing links in source drawer, exports, generated-output cache, logs, or diagnostics.
 
@@ -111,6 +112,7 @@ Concrete changes:
   - approval rationale or rejection reason
 - Default missing, unclear, parser-invalid, hidden/internal, unreviewed, or rights-disallowed records to closed states.
 - Block unapproved sources from generated-output cache writes, citation support, exports, source drawer supporting excerpts, and strict/audit-quality knowledge packs.
+- Implemented in the durable trust-state slice: strict generated evidence, generated-output cache, citation validation, allowed excerpt export, markdown/JSON section export, source snapshots, and knowledge-pack records share the same handoff validator, while local lightweight metadata remains cache-ineligible display evidence.
 - Preserve lightweight personal-MVP fallback labels where allowed by `docs/LIGHTWEIGHT_DATA_POLICY.md`.
 
 Acceptance gates:
@@ -128,6 +130,7 @@ Concrete changes:
 
 - Use `ingestion_jobs` as the first queue/ledger with statuses such as `queued`, `running`, `succeeded`, `failed`, `cancelled`, `unsupported`, `out_of_scope`, `unknown`, `unavailable`, `partial`, and `stale`.
 - Add safe job claiming with retry/lease metadata so manual Cloud Run Jobs can execute idempotently.
+- Current local implementation note: with durable repositories configured, `request_launch_universe_pre_cache` writes queued ledger records, `DeterministicIngestionWorker` exposes claim/retry helpers, and `backend.cloud_job` supports `plan-launch-pre-cache`, `run-job`, `retry-job`, `run-pre-cache`, status inspection, and production fail-closed durable-ledger checks. The worker remains deterministic and fixture-backed until a later task enables live acquisition for specific jobs.
 - Execute worker steps in order:
   - classify asset from manifests/recognition data;
   - fetch official sources first;
@@ -206,7 +209,7 @@ Acceptance gates:
 5. Route asset, chat, comparison, source drawer, export, and glossary reads through durable state metadata.
 6. Add admin auth, rate limits, deployment runbooks, monitoring, and rollback controls.
 
-The first five tasks are prepared in `TASKS.md` so the agent loop can make progress without jumping straight to broad production deployment.
+The first five tasks are implemented as the durable trust-state slice: local/default execution can remain fixture-backed, durable repositories and queued jobs activate only when configured, and route responses now expose `runtime-section-state-v1` metadata for asset overview/details, Weekly News, Market News, source drawer, glossary, chat, comparison, and exports. The next step is still production hardening around auth, rate limits, monitoring, rollback operations, and live acquisition workers.
 
 ## Required Verification By Task Type
 

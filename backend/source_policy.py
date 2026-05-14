@@ -53,7 +53,6 @@ TEXT_LIMITED_SOURCE_USE_POLICIES = {
     SourceUsePolicy.rejected,
 }
 
-
 class SourcePolicyAction(str, Enum):
     generated_claim_support = "generated_claim_support"
     cache_input_checksum = "cache_input_checksum"
@@ -62,6 +61,14 @@ class SourcePolicyAction(str, Enum):
     allowed_excerpt_export = "allowed_excerpt_export"
     markdown_json_section_export = "markdown_json_section_export"
     diagnostics = "diagnostics"
+
+
+STRICT_SOURCE_PROMOTION_ACTIONS = {
+    SourcePolicyAction.generated_claim_support,
+    SourcePolicyAction.cacheable_generated_output,
+    SourcePolicyAction.allowed_excerpt_export,
+    SourcePolicyAction.markdown_json_section_export,
+}
 
 
 @dataclass(frozen=True)
@@ -397,6 +404,16 @@ def validate_source_handoff(
         reasons.append(f"source_quality_{source_quality.value}")
     if _is_hidden_or_internal_source(source_type, source_identity):
         reasons.append("hidden_or_internal_source")
+    if normalized_action in STRICT_SOURCE_PROMOTION_ACTIONS:
+        reasons.extend(
+            _strict_source_promotion_reason_codes(
+                normalized_action,
+                source_use_policy=source_use_policy,
+                parser_status=parser_status,
+                storage_rights=storage_rights,
+                export_rights=export_rights,
+            )
+        )
 
     action_decision = evaluate_source_policy_action(
         SourcePolicyDecision(
@@ -434,6 +451,17 @@ def validate_source_handoff(
     )
 
 
+def validate_strict_source_handoff(
+    source: Any,
+    *,
+    action: SourcePolicyAction | str = SourcePolicyAction.generated_claim_support,
+) -> SourceHandoffValidationResult:
+    normalized_action = SourcePolicyAction(action)
+    if normalized_action not in STRICT_SOURCE_PROMOTION_ACTIONS:
+        raise SourcePolicyError(f"{normalized_action.value} is not a strict evidence-promotion action.")
+    return validate_source_handoff(source, action=normalized_action)
+
+
 def require_source_handoff(
     source: Any,
     *,
@@ -453,6 +481,40 @@ def excerpt_text_for_policy(text: str, decision: SourcePolicyDecision) -> str | 
     if max_words and len(words) > max_words:
         return " ".join(words[:max_words])
     return text
+
+
+def _strict_source_promotion_reason_codes(
+    action: SourcePolicyAction,
+    *,
+    source_use_policy: SourceUsePolicy,
+    parser_status: SourceParserStatus,
+    storage_rights: SourceStorageRights,
+    export_rights: SourceExportRights,
+) -> list[str]:
+    reasons: list[str] = []
+
+    expected_storage_rights = {
+        SourceUsePolicy.full_text_allowed: {
+            SourceStorageRights.raw_snapshot_allowed,
+            SourceStorageRights.summary_allowed,
+        },
+        SourceUsePolicy.summary_allowed: {SourceStorageRights.summary_allowed},
+    }.get(source_use_policy)
+    if expected_storage_rights is not None and storage_rights not in expected_storage_rights:
+        reasons.append(f"storage_rights_{storage_rights.value}_not_permitted_for_{source_use_policy.value}")
+
+    if (
+        action
+        in {
+            SourcePolicyAction.allowed_excerpt_export,
+            SourcePolicyAction.markdown_json_section_export,
+        }
+        and source_use_policy in {SourceUsePolicy.full_text_allowed, SourceUsePolicy.summary_allowed}
+        and export_rights is not SourceExportRights.excerpts_allowed
+    ):
+        reasons.append(f"export_rights_{export_rights.value}_blocks_excerpt_export")
+
+    return reasons
 
 
 def _policy_block_reason(decision: SourcePolicyDecision) -> str | None:

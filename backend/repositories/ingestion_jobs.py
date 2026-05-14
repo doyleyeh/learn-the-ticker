@@ -23,7 +23,16 @@ INGESTION_JOB_LEDGER_TABLES = (
     "ingestion_job_ledger_source_refs",
     "ingestion_job_ledger_diagnostics",
 )
-BLOCKED_GENERATED_OUTPUT_STATES = {"failed", "unsupported", "out_of_scope", "unknown", "unavailable"}
+BLOCKED_GENERATED_OUTPUT_STATES = {
+    "queued",
+    "failed",
+    "cancelled",
+    "partial",
+    "unsupported",
+    "out_of_scope",
+    "unknown",
+    "unavailable",
+}
 
 
 class IngestionJobLedgerContractError(ValueError):
@@ -38,10 +47,13 @@ class IngestionJobCategory(str, Enum):
 
 
 class IngestionLedgerJobState(str, Enum):
+    queued = "queued"
     pending = "pending"
     running = "running"
     succeeded = "succeeded"
     failed = "failed"
+    cancelled = "cancelled"
+    partial = "partial"
     unsupported = "unsupported"
     out_of_scope = "out_of_scope"
     unknown = "unknown"

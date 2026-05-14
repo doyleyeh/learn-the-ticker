@@ -1,120 +1,124 @@
 ## Current task
 
-### T-188: Surface asset-page backend section states and fallback notices
-
-Goal:
-Make the supported asset page visibly distinguish backend-loaded sections, backend timeouts, backend errors, invalid contracts, missing API configuration, stale cached data, local fixture fallback, partial pages, and valid empty evidence states.
-
-Acceptance criteria:
-- Asset page section fetching no longer collapses every optional backend failure into `null` and complete-looking local/default content.
-- Weekly News Focus distinguishes "valid empty evidence" from "backend timed out or failed."
-- Details, Economic Indicators, Market News Focus, Weekly News Focus, source drawer, and glossary sections expose visible user-facing partial/unavailable/fallback notices where trust would otherwise be ambiguous.
-- Existing `data-asset-*-rendering` attributes stay available for smoke tests, but visible copy is the primary trust signal.
-- The timeout for live-ish asset sections is configurable or raised enough that a slow valid local backend is not indistinguishable from absent data.
-- No frontend path calls providers, news services, LLMs, ingestion workers, or secrets directly from browser code.
-
-Required commands:
-- `npm test`
-- `npm run typecheck`
-- `npm run build`
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
-- `git diff --check`
-
-Iteration budget:
-One focused frontend/control-doc cycle. If the section-state adapter requires broad API contract changes, stop after adding typed frontend fallback notices and prepare the backend metadata task separately.
+No current task is prepared. The durable trust-state slice T-188 through T-192 is complete; prepare the next narrow task before implementation.
 
 ## Backlog
 
-### T-189: Add durable schema execution smoke and restart-proof repository checks
+No backlog tasks are currently prepared.
 
-Goal:
-Move durable persistence from contract/read-boundary proof toward verified schema execution by adding local migration smoke coverage and restart-proof repository read/write checks for source snapshots, knowledge packs, Weekly News events, generated-output cache metadata, ingestion jobs, and import history.
-
-Acceptance criteria:
-- A deterministic local durable smoke can apply and inspect migrations in a throwaway/local test context without real secrets.
-- Repository writes can be read after a simulated process restart when durable repositories are explicitly enabled.
-- Default CI and local tests remain fixture-backed when durable env settings are absent.
-- Placeholder env files do not expose database, object storage, provider, or LLM secrets to browser code.
-
-Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_persistence_settings.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_weekly_news.py tests/unit/test_cache_contracts.py tests/unit/test_ingestion_job_repository.py -q`
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_repo_contract.py tests/unit/test_safety_guardrails.py -q`
-- `TMPDIR=/tmp python3 evals/run_static_evals.py`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
-- `git diff --check`
-
-Iteration budget:
-One backend persistence cycle. Do not add live production database credentials, production object-storage clients, Cloud Run deployment wiring, provider calls, or generated user-facing content.
-
-### T-190: Enforce durable source snapshot and handoff promotion gates
-
-Goal:
-Make durable source snapshots and Golden Asset Source Handoff records the enforced promotion gate for strict evidence, generated-output cache entries, citations, source drawer support, and exports.
-
-Acceptance criteria:
-- Retrieved sources without approved identity, source type, official-source status, storage rights, export rights, source-use policy, parser status, freshness/as-of metadata, review status, and approval rationale default closed.
-- Pending-review, rejected, unclear-rights, parser-invalid, hidden/internal, metadata-only, and link-only sources cannot feed strict generated evidence, unrestricted excerpts, generated-output cache writes, or exports.
-- Lightweight personal-MVP display can still use source-labeled fallback only where `docs/LIGHTWEIGHT_DATA_POLICY.md` allows it and while raw payloads stay hidden.
-- Source drawer, export, generated-output cache, and knowledge-pack records expose only approved metadata and allowed excerpts.
-
-Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_source_policy.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_cache_contracts.py tests/unit/test_exports.py tests/unit/test_source_drawer.py -q`
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q`
-- `TMPDIR=/tmp python3 evals/run_static_evals.py`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
-- `git diff --check`
-
-Iteration budget:
-One source-governance cycle. Do not broaden the source allowlist or approve new domains unless the task also updates policy, rationale, tests, and development-log justification.
-
-### T-191: Convert launch pre-cache into durable job creation and manual worker execution
-
-Goal:
-Replace deterministic launch pre-cache status-only behavior with an explicitly gated durable job-creation path and manual worker execution loop backed by the Postgres-style ingestion ledger.
-
-Acceptance criteria:
-- Durable mode launch pre-cache creates queued ledger jobs for supported high-demand assets instead of only returning static status fixtures.
-- The manual worker can claim, run, retry, and finish jobs idempotently through injected durable repositories.
-- Worker diagnostics are sanitized and never include secrets, raw provider payloads, unrestricted source text, hidden prompts, raw model reasoning, or transcripts.
-- Unsupported, out-of-scope, unknown, unavailable, pending-review, and source-policy-blocked rows remain generated-output-ineligible.
-- Normal CI uses mocked repositories and deterministic provider/source fixtures only.
-
-Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_ingestion_jobs.py tests/unit/test_ingestion_job_repository.py tests/unit/test_ingestion_worker.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_cache_contracts.py -q`
-- `TMPDIR=/tmp python3 -m pytest tests/integration/test_backend_api.py -q`
-- `TMPDIR=/tmp python3 evals/run_static_evals.py`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
-- `git diff --check`
-
-Iteration budget:
-One worker/ledger cycle. Keep Cloud Run Jobs, schedulers, production credentials, broad live provider calls, and recurring ingestion out of scope unless a later deployment task promotes them.
+## Completed
 
 ### T-192: Route asset surfaces through durable section state metadata
 
 Goal:
 Make backend routes prefer valid durable packs/generated-output cache entries and return explicit section-state metadata so the frontend can render durable, stale cache, lightweight fallback, fixture fallback, partial, unavailable, and valid empty evidence states without guessing.
 
-Acceptance criteria:
+Completion details:
+- Added `runtime-section-state-v1` backend metadata with `data_origin`, `section_status`, `fallback_reason`, `freshness_state`, `source_handoff_state`, `cache_state`, and `evidence_state`.
 - Asset overview/details, Weekly News Focus, Market News Focus, source drawer, glossary, chat, comparison, and exports expose compatible `data_origin`, `section_status`, `fallback_reason`, `freshness_state`, `source_handoff_state`, `cache_state`, or equivalent metadata.
-- Routes prefer current valid generated-output cache, then durable knowledge packs/facts/events, then explicitly labeled lightweight fallback, then deterministic fixture fallback only when configured.
-- Generated-output cache entries are invalidated or suppressed when source checksums, fact versions, Weekly News event IDs, prompt/schema/model versions, citation validation, source-use policy, freshness, or safety status changes.
+- Routes preserve the existing generated-output cache and durable repository preference order while labeling backend-generated, durable, generated-cache, lightweight fallback, deterministic fixture, unavailable, partial, and valid empty states.
 - Frontend asset pages consume backend section state metadata for user-facing notices prepared in T-188.
+- Updated technical design, durable implementation, deployment docs, and static evals for route-level section-state metadata.
 
-Required commands:
-- `TMPDIR=/tmp python3 -m pytest tests/unit/test_overview_generation.py tests/unit/test_weekly_news.py tests/unit/test_market_news.py tests/unit/test_source_drawer.py tests/unit/test_glossary_context.py tests/unit/test_chat_generation.py tests/unit/test_comparison_generation.py tests/unit/test_exports.py tests/unit/test_cache_contracts.py -q`
-- `TMPDIR=/tmp python3 -m pytest tests/integration/test_backend_api.py -q`
-- `npm test`
-- `npm run typecheck`
-- `npm run build`
-- `TMPDIR=/tmp python3 evals/run_static_evals.py`
-- `TMPDIR=/tmp bash scripts/run_quality_gate.sh`
-- `git diff --check`
+Required commands executed:
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/unit/test_overview_generation.py tests/unit/test_weekly_news.py tests/unit/test_market_news.py tests/unit/test_source_drawer.py tests/unit/test_glossary_context.py tests/unit/test_chat_generation.py tests/unit/test_comparison_generation.py tests/unit/test_exports.py tests/unit/test_cache_contracts.py -q` - pass, 174 passed
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/integration/test_backend_api.py -q` - pass, 50 passed
+- `source scripts/activate_agent_env.sh && npm test` - pass
+- `source scripts/activate_agent_env.sh && npm run typecheck` - pass
+- `source scripts/activate_agent_env.sh && npm run build` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass
+- `git diff --check` - pass
 
-Iteration budget:
-One API/frontend integration cycle. If cache invalidation requires a schema migration, finish the backend metadata contract first and prepare a follow-up migration task.
+Remaining risks:
+- Section-state metadata labels route trust state, but production DB/object-store deployment, live acquisition workers, admin auth/rate limits, monitoring, rollback UI/API, and broad generated-output cache invalidation operations remain future hardening.
 
-## Completed
+### T-191: Convert launch pre-cache into durable job creation and manual worker execution
+
+Goal:
+Replace deterministic launch pre-cache status-only behavior with an explicitly gated durable job-creation path and manual worker execution loop backed by the Postgres-style ingestion ledger.
+
+Completion details:
+- Added `queued`, `cancelled`, and `partial` ingestion job states to the backend response and ledger enums while preserving existing `pending` fixture compatibility.
+- Made configured durable launch pre-cache enqueue queued ledger jobs with no generated route, generated output, citations, provider calls, source snapshots, or cache entries; no-ledger local/CI behavior remains deterministic fixture-backed.
+- Added explicit deterministic worker claim/retry helpers, queued-to-running-to-terminal transitions, retry metadata, and idempotent repeat execution for terminal jobs.
+- Extended `backend.cloud_job` with durable `retry-job` support and ensured `plan-launch-pre-cache`, `run-job`, `run-pre-cache`, status, and production fail-closed checks use the injected durable ledger.
+- Updated deployment, technical design, and durable implementation docs with the manual worker runbook and remaining live-acquisition hardening boundary.
+
+Required commands executed:
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/unit/test_ingestion_jobs.py tests/unit/test_ingestion_job_repository.py tests/unit/test_ingestion_worker.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_cache_contracts.py -q` - pass, 126 passed
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/integration/test_backend_api.py -q` - pass, 49 passed
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass, 636 backend tests plus static evals and frontend checks
+- `git diff --check` - pass
+
+Remaining risks:
+- The worker still uses deterministic fixtures and mocked writers; live acquisition, recurring schedulers, public admin exposure, and production object-storage writes remain intentionally out of scope.
+- Durable queued jobs are local repository-protocol records until a production Postgres/object-storage deployment executes the corresponding migration and operator setup.
+
+### T-190: Enforce durable source snapshot and handoff promotion gates
+
+Goal:
+Make durable source snapshots and Golden Asset Source Handoff records the enforced promotion gate for strict evidence, generated-output cache entries, citations, source drawer support, and exports.
+
+Completion details:
+- Added a shared strict source-promotion action set and helper in `backend/source_policy.py` for generated claim support, generated-output cacheability, allowed excerpt export, and markdown/JSON section export.
+- Enforced compatible source-use/storage/export rights across source snapshots, knowledge-pack rows, generated-output cache inputs, citation validation, exports, source drawer excerpts, chat, comparison, overview, Weekly News, and live-AI smoke evidence.
+- Preserved lightweight personal-MVP fallback behavior by keeping lightweight records source-labeled, raw-payload-safe, and generated-output-cache-ineligible while allowing approved full-text sources to be handled with less-permissive summary storage.
+- Updated source-handoff, lightweight policy, technical design, and durable implementation docs to reflect the strict promotion gate and local lightweight exception.
+
+Required commands executed:
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/unit/test_source_policy.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_cache_contracts.py tests/unit/test_exports.py tests/unit/test_source_drawer.py -q` - pass, 88 passed
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q` - pass, 52 passed
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass, 632 backend tests plus static evals and frontend checks
+- `git diff --check` - pass
+
+### T-189: Add durable schema execution smoke and restart-proof repository checks
+
+Goal:
+Move durable persistence from contract/read-boundary proof toward verified schema execution by adding local migration smoke coverage and restart-proof repository read/write checks for source snapshots, knowledge packs, Weekly News events, generated-output cache metadata, ingestion jobs, and import history.
+
+Completion details:
+- Added a local `durable_repository_records` SQLite adapter implementing the existing repository session protocol with checksums and restart-safe JSON payloads.
+- Added an Alembic durable repository-record contract revision and a deterministic `scripts/run_durable_schema_smoke.py` smoke that applies and inspects a throwaway local schema without secrets.
+- Wired local durable repository factories to use the SQLite adapter when `DATABASE_URL=sqlite:///...` and durable repositories are explicitly enabled.
+- Added restart-proof checks for source snapshots, knowledge packs, Weekly News event evidence, generated-output cache metadata, and ingestion job ledger records.
+- Updated deployment and technical docs to describe the local-only durable schema smoke path without claiming production database/object storage is complete.
+
+Required commands executed:
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/unit/test_persistence_settings.py tests/unit/test_source_snapshot_repository.py tests/unit/test_knowledge_pack_repository.py tests/unit/test_weekly_news.py tests/unit/test_cache_contracts.py tests/unit/test_ingestion_job_repository.py -q` - pass, 150 passed
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/unit/test_repo_contract.py tests/unit/test_safety_guardrails.py -q` - pass, 52 passed
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 scripts/run_durable_schema_smoke.py` - pass
+- `git diff --check` - pass
+
+Remaining risks:
+- The SQLite adapter is a deterministic local smoke path, not the production Postgres/object-storage adapter.
+- SQLAlchemy/Alembic are still optional in the current local test environment; production migration execution remains an operator/deployment concern.
+
+### T-188: Surface asset-page backend section states and fallback notices
+
+Goal:
+Make the supported asset page visibly distinguish backend-loaded sections, backend timeouts, backend errors, invalid contracts, missing API configuration, stale cached data, local fixture fallback, partial pages, and valid empty evidence states.
+
+Completion details:
+- Preserved typed asset-page backend section fetch states instead of collapsing optional section failures to `null`.
+- Kept visible fallback notices for details, Economic Indicators, Market News Focus, Weekly News Focus, source drawer, and glossary-context failures.
+- Added a configurable live-section timeout with a deterministic 5-second default so local slow backend sections do not look identical to absent backend data.
+- Preserved and extended frontend smoke markers for backend failure reasons, overview fetch failure copy, and Weekly News failure-vs-empty distinction.
+- Classified overview fetch failures before rendering the recoverable backend-unavailable supported-asset page, so timeout/error/contract messages remain visible.
+
+Required commands executed:
+- `source scripts/activate_agent_env.sh && npm test` - pass
+- `source scripts/activate_agent_env.sh && npm run typecheck` - pass
+- `source scripts/activate_agent_env.sh && npm run build` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/unit/test_safety_guardrails.py tests/unit/test_repo_contract.py -q` - pass, 52 passed
+- `git diff --check` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass, including 627 backend tests, static evals, frontend smoke, typecheck, build, and backend checks
+
+Remaining risks:
+- Backend section-state metadata is still added in T-192; until then, the frontend uses typed fetch classification and existing section contracts.
 
 ### T-193: Add Weekly News official document handoff proof
 
@@ -5476,11 +5480,11 @@ Roadmap integration tracker:
 | Lightweight Weekly News page and AI analysis wiring | Completed | T-169 |
 | Grounded chat with stable facts plus Weekly News | Completed | T-170 |
 | Weekly News UI filters and local smoke validation | Completed | T-171 |
-| Asset-page backend section state and fallback notices | Current | T-188 |
-| Durable schema execution smoke and repository checks | Prepared | T-189 |
-| Durable source snapshot and handoff promotion gates | Prepared | T-190 |
-| Durable launch pre-cache job creation and worker execution | Prepared | T-191 |
-| Durable section-state route reads and generated-output cache authority | Prepared | T-192 |
+| Asset-page backend section state and fallback notices | Completed | T-188 |
+| Durable schema execution smoke and repository checks | Completed | T-189 |
+| Durable source snapshot and handoff promotion gates | Completed | T-190 |
+| Durable launch pre-cache job creation and worker execution | Completed | T-191 |
+| Durable section-state route reads and generated-output cache authority | Completed | T-192 |
 | Full production deployment, recurring jobs, and broad paid-provider integrations | Later | Unpromoted |
 
 Remaining unpromoted general MVP sequence:

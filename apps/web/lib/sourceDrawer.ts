@@ -1,4 +1,5 @@
 import { normalizeTicker, type CitationContext, type SourceDrawerSourceDocument } from "./fixtures";
+import { runtimeSectionStatesFromPayload, type RuntimeSectionState } from "./runtimeSectionStates";
 
 type Fetcher = typeof fetch;
 
@@ -28,6 +29,7 @@ export type SourceDrawerListEntry = {
 export type SourceDrawerContractData = {
   drawerState: SourceDrawerState;
   entries: SourceDrawerListEntry[];
+  sectionStates?: RuntimeSectionState[];
 };
 
 export const GOVERNED_GOLDEN_SOURCE_DRAWER_RENDERING_PROOF =
@@ -115,6 +117,7 @@ type BackendAssetSourceDrawerResponse = {
   citation_bindings: BackendSourceDrawerCitationBinding[];
   related_claims: BackendSourceDrawerRelatedClaim[];
   section_references: BackendSourceDrawerSectionReference[];
+  section_states?: unknown[];
 };
 
 export async function fetchSupportedSourceDrawerResponse(
@@ -222,7 +225,8 @@ function toSourceDrawerContractData(response: BackendAssetSourceDrawerResponse):
 
   return {
     drawerState: sourceDrawerStateFromContract(response.drawer_state),
-    entries
+    entries,
+    sectionStates: runtimeSectionStatesFromPayload(response)
   };
 }
 

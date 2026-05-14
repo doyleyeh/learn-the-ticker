@@ -5,6 +5,7 @@ import {
   type Citation,
   type FreshnessState
 } from "./fixtures";
+import { runtimeSectionStatesFromPayload } from "./runtimeSectionStates";
 
 type Fetcher = typeof fetch;
 
@@ -57,6 +58,7 @@ type BackendDetailsResponse = {
   freshness: BackendFreshness;
   facts: BackendDetailsFacts;
   citations: BackendCitation[];
+  section_states?: unknown[];
 };
 
 export async function fetchSupportedAssetDetails(
@@ -152,7 +154,8 @@ function mergeAssetFixtureWithDetails(fallbackAsset: AssetFixture, details: Back
       details.citations.map(toCitation),
       fallbackAsset.citations,
       (citation) => citation.citationId
-    )
+    ),
+    sectionStates: mergeSectionStates(fallbackAsset.sectionStates, runtimeSectionStatesFromPayload(details))
   };
 
   if (assetWithFreshness.assetType === "stock") {
@@ -160,6 +163,14 @@ function mergeAssetFixtureWithDetails(fallbackAsset: AssetFixture, details: Back
   }
 
   return mergeEtfDetails(assetWithFreshness, details.facts);
+}
+
+function mergeSectionStates(
+  fallbackStates: AssetFixture["sectionStates"] = [],
+  backendStates: AssetFixture["sectionStates"] = []
+) {
+  const byId = new Map([...(fallbackStates ?? []), ...(backendStates ?? [])].map((state) => [state.sectionId, state]));
+  return [...byId.values()];
 }
 
 function mergeStockDetails(asset: AssetFixture, facts: BackendDetailsFacts): AssetFixture {

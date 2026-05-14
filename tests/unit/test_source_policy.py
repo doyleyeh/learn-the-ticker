@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from backend.models import (
     FreshnessState,
     SourceAllowlistStatus,
@@ -16,12 +18,14 @@ from backend.source_policy import (
     DEFAULT_SOURCE_ALLOWLIST_PATH,
     REQUIRED_SOURCE_USE_POLICIES,
     SourcePolicyAction,
+    STRICT_SOURCE_PROMOTION_ACTIONS,
     classify_source_policy_actions,
     source_handoff_fields_from_policy,
     source_can_cache_input_checksum,
     source_can_export_source_metadata,
     source_can_feed_generated_output_cache,
     source_can_support_markdown_json_export,
+    validate_strict_source_handoff,
     load_source_allowlist,
     resolve_source_policy,
     source_can_export_excerpt,
@@ -287,6 +291,12 @@ def test_golden_asset_source_handoff_requires_approval_parser_rights_and_freshne
 
     assert validate_source_handoff(source, action=SourcePolicyAction.generated_claim_support).allowed is True
 
+    limited_storage = validate_source_handoff(
+        {**source, "storage_rights": SourceStorageRights.summary_allowed},
+        action=SourcePolicyAction.generated_claim_support,
+    )
+    assert limited_storage.allowed is True
+
     missing = validate_source_handoff({}, action=SourcePolicyAction.generated_claim_support)
     assert missing.allowed is False
     assert {
@@ -353,6 +363,72 @@ def test_golden_asset_source_handoff_requires_approval_parser_rights_and_freshne
     )
     assert metadata_only.allowed is False
     assert "metadata_only_content_omitted" in metadata_only.reason_codes
+
+    mismatched_rights = validate_source_handoff(
+        {
+            **source,
+            "source_use_policy": SourceUsePolicy.summary_allowed,
+            "storage_rights": SourceStorageRights.raw_snapshot_allowed,
+            "export_rights": SourceExportRights.metadata_only,
+        },
+        action=SourcePolicyAction.allowed_excerpt_export,
+    )
+    assert mismatched_rights.allowed is False
+    assert "storage_rights_raw_snapshot_allowed_not_permitted_for_summary_allowed" in mismatched_rights.reason_codes
+    assert "export_rights_metadata_only_blocks_excerpt_export" in mismatched_rights.reason_codes
+
+    diagnostics_metadata_only = validate_source_handoff(
+        {
+            **source,
+            "source_use_policy": SourceUsePolicy.metadata_only,
+            "storage_rights": SourceStorageRights.metadata_only,
+            "export_rights": SourceExportRights.metadata_only,
+            "permitted_operations": {
+                "can_store_metadata": True,
+                "can_store_raw_text": False,
+                "can_display_metadata": True,
+                "can_display_excerpt": False,
+                "can_summarize": False,
+                "can_cache": True,
+                "can_export_metadata": False,
+                "can_export_excerpt": False,
+                "can_export_full_text": False,
+                "can_support_generated_output": False,
+                "can_support_citations": False,
+                "can_support_canonical_facts": False,
+                "can_support_recent_developments": False,
+            },
+        },
+        action=SourcePolicyAction.diagnostics,
+    )
+    assert diagnostics_metadata_only.allowed is True
+
+
+def test_strict_source_handoff_helper_is_limited_to_promotion_actions():
+    approved = resolve_source_policy(url="https://www.sec.gov/Archives/example")
+    source = {
+        **source_handoff_fields_from_policy(approved, source_identity="https://www.sec.gov/Archives/example"),
+        "source_document_id": "src_sec_fixture",
+        "source_type": "sec_filing",
+        "is_official": True,
+        "source_quality": SourceQuality.official,
+        "allowlist_status": approved.allowlist_status,
+        "source_use_policy": approved.source_use_policy,
+        "permitted_operations": approved.permitted_operations,
+        "freshness_state": FreshnessState.fresh,
+        "as_of_date": "2026-04-01",
+        "retrieved_at": "2026-04-25T00:00:00Z",
+    }
+
+    assert {action.value for action in STRICT_SOURCE_PROMOTION_ACTIONS} == {
+        "generated_claim_support",
+        "cacheable_generated_output",
+        "allowed_excerpt_export",
+        "markdown_json_section_export",
+    }
+    assert validate_strict_source_handoff(source, action=SourcePolicyAction.generated_claim_support).allowed is True
+    with pytest.raises(ValueError, match="not a strict evidence-promotion action"):
+        validate_strict_source_handoff(source, action=SourcePolicyAction.diagnostics)
 
 
 def test_source_handoff_manifest_smoke_inspects_draft_and_finalized_packets():

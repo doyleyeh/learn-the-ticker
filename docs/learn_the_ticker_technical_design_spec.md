@@ -243,7 +243,8 @@ Ticker Weekly News acquisition remains official -> configured provider/news APIs
 - Generate embeddings when the embedding adapter is enabled.
 - Refresh stale assets.
 - Support pre-cache jobs for high-demand stocks and ETFs, source/provider fallback jobs, and explicit `pending_ingestion` states for assets outside the pre-cache set.
-- Track ingestion job status.
+- Track ingestion job status across `queued`, `pending`, `running`, `succeeded`, `failed`, `cancelled`, `partial`, `unsupported`, `out_of_scope`, `unknown`, `unavailable`, and `stale` ledger states while preserving `pending` compatibility for older deterministic fixtures.
+- When durable repositories are configured, launch pre-cache enqueue requests create queued ledger rows and do not claim that provider calls, source snapshots, citations, generated outputs, or generated-output cache records already exist.
 
 **Recommended queue model**
 
@@ -383,6 +384,7 @@ Golden Asset Source Handoff is the strict/audit-quality approval layer between r
 - Approval/evidence layer: allowlisted domain, source type, official-source status, storage rights, export rights, source-use policy, rationale, parser validity, freshness/as-of metadata, and review status.
 - Approval statuses: `approved`, `pending_review`, and `rejected`.
 - In strict mode, missing, unclear, hidden/internal, parser-invalid, or unapproved sources default to `pending_review` or `rejected` and cannot support generated output.
+- The implemented strict promotion gate lives in `backend/source_policy.py`. It validates generated claim support, generated-output cacheability, allowed excerpt export, and markdown/JSON section export through one handoff path, including compatible storage/export rights, approved review status, parser status, freshness/as-of metadata, source-use policy, and sanitized hidden/internal source checks.
 - In lightweight mode, unresolved official-source gaps should trigger alternate official discovery, reputable fallback, `partial`, `unavailable`, or fallback labels rather than a whole-page block.
 - The operational rule is fetch only through SSRF-safe server-side retrieval/provider adapters, store raw text according to source-use policy, generate only from source-labeled facts/evidence, and export only rights-safe content.
 
@@ -802,6 +804,15 @@ Indexes:
 - PostgreSQL full-text GIN index on `document_chunks.text` or a generated `tsvector` column for keyword-first retrieval
 
 pgvector can remain installed for future migration compatibility, but vector indexes and embedding jobs stay disabled until retrieval moves beyond keyword-first.
+
+### 8.3 Local durable repository-record smoke
+
+The local durable MVP path includes a SQLite-backed `durable_repository_records` adapter for deterministic smoke and
+restart-proof repository checks. It implements the existing repository session protocol
+(`save_repository_record(collection, key, records)` and `get_repository_record(collection, key)`) and stores only
+already-validated repository record payloads with checksums and timestamps. This adapter is for local durable execution
+and CI-safe smoke coverage; production Postgres/object-storage hardening still requires the governed migrations,
+private artifact storage, auth, rate limits, and rollout controls described in deployment docs.
 
 ---
 
@@ -1385,6 +1396,17 @@ The orchestrator caches only validated outputs. It returns `answer_state=complet
 
 Generated-summary cache keys must include the evidence-pack schema version, generation-context schema version, prompt version, and freshness hash. Cache reuse is allowed only when the curated `generation_context` and citation evidence still match the selected asset or market pack. Failed raw model responses, hidden prompts, unrestricted provider payloads, and raw model reasoning must not be cached or returned.
 
+### 11.2.2 Runtime section-state metadata
+
+Backend route responses that feed generated or evidence-sensitive surfaces now expose `section_states` using schema version `runtime-section-state-v1`. Each state is a small route-level trust record with:
+
+- `data_origin`: `durable_repository`, `generated_output_cache`, `backend_generated`, `lightweight_fallback`, `deterministic_fixture`, or `unavailable`
+- `section_status`: `available`, `empty`, `partial`, `stale`, `unknown`, `unavailable`, `insufficient_evidence`, `suppressed`, or a blocked support state
+- `fallback_reason`, when a route used deterministic fixture, lightweight fallback, unavailable, or partial behavior
+- `freshness_state`, `source_handoff_state`, `cache_state`, and `evidence_state`
+
+The metadata is backward-compatible: existing response bodies keep their primary fields, while asset overview/details, Weekly News, Market News, source drawer, glossary, chat, comparison, and export routes include route-level `section_states`. Frontend asset pages consume this metadata when present and fall back to typed request failure classification when it is absent. A valid empty Weekly News result is `section_status=empty`, which is distinct from timeout, invalid-contract, backend-error, or unavailable states.
+
 ### 11.3 Page summary schema
 
 Example simplified schema:
@@ -1412,8 +1434,24 @@ Example simplified schema:
       }
     },
     "section_states": {
-      "type": "object",
-      "description": "Per-section evidence and freshness state for complete or partial pages."
+      "type": "array",
+      "description": "Per-section runtime trust states using runtime-section-state-v1.",
+      "items": {
+        "type": "object",
+        "required": ["schema_version", "section_id", "data_origin", "section_status", "source_handoff_state"],
+        "properties": {
+          "schema_version": {"const": "runtime-section-state-v1"},
+          "section_id": {"type": "string"},
+          "label": {"type": ["string", "null"]},
+          "data_origin": {"type": "string"},
+          "section_status": {"type": "string"},
+          "fallback_reason": {"type": ["string", "null"]},
+          "freshness_state": {"type": ["string", "null"]},
+          "source_handoff_state": {"type": "string"},
+          "cache_state": {"type": ["string", "null"]},
+          "evidence_state": {"type": ["string", "null"]}
+        }
+      }
     },
     "top_risks": {
       "type": "array",
@@ -1784,11 +1822,32 @@ GET /api/assets/VOO/overview?section=beginner
     "asset_type": "etf",
     "status": "partial"
   },
-  "section_states": {
-    "snapshot": {"evidence_state": "complete", "freshness_state": "fresh"},
-    "holdings": {"evidence_state": "partial", "freshness_state": "stale"},
-    "weekly_news_focus": {"evidence_state": "complete", "freshness_state": "fresh"}
-  },
+  "section_states": [
+    {
+      "schema_version": "runtime-section-state-v1",
+      "section_id": "asset_overview",
+      "label": "Asset overview",
+      "data_origin": "durable_repository",
+      "section_status": "available",
+      "fallback_reason": null,
+      "freshness_state": "fresh",
+      "source_handoff_state": "approved",
+      "cache_state": "not_applicable",
+      "evidence_state": "supported"
+    },
+    {
+      "schema_version": "runtime-section-state-v1",
+      "section_id": "weekly_news",
+      "label": "Weekly News Focus",
+      "data_origin": "generated_output_cache",
+      "section_status": "empty",
+      "fallback_reason": null,
+      "freshness_state": "fresh",
+      "source_handoff_state": "approved",
+      "cache_state": "hit",
+      "evidence_state": "no_high_signal"
+    }
+  ],
   "freshness": {
     "page_last_updated_at": "2026-04-19T14:30:00Z",
     "facts_as_of": "2026-04-18",
@@ -2511,6 +2570,7 @@ Cloud Run Jobs requirements:
 
 - Use the same API/worker image family and production env settings where possible.
 - Use the Postgres `ingestion_jobs` table as the job ledger and queue for v1.
+- Use `backend.cloud_job plan-launch-pre-cache` to enqueue launch jobs, `run-job` to claim and finish one queued/running job, `retry-job` to requeue retryable sanitized failures, and `status` to inspect the durable ledger record.
 - Add Cloud Scheduler later only after manual job execution is reliable and recurring ingestion is needed.
 
 Storage requirements:

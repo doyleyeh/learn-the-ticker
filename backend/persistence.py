@@ -204,17 +204,27 @@ def build_local_durable_repository_factories(
     engine_factory: Any | None = None,
 ) -> LocalDurableRepositoryFactories:
     local_settings = settings or build_local_durable_repository_settings(env=env)
+    resolved_session_factory = session_factory
     resolved_engine_factory = engine_factory
-    if resolved_engine_factory is None and session_factory is None and local_settings.can_construct:
-        try:
-            from backend.db import build_engine_factory
+    if resolved_engine_factory is None and resolved_session_factory is None and local_settings.can_construct:
+        if str(local_settings.database.database_driver or "").startswith("sqlite"):
+            try:
+                from backend.durable_repository_records import DurableRepositoryRecordSession
 
-            resolved_engine_factory = build_engine_factory(local_settings.database)
-        except Exception:
-            resolved_engine_factory = None
+                database_url = getattr(local_settings.database, "_database_url")
+                resolved_session_factory = lambda: DurableRepositoryRecordSession.from_database_url(database_url)
+            except Exception:
+                resolved_session_factory = None
+        else:
+            try:
+                from backend.db import build_engine_factory
+
+                resolved_engine_factory = build_engine_factory(local_settings.database)
+            except Exception:
+                resolved_engine_factory = None
     return LocalDurableRepositoryFactories(
         settings=local_settings,
-        session_factory=session_factory,
+        session_factory=resolved_session_factory,
         engine_factory=resolved_engine_factory,
     )
 

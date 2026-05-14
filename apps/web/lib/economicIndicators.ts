@@ -10,6 +10,7 @@ import {
   type SourceUsePolicy,
   type WeeklyNewsContractState
 } from "./fixtures";
+import { runtimeSectionStatesFromPayload } from "./runtimeSectionStates";
 
 type Fetcher = typeof fetch;
 
@@ -66,6 +67,7 @@ type BackendEconomicIndicatorsPack = {
   }>;
   citations: BackendCitation[];
   source_documents: BackendSourceDocument[];
+  section_states?: unknown[];
   analysis_pack_metadata?: {
     analysis_source?: "imported_local_pack" | "backend_generated" | "deterministic_fixture";
     freshness_expires_at?: string | null;
@@ -165,6 +167,7 @@ function toEconomicIndicatorsPack(
           validationStatus: pack.analysis_pack_metadata.validation_status ?? "not_applicable"
         }
       : null,
+    sectionStates: runtimeSectionStatesFromPayload(pack),
     noLiveExternalCalls: true,
     stableFactsAreSeparate: true
   };

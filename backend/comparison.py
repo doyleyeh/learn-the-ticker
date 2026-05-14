@@ -81,7 +81,7 @@ from backend.retrieval import (
 from backend.repositories.knowledge_packs import KnowledgePackRepositoryContractError, KnowledgePackRepositoryRecords
 from backend.retrieval_repository import KnowledgePackRecordReader, read_persisted_knowledge_pack_response
 from backend.safety import find_forbidden_output_phrases
-from backend.source_policy import resolve_source_policy
+from backend.source_policy import resolve_source_policy, source_handoff_fields_from_policy
 
 
 class ComparisonGenerationError(ValueError):
@@ -1849,37 +1849,63 @@ class _ComparisonCitationRegistry:
 
     def for_fact(self, retrieved_fact: RetrievedFact) -> CitationBinding:
         citation_id = f"c_{retrieved_fact.fact.fact_id}"
+        source_document = _source_document_from_fixture(retrieved_fact.source_document, retrieved_fact.source_chunk.text)
         evidence = CitationEvidence(
             citation_id=citation_id,
             asset_ticker=retrieved_fact.fact.asset_ticker,
-            source_document_id=retrieved_fact.source_document.source_document_id,
-            source_type=retrieved_fact.source_document.source_type,
+            source_document_id=source_document.source_document_id,
+            source_type=source_document.source_type,
             evidence_kind=EvidenceKind.normalized_fact,
             freshness_state=retrieved_fact.fact.freshness_state,
+            retrieved_at=source_document.retrieved_at,
+            as_of_date=source_document.as_of_date,
+            published_at=source_document.published_at,
             supported_claim_types=retrieved_fact.source_chunk.supported_claim_types,
             supporting_text=retrieved_fact.source_chunk.text,
             supports_claim=retrieved_fact.fact.evidence_state == "supported",
             is_recent=False,
-            allowlist_status=retrieved_fact.source_document.allowlist_status,
-            source_use_policy=retrieved_fact.source_document.source_use_policy,
+            allowlist_status=source_document.allowlist_status,
+            source_use_policy=source_document.source_use_policy,
+            source_identity=source_document.source_identity,
+            is_official=source_document.is_official,
+            source_quality=source_document.source_quality,
+            storage_rights=source_document.storage_rights,
+            export_rights=source_document.export_rights,
+            review_status=source_document.review_status,
+            approval_rationale=source_document.approval_rationale,
+            parser_status=source_document.parser_status,
+            parser_failure_diagnostics=source_document.parser_failure_diagnostics,
         )
         return self._add_binding(citation_id, retrieved_fact.source_document, evidence)
 
     def for_chunk(self, retrieved_chunk: RetrievedSourceChunk) -> CitationBinding:
         citation_id = f"c_{retrieved_chunk.chunk.chunk_id}"
+        source_document = _source_document_from_fixture(retrieved_chunk.source_document, retrieved_chunk.chunk.text)
         evidence = CitationEvidence(
             citation_id=citation_id,
             asset_ticker=retrieved_chunk.chunk.asset_ticker,
-            source_document_id=retrieved_chunk.source_document.source_document_id,
-            source_type=retrieved_chunk.source_document.source_type,
+            source_document_id=source_document.source_document_id,
+            source_type=source_document.source_type,
             evidence_kind=EvidenceKind.document_chunk,
             freshness_state=retrieved_chunk.source_document.freshness_state,
+            retrieved_at=source_document.retrieved_at,
+            as_of_date=source_document.as_of_date,
+            published_at=source_document.published_at,
             supported_claim_types=retrieved_chunk.chunk.supported_claim_types,
             supporting_text=retrieved_chunk.chunk.text,
             supports_claim=True,
             is_recent=False,
-            allowlist_status=retrieved_chunk.source_document.allowlist_status,
-            source_use_policy=retrieved_chunk.source_document.source_use_policy,
+            allowlist_status=source_document.allowlist_status,
+            source_use_policy=source_document.source_use_policy,
+            source_identity=source_document.source_identity,
+            is_official=source_document.is_official,
+            source_quality=source_document.source_quality,
+            storage_rights=source_document.storage_rights,
+            export_rights=source_document.export_rights,
+            review_status=source_document.review_status,
+            approval_rationale=source_document.approval_rationale,
+            parser_status=source_document.parser_status,
+            parser_failure_diagnostics=source_document.parser_failure_diagnostics,
         )
         return self._add_binding(citation_id, retrieved_chunk.source_document, evidence)
 
@@ -2798,6 +2824,11 @@ def _source_reference_from_fixture(source: SourceDocumentFixture) -> ComparisonE
         allowlist_status=source.allowlist_status,
         source_use_policy=source.source_use_policy,
         permitted_operations=decision.permitted_operations,
+        **source_handoff_fields_from_policy(
+            decision,
+            source_identity=source.url or source.source_document_id,
+            approval_rationale="Deterministic comparison fixture source passed local source-use policy review.",
+        ),
     )
 
 

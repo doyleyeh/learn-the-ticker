@@ -794,8 +794,8 @@ def _source_row_from_provider(ticker: str, source: Any) -> KnowledgePackSourceDo
         source_use_policy=source.source_use_policy.value,
         permitted_operations=source.permitted_operations.model_dump(mode="json"),
         source_identity=getattr(source, "source_identity", None) or source.url or source.source_document_id,
-        storage_rights=getattr(source, "storage_rights", SourceStorageRights.raw_snapshot_allowed).value,
-        export_rights=getattr(source, "export_rights", SourceExportRights.excerpts_allowed).value,
+        storage_rights=_storage_rights_for_policy(source.source_use_policy).value,
+        export_rights=_export_rights_for_policy(source.source_use_policy).value,
         review_status=getattr(source, "review_status", SourceReviewStatus.approved).value,
         approval_rationale=getattr(
             source,
@@ -826,8 +826,8 @@ def _checksum_row_from_acquisition_source(ticker: str, source: Any, source_recor
         published_at=source.published_at,
         is_official=source.is_official,
         source_quality=source.source_quality.value,
-        storage_rights=getattr(source, "storage_rights", SourceStorageRights.raw_snapshot_allowed).value,
-        export_rights=getattr(source, "export_rights", SourceExportRights.excerpts_allowed).value,
+        storage_rights=_storage_rights_for_policy(source.source_use_policy).value,
+        export_rights=_export_rights_for_policy(source.source_use_policy).value,
         review_status=getattr(source, "review_status", SourceReviewStatus.approved).value,
         approval_rationale=getattr(
             source,
@@ -1080,6 +1080,28 @@ def _primary_source_id(item_id: str, source_document_ids: list[str], source_by_i
     if source_id not in source_by_id:
         raise KnowledgePackRepositoryContractError(f"{item_id} references an unknown provider source document.")
     return source_id
+
+
+def _storage_rights_for_policy(policy: SourceUsePolicy) -> SourceStorageRights:
+    if policy is SourceUsePolicy.full_text_allowed:
+        return SourceStorageRights.raw_snapshot_allowed
+    if policy is SourceUsePolicy.summary_allowed:
+        return SourceStorageRights.summary_allowed
+    if policy is SourceUsePolicy.metadata_only:
+        return SourceStorageRights.metadata_only
+    if policy is SourceUsePolicy.link_only:
+        return SourceStorageRights.link_only
+    return SourceStorageRights.rejected
+
+
+def _export_rights_for_policy(policy: SourceUsePolicy) -> SourceExportRights:
+    if policy in {SourceUsePolicy.full_text_allowed, SourceUsePolicy.summary_allowed}:
+        return SourceExportRights.excerpts_allowed
+    if policy is SourceUsePolicy.metadata_only:
+        return SourceExportRights.metadata_only
+    if policy is SourceUsePolicy.link_only:
+        return SourceExportRights.link_only
+    return SourceExportRights.rejected
 
 
 def _stored_provider_excerpt(source_use_policy: SourceUsePolicy, text: str) -> tuple[str | None, str]:

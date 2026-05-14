@@ -109,6 +109,7 @@ from backend.persistence import (
 from backend.retrieval import build_asset_knowledge_pack_result
 from backend.retrieval_repository import read_persisted_knowledge_pack_response
 from backend.search import search_assets
+from backend.section_states import response_section_state, with_section_states
 from backend.settings import build_admin_route_settings, build_cors_settings, build_lightweight_data_settings
 from backend.sources import build_asset_source_drawer_response
 from backend.trust_metrics import get_trust_metric_event_catalog, validate_trust_metric_events
@@ -156,11 +157,64 @@ def _require_admin_routes_enabled() -> None:
         raise HTTPException(status_code=404, detail="Admin routes are disabled in this environment.")
 
 
+def _with_route_section_state(
+    response: Any,
+    section_id: str,
+    label: str,
+    **overrides: Any,
+) -> Any:
+    return with_section_states(response, [response_section_state(response, section_id, label, **overrides)])
+
+
+def _with_market_news_section_states(response: MarketNewsResponse) -> MarketNewsResponse:
+    origin_state = response_section_state(response, "market_news", "Market News Focus")
+    states = [
+        response_section_state(
+            response.market_news_focus,
+            "market_news",
+            "Market News Focus",
+            data_origin=origin_state.data_origin,
+            fallback_reason=origin_state.fallback_reason,
+        ).model_copy(update={"source_handoff_state": origin_state.source_handoff_state}),
+        response_section_state(
+            response.market_ai_comprehensive_analysis,
+            "market_ai_comprehensive_analysis",
+            "Market AI Comprehensive Analysis",
+            data_origin=origin_state.data_origin,
+            fallback_reason=origin_state.fallback_reason,
+        ),
+    ]
+    return with_section_states(response, states)
+
+
+def _with_weekly_news_section_states(response: WeeklyNewsResponse) -> WeeklyNewsResponse:
+    origin_state = response_section_state(response, "weekly_news", "Weekly News Focus")
+    return with_section_states(
+        response,
+        [
+            response_section_state(
+                response.weekly_news_focus,
+                "weekly_news",
+                "Weekly News Focus",
+                data_origin=origin_state.data_origin,
+                fallback_reason=origin_state.fallback_reason,
+            ),
+            response_section_state(
+                response.ai_comprehensive_analysis,
+                "ai_comprehensive_analysis",
+                "AI Comprehensive Analysis",
+                data_origin=origin_state.data_origin,
+                fallback_reason=origin_state.fallback_reason,
+            ),
+        ],
+    )
+
+
 def _current_economic_indicators_pack() -> EconomicIndicatorsPackResponse:
     imported = analysis_pack_repository().read_fresh_economic_indicators_pack()
     if imported is not None:
-        return imported
-    return build_economic_indicators_pack()
+        return _with_route_section_state(imported, "economic_indicators", "Economic Indicators")
+    return _with_route_section_state(build_economic_indicators_pack(), "economic_indicators", "Economic Indicators")
 
 
 def _asset_chart_response_from_overview(
@@ -307,7 +361,11 @@ def asset_overview(ticker: str, mode: str = "beginner") -> OverviewResponse:
             knowledge_pack_repository=readers.reader("knowledge_pack_reader"),
         )
         overview = build_lightweight_overview_response(lightweight_response, economic_indicators=economic_pack)
-        return overview.model_copy(update={"economic_indicators": economic_pack})
+        return _with_route_section_state(
+            overview.model_copy(update={"economic_indicators": economic_pack}),
+            "asset_overview",
+            "Asset overview",
+        )
 
     overview = generate_asset_overview(
         ticker,
@@ -317,7 +375,11 @@ def asset_overview(ticker: str, mode: str = "beginner") -> OverviewResponse:
         persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
         economic_indicators=economic_pack,
     )
-    return overview.model_copy(update={"economic_indicators": economic_pack})
+    return _with_route_section_state(
+        overview.model_copy(update={"economic_indicators": economic_pack}),
+        "asset_overview",
+        "Asset overview",
+    )
 
 
 @app.get("/api/economic-indicators", response_model=EconomicIndicatorsPackResponse, tags=["market-news"])
@@ -339,9 +401,11 @@ def import_analysis_pack_bundle(bundle: AnalysisPackImportBundle) -> AnalysisPac
 def market_news() -> MarketNewsResponse:
     imported = analysis_pack_repository().read_fresh_market_news_response()
     if imported is not None:
-        return imported
+        return _with_market_news_section_states(imported)
     response = build_runtime_market_news_response(economic_indicators=_current_economic_indicators_pack())
-    return response.model_copy(update={"analysis_pack_metadata": build_backend_generated_metadata()})
+    return _with_market_news_section_states(
+        response.model_copy(update={"analysis_pack_metadata": build_backend_generated_metadata()})
+    )
 
 
 @app.get("/api/assets/{ticker}/chart", response_model=AssetChartResponse, tags=["assets"])
@@ -412,24 +476,46 @@ def asset_details(ticker: str) -> DetailsResponse:
             source_snapshot_repository=readers.reader("source_snapshot_repository"),
             knowledge_pack_repository=readers.reader("knowledge_pack_reader"),
         )
-        return build_lightweight_details_response(lightweight_response)
+        return _with_route_section_state(
+            build_lightweight_details_response(lightweight_response),
+            "asset_details",
+            "Asset details",
+        )
 
     persisted_details = _details_from_configured_reader(ticker, readers)
     if persisted_details is not None:
-        return persisted_details
+        return _with_route_section_state(
+            persisted_details,
+            "asset_details",
+            "Asset details",
+            data_origin="durable_repository",
+        )
 
     asset, payload = _asset_payload(ticker)
     state = state_for_asset(asset)
 
     if not payload:
-        return DetailsResponse(asset=asset, state=state, freshness=empty_freshness(), facts={}, citations=[])
+        return _with_route_section_state(
+            DetailsResponse(asset=asset, state=state, freshness=empty_freshness(), facts={}, citations=[]),
+            "asset_details",
+            "Asset details",
+            data_origin="unavailable",
+            section_status="unavailable",
+            fallback_reason="no_supported_asset_payload",
+            freshness_state="unavailable",
+            evidence_state="unavailable",
+        )
 
-    return DetailsResponse(
-        asset=asset,
-        state=state,
-        freshness=payload["freshness"],
-        facts=payload["facts"],
-        citations=payload["citations"],
+    return _with_route_section_state(
+        DetailsResponse(
+            asset=asset,
+            state=state,
+            freshness=payload["freshness"],
+            facts=payload["facts"],
+            citations=payload["citations"],
+        ),
+        "asset_details",
+        "Asset details",
     )
 
 
@@ -447,20 +533,28 @@ def asset_sources(
             source_snapshot_repository=readers.reader("source_snapshot_repository"),
             knowledge_pack_repository=readers.reader("knowledge_pack_reader"),
         )
-        return build_lightweight_sources_response(
-            lightweight_response,
-            citation_id=citation_id,
-            source_document_id=source_document_id,
+        return _with_route_section_state(
+            build_lightweight_sources_response(
+                lightweight_response,
+                citation_id=citation_id,
+                source_document_id=source_document_id,
+            ),
+            "source_drawer",
+            "Source drawer",
         )
 
-    return build_asset_source_drawer_response(
-        ticker,
-        citation_id=citation_id,
-        source_document_id=source_document_id,
-        persisted_pack_reader=readers.reader("knowledge_pack_reader"),
-        generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
-        source_snapshot_reader=readers.reader("source_snapshot_repository"),
-        persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
+    return _with_route_section_state(
+        build_asset_source_drawer_response(
+            ticker,
+            citation_id=citation_id,
+            source_document_id=source_document_id,
+            persisted_pack_reader=readers.reader("knowledge_pack_reader"),
+            generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+            source_snapshot_reader=readers.reader("source_snapshot_repository"),
+            persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
+        ),
+        "source_drawer",
+        "Source drawer",
     )
 
 
@@ -475,38 +569,55 @@ def asset_page(ticker: str) -> AssetPageResponse:
         overview=overview,
         details=details,
         sources=sources,
+        section_states=[
+            *overview.section_states,
+            *details.section_states,
+            *sources.section_states,
+        ],
     )
 
 
 @app.get("/api/assets/{ticker}/glossary", response_model=GlossaryResponse, tags=["assets"])
 def asset_glossary(ticker: str, term: str | None = None) -> GlossaryResponse:
     readers = _read_dependencies()
-    return build_glossary_response(ticker, term=term, persisted_pack_reader=readers.reader("knowledge_pack_reader"))
+    return _with_route_section_state(
+        build_glossary_response(ticker, term=term, persisted_pack_reader=readers.reader("knowledge_pack_reader")),
+        "glossary_context",
+        "Glossary context",
+    )
 
 
 @app.get("/api/assets/{ticker}/export", response_model=ExportResponse, tags=["exports"])
 def asset_page_export(ticker: str, export_format: ExportFormat = ExportFormat.markdown) -> ExportResponse:
     readers = _read_dependencies()
-    return export_asset_page(
-        ticker,
-        export_format,
-        persisted_pack_reader=readers.reader("knowledge_pack_reader"),
-        generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
-        source_snapshot_reader=readers.reader("source_snapshot_repository"),
-        persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
+    return _with_route_section_state(
+        export_asset_page(
+            ticker,
+            export_format,
+            persisted_pack_reader=readers.reader("knowledge_pack_reader"),
+            generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+            source_snapshot_reader=readers.reader("source_snapshot_repository"),
+            persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
+        ),
+        "export",
+        "Asset page export",
     )
 
 
 @app.get("/api/assets/{ticker}/sources/export", response_model=ExportResponse, tags=["exports"])
 def asset_sources_export(ticker: str, export_format: ExportFormat = ExportFormat.markdown) -> ExportResponse:
     readers = _read_dependencies()
-    return export_asset_source_list(
-        ticker,
-        export_format,
-        persisted_pack_reader=readers.reader("knowledge_pack_reader"),
-        generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
-        source_snapshot_reader=readers.reader("source_snapshot_repository"),
-        persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
+    return _with_route_section_state(
+        export_asset_source_list(
+            ticker,
+            export_format,
+            persisted_pack_reader=readers.reader("knowledge_pack_reader"),
+            generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+            source_snapshot_reader=readers.reader("source_snapshot_repository"),
+            persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
+        ),
+        "export",
+        "Asset source-list export",
     )
 
 
@@ -532,7 +643,7 @@ def asset_recent(ticker: str) -> RecentResponse:
 def asset_weekly_news(ticker: str) -> WeeklyNewsResponse:
     imported = analysis_pack_repository().read_fresh_weekly_news_response(ticker)
     if imported is not None:
-        return imported
+        return _with_weekly_news_section_states(imported)
 
     readers = _read_dependencies()
     economic_pack = _current_economic_indicators_pack()
@@ -544,7 +655,9 @@ def asset_weekly_news(ticker: str) -> WeeklyNewsResponse:
             knowledge_pack_repository=readers.reader("knowledge_pack_reader"),
         )
         response = build_lightweight_weekly_news_response(lightweight_response, economic_indicators=economic_pack)
-        return response.model_copy(update={"analysis_pack_metadata": build_backend_generated_metadata()})
+        return _with_weekly_news_section_states(
+            response.model_copy(update={"analysis_pack_metadata": build_backend_generated_metadata()})
+        )
 
     overview = generate_asset_overview(
         ticker,
@@ -554,33 +667,43 @@ def asset_weekly_news(ticker: str) -> WeeklyNewsResponse:
         persisted_weekly_news_reader=readers.reader("weekly_news_reader"),
         economic_indicators=economic_pack,
     )
-    return WeeklyNewsResponse(
-        asset=overview.asset,
-        state=overview.state,
-        weekly_news_focus=overview.weekly_news_focus,
-        ai_comprehensive_analysis=overview.ai_comprehensive_analysis,
-        analysis_pack_metadata=build_backend_generated_metadata(),
+    return _with_weekly_news_section_states(
+        WeeklyNewsResponse(
+            asset=overview.asset,
+            state=overview.state,
+            weekly_news_focus=overview.weekly_news_focus,
+            ai_comprehensive_analysis=overview.ai_comprehensive_analysis,
+            analysis_pack_metadata=build_backend_generated_metadata(),
+        )
     )
 
 
 @app.post("/api/compare", response_model=CompareResponse, tags=["compare"])
 def compare_assets(request: CompareRequest) -> CompareResponse:
     readers = _read_dependencies()
-    return generate_comparison(
-        request.left_ticker,
-        request.right_ticker,
-        persisted_pack_reader=readers.reader("knowledge_pack_reader"),
-        generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+    return _with_route_section_state(
+        generate_comparison(
+            request.left_ticker,
+            request.right_ticker,
+            persisted_pack_reader=readers.reader("knowledge_pack_reader"),
+            generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+        ),
+        "comparison",
+        "Comparison",
     )
 
 
 @app.post("/api/compare/export", response_model=ExportResponse, tags=["exports"])
 def compare_assets_export(request: ComparisonExportRequest) -> ExportResponse:
     readers = _read_dependencies()
-    return export_comparison(
-        request,
-        persisted_pack_reader=readers.reader("knowledge_pack_reader"),
-        generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+    return _with_route_section_state(
+        export_comparison(
+            request,
+            persisted_pack_reader=readers.reader("knowledge_pack_reader"),
+            generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+        ),
+        "export",
+        "Comparison export",
     )
 
 
@@ -591,23 +714,31 @@ def compare_assets_export_query(
     export_format: ExportFormat = ExportFormat.markdown,
 ) -> ExportResponse:
     readers = _read_dependencies()
-    return export_comparison(
-        ComparisonExportRequest(left_ticker=left_ticker, right_ticker=right_ticker, export_format=export_format),
-        persisted_pack_reader=readers.reader("knowledge_pack_reader"),
-        generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+    return _with_route_section_state(
+        export_comparison(
+            ComparisonExportRequest(left_ticker=left_ticker, right_ticker=right_ticker, export_format=export_format),
+            persisted_pack_reader=readers.reader("knowledge_pack_reader"),
+            generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+        ),
+        "export",
+        "Comparison export",
     )
 
 
 @app.post("/api/assets/{ticker}/chat", response_model=ChatResponse, tags=["chat"])
 def asset_chat(ticker: str, request: ChatRequest) -> ChatResponse:
     readers = _read_dependencies()
-    return answer_chat_with_session(
-        ticker,
-        request,
-        persisted_reader=readers.reader("chat_session_reader"),
-        persisted_writer=readers.reader("chat_session_writer"),
-        persisted_pack_reader=readers.reader("knowledge_pack_reader"),
-        generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+    return _with_route_section_state(
+        answer_chat_with_session(
+            ticker,
+            request,
+            persisted_reader=readers.reader("chat_session_reader"),
+            persisted_writer=readers.reader("chat_session_writer"),
+            persisted_pack_reader=readers.reader("knowledge_pack_reader"),
+            generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+        ),
+        "asset_chat",
+        "Asset chat",
     )
 
 
@@ -633,22 +764,30 @@ def chat_session_export(
     export_format: ExportFormat = ExportFormat.markdown,
 ) -> ExportResponse:
     readers = _read_dependencies()
-    return export_chat_session_transcript(
-        conversation_id,
-        export_format,
-        persisted_session_reader=readers.reader("chat_session_reader"),
+    return _with_route_section_state(
+        export_chat_session_transcript(
+            conversation_id,
+            export_format,
+            persisted_session_reader=readers.reader("chat_session_reader"),
+        ),
+        "export",
+        "Chat transcript export",
     )
 
 
 @app.post("/api/assets/{ticker}/chat/export", response_model=ExportResponse, tags=["exports"])
 def asset_chat_export(ticker: str, request: ChatTranscriptExportRequest) -> ExportResponse:
     readers = _read_dependencies()
-    return export_chat_transcript(
-        ticker,
-        request,
-        persisted_session_reader=readers.reader("chat_session_reader"),
-        persisted_pack_reader=readers.reader("knowledge_pack_reader"),
-        generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+    return _with_route_section_state(
+        export_chat_transcript(
+            ticker,
+            request,
+            persisted_session_reader=readers.reader("chat_session_reader"),
+            persisted_pack_reader=readers.reader("knowledge_pack_reader"),
+            generated_output_cache_reader=readers.reader("generated_output_cache_reader"),
+        ),
+        "export",
+        "Chat transcript export",
     )
 
 

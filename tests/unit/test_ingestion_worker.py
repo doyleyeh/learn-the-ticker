@@ -15,19 +15,23 @@ from backend.ingestion_worker import (
     INGESTION_WORKER_EXECUTION_BOUNDARY,
     InMemoryIngestionWorkerLedger,
     IngestionWorkerFixtureOutcome,
+    claim_ingestion_worker_record,
     execute_ingestion_worker_record,
+    retry_ingestion_worker_record,
 )
 from backend.generated_output_cache_repository import InMemoryGeneratedOutputCacheRepository
 from backend.models import (
     EvidenceState,
     FreshnessState,
     IngestionCapabilities,
+    IngestionWorkerStatus,
     SourceAllowlistStatus,
     SourceQuality,
     SourceUsePolicy,
     WeeklyNewsEventType,
 )
 from backend.overview import generate_asset_overview
+from backend.persistence import BackendReadDependencies
 from backend.provider_adapters.etf_issuer import (
     build_etf_issuer_acquisition_result,
     execute_etf_issuer_handoff_gated_official_source_acquisition,
@@ -78,6 +82,81 @@ def test_cloud_job_entrypoint_can_run_deterministic_fixture_fallback_locally():
     assert payload["execution_summary"]["terminal_state"] == "succeeded"
 
 
+def test_cloud_job_entrypoint_plans_and_runs_durable_queued_pre_cache(monkeypatch):
+    ledger = InMemoryIngestionWorkerLedger()
+
+    monkeypatch.setattr(
+        "backend.cloud_job.build_backend_read_dependencies_from_local_durable_config",
+        lambda: BackendReadDependencies(persisted_reads_enabled=True, ingestion_job_ledger=ledger),
+    )
+
+    planned = run_from_args(
+        Namespace(
+            operation="plan-launch-pre-cache",
+            ticker=None,
+            job_id=None,
+            require_durable=True,
+            allow_fixture_fallback=False,
+        )
+    )
+    aapl = next(job for job in planned["batch"]["jobs"] if job["ticker"] == "AAPL")
+    persisted = ledger.get("pre-cache-launch-aapl")
+
+    assert planned["durable_ledger_configured"] is True
+    assert aapl["job_state"] == "queued"
+    assert aapl["generated_output_available"] is False
+    assert persisted is not None
+    assert persisted.ledger.job_state == "queued"
+
+    failed = execute_ingestion_worker_record(
+        persisted,
+        fixture_outcome=IngestionWorkerFixtureOutcome(
+            terminal_state=IngestionLedgerJobState.failed,
+            error_category=SanitizedErrorCategory.validation_failed,
+            error_code="fixture_retryable_cloud_job_failure",
+            sanitized_message="temporary failure without raw payloads",
+            retryable=True,
+        ),
+    )
+    ledger.save(failed.records)
+    retried = run_from_args(
+        Namespace(
+            operation="retry-job",
+            ticker=None,
+            job_id="pre-cache-launch-aapl",
+            require_durable=True,
+            allow_fixture_fallback=False,
+        )
+    )
+    executed = run_from_args(
+        Namespace(
+            operation="run-job",
+            ticker=None,
+            job_id="pre-cache-launch-aapl",
+            require_durable=True,
+            allow_fixture_fallback=False,
+        )
+    )
+    repeated = run_from_args(
+        Namespace(
+            operation="run-job",
+            ticker=None,
+            job_id="pre-cache-launch-aapl",
+            require_durable=True,
+            allow_fixture_fallback=False,
+        )
+    )
+
+    assert retried["operation"] == "retry-job"
+    assert retried["status"] == "queued"
+    assert retried["ledger_record"]["compact_metadata"]["retry_count"] == 1
+    assert executed["operation"] == "run-job"
+    assert executed["execution_summary"]["transitions"] == ["queued", "running", "succeeded"]
+    assert executed["execution_summary"]["generated_output_available"] is False
+    assert ledger.get("pre-cache-launch-aapl").ledger.job_state == "succeeded"
+    assert repeated["execution_summary"]["transitions"] == ["succeeded"]
+
+
 def test_cloud_job_entrypoint_fails_closed_in_production_without_durable_ledger(monkeypatch):
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.delenv("LOCAL_DURABLE_REPOSITORIES_ENABLED", raising=False)
@@ -113,6 +192,47 @@ def test_pending_approved_on_demand_job_transitions_without_generated_output():
     assert result.records.ledger.can_answer_chat is False
     assert result.records.ledger.can_compare is False
     assert result.records.ledger.compact_metadata["fixture_only"] is True
+
+
+def test_queued_manual_pre_cache_job_claims_runs_retries_and_finishes_idempotently():
+    queued_response = get_pre_cache_job_status("pre-cache-launch-aapl").model_copy(
+        update={
+            "job_state": IngestionLedgerJobState.queued,
+            "worker_status": IngestionWorkerStatus.queued,
+            "retryable": True,
+            "generated_route": None,
+            "generated_output_available": False,
+            "capabilities": IngestionCapabilities(can_request_ingestion=True),
+        }
+    )
+    records = serialize_ingestion_job_response(queued_response)
+    claimed = claim_ingestion_worker_record(records)
+    failed = execute_ingestion_worker_record(
+        records,
+        fixture_outcome=IngestionWorkerFixtureOutcome(
+            terminal_state=IngestionLedgerJobState.failed,
+            error_category=SanitizedErrorCategory.validation_failed,
+            error_code="fixture_retryable_failure",
+            sanitized_message="temporary validation failure",
+            retryable=True,
+        ),
+    )
+    retried = retry_ingestion_worker_record(failed.records)
+    finished = execute_ingestion_worker_record(retried)
+    repeated = execute_ingestion_worker_record(finished.records)
+
+    assert claimed.ledger.job_state == "running"
+    assert claimed.ledger.worker_status == "running"
+    assert failed.summary.transitions == ["queued", "running", "failed"]
+    assert failed.records.diagnostics[0].error_code == "fixture_retryable_failure"
+    assert retried.ledger.job_state == "queued"
+    assert retried.ledger.worker_status == "queued"
+    assert retried.ledger.compact_metadata["retry_count"] == 1
+    assert retried.ledger.generated_output_available is False
+    assert finished.summary.transitions == ["queued", "running", "succeeded"]
+    assert finished.summary.generated_output_available is False
+    assert repeated.summary.transitions == ["succeeded"]
+    assert repeated.records == finished.records
 
 
 def test_worker_uses_injected_in_memory_ledger_boundary_only():

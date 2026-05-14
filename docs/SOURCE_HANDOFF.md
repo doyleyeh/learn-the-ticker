@@ -12,6 +12,8 @@ The repo now enforces the core machine-readable Golden Asset Source Handoff fiel
 
 - Implemented: allowlist domain/source-type/source-quality checks, storage rights, export rights, source-use policy, allowlist review status, parser-validation requirement, freshness/as-of requirement, SSRF-style URL safety, SEC and issuer fetch CLIs, draft/finalized governed source manifests, governed manifest preflight, one-shot governed ingestion, persisted source documents/chunks, deterministic source-handoff/worker smoke scripts, and the Weekly News official document handoff proof for `AAPL`, `VOO`, and `QQQ`.
 - Enforced before governed ingestion: non-allowlisted URLs, rejected policies, incompatible source types, mismatched storage/export rights, non-approved review status, parser-invalid sources, and missing as-of metadata fail before jobs are claimed or source rows are persisted.
+- Enforced for strict promotion paths: generated claim support, generated-output cache writes, citation support, markdown/JSON section export, and allowed excerpt export all call the shared source handoff validator. Pending-review, rejected, metadata-only, link-only, parser-partial/invalid, hidden/internal, and rights-mismatched sources default closed for those actions.
+- Lightweight local-MVP metadata can still be persisted for display only when `docs/LIGHTWEIGHT_DATA_POLICY.md` allows it, raw payloads remain hidden, and records are marked cache-ineligible rather than strict audit approved.
 - Still missing for MVP: governed source artifacts for the full golden set, deployed/automated worker execution, governed-text normalized fact extraction, and proof that governed evidence drives golden API/frontend output.
 
 Repo-native strict/audit command map:

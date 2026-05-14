@@ -2314,7 +2314,11 @@ def test_export_cases():
         assert endpoint_response.status_code == 200, f"{case['id']} export endpoint failed"
         endpoint_export = ExportResponse.model_validate(endpoint_response.json())
         validated = ExportResponse.model_validate(export.model_dump(mode="json"))
-        assert endpoint_export.model_dump(mode="json") == validated.model_dump(mode="json")
+        endpoint_payload = endpoint_export.model_dump(mode="json")
+        validated_payload = validated.model_dump(mode="json")
+        assert endpoint_payload.pop("section_states", [])
+        validated_payload.pop("section_states", None)
+        assert endpoint_payload == validated_payload
 
         assert validated.content_type.value == export_kind
         assert validated.export_state.value == case["expected_state"]

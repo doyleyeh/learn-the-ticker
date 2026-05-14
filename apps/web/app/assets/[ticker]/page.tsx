@@ -54,6 +54,7 @@ import {
   type MarketNewsFocusFixture,
   type WeeklyNewsFocusFixture
 } from "../../../lib/fixtures";
+import { type RuntimeSectionState } from "../../../lib/runtimeSectionStates";
 
 type AssetPageProps = {
   params: Promise<{
@@ -63,7 +64,11 @@ type AssetPageProps = {
 
 const OVERVIEW_FETCH_TIMEOUT_MS = 12_000;
 const DETAILS_FETCH_TIMEOUT_MS = 5_000;
-const LIVE_SECTION_FETCH_TIMEOUT_MS = 5_000;
+const DEFAULT_LIVE_SECTION_FETCH_TIMEOUT_MS = 5_000;
+const LIVE_SECTION_FETCH_TIMEOUT_MS = readPositiveTimeoutMs(
+  "NEXT_PUBLIC_LIVE_SECTION_FETCH_TIMEOUT_MS",
+  DEFAULT_LIVE_SECTION_FETCH_TIMEOUT_MS
+);
 
 type BackendSectionRendering = "backend_contract" | "mixed_fallback" | "local_fixture";
 type BackendSectionFailureReason =
@@ -81,6 +86,13 @@ type BackendSectionFetchState = {
   evidenceState: "live" | "partial" | "unavailable";
   reason: BackendSectionReason;
   message: string;
+  dataOrigin: string;
+  sectionStatus: string;
+  fallbackReason: string | null;
+  freshnessState: string | null;
+  sourceHandoffState: string;
+  cacheState: string | null;
+  runtimeSectionState?: RuntimeSectionState;
 };
 
 type BackendSectionFetchSuccess<T> = {
@@ -140,7 +152,13 @@ function backendSectionLiveState(sectionId: string, label: string): BackendSecti
     rendering: "backend_contract",
     evidenceState: "live",
     reason: "backend_contract",
-    message: "Backend evidence returned for this section."
+    message: "Backend evidence returned for this section.",
+    dataOrigin: "backend_contract",
+    sectionStatus: "available",
+    fallbackReason: null,
+    freshnessState: null,
+    sourceHandoffState: "not_applicable",
+    cacheState: null
   };
 }
 
@@ -152,7 +170,82 @@ function backendSectionFallbackState(sectionId: string, label: string, error: un
     rendering: "local_fixture",
     evidenceState: reason === "api_base_unconfigured" ? "partial" : "unavailable",
     reason,
-    message: backendSectionFallbackMessage(reason)
+    message: backendSectionFallbackMessage(reason),
+    dataOrigin: reason === "api_base_unconfigured" ? "deterministic_fixture" : "unavailable",
+    sectionStatus: reason === "api_base_unconfigured" ? "partial" : "unavailable",
+    fallbackReason: reason,
+    freshnessState: reason === "api_base_unconfigured" ? "unknown" : "unavailable",
+    sourceHandoffState: "not_applicable",
+    cacheState: "not_applicable"
+  };
+}
+
+function backendSectionStateFromData<T>(sectionId: string, label: string, data: T): BackendSectionFetchState {
+  const runtimeState = runtimeSectionStateForSection(data, sectionId);
+  if (!runtimeState) {
+    return backendSectionLiveState(sectionId, label);
+  }
+  return backendSectionStateFromRuntime(sectionId, label, runtimeState);
+}
+
+function runtimeSectionStateForSection(data: unknown, sectionId: string) {
+  const states = runtimeSectionStatesFromData(data);
+  return states.find((state) => state.sectionId === sectionId) ?? null;
+}
+
+function runtimeSectionStatesFromData(data: unknown): RuntimeSectionState[] {
+  if (!data || typeof data !== "object") {
+    return [];
+  }
+  const states = (data as { sectionStates?: RuntimeSectionState[] }).sectionStates;
+  if (!Array.isArray(states)) {
+    return [];
+  }
+  return states;
+}
+
+function backendSectionStateFromRuntime(
+  sectionId: string,
+  label: string,
+  runtimeState: RuntimeSectionState
+): BackendSectionFetchState {
+  const sectionStatus = runtimeState.sectionStatus;
+  const dataOrigin = runtimeState.dataOrigin;
+  const availableStatus = sectionStatus === "available" || sectionStatus === "empty";
+  const liveOrigin =
+    dataOrigin === "durable_repository" ||
+    dataOrigin === "generated_output_cache" ||
+    dataOrigin === "backend_generated";
+  const rendering: BackendSectionRendering = liveOrigin && availableStatus
+    ? "backend_contract"
+    : dataOrigin === "deterministic_fixture"
+      ? "local_fixture"
+      : "mixed_fallback";
+  const evidenceState =
+    rendering === "backend_contract" ? "live" : sectionStatus === "unavailable" ? "unavailable" : "partial";
+  const reason: BackendSectionReason =
+    rendering === "backend_contract" ? "backend_contract" : "partial_backend_contract";
+  const fallbackReason = runtimeState.fallbackReason ?? (rendering === "backend_contract" ? null : dataOrigin);
+  const formattedSectionStatus = sectionStatus.replaceAll("_", " ");
+  const formattedDataOrigin = dataOrigin.replaceAll("_", " ");
+
+  return {
+    sectionId,
+    label,
+    rendering,
+    evidenceState,
+    reason,
+    message:
+      rendering === "backend_contract"
+        ? "Backend section metadata marks this section as live evidence for this render."
+        : `Backend section metadata marks this section as ${formattedSectionStatus} from ${formattedDataOrigin}.`,
+    dataOrigin,
+    sectionStatus,
+    fallbackReason,
+    freshnessState: runtimeState.freshnessState,
+    sourceHandoffState: runtimeState.sourceHandoffState,
+    cacheState: runtimeState.cacheState,
+    runtimeSectionState: runtimeState
   };
 }
 
@@ -162,9 +255,10 @@ async function fetchBackendSection<T>(
   request: () => Promise<T>
 ): Promise<BackendSectionFetchResult<T>> {
   try {
+    const data = await request();
     return {
-      data: await request(),
-      state: backendSectionLiveState(sectionId, label)
+      data,
+      state: backendSectionStateFromData(sectionId, label, data)
     };
   } catch (error) {
     return {
@@ -207,6 +301,43 @@ function backendSectionFallbackMessage(reason: BackendSectionFailureReason) {
     return "The backend response did not match the expected contract, so this section is not treated as live evidence.";
   }
   return "Something went wrong loading this section, so live evidence is unavailable on this render.";
+}
+
+function sectionFallbackNoticeLead(state: BackendSectionFetchState) {
+  if (state.runtimeSectionState && state.rendering !== "backend_contract") {
+    return `${state.label} returned backend section metadata marked ${state.sectionStatus.replaceAll(
+      "_",
+      " "
+    )} from ${state.dataOrigin.replaceAll("_", " ")}.`;
+  }
+  if (state.reason === "api_base_unconfigured") {
+    return "This section is using deterministic local fallback content because the live backend is not connected.";
+  }
+  if (state.reason === "timeout_or_aborted") {
+    return "This section timed out before backend evidence returned.";
+  }
+  if (state.reason === "backend_status_error") {
+    return "The backend returned an error for this section.";
+  }
+  if (state.reason === "invalid_contract") {
+    return "The backend returned data, but it did not match the expected section contract.";
+  }
+  if (state.reason === "partial_backend_contract") {
+    return "This section loaded with partial backend coverage.";
+  }
+  return "This section could not load backend evidence for this render.";
+}
+
+function readPositiveTimeoutMs(envName: string, fallbackMs: number) {
+  const rawValue = process.env[envName]?.trim();
+  if (!rawValue) {
+    return fallbackMs;
+  }
+  const parsed = Number.parseInt(rawValue, 10);
+  if (!Number.isFinite(parsed) || parsed < 1_000) {
+    return fallbackMs;
+  }
+  return parsed;
 }
 
 function hasBackendSectionFallback(states: readonly BackendSectionFetchState[]) {
@@ -273,6 +404,9 @@ function AssetBackendEvidenceSummary({ states }: { states: readonly BackendSecti
             data-asset-section-fetch-state={state.sectionId}
             data-asset-section-rendering={state.rendering}
             data-asset-section-failure-reason={state.reason}
+            data-asset-section-data-origin={state.dataOrigin}
+            data-asset-section-status={state.sectionStatus}
+            data-asset-section-fallback-reason={state.fallbackReason ?? state.reason}
           >
             <strong>{state.label}:</strong> {state.message}
           </div>
@@ -299,6 +433,9 @@ function SectionFallbackNotice({ state }: { state: BackendSectionFetchState }) {
       data-asset-section-rendering={state.rendering}
       data-asset-section-failure-reason={state.reason}
       data-asset-section-evidence-state={state.evidenceState}
+      data-asset-section-data-origin={state.dataOrigin}
+      data-asset-section-status={state.sectionStatus}
+      data-asset-section-fallback-reason={state.fallbackReason ?? state.reason}
     >
       <div className="section-heading-row">
         <div className="section-heading">
@@ -311,11 +448,7 @@ function SectionFallbackNotice({ state }: { state: BackendSectionFetchState }) {
           </span>
         </div>
       </div>
-      <p className="notice-text">
-        {state.reason === "partial_backend_contract"
-          ? "This section loaded with partial fallback coverage."
-          : "Something went wrong loading this section."}
-      </p>
+      <p className="notice-text">{sectionFallbackNoticeLead(state)}</p>
       <p className="source-gap-note">{state.message}</p>
       {state.sectionId === "weekly_news" ? (
         <p className="source-gap-note" data-weekly-news-fetch-failure-notice>
@@ -335,13 +468,13 @@ export default async function AssetPage({ params }: AssetPageProps) {
   const { ticker } = await params;
   const fallbackAsset = getAssetFixture(ticker);
   let asset: AssetFixture | null = fallbackAsset ?? null;
-  let overviewRendering: "backend_contract" | "local_fixture" = "local_fixture";
-  let detailsRendering: "backend_contract" | "local_fixture" = "local_fixture";
-  let economicIndicatorsRendering: "backend_contract" | "local_fixture" = "local_fixture";
-  let marketNewsRendering: "backend_contract" | "local_fixture" = "local_fixture";
-  let weeklyNewsRendering: "backend_contract" | "local_fixture" = "local_fixture";
-  let sourceDrawerRendering: "backend_contract" | "mixed_fallback" | "local_fixture" = "local_fixture";
-  let glossaryRendering: "backend_contract" | "local_fixture" = "local_fixture";
+  let overviewRendering: BackendSectionRendering = "local_fixture";
+  let detailsRendering: BackendSectionRendering = "local_fixture";
+  let economicIndicatorsRendering: BackendSectionRendering = "local_fixture";
+  let marketNewsRendering: BackendSectionRendering = "local_fixture";
+  let weeklyNewsRendering: BackendSectionRendering = "local_fixture";
+  let sourceDrawerRendering: BackendSectionRendering = "local_fixture";
+  let glossaryRendering: BackendSectionRendering = "local_fixture";
   let assetPageExportContract: AssetExportContractValidation | null = null;
   let assetSourceListExportContract: AssetExportContractValidation | null = null;
   const backendApiConfigured = Boolean(process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || process.env.API_BASE_URL?.trim());
@@ -363,10 +496,11 @@ export default async function AssetPage({ params }: AssetPageProps) {
       fallbackAsset,
       optionalBackendFetcher(OVERVIEW_FETCH_TIMEOUT_MS)
     );
-    overviewRendering = "backend_contract";
-    overviewFetchState = backendSectionLiveState("asset_overview", "Asset overview");
-  } catch {
+    overviewFetchState = backendSectionStateFromData("asset_overview", "Asset overview", asset);
+    overviewRendering = overviewFetchState.rendering;
+  } catch (error) {
     overviewFetchFailed = true;
+    overviewFetchState = backendSectionFallbackState("asset_overview", "Asset overview", error);
     asset = backendApiConfigured ? null : fallbackAsset ?? null;
   }
 
@@ -376,15 +510,15 @@ export default async function AssetPage({ params }: AssetPageProps) {
       notFound();
     }
     if (overviewFetchFailed && (search.state.status === "supported" || search.results[0]?.supported)) {
-      return <RecoverableBackendAssetStatePage ticker={ticker} search={search} />;
+      return <RecoverableBackendAssetStatePage ticker={ticker} search={search} failureState={overviewFetchState} />;
     }
     return <LimitedAssetStatePage ticker={ticker} search={search} />;
   }
 
   try {
     asset = await fetchSupportedAssetDetails(asset.ticker, asset, optionalBackendFetcher(DETAILS_FETCH_TIMEOUT_MS));
-    detailsRendering = "backend_contract";
-    detailsFetchState = backendSectionLiveState("asset_details", "Asset details");
+    detailsFetchState = backendSectionStateFromData("asset_details", "Asset details", asset);
+    detailsRendering = detailsFetchState.rendering;
   } catch (error) {
     detailsRendering = "local_fixture";
     detailsFetchState = backendSectionFallbackState("asset_details", "Asset details", error);
@@ -480,23 +614,23 @@ export default async function AssetPage({ params }: AssetPageProps) {
 
   if (economicIndicatorsResult.data) {
     economicIndicators = economicIndicatorsResult.data;
-    economicIndicatorsRendering = "backend_contract";
+    economicIndicatorsRendering = economicIndicatorsResult.state.rendering;
   }
 
   if (marketNewsResult.data) {
     marketNewsFocus = marketNewsResult.data.marketNewsFocus;
     marketAIComprehensiveAnalysis = marketNewsResult.data.marketAIComprehensiveAnalysis;
-    marketNewsRendering = "backend_contract";
+    marketNewsRendering = marketNewsResult.state.rendering;
   }
 
   if (weeklyNewsResult.data) {
     weeklyNewsFocus = weeklyNewsResult.data.weeklyNewsFocus;
     aiComprehensiveAnalysis = weeklyNewsResult.data.aiComprehensiveAnalysis;
-    weeklyNewsRendering = "backend_contract";
+    weeklyNewsRendering = weeklyNewsResult.state.rendering;
   }
 
   if (glossaryContextsResult.data) {
-    glossaryRendering = "backend_contract";
+    glossaryRendering = glossaryContextsResult.state.rendering;
   }
 
   const backendEconomicIndicatorsState = economicIndicatorsResult.state;
@@ -617,7 +751,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
     const allRenderedDrawerEntriesBackendBacked = renderedDrawerEntries.every((entry) =>
       backendDrawerEntries.has(entry.source.source_document_id)
     );
-    sourceDrawerRendering = allRenderedDrawerEntriesBackendBacked ? "backend_contract" : "mixed_fallback";
+    sourceDrawerRendering = allRenderedDrawerEntriesBackendBacked ? backendSourceDrawerState.rendering : "mixed_fallback";
     if (!allRenderedDrawerEntriesBackendBacked) {
       backendSourceDrawerState = {
         ...backendSourceDrawerState,
@@ -718,6 +852,8 @@ export default async function AssetPage({ params }: AssetPageProps) {
             </section>
 
             <AssetBackendEvidenceSummary states={backendSectionStates} />
+
+            <SectionFallbackNotice state={backendGlossaryState} />
 
             <AssetDataDashboard
               asset={asset}
@@ -1122,7 +1258,15 @@ export default async function AssetPage({ params }: AssetPageProps) {
   );
 }
 
-function RecoverableBackendAssetStatePage({ ticker, search }: { ticker: string; search: LocalSearchResponse }) {
+function RecoverableBackendAssetStatePage({
+  ticker,
+  search,
+  failureState
+}: {
+  ticker: string;
+  search: LocalSearchResponse;
+  failureState?: BackendSectionFetchState;
+}) {
   const result = search.results[0];
   const titleTicker = result?.ticker || ticker.toUpperCase();
   const supportClassification = search.state.support_classification ?? result?.support_classification ?? "cached_supported";
@@ -1134,6 +1278,7 @@ function RecoverableBackendAssetStatePage({ ticker, search }: { ticker: string; 
       data-asset-dynamic-fallback-state="supported_backend_unavailable"
       data-asset-support-classification={supportClassification}
       data-asset-generated-page-blocked="false"
+      data-asset-overview-failure-reason={failureState?.reason ?? "unknown"}
       data-asset-supported-backend-unavailable
     >
       <section className="plain-panel unknown-state" data-dynamic-asset-state="supported_backend_unavailable">
@@ -1153,6 +1298,11 @@ function RecoverableBackendAssetStatePage({ ticker, search }: { ticker: string; 
           This asset is supported, but the local backend did not return a valid overview quickly enough for this page
           render. Try refreshing after the backend finishes its source-labeled fetch, or open search while the cache warms.
         </p>
+        {failureState ? (
+          <p className="source-gap-note" data-asset-overview-fetch-failure-notice>
+            {failureState.message}
+          </p>
+        ) : null}
         <p className="source-gap-note" data-asset-supported-recoverable-backend-state>
           No generated facts are shown from frontend memory in this state; the page waits for a same-asset backend
           evidence response before rendering charts, tables, chat, comparisons, exports, or Weekly News Focus.

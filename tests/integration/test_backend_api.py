@@ -161,6 +161,22 @@ def _without_session(payload: dict) -> dict:
     return stripped
 
 
+def _assert_runtime_section_state(payload: dict, section_id: str) -> dict:
+    states = payload.get("section_states")
+    assert isinstance(states, list)
+    state = next((item for item in states if item.get("section_id") == section_id), None)
+    assert state is not None
+    assert state["schema_version"] == "runtime-section-state-v1"
+    assert state["data_origin"]
+    assert state["section_status"]
+    assert "fallback_reason" in state
+    assert "freshness_state" in state
+    assert state["source_handoff_state"]
+    assert "cache_state" in state
+    assert "evidence_state" in state
+    return state
+
+
 def _fixture_knowledge_pack_records(ticker: str):
     return AssetKnowledgePackRepository().serialize(
         build_asset_knowledge_pack_result(ticker),
@@ -391,6 +407,35 @@ def test_economic_indicators_endpoint_returns_us_only_cited_pack():
         assert set(item["citation_ids"]) <= citation_ids
         assert set(item["source_document_ids"]) <= source_ids
         assert item["source"]["source_use_policy"] != "rejected"
+
+
+def test_route_contracts_expose_runtime_section_states():
+    overview = client.get("/api/assets/VOO/overview").json()
+    details = client.get("/api/assets/VOO/details").json()
+    weekly = client.get("/api/assets/VOO/weekly-news").json()
+    market = client.get("/api/market-news").json()
+    indicators = client.get("/api/economic-indicators").json()
+    sources = client.get("/api/assets/VOO/sources").json()
+    glossary = client.get("/api/assets/VOO/glossary", params={"term": "expense ratio"}).json()
+    chat = client.post("/api/assets/VOO/chat", json={"question": "What is VOO?"}).json()
+    comparison = client.post("/api/compare", json={"left_ticker": "VOO", "right_ticker": "QQQ"}).json()
+    export = client.get("/api/assets/VOO/export", params={"export_format": "json"}).json()
+
+    assert _assert_runtime_section_state(overview, "asset_overview")["data_origin"] == "deterministic_fixture"
+    assert _assert_runtime_section_state(details, "asset_details")["data_origin"] == "deterministic_fixture"
+    assert _assert_runtime_section_state(weekly, "weekly_news")["section_status"] in {"available", "empty"}
+    assert _assert_runtime_section_state(weekly, "ai_comprehensive_analysis")["section_status"] in {
+        "available",
+        "suppressed",
+    }
+    assert _assert_runtime_section_state(market, "market_news")["data_origin"] == "backend_generated"
+    assert _assert_runtime_section_state(market, "market_ai_comprehensive_analysis")["data_origin"] == "backend_generated"
+    assert _assert_runtime_section_state(indicators, "economic_indicators")["data_origin"] == "deterministic_fixture"
+    assert _assert_runtime_section_state(sources, "source_drawer")["section_status"] == "available"
+    assert _assert_runtime_section_state(glossary, "glossary_context")["section_status"] == "available"
+    assert _assert_runtime_section_state(chat, "asset_chat")["section_status"] == "available"
+    assert _assert_runtime_section_state(comparison, "comparison")["section_status"] == "available"
+    assert _assert_runtime_section_state(export, "export")["section_status"] == "available"
 
 
 def test_admin_analysis_pack_import_routes_choose_fresh_imported_packs():

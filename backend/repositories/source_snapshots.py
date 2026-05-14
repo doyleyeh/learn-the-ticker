@@ -372,8 +372,8 @@ def artifact_from_knowledge_pack_source(
         source_type=source.source_type,
         source_identity=getattr(source, "source_identity", None) or source.url or source.source_document_id,
         is_official=source.is_official,
-        storage_rights=getattr(source, "storage_rights", SourceStorageRights.raw_snapshot_allowed).value,
-        export_rights=getattr(source, "export_rights", SourceExportRights.excerpts_allowed).value,
+        storage_rights=_storage_rights_for_policy(source.source_use_policy).value,
+        export_rights=_export_rights_for_policy(source.source_use_policy).value,
         review_status=getattr(source, "review_status", SourceReviewStatus.approved).value,
         approval_rationale=getattr(
             source,
@@ -604,6 +604,28 @@ def _lightweight_export_rights(policy: SourceUsePolicy) -> SourceExportRights:
     return SourceExportRights.metadata_only
 
 
+def _storage_rights_for_policy(policy: SourceUsePolicy) -> SourceStorageRights:
+    if policy is SourceUsePolicy.full_text_allowed:
+        return SourceStorageRights.raw_snapshot_allowed
+    if policy is SourceUsePolicy.summary_allowed:
+        return SourceStorageRights.summary_allowed
+    if policy is SourceUsePolicy.metadata_only:
+        return SourceStorageRights.metadata_only
+    if policy is SourceUsePolicy.link_only:
+        return SourceStorageRights.link_only
+    return SourceStorageRights.rejected
+
+
+def _export_rights_for_policy(policy: SourceUsePolicy) -> SourceExportRights:
+    if policy in {SourceUsePolicy.full_text_allowed, SourceUsePolicy.summary_allowed}:
+        return SourceExportRights.excerpts_allowed
+    if policy is SourceUsePolicy.metadata_only:
+        return SourceExportRights.metadata_only
+    if policy is SourceUsePolicy.link_only:
+        return SourceExportRights.link_only
+    return SourceExportRights.rejected
+
+
 def _artifact_from_provider_source(
     source: Any,
     *,
@@ -640,8 +662,8 @@ def _artifact_from_provider_source(
         source_type=source.source_type,
         source_identity=getattr(source, "source_identity", None) or source.url or source.source_document_id,
         is_official=source.is_official,
-        storage_rights=getattr(source, "storage_rights", SourceStorageRights.raw_snapshot_allowed).value,
-        export_rights=getattr(source, "export_rights", SourceExportRights.excerpts_allowed).value,
+        storage_rights=_storage_rights_for_policy(source.source_use_policy).value,
+        export_rights=_export_rights_for_policy(source.source_use_policy).value,
         review_status=getattr(source, "review_status", SourceReviewStatus.approved).value,
         approval_rationale=getattr(
             source,
