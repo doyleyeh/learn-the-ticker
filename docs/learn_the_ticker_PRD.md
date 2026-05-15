@@ -71,6 +71,8 @@ The intended product behavior is now:
 - first-render stable facts should not wait on slow live generation; generated summaries and analysis must expose provenance inline when they are live, deterministic fallback, timeout fallback, insufficient evidence, or backend error;
 - source-labeled lightweight local evidence is the active personal-MVP display path and should not be described to users as fallback when it is fresh, available, and clearly labeled; deterministic fixtures or backend failures must still be labeled inline where displayed;
 - dense evidence metadata such as page updated dates, as-of dates, retrieved timestamps, provider labels, source-use policy, and row periods should be available through compact source/details icons instead of repeated visible freshness tags that distract from the beginner reading flow;
+- compact source/detail controls should count unique cited source documents only, not metadata rows, and should use clear labels such as Sources or Evidence where a bare count would be confusing, especially in the hero area and mobile popovers;
+- Market News and Weekly News items should distinguish publisher labels from provider/API context, for example showing a readable publisher in the item heading while keeping Yahoo Finance/yfinance or other API context inside the source details control;
 - generated Beginner Summary, Deep Dive, Market AI, and ticker AI sections should show compact generation provenance inline, distinguishing live generation, deterministic fallback, timeout fallback, insufficient evidence, and backend error without making the educational copy more speculative;
 - operator review focuses on checking suspicious results and improving repeated failure patterns, not manually filling every URL and as-of date.
 

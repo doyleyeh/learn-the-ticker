@@ -1,12 +1,46 @@
 ## Current task
 
-No current task is prepared. T-195 is complete; prepare the next narrow task before implementation.
+No current task is prepared. T-197 is complete; prepare the next narrow task before implementation.
 
 ## Backlog
 
 No backlog tasks are currently prepared.
 
 ## Completed
+
+### T-197: Clarify source controls and OpenRouter fallback routing
+
+Goal:
+Make asset-page source affordances count unique cited source documents without metadata inflation, clarify news publisher/provider context, and route live OpenRouter generation through the configured model fallback chain.
+
+Completion details:
+- Grouped compact source controls by `sourceDocumentId`, so visible source badges count unique cited sources only while as-of, retrieved, source-use, provider, and generation metadata stay inside the popover.
+- Reworked the hero source affordance into a labeled `Sources` control, fixed nested popover chip styling, and added mobile-safe popover sizing/scroll behavior.
+- Removed redundant Asset Data Dashboard section/table-heading source controls while preserving chart, stats, and row-level source access where row provenance differs.
+- Added publisher/provider separation for Market News and Weekly News; Weekly News headings now use publisher labels and source popovers show provider/API context such as Yahoo Finance/yfinance-derived news.
+- Updated OpenRouter live generation requests to send a configured `models` fallback array with `route: fallback`, omit single-model routing, append the paid fallback model only when explicitly enabled, and use task-specific JSON schema response formats where available.
+- Strengthened Beginner Summary deterministic fallback to incorporate curated source-labeled provider profile summary context without raw provider field names or fixture wording.
+- Updated PRD/TDS/EVALS/deployment/env docs and frontend/backend tests for concise source controls, publisher/provider labels, and OpenRouter fallback routing.
+
+Required commands executed:
+- `source scripts/activate_agent_env.sh && npm test` - pass
+- `source scripts/activate_agent_env.sh && npm run typecheck` - pass
+- `source scripts/activate_agent_env.sh && npm run build` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/unit/test_summary_generation.py tests/unit/test_llm_provider.py tests/unit/test_weekly_news.py tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py -q` - pass, 183 passed
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass, 649 backend tests plus static evals, frontend smoke, typecheck, build, and backend checks
+- `git diff --check` - pass
+
+Manual browser acceptance:
+- VOO desktop and mobile passed: hero source control is labeled `Sources`, opens a compact three-source popover with metadata inside, does not overflow at mobile width, and no source title shows deterministic provider-fixture wording.
+- VOO and QQQ both render supported asset content without the old whole-page backend-unavailable state, show exactly one Economic Indicators heading, and keep dashboard source controls to chart/stats/row-level affordances without the removed dashboard-level duplicate.
+- Market News and Weekly News item source controls count one cited source for single-source items while keeping the extra publisher, provider/API, published, retrieved, quality, and source-use metadata inside the popover.
+- Weekly News headings show publisher labels such as `[Benzinga]`, `[SeekingAlpha]`, `[Yahoo]`, and `[ChartMill]`.
+- Browser console checks for VOO and QQQ reported no errors or warnings.
+
+Remaining risks:
+- Live generation quality and latency still depend on the operator's server-side OpenRouter key and model availability; the app now sends the configured provider fallback chain and labels deterministic fallback provenance inline when validation or runtime conditions require it.
+- Some ETF table rows legitimately cite multiple unique source documents when provider-normalized rows fill official gaps; the source badge now reflects unique source documents, not metadata rows.
 
 ### T-196: Align asset-page section state and compact metadata UX
 

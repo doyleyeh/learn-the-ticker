@@ -46,6 +46,10 @@ Verify:
 - asset pages show section-state notices inside their owning sections and do not render orphan status notes between panels
 - asset pages do not render redundant standalone Glossary context, Economic Indicators, Asset details, or Source drawer status panels
 - repeated freshness/as-of/retrieved/provider/source-use metadata is available through compact section or row source icons instead of repeated visible tags
+- compact source/detail badge counts count unique cited sources only; metadata rows such as as-of dates, retrieved timestamps, provider/API labels, source-use policy, range, and generation state must not inflate the badge count
+- hero source controls are labeled and mobile-safe, and source popovers must not inherit metadata-chip styling that breaks source-card layout
+- dashboard/chart/table source controls are organized by content unit without redundant section-level or table-heading icons when row-level or chart-level source controls already exist
+- Market News and Weekly News item source icons use that item's citations, and item headings expose a clear publisher label while provider/API context remains in source details
 - Economic Indicators keeps one visible section and folds period/as-of/retrieved row metadata into the Source column's source icon instead of a standalone `Period / as of` column
 - source-labeled lightweight local evidence is not shown as a page-level fallback card, while deterministic fixture or backend-failure content remains labeled where displayed
 - Beginner Summary, Deep Dive summaries, Market AI, and ticker AI expose inline generation-state notes for live generation, deterministic fallback, timeout fallback, insufficient evidence, or backend error
@@ -102,6 +106,7 @@ Verify:
 - important factual claims have citations or explicit uncertainty
 - Weekly News Focus and AI Comprehensive Analysis claims cite the correct evidence layer
 - generated Beginner Summary, Deep Dive, Market AI, and ticker AI use curated `generation_context` instead of raw provider payloads
+- OpenRouter live structured-generation requests use the configured `models` fallback chain with `route=fallback` and do not send a single top-level `model`; paid fallback appears in the request only when explicitly enabled
 - generated-section diagnostics do not mask deterministic or timeout fallback as plain success; fallback analysis renders as partial and insufficient-evidence suppression is distinct from backend failure
 - Beginner Summary explains the asset in plain English and does not depend on quote, chart, volume, price, or technical-indicator facts unless required for identity
 - generated copy does not include internal or low-value wording such as fixtures, local MVP, available evidence, provider market-reference, raw provider keys like `regularMarketPrice`, or "this section uses..." phrasing
