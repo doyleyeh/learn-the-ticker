@@ -264,7 +264,7 @@ def _ai_generation_section_state(
     )
 
 
-def _generation_diagnostics_payload(response: Any) -> dict[str, str | int | float | bool | None | list[str]]:
+def _generation_diagnostics_payload(response: Any) -> dict[str, Any]:
     diagnostics = getattr(response, "generation_diagnostics", None)
     if diagnostics is None:
         return {}
@@ -273,6 +273,8 @@ def _generation_diagnostics_payload(response: Any) -> dict[str, str | int | floa
         "used_fallback": bool(getattr(diagnostics, "used_fallback", False)),
         "fallback_reason_codes": list(getattr(diagnostics, "fallback_reason_codes", []) or []),
         "model_name": getattr(diagnostics, "model_name", None),
+        "attempt_count": int(getattr(diagnostics, "attempt_count", 0) or 0),
+        "attempted_model_batches": list(getattr(diagnostics, "attempted_model_batches", []) or []),
     }
 
 

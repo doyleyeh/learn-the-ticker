@@ -1669,6 +1669,9 @@ def _dedupe_provider_results(
                 fact = fact.model_copy(update={"value": {**value, "rows": kept_rows}})
             kept_facts.append(fact)
             continue
+        if fact.field_name == "provider_profile_overview" and fact.field_name in seen_fields:
+            _merge_duplicate_provider_profile(kept_facts, fact)
+            continue
         if fact.field_name != LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD and fact.field_name in seen_fields:
             continue
         if fact.field_name != LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD:
@@ -1676,6 +1679,41 @@ def _dedupe_provider_results(
         kept_facts.append(fact)
     kept_source_ids = {source_id for fact in kept_facts for source_id in fact.source_document_ids}
     return [source for source in sources if source.source_document_id in kept_source_ids], kept_facts
+
+
+def _merge_duplicate_provider_profile(kept_facts: list[LightweightFetchFact], candidate: LightweightFetchFact) -> None:
+    for index, existing in enumerate(kept_facts):
+        if existing.field_name != "provider_profile_overview":
+            continue
+        existing_value = existing.value if isinstance(existing.value, dict) else {}
+        candidate_value = candidate.value if isinstance(candidate.value, dict) else {}
+        merged = dict(existing_value)
+        for key, value in candidate_value.items():
+            if not _present(value):
+                continue
+            if not _present(merged.get(key)) or key in {"long_business_summary", "business_summary"}:
+                merged[key] = value
+        kept_facts[index] = existing.model_copy(
+            update={
+                "value": merged,
+                "source_document_ids": _dedupe_values([*existing.source_document_ids, *candidate.source_document_ids]),
+                "citation_ids": _dedupe_values([*existing.citation_ids, *candidate.citation_ids]),
+                "source_labels": _dedupe_values([*existing.source_labels, *candidate.source_labels]),
+                "fallback_used": existing.fallback_used or candidate.fallback_used,
+            }
+        )
+        return
+
+
+def _dedupe_values(values: list[Any]) -> list[Any]:
+    deduped: list[Any] = []
+    seen: set[Any] = set()
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        deduped.append(value)
+    return deduped
 
 
 def _fallback_fields_for_asset(asset_type: AssetType, existing_facts: list[LightweightFetchFact]) -> set[str]:

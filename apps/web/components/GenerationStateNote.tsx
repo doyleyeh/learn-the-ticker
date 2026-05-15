@@ -35,6 +35,7 @@ export function GenerationStateNote({
       data-generation-attempted-live={diagnostics?.attemptedLive ? "true" : "false"}
       data-generation-used-fallback={diagnostics?.usedFallback ? "true" : "false"}
       data-generation-fallback-reason-codes={reasonCodes.join(",") || "none"}
+      data-generation-attempt-count={diagnostics?.attemptCount ?? 0}
       data-generation-section-status={sectionState?.sectionStatus ?? "unknown"}
     >
       <strong>{label}:</strong> {generationStateCopy(state, diagnostics, reasonCodes)}

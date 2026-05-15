@@ -2423,6 +2423,8 @@ class GenerationDiagnostics(BaseModel):
     used_fallback: bool = True
     fallback_reason_codes: list[str] = Field(default_factory=list)
     model_name: str | None = None
+    attempt_count: int = 0
+    attempted_model_batches: list[list[str]] = Field(default_factory=list)
 
 
 class AIComprehensiveAnalysisResponse(BaseModel):

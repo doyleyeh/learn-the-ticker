@@ -72,6 +72,8 @@ DEFAULT_LIVE_SUMMARY_TIMEOUT_SECONDS = 75
 DEFAULT_GENERATION_CACHE_TTL_SECONDS = 60 * 60
 DEFAULT_LIVE_FAILURE_COOLDOWN_SECONDS = 60
 DEFAULT_LIVE_SLOW_RESPONSE_THRESHOLD_SECONDS = 30
+OPENROUTER_MAX_MODELS_PER_REQUEST = 3
+_LIVE_GENERATION_METADATA_KEY = "__learn_the_ticker_live_generation_metadata"
 DEFAULT_LIVE_GENERATION_TASK_ALLOWLIST = frozenset(
     {
         "beginner_summary",
@@ -233,6 +235,13 @@ _LIVE_GENERATION_CIRCUIT_REASON: str | None = None
 
 class SummaryGenerationContractError(ValueError):
     """Raised when generated prose cannot pass schema, citation, or safety gates."""
+
+
+class LiveGenerationAttemptError(TimeoutError):
+    def __init__(self, reason_codes: list[str], attempted_model_batches: list[list[str]]) -> None:
+        super().__init__(",".join(reason_codes) or "live_summary_generation_unavailable")
+        self.reason_codes = reason_codes
+        self.attempted_model_batches = attempted_model_batches
 
 
 @dataclass(frozen=True)
@@ -778,14 +787,7 @@ class HybridSummaryGenerationService:
                 elapsed_seconds = time.monotonic() - started_seconds
                 if isinstance(payload, dict):
                     payload = _normalize_live_payload_shape(request, payload)
-                    if (
-                        self.live_slow_response_threshold_seconds > 0
-                        and elapsed_seconds >= self.live_slow_response_threshold_seconds
-                    ):
-                        _open_live_generation_circuit(
-                            "live_generation_slow_response",
-                            cooldown_seconds=self.live_failure_cooldown_seconds,
-                        )
+                    live_metadata = _pop_live_generation_metadata(payload)
                     return _GeneratedPayload(
                         payload=payload,
                         cache_key=cache_key,
@@ -793,13 +795,31 @@ class HybridSummaryGenerationService:
                         diagnostics=GenerationDiagnostics(
                             attempted_live=True,
                             used_fallback=False,
-                            model_name=model_name,
+                            fallback_reason_codes=(
+                                ["live_generation_slow_response"]
+                                if self.live_slow_response_threshold_seconds > 0
+                                and elapsed_seconds >= self.live_slow_response_threshold_seconds
+                                else []
+                            ),
+                            model_name=live_metadata.get("selected_model_name") or model_name,
+                            attempt_count=int(live_metadata.get("attempt_count") or 1),
+                            attempted_model_batches=live_metadata.get("attempted_model_batches") or [],
                         ),
                     )
                 raise SummaryGenerationContractError("Structured summary generator returned a non-object payload.")
-            except TimeoutError:
+            except TimeoutError as exc:
+                reason_codes = (
+                    exc.reason_codes
+                    if isinstance(exc, LiveGenerationAttemptError)
+                    else ["live_generation_timeout"]
+                )
+                attempted_model_batches = (
+                    exc.attempted_model_batches
+                    if isinstance(exc, LiveGenerationAttemptError)
+                    else []
+                )
                 _open_live_generation_circuit(
-                    "live_generation_timeout",
+                    reason_codes[0] if reason_codes else "live_generation_timeout",
                     cooldown_seconds=self.live_failure_cooldown_seconds,
                 )
                 return _GeneratedPayload(
@@ -807,8 +827,10 @@ class HybridSummaryGenerationService:
                     diagnostics=GenerationDiagnostics(
                         attempted_live=True,
                         used_fallback=True,
-                        fallback_reason_codes=["live_generation_timeout"],
+                        fallback_reason_codes=reason_codes,
                         model_name=model_name,
+                        attempt_count=len(attempted_model_batches) or 1,
+                        attempted_model_batches=attempted_model_batches,
                     ),
                 )
         return _GeneratedPayload(
@@ -1136,56 +1158,88 @@ def _live_structured_generator_from_env(
 
     def generator(request: SummaryGenerationRequest) -> dict[str, Any]:
         prompt_payload = _safe_prompt_payload(request)
-
-        def transport(metadata: LlmTransportRequestMetadata) -> Mapping[str, Any]:
-            if not provider_key:
-                return {"status_code": 401, "latency_ms": 0, "json": {"choices": []}}
-            started = time.monotonic()
-            body = _openrouter_chat_completion_body(request, prompt_payload, runtime, metadata)
-            try:
-                from urllib import error, request as urlrequest
-
-                http_request = urlrequest.Request(
-                    f"{base_url}/chat/completions",
-                    data=json.dumps(body).encode("utf-8"),
-                    headers={
-                        "Authorization": f"Bearer {provider_key}",
-                        "Content-Type": "application/json",
-                        "HTTP-Referer": site_url,
-                        "X-Title": app_title,
-                    },
-                    method="POST",
-                )
-                with urlrequest.urlopen(http_request, timeout=metadata.timeout_seconds) as response:
-                    return {
-                        "status_code": response.status,
-                        "latency_ms": int((time.monotonic() - started) * 1000),
-                        "json": json.loads(response.read().decode("utf-8")),
-                    }
-            except error.HTTPError as exc:
-                return {"status_code": exc.code, "latency_ms": int((time.monotonic() - started) * 1000), "json": {"choices": []}}
-            except TimeoutError:
-                raise
-            except Exception:
-                return {"status_code": 599, "latency_ms": int((time.monotonic() - started) * 1000), "json": {"choices": []}}
-
-        result = call_openrouter_transport(
-            runtime=runtime,
-            request_mode=LlmTransportMode.json_mode,
-            caller_opted_in=True,
-            transport=transport,
-            sanitized_diagnostics={
-                "task_name": request.task_name,
-                "schema_version": request.schema_version,
-            },
-            timeout_seconds=timeout_seconds,
+        attempt_batches = _openrouter_model_attempt_batches(runtime)
+        attempted_batches: list[list[str]] = []
+        failure_codes: list[str] = []
+        per_attempt_timeout = _openrouter_attempt_timeout_seconds(
+            timeout_seconds,
+            attempt_count=max(1, len(attempt_batches)),
         )
-        if result.response.status is not LlmTransportStatus.succeeded or not result.content:
-            raise TimeoutError("live_summary_generation_unavailable")
-        payload = _parse_live_json_payload(result.content)
-        if not isinstance(payload, dict):
-            raise SummaryGenerationContractError("Live structured generator returned a non-object payload.")
-        return _normalize_live_payload_shape(request, payload)
+
+        def transport_for_batch(model_batch: list[str]):
+            def transport(metadata: LlmTransportRequestMetadata) -> Mapping[str, Any]:
+                if not provider_key:
+                    return {"status_code": 401, "latency_ms": 0, "json": {"choices": []}}
+                started = time.monotonic()
+                body = _openrouter_chat_completion_body(request, prompt_payload, runtime, metadata, model_names=model_batch)
+                try:
+                    from urllib import error, request as urlrequest
+
+                    http_request = urlrequest.Request(
+                        f"{base_url}/chat/completions",
+                        data=json.dumps(body).encode("utf-8"),
+                        headers={
+                            "Authorization": f"Bearer {provider_key}",
+                            "Content-Type": "application/json",
+                            "HTTP-Referer": site_url,
+                            "X-Title": app_title,
+                        },
+                        method="POST",
+                    )
+                    with urlrequest.urlopen(http_request, timeout=metadata.timeout_seconds) as response:
+                        return {
+                            "status_code": response.status,
+                            "latency_ms": int((time.monotonic() - started) * 1000),
+                            "json": json.loads(response.read().decode("utf-8")),
+                        }
+                except error.HTTPError as exc:
+                    return {"status_code": exc.code, "latency_ms": int((time.monotonic() - started) * 1000), "json": {"choices": []}}
+                except TimeoutError:
+                    raise
+                except Exception:
+                    return {"status_code": 599, "latency_ms": int((time.monotonic() - started) * 1000), "json": {"choices": []}}
+
+            return transport
+
+        for model_batch in attempt_batches:
+            attempted_batches.append(list(model_batch))
+            result = call_openrouter_transport(
+                runtime=runtime,
+                request_mode=LlmTransportMode.json_mode,
+                caller_opted_in=True,
+                transport=transport_for_batch(model_batch),
+                sanitized_diagnostics={
+                    "task_name": request.task_name,
+                    "schema_version": request.schema_version,
+                    "attempt_index": len(attempted_batches),
+                    "model_batch_size": len(model_batch),
+                },
+                timeout_seconds=per_attempt_timeout,
+            )
+            if result.response.status is not LlmTransportStatus.succeeded or not result.content:
+                failure_codes.append(_live_generation_failure_code(result.response.diagnostic_code))
+                continue
+            try:
+                payload = _parse_live_json_payload(result.content)
+                if not isinstance(payload, dict):
+                    raise SummaryGenerationContractError("Live structured generator returned a non-object payload.")
+                normalized_payload = _normalize_live_payload_shape(request, payload)
+                if not _payload_matches_task_shape(request.task_name, normalized_payload):
+                    raise SummaryGenerationContractError("Live structured generator returned the wrong task shape.")
+                normalized_payload[_LIVE_GENERATION_METADATA_KEY] = {
+                    "attempt_count": len(attempted_batches),
+                    "attempted_model_batches": attempted_batches,
+                    "selected_model_name": result.response.model_name,
+                }
+                return normalized_payload
+            except SummaryGenerationContractError:
+                failure_codes.append("structured_output_validation_failed")
+                continue
+
+        raise LiveGenerationAttemptError(
+            _dedupe_reason_codes(failure_codes or ["live_summary_generation_unavailable"]),
+            attempted_batches,
+        )
 
     return generator
 
@@ -1195,12 +1249,17 @@ def _openrouter_chat_completion_body(
     prompt_payload: dict[str, Any],
     runtime: LlmRuntimeConfig,
     metadata: LlmTransportRequestMetadata | None = None,
+    *,
+    model_names: list[str] | None = None,
 ) -> dict[str, Any]:
-    model_names = _openrouter_model_fallback_chain(runtime)
-    if not model_names and metadata is not None and metadata.active_model is not None:
-        model_names = [metadata.active_model.model_name]
+    resolved_model_names = list(model_names or [])
+    if not resolved_model_names:
+        batches = _openrouter_model_attempt_batches(runtime)
+        resolved_model_names = list(batches[0]) if batches else []
+    if not resolved_model_names and metadata is not None and metadata.active_model is not None:
+        resolved_model_names = [metadata.active_model.model_name]
     return {
-        "models": model_names,
+        "models": resolved_model_names[:OPENROUTER_MAX_MODELS_PER_REQUEST],
         "route": "fallback",
         "temperature": 0,
         "response_format": _openrouter_response_format_for_task(request.task_name),
@@ -1226,6 +1285,62 @@ def _openrouter_model_fallback_chain(runtime: LlmRuntimeConfig) -> list[str]:
     if runtime.paid_fallback_enabled and runtime.paid_fallback_model is not None:
         model_names.append(runtime.paid_fallback_model.model_name)
     return model_names
+
+
+def _openrouter_model_attempt_batches(
+    runtime: LlmRuntimeConfig,
+    *,
+    max_models_per_request: int = OPENROUTER_MAX_MODELS_PER_REQUEST,
+) -> list[list[str]]:
+    max_size = max(1, int(max_models_per_request))
+    free_models = [model.model_name for model in runtime.configured_model_chain]
+    batches = [free_models[index : index + max_size] for index in range(0, len(free_models), max_size)]
+    paid_model = runtime.paid_fallback_model.model_name if runtime.paid_fallback_enabled and runtime.paid_fallback_model is not None else None
+    if paid_model:
+        if batches and len(batches[-1]) < max_size:
+            batches[-1] = [*batches[-1], paid_model]
+        else:
+            batches.append([paid_model])
+    return [batch for batch in batches if batch]
+
+
+def _openrouter_attempt_timeout_seconds(total_timeout_seconds: int, *, attempt_count: int) -> int:
+    if attempt_count <= 1:
+        return max(1, int(total_timeout_seconds))
+    return max(10, int(total_timeout_seconds) // attempt_count)
+
+
+def _live_generation_failure_code(code: str | None) -> str:
+    if code == "timeout":
+        return "live_generation_timeout"
+    if code in {"retryable_provider_error", "nonretryable_provider_error"}:
+        return code
+    if code in {"invalid_response_shape", "missing_content"}:
+        return "structured_output_unavailable"
+    return code or "live_summary_generation_unavailable"
+
+
+def _dedupe_reason_codes(codes: list[str]) -> list[str]:
+    return list(dict.fromkeys(code for code in codes if code))
+
+
+def _pop_live_generation_metadata(payload: dict[str, Any]) -> dict[str, Any]:
+    raw = payload.pop(_LIVE_GENERATION_METADATA_KEY, {})
+    if not isinstance(raw, dict):
+        return {}
+    batches = raw.get("attempted_model_batches")
+    return {
+        "attempt_count": raw.get("attempt_count") if isinstance(raw.get("attempt_count"), int) else 0,
+        "attempted_model_batches": batches if _valid_model_batches(batches) else [],
+        "selected_model_name": raw.get("selected_model_name") if isinstance(raw.get("selected_model_name"), str) else None,
+    }
+
+
+def _valid_model_batches(value: Any) -> bool:
+    return isinstance(value, list) and all(
+        isinstance(batch, list) and all(isinstance(model_name, str) for model_name in batch)
+        for batch in value
+    )
 
 
 def _openrouter_response_format_for_task(task_name: str) -> dict[str, Any]:
@@ -1406,7 +1521,11 @@ def _beginner_fallback_payload(
     fund_summary = _first_text(asset_profile.get("fund_summary"))
     sector = _first_text(asset_profile.get("sector"), _profile_note_value(notes.get("provider_profile_overview"), "sector"))
     industry = _first_text(asset_profile.get("industry"), _profile_note_value(notes.get("provider_profile_overview"), "industry"))
-    business_summary = _first_text(asset_profile.get("business_summary"))
+    business_summary = _first_text(
+        asset_profile.get("business_summary"),
+        _profile_note_value(notes.get("provider_profile_overview"), "long_business_summary"),
+        _profile_note_value(notes.get("provider_profile_overview"), "business_summary"),
+    )
     gaps = _humanize_field_list(notes.get("evidence_gaps"))
     if asset.asset_type.value == "etf":
         holdings_phrase = f"{holdings} holdings" if holdings else ""
@@ -1443,28 +1562,31 @@ def _beginner_fallback_payload(
             + "; this page does not turn the fund into a personal recommendation."
         )
     else:
-        business_phrase = _truncate(business_summary, 220) if business_summary else ""
+        business_phrase = _safe_profile_summary(business_summary, limit=520)
         sector_phrase = _join_human_text([sector or "", industry or ""])
         official_fact_phrase = (
             " using SEC-filed facts"
             if notes.get("latest_revenue_fact") or notes.get("latest_net_income_fact")
             else ""
         )
-        fact_bits = _join_human_text(
-            [
-                f"in {sector_phrase}" if sector_phrase else "",
-                business_phrase,
-            ]
-        )
+        identity_bits = _join_human_text([f"in {sector_phrase}" if sector_phrase else ""])
+        business_lens = _stock_business_lens_phrase(business_phrase, asset.ticker)
         what_it_is = (
             f"{asset.name} ({asset.ticker}) is a single-company stock{official_fact_phrase}"
-            + (f" {fact_bits}." if fact_bits else ".")
-            if fact_bits
+            + (f" {identity_bits}." if identity_bits else ".")
+            if (identity_bits or business_phrase)
             else _join_sentences(base_summary.what_it_is, "SEC facts are preferred when available.")
         )
+        if business_phrase:
+            what_it_is = _join_sentences(what_it_is, business_phrase)
         why = (
-            f"Beginners can use {asset.ticker} to connect what the company does with reported financial facts, business context, and clearly labeled valuation context."
-            if fact_bits
+            (
+                f"Beginners can use {asset.ticker} to connect its products, services, customers, and business model "
+                "with reported financial facts, business context, and clearly labeled valuation context."
+                if business_lens
+                else f"Beginners can use {asset.ticker} to connect what the company does with reported financial facts, business context, and clearly labeled valuation context."
+            )
+            if (identity_bits or business_phrase)
             else base_summary.why_people_consider_it
         )
         catch = (
@@ -1475,6 +1597,18 @@ def _beginner_fallback_payload(
         "why_people_consider_it": _avoid_generic_only(why, base_summary.why_people_consider_it),
         "main_catch": catch,
     }
+
+
+def _stock_business_lens_phrase(summary: str, ticker: str) -> str:
+    lowered = summary.lower()
+    if not summary:
+        return ""
+    signals = [
+        marker
+        for marker in ("products", "services", "customers", "platforms", "accessories", "markets", "manufactures")
+        if marker in lowered
+    ]
+    return f"{ticker} profile summary includes " + _join_human_text(signals[:4]) if signals else ""
 
 
 def _deep_dive_fallback(

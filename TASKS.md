@@ -1,12 +1,46 @@
 ## Current task
 
-No current task is prepared. T-197 is complete; prepare the next narrow task before implementation.
+No current task is prepared. T-198 is complete; prepare the next narrow task before implementation.
 
 ## Backlog
 
 No backlog tasks are currently prepared.
 
 ## Completed
+
+### T-198: Fix source popovers, summary fallback, and LLM routing
+
+Goal:
+Make compact source popovers easy to dismiss, enrich deterministic Beginner Summary fallback with normalized Yahoo/yfinance business descriptions, and make OpenRouter live generation routing less brittle by batching model fallback attempts.
+
+Completion details:
+- Split compact citation rendering into a server wrapper plus a controlled client component with outside-click close, Escape close, close button, source-link close, keyboard-trigger support, and mobile-safe scrollable popover sizing.
+- Preserved unique source-document badge counts while keeping as-of/retrieved/provider/source-use metadata inside compact popovers.
+- Merged duplicate provider profile facts so Yahoo/yfinance-derived `longBusinessSummary` survives provider fallback merging and flows into `generation_context.asset_profile.business_summary`.
+- Updated deterministic stock Beginner Summary fallback to use sanitized provider-derived business descriptions for plain-English company context while keeping provider fallback distinct from official SEC evidence and avoiding raw provider field names, fixture wording, quote/chart/volume/technical facts, recommendations, and price-target framing.
+- Added generation diagnostics fields for `attempt_count` and `attempted_model_batches` across backend payloads and frontend mappings.
+- Added an OpenRouter attempt planner that sends at most three `models` entries per request, first batching the first three free models, then remaining free models plus paid fallback only when `OPENROUTER_PAID_FALLBACK_ENABLED=true`.
+- Changed live-generation failure handling so the cooldown circuit opens only after all planned OpenRouter batches fail, while preserving attempted batch/error diagnostics and selected-model metadata when available.
+- Updated PRD, technical design, deployment docs, lightweight data policy, env examples, EVALS, frontend smoke contracts, and backend tests for capped OpenRouter batches, stable deterministic fallback behavior, and Yahoo/yfinance summary fallback policy.
+
+Required commands executed:
+- `source scripts/activate_agent_env.sh && npm test` - pass
+- `source scripts/activate_agent_env.sh && npm run typecheck` - pass
+- `source scripts/activate_agent_env.sh && npm run build` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/unit/test_summary_generation.py tests/unit/test_llm_provider.py tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py -q` - pass, 138 passed
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass, 651 backend tests plus static evals, frontend smoke, typecheck, build, and backend checks
+- `LTT_LIVE_AI_SMOKE_ENABLED=true LLM_PROVIDER=openrouter LLM_LIVE_GENERATION_ENABLED=true OPENROUTER_PAID_FALLBACK_ENABLED=false TMPDIR=/tmp python3 scripts/run_live_ai_validation_smoke.py --json` - blocked safely before any live call because `OPENROUTER_API_KEY` was not present in this shell's server-side environment; no secret values were printed and `live_llm_calls_attempted=false`
+
+Manual browser acceptance:
+- `/assets/AAPL` Beginner Summary now includes richer Yahoo/yfinance-derived business context such as smartphones, personal computers, tablets, services, customers, and business model framing while still labeling generation as deterministic/provider-derived fallback, not official SEC evidence.
+- Desktop source popovers open and close via outside click, close `X`, Escape, and source-link click.
+- Mobile viewport source popovers remain visible, scrollable, and show the close control; outside click closes them.
+- Browser console reported no errors after restarting local backend and web servers for verification.
+
+Remaining risks:
+- The live OpenRouter smoke could not make a real provider call in this shell because the server-side key was absent. The blocked result confirms the safe gate behavior but does not prove live OpenRouter availability on the operator's keyed environment.
+- Local live generation quality and latency still depend on OpenRouter model availability, validation behavior, and platform/API-key rate limits outside the repo.
 
 ### T-197: Clarify source controls and OpenRouter fallback routing
 

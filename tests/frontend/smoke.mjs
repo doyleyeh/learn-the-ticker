@@ -59,6 +59,7 @@ function orderedMarkers(path, markers, label) {
   "components/CitationChip.tsx",
   "components/ComparisonSuggestions.tsx",
   "components/ComparisonSourceDetails.tsx",
+  "components/CompactCitationSourcesClient.tsx",
   "components/ExportControls.tsx",
   "components/SourceDrawer.tsx",
   "components/FreshnessLabel.tsx",
@@ -596,12 +597,19 @@ assert.equal(
 );
 includesAll("components/CompactCitationSources.tsx", [
   "metadataRows",
-  "data-source-icon-metadata-rows",
-  "data-compact-citation-metadata-count",
   "uniqueBySourceDocumentId",
-  "data-citation-count",
   "summaryLabel"
 ], "source icons carry compact evidence metadata rows without inflating source counts");
+includesAll("components/CompactCitationSourcesClient.tsx", [
+  "data-source-icon-metadata-rows",
+  "data-compact-citation-metadata-count",
+  "data-compact-citation-dismissible=\"outside-click-escape-close-button\"",
+  "document.addEventListener(\"pointerdown\"",
+  "event.key === \"Escape\"",
+  "data-compact-citation-close-control=\"button\"",
+  "onClick={() => setPopoverOpen(false)}",
+  "data-citation-count"
+], "source popovers can close from outside click, Escape, close button, and source links");
 assert.equal(
   read("components/CompactCitationSources.tsx").includes("sourceCount + visibleMetadataRows.length"),
   false,
@@ -615,6 +623,7 @@ assert.equal(
 includesAll("styles/globals.css", [
   ".metadata-row > span",
   ".source-icon-disclosure-labeled summary",
+  ".compact-citation-close",
   "max-height: calc(100vh - 128px)",
   "overflow-y: auto"
 ], "mobile-safe source popover and direct-child metadata chip styling");

@@ -106,7 +106,7 @@ Verify:
 - important factual claims have citations or explicit uncertainty
 - Weekly News Focus and AI Comprehensive Analysis claims cite the correct evidence layer
 - generated Beginner Summary, Deep Dive, Market AI, and ticker AI use curated `generation_context` instead of raw provider payloads
-- OpenRouter live structured-generation requests use the configured `models` fallback chain with `route=fallback` and do not send a single top-level `model`; paid fallback appears in the request only when explicitly enabled
+- OpenRouter live structured-generation requests use app-side `models` batches with `route=fallback`, no request sends more than three models or a single top-level `model`, and paid fallback appears only when explicitly enabled
 - generated-section diagnostics do not mask deterministic or timeout fallback as plain success; fallback analysis renders as partial and insufficient-evidence suppression is distinct from backend failure
 - Beginner Summary explains the asset in plain English and does not depend on quote, chart, volume, price, or technical-indicator facts unless required for identity
 - generated copy does not include internal or low-value wording such as fixtures, local MVP, available evidence, provider market-reference, raw provider keys like `regularMarketPrice`, or "this section uses..." phrasing
