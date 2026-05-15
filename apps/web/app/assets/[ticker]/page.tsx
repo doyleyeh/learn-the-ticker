@@ -12,16 +12,14 @@ import { CitationChip } from "../../../components/CitationChip";
 import { CompactCitationSources, resolveAssetCitations } from "../../../components/CompactCitationSources";
 import { ComparisonSuggestions } from "../../../components/ComparisonSuggestions";
 import { ExportControls } from "../../../components/ExportControls";
-import { FreshnessDisclosure, FreshnessLabel } from "../../../components/FreshnessLabel";
 import { GenerationStateNote } from "../../../components/GenerationStateNote";
 import { InlineGlossaryText, type InlineGlossaryMatch } from "../../../components/InlineGlossaryText";
 import { MarketAIComprehensiveAnalysisPanel } from "../../../components/MarketAIComprehensiveAnalysisPanel";
 import { MarketNewsPanel } from "../../../components/MarketNewsPanel";
+import { SectionStateNote, hasUserFacingBackendIssue } from "../../../components/SectionStateNote";
 import { WeeklyNewsPanel } from "../../../components/WeeklyNewsPanel";
 import { fetchSupportedAssetDetails } from "../../../lib/assetDetails";
-import { fetchSupportedAssetGlossaryContexts } from "../../../lib/assetGlossary";
 import { fetchSupportedAssetOverview } from "../../../lib/assetOverview";
-import { fetchSupportedSourceDrawerResponse, sourceDrawerEntriesByDocumentId } from "../../../lib/sourceDrawer";
 import { fetchSupportedAssetWeeklyNews } from "../../../lib/assetWeeklyNews";
 import { fetchEconomicIndicators } from "../../../lib/economicIndicators";
 import { fetchMarketNews } from "../../../lib/marketNews";
@@ -52,8 +50,6 @@ import {
   type AssetFixture,
   type Citation,
   type EconomicIndicatorsPackFixture,
-  type MarketAIComprehensiveAnalysisFixture,
-  type MarketNewsFocusFixture,
   type WeeklyNewsFocusFixture
 } from "../../../lib/fixtures";
 import { type RuntimeSectionState } from "../../../lib/runtimeSectionStates";
@@ -64,15 +60,15 @@ type AssetPageProps = {
   }>;
 };
 
-const OVERVIEW_FETCH_TIMEOUT_MS = 30_000;
+const OVERVIEW_FETCH_TIMEOUT_MS = 90_000;
 const DETAILS_FETCH_TIMEOUT_MS = 8_000;
-const DEFAULT_LIVE_SECTION_FETCH_TIMEOUT_MS = 12_000;
+const DEFAULT_LIVE_SECTION_FETCH_TIMEOUT_MS = 90_000;
 const LIVE_SECTION_FETCH_TIMEOUT_MS = readPositiveTimeoutMs(
   "NEXT_PUBLIC_LIVE_SECTION_FETCH_TIMEOUT_MS",
   DEFAULT_LIVE_SECTION_FETCH_TIMEOUT_MS
 );
 
-type BackendSectionRendering = "backend_contract" | "source_labeled_live" | "mixed_fallback" | "local_fixture";
+type BackendSectionRendering = "backend_contract" | "source_labeled_live" | "mixed_fallback" | "local_fixture" | "section_loader";
 type BackendSectionFailureReason =
   | "api_base_unconfigured"
   | "timeout_or_aborted"
@@ -326,38 +322,6 @@ function backendSectionFallbackMessage(reason: BackendSectionFailureReason) {
   return "Something went wrong loading this section, so live evidence is unavailable on this render.";
 }
 
-function sectionInlineNoticeCopy(state: BackendSectionFetchState) {
-  if (state.reason === "api_base_unconfigured") {
-    return "The live backend is not connected for this render, so this section is showing deterministic local evidence.";
-  }
-  if (state.reason === "timeout_or_aborted") {
-    return "This section timed out before backend evidence returned.";
-  }
-  if (state.reason === "backend_status_error") {
-    return "The backend returned an error for this section.";
-  }
-  if (state.reason === "invalid_contract") {
-    return "The backend returned data, but it did not match the expected section contract.";
-  }
-  if (state.reason === "partial_backend_contract") {
-    return `${state.label} is ${state.sectionStatus.replaceAll("_", " ")} from ${sectionDataOriginLabel(state)}.`;
-  }
-  return "This section could not load backend evidence for this render.";
-}
-
-function sectionDataOriginLabel(state: BackendSectionFetchState) {
-  if (state.rendering === "backend_contract") {
-    return "live backend evidence";
-  }
-  if (state.rendering === "source_labeled_live") {
-    return "source-labeled local evidence";
-  }
-  if (state.dataOrigin === "deterministic_fixture") {
-    return "deterministic fixture evidence";
-  }
-  return state.dataOrigin.replaceAll("_", " ");
-}
-
 function readPositiveTimeoutMs(envName: string, fallbackMs: number) {
   const rawValue = process.env[envName]?.trim();
   if (!rawValue) {
@@ -368,66 +332,6 @@ function readPositiveTimeoutMs(envName: string, fallbackMs: number) {
     return fallbackMs;
   }
   return parsed;
-}
-
-function isDisplayLiveEvidence(state: BackendSectionFetchState) {
-  return state.rendering === "backend_contract" || state.rendering === "source_labeled_live";
-}
-
-function isBackendSectionRequestFailure(state: BackendSectionFetchState) {
-  return (
-    state.reason === "api_base_unconfigured" ||
-    state.reason === "timeout_or_aborted" ||
-    state.reason === "backend_status_error" ||
-    state.reason === "invalid_contract" ||
-    state.reason === "unexpected_error"
-  );
-}
-
-function shouldShowInlineSectionNotice(state: BackendSectionFetchState) {
-  if (state.sectionId === "glossary_context") {
-    return false;
-  }
-  if (isDisplayLiveEvidence(state)) {
-    return false;
-  }
-  return isBackendSectionRequestFailure(state) || state.reason === "partial_backend_contract";
-}
-
-function hasUserFacingBackendIssue(states: readonly BackendSectionFetchState[]) {
-  return states.some((state) => isBackendSectionRequestFailure(state));
-}
-
-function InlineSectionStateNotice({ state }: { state: BackendSectionFetchState }) {
-  if (!shouldShowInlineSectionNotice(state)) {
-    return null;
-  }
-
-  return (
-    <div
-      className="source-gap-note"
-      role="note"
-      aria-label={`${state.label} evidence note`}
-      data-asset-inline-section-state={state.sectionId}
-      data-asset-section-rendering={state.rendering}
-      data-asset-section-failure-reason={state.reason}
-      data-asset-section-evidence-state={state.evidenceState}
-      data-asset-section-data-origin={state.dataOrigin}
-      data-asset-section-status={state.sectionStatus}
-      data-asset-section-fallback-reason={state.fallbackReason ?? state.reason}
-      data-asset-section-generation-used-fallback={
-        state.diagnostics.used_fallback === true ? "true" : state.diagnostics.used_fallback === false ? "false" : "unknown"
-      }
-    >
-      <strong>{state.label}:</strong> {sectionInlineNoticeCopy(state)}
-      {state.sectionId === "weekly_news" ? (
-        <span data-weekly-news-fetch-failure-notice>
-          {" "}
-          This is different from a verified no-high-signal Weekly News result.
-        </span>
-      ) : null}
-    </div>
-  );
 }
 
 export function generateStaticParams() {
@@ -508,8 +412,6 @@ async function SupportedAssetPageContent({
     detailsFetchState = backendSectionFallbackState("asset_details", "Asset details", error);
   }
 
-  let marketNewsFocus: MarketNewsFocusFixture = marketNewsFocusFixture;
-  let marketAIComprehensiveAnalysis: MarketAIComprehensiveAnalysisFixture = marketAIComprehensiveAnalysisFixture;
   let economicIndicators: EconomicIndicatorsPackFixture = economicIndicatorsPackFixture;
 
   let weeklyNewsFocus = getWeeklyNewsFocusFixture(asset.ticker) ?? buildEmptyWeeklyNewsFocus(asset);
@@ -562,67 +464,12 @@ async function SupportedAssetPageContent({
     { match: "Expense Ratio (net)", term: "expense ratio" }
   );
 
-  const [
-    economicIndicatorsResult,
-    marketNewsResult,
-    weeklyNewsResult,
-    sourceDrawerResult,
-    glossaryContextsResult
-  ] = await Promise.all([
-    fetchBackendSection("economic_indicators", "Economic Indicators", () =>
-      fetchEconomicIndicators(economicIndicators, optionalBackendFetcher(LIVE_SECTION_FETCH_TIMEOUT_MS))
-    ),
-    fetchBackendSection("market_news", "Market News Focus", () =>
-      fetchMarketNews(marketNewsFocus, marketAIComprehensiveAnalysis, optionalBackendFetcher(LIVE_SECTION_FETCH_TIMEOUT_MS))
-    ),
-    fetchBackendSection("weekly_news", `Weekly News Focus: ${asset.ticker}`, () =>
-      fetchSupportedAssetWeeklyNews(
-        asset.ticker,
-        weeklyNewsFocus,
-        aiComprehensiveAnalysis,
-        asset.assetType,
-        optionalBackendFetcher(LIVE_SECTION_FETCH_TIMEOUT_MS)
-      )
-    ),
-    fetchBackendSection("source_drawer", "Source drawer", () =>
-      fetchSupportedSourceDrawerResponse(asset.ticker, optionalBackendFetcher(LIVE_SECTION_FETCH_TIMEOUT_MS))
-    ),
-    fetchBackendSection("glossary_context", "Glossary context", () =>
-      fetchSupportedAssetGlossaryContexts(
-        asset.ticker,
-        glossaryTermsForBackend,
-        optionalBackendFetcher(LIVE_SECTION_FETCH_TIMEOUT_MS)
-      )
-    )
-  ]);
-
-  if (economicIndicatorsResult.data) {
-    economicIndicators = economicIndicatorsResult.data;
-    economicIndicatorsRendering = economicIndicatorsResult.state.rendering;
-  }
-
-  if (marketNewsResult.data) {
-    marketNewsFocus = marketNewsResult.data.marketNewsFocus;
-    marketAIComprehensiveAnalysis = marketNewsResult.data.marketAIComprehensiveAnalysis;
-    marketNewsRendering = marketNewsResult.state.rendering;
-  }
-
-  if (weeklyNewsResult.data) {
-    weeklyNewsFocus = weeklyNewsResult.data.weeklyNewsFocus;
-    aiComprehensiveAnalysis = weeklyNewsResult.data.aiComprehensiveAnalysis;
-    weeklyNewsRendering = weeklyNewsResult.state.rendering;
-  }
-
-  if (glossaryContextsResult.data) {
-    glossaryRendering = glossaryContextsResult.state.rendering;
-  }
-
-  const backendEconomicIndicatorsState = economicIndicatorsResult.state;
-  const backendMarketNewsState = marketNewsResult.state;
-  const backendWeeklyNewsState = weeklyNewsResult.state;
-  let backendSourceDrawerState = sourceDrawerResult.state;
-  const backendGlossaryState = glossaryContextsResult.state;
-  const backendGlossaryContexts = glossaryContextsResult.data;
+  economicIndicatorsRendering = "section_loader";
+  marketNewsRendering = "section_loader";
+  weeklyNewsRendering = "section_loader";
+  sourceDrawerRendering = overviewRendering;
+  glossaryRendering = "local_fixture";
+  const backendGlossaryContexts = null;
 
   const primarySource = getPrimarySource(asset);
   const assetSourceById = new Map(asset.sourceDocuments.map((source) => [source.sourceDocumentId, source]));
@@ -636,80 +483,16 @@ async function SupportedAssetPageContent({
   const sectionSourceDocumentIds = new Set(
     [...(asset.stockSections ?? []), ...(asset.etfSections ?? [])].flatMap((section) => section.sourceDocumentIds)
   );
-  const mergedCitations = [
-    ...asset.citations,
-    ...economicIndicators.citations,
-    ...marketNewsFocus.citations,
-    ...marketAIComprehensiveAnalysis.citations,
-    ...weeklyNewsFocus.citations,
-    ...aiComprehensiveAnalysis.citations
-  ].filter((citation, index, collection) => collection.findIndex((entry) => entry.citationId === citation.citationId) === index);
-  const mergedSources = [
-    ...asset.sourceDocuments,
-    ...economicIndicators.sourceDocuments,
-    ...marketNewsFocus.sourceDocuments,
-    ...marketAIComprehensiveAnalysis.sourceDocuments,
-    ...weeklyNewsFocus.sourceDocuments,
-    ...aiComprehensiveAnalysis.sourceDocuments
-  ].filter(
-    (source, index, collection) =>
-      collection.findIndex((entry) => entry.sourceDocumentId === source.sourceDocumentId) === index
-  );
-  const timelyContextSourceDocumentIds = new Set([
-    ...economicIndicators.sourceDocuments.map((source) => source.sourceDocumentId),
-    ...marketNewsFocus.sourceDocuments.map((source) => source.sourceDocumentId),
-    ...marketAIComprehensiveAnalysis.sourceDocumentIds,
-    ...weeklyNewsFocus.sourceDocuments.map((source) => source.sourceDocumentId),
-    ...aiComprehensiveAnalysis.sourceDocumentIds
-  ]);
-  const drawerSourceDocumentIds = new Set([...sectionSourceDocumentIds, ...timelyContextSourceDocumentIds]);
-  const drawerSources = mergedSources
+  const drawerSourceDocumentIds = sectionSourceDocumentIds;
+  const drawerSources = asset.sourceDocuments
     .filter((source) => drawerSourceDocumentIds.has(source.sourceDocumentId))
     .map(toSourceDrawerDocument);
-  const timelyContextClaimsBySourceDocumentId = new Map<string, string>([
-    ...economicIndicators.items.flatMap((item) =>
-      item.sourceDocumentIds.map(
-        (sourceDocumentId) =>
-          [
-            sourceDocumentId,
-            `Economic Indicators: ${item.name} was ${item.value}${item.unit ? ` ${item.unit}` : ""} for ${item.period}.`
-          ] as const
-      )
-    ),
-    ...marketNewsFocus.items.map((item) => [
-      item.source.sourceDocumentId,
-      `Market News Focus: ${item.title}. ${item.summary}`
-    ] as const),
-    ...weeklyNewsFocus.items.map((item) => [
-      item.source.sourceDocumentId,
-      `Weekly News Focus: ${asset.ticker}: ${item.title}. ${item.summary}`
-    ] as const)
-  ]);
-  for (const sourceDocumentId of marketAIComprehensiveAnalysis.sourceDocumentIds) {
-    if (!timelyContextClaimsBySourceDocumentId.has(sourceDocumentId)) {
-      timelyContextClaimsBySourceDocumentId.set(
-        sourceDocumentId,
-        "AI Comprehensive Analysis: Market News Focus cites this source while keeping market-wide context separate from ticker-specific facts."
-      );
-    }
-  }
-  for (const sourceDocumentId of aiComprehensiveAnalysis.sourceDocumentIds) {
-    if (!timelyContextClaimsBySourceDocumentId.has(sourceDocumentId)) {
-      timelyContextClaimsBySourceDocumentId.set(
-        sourceDocumentId,
-        `AI Comprehensive Analysis cites this source while keeping timely context separate from stable facts for ${asset.ticker}.`
-      );
-    }
-  }
   const comparisonSuggestions = getAssetComparisonSuggestions(asset.ticker);
   const localDrawerEntries = drawerSources.map((source) => {
     const sourceContexts = getCitationContextsForSource(asset, source.source_document_id);
     return {
       source,
-      claim:
-        sourceContexts[0]?.claimContext ??
-        timelyContextClaimsBySourceDocumentId.get(source.source_document_id) ??
-        firstClaim.claimText,
+      claim: sourceContexts[0]?.claimContext ?? firstClaim.claimText,
       contexts: sourceContexts,
       drawerState: sourceDrawerStateFromFreshness(source.freshness_state)
     };
@@ -720,12 +503,7 @@ async function SupportedAssetPageContent({
     contexts: getCitationContextsForSource(asset, primarySource.sourceDocumentId),
     drawerState: sourceDrawerStateFromFreshness(primarySource.freshnessState)
   };
-  const backendDrawerEntries = sourceDrawerResult.data ? sourceDrawerEntriesByDocumentId(sourceDrawerResult.data) : null;
-  const overlaySourceDrawerEntry = <T extends { source: { source_document_id: string } }>(entry: T) =>
-    backendDrawerEntries?.get(entry.source.source_document_id) ?? entry;
-  const renderedDrawerEntries = hasPrdSections
-    ? localDrawerEntries.map(overlaySourceDrawerEntry)
-    : [overlaySourceDrawerEntry(primarySourceEntry)];
+  const renderedDrawerEntries = hasPrdSections ? localDrawerEntries : [primarySourceEntry];
   const whatItDoesOrHoldsSection =
     asset.assetType === "etf"
       ? asset.etfSections?.find((section) => section.sectionId === "holdings_exposure")
@@ -733,34 +511,10 @@ async function SupportedAssetPageContent({
   const whatItDoesOrHoldsItems = whatItDoesOrHoldsSection?.items.slice(0, 2) ?? [];
   const keySourceTitles = renderedDrawerEntries.slice(0, 3).map((entry) => entry.source.title);
   const hasDashboard = hasAssetDataDashboard(asset);
-  let sourceDrawerCoverageMessage =
+  const sourceDrawerCoverageMessage =
     "Key source documents stay compact on the asset page. Open the source-list view for the full source drawer metadata, related claim context, source-use policy, and allowed excerpts.";
 
-  if (backendDrawerEntries) {
-    const allRenderedDrawerEntriesBackendBacked = renderedDrawerEntries.every((entry) =>
-      backendDrawerEntries.has(entry.source.source_document_id)
-    );
-    sourceDrawerRendering = backendSourceDrawerState.rendering;
-    if (!allRenderedDrawerEntriesBackendBacked) {
-      backendSourceDrawerState = {
-        ...backendSourceDrawerState,
-        message:
-          "The Sources region combines backend source-drawer entries with compact source metadata for page sections that cite additional documents."
-      };
-      sourceDrawerCoverageMessage =
-        "Source coverage combines backend source-drawer entries with compact source metadata for page sections that cite additional documents. Open the source-list view for full source-use policy and allowed excerpts.";
-    }
-  }
-
-  const backendSectionStates = [
-    overviewFetchState,
-    detailsFetchState,
-    backendEconomicIndicatorsState,
-    backendMarketNewsState,
-    backendWeeklyNewsState,
-    backendSourceDrawerState,
-    backendGlossaryState
-  ];
+  const backendSectionStates = [overviewFetchState, detailsFetchState];
   const backendEvidenceHasFallback = hasUserFacingBackendIssue(backendSectionStates);
 
   return (
@@ -794,7 +548,7 @@ async function SupportedAssetPageContent({
                 <p className="eyebrow">Stable facts</p>
                 <h2 id="beginner-overview">Beginner Summary</h2>
               </div>
-              <InlineSectionStateNotice state={overviewFetchState} />
+              <SectionStateNote state={overviewFetchState} />
               <GenerationStateNote
                 label="Beginner Summary generation"
                 diagnostics={asset.generationDiagnostics?.beginner_summary}
@@ -839,10 +593,6 @@ async function SupportedAssetPageContent({
                     />
                   </p>
                 </article>
-              </div>
-              <div className="freshness-disclosure-row">
-                <FreshnessDisclosure label="Page last updated" value={asset.freshness.pageLastUpdatedAt} state="fresh" />
-                <FreshnessDisclosure label="Beginner overview as of" value={asset.freshness.factsAsOf} state="fresh" />
               </div>
             </section>
 
@@ -894,9 +644,6 @@ async function SupportedAssetPageContent({
                   );
                 })}
               </div>
-              <div className="freshness-disclosure-row">
-                <FreshnessDisclosure label="Top risks as of" value={asset.freshness.factsAsOf} state="fresh" />
-              </div>
             </section>
 
             {!hasDashboard ? (
@@ -937,9 +684,6 @@ async function SupportedAssetPageContent({
                   );
                 })}
               </dl>
-              <div className="freshness-disclosure-row">
-                <FreshnessDisclosure label="Stable facts as of" value={asset.freshness.factsAsOf} state="fresh" />
-              </div>
                 </section>
 
                 <section
@@ -1010,38 +754,21 @@ async function SupportedAssetPageContent({
                   ))}
                 </div>
               ) : null}
-              <div className="freshness-disclosure-row">
-                <FreshnessDisclosure
-                  label={asset.assetType === "etf" ? "Holdings as of" : "Business facts as of"}
-                  value={
-                    asset.assetType === "etf"
-                      ? asset.freshness.holdingsAsOf ?? "Unknown in current evidence"
-                      : asset.freshness.factsAsOf
-                  }
-                  state={asset.assetType === "etf" && !asset.freshness.holdingsAsOf ? "unknown" : "fresh"}
-                />
-              </div>
                 </section>
               </>
             ) : null}
 
-            <EconomicIndicatorsPanel
-              pack={economicIndicators}
-              citations={mergedCitations}
-              sectionState={backendEconomicIndicatorsState}
-            />
+            <Suspense fallback={<SectionLoadingPanel title="Economic Indicators" eyebrow="Common U.S. context" />}>
+              <EconomicIndicatorsSectionLoader fallbackPack={economicIndicators} />
+            </Suspense>
 
-            <InlineSectionStateNotice state={backendMarketNewsState} />
+            <Suspense fallback={<SectionLoadingPanel title="Market News Focus" eyebrow="Market-wide context" />}>
+              <MarketNewsSectionLoader />
+            </Suspense>
 
-            <MarketNewsPanel focus={marketNewsFocus} citations={mergedCitations} />
-
-            <MarketAIComprehensiveAnalysisPanel analysis={marketAIComprehensiveAnalysis} citations={mergedCitations} />
-
-            <InlineSectionStateNotice state={backendWeeklyNewsState} />
-
-            <WeeklyNewsPanel focus={weeklyNewsFocus} citations={mergedCitations} assetTicker={asset.ticker} />
-
-            <AIComprehensiveAnalysisPanel analysis={aiComprehensiveAnalysis} citations={mergedCitations} assetTicker={asset.ticker} />
+            <Suspense fallback={<SectionLoadingPanel title={`Weekly News Focus: ${asset.ticker}`} eyebrow="Ticker-specific context" />}>
+              <WeeklyNewsSectionLoader asset={asset} fallbackFocus={weeklyNewsFocus} fallbackAnalysis={aiComprehensiveAnalysis} />
+            </Suspense>
           </>
         }
         deepDiveSections={
@@ -1051,7 +778,7 @@ async function SupportedAssetPageContent({
               diagnostics={asset.generationDiagnostics?.deep_dive_summary}
               compact
             />
-            <InlineSectionStateNotice state={detailsFetchState} />
+            <SectionStateNote state={detailsFetchState} />
 
             {hasStockPrdSections ? (
               <AssetStockSections
@@ -1075,10 +802,9 @@ async function SupportedAssetPageContent({
                   Missing live facts are labeled instead of being filled in from model memory. This view uses only the
                   evidence currently available to the local source pack.
                 </p>
-                <div className="freshness-disclosure-row">
-                  <FreshnessDisclosure label="Valuation context" value="Unknown in current evidence" state="unknown" />
-                  <FreshnessDisclosure label="Live market quote" value="Unavailable by design" state="stale" />
-                </div>
+                <p className="source-gap-note">
+                  Valuation context is unknown in current evidence; live market quote is unavailable by design.
+                </p>
               </section>
             )}
 
@@ -1091,8 +817,6 @@ async function SupportedAssetPageContent({
         }
         sourceTools={
           <>
-            <InlineSectionStateNotice state={backendSourceDrawerState} />
-
             <ExportControls
               title={`Save ${asset.ticker} learning output`}
               marker={`asset-export-${asset.ticker.toLowerCase()}`}
@@ -1197,30 +921,6 @@ async function SupportedAssetPageContent({
               </div>
             </section>
 
-            <section className="plain-panel helper-rail-panel" aria-labelledby="helper-rail-freshness">
-              <div className="section-heading">
-                <p className="eyebrow">Freshness summary</p>
-                <h2 id="helper-rail-freshness">Freshness</h2>
-              </div>
-              <div className="section-stack">
-                <FreshnessLabel label="Page last updated" value={asset.freshness.pageLastUpdatedAt} state="fresh" />
-                <FreshnessLabel label="Facts as of" value={asset.freshness.factsAsOf} state="fresh" />
-                <FreshnessLabel
-                  label="Weekly focus as of"
-                  value={weeklyNewsFocus.window.asOfDate}
-                  state={
-                    weeklyNewsFocus.state === "available"
-                      ? "fresh"
-                      : weeklyNewsFocus.state === "no_high_signal"
-                        ? "insufficient_evidence"
-                        : weeklyNewsFocus.state === "suppressed"
-                          ? "unavailable"
-                          : "unknown"
-                  }
-                />
-              </div>
-            </section>
-
             <div id="compare-this-asset" data-helper-rail-comparison-access>
               <ComparisonSuggestions model={comparisonSuggestions} />
             </div>
@@ -1260,6 +960,96 @@ async function SupportedAssetPageContent({
       />
     </main>
   );
+}
+
+async function EconomicIndicatorsSectionLoader({ fallbackPack }: { fallbackPack: EconomicIndicatorsPackFixture }) {
+  const result = await fetchBackendSection("economic_indicators", "Economic Indicators", () =>
+    fetchEconomicIndicators(fallbackPack, optionalBackendFetcher(LIVE_SECTION_FETCH_TIMEOUT_MS))
+  );
+  const pack = result.data ?? fallbackPack;
+
+  return <EconomicIndicatorsPanel pack={pack} citations={pack.citations} sectionState={result.state} />;
+}
+
+async function MarketNewsSectionLoader() {
+  const result = await fetchBackendSection("market_news", "Market News Focus", () =>
+    fetchMarketNews(marketNewsFocusFixture, marketAIComprehensiveAnalysisFixture, optionalBackendFetcher(LIVE_SECTION_FETCH_TIMEOUT_MS))
+  );
+  const focus = result.data?.marketNewsFocus ?? marketNewsFocusFixture;
+  const analysis = result.data?.marketAIComprehensiveAnalysis ?? marketAIComprehensiveAnalysisFixture;
+  const citations = mergeUniqueCitations(focus.citations, analysis.citations);
+
+  return (
+    <>
+      <MarketNewsPanel focus={focus} citations={citations} sectionState={result.state} />
+      <MarketAIComprehensiveAnalysisPanel analysis={analysis} citations={citations} />
+    </>
+  );
+}
+
+async function WeeklyNewsSectionLoader({
+  asset,
+  fallbackFocus,
+  fallbackAnalysis
+}: {
+  asset: AssetFixture;
+  fallbackFocus: WeeklyNewsFocusFixture;
+  fallbackAnalysis: AIComprehensiveAnalysisFixture;
+}) {
+  const result = await fetchBackendSection("weekly_news", `Weekly News Focus: ${asset.ticker}`, () =>
+    fetchSupportedAssetWeeklyNews(
+      asset.ticker,
+      fallbackFocus,
+      fallbackAnalysis,
+      asset.assetType,
+      optionalBackendFetcher(LIVE_SECTION_FETCH_TIMEOUT_MS)
+    )
+  );
+  const focus = result.data?.weeklyNewsFocus ?? fallbackFocus;
+  const analysis = result.data?.aiComprehensiveAnalysis ?? fallbackAnalysis;
+  const citations = mergeUniqueCitations(asset.citations, focus.citations, analysis.citations);
+
+  return (
+    <>
+      <WeeklyNewsPanel focus={focus} citations={citations} assetTicker={asset.ticker} sectionState={result.state} />
+      <AIComprehensiveAnalysisPanel analysis={analysis} citations={citations} assetTicker={asset.ticker} />
+    </>
+  );
+}
+
+function SectionLoadingPanel({ title, eyebrow }: { title: string; eyebrow: string }) {
+  return (
+    <section
+      className="plain-panel unknown-state"
+      aria-label={`${title} loading`}
+      data-asset-section-loading-boundary={title.toLowerCase().replaceAll(" ", "_").replaceAll(":", "")}
+      data-asset-section-loading-state="pending"
+    >
+      <div className="section-heading">
+        <p className="eyebrow">{eyebrow}</p>
+        <h2>{title}</h2>
+      </div>
+      <p className="source-gap-note">
+        Loading backend evidence for this section. It will resolve here as live, partial, insufficient-evidence, or error
+        when the request finishes.
+      </p>
+    </section>
+  );
+}
+
+function mergeUniqueCitations(...collections: Citation[][]) {
+  const seen = new Set<string>();
+  const merged: Citation[] = [];
+  for (const collection of collections) {
+    for (const citation of collection) {
+      if (seen.has(citation.citationId)) {
+        continue;
+      }
+      seen.add(citation.citationId);
+      merged.push(citation);
+    }
+  }
+  return merged;
 }
 
 function SupportedAssetLoadingPage({

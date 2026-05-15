@@ -11,6 +11,13 @@ type CompactCitationSourcesProps = {
   showEmpty?: boolean;
   className?: string;
   dashboardSourceIcon?: boolean;
+  metadataRows?: EvidenceMetadataRow[];
+};
+
+export type EvidenceMetadataRow = {
+  label: string;
+  value: string | number | null | undefined;
+  state?: string | null;
 };
 
 export function resolveAssetCitations(asset: AssetFixture, citationIds: string[]) {
@@ -32,15 +39,18 @@ export function CompactCitationSources({
   emptyLabel = "No source citation",
   showEmpty = false,
   className,
-  dashboardSourceIcon = false
+  dashboardSourceIcon = false,
+  metadataRows = []
 }: CompactCitationSourcesProps) {
   const uniqueCitations = uniqueByCitationId(citations);
+  const visibleMetadataRows = metadataRows.filter((row) => row.value !== null && row.value !== undefined && row.value !== "");
 
-  if (!uniqueCitations.length) {
+  if (!uniqueCitations.length && !visibleMetadataRows.length) {
     return showEmpty ? <span className="source-icon-empty" aria-label={emptyLabel}>-</span> : null;
   }
 
   const sourceCount = uniqueCitations.length;
+  const detailCount = sourceCount + visibleMetadataRows.length;
   const classNames = ["source-icon-disclosure", "compact-citation-sources", className].filter(Boolean).join(" ");
 
   return (
@@ -48,12 +58,13 @@ export function CompactCitationSources({
       className={classNames}
       data-compact-citation-sources
       data-compact-citation-source-count={sourceCount}
+      data-compact-citation-metadata-count={visibleMetadataRows.length}
       data-dashboard-source-icon={dashboardSourceIcon ? "true" : undefined}
-      title={`${label}: ${sourceCount} source${sourceCount === 1 ? "" : "s"}`}
+      title={`${label}: ${sourceCount} source${sourceCount === 1 ? "" : "s"}, ${visibleMetadataRows.length} evidence detail${visibleMetadataRows.length === 1 ? "" : "s"}`}
     >
-      <summary aria-label={`${label}: show ${sourceCount} source${sourceCount === 1 ? "" : "s"}`}>
+      <summary aria-label={`${label}: show ${sourceCount} source${sourceCount === 1 ? "" : "s"} and ${visibleMetadataRows.length} evidence detail${visibleMetadataRows.length === 1 ? "" : "s"}`}>
         <span aria-hidden="true">i</span>
-        {sourceCount > 1 ? <span className="source-icon-count">{sourceCount}</span> : null}
+        {detailCount > 1 ? <span className="source-icon-count">{detailCount}</span> : null}
       </summary>
       <span className="source-icon-popover compact-citation-popover">
         {uniqueCitations.map((citation) => (
@@ -72,6 +83,21 @@ export function CompactCitationSources({
             </span>
           </a>
         ))}
+        {visibleMetadataRows.length ? (
+          <span className="compact-citation-metadata" data-source-icon-metadata-rows={visibleMetadataRows.length}>
+            {visibleMetadataRows.map((row) => (
+              <span
+                key={`${row.label}-${String(row.value)}`}
+                className="compact-citation-metadata-row"
+                data-source-metadata-label={row.label}
+                data-source-metadata-state={row.state ?? undefined}
+              >
+                <span>{row.label}</span>
+                <strong>{row.value}</strong>
+              </span>
+            ))}
+          </span>
+        ) : null}
       </span>
     </details>
   );

@@ -1,5 +1,5 @@
 import type { AssetFixture } from "../lib/fixtures";
-import { FreshnessDisclosure } from "./FreshnessLabel";
+import { CompactCitationSources } from "./CompactCitationSources";
 
 type AssetHeaderProps = {
   asset: AssetFixture;
@@ -7,6 +7,13 @@ type AssetHeaderProps = {
 };
 
 export function AssetHeader({ asset, layoutMarker = "header" }: AssetHeaderProps) {
+  const headerMetadata = [
+    { label: "Page updated", value: asset.freshness.pageLastUpdatedAt, state: "fresh" },
+    { label: "Facts as of", value: asset.freshness.factsAsOf, state: "fresh" },
+    { label: "Holdings as of", value: asset.freshness.holdingsAsOf ?? null, state: asset.freshness.holdingsAsOf ? "fresh" : "unknown" },
+    { label: "Issuer", value: asset.issuer ?? null }
+  ];
+
   return (
     <section className="asset-hero" data-prd-section={layoutMarker} data-asset-header-layout="supported-asset-header">
       <div className="asset-hero-main">
@@ -20,18 +27,14 @@ export function AssetHeader({ asset, layoutMarker = "header" }: AssetHeaderProps
         </p>
         <div className="metadata-row">
           <span>{asset.exchange}</span>
-          {asset.issuer ? <span>{asset.issuer}</span> : null}
           <span>{asset.assetType.toUpperCase()}</span>
+          <CompactCitationSources
+            citations={asset.citations.slice(0, 3)}
+            label={`${asset.ticker} page evidence details`}
+            metadataRows={headerMetadata}
+            dashboardSourceIcon
+          />
         </div>
-      </div>
-      <div className="freshness-row">
-        <FreshnessDisclosure label="Page updated" value={asset.freshness.pageLastUpdatedAt} state="fresh" />
-        <FreshnessDisclosure label="Facts as of" value={asset.freshness.factsAsOf} state="fresh" />
-        <FreshnessDisclosure
-          label="Holdings as of"
-          value={asset.freshness.holdingsAsOf}
-          state={asset.freshness.holdingsAsOf ? "fresh" : "unknown"}
-        />
       </div>
     </section>
   );

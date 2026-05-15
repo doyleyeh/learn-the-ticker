@@ -216,11 +216,13 @@ def build_lightweight_overview_response(
     economic_indicators: EconomicIndicatorsPackResponse | None = None,
     technical_context: dict[str, Any] | None = None,
     include_timely_context: bool = True,
+    force_deterministic_generation: bool = False,
 ) -> OverviewResponse:
     cache_context = _page_build_cache_context(
         economic_indicators=economic_indicators,
         technical_context=technical_context,
         include_timely_context=include_timely_context,
+        force_deterministic_generation=force_deterministic_generation,
     )
     cached = _page_build_cache_get("overview", response, context_payload=cache_context)
     if cached is not None:
@@ -240,8 +242,8 @@ def build_lightweight_overview_response(
     default_citation_ids = [citation.citation_id for citation in citations[:1]]
     provider_citation_ids = _citation_ids_for_source_label(response, "provider_derived") or default_citation_ids
     stable_citation_ids = _preferred_citation_ids(response) or default_citation_ids
-    live_generation_ready = live_summary_generation_ready_from_env()
-    generation_context_manager = nullcontext()
+    live_generation_ready = False if force_deterministic_generation else live_summary_generation_ready_from_env()
+    generation_context_manager = deterministic_summary_generation() if force_deterministic_generation else nullcontext()
     diagnostics_token = start_summary_generation_diagnostics_capture()
     try:
         with generation_context_manager:

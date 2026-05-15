@@ -4,7 +4,6 @@ import {
   type EtfSectionItem
 } from "../lib/fixtures";
 import { CompactCitationSources, resolveAssetCitations } from "./CompactCitationSources";
-import { FreshnessDisclosure } from "./FreshnessLabel";
 import { InlineGlossaryText, type InlineGlossaryContextMap, type InlineGlossaryMatch } from "./InlineGlossaryText";
 
 type AssetEtfSectionsProps = {
@@ -79,6 +78,10 @@ function EtfSection({
   ]
     .filter(Boolean)
     .join(" ");
+  const sectionCitationIds = uniqueCitationIds([
+    ...(section.metrics ?? []).flatMap((metric) => metric.citationIds),
+    ...section.items.flatMap((item) => item.citationIds)
+  ]);
 
   return (
     <section
@@ -101,6 +104,18 @@ function EtfSection({
           <span className="state-pill" data-evidence-state={section.evidenceState}>
             Evidence: {section.evidenceState.replaceAll("_", " ")}
           </span>
+          <CompactCitationSources
+            citations={resolveAssetCitations(asset, sectionCitationIds)}
+            label={`${section.title} evidence details`}
+            metadataRows={[
+              {
+                label: "Section freshness",
+                value: section.asOfDate ?? section.retrievedAt ?? section.limitations ?? "Unknown in current evidence",
+                state: section.freshnessState
+              }
+            ]}
+            dashboardSourceIcon
+          />
         </div>
       </div>
 
@@ -159,13 +174,6 @@ function EtfSection({
       </div>
 
       {section.limitations ? <p className="notice-text">{section.limitations}</p> : null}
-      <div className="freshness-disclosure-row">
-        <FreshnessDisclosure
-          label="Section freshness"
-          value={section.asOfDate ?? section.retrievedAt ?? section.limitations ?? "Unknown in current evidence"}
-          state={section.freshnessState}
-        />
-      </div>
     </section>
   );
 }
@@ -213,17 +221,20 @@ function EtfSectionItemCard({
           sourceSection="etf.item_summary"
         />
       </p>
-      <div className="freshness-disclosure-row">
-        <FreshnessDisclosure
-          label={item.eventDate ? "Event date" : "As of"}
-          value={item.eventDate ?? item.asOfDate ?? item.limitations ?? "Unknown in current evidence"}
-          state={item.freshnessState}
-        />
-        {item.retrievedAt ? <FreshnessDisclosure label="Retrieved" value={item.retrievedAt} state={item.freshnessState} /> : null}
-      </div>
       {item.citationIds.length ? (
         <div className="compact-source-row">
-          <CompactCitationSources citations={resolveAssetCitations(asset, item.citationIds)} label={`${item.title} sources`} />
+          <CompactCitationSources
+            citations={resolveAssetCitations(asset, item.citationIds)}
+            label={`${item.title} sources`}
+            metadataRows={[
+              {
+                label: item.eventDate ? "Event date" : "As of",
+                value: item.eventDate ?? item.asOfDate ?? item.limitations ?? "Unknown in current evidence",
+                state: item.freshnessState
+              },
+              { label: "Retrieved", value: item.retrievedAt ?? null, state: item.freshnessState }
+            ]}
+          />
         </div>
       ) : (
         <p className="source-gap-note">No citation chip is shown because this ETF item is an explicit evidence gap.</p>
@@ -238,4 +249,8 @@ function formatMetricValue(value: string | number | null | undefined, unit: stri
   }
 
   return unit ? `${value}${unit}` : String(value);
+}
+
+function uniqueCitationIds(citationIds: string[]) {
+  return [...new Set(citationIds)];
 }

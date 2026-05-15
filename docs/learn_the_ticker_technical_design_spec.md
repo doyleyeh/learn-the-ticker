@@ -52,6 +52,9 @@ Default engineering behavior:
 - source metadata must preserve `source_quality`, `publisher_or_provider`, URL when available, `retrieved_at`, `as_of_date` or date precision when available, and a fallback/partial label;
 - available and fresh lightweight source-labeled local evidence is a first-class personal-MVP display state, not a user-facing fallback card; preserve raw `data_origin` for diagnostics while showing source state inline;
 - supported asset pages should render a progressive loading shell and section-local loading/error/partial states when backend sections are slow, instead of replacing the whole supported page with a temporary backend-unavailable state during normal local response latency;
+- the `asset_page_stable` overview path should stay fast and deterministic for first render; slower live generation can be represented through inline generation provenance and section-local loaders without blocking stable source-labeled facts;
+- slow supported-page regions such as Economic Indicators, Market News Focus, Weekly News Focus, and AI analysis should load behind section-local boundaries, and their timeout/error notes should render inside the owning panel rather than as orphan notes between panels;
+- repeated evidence metadata should be passed through compact source/details controls. Tables and charts may keep visible values and source/publisher labels, while period, retrieved timestamp, as-of date, provider label, source quality, and source-use policy live in the row or section source icon.
 - missing full dates should not block a page when `retrieved_at` and a clear date-quality label can be shown;
 - operators review suspicious results and repeated failure patterns rather than manually approving every exact URL before display;
 - clearly unsupported complex products remain blocked unless a future scope expansion adds templates, risk copy, and data handling.
@@ -220,6 +223,9 @@ Runtime feature defaults:
 - `EMBEDDINGS_ENABLED=false`
 - `RAW_SOURCE_TEXT_POLICY=rights_tiered`
 - `LLM_LIVE_GENERATION_ENABLED=false` for CI and ordinary local tests; local operator review should intentionally set it to `true` for fresh-data/live-AI validation before public deployment. First deployment may set it to `true` with the explicit OpenRouter free-model chain and DeepSeek fallback only when paid fallback is enabled, OpenRouter platform/API-key limits are configured, and validation gates are satisfied.
+- `LLM_LIVE_TIMEOUT_SECONDS=75` for local/operator live generation unless explicitly overridden; CI and tests still keep live generation disabled rather than relying on this timeout.
+- `LLM_LIVE_SLOW_RESPONSE_THRESHOLD_SECONDS=30` by default so ordinary local LLM latency does not trip the old short live-generation circuit, while very slow successful calls can still cool down follow-up generation attempts.
+- `NEXT_PUBLIC_LIVE_SECTION_FETCH_TIMEOUT_MS=90000` for the web app's local section loaders so slow live sections can resolve in place instead of forcing immediate fixture fallback.
 - `LLM_VALIDATION_RETRY_COUNT=1`
 - `LLM_REASONING_SUMMARY_ONLY=true`
 

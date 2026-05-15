@@ -476,6 +476,7 @@ def asset_overview(ticker: str, mode: str = "beginner") -> OverviewResponse:
             lightweight_response,
             economic_indicators=economic_pack,
             include_timely_context=not stable_asset_page_mode,
+            force_deterministic_generation=stable_asset_page_mode,
         )
         return _with_route_section_state(
             overview.model_copy(update={"economic_indicators": economic_pack}),

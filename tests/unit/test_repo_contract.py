@@ -319,7 +319,10 @@ def test_t157_local_deployment_env_smoke_contract_is_safe_and_deterministic():
     assert checks["docker_compose_config"]["reason_code"] == "docker_compose_config_skipped_by_caller"
 
     browser_files = checks["browser_env_secret_separation"]["files"]
-    assert all(file["env_names"] == ["NEXT_PUBLIC_API_BASE_URL"] for file in browser_files)
+    assert all(
+        file["env_names"] == ["NEXT_PUBLIC_API_BASE_URL", "NEXT_PUBLIC_LIVE_SECTION_FETCH_TIMEOUT_MS"]
+        for file in browser_files
+    )
     assert all(file["server_only_env_names_absent"] is True for file in browser_files)
     assert result["safe_diagnostics"]["env_var_names_reported_without_values"] is True
     assert result["safe_diagnostics"]["forbidden_marker_hits"] == []

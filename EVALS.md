@@ -42,7 +42,11 @@ Verify:
 - freshness, stale, unknown, unavailable, partial, and insufficient-evidence states are visible where relevant
 - asset pages visibly distinguish backend/API timeout, invalid-contract, unavailable, and no-API-base fallback states from verified `no_high_signal` or empty Weekly News Focus states
 - supported asset pages show a progressive loading shell or section-local loading placeholders for normal slow backend responses instead of the old whole-page temporary-unavailable state
-- asset pages show section-state notices inline with their sections and do not render redundant standalone Glossary context, Economic Indicators, Asset details, or Source drawer status panels
+- supported asset stable-overview mode does not wait on live LLM generation before rendering source-labeled facts; live-generation provenance belongs inline with the generated section
+- asset pages show section-state notices inside their owning sections and do not render orphan status notes between panels
+- asset pages do not render redundant standalone Glossary context, Economic Indicators, Asset details, or Source drawer status panels
+- repeated freshness/as-of/retrieved/provider/source-use metadata is available through compact section or row source icons instead of repeated visible tags
+- Economic Indicators keeps one visible section and folds period/as-of/retrieved row metadata into the Source column's source icon instead of a standalone `Period / as of` column
 - source-labeled lightweight local evidence is not shown as a page-level fallback card, while deterministic fixture or backend-failure content remains labeled where displayed
 - Beginner Summary, Deep Dive summaries, Market AI, and ticker AI expose inline generation-state notes for live generation, deterministic fallback, timeout fallback, insufficient evidence, or backend error
 - Economic Indicators appears as one visible section with inline live/imported/fixture source-state copy

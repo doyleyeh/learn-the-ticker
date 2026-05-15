@@ -165,11 +165,9 @@ orderedMarkers("app/assets/[ticker]/page.tsx", [
   "data-prd-section=\"top_risks\"",
   "data-prd-section=\"key_facts\"",
   "data-prd-section=\"what_it_does_or_holds\"",
-  "<EconomicIndicatorsPanel",
-  "<MarketNewsPanel",
-  "<MarketAIComprehensiveAnalysisPanel",
-  "<WeeklyNewsPanel",
-  "<AIComprehensiveAnalysisPanel",
+  "<EconomicIndicatorsSectionLoader",
+  "<MarketNewsSectionLoader",
+  "<WeeklyNewsSectionLoader",
   "deepDiveSections=",
   "data-prd-section=\"ask_about_this_asset\"",
   "sourceTools=",
@@ -196,8 +194,8 @@ includesAll("components/WeeklyNewsPanel.tsx", [
   "data-weekly-news-limited-verified-set",
   "Weekly News Focus:",
   "No major Weekly News Focus items found",
-  "Source quality:",
-  "Source-use policy:"
+  "Source quality",
+  "Source-use policy"
 ], "Weekly News Focus evidence-limited markers");
 includesAll("components/AIComprehensiveAnalysisPanel.tsx", [
   "data-ai-analysis-scope=\"ticker\"",
@@ -219,8 +217,8 @@ includesAll("components/MarketNewsPanel.tsx", [
   "data-market-news-selected-count",
   "data-market-news-reusable-across-tickers",
   "data-market-news-topic-bucket",
-  "Source-use policy:",
-  "Supporting sources:"
+  "Source-use policy",
+  "Supporting sources"
 ], "Market News Focus reusable market context markers");
 includesAll("components/EconomicIndicatorsPanel.tsx", [
   "Economic Indicators",
@@ -373,7 +371,7 @@ includes("app/assets/[ticker]/page.tsx", "data-beginner-stable-recent-separation
 includes("app/assets/[ticker]/page.tsx", "data-beginner-educational-framing");
 includes("components/AssetHeader.tsx", "data-asset-header-layout");
 includes("components/AssetHeader.tsx", "data-prd-section");
-includes("components/AssetHeader.tsx", "FreshnessDisclosure");
+includes("components/AssetHeader.tsx", "CompactCitationSources");
 assert.equal(
   read("components/AssetHeader.tsx").includes("data-asset-header-actions"),
   false,
@@ -402,7 +400,7 @@ includes("app/assets/[ticker]/page.tsx", "inlineGlossaryMatches");
 includes("app/assets/[ticker]/page.tsx", "sourceSection=\"beginner_summary.what_it_is\"");
 includes("app/assets/[ticker]/page.tsx", "sourceSection=\"key_facts.label\"");
 includes("app/assets/[ticker]/page.tsx", "sourceSection=\"what_it_does_or_holds.summary\"");
-includes("app/assets/[ticker]/page.tsx", "fetchSupportedAssetGlossaryContexts");
+includes("app/assets/[ticker]/page.tsx", "backendGlossaryContexts = null");
 includes("app/assets/[ticker]/page.tsx", "data-asset-glossary-rendering");
 includes("app/assets/[ticker]/page.tsx", "beginnerGlossaryGroupsByAssetType");
 assert.equal(
@@ -421,7 +419,7 @@ includes("app/assets/[ticker]/page.tsx", "fetchSupportedAssetOverview");
 includes("app/assets/[ticker]/page.tsx", "fetchMarketNews");
 includes("app/assets/[ticker]/page.tsx", "fetchEconomicIndicators");
 includes("app/assets/[ticker]/page.tsx", "fetchSupportedAssetWeeklyNews");
-includes("app/assets/[ticker]/page.tsx", "fetchSupportedSourceDrawerResponse");
+includes("app/assets/[ticker]/page.tsx", "sourceDrawerRendering = overviewRendering");
 includes("app/assets/[ticker]/page.tsx", "data-asset-details-rendering");
 includes("app/assets/[ticker]/page.tsx", "data-asset-overview-rendering");
 includes("app/assets/[ticker]/page.tsx", "data-asset-economic-indicators-rendering");
@@ -523,12 +521,9 @@ includesAll("app/assets/[ticker]/page.tsx", [
   "data-asset-backend-evidence-has-fallback",
   "data-asset-progressive-loading-shell",
   "data-asset-section-loading-boundary",
-  "data-asset-inline-section-state",
-  "data-asset-section-failure-reason",
   "Beginner Summary generation",
-  "data-weekly-news-fetch-failure-notice",
   "source_labeled_live",
-  "DEFAULT_LIVE_SECTION_FETCH_TIMEOUT_MS = 12_000",
+  "DEFAULT_LIVE_SECTION_FETCH_TIMEOUT_MS = 90_000",
   "NEXT_PUBLIC_LIVE_SECTION_FETCH_TIMEOUT_MS",
   "fetchBackendSection",
   "timeout_or_aborted",
@@ -539,6 +534,14 @@ includesAll("app/assets/[ticker]/page.tsx", [
   "backend_contract",
   "local_fixture"
 ], "T-118 frontend API-backed rendering markers with inline evidence states");
+includesAll("components/SectionStateNote.tsx", [
+  "data-asset-inline-section-state",
+  "data-asset-section-state-placement=\"inside-panel\"",
+  "data-asset-section-failure-reason",
+  "data-weekly-news-fetch-failure-notice",
+  "timeout_or_aborted",
+  "partial_backend_contract"
+], "inline section-state notes render inside owning panels");
 assert.equal(
   read("app/assets/[ticker]/page.tsx").includes("data-asset-backend-evidence-summary"),
   false,
@@ -586,6 +589,16 @@ includesAll("components/EconomicIndicatorsPanel.tsx", [
   "Live local official and market-reference indicator evidence",
   "Deterministic fixture indicators are shown"
 ], "economic indicator source state is inline in the single Economic Indicators section");
+assert.equal(
+  read("components/EconomicIndicatorsPanel.tsx").includes("Period / as of"),
+  false,
+  "Economic Indicators should move period/retrieved details into the source icon instead of a standalone column"
+);
+includesAll("components/CompactCitationSources.tsx", [
+  "metadataRows",
+  "data-source-icon-metadata-rows",
+  "data-compact-citation-metadata-count"
+], "source icons carry compact evidence metadata rows");
 assert.equal(
   read("app/assets/[ticker]/page.tsx").includes(".catch(() => null)"),
   false,
@@ -710,7 +723,7 @@ includes("components/AssetModeLayout.tsx", "data-prd-section-order");
 includes("components/AssetModeLayout.tsx", "data-mobile-sticky-actions=\"ask-compare-sources\"");
 includes("components/AssetModeLayout.tsx", "data-mobile-actions-no-overlap=\"in-flow-sticky\"");
 includes("components/AssetModeLayout.tsx", "data-asset-helper-rail");
-includes("components/AssetModeLayout.tsx", "data-helper-rail-tools=\"ask,compare,export,freshness,sources\"");
+includes("components/AssetModeLayout.tsx", "data-helper-rail-tools=\"ask,compare,export,sources\"");
 includes("components/AssetModeLayout.tsx", "data-prd-section=\"deep_dive\"");
 includes("components/AssetModeLayout.tsx", "data-prd-section=\"sources\"");
 includes("components/AssetModeLayout.tsx", "Deep Dive");
@@ -728,8 +741,8 @@ includes("components/WeeklyNewsPanel.tsx", "data-weekly-news-limited-verified-se
 includes("components/WeeklyNewsPanel.tsx", "data-weekly-news-item-count");
 includes("components/WeeklyNewsPanel.tsx", "data-beginner-weekly-news-focus");
 includes("components/WeeklyNewsPanel.tsx", "data-beginner-recent-developments");
-includes("components/WeeklyNewsPanel.tsx", "Source quality:");
-includes("components/WeeklyNewsPanel.tsx", "Source-use policy:");
+includes("components/WeeklyNewsPanel.tsx", "Source quality");
+includes("components/WeeklyNewsPanel.tsx", "Source-use policy");
 includes("components/WeeklyNewsPanel.tsx", "No major Weekly News Focus items found");
 includes("components/AIComprehensiveAnalysisPanel.tsx", "AI Comprehensive Analysis");
 includes("components/AIComprehensiveAnalysisPanel.tsx", "AI Comprehensive Analysis:");
@@ -1231,28 +1244,30 @@ assert.ok(
   "Supported asset page should render Key Facts before What It Does or What It Holds"
 );
 assert.ok(
-  assetPage.indexOf("data-prd-section=\"what_it_does_or_holds\"") < assetPage.indexOf("<MarketNewsPanel"),
+  assetPage.indexOf("data-prd-section=\"what_it_does_or_holds\"") < assetPage.indexOf("<MarketNewsSectionLoader"),
   "Supported asset page should render What It Does or What It Holds before Market News Focus"
 );
 assert.ok(
-  assetPage.indexOf("data-beginner-top-risks") < assetPage.indexOf("<MarketNewsPanel"),
+  assetPage.indexOf("data-beginner-top-risks") < assetPage.indexOf("<MarketNewsSectionLoader"),
   "Beginner section should show top risks before Market News Focus"
 );
 assert.ok(
-  assetPage.indexOf("<MarketNewsPanel") < assetPage.indexOf("<MarketAIComprehensiveAnalysisPanel"),
-  "Market News Focus should render before Market AI Comprehensive Analysis"
+  assetPage.indexOf("<MarketNewsSectionLoader") < assetPage.indexOf("<WeeklyNewsSectionLoader"),
+  "Market News Focus should render before ticker-specific Weekly News Focus"
 );
 assert.ok(
-  assetPage.indexOf("<MarketAIComprehensiveAnalysisPanel") < assetPage.indexOf("<WeeklyNewsPanel"),
-  "Market AI Comprehensive Analysis should render before ticker-specific Weekly News Focus"
+  assetPage.indexOf("<WeeklyNewsSectionLoader") < assetPage.indexOf("deepDiveSections="),
+  "Weekly News Focus should render before Deep Dive"
 );
 assert.ok(
-  assetPage.indexOf("<WeeklyNewsPanel") < assetPage.indexOf("<AIComprehensiveAnalysisPanel"),
-  "Weekly News Focus should render before AI Comprehensive Analysis"
+  read("app/assets/[ticker]/page.tsx").indexOf("<MarketNewsPanel") <
+    read("app/assets/[ticker]/page.tsx").indexOf("<MarketAIComprehensiveAnalysisPanel"),
+  "Market section loader should render Market News before Market AI Comprehensive Analysis"
 );
 assert.ok(
-  assetPage.indexOf("<AIComprehensiveAnalysisPanel") < assetPage.indexOf("deepDiveSections="),
-  "AI Comprehensive Analysis should render before Deep Dive"
+  read("app/assets/[ticker]/page.tsx").indexOf("<WeeklyNewsPanel") <
+    read("app/assets/[ticker]/page.tsx").indexOf("<AIComprehensiveAnalysisPanel"),
+  "Weekly section loader should render Weekly News before AI Comprehensive Analysis"
 );
 assert.ok(
   assetPage.indexOf("deepDiveSections=") < assetPage.indexOf("afterDeepDive="),
@@ -1267,12 +1282,12 @@ assert.ok(
   "Sources should render before the educational disclaimer"
 );
 assert.ok(
-  assetPage.indexOf("<AIComprehensiveAnalysisPanel") < assetPage.indexOf("data-beginner-educational-framing"),
+  assetPage.indexOf("<WeeklyNewsSectionLoader") < assetPage.indexOf("data-beginner-educational-framing"),
   "Timely context should render before educational disclaimer"
 );
 assert.ok(
   assetPage.indexOf("data-beginner-stable-recent-separation=\"stable\"") <
-    assetPage.indexOf("<WeeklyNewsPanel"),
+    assetPage.indexOf("<WeeklyNewsSectionLoader"),
   "Beginner section should keep stable facts before timely-context modules"
 );
 assert.ok(
@@ -1571,7 +1586,7 @@ orderedMarkers("lib/search.ts", [
 ], "backend search preference before fixture fallback");
 includesAll("app/assets/[ticker]/page.tsx", [
   "fetchSupportedAssetOverview(",
-  "OVERVIEW_FETCH_TIMEOUT_MS = 30_000",
+  "OVERVIEW_FETCH_TIMEOUT_MS = 90_000",
   "optionalBackendFetcher(OVERVIEW_FETCH_TIMEOUT_MS)",
   "<Suspense",
   "SupportedAssetLoadingPage",

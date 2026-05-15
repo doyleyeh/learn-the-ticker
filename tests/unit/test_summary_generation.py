@@ -264,6 +264,17 @@ def test_live_generation_timeout_opens_short_circuit_for_followup_calls():
         clear_summary_generation_live_circuit()
 
 
+def test_live_generation_default_timeout_allows_slower_local_models():
+    assert summary_generation_module.DEFAULT_LIVE_SUMMARY_TIMEOUT_SECONDS == 75
+    assert summary_generation_module._live_timeout_seconds_from_env({}) == 75
+    assert summary_generation_module._live_timeout_seconds_from_env({"LLM_LIVE_TIMEOUT_SECONDS": "9"}) == 9
+    assert summary_generation_module.DEFAULT_LIVE_SLOW_RESPONSE_THRESHOLD_SECONDS == 30
+    assert summary_generation_module._live_slow_response_threshold_seconds_from_env({}) == 30
+    assert summary_generation_module._live_slow_response_threshold_seconds_from_env(
+        {"LLM_LIVE_SLOW_RESPONSE_THRESHOLD_SECONDS": "8"}
+    ) == 8
+
+
 def test_live_generation_slow_success_opens_short_circuit_for_followup_calls(monkeypatch: pytest.MonkeyPatch):
     clear_summary_generation_cache()
     clear_summary_generation_live_circuit()

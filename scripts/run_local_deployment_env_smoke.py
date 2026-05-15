@@ -30,7 +30,7 @@ SCHEMA_VERSION = "local-deployment-env-smoke-v1"
 BROWSER_ENV_FILES = ("apps/web/.env.example", "deploy/env/web.example.env")
 SERVER_ENV_FILES = (".env.example", "deploy/env/api.example.env", "deploy/env/worker.example.env")
 PLACEHOLDER_ENV_FILES = (*SERVER_ENV_FILES, *BROWSER_ENV_FILES)
-BROWSER_SAFE_ENV_NAMES = ("NEXT_PUBLIC_API_BASE_URL",)
+BROWSER_SAFE_ENV_NAMES = ("NEXT_PUBLIC_API_BASE_URL", "NEXT_PUBLIC_LIVE_SECTION_FETCH_TIMEOUT_MS")
 SERVER_ONLY_ENV_NAMES = (
     "DATABASE_URL",
     "MIGRATION_DATABASE_URL",
