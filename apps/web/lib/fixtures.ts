@@ -41,6 +41,7 @@ export type SourceDocument = {
   sourceType: string;
   title: string;
   publisher: string;
+  providerName?: string | null;
   url: string;
   publishedAt: string;
   asOfDate?: string;
@@ -244,6 +245,7 @@ export type WeeklyNewsSourceMetadata = {
   sourceType: string;
   title: string;
   publisher: string;
+  providerName?: string | null;
   url: string;
   publishedAt?: string | null;
   asOfDate?: string | null;

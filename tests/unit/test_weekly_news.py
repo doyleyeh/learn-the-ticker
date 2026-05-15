@@ -273,6 +273,47 @@ def test_lightweight_weekly_news_prefers_provider_news_before_yahoo_fallback():
     assert focus.items[1].source.source_quality is SourceQuality.provider
 
 
+def test_yahoo_weekly_news_adapter_exposes_publisher_and_provider_labels_separately():
+    result = yahoo_search_payload_to_weekly_news_facts(
+        ticker="VOO",
+        asset_type=AssetType.etf,
+        payload={
+            "news": [
+                {
+                    "uuid": "voo-yahoo-1",
+                    "title": "VOO fee context remains in focus for ETF investors",
+                    "summary": "VOO fee context was discussed in provider news metadata.",
+                    "link": "https://finance.yahoo.com/news/voo-fee-context",
+                    "publisher": "",
+                    "providerPublishTime": 1_778_765_000,
+                }
+            ]
+        },
+        retrieved_at="2026-05-14T12:00:00Z",
+        no_live_external_calls=False,
+    )
+
+    assert result.sources[0].publisher == "Yahoo"
+    assert result.sources[0].provider_name == "Yahoo Finance/yfinance-derived news"
+    assert result.facts[0].value["publisher"] == "Yahoo"
+    assert result.facts[0].value["provider_name"] == "Yahoo Finance/yfinance-derived news"
+
+    for source in result.sources:
+        _LIGHTWEIGHT_WEEKLY_SOURCES[source.source_document_id] = source
+    response = _lightweight_weekly_news_response(
+        no_live_external_calls=False,
+        ticker="VOO",
+        asset_type=AssetType.etf,
+        as_of="2026-05-14T15:00:00Z",
+        facts=result.facts,
+    )
+    focus = build_lightweight_weekly_news_focus(response)
+
+    assert focus is not None
+    assert focus.items[0].source.publisher == "Yahoo"
+    assert focus.items[0].source.provider_name == "Yahoo Finance/yfinance-derived news"
+
+
 def test_lightweight_weekly_news_uses_yahoo_to_backfill_remaining_slots():
     response = _lightweight_weekly_news_response(
         no_live_external_calls=False,

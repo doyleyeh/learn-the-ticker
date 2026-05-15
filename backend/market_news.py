@@ -836,6 +836,7 @@ def _item_from_cluster(cluster: MarketNewsStoryCluster, index: int) -> MarketNew
             source_type="market_news_story_cluster",
             title=candidate.title,
             publisher=candidate.source,
+            provider_name=_market_news_provider_display_name(candidate.provider),
             url=candidate.canonical_url or candidate.url,
             published_at=candidate.published_at,
             as_of_date=candidate.published_at[:10],
@@ -868,6 +869,7 @@ def _source_document_from_item(item: MarketNewsItem) -> SourceDocument:
         source_type=item.source.source_type,
         title=item.source.title,
         publisher=item.source.publisher,
+        provider_name=item.source.provider_name,
         url=item.source.url,
         published_at=item.source.published_at,
         as_of_date=item.source.as_of_date,
@@ -1080,6 +1082,23 @@ def _provider_url(provider: str, topic_bucket: MarketNewsTopicBucket, credential
     if provider == "yahoo_finance_search":
         return f"https://query1.finance.yahoo.com/v1/finance/search?q={quote(query)}&quotesCount=0&newsCount=20"
     raise MarketNewsFetchError(f"Unknown Market News provider: {provider}")
+
+
+def _market_news_provider_display_name(provider: str) -> str:
+    return {
+        "fixture_news": "Local deterministic market-news fixture",
+        "rss": "RSS news metadata",
+        "google_news_rss": "Google News RSS metadata",
+        "gdelt": "GDELT news metadata",
+        "marketaux": "Marketaux news API",
+        "alpha_vantage": "Alpha Vantage news API",
+        "finnhub": "Finnhub market-news API",
+        "guardian": "The Guardian Open Platform",
+        "gnews": "GNews API",
+        "mediastack": "Mediastack news API",
+        "newsapi": "NewsAPI",
+        "yahoo_finance_search": "Yahoo Finance/yfinance-derived news",
+    }.get(provider, provider.replace("_", " ").title())
 
 
 def _parse_rss_candidates(

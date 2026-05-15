@@ -31,6 +31,10 @@ function shortDate(value: string) {
   return value.slice(0, 10);
 }
 
+function sourcePublisherLabel(source: MarketNewsFocusFixture["items"][number]["source"]) {
+  return source.publisher?.trim() || source.providerName?.trim() || "Source";
+}
+
 export function MarketNewsPanel({ focus, citations, sectionState }: MarketNewsPanelProps) {
   const windowLabel = `${focus.window.newsWindowStart} to ${focus.window.newsWindowEnd}`;
   const freshness = stateToFreshness(focus.state);
@@ -100,7 +104,7 @@ export function MarketNewsPanel({ focus, citations, sectionState }: MarketNewsPa
             >
               <div className="etf-item-heading">
                 <h3>
-                  [{item.source.publisher}] {item.title} ({shortDate(item.publishedAt)})
+                  [{sourcePublisherLabel(item.source)}] {item.title} ({shortDate(item.publishedAt)})
                 </h3>
                 <span className="state-pill compact-state" data-evidence-state={focus.state}>
                   {topicLabel(item.topicBucket)}
@@ -117,6 +121,8 @@ export function MarketNewsPanel({ focus, citations, sectionState }: MarketNewsPa
                     { label: "Source quality", value: item.source.sourceQuality },
                     { label: "Allowlist", value: item.source.allowlistStatus },
                     { label: "Source-use policy", value: item.source.sourceUsePolicy },
+                    { label: "Publisher", value: sourcePublisherLabel(item.source) },
+                    { label: "Provider/API", value: item.source.providerName },
                     { label: "Supporting sources", value: item.cluster.supportingSources.join(", ") }
                   ]}
                 />

@@ -136,7 +136,7 @@ def yahoo_search_payload_to_weekly_news_facts(
             _increment_reason(suppression_reason_counts, "invalid_provider_item")
             continue
         title = _clean_text(item.get("title"))
-        publisher = _clean_text(item.get("publisher")) or provider_name
+        publisher = _clean_text(item.get("publisher")) or _display_provider_name(provider_name)
         url = _clean_text(item.get("link"))
         if not title or not url:
             suppressed += 1
@@ -174,6 +174,7 @@ def yahoo_search_payload_to_weekly_news_facts(
             source_type=source_type,
             title=title,
             publisher=publisher,
+            provider_name=provider_name,
             url=url,
             is_official=False,
             source_quality=source_quality,
@@ -334,6 +335,7 @@ def weekly_news_candidate_rows_from_lightweight_response(
                 source_type=source.source_type,
                 source_title=source.title,
                 source_publisher=source.publisher,
+                source_provider_name=source.provider_name or _clean_text(value.get("provider_name")),
                 source_url=source.url,
                 source_rank=source_rank_tier_priority_for_adapter(source_rank_tier, index),
                 source_rank_tier=source_rank_tier.value,
@@ -483,6 +485,7 @@ def _official_weekly_news_candidate_rows(
                 source_type=source.source_type,
                 source_title=source.title,
                 source_publisher=source.publisher,
+                source_provider_name=source.provider_name,
                 source_url=source.url,
                 source_rank=source_rank_tier_priority_for_adapter(rank_tier, index),
                 source_rank_tier=rank_tier.value,
@@ -609,7 +612,7 @@ def _text_mentions_ticker(text: str, ticker: str) -> bool:
 
 def _display_provider_name(value: str) -> str:
     if "yfinance" in value.lower():
-        return "Yahoo Finance"
+        return "Yahoo"
     return value
 
 
