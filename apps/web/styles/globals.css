@@ -1640,6 +1640,9 @@ main[data-prd-source-list-marker] > .plain-panel:last-child {
   background: #ffffff;
   box-shadow: 0 14px 30px rgba(23, 32, 42, 0.14);
   text-align: left;
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .source-icon-popover .citation-chip {
@@ -1674,6 +1677,45 @@ main[data-prd-source-list-marker] > .plain-panel:last-child {
 .compact-citation-popover {
   min-width: 280px;
   max-width: min(420px, calc(100vw - 48px));
+}
+
+.compact-citation-popover-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 2px 4px;
+}
+
+.compact-citation-popover-title {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.compact-citation-close {
+  display: inline-grid;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid #b7d7d0;
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--accent-strong);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.compact-citation-close:hover,
+.compact-citation-close:focus-visible {
+  background: #ecfaf7;
+  outline: 2px solid rgba(16, 101, 91, 0.18);
+  outline-offset: 2px;
 }
 
 .compact-citation-source {

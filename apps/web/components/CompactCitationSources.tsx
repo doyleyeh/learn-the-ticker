@@ -3,6 +3,7 @@ import {
   type AssetFixture,
   type Citation
 } from "../lib/fixtures";
+import { CompactCitationSourcesClient } from "./CompactCitationSourcesClient";
 
 type CompactCitationSourcesProps = {
   citations: Citation[];
@@ -21,6 +22,8 @@ export type EvidenceMetadataRow = {
   value: string | number | null | undefined;
   state?: string | null;
 };
+
+export type CompactCitationSourceGroup = Citation & { citationIds: string[] };
 
 export function resolveAssetCitations(asset: AssetFixture, citationIds: string[]) {
   return citationIds
@@ -64,62 +67,24 @@ export function CompactCitationSources({
   const metadataLabel = `${visibleMetadataRows.length} evidence detail${visibleMetadataRows.length === 1 ? "" : "s"}`;
 
   return (
-    <details
+    <CompactCitationSourcesClient
       className={classNames}
-      data-compact-citation-sources
-      data-compact-citation-source-count={sourceCount}
-      data-compact-citation-metadata-count={visibleMetadataRows.length}
-      data-dashboard-source-icon={dashboardSourceIcon ? "true" : undefined}
+      dashboardSourceIcon={dashboardSourceIcon}
+      label={label}
+      metadataLabel={metadataLabel}
+      metadataRows={visibleMetadataRows}
+      showCount={showCount}
+      sourceCount={sourceCount}
+      sourceGroups={sourceGroups}
+      summaryLabel={summaryLabel}
       title={`${label}: ${countLabel}, ${metadataLabel}`}
-    >
-      <summary aria-label={`${label}: show ${countLabel} and ${metadataLabel}`}>
-        {summaryLabel ? (
-          <span className="source-icon-label">{summaryLabel}</span>
-        ) : (
-          <span className="source-icon-symbol" aria-hidden="true">i</span>
-        )}
-        {showCount && sourceCount > 1 ? <span className="source-icon-count">{sourceCount}</span> : null}
-      </summary>
-      <span className="source-icon-popover compact-citation-popover">
-        {sourceGroups.map((citation) => (
-          <a
-            key={citation.sourceDocumentId}
-            className="compact-citation-source"
-            href={`#source-${citation.sourceDocumentId}`}
-            data-citation-id={citation.citationIds[0]}
-            data-citation-count={citation.citationIds.length}
-            data-source-document-id={citation.sourceDocumentId}
-            data-freshness-state={citation.freshnessState}
-            data-governed-golden-citation-binding="same-asset-source"
-          >
-            <span className="compact-citation-title">{citation.title}</span>
-            <span className="compact-citation-meta">
-              {citation.publisher} · {citation.freshnessState.replaceAll("_", " ")}
-            </span>
-          </a>
-        ))}
-        {visibleMetadataRows.length ? (
-          <span className="compact-citation-metadata" data-source-icon-metadata-rows={visibleMetadataRows.length}>
-            {visibleMetadataRows.map((row) => (
-              <span
-                key={`${row.label}-${String(row.value)}`}
-                className="compact-citation-metadata-row"
-                data-source-metadata-label={row.label}
-                data-source-metadata-state={row.state ?? undefined}
-              >
-                <span>{row.label}</span>
-                <strong>{row.value}</strong>
-              </span>
-            ))}
-          </span>
-        ) : null}
-      </span>
-    </details>
+      triggerLabel={`${label}: show ${countLabel} and ${metadataLabel}`}
+    />
   );
 }
 
-function uniqueBySourceDocumentId(citations: Citation[]) {
-  const bySource = new Map<string, Citation & { citationIds: string[] }>();
+function uniqueBySourceDocumentId(citations: Citation[]): CompactCitationSourceGroup[] {
+  const bySource = new Map<string, CompactCitationSourceGroup>();
   for (const citation of citations) {
     const existing = bySource.get(citation.sourceDocumentId);
     if (existing) {

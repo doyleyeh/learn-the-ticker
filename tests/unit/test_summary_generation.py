@@ -155,6 +155,42 @@ def test_beginner_summary_fallback_uses_curated_provider_profile_summary_for_etf
     assert "fixture" not in summary.what_it_is.lower()
 
 
+def test_beginner_summary_fallback_uses_yahoo_business_summary_for_stocks():
+    service = HybridSummaryGenerationService()
+    asset = build_asset_knowledge_pack("AAPL").asset
+    evidence_pack = _simple_generation_evidence_pack("AAPL", ["c1"])
+    evidence_pack["generation_context"]["asset_profile"].update(
+        {
+            "sector": "Technology",
+            "industry": "Consumer Electronics",
+            "business_summary": (
+                "Apple Inc. designs, manufactures, and markets smartphones, personal computers, tablets, "
+                "wearables, and accessories worldwide. The company offers iPhone, Mac, iPad, AirPods, "
+                "Apple Watch, AppleCare, cloud services, and digital-content platforms."
+            ),
+        }
+    )
+
+    summary = service.generate_beginner_summary(
+        asset=asset,
+        base_summary=BeginnerSummary(
+            what_it_is="Apple Inc. (AAPL) is a U.S.-listed common stock.",
+            why_people_consider_it="Beginners may study it.",
+            main_catch="Single-company risk matters.",
+        ),
+        citation_ids=["c1"],
+        evidence_notes=[],
+        generation_evidence_pack=evidence_pack,
+    )
+
+    joined = " ".join(summary.model_dump().values())
+    assert "smartphones, personal computers, tablets" in summary.what_it_is
+    assert "products, services, customers, and business model" in summary.why_people_consider_it
+    assert "longBusinessSummary" not in joined
+    assert "regularMarketPrice" not in joined
+    assert "fixture" not in joined.lower()
+
+
 def test_beginner_summary_rejects_internal_copy_from_live_generation():
     asset = build_asset_knowledge_pack("QQQ").asset
 
@@ -306,7 +342,7 @@ def test_live_generation_default_timeout_allows_slower_local_models():
     ) == 8
 
 
-def test_live_generation_slow_success_opens_short_circuit_for_followup_calls(monkeypatch: pytest.MonkeyPatch):
+def test_live_generation_slow_success_records_diagnostics_without_opening_circuit(monkeypatch: pytest.MonkeyPatch):
     clear_summary_generation_cache()
     clear_summary_generation_live_circuit()
     asset = build_asset_knowledge_pack("VOO").asset
@@ -361,8 +397,8 @@ def test_live_generation_slow_success_opens_short_circuit_for_followup_calls(mon
         )
 
         assert first == "Slow live Deep Dive text is grounded in supplied citation evidence."
-        assert second is not None and second.startswith("Second fallback summary.")
-        assert calls == ["deep_dive_summary"]
+        assert second == "Slow live Deep Dive text is grounded in supplied citation evidence."
+        assert calls == ["deep_dive_summary", "deep_dive_summary"]
     finally:
         clear_summary_generation_live_circuit()
 
@@ -918,7 +954,35 @@ def test_summary_generation_module_stays_deterministic_without_network_clients()
         assert forbidden not in source
 
 
-def test_openrouter_live_body_uses_models_fallback_chain_without_single_model():
+def test_openrouter_attempt_planner_caps_request_models_and_batches_paid_fallback():
+    runtime = _ready_runtime()
+    batches = summary_generation_module._openrouter_model_attempt_batches(runtime)
+    request = SummaryGenerationRequest(
+        task_name="beginner_summary",
+        schema_version="beginner-summary-test-v1",
+        asset_ticker="VOO",
+        payload={},
+    )
+
+    assert batches == [
+        list(DEFAULT_OPENROUTER_FREE_MODEL_ORDER[:3]),
+        [DEFAULT_OPENROUTER_FREE_MODEL_ORDER[3], DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL],
+    ]
+
+    for batch in batches:
+        body = summary_generation_module._openrouter_chat_completion_body(
+            request,
+            summary_generation_module._safe_prompt_payload(request),
+            runtime,
+            model_names=batch,
+        )
+        assert len(body["models"]) <= summary_generation_module.OPENROUTER_MAX_MODELS_PER_REQUEST
+        assert body["models"] == batch
+        assert body["route"] == "fallback"
+        assert "model" not in body
+
+
+def test_openrouter_live_body_uses_first_capped_free_batch_without_single_model():
     runtime = _ready_runtime()
     request = SummaryGenerationRequest(
         task_name="beginner_summary",
@@ -933,7 +997,7 @@ def test_openrouter_live_body_uses_models_fallback_chain_without_single_model():
         runtime,
     )
 
-    assert body["models"] == [*DEFAULT_OPENROUTER_FREE_MODEL_ORDER, DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL]
+    assert body["models"] == list(DEFAULT_OPENROUTER_FREE_MODEL_ORDER[:3])
     assert body["route"] == "fallback"
     assert "model" not in body
     assert body["response_format"]["type"] == "json_schema"
@@ -957,15 +1021,20 @@ def test_openrouter_live_body_omits_paid_fallback_when_disabled():
         payload={},
     )
 
-    body = summary_generation_module._openrouter_chat_completion_body(
-        request,
-        summary_generation_module._safe_prompt_payload(request),
-        runtime,
-    )
+    batches = summary_generation_module._openrouter_model_attempt_batches(runtime)
+    assert batches == [list(DEFAULT_OPENROUTER_FREE_MODEL_ORDER[:3]), [DEFAULT_OPENROUTER_FREE_MODEL_ORDER[3]]]
 
-    assert body["models"] == list(DEFAULT_OPENROUTER_FREE_MODEL_ORDER)
-    assert DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL not in body["models"]
-    assert "model" not in body
+    for batch in batches:
+        body = summary_generation_module._openrouter_chat_completion_body(
+            request,
+            summary_generation_module._safe_prompt_payload(request),
+            runtime,
+            model_names=batch,
+        )
+        assert len(body["models"]) <= summary_generation_module.OPENROUTER_MAX_MODELS_PER_REQUEST
+        assert body["models"] == batch
+        assert DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL not in body["models"]
+        assert "model" not in body
 
 
 def _ready_runtime():

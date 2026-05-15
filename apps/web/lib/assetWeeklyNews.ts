@@ -134,6 +134,8 @@ type BackendGenerationDiagnostics = {
   used_fallback: boolean;
   fallback_reason_codes: string[];
   model_name: string | null;
+  attempt_count?: number;
+  attempted_model_batches?: string[][];
 };
 
 type BackendWeeklyNewsResponse = {
@@ -415,7 +417,11 @@ function toGenerationDiagnostics(
     attemptedLive: Boolean(diagnostics.attempted_live),
     usedFallback: Boolean(diagnostics.used_fallback),
     fallbackReasonCodes: Array.isArray(diagnostics.fallback_reason_codes) ? diagnostics.fallback_reason_codes : [],
-    modelName: diagnostics.model_name ?? null
+    modelName: diagnostics.model_name ?? null,
+    attemptCount: typeof diagnostics.attempt_count === "number" ? diagnostics.attempt_count : 0,
+    attemptedModelBatches: Array.isArray(diagnostics.attempted_model_batches)
+      ? diagnostics.attempted_model_batches
+      : []
   };
 }
 

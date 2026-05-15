@@ -269,6 +269,8 @@ export type GenerationDiagnostics = {
   usedFallback: boolean;
   fallbackReasonCodes: string[];
   modelName?: string | null;
+  attemptCount?: number;
+  attemptedModelBatches?: string[][];
 };
 
 export type EconomicIndicatorItem = {

@@ -610,6 +610,11 @@ def _stock_quote_summary_payload(ticker: str) -> dict[str, Any]:
                     "summaryProfile": {
                         "sector": "Technology",
                         "industry": "Consumer Electronics",
+                        "longBusinessSummary": (
+                            "Apple Inc. designs, manufactures, and markets smartphones, personal computers, tablets, "
+                            "wearables, and accessories worldwide. The company offers iPhone, Mac, iPad, AirPods, "
+                            "Apple Watch, Apple TV, HomePod, AppleCare, cloud services, and digital-content platforms."
+                        ),
                         "companyOfficers": [{"name": "Tim Cook", "title": "Chief Executive Officer"}],
                     },
                     "summaryDetail": {
@@ -960,6 +965,7 @@ def test_lightweight_stock_fetch_prefers_sec_and_labels_provider_fallback():
     generation_context = generation_pack["generation_context"]
     assert generation_context["schema_version"] == "generation-context-v1"
     assert generation_context["asset_profile"]["sector"] == "Technology"
+    assert "smartphones, personal computers, tablets" in generation_context["asset_profile"]["business_summary"]
     assert "regularMarketPrice" not in json.dumps(generation_context)
     assert "provider_market_price" not in generation_context["evidence_limits"].get("notes", [])
 

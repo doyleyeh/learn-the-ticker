@@ -43,6 +43,8 @@ type BackendGenerationDiagnostics = {
   used_fallback: boolean;
   fallback_reason_codes: string[];
   model_name: string | null;
+  attempt_count?: number;
+  attempted_model_batches?: string[][];
 };
 
 type BackendRiskItem = {
@@ -449,7 +451,9 @@ function generationDiagnosticsFromOverview(
         attemptedLive: Boolean(value.attempted_live),
         usedFallback: Boolean(value.used_fallback),
         fallbackReasonCodes: Array.isArray(value.fallback_reason_codes) ? value.fallback_reason_codes : [],
-        modelName: value.model_name ?? null
+        modelName: value.model_name ?? null,
+        attemptCount: typeof value.attempt_count === "number" ? value.attempt_count : 0,
+        attemptedModelBatches: Array.isArray(value.attempted_model_batches) ? value.attempted_model_batches : []
       }
     ])
   );
