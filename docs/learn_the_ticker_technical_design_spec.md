@@ -55,6 +55,8 @@ Default engineering behavior:
 - the `asset_page_stable` overview path should stay fast and deterministic for first render; slower live generation can be represented through inline generation provenance and section-local loaders without blocking stable source-labeled facts;
 - slow supported-page regions such as Economic Indicators, Market News Focus, Weekly News Focus, and AI analysis should load behind section-local boundaries, and their timeout/error notes should render inside the owning panel rather than as orphan notes between panels;
 - repeated evidence metadata should be passed through compact source/details controls. Tables and charts may keep visible values and source/publisher labels, while period, retrieved timestamp, as-of date, provider label, source quality, and source-use policy live in the row or section source icon.
+- compact source/detail controls count unique cited `source_document_id` values only. Metadata rows such as as-of dates, retrieved timestamps, provider/API labels, source-use policy, range, and generation state belong in the popover but must not inflate the visible badge count.
+- hero and mobile source affordances should use labeled controls such as Sources or Evidence and mobile-safe popover bounds, not bare count chips that can overflow or inherit unrelated metadata-chip styling.
 - missing full dates should not block a page when `retrieved_at` and a clear date-quality label can be shown;
 - operators review suspicious results and repeated failure patterns rather than manually approving every exact URL before display;
 - clearly unsupported complex products remain blocked unless a future scope expansion adds templates, risk copy, and data handling.
@@ -1365,7 +1367,7 @@ OpenRouter runtime configuration:
 - `LLM_CHAT_CACHE_TTL_SECONDS=86400`
 - `OPENROUTER_API_KEY`
 - `OPENROUTER_BASE_URL=https://openrouter.ai/api/v1`
-- `OPENROUTER_MODEL` optional single-model override, blank by default
+- `OPENROUTER_MODEL` legacy single-model placeholder, blank by default; live structured generation sends the configured fallback chain through the OpenRouter `models` array instead of a top-level `model`
 - `OPENROUTER_FREE_MODEL_ORDER=openai/gpt-oss-120b:free,google/gemma-4-31b-it:free,qwen/qwen3-next-80b-a3b-instruct:free,meta-llama/llama-3.3-70b-instruct:free`
 - `OPENROUTER_PAID_FALLBACK_MODEL=deepseek/deepseek-v3.2`
 - `OPENROUTER_PAID_FALLBACK_ENABLED=true`
@@ -1378,6 +1380,7 @@ Default live flow:
 
 ```text
 Free model chain
+  -> OpenRouter request body uses models=[configured free chain] and route=fallback
   -> schema/citation/safety validation
   -> one repair retry
   -> DeepSeek V3.2 paid fallback only when enabled and constrained by OpenRouter platform/API-key limits

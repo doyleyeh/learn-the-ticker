@@ -597,8 +597,50 @@ assert.equal(
 includesAll("components/CompactCitationSources.tsx", [
   "metadataRows",
   "data-source-icon-metadata-rows",
-  "data-compact-citation-metadata-count"
-], "source icons carry compact evidence metadata rows");
+  "data-compact-citation-metadata-count",
+  "uniqueBySourceDocumentId",
+  "data-citation-count",
+  "summaryLabel"
+], "source icons carry compact evidence metadata rows without inflating source counts");
+assert.equal(
+  read("components/CompactCitationSources.tsx").includes("sourceCount + visibleMetadataRows.length"),
+  false,
+  "Source badge counts should count unique cited sources only, not metadata rows"
+);
+assert.equal(
+  read("styles/globals.css").includes(".metadata-row span"),
+  false,
+  "Hero metadata chip CSS should not apply broad span styling to nested source popover content"
+);
+includesAll("styles/globals.css", [
+  ".metadata-row > span",
+  ".source-icon-disclosure-labeled summary",
+  "max-height: calc(100vh - 128px)",
+  "overflow-y: auto"
+], "mobile-safe source popover and direct-child metadata chip styling");
+includesAll("components/AssetHeader.tsx", [
+  "summaryLabel=\"Sources\"",
+  "showCount={false}"
+], "hero source affordance is a labeled control instead of a bare count chip");
+assert.equal(
+  read("components/AssetDataDashboard.tsx").includes("Dashboard evidence details"),
+  false,
+  "Asset Data Dashboard should not repeat a section-level source icon when chart/table controls exist"
+);
+assert.equal(
+  read("components/AssetDataDashboard.tsx").includes("${table.title} evidence details"),
+  false,
+  "Dashboard tables with row-level source icons should not repeat heading-level source icons"
+);
+includesAll("components/WeeklyNewsPanel.tsx", [
+  "sourcePublisherLabel",
+  "Provider/API",
+  "itemHeadingTitle"
+], "Weekly News headings and popovers expose publisher plus provider/API context");
+includesAll("components/MarketNewsPanel.tsx", [
+  "sourcePublisherLabel",
+  "Provider/API"
+], "Market News popovers expose publisher plus provider/API context");
 assert.equal(
   read("app/assets/[ticker]/page.tsx").includes(".catch(() => null)"),
   false,

@@ -40,6 +40,7 @@ type BackendSourceDocument = {
   source_type: string;
   title: string;
   publisher: string;
+  provider_name?: string | null;
   url: string;
   published_at: string | null;
   as_of_date: string | null;
@@ -335,6 +336,7 @@ function toWeeklyNewsSource(source: BackendSourceDocument): WeeklyNewsFocusFixtu
     sourceType: source.source_type,
     title: sanitizeSourceDisplayTitle(source.title, source),
     publisher: source.publisher,
+    providerName: source.provider_name ?? null,
     url: source.url,
     publishedAt: source.published_at ?? null,
     asOfDate: source.as_of_date ?? null,
@@ -383,6 +385,7 @@ function toSourceDocument(source: BackendSourceDocument): SourceDocument {
     sourceType: source.source_type,
     title: sanitizeSourceDisplayTitle(source.title, source),
     publisher: source.publisher,
+    providerName: source.provider_name ?? null,
     url: source.url,
     publishedAt: source.published_at ?? source.as_of_date ?? "Unknown",
     asOfDate: source.as_of_date ?? undefined,

@@ -31,6 +31,8 @@ export function AssetHeader({ asset, layoutMarker = "header" }: AssetHeaderProps
           <CompactCitationSources
             citations={asset.citations.slice(0, 3)}
             label={`${asset.ticker} page evidence details`}
+            summaryLabel="Sources"
+            showCount={false}
             metadataRows={headerMetadata}
             dashboardSourceIcon
           />

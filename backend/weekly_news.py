@@ -95,6 +95,7 @@ class WeeklyNewsCandidate(BaseModel):
     source_rank: int = 999
     source_title: str
     publisher: str
+    provider_name: str | None = None
     url: str
     source_quality: SourceQuality
     allowlist_status: SourceAllowlistStatus
@@ -437,6 +438,7 @@ def _item_from_persisted_selected_event(
             source_type=getattr(candidate, "source_type", "persisted_weekly_news_evidence"),
             title=_persisted_source_title(selected),
             publisher=_persisted_source_publisher(source_quality, selected),
+            provider_name=_persisted_source_provider_name(selected),
             url=(
                 str(selected.source_url)
                 if getattr(selected, "source_url", None)
@@ -504,6 +506,11 @@ def _persisted_source_publisher(source_quality: SourceQuality, selected: Any | N
     if selected is not None and getattr(selected, "source_publisher", None):
         return str(selected.source_publisher)
     return f"{source_quality.value.replace('_', ' ').title()} source"
+
+def _persisted_source_provider_name(selected: Any | None = None) -> str | None:
+    if selected is not None and getattr(selected, "source_provider_name", None):
+        return str(selected.source_provider_name)
+    return None
 
 
 def _dedupe_weekly_source_documents(source_documents: list[SourceDocument]) -> list[SourceDocument]:
@@ -868,6 +875,7 @@ def _item_from_candidate(
             source_type=candidate.source_type,
             title=candidate.source_title,
             publisher=candidate.publisher,
+            provider_name=getattr(candidate, "provider_name", None),
             url=candidate.url,
             published_at=candidate.published_at,
             as_of_date=candidate.event_date,
@@ -908,6 +916,7 @@ def _candidate_from_recent_development(item: RetrievedRecentDevelopment) -> Week
         source_rank=source.source_rank,
         source_title=source.title,
         publisher=source.publisher,
+        provider_name=getattr(source, "provider_name", None),
         url=source.url,
         source_quality=source.source_quality,
         allowlist_status=source.allowlist_status,
@@ -929,6 +938,7 @@ def _source_document_from_item(item: WeeklyNewsItem) -> SourceDocument:
         source_type=item.source.source_type,
         title=item.source.title,
         publisher=item.source.publisher,
+        provider_name=item.source.provider_name,
         url=item.source.url,
         published_at=item.source.published_at,
         as_of_date=item.source.as_of_date,

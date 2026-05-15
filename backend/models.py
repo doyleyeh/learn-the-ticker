@@ -986,6 +986,7 @@ class LightweightFetchSource(BaseModel):
     source_type: str
     title: str
     publisher: str
+    provider_name: str | None = None
     url: str | None = None
     is_official: bool
     source_quality: SourceQuality
@@ -1895,6 +1896,7 @@ class SourceDocument(BaseModel):
     source_type: str
     title: str
     publisher: str
+    provider_name: str | None = None
     url: str
     published_at: str | None = None
     as_of_date: str | None = None
@@ -2295,6 +2297,7 @@ class WeeklyNewsSourceMetadata(BaseModel):
     source_type: str
     title: str
     publisher: str
+    provider_name: str | None = None
     url: str
     published_at: str | None = None
     as_of_date: str | None = None

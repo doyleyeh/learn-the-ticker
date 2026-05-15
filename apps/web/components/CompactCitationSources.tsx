@@ -7,11 +7,13 @@ import {
 type CompactCitationSourcesProps = {
   citations: Citation[];
   label?: string;
+  summaryLabel?: string;
   emptyLabel?: string;
   showEmpty?: boolean;
   className?: string;
   dashboardSourceIcon?: boolean;
   metadataRows?: EvidenceMetadataRow[];
+  showCount?: boolean;
 };
 
 export type EvidenceMetadataRow = {
@@ -36,22 +38,30 @@ export function resolveCitationList(citations: Citation[], citationIds: string[]
 export function CompactCitationSources({
   citations,
   label = "Sources",
+  summaryLabel,
   emptyLabel = "No source citation",
   showEmpty = false,
   className,
   dashboardSourceIcon = false,
-  metadataRows = []
+  metadataRows = [],
+  showCount = true
 }: CompactCitationSourcesProps) {
-  const uniqueCitations = uniqueByCitationId(citations);
+  const sourceGroups = uniqueBySourceDocumentId(citations);
   const visibleMetadataRows = metadataRows.filter((row) => row.value !== null && row.value !== undefined && row.value !== "");
 
-  if (!uniqueCitations.length && !visibleMetadataRows.length) {
+  if (!sourceGroups.length && !visibleMetadataRows.length) {
     return showEmpty ? <span className="source-icon-empty" aria-label={emptyLabel}>-</span> : null;
   }
 
-  const sourceCount = uniqueCitations.length;
-  const detailCount = sourceCount + visibleMetadataRows.length;
-  const classNames = ["source-icon-disclosure", "compact-citation-sources", className].filter(Boolean).join(" ");
+  const sourceCount = sourceGroups.length;
+  const classNames = [
+    "source-icon-disclosure",
+    "compact-citation-sources",
+    summaryLabel ? "source-icon-disclosure-labeled" : null,
+    className
+  ].filter(Boolean).join(" ");
+  const countLabel = `${sourceCount} source${sourceCount === 1 ? "" : "s"}`;
+  const metadataLabel = `${visibleMetadataRows.length} evidence detail${visibleMetadataRows.length === 1 ? "" : "s"}`;
 
   return (
     <details
@@ -60,19 +70,24 @@ export function CompactCitationSources({
       data-compact-citation-source-count={sourceCount}
       data-compact-citation-metadata-count={visibleMetadataRows.length}
       data-dashboard-source-icon={dashboardSourceIcon ? "true" : undefined}
-      title={`${label}: ${sourceCount} source${sourceCount === 1 ? "" : "s"}, ${visibleMetadataRows.length} evidence detail${visibleMetadataRows.length === 1 ? "" : "s"}`}
+      title={`${label}: ${countLabel}, ${metadataLabel}`}
     >
-      <summary aria-label={`${label}: show ${sourceCount} source${sourceCount === 1 ? "" : "s"} and ${visibleMetadataRows.length} evidence detail${visibleMetadataRows.length === 1 ? "" : "s"}`}>
-        <span aria-hidden="true">i</span>
-        {detailCount > 1 ? <span className="source-icon-count">{detailCount}</span> : null}
+      <summary aria-label={`${label}: show ${countLabel} and ${metadataLabel}`}>
+        {summaryLabel ? (
+          <span className="source-icon-label">{summaryLabel}</span>
+        ) : (
+          <span className="source-icon-symbol" aria-hidden="true">i</span>
+        )}
+        {showCount && sourceCount > 1 ? <span className="source-icon-count">{sourceCount}</span> : null}
       </summary>
       <span className="source-icon-popover compact-citation-popover">
-        {uniqueCitations.map((citation) => (
+        {sourceGroups.map((citation) => (
           <a
-            key={citation.citationId}
+            key={citation.sourceDocumentId}
             className="compact-citation-source"
             href={`#source-${citation.sourceDocumentId}`}
-            data-citation-id={citation.citationId}
+            data-citation-id={citation.citationIds[0]}
+            data-citation-count={citation.citationIds.length}
             data-source-document-id={citation.sourceDocumentId}
             data-freshness-state={citation.freshnessState}
             data-governed-golden-citation-binding="same-asset-source"
@@ -103,13 +118,17 @@ export function CompactCitationSources({
   );
 }
 
-function uniqueByCitationId(citations: Citation[]) {
-  const seen = new Set<string>();
-  return citations.filter((citation) => {
-    if (seen.has(citation.citationId)) {
-      return false;
+function uniqueBySourceDocumentId(citations: Citation[]) {
+  const bySource = new Map<string, Citation & { citationIds: string[] }>();
+  for (const citation of citations) {
+    const existing = bySource.get(citation.sourceDocumentId);
+    if (existing) {
+      if (!existing.citationIds.includes(citation.citationId)) {
+        existing.citationIds.push(citation.citationId);
+      }
+      continue;
     }
-    seen.add(citation.citationId);
-    return true;
-  });
+    bySource.set(citation.sourceDocumentId, { ...citation, citationIds: [citation.citationId] });
+  }
+  return Array.from(bySource.values());
 }

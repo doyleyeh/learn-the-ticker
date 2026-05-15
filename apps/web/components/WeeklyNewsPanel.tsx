@@ -44,6 +44,24 @@ function evidenceStateToFreshnessFromFocus(
   return "unknown";
 }
 
+function sourcePublisherLabel(source: WeeklyNewsFocusFixture["items"][number]["source"]) {
+  const publisher = source.publisher?.trim();
+  if (publisher) {
+    return publisher;
+  }
+  const provider = source.providerName?.trim();
+  if (provider?.toLowerCase().includes("yahoo")) {
+    return "Yahoo";
+  }
+  return provider || "Source";
+}
+
+function itemHeadingTitle(item: WeeklyNewsFocusFixture["items"][number]) {
+  const title = item.title.replace(/^\[[^\]]+\]\s*/, "");
+  const dateLabel = item.eventDate ?? item.publishedAt?.slice(0, 10);
+  return `[${sourcePublisherLabel(item.source)}] ${title}${dateLabel ? ` (${dateLabel})` : ""}`;
+}
+
 type WeeklyNewsPanelProps = {
   focus: WeeklyNewsFocusFixture;
   citations: Citation[];
@@ -126,7 +144,7 @@ export function WeeklyNewsPanel({ focus, citations, assetTicker, sectionState }:
               data-freshness-state={item.freshnessState}
             >
               <div className="etf-item-heading">
-                <h3>{item.title}</h3>
+                <h3>{itemHeadingTitle(item)}</h3>
                 <span className="state-pill compact-state" data-evidence-state={focus.state}>
                   {item.eventType.replaceAll("_", " ")}
                 </span>
@@ -146,7 +164,8 @@ export function WeeklyNewsPanel({ focus, citations, assetTicker, sectionState }:
                     { label: "Source quality", value: item.source.sourceQuality },
                     { label: "Allowlist", value: item.source.allowlistStatus },
                     { label: "Source-use policy", value: item.source.sourceUsePolicy },
-                    { label: "Source", value: item.source.publisher }
+                    { label: "Publisher", value: sourcePublisherLabel(item.source) },
+                    { label: "Provider/API", value: item.source.providerName }
                   ]}
                 />
               </div>

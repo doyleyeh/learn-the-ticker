@@ -50,17 +50,6 @@ export function AssetDataDashboard({ asset, glossaryMatches = [], glossaryContex
           <p className="eyebrow">Stable data dashboard</p>
           <h2 id="asset-data-dashboard-heading">Asset Data Dashboard</h2>
         </div>
-        <div className="state-row">
-          <CompactCitationSources
-            citations={asset.citations.slice(0, 3)}
-            label="Dashboard evidence details"
-            metadataRows={[
-              { label: "Evidence state", value: chartSection?.evidenceState ?? "mixed" },
-              { label: "Source mix", value: "Official sources first; provider-labeled rows fill gaps" }
-            ]}
-            dashboardSourceIcon
-          />
-        </div>
       </div>
 
       <div className="asset-dashboard-chart-region">
@@ -176,19 +165,6 @@ function DashboardTable({
           <h3>{table.title}</h3>
           <p>{subtitle}</p>
         </div>
-        <CompactCitationSources
-          citations={resolveAssetCitations(asset, table.citationIds)}
-          label={`${table.title} evidence details`}
-          metadataRows={[
-            { label: "Evidence state", value: table.evidenceState.replaceAll("_", " ") },
-            {
-              label: "Table as of",
-              value: table.asOfDate ?? table.retrievedAt ?? table.limitations ?? "Unknown in current evidence",
-              state: table.freshnessState
-            }
-          ]}
-          dashboardSourceIcon
-        />
       </div>
       <div className="structured-table-scroll">
         <table>

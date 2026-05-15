@@ -341,6 +341,7 @@ class WeeklyNewsEventCandidateRow(StrictRow):
     source_type: str
     source_title: str | None = None
     source_publisher: str | None = None
+    source_provider_name: str | None = None
     source_url: str | None = None
     source_rank: int
     source_rank_tier: str
@@ -476,6 +477,7 @@ class WeeklyNewsSelectedEventRow(StrictRow):
     source_type: str = "weekly_news_evidence"
     source_title: str | None = None
     source_publisher: str | None = None
+    source_provider_name: str | None = None
     source_url: str | None = None
     source_identity: str | None = None
     is_official: bool | None = True
@@ -1717,6 +1719,7 @@ def _selected_event_from_candidate(
         source_type=candidate.source_type,
         source_title=candidate.source_title,
         source_publisher=candidate.source_publisher,
+        source_provider_name=candidate.source_provider_name,
         source_url=candidate.source_url,
         source_identity=candidate.source_identity,
         is_official=candidate.is_official,
