@@ -8,6 +8,39 @@ No backlog tasks are currently prepared.
 
 ## Completed
 
+### T-196: Align asset-page section state and compact metadata UX
+
+Goal:
+Move section-state notes into their owning panels, consolidate repeated evidence metadata into compact source/details controls, and keep supported asset pages usable while slow generation or live sections continue loading.
+
+Completion details:
+- Moved Market News and Weekly News timeout/error/partial state notes inside their panels via a shared `SectionStateNote`, and removed orphan state-note rendering from the asset-page layout.
+- Consolidated visible page updated, facts/as-of, chart/range, provider label, stats, table, period, retrieved, source-quality, and source-use details into reusable source/info icons while keeping section titles, values, source labels, and inline states visible.
+- Removed the standalone Economic Indicators `Period / as of` column and moved row period/as-of/retrieved metadata into the Source-column icon.
+- Split Economic Indicators, Market News, Weekly News, Market AI, and ticker AI into section-local loaders with inline loading/error/partial states, while keeping supported asset pages out of the old whole-page backend-unavailable state for normal slow local responses.
+- Made `asset_page_stable` overview mode deterministic for first render so stable source-labeled facts do not wait on live LLM calls; generation provenance remains inline with Beginner Summary, Top Risks, Deep Dive, Market AI, and ticker AI.
+- Raised local live-generation and frontend section-loader windows (`LLM_LIVE_TIMEOUT_SECONDS=75`, `LLM_LIVE_SLOW_RESPONSE_THRESHOLD_SECONDS=30`, `NEXT_PUBLIC_LIVE_SECTION_FETCH_TIMEOUT_MS=90000`) so slow local generation has room to resolve without the old short fallback behavior.
+- Updated PRD/TDS/EVALS/env examples and smoke/backend coverage for compact evidence metadata, section-local state placement, stable first render, and local slow-generation defaults.
+
+Required commands executed:
+- `source scripts/activate_agent_env.sh && npm test` - pass
+- `source scripts/activate_agent_env.sh && npm run typecheck` - pass
+- `source scripts/activate_agent_env.sh && npm run build` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/unit/test_summary_generation.py tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py -q` - pass, 106 passed
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass, 645 backend tests plus static evals, frontend smoke, typecheck, build, and backend checks
+- `git diff --check` - pass
+
+Manual browser acceptance:
+- VOO and QQQ render supported asset content instead of the old whole-page backend-unavailable card; QQQ stable overview now returns in about six seconds in `asset_page_stable` mode with deterministic generation provenance.
+- Beginner Summary citation labels show `[Issuer]`, not `[Issuer/provider]`.
+- No global fallback card, standalone Glossary context, standalone Asset details status card, standalone Source drawer status card, or standalone `Period / as of` Economic Indicators column was observed in the browser snapshot.
+- Repeated as-of/retrieved/provider/range details are available through source/info icons, and source titles no longer expose deterministic provider-fixture wording for official issuer evidence.
+
+Remaining risks:
+- Live LLM output still depends on the operator's server-side OpenRouter model availability and latency. If the configured free model exceeds the local timeout, the UI now labels the fallback inline instead of masking it as fully live.
+- The Playwright CLI reports a navigation timeout on long streaming pages because slow sections may continue resolving after stable content is visible; the page content itself rendered during the manual snapshot.
+
 ### T-195: Stream supported asset loading and generation states
 
 Goal:

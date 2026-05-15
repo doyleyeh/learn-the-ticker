@@ -15,7 +15,6 @@ import {
   type OverviewChartPoint
 } from "../lib/fixtures";
 import { CompactCitationSources, resolveAssetCitations } from "./CompactCitationSources";
-import { FreshnessDisclosure } from "./FreshnessLabel";
 
 type AssetPriceRangeChartProps = {
   asset: AssetFixture;
@@ -127,26 +126,25 @@ export function AssetPriceRangeChart({ asset, initialChart }: AssetPriceRangeCha
         {shouldShowLoading ? <div className="asset-dashboard-chart-loading">Loading range...</div> : null}
       </div>
 
-      <div className="freshness-disclosure-row chart-disclosure-row">
-        <FreshnessDisclosure
-          label="Chart as of"
-          value={chart?.asOfDate ?? chart?.retrievedAt ?? "Unknown in current evidence"}
-          state={chart?.freshnessState ?? "unavailable"}
+      <div className="compact-source-row">
+        <CompactCitationSources
+          citations={chart ? resolveAssetCitations(asset, chart.citationIds) : []}
+          label="Chart evidence details"
+          metadataRows={[
+            {
+              label: "Chart as of",
+              value: chart?.asOfDate ?? chart?.retrievedAt ?? "Unknown in current evidence",
+              state: chart?.freshnessState ?? "unavailable"
+            },
+            {
+              label: "Range",
+              value: `${chartRangeLabels[activeRange]} · ${chart?.interval ?? "interval unavailable"} · ${chart?.currency ?? asset.exchange ?? "currency unavailable"}`,
+              state: chart?.freshnessState ?? "unavailable"
+            },
+            { label: "Provider label", value: chart?.delayedOrBestEffortLabel ?? null, state: chart?.freshnessState ?? "unknown" }
+          ]}
         />
-        <FreshnessDisclosure
-          label="Range"
-          value={`${chartRangeLabels[activeRange]} · ${chart?.interval ?? "interval unavailable"} · ${chart?.currency ?? asset.exchange ?? "currency unavailable"}`}
-          state={chart?.freshnessState ?? "unavailable"}
-        />
-        {chart?.delayedOrBestEffortLabel ? (
-          <FreshnessDisclosure label="Provider label" value={chart.delayedOrBestEffortLabel} state={chart.freshnessState} />
-        ) : null}
       </div>
-      {chart?.citationIds.length ? (
-        <div className="compact-source-row">
-          <CompactCitationSources citations={resolveAssetCitations(asset, chart.citationIds)} label="Chart sources" />
-        </div>
-      ) : null}
       {chart?.limitations ? <p className="notice-text">{chart.limitations}</p> : null}
     </div>
   );

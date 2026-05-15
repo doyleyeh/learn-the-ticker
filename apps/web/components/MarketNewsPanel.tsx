@@ -1,12 +1,13 @@
 import type { Citation, MarketNewsFocusFixture, MarketNewsTopicBucket } from "../lib/fixtures";
 import { CompactCitationSources, resolveCitationList } from "./CompactCitationSources";
-import { FreshnessDisclosure } from "./FreshnessLabel";
+import { SectionStateNote, type SectionStateForDisplay } from "./SectionStateNote";
 
 type FreshnessState = "fresh" | "stale" | "unknown" | "unavailable" | "partial" | "insufficient_evidence";
 
 type MarketNewsPanelProps = {
   focus: MarketNewsFocusFixture;
   citations: Citation[];
+  sectionState?: SectionStateForDisplay | null;
 };
 
 function stateToFreshness(state: MarketNewsFocusFixture["state"]): FreshnessState {
@@ -30,10 +31,16 @@ function shortDate(value: string) {
   return value.slice(0, 10);
 }
 
-export function MarketNewsPanel({ focus, citations }: MarketNewsPanelProps) {
+export function MarketNewsPanel({ focus, citations, sectionState }: MarketNewsPanelProps) {
   const windowLabel = `${focus.window.newsWindowStart} to ${focus.window.newsWindowEnd}`;
   const freshness = stateToFreshness(focus.state);
   const emptyMessage = focus.emptyState?.message ?? "No major Market News Focus items passed the evidence rules for this window.";
+  const sectionMetadata = [
+    { label: "News window", value: windowLabel, state: freshness },
+    { label: "Checked as of", value: focus.window.asOfDate, state: freshness },
+    { label: "Reusable context", value: focus.reusableAcrossTickers ? "Yes" : "No" },
+    { label: "Live external calls", value: focus.noLiveExternalCalls ? "No" : "Yes" }
+  ];
 
   return (
     <section
@@ -58,16 +65,19 @@ export function MarketNewsPanel({ focus, citations }: MarketNewsPanelProps) {
           <span className="state-pill compact-state" data-evidence-state={focus.evidenceState}>
             {focus.selectedItemCount} of {focus.configuredMaxItemCount} verified
           </span>
+          <CompactCitationSources
+            citations={focus.citations}
+            label="Market News Focus evidence details"
+            metadataRows={sectionMetadata}
+            dashboardSourceIcon
+          />
         </div>
       </div>
 
+      <SectionStateNote state={sectionState} />
       <p className="notice-text">
         Market News Focus gives broad U.S. and global financial context before the ticker-specific weekly section.
       </p>
-      <div className="freshness-disclosure-row">
-        <FreshnessDisclosure label="News window" value={windowLabel} state={freshness} />
-        <FreshnessDisclosure label="Checked as of" value={focus.window.asOfDate} state={freshness} />
-      </div>
 
       {focus.items.length ? (
         <div className="section-stack" data-market-news-item-count={focus.items.length}>
@@ -97,16 +107,19 @@ export function MarketNewsPanel({ focus, citations }: MarketNewsPanelProps) {
                 </span>
               </div>
               <p>{item.summary}</p>
-              <div className="freshness-disclosure-row">
-                <FreshnessDisclosure label="Published" value={shortDate(item.publishedAt)} state={item.freshnessState} />
-                <FreshnessDisclosure label="Retrieved" value={item.source.retrievedAt} state={item.freshnessState} />
-              </div>
-              <p className="source-gap-note">
-                Source quality: {item.source.sourceQuality}. Allowlist: {item.source.allowlistStatus}. Source-use policy:{" "}
-                {item.source.sourceUsePolicy}. Supporting sources: {item.cluster.supportingSources.join(", ")}.
-              </p>
               <div className="compact-source-row">
-                <CompactCitationSources citations={resolveCitationList(citations, item.citationIds)} label="Market news sources" />
+                <CompactCitationSources
+                  citations={resolveCitationList(citations, item.citationIds)}
+                  label="Market news sources"
+                  metadataRows={[
+                    { label: "Published", value: shortDate(item.publishedAt), state: item.freshnessState },
+                    { label: "Retrieved", value: item.source.retrievedAt, state: item.freshnessState },
+                    { label: "Source quality", value: item.source.sourceQuality },
+                    { label: "Allowlist", value: item.source.allowlistStatus },
+                    { label: "Source-use policy", value: item.source.sourceUsePolicy },
+                    { label: "Supporting sources", value: item.cluster.supportingSources.join(", ") }
+                  ]}
+                />
               </div>
             </article>
           ))}

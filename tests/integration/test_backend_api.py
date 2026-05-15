@@ -534,6 +534,10 @@ def test_asset_page_stable_overview_omits_slow_timely_context_but_keeps_generati
     assert body["ai_comprehensive_analysis"] is None
     assert "beginner_summary" in body["generation_diagnostics"]
     assert "top_3_risks" in body["generation_diagnostics"]
+    assert body["generation_diagnostics"]["beginner_summary"]["attempted_live"] is False
+    assert body["generation_diagnostics"]["beginner_summary"]["fallback_reason_codes"] == [
+        "deterministic_summary_generation"
+    ]
 
 
 def test_admin_analysis_pack_import_routes_choose_fresh_imported_packs():

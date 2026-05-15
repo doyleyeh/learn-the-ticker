@@ -1,6 +1,5 @@
 import type { Citation, MarketAIComprehensiveAnalysisFixture } from "../lib/fixtures";
 import { CompactCitationSources, resolveCitationList } from "./CompactCitationSources";
-import { FreshnessDisclosure } from "./FreshnessLabel";
 import { GenerationStateNote } from "./GenerationStateNote";
 
 type FreshnessState = "fresh" | "stale" | "unknown" | "unavailable" | "partial" | "insufficient_evidence";
@@ -70,15 +69,20 @@ export function MarketAIComprehensiveAnalysisPanel({
           <span className="state-pill compact-state" data-market-ai-analysis-evidence-threshold>
             {analysis.marketNewsSelectedItemCount} market items
           </span>
+          <CompactCitationSources
+            citations={analysis.citations}
+            label="Market AI evidence details"
+            metadataRows={[
+              {
+                label: "Analysis availability",
+                value: analysis.analysisAvailable ? "Available in current evidence" : "Suppressed in current evidence",
+                state: freshnessState
+              },
+              { label: "Topic buckets", value: `${analysis.selectedTopicBucketCount} covered`, state: freshnessState }
+            ]}
+            dashboardSourceIcon
+          />
         </div>
-      </div>
-      <div className="freshness-disclosure-row">
-        <FreshnessDisclosure
-          label="Analysis availability"
-          value={analysis.analysisAvailable ? "Available in current evidence" : "Suppressed in current evidence"}
-          state={freshnessState}
-        />
-        <FreshnessDisclosure label="Topic buckets" value={`${analysis.selectedTopicBucketCount} covered`} state={freshnessState} />
       </div>
       <GenerationStateNote
         label="Market AI generation"

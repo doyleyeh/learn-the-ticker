@@ -1,6 +1,6 @@
 import type { Citation, WeeklyNewsFocusFixture } from "../lib/fixtures";
 import { CompactCitationSources, resolveCitationList } from "./CompactCitationSources";
-import { FreshnessDisclosure } from "./FreshnessLabel";
+import { SectionStateNote, type SectionStateForDisplay } from "./SectionStateNote";
 
 type FreshnessState = "fresh" | "stale" | "unknown" | "unavailable" | "partial" | "insufficient_evidence";
 
@@ -48,14 +48,21 @@ type WeeklyNewsPanelProps = {
   focus: WeeklyNewsFocusFixture;
   citations: Citation[];
   assetTicker?: string;
+  sectionState?: SectionStateForDisplay | null;
 };
 
-export function WeeklyNewsPanel({ focus, citations, assetTicker }: WeeklyNewsPanelProps) {
+export function WeeklyNewsPanel({ focus, citations, assetTicker, sectionState }: WeeklyNewsPanelProps) {
   const windowLabel = `${focus.window.newsWindowStart} to ${focus.window.newsWindowEnd}`;
   const emptyMessage = focus.emptyState?.message ?? "No major Weekly News Focus items found in the current local evidence window.";
   const emptyEvidenceState = evidenceStateToFreshnessFromFocus(focus.emptyState);
   const windowFreshness = stateToFreshness(focus.state);
   const sectionTitle = assetTicker ? `Weekly News Focus: ${assetTicker}` : "Weekly News Focus";
+  const sectionMetadata = [
+    { label: "News window", value: windowLabel, state: windowFreshness },
+    { label: "Checked as of", value: focus.window.asOfDate, state: windowFreshness },
+    { label: "Empty-state evidence", value: focus.emptyState ? focus.emptyState.state : null, state: emptyEvidenceState },
+    { label: "Live external calls", value: focus.noLiveExternalCalls ? "No" : "Yes" }
+  ];
 
   return (
     <section
@@ -83,17 +90,20 @@ export function WeeklyNewsPanel({ focus, citations, assetTicker }: WeeklyNewsPan
           <span className="state-pill compact-state" data-evidence-state={focus.evidenceState}>
             {focus.selectedItemCount} of {focus.configuredMaxItemCount} verified
           </span>
+          <CompactCitationSources
+            citations={focus.citations}
+            label="Weekly News Focus evidence details"
+            metadataRows={sectionMetadata}
+            dashboardSourceIcon
+          />
         </div>
       </div>
 
+      <SectionStateNote state={sectionState} weeklyNewsFailureNotice />
       <p className="notice-text">
         Weekly News Focus keeps recent developments separate from stable facts so short-term context does not redefine the
         asset.
       </p>
-      <div className="freshness-disclosure-row">
-        <FreshnessDisclosure label="News window" value={windowLabel} state={windowFreshness} />
-        <FreshnessDisclosure label="Checked as of" value={focus.window.asOfDate} state={windowFreshness} />
-      </div>
 
       {focus.items.length ? (
         <div className="section-stack" data-weekly-news-item-count={focus.items.length}>
@@ -122,20 +132,23 @@ export function WeeklyNewsPanel({ focus, citations, assetTicker }: WeeklyNewsPan
                 </span>
               </div>
               <p>{item.summary}</p>
-              <div className="freshness-disclosure-row">
-                <FreshnessDisclosure
-                  label={item.eventDate ? "Event date" : "Published or as of"}
-                  value={item.eventDate ?? item.source.publishedAt ?? item.source.asOfDate ?? "Unknown in current evidence"}
-                  state={item.freshnessState}
-                />
-                <FreshnessDisclosure label="Retrieved" value={item.source.retrievedAt} state={item.freshnessState} />
-              </div>
-              <p className="source-gap-note">
-                Source quality: {item.source.sourceQuality}. Allowlist: {item.source.allowlistStatus}. Source-use policy:{" "}
-                {item.source.sourceUsePolicy}. Source: {item.source.publisher}.
-              </p>
               <div className="compact-source-row">
-                <CompactCitationSources citations={resolveCitationList(citations, item.citationIds)} label="News sources" />
+                <CompactCitationSources
+                  citations={resolveCitationList(citations, item.citationIds)}
+                  label="News sources"
+                  metadataRows={[
+                    {
+                      label: item.eventDate ? "Event date" : "Published or as of",
+                      value: item.eventDate ?? item.source.publishedAt ?? item.source.asOfDate ?? "Unknown in current evidence",
+                      state: item.freshnessState
+                    },
+                    { label: "Retrieved", value: item.source.retrievedAt, state: item.freshnessState },
+                    { label: "Source quality", value: item.source.sourceQuality },
+                    { label: "Allowlist", value: item.source.allowlistStatus },
+                    { label: "Source-use policy", value: item.source.sourceUsePolicy },
+                    { label: "Source", value: item.source.publisher }
+                  ]}
+                />
               </div>
             </article>
           ))}
@@ -152,13 +165,6 @@ export function WeeklyNewsPanel({ focus, citations, assetTicker }: WeeklyNewsPan
             <span className="state-pill compact-state" data-weekly-news-empty-suppressed-candidate-count={focus.suppressedCandidateCount}>
               suppressed candidates: {focus.suppressedCandidateCount}
             </span>
-          </div>
-          <div className="freshness-disclosure-row">
-            <FreshnessDisclosure
-              label="Empty-state evidence"
-              value={focus.emptyState ? focus.emptyState.state : focus.state}
-              state={emptyEvidenceState}
-            />
           </div>
           <p className="source-gap-note">
             An empty Weekly News Focus state is normal when no major high-signal items pass the local evidence rules.

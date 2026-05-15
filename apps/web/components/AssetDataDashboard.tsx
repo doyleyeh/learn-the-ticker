@@ -5,7 +5,6 @@ import {
 } from "../lib/fixtures";
 import { AssetPriceRangeChart } from "./AssetPriceRangeChart";
 import { CompactCitationSources, resolveAssetCitations } from "./CompactCitationSources";
-import { FreshnessDisclosure } from "./FreshnessLabel";
 import { InlineGlossaryText, type InlineGlossaryContextMap, type InlineGlossaryMatch } from "./InlineGlossaryText";
 
 type AssetDataDashboardProps = {
@@ -52,9 +51,15 @@ export function AssetDataDashboard({ asset, glossaryMatches = [], glossaryContex
           <h2 id="asset-data-dashboard-heading">Asset Data Dashboard</h2>
         </div>
         <div className="state-row">
-          <span className="state-pill" data-evidence-state={chartSection?.evidenceState ?? "mixed"}>
-            Official-first facts with provider-labeled fallback
-          </span>
+          <CompactCitationSources
+            citations={asset.citations.slice(0, 3)}
+            label="Dashboard evidence details"
+            metadataRows={[
+              { label: "Evidence state", value: chartSection?.evidenceState ?? "mixed" },
+              { label: "Source mix", value: "Official sources first; provider-labeled rows fill gaps" }
+            ]}
+            dashboardSourceIcon
+          />
         </div>
       </div>
 
@@ -116,15 +121,18 @@ function QuoteStatGrid({
           </div>
         ))}
       </dl>
-      <div className="freshness-disclosure-row">
-        <FreshnessDisclosure
-          label="Stats as of"
-          value={table.asOfDate ?? table.retrievedAt ?? "Unknown in current evidence"}
-          state={table.freshnessState}
-        />
-      </div>
       <div className="compact-source-row">
-        <CompactCitationSources citations={resolveAssetCitations(asset, table.citationIds)} label="Stats sources" />
+        <CompactCitationSources
+          citations={resolveAssetCitations(asset, table.citationIds)}
+          label="Stats sources"
+          metadataRows={[
+            {
+              label: "Stats as of",
+              value: table.asOfDate ?? table.retrievedAt ?? "Unknown in current evidence",
+              state: table.freshnessState
+            }
+          ]}
+        />
       </div>
       {table.limitations ? <p className="notice-text">{table.limitations}</p> : null}
     </div>
@@ -168,9 +176,19 @@ function DashboardTable({
           <h3>{table.title}</h3>
           <p>{subtitle}</p>
         </div>
-        <span className="state-pill compact-state" data-evidence-state={table.evidenceState}>
-          {table.evidenceState.replaceAll("_", " ")}
-        </span>
+        <CompactCitationSources
+          citations={resolveAssetCitations(asset, table.citationIds)}
+          label={`${table.title} evidence details`}
+          metadataRows={[
+            { label: "Evidence state", value: table.evidenceState.replaceAll("_", " ") },
+            {
+              label: "Table as of",
+              value: table.asOfDate ?? table.retrievedAt ?? table.limitations ?? "Unknown in current evidence",
+              state: table.freshnessState
+            }
+          ]}
+          dashboardSourceIcon
+        />
       </div>
       <div className="structured-table-scroll">
         <table>
@@ -222,13 +240,6 @@ function DashboardTable({
           </div>
         </details>
       ) : null}
-      <div className="freshness-disclosure-row">
-        <FreshnessDisclosure
-          label="Table as of"
-          value={table.asOfDate ?? table.retrievedAt ?? table.limitations ?? "Unknown in current evidence"}
-          state={table.freshnessState}
-        />
-      </div>
       {table.limitations ? <p className="notice-text">{table.limitations}</p> : null}
     </article>
   );

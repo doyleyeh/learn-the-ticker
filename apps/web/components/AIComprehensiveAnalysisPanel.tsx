@@ -1,6 +1,5 @@
 import type { Citation, AIComprehensiveAnalysisFixture } from "../lib/fixtures";
 import { CompactCitationSources, resolveCitationList } from "./CompactCitationSources";
-import { FreshnessDisclosure } from "./FreshnessLabel";
 import { GenerationStateNote } from "./GenerationStateNote";
 
 type FreshnessState = "fresh" | "stale" | "unknown" | "unavailable" | "partial" | "insufficient_evidence";
@@ -76,19 +75,20 @@ export function AIComprehensiveAnalysisPanel({ analysis, citations, assetTicker 
           <span className="state-pill compact-state" data-ai-analysis-evidence-threshold>
             {analysis.weeklyNewsSelectedItemCount} of {analysis.minimumWeeklyNewsItemCount} high-signal items
           </span>
+          <CompactCitationSources
+            citations={analysis.citations}
+            label="Ticker AI evidence details"
+            metadataRows={[
+              {
+                label: "Analysis availability",
+                value: analysis.analysisAvailable ? "Available in current evidence" : "Suppressed in current evidence",
+                state: freshnessState
+              },
+              { label: "Evidence state", value: analysis.state, state: freshnessState }
+            ]}
+            dashboardSourceIcon
+          />
         </div>
-      </div>
-      <div className="freshness-disclosure-row">
-        <FreshnessDisclosure
-          label="Analysis availability"
-          value={analysis.analysisAvailable ? "Available in current evidence" : "Suppressed in current evidence"}
-          state={freshnessState}
-        />
-        <FreshnessDisclosure
-          label="Evidence state"
-          value={analysis.state}
-          state={freshnessState}
-        />
       </div>
       <GenerationStateNote
         label="Ticker AI generation"
@@ -142,17 +142,17 @@ export function AIComprehensiveAnalysisPanel({ analysis, citations, assetTicker 
           <p className="source-gap-note">
             Analysis requires at least {analysis.minimumWeeklyNewsItemCount} high-signal Weekly News Focus items.
           </p>
-          <div className="freshness-disclosure-row">
-            <FreshnessDisclosure
-              label="Canonical evidence"
-              value={`${analysis.canonicalFactCitationIds.length} source${analysis.canonicalFactCitationIds.length === 1 ? "" : "s"} available`}
-              state={freshnessState}
-            />
-          </div>
           <div className="compact-source-row">
             <CompactCitationSources
               citations={resolveCitationList(citations, analysis.canonicalFactCitationIds)}
               label="Canonical evidence sources"
+              metadataRows={[
+                {
+                  label: "Canonical evidence",
+                  value: `${analysis.canonicalFactCitationIds.length} source${analysis.canonicalFactCitationIds.length === 1 ? "" : "s"} available`,
+                  state: freshnessState
+                }
+              ]}
             />
           </div>
         </div>

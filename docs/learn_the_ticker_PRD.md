@@ -68,7 +68,9 @@ The intended product behavior is now:
 - every page, chat answer, comparison, Weekly News Focus item, and export shows source provenance and freshness clearly;
 - missing fields render as `partial`, `unavailable`, `stale`, or fallback states instead of blocking the whole asset;
 - supported asset pages should progressively render a normal learning-page shell while backend sections load, with section-level loading, live, stale, partial, insufficient-evidence, or error states instead of a whole-page temporary-unavailable screen for ordinary slow responses;
+- first-render stable facts should not wait on slow live generation; generated summaries and analysis must expose provenance inline when they are live, deterministic fallback, timeout fallback, insufficient evidence, or backend error;
 - source-labeled lightweight local evidence is the active personal-MVP display path and should not be described to users as fallback when it is fresh, available, and clearly labeled; deterministic fixtures or backend failures must still be labeled inline where displayed;
+- dense evidence metadata such as page updated dates, as-of dates, retrieved timestamps, provider labels, source-use policy, and row periods should be available through compact source/details icons instead of repeated visible freshness tags that distract from the beginner reading flow;
 - generated Beginner Summary, Deep Dive, Market AI, and ticker AI sections should show compact generation provenance inline, distinguishing live generation, deterministic fallback, timeout fallback, insufficient evidence, and backend error without making the educational copy more speculative;
 - operator review focuses on checking suspicious results and improving repeated failure patterns, not manually filling every URL and as-of date.
 

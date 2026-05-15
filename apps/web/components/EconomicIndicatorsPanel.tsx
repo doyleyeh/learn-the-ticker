@@ -1,6 +1,5 @@
 import type { Citation, EconomicIndicatorsPackFixture } from "../lib/fixtures";
 import { CompactCitationSources, resolveCitationList } from "./CompactCitationSources";
-import { FreshnessDisclosure } from "./FreshnessLabel";
 
 type EconomicIndicatorsPanelProps = {
   pack: EconomicIndicatorsPackFixture;
@@ -38,6 +37,12 @@ export function EconomicIndicatorsPanel({ pack, citations, sectionState }: Econo
   const officialCount = pack.items.filter((item) => item.category === "official_historical_actual").length;
   const marketReferenceCount = pack.items.length - officialCount;
   const sourceStateCopy = economicIndicatorsSourceStateCopy(pack, sectionState);
+  const sectionMetadata = [
+    { label: "Indicator pack as of", value: pack.asOfDate, state: "fresh" },
+    { label: "Imported pack fresh until", value: pack.analysisPackMetadata?.freshnessExpiresAt ?? null, state: "fresh" },
+    { label: "Analysis source", value: pack.analysisPackMetadata?.analysisSource ?? "deterministic_fixture" },
+    { label: "Live external calls", value: pack.noLiveExternalCalls ? "No" : "Yes" }
+  ];
 
   return (
     <section
@@ -66,6 +71,12 @@ export function EconomicIndicatorsPanel({ pack, citations, sectionState }: Econo
           <span className="state-pill compact-state" data-evidence-state={pack.state}>
             {pack.region} pack
           </span>
+          <CompactCitationSources
+            citations={pack.citations}
+            label="Economic Indicators evidence details"
+            metadataRows={sectionMetadata}
+            dashboardSourceIcon
+          />
         </div>
       </div>
 
@@ -81,17 +92,6 @@ export function EconomicIndicatorsPanel({ pack, citations, sectionState }: Econo
         {sourceStateCopy}
       </p>
 
-      <div className="freshness-disclosure-row">
-        <FreshnessDisclosure label="Indicator pack as of" value={pack.asOfDate} state="fresh" />
-        {pack.analysisPackMetadata?.freshnessExpiresAt ? (
-          <FreshnessDisclosure
-            label="Imported pack fresh until"
-            value={pack.analysisPackMetadata.freshnessExpiresAt}
-            state="fresh"
-          />
-        ) : null}
-      </div>
-
       <div className="structured-table-panel" data-economic-indicators-table>
         <div className="structured-table-heading">
           <div>
@@ -105,7 +105,6 @@ export function EconomicIndicatorsPanel({ pack, citations, sectionState }: Econo
               <tr>
                 <th scope="col">Indicator</th>
                 <th scope="col">Value</th>
-                <th scope="col">Period / as of</th>
                 <th scope="col">Source</th>
               </tr>
             </thead>
@@ -135,15 +134,18 @@ export function EconomicIndicatorsPanel({ pack, citations, sectionState }: Econo
                     </span>
                   </td>
                   <td>
-                    <FreshnessDisclosure label="Period" value={item.period} state={item.freshnessState} />
-                    <FreshnessDisclosure label="Retrieved" value={item.retrievedAt} state={item.freshnessState} />
-                  </td>
-                  <td>
                     <span>{item.source.publisher}</span>
                     <div className="compact-source-row">
                       <CompactCitationSources
                         citations={resolveCitationList(citations, item.citationIds)}
                         label={`${item.name} sources`}
+                        metadataRows={[
+                          { label: "Period", value: item.period, state: item.freshnessState },
+                          { label: "As of", value: item.asOfDate, state: item.freshnessState },
+                          { label: "Retrieved", value: item.retrievedAt, state: item.freshnessState },
+                          { label: "Source quality", value: item.source.sourceQuality },
+                          { label: "Source-use policy", value: item.source.sourceUsePolicy }
+                        ]}
                       />
                     </div>
                   </td>
