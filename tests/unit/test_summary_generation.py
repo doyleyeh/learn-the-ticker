@@ -6,6 +6,7 @@ import pytest
 import backend.summary_generation as summary_generation_module
 from backend.chat import generate_chat_from_pack, validate_chat_response
 from backend.llm import build_llm_runtime_config, default_openrouter_settings
+from backend.llm import DEFAULT_OPENROUTER_FREE_MODEL_ORDER, DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL
 from backend.market_news import fixture_market_news_candidates, select_market_news_focus
 from backend.models import (
     BeginnerSummary,
@@ -122,6 +123,36 @@ def test_beginner_summary_fallback_humanizes_missing_field_names():
     assert "summary_prospectus" not in joined
     assert "premium/discount spread data" in joined
     assert "summary prospectus" in joined
+
+
+def test_beginner_summary_fallback_uses_curated_provider_profile_summary_for_etfs():
+    service = HybridSummaryGenerationService()
+    asset = build_asset_knowledge_pack("VOO").asset
+    evidence_pack = _simple_generation_evidence_pack("VOO", ["c1"])
+    evidence_pack["generation_context"]["asset_profile"]["fund_summary"] = (
+        "The fund offers broad exposure to large U.S. companies by seeking to track the S&P 500 index."
+    )
+    evidence_pack["generation_context"]["asset_profile"]["fund_family"] = "Vanguard"
+    evidence_pack["generation_context"]["asset_profile"]["category"] = "U.S. equity index ETF"
+    evidence_pack["generation_context"]["identity_context"]["benchmark"] = "S&P 500 Index"
+    evidence_pack["generation_context"]["identity_context"]["expense_ratio"] = "0.03"
+    evidence_pack["generation_context"]["exposure_context"]["holdings_count"] = "500"
+
+    summary = service.generate_beginner_summary(
+        asset=asset,
+        base_summary=BeginnerSummary(
+            what_it_is="Vanguard S&P 500 ETF (VOO) is an ETF.",
+            why_people_consider_it="Beginners may study it.",
+            main_catch="Issuer facts are point-in-time.",
+        ),
+        citation_ids=["c1"],
+        evidence_notes=[],
+        generation_evidence_pack=evidence_pack,
+    )
+
+    assert "broad exposure to large U.S. companies" in summary.what_it_is
+    assert "longBusinessSummary" not in summary.what_it_is
+    assert "fixture" not in summary.what_it_is.lower()
 
 
 def test_beginner_summary_rejects_internal_copy_from_live_generation():
@@ -885,6 +916,56 @@ def test_summary_generation_module_stays_deterministic_without_network_clients()
     assert CHAT_ANSWER_SCHEMA_VERSION == "grounded-chat-hybrid-answer-v1"
     for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import"]:
         assert forbidden not in source
+
+
+def test_openrouter_live_body_uses_models_fallback_chain_without_single_model():
+    runtime = _ready_runtime()
+    request = SummaryGenerationRequest(
+        task_name="beginner_summary",
+        schema_version="beginner-summary-test-v1",
+        asset_ticker="VOO",
+        payload={},
+    )
+
+    body = summary_generation_module._openrouter_chat_completion_body(
+        request,
+        summary_generation_module._safe_prompt_payload(request),
+        runtime,
+    )
+
+    assert body["models"] == [*DEFAULT_OPENROUTER_FREE_MODEL_ORDER, DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL]
+    assert body["route"] == "fallback"
+    assert "model" not in body
+    assert body["response_format"]["type"] == "json_schema"
+    assert body["response_format"]["json_schema"]["schema"]["required"] == [
+        "what_it_is",
+        "why_people_consider_it",
+        "main_catch",
+        "supporting_claims",
+    ]
+
+
+def test_openrouter_live_body_omits_paid_fallback_when_disabled():
+    runtime = build_llm_runtime_config(
+        {**default_openrouter_settings(), "OPENROUTER_PAID_FALLBACK_ENABLED": "false"},
+        server_side_key_present=True,
+    )
+    request = SummaryGenerationRequest(
+        task_name="deep_dive_summary",
+        schema_version="deep-dive-test-v1",
+        asset_ticker="VOO",
+        payload={},
+    )
+
+    body = summary_generation_module._openrouter_chat_completion_body(
+        request,
+        summary_generation_module._safe_prompt_payload(request),
+        runtime,
+    )
+
+    assert body["models"] == list(DEFAULT_OPENROUTER_FREE_MODEL_ORDER)
+    assert DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL not in body["models"]
+    assert "model" not in body
 
 
 def _ready_runtime():

@@ -1078,6 +1078,8 @@ def _summary_generation_cache_key(request: SummaryGenerationRequest, runtime: Ll
         str(getattr(model, "model_name", model))
         for model in getattr(runtime, "configured_model_chain", [])
     ]
+    if runtime.paid_fallback_enabled and runtime.paid_fallback_model is not None:
+        model_names.append(runtime.paid_fallback_model.model_name)
     raw = json.dumps(
         {
             "asset_ticker": request.asset_ticker,
@@ -1139,25 +1141,7 @@ def _live_structured_generator_from_env(
             if not provider_key:
                 return {"status_code": 401, "latency_ms": 0, "json": {"choices": []}}
             started = time.monotonic()
-            body = {
-                "model": metadata.active_model.model_name if metadata.active_model else None,
-                "temperature": 0,
-                "response_format": {"type": "json_object"},
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "Return compact JSON only. Act as Learn the Ticker's evidence-bound educational "
-                            "analysis layer: use only the supplied generation evidence pack, curated generation "
-                            "context, citation ids, allowed numeric facts, selected news, macro data, and compact technical context. "
-                            "Do not include recommendations, predictions, raw reasoning, hidden prompts, raw "
-                            "transcripts, raw OHLCV series, raw provider payloads, raw provider key names, article bodies, "
-                            "or internal pipeline wording. If evidence is missing, label the limitation in the requested JSON fields."
-                        ),
-                    },
-                    {"role": "user", "content": json.dumps(prompt_payload, sort_keys=True)},
-                ],
-            }
+            body = _openrouter_chat_completion_body(request, prompt_payload, runtime, metadata)
             try:
                 from urllib import error, request as urlrequest
 
@@ -1198,15 +1182,156 @@ def _live_structured_generator_from_env(
         )
         if result.response.status is not LlmTransportStatus.succeeded or not result.content:
             raise TimeoutError("live_summary_generation_unavailable")
-        try:
-            payload = json.loads(result.content)
-        except json.JSONDecodeError as exc:
-            raise SummaryGenerationContractError("Live structured generator returned non-JSON content.") from exc
+        payload = _parse_live_json_payload(result.content)
         if not isinstance(payload, dict):
             raise SummaryGenerationContractError("Live structured generator returned a non-object payload.")
         return _normalize_live_payload_shape(request, payload)
 
     return generator
+
+
+def _openrouter_chat_completion_body(
+    request: SummaryGenerationRequest,
+    prompt_payload: dict[str, Any],
+    runtime: LlmRuntimeConfig,
+    metadata: LlmTransportRequestMetadata | None = None,
+) -> dict[str, Any]:
+    model_names = _openrouter_model_fallback_chain(runtime)
+    if not model_names and metadata is not None and metadata.active_model is not None:
+        model_names = [metadata.active_model.model_name]
+    return {
+        "models": model_names,
+        "route": "fallback",
+        "temperature": 0,
+        "response_format": _openrouter_response_format_for_task(request.task_name),
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "Return compact JSON only. Act as Learn the Ticker's evidence-bound educational "
+                    "analysis layer: use only the supplied generation evidence pack, curated generation "
+                    "context, citation ids, allowed numeric facts, selected news, macro data, and compact technical context. "
+                    "Do not include recommendations, predictions, raw reasoning, hidden prompts, raw "
+                    "transcripts, raw OHLCV series, raw provider payloads, raw provider key names, article bodies, "
+                    "or internal pipeline wording. If evidence is missing, label the limitation in the requested JSON fields."
+                ),
+            },
+            {"role": "user", "content": json.dumps(prompt_payload, sort_keys=True)},
+        ],
+    }
+
+
+def _openrouter_model_fallback_chain(runtime: LlmRuntimeConfig) -> list[str]:
+    model_names = [model.model_name for model in runtime.configured_model_chain]
+    if runtime.paid_fallback_enabled and runtime.paid_fallback_model is not None:
+        model_names.append(runtime.paid_fallback_model.model_name)
+    return model_names
+
+
+def _openrouter_response_format_for_task(task_name: str) -> dict[str, Any]:
+    schema = _json_schema_for_task(task_name)
+    if schema is None:
+        return {"type": "json_object"}
+    schema_name = re.sub(r"[^a-zA-Z0-9_]+", "_", f"learn_the_ticker_{task_name}")[:64]
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": schema_name,
+            "strict": True,
+            "schema": schema,
+        },
+    }
+
+
+def _json_schema_for_task(task_name: str) -> dict[str, Any] | None:
+    claim_schema = _object_schema(
+        required=["claim_text", "claim_type", "citation_ids"],
+        properties={
+            "claim_text": {"type": "string"},
+            "claim_type": {"type": "string"},
+            "citation_ids": {"type": "array", "items": {"type": "string"}},
+        },
+    )
+    if task_name == "beginner_summary":
+        return _object_schema(
+            required=["what_it_is", "why_people_consider_it", "main_catch", "supporting_claims"],
+            properties={
+                "what_it_is": {"type": "string"},
+                "why_people_consider_it": {"type": "string"},
+                "main_catch": {"type": "string"},
+                "supporting_claims": {"type": "array", "items": claim_schema},
+            },
+        )
+    if task_name == "deep_dive_summary":
+        return _object_schema(
+            required=["summary", "supporting_claims"],
+            properties={
+                "summary": {"type": "string"},
+                "supporting_claims": {"type": "array", "items": claim_schema},
+            },
+        )
+    if task_name == "top_3_risks":
+        risk_schema = _object_schema(
+            required=["title", "plain_english_explanation", "citation_ids", "supporting_claims"],
+            properties={
+                "title": {"type": "string"},
+                "plain_english_explanation": {"type": "string"},
+                "citation_ids": {"type": "array", "items": {"type": "string"}},
+                "supporting_claims": {"type": "array", "items": claim_schema},
+            },
+        )
+        return _object_schema(required=["risks"], properties={"risks": {"type": "array", "items": risk_schema}})
+    if task_name in {"market_ai_comprehensive_analysis", "ticker_ai_comprehensive_analysis"}:
+        section_schema = _object_schema(
+            required=["section_id", "label", "analysis", "bullets", "citation_ids", "uncertainty", "supporting_claims"],
+            properties={
+                "section_id": {"type": "string"},
+                "label": {"type": "string"},
+                "analysis": {"type": "string"},
+                "bullets": {"type": "array", "items": {"type": "string"}},
+                "citation_ids": {"type": "array", "items": {"type": "string"}},
+                "uncertainty": {"type": "array", "items": {"type": "string"}},
+                "supporting_claims": {"type": "array", "items": claim_schema},
+            },
+        )
+        return _object_schema(required=["sections"], properties={"sections": {"type": "array", "items": section_schema}})
+    if task_name == "grounded_chat_answer":
+        return _object_schema(
+            required=["direct_answer", "why_it_matters", "uncertainty", "supporting_claims"],
+            properties={
+                "direct_answer": {"type": "string"},
+                "why_it_matters": {"type": "string"},
+                "uncertainty": {"type": "array", "items": {"type": "string"}},
+                "supporting_claims": {"type": "array", "items": claim_schema},
+            },
+        )
+    return None
+
+
+def _object_schema(*, required: list[str], properties: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "type": "object",
+        "required": required,
+        "properties": properties,
+        "additionalProperties": True,
+    }
+
+
+def _parse_live_json_payload(content: str) -> dict[str, Any]:
+    stripped = content.strip()
+    if not stripped:
+        raise SummaryGenerationContractError("Live structured generator returned empty content.")
+    if stripped.startswith("```") or "```" in stripped:
+        raise SummaryGenerationContractError("Live structured generator returned markdown-wrapped JSON content.")
+    if not stripped.startswith("{") or not stripped.endswith("}"):
+        raise SummaryGenerationContractError("Live structured generator returned prose-wrapped JSON content.")
+    try:
+        payload = json.loads(stripped)
+    except json.JSONDecodeError as exc:
+        raise SummaryGenerationContractError("Live structured generator returned non-JSON content.") from exc
+    if not isinstance(payload, dict):
+        raise SummaryGenerationContractError("Live structured generator returned a non-object payload.")
+    return payload
 
 
 def _normalize_live_payload_shape(request: SummaryGenerationRequest, payload: dict[str, Any]) -> dict[str, Any]:
@@ -1295,12 +1420,13 @@ def _beginner_fallback_payload(
             ]
         )
         issuer_phrase = f" from {fund_family}" if fund_family else ""
-        what_it_is = (
+        base_identity = (
             f"{asset.name} ({asset.ticker}) is an ETF{issuer_phrase}"
             + (f" that {fact_bits}." if fact_bits else ".")
             if fact_bits
-            else _join_sentences(base_summary.what_it_is, _truncate(fund_summary, 180) if fund_summary else "")
+            else base_summary.what_it_is
         )
+        what_it_is = _join_sentences(base_identity, _safe_profile_summary(fund_summary, limit=220))
         why = (
             f"Beginners can use {asset.ticker} to study how a fund's benchmark, holdings breadth"
             + (", category" if category else "")
@@ -2003,6 +2129,23 @@ def _truncate(value: Any, limit: int = 240) -> str:
     if len(text) <= limit:
         return text
     return text[: max(0, limit - 1)].rstrip() + "..."
+
+
+def _safe_profile_summary(value: Any, *, limit: int = 220) -> str:
+    text = _truncate(value, limit)
+    lowered = text.lower()
+    blocked_markers = (
+        "fixture",
+        "local mvp",
+        "available evidence",
+        "regularmarket",
+        "longbusinesssummary",
+        "provider key",
+        "raw provider",
+    )
+    if not text or any(marker in lowered for marker in blocked_markers):
+        return ""
+    return text
 
 
 def _join_human_text(values: list[str]) -> str:
