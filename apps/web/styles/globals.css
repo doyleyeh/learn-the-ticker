@@ -380,7 +380,7 @@ label {
 
 .quick-links a,
 .quick-links button,
-.metadata-row span {
+.metadata-row > span {
   display: inline-flex;
   max-width: 100%;
   min-height: 34px;
@@ -1589,6 +1589,25 @@ main[data-prd-source-list-marker] > .plain-panel:last-child {
   cursor: pointer;
 }
 
+.source-icon-disclosure-labeled summary {
+  width: auto;
+  min-width: 82px;
+  height: 34px;
+  grid-auto-flow: column;
+  gap: 6px;
+  padding: 0 12px;
+}
+
+.source-icon-label {
+  font-size: 13px;
+  line-height: 1.1;
+}
+
+.source-icon-symbol {
+  display: inline-grid;
+  place-items: center;
+}
+
 .source-icon-disclosure summary::-webkit-details-marker {
   display: none;
 }
@@ -1734,6 +1753,24 @@ main[data-prd-source-list-marker] > .plain-panel:last-child {
 .source-icon-disclosure:focus-within .compact-citation-popover {
   flex-direction: column;
   flex-wrap: nowrap;
+}
+
+@media (max-width: 680px) {
+  .source-icon-disclosure[open] .source-icon-popover,
+  .source-icon-disclosure:hover .source-icon-popover,
+  .source-icon-disclosure:focus-within .source-icon-popover {
+    position: fixed;
+    z-index: 60;
+    top: 96px;
+    right: 16px;
+    left: 16px;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    max-height: calc(100vh - 128px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
 }
 
 .source-icon-empty {
