@@ -679,6 +679,16 @@ def _etf_quote_summary_payload(ticker: str) -> dict[str, Any]:
             "result": [
                 {
                     "price": {"symbol": ticker, "longName": "Vanguard S&P 500 ETF", "currency": "USD"},
+                    "summaryProfile": {
+                        "longBusinessSummary": (
+                            "The fund manager employs an indexing investment approach designed to track the performance "
+                            "of the Standard & Poor's 500 Index, a widely recognized benchmark of U.S. stock market "
+                            "performance that is dominated by the stocks of large U.S. companies. The advisor attempts "
+                            "to replicate the target index by investing all, or substantially all, of its assets in the "
+                            "stocks that make up the index, holding each stock in approximately the same proportion as "
+                            "its weighting in the index. The fund is non-diversified."
+                        )
+                    },
                     "fundProfile": {
                         "categoryName": "Large Blend",
                         "family": "Vanguard",
@@ -974,6 +984,11 @@ def test_lightweight_stock_fetch_prefers_sec_and_labels_provider_fallback():
     assert "strict_audit_quality_source_approval_not_granted" in promotion["reason_codes"]
 
     overview = build_lightweight_overview_response(response)
+    assert overview.beginner_summary is not None
+    assert "provider-derived company profile" in overview.beginner_summary.what_it_is
+    assert "smartphones, personal computers, tablets" in overview.beginner_summary.what_it_is
+    assert "longBusinessSummary" not in overview.beginner_summary.what_it_is
+    assert "regularMarketPrice" not in overview.beginner_summary.what_it_is
     price_section = next(section for section in overview.sections if section.section_id == "price_chart")
     assert price_section.table is not None
     assert [row.row_id for row in price_section.table.rows] == list(STOCK_QUOTE_STAT_ROW_ORDER)
@@ -1054,8 +1069,14 @@ def test_reviewed_provider_api_adapters_run_before_yahoo_without_secret_exposure
         assert provider_url_indexes
         assert max(provider_url_indexes) < first_yahoo_url
         assert response.diagnostics["fetch_tiers_attempted"] == ["official", "provider_api", "yahoo"]
+        fields = {fact.field_name: fact for fact in response.facts}
         assert "provider_market_price" in response.diagnostics["fields_filled_by_tier"]["provider_api"]
         assert any(source.publisher == expected_publisher for source in response.sources)
+        if provider == "fmp":
+            profile = fields["provider_profile_overview"]
+            assert profile.value["long_business_summary"].startswith("Apple Inc. designs, manufactures, and markets")
+            assert any(source_id.startswith("lw_yahoo_aapl") for source_id in profile.source_document_ids)
+            assert any(source.publisher == "Yahoo Finance" for source in response.sources)
         serialized = str(response.model_dump(mode="json"))
         assert "configured-test-key" not in serialized
         assert "provider payload value" not in serialized.lower()
@@ -1570,6 +1591,8 @@ def test_lightweight_issuer_backed_etf_fetch_builds_supported_page_contracts():
     assert overview.state.status is AssetStatus.supported
     assert overview.beginner_summary is not None
     assert "ETF" in overview.beginner_summary.what_it_is
+    assert "provider-derived fund profile" in overview.beginner_summary.what_it_is
+    assert "indexing investment approach" in overview.beginner_summary.what_it_is
     assert "premium_discount_or_spread" not in " ".join(overview.beginner_summary.model_dump().values())
     assert thin_asset_profile["fund_family"] == "Vanguard"
     assert thin_asset_profile["category"] == "U.S. equity index ETF"

@@ -275,6 +275,8 @@ def _generation_diagnostics_payload(response: Any) -> dict[str, Any]:
         "model_name": getattr(diagnostics, "model_name", None),
         "attempt_count": int(getattr(diagnostics, "attempt_count", 0) or 0),
         "attempted_model_batches": list(getattr(diagnostics, "attempted_model_batches", []) or []),
+        "attempted_models": list(getattr(diagnostics, "attempted_models", []) or []),
+        "skipped_model_cooldowns": list(getattr(diagnostics, "skipped_model_cooldowns", []) or []),
     }
 
 
@@ -928,7 +930,7 @@ def llm_runtime() -> LlmRuntimeDiagnosticsResponse:
         "OPENROUTER_BASE_URL": os.environ.get("OPENROUTER_BASE_URL"),
         "OPENROUTER_FREE_MODEL_ORDER": os.environ.get("OPENROUTER_FREE_MODEL_ORDER"),
         "OPENROUTER_PAID_FALLBACK_MODEL": os.environ.get("OPENROUTER_PAID_FALLBACK_MODEL"),
-        "OPENROUTER_PAID_FALLBACK_ENABLED": os.environ.get("OPENROUTER_PAID_FALLBACK_ENABLED", "true"),
+        "OPENROUTER_PAID_FALLBACK_ENABLED": os.environ.get("OPENROUTER_PAID_FALLBACK_ENABLED", "false"),
         "LLM_VALIDATION_RETRY_COUNT": os.environ.get("LLM_VALIDATION_RETRY_COUNT", "1"),
         "LLM_REASONING_SUMMARY_ONLY": os.environ.get("LLM_REASONING_SUMMARY_ONLY", "true"),
     }

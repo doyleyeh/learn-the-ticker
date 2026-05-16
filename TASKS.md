@@ -1,12 +1,46 @@
 ## Current task
 
-No current task is prepared. T-198 is complete; prepare the next narrow task before implementation.
+No current task is prepared.
 
 ## Backlog
 
 No backlog tasks are currently prepared.
 
 ## Completed
+
+### T-199: Fix rich summary fallback, Weekly News diagnostics, and OpenRouter attempts
+
+Goal:
+Make deterministic Beginner Summary fallback visibly use balanced provider-derived profile context for stocks and ETFs, prevent nested generation diagnostics from crashing Weekly News section states, and move OpenRouter fallback from provider-side multi-model batches to app-side single-model attempts with per-model cooldown diagnostics.
+
+Completion details:
+- Added balanced, sentence-limited provider-derived profile fallback for Beginner Summary across stocks and ETFs, with provider labels and exclusions for raw provider fields, quote/chart/volume/price-target facts, fixture/local wording, and recommendations.
+- Fixed provider-profile merging so a thin reviewed-provider profile, such as FMP, no longer drops richer Yahoo/yfinance `longBusinessSummary` context that arrives later in the provider order.
+- Added summary fallback and provider-profile policy markers to lightweight page/fetch cache signatures so old thin deterministic summaries and stale profile merges do not survive policy changes.
+- Expanded runtime generation diagnostics to safely carry nested values such as `attempted_model_batches: string[][]`, plus attempted models and skipped model cooldowns, through backend and frontend section-state contracts.
+- Replaced OpenRouter provider-side `models` batch fallback with app-controlled single-model attempts using a top-level `model`, per-model 429/timeout cooldown, validation-failure continuation, sanitized reason codes, and paid fallback only when `OPENROUTER_PAID_FALLBACK_ENABLED=true`.
+- Updated env examples, deployment/local-run docs, lightweight data policy, PRD/TDS, EVALS, static evals, and regression tests for provider-derived summary fallback, stable deterministic first render, Weekly News diagnostics, and single-model OpenRouter routing.
+
+Required commands executed:
+- `source scripts/activate_agent_env.sh && npm test` - pass
+- `source scripts/activate_agent_env.sh && npm run typecheck` - pass
+- `source scripts/activate_agent_env.sh && npm run build` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/unit/test_summary_generation.py tests/unit/test_llm_provider.py tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py -q` - pass, 140 passed
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass, 653 backend tests plus static evals, frontend smoke, typecheck, build, and backend checks
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/unit/test_summary_generation.py tests/unit/test_lightweight_data_fetch.py -q` - pass, 59 passed after final provider-profile cache cleanup
+- `LTT_LIVE_AI_SMOKE_ENABLED=true LLM_PROVIDER=openrouter LLM_LIVE_GENERATION_ENABLED=true OPENROUTER_PAID_FALLBACK_ENABLED=false TMPDIR=/tmp python3 scripts/run_live_ai_validation_smoke.py --json` - blocked safely before live calls because `OPENROUTER_API_KEY` was not present in this shell's server-side environment; no secret values were printed and `live_llm_calls_attempted=false`
+- `git diff --check` - pass
+
+Manual browser acceptance:
+- `/assets/AAPL` on the restarted local dev server returns `200`, includes `provider-derived company profile`, includes `smartphones, personal computers, tablets`, and does not show backend-error copy.
+- `/assets/VOO` on the restarted local dev server returns `200`, includes `provider-derived fund profile`, includes `indexing investment approach`, and does not show backend-error copy.
+- `/api/assets/AAPL/weekly-news` returns `200` with Weekly News section state `available`; backend-error UI copy is absent.
+- The local web server was restarted on `http://localhost:3000` with `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000` after validation so the in-app browser can load the live local API render.
+
+Remaining risks:
+- The operator-only live OpenRouter smoke could not make a real provider call in this shell because the server-side key was absent. Unit coverage verifies app-side single-model attempts, per-model rate-limit continuation, validation-failure continuation, paid fallback opt-in, and sanitized diagnostics, but live model availability still depends on the operator's keyed environment and OpenRouter upstream limits.
+- Local live AI sections can still fall back when the selected provider model times out or the global live-generation deadline is exceeded; those states now remain section-local and diagnostic instead of crashing Weekly News.
 
 ### T-198: Fix source popovers, summary fallback, and LLM routing
 

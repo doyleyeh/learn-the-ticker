@@ -52,7 +52,7 @@ import {
   type EconomicIndicatorsPackFixture,
   type WeeklyNewsFocusFixture
 } from "../../../lib/fixtures";
-import { type RuntimeSectionState } from "../../../lib/runtimeSectionStates";
+import { type RuntimeSectionDiagnosticValue, type RuntimeSectionState } from "../../../lib/runtimeSectionStates";
 
 type AssetPageProps = {
   params: Promise<{
@@ -91,7 +91,7 @@ type BackendSectionFetchState = {
   sourceHandoffState: string;
   cacheState: string | null;
   runtimeSectionState?: RuntimeSectionState;
-  diagnostics: Record<string, string | number | boolean | null | string[]>;
+  diagnostics: Record<string, RuntimeSectionDiagnosticValue>;
 };
 
 type BackendSectionFetchSuccess<T> = {

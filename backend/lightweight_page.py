@@ -68,6 +68,7 @@ from backend.models import (
 from backend.generation_evidence import evidence_pack_from_lightweight_response
 from backend.settings import LightweightDataSettings, build_lightweight_data_settings
 from backend.summary_generation import (
+    SUMMARY_FALLBACK_POLICY_VERSION,
     SummaryGenerationContractError,
     build_default_summary_generation_service,
     current_summary_generation_diagnostics,
@@ -716,6 +717,7 @@ def _page_build_generation_signature() -> tuple[tuple[str, str], ...]:
     )
     values = [(name, os.environ.get(name, "")) for name in names]
     values.append(("summary_generation_service_id", str(id(build_default_summary_generation_service))))
+    values.append(("summary_fallback_policy_version", SUMMARY_FALLBACK_POLICY_VERSION))
     values.append(("market_news_builder_id", str(id(build_runtime_market_news_response))))
     return tuple(values)
 

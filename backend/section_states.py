@@ -11,6 +11,7 @@ from backend.models import (
     FreshnessState,
     LightweightApiFallbackDiagnostics,
     RuntimeSectionState,
+    RuntimeDiagnosticValue,
     StateMessage,
 )
 
@@ -34,7 +35,7 @@ def runtime_section_state(
     source_handoff_state: str = "not_applicable",
     cache_state: str | None = None,
     evidence_state: str | EvidenceState | None = None,
-    diagnostics: dict[str, str | int | float | bool | None | list[str]] | None = None,
+    diagnostics: dict[str, RuntimeDiagnosticValue] | None = None,
 ) -> RuntimeSectionState:
     return RuntimeSectionState(
         section_id=section_id,
@@ -61,14 +62,14 @@ def response_section_state(
     freshness_state: str | FreshnessState | None = None,
     evidence_state: str | EvidenceState | None = None,
     cache_state: str | None = None,
-    diagnostics: dict[str, str | int | float | bool | None | list[str]] | None = None,
+    diagnostics: dict[str, RuntimeDiagnosticValue] | None = None,
 ) -> RuntimeSectionState:
     resolved_origin = data_origin or infer_data_origin(response)
     resolved_status = section_status or infer_section_status(response)
     resolved_freshness = freshness_state or infer_freshness_state(response)
     resolved_evidence = evidence_state or infer_evidence_state(response, resolved_status)
     resolved_fallback = fallback_reason or infer_fallback_reason(response, resolved_origin)
-    diagnostic_payload: dict[str, str | int | float | bool | None | list[str]] = {
+    diagnostic_payload: dict[str, RuntimeDiagnosticValue] = {
         "metadata_inferred": True,
         "section_state_schema": "runtime-section-state-v1",
     }

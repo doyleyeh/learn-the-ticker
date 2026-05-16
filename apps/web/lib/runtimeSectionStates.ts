@@ -1,3 +1,5 @@
+export type RuntimeSectionDiagnosticValue = string | number | boolean | null | string[] | string[][];
+
 export type RuntimeSectionState = {
   schemaVersion: "runtime-section-state-v1";
   sectionId: string;
@@ -9,7 +11,7 @@ export type RuntimeSectionState = {
   sourceHandoffState: string;
   cacheState: string | null;
   evidenceState: string | null;
-  diagnostics: Record<string, string | number | boolean | null | string[]>;
+  diagnostics: Record<string, RuntimeSectionDiagnosticValue>;
 };
 
 type BackendRuntimeSectionState = {
@@ -23,7 +25,7 @@ type BackendRuntimeSectionState = {
   source_handoff_state?: string;
   cache_state?: string | null;
   evidence_state?: string | null;
-  diagnostics?: Record<string, string | number | boolean | null | string[]>;
+  diagnostics?: Record<string, RuntimeSectionDiagnosticValue>;
 };
 
 export function runtimeSectionStatesFromPayload(value: unknown): RuntimeSectionState[] {

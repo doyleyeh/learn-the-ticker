@@ -1223,7 +1223,7 @@ Required top-level groups:
 - `ticker_context`: selected ticker Weekly News, canonical fact references, technical context, asset-specific relevance mapping, and evidence thresholds.
 - `evidence_limits`: missing fields, partial states, stale/unavailable labels, source-use constraints, and fallback labels.
 
-Beginner Summary generation may use `asset_profile`, `identity_context`, `exposure_context`, and `evidence_limits`. Deterministic fallback may use a sanitized Yahoo/yfinance-derived `long_business_summary` from normalized provider profile context as provider-derived fallback, not official SEC evidence. It should not receive raw quote/chart/price fields, raw OHLCV series, technical indicators, volume-change values, or raw provider key names unless a field is explicitly needed for identity. Deep Dive may use section-specific profile, exposure, financial, valuation, and risk context, but should not repeat dashboard rows or describe the retrieval pipeline. Market AI may use selected Market News Focus items, Economic Indicators, and allowed numeric facts. Ticker AI may use selected Weekly News Focus items, canonical facts, asset profile/exposure, market context, and technical context only when supplied in the validated pack.
+Beginner Summary generation may use `asset_profile`, `identity_context`, `exposure_context`, and `evidence_limits`. Deterministic fallback may use a balanced, sentence-limited Yahoo/yfinance-derived company or fund summary from normalized provider profile context as provider-derived fallback, not official SEC or issuer evidence. It should not receive raw quote/chart/price fields, raw OHLCV series, technical indicators, volume-change values, price targets, raw provider key names, or fixture/local wording unless a field is explicitly needed for identity. Deep Dive may use section-specific profile, exposure, financial, valuation, and risk context, but should not repeat dashboard rows or describe the retrieval pipeline. Market AI may use selected Market News Focus items, Economic Indicators, and allowed numeric facts. Ticker AI may use selected Weekly News Focus items, canonical facts, asset profile/exposure, market context, and technical context only when supplied in the validated pack.
 
 Prompt validators must reject generated text that leaks internal implementation language or low-value copy, including `fixture`, `local MVP`, `available evidence`, `provider market-reference`, raw provider keys such as `regularMarketPrice`, and "this section uses..." phrasing. Validators must also reject Beginner Summary text that is chart/quote-only, Market AI text that merely counts buckets or repeats headlines, unsupported numeric claims, and technical fields misused as price levels.
 
@@ -1367,10 +1367,10 @@ OpenRouter runtime configuration:
 - `LLM_CHAT_CACHE_TTL_SECONDS=86400`
 - `OPENROUTER_API_KEY`
 - `OPENROUTER_BASE_URL=https://openrouter.ai/api/v1`
-- `OPENROUTER_MODEL` legacy single-model placeholder, blank by default; live structured generation sends the configured fallback chain through the OpenRouter `models` array instead of a top-level `model`
+- `OPENROUTER_MODEL` legacy placeholder, blank by default; live structured generation uses `OPENROUTER_FREE_MODEL_ORDER` as an app-side single-model attempt chain
 - `OPENROUTER_FREE_MODEL_ORDER=openai/gpt-oss-120b:free,google/gemma-4-31b-it:free,qwen/qwen3-next-80b-a3b-instruct:free,meta-llama/llama-3.3-70b-instruct:free`
 - `OPENROUTER_PAID_FALLBACK_MODEL=deepseek/deepseek-v3.2`
-- `OPENROUTER_PAID_FALLBACK_ENABLED=true`
+- `OPENROUTER_PAID_FALLBACK_ENABLED=false` by default; set `true` only after external OpenRouter platform/API-key limits are configured
 - `OPENROUTER_SITE_URL`
 - `OPENROUTER_APP_TITLE=Learn the Ticker`
 
@@ -1380,22 +1380,21 @@ Default live flow:
 
 ```text
 Free model chain
-  -> OpenRouter request body uses app-side batches of at most 3 models with route=fallback
-  -> schema/citation/safety validation
-  -> one repair retry
-  -> remaining free models plus DeepSeek V3.2 paid fallback only when enabled and constrained by OpenRouter platform/API-key limits
-  -> validation again
+  -> one OpenRouter request per model using top-level model
+  -> schema/citation/safety validation per returned payload
+  -> on rate limit, timeout, transport failure, or validation failure, record sanitized model-specific diagnostics and try the next model
+  -> DeepSeek V3.2 paid fallback only as the final model when enabled and constrained by OpenRouter platform/API-key limits
   -> cache only validated output
 ```
 
-OpenRouter requests should use the `models` array for the free chain in this order, but no single request may contain more than three entries:
+OpenRouter requests should use one top-level `model` per attempt in this order:
 
 1. `openai/gpt-oss-120b:free`
 2. `google/gemma-4-31b-it:free`
 3. `qwen/qwen3-next-80b-a3b-instruct:free`
 4. `meta-llama/llama-3.3-70b-instruct:free`
 
-The API plans app-side batches: first the first three free models, then any remaining free models, with `deepseek/deepseek-v3.2` appended only when paid fallback is enabled and the operator has configured external OpenRouter platform/API-key limits. Cooldown opens only after all planned batches fail. Persist selected model, tier `free|paid|mock`, usage, cost, latency, validation result, attempt count, and sanitized attempted model batches when available. Raw model reasoning, `reasoning_details`, hidden prompts, unrestricted source text, and failed raw responses must not be stored or shown. Public responses may expose only a short cited `reasoning_summary`.
+The API plans app-side single-model attempts over the free chain, with `deepseek/deepseek-v3.2` appended only when paid fallback is enabled and the operator has configured external OpenRouter platform/API-key limits. Provider 429 and timeout responses cool down only the affected model; a global cooldown opens only for service-wide failures after usable model attempts fail. Persist selected model, tier `free|paid|mock`, usage, cost, latency, validation result, attempt count, attempted models, skipped model cooldowns, and backward-compatible attempted model batches when available. Raw model reasoning, `reasoning_details`, hidden prompts, unrestricted source text, and failed raw responses must not be stored or shown. Public responses may expose only a short cited `reasoning_summary`.
 
 `openrouter/free` remains an optional manual override for experiments, not the default production strategy.
 
@@ -2484,7 +2483,7 @@ Evaluate generated outputs for:
 - no unsupported price targets
 - correct separation of stable facts from Weekly News Focus and AI Comprehensive Analysis
 - AI Comprehensive Analysis uses only selected Weekly News Focus items and cited canonical facts
-- OpenRouter free-stage requests use app-side `models` batches in the configured order, no request sends more than three models or a top-level `model`, paid fallback appears only when explicitly enabled, and only validated outputs are cached
+- OpenRouter free-stage requests use app-side single-model attempts in the configured order, each request sends one top-level `model` and no `models` array or `route=fallback`, paid fallback appears only when explicitly enabled, and only validated outputs are cached
 - raw `reasoning_details`, hidden prompts, failed raw responses, and unrestricted source text are never persisted or returned; only cited `reasoning_summary` may appear in public responses
 - section labels remain UI labels and are not framed as real people, advisors, or independent sources
 - retrieved source text is treated as untrusted evidence and cannot alter instructions or safety policy
@@ -2602,7 +2601,7 @@ OpenRouter requirements:
 - Require `LLM_LIVE_GENERATION_ENABLED=true` before making live model calls.
 - Capture selected model, tier, usage/cost metadata, latency, validation result, and attempt count where available without logging raw chat transcripts.
 - Keep deterministic mocks for CI and tests.
-- Run one repair retry after free-model validation failure, then use app-side batches for remaining free models plus DeepSeek fallback only when paid fallback is enabled and OpenRouter platform/API-key limits are configured. Fall back to deterministic source-backed partial/unavailable generated sections when all planned attempts fail schema/citation/safety validation.
+- Try the next configured model after free-model validation failure, rate limit, timeout, or transport failure; use DeepSeek fallback only as the final attempt when paid fallback is enabled and OpenRouter platform/API-key limits are configured. Fall back to deterministic source-backed partial/unavailable generated sections when all planned attempts fail schema/citation/safety validation.
 - Never store or show raw model reasoning; expose only cited `reasoning_summary`.
 
 ### 21.3 Environments
