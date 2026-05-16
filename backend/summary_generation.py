@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from contextlib import contextmanager
-from contextvars import ContextVar
+from contextvars import ContextVar, copy_context
 from dataclasses import dataclass, field
 import hashlib
 import json
@@ -58,8 +58,8 @@ from backend.safety import find_forbidden_output_phrases
 
 
 SUMMARY_GENERATION_BOUNDARY = "hybrid-summary-generation-orchestrator-v1"
-SUMMARY_GENERATION_PROMPT_VERSION = "hybrid-summary-generation-prompt-v2"
-SUMMARY_FALLBACK_POLICY_VERSION = "provider-profile-balanced-v2"
+SUMMARY_GENERATION_PROMPT_VERSION = "hybrid-summary-generation-prompt-v3"
+SUMMARY_FALLBACK_POLICY_VERSION = "provider-profile-three-complete-sentences-v3"
 TICKER_AI_ANALYSIS_SCHEMA_VERSION = "ticker-ai-comprehensive-analysis-hybrid-v1"
 CHAT_ANSWER_SCHEMA_VERSION = "grounded-chat-hybrid-answer-v1"
 BEGINNER_SUMMARY_SCHEMA_VERSION = "beginner-summary-hybrid-v1"
@@ -71,7 +71,7 @@ LLM_LIVE_TIMEOUT_SECONDS_ENV = "LLM_LIVE_TIMEOUT_SECONDS"
 LLM_GENERATION_CACHE_TTL_SECONDS_ENV = "LLM_GENERATION_CACHE_TTL_SECONDS"
 LLM_LIVE_FAILURE_COOLDOWN_SECONDS_ENV = "LLM_LIVE_FAILURE_COOLDOWN_SECONDS"
 LLM_LIVE_SLOW_RESPONSE_THRESHOLD_SECONDS_ENV = "LLM_LIVE_SLOW_RESPONSE_THRESHOLD_SECONDS"
-DEFAULT_LIVE_SUMMARY_TIMEOUT_SECONDS = 75
+DEFAULT_LIVE_SUMMARY_TIMEOUT_SECONDS = 180
 DEFAULT_GENERATION_CACHE_TTL_SECONDS = 60 * 60
 DEFAULT_LIVE_FAILURE_COOLDOWN_SECONDS = 60
 DEFAULT_LIVE_SLOW_RESPONSE_THRESHOLD_SECONDS = 30
@@ -177,7 +177,7 @@ _TASK_PROMPT_SPECS: dict[str, dict[str, Any]] = {
             "Synthesize themes across selected stories and macro indicators; do not only count buckets or repeat headlines.",
             "Use Scenario Lens as conditional education, not prediction.",
         ],
-        "schema_hint": "Return a root object with exactly one sections array. Each section must include section_id, label, analysis, bullets, citation_ids, uncertainty, and supporting_claims.",
+        "schema_hint": "Return a root object with exactly one sections array. Each section must include section_id, label, analysis, bullets, citation_ids, and uncertainty. Include supporting_claims when the model can keep them concise and cited.",
     },
     "ticker_ai_comprehensive_analysis": {
         "objective": "Connect ticker Weekly News to canonical facts, market context, macro context, and compact technical context.",
@@ -199,7 +199,7 @@ _TASK_PROMPT_SPECS: dict[str, dict[str, Any]] = {
             "Keep stable asset identity separate from timely context.",
             "Mention technical indicators only as educational context and only when supplied.",
         ],
-        "schema_hint": "Return a root object with exactly one sections array. Each section must include section_id, label, analysis, bullets, citation_ids, uncertainty, and supporting_claims.",
+        "schema_hint": "Return a root object with exactly one sections array. Each section must include section_id, label, analysis, bullets, citation_ids, and uncertainty. Include supporting_claims when the model can keep them concise and cited.",
     },
     "grounded_chat_answer": {
         "objective": "Answer from selected same-asset evidence while preserving required claims.",
@@ -233,6 +233,7 @@ _SUMMARY_GENERATION_CACHE: dict[str, "_SummaryGenerationCacheEntry"] = {}
 _LIVE_GENERATION_CIRCUIT_LOCK = RLock()
 _LIVE_GENERATION_CIRCUIT_OPEN_UNTIL_SECONDS = 0.0
 _LIVE_GENERATION_CIRCUIT_REASON: str | None = None
+_OPENROUTER_MODEL_ATTEMPT_EXCLUSIONS = ContextVar("openrouter_model_attempt_exclusions", default=frozenset())
 _OPENROUTER_MODEL_COOLDOWN_LOCK = RLock()
 _OPENROUTER_MODEL_COOLDOWNS: dict[str, tuple[float, str]] = {}
 
@@ -282,6 +283,7 @@ class _SummaryGenerationCacheEntry:
 
 
 StructuredSummaryGenerator = Callable[[SummaryGenerationRequest], dict[str, Any]]
+LivePayloadValidator = Callable[[dict[str, Any]], None]
 
 
 @dataclass(frozen=True)
@@ -581,14 +583,23 @@ class HybridSummaryGenerationService:
             },
         )
         fallback = {"sections": _market_ai_fallback_sections(focus, all_citations, evidence_pack)}
-        generated = self._payload_or_fallback(request, fallback)
+        generated = self._payload_or_fallback(
+            request,
+            fallback,
+            live_payload_validator=lambda candidate: _validate_market_ai_candidate_payload(
+                candidate,
+                allowed_citations=set(all_citations),
+                selected_titles=[item.title for item in focus.items],
+                generation_evidence_pack=evidence_pack,
+            ),
+        )
         payload = generated.payload
         sections = _market_sections_from_payload(
             payload,
             allowed_citations=set(all_citations),
             selected_titles=[item.title for item in focus.items],
             generation_evidence_pack=evidence_pack,
-            require_supporting_claims=generated.cacheable,
+            require_supporting_claims=False,
         )
         response = MarketAIComprehensiveAnalysisResponse(
             state=WeeklyNewsContractState.available,
@@ -610,7 +621,8 @@ class HybridSummaryGenerationService:
             generation_evidence_pack=evidence_pack,
             copy_quality_task="market_ai_comprehensive_analysis",
         )
-        self._remember_valid_payload(generated)
+        if not generated.cacheable or _collect_supporting_claims(payload):
+            self._remember_valid_payload(generated)
         return response
 
     def generate_ticker_ai_comprehensive_analysis(
@@ -671,14 +683,23 @@ class HybridSummaryGenerationService:
             },
         )
         fallback = {"sections": _ticker_ai_fallback_sections(asset, weekly_news_focus, all_citations, weekly_citations, asset_kind, evidence_pack)}
-        generated = self._payload_or_fallback(request, fallback)
+        generated = self._payload_or_fallback(
+            request,
+            fallback,
+            live_payload_validator=lambda candidate: _validate_ticker_ai_candidate_payload(
+                candidate,
+                allowed_citations=set(all_citations),
+                selected_titles=[item.title for item in weekly_news_focus.items],
+                generation_evidence_pack=evidence_pack,
+            ),
+        )
         payload = generated.payload
         sections = _sections_from_payload(
             payload,
             allowed_citations=set(all_citations),
             selected_titles=[item.title for item in weekly_news_focus.items],
             generation_evidence_pack=evidence_pack,
-            require_supporting_claims=generated.cacheable,
+            require_supporting_claims=False,
         )
         response = AIComprehensiveAnalysisResponse(
             asset=asset,
@@ -700,7 +721,8 @@ class HybridSummaryGenerationService:
             generation_evidence_pack=evidence_pack,
             copy_quality_task="ticker_ai_comprehensive_analysis",
         )
-        self._remember_valid_payload(generated)
+        if not generated.cacheable or _collect_supporting_claims(payload):
+            self._remember_valid_payload(generated)
         return response
 
     def generate_chat_answer(
@@ -762,7 +784,13 @@ class HybridSummaryGenerationService:
         self._remember_valid_payload(generated)
         return answer
 
-    def _payload_or_fallback(self, request: SummaryGenerationRequest, fallback: dict[str, Any]) -> _GeneratedPayload:
+    def _payload_or_fallback(
+        self,
+        request: SummaryGenerationRequest,
+        fallback: dict[str, Any],
+        *,
+        live_payload_validator: LivePayloadValidator | None = None,
+    ) -> _GeneratedPayload:
         live_ready = self.runtime.readiness_status is LlmReadinessStatus.ready_for_explicit_live_call
         model_name = _active_generation_model_name(self.runtime)
         if (
@@ -773,14 +801,20 @@ class HybridSummaryGenerationService:
             cache_key = _summary_generation_cache_key(request, self.runtime)
             cached = _summary_generation_cache_get(cache_key, ttl_seconds=self.cache_ttl_seconds)
             if cached is not None:
-                return _GeneratedPayload(
-                    payload=cached,
-                    diagnostics=GenerationDiagnostics(
-                        attempted_live=True,
-                        used_fallback=False,
-                        model_name=model_name,
-                    ),
-                )
+                if live_payload_validator is not None:
+                    try:
+                        live_payload_validator(cached)
+                    except SummaryGenerationContractError:
+                        cached = None
+                if cached is not None:
+                    return _GeneratedPayload(
+                        payload=cached,
+                        diagnostics=GenerationDiagnostics(
+                            attempted_live=True,
+                            used_fallback=False,
+                            model_name=model_name,
+                        ),
+                    )
             circuit_reason = _live_generation_circuit_reason()
             if circuit_reason:
                 return _GeneratedPayload(
@@ -792,17 +826,61 @@ class HybridSummaryGenerationService:
                         model_name=model_name,
                     ),
                 )
+            started_seconds = time.monotonic()
+            excluded_models: set[str] = set()
+            validation_reason_codes: list[str] = []
+            attempted_model_batches: list[list[str]] = []
+            attempted_models: list[str] = []
+            skipped_model_cooldowns: list[str] = []
             try:
-                started_seconds = time.monotonic()
-                payload = _call_structured_generator_with_deadline(
-                    self.structured_generator,
-                    request,
-                    timeout_seconds=self.live_call_timeout_seconds,
-                )
-                elapsed_seconds = time.monotonic() - started_seconds
-                if isinstance(payload, dict):
+                while True:
+                    remaining_seconds = max(1, int(self.live_call_timeout_seconds - (time.monotonic() - started_seconds)))
+                    token = _OPENROUTER_MODEL_ATTEMPT_EXCLUSIONS.set(frozenset(excluded_models))
+                    try:
+                        payload = _call_structured_generator_with_deadline(
+                            self.structured_generator,
+                            request,
+                            timeout_seconds=remaining_seconds,
+                        )
+                    finally:
+                        _OPENROUTER_MODEL_ATTEMPT_EXCLUSIONS.reset(token)
+                    elapsed_seconds = time.monotonic() - started_seconds
+                    if not isinstance(payload, dict):
+                        raise SummaryGenerationContractError("Structured summary generator returned a non-object payload.")
                     payload = _normalize_live_payload_shape(request, payload)
                     live_metadata = _pop_live_generation_metadata(payload)
+                    metadata_attempted_batches = live_metadata.get("attempted_model_batches") or []
+                    metadata_attempted_models = live_metadata.get("attempted_models") or []
+                    attempted_model_batches = _dedupe_model_batches([*attempted_model_batches, *metadata_attempted_batches])
+                    attempted_models = _dedupe_reason_codes([*attempted_models, *metadata_attempted_models])
+                    skipped_model_cooldowns = _dedupe_reason_codes(
+                        [*skipped_model_cooldowns, *(live_metadata.get("skipped_model_cooldowns") or [])]
+                    )
+                    selected_model_name = live_metadata.get("selected_model_name") or model_name
+                    if live_payload_validator is not None:
+                        try:
+                            live_payload_validator(payload)
+                        except SummaryGenerationContractError as exc:
+                            if not metadata_attempted_models or not selected_model_name:
+                                raise
+                            model_validation_codes = _model_validation_reason_codes(selected_model_name, exc)
+                            validation_reason_codes = _dedupe_reason_codes([*validation_reason_codes, *model_validation_codes])
+                            excluded_models.update(metadata_attempted_models)
+                            if not _openrouter_model_attempt_plan(self.runtime, excluded_models=excluded_models):
+                                return _GeneratedPayload(
+                                    payload=fallback,
+                                    diagnostics=GenerationDiagnostics(
+                                        attempted_live=True,
+                                        used_fallback=True,
+                                        fallback_reason_codes=validation_reason_codes,
+                                        model_name=model_name,
+                                        attempt_count=len(attempted_model_batches) or len(attempted_models) or 1,
+                                        attempted_model_batches=attempted_model_batches,
+                                        attempted_models=attempted_models,
+                                        skipped_model_cooldowns=skipped_model_cooldowns,
+                                    ),
+                                )
+                            continue
                     return _GeneratedPayload(
                         payload=payload,
                         cache_key=cache_key,
@@ -810,37 +888,45 @@ class HybridSummaryGenerationService:
                         diagnostics=GenerationDiagnostics(
                             attempted_live=True,
                             used_fallback=False,
-                            fallback_reason_codes=(
-                                ["live_generation_slow_response"]
-                                if self.live_slow_response_threshold_seconds > 0
-                                and elapsed_seconds >= self.live_slow_response_threshold_seconds
-                                else []
+                            fallback_reason_codes=_dedupe_reason_codes(
+                                [
+                                    *validation_reason_codes,
+                                    *(
+                                        ["live_generation_slow_response"]
+                                        if self.live_slow_response_threshold_seconds > 0
+                                        and elapsed_seconds >= self.live_slow_response_threshold_seconds
+                                        else []
+                                    ),
+                                ]
                             ),
-                            model_name=live_metadata.get("selected_model_name") or model_name,
-                            attempt_count=int(live_metadata.get("attempt_count") or 1),
-                            attempted_model_batches=live_metadata.get("attempted_model_batches") or [],
-                            attempted_models=live_metadata.get("attempted_models") or [],
-                            skipped_model_cooldowns=live_metadata.get("skipped_model_cooldowns") or [],
+                            model_name=selected_model_name,
+                            attempt_count=len(attempted_model_batches) or len(attempted_models) or 1,
+                            attempted_model_batches=attempted_model_batches,
+                            attempted_models=attempted_models,
+                            skipped_model_cooldowns=skipped_model_cooldowns,
                         ),
                     )
-                raise SummaryGenerationContractError("Structured summary generator returned a non-object payload.")
             except TimeoutError as exc:
                 reason_codes = (
                     exc.reason_codes
                     if isinstance(exc, LiveGenerationAttemptError)
                     else ["live_generation_timeout"]
                 )
-                attempted_model_batches = (
+                exc_attempted_model_batches = (
                     exc.attempted_model_batches
                     if isinstance(exc, LiveGenerationAttemptError)
                     else []
                 )
-                attempted_models = exc.attempted_models if isinstance(exc, LiveGenerationAttemptError) else []
-                skipped_model_cooldowns = (
+                exc_attempted_models = exc.attempted_models if isinstance(exc, LiveGenerationAttemptError) else []
+                exc_skipped_model_cooldowns = (
                     exc.skipped_model_cooldowns
                     if isinstance(exc, LiveGenerationAttemptError)
                     else []
                 )
+                reason_codes = _dedupe_reason_codes([*validation_reason_codes, *reason_codes])
+                attempted_model_batches = _dedupe_model_batches([*attempted_model_batches, *exc_attempted_model_batches])
+                attempted_models = _dedupe_reason_codes([*attempted_models, *exc_attempted_models])
+                skipped_model_cooldowns = _dedupe_reason_codes([*skipped_model_cooldowns, *exc_skipped_model_cooldowns])
                 should_open_global_circuit = (
                     exc.open_global_circuit
                     if isinstance(exc, LiveGenerationAttemptError)
@@ -858,7 +944,7 @@ class HybridSummaryGenerationService:
                         used_fallback=True,
                         fallback_reason_codes=reason_codes,
                         model_name=model_name,
-                        attempt_count=len(attempted_model_batches) or 1,
+                        attempt_count=len(attempted_model_batches) or len(attempted_models) or 1,
                         attempted_model_batches=attempted_model_batches,
                         attempted_models=attempted_models,
                         skipped_model_cooldowns=skipped_model_cooldowns,
@@ -1095,7 +1181,8 @@ def _call_structured_generator_with_deadline(
     timeout_seconds: int,
 ) -> dict[str, Any]:
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ltt-live-summary")
-    future = executor.submit(generator, request)
+    context = copy_context()
+    future = executor.submit(context.run, generator, request)
     try:
         payload = future.result(timeout=max(1, int(timeout_seconds)))
     except FutureTimeoutError as exc:
@@ -1365,8 +1452,12 @@ def _openrouter_model_fallback_chain(runtime: LlmRuntimeConfig) -> list[str]:
     return model_names
 
 
-def _openrouter_model_attempt_plan(runtime: LlmRuntimeConfig) -> list[str]:
-    return _dedupe_reason_codes(_openrouter_model_fallback_chain(runtime))
+def _openrouter_model_attempt_plan(runtime: LlmRuntimeConfig, *, excluded_models: Iterable[str] | None = None) -> list[str]:
+    exclusions = {str(model_name) for model_name in (excluded_models or []) if str(model_name)}
+    context_exclusions = _OPENROUTER_MODEL_ATTEMPT_EXCLUSIONS.get()
+    if isinstance(context_exclusions, frozenset):
+        exclusions.update(str(model_name) for model_name in context_exclusions if str(model_name))
+    return [model_name for model_name in _dedupe_reason_codes(_openrouter_model_fallback_chain(runtime)) if model_name not in exclusions]
 
 
 def _openrouter_model_attempt_batches(runtime: LlmRuntimeConfig) -> list[list[str]]:
@@ -1418,9 +1509,8 @@ def _retry_after_seconds_from_headers(headers: Any) -> int | None:
 
 
 def _openrouter_attempt_timeout_seconds(total_timeout_seconds: int, *, attempt_count: int) -> int:
-    if attempt_count <= 1:
-        return max(1, int(total_timeout_seconds))
-    return max(10, int(total_timeout_seconds) // attempt_count)
+    del attempt_count
+    return max(1, int(total_timeout_seconds))
 
 
 def _live_generation_failure_code(response: Any, model_name: str) -> str:
@@ -1466,6 +1556,27 @@ def _is_service_wide_failure(reason_code: str) -> bool:
 
 def _dedupe_reason_codes(codes: list[str]) -> list[str]:
     return list(dict.fromkeys(code for code in codes if code))
+
+
+def _dedupe_model_batches(batches: list[list[str]]) -> list[list[str]]:
+    deduped: list[list[str]] = []
+    seen: set[tuple[str, ...]] = set()
+    for batch in batches:
+        if not isinstance(batch, list) or not all(isinstance(model_name, str) for model_name in batch):
+            continue
+        key = tuple(batch)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(batch)
+    return deduped
+
+
+def _model_validation_reason_codes(model_name: str, exc: SummaryGenerationContractError) -> list[str]:
+    base_codes = summary_generation_reason_codes(exc)
+    codes = [f"structured_output_validation_failed:{model_name}"]
+    codes.extend(f"{code}:{model_name}" for code in base_codes)
+    return _dedupe_reason_codes(codes)
 
 
 def _pop_live_generation_metadata(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1550,7 +1661,7 @@ def _json_schema_for_task(task_name: str) -> dict[str, Any] | None:
         return _object_schema(required=["risks"], properties={"risks": {"type": "array", "items": risk_schema}})
     if task_name in {"market_ai_comprehensive_analysis", "ticker_ai_comprehensive_analysis"}:
         section_schema = _object_schema(
-            required=["section_id", "label", "analysis", "bullets", "citation_ids", "uncertainty", "supporting_claims"],
+            required=["section_id", "label", "analysis", "bullets", "citation_ids", "uncertainty"],
             properties={
                 "section_id": {"type": "string"},
                 "label": {"type": "string"},
@@ -1636,7 +1747,7 @@ def _safe_prompt_payload(request: SummaryGenerationRequest) -> dict[str, Any]:
             "Return only JSON matching the task schema.",
             "Use only supplied evidence and citation ids.",
             "Every factual section, risk, or summary must include citation_ids from the allowed set.",
-            "Every live-generated factual output must include supporting_claims that cite the exact evidence ids used.",
+            "Every live-generated factual output must cite exact evidence ids. Tasks that require supporting_claims must include them; AI analysis sections may use valid section citation_ids when supporting_claims are absent.",
             "Every explicit numeric claim must match allowed_numeric_facts in the generation evidence pack.",
             "Avoid buy/sell/hold, allocation, price-target, prediction, tax, and brokerage advice.",
             "Separate timely news context from stable canonical facts.",
@@ -1670,7 +1781,12 @@ def _beginner_fallback_payload(
     expense = _first_text(identity_context.get("expense_ratio"), notes.get("expense_ratio"))
     fund_family = _first_text(asset_profile.get("fund_family"), identity_context.get("issuer"), getattr(asset, "issuer", None))
     category = _first_text(asset_profile.get("category"))
-    fund_summary = _first_text(asset_profile.get("fund_summary"))
+    fund_summary = _first_text(
+        asset_profile.get("fund_summary"),
+        asset_profile.get("business_summary"),
+        _profile_note_value(notes.get("provider_profile_overview"), "long_business_summary"),
+        _profile_note_value(notes.get("provider_profile_overview"), "business_summary"),
+    )
     sector = _first_text(asset_profile.get("sector"), _profile_note_value(notes.get("provider_profile_overview"), "sector"))
     industry = _first_text(asset_profile.get("industry"), _profile_note_value(notes.get("provider_profile_overview"), "industry"))
     business_summary = _first_text(
@@ -1697,10 +1813,8 @@ def _beginner_fallback_payload(
             if fact_bits
             else base_summary.what_it_is
         )
-        fund_profile_phrase = _safe_profile_summary(fund_summary, limit=520, max_sentences=2)
-        if fund_profile_phrase:
-            fund_profile_phrase = "A provider-derived fund profile says: " + fund_profile_phrase
-        what_it_is = _join_sentences(base_identity, fund_profile_phrase)
+        fund_profile_phrase = _safe_profile_summary(fund_summary, max_sentences=3)
+        what_it_is = fund_profile_phrase or base_identity
         why = (
             f"Beginners can use {asset.ticker} to study how a fund's benchmark, holdings breadth"
             + (", category" if category else "")
@@ -1717,7 +1831,7 @@ def _beginner_fallback_payload(
             + "; this page does not turn the fund into a personal recommendation."
         )
     else:
-        business_phrase = _safe_profile_summary(business_summary, limit=520, max_sentences=2)
+        business_phrase = _safe_profile_summary(business_summary, max_sentences=3)
         sector_phrase = _join_human_text([sector or "", industry or ""])
         official_fact_phrase = (
             " using SEC-filed facts"
@@ -1726,16 +1840,14 @@ def _beginner_fallback_payload(
         )
         identity_bits = _join_human_text([f"in {sector_phrase}" if sector_phrase else ""])
         business_lens = _stock_business_lens_phrase(business_phrase, asset.ticker)
-        what_it_is = (
-            f"{asset.name} ({asset.ticker}) is a single-company stock{official_fact_phrase}"
-            + (f" {identity_bits}." if identity_bits else ".")
-            if (identity_bits or business_phrase)
-            else _join_sentences(base_summary.what_it_is, "SEC facts are preferred when available.")
-        )
         if business_phrase:
-            what_it_is = _join_sentences(
-                what_it_is,
-                "A provider-derived company profile says: " + business_phrase,
+            what_it_is = business_phrase
+        else:
+            what_it_is = (
+                f"{asset.name} ({asset.ticker}) is a single-company stock{official_fact_phrase}"
+                + (f" {identity_bits}." if identity_bits else ".")
+                if identity_bits
+                else _join_sentences(base_summary.what_it_is, "SEC facts are preferred when available.")
             )
         why = (
             (
@@ -2016,6 +2128,50 @@ def _citations_for_market_bucket(focus: MarketNewsFocusResponse, bucket: MarketN
     return sorted({citation_id for item in focus.items if item.topic_bucket is bucket for citation_id in item.citation_ids})
 
 
+def _validate_ticker_ai_candidate_payload(
+    payload: dict[str, Any],
+    *,
+    allowed_citations: set[str],
+    selected_titles: list[str],
+    generation_evidence_pack: dict[str, Any] | None,
+) -> None:
+    sections = _sections_from_payload(
+        payload,
+        allowed_citations=allowed_citations,
+        selected_titles=selected_titles,
+        generation_evidence_pack=generation_evidence_pack,
+        require_supporting_claims=False,
+    )
+    _validate_text_blob(
+        " ".join([section.analysis for section in sections] + [bullet for section in sections for bullet in section.bullets]),
+        weekly_news_rules_valid=True,
+        generation_evidence_pack=generation_evidence_pack,
+        copy_quality_task="ticker_ai_comprehensive_analysis",
+    )
+
+
+def _validate_market_ai_candidate_payload(
+    payload: dict[str, Any],
+    *,
+    allowed_citations: set[str],
+    selected_titles: list[str],
+    generation_evidence_pack: dict[str, Any] | None,
+) -> None:
+    sections = _market_sections_from_payload(
+        payload,
+        allowed_citations=allowed_citations,
+        selected_titles=selected_titles,
+        generation_evidence_pack=generation_evidence_pack,
+        require_supporting_claims=False,
+    )
+    _validate_text_blob(
+        " ".join([section.analysis for section in sections] + [bullet for section in sections for bullet in section.bullets]),
+        weekly_news_rules_valid=True,
+        generation_evidence_pack=generation_evidence_pack,
+        copy_quality_task="market_ai_comprehensive_analysis",
+    )
+
+
 def _sections_from_payload(
     payload: dict[str, Any],
     *,
@@ -2027,8 +2183,7 @@ def _sections_from_payload(
     raw_sections = payload.get("sections")
     if not isinstance(raw_sections, list):
         raise SummaryGenerationContractError("Generated ticker analysis requires a sections array.")
-    if len(raw_sections) != len(_TICKER_AI_SECTION_ORDER):
-        raise SummaryGenerationContractError("Generated ticker analysis returned the wrong section count.")
+    raw_sections = _normalize_analysis_sections(raw_sections, _TICKER_AI_SECTION_ORDER, "ticker")
 
     sections: list[AIComprehensiveAnalysisSection] = []
     for raw, (expected_id, expected_label) in zip(raw_sections, _TICKER_AI_SECTION_ORDER):
@@ -2066,8 +2221,7 @@ def _market_sections_from_payload(
     raw_sections = payload.get("sections")
     if not isinstance(raw_sections, list):
         raise SummaryGenerationContractError("Generated market analysis requires a sections array.")
-    if len(raw_sections) != len(_MARKET_AI_SECTION_ORDER):
-        raise SummaryGenerationContractError("Generated market analysis returned the wrong section count.")
+    raw_sections = _normalize_analysis_sections(raw_sections, _MARKET_AI_SECTION_ORDER, "market")
 
     sections: list[MarketAIAnalysisSection] = []
     for raw, (expected_id, expected_label) in zip(raw_sections, _MARKET_AI_SECTION_ORDER):
@@ -2093,6 +2247,73 @@ def _market_sections_from_payload(
             )
         )
     return sections
+
+
+def _normalize_analysis_sections(
+    raw_sections: list[Any],
+    expected_order: tuple[tuple[str, str], ...],
+    analysis_name: str,
+) -> list[dict[str, Any]]:
+    by_section_id: dict[str, dict[str, Any]] = {}
+    for raw in raw_sections:
+        if not isinstance(raw, dict):
+            raise SummaryGenerationContractError(f"Generated {analysis_name} analysis section must be an object.")
+        canonical_id = _canonical_analysis_section_id(raw, expected_order)
+        if not canonical_id:
+            continue
+        if canonical_id in by_section_id:
+            raise SummaryGenerationContractError(f"Generated {analysis_name} analysis returned duplicate sections.")
+        by_section_id[canonical_id] = raw
+    if set(by_section_id) != {section_id for section_id, _label in expected_order}:
+        raise SummaryGenerationContractError(f"Generated {analysis_name} analysis returned the wrong section count.")
+    normalized: list[dict[str, Any]] = []
+    for expected_id, expected_label in expected_order:
+        raw = dict(by_section_id[expected_id])
+        raw["section_id"] = expected_id
+        raw["label"] = expected_label
+        normalized.append(raw)
+    return normalized
+
+
+def _canonical_analysis_section_id(raw: dict[str, Any], expected_order: tuple[tuple[str, str], ...]) -> str | None:
+    aliases = _analysis_section_aliases(expected_order)
+    for key in ("section_id", "id", "key", "label", "title", "name"):
+        value = raw.get(key)
+        if value is None:
+            continue
+        normalized = _normalize_section_token(value)
+        if normalized in aliases:
+            return aliases[normalized]
+    return None
+
+
+def _analysis_section_aliases(expected_order: tuple[tuple[str, str], ...]) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    for section_id, label in expected_order:
+        aliases[_normalize_section_token(section_id)] = section_id
+        aliases[_normalize_section_token(label)] = section_id
+        label_with_and = label.replace("&", "and").replace("/", " and ")
+        aliases[_normalize_section_token(label_with_and)] = section_id
+        aliases[_normalize_section_token(label_with_and).replace("_and_", "_")] = section_id
+    aliases.update(
+        {
+            "business_context": "business_or_fund_context",
+            "fund_context": "business_or_fund_context",
+            "business_fund_context": "business_or_fund_context",
+            "company_context": "business_or_fund_context",
+            "what_changed": "what_changed_this_week",
+            "this_week": "what_changed_this_week",
+        }
+    )
+    return {alias: section_id for alias, section_id in aliases.items() if section_id in {item[0] for item in expected_order}}
+
+
+def _normalize_section_token(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    text = text.replace("&", " ")
+    text = re.sub(r"[/\\-]+", " ", text)
+    text = re.sub(r"[^a-z0-9]+", "_", text)
+    return text.strip("_")
 
 
 def _risks_from_payload(
@@ -2143,11 +2364,11 @@ def _validate_supporting_claims(
     output_text: str,
     required: bool,
 ) -> None:
-    if not required:
-        return
     supporting_claims = _collect_supporting_claims(payload)
     if not supporting_claims:
-        raise SummaryGenerationContractError("Live generated output requires supporting_claims.")
+        if required:
+            raise SummaryGenerationContractError("Live generated output requires supporting_claims.")
+        return
     evidence = generation_pack_citation_evidence(generation_evidence_pack)
     if not evidence:
         raise SummaryGenerationContractError("Live generated output requires citation evidence.")
@@ -2423,14 +2644,22 @@ def _truncate(value: Any, limit: int = 240) -> str:
     return text[: max(0, limit - 1)].rstrip() + "..."
 
 
-def _safe_profile_summary(value: Any, *, limit: int = 220, max_sentences: int = 2) -> str:
-    text = _sentence_limited_text(value, limit=limit, max_sentences=max_sentences)
+def _safe_profile_summary(value: Any, *, max_sentences: int = 3) -> str:
+    text = _sentence_limited_text(value, max_sentences=max_sentences)
     lowered = text.lower()
     blocked_markers = (
         "fixture",
         "local mvp",
         "available evidence",
         "regularmarket",
+        "regular market price",
+        "current price",
+        "price target",
+        "target price",
+        "trading volume",
+        "share volume",
+        "chart pattern",
+        "technical indicator",
         "longbusinesssummary",
         "provider key",
         "raw provider",
@@ -2440,7 +2669,7 @@ def _safe_profile_summary(value: Any, *, limit: int = 220, max_sentences: int = 
     return text
 
 
-def _sentence_limited_text(value: Any, *, limit: int, max_sentences: int) -> str:
+def _sentence_limited_text(value: Any, *, max_sentences: int) -> str:
     text = " ".join(str(value or "").split())
     if not text:
         return ""
@@ -2450,11 +2679,14 @@ def _sentence_limited_text(value: Any, *, limit: int, max_sentences: int) -> str
         "Co.": "Co<dot>",
         "Ltd.": "Ltd<dot>",
         "U.S.": "U<dot>S<dot>",
+        "U.K.": "U<dot>K<dot>",
+        "S.A.": "S<dot>A<dot>",
+        "N.A.": "N<dot>A<dot>",
     }
     protected = text
     for raw, placeholder in placeholders.items():
         protected = protected.replace(raw, placeholder)
-    sentences = re.findall(r".*?(?:[.!?](?=\s|$)|$)", protected)
+    sentences = re.findall(r"[^.!?]+[.!?](?=\s|$)", protected)
     selected: list[str] = []
     for sentence in sentences:
         clean = sentence.strip()
@@ -2465,8 +2697,7 @@ def _sentence_limited_text(value: Any, *, limit: int, max_sentences: int) -> str
         selected.append(clean)
         if len(selected) >= max(1, max_sentences):
             break
-    candidate = " ".join(selected) if selected else text
-    return _truncate(candidate, limit)
+    return " ".join(selected)
 
 
 

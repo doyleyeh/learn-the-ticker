@@ -331,6 +331,7 @@ For the first demo, live generation may be intentionally enabled because the ope
 
 - Provide `OPENROUTER_API_KEY` through Secret Manager or the server-side process environment only.
 - Set `LLM_PROVIDER=openrouter` and `LLM_LIVE_GENERATION_ENABLED=true`.
+- Use `LLM_LIVE_TIMEOUT_SECONDS=180` for local/operator live AI review and keep frontend `NEXT_PUBLIC_LIVE_SECTION_FETCH_TIMEOUT_MS` above it, for example `240000`, so section-local loaders do not abort before the backend live-generation window.
 - Configure `OPENROUTER_BASE_URL`, `OPENROUTER_FREE_MODEL_ORDER`, `OPENROUTER_PAID_FALLBACK_MODEL`, `OPENROUTER_SITE_URL`, and `OPENROUTER_APP_TITLE` through environment variables.
 - Live structured-generation requests expand `OPENROUTER_FREE_MODEL_ORDER` into app-side single-model attempts. Each OpenRouter request sends one top-level `model`, never a `models` array or `route=fallback`; a rate-limited, timed-out, transport-failed, or validation-failed model records sanitized diagnostics and the app tries the next model.
 - `OPENROUTER_PAID_FALLBACK_MODEL` is appended only as the final single-model attempt when `OPENROUTER_PAID_FALLBACK_ENABLED=true`.

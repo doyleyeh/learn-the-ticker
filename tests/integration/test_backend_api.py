@@ -545,8 +545,9 @@ def test_asset_page_stable_overview_omits_slow_timely_context_but_keeps_generati
     assert body["generation_diagnostics"]["beginner_summary"]["fallback_reason_codes"] == [
         "deterministic_summary_generation"
     ]
-    assert "provider-derived fund profile" in body["beginner_summary"]["what_it_is"]
     assert "indexing investment approach" in body["beginner_summary"]["what_it_is"]
+    assert "provider-derived fund profile" not in body["beginner_summary"]["what_it_is"]
+    assert "..." not in body["beginner_summary"]["what_it_is"]
 
 
 def test_weekly_news_section_states_accept_nested_generation_diagnostics(monkeypatch):

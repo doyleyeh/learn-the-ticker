@@ -108,7 +108,9 @@ Verify:
 - generated Beginner Summary, Deep Dive, Market AI, and ticker AI use curated `generation_context` instead of raw provider payloads
 - OpenRouter live structured-generation requests use app-side single-model attempts with one top-level `model`; no request sends a `models` array or `route=fallback`, model-specific rate limits/timeouts/validation failures do not poison the whole chain, and paid fallback appears only when explicitly enabled
 - generated-section diagnostics do not mask deterministic or timeout fallback as plain success; fallback analysis renders as partial and insufficient-evidence suppression is distinct from backend failure
+- live AI section loaders use a frontend timeout longer than the backend live-generation timeout, and OpenRouter model attempts do not split the 180-second live deadline into short per-model caps
 - Beginner Summary explains the asset in plain English and does not depend on quote, chart, volume, price, or technical-indicator facts unless required for identity
+- deterministic Beginner Summary profile fallback uses the first three complete Yahoo/yfinance-derived provider-profile sentences when available, without generic fixture mixing, mid-sentence ellipses, raw provider keys, quote/chart/volume/price-target facts, or local/fixture wording
 - generated copy does not include internal or low-value wording such as fixtures, local MVP, available evidence, provider market-reference, raw provider keys like `regularMarketPrice`, or "this section uses..." phrasing
 - Market AI synthesizes selected Market News Focus items with Economic Indicators and allowed numeric facts instead of only counting topic buckets or repeating headlines
 - ticker AI connects selected Weekly News to the asset profile, holdings/exposure, market context, and technical context only when those inputs are supplied and validated

@@ -524,7 +524,7 @@ includesAll("app/assets/[ticker]/page.tsx", [
   "data-asset-section-loading-boundary",
   "Beginner Summary generation",
   "source_labeled_live",
-  "DEFAULT_LIVE_SECTION_FETCH_TIMEOUT_MS = 90_000",
+  "DEFAULT_LIVE_SECTION_FETCH_TIMEOUT_MS = 240_000",
   "NEXT_PUBLIC_LIVE_SECTION_FETCH_TIMEOUT_MS",
   "fetchBackendSection",
   "timeout_or_aborted",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Iterable
 
 from backend.analysis_pack_context import build_allowed_numeric_facts
@@ -573,7 +574,7 @@ def _profile_context_fields(profile: dict[str, Any], asset_type: str) -> dict[st
     if asset_type == "etf":
         return _drop_empty(
             {
-                "fund_summary": _truncate(
+                "fund_summary": _complete_sentence_summary(
                     profile.get("long_business_summary")
                     or profile.get("longBusinessSummary")
                     or profile.get("business_summary")
@@ -587,7 +588,7 @@ def _profile_context_fields(profile: dict[str, Any], asset_type: str) -> dict[st
         )
     return _drop_empty(
         {
-            "business_summary": _truncate(
+            "business_summary": _complete_sentence_summary(
                 profile.get("long_business_summary")
                 or profile.get("longBusinessSummary")
                 or profile.get("business_summary")
@@ -1039,6 +1040,36 @@ def _truncate(value: Any, limit: int = MAX_PROMPT_TEXT_CHARS) -> str:
     if len(text) <= limit:
         return text
     return text[: limit - 3].rstrip() + "..."
+
+
+def _complete_sentence_summary(value: Any, *, max_sentences: int = 3) -> str:
+    text = " ".join(str(value or "").split())
+    if not text:
+        return ""
+    placeholders = {
+        "Inc.": "Inc<dot>",
+        "Corp.": "Corp<dot>",
+        "Co.": "Co<dot>",
+        "Ltd.": "Ltd<dot>",
+        "U.S.": "U<dot>S<dot>",
+        "U.K.": "U<dot>K<dot>",
+        "S.A.": "S<dot>A<dot>",
+        "N.A.": "N<dot>A<dot>",
+    }
+    protected = text
+    for raw, placeholder in placeholders.items():
+        protected = protected.replace(raw, placeholder)
+    selected: list[str] = []
+    for sentence in re.findall(r"[^.!?]+[.!?](?=\s|$)", protected):
+        clean = sentence.strip()
+        if not clean:
+            continue
+        for raw, placeholder in placeholders.items():
+            clean = clean.replace(placeholder, raw)
+        selected.append(clean)
+        if len(selected) >= max(1, max_sentences):
+            break
+    return " ".join(selected)
 
 
 def _value(value: Any) -> str:

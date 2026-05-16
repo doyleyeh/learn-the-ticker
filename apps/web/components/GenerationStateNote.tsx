@@ -81,6 +81,9 @@ function generationStateCopy(
     return "Live LLM generation timed out, so this section shows validated deterministic fallback output.";
   }
   if (state === "deterministic_fallback") {
+    if (reasonCodes.some((code) => code.includes("schema_validation") || code.includes("structured_output_validation"))) {
+      return `Live LLM output did not pass structured validation, so validated deterministic fallback output is shown (${reasonCodes.join(", ")}).`;
+    }
     return reasonCodes.length
       ? `Validated deterministic fallback output is shown (${reasonCodes.join(", ")}).`
       : "Validated deterministic fallback output is shown.";

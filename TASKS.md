@@ -8,6 +8,39 @@ No backlog tasks are currently prepared.
 
 ## Completed
 
+### T-200: Fix complete profile summaries and live AI reliability
+
+Goal:
+Use complete Yahoo/yfinance-derived profile sentences for deterministic Beginner Summary fallback, raise coordinated live AI section timeouts, and make live AI validation more tolerant of common free-model section-shape variance while preserving citation, safety, and advice boundaries.
+
+Completion details:
+- Changed deterministic Beginner Summary fallback to use the first three complete provider-profile sentences directly for stocks and ETFs when available, without mixing the generic identity fixture into `What it is`, without raw provider field names, and without sentence-fragment ellipses.
+- Bumped summary-generation prompt/fallback policy markers and provider-profile context handling so stale mixed summaries and pre-truncated provider descriptions do not survive the fallback-copy change.
+- Raised the backend live-generation timeout default to 180 seconds and the frontend live-section fetch timeout default to 240 seconds while preserving fast deterministic stable first render and section-local loading/fallback provenance.
+- Added AI Comprehensive Analysis section normalization that accepts canonical section IDs out of order, repairs canonical labels/order, and allows renderable sections with valid section-level citation IDs even when optional supporting claims are absent.
+- Kept citation, advice, prediction, unsafe-copy, and wrong-asset evidence validation strict, and made validation-failed live model payloads record sanitized per-model diagnostics before trying the next OpenRouter model in the request.
+- Updated generation-state copy, env examples, deployment/local-run docs, lightweight-data policy, PRD/TDS, EVALS, and frontend smoke checks for the three-complete-sentence profile fallback and 180s/240s timeout behavior.
+
+Required commands executed:
+- `source scripts/activate_agent_env.sh && npm test` - pass
+- `source scripts/activate_agent_env.sh && npm run typecheck` - pass
+- `source scripts/activate_agent_env.sh && npm run build` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 -m pytest tests/unit/test_summary_generation.py tests/unit/test_llm_provider.py tests/unit/test_lightweight_data_fetch.py tests/integration/test_backend_api.py -q` - pass, 142 passed
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp python3 evals/run_static_evals.py` - pass
+- `source scripts/activate_agent_env.sh && TMPDIR=/tmp bash scripts/run_quality_gate.sh` - pass, 655 backend tests plus static evals, frontend smoke, typecheck, build, and backend checks
+- `git diff --check` - pass
+
+Manual/browser acceptance:
+- `/assets/AAPL` in the real browser renders Beginner Summary `What it is` from complete Apple profile sentences about products, services, platforms, and customers; the summary section has no provider-field wording and no `...`.
+- `/assets/VOO` in the real browser renders Beginner Summary `What it is` from complete fund-strategy/indexing profile sentences; the summary section has no provider-field wording and no `...`.
+- Stable overview API checks for AAPL and VOO return summaries that end with a real period, contain no ellipsis, and do not include the old provider-derived prefix.
+- `/api/assets/AAPL/weekly-news` and `/api/assets/VOO/weekly-news` return HTTP 200 instead of the earlier backend-error state.
+- Browser console checks for AAPL and VOO reported no errors; the only warning was the local React DevTools Fast Refresh hook warning from the development environment.
+
+Remaining risks:
+- Live OpenRouter availability and final model quality still depend on the operator's server-side key, upstream model latency, and upstream rate limits. The code now gives each model the remaining live-generation deadline, records per-model validation reasons, and continues to the next model when a live payload fails schema/citation/copy validation.
+- The longer-wait UX intentionally keeps live sections pending longer instead of adding background refresh in this task.
+
 ### T-199: Fix rich summary fallback, Weekly News diagnostics, and OpenRouter attempts
 
 Goal:
