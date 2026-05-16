@@ -52,6 +52,7 @@ from backend.weekly_news_repository import WeeklyNewsSourceRankTier
 
 
 LIGHTWEIGHT_FETCH_SCHEMA_VERSION = "lightweight-asset-fetch-v1"
+LIGHTWEIGHT_PROVIDER_PROFILE_POLICY_VERSION = "provider-profile-merge-v2"
 DEFAULT_CHART_RANGE = "6mo"
 SUPPORTED_CHART_RANGES = ("1d", "5d", "1mo", "6mo", "ytd", "1y", "5y", "max")
 CHART_INTERVAL_BY_RANGE = {
@@ -287,6 +288,7 @@ class UrlLibJsonFetcher:
 class _LightweightFetchReuseKey:
     ticker: str
     chart_range: str
+    provider_profile_policy_version: str
     asset_type_hint: str
     data_policy_mode: str
     live_fetch_enabled: bool
@@ -506,6 +508,7 @@ def _lightweight_fetch_reuse_key(
     return _LightweightFetchReuseKey(
         ticker=ticker,
         chart_range=chart_range,
+        provider_profile_policy_version=LIGHTWEIGHT_PROVIDER_PROFILE_POLICY_VERSION,
         asset_type_hint=_asset_type_reuse_hint(ticker),
         data_policy_mode=settings.data_policy_mode,
         live_fetch_enabled=settings.live_fetch_enabled,
@@ -1566,6 +1569,7 @@ def _try_market_provider_fallbacks(
                 yahoo_facts,
                 allowed_fields=allowed_fields,
                 seen_fields=seen_fields,
+                merge_target_facts=facts,
             )
             if yahoo_quote:
                 quote = {**(quote or {}), **yahoo_quote}
@@ -1592,6 +1596,7 @@ def _try_market_provider_fallbacks(
             api_facts,
             allowed_fields=allowed_fields,
             seen_fields=seen_fields,
+            merge_target_facts=facts,
         )
         if api_quote:
             quote = {**(quote or {}), **api_quote}
@@ -1645,8 +1650,10 @@ def _dedupe_provider_results(
     *,
     allowed_fields: set[str] | None,
     seen_fields: set[str],
+    merge_target_facts: list[LightweightFetchFact] | None = None,
 ) -> tuple[list[LightweightFetchSource], list[LightweightFetchFact]]:
     kept_facts: list[LightweightFetchFact] = []
+    merged_source_ids: set[str] = set()
     for fact in facts:
         if allowed_fields is not None and fact.field_name not in allowed_fields:
             continue
@@ -1670,18 +1677,19 @@ def _dedupe_provider_results(
             kept_facts.append(fact)
             continue
         if fact.field_name == "provider_profile_overview" and fact.field_name in seen_fields:
-            _merge_duplicate_provider_profile(kept_facts, fact)
+            if _merge_duplicate_provider_profile(merge_target_facts or kept_facts, fact):
+                merged_source_ids.update(fact.source_document_ids)
             continue
         if fact.field_name != LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD and fact.field_name in seen_fields:
             continue
         if fact.field_name != LIGHTWEIGHT_WEEKLY_NEWS_FACT_FIELD:
             seen_fields.add(fact.field_name)
         kept_facts.append(fact)
-    kept_source_ids = {source_id for fact in kept_facts for source_id in fact.source_document_ids}
+    kept_source_ids = {source_id for fact in kept_facts for source_id in fact.source_document_ids} | merged_source_ids
     return [source for source in sources if source.source_document_id in kept_source_ids], kept_facts
 
 
-def _merge_duplicate_provider_profile(kept_facts: list[LightweightFetchFact], candidate: LightweightFetchFact) -> None:
+def _merge_duplicate_provider_profile(kept_facts: list[LightweightFetchFact], candidate: LightweightFetchFact) -> bool:
     for index, existing in enumerate(kept_facts):
         if existing.field_name != "provider_profile_overview":
             continue
@@ -1702,7 +1710,8 @@ def _merge_duplicate_provider_profile(kept_facts: list[LightweightFetchFact], ca
                 "fallback_used": existing.fallback_used or candidate.fallback_used,
             }
         )
-        return
+        return True
+    return False
 
 
 def _dedupe_values(values: list[Any]) -> list[Any]:

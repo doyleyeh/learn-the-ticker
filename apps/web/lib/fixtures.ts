@@ -271,6 +271,8 @@ export type GenerationDiagnostics = {
   modelName?: string | null;
   attemptCount?: number;
   attemptedModelBatches?: string[][];
+  attemptedModels?: string[];
+  skippedModelCooldowns?: string[];
 };
 
 export type EconomicIndicatorItem = {

@@ -37,6 +37,8 @@ openrouter_free_model_order:
   - meta-llama/llama-3.3-70b-instruct:free
 
 paid_fallback_model: deepseek/deepseek-v3.2
+paid_fallback_enabled_default: false
+paid_fallback_enabled_opt_in: true
 
 fallback_triggers:
   - free_chain_error

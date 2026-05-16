@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,12 @@ from backend.market_news import fixture_market_news_candidates, select_market_ne
 from backend.models import (
     BeginnerSummary,
     FreshnessState,
+    LlmProviderKind,
+    LlmTransportMode,
+    LlmTransportResponseMetadata,
+    LlmTransportRetryability,
+    LlmTransportResult,
+    LlmTransportStatus,
     RiskItem,
     SourceAllowlistStatus,
     SourceQuality,
@@ -151,6 +158,7 @@ def test_beginner_summary_fallback_uses_curated_provider_profile_summary_for_etf
     )
 
     assert "broad exposure to large U.S. companies" in summary.what_it_is
+    assert "provider-derived fund profile" in summary.what_it_is
     assert "longBusinessSummary" not in summary.what_it_is
     assert "fixture" not in summary.what_it_is.lower()
 
@@ -184,6 +192,7 @@ def test_beginner_summary_fallback_uses_yahoo_business_summary_for_stocks():
     )
 
     joined = " ".join(summary.model_dump().values())
+    assert "provider-derived company profile" in summary.what_it_is
     assert "smartphones, personal computers, tablets" in summary.what_it_is
     assert "products, services, customers, and business model" in summary.why_people_consider_it
     assert "longBusinessSummary" not in joined
@@ -954,9 +963,12 @@ def test_summary_generation_module_stays_deterministic_without_network_clients()
         assert forbidden not in source
 
 
-def test_openrouter_attempt_planner_caps_request_models_and_batches_paid_fallback():
-    runtime = _ready_runtime()
-    batches = summary_generation_module._openrouter_model_attempt_batches(runtime)
+def test_openrouter_attempt_planner_uses_single_model_attempts_and_paid_fallback_only_when_enabled():
+    runtime = build_llm_runtime_config(
+        {**default_openrouter_settings(), "OPENROUTER_PAID_FALLBACK_ENABLED": "true"},
+        server_side_key_present=True,
+    )
+    plan = summary_generation_module._openrouter_model_attempt_plan(runtime)
     request = SummaryGenerationRequest(
         task_name="beginner_summary",
         schema_version="beginner-summary-test-v1",
@@ -964,25 +976,22 @@ def test_openrouter_attempt_planner_caps_request_models_and_batches_paid_fallbac
         payload={},
     )
 
-    assert batches == [
-        list(DEFAULT_OPENROUTER_FREE_MODEL_ORDER[:3]),
-        [DEFAULT_OPENROUTER_FREE_MODEL_ORDER[3], DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL],
-    ]
+    assert plan == [*DEFAULT_OPENROUTER_FREE_MODEL_ORDER, DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL]
+    assert summary_generation_module._openrouter_model_attempt_batches(runtime) == [[model] for model in plan]
 
-    for batch in batches:
+    for model_name in plan:
         body = summary_generation_module._openrouter_chat_completion_body(
             request,
             summary_generation_module._safe_prompt_payload(request),
             runtime,
-            model_names=batch,
+            model_name=model_name,
         )
-        assert len(body["models"]) <= summary_generation_module.OPENROUTER_MAX_MODELS_PER_REQUEST
-        assert body["models"] == batch
-        assert body["route"] == "fallback"
-        assert "model" not in body
+        assert body["model"] == model_name
+        assert "models" not in body
+        assert "route" not in body
 
 
-def test_openrouter_live_body_uses_first_capped_free_batch_without_single_model():
+def test_openrouter_live_body_uses_first_free_model_without_provider_fallback_route():
     runtime = _ready_runtime()
     request = SummaryGenerationRequest(
         task_name="beginner_summary",
@@ -997,9 +1006,9 @@ def test_openrouter_live_body_uses_first_capped_free_batch_without_single_model(
         runtime,
     )
 
-    assert body["models"] == list(DEFAULT_OPENROUTER_FREE_MODEL_ORDER[:3])
-    assert body["route"] == "fallback"
-    assert "model" not in body
+    assert body["model"] == DEFAULT_OPENROUTER_FREE_MODEL_ORDER[0]
+    assert "models" not in body
+    assert "route" not in body
     assert body["response_format"]["type"] == "json_schema"
     assert body["response_format"]["json_schema"]["schema"]["required"] == [
         "what_it_is",
@@ -1010,10 +1019,7 @@ def test_openrouter_live_body_uses_first_capped_free_batch_without_single_model(
 
 
 def test_openrouter_live_body_omits_paid_fallback_when_disabled():
-    runtime = build_llm_runtime_config(
-        {**default_openrouter_settings(), "OPENROUTER_PAID_FALLBACK_ENABLED": "false"},
-        server_side_key_present=True,
-    )
+    runtime = _ready_runtime()
     request = SummaryGenerationRequest(
         task_name="deep_dive_summary",
         schema_version="deep-dive-test-v1",
@@ -1021,20 +1027,97 @@ def test_openrouter_live_body_omits_paid_fallback_when_disabled():
         payload={},
     )
 
-    batches = summary_generation_module._openrouter_model_attempt_batches(runtime)
-    assert batches == [list(DEFAULT_OPENROUTER_FREE_MODEL_ORDER[:3]), [DEFAULT_OPENROUTER_FREE_MODEL_ORDER[3]]]
+    plan = summary_generation_module._openrouter_model_attempt_plan(runtime)
+    assert plan == list(DEFAULT_OPENROUTER_FREE_MODEL_ORDER)
 
-    for batch in batches:
+    for model_name in plan:
         body = summary_generation_module._openrouter_chat_completion_body(
             request,
             summary_generation_module._safe_prompt_payload(request),
             runtime,
-            model_names=batch,
+            model_name=model_name,
         )
-        assert len(body["models"]) <= summary_generation_module.OPENROUTER_MAX_MODELS_PER_REQUEST
-        assert body["models"] == batch
-        assert DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL not in body["models"]
-        assert "model" not in body
+        assert body["model"] == model_name
+        assert body["model"] != DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL
+        assert "models" not in body
+        assert "route" not in body
+
+
+def test_openrouter_live_generator_continues_after_model_rate_limit(monkeypatch: pytest.MonkeyPatch):
+    clear_summary_generation_live_circuit()
+    bad_model = DEFAULT_OPENROUTER_FREE_MODEL_ORDER[0]
+    good_model = DEFAULT_OPENROUTER_FREE_MODEL_ORDER[1]
+    runtime = build_llm_runtime_config(
+        {
+            **default_openrouter_settings(),
+            "OPENROUTER_FREE_MODEL_ORDER": f"{bad_model},{good_model}",
+            "OPENROUTER_PAID_FALLBACK_ENABLED": "false",
+        },
+        server_side_key_present=True,
+    )
+    env = {
+        **default_openrouter_settings(),
+        "OPENROUTER_API_KEY": "placeholder-local-key",
+        "OPENROUTER_FREE_MODEL_ORDER": f"{bad_model},{good_model}",
+        "OPENROUTER_PAID_FALLBACK_ENABLED": "false",
+    }
+    calls: list[str] = []
+
+    def fake_transport(**kwargs: Any) -> LlmTransportResult:
+        model_name = str(kwargs["sanitized_diagnostics"]["model_name"])
+        calls.append(model_name)
+        if model_name == bad_model:
+            return LlmTransportResult(
+                response=LlmTransportResponseMetadata(
+                    provider_kind=LlmProviderKind.openrouter,
+                    status=LlmTransportStatus.retryable_provider_error,
+                    retryability=LlmTransportRetryability.retryable,
+                    diagnostic_code="provider_rate_limited",
+                    request_mode=LlmTransportMode.json_mode,
+                    model_name=model_name,
+                    provider_status="http_429",
+                    sanitized_diagnostics={"retry_after_seconds": 15},
+                ),
+                content=None,
+            )
+        return LlmTransportResult(
+            response=LlmTransportResponseMetadata(
+                provider_kind=LlmProviderKind.openrouter,
+                status=LlmTransportStatus.succeeded,
+                retryability=LlmTransportRetryability.not_applicable,
+                diagnostic_code="ok",
+                request_mode=LlmTransportMode.json_mode,
+                model_name=model_name,
+                provider_status="ok",
+            ),
+            content=json.dumps(
+                {
+                    "what_it_is": "Live summary explains the asset with cited educational context.",
+                    "why_people_consider_it": "Beginners can use it to connect source-backed facts to plain-English context.",
+                    "main_catch": "Evidence can be incomplete, so limitations stay visible.",
+                    "supporting_claims": [],
+                }
+            ),
+        )
+
+    monkeypatch.setattr(summary_generation_module, "call_openrouter_transport", fake_transport)
+    generator = summary_generation_module._live_structured_generator_from_env(env, runtime, timeout_seconds=30)
+    payload = generator(
+        SummaryGenerationRequest(
+            task_name="beginner_summary",
+            schema_version="beginner-summary-test-v1",
+            asset_ticker="VOO",
+            payload={},
+        )
+    )
+
+    metadata = payload.pop(summary_generation_module._LIVE_GENERATION_METADATA_KEY)
+    assert calls == [bad_model, good_model]
+    assert metadata["selected_model_name"] == good_model
+    assert metadata["attempted_models"] == [bad_model, good_model]
+    assert metadata["attempted_model_batches"] == [[bad_model], [good_model]]
+    assert summary_generation_module._live_generation_circuit_reason() is None
+    clear_summary_generation_live_circuit()
 
 
 def _ready_runtime():

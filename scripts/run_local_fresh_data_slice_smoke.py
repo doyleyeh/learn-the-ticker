@@ -919,6 +919,18 @@ def _stock_quote_summary(ticker: str, quote: QuoteFixture) -> dict[str, Any]:
 def _etf_quote_summary(ticker: str, quote: QuoteFixture) -> dict[str, Any]:
     return {
         "price": {"symbol": ticker, "longName": quote.name, "currency": "USD"},
+        "summaryProfile": {
+            "longBusinessSummary": (
+                "The fund manager employs an indexing investment approach designed to track the performance "
+                "of the Standard & Poor's 500 Index, a widely recognized benchmark of U.S. stock market "
+                "performance that is dominated by the stocks of large U.S. companies. The advisor attempts "
+                "to replicate the target index by investing all, or substantially all, of its assets in the "
+                "stocks that make up the index, holding each stock in approximately the same proportion as "
+                "its weighting in the index."
+            )
+            if ticker == "VOO"
+            else f"{quote.name} provider fund profile summary fixture.",
+        },
         "fundProfile": {
             "categoryName": "Large Blend" if ticker in {"VOO", "SPY"} else "Large Growth",
             "family": "Vanguard" if ticker in {"VOO", "VTI"} else "State Street" if ticker == "XLK" else "Invesco",

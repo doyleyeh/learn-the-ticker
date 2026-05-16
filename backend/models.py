@@ -7,6 +7,9 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+RuntimeDiagnosticValue = str | int | float | bool | None | list[str] | list[list[str]]
+
+
 class AssetType(str, Enum):
     stock = "stock"
     etf = "etf"
@@ -658,7 +661,7 @@ class RuntimeSectionState(BaseModel):
     source_handoff_state: str = "not_applicable"
     cache_state: str | None = None
     evidence_state: str | None = None
-    diagnostics: dict[str, str | int | float | bool | None | list[str]] = Field(default_factory=dict)
+    diagnostics: dict[str, RuntimeDiagnosticValue] = Field(default_factory=dict)
 
 
 class SearchBlockedCapabilityFlags(BaseModel):
@@ -2425,6 +2428,8 @@ class GenerationDiagnostics(BaseModel):
     model_name: str | None = None
     attempt_count: int = 0
     attempted_model_batches: list[list[str]] = Field(default_factory=list)
+    attempted_models: list[str] = Field(default_factory=list)
+    skipped_model_cooldowns: list[str] = Field(default_factory=list)
 
 
 class AIComprehensiveAnalysisResponse(BaseModel):

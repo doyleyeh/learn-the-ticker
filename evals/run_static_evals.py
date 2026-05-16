@@ -2647,11 +2647,19 @@ def test_llm_provider_cases():
     assert tuple(data["openrouter_free_model_order"]) == DEFAULT_OPENROUTER_FREE_MODEL_ORDER
     assert enabled_openrouter.paid_fallback_model is not None
     assert enabled_openrouter.paid_fallback_model.model_name == data["paid_fallback_model"]
+    assert enabled_openrouter.paid_fallback_enabled is data["paid_fallback_enabled_default"]
     assert DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL == data["paid_fallback_model"]
     assert enabled_openrouter.live_network_calls_allowed is False
+    paid_enabled_openrouter = build_llm_runtime_config(
+        {
+            **default_openrouter_settings(),
+            "OPENROUTER_PAID_FALLBACK_ENABLED": str(data["paid_fallback_enabled_opt_in"]).lower(),
+        },
+        server_side_key_present=True,
+    )
 
     fallback = decide_paid_fallback(
-        runtime=enabled_openrouter,
+        runtime=paid_enabled_openrouter,
         trigger=LlmFallbackTrigger.validation_failed_after_repair,
         current_tier=LlmModelTier.free,
         repair_attempt_count=1,

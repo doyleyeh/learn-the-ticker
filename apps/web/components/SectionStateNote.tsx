@@ -1,3 +1,5 @@
+import type { RuntimeSectionDiagnosticValue } from "../lib/runtimeSectionStates";
+
 export type SectionStateForDisplay = {
   sectionId: string;
   label: string;
@@ -11,7 +13,7 @@ export type SectionStateForDisplay = {
   freshnessState: string | null;
   sourceHandoffState: string;
   cacheState: string | null;
-  diagnostics: Record<string, string | number | boolean | null | string[]>;
+  diagnostics: Record<string, RuntimeSectionDiagnosticValue>;
 };
 
 type SectionStateNoteProps = {

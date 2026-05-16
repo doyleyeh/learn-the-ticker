@@ -201,6 +201,13 @@ def _parse_provider_response(
     provider_status = _provider_status(status_code)
     if status_code is not None and status_code >= 400:
         retryable = status_code == 429 or status_code >= 500
+        diagnostic_code = (
+            "provider_rate_limited"
+            if status_code == 429
+            else "retryable_provider_error"
+            if retryable
+            else "nonretryable_provider_error"
+        )
         return _result_from_status(
             request=request,
             status=(
@@ -213,13 +220,10 @@ def _parse_provider_response(
                 if retryable
                 else LlmTransportRetryability.nonretryable
             ),
-            diagnostic_code=(
-                "retryable_provider_error"
-                if retryable
-                else "nonretryable_provider_error"
-            ),
+            diagnostic_code=diagnostic_code,
             provider_status=provider_status,
             latency_ms=_int_or_none(provider_response.get("latency_ms")),
+            sanitized_diagnostics=_retry_after_diagnostics(provider_response),
         )
 
     body = provider_response.get("json")
@@ -299,6 +303,7 @@ def _result_from_status(
     provider_status: str | None,
     finish_reason: str | None = None,
     latency_ms: int | None = None,
+    sanitized_diagnostics: Mapping[str, Any] | None = None,
 ) -> LlmTransportResult:
     active_model = request.active_model
     return LlmTransportResult(
@@ -317,11 +322,17 @@ def _result_from_status(
             sanitized_diagnostics={
                 "diagnostic_code": diagnostic_code,
                 "content_present": False,
+                **_sanitize_diagnostics(sanitized_diagnostics),
             },
         ),
         content=None,
         no_live_external_calls=True,
     )
+
+
+def _retry_after_diagnostics(provider_response: Mapping[str, Any]) -> dict[str, int]:
+    retry_after = _int_or_none(provider_response.get("retry_after_seconds"))
+    return {"retry_after_seconds": retry_after} if retry_after is not None and retry_after > 0 else {}
 
 
 def _transport_mode(value: LlmTransportMode | str) -> LlmTransportMode:

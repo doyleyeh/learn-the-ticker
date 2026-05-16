@@ -119,7 +119,10 @@ def _mocked_transport(content: str, *, model: str = DEFAULT_OPENROUTER_FREE_MODE
 
 
 def _ready_openrouter_runtime():
-    return build_llm_runtime_config(default_openrouter_settings(), server_side_key_present=True)
+    return build_llm_runtime_config(
+        {**default_openrouter_settings(), "OPENROUTER_PAID_FALLBACK_ENABLED": "true"},
+        server_side_key_present=True,
+    )
 
 
 def _live_ai_smoke_transport_factory(*, invalid_analysis: bool = False, invalid_chat_scope: bool = False):
@@ -224,6 +227,7 @@ def test_openrouter_gate_requires_flag_key_presence_and_endpoint_model_settings(
     assert [model.order for model in enabled.configured_model_chain] == [1, 2, 3, 4]
     assert all(model.tier is LlmModelTier.free for model in enabled.configured_model_chain)
     assert enabled.paid_fallback_model is not None
+    assert enabled.paid_fallback_enabled is False
     assert enabled.paid_fallback_model.model_name == DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL
     assert enabled.paid_fallback_model.tier is LlmModelTier.paid
     assert enabled.paid_fallback_model.order == 5
@@ -471,7 +475,10 @@ def test_openrouter_readiness_distinguishes_missing_endpoint_models_and_validati
 
 
 def test_paid_fallback_metadata_requires_free_chain_or_validation_failure_trigger():
-    runtime = build_llm_runtime_config(default_openrouter_settings(), server_side_key_present=True)
+    runtime = build_llm_runtime_config(
+        {**default_openrouter_settings(), "OPENROUTER_PAID_FALLBACK_ENABLED": "true"},
+        server_side_key_present=True,
+    )
     validation_fallback = decide_paid_fallback(
         runtime=runtime,
         trigger=LlmFallbackTrigger.validation_failed_after_repair,
@@ -1106,6 +1113,7 @@ def test_openrouter_transport_classifies_mocked_provider_failures_and_timeouts()
 
     assert retryable_error.response.status is LlmTransportStatus.retryable_provider_error
     assert retryable_error.response.retryability is LlmTransportRetryability.retryable
+    assert retryable_error.response.diagnostic_code == "provider_rate_limited"
     assert retryable_error.response.provider_status == "http_429"
     assert retryable_error.response.latency_ms == 9
     assert nonretryable_error.response.status is LlmTransportStatus.nonretryable_provider_error

@@ -332,7 +332,8 @@ For the first demo, live generation may be intentionally enabled because the ope
 - Provide `OPENROUTER_API_KEY` through Secret Manager or the server-side process environment only.
 - Set `LLM_PROVIDER=openrouter` and `LLM_LIVE_GENERATION_ENABLED=true`.
 - Configure `OPENROUTER_BASE_URL`, `OPENROUTER_FREE_MODEL_ORDER`, `OPENROUTER_PAID_FALLBACK_MODEL`, `OPENROUTER_SITE_URL`, and `OPENROUTER_APP_TITLE` through environment variables.
-- Live structured-generation requests send app-side `models` batches from `OPENROUTER_FREE_MODEL_ORDER` with `route=fallback`; no request sends more than three models or a single top-level `model`. `OPENROUTER_PAID_FALLBACK_MODEL` is appended only to the final planned batch when `OPENROUTER_PAID_FALLBACK_ENABLED=true`.
+- Live structured-generation requests expand `OPENROUTER_FREE_MODEL_ORDER` into app-side single-model attempts. Each OpenRouter request sends one top-level `model`, never a `models` array or `route=fallback`; a rate-limited, timed-out, transport-failed, or validation-failed model records sanitized diagnostics and the app tries the next model.
+- `OPENROUTER_PAID_FALLBACK_MODEL` is appended only as the final single-model attempt when `OPENROUTER_PAID_FALLBACK_ENABLED=true`.
 - Configure OpenRouter platform/API-key spend and rate limits outside the repo before enabling paid fallback.
 - Cache only validated outputs.
 - Never store or show raw model reasoning, hidden prompts, unrestricted source text, failed raw responses, or provider secrets.

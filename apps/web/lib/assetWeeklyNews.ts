@@ -136,6 +136,8 @@ type BackendGenerationDiagnostics = {
   model_name: string | null;
   attempt_count?: number;
   attempted_model_batches?: string[][];
+  attempted_models?: string[];
+  skipped_model_cooldowns?: string[];
 };
 
 type BackendWeeklyNewsResponse = {
@@ -421,6 +423,10 @@ function toGenerationDiagnostics(
     attemptCount: typeof diagnostics.attempt_count === "number" ? diagnostics.attempt_count : 0,
     attemptedModelBatches: Array.isArray(diagnostics.attempted_model_batches)
       ? diagnostics.attempted_model_batches
+      : [],
+    attemptedModels: Array.isArray(diagnostics.attempted_models) ? diagnostics.attempted_models : [],
+    skippedModelCooldowns: Array.isArray(diagnostics.skipped_model_cooldowns)
+      ? diagnostics.skipped_model_cooldowns
       : []
   };
 }

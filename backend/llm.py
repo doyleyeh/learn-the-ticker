@@ -131,7 +131,7 @@ def build_llm_runtime_config(
     base_url = _setting(settings, "OPENROUTER_BASE_URL")
     free_model_order = _model_order(_setting(settings, "OPENROUTER_FREE_MODEL_ORDER"))
     paid_fallback_model_name = _setting(settings, "OPENROUTER_PAID_FALLBACK_MODEL")
-    paid_fallback_enabled = _bool_setting(settings, "OPENROUTER_PAID_FALLBACK_ENABLED", True)
+    paid_fallback_enabled = _bool_setting(settings, "OPENROUTER_PAID_FALLBACK_ENABLED", False)
     base_url_configured = bool(base_url)
     model_chain_configured = bool(free_model_order)
     paid_fallback_configured = bool(paid_fallback_model_name)
@@ -201,7 +201,7 @@ def default_openrouter_settings() -> dict[str, str]:
         "OPENROUTER_BASE_URL": DEFAULT_OPENROUTER_BASE_URL,
         "OPENROUTER_FREE_MODEL_ORDER": ",".join(DEFAULT_OPENROUTER_FREE_MODEL_ORDER),
         "OPENROUTER_PAID_FALLBACK_MODEL": DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL,
-        "OPENROUTER_PAID_FALLBACK_ENABLED": "true",
+        "OPENROUTER_PAID_FALLBACK_ENABLED": "false",
         "LLM_VALIDATION_RETRY_COUNT": str(DEFAULT_VALIDATION_RETRY_COUNT),
         "LLM_REASONING_SUMMARY_ONLY": "true",
     }

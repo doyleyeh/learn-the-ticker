@@ -338,7 +338,7 @@ Prerequisites:
 - `LLM_PROVIDER=openrouter`
 - `LLM_LIVE_GENERATION_ENABLED=true`
 - server-side `OPENROUTER_API_KEY` presence in the operator shell, without echoing or pasting the value into logs
-- OpenRouter base URL, free model chain, paid fallback model metadata, validation retry count, and `LLM_REASONING_SUMMARY_ONLY=true` remain configured server-side
+- OpenRouter base URL, free model chain, paid fallback model metadata, validation retry count, and `LLM_REASONING_SUMMARY_ONLY=true` remain configured server-side; live generation sends one top-level `model` per request and the app controls fallback/cooldown between models
 - source evidence remains fixture-safe or already source-governed; this command is validation, not source approval
 
 Command:

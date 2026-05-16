@@ -39,6 +39,8 @@ from backend.models import (
     AssetIdentity,
     BeginnerSummary,
     GenerationDiagnostics,
+    LlmModelDescriptor,
+    LlmModelTier,
     LlmReadinessStatus,
     LlmRuntimeConfig,
     LlmTransportMode,
@@ -57,6 +59,7 @@ from backend.safety import find_forbidden_output_phrases
 
 SUMMARY_GENERATION_BOUNDARY = "hybrid-summary-generation-orchestrator-v1"
 SUMMARY_GENERATION_PROMPT_VERSION = "hybrid-summary-generation-prompt-v2"
+SUMMARY_FALLBACK_POLICY_VERSION = "provider-profile-balanced-v2"
 TICKER_AI_ANALYSIS_SCHEMA_VERSION = "ticker-ai-comprehensive-analysis-hybrid-v1"
 CHAT_ANSWER_SCHEMA_VERSION = "grounded-chat-hybrid-answer-v1"
 BEGINNER_SUMMARY_SCHEMA_VERSION = "beginner-summary-hybrid-v1"
@@ -72,7 +75,6 @@ DEFAULT_LIVE_SUMMARY_TIMEOUT_SECONDS = 75
 DEFAULT_GENERATION_CACHE_TTL_SECONDS = 60 * 60
 DEFAULT_LIVE_FAILURE_COOLDOWN_SECONDS = 60
 DEFAULT_LIVE_SLOW_RESPONSE_THRESHOLD_SECONDS = 30
-OPENROUTER_MAX_MODELS_PER_REQUEST = 3
 _LIVE_GENERATION_METADATA_KEY = "__learn_the_ticker_live_generation_metadata"
 DEFAULT_LIVE_GENERATION_TASK_ALLOWLIST = frozenset(
     {
@@ -231,6 +233,8 @@ _SUMMARY_GENERATION_CACHE: dict[str, "_SummaryGenerationCacheEntry"] = {}
 _LIVE_GENERATION_CIRCUIT_LOCK = RLock()
 _LIVE_GENERATION_CIRCUIT_OPEN_UNTIL_SECONDS = 0.0
 _LIVE_GENERATION_CIRCUIT_REASON: str | None = None
+_OPENROUTER_MODEL_COOLDOWN_LOCK = RLock()
+_OPENROUTER_MODEL_COOLDOWNS: dict[str, tuple[float, str]] = {}
 
 
 class SummaryGenerationContractError(ValueError):
@@ -238,10 +242,21 @@ class SummaryGenerationContractError(ValueError):
 
 
 class LiveGenerationAttemptError(TimeoutError):
-    def __init__(self, reason_codes: list[str], attempted_model_batches: list[list[str]]) -> None:
+    def __init__(
+        self,
+        reason_codes: list[str],
+        attempted_model_batches: list[list[str]],
+        *,
+        attempted_models: list[str] | None = None,
+        skipped_model_cooldowns: list[str] | None = None,
+        open_global_circuit: bool = False,
+    ) -> None:
         super().__init__(",".join(reason_codes) or "live_summary_generation_unavailable")
         self.reason_codes = reason_codes
         self.attempted_model_batches = attempted_model_batches
+        self.attempted_models = attempted_models or []
+        self.skipped_model_cooldowns = skipped_model_cooldowns or []
+        self.open_global_circuit = open_global_circuit
 
 
 @dataclass(frozen=True)
@@ -804,6 +819,8 @@ class HybridSummaryGenerationService:
                             model_name=live_metadata.get("selected_model_name") or model_name,
                             attempt_count=int(live_metadata.get("attempt_count") or 1),
                             attempted_model_batches=live_metadata.get("attempted_model_batches") or [],
+                            attempted_models=live_metadata.get("attempted_models") or [],
+                            skipped_model_cooldowns=live_metadata.get("skipped_model_cooldowns") or [],
                         ),
                     )
                 raise SummaryGenerationContractError("Structured summary generator returned a non-object payload.")
@@ -818,10 +835,22 @@ class HybridSummaryGenerationService:
                     if isinstance(exc, LiveGenerationAttemptError)
                     else []
                 )
-                _open_live_generation_circuit(
-                    reason_codes[0] if reason_codes else "live_generation_timeout",
-                    cooldown_seconds=self.live_failure_cooldown_seconds,
+                attempted_models = exc.attempted_models if isinstance(exc, LiveGenerationAttemptError) else []
+                skipped_model_cooldowns = (
+                    exc.skipped_model_cooldowns
+                    if isinstance(exc, LiveGenerationAttemptError)
+                    else []
                 )
+                should_open_global_circuit = (
+                    exc.open_global_circuit
+                    if isinstance(exc, LiveGenerationAttemptError)
+                    else True
+                )
+                if should_open_global_circuit:
+                    _open_live_generation_circuit(
+                        reason_codes[0] if reason_codes else "live_generation_timeout",
+                        cooldown_seconds=self.live_failure_cooldown_seconds,
+                    )
                 return _GeneratedPayload(
                     payload=fallback,
                     diagnostics=GenerationDiagnostics(
@@ -831,6 +860,8 @@ class HybridSummaryGenerationService:
                         model_name=model_name,
                         attempt_count=len(attempted_model_batches) or 1,
                         attempted_model_batches=attempted_model_batches,
+                        attempted_models=attempted_models,
+                        skipped_model_cooldowns=skipped_model_cooldowns,
                     ),
                 )
         return _GeneratedPayload(
@@ -923,7 +954,7 @@ def _runtime_from_env(env: Mapping[str, str]) -> LlmRuntimeConfig:
         "OPENROUTER_BASE_URL": env.get("OPENROUTER_BASE_URL", DEFAULT_OPENROUTER_BASE_URL),
         "OPENROUTER_FREE_MODEL_ORDER": env.get("OPENROUTER_FREE_MODEL_ORDER", ",".join(DEFAULT_OPENROUTER_FREE_MODEL_ORDER)),
         "OPENROUTER_PAID_FALLBACK_MODEL": env.get("OPENROUTER_PAID_FALLBACK_MODEL", DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL),
-        "OPENROUTER_PAID_FALLBACK_ENABLED": env.get("OPENROUTER_PAID_FALLBACK_ENABLED", "true"),
+        "OPENROUTER_PAID_FALLBACK_ENABLED": env.get("OPENROUTER_PAID_FALLBACK_ENABLED", "false"),
         "LLM_VALIDATION_RETRY_COUNT": env.get("LLM_VALIDATION_RETRY_COUNT", str(DEFAULT_VALIDATION_RETRY_COUNT)),
         "LLM_REASONING_SUMMARY_ONLY": env.get("LLM_REASONING_SUMMARY_ONLY", "true"),
     }
@@ -1053,6 +1084,8 @@ def clear_summary_generation_live_circuit() -> None:
     with _LIVE_GENERATION_CIRCUIT_LOCK:
         _LIVE_GENERATION_CIRCUIT_OPEN_UNTIL_SECONDS = 0.0
         _LIVE_GENERATION_CIRCUIT_REASON = None
+    with _OPENROUTER_MODEL_COOLDOWN_LOCK:
+        _OPENROUTER_MODEL_COOLDOWNS.clear()
 
 
 def _call_structured_generator_with_deadline(
@@ -1093,6 +1126,25 @@ def _open_live_generation_circuit(reason: str, *, cooldown_seconds: int) -> None
     with _LIVE_GENERATION_CIRCUIT_LOCK:
         _LIVE_GENERATION_CIRCUIT_OPEN_UNTIL_SECONDS = time.monotonic() + cooldown_seconds
         _LIVE_GENERATION_CIRCUIT_REASON = reason
+
+
+def _openrouter_model_cooldown_reason(model_name: str) -> str | None:
+    with _OPENROUTER_MODEL_COOLDOWN_LOCK:
+        entry = _OPENROUTER_MODEL_COOLDOWNS.get(model_name)
+        if entry is None:
+            return None
+        open_until_seconds, reason = entry
+        if open_until_seconds <= time.monotonic():
+            _OPENROUTER_MODEL_COOLDOWNS.pop(model_name, None)
+            return None
+        return reason or "model_recent_failure"
+
+
+def _open_openrouter_model_cooldown(model_name: str, reason: str, *, cooldown_seconds: int) -> None:
+    if cooldown_seconds <= 0:
+        return
+    with _OPENROUTER_MODEL_COOLDOWN_LOCK:
+        _OPENROUTER_MODEL_COOLDOWNS[model_name] = (time.monotonic() + cooldown_seconds, reason)
 
 
 def _summary_generation_cache_key(request: SummaryGenerationRequest, runtime: LlmRuntimeConfig) -> str:
@@ -1158,20 +1210,22 @@ def _live_structured_generator_from_env(
 
     def generator(request: SummaryGenerationRequest) -> dict[str, Any]:
         prompt_payload = _safe_prompt_payload(request)
-        attempt_batches = _openrouter_model_attempt_batches(runtime)
-        attempted_batches: list[list[str]] = []
+        attempt_plan = _openrouter_model_attempt_plan(runtime)
+        attempted_models: list[str] = []
+        skipped_model_cooldowns: list[str] = []
         failure_codes: list[str] = []
         per_attempt_timeout = _openrouter_attempt_timeout_seconds(
             timeout_seconds,
-            attempt_count=max(1, len(attempt_batches)),
+            attempt_count=max(1, len(attempt_plan)),
         )
+        service_failure_count = 0
 
-        def transport_for_batch(model_batch: list[str]):
+        def transport_for_model(model_name: str):
             def transport(metadata: LlmTransportRequestMetadata) -> Mapping[str, Any]:
                 if not provider_key:
                     return {"status_code": 401, "latency_ms": 0, "json": {"choices": []}}
                 started = time.monotonic()
-                body = _openrouter_chat_completion_body(request, prompt_payload, runtime, metadata, model_names=model_batch)
+                body = _openrouter_chat_completion_body(request, prompt_payload, runtime, metadata, model_name=model_name)
                 try:
                     from urllib import error, request as urlrequest
 
@@ -1193,7 +1247,12 @@ def _live_structured_generator_from_env(
                             "json": json.loads(response.read().decode("utf-8")),
                         }
                 except error.HTTPError as exc:
-                    return {"status_code": exc.code, "latency_ms": int((time.monotonic() - started) * 1000), "json": {"choices": []}}
+                    return {
+                        "status_code": exc.code,
+                        "latency_ms": int((time.monotonic() - started) * 1000),
+                        "retry_after_seconds": _retry_after_seconds_from_headers(exc.headers),
+                        "json": {"choices": []},
+                    }
                 except TimeoutError:
                     raise
                 except Exception:
@@ -1201,23 +1260,38 @@ def _live_structured_generator_from_env(
 
             return transport
 
-        for model_batch in attempt_batches:
-            attempted_batches.append(list(model_batch))
+        for model_name in attempt_plan:
+            cooldown_reason = _openrouter_model_cooldown_reason(model_name)
+            if cooldown_reason:
+                skipped_model_cooldowns.append(f"{model_name}:{cooldown_reason}")
+                failure_codes.append(f"model_cooldown:{model_name}")
+                continue
+            attempted_models.append(model_name)
+            attempt_runtime = _runtime_for_openrouter_attempt(runtime, model_name)
             result = call_openrouter_transport(
-                runtime=runtime,
+                runtime=attempt_runtime,
                 request_mode=LlmTransportMode.json_mode,
                 caller_opted_in=True,
-                transport=transport_for_batch(model_batch),
+                transport=transport_for_model(model_name),
                 sanitized_diagnostics={
                     "task_name": request.task_name,
                     "schema_version": request.schema_version,
-                    "attempt_index": len(attempted_batches),
-                    "model_batch_size": len(model_batch),
+                    "attempt_index": len(attempted_models),
+                    "model_name": model_name,
                 },
                 timeout_seconds=per_attempt_timeout,
             )
             if result.response.status is not LlmTransportStatus.succeeded or not result.content:
-                failure_codes.append(_live_generation_failure_code(result.response.diagnostic_code))
+                failure_code = _live_generation_failure_code(result.response, model_name)
+                failure_codes.append(failure_code)
+                if _is_model_cooldown_failure(result.response):
+                    _open_openrouter_model_cooldown(
+                        model_name,
+                        failure_code,
+                        cooldown_seconds=_response_retry_after_seconds(result.response) or DEFAULT_LIVE_FAILURE_COOLDOWN_SECONDS,
+                    )
+                if _is_service_wide_failure(failure_code):
+                    service_failure_count += 1
                 continue
             try:
                 payload = _parse_live_json_payload(result.content)
@@ -1227,18 +1301,23 @@ def _live_structured_generator_from_env(
                 if not _payload_matches_task_shape(request.task_name, normalized_payload):
                     raise SummaryGenerationContractError("Live structured generator returned the wrong task shape.")
                 normalized_payload[_LIVE_GENERATION_METADATA_KEY] = {
-                    "attempt_count": len(attempted_batches),
-                    "attempted_model_batches": attempted_batches,
+                    "attempt_count": len(attempted_models),
+                    "attempted_model_batches": [[model] for model in attempted_models],
+                    "attempted_models": attempted_models,
+                    "skipped_model_cooldowns": skipped_model_cooldowns,
                     "selected_model_name": result.response.model_name,
                 }
                 return normalized_payload
             except SummaryGenerationContractError:
-                failure_codes.append("structured_output_validation_failed")
+                failure_codes.append(f"structured_output_validation_failed:{model_name}")
                 continue
 
         raise LiveGenerationAttemptError(
             _dedupe_reason_codes(failure_codes or ["live_summary_generation_unavailable"]),
-            attempted_batches,
+            [[model] for model in attempted_models],
+            attempted_models=attempted_models,
+            skipped_model_cooldowns=skipped_model_cooldowns,
+            open_global_circuit=bool(attempted_models) and service_failure_count == len(attempted_models),
         )
 
     return generator
@@ -1250,17 +1329,16 @@ def _openrouter_chat_completion_body(
     runtime: LlmRuntimeConfig,
     metadata: LlmTransportRequestMetadata | None = None,
     *,
-    model_names: list[str] | None = None,
+    model_name: str | None = None,
 ) -> dict[str, Any]:
-    resolved_model_names = list(model_names or [])
-    if not resolved_model_names:
-        batches = _openrouter_model_attempt_batches(runtime)
-        resolved_model_names = list(batches[0]) if batches else []
-    if not resolved_model_names and metadata is not None and metadata.active_model is not None:
-        resolved_model_names = [metadata.active_model.model_name]
+    resolved_model_name = model_name
+    if not resolved_model_name and metadata is not None and metadata.active_model is not None:
+        resolved_model_name = metadata.active_model.model_name
+    if not resolved_model_name:
+        attempt_plan = _openrouter_model_attempt_plan(runtime)
+        resolved_model_name = attempt_plan[0] if attempt_plan else ""
     return {
-        "models": resolved_model_names[:OPENROUTER_MAX_MODELS_PER_REQUEST],
-        "route": "fallback",
+        "model": resolved_model_name,
         "temperature": 0,
         "response_format": _openrouter_response_format_for_task(request.task_name),
         "messages": [
@@ -1287,21 +1365,56 @@ def _openrouter_model_fallback_chain(runtime: LlmRuntimeConfig) -> list[str]:
     return model_names
 
 
-def _openrouter_model_attempt_batches(
-    runtime: LlmRuntimeConfig,
-    *,
-    max_models_per_request: int = OPENROUTER_MAX_MODELS_PER_REQUEST,
-) -> list[list[str]]:
-    max_size = max(1, int(max_models_per_request))
-    free_models = [model.model_name for model in runtime.configured_model_chain]
-    batches = [free_models[index : index + max_size] for index in range(0, len(free_models), max_size)]
-    paid_model = runtime.paid_fallback_model.model_name if runtime.paid_fallback_enabled and runtime.paid_fallback_model is not None else None
-    if paid_model:
-        if batches and len(batches[-1]) < max_size:
-            batches[-1] = [*batches[-1], paid_model]
-        else:
-            batches.append([paid_model])
-    return [batch for batch in batches if batch]
+def _openrouter_model_attempt_plan(runtime: LlmRuntimeConfig) -> list[str]:
+    return _dedupe_reason_codes(_openrouter_model_fallback_chain(runtime))
+
+
+def _openrouter_model_attempt_batches(runtime: LlmRuntimeConfig) -> list[list[str]]:
+    """Backward-compatible diagnostics view for the app-side single-model plan."""
+
+    return [[model_name] for model_name in _openrouter_model_attempt_plan(runtime)]
+
+
+def _runtime_for_openrouter_attempt(runtime: LlmRuntimeConfig, model_name: str) -> LlmRuntimeConfig:
+    descriptor = _openrouter_model_descriptor(runtime, model_name)
+    remaining_free = [
+        model
+        for model in runtime.configured_model_chain
+        if model.model_name != model_name
+    ]
+    configured_chain = [descriptor, *remaining_free]
+    return runtime.model_copy(update={"configured_model_chain": configured_chain})
+
+
+def _openrouter_model_descriptor(runtime: LlmRuntimeConfig, model_name: str) -> LlmModelDescriptor:
+    for model in runtime.configured_model_chain:
+        if model.model_name == model_name:
+            return model
+    if runtime.paid_fallback_model is not None and runtime.paid_fallback_model.model_name == model_name:
+        return runtime.paid_fallback_model
+    return LlmModelDescriptor(
+        provider_kind=runtime.provider_kind,
+        model_name=model_name,
+        tier=LlmModelTier.unavailable,
+        order=len(runtime.configured_model_chain) + 1,
+    )
+
+
+def _retry_after_seconds_from_headers(headers: Any) -> int | None:
+    if headers is None:
+        return None
+    raw = None
+    try:
+        raw = headers.get("Retry-After") or headers.get("retry-after")
+    except AttributeError:
+        return None
+    if raw is None:
+        return None
+    try:
+        seconds = int(str(raw).strip())
+    except ValueError:
+        return None
+    return seconds if seconds > 0 else None
 
 
 def _openrouter_attempt_timeout_seconds(total_timeout_seconds: int, *, attempt_count: int) -> int:
@@ -1310,14 +1423,45 @@ def _openrouter_attempt_timeout_seconds(total_timeout_seconds: int, *, attempt_c
     return max(10, int(total_timeout_seconds) // attempt_count)
 
 
-def _live_generation_failure_code(code: str | None) -> str:
+def _live_generation_failure_code(response: Any, model_name: str) -> str:
+    code = getattr(response, "diagnostic_code", None)
+    provider_status = getattr(response, "provider_status", None)
     if code == "timeout":
-        return "live_generation_timeout"
-    if code in {"retryable_provider_error", "nonretryable_provider_error"}:
-        return code
+        return f"provider_timeout:{model_name}"
+    if code == "provider_rate_limited" or provider_status == "http_429":
+        return f"provider_rate_limited:{model_name}"
+    if code == "retryable_provider_error":
+        if isinstance(provider_status, str) and provider_status.startswith("http_5"):
+            return f"provider_service_unavailable:{model_name}"
+        return f"provider_transport_error:{model_name}"
+    if code == "nonretryable_provider_error":
+        return f"nonretryable_provider_error:{model_name}"
     if code in {"invalid_response_shape", "missing_content"}:
-        return "structured_output_unavailable"
-    return code or "live_summary_generation_unavailable"
+        return f"structured_output_unavailable:{model_name}"
+    return f"{code or 'live_summary_generation_unavailable'}:{model_name}"
+
+
+def _is_model_cooldown_failure(response: Any) -> bool:
+    code = getattr(response, "diagnostic_code", None)
+    return code in {"provider_rate_limited", "timeout"}
+
+
+def _response_retry_after_seconds(response: Any) -> int | None:
+    diagnostics = getattr(response, "sanitized_diagnostics", None)
+    if not isinstance(diagnostics, dict):
+        return None
+    value = diagnostics.get("retry_after_seconds")
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        seconds = int(value)
+    except (TypeError, ValueError):
+        return None
+    return seconds if seconds > 0 else None
+
+
+def _is_service_wide_failure(reason_code: str) -> bool:
+    return reason_code.startswith("provider_service_unavailable:") or reason_code.startswith("provider_transport_error:")
 
 
 def _dedupe_reason_codes(codes: list[str]) -> list[str]:
@@ -1329,9 +1473,13 @@ def _pop_live_generation_metadata(payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(raw, dict):
         return {}
     batches = raw.get("attempted_model_batches")
+    attempted_models = raw.get("attempted_models")
+    skipped_model_cooldowns = raw.get("skipped_model_cooldowns")
     return {
         "attempt_count": raw.get("attempt_count") if isinstance(raw.get("attempt_count"), int) else 0,
         "attempted_model_batches": batches if _valid_model_batches(batches) else [],
+        "attempted_models": attempted_models if _valid_string_list(attempted_models) else [],
+        "skipped_model_cooldowns": skipped_model_cooldowns if _valid_string_list(skipped_model_cooldowns) else [],
         "selected_model_name": raw.get("selected_model_name") if isinstance(raw.get("selected_model_name"), str) else None,
     }
 
@@ -1341,6 +1489,10 @@ def _valid_model_batches(value: Any) -> bool:
         isinstance(batch, list) and all(isinstance(model_name, str) for model_name in batch)
         for batch in value
     )
+
+
+def _valid_string_list(value: Any) -> bool:
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
 
 
 def _openrouter_response_format_for_task(task_name: str) -> dict[str, Any]:
@@ -1545,7 +1697,10 @@ def _beginner_fallback_payload(
             if fact_bits
             else base_summary.what_it_is
         )
-        what_it_is = _join_sentences(base_identity, _safe_profile_summary(fund_summary, limit=220))
+        fund_profile_phrase = _safe_profile_summary(fund_summary, limit=520, max_sentences=2)
+        if fund_profile_phrase:
+            fund_profile_phrase = "A provider-derived fund profile says: " + fund_profile_phrase
+        what_it_is = _join_sentences(base_identity, fund_profile_phrase)
         why = (
             f"Beginners can use {asset.ticker} to study how a fund's benchmark, holdings breadth"
             + (", category" if category else "")
@@ -1562,7 +1717,7 @@ def _beginner_fallback_payload(
             + "; this page does not turn the fund into a personal recommendation."
         )
     else:
-        business_phrase = _safe_profile_summary(business_summary, limit=520)
+        business_phrase = _safe_profile_summary(business_summary, limit=520, max_sentences=2)
         sector_phrase = _join_human_text([sector or "", industry or ""])
         official_fact_phrase = (
             " using SEC-filed facts"
@@ -1578,7 +1733,10 @@ def _beginner_fallback_payload(
             else _join_sentences(base_summary.what_it_is, "SEC facts are preferred when available.")
         )
         if business_phrase:
-            what_it_is = _join_sentences(what_it_is, business_phrase)
+            what_it_is = _join_sentences(
+                what_it_is,
+                "A provider-derived company profile says: " + business_phrase,
+            )
         why = (
             (
                 f"Beginners can use {asset.ticker} to connect its products, services, customers, and business model "
@@ -2265,8 +2423,8 @@ def _truncate(value: Any, limit: int = 240) -> str:
     return text[: max(0, limit - 1)].rstrip() + "..."
 
 
-def _safe_profile_summary(value: Any, *, limit: int = 220) -> str:
-    text = _truncate(value, limit)
+def _safe_profile_summary(value: Any, *, limit: int = 220, max_sentences: int = 2) -> str:
+    text = _sentence_limited_text(value, limit=limit, max_sentences=max_sentences)
     lowered = text.lower()
     blocked_markers = (
         "fixture",
@@ -2280,6 +2438,36 @@ def _safe_profile_summary(value: Any, *, limit: int = 220) -> str:
     if not text or any(marker in lowered for marker in blocked_markers):
         return ""
     return text
+
+
+def _sentence_limited_text(value: Any, *, limit: int, max_sentences: int) -> str:
+    text = " ".join(str(value or "").split())
+    if not text:
+        return ""
+    placeholders = {
+        "Inc.": "Inc<dot>",
+        "Corp.": "Corp<dot>",
+        "Co.": "Co<dot>",
+        "Ltd.": "Ltd<dot>",
+        "U.S.": "U<dot>S<dot>",
+    }
+    protected = text
+    for raw, placeholder in placeholders.items():
+        protected = protected.replace(raw, placeholder)
+    sentences = re.findall(r".*?(?:[.!?](?=\s|$)|$)", protected)
+    selected: list[str] = []
+    for sentence in sentences:
+        clean = sentence.strip()
+        if not clean:
+            continue
+        for raw, placeholder in placeholders.items():
+            clean = clean.replace(placeholder, raw)
+        selected.append(clean)
+        if len(selected) >= max(1, max_sentences):
+            break
+    candidate = " ".join(selected) if selected else text
+    return _truncate(candidate, limit)
+
 
 
 def _join_human_text(values: list[str]) -> str:

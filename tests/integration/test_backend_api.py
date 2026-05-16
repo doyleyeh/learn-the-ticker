@@ -26,7 +26,14 @@ from backend.knowledge_pack_repository import (
 from backend.lightweight_data_fetch import clear_lightweight_fetch_reuse_cache, fetch_lightweight_asset_data
 from backend.lightweight_page import build_lightweight_overview_response
 from backend.market_news import build_market_news_response
-from backend.models import FreshnessState, SourceAllowlistStatus, SourceQuality, SourceUsePolicy, WeeklyNewsEventType
+from backend.models import (
+    FreshnessState,
+    GenerationDiagnostics,
+    SourceAllowlistStatus,
+    SourceQuality,
+    SourceUsePolicy,
+    WeeklyNewsEventType,
+)
 from backend.overview import (
     _asset_knowledge_pack_from_repository_records,
     _maybe_write_overview_generated_output_cache,
@@ -537,6 +544,46 @@ def test_asset_page_stable_overview_omits_slow_timely_context_but_keeps_generati
     assert body["generation_diagnostics"]["beginner_summary"]["attempted_live"] is False
     assert body["generation_diagnostics"]["beginner_summary"]["fallback_reason_codes"] == [
         "deterministic_summary_generation"
+    ]
+    assert "provider-derived fund profile" in body["beginner_summary"]["what_it_is"]
+    assert "indexing investment approach" in body["beginner_summary"]["what_it_is"]
+
+
+def test_weekly_news_section_states_accept_nested_generation_diagnostics(monkeypatch):
+    overview = generate_asset_overview("AAPL")
+    diagnostics = GenerationDiagnostics(
+        attempted_live=True,
+        used_fallback=True,
+        fallback_reason_codes=["provider_rate_limited:qwen/qwen3-next-80b-a3b-instruct:free"],
+        model_name="openai/gpt-oss-120b:free",
+        attempt_count=2,
+        attempted_model_batches=[
+            ["openai/gpt-oss-120b:free"],
+            ["qwen/qwen3-next-80b-a3b-instruct:free"],
+        ],
+        attempted_models=[
+            "openai/gpt-oss-120b:free",
+            "qwen/qwen3-next-80b-a3b-instruct:free",
+        ],
+    )
+    analysis = overview.ai_comprehensive_analysis.model_copy(update={"generation_diagnostics": diagnostics})
+    fake_overview = overview.model_copy(update={"ai_comprehensive_analysis": analysis})
+
+    monkeypatch.setattr("backend.main.fetch_lightweight_page_data_if_enabled", lambda ticker: None)
+    monkeypatch.setattr("backend.main.generate_asset_overview", lambda *args, **kwargs: fake_overview)
+
+    response = client.get("/api/assets/AAPL/weekly-news")
+
+    assert response.status_code == 200
+    body = response.json()
+    section_state = _assert_runtime_section_state(body, "ai_comprehensive_analysis")
+    assert section_state["diagnostics"]["attempted_model_batches"] == [
+        ["openai/gpt-oss-120b:free"],
+        ["qwen/qwen3-next-80b-a3b-instruct:free"],
+    ]
+    assert section_state["diagnostics"]["attempted_models"] == [
+        "openai/gpt-oss-120b:free",
+        "qwen/qwen3-next-80b-a3b-instruct:free",
     ]
 
 
