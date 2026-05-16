@@ -985,8 +985,10 @@ def test_lightweight_stock_fetch_prefers_sec_and_labels_provider_fallback():
 
     overview = build_lightweight_overview_response(response)
     assert overview.beginner_summary is not None
-    assert "provider-derived company profile" in overview.beginner_summary.what_it_is
+    assert overview.beginner_summary.what_it_is.startswith("Apple Inc. designs, manufactures, and markets")
     assert "smartphones, personal computers, tablets" in overview.beginner_summary.what_it_is
+    assert "provider-derived company profile" not in overview.beginner_summary.what_it_is
+    assert "..." not in overview.beginner_summary.what_it_is
     assert "longBusinessSummary" not in overview.beginner_summary.what_it_is
     assert "regularMarketPrice" not in overview.beginner_summary.what_it_is
     price_section = next(section for section in overview.sections if section.section_id == "price_chart")
@@ -1352,7 +1354,8 @@ def test_lightweight_stock_fetch_builds_overview_details_and_source_drawer_contr
     assert overview.asset.ticker == "AAPL"
     assert overview.state.status is AssetStatus.supported
     assert overview.beginner_summary is not None
-    assert "SEC" in overview.beginner_summary.what_it_is
+    assert "smartphones, personal computers, tablets" in overview.beginner_summary.what_it_is
+    assert "SEC" not in overview.beginner_summary.what_it_is
     assert len(overview.top_risks) == 3
     assert [risk.title for risk in overview.top_risks] == [
         "Single-company risk",
@@ -1590,9 +1593,9 @@ def test_lightweight_issuer_backed_etf_fetch_builds_supported_page_contracts():
     assert overview.asset.asset_type is AssetType.etf
     assert overview.state.status is AssetStatus.supported
     assert overview.beginner_summary is not None
-    assert "ETF" in overview.beginner_summary.what_it_is
-    assert "provider-derived fund profile" in overview.beginner_summary.what_it_is
     assert "indexing investment approach" in overview.beginner_summary.what_it_is
+    assert "provider-derived fund profile" not in overview.beginner_summary.what_it_is
+    assert "..." not in overview.beginner_summary.what_it_is
     assert "premium_discount_or_spread" not in " ".join(overview.beginner_summary.model_dump().values())
     assert thin_asset_profile["fund_family"] == "Vanguard"
     assert thin_asset_profile["category"] == "U.S. equity index ETF"

@@ -137,7 +137,9 @@ def test_beginner_summary_fallback_uses_curated_provider_profile_summary_for_etf
     asset = build_asset_knowledge_pack("VOO").asset
     evidence_pack = _simple_generation_evidence_pack("VOO", ["c1"])
     evidence_pack["generation_context"]["asset_profile"]["fund_summary"] = (
-        "The fund offers broad exposure to large U.S. companies by seeking to track the S&P 500 index."
+        "The fund manager employs an indexing investment approach designed to track the performance of the Standard & Poor's 500 Index. "
+        "The advisor attempts to replicate the target index by investing all, or substantially all, of its assets in the stocks that make up the index. "
+        "The fund is non-diversified. This fourth sentence should not appear."
     )
     evidence_pack["generation_context"]["asset_profile"]["fund_family"] = "Vanguard"
     evidence_pack["generation_context"]["asset_profile"]["category"] = "U.S. equity index ETF"
@@ -157,8 +159,14 @@ def test_beginner_summary_fallback_uses_curated_provider_profile_summary_for_etf
         generation_evidence_pack=evidence_pack,
     )
 
-    assert "broad exposure to large U.S. companies" in summary.what_it_is
-    assert "provider-derived fund profile" in summary.what_it_is
+    assert summary.what_it_is == (
+        "The fund manager employs an indexing investment approach designed to track the performance of the Standard & Poor's 500 Index. "
+        "The advisor attempts to replicate the target index by investing all, or substantially all, of its assets in the stocks that make up the index. "
+        "The fund is non-diversified."
+    )
+    assert "This fourth sentence" not in summary.what_it_is
+    assert "provider-derived fund profile" not in summary.what_it_is
+    assert "..." not in summary.what_it_is
     assert "longBusinessSummary" not in summary.what_it_is
     assert "fixture" not in summary.what_it_is.lower()
 
@@ -174,7 +182,8 @@ def test_beginner_summary_fallback_uses_yahoo_business_summary_for_stocks():
             "business_summary": (
                 "Apple Inc. designs, manufactures, and markets smartphones, personal computers, tablets, "
                 "wearables, and accessories worldwide. The company offers iPhone, Mac, iPad, AirPods, "
-                "Apple Watch, AppleCare, cloud services, and digital-content platforms."
+                "Apple Watch, AppleCare, cloud services, and digital-content platforms. It serves consumers, "
+                "small and mid-sized businesses, education, enterprise, and government markets. This fourth sentence should not appear."
             ),
         }
     )
@@ -192,8 +201,12 @@ def test_beginner_summary_fallback_uses_yahoo_business_summary_for_stocks():
     )
 
     joined = " ".join(summary.model_dump().values())
-    assert "provider-derived company profile" in summary.what_it_is
+    assert summary.what_it_is.startswith("Apple Inc. designs, manufactures, and markets smartphones")
     assert "smartphones, personal computers, tablets" in summary.what_it_is
+    assert "government markets." in summary.what_it_is
+    assert "This fourth sentence" not in summary.what_it_is
+    assert "provider-derived company profile" not in summary.what_it_is
+    assert "..." not in summary.what_it_is
     assert "products, services, customers, and business model" in summary.why_people_consider_it
     assert "longBusinessSummary" not in joined
     assert "regularMarketPrice" not in joined
@@ -341,9 +354,10 @@ def test_live_generation_timeout_opens_short_circuit_for_followup_calls():
 
 
 def test_live_generation_default_timeout_allows_slower_local_models():
-    assert summary_generation_module.DEFAULT_LIVE_SUMMARY_TIMEOUT_SECONDS == 75
-    assert summary_generation_module._live_timeout_seconds_from_env({}) == 75
+    assert summary_generation_module.DEFAULT_LIVE_SUMMARY_TIMEOUT_SECONDS == 180
+    assert summary_generation_module._live_timeout_seconds_from_env({}) == 180
     assert summary_generation_module._live_timeout_seconds_from_env({"LLM_LIVE_TIMEOUT_SECONDS": "9"}) == 9
+    assert summary_generation_module._openrouter_attempt_timeout_seconds(180, attempt_count=4) == 180
     assert summary_generation_module.DEFAULT_LIVE_SLOW_RESPONSE_THRESHOLD_SECONDS == 30
     assert summary_generation_module._live_slow_response_threshold_seconds_from_env({}) == 30
     assert summary_generation_module._live_slow_response_threshold_seconds_from_env(
@@ -771,6 +785,46 @@ def test_gated_structured_summary_output_rejects_bad_citations_before_rendering(
         )
 
 
+def test_ticker_ai_accepts_reordered_sections_and_missing_supporting_claims():
+    focus = _two_item_weekly_news_focus()
+    first_citation = focus.items[0].citation_ids[0]
+
+    def payload(request: Any) -> dict[str, Any]:
+        generated = _ticker_analysis_payload(citation_ids=[first_citation])
+        sections = generated["sections"]
+        for section in sections:
+            section.pop("supporting_claims", None)
+            section["label"] = "Model supplied label to repair"
+        generated["sections"] = [sections[3], sections[0], sections[2], sections[1]]
+        return generated
+
+    service = HybridSummaryGenerationService(runtime=_ready_runtime(), structured_generator=payload)
+
+    analysis = service.generate_ticker_ai_comprehensive_analysis(
+        asset=build_asset_knowledge_pack("QQQ").asset,
+        weekly_news_focus=focus,
+        canonical_fact_citation_ids=["c_fact_qqq_asset_identity"],
+        canonical_source_document_ids=["src_qqq_fact_sheet_fixture"],
+        minimum_weekly_news_item_count=2,
+        weekly_news_selected_item_count=focus.selected_item_count,
+        generation_evidence_pack=_simple_generation_evidence_pack("QQQ", [first_citation, "c_fact_qqq_asset_identity"]),
+    )
+
+    assert [section.section_id for section in analysis.sections] == [
+        "what_changed_this_week",
+        "market_context",
+        "business_or_fund_context",
+        "risk_context",
+    ]
+    assert [section.label for section in analysis.sections] == [
+        "What Changed This Week",
+        "Market Context",
+        "Business/Fund Context",
+        "Risk Context",
+    ]
+    assert analysis.generation_diagnostics.used_fallback is False
+
+
 def test_live_prompt_payload_includes_task_spec_and_generation_evidence_pack():
     asset = build_asset_knowledge_pack("VOO").asset
     seen_request: SummaryGenerationRequest | None = None
@@ -1117,6 +1171,73 @@ def test_openrouter_live_generator_continues_after_model_rate_limit(monkeypatch:
     assert metadata["attempted_models"] == [bad_model, good_model]
     assert metadata["attempted_model_batches"] == [[bad_model], [good_model]]
     assert summary_generation_module._live_generation_circuit_reason() is None
+    clear_summary_generation_live_circuit()
+
+
+def test_openrouter_live_generation_continues_after_app_validation_failure(monkeypatch: pytest.MonkeyPatch):
+    clear_summary_generation_cache()
+    clear_summary_generation_live_circuit()
+    bad_model = DEFAULT_OPENROUTER_FREE_MODEL_ORDER[0]
+    good_model = DEFAULT_OPENROUTER_FREE_MODEL_ORDER[1]
+    runtime = build_llm_runtime_config(
+        {
+            **default_openrouter_settings(),
+            "OPENROUTER_FREE_MODEL_ORDER": f"{bad_model},{good_model}",
+            "OPENROUTER_PAID_FALLBACK_ENABLED": "false",
+        },
+        server_side_key_present=True,
+    )
+    env = {
+        **default_openrouter_settings(),
+        "OPENROUTER_API_KEY": "placeholder-local-key",
+        "OPENROUTER_FREE_MODEL_ORDER": f"{bad_model},{good_model}",
+        "OPENROUTER_PAID_FALLBACK_ENABLED": "false",
+    }
+    focus = _two_item_weekly_news_focus()
+    first_citation = focus.items[0].citation_ids[0]
+    calls: list[str] = []
+
+    def fake_transport(**kwargs: Any) -> LlmTransportResult:
+        model_name = str(kwargs["sanitized_diagnostics"]["model_name"])
+        calls.append(model_name)
+        citation_ids = ["outside_pack_citation"] if model_name == bad_model else [first_citation]
+        return LlmTransportResult(
+            response=LlmTransportResponseMetadata(
+                provider_kind=LlmProviderKind.openrouter,
+                status=LlmTransportStatus.succeeded,
+                retryability=LlmTransportRetryability.not_applicable,
+                diagnostic_code="ok",
+                request_mode=LlmTransportMode.json_mode,
+                model_name=model_name,
+                provider_status="ok",
+            ),
+            content=json.dumps(_ticker_analysis_payload(citation_ids=citation_ids)),
+        )
+
+    monkeypatch.setattr(summary_generation_module, "call_openrouter_transport", fake_transport)
+    generator = summary_generation_module._live_structured_generator_from_env(env, runtime, timeout_seconds=180)
+    service = HybridSummaryGenerationService(
+        runtime=runtime,
+        structured_generator=generator,
+        live_task_allowlist=frozenset({"ticker_ai_comprehensive_analysis"}),
+    )
+
+    analysis = service.generate_ticker_ai_comprehensive_analysis(
+        asset=build_asset_knowledge_pack("QQQ").asset,
+        weekly_news_focus=focus,
+        canonical_fact_citation_ids=["c_fact_qqq_asset_identity"],
+        canonical_source_document_ids=["src_qqq_fact_sheet_fixture"],
+        minimum_weekly_news_item_count=2,
+        weekly_news_selected_item_count=focus.selected_item_count,
+        generation_evidence_pack=_simple_generation_evidence_pack("QQQ", [first_citation, "c_fact_qqq_asset_identity"]),
+    )
+
+    assert calls == [bad_model, good_model]
+    assert analysis.generation_diagnostics.used_fallback is False
+    assert analysis.generation_diagnostics.model_name == good_model
+    assert analysis.generation_diagnostics.attempted_models == [bad_model, good_model]
+    assert f"structured_output_validation_failed:{bad_model}" in analysis.generation_diagnostics.fallback_reason_codes
+    assert all(section.citation_ids == [first_citation] for section in analysis.sections)
     clear_summary_generation_live_circuit()
 
 
