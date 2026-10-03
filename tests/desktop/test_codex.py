@@ -40,6 +40,8 @@ class FakeRPC:
             return {"data": [{"model": "synthetic-model", "displayName": "Synthetic model", "hidden": False, "isDefault": True, "inputModalities": ["text"]}], "nextCursor": None}
         if method == "turn/start":
             return {"turn": {"id": "turn-1"}}
+        if method == "account/rateLimits/read":
+            return {"ordinaryUsageAllowed": True}
         return {}
 
     async def event(self):

@@ -28,6 +28,10 @@ Setup creates `.venv` and installs Python/frontend dependencies; it does not ins
 
 The implemented Codex setup flow is **Connections → Sign in with ChatGPT**, using an installed official Codex runtime and a dedicated provider-owned profile. Follow the provider's device-code flow; cloud research permission is separate. A fresh-profile protocol handshake and synthetic sign-in tests passed, but actual account authorization and inference remain unverified. Gemini and Claude onboarding, supported-version ranges and full tool isolation still need qualification. Public v1 requires all three subscription connections; there is no API-billing or automatic provider fallback.
 
+Connections also offers model discovery and explicit selection; missing models fail without fallback. Access review supports denial or cancellation within the research policy and cannot authorize shell/file/broader network grants. These controls do not enable generation before live qualification.
+
+When the native development toolchain is unavailable, run `.venv/Scripts/python.exe -m scripts.connect_codex` yourself in an interactive terminal to authorize the same dedicated Windows profile without starting inference. It opens the official device-code page; do not redirect or save the code. It never imports your developer Codex credentials. Then `.venv/Scripts/python.exe -m scripts.qualify_codex` performs a no-inference preflight. The separate `--live` option consumes subscription usage for explicit probes and requires current included-usage permission; read [the live qualification procedure](EVALS.md#codex-subscription-qualification) first. Passing probes never automatically enables production capabilities.
+
 ## Learn terms
 
 On an asset page, choose a core term, type one or select a short phrase in the evidence to request an explanation. Saved explanations and curated English definitions remain usable offline. Generated interpretations carry their evidence version, language, date and citations when supplied; they never become factual evidence. Hover only reuses saved material.

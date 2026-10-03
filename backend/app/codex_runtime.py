@@ -6,6 +6,7 @@ from backend.app.codex_rpc import CodexRPC
 from backend.app.codex_approvals import CodexApprovals, identifier
 from backend.app.contracts import RuntimeEvent, RuntimeModelCatalog
 from backend.app.codex_models import read_models, select_model
+from backend.app.codex_usage import require_included_usage
 from backend.app.runtime_base import AIRuntime, RuntimeFailure
 from backend.app.runtime_policy import apply_qualification
 
@@ -76,6 +77,7 @@ class CodexRuntime(AIRuntime):
                     raise RuntimeFailure("Sign in to ChatGPT / Codex in Connections. API-key billing is not enabled.")
                 selected = select_model(await read_models(rpc), model)
                 thread_id = await rpc.start_thread(selected)
+                require_included_usage(await rpc.request("account/rateLimits/read", {}))
                 response = await rpc.request("turn/start", {"threadId": thread_id, "input": [{"type": "text", "text": prompt}]})
                 turn = response.get("turn")
                 if not isinstance(turn, dict) or not identifier(turn.get("id")):

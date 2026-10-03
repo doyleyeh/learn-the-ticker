@@ -13,6 +13,7 @@ Focus on P0/P1 issues only:
 - Weekly material mixed into stable facts, duplicates or disallowed items counted as signals, or Earlier context counted as weekly evidence. Weekly analysis needs two weekly items; broader historical research has no recent-news minimum.
 - Frontend dependence on vendor events, arbitrary native process access, leaked credentials or hidden reasoning, missing local API/WS authentication, non-loopback services, or provider permissions enforced only by prompts.
 - Silent API billing, paid overages or provider fallback; unsupported runtime versions continuing with weaker restrictions. Public v1 requires Codex, Gemini and Claude subscription qualification.
+- Treating model catalogs, included-usage snapshots, synthetic denials or finished qualification probes as complete live acceptance. The explicit live harness cannot promote production capabilities; unknown included usage must stop before a turn. Access review cannot grant command/file/network scope outside the research policy.
 - Lost conversation scope/history, overwritten saved evidence/term versions, automatic inference on hover, or new research/comparisons generated offline.
 - Non-atomic publication/restore, credentials in backups, subscription calls replayed after a crash, or upgrades discarding newer research. A readable backup archive alone is not a restore test.
 - Native supervision affecting unrelated PostgreSQL/processes, missing bounded startup/shutdown, unverified provider prerequisites or installer claims.
