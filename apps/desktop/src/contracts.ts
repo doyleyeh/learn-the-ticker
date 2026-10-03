@@ -341,19 +341,32 @@ export type Timestamp = string;
 export type Text2 = string;
 export type SchemaVersion12 = "1";
 export type Id5 = string;
+export type Name1 = string;
+export type IsDefault = boolean;
+export type SchemaVersion13 = "1";
+export type Provider3 = "codex" | "gemini" | "claude";
+export type Status1 = "available" | "authentication_required" | "unavailable";
+/**
+ * @maxItems 200
+ */
+export type Models = RuntimeModel[];
+export type Message1 = string;
+export type SchemaVersion14 = "1";
+export type Id6 = string;
 export type BundleId1 = string;
 export type Title1 = string;
 export type CreatedAt3 = string;
-export type SchemaVersion13 = "1";
+export type SchemaVersion15 = "1";
 export type CloudEnabled = boolean;
-export type Provider3 = "codex" | "gemini" | "claude";
+export type Provider4 = "codex" | "gemini" | "claude";
+export type Model1 = string | null;
 export type Language2 = "en" | "zh-TW";
 export type ManualSourceReview = boolean;
 export type UpdateMode = "notify" | "manual" | "automatic";
 export type StartAtLogin = boolean;
 export type RetentionDays = number;
 export type CacheGb = number;
-export type SchemaVersion14 = "1";
+export type SchemaVersion16 = "1";
 export type Explanation = string;
 export type Basis = "general" | "snapshot";
 /**
@@ -492,25 +505,25 @@ export type SourceIds1 =
       string,
       string
     ];
-export type Id6 = string;
+export type Id7 = string;
 export type Term = string;
 export type BundleId2 = string;
 export type AssetId5 = string;
 export type Language3 = "en" | "zh-TW";
 export type Level1 = "beginner" | "intermediate";
-export type Provider4 = "codex" | "gemini" | "claude";
-export type Model1 = string | null;
+export type Provider5 = "codex" | "gemini" | "claude";
+export type Model2 = string | null;
 export type CreatedAt4 = string;
 export type Interpretation = true;
-export type SchemaVersion15 = "1";
+export type SchemaVersion17 = "1";
 export type Purpose = "term_explanation";
 export type Term1 = string;
 export type BundleId3 = string;
 export type Language4 = "en" | "zh-TW";
 export type Level2 = "beginner" | "intermediate";
-export type Provider5 = "codex" | "gemini" | "claude";
-export type Model2 = string | null;
-export type SchemaVersion16 = "1";
+export type Provider6 = "codex" | "gemini" | "claude";
+export type Model3 = string | null;
+export type SchemaVersion18 = "1";
 export type Explanation1 = string;
 export type Basis1 = "general" | "snapshot";
 /**
@@ -661,6 +674,8 @@ export interface DesktopContracts {
   ResearchResult?: ResearchResult;
   RuntimeCapabilities?: RuntimeCapabilities;
   RuntimeEvent?: RuntimeEvent;
+  RuntimeModel?: RuntimeModel;
+  RuntimeModelCatalog?: RuntimeModelCatalog;
   SavedResearch?: SavedResearch;
   Settings?: Settings;
   Source?: Source;
@@ -812,17 +827,31 @@ export interface RuntimeEvent {
 export interface Data {
   [k: string]: unknown;
 }
-export interface SavedResearch {
+export interface RuntimeModel {
   schema_version?: SchemaVersion12;
-  id?: Id5;
+  id: Id5;
+  name: Name1;
+  is_default?: IsDefault;
+}
+export interface RuntimeModelCatalog {
+  schema_version?: SchemaVersion13;
+  provider: Provider3;
+  status?: Status1;
+  models?: Models;
+  message?: Message1;
+}
+export interface SavedResearch {
+  schema_version?: SchemaVersion14;
+  id?: Id6;
   bundle_id: BundleId1;
   title: Title1;
   created_at?: CreatedAt3;
 }
 export interface Settings {
-  schema_version?: SchemaVersion13;
+  schema_version?: SchemaVersion15;
   cloud_enabled?: CloudEnabled;
-  provider?: Provider3;
+  provider?: Provider4;
+  model?: Model1;
   language?: Language2;
   manual_source_review?: ManualSourceReview;
   update_mode?: UpdateMode;
@@ -831,33 +860,33 @@ export interface Settings {
   cache_gb?: CacheGb;
 }
 export interface TermExplanation {
-  schema_version?: SchemaVersion14;
+  schema_version?: SchemaVersion16;
   explanation: Explanation;
   basis: Basis;
   source_ids?: SourceIds1;
-  id: Id6;
+  id: Id7;
   term: Term;
   bundle_id: BundleId2;
   asset_id: AssetId5;
   language: Language3;
   level: Level1;
-  provider: Provider4;
-  model?: Model1;
+  provider: Provider5;
+  model?: Model2;
   created_at?: CreatedAt4;
   interpretation?: Interpretation;
 }
 export interface TermRequest {
-  schema_version?: SchemaVersion15;
+  schema_version?: SchemaVersion17;
   purpose?: Purpose;
   term: Term1;
   bundle_id: BundleId3;
   language?: Language4;
   level?: Level2;
-  provider?: Provider5;
-  model?: Model2;
+  provider?: Provider6;
+  model?: Model3;
 }
 export interface TermResult {
-  schema_version?: SchemaVersion16;
+  schema_version?: SchemaVersion18;
   explanation: Explanation1;
   basis: Basis1;
   source_ids?: SourceIds2;

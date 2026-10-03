@@ -1,11 +1,12 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, bootstrap, connect, download, watchJob } from "./client";
-import type { EvidenceBundle, Settings, RuntimeCapabilities, Claim, Source, Conversation as ConversationContract, SavedResearch } from "./contracts";
+import type { EvidenceBundle, Settings, Claim, Source, Conversation as ConversationContract, SavedResearch } from "./contracts";
 import { FreshnessLabel } from "../components/FreshnessLabel";
 import { CitationChip } from "../components/CitationChip";
 import { bundleRoute, pages, routeFromHash, sourceRoute } from "./routes";
 import { LibraryBackup } from "./LibraryBackup";
 import { CodexConnection } from "./CodexConnection";
+import { Connections } from "./Connections";
 import { TermLearning } from "./TermLearning";
 
 type Job = { id: string; status: string; error?: string; result?: EvidenceBundle & { candidates?: EvidenceBundle["asset"][]; educational_redirect?: string } };
@@ -20,7 +21,6 @@ export function App() {
   const [library, setLibrary] = useState<EvidenceBundle[]>([]);
   const [saved, setSaved] = useState<Saved[]>([]);
   const [settings, setSettings] = useState<Settings>();
-  const [connections, setConnections] = useState<RuntimeCapabilities[]>([]);
   const [page, setPage] = useState(routeFromHash(location.hash).page);
   const [sourceTarget, setSourceTarget] = useState(routeFromHash(location.hash).source);
   const [notice, setNotice] = useState("");
@@ -117,7 +117,7 @@ export function App() {
         {busy && <section aria-live="polite" className="plain-panel"><p>{progress || "Research queued"}</p><button onClick={() => api<Job>(`/api/jobs/${job.id}/cancel`, { method: "POST" }).then(setJob).catch(fail)}>Cancel research</button></section>}
         {job?.status === "needs_identity" && <section className="plain-panel"><h2>Choose a more specific identity</h2><p>Choose a listing or contract, then submit the selected identity. Cached matches reuse their saved evidence.</p>{job.result?.candidates?.map((item) => <button key={item.id} onClick={() => setQuery(item.id)}>{item.name} · {item.symbol} · {item.exchange ?? item.asset_type}</button>)}</section>}
         {job?.result?.educational_redirect && <p>{job.result.educational_redirect}</p>}
-        {page === "connections" && settings && <section className="plain-panel"><h1>Connections</h1><p>Online research sends your question, selected evidence and scoped conversation to your chosen provider. Sources and configured financial services receive retrieval requests. There is no app telemetry.</p><label><input type="checkbox" checked={settings.cloud_enabled ?? false} onChange={(e) => void saveSettings({ ...settings, cloud_enabled: e.target.checked })}/> Allow cloud research</label><label>Selected subscription runtime<select value={settings.provider} onChange={(e) => void saveSettings({ ...settings, provider: e.target.value as Settings["provider"] })}><option value="codex">ChatGPT / Codex</option><option value="gemini">Gemini</option><option value="claude">Claude Code</option></select></label><label>Explanation language<select value={settings.language} onChange={(e) => void saveSettings({ ...settings, language: e.target.value as Settings["language"] })}><option value="en">English</option><option value="zh-TW">繁體中文</option></select></label><label><input type="checkbox" checked={settings.manual_source_review ?? false} onChange={(e) => void saveSettings({ ...settings, manual_source_review: e.target.checked })}/> Require source review before admission</label><button onClick={() => api<RuntimeCapabilities[]>("/api/connections").then(setConnections).catch(fail)}>Check installed runtimes</button><p>Checks do not generate content. Sign in using each provider’s official setup. No automatic provider switch or paid API fallback is enabled.</p>{connections.map((item) => <article key={item.provider}><h2>{item.provider}</h2><p>{item.installed ? `Installed ${item.version ?? "unknown version"}` : "Not installed"} · Authentication: {item.authentication}</p><p>{item.reason}</p><p>{item.browsing ? "Research capability requires connection validation." : "Cached/imported explanations only until research tools are qualified."}</p></article>)}</section>}
+        {page === "connections" && settings && <Connections key={settings.provider} settings={settings} onSave={saveSettings}/> }
         {page === "library" && <section><h1>Your research library</h1><p>Search any asset. Available sections depend on verifiable evidence.</p>{library.length === 0 && <section className="plain-panel"><h2>Start with one asset</h2><p>Connect your subscription runtime, then research a ticker or name. Evidence and dated explanations will be saved here.</p></section>}<div className="library-grid">{library.map((item) => <button className="plain-panel" key={item.asset.id} onClick={() => openAsset(item)}><strong>{item.asset.name}</strong><span>{item.asset.symbol} · {item.asset.asset_type}</span><span>Snapshot {new Date(item.created_at!).toLocaleString()}</span></button>)}</div></section>}
         {page === "saved" && <section><h1>Saved research</h1><p>Bookmarks reference a fixed evidence version; refresh does not overwrite it.</p>{saved.length === 0 && <p>No saved research yet.</p>}{saved.map((report) => <button key={report.id} onClick={() => api<EvidenceBundle>(`/api/bundles/${report.bundle_id}`).then(openAsset).catch(fail)}>{report.title}</button>)}</section>}
         {page === "conversations" && <section><h1>Persistent conversations</h1><p>Unbookmarked conversations expire after {settings?.retention_days ?? 180} days without activity. Bookmark a conversation to keep it.</p>{conversations.map((chat) => <button key={chat.id} onClick={() => api<EvidenceBundle>(`/api/assets/${encodeURIComponent(chat.asset_id)}`).then((bundle) => { openAsset(bundle); setConversation(chat); }).catch(fail)}>{chat.asset_id} · {chat.messages.length} messages{chat.bookmarked ? " · Bookmarked" : ""}</button>)}</section>}

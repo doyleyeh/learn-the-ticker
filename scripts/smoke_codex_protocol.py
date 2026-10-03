@@ -31,6 +31,9 @@ async def main():
         assert capabilities.qualification == "protocol_only"
         assert not capabilities.generation and not capabilities.browsing and not capabilities.approvals
         print(f"Exact version {capabilities.version}: protocol-only; unauthenticated capabilities remain disabled.")
+        catalog = await CodexRuntime(profile).models()
+        assert catalog.status == "authentication_required" and not catalog.models
+        print("Model discovery requires the dedicated subscription sign-in; no catalog entitlement or inference was assumed.")
 
 
 if __name__ == "__main__":

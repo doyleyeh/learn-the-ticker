@@ -126,7 +126,8 @@ def validate_features(response: dict):
 
 def thread_parameters(workspace: Path, model: str | None = None) -> dict:
     params = {"cwd": str(workspace.resolve()), "approvalPolicy": "on-request",
-              "approvalsReviewer": "user", "sandbox": "read-only", "ephemeral": True}
+              "approvalsReviewer": "user", "sandbox": "read-only", "ephemeral": True,
+              "allowProviderModelFallback": False}
     if model:
         params["model"] = model
     return params

@@ -85,6 +85,7 @@ class TermService:
             raise ValueError("Choose a financial term to explain. Personal investment or tax instructions are unavailable.")
         if not self.research.settings().cloud_enabled:
             raise ValueError("Cloud research is off. Cached explanations and core glossary definitions remain available.")
+        request = self.research.selected_request(request)
         key = term_key(request)
         if key in self.pending:
             return self.db.job(self.pending[key])

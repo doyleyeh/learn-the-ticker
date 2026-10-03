@@ -39,7 +39,7 @@ def main():
         source.put("saved:" + saved.id, "saved", saved.model_dump(mode="json"), identity.id)
         chat = Conversation(asset_id=identity.id, bookmarked=True)
         source.put("conversation:" + chat.id, "conversation", chat.model_dump(mode="json"))
-        source.put("settings", "settings", Settings(cloud_enabled=True, language="zh-TW").model_dump(mode="json"))
+        source.put("settings", "settings", Settings(cloud_enabled=True, language="zh-TW", model="synthetic-selected-model").model_dump(mode="json"))
         term_request = TermRequest(term="liquidity", bundle_id=old.id)
         term = TermExplanation(id=term_key(term_request), term=term_request.term, bundle_id=old.id, asset_id=identity.id, language="en", level="beginner", provider="codex", basis="general", explanation="Synthetic general explanation for the restore scenario.")
         with source.session.begin() as session:
@@ -75,6 +75,7 @@ def main():
         assert target.list("conversation")[0]["bookmarked"]
         assert target.list("term")[0]["bundle_id"] == old.id and target.job("term-job")["result"]["id"] == term.id
         assert target.job("pending")["status"] == "interrupted" and not target.get("settings")["cloud_enabled"]
+        assert target.get("settings")["model"] == "synthetic-selected-model"
         with target.session.begin() as session:
             session.add(Event(job_id="pending", payload=RuntimeEvent(run_id="pending", kind="run.cancelled").model_dump(mode="json")))
         assert len(target.events("pending")) == 2
@@ -93,6 +94,7 @@ def main():
         assert restarted.get("asset:" + identity.id)["id"] == latest.id
         assert len(restarted.events("pending")) == 2
         assert restarted.get("term:" + term.id) == term.model_dump(mode="json")
+        assert restarted.get("settings")["model"] == "synthetic-selected-model"
         print("PostgreSQL full-library restore, rollback on failure, preserved saved versions, event sequence and restart passed.")
         print("Non-empty restore was rejected; cloud consent reset and no provider calls were made.")
     finally:

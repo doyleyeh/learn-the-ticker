@@ -13,7 +13,7 @@ from sqlalchemy import text
 
 from backend.app.backup import BackupError, MAX_ARCHIVE_BYTES, make_backup, preview_backup, restore_backup
 from backend.app.codex_login import CodexLogin
-from backend.app.contracts import Conversation, EvidenceBundle, ResearchRequest, SavedResearch, Settings, TermRequest, now
+from backend.app.contracts import Conversation, EvidenceBundle, ResearchRequest, RuntimeModelCatalog, SavedResearch, Settings, TermRequest, now
 from backend.app.db import Database
 from backend.app.research import ResearchService
 from backend.app.runtimes import runtimes
@@ -43,6 +43,7 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
     service = ResearchService(db, adapters or runtimes(codex_profile), workspace, **({"verifier": verifier} if verifier else {}))
     codex_login = CodexLogin(codex_profile)
     terms = TermService(service)
+    settings_lock = asyncio.Lock()
 
     @asynccontextmanager
     async def lifespan(app):
@@ -80,6 +81,21 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
 
     @app.put("/api/settings")
     async def update_settings(value: Settings):
+        async with settings_lock:
+            return await save_settings(value)
+
+    async def save_settings(value: Settings):
+        previous = service.settings()
+        changed = (previous.provider, previous.model) != (value.provider, value.model)
+        if changed and value.cloud_enabled and any(not task.done() for task in service.tasks.values()):
+            raise HTTPException(409, "Finish or cancel active research before changing provider or model")
+        if changed and value.model is not None:
+            adapter = service.adapters.get(value.provider)
+            catalog = await adapter.models() if adapter else None
+            if not catalog or catalog.status != "available" or not any(model.id == value.model for model in catalog.models):
+                raise HTTPException(409, "Choose an available model from the selected provider catalog; no settings were changed")
+        if changed and value.cloud_enabled and any(not task.done() for task in service.tasks.values()):
+            raise HTTPException(409, "Finish or cancel active research before changing provider or model")
         db.put("settings", "settings", value.model_dump(mode="json"))
         if not value.cloud_enabled:
             await service.close()
@@ -88,6 +104,16 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
     @app.get("/api/connections")
     async def connections():
         return [await adapter.check() for adapter in service.adapters.values()]
+
+    @app.get("/api/connections/{provider}/models", response_model=RuntimeModelCatalog)
+    async def models(provider: str):
+        adapter = service.adapters.get(provider)
+        if not adapter:
+            raise HTTPException(404, "Connection is unavailable")
+        if codex_login.snapshot().status == "pending":
+            raise HTTPException(409, "Complete or cancel sign-in before refreshing models")
+        catalog = await adapter.models()
+        return JSONResponse(catalog.model_dump(mode="json"), headers={"Cache-Control": "no-store"})
 
     def login_response():
         return JSONResponse(codex_login.snapshot().model_dump(mode="json"), headers={"Cache-Control": "no-store"})

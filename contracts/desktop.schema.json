@@ -825,6 +825,89 @@
       "title": "RuntimeEvent",
       "type": "object"
     },
+    "RuntimeModel": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "is_default": {
+          "default": false,
+          "title": "Is Default",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "RuntimeModel",
+      "type": "object"
+    },
+    "RuntimeModelCatalog": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "provider": {
+          "enum": [
+            "codex",
+            "gemini",
+            "claude"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "status": {
+          "default": "unavailable",
+          "enum": [
+            "available",
+            "authentication_required",
+            "unavailable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "models": {
+          "items": {
+            "$ref": "#/$defs/RuntimeModel"
+          },
+          "maxItems": 200,
+          "title": "Models",
+          "type": "array"
+        },
+        "message": {
+          "default": "Model discovery is not qualified for this connection.",
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider"
+      ],
+      "title": "RuntimeModelCatalog",
+      "type": "object"
+    },
     "SavedResearch": {
       "additionalProperties": false,
       "properties": {
@@ -886,6 +969,21 @@
           ],
           "title": "Provider",
           "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
         },
         "language": {
           "default": "en",
@@ -1323,6 +1421,12 @@
     },
     "RuntimeEvent": {
       "$ref": "#/$defs/RuntimeEvent"
+    },
+    "RuntimeModel": {
+      "$ref": "#/$defs/RuntimeModel"
+    },
+    "RuntimeModelCatalog": {
+      "$ref": "#/$defs/RuntimeModelCatalog"
     },
     "SavedResearch": {
       "$ref": "#/$defs/SavedResearch"

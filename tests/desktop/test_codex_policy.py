@@ -28,7 +28,7 @@ def features_response():
 
 
 def thread_response(workspace):
-    return {"thread": {"id": "synthetic-thread"}, "sandbox": {"type": "readOnly", "networkAccess": False},
+    return {"thread": {"id": "synthetic-thread"}, "model": "synthetic-model", "sandbox": {"type": "readOnly", "networkAccess": False},
             "approvalPolicy": "on-request", "approvalsReviewer": "user", "modelProvider": "openai",
             "instructionSources": [], "cwd": str(workspace.resolve()), "runtimeWorkspaceRoots": [str(workspace.resolve())]}
 

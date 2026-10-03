@@ -3,12 +3,12 @@
 Updated: 2026-10-04. Public Windows v1 is **not ready**.
 
 - Current milestone: M1 — Codex runtime qualification.
-- Current task: M1-T02 verified; next is M1-T03 models and bounded approvals. M1-T01 committed as 70cdaa8.
+- Current task: M1-T03a model catalogs and selection verified; next is M1-T03b approvals. M1-T02 committed as 2cf7208; M1-T01 as 70cdaa8.
 - Completed milestones: M0 (commit 2ea989e). Prior application slices remain partial against M1–M11.
-- Latest verification: [Codex isolation evidence](docs/verification/2026-10-04-codex-isolation.md): milestone gate passed 354 Python tests, static evaluations, seven frontend tests, lint/schema/links/type/build; installed effective config/features and thread-start passed without login/inference. Foundation PostgreSQL evidence retains its own date.
+- Latest verification: [model-selection evidence](docs/verification/2026-10-04-model-selection.md): milestone gate passed 376 Python tests, static evaluations, seven frontend tests, lint/schema/links/type/build; database lifecycle/recovery/real restore passed with selected-model persistence; synthetic browser checks passed at normal and 640-pixel widths. Installed protocol checks passed without login/inference.
 - Known warning: existing Starlette/httpx test-client deprecation.
 - Known release blockers: no live-qualified provider version; production inference fails closed while cached/synthetic features remain usable; cargo absent; native/clean-machine installer/update/rollback unqualified. Full wrapper reports missing cargo without skipping.
-- Next action: M1-T03 model discovery/selection and correlated approvals, then owned process cancellation/recovery and explicit live qualification. No live capability is enabled by the no-inference isolation checks.
+- Next action: M1-T03b correlated approvals, then owned process cancellation/recovery and explicit live qualification. No live capability is enabled by the no-inference isolation checks.
 - Continuation notes: use codex/project-delivery-foundation. Original empty read-only .codex file is preserved in ignored .local/codex-placeholder-2026-10-04. No remote Git action, provider sign-in/inference or application-library mutation occurred in M0; database tests used separate disposable clusters.
 - Authorization: normal implementation and verified local commits; official/free sources first; explicit authenticated-subscription checks after deterministic validation. Pause for sign-in, quotas or extra charges. PR/push/merge/publishing require separate authorization.
 
@@ -19,3 +19,5 @@ Historical results keep their original dates: [2026-10-03 preview checks](docs/a
 M1-T01 evidence: [runtime capabilities](docs/verification/2026-10-04-runtime-capabilities.md). M1 remains incomplete.
 
 M1-T02 evidence: [configuration and thread isolation](docs/verification/2026-10-04-codex-isolation.md). Custom system/profile/workspace configuration and file credentials currently stop the isolated connection; no files are imported or removed.
+
+M1-T03a evidence: [model catalogs and selection](docs/verification/2026-10-04-model-selection.md). Authenticated model entitlement and approval interactions remain unqualified.

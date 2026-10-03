@@ -36,6 +36,8 @@ class FakeRPC:
             return self.result
         if method == "thread/start":
             return {"thread": {"id": "thread-1"}}
+        if method == "model/list":
+            return {"data": [{"model": "synthetic-model", "displayName": "Synthetic model", "hidden": False, "isDefault": True, "inputModalities": ["text"]}], "nextCursor": None}
         return {}
 
     async def event(self):

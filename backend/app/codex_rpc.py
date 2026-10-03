@@ -45,6 +45,8 @@ class CodexRPC:
         await self.verify_policy()
         response = await self.request("thread/start", thread_parameters(self.workspace, model))
         thread_id = validate_thread(response, self.workspace)
+        if model is not None and response.get("model") != model:
+            raise RuntimeFailure("Codex changed the selected model. No inference or fallback was permitted.")
         validate_features(await self.request("experimentalFeature/list", {"limit": 200, "threadId": thread_id}))
         return thread_id
 

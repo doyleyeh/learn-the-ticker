@@ -26,6 +26,8 @@ The implemented `.lttbackup` format version `1` contains `manifest.json` and `li
 
 Restore requires an empty destination library and the fingerprint of the previewed archive. Writes commit atomically. Restored pending jobs become interrupted without replay; cloud research and start-at-login reset to off. Credentials, provider profiles, environment files and raw runtime traces are excluded. On another computer provision new local database credentials and reconnect providers. This protects existing destination work by refusing overwrite, but does not implement an application rollback manager or merge two libraries. See [restore tests](../EVALS.md#portable-backup-and-restore).
 
+M1 model selection adds an optional model identifier to Settings records. Missing values in older libraries/archives mean the provider's current default; no SQL schema change is required. Current restoration preserves an explicit selection while disabling cloud research, then revalidates model availability on the next request. Older application versions may reject the new record field; backward app rollback is not qualified by this additive data change. Coordinated app/archive compatibility remains M10 work.
+
 ## Native packaging and platforms
 
 The current source setup installs Python/frontend dependencies after the developer provides Python and Node. Native launch additionally requires Rust/MSVC, webview prerequisites and an explicit `LTT_PG_BIN` directory. The optional Docker Compose database is not the private desktop cluster. The public installer must remove the need for users to install or operate core Python, Node, Docker or PostgreSQL dependencies themselves.

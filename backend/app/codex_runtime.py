@@ -3,7 +3,8 @@ import asyncio
 from pathlib import Path
 
 from backend.app.codex_rpc import CodexRPC
-from backend.app.contracts import RuntimeEvent
+from backend.app.contracts import RuntimeEvent, RuntimeModelCatalog
+from backend.app.codex_models import read_models, select_model
 from backend.app.runtime_base import AIRuntime, RuntimeFailure
 from backend.app.runtime_policy import apply_qualification
 
@@ -37,6 +38,30 @@ class CodexRuntime(AIRuntime):
             await rpc.close()
         return result
 
+    async def models(self) -> RuntimeModelCatalog:
+        capabilities = await super().check()
+        result = RuntimeModelCatalog(provider=self.provider)
+        if not self.profile or not capabilities.installed or capabilities.qualification == "unqualified":
+            result.message = capabilities.reason or "Connect a compatible Codex subscription first."
+            return result
+        rpc = CodexRPC(self.profile, self.profile / "catalog", allow_browsing=False)
+        try:
+            await rpc.open()
+            account = await rpc.request("account/read", {"refreshToken": False})
+            if not subscription_account(account):
+                result.status = "authentication_required" if account.get("account") is None else "unavailable"
+                result.message = "Connect the dedicated ChatGPT subscription. API-key and external-token authentication are unsupported."
+                return result
+            result.models = await read_models(rpc)
+            result.status = "available"
+            result.message = "Provider catalog only. Model access, quota and research compatibility must still be checked when a request runs."
+            return result
+        except (RuntimeFailure, OSError):
+            result.message = "Model discovery failed. Reconnect or refresh; no model or provider was changed."
+            return result
+        finally:
+            await rpc.close()
+
     async def stream(self, prompt, run_id, workspace, model=None, *, allow_browsing=True):
         await self.require_generation(allow_browsing=allow_browsing)
         profile = self.profile or workspace.parent.parent / "connections" / "codex"
@@ -46,7 +71,8 @@ class CodexRuntime(AIRuntime):
                 await rpc.open()
                 if not subscription_account(await rpc.request("account/read", {"refreshToken": False})):
                     raise RuntimeFailure("Sign in to ChatGPT / Codex in Connections. API-key billing is not enabled.")
-                thread_id = await rpc.start_thread(model)
+                selected = select_model(await read_models(rpc), model)
+                thread_id = await rpc.start_thread(selected)
                 await rpc.request("turn/start", {"threadId": thread_id, "input": [{"type": "text", "text": prompt}]})
                 while True:
                     raw = await rpc.event()

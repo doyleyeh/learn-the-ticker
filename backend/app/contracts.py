@@ -114,6 +114,19 @@ class RuntimeEvent(Contract):
     data: dict = Field(default_factory=dict)
 
 
+class RuntimeModel(Contract):
+    id: str = Field(min_length=1, max_length=200, pattern=r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+    name: str = Field(min_length=1, max_length=200)
+    is_default: bool = False
+
+
+class RuntimeModelCatalog(Contract):
+    provider: Literal["codex", "gemini", "claude"]
+    status: Literal["available", "authentication_required", "unavailable"] = "unavailable"
+    models: list[RuntimeModel] = Field(default_factory=list, max_length=200)
+    message: str = "Model discovery is not qualified for this connection."
+
+
 class ProviderLogin(Contract):
     """Ephemeral connection UI state. Never stored in the library or exports."""
     provider: Literal["codex"] = "codex"
@@ -200,6 +213,7 @@ class TermExplanation(TermResult):
 class Settings(Contract):
     cloud_enabled: bool = False
     provider: Literal["codex", "gemini", "claude"] = "codex"
+    model: str | None = Field(default=None, min_length=1, max_length=200, pattern=r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
     language: Literal["en", "zh-TW"] = "en"
     manual_source_review: bool = False
     update_mode: Literal["notify", "manual", "automatic"] = "notify"

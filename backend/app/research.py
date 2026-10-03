@@ -45,6 +45,14 @@ class ResearchService:
     def settings(self) -> Settings:
         return Settings.model_validate(self.db.get("settings") or {})
 
+    def selected_request(self, request):
+        settings = self.settings()
+        if request.provider != settings.provider or (request.model is not None and request.model != settings.model):
+            raise ValueError("Choose the provider and model in Connections before starting research")
+        if request.provider not in self.adapters:
+            raise ValueError("The selected connection is unavailable")
+        return request.model_copy(update={"model": settings.model})
+
     def cached(self, asset_id: str | None) -> dict | None:
         return self.db.get("asset:" + asset_id) if asset_id else None
 
@@ -74,6 +82,7 @@ class ResearchService:
                 return {"status": "cached", "result": cached}
         if not self.settings().cloud_enabled:
             raise ValueError("Cloud research is disabled. Enable it in Connections; cached pages remain available.")
+        request = self.selected_request(request)
         if len(self.tasks) >= 20:
             raise ValueError("Research queue is full. Wait for an existing request to finish.")
         if request.asset_id and not cached:

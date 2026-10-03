@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import AsyncIterator
 
-from backend.app.contracts import RuntimeCapabilities, RuntimeEvent
+from backend.app.contracts import RuntimeCapabilities, RuntimeEvent, RuntimeModelCatalog
 from backend.app.runtime_policy import apply_qualification
 
 
@@ -60,6 +60,9 @@ def executable_command(provider: str) -> list[str]:
 
 class AIRuntime(ABC):
     provider: str
+
+    async def models(self) -> RuntimeModelCatalog:
+        return RuntimeModelCatalog(provider=self.provider)
 
     async def check(self) -> RuntimeCapabilities:
         process = None
