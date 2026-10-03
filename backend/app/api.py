@@ -13,7 +13,7 @@ from sqlalchemy import text
 
 from backend.app.backup import BackupError, MAX_ARCHIVE_BYTES, make_backup, preview_backup, restore_backup
 from backend.app.codex_login import CodexLogin
-from backend.app.contracts import Conversation, EvidenceBundle, ResearchRequest, RuntimeModelCatalog, SavedResearch, Settings, TermRequest, now
+from backend.app.contracts import ApprovalDecision, Conversation, EvidenceBundle, ResearchRequest, RuntimeModelCatalog, SavedResearch, Settings, TermRequest, now
 from backend.app.db import Database
 from backend.app.research import ResearchService
 from backend.app.runtimes import runtimes
@@ -104,6 +104,22 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
     @app.get("/api/connections")
     async def connections():
         return [await adapter.check() for adapter in service.adapters.values()]
+
+    @app.get("/api/approvals")
+    async def approvals():
+        return JSONResponse([item.model_dump(mode="json") for item in service.approvals.snapshot()], headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/jobs/{job_id}/approvals/{approval_id}")
+    async def review_access(job_id: str, approval_id: str, decision: ApprovalDecision):
+        job = db.job(job_id)
+        task = service.tasks.get(job_id)
+        if not job or job["status"] != "running" or not task or task.done() or not service.settings().cloud_enabled:
+            raise HTTPException(409, "Research is no longer active. Nothing was approved.")
+        try:
+            service.approvals.resolve(job_id, approval_id, decision)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return JSONResponse({"decision": decision.decision}, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/connections/{provider}/models", response_model=RuntimeModelCatalog)
     async def models(provider: str):

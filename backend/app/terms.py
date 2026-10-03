@@ -147,6 +147,7 @@ class TermService:
         except Exception:
             self.db.transition(job_id, "failed", error="The explanation could not be validated. No facts or saved research were changed.")
         finally:
+            self.research.approvals.cancel(job_id)
             job = self.db.job(job_id)
             if job and job["status"] != "cancelled":
                 self.research.emit(RuntimeEvent(run_id=job_id, kind="run.failed" if job["status"] == "failed" else "run.completed", text=job["error"] or "", data={"status": job["status"]}))

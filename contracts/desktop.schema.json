@@ -1,5 +1,85 @@
 {
   "$defs": {
+    "ApprovalDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "decision": {
+          "enum": [
+            "deny",
+            "cancel"
+          ],
+          "title": "Decision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "decision"
+      ],
+      "title": "ApprovalDecision",
+      "type": "object"
+    },
+    "ApprovalRequest": {
+      "additionalProperties": false,
+      "description": "Ephemeral app-owned access review. No vendor arguments or granting authority.",
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "provider": {
+          "enum": [
+            "codex",
+            "gemini",
+            "claude"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "command",
+            "file_change",
+            "permissions"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "message": {
+          "default": "This access is outside the research policy and cannot be approved. Deny it to let the provider continue with permitted tools, or cancel research.",
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "provider",
+        "kind",
+        "expires_at"
+      ],
+      "title": "ApprovalRequest",
+      "type": "object"
+    },
     "AssetIdentity": {
       "additionalProperties": false,
       "properties": {
@@ -1392,6 +1472,12 @@
   "title": "DesktopContracts",
   "type": "object",
   "properties": {
+    "ApprovalDecision": {
+      "$ref": "#/$defs/ApprovalDecision"
+    },
+    "ApprovalRequest": {
+      "$ref": "#/$defs/ApprovalRequest"
+    },
     "AssetIdentity": {
       "$ref": "#/$defs/AssetIdentity"
     },

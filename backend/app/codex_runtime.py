@@ -3,6 +3,7 @@ import asyncio
 from pathlib import Path
 
 from backend.app.codex_rpc import CodexRPC
+from backend.app.codex_approvals import CodexApprovals, identifier
 from backend.app.contracts import RuntimeEvent, RuntimeModelCatalog
 from backend.app.codex_models import read_models, select_model
 from backend.app.runtime_base import AIRuntime, RuntimeFailure
@@ -20,6 +21,7 @@ class CodexRuntime(AIRuntime):
 
     def __init__(self, profile: Path | None = None):
         self.profile = profile
+        self.approvals = None
 
     async def check(self):
         result = await super().check()
@@ -73,15 +75,23 @@ class CodexRuntime(AIRuntime):
                     raise RuntimeFailure("Sign in to ChatGPT / Codex in Connections. API-key billing is not enabled.")
                 selected = select_model(await read_models(rpc), model)
                 thread_id = await rpc.start_thread(selected)
-                await rpc.request("turn/start", {"threadId": thread_id, "input": [{"type": "text", "text": prompt}]})
+                response = await rpc.request("turn/start", {"threadId": thread_id, "input": [{"type": "text", "text": prompt}]})
+                turn = response.get("turn")
+                if not isinstance(turn, dict) or not identifier(turn.get("id")):
+                    raise RuntimeFailure("Codex did not identify the active turn.")
+                approvals = CodexApprovals(rpc, self.approvals, run_id, thread_id, turn["id"])
                 while True:
                     raw = await rpc.event()
                     method, params = raw.get("method"), raw.get("params", {})
                     if not isinstance(params, dict):
                         raise RuntimeFailure("Codex returned invalid event parameters.")
                     if "id" in raw:
-                        yield RuntimeEvent(run_id=run_id, kind="approval.required", text="Expanded access requested. This preview stops rather than approving it.")
-                        raise RuntimeFailure("Expanded access requires an implemented approval flow.")
+                        # Term explanations have no permission to request additional tools.
+                        if not allow_browsing:
+                            raise RuntimeFailure("Cached-evidence explanations cannot request expanded access.")
+                        yield RuntimeEvent(run_id=run_id, kind="approval.required", text="Review requested access. Research is waiting; no permission has been granted.")
+                        await approvals.handle(raw)
+                        continue
                     if method == "item/agentMessage/delta":
                         if not isinstance(params.get("delta"), str):
                             raise RuntimeFailure("Codex returned an invalid message update.")

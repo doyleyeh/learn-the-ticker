@@ -6,10 +6,12 @@ import unicodedata
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from backend.app.approvals import ApprovalBroker
 from backend.app.contracts import EvidenceBundle, ResearchRequest, ResearchResult, RuntimeEvent, Settings, uid
 from backend.app.db import Database, Event, Job
 from backend.app.evidence import admit_bundle, factual_context, verify_candidate
 from backend.app.runtimes import RuntimeFailure
+from backend.app.runtime_base import AIRuntime
 from backend.safety import classify_question, educational_redirect
 
 
@@ -41,6 +43,10 @@ class ResearchService:
         self.inference = asyncio.Semaphore(1)
         self.retrieval = asyncio.Semaphore(2)
         self.tasks: dict[str, asyncio.Task] = {}
+        self.approvals = ApprovalBroker()
+        for adapter in self.adapters.values():
+            if isinstance(adapter, AIRuntime):
+                adapter.approvals = self.approvals
 
     def settings(self) -> Settings:
         return Settings.model_validate(self.db.get("settings") or {})
@@ -176,11 +182,13 @@ class ResearchService:
             # Exception strings can contain credentials, raw source bodies or provider diagnostics.
             self.db.transition(job_id, "failed", error="Research could not be validated. Check the connection and retry; no facts were invented.")
         finally:
+            self.approvals.cancel(job_id)
             job = self.db.job(job_id)
             if job and job["status"] not in ("cancelled",):
                 self.emit(RuntimeEvent(run_id=job_id, kind="run.failed" if job["status"] == "failed" else "run.completed", text=job["error"] or "", data={"status": job["status"]}))
 
     async def cancel(self, job_id: str):
+        self.approvals.cancel(job_id)
         task = self.tasks.get(job_id)
         if task:
             task.cancel()
@@ -188,6 +196,7 @@ class ResearchService:
         self.db.transition(job_id, "cancelled")
 
     async def close(self):
+        self.approvals.cancel()
         for task in list(self.tasks.values()):
             task.cancel()
         await asyncio.gather(*list(self.tasks.values()), return_exceptions=True)

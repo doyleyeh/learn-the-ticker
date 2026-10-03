@@ -120,6 +120,20 @@ class RuntimeModel(Contract):
     is_default: bool = False
 
 
+class ApprovalRequest(Contract):
+    """Ephemeral app-owned access review. No vendor arguments or granting authority."""
+    id: str = Field(default_factory=uid)
+    run_id: str
+    provider: Literal["codex", "gemini", "claude"]
+    kind: Literal["command", "file_change", "permissions"]
+    expires_at: AwareDatetime
+    message: str = "This access is outside the research policy and cannot be approved. Deny it to let the provider continue with permitted tools, or cancel research."
+
+
+class ApprovalDecision(Contract):
+    decision: Literal["deny", "cancel"]
+
+
 class RuntimeModelCatalog(Contract):
     provider: Literal["codex", "gemini", "claude"]
     status: Literal["available", "authentication_required", "unavailable"] = "unavailable"

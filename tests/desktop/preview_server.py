@@ -44,6 +44,22 @@ class PreviewTermRuntime:
         text = "營收指扣除成本前的銷售收入。此頁為介面測試用的虛構公司，沒有已驗證的營收數據。" if "in zh-TW" in prompt else "Revenue means sales before costs. This fictional example has no verified revenue figures."
         yield RuntimeEvent(run_id=run_id, kind="message.delta", text=json.dumps({"explanation": text, "basis": "snapshot", "source_ids": ["synthetic-source"]}))
 
+
+class PreviewAccessRuntime(PreviewTermRuntime):
+    def __init__(self, asset):
+        self.asset = asset
+        self.approvals = None
+
+    async def stream(self, prompt, run_id, workspace, model=None, *, allow_browsing=True):
+        yield RuntimeEvent(run_id=run_id, kind="approval.required", text="Synthetic access review for interface tests only")
+        outcome = await self.approvals.review(run_id, "codex", "file_change")
+        if outcome == "cancel":
+            raise asyncio.CancelledError
+        if outcome == "expired":
+            from backend.app.runtime_base import RuntimeFailure
+            raise RuntimeFailure("Synthetic access review expired. No provider was contacted.")
+        yield RuntimeEvent(run_id=run_id, kind="message.delta", text=json.dumps({"candidates": [self.asset.model_dump(mode="json")], "sources": [], "claims": []}))
+
 if __name__ == "__main__":
     db = Database("sqlite://", testing=True)
     asset = AssetIdentity(id="XTEST:SYNTH", name="Synthetic Research Example", symbol="SYNTH", asset_type="stock", exchange="XTEST")
@@ -60,6 +76,11 @@ if __name__ == "__main__":
     if "--models-demo" in sys.argv:
         db.put("settings", "settings", {"model": "synthetic-removed"})
     app = create_app(db, "synthetic-preview-credential-not-for-production", Path(".local/preview"), adapters={"codex": PreviewTermRuntime()} if "--terms-demo" in sys.argv or "--models-demo" in sys.argv else None)
+    if "--approvals-demo" in sys.argv:
+        adapter = PreviewAccessRuntime(asset)
+        adapter.approvals = app.state.service.approvals
+        app.state.service.adapters = {"codex": adapter}
+        db.put("settings", "settings", {"cloud_enabled": True})
     if "--login-demo" in sys.argv:
         app.state.codex_login.rpc_factory = lambda *_: PreviewLoginRPC()
     uvicorn.run(app, host="127.0.0.1", port=18764, access_log=False)

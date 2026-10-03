@@ -7,6 +7,7 @@ import { bundleRoute, pages, routeFromHash, sourceRoute } from "./routes";
 import { LibraryBackup } from "./LibraryBackup";
 import { CodexConnection } from "./CodexConnection";
 import { Connections } from "./Connections";
+import { AccessReview } from "./AccessReview";
 import { TermLearning } from "./TermLearning";
 
 type Job = { id: string; status: string; error?: string; result?: EvidenceBundle & { candidates?: EvidenceBundle["asset"][]; educational_redirect?: string } };
@@ -112,6 +113,7 @@ export function App() {
       {error && <div role="alert" className="notice-text error"><p>{error}</p><button onClick={() => setError("")}>Dismiss</button></div>}
       {notice && <p role="status">{notice}</p>}
       {!ready ? <Connect onConnect={async (endpoint, token) => { try { connect({ endpoint, token }); await reload(); } catch (error) { fail(error); } }} /> : <>
+        <AccessReview />
         <form className="research-bar" onSubmit={research}><label htmlFor="research-query">Understand an asset<input id="research-query" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Ticker, asset name, exchange or contract" required maxLength={1000}/></label><label>Explanation level<select value={level} onChange={(e) => setLevel(e.target.value as typeof level)}><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option></select></label><button disabled={busy}>{settings?.cloud_enabled ? "Research" : "Open cached research"}</button></form>
         {!settings?.cloud_enabled && <p>Online research is off. Enable your chosen provider in <a href="#connections">Connections</a>. Cached pages remain available.</p>}
         {busy && <section aria-live="polite" className="plain-panel"><p>{progress || "Research queued"}</p><button onClick={() => api<Job>(`/api/jobs/${job.id}/cancel`, { method: "POST" }).then(setJob).catch(fail)}>Cancel research</button></section>}
