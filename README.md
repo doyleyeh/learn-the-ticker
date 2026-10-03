@@ -4,11 +4,11 @@ A local, citation-first financial research and learning application using your o
 
 **Status: desktop developer preview, not public v1.** The approved stack is Tauri 2, React/TypeScript/Vite, packaged FastAPI and private PostgreSQL. Native Windows comes first, followed by macOS, Windows with WSL, then Linux. The product serves beginner and intermediate users across dynamically resolved asset types; there is no fixed ticker eligibility list.
 
-Working preview features include the local library, evidence versions and citations, cached search, conversations and bookmarks, term explanations, personal exports and portable backup/restore. Structured financial retrieval, imports, charts, comparisons and several release features are still being integrated. Codex and Claude transports are experimental; Gemini execution is disabled pending safe tool qualification. No live subscription integration or native installer has passed release acceptance. See [implementation status](docs/IMPLEMENTATION.md) for the complete record.
+Working preview features include the local library, evidence versions and citations, cached search, conversations and bookmarks, term explanations, personal exports and portable backup/restore. Structured financial retrieval, imports, charts, comparisons and several release features are still being integrated. Codex and Claude transports are experimental; Gemini execution is disabled pending safe tool qualification. No live subscription integration or native installer has passed release acceptance. See [implementation status](STATUS.md) for the complete record.
 
 ## Development on Windows
 
-Use Python 3.12 and Node 22 for development; native builds also need Rust/MSVC and the Windows webview prerequisites. PostgreSQL 17 binaries were used in the local lifecycle tests. Other major versions have not been qualified. The future end-user installer must bundle the core dependencies and handle provider prerequisites explicitly.
+Use Python 3.12 and Node 22.13+ (22.x) or Node 24+ for development; native builds also need Rust/MSVC and the Windows webview prerequisites. PostgreSQL 17 binaries were used in the local lifecycle tests. Other major versions have not been qualified. The future end-user installer must bundle the core dependencies and handle provider prerequisites explicitly.
 
 From the repository root:
 
@@ -20,7 +20,7 @@ npm run desktop
 
 Setup creates `.venv` and installs Python/frontend dependencies; it does not install Python, Node, Rust/MSVC, PostgreSQL or provider CLIs. `.env.example` is guidance, not an automatically loaded desktop configuration. The supervisor creates its own cluster and does not use an existing PostgreSQL service. The native launcher source still needs Rust/MSVC build and window/tray validation; these commands are not a claim of a verified installer.
 
-`npm run dev` starts only the frontend at `http://127.0.0.1:1420`; `npm start` previews the built frontend. Neither starts a database or backend. For a reproducible browser-only demonstration without subscriptions, use the [synthetic preview instructions](docs/TESTING.md#synthetic-browser-preview). Docker Compose is optional database development support and is not connected to the desktop supervisor.
+`npm run dev` starts only the frontend at `http://127.0.0.1:1420`; `npm start` previews the built frontend. Neither starts a database or backend. For a reproducible browser-only demonstration without subscriptions, use the [synthetic preview instructions](EVALS.md#synthetic-browser-preview). Docker Compose is optional database development support and is not connected to the desktop supervisor.
 
 `scripts/package_backend.py` builds the Windows x64 sidecar separately. `npm run desktop:build` additionally needs that sidecar and a reviewed PostgreSQL runtime under the Tauri resources directory; it does not provision them. See [packaging and migration](docs/MIGRATION.md#native-packaging-and-platforms).
 
@@ -51,17 +51,23 @@ Connections offers a full-library download, archive validation and restore into 
 
 ## Documentation
 
+Start with [STATUS](STATUS.md) for current work and evidence, then [AGENTS](AGENTS.md) for document ownership and durable rules.
+
 | Document | Responsibility |
 | --- | --- |
-| [Proposal](PROPOSAL.md) | Product purpose, audience and priorities |
-| [Requirements](PRD.md) | Required product behavior and public-v1 acceptance |
-| [Architecture](NEW_STRUCTURE.md) | Approved stack, boundaries and operating defaults |
-| [Technical design](TECHNICAL_DESIGN_SPEC.md) | Current mechanisms, contracts, limitations and remaining design work |
-| [Implementation backlog](docs/IMPLEMENTATION.md) | Delivery status, dependencies and dated verification evidence |
-| [Testing](docs/TESTING.md) | Reproducible checks and release scenarios |
-| [Migration](docs/MIGRATION.md) | Retained code, data compatibility and packaging transition |
-| [Contributing](CONTRIBUTING.md) / [AGENTS](AGENTS.md) | Development and review workflow |
+| [SPEC](SPEC.md) | Required product behavior and public-v1 definition of done |
+| [DECISIONS](DECISIONS.md) | Accepted architecture, defaults and significant decisions |
+| [PLAN](PLAN.md) | Milestone dependencies, scope and acceptance |
+| [TASKS](TASKS.md) | Actionable task states and required checks |
+| [EVALS](EVALS.md) | Fast, milestone and full verification commands/scenarios |
+| [STATUS](STATUS.md) | Current milestone/task, results, blockers and next action |
+| [Technical design](TECHNICAL_DESIGN_SPEC.md) | Mechanisms and implementation limitations |
+| [Migration](docs/MIGRATION.md) | Compatibility and packaging transition |
+| [Audit](docs/project-audit.md) | One-time document/implementation audit and requirement mapping |
+| [Contributing](CONTRIBUTING.md) / [delivery skill](.codex/skills/project-delivery/SKILL.md) | Development procedure |
 
-Requirements and architecture describe the destination; the backlog records what has actually passed. Keep one authoritative document for each responsibility instead of creating parallel plans.
+Use the shared fast check with `python -m scripts.verify fast`; the existing PowerShell/Bash quality gate runs the milestone tier. `python -m scripts.verify full` additionally requires PostgreSQL, native packaging resources and Rust/MSVC; it does not replace live-provider or clean-machine acceptance. The delivery skill provides equivalent portable wrappers. CI uses these same underlying checks; the manual full-evals workflow adds isolated PostgreSQL verification. See EVALS for prerequisites and currently missing release evidence.
+
+Requirements describe the destination; STATUS records verified progress. Historical documents retain original dates under docs/archive/2026-10-04.
 
 This is educational software, not investment advice or a trading application. Distribution is Apache-2.0; data and runtime dependencies retain their own terms.

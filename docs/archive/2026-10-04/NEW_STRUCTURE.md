@@ -1,8 +1,10 @@
+> Historical snapshot archived 2026-10-04. This document is no longer authoritative. See [the current source of truth](../../../DECISIONS.md) and [document ownership](../../../AGENTS.md). Original verification dates and claims below are preserved.
+
 # Learn the Ticker: revised desktop architecture and migration plan
 
-This is the architecture decision record for the approved local-first reboot. It describes the target; [implementation status](docs/IMPLEMENTATION.md) distinguishes working code from unfinished release requirements. It replaces the generic desktop proposal previously in this file. The implemented preview includes durable evidence, conversations, terms and portable backups; it does not yet satisfy the live-provider, full financial workflow or native release requirements below.
+This is the architecture decision record for the approved local-first reboot. It describes the target; [implementation status](IMPLEMENTATION.md) distinguishes working code from unfinished release requirements. It replaces the generic desktop proposal previously in this file. The implemented preview includes durable evidence, conversations, terms and portable backups; it does not yet satisfy the live-provider, full financial workflow or native release requirements below.
 
-This file is the canonical entry point for the accepted plan of the same name. Read it with [PRD.md](PRD.md) for required behavior, [TECHNICAL_DESIGN_SPEC.md](TECHNICAL_DESIGN_SPEC.md) for implementation mechanisms, [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md) for the ordered backlog and verified status, and [docs/TESTING.md](docs/TESTING.md) and [docs/MIGRATION.md](docs/MIGRATION.md) for verification and migration. Together these documents preserve the plan for future contributors and Codex agents without requiring the originating conversation. Update them in place instead of creating a competing plan.
+This file is the canonical entry point for the accepted plan of the same name. Read it with [PRD.md](PRD.md) for required behavior, [TECHNICAL_DESIGN_SPEC.md](../../../TECHNICAL_DESIGN_SPEC.md) for implementation mechanisms, [docs/IMPLEMENTATION.md](IMPLEMENTATION.md) for the ordered backlog and verified status, and [docs/TESTING.md](TESTING.md) and [docs/MIGRATION.md](../../MIGRATION.md) for verification and migration. Together these documents preserve the plan for future contributors and Codex agents without requiring the originating conversation. Update them in place instead of creating a competing plan.
 
 ## Product and ownership
 
@@ -97,11 +99,11 @@ Full backup/restore excludes credentials and provider authentication. Test actua
 
 Milestones: local foundation; complete Codex research; product parity; Gemini/Claude parity; clean-machine Windows installer; macOS; WSL; Linux. One-command developer setup precedes installer claims. Public v1 requires all three live integrations and packaged lifecycle, backup, update and rollback validation.
 
-See [PRD](PRD.md), [technical design](TECHNICAL_DESIGN_SPEC.md), [backlog](docs/IMPLEMENTATION.md), [testing](docs/TESTING.md), and [migration](docs/MIGRATION.md).
+See [PRD](PRD.md), [technical design](../../../TECHNICAL_DESIGN_SPEC.md), [backlog](IMPLEMENTATION.md), [testing](TESTING.md), and [migration](../../MIGRATION.md).
 
 ## Official integration references
 
-Integration reference entry points, not compatibility certifications. Pin and qualify exact runtime versions before release; local verification evidence belongs in [IMPLEMENTATION.md](docs/IMPLEMENTATION.md).
+Integration reference entry points, not compatibility certifications. Pin and qualify exact runtime versions before release; local verification evidence belongs in [IMPLEMENTATION.md](IMPLEMENTATION.md).
 
 - [Codex App Server](https://learn.chatgpt.com/docs/app-server)
 - [ChatGPT plan integration](https://developers.openai.com/siwc/token-sharing-open-source)

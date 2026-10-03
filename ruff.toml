@@ -1,0 +1,6 @@
+target-version = "py312"
+include = ["backend/**/*.py", "scripts/**/*.py", "tests/**/*.py", "evals/**/*.py"]
+extend-exclude = [".venv", ".local", "build", "dist", "node_modules"]
+
+[lint]
+select = ["E9", "F63", "F7", "F82"]

@@ -11,9 +11,13 @@ node_modules/
 dist/
 build/
 .agent-runs/
-.codex
+.codex/*
+!.codex/skills/
+.codex/skills/*
+!.codex/skills/project-delivery/
 .venv/
 .local/
+.ruff_cache/
 target/
 *.spec
 !backend/desktop.spec

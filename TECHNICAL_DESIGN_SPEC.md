@@ -1,6 +1,6 @@
 # Learn the Ticker technical design
 
-[NEW_STRUCTURE.md](NEW_STRUCTURE.md) owns architectural decisions; this document defines implementation boundaries. [PRD.md](PRD.md) owns behavior. The current implementation is a developer preview, with open release work in [the backlog](docs/IMPLEMENTATION.md).
+[DECISIONS.md](DECISIONS.md) owns architectural decisions; this document defines implementation boundaries. [SPEC.md](SPEC.md) owns behavior. The current implementation is a developer preview, with open release work in [the task queue](TASKS.md).
 
 ## Application layout
 

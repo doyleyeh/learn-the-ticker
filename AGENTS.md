@@ -1,21 +1,21 @@
 # AGENTS.md
 
-Learn the Ticker is a citation-first local desktop research and learning application for beginner and intermediate users.
+Learn the Ticker is a citation-first local desktop research and learning application for beginner and intermediate users. Repository documents are durable project memory; never depend on prior chat history.
 
-The accepted implementation baseline is [Learn the Ticker: revised desktop architecture and migration plan](NEW_STRUCTURE.md). Continue that plan using docs/IMPLEMENTATION.md for current progress, dependencies and remaining acceptance checks. The repository documents carry the plan; agents must not depend on prior chat history or treat the target architecture as already delivered.
+## Authority and ownership
 
-Read NEW_STRUCTURE.md, PRD.md, TECHNICAL_DESIGN_SPEC.md, docs/IMPLEMENTATION.md and docs/TESTING.md before changes. Follow safety boundaries, then PRD, technical design and architecture decisions. The approved reboot supersedes old Top-500, hosted Next.js and agent-loop requirements.
+Safety boundaries come first. [SPEC.md](SPEC.md) owns required behavior; [DECISIONS.md](DECISIONS.md) owns accepted architecture/defaults; [PLAN.md](PLAN.md) owns milestone order/acceptance; [TASKS.md](TASKS.md) owns actionable work; [EVALS.md](EVALS.md) owns validation; [STATUS.md](STATUS.md) owns current state. [Technical design](TECHNICAL_DESIGN_SPEC.md) describes mechanisms and [migration](docs/MIGRATION.md) describes compatibility. Archived documents are historical only. Resolve contradictions explicitly, never by quietly weakening requirements.
 
-For each task: git status --short; state acceptance criteria; inspect before editing; implement a coherent change; run relevant checks and the quality gate; report changes, results and limitations. Three repair attempts, then diagnose and report. Keep implementation status honest. Never mark a live provider or installer complete based solely on fixtures.
+Read these seven canonical documents before delivery work, plus relevant technical/migration sections. Use the repo-scoped [project-delivery skill](.codex/skills/project-delivery/SKILL.md) for execution procedures.
 
-Never produce buy/sell/hold advice, allocation/position sizing, tax advice, unsupported targets or trading behavior. Cite important facts and label uncertainty. Unverified notes never feed facts/charts/calculations. Verify source identity, claim support, freshness and usage rights; a subscription does not grant source redistribution rights.
+## Durable rules
 
-Normal CI is deterministic with no live external provider calls. Explicit live smoke runs are separate. Secrets remain out of frontend bundles, logs, URLs, exports, backups and committed files. Provider transport must restrict tools in code/configuration, not only in prompts.
-
-Root npm scripts delegate to apps/desktop. Production enters backend/app, not the fixture API. Preserve reusable financial UI/logic until migrated; remove superseded routes/configuration once checks establish their replacement. Git preserves history; do not keep duplicate legacy trees.
-
-Keep docs synchronized with their roles: PRD requirements, NEW_STRUCTURE architecture, technical design mechanisms/limitations, IMPLEMENTATION delivery status, TESTING reproducible checks and MIGRATION compatibility. Update README commands and hidden review guidance when affected. Store dated verification evidence in IMPLEMENTATION; do not describe target behavior, stored settings or fixtures as shipped functionality.
-
-Explain new dependency need, alternatives, security/licensing and packaging impact. Use conventional commits. PR creation and merging need user approval. Never use git reset --hard, git clean -fd, git push --force, destructive rebase or discard user changes without explicit authorization. No automatic agent-loop commits, pushes or merges.
-
-Run the PowerShell or Bash quality gate. For UI changes verify citations, source inspection, freshness, missing evidence, readability and responsive layouts. For database/native changes add private-PostgreSQL lifecycle/restore tests. Public v1 needs all three subscription integrations, complete feature parity and a clean-machine Windows installer.
+- Begin with git status and acceptance criteria; inspect before editing. Preserve existing user changes and reusable financial behavior. Root npm scripts delegate to apps/desktop; production enters backend/app, never the fixture API. Remove superseded code only after replacement checks pass; do not keep duplicate legacy trees.
+- No buy/sell/hold, position sizing, allocation, tax advice, unsupported targets, or trading behavior. Cite important claims and uncertainty. Verify identity, claim support, dates, units and usage rights. Subscriptions do not grant redistribution rights. Unverified notes and generated term interpretations never become facts/chart inputs.
+- Keep credentials, hidden reasoning and raw provider diagnostics out of frontend bundles, logs, URLs, exports, backups and Git. Use authenticated loopback transport, OS credential storage and isolated provider workspaces. Enforce tools in code/configuration, not prompts. Never silently change providers or enable API billing/overages.
+- Normal CI is deterministic with no live provider/retrieval calls. Run targeted tests and the quality gate; UI work requires citation/source/freshness/missing-state/readability/responsive verification. Database/native work requires isolated PostgreSQL lifecycle and actual restore checks.
+- Three failed repair attempts require diagnosis and a recorded blocker. Never hide/skip/weaken checks to claim completion. No milestone is complete while required validation fails; fixtures, stored settings and source code alone do not qualify live integrations or installers.
+- Update documents only in their owning role. Preserve original verification dates; detailed new evidence belongs in docs/verification and current pointers in STATUS. Update README and hidden review guidance when affected. Record significant decisions and dependency need/alternatives/security/licenses/packaging impact.
+- Reuse a suitable non-protected branch. Reviewed, verified local conventional commits are authorized by the delivery request. PR creation, pushing, merging and publishing require separate user authorization. Never reset --hard, clean -fd, force-push, destructively rebase, delete user branches or discard user work without explicit authorization.
+- Destructive migrations, scope/security changes, new paid services, public network exposure and production deployment require an established decision or user approval. Document the exact blocked action and continue independent work.
+- Windows public v1 requires all specified workflows, all three live subscription integrations, and clean-machine installer/update/rollback acceptance. Later platforms are deferred. Completion requires both full verification and an independent requirement-by-requirement review.

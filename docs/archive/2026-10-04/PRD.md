@@ -1,6 +1,8 @@
+> Historical snapshot archived 2026-10-04. This document is no longer authoritative. See [the current source of truth](../../../SPEC.md) and [document ownership](../../../AGENTS.md). Original verification dates and claims below are preserved.
+
 # Learn the Ticker product requirements
 
-This is the product source of truth for the desktop reboot. These are required behaviors, not claims that every feature is delivered. [NEW_STRUCTURE.md](NEW_STRUCTURE.md) records the accepted architecture and defaults. [Implementation status](docs/IMPLEMENTATION.md) records working slices, experimental integrations and delivery gaps.
+This is the product source of truth for the desktop reboot. These are required behaviors, not claims that every feature is delivered. [NEW_STRUCTURE.md](NEW_STRUCTURE.md) records the accepted architecture and defaults. [Implementation status](IMPLEMENTATION.md) records working slices, experimental integrations and delivery gaps.
 
 ## Audience and boundaries
 

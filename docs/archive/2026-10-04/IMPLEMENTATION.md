@@ -1,6 +1,8 @@
+> Historical snapshot archived 2026-10-04. This document is no longer authoritative. See [the current source of truth](../../../STATUS.md) and [document ownership](../../../AGENTS.md). Original verification dates and claims below are preserved.
+
 # Desktop implementation backlog
 
-This tracks actual delivery against [the approved architecture](../NEW_STRUCTURE.md) and [product requirements](../PRD.md). “Implemented” means the named slice has code and passing checks, not that its entire milestone is complete. Public v1 is **not ready**. No live subscription or clean-machine installer acceptance has been established. This document owns delivery status and dated results; requirements remain the target even where preview behavior is narrower.
+This tracks actual delivery against [the approved architecture](NEW_STRUCTURE.md) and [product requirements](PRD.md). “Implemented” means the named slice has code and passing checks, not that its entire milestone is complete. Public v1 is **not ready**. No live subscription or clean-machine installer acceptance has been established. This document owns delivery status and dated results; requirements remain the target even where preview behavior is narrower.
 
 ## Current state
 
@@ -65,6 +67,6 @@ All 58 local Markdown links/anchors and checked literal script/source paths reso
 
 ## Removal ledger
 
-Retired: old agent-loop scripts/skill copy/journals, duplicate SPEC/TASKS/EVALS control documents, old long-form PRD/TDS/proposal, hosted deployment configuration, Next routes/config, source-string frontend smoke harness and automatic API-key PR-review workflow. Replacements are linked from [README](../README.md). The updated [manual review prompt](../.github/codex/prompts/review.md) remains available for explicitly requested reviews.
+Retired: old agent-loop scripts/skill copy/journals, duplicate SPEC/TASKS/EVALS control documents, old long-form PRD/TDS/proposal, hosted deployment configuration, Next routes/config, source-string frontend smoke harness and automatic API-key PR-review workflow. Replacements are linked from [README](../../../README.md). The updated [manual review prompt](../../../.github/codex/prompts/review.md) remains available for explicitly requested reviews.
 
-Retained temporarily: reusable React financial components, fixture/reference contracts and flat backend algorithm modules still covered by regression checks. They are not imported by the production research path except the reusable safety rules. Delete them only after D11-D16 migrate the behavior they protect. The former golden-asset manifest is renamed as a reference scenario fixture; it does not gate production coverage. The separate Top-500 fixture and old source allowlist still serve legacy regression tests, not desktop admission. See [the migration guide](MIGRATION.md#removal-rules) for their disposition.
+Retained temporarily: reusable React financial components, fixture/reference contracts and flat backend algorithm modules still covered by regression checks. They are not imported by the production research path except the reusable safety rules. Delete them only after D11-D16 migrate the behavior they protect. The former golden-asset manifest is renamed as a reference scenario fixture; it does not gate production coverage. The separate Top-500 fixture and old source allowlist still serve legacy regression tests, not desktop admission. See [the migration guide](../../MIGRATION.md#removal-rules) for their disposition.

@@ -1,14 +1,6 @@
 Use this checklist for an explicitly requested review of Learn the Ticker, a citation-first local desktop research and learning application for beginner and intermediate users. It is a manual review prompt; no automatic provider call, PR comment, approval or merge is authorized by this file.
 
-Authority order:
-
-1. Safety and advice-boundary rules
-2. [PRD.md](../../../PRD.md): required product behavior
-3. [TECHNICAL_DESIGN_SPEC.md](../../../TECHNICAL_DESIGN_SPEC.md): mechanisms and limitations
-4. [NEW_STRUCTURE.md](../../../NEW_STRUCTURE.md): approved architecture and defaults
-5. [PROPOSAL.md](../../../PROPOSAL.md): product purpose and priorities
-
-Follow [AGENTS.md](../../../AGENTS.md) and [CONTRIBUTING.md](../../../CONTRIBUTING.md). Check [implementation status](../../../docs/IMPLEMENTATION.md), [testing](../../../docs/TESTING.md) and [migration](../../../docs/MIGRATION.md) to distinguish required behavior from implemented preview capabilities. The approved reboot supersedes the former hosted application and fixed-coverage requirements.
+Authority and ownership follow [AGENTS.md](../../../AGENTS.md): safety first; [SPEC](../../../SPEC.md) required behavior; [DECISIONS](../../../DECISIONS.md) architecture/defaults; [PLAN](../../../PLAN.md) milestone acceptance; [TASKS](../../../TASKS.md) actions; [EVALS](../../../EVALS.md) checks; [STATUS](../../../STATUS.md) actual progress/evidence. [Technical design](../../../TECHNICAL_DESIGN_SPEC.md) and [migration](../../../docs/MIGRATION.md) are subordinate references. Archived documents are historical. The desktop reboot supersedes hosted/fixed-universe assumptions.
 
 Focus on P0/P1 issues only:
 

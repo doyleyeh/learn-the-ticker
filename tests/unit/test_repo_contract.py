@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_authoritative_documents_and_desktop_workspace():
-    for name in ("NEW_STRUCTURE.md", "PROPOSAL.md", "PRD.md", "TECHNICAL_DESIGN_SPEC.md", "AGENTS.md", "README.md", "CONTRIBUTING.md", "docs/IMPLEMENTATION.md", "docs/TESTING.md", "docs/MIGRATION.md"):
+    for name in ("SPEC.md", "PLAN.md", "TASKS.md", "EVALS.md", "STATUS.md", "DECISIONS.md", "TECHNICAL_DESIGN_SPEC.md", "AGENTS.md", "README.md", "CONTRIBUTING.md", "docs/MIGRATION.md"):
         assert (ROOT / name).read_text(encoding="utf-8").strip()
     package = json.loads((ROOT / "package.json").read_text())
     assert package["workspaces"] == ["apps/desktop"]

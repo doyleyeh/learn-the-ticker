@@ -1,10 +1,38 @@
-# Testing and release evidence
+# Verification contract
 
-Run `powershell -ExecutionPolicy Bypass -File scripts/run_quality_gate.ps1` on native Windows, or `bash scripts/run_quality_gate.sh` elsewhere. The gate runs Python scenarios, retained financial static evaluations, frontend tests, type checking and the Vite production build. It does not make live provider calls.
+[EVALS](EVALS.md) owns commands and acceptance scenarios. [STATUS](STATUS.md) owns latest results; [PLAN](PLAN.md) selects required groups per milestone. Use the repository Python: .venv/Scripts/python.exe on Windows, .venv/bin/python on POSIX. Wrappers prefer those environments, then system Python; dependencies come from README setup. Commands below run from repository root.
 
-Install dependencies with the [README setup steps](../README.md#development-on-windows) first. The PowerShell gate prefers `.venv/Scripts/python.exe`; Bash uses `.venv/bin/python` when present, otherwise `PYTHON` or `python3`. These interpreter paths differ by platform. Hosted CI runs the gate on Windows and Ubuntu and separately regenerates/checks JSON Schema and TypeScript. It does not build Tauri, start PostgreSQL or qualify desktop platform support. The old automatic API-key PR-review workflow is removed; use [manual review guidance](../.github/codex/prompts/review.md) only when requested.
+## Verification tiers
 
-For contract changes run `.venv/Scripts/python.exe -m scripts.contracts` and `node scripts/generate_types.mjs`; commit both generated outputs with the model changes. The schema unit test checks against Pydantic and CI detects generated-file drift. For documentation changes check local links, named scripts/paths, target-versus-implemented claims and the quality gate. No new runtime dependency or mirrored-content test is needed for prose edits.
+| Group/tier | Exact command | What passing establishes |
+| --- | --- | --- |
+| F — fast | `python -m scripts.verify fast` | Ruff correctness lint, ESLint correctness lint, non-writing schema checks, local Markdown links/anchors, Git whitespace and TypeScript |
+| Q — milestone | `powershell -ExecutionPolicy Bypass -File scripts/run_quality_gate.ps1` or `bash scripts/run_quality_gate.sh` | Shared fast checks plus all Python tests, static evaluations, frontend tests and build (which includes type checking once) |
+| C — contracts | `python -m scripts.contracts --check` and `node scripts/generate_types.mjs --check` | Tracked schema and types match generated output without rewriting files |
+| R — security/evidence/runtime | `python -m pytest tests/desktop tests/unit -q` and `python evals/run_static_evals.py` | Existing deterministic admission, safety, protocol, export and secret-boundary scenarios; add missing feature cases with implementation |
+| D — database | `python -m scripts.verify database` | Private service, PostgreSQL transaction/recovery and actual restore checks; requires PostgreSQL 17 binaries |
+| N — packaged | `python -m scripts.verify packaged` | Builds PyInstaller sidecar and exercises packaged service; native Windows x64 and PostgreSQL required |
+| N — native | `python -m scripts.verify native` | Tauri build; requires Rust/MSVC, reviewed PostgreSQL resources and built sidecar; does not prove tray/installer behavior |
+| Full automated | `python -m scripts.verify full` | Q, D, packaged and native checks; fails with missing prerequisites, never silently skips them |
+| B — browser | Synthetic preview procedure below | Inspect interactions/citations/layout and record results; automated browser interaction harness remains M4-T03 |
+| L — live provider | Explicit scenarios under Required before public v1 | Live harness remains M1-T05/M8; protocol-only smoke is not inference qualification |
+| W — clean machine | Windows acceptance matrix under Required before public v1 | M11 clean VM evidence; no existing automated clean-machine harness is claimed |
+
+The skill's verify-fast, verify-milestone and verify-full wrappers exist in both .ps1 and .sh forms under .codex/skills/project-delivery/scripts. Windows uses PowerShell or Git Bash; POSIX uses Bash. They invoke the same dispatcher as CI and preserve failing exit codes. Database/packaged/native subsets are explicit additional lanes, never replacements for Q.
+
+Underlying commands remain `python -m pytest tests -q`, `python evals/run_static_evals.py`, `npm test`, `npm run typecheck`, and `npm run build`. Python integration tests live under tests/integration and desktop behavior under tests/desktop. Focused edits may select affected paths/cases. Production code must gain behavioral scenarios; legacy static evaluations alone do not qualify migrated features.
+
+Correctness lint commands are `python -m ruff check backend scripts tests evals` and `npm run lint`. Formatting validation is limited to `git diff --check` and `git diff --cached --check`; no broad formatter is configured or claimed. Set LTT_VERIFY_BASE to a known Git revision to additionally check committed changes against that base (CI sets it for PRs/pushes). Do not use autofix or generator mutation in checks.
+
+To update contracts deliberately, run `python -m scripts.contracts` then `node scripts/generate_types.mjs` and commit both outputs. Documentation checks use `python -m scripts.check_docs`; manually verify that named commands exist and claims distinguish target/implemented/live/native states. The checker validates tracked and non-ignored new Markdown paths/headings without fetching external links.
+
+## CI and full release gates
+
+Normal CI runs Q on Windows and Ubuntu with no live providers, source retrieval, database service or Docker requirement. The manual full-evals workflow currently runs the D lane on windows-2025 using its installed PostgreSQL 17 binaries in separate disposable clusters. It does not start or modify the runner's system database. Runner availability is checked explicitly; [the official image inventory](https://github.com/actions/runner-images/blob/main/images/windows/Windows2025-Readme.md) is an input to that prerequisite, not installer qualification. No automatic API-key Codex review is enabled.
+
+Full automated checks are necessary but insufficient for release. B/L/W, license/rights review, runtime isolation, signatures, migration/update/rollback interruption, and all SPEC workflows must also have dated passing evidence. Missing harnesses, toolchains, accounts or clean VM access keep the corresponding task/milestone incomplete. Extend the shared dispatcher/full-evals workflow only when real harnesses land, never with nonexistent placeholder commands.
+
+Normal dependency installs may access package registries; product test data and outcomes remain deterministic. Package vulnerability checks are a separate changing supply-chain signal (`npm audit`), not live research. Dependency purpose/licenses/packaging are recorded in DECISIONS.
 
 ## Scenario coverage
 
@@ -44,7 +72,7 @@ Check source links, original dates/permissions, missing evidence, separate notes
 
 ## Codex connection checks
 
-Run `.venv/Scripts/python.exe -m scripts.smoke_codex_protocol` explicitly to check the installed App Server's initialization and account-read protocol. It creates an isolated temporary profile and requires it to have no inherited authentication. It does not request a device code, log in or generate content. This check is separate from CI; exact tested versions are recorded in [IMPLEMENTATION.md](IMPLEMENTATION.md#verification-record-2026-10-03), not a supported-version promise.
+Run `.venv/Scripts/python.exe -m scripts.smoke_codex_protocol` explicitly to check the installed App Server's initialization and account-read protocol. It creates an isolated temporary profile and requires it to have no inherited authentication. It does not request a device code, log in or generate content. This check is separate from CI; exact tested versions are recorded in [IMPLEMENTATION.md](docs/archive/2026-10-04/IMPLEMENTATION.md#verification-record-2026-10-03), not a supported-version promise.
 
 `tests/desktop/test_codex.py` covers early stream notifications, malformed/flooded/timed-out responses, subscription-only authentication, login success/cancel/expiry/failure, mismatched flow IDs, untrusted verification URLs, API authentication and credential exclusion. `preview_server --login-demo` uses a synthetic TEST-ONLY device code without launching a provider; use it for the browser start/cancel check. Never enter that synthetic code on the real provider website. Actual sign-in and live research remain separate acceptance checks.
 
@@ -62,4 +90,4 @@ Exercise imports, structured API fallback, conflicts/restatements, numeric units
 
 Build and run the Windows package on a clean VM without Python, Node, PostgreSQL or development tooling. Verify provider prerequisite onboarding, duplicate launches, occupied ports, tray/quit, locked libraries, interrupted migrations/updates, backup restoration and preservation of newer research during rollback. Record updater signatures separately from OS code-signing status. Collect baseline performance; no numeric thresholds have been approved yet.
 
-Current results and unverified boundaries are maintained in [IMPLEMENTATION.md](IMPLEMENTATION.md). Passing the ordinary gate never implies release readiness.
+Current results and unverified boundaries are maintained in [STATUS.md](STATUS.md). Passing the ordinary gate never implies release readiness.

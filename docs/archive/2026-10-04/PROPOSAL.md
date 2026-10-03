@@ -1,3 +1,5 @@
+> Historical snapshot archived 2026-10-04. This document is no longer authoritative. See [the current source of truth](../../../SPEC.md) and [document ownership](../../../AGENTS.md). Original verification dates and claims below are preserved.
+
 # Learn the Ticker proposal
 
 Learn the Ticker turns a user's commercial agent subscription into a local, reusable financial learning library. A question about an unfamiliar asset should lead to sourced research, visible evidence gaps and follow-up explanations, with the evidence saved locally for reuse.
@@ -14,4 +16,4 @@ Local-first describes ownership, not offline inference. PostgreSQL and the UI ru
 
 Scope excludes trading, brokerage execution, recommendations to buy/sell/hold, personalized allocations, price targets and tax advice. Advice-like questions are redirected into education. Important claims carry citations. Unverified notes remain distinct from factual evidence.
 
-Implementation follows [NEW_STRUCTURE.md](NEW_STRUCTURE.md) and [PRD.md](PRD.md). Native Windows comes first; macOS, WSL and Linux follow. Public v1 requires working Codex, Gemini and Claude subscription connections, reliable private storage, complete research UX and tested packaging. The current implementation state is in [the backlog](docs/IMPLEMENTATION.md); this proposal is not a declaration of release readiness.
+Implementation follows [NEW_STRUCTURE.md](NEW_STRUCTURE.md) and [PRD.md](PRD.md). Native Windows comes first; macOS, WSL and Linux follow. Public v1 requires working Codex, Gemini and Claude subscription connections, reliable private storage, complete research UX and tested packaging. The current implementation state is in [the backlog](IMPLEMENTATION.md); this proposal is not a declaration of release readiness.

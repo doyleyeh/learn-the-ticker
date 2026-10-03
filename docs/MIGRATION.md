@@ -10,7 +10,7 @@ The approved reboot replaces hosted Next.js with a local React/Vite/Tauri applic
 - Shared contracts generate JSON Schema and TypeScript from Pydantic.
 - SQLAlchemy records and Alembic initial migration provide durable local storage.
 - Immutable evidence, saved reports, scoped conversations and term explanations persist in the desktop library. Portable full-library backup/restore has passed isolated PostgreSQL and synthetic-browser checks.
-- Architecture, proposal, PRD and technical design are authoritative at the repository root. Focused implementation/testing/migration guides replace the old operational documents and agent-loop framework.
+- The seven canonical root documents own requirements, decisions, plan, tasks, validation and live status as defined in [AGENTS](../AGENTS.md). This guide owns compatibility; superseded documents and original evidence are preserved under docs/archive/2026-10-04.
 
 ## Removal rules
 
@@ -24,7 +24,7 @@ The preview supports Alembic revision `0001` only. Unknown/future revisions and 
 
 The implemented `.lttbackup` format version `1` contains `manifest.json` and `library.json`, not a filesystem copy or SQL script. It includes current database-held records, immutable evidence/term versions, conversations, reports, jobs and normalized events. It validates checksums, schema and references, and permits at most 128 MiB compressed / 256 MiB JSON content. These limits differ from the future 10 GB disposable-document cache policy. Future attachment storage must extend the format before shipping; existing archives cannot be assumed to include it.
 
-Restore requires an empty destination library and the fingerprint of the previewed archive. Writes commit atomically. Restored pending jobs become interrupted without replay; cloud research and start-at-login reset to off. Credentials, provider profiles, environment files and raw runtime traces are excluded. On another computer provision new local database credentials and reconnect providers. This protects existing destination work by refusing overwrite, but does not implement an application rollback manager or merge two libraries. See [restore tests](TESTING.md#portable-backup-and-restore).
+Restore requires an empty destination library and the fingerprint of the previewed archive. Writes commit atomically. Restored pending jobs become interrupted without replay; cloud research and start-at-login reset to off. Credentials, provider profiles, environment files and raw runtime traces are excluded. On another computer provision new local database credentials and reconnect providers. This protects existing destination work by refusing overwrite, but does not implement an application rollback manager or merge two libraries. See [restore tests](../EVALS.md#portable-backup-and-restore).
 
 ## Native packaging and platforms
 
@@ -36,4 +36,4 @@ Private-cluster checks have used PostgreSQL 17 binaries without changing their e
 
 ## Remaining release migration work
 
-Retained financial UI parity, structured adapters, imports, complete subscription runtime isolation/authentication, larger/attachment-aware backups, full cache/deletion controls, coordinated upgrades/rollback and self-contained distribution remain explicit tasks. Use [IMPLEMENTATION.md](IMPLEMENTATION.md) for dependencies, acceptance checks and the dated verification record. No public release is complete until all three providers and the packaged Windows workflow pass.
+Retained financial UI parity, structured adapters, imports, complete subscription runtime isolation/authentication, larger/attachment-aware backups, full cache/deletion controls, coordinated upgrades/rollback and self-contained distribution remain explicit tasks. Use [STATUS.md](../STATUS.md) for the current state and evidence pointers; [PLAN](../PLAN.md), [TASKS](../TASKS.md) and [EVALS](../EVALS.md) own dependencies, acceptance and checks. No public release is complete until all three providers and the packaged Windows workflow pass.

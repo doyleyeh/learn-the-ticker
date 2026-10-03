@@ -1,0 +1,30 @@
+name: Full evaluations - isolated PostgreSQL lane
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  database:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - run: python -m pip install -r requirements-dev.txt
+      - name: Locate private-test binaries
+        shell: pwsh
+        run: |
+          $candidate = Join-Path $env:PGROOT 'bin'
+          if (-not (Test-Path (Join-Path $candidate 'postgres.exe'))) {
+            throw 'PostgreSQL 17 is required; no database checks may be skipped.'
+          }
+          "LTT_PG_BIN=$candidate" >> $env:GITHUB_ENV
+      - name: Exercise private lifecycle, transaction recovery and real restore
+        run: python -m scripts.verify database
+      # This lane never starts/modifies the runner's system service.
+      # Browser/native/live/clean-machine acceptance remains in EVALS.md.
