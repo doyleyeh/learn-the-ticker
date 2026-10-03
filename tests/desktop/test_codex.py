@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from backend.app.api import create_app
 from backend.app.codex_login import CodexLogin, DEVICE_URL
 from backend.app.codex_rpc import CodexRPC
+from backend.app.codex_policy import thread_parameters
 from backend.app.codex_runtime import CodexRuntime
 from backend.app.db import Database
 from backend.app.contracts import RuntimeCapabilities
@@ -39,6 +40,10 @@ class FakeRPC:
 
     async def event(self):
         return await self.events.get()
+
+    async def start_thread(self, model=None):
+        await self.request("thread/start", thread_parameters(Path.cwd(), model))
+        return "thread-1"
 
     async def close(self):
         self.closed = True
@@ -190,10 +195,26 @@ def test_codex_generation_checks_subscription_and_normalizes_events(tmp_path, mo
         events = [event async for event in CodexRuntime(tmp_path).stream("question", "run", tmp_path)]
         assert [event.text for event in events] == ["Answer"] and rpc.closed
         thread = next(params for method, params in rpc.requests if method == "thread/start")
-        assert thread["sandbox"] == "readOnly" and thread["approvalPolicy"] == "untrusted"
+        assert thread["sandbox"] == "read-only" and thread["approvalPolicy"] == "on-request"
         rpc.account = {"type": "apiKey"}
         rpc.requests.clear()
         with pytest.raises(RuntimeFailure, match="API-key"):
             _ = [event async for event in CodexRuntime(tmp_path).stream("question", "run", tmp_path)]
         assert all(method != "turn/start" for method, _ in rpc.requests)
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("kind,browsing", [("commandExecution", True), ("fileChange", True), ("mcpToolCall", True), ("webSearch", False), ("unknownTool", True)])
+def test_unexpected_tool_events_abort_without_exposing_payloads(tmp_path, monkeypatch, kind, browsing):
+    async def run():
+        rpc = FakeRPC()
+        rpc.account = {"type": "chatgpt"}
+        await rpc.events.put({"method": "item/started", "params": {"item": {"type": kind, "arguments": "private provider payload"}}})
+        monkeypatch.setattr("backend.app.codex_runtime.CodexRPC", lambda *_, **kwargs: rpc)
+        async def qualified_check(self):
+            return RuntimeCapabilities(provider="codex", installed=True, authentication="authenticated", qualification="live", generation=True, browsing=True)
+        monkeypatch.setattr(CodexRuntime, "check", qualified_check)
+        with pytest.raises(RuntimeFailure, match="permitted research tools") as exc:
+            _ = [event async for event in CodexRuntime(tmp_path).stream("question", "run", tmp_path, allow_browsing=browsing)]
+        assert rpc.closed and "private provider payload" not in str(exc.value)
     asyncio.run(run())

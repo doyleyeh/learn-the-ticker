@@ -46,11 +46,8 @@ class CodexRuntime(AIRuntime):
                 await rpc.open()
                 if not subscription_account(await rpc.request("account/read", {"refreshToken": False})):
                     raise RuntimeFailure("Sign in to ChatGPT / Codex in Connections. API-key billing is not enabled.")
-                params = {"cwd": str(workspace), "approvalPolicy": "untrusted", "sandbox": "readOnly", "ephemeral": True}
-                if model:
-                    params["model"] = model
-                thread = await rpc.request("thread/start", params)
-                await rpc.request("turn/start", {"threadId": thread["thread"]["id"], "input": [{"type": "text", "text": prompt}]})
+                thread_id = await rpc.start_thread(model)
+                await rpc.request("turn/start", {"threadId": thread_id, "input": [{"type": "text", "text": prompt}]})
                 while True:
                     raw = await rpc.event()
                     method, params = raw.get("method"), raw.get("params", {})
@@ -63,8 +60,16 @@ class CodexRuntime(AIRuntime):
                         if not isinstance(params.get("delta"), str):
                             raise RuntimeFailure("Codex returned an invalid message update.")
                         yield RuntimeEvent(run_id=run_id, kind="message.delta", text=params["delta"])
-                    elif method == "item/started" and params.get("item", {}).get("type") == "webSearch":
-                        yield RuntimeEvent(run_id=run_id, kind="tool.started", text="Searching online sources")
+                    elif method in ("item/started", "item/completed"):
+                        item = params.get("item")
+                        if not isinstance(item, dict):
+                            raise RuntimeFailure("Codex returned an invalid item.")
+                        kind = item.get("type")
+                        if kind == "webSearch" and allow_browsing:
+                            if method == "item/started":
+                                yield RuntimeEvent(run_id=run_id, kind="tool.started", text="Searching online sources")
+                        elif kind not in ("agentMessage", "userMessage", "reasoning"):
+                            raise RuntimeFailure("Codex reported activity outside the permitted research tools.")
                     elif method == "turn/completed":
                         if params.get("turn", {}).get("status") != "completed":
                             raise RuntimeFailure("Codex turn did not complete. Check quota, authentication or cancellation.")

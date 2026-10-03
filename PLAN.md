@@ -17,7 +17,7 @@ Commands and prerequisites live in [EVALS](EVALS.md#verification-tiers). Q is th
 - Components: Governance documents, archives, verification scripts, delivery skill and CI.
 - Acceptance: Every P requirement and D01–D21 item mapped; historical dates preserved; skill discoverable/tracked; all local links resolve; existing scenarios preserved; foundation quality gate passes and reviewed local commit exists.
 - Validation: Q, F; wrapper/validator tests; skill validator; Windows and Bash wrapper checks; CI definition inspection. Run Q with `powershell -ExecutionPolicy Bypass -File scripts/run_quality_gate.ps1` or `bash scripts/run_quality_gate.sh`. Focused production scenarios use `python -m pytest tests/desktop -q`; foundation scenarios use `python -m pytest tests/unit/test_verification.py tests/unit/test_repo_contract.py -q`. Group-specific executable commands and manual scenarios are in EVALS.
-- Exit: all acceptance checks above pass with dated evidence, tasks updated, reviewed checkpoint committed. Any missing live/native evidence keeps this milestone open.
+- Exit: all foundation acceptance checks above pass with dated evidence, tasks updated, reviewed checkpoint committed. Later live/native acceptance remains required by its owning milestones.
 
 ## M1 — Codex runtime qualification
 

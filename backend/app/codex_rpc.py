@@ -6,11 +6,13 @@ import json
 from collections import deque
 from pathlib import Path
 
+from backend.app.codex_policy import (policy_arguments, prepare_workspace, thread_parameters,
+    validate_config, validate_features, validate_thread)
 from backend.app.runtime_base import RuntimeFailure, executable_command, process_options, provider_environment
 
 
 class CodexRPC:
-    def __init__(self, profile: Path, workspace: Path, *, allow_browsing: bool = True):
+    def __init__(self, profile: Path, workspace: Path, *, allow_browsing: bool = False):
         self.profile, self.workspace = profile, workspace
         self.allow_browsing = allow_browsing
         self.process = None
@@ -18,22 +20,33 @@ class CodexRPC:
         self.pending = deque()
 
     async def open(self):
-        self.profile.mkdir(parents=True, exist_ok=True)
-        self.workspace.mkdir(parents=True, exist_ok=True)
+        prepare_workspace(self.profile, self.workspace)
         environment = {**provider_environment(), "CODEX_HOME": str(self.profile.resolve())}
         try:
             self.process = await asyncio.create_subprocess_exec(
                 *executable_command("codex"), "app-server", "--stdio",
-                "-c", 'web_search="live"' if self.allow_browsing else 'web_search="disabled"', "-c", "features.shell_tool=false",
-                "-c", "features.unified_exec=false", "-c", 'forced_login_method="chatgpt"',
-                "-c", "mcp_servers={}", cwd=self.workspace, env=environment,
+                *policy_arguments(self.allow_browsing), cwd=self.workspace, env=environment,
                 stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL, limit=2_000_000, **process_options())
             await self.request("initialize", {"clientInfo": {"name": "learn_the_ticker", "title": "Learn the Ticker", "version": "0.2.0"}})
             await self.send({"method": "initialized", "params": {}})
+            await self.verify_policy()
         except BaseException:
             await self.close()
             raise
+
+    async def verify_policy(self):
+        validate_config(await self.request("config/read", {"cwd": str(self.workspace.resolve()), "includeLayers": True}), self.allow_browsing)
+        validate_features(await self.request("experimentalFeature/list", {"limit": 200}))
+
+    async def start_thread(self, model: str | None = None) -> str:
+        # Recheck immediately before creating a thread, without any inference.
+        prepare_workspace(self.profile, self.workspace)
+        await self.verify_policy()
+        response = await self.request("thread/start", thread_parameters(self.workspace, model))
+        thread_id = validate_thread(response, self.workspace)
+        validate_features(await self.request("experimentalFeature/list", {"limit": 200, "threadId": thread_id}))
+        return thread_id
 
     async def send(self, message: dict):
         try:
