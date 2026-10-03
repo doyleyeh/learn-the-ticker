@@ -1,36 +1,27 @@
 name: CI
-
-on:
-  push:
-  pull_request:
-
+on: [push, pull_request]
 jobs:
-  quality-gate:
-    runs-on: ubuntu-latest
-
+  quality:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: Check out repo
-        uses: actions/checkout@v5
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
-
-      - name: Install Python dev dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements-dev.txt
-
-      - name: Set up Node if package.json exists
-        if: hashFiles('package.json') != ''
-        uses: actions/setup-node@v5
+          python-version: '3.12'
+      - uses: actions/setup-node@v5
         with:
-          node-version: "22"
-
-      - name: Install frontend dependencies if package.json exists
-        if: hashFiles('package.json') != ''
-        run: npm ci
-
-      - name: Run quality gate
+          node-version: '22'
+      - run: python -m pip install -r requirements-dev.txt
+      - run: npm ci
+      - if: runner.os == 'Windows'
+        run: ./scripts/run_quality_gate.ps1
+      - if: runner.os != 'Windows'
         run: bash scripts/run_quality_gate.sh
+      - name: Verify generated contracts
+        run: |
+          python -m scripts.contracts
+          node scripts/generate_types.mjs
+          git diff --exit-code -- contracts/desktop.schema.json apps/desktop/src/contracts.ts

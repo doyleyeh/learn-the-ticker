@@ -93,7 +93,7 @@ forbidden_static_markers:
   - reasoning_details
   - unrestricted_source_text
   - raw_provider_payload
-  - apps/web/lib/glossary.ts
+  - apps/desktop/lib/glossary.ts
 forbidden_serialized_markers:
   - supporting_passage
   - supporting_text

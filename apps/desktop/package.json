@@ -1,0 +1,30 @@
+{
+  "name": "@learn-the-ticker/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local desktop research application.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 1420 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "start": "vite preview --host 127.0.0.1 --port 1420 --strictPort",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0",
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.2",
+    "@types/react": "19.0.12",
+    "@types/react-dom": "19.0.4",
+    "typescript": "5.8.3",
+    "@tauri-apps/cli": "^2.0.0",
+    "vite": "^6.4.0",
+    "vitest": "4.1.11",
+    "@vitejs/plugin-react": "^4.7.0"
+  }
+}

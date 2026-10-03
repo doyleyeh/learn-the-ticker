@@ -1,0 +1,93 @@
+# Learn the Ticker technical design
+
+[NEW_STRUCTURE.md](NEW_STRUCTURE.md) owns architectural decisions; this document defines implementation boundaries. [PRD.md](PRD.md) owns behavior. The current implementation is a developer preview, with open release work in [the backlog](docs/IMPLEMENTATION.md).
+
+## Application layout
+
+- apps/desktop/src: Vite entry, route state, authenticated client and generated contract types.
+- apps/desktop/components, lib, styles: preserved React components and deterministic reference contracts. Only explicitly imported modules enter the production bundle.
+- apps/desktop/src-tauri: native supervisor, private bootstrap IPC, tray and single-instance behavior.
+- backend/app: production service contracts, API, persistence, research orchestration, evidence and runtime adapters.
+- backend/migrations: explicit Alembic revisions.
+- contracts/desktop.schema.json: generated from Pydantic; not edited by hand.
+- tests/desktop: synthetic behavior scenarios. Existing backend tests remain migration regression coverage.
+
+The desktop entrypoint does not mount backend/main.py. Its old fixture APIs, coverage gate and mock OpenRouter behavior are isolated from the new production route. Retain those modules only until their useful algorithms and regression scenarios have migrated; do not claim old mock provider implementations are live adapters.
+
+## Contracts and persistence
+
+Pydantic models are the source of truth. Run `.venv/Scripts/python.exe -m scripts.contracts`, then `node scripts/generate_types.mjs`. Requests, admitted runtime output and persisted domain records use these contracts; vendor formats stop at the adapter boundary. The current HTTP client uses generated TypeScript types, which do not themselves provide runtime response validation. Complete typed response coverage remains part of contract hardening.
+
+SQLAlchemy stores versioned records, durable jobs and normalized events. Record kinds distinguish current asset view, immutable evidence bundle, immutable term explanation, conversation, saved report and settings. No application credentials are stored in the database. PostgreSQL is required in production. SQLite is a deterministic unit-test double only; native PostgreSQL smoke tests verify migrations and lifecycle separately.
+
+Current bundle snapshots are immutable. Refresh adds a bundle and updates the current pointer. Reports retain the original bundle ID. Bundle publication, current-page or conversation references, the evidence event and job completion commit in one transaction. A follow-up creates its own cited artifact without replacing the overview. A future migration must add relational constraints/indexes when query scale requires them; JSON documents do not waive schema validation.
+
+Conversation scope changes require a resolved cached identity and are recorded in the transcript. Scope cannot change while its answer is running. Bookmarks prevent expiry. Startup and conversation-list reads expire unbookmarked conversations after their configured inactivity period, including related job requests/events; saved evidence snapshots remain intact. General document-cache retention remains to be implemented.
+
+On startup, pending/running jobs become interrupted rather than replaying subscription calls. Explicit cancellation closes the provider transport. Reconnect reads durable status/events; it never creates another run automatically. The current service shares a 20-job bound and one inference semaphore between research and terms. Two retrieval slots are defined, but source verification currently runs serially inside each research job. A scheduler that exercises two independent retrieval jobs remains target work. A dropped event socket does not cancel the durable job and must not trigger a second socket close.
+
+## Local API
+
+HTTP endpoints require temporary bearer authentication except CORS preflight, and reject foreign origins and non-local hosts. Native bootstrap carries secrets in memory. WebSockets require an allowed origin and authenticate in the first JSON frame with a five-second deadline. Provider JSON-RPC messages have separate size/queue limits; API WebSocket frame-size hardening is still release work. Never place credentials in a query parameter.
+
+Routes cover authenticated health, settings, connection diagnostics, library, resolved assets, research jobs/cancellation, normalized event replay, conversations, immutable bundles, term lookup/generation, saved reports and personal exports. HTTP errors omit raw provider output and credentials. Generation is gated by global cloud consent, which can cancel active work when revoked.
+
+Persisted settings are not all operational features. Cloud permission, selected provider, explanation language and conversation expiry affect current behavior. Manual source review keeps incoming sources as unverified candidates; there is no admission-review UI yet. Update mode, start-at-login and the document-cache size are stored preferences awaiting their respective services. The request contract accepts a model ID, but the UI does not yet expose model discovery/selection.
+
+## Term explanations
+
+TermRequest, TermResult and TermExplanation define version-scoped learning interpretations. A normalized term, bundle ID, language and reader level identify a cached explanation; switching providers can reuse it. Hover/focus performs read-only lookup. Click, selection confirmation or form submission can enqueue generation with cloud permission. The retained curated glossary supplies clearly labelled English definitions offline.
+
+Term jobs share research cancellation, durable status, the inference semaphore and the bounded queue. Codex browsing is disabled in process configuration for these jobs; unexpected tool activity fails closed. Only admitted facts and their sources enter the prompt. Snapshot interpretations require source IDs from that context, while generic definitions explicitly have no source citation. Copied numeral tokens and known advice patterns are checked conservatively. These checks do not prove semantic entailment, translation quality or comprehensive advice detection: explanations remain labelled interpretations and never feed facts, charts, calculations or later factual evidence.
+
+Publication commits the explanation and completed job together without changing the asset snapshot. Refresh queues previously used terms against the new bundle, preserving earlier explanations; overflow is reported and deferred until requested. Portable backup validation checks explanation identity, version references and citations, including completed term jobs. Citation routes carry both bundle and source IDs so history navigation preserves the cited version. No new glossary dependency is needed.
+
+## Research admission
+
+Resolve identity before storing canonical output. Multiple candidates produce a disambiguation state. Scope mismatch also requires identity review. For uncached requests the preview asks the selected runtime for candidates and evidence in one structured response, then validates before publication. Independent identity adapters, configured financial-source retrieval and incremental gap-filling are not yet wired into this path. They must converge on the same evidence boundary when implemented.
+
+The initial validator uses domain rules in `backend/app/evidence.py`, successful HTTPS retrieval, public-address pinning, TLS host verification, no redirects, a 2 MB response limit, asset-name matching and literal textual support. Its initial rules cover `www.sec.gov` and `www.investor.gov`; the old `config/source_allowlist.yaml` is not the production registry. Agent-supplied verification flags, rights policies, publication dates and excerpts are discarded. Only literal prose with no structured numeric value can enter facts. Unsupported prose and structured numeric/calculation candidates remain notes. Weekly and Earlier context admission are disabled until independently extracted dates and selection are integrated. Domain matching and literal support do not establish full source identity, numeric correctness, semantic entailment or per-document usage rights; those release checks remain incomplete.
+
+Before release, add source identity registration beyond initial SEC/investor.gov rules, explicit per-source rights, adapters for normalized financial values, date/unit consistency, restatement/conflict rules, reproducible calculations and manually reviewed source admission. Full official text permission is a per-rule decision, not a universal property of official sites.
+
+Do not store arbitrary raw provider output. The preview streams safe progress, then publishes one validated bundle atomically; section-by-section evidence publication is still planned. Exclude notes from canonical evidence context and charts. Keep source dates and proof separately from explanation language. Personal Markdown/JSON exports serialize normalized data and omit source excerpts by default. Full-library backups have a different purpose and preserve the permitted database-held evidence needed for restoration.
+
+Typed cache lookup uses normalized exact symbol/name/identity matching, with qualified identities taking precedence. Ambiguous cached symbols return candidates without inference. Search currently reuses online snapshots younger than 24 hours, or any cached snapshot while cloud research is off. Opening a saved version is read-only. When an online stale search or manual refresh starts a new run, the cached identity and admitted evidence remain the scope. Source-specific freshness and incremental retrieval remain open. Substring matching never chooses a financial identity automatically.
+
+## Runtime integration
+
+The implemented AIRuntime exposes discovery/check and normalized async streaming, with a per-operation browsing policy. The target also requires qualified model/version capability negotiation, sessions/resume and interactive approvals. Codex currently creates an ephemeral App Server thread per operation and requires a ChatGPT account type. App-owned conversation history is passed as context rather than resuming a provider thread. Gemini event normalization exists, but execution is disabled until its isolated tool policy is qualified. Claude has an experimental restricted headless transport with tools disabled; no Agent SDK integration is shipped. Installed/version-detected does not mean authenticated, subscription-qualified or safe for release.
+
+Provider subprocesses receive only allowlisted process environment variables, with no inherited API keys or database credentials. Codex uses an app-private CODEX_HOME and a separate provider-managed sign-in. The Connections screen initiates App Server's chatgptDeviceCode flow, displays only its allowlisted official verification URL and temporary code, polls normalized in-memory state and supports cancellation. The app accepts provider-managed ChatGPT accounts only; it does not import external tokens or API keys. Codex owns token persistence and refresh outside the library. Device codes expire after ten minutes and are cleared on every terminal outcome; sign-in responses prohibit HTTP caching. Signing in does not enable cloud research. Actual account authorization and live inference still need qualification.
+
+The bounded JSON-RPC transport preserves notifications received before a request response, rejects unexpected server requests and caps queued messages. No raw provider diagnostics reach the UI. Claude requires subscription auth status and restricted/safe modes; older unsupported versions fail rather than dropping these protections. Avoid shell parsing on Windows; resolve npm runtime entry points explicitly and suppress helper console windows. Hidden reasoning, stderr, tools' arbitrary arguments and raw diagnostics never enter events. Expanded-access requests currently stop the run; a complete interactive approval workflow is still required.
+
+Before release, pin tested version ranges, validate capability negotiation, ensure provider configuration/hooks/MCP cannot expand permissions, implement complete sessions/reconnect/approvals and qualify subscription accounting. No untested adapter is a completed integration.
+
+## Packaging and lifecycle
+
+Portable backups contain two versioned JSON documents in a ZIP container: a manifest with content checksum and an allowlisted snapshot of application records, jobs and normalized events. No filesystem tree, SQL, provider profile, credential-store entry or environment variable is read. Backups use a repeatable-read PostgreSQL snapshot. Archives are bounded (128 MiB compressed, 256 MiB content in this preview), schema-checked and checked for duplicate identities, missing references, wrong-asset citations and raw events. Unknown record kinds fail instead of being silently omitted. Checksums establish integrity, not authorship.
+
+The Connections page provides download, preview and explicit restore controls. Restore requires an empty library, binds the final action to the previewed archive fingerprint and rechecks emptiness under database table locks. Every write commits together; failure rolls back the operation. Existing research is never overwritten. Cloud research and start-at-login reset to off, and active jobs restore as interrupted. Saved versions remain distinct from current pages. This covers current database-held library content; larger streamed archives and future attachment/cache formats must extend the manifest before those features ship. Application upgrades and coordinated binary/schema rollback remain separate work.
+
+The native host creates the session token before boot and owns the service stdin lifetime. The sidecar acquires an exclusive library lock. PrivatePostgres initializes a separate data directory with SCRAM authentication and a keychain-owned password, binds loopback on a free port and stops only its own data directory. A surviving private server can be recovered only after authenticating and verifying its actual data directory and loopback binding. Stale PID files are left for PostgreSQL to handle. Native startup has a bounded response timeout and cleans up an unsuccessful owned sidecar; Rust build and native behavior still need qualification.
+
+The initial migration creates local records/jobs/events. Unknown or future schemas fail closed. Later migrations require a backup restored and verified in a separate cluster. pg_restore --list only checks archive readability; it is not restore validation. A release updater must preserve newer research, stage binaries and coordinate app/schema rollback.
+
+Build PyInstaller separately for each OS. The current script accepts Windows x64 only and copies the sidecar to Tauri's target-named binaries directory. Release Tauri configuration expects a PostgreSQL distribution under `src-tauri/resources/postgres`; this runtime is not supplied by the repository or downloaded by the script. Development uses `LTT_PG_BIN` without touching an existing database/service. PostgreSQL 17 is the locally exercised major version; automatic runtime/major-version switching is not implemented. Runtime redistribution, provider prerequisites, native build/tray behavior, clean-machine installation, updates and signing remain release checks. See [migration and packaging](docs/MIGRATION.md).
+
+## Dependency decisions
+
+| Dependency | Need and alternative | Security, license and packaging impact |
+| --- | --- | --- |
+| Vite | Static React bundle; replaces Next server behavior | MIT; build-time only, pin lockfile and audit |
+| Tauri | Native lifecycle and installer; Electron alternative is larger | MIT/Apache-2.0; native toolchain and platform webview |
+| SQLAlchemy/Alembic | Typed persistence and migrations; raw SQL alternative adds manual lifecycle work | MIT; packaged with Python; never run destructive downgrade automatically |
+| psycopg binary | PostgreSQL protocol; system libpq alternative complicates clean-machine setup | Review LGPL/libpq bundled notices; native wheels per OS |
+| keyring | OS secret store; plaintext config rejected | MIT; fail if no secure platform backend |
+| WebSockets | Normalized event channel; polling remains recovery path | BSD; local authenticated transport |
+| PyInstaller | Ship Python dependencies; system Python conflicts with installer promise | GPL with bootloader exception; build per OS |
+| Vitest | Executable frontend scenarios; source-string smoke tests replaced | MIT; developer only; update vulnerable mocker versions |
+| json-schema-to-typescript | Generated contracts; handwritten duplication rejected | MIT; build-time only |
+
+FastAPI/Uvicorn, React, TypeScript and existing reviewed dependencies are retained. Review transitive notices and exact pinned artifacts before distribution. No runtime dependency is added for Tailwind/shadcn in this slice.

@@ -12,3 +12,10 @@ dist/
 build/
 .agent-runs/
 .codex
+.venv/
+.local/
+target/
+*.spec
+!backend/desktop.spec
+apps/desktop/src-tauri/binaries/
+apps/desktop/src-tauri/resources/

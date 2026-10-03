@@ -2,15 +2,20 @@
   "name": "learn-the-ticker",
   "version": "0.1.0",
   "private": true,
-  "description": "Citation-first beginner U.S. stock and ETF learning assistant.",
+  "description": "Citation-first local desktop asset research and learning for beginner and intermediate users.",
   "workspaces": [
-    "apps/web"
+    "apps/desktop"
   ],
   "scripts": {
-    "dev": "npm --workspace apps/web run dev",
-    "build": "npm --workspace apps/web run build",
-    "start": "npm --workspace apps/web run start",
-    "test": "node tests/frontend/smoke.mjs",
-    "typecheck": "npm --workspace apps/web run typecheck"
+    "dev": "npm --workspace apps/desktop run dev",
+    "build": "npm --workspace apps/desktop run build",
+    "start": "npm --workspace apps/desktop run start",
+    "test": "npm --workspace apps/desktop run test",
+    "typecheck": "npm --workspace apps/desktop run typecheck",
+    "desktop": "npm --workspace apps/desktop run tauri dev",
+    "desktop:build": "npm --workspace apps/desktop run tauri build"
+  },
+  "devDependencies": {
+    "json-schema-to-typescript": "^16.0.0"
   }
 }

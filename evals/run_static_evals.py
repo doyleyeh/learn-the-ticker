@@ -151,8 +151,8 @@ def load_yaml(filename: str) -> dict:
     return data
 
 
-def test_golden_assets():
-    data = load_yaml("golden_assets.yaml")
+def test_reference_asset_scenarios():
+    data = load_yaml("reference_asset_scenarios.yaml")
     assert data.get("schema_version") == "golden-assets-v2"
 
     required_technical_stocks = {"AAPL", "MSFT", "NVDA", "TSLA"}
@@ -1791,13 +1791,13 @@ def test_glossary_context_contract():
     main_source = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
     glossary_source = (ROOT / "backend" / "glossary.py").read_text(encoding="utf-8")
     models_source = (ROOT / "backend" / "models.py").read_text(encoding="utf-8")
-    frontend_glossary_source = (ROOT / "apps" / "web" / "lib" / "glossary.ts").read_text(encoding="utf-8")
+    frontend_glossary_source = (ROOT / "apps" / "desktop" / "lib" / "glossary.ts").read_text(encoding="utf-8")
     for route in data["required_routes"]:
         assert route in main_source
     assert "build_glossary_response" in main_source
 
     for marker in data["forbidden_static_markers"]:
-        if marker == "apps/web/lib/glossary.ts":
+        if marker == "apps/desktop/lib/glossary.ts":
             assert "glossary-asset-context-v1" not in frontend_glossary_source
             continue
         assert marker not in glossary_source
@@ -2532,7 +2532,7 @@ def _assert_provider_generated_flags_off(response: ProviderResponse, case_id: st
 
 
 if __name__ == "__main__":
-    test_golden_assets()
+    test_reference_asset_scenarios()
     test_top500_stock_universe_manifest_contract()
     test_safety_cases()
     test_citation_cases()

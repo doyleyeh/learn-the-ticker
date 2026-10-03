@@ -1,0 +1,254 @@
+"""Source of truth for the desktop wire contracts; export with scripts/contracts.py."""
+from __future__ import annotations
+
+from datetime import date, datetime, timezone
+from enum import Enum
+from typing import Literal
+from uuid import uuid4
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
+
+
+def uid() -> str:
+    return str(uuid4())
+
+
+def now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class Contract(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    schema_version: Literal["1"] = "1"
+
+
+class AssetIdentity(Contract):
+    id: str = Field(min_length=1, max_length=200)
+    symbol: str = Field(min_length=1, max_length=120)
+    name: str = Field(min_length=1, max_length=300)
+    asset_type: Literal["stock", "etf", "fund", "bond", "crypto", "option", "future", "index", "other", "unknown"]
+    exchange: str | None = None
+    currency: str | None = None
+    identifiers: dict[str, str] = Field(default_factory=dict)
+
+
+class SourcePolicy(str, Enum):
+    full_text = "full_text_allowed"
+    summary = "summary_allowed"
+    metadata = "metadata_only"
+    link = "link_only"
+    rejected = "rejected"
+
+
+class Source(Contract):
+    id: str = Field(default_factory=uid)
+    asset_id: str
+    url: HttpUrl
+    title: str = Field(min_length=1, max_length=1000)
+    publisher: str = Field(min_length=1, max_length=300)
+    retrieved_at: datetime = Field(default_factory=now)
+    published_at: date | None = None
+    as_of: date | None = None
+    content_hash: str = ""
+    policy: SourcePolicy = SourcePolicy.link
+    official: bool = False
+    verified: bool = False
+    # This excerpt is set by an application-owned retriever, never trusted from a model.
+    excerpt: str = Field(default="", max_length=20000)
+    provenance: Literal["agent_candidate", "structured_adapter", "verified_retrieval", "user_import"] = "agent_candidate"
+
+    @model_validator(mode="after")
+    def restrict_text(self):
+        if self.policy in (SourcePolicy.link, SourcePolicy.metadata, SourcePolicy.rejected) and self.excerpt:
+            raise ValueError("This source-use policy does not permit cached excerpts")
+        if self.retrieved_at.tzinfo is None:
+            raise ValueError("Retrieval timestamp must include a timezone")
+        return self
+
+
+class Claim(Contract):
+    id: str = Field(default_factory=uid)
+    asset_id: str
+    section: str = Field(default="overview", max_length=100)
+    text: str = Field(min_length=1, max_length=10000)
+    kind: Literal["fact", "calculation", "interpretation", "unverified_note"] = "unverified_note"
+    source_ids: list[str] = Field(default_factory=list)
+    as_of: date | None = None
+    value: float | None = Field(default=None, allow_inf_nan=False)
+    unit: str | None = None
+    # Calculations must reference admitted facts, not prose or other notes.
+    input_claim_ids: list[str] = Field(default_factory=list)
+
+
+class EvidenceBundle(Contract):
+    id: str = Field(default_factory=uid)
+    asset: AssetIdentity
+    created_at: datetime = Field(default_factory=now)
+    sources: list[Source] = Field(default_factory=list)
+    claims: list[Claim] = Field(default_factory=list)
+    notes: list[Claim] = Field(default_factory=list)
+    state: Literal["partial", "available", "stale", "unavailable"] = "partial"
+    language: Literal["en", "zh-TW"] = "en"
+
+
+class RuntimeCapabilities(Contract):
+    provider: Literal["codex", "gemini", "claude"]
+    installed: bool = False
+    authentication: Literal["unknown", "authenticated", "required", "unsupported"] = "unknown"
+    version: str | None = None
+    generation: bool = False
+    browsing: bool = False
+    streaming: bool = True
+    cancellation: bool = True
+    approvals: bool = False
+    reason: str | None = None
+
+
+class RuntimeEvent(Contract):
+    sequence: int = 0
+    run_id: str
+    kind: Literal["run.started", "message.delta", "tool.started", "evidence.registered", "approval.required", "run.completed", "run.failed", "run.cancelled"]
+    timestamp: datetime = Field(default_factory=now)
+    text: str = ""
+    data: dict = Field(default_factory=dict)
+
+
+class ProviderLogin(Contract):
+    """Ephemeral connection UI state. Never stored in the library or exports."""
+    provider: Literal["codex"] = "codex"
+    status: Literal["idle", "pending", "authenticated", "cancelled", "expired", "failed"] = "idle"
+    verification_url: Literal["https://auth.openai.com/codex/device"] | None = None
+    user_code: str | None = Field(default=None, max_length=32)
+    expires_at: AwareDatetime | None = None
+    message: str = "Sign in to the dedicated Codex connection."
+
+
+class ResearchRequest(Contract):
+    query: str = Field(min_length=1, max_length=1000)
+    asset_id: str | None = None
+    provider: Literal["codex", "gemini", "claude"] = "codex"
+    model: str | None = Field(default=None, max_length=200)
+    language: Literal["en", "zh-TW"] = "en"
+    level: Literal["beginner", "intermediate"] = "beginner"
+    refresh: bool = False
+    conversation_id: str | None = None
+
+
+class ResearchResult(Contract):
+    """Provider output is a proposal; admission happens separately."""
+    candidates: list[AssetIdentity] = Field(default_factory=list, max_length=20)
+    sources: list[Source] = Field(default_factory=list, max_length=100)
+    claims: list[Claim] = Field(default_factory=list, max_length=200)
+
+
+class TermRequest(Contract):
+    purpose: Literal["term_explanation"] = "term_explanation"
+    term: str = Field(min_length=1, max_length=120)
+    bundle_id: str = Field(min_length=1, max_length=200)
+    language: Literal["en", "zh-TW"] = "en"
+    level: Literal["beginner", "intermediate"] = "beginner"
+    provider: Literal["codex", "gemini", "claude"] = "codex"
+    model: str | None = Field(default=None, max_length=200)
+
+    @field_validator("term")
+    @classmethod
+    def concise_term(cls, value):
+        import unicodedata
+        value = " ".join(unicodedata.normalize("NFKC", value).split())
+        if not value or any(unicodedata.category(char).startswith("C") for char in value) or len(value.split()) > 16:
+            raise ValueError("Select a concise term of up to 16 words")
+        return value
+
+
+class TermResult(Contract):
+    explanation: str = Field(min_length=1, max_length=1600)
+    basis: Literal["general", "snapshot"]
+    source_ids: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("explanation")
+    @classmethod
+    def readable_text(cls, value):
+        if not value.strip():
+            raise ValueError("Explanation cannot be blank")
+        return value.strip()
+
+    @model_validator(mode="after")
+    def citation_basis(self):
+        if self.basis == "snapshot" and not self.source_ids:
+            raise ValueError("Snapshot explanations require citations")
+        if self.basis == "general" and self.source_ids:
+            raise ValueError("General explanations cannot claim snapshot support")
+        if len(set(self.source_ids)) != len(self.source_ids):
+            raise ValueError("Duplicate citations")
+        return self
+
+
+class TermExplanation(TermResult):
+    id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    term: str = Field(min_length=1, max_length=120)
+    bundle_id: str = Field(min_length=1, max_length=200)
+    asset_id: str = Field(min_length=1, max_length=200)
+    language: Literal["en", "zh-TW"]
+    level: Literal["beginner", "intermediate"]
+    provider: Literal["codex", "gemini", "claude"]
+    model: str | None = None
+    created_at: AwareDatetime = Field(default_factory=now)
+    interpretation: Literal[True] = True
+
+
+class Settings(Contract):
+    cloud_enabled: bool = False
+    provider: Literal["codex", "gemini", "claude"] = "codex"
+    language: Literal["en", "zh-TW"] = "en"
+    manual_source_review: bool = False
+    update_mode: Literal["notify", "manual", "automatic"] = "notify"
+    start_at_login: bool = False
+    retention_days: int = Field(default=180, ge=7, le=3650)
+    cache_gb: int = Field(default=10, ge=1, le=1000)
+
+
+class ConversationMessage(Contract):
+    role: Literal["user", "assistant", "scope"]
+    text: str | None = Field(default=None, max_length=10000)
+    asset_id: str | None = Field(default=None, max_length=200)
+    bundle_id: str | None = Field(default=None, max_length=200)
+
+    @model_validator(mode="after")
+    def cited_answer(self):
+        if self.role == "assistant" and not self.bundle_id:
+            raise ValueError("Assistant answers must reference a cited snapshot")
+        if self.role != "assistant" and (not self.text or self.bundle_id):
+            raise ValueError("User/scope messages require text and cannot attest a research snapshot")
+        return self
+
+
+class Conversation(Contract):
+    id: str = Field(default_factory=uid, max_length=200)
+    asset_id: str = Field(max_length=200)
+    messages: list[ConversationMessage] = Field(default_factory=list)
+    bookmarked: bool = False
+    created_at: AwareDatetime = Field(default_factory=now)
+    last_activity: AwareDatetime | None = None
+
+
+class SavedResearch(Contract):
+    id: str = Field(default_factory=uid, max_length=200)
+    bundle_id: str = Field(max_length=200)
+    title: str = Field(min_length=1, max_length=200)
+    created_at: AwareDatetime = Field(default_factory=now)
+
+
+class BackupSummary(Contract):
+    format_version: Literal["1"] = "1"
+    database_revision: Literal["0001"] = "0001"
+    created_at: AwareDatetime
+    fingerprint: str
+    assets: int
+    evidence_versions: int
+    conversations: int
+    saved_reports: int
+    term_explanations: int = 0
+    jobs: int
+    credentials_included: Literal[False] = False
+    can_restore: bool
+    reason: str | None = None

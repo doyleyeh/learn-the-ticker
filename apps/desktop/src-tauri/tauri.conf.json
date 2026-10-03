@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Learn the Ticker",
+  "version": "0.2.0",
+  "identifier": "org.learntheticker.desktop",
+  "build": { "beforeDevCommand": "npm run dev", "devUrl": "http://127.0.0.1:1420", "beforeBuildCommand": "npm run build", "frontendDist": "../dist" },
+  "app": {
+    "windows": [{ "title": "Learn the Ticker", "width": 1280, "height": 850, "minWidth": 640, "minHeight": 480 }],
+    "security": { "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* ws://127.0.0.1:*; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; frame-src 'none'; base-uri 'none'" }
+  },
+  "bundle": { "active": true, "targets": ["nsis"], "externalBin": ["binaries/ltt-service"], "resources": ["resources/postgres/**/*"] }
+}
