@@ -12,6 +12,7 @@ from backend.app.codex_login import CodexLogin, DEVICE_URL
 from backend.app.codex_rpc import CodexRPC
 from backend.app.codex_runtime import CodexRuntime
 from backend.app.db import Database
+from backend.app.contracts import RuntimeCapabilities
 from backend.app.runtime_base import RuntimeFailure
 
 
@@ -182,6 +183,10 @@ def test_codex_generation_checks_subscription_and_normalizes_events(tmp_path, mo
             {"method": "turn/completed", "params": {"turn": {"status": "completed"}}},
         ]: await rpc.events.put(event)
         monkeypatch.setattr("backend.app.codex_runtime.CodexRPC", lambda *_, **kwargs: rpc)
+        # Explicit synthetic qualification, not a production supported-version claim.
+        async def qualified_check(self):
+            return RuntimeCapabilities(provider="codex", installed=True, authentication="authenticated", qualification="live", generation=True, browsing=True)
+        monkeypatch.setattr(CodexRuntime, "check", qualified_check)
         events = [event async for event in CodexRuntime(tmp_path).stream("question", "run", tmp_path)]
         assert [event.text for event in events] == ["Answer"] and rpc.closed
         thread = next(params for method, params in rpc.requests if method == "thread/start")

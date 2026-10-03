@@ -4,7 +4,7 @@ A local, citation-first financial research and learning application using your o
 
 **Status: desktop developer preview, not public v1.** The approved stack is Tauri 2, React/TypeScript/Vite, packaged FastAPI and private PostgreSQL. Native Windows comes first, followed by macOS, Windows with WSL, then Linux. The product serves beginner and intermediate users across dynamically resolved asset types; there is no fixed ticker eligibility list.
 
-Working preview features include the local library, evidence versions and citations, cached search, conversations and bookmarks, term explanations, personal exports and portable backup/restore. Structured financial retrieval, imports, charts, comparisons and several release features are still being integrated. Codex and Claude transports are experimental; Gemini execution is disabled pending safe tool qualification. No live subscription integration or native installer has passed release acceptance. See [implementation status](STATUS.md) for the complete record.
+Working preview features include the local library, evidence versions and citations, cached search, conversations and bookmarks, term explanations, personal exports and portable backup/restore. Structured financial retrieval, imports, charts, comparisons and several release features are still being integrated. Codex and Claude transports are experimental; production inference is disabled until exact runtime versions pass live/tool qualification. Gemini execution also awaits its safe transport. Cached features and the synthetic preview remain available. No live subscription integration or native installer has passed release acceptance. See [implementation status](STATUS.md) for the complete record.
 
 ## Development on Windows
 

@@ -96,10 +96,11 @@ class RuntimeCapabilities(Contract):
     installed: bool = False
     authentication: Literal["unknown", "authenticated", "required", "unsupported"] = "unknown"
     version: str | None = None
+    qualification: Literal["unqualified", "protocol_only", "live"] = "unqualified"
     generation: bool = False
     browsing: bool = False
-    streaming: bool = True
-    cancellation: bool = True
+    streaming: bool = False
+    cancellation: bool = False
     approvals: bool = False
     reason: str | None = None
 

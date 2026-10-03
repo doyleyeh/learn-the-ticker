@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 
 from backend.app.codex_rpc import CodexRPC
+from backend.app.codex_runtime import CodexRuntime
 
 
 async def main():
@@ -20,6 +21,11 @@ async def main():
             print("Codex initialize/account-read passed with browsing disabled; dedicated profile has no inherited account. No login or inference requested.")
         finally:
             await rpc.close()
+        capabilities = await CodexRuntime(profile).check()
+        assert capabilities.installed and capabilities.authentication == "required"
+        assert capabilities.qualification == "protocol_only"
+        assert not capabilities.generation and not capabilities.browsing and not capabilities.approvals
+        print(f"Exact version {capabilities.version}: protocol-only; unauthenticated capabilities remain disabled.")
 
 
 if __name__ == "__main__":

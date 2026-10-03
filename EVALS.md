@@ -72,7 +72,7 @@ Check source links, original dates/permissions, missing evidence, separate notes
 
 ## Codex connection checks
 
-Run `.venv/Scripts/python.exe -m scripts.smoke_codex_protocol` explicitly to check the installed App Server's initialization and account-read protocol. It creates an isolated temporary profile and requires it to have no inherited authentication. It does not request a device code, log in or generate content. This check is separate from CI; exact tested versions are recorded in [IMPLEMENTATION.md](docs/archive/2026-10-04/IMPLEMENTATION.md#verification-record-2026-10-03), not a supported-version promise.
+Run `.venv/Scripts/python.exe -m scripts.smoke_codex_protocol` explicitly to check the installed App Server's initialization and account-read protocol. It creates an isolated temporary profile and requires it to have no inherited authentication. It does not request a device code, log in or generate content. It also checks exact-version reporting and confirms that the protocol-only unauthenticated connection advertises no generation, browsing or approvals. This check is separate from CI; exact tested versions are recorded in [IMPLEMENTATION.md](docs/archive/2026-10-04/IMPLEMENTATION.md#verification-record-2026-10-03), not a supported-version promise.
 
 `tests/desktop/test_codex.py` covers early stream notifications, malformed/flooded/timed-out responses, subscription-only authentication, login success/cancel/expiry/failure, mismatched flow IDs, untrusted verification URLs, API authentication and credential exclusion. `preview_server --login-demo` uses a synthetic TEST-ONLY device code without launching a provider; use it for the browser start/cancel check. Never enter that synthetic code on the real provider website. Actual sign-in and live research remain separate acceptance checks.
 
@@ -91,3 +91,7 @@ Exercise imports, structured API fallback, conflicts/restatements, numeric units
 Build and run the Windows package on a clean VM without Python, Node, PostgreSQL or development tooling. Verify provider prerequisite onboarding, duplicate launches, occupied ports, tray/quit, locked libraries, interrupted migrations/updates, backup restoration and preservation of newer research during rollback. Record updater signatures separately from OS code-signing status. Collect baseline performance; no numeric thresholds have been approved yet.
 
 Current results and unverified boundaries are maintained in [STATUS.md](STATUS.md). Passing the ordinary gate never implies release readiness.
+
+## Runtime capability checks
+
+Run `python -m pytest tests/desktop/test_runtime_policy.py tests/desktop/test_codex.py tests/desktop/test_terms.py -q` for exact prerelease/build versions, bounded/sanitized discovery, qualified-capability/authentication separation, unsupported execution rejection and cached-only browsing denial. Synthetic qualification injection in tests is not a production supported-version declaration. Current code-owned qualification records contain no live-enabled runtime.

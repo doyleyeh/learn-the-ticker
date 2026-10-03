@@ -32,6 +32,7 @@ class CLIRuntime(AIRuntime):
         self.provider = provider
 
     async def stream(self, prompt, run_id, workspace, model=None, *, allow_browsing=True):
+        await self.require_generation(allow_browsing=allow_browsing)
         command = executable_command(self.provider)
         if self.provider == "claude":
             # Restricted/safe mode prevents user hooks, plugins and project customizations

@@ -716,6 +716,16 @@
           "default": null,
           "title": "Version"
         },
+        "qualification": {
+          "default": "unqualified",
+          "enum": [
+            "unqualified",
+            "protocol_only",
+            "live"
+          ],
+          "title": "Qualification",
+          "type": "string"
+        },
         "generation": {
           "default": false,
           "title": "Generation",
@@ -727,12 +737,12 @@
           "type": "boolean"
         },
         "streaming": {
-          "default": true,
+          "default": false,
           "title": "Streaming",
           "type": "boolean"
         },
         "cancellation": {
-          "default": true,
+          "default": false,
           "title": "Cancellation",
           "type": "boolean"
         },

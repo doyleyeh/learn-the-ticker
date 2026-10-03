@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from backend.app.contracts import RuntimeCapabilities, RuntimeEvent
+from backend.app.runtime_policy import apply_qualification
 
 
 def process_options() -> dict:
@@ -19,6 +20,21 @@ def process_options() -> dict:
 
 class RuntimeFailure(Exception):
     pass
+
+
+def runtime_version(provider: str, raw: bytes) -> str | None:
+    """Accept a bounded, recognized version line; preserve prerelease/build identity."""
+    version = r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?"
+    patterns = {
+        "codex": rf"(?:codex-cli\s+)?(?P<version>{version})",
+        "gemini": rf"(?:gemini(?:-cli)?\s+)?(?P<version>{version})",
+        "claude": rf"(?P<version>{version})(?: \(Claude Code\))?",
+    }
+    try:
+        match = re.fullmatch(patterns[provider], raw.decode("utf-8").strip())
+    except (KeyError, UnicodeError):
+        return None
+    return match.group("version") if match else None
 
 
 def provider_environment() -> dict[str, str]:
@@ -46,22 +62,41 @@ class AIRuntime(ABC):
     provider: str
 
     async def check(self) -> RuntimeCapabilities:
+        process = None
+        result = RuntimeCapabilities(provider=self.provider)
         try:
             command = executable_command(self.provider)
-            process = await asyncio.create_subprocess_exec(*command, "--version", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL, env=provider_environment(), **process_options())
-            try:
-                output, _ = await asyncio.wait_for(process.communicate(), 10)
-            except asyncio.TimeoutError:
+            process = await asyncio.create_subprocess_exec(*command, "--version", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL, env=provider_environment(), limit=8192, **process_options())
+            result.installed = True
+            async with asyncio.timeout(10):
+                output = await process.stdout.read(4097)
+                if len(output) > 4096:
+                    raise RuntimeFailure("Provider version output exceeds the allowed size")
+                # read() may return before EOF; collect the remainder with the same bound.
+                while chunk := await process.stdout.read(4097 - len(output)):
+                    output += chunk
+                    if len(output) > 4096:
+                        raise RuntimeFailure("Provider version output exceeds the allowed size")
+                await process.wait()
+            result.version = runtime_version(self.provider, output) if process.returncode == 0 else None
+            return apply_qualification(result)
+        except asyncio.TimeoutError:
+            result.reason = "Provider version check timed out. No capability was enabled."
+            return result
+        except (OSError, RuntimeFailure):
+            result.reason = "Provider version could not be verified. Check the runtime installation; no capability was enabled."
+            return result
+        finally:
+            if process and process.returncode is None:
                 process.kill()
                 await process.wait()
-                raise RuntimeFailure("Provider version check timed out")
-            version = re.search(r"\d+\.\d+\.\d+", output.decode(errors="replace"))
-            # Installed is not authenticated. The first successful subscription turn establishes readiness.
-            available = process.returncode == 0 and bool(version)
-            reason = "Gemini execution is disabled until isolated tool permissions are qualified." if self.provider == "gemini" else "Subscription authentication and compatibility require a live connection check."
-            return RuntimeCapabilities(provider=self.provider, installed=process.returncode == 0, version=version.group() if version else None, generation=available and self.provider != "gemini", browsing=available and self.provider == "codex", approvals=available and self.provider == "codex", reason=reason)
-        except (OSError, RuntimeFailure):
-            return RuntimeCapabilities(provider=self.provider, reason="Install and authenticate the provider runtime using its official setup.")
+
+    async def require_generation(self, *, allow_browsing: bool):
+        result = await self.check()
+        if not result.installed or result.qualification != "live" or result.authentication != "authenticated" or not result.generation:
+            raise RuntimeFailure(result.reason or "This subscription connection is not qualified for generation.")
+        if allow_browsing and not result.browsing:
+            raise RuntimeFailure("This connection is qualified for cached/imported evidence only. Browsing is unavailable.")
 
     @abstractmethod
     async def stream(self, prompt: str, run_id: str, workspace: Path, model: str | None = None, *, allow_browsing: bool = True) -> AsyncIterator[RuntimeEvent]:

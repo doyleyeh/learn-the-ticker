@@ -5,6 +5,7 @@ from pathlib import Path
 from backend.app.codex_rpc import CodexRPC
 from backend.app.contracts import RuntimeEvent
 from backend.app.runtime_base import AIRuntime, RuntimeFailure
+from backend.app.runtime_policy import apply_qualification
 
 
 def subscription_account(value: dict) -> bool:
@@ -21,14 +22,14 @@ class CodexRuntime(AIRuntime):
 
     async def check(self):
         result = await super().check()
-        if not result.installed or not self.profile:
+        if not result.installed or result.qualification == "unqualified" or not self.profile:
             return result
-        rpc = CodexRPC(self.profile, self.profile / "status")
+        rpc = CodexRPC(self.profile, self.profile / "status", allow_browsing=False)
         try:
             await rpc.open()
             account = await rpc.request("account/read", {"refreshToken": False})
-            result.authentication = "authenticated" if subscription_account(account) else "required"
-            result.reason = "Dedicated ChatGPT sign-in found. Live research and permission isolation still require qualification." if subscription_account(account) else "Sign in to this app's dedicated Codex profile using the connection below."
+            result.authentication = "authenticated" if subscription_account(account) else ("required" if account.get("account") is None else "unsupported")
+            apply_qualification(result)
         except (RuntimeFailure, OSError):
             result.authentication = "unknown"
             result.reason = "Codex connection check failed. Check runtime compatibility and reconnect."
@@ -37,6 +38,7 @@ class CodexRuntime(AIRuntime):
         return result
 
     async def stream(self, prompt, run_id, workspace, model=None, *, allow_browsing=True):
+        await self.require_generation(allow_browsing=allow_browsing)
         profile = self.profile or workspace.parent.parent / "connections" / "codex"
         rpc = CodexRPC(profile, workspace, allow_browsing=allow_browsing)
         try:

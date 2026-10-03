@@ -10,7 +10,7 @@ Prioritize table order among unblocked tasks. Group names and actual commands ar
 | M0-T02 | M0 | DONE | M0-T01 | Add shared checks, correctness lint, read-only contract checks and prerequisite/failure tests | F, Q; tests/unit/test_verification.py |
 | M0-T03 | M0 | DONE | M0-T02 | Create tracked delivery skill, portable wrappers and deterministic/manual database CI | Skill validation; actual wrapper pass/failure; workflow inspection |
 | M0-T04 | M0 | DONE | M0-T03 | Review whole diff, record dated foundation evidence and commit checkpoint | Q; staged diff and no secret/unrelated files |
-| M1-T01 | M1 | TODO | M0 | Separate installed/authenticated/qualified capabilities; preserve exact versions; block unsupported execution before inference | R provider capability/auth/version negative tests; Q, C |
+| M1-T01 | M1 | DONE | M0 | Separate installed/authenticated/qualified capabilities; preserve exact versions; block unsupported execution before inference | R provider capability/auth/version negative tests; Q, C |
 | M1-T02 | M1 | TODO | M1-T01 | Qualify Codex configuration/tool isolation against the installed official protocol; prohibit inherited hooks/MCP/execution | Synthetic adversarial config/events; installed no-inference handshake; R, Q |
 | M1-T03 | M1 | TODO | M1-T02 | Expose supported models and implement bounded, correlated interactive approvals without broad frontend privileges | API/UI auth, expiry/denial/cancel/foreign request tests; C, B, Q |
 | M1-T04 | M1 | TODO | M1-T02 | Complete owned process-tree interruption/cancellation and session/reconnect without replay | Crash/disconnect/cancel/consent-revocation scenarios; R, Q |

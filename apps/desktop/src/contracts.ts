@@ -318,6 +318,7 @@ export type Provider2 = "codex" | "gemini" | "claude";
 export type Installed = boolean;
 export type Authentication = "unknown" | "authenticated" | "required" | "unsupported";
 export type Version = string | null;
+export type Qualification = "unqualified" | "protocol_only" | "live";
 export type Generation = boolean;
 export type Browsing = boolean;
 export type Streaming = boolean;
@@ -791,6 +792,7 @@ export interface RuntimeCapabilities {
   installed?: Installed;
   authentication?: Authentication;
   version?: Version;
+  qualification?: Qualification;
   generation?: Generation;
   browsing?: Browsing;
   streaming?: Streaming;

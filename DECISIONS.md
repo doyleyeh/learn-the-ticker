@@ -102,3 +102,12 @@ Options: leave lint absent; mass-format/rewrite legacy code; add narrow correctn
 Chosen approach: development-only Ruff 0.16.10 (MIT), ESLint 10.12.0 (MIT), and @typescript-eslint/parser 8.71.0 (MIT), with exact direct versions and npm lockfile. Ruff selects E9/F63/F7/F82; ESLint selects no-async-promise-executor/no-unsafe-finally/no-constant-binary-expression.
 Reason: catch suspicious execution without unrelated formatting churn. The first installation exposed ESLint 9 end-of-support; use supported ESLint 10 with Node 22.13+ (22.x) or 24+ and a compatible parser. The local Node 22.14.0 meets this requirement.
 Consequences: inspect lockfile/audit, exclude generated files/build artifacts, do not use autofix in checks. Python lint is in requirements-dev only; frontend lint dependencies never enter the runtime bundle. Ruff is explicitly excluded from sidecar packaging. Formatting is whitespace validation only; a broad formatter baseline remains optional, not a silently claimed capability. See [Ruff](https://docs.astral.sh/ruff/linter/), [ESLint](https://eslint.org/docs/latest/rules/), and [parser](https://typescript-eslint.io/packages/parser/).
+
+## DEC-010 Capability qualification is explicit
+
+Date: 2026-10-04.
+Context: version detection advertised generation and approvals before live compatibility or permission isolation was proven.
+Options: infer support from installation/authentication, or require exact reviewed capability records.
+Chosen approach: preserve full version identity and use a code-owned qualification registry. Authentication remains a separate observation. Protocol-only checks permit diagnostics, not inference; stream entrypoints enforce capabilities before inference.
+Reason: installed binaries and signed-in accounts cannot certify model access, billing, tools or implemented approval behavior.
+Consequences: no production version is live-enabled yet. Existing preview inference now fails closed until M1/M8 qualification; cached/synthetic workflows remain usable. Live qualification must add dated evidence before changing the registry. Model catalogs are not entitlement proof; retain request-level failure handling. Provider-managed ChatGPT device authorization remains the selected flow, not externally supplied tokens. References: [App Server authentication](https://learn.chatgpt.com/docs/app-server#authentication) and [model catalog limits](https://developers.openai.com/siwc/token-sharing-open-source/codex-app-server).
