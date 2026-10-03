@@ -229,14 +229,15 @@ def test_codex_cached_only_policy_is_configured_on_the_process(tmp_path, monkeyp
     from tests.desktop.test_codex_policy import config_response, features_response
     async def run():
         captured = {}
-        async def spawn(*args, **kwargs): captured.update(args=args, kwargs=kwargs); return SimpleNamespace(returncode=0)
+        async def wait(): return 0
+        async def spawn(*args, **kwargs): captured.update(args=args, kwargs=kwargs); return SimpleNamespace(returncode=0, wait=wait)
         async def ignore(*args, **kwargs): return {}
         async def request(method, params):
             if method == "config/read": return config_response()
             if method == "experimentalFeature/list": return features_response()
             return {}
         monkeypatch.setattr("backend.app.codex_rpc.executable_command", lambda _: ["codex.exe"])
-        monkeypatch.setattr("backend.app.codex_rpc.asyncio.create_subprocess_exec", spawn)
+        monkeypatch.setattr("backend.app.codex_rpc.launch_owned", spawn)
         rpc = CodexRPC(tmp_path / "profile", tmp_path / "workspace", allow_browsing=False)
         rpc.request, rpc.send = request, ignore
         await rpc.open(); await rpc.close()

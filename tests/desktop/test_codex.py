@@ -45,6 +45,12 @@ class FakeRPC:
     async def event(self):
         return await self.events.get()
 
+    async def wait_disconnected(self):
+        await asyncio.Future()
+
+    async def interrupt(self, thread_id, turn_id):
+        await self.request("turn/interrupt", {"threadId": thread_id, "turnId": turn_id})
+
     async def start_thread(self, model=None):
         await self.request("thread/start", thread_parameters(Path.cwd(), model))
         return "thread-1"
@@ -188,8 +194,8 @@ def test_codex_generation_checks_subscription_and_normalizes_events(tmp_path, mo
         rpc.account = {"type": "chatgpt"}
         for event in [
             {"method": "item/reasoning/summaryTextDelta", "params": {"delta": "hidden"}},
-            {"method": "item/agentMessage/delta", "params": {"delta": "Answer"}},
-            {"method": "turn/completed", "params": {"turn": {"status": "completed"}}},
+            {"method": "item/agentMessage/delta", "params": {"delta": "Answer", "threadId": "thread-1", "turnId": "turn-1", "itemId": "message-1"}},
+            {"method": "turn/completed", "params": {"threadId": "thread-1", "turn": {"id": "turn-1", "status": "completed"}}},
         ]: await rpc.events.put(event)
         monkeypatch.setattr("backend.app.codex_runtime.CodexRPC", lambda *_, **kwargs: rpc)
         # Explicit synthetic qualification, not a production supported-version claim.
@@ -213,7 +219,7 @@ def test_unexpected_tool_events_abort_without_exposing_payloads(tmp_path, monkey
     async def run():
         rpc = FakeRPC()
         rpc.account = {"type": "chatgpt"}
-        await rpc.events.put({"method": "item/started", "params": {"item": {"type": kind, "arguments": "private provider payload"}}})
+        await rpc.events.put({"method": "item/started", "params": {"threadId": "thread-1", "turnId": "turn-1", "item": {"type": kind, "arguments": "private provider payload"}}})
         monkeypatch.setattr("backend.app.codex_runtime.CodexRPC", lambda *_, **kwargs: rpc)
         async def qualified_check(self):
             return RuntimeCapabilities(provider="codex", installed=True, authentication="authenticated", qualification="live", generation=True, browsing=True)

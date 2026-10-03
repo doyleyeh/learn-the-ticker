@@ -8,7 +8,8 @@ from pathlib import Path
 
 from backend.app.codex_policy import (policy_arguments, prepare_workspace, thread_parameters,
     validate_config, validate_features, validate_thread)
-from backend.app.runtime_base import RuntimeFailure, executable_command, process_options, provider_environment
+from backend.app.runtime_base import RuntimeFailure, executable_command, provider_environment
+from backend.app.owned_process import launch_owned, close_owned
 
 
 class CodexRPC:
@@ -23,11 +24,11 @@ class CodexRPC:
         prepare_workspace(self.profile, self.workspace)
         environment = {**provider_environment(), "CODEX_HOME": str(self.profile.resolve())}
         try:
-            self.process = await asyncio.create_subprocess_exec(
+            self.process = await launch_owned(
                 *executable_command("codex"), "app-server", "--stdio",
                 *policy_arguments(self.allow_browsing), cwd=self.workspace, env=environment,
                 stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL, limit=2_000_000, **process_options())
+                stderr=asyncio.subprocess.DEVNULL, limit=2_000_000)
             await self.request("initialize", {"clientInfo": {"name": "learn_the_ticker", "title": "Learn the Ticker", "version": "0.2.0"}})
             await self.send({"method": "initialized", "params": {}})
             await self.verify_policy()
@@ -77,7 +78,7 @@ class CodexRPC:
                 await self.send({"id": expected, "method": method, "params": params})
                 while True:
                     message = await self.receive()
-                    if message.get("id") == expected and "method" not in message:
+                    if type(message.get("id")) is int and message["id"] == expected and "method" not in message:
                         if "error" in message or not isinstance(message.get("result"), dict):
                             raise RuntimeFailure("Codex rejected the request. Check runtime version, authentication and permissions.")
                         return message["result"]
@@ -92,13 +93,20 @@ class CodexRPC:
     async def event(self) -> dict:
         return self.pending.popleft() if self.pending else await self.receive()
 
+    async def wait_disconnected(self):
+        # Process.wait can wait for descendants holding stdout open. Watch the
+        # actual leader status so pending access reviews are withdrawn promptly.
+        while self.process and self.process.returncode is None:
+            await asyncio.sleep(.05)
+        raise RuntimeFailure("Codex disconnected. Research stopped; retry explicitly after reconnecting.")
+
+    async def interrupt(self, thread_id: str, turn_id: str):
+        try:
+            await self.request("turn/interrupt", {"threadId": thread_id, "turnId": turn_id}, timeout=2)
+        except (RuntimeFailure, OSError):
+            pass  # The owned process tree is closed even if the protocol is gone.
+
     async def close(self):
         process, self.process = self.process, None
-        if process and process.returncode is None:
-            try:
-                process.stdin.close()
-                await asyncio.wait_for(process.wait(), 3)
-            except (OSError, TimeoutError):
-                if process.returncode is None:
-                    process.kill()
-                    await process.wait()
+        self.pending.clear()
+        await close_owned(process, grace=1)

@@ -97,7 +97,7 @@ def test_custom_configuration_is_preserved_and_blocks_process_launch(tmp_path, m
     payload = '[hooks]\ncommand="do not execute"\n'
     config.write_text(payload)
     async def forbidden(*args, **kwargs): pytest.fail("spawned with inherited config")
-    monkeypatch.setattr("backend.app.codex_rpc.asyncio.create_subprocess_exec", forbidden)
+    monkeypatch.setattr("backend.app.codex_rpc.launch_owned", forbidden)
     with pytest.raises(RuntimeFailure, match="Custom Codex"):
         asyncio.run(CodexRPC(profile, workspace).open())
     assert config.read_text() == payload
@@ -154,7 +154,7 @@ def test_startup_mismatch_closes_owned_process(tmp_path, monkeypatch):
         async def request(*args, **kwargs): return {}
         async def send(*args, **kwargs): pass
         monkeypatch.setattr("backend.app.codex_rpc.executable_command", lambda _: ["synthetic-codex"])
-        monkeypatch.setattr("backend.app.codex_rpc.asyncio.create_subprocess_exec", spawn)
+        monkeypatch.setattr("backend.app.codex_rpc.launch_owned", spawn)
         rpc = CodexRPC(tmp_path / "profile", tmp_path / "workspace")
         rpc.request, rpc.send = request, send
         with pytest.raises(RuntimeFailure, match="effective configuration"): await rpc.open()

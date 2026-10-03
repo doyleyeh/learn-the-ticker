@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import unicodedata
+from contextlib import aclosing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -127,17 +128,18 @@ class ResearchService:
                 text = ""
                 previous = self.cached(request.asset_id)
                 prompt = research_prompt(request, previous, (conversation or {}).get("messages", []))
-                async for event in self.adapters[request.provider].stream(prompt, job_id, work, request.model):
-                    if event.kind == "message.delta":
-                        text += event.text
-                        if len(text) > 1_000_000:
-                            raise RuntimeFailure("Provider output exceeds the research limit")
-                        # Structured output may contain unvalidated or restricted material. Stream progress,
-                        # not raw provider text, before the evidence gate.
-                    else:
-                        self.emit(event)
-                    if event.kind == "run.failed":
-                        raise RuntimeFailure(event.text)
+                async with aclosing(self.adapters[request.provider].stream(prompt, job_id, work, request.model)) as events:
+                    async for event in events:
+                        if event.kind == "message.delta":
+                            text += event.text
+                            if len(text) > 1_000_000:
+                                raise RuntimeFailure("Provider output exceeds the research limit")
+                            # Structured output may contain unvalidated or restricted material. Stream progress,
+                            # not raw provider text, before the evidence gate.
+                        else:
+                            self.emit(event)
+                        if event.kind == "run.failed":
+                            raise RuntimeFailure(event.text)
                 text = text.strip()
                 if text.startswith("```json") and text.endswith("```"):
                     text = text[7:-3].strip()
@@ -193,7 +195,10 @@ class ResearchService:
         if task:
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
-        self.db.transition(job_id, "cancelled")
+        job = self.db.job(job_id)
+        if job and job["status"] in ("queued", "running"):
+            self.db.transition(job_id, "cancelled")
+            self.emit(RuntimeEvent(run_id=job_id, kind="run.cancelled"))
 
     async def close(self):
         self.approvals.cancel()

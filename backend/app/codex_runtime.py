@@ -68,6 +68,7 @@ class CodexRuntime(AIRuntime):
         await self.require_generation(allow_browsing=allow_browsing)
         profile = self.profile or workspace.parent.parent / "connections" / "codex"
         rpc = CodexRPC(profile, workspace, allow_browsing=allow_browsing)
+        thread_id, turn_id, completed = None, None, False
         try:
             async with asyncio.timeout(180):
                 await rpc.open()
@@ -79,7 +80,8 @@ class CodexRuntime(AIRuntime):
                 turn = response.get("turn")
                 if not isinstance(turn, dict) or not identifier(turn.get("id")):
                     raise RuntimeFailure("Codex did not identify the active turn.")
-                approvals = CodexApprovals(rpc, self.approvals, run_id, thread_id, turn["id"])
+                turn_id = turn["id"]
+                approvals = CodexApprovals(rpc, self.approvals, run_id, thread_id, turn_id)
                 while True:
                     raw = await rpc.event()
                     method, params = raw.get("method"), raw.get("params", {})
@@ -92,8 +94,12 @@ class CodexRuntime(AIRuntime):
                         yield RuntimeEvent(run_id=run_id, kind="approval.required", text="Review requested access. Research is waiting; no permission has been granted.")
                         await approvals.handle(raw)
                         continue
+                    if method in ("item/agentMessage/delta", "item/started", "item/completed", "turn/started", "turn/completed"):
+                        event_turn = params.get("turn", {}).get("id") if isinstance(params.get("turn"), dict) else params.get("turnId")
+                        if params.get("threadId") != thread_id or event_turn != turn_id:
+                            raise RuntimeFailure("Codex returned activity for an unexpected thread or turn.")
                     if method == "item/agentMessage/delta":
-                        if not isinstance(params.get("delta"), str):
+                        if not isinstance(params.get("delta"), str) or not identifier(params.get("itemId")):
                             raise RuntimeFailure("Codex returned an invalid message update.")
                         yield RuntimeEvent(run_id=run_id, kind="message.delta", text=params["delta"])
                     elif method in ("item/started", "item/completed"):
@@ -109,8 +115,13 @@ class CodexRuntime(AIRuntime):
                     elif method == "turn/completed":
                         if params.get("turn", {}).get("status") != "completed":
                             raise RuntimeFailure("Codex turn did not complete. Check quota, authentication or cancellation.")
+                        completed = True
                         break
                     elif method == "error":
                         raise RuntimeFailure("Codex reported a provider error; no automatic retry was attempted.")
         finally:
-            await rpc.close()
+            try:
+                if thread_id and turn_id and not completed:
+                    await rpc.interrupt(thread_id, turn_id)
+            finally:
+                await rpc.close()

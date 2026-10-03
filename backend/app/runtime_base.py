@@ -5,17 +5,13 @@ import asyncio
 import os
 import re
 import shutil
-import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import AsyncIterator
 
 from backend.app.contracts import RuntimeCapabilities, RuntimeEvent, RuntimeModelCatalog
 from backend.app.runtime_policy import apply_qualification
-
-
-def process_options() -> dict:
-    return {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
+from backend.app.owned_process import launch_owned, close_owned
 
 
 class RuntimeFailure(Exception):
@@ -69,7 +65,7 @@ class AIRuntime(ABC):
         result = RuntimeCapabilities(provider=self.provider)
         try:
             command = executable_command(self.provider)
-            process = await asyncio.create_subprocess_exec(*command, "--version", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL, env=provider_environment(), limit=8192, **process_options())
+            process = await launch_owned(*command, "--version", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL, env=provider_environment(), limit=8192)
             result.installed = True
             async with asyncio.timeout(10):
                 output = await process.stdout.read(4097)
@@ -90,9 +86,7 @@ class AIRuntime(ABC):
             result.reason = "Provider version could not be verified. Check the runtime installation; no capability was enabled."
             return result
         finally:
-            if process and process.returncode is None:
-                process.kill()
-                await process.wait()
+            await close_owned(process)
 
     async def require_generation(self, *, allow_browsing: bool):
         result = await self.check()

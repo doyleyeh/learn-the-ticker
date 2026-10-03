@@ -1,4 +1,5 @@
 """Translate only correlated v2 access requests; never echo vendor scopes or grants."""
+import asyncio
 from backend.app.runtime_base import RuntimeFailure
 
 
@@ -33,12 +34,21 @@ class CodexApprovals:
         self.seen.add(key)
         if self.broker is None:
             raise RuntimeFailure("Access review is unavailable. No permission was granted.")
-        outcome = await self.broker.review(self.run_id, "codex", METHODS[method])
+        review = asyncio.create_task(self.broker.review(self.run_id, "codex", METHODS[method]))
+        disconnected = asyncio.create_task(self.rpc.wait_disconnected())
+        try:
+            done, _ = await asyncio.wait((review, disconnected), return_when=asyncio.FIRST_COMPLETED)
+            if disconnected in done:
+                await disconnected
+            outcome = await review
+        finally:
+            for task in (review, disconnected):
+                if not task.done(): task.cancel()
+            await asyncio.gather(review, disconnected, return_exceptions=True)
         result = {"permissions": {}, "scope": "turn"} if METHODS[method] == "permissions" else {"decision": "decline" if outcome == "deny" else "cancel"}
         await self.rpc.send({"id": request_id, "result": result})
         if outcome == "cancel":
             # The application owns cancellation even when the protocol has no cancel decision.
-            import asyncio
             raise asyncio.CancelledError
         if outcome == "expired":
             raise RuntimeFailure("Access review expired. Research stopped without granting permission; retry explicitly.")

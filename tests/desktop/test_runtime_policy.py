@@ -86,7 +86,7 @@ def test_version_process_is_bounded_and_never_exposes_diagnostics(tmp_path, monk
             calls.append(args)
             return process
         monkeypatch.setattr("backend.app.runtime_base.executable_command", lambda _: ["codex.exe"])
-        monkeypatch.setattr("backend.app.runtime_base.asyncio.create_subprocess_exec", spawn)
+        monkeypatch.setattr("backend.app.runtime_base.launch_owned", spawn)
         result = await CodexRuntime().check()
         assert result.installed and not result.generation and not result.approvals
         assert calls == [("codex.exe", "--version")]

@@ -8,8 +8,9 @@ from pathlib import Path
 from backend.app.contracts import RuntimeCapabilities, RuntimeEvent
 
 
-from backend.app.runtime_base import AIRuntime, RuntimeFailure, executable_command, provider_environment, process_options
+from backend.app.runtime_base import AIRuntime, RuntimeFailure, executable_command, provider_environment
 from backend.app.codex_runtime import CodexRuntime
+from backend.app.owned_process import launch_owned, close_owned
 
 
 def normalize_cli_event(provider: str, raw: dict, run_id: str) -> RuntimeEvent | None:
@@ -38,7 +39,7 @@ class CLIRuntime(AIRuntime):
             # Restricted/safe mode prevents user hooks, plugins and project customizations
             # from expanding this cached-evidence connection's permissions.
             args = ["--restricted", "--safe-mode", "-p", "--output-format", "stream-json", "--verbose", "--tools", "", "--disallowedTools", "mcp__*", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}', "--setting-sources", "", "--no-session-persistence"]
-            status = await asyncio.create_subprocess_exec(*command, "auth", "status", "--json", cwd=workspace, env=provider_environment(), **process_options(), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+            status = await launch_owned(*command, "auth", "status", "--json", cwd=workspace, env=provider_environment(), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
             try:
                 output, _ = await asyncio.wait_for(status.communicate(), 10)
                 auth = json.loads(output)
@@ -47,16 +48,14 @@ class CLIRuntime(AIRuntime):
             except (ValueError, asyncio.TimeoutError) as exc:
                 raise RuntimeFailure("Claude subscription authentication could not be verified.") from exc
             finally:
-                if status.returncode is None:
-                    status.kill()
-                    await status.wait()
+                await close_owned(status)
         else:
             # Gemini safe tool isolation still needs version-specific qualification. Fail closed
             # rather than launch a CLI that can inherit unrestricted hooks or MCP servers.
             raise RuntimeFailure("Gemini transport is awaiting isolated-tool policy qualification; use cached material until connected safely.")
         if model:
             args += ["--model", model]
-        process = await asyncio.create_subprocess_exec(*command, *args, cwd=workspace, env=provider_environment(), stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL, limit=2_000_000, **process_options())
+        process = await launch_owned(*command, *args, cwd=workspace, env=provider_environment(), stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL, limit=2_000_000)
         try:
             process.stdin.write(prompt.encode())
             await process.stdin.drain()
@@ -75,9 +74,7 @@ class CLIRuntime(AIRuntime):
                 if process.returncode:
                     raise RuntimeFailure("Provider exited unsuccessfully. Reconnect or check quota.")
         finally:
-            if process.returncode is None:
-                process.kill()
-                await process.wait()
+            await close_owned(process)
 
 
 def runtimes(profile: Path | None = None) -> dict[str, AIRuntime]:

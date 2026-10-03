@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import aclosing
 import hashlib
 import json
 import re
@@ -116,13 +117,14 @@ class TermService:
                 workspace = self.research.workspace / job_id
                 workspace.mkdir(parents=True, exist_ok=True)
                 output = ""
-                async for event in self.research.adapters[request.provider].stream(term_prompt(request, bundle), job_id, workspace, request.model, allow_browsing=False):
-                    if event.kind == "message.delta":
-                        output += event.text
-                        if len(output) > 12000:
-                            raise RuntimeFailure("The term explanation exceeded the response limit")
-                    elif event.kind in ("tool.started", "approval.required", "run.failed"):
-                        raise RuntimeFailure("The explanation could not run with the permitted cached-evidence tools. No fallback was attempted.")
+                async with aclosing(self.research.adapters[request.provider].stream(term_prompt(request, bundle), job_id, workspace, request.model, allow_browsing=False)) as events:
+                    async for event in events:
+                        if event.kind == "message.delta":
+                            output += event.text
+                            if len(output) > 12000:
+                                raise RuntimeFailure("The term explanation exceeded the response limit")
+                        elif event.kind in ("tool.started", "approval.required", "run.failed"):
+                            raise RuntimeFailure("The explanation could not run with the permitted cached-evidence tools. No fallback was attempted.")
                 output = output.strip()
                 if output.startswith("```json") and output.endswith("```"):
                     output = output[7:-3].strip()
