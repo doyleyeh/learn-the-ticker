@@ -18,6 +18,8 @@ P-010: Resolve previously uncached symbols/names across asset categories. No fix
 
 P-011: Reuse cached evidence, inspect freshness, prefer applicable configured structured financial/news adapters, then let the agent investigate gaps. With cloud consent and qualified online tools, the agent can autonomously search the live web, open/read public source pages and follow relevant links or run follow-up searches for current market, ticker and news information. These permitted research calls do not require approval per fetch. Requests for latest information require source-appropriate freshness checks and refresh when needed; a recent cache retrieval alone cannot establish that the underlying information is current. Show partial sections and evidence dates. Never fabricate unavailable history or impute data without explicit labeling.
 
+Use existing applicable APIs first. Web investigation follows only for missing, stale, conflicting or unsupported information relevant to the current request; sufficient admitted context can be explained without browsing. An API failure or denied permission must remain visible and must not be bypassed through an equivalent unauthorized web extraction.
+
 P-012: Source candidates require independent validation and permission checks. Automatically admit only under predefined rules; expose optional review mode. Credibility and storage/display/export permission are separate. Rights limits apply even when the user has a commercial subscription.
 
 P-013: Keep facts, calculated metrics, interpretations and unverified notes separate. Preserve conflicts and restated versions. Charts use admitted numeric evidence with compatible units, periods and corporate actions. Model prose is not numerical input.
@@ -30,11 +32,15 @@ P-015: Import URLs, PDFs, CSVs and spreadsheets as untrusted material. Parser li
 
 P-020: Retain overview, business/fund model, financial trends, holdings/exposures, valuation context, risks, charts, sources and freshness. Less important detail can collapse; beginner and intermediate explanations remain equally accessible.
 
+The ticker page should provide a finance-dashboard experience: overview/profile and basic listing information, available quote/chart history, key statistics, annual/quarterly financials, relevant ticker news and permitted analyst insights. The user's Yahoo Finance screenshots are feature/layout references, never factual fixtures or instructions. Analyst estimates and outlooks are attributed third-party opinions with dates, separate from reported results and generated explanations; P-002 remains in force. Show provider and underlying publisher where known, as-of time, delay/freshness and unavailable states. Source availability need not be identical across tickers.
+
 P-021: Stream normalized progress and admit evidence progressively. Unknown, stale, unavailable, partial, insufficient evidence and not applicable are explicit states. Never render fixture content as live research.
 
 P-022: Concise arbitrary-term explanations through click/selection; hover and keyboard focus only reuse cache or curated definitions. Preserve a small curated glossary fallback. Cache generated explanations by term, evidence version, language and reader level. Generated asset-specific interpretations cite admitted evidence; generic definitions clearly identify missing source support. Generated terms never feed facts, charts, calculations or future factual context. Cached explanations remain available offline and across provider switches.
 
 P-023: Persistent conversations begin scoped to the page asset. Scope changes are visible and confirmed by identity resolution where needed. Provider changes preserve app history. Never let unsupported notes become factual context.
+
+The page supplies bounded, permitted, version-scoped ticker evidence and original references to learning actions so users do not need to paste its contents or first request basic ticker facts. Term explanations, ticker questions and explicit comparisons reuse that context; selecting another ticker still requires independent identity resolution. Local display permission alone does not establish permission to send content to a cloud model.
 
 P-024: Saved reports and bookmarks reference immutable evidence versions. Refresh-on-use/manual refresh regenerate affected explanations. Older research remains accessible. Personal Markdown/JSON exports retain citations, dates and uncertainty; omit secrets, restricted raw content and hidden reasoning.
 

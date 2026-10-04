@@ -26,6 +26,8 @@ The Sources screen can retain bounded original documents with checksums, provena
 
 ## Development on Windows
 
+The requested product direction is a populated ticker dashboard with overview, history, statistics, financials, relevant news and permitted analyst insights, feeding cited context into term explanations, questions and comparisons. Existing applicable financial APIs come before agent gap research. These are delivery requirements, not a claim that every section or previously used API is integrated. See [the source/dashboard assessment](docs/verification/2026-10-04-ticker-dashboard-sources.md) for current source candidates and permissions still to establish.
+
 After repository setup, install the separate test browser once with `npm exec --workspace apps/desktop -- playwright install chromium --only-shell`, then run `npm run test:browser`. It builds the frontend, starts and stops its own synthetic loopback services and tests citations, source review, recovery, keyboard and 640-pixel behavior. Ports 1420 and 18764 must be free; the harness refuses existing services. It uses the repository `.venv`, contacts no providers and writes ignored screenshots under `output/playwright/automated`. These test tools are not desktop installer requirements.
 
 Use Python 3.12 and Node 22.13+ (22.x) or Node 24+ for development; native builds also need Rust/MSVC and the Windows webview prerequisites. PostgreSQL 17 binaries were used in the local lifecycle tests. Other major versions have not been qualified. The future end-user installer must bundle the core dependencies and handle provider prerequisites explicitly.
@@ -49,6 +51,20 @@ OpenFIGI checks use `.venv/Scripts/python.exe -m scripts.qualify_figi_identity -
 `npm run dev` starts only the frontend at `http://127.0.0.1:1420`; `npm start` previews the built frontend. Neither starts a database or backend. For a reproducible browser-only demonstration without subscriptions, use the [synthetic preview instructions](EVALS.md#synthetic-browser-preview). Docker Compose is optional database development support and is not connected to the desktop supervisor.
 
 `scripts/package_backend.py` builds the Windows x64 sidecar separately. `npm run desktop:build` additionally needs that sidecar and a reviewed PostgreSQL runtime under the Tauri resources directory; it does not provision them. See [packaging and migration](docs/MIGRATION.md#native-packaging-and-platforms).
+
+## Configure financial-data API keys
+
+From a native Windows PowerShell terminal in the repository, run:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.configure_data_sources
+```
+
+Paste only the API key value at each hidden prompt, then press Enter. Do not include `FMP_API_KEY=`, quotes, JSON or multiple lines. The separate hidden plan prompt accepts a short label such as `free`, `Starter` or `paid`; Enter records `unknown`. Enter at the key prompt skips that provider and preserves any existing credential. Ctrl+C stops setup while retaining earlier completed saves. Values are stored only in Windows Credential Manager under `LearnTheTicker.DataSources`; they do not go into `.env`, Git, the library, backups or provider prompts. Run this on Windows even if the previous project's keys are in WSL.
+
+To configure one provider, append `--provider eodhd` (repeat the flag for others). Supported providers: `eodhd`, `tiingo`, `fmp`, `alpha-vantage`, `finnhub`, `marketaux`, `guardian`, `gnews`, `mediastack`, `newsapi`. To inspect presence without revealing keys or plan labels, run `.\.venv\Scripts\python.exe -m scripts.configure_data_sources --status`. You can remove saved entries through Windows Credential Manager → Windows Credentials; only remove this app's matching data-source entry.
+
+This helper stores and verifies credentials locally; it makes no API calls and does not activate unqualified adapters, buy a plan or establish usage rights. Do not enter OpenRouter keys or old database URLs. The existing agent-subscription and private PostgreSQL setup remain separate. SEC contact setup is described above and is not an API key.
 
 ## Connect Codex
 

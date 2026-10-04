@@ -50,8 +50,9 @@ Commands and prerequisites live in [EVALS](EVALS.md#verification-tiers). Q is th
 
 - Objective: Financial section parity, independently admitted progressive sections, chart/return alignment, source review and recovery.
 - Dependencies: M2.
-- Components: Desktop App, retained financial components/lib, source review, evidence events and calculations.
+- Components: Desktop App, retained financial components/lib, source review, evidence events and calculations. DEC-035 clarifies the populated ticker dashboard: overview/basic information, quotes/charts, statistics, financials, relevant news, permitted analyst insights and context-aware learning entry points.
 - Acceptance: All useful financial sections adapted with citations/date/unit/rights; charts and returns use aligned admitted numeric evidence; missing/stale/partial/not-applicable states honest; normal and 640-pixel layouts and keyboard interactions pass.
+- Independent delivery: dashboard organization can use existing admitted evidence while individual source integrations remain blocked. Prefer existing applicable APIs and investigate relevant gaps only. This does not qualify missing market data or remove final M4/M5/M6 acceptance; full conversations and comparisons remain in their owning milestones.
 - Validation: Q, C, R, D, B; frontend interaction scenarios plus calculations tests. Run Q with `powershell -ExecutionPolicy Bypass -File scripts/run_quality_gate.ps1` or `bash scripts/run_quality_gate.sh`. Focused production scenarios use `python -m pytest tests/desktop -q`; foundation scenarios use `python -m pytest tests/unit/test_verification.py tests/unit/test_repo_contract.py -q`. Group-specific executable commands and manual scenarios are in EVALS.
 - Exit: all acceptance checks above pass with dated evidence, tasks updated, reviewed checkpoint committed. Any missing live/native evidence keeps this milestone open.
 
