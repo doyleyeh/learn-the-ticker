@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -55,6 +56,8 @@ class HistoryCandidate:
     bars: tuple[PriceBar, ...]
     actions: tuple[MarketAction, ...]
     gaps: tuple[str, ...]
+    exchange_label: str | None = None
+    retrieved_at: datetime | None = None
 
 
 def valid_symbol(value: str) -> str:
@@ -213,8 +216,9 @@ def parse_yahoo_chart(raw: bytes, symbol: str, start: str, end: str) -> HistoryC
                 actions.append(MarketAction(day, kind, amount))
         if len({(row.date, row.kind) for row in actions}) != len(actions):
             raise ValueError
-        for key in ("exchangeName", "instrumentType", "shortName", "longName"):
-            if key in meta and (not isinstance(meta[key], str) or not 1 <= len(meta[key]) <= 300):
+        for key in ("exchangeName", "fullExchangeName", "instrumentType", "shortName", "longName"):
+            if key in meta and (not isinstance(meta[key], str) or not 1 <= len(meta[key]) <= 300
+                                or any(unicodedata.category(char).startswith("C") for char in meta[key])):
                 raise ValueError
     except MarketDataError:
         raise
@@ -229,4 +233,4 @@ def parse_yahoo_chart(raw: bytes, symbol: str, start: str, end: str) -> HistoryC
         meta.get("instrumentType"), meta["exchangeTimezoneName"], meta.get("longName") or meta.get("shortName"),
         f"https://finance.yahoo.com/quote/{symbol}/history/", hashlib.sha256(raw).hexdigest(), start, end,
         "split_adjusted", tuple(sorted(rows, key=lambda row: row.date)),
-        tuple(sorted(actions, key=lambda row: (row.date, row.kind))), tuple(gaps))
+        tuple(sorted(actions, key=lambda row: (row.date, row.kind))), tuple(gaps), meta.get("fullExchangeName"))

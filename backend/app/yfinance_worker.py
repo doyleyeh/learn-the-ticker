@@ -4,7 +4,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
-from datetime import timedelta
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 import importlib.metadata
 import json
 import logging
@@ -115,7 +116,7 @@ async def fetch_yahoo_history(symbol, start, end):
                     or not 1 <= value["requests"] <= 4):
                 raise MarketDataError("worker_limit")
             raw = base64.b64decode(value["raw"], validate=True)
-            return parse_yahoo_chart(raw, symbol, start, end), value["requests"]
+            return replace(parse_yahoo_chart(raw, symbol, start, end), retrieved_at=datetime.now(timezone.utc)), value["requests"]
         except MarketDataError:
             raise
         except (OSError, ValueError, TypeError, TimeoutError):

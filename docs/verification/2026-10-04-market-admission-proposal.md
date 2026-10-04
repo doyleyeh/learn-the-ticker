@@ -1,0 +1,19 @@
+# Private yfinance admission scope — accepted by owner
+
+Date: 2026-10-04. The owner explicitly accepted this concrete proposal: “Apply the limited experimental private-mode exception (recommended).” DEC-039/SPEC now own the accepted policy. This is not a Yahoo permission grant or evidence that implementation has passed. The user's EODHD-first/yfinance choice already authorizes the implemented retrieval work; do not request the same approval again.
+
+## Exact accepted project-policy exception
+
+For an explicitly opted-in **experimental personal-use mode**, allow Yahoo numerical history retrieved through the bounded yfinance adapter to be independently validated, displayed and cached in the user's local library with its original URL, provider, retrieval time, content hash, units, adjustment basis and immutable evidence version. Label the source unofficial and personal-use-only. Preserve these records in private same-user backups; do not bundle datasets or developer credentials with the application.
+
+Do not transmit Yahoo-derived values or interpretations based on them to cloud models, and do not include them in shareable Markdown/JSON exports until those operations are separately qualified. Use permitted EODHD/SEC evidence for agent context and explain the resulting context gap. Never replace the configured model, enable API billing, buy a plan or bypass a provider denial. Public Windows v1 remains gated on source permissions and all original release checks; the five-year target is unchanged.
+
+This is an explicit exception to P-012's requirement for documented source permission before automatic admission **for private experimental local use only**. It does not claim Yahoo has authorized the application or settle any user's obligations to Yahoo or underlying data providers. Implement operation-specific enforcement before activation. EODHD's independently qualified, entitled private-use data can continue to be developed without this exception, but its observed one-year coverage alone cannot close the five-year milestone.
+
+## Why an explicit decision is needed
+
+The repository's [P-012](../../SPEC.md#research) requires independent validation and permission checks before automatic admission; [AGENTS](../../AGENTS.md#durable-rules) requires an established decision or user approval for scope/security changes. Selecting a library does not explicitly amend this rule. The implementation currently has no market DTO, production source rule or path that writes these candidates into the library, exports or model prompts.
+
+The [yfinance maintainer](https://ranaroussi.github.io/yfinance/) describes research/educational and personal use, while Yahoo's own [data guidance](https://help.yahoo.com/kb/account/SLN2310.html) prohibits redistribution. Yahoo's [general terms](https://legal.yahoo.com/us/en/yahoo/terms/otos/index.html) place conditions on automated access and software/API use. Its [developer API terms](https://legal.yahoo.com/us/en/yahoo/terms/product-atos/apiforydn/index.html) and [developer guidelines](https://legal.yahoo.com/us/en/yahoo/guidelines/ydn/index.html) are conditional and API-specific; their availability does not establish that this undocumented Finance chart endpoint has a blanket storage/cloud/export grant. This review used indexed official excerpts; direct Taiwan terms returned 999 and direct data guidance returned 429, so complete jurisdiction-specific terms were not verified and those requests were not retried.
+
+[EODHD's terms](https://eodhd.com/financial-apis/terms-conditions) expressly permit private storage/manipulation/analysis for non-professional users and restrict redistribution. Its [official AI integration](https://eodhd.com/financial-apis/mcp-server-for-financial-data-by-eodhd) supplies positive evidence for personal AI-assisted use. Those permissions do not transfer to Yahoo data. No permission inquiry has been sent to either company.

@@ -1,6 +1,6 @@
 """Explicit EODHD-first history selection; no library write or numerical admission."""
-from dataclasses import dataclass
-from datetime import date, timedelta
+from dataclasses import dataclass, replace
+from datetime import date, datetime, timedelta, timezone
 
 from backend.app.market_history import HistoryCandidate, MarketDataError, _window, parse_eodhd_prices, valid_symbol
 from backend.app.market_transport import fetch_eodhd_prices
@@ -40,7 +40,7 @@ async def retrieve_history(symbol, start, end, *, credential, eodhd_start,
     if credential is not None:
         try:
             raw = eodhd_fetch(symbol + ".US", eodhd_start, end, credential)
-            primary = parse_eodhd_prices(raw, symbol + ".US", eodhd_start, end)
+            primary = replace(parse_eodhd_prices(raw, symbol + ".US", eodhd_start, end), retrieved_at=datetime.now(timezone.utc))
         except MarketDataError as exc:
             # No equivalent extraction after denial, quota or ambiguous failure.
             return HistoryRetrieval(None, None, ("eodhd:" + str(exc),))
