@@ -52,6 +52,8 @@ Native build changes must retain Cargo.lock/locked builds, preserve safe Windows
 
 Retained imports require distinct storage/backup permission, original bytes/fingerprint/locators and unverified state. They cannot become factual/chart context or imply cloud permission. Format-2 archives require exact member-to-record references, bounded individual/aggregate sizes, current registered URL rights and atomic byte/record restore without filesystem extraction. Preserve format-1 compatibility and reject orphaned/duplicate/traversal members, inline replacement bytes and changed checksums. Test actual PostgreSQL capacity races and rollback/restart with attachments; a new format or unit round trip alone is insufficient. Old binaries remain unqualified rollback targets, and larger-cache work is still required.
 
+Retention routes must match the preview fingerprint after reparsing, recheck URL rights/consent and require distinct storage permission. Source reads must reparse original bytes under owned-process/queue limits without fetching or invoking providers; raw bytes stay out of frontend lists. Preserve original checked/retrieved dates and unverified labels when reopening offline. Consume request bodies before disconnect monitoring, including empty GETs, and cover immediate queue failure. A lost/cancelled save response must not claim no write occurred; refresh retained metadata and disclose uncertainty before retry.
+
 Return:
 
 - summary

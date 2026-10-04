@@ -63,7 +63,7 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
     app.state.terms = terms
     app.state.imports = imports
     mount_import_routes(app, imports)
-    app.add_middleware(CORSMiddleware, allow_origins=list(ORIGINS), allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Authorization", "Content-Type", "X-Backup-Fingerprint"])
+    app.add_middleware(CORSMiddleware, allow_origins=list(ORIGINS), allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Authorization", "Content-Type", "X-Backup-Fingerprint", "X-Import-Metadata"])
 
     @app.middleware("http")
     async def authenticate(request: Request, call_next):

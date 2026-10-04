@@ -1,12 +1,14 @@
-"""Authenticated, bounded preview transport. Request content is never logged or stored."""
+"""Authenticated, bounded preview and explicit retention transport; no request logging."""
 import asyncio
 import json
+from urllib.parse import unquote
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from backend.app.import_documents import MAX_INPUT, ImportFailure
 from backend.app.import_previews import import_message
+from backend.app.import_storage import ImportStorage, RetainMetadata, RetainURL
 
 
 async def preview_body(request, limit):
@@ -43,6 +45,61 @@ async def while_connected(request, operation):
 
 
 def mount_import_routes(app, previews):
+    storage = ImportStorage(previews)
+    app.state.import_storage = storage
+
+    @app.get("/api/imports/retained")
+    async def retained_list():
+        try:
+            return JSONResponse([item.model_dump(mode="json") for item in storage.list()], headers={"Cache-Control": "no-store"})
+        except ImportFailure as exc:
+            raise HTTPException(400, import_message(exc)) from None
+
+    @app.get("/api/imports/retained/{identifier}")
+    async def retained_view(identifier: str, request: Request):
+        try:
+            # Consume the empty GET body before the disconnect watcher takes ownership
+            # of receive; immediate queue failures must not strand middleware reads.
+            await preview_body(request, 0)
+            result = await while_connected(request, lambda: storage.view(identifier))
+            return JSONResponse(result.model_dump(mode="json"), headers={"Cache-Control": "no-store"})
+        except ImportFailure as exc:
+            raise HTTPException(400, import_message(exc)) from None
+
+    @app.post("/api/imports/retain/file")
+    async def file_retention(request: Request):
+        try:
+            if request.query_params.get("permission_confirmed") != "true":
+                raise ImportFailure("permission_required")
+            format = request.query_params.get("format")
+            if format not in ("pdf", "csv", "xlsx"):
+                raise ImportFailure("unsupported_format")
+            encoded = request.headers.get("X-Import-Metadata", "")
+            try:
+                if len(encoded) > 4096:
+                    raise ValueError()
+                metadata = RetainMetadata.model_validate_json(unquote(encoded, errors="strict"))
+            except (ValueError, RecursionError):
+                raise ImportFailure("storage_permission_required") from None
+            raw = await preview_body(request, MAX_INPUT)
+            result = await while_connected(request, lambda: storage.file(raw, format, metadata))
+            return JSONResponse(result.model_dump(mode="json"), headers={"Cache-Control": "no-store"})
+        except ImportFailure as exc:
+            raise HTTPException(400, import_message(exc)) from None
+
+    @app.post("/api/imports/retain/url")
+    async def url_retention(request: Request):
+        try:
+            raw = await preview_body(request, 8192)
+            try:
+                metadata = RetainURL.model_validate_json(raw)
+            except (ValueError, RecursionError):
+                raise ImportFailure("storage_permission_required") from None
+            result = await while_connected(request, lambda: storage.url(metadata))
+            return JSONResponse(result.model_dump(mode="json"), headers={"Cache-Control": "no-store"})
+        except ImportFailure as exc:
+            raise HTTPException(400, import_message(exc)) from None
+
     @app.post("/api/imports/preview/file")
     async def file_preview(request: Request):
         try:

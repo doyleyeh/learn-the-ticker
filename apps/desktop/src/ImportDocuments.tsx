@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "./client";
-import type { ImportPreview } from "./contracts";
+import type { ImportPreview, RetainedImportSummary } from "./contracts";
+import { RetainedDocuments } from "./RetainedDocuments";
 
 const limits: Record<string, string> = {
   unverified_import: "Imported content has not been checked against the original publisher or an asset identity. It cannot supply facts or chart values.",
@@ -19,10 +20,14 @@ export function ImportDocuments({ online }: { online: boolean }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [title, setTitle] = useState("");
+  const [storagePermission, setStoragePermission] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [revision, setRevision] = useState(0);
   const request = useRef<AbortController | undefined>(undefined);
   useEffect(() => () => { request.current?.abort(); request.current = undefined; }, []);
 
-  function clearPreview() { setPreview(undefined); setMessage(""); setError(""); }
+  function clearPreview() { setPreview(undefined); setMessage(""); setError(""); setStoragePermission(false); }
   async function run(path: string, body: BodyInit, name = "") {
     if (request.current) return;
     const controller = new AbortController(); request.current = controller;
@@ -30,7 +35,7 @@ export function ImportDocuments({ online }: { online: boolean }) {
     try {
       const result = await api<ImportPreview>(path, { method: "POST", body, signal: controller.signal,
         headers: { "Content-Type": name ? "application/octet-stream" : "application/json" } });
-      if (request.current === controller) setPreview(result);
+      if (request.current === controller) { setPreview(result); setTitle((name || result.source?.title || "Imported document").slice(0, 200)); }
     } catch (error) {
       if (request.current === controller) {
         if (controller.signal.aborted) setMessage("Preview cancelled. Nothing was saved.");
@@ -38,6 +43,30 @@ export function ImportDocuments({ online }: { online: boolean }) {
       }
     } finally {
       if (request.current === controller) { request.current = undefined; setBusy(false); }
+    }
+  }
+
+  async function save() {
+    if (request.current || !preview?.document || !storagePermission || !title.trim()) return;
+    const controller = new AbortController(); request.current = controller;
+    setBusy(true); setSaving(true); setMessage(""); setError("");
+    const metadata = { title: title.trim(), preview_hash: preview.document.content_hash, storage_and_backup_confirmed: true };
+    try {
+      if (preview.origin === "local_file") {
+        if (!file || !permission) throw new Error("Select and preview the document again.");
+        await api<RetainedImportSummary>(`/api/imports/retain/file?format=${preview.document.format}&permission_confirmed=true`, {
+          method: "POST", body: file, signal: controller.signal,
+          headers: { "Content-Type": "application/octet-stream", "X-Import-Metadata": encodeURIComponent(JSON.stringify(metadata)) },
+        });
+      } else {
+        await api<RetainedImportSummary>("/api/imports/retain/url", { method: "POST", signal: controller.signal,
+          body: JSON.stringify({ ...metadata, url: preview.source?.url }) });
+      }
+      if (request.current === controller) { clearPreview(); setMessage("Document retained locally and included in backups. It remains unverified; no content was sent to an AI provider."); }
+    } catch (error) {
+      if (request.current === controller) setError(`${error instanceof Error ? error.message : "Save confirmation was unavailable."} Check retained documents before retrying if the connection was interrupted.`);
+    } finally {
+      if (request.current === controller) { request.current = undefined; setBusy(false); setSaving(false); setRevision((value) => value + 1); }
     }
   }
 
@@ -67,28 +96,38 @@ export function ImportDocuments({ online }: { online: boolean }) {
         <button disabled={busy || !online || !url}>Preview URL</button>
       </form>
     </div>
-    {busy && <div className="plain-panel"><p role="status">Reading your source…</p><button onClick={() => request.current?.abort()}>Cancel preview</button></div>}
+    {busy && <div className="plain-panel"><p role="status">{saving ? "Saving your document…" : "Reading your source…"}</p><button onClick={() => request.current?.abort()}>{saving ? "Cancel save request" : "Cancel preview"}</button></div>}
     {error && <p role="alert" className="error">{error}</p>}
     {message && <p role="status">{message}</p>}
     {preview && <ImportPreviewDetails preview={preview} filename={filename}/>}
+    {preview?.document && <section className="plain-panel" aria-labelledby="retain-heading">
+      <h2 id="retain-heading">Keep this document</h2>
+      <p>Keep a local copy with its original page or cell references. Saving does not verify its contents or permit sharing it with an AI provider.</p>
+      <label>Document title<input value={title} maxLength={200} disabled={busy} onChange={(event) => setTitle(event.target.value)}/></label>
+      <label><input type="checkbox" checked={storagePermission} disabled={busy} onChange={(event) => setStoragePermission(event.target.checked)}/> I have permission to retain this document locally and include it in my backups.</label>
+      <button disabled={busy || !storagePermission || !title.trim() || (preview.origin === "public_url" && !online)} onClick={() => void save()}>Retain document</button>
+    </section>}
+    <RetainedDocuments revision={revision} renderDocument={(view) => <ImportPreviewDetails key={view.item.id} retained={view.item} filename={view.item.title}
+      preview={{ state: "unverified", origin: view.item.origin, source: view.item.source, checked_at: view.item.checked_at, document: view.document }}/>} />
   </section>;
 }
 
-export function ImportPreviewDetails({ preview, filename }: { preview: ImportPreview; filename: string }) {
+export function ImportPreviewDetails({ preview, filename, retained }: { preview: ImportPreview; filename: string; retained?: RetainedImportSummary }) {
   const [page, setPage] = useState(0);
   const blocks = preview.document?.blocks ?? [];
   const count = Math.max(1, Math.ceil(blocks.length / 20));
-  return <section className="plain-panel import-result" aria-labelledby="preview-heading">
-    <h2 id="preview-heading">{preview.state === "link_only" ? "Source link only" : "Unverified document preview"}</h2>
-    <p role="status">This document has not been added to your library.</p>
+  const headingId = retained ? "retained-preview-heading" : "preview-heading";
+  return <section className="plain-panel import-result" aria-labelledby={headingId}>
+    <h2 id={headingId}>{retained ? "Unverified retained document" : preview.state === "link_only" ? "Source link only" : "Unverified document preview"}</h2>
+    <p role="status">{retained ? `Retained ${new Date(retained.retained_at).toLocaleString()}. Included in library backups; not verified as factual evidence.` : "This document has not been added to your library."}</p>
     {preview.source ? <>
       <p>{preview.source.publisher}</p>
       <a href={preview.source.url} target="_blank" rel="noopener noreferrer">{preview.source.url}</a>
       <p>Usage permission: {preview.source.policy?.replaceAll("_", " ")}</p>
       <p>Published: {preview.source.published_at ?? "Unknown"} · As of: {preview.source.as_of ?? "Unknown"}</p>
       {preview.document && <p>Retrieved: {new Date(preview.source.retrieved_at!).toLocaleString()}</p>}
-    </> : <><p>Selected file: {filename}</p><p>Publisher, publication date and as-of date: Unknown. File timestamps do not establish these dates.</p><p>Permission: Confirmed by you for local processing.</p></>}
-    <p>Preview checked: {new Date(preview.checked_at).toLocaleString()}</p>
+    </> : <><p>{retained ? "Document" : "Selected file"}: {filename}</p><p>Publisher, publication date and as-of date: Unknown. File timestamps do not establish these dates.</p><p>Permission: Confirmed by you for {retained ? "local storage and backup" : "local processing"}.</p></>}
+    <p>{retained ? "Original content check" : "Preview checked"}: {new Date(preview.checked_at).toLocaleString()}</p>
     {preview.state === "link_only" && <p>No document content was downloaded. A link alone does not verify claims or grant permission to retain its content.</p>}
     {preview.document && <>
       <ul>{preview.document.limitations?.map((key) => <li key={key}>{limits[key]}</li>)}</ul>

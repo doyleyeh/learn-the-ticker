@@ -62,7 +62,7 @@ def rewrite(raw, *, manifest_change=None, content_change=None, member_change=Non
     return output.getvalue()
 
 
-@pytest.mark.parametrize("raw,format", [(CSV, "csv"), (workbook_bytes(), "xlsx"), (pdf_bytes(), "pdf"), (b"<p>Synthetic permitted document.</p>", "html")])
+@pytest.mark.parametrize("raw,format", [(CSV, "csv"), (workbook_bytes(), "xlsx"), (pdf_bytes(), "pdf"), (b"<p>Synthetic permitted document.</p>", "html")], ids=["csv", "xlsx", "pdf", "html"])
 def test_actual_bytes_original_locators_provenance_and_unverified_state_roundtrip(raw, format):
     source, target = Database("sqlite://", testing=True), Database("sqlite://", testing=True)
     document = retained(source, raw, format)

@@ -1,11 +1,15 @@
 """Explicit local lifecycle smoke. No provider calls. Uses a new private PostgreSQL cluster."""
 import json
+import hashlib
+import io
 import os
 import secrets
 import subprocess
 import sys
 import time
 from pathlib import Path
+from urllib.parse import quote
+from zipfile import ZipFile
 
 import httpx
 
@@ -48,8 +52,32 @@ try:
         assert preview["state"] == "unverified" and not preview["saved"] and not preview["document"]["verified"]
         assert preview["document"]["blocks"][1]["cells"][1]["text"] == "123456789.123456789"
         assert client.get("/api/library", headers={"Authorization": "Bearer " + token}).json() == []
+        assert client.get("/api/imports/retained", headers={"Authorization": "Bearer " + token}).json() == []
+        metadata = {"title": "Synthetic retained CSV", "preview_hash": preview["document"]["content_hash"], "storage_and_backup_confirmed": True}
+        retained = client.post("/api/imports/retain/file?format=csv&permission_confirmed=true",
+            content=b"Metric,Value\nRevenue,123456789.123456789", timeout=30,
+            headers={"Authorization": "Bearer " + token, "X-Import-Metadata": quote(json.dumps(metadata))})
+        assert retained.status_code == 200 and retained.headers["cache-control"] == "no-store"
+        item = retained.json()
+        opened = client.get("/api/imports/retained/" + item["id"], headers={"Authorization": "Bearer " + token}, timeout=30)
+        assert opened.status_code == 200 and opened.json()["item"] == item and opened.json()["document"] == preview["document"]
+        backup = client.get("/api/library/backup", headers={"Authorization": "Bearer " + token}, timeout=30)
+        assert backup.status_code == 200
+        # Keep this standalone/frozen-service smoke independent of source imports.
+        with ZipFile(io.BytesIO(backup.content)) as archive:
+            manifest = json.loads(archive.read("manifest.json"))
+            library_bytes = archive.read("library.json")
+            assert hashlib.sha256(library_bytes).hexdigest() == manifest["sha256"]
+            assert manifest["format_version"] == "2" and len(manifest["attachments"]) == 1
+            entry = manifest["attachments"][0]
+            original = archive.read("attachments/" + entry["id"] + ".bin")
+            assert original == b"Metric,Value\nRevenue,123456789.123456789"
+            assert len(original) == entry["byte_count"] and hashlib.sha256(original).hexdigest() == entry["sha256"]
+            assert len([row for row in json.loads(library_bytes)["records"] if row["kind"] == "import"]) == 1
+        assert client.get("/api/library", headers={"Authorization": "Bearer " + token}).json() == []
     print("Private PostgreSQL initialization, migrations, authenticated API, empty library, idle sign-in and term lookup endpoints passed.")
     print("Authenticated offline CSV preview preserved exact decimals without library writes through the owned parser worker.")
+    print("Separate explicit retention, original-byte reopening and attachment-aware archive export passed without facts or provider calls.")
 finally:
     process.stdin.close()
     try:

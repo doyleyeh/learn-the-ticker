@@ -1350,6 +1350,113 @@
       "title": "ResearchResult",
       "type": "object"
     },
+    "RetainedImportSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "format": {
+          "enum": [
+            "csv",
+            "xlsx",
+            "pdf",
+            "html"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "origin": {
+          "enum": [
+            "local_file",
+            "public_url"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Source"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "checked_at": {
+          "format": "date-time",
+          "title": "Checked At",
+          "type": "string"
+        },
+        "retained_at": {
+          "format": "date-time",
+          "title": "Retained At",
+          "type": "string"
+        },
+        "byte_count": {
+          "title": "Byte Count",
+          "type": "integer"
+        },
+        "content_hash": {
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "verified": {
+          "const": false,
+          "default": false,
+          "title": "Verified",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "format",
+        "origin",
+        "source",
+        "checked_at",
+        "retained_at",
+        "byte_count",
+        "content_hash"
+      ],
+      "title": "RetainedImportSummary",
+      "type": "object"
+    },
+    "RetainedImportView": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "item": {
+          "$ref": "#/$defs/RetainedImportSummary"
+        },
+        "document": {
+          "$ref": "#/$defs/ParsedDocument"
+        }
+      },
+      "required": [
+        "item",
+        "document"
+      ],
+      "title": "RetainedImportView",
+      "type": "object"
+    },
     "RuntimeCapabilities": {
       "additionalProperties": false,
       "properties": {
@@ -2106,6 +2213,12 @@
     },
     "ImportPreview": {
       "$ref": "#/$defs/ImportPreview"
+    },
+    "RetainedImportSummary": {
+      "$ref": "#/$defs/RetainedImportSummary"
+    },
+    "RetainedImportView": {
+      "$ref": "#/$defs/RetainedImportView"
     },
     "ProviderLogin": {
       "$ref": "#/$defs/ProviderLogin"

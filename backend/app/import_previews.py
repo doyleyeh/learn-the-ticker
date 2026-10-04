@@ -41,6 +41,10 @@ MESSAGES = {
     "queue_full": "The import preview queue is full. Wait for a preview to finish.",
     "worker_limit": "The preview stopped because its processing limit was reached. Try a smaller document.",
     "request_limit": "The preview request is too large or took too long to upload.",
+    "storage_permission_required": "Confirm permission to retain this document locally and include it in your backups.",
+    "preview_changed": "This document differs from your preview. Preview it again before saving.",
+    "storage_unavailable": "The document could not be retained. Check source permissions and the limit of 100 documents or 64 MiB in total.",
+    "retained_unavailable": "This retained document is unavailable or no longer passes its integrity and usage checks.",
 }
 
 
@@ -105,6 +109,10 @@ class ImportPreviews:
             raise ImportFailure("online_permission_required")
 
     async def url(self, value):
+        preview, _ = await self.url_document(value)
+        return preview
+
+    async def url_document(self, value):
         source = url_candidate(value)
         self.require_online()
         async def operation():
@@ -114,7 +122,7 @@ class ImportPreviews:
                 await self.research.retrieve(self.resolver, urlsplit(str(source.url)).hostname)
                 self.require_online()
                 if source.policy != SourcePolicy.full_text:
-                    return ImportPreview(state="link_only", origin="public_url", source=source, checked_at=now())
+                    return ImportPreview(state="link_only", origin="public_url", source=source, checked_at=now()), None
                 raw = await self.research.retrieve(self.fetcher, str(source.url))
                 retrieved = now()
                 self.require_online()
@@ -123,7 +131,7 @@ class ImportPreviews:
                 # This is a permitted preview, never independent issuer/claim verification.
                 preview_source = source.model_copy(update={"retrieved_at": retrieved, "provenance": "user_import",
                     "content_hash": document.content_hash, "excerpt": ""})
-                return ImportPreview(state="unverified", origin="public_url", source=preview_source, document=document, checked_at=now())
+                return ImportPreview(state="unverified", origin="public_url", source=preview_source, document=document, checked_at=now()), raw
             except ImportFailure:
                 raise
             except RuntimeFailure:

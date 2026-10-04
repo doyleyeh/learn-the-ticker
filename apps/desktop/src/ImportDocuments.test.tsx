@@ -36,4 +36,20 @@ describe("import preview trust boundary", () => {
     expect(html).toContain("Works offline");
     expect(html).toContain('disabled="">Preview URL');
   });
+  it("labels retained copies separately from verified evidence and preserves original dates", () => {
+    const checked = "2026-01-01T00:00:00Z";
+    const preview: ImportPreview = { state: "unverified", origin: "local_file", checked_at: checked,
+      document: { format: "csv", content_hash: "a".repeat(64), blocks: [], limitations: ["unverified_import"] } };
+    const html = renderToStaticMarkup(<ImportPreviewDetails preview={preview} filename="<script>untrusted</script>" retained={{
+      id: "synthetic", title: "Synthetic", format: "csv", origin: "local_file", source: null, checked_at: checked,
+      retained_at: "2026-02-01T00:00:00Z", byte_count: 10, content_hash: "a".repeat(64),
+    }}/>);
+    expect(html).toContain("Unverified retained document");
+    expect(html).toContain("not verified as factual evidence");
+    expect(html).toContain("Original content check");
+    expect(html).toContain("local storage and backup");
+    expect(html).not.toContain("has not been added");
+    expect(html).not.toContain("<script>");
+    expect(html).toContain('id="retained-preview-heading"');
+  });
 });
