@@ -1,0 +1,173 @@
+{
+  "schema_version": "1",
+  "id": "synthetic-private-version",
+  "asset": {
+    "schema_version": "1",
+    "id": "FIGI:BBG000000007",
+    "symbol": "SYN",
+    "name": "SYNTHETIC COMPANY",
+    "asset_type": "stock",
+    "exchange": "UW",
+    "currency": null,
+    "identifiers": {
+      "figi": "BBG000000007",
+      "openfigi_securityType": "Common Stock",
+      "openfigi_securityType2": "Common Stock",
+      "openfigi_marketSector": "Equity"
+    }
+  },
+  "created_at": "2026-10-04T00:00:00Z",
+  "sources": [
+    {
+      "schema_version": "1",
+      "id": "yahoo:e88ca17d49090f0e9de015d503c48bf5aaf0a9138d22e2984da111421105d2c6",
+      "asset_id": "FIGI:BBG000000007",
+      "url": "https://finance.yahoo.com/quote/SYN/history/",
+      "title": "Yahoo Finance daily history (unofficial; experimental personal use only)",
+      "publisher": "Yahoo Finance via yfinance",
+      "retrieved_at": "2026-10-04T00:00:00Z",
+      "published_at": null,
+      "as_of": "2026-01-05",
+      "content_hash": "b1040cf97037f65ce3345744fc29d61028ce105abbcf1e41078a4fc46d943ad7",
+      "policy": "metadata_only",
+      "official": false,
+      "verified": true,
+      "excerpt": "",
+      "provenance": "market_adapter",
+      "usage_scope": "private_yahoo_v1",
+      "filing_publication": null
+    }
+  ],
+  "claims": [],
+  "notes": [],
+  "state": "partial",
+  "completion": "complete",
+  "language": "en",
+  "level": null,
+  "identity_verification": {
+    "schema_version": "1",
+    "authority": "openfigi-v3",
+    "source_url": "https://api.openfigi.com/v3/mapping",
+    "retrieved_at": "2026-10-04T00:00:00Z",
+    "content_hash": "0ccb4218d6948ef5a1801d5c16a45924d507896e373939ee36abb4395f42f363",
+    "identity_hash": "3a9b00631e6cbafc46d051e695906af52a488ef9885dcdd80cf5c5f94ffe10d3"
+  },
+  "financials": null,
+  "market": {
+    "schema_version": "1",
+    "provider": "yahoo_yfinance",
+    "association": "yahoo-openfigi-common-stock-v1",
+    "usage_scope": "private_yahoo_v1",
+    "source_id": "yahoo:e88ca17d49090f0e9de015d503c48bf5aaf0a9138d22e2984da111421105d2c6",
+    "checked_at": "2026-10-04T00:00:00Z",
+    "name": "Synthetic company",
+    "exchange": "NMS",
+    "exchange_label": "NasdaqGS",
+    "currency": "USD",
+    "instrument_type": "EQUITY",
+    "timezone": "America/New_York",
+    "requested_start": "2026-01-01",
+    "requested_end": "2026-01-31",
+    "close_basis": "split_adjusted",
+    "adjusted_close_basis": "splits_and_distributions",
+    "volume_basis": "provider_reported",
+    "bars": [
+      {
+        "schema_version": "1",
+        "date": "2026-01-02",
+        "open": "10",
+        "high": "12",
+        "low": "9",
+        "close": "11",
+        "adjusted_close": "10",
+        "volume": "9007199254740993"
+      },
+      {
+        "schema_version": "1",
+        "date": "2026-01-05",
+        "open": "11",
+        "high": "15",
+        "low": "10",
+        "close": "14",
+        "adjusted_close": "14",
+        "volume": "100"
+      }
+    ],
+    "actions": [
+      {
+        "schema_version": "1",
+        "date": "2026-01-02",
+        "kind": "dividends",
+        "value": "0.123456789012345678"
+      },
+      {
+        "schema_version": "1",
+        "date": "2026-01-02",
+        "kind": "splits",
+        "value": "3/2"
+      }
+    ],
+    "gaps": [
+      "calendar_completeness_unverified"
+    ],
+    "return_method": "yahoo-adjusted-ratio-v1",
+    "returns": [
+      {
+        "schema_version": "1",
+        "period": "ytd",
+        "source_id": "yahoo:e88ca17d49090f0e9de015d503c48bf5aaf0a9138d22e2984da111421105d2c6",
+        "requested_start": "2025-12-31",
+        "start": null,
+        "end": "2026-01-05",
+        "price_percent": null,
+        "total_return_estimate_percent": null,
+        "reason": "start_boundary_missing"
+      },
+      {
+        "schema_version": "1",
+        "period": "1y",
+        "source_id": "yahoo:e88ca17d49090f0e9de015d503c48bf5aaf0a9138d22e2984da111421105d2c6",
+        "requested_start": "2025-01-05",
+        "start": null,
+        "end": "2026-01-05",
+        "price_percent": null,
+        "total_return_estimate_percent": null,
+        "reason": "start_boundary_missing"
+      },
+      {
+        "schema_version": "1",
+        "period": "3y",
+        "source_id": "yahoo:e88ca17d49090f0e9de015d503c48bf5aaf0a9138d22e2984da111421105d2c6",
+        "requested_start": "2023-01-05",
+        "start": null,
+        "end": "2026-01-05",
+        "price_percent": null,
+        "total_return_estimate_percent": null,
+        "reason": "start_boundary_missing"
+      },
+      {
+        "schema_version": "1",
+        "period": "5y",
+        "source_id": "yahoo:e88ca17d49090f0e9de015d503c48bf5aaf0a9138d22e2984da111421105d2c6",
+        "requested_start": "2021-01-05",
+        "start": null,
+        "end": "2026-01-05",
+        "price_percent": null,
+        "total_return_estimate_percent": null,
+        "reason": "start_boundary_missing"
+      },
+      {
+        "schema_version": "1",
+        "period": "retained",
+        "source_id": "yahoo:e88ca17d49090f0e9de015d503c48bf5aaf0a9138d22e2984da111421105d2c6",
+        "requested_start": "2026-01-02",
+        "start": "2026-01-02",
+        "end": "2026-01-05",
+        "price_percent": "27.272727",
+        "total_return_estimate_percent": "40",
+        "reason": null
+      }
+    ],
+    "fingerprint": "1875314afe252d4a4a98c52a722165f1ab4b4a08bcac93ba20435259a17429b1"
+  }
+}

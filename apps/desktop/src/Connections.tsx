@@ -61,6 +61,8 @@ export function Connections({ settings, onSave }: { settings: Settings; onSave: 
         <option value="en">English</option><option value="zh-TW">繁體中文</option>
       </select></label>
       <label><input type="checkbox" checked={settings.manual_source_review ?? false} onChange={(event) => void save({ ...settings, manual_source_review: event.target.checked })}/> Require source review before admission</label>
+      <label><input type="checkbox" checked={settings.experimental_yahoo_enabled ?? false} onChange={(event) => void save({ ...settings, experimental_yahoo_enabled: event.target.checked })}/> Enable experimental private Yahoo history</label>
+      <p>Optional personal-use history through unofficial yfinance, after available entitled EODHD history is checked. This local experiment does not establish Yahoo permission. Store prices, source references and saved returns locally and in same-user backups; exclude them and derived content from cloud prompts and shareable exports. Off by default and after restore. Disabling stops active research and keeps saved evidence. Retrieval also requires cloud research consent; missing or unqualified runtime support remains unavailable.</p>
       <button onClick={() => void check(false)}>Check installed runtimes</button>
     </fieldset>
     {busy && <p role="status">Checking or saving the connection…</p>}

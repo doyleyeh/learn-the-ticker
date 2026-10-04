@@ -240,3 +240,12 @@ def test_optional_live_helper_qualifies_admission_without_printing_prices(monkey
     assert "bars" not in json.dumps(report) and "adjusted_close" not in json.dumps(report)
     assert report["admission"]["cloud_excluded"] and report["admission"]["shareable_export_excluded"]
     assert asyncio.run(check(check_admission=True))["status"] == "not_run"
+
+
+def test_frontend_private_fixture_passes_the_production_numeric_contract():
+    from pathlib import Path
+    from backend.app.contracts import EvidenceBundle
+    fixture = Path(__file__).resolve().parents[2] / "apps/desktop/src/fixtures/privateMarket.json"
+    value = EvidenceBundle.model_validate_json(fixture.read_text(encoding="utf-8"))
+    assert value.market and len(value.market.bars) == 2
+    assert value.market.bars[0].volume == "9007199254740993"

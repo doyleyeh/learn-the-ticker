@@ -24,7 +24,7 @@ export function FinancialHistory({ bundle, includePriceAvailability = true }: { 
       {series.length > 0 && <label className="financial-period">Reporting periods<select value={period} onChange={(event) => setPeriod(event.target.value)}><option value="all">All reporting periods</option>{Object.entries(periodLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>}
       {series.length > 0 && !visible.length && <p className="source-gap-note">Unavailable — no admitted observations for these reporting periods.</p>}
       {visible.map((value, index) => <SeriesPanel key={`${bundle.id}:${value.key}`} series={value} bundle={bundle} sources={sources} initiallyOpen={index === 0}/>)}
-      {!!bundle.financials.gaps?.length && <details><summary>Evidence gaps ({bundle.financials.gaps.length})</summary><ul>{bundle.financials.gaps.map((gap) => <li key={gap}>{gapLabel(gap)}</li>)}</ul></details>}
+      {!!bundle.financials.gaps?.length && <details><summary>Issuer-source gaps ({bundle.financials.gaps.length})</summary><p>These gaps describe the issuer adapter. Separately admitted market evidence appears in Charts and returns.</p><ul>{bundle.financials.gaps.map((gap) => <li key={gap}>{gapLabel(gap)}</li>)}</ul></details>}
     </>}
     {includePriceAvailability && <PriceHistoryAvailability/>}
   </section>;

@@ -2,7 +2,9 @@ import { useMemo, type ReactNode } from "react";
 import type { Claim, EvidenceBundle, Source } from "./contracts";
 import { CitationChip } from "../components/CitationChip";
 import { EvidenceSections, contextSections } from "./EvidenceSections";
-import { FinancialHistory, ObservationCitation, PriceHistoryAvailability } from "./FinancialHistory";
+import { FinancialHistory, ObservationCitation } from "./FinancialHistory";
+import { MarketHistory } from "./MarketHistory";
+import { privateClaims, privateSource } from "./marketPresentation";
 import { concepts, displayNumber, financialSeries } from "./financialSeries";
 import { sourceRoute } from "./routes";
 
@@ -26,8 +28,10 @@ function DashboardSection({ id, title, children }: { id: string; title: string; 
 
 export function EvidenceView({ bundle }: { bundle: EvidenceBundle }) {
   const sources = useMemo(() => new Map((bundle.sources ?? []).map((source) => [source.id, source])), [bundle.sources]);
+  const privateIds = useMemo(() => privateClaims(bundle), [bundle]);
+  const privateContent = Boolean(bundle.market || bundle.sources?.some(privateSource));
   function renderClaim(claim: Claim) {
-    return <article key={claim.id}><p>{claim.text}</p><div className="chip-row">{claim.source_ids?.map((id) => {
+    return <article key={claim.id} data-local-only={privateIds.has(claim.id) || undefined}><p>{claim.text}</p><div className="chip-row">{claim.source_ids?.map((id) => {
       const source = sources.get(id);
       return source ? <div key={id}><CitationChip href={`#${sourceRoute(bundle.id!, id)}`} citation={{ citationId: id, sourceDocumentId: id, title: source.title, publisher: source.publisher, freshnessState: "unknown" }}/><p className="ticker-meta">Published {source.published_at ?? "unknown"} · As of {source.as_of ?? "unknown"} · Retrieved {source.retrieved_at ?? "unknown"}</p></div> : null;
     })}</div></article>;
@@ -45,7 +49,7 @@ export function EvidenceView({ bundle }: { bundle: EvidenceBundle }) {
         </div>
         <EvidenceSections bundle={bundle} renderClaim={renderClaim}/>
       </DashboardSection>
-      <DashboardSection id="prices" title="Charts and returns"><div className="plain-panel"><p>Quote: unavailable. Quote time, market session and delay are unknown.</p><PriceHistoryAvailability/></div></DashboardSection>
+      <DashboardSection id="prices" title="Charts and returns"><MarketHistory bundle={bundle}/></DashboardSection>
       <DashboardSection id="statistics" title="Key statistics"><KeyStatistics bundle={bundle}/></DashboardSection>
       <DashboardSection id="financials" title="Reported financials"><FinancialHistory key={bundle.id} bundle={bundle} includePriceAvailability={false}/></DashboardSection>
       <DashboardSection id="news" title="Ticker news and context">
@@ -58,7 +62,7 @@ export function EvidenceView({ bundle }: { bundle: EvidenceBundle }) {
       <DashboardSection id="analysts" title="Analyst insights"><div className="plain-panel"><p className="source-gap-note">Unavailable — this snapshot has no qualified analyst estimates or outlooks.</p><p>External estimates are opinions about the future, separate from reported results. Missing estimates are not inferred from prices or generated explanations.</p></div></DashboardSection>
       <DashboardSection id="sources" title="Sources and evidence">
         <div className="plain-panel">{[...sources.values()].map((source) => <SourceDetails source={source} key={source.id}/>)}{!sources.size && <p>No source documents have been registered.</p>}</div>
-        <section className="plain-panel" data-evidence-layer="notes"><h3>Unverified research notes</h3><p>These explanations have not passed factual validation. Candidate citations may be incomplete. These notes do not feed facts, charts or calculations.</p>{bundle.notes?.map(renderClaim)}{!bundle.notes?.length && <p>No unverified notes.</p>}</section>
+        <section className="plain-panel" data-evidence-layer="notes" data-local-only={privateContent || undefined}><h3>Unverified research notes</h3><p>These explanations have not passed factual validation. Candidate citations may be incomplete. These notes do not feed facts, charts or calculations.</p>{bundle.notes?.map(renderClaim)}{!bundle.notes?.length && <p>No unverified notes.</p>}</section>
       </DashboardSection>
     </div>
   </div>;
@@ -86,5 +90,6 @@ export function KeyStatistics({ bundle }: { bundle: EvidenceBundle }) {
 }
 
 function SourceDetails({ source }: { source: Source }) {
-  return <details className="source-drawer" id={`source-${source.id}`}><summary>{source.title} · {source.verified ? "Verified retrieval" : "Unverified candidate"}</summary><p>{source.publisher}</p><a href={source.url} target="_blank" rel="noopener noreferrer">Inspect original source</a><p>Published: {source.published_at ?? "Unknown"} · As of: {source.as_of ?? "Unknown"} · Retrieved: {source.retrieved_at}</p><p>Source-use policy: {source.policy} · Provenance: {source.provenance}</p>{source.excerpt && <blockquote>{source.excerpt}</blockquote>}</details>;
+  const restricted = privateSource(source);
+  return <details className="source-drawer" id={`source-${source.id}`} data-local-only={restricted || undefined}><summary>{source.title} · {source.verified ? "Verified retrieval" : "Unverified candidate"}</summary><p>{source.publisher}</p><a href={source.url} target="_blank" rel="noopener noreferrer">Inspect original source</a><p>Published: {source.published_at ?? "Unknown"} · As of: {source.as_of ?? "Unknown"} · Retrieved: {source.retrieved_at}</p><p>Source-use policy: {source.policy} · Provenance: {source.provenance}</p>{restricted && <p>Experimental private numerical use only. Original prices and derived content are excluded from cloud prompts and shareable exports.</p>}{source.content_hash && <details><summary>Original response fingerprint</summary><p>{source.content_hash}</p></details>}{source.excerpt && <blockquote>{source.excerpt}</blockquote>}</details>;
 }

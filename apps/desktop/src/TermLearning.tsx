@@ -3,6 +3,7 @@ import { glossaryTerms, type GlossaryTerm } from "../lib/glossary";
 import { CitationChip } from "../components/CitationChip";
 import { api, watchJob } from "./client";
 import { sourceRoute } from "./routes";
+import { privateSource } from "./marketPresentation";
 import type { EvidenceBundle, Settings, TermExplanation, TermRequest } from "./contracts";
 
 type TermJob = { id?: string; status: string; result?: TermExplanation; error?: string };
@@ -83,7 +84,10 @@ export function TermLearning({ bundle, level, settings, children }: { bundle: Ev
 
   function captureSelection() {
     const selection = window.getSelection();
-    if (selection && content.current?.contains(selection.anchorNode) && content.current.contains(selection.focusNode)) setSelected(conciseSelection(selection.toString()));
+    if (!selection || !selection.rangeCount || !content.current?.contains(selection.anchorNode) || !content.current.contains(selection.focusNode)) { setSelected(""); return; }
+    const range = selection.getRangeAt(0);
+    if ([...content.current.querySelectorAll("[data-local-only]")].some((node) => range.intersectsNode(node))) { setSelected(""); return; }
+    setSelected(conciseSelection(selection.toString()));
   }
 
   return <>
@@ -92,6 +96,7 @@ export function TermLearning({ bundle, level, settings, children }: { bundle: Ev
       <h2 id="term-learning-title">Understand a term</h2>
       <p>Learning context: {bundle.asset.name} ({bundle.asset.symbol}) · Evidence saved {bundle.created_at ?? "at an unknown time"}. Explanations use this saved version’s permitted evidence and original references automatically.</p>
       <p>Select words on this page, choose a core term, or type a term. Hover and keyboard focus reuse saved explanations and core definitions without generating content.</p>
+      {(bundle.market || bundle.sources?.some(privateSource)) && <p>Private Yahoo prices, returns and related interpretations are excluded from cloud learning context. You can still ask about general terms using permitted issuer evidence.</p>}
       <div className="actions">{common.map((value) => <button type="button" key={value} disabled={busy} onMouseEnter={() => void hover(value)} onFocus={() => void hover(value)} title={cached[normalizeTerm(value)]?.explanation ?? coreDefinition(value)?.definition} onClick={() => void explain(value)}>{value}</button>)}</div>
       <form className="research-bar" onSubmit={(event) => { event.preventDefault(); void explain(term); }}><label>Term to explain<input value={term} required maxLength={120} disabled={busy} onChange={(event) => { setTerm(event.target.value); setAnswer(undefined); setJob(undefined); setProgress(""); setError(""); }}/></label><button disabled={busy}>{settings?.cloud_enabled ? "Explain term" : "Look up saved explanation"}</button></form>
       {!settings?.cloud_enabled && <p>Online explanations are off. Core definitions and previously generated explanations work offline.</p>}
