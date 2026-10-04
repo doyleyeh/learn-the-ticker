@@ -18,6 +18,8 @@ build/
 .venv/
 .local/
 .ruff_cache/
+.playwright-cli/
+output/playwright/
 target/
 *.spec
 !backend/desktop.spec

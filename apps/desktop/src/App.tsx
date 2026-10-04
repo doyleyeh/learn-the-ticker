@@ -5,6 +5,7 @@ import { FreshnessLabel } from "../components/FreshnessLabel";
 import { CitationChip } from "../components/CitationChip";
 import { bundleRoute, pages, routeFromHash, sourceRoute } from "./routes";
 import { LibraryBackup } from "./LibraryBackup";
+import { ImportDocuments } from "./ImportDocuments";
 import { CodexConnection } from "./CodexConnection";
 import { Connections } from "./Connections";
 import { AccessReview } from "./AccessReview";
@@ -107,7 +108,7 @@ export function App() {
   }
 
   return <div className="app-shell">
-    <header className="topbar"><a className="brand" href="#library">Learn the Ticker</a><nav aria-label="Primary navigation"><a href="#library">Library</a><a href="#saved">Saved research</a><a href="#conversations">Conversations</a><a href="#connections">Connections</a></nav></header>
+    <header className="topbar"><a className="brand" href="#library">Learn the Ticker</a><nav aria-label="Primary navigation"><a href="#library">Library</a><a href="#saved">Saved research</a><a href="#conversations">Conversations</a><a href="#imports">Sources</a><a href="#connections">Connections</a></nav></header>
     <main className="desktop-main">
       <p className="notice-text">Desktop developer preview · Your library stays on this computer. Educational research, not investment advice.</p>
       {error && <div role="alert" className="notice-text error"><p>{error}</p><button onClick={() => setError("")}>Dismiss</button></div>}
@@ -120,6 +121,7 @@ export function App() {
         {job?.status === "needs_identity" && <section className="plain-panel"><h2>Choose a more specific identity</h2><p>{job.result?.message ?? "Choose a listing or contract, then submit the selected identity. Cached matches reuse their saved evidence."}</p>{job.result?.candidates?.map((item) => <button key={item.id} onClick={() => setQuery(item.id)}>{item.name} · {item.symbol} · {item.exchange ?? item.asset_type}</button>)}</section>}
         {job?.result?.educational_redirect && <p>{job.result.educational_redirect}</p>}
         {page === "connections" && settings && <Connections key={settings.provider} settings={settings} onSave={saveSettings}/> }
+        {page === "imports" && <ImportDocuments online={!!settings?.cloud_enabled}/>}
         {page === "library" && <section><h1>Your research library</h1><p>Search any asset. Available sections depend on verifiable evidence.</p>{library.length === 0 && <section className="plain-panel"><h2>Start with one asset</h2><p>Connect your subscription runtime, then research a ticker or name. Evidence and dated explanations will be saved here.</p></section>}<div className="library-grid">{library.map((item) => <button className="plain-panel" key={item.asset.id} onClick={() => openAsset(item)}><strong>{item.asset.name}</strong><span>{item.asset.symbol} · {item.asset.asset_type}</span><span>Snapshot {new Date(item.created_at!).toLocaleString()}</span></button>)}</div></section>}
         {page === "saved" && <section><h1>Saved research</h1><p>Bookmarks reference a fixed evidence version; refresh does not overwrite it.</p>{saved.length === 0 && <p>No saved research yet.</p>}{saved.map((report) => <button key={report.id} onClick={() => api<EvidenceBundle>(`/api/bundles/${report.bundle_id}`).then(openAsset).catch(fail)}>{report.title}</button>)}</section>}
         {page === "conversations" && <section><h1>Persistent conversations</h1><p>Unbookmarked conversations expire after {settings?.retention_days ?? 180} days without activity. Bookmark a conversation to keep it.</p>{conversations.map((chat) => <button key={chat.id} onClick={() => api<EvidenceBundle>(`/api/assets/${encodeURIComponent(chat.asset_id)}`).then((bundle) => { openAsset(bundle); setConversation(chat); }).catch(fail)}>{chat.asset_id} · {chat.messages.length} messages{chat.bookmarked ? " · Bookmarked" : ""}</button>)}</section>}

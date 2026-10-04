@@ -15,6 +15,8 @@ from backend.app.backup import BackupError, MAX_ARCHIVE_BYTES, make_backup, prev
 from backend.app.codex_login import CodexLogin
 from backend.app.contracts import ApprovalDecision, Conversation, EvidenceBundle, ResearchRequest, RuntimeModelCatalog, SavedResearch, Settings, TermRequest, now
 from backend.app.db import Database
+from backend.app.import_previews import ImportPreviews
+from backend.app.import_routes import mount_import_routes
 from backend.app.research import ResearchService
 from backend.app.runtimes import runtimes
 from backend.app.terms import TermService
@@ -43,6 +45,7 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
     service = ResearchService(db, adapters or runtimes(codex_profile), workspace, identity_resolver=identity_resolver, financial_adapter=financial_adapter, filing_adapter=filing_adapter, **({"verifier": verifier} if verifier else {}))
     codex_login = CodexLogin(codex_profile)
     terms = TermService(service)
+    imports = ImportPreviews(service)
     settings_lock = asyncio.Lock()
 
     @asynccontextmanager
@@ -51,12 +54,15 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
         db.expire_conversations(service.settings().retention_days)
         yield
         await codex_login.close()
+        await imports.close()
         await service.close()
 
     app = FastAPI(title="Learn the Ticker Desktop", version="0.2.0", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.service = service
     app.state.codex_login = codex_login
     app.state.terms = terms
+    app.state.imports = imports
+    mount_import_routes(app, imports)
     app.add_middleware(CORSMiddleware, allow_origins=list(ORIGINS), allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Authorization", "Content-Type", "X-Backup-Fingerprint"])
 
     @app.middleware("http")
@@ -98,6 +104,7 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
             raise HTTPException(409, "Finish or cancel active research before changing provider or model")
         db.put("settings", "settings", value.model_dump(mode="json"))
         if not value.cloud_enabled:
+            await imports.close(online_only=True)
             await service.close()
         return value
 

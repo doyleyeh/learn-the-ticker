@@ -34,7 +34,8 @@ def test_native_frontend_has_no_arbitrary_process_permissions():
 def test_generated_schema_matches_backend_contracts():
     from pydantic.json_schema import models_json_schema
     from backend.app.contracts import ApprovalDecision, ApprovalRequest, AssetIdentity, BackupSummary, Claim, Conversation, EvidenceBundle, ProviderLogin, ResearchRequest, ResearchResult, RuntimeCapabilities, RuntimeEvent, RuntimeModel, RuntimeModelCatalog, SavedResearch, Settings, Source, TermExplanation, TermRequest, TermResult
-    models = [ApprovalDecision, ApprovalRequest, AssetIdentity, BackupSummary, Claim, Conversation, EvidenceBundle, ProviderLogin, ResearchRequest, ResearchResult, RuntimeCapabilities, RuntimeEvent, RuntimeModel, RuntimeModelCatalog, SavedResearch, Settings, Source, TermExplanation, TermRequest, TermResult]
+    from backend.app.import_previews import ImportPreview
+    models = [ApprovalDecision, ApprovalRequest, AssetIdentity, BackupSummary, Claim, Conversation, EvidenceBundle, ImportPreview, ProviderLogin, ResearchRequest, ResearchResult, RuntimeCapabilities, RuntimeEvent, RuntimeModel, RuntimeModelCatalog, SavedResearch, Settings, Source, TermExplanation, TermRequest, TermResult]
     _, schema = models_json_schema([(model, "validation") for model in models], title="DesktopContracts")
     stored = json.loads((ROOT / "contracts/desktop.schema.json").read_text())
     assert stored["$defs"] == schema["$defs"]

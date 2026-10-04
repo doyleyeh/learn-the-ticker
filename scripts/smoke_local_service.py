@@ -40,7 +40,16 @@ try:
         term = {"term": "revenue", "bundle_id": "missing-snapshot"}
         assert client.post("/api/terms/lookup", json=term).status_code == 401
         assert client.post("/api/terms/lookup", json=term, headers={"Authorization": "Bearer " + token}).status_code == 404
+        path = "/api/imports/preview/file?format=csv&permission_confirmed=true"
+        assert client.post(path, content=b"Metric,Value").status_code == 401
+        imported = client.post(path, content=b"Metric,Value\nRevenue,123456789.123456789", headers={"Authorization": "Bearer " + token}, timeout=30)
+        assert imported.status_code == 200 and imported.headers["cache-control"] == "no-store"
+        preview = imported.json()
+        assert preview["state"] == "unverified" and not preview["saved"] and not preview["document"]["verified"]
+        assert preview["document"]["blocks"][1]["cells"][1]["text"] == "123456789.123456789"
+        assert client.get("/api/library", headers={"Authorization": "Bearer " + token}).json() == []
     print("Private PostgreSQL initialization, migrations, authenticated API, empty library, idle sign-in and term lookup endpoints passed.")
+    print("Authenticated offline CSV preview preserved exact decimals without library writes through the owned parser worker.")
 finally:
     process.stdin.close()
     try:

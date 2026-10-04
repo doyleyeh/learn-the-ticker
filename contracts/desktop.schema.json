@@ -918,6 +918,218 @@
       "title": "IdentityVerification",
       "type": "object"
     },
+    "ImportBlock": {
+      "additionalProperties": false,
+      "properties": {
+        "locator": {
+          "maxLength": 200,
+          "title": "Locator",
+          "type": "string"
+        },
+        "text": {
+          "default": "",
+          "maxLength": 200000,
+          "title": "Text",
+          "type": "string"
+        },
+        "cells": {
+          "items": {
+            "$ref": "#/$defs/ImportCell"
+          },
+          "maxItems": 100,
+          "title": "Cells",
+          "type": "array"
+        }
+      },
+      "required": [
+        "locator"
+      ],
+      "title": "ImportBlock",
+      "type": "object"
+    },
+    "ImportCell": {
+      "additionalProperties": false,
+      "properties": {
+        "locator": {
+          "maxLength": 32,
+          "title": "Locator",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 8192,
+          "title": "Text",
+          "type": "string"
+        },
+        "kind": {
+          "default": "text",
+          "enum": [
+            "text",
+            "number",
+            "date",
+            "boolean",
+            "error",
+            "formula"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "number_format": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Number Format"
+        },
+        "raw_value": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Raw Value"
+        }
+      },
+      "required": [
+        "locator",
+        "text"
+      ],
+      "title": "ImportCell",
+      "type": "object"
+    },
+    "ImportPreview": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "unverified",
+            "link_only"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "origin": {
+          "enum": [
+            "local_file",
+            "public_url"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Source"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "checked_at": {
+          "format": "date-time",
+          "title": "Checked At",
+          "type": "string"
+        },
+        "document": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ParsedDocument"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "saved": {
+          "const": false,
+          "default": false,
+          "title": "Saved",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "state",
+        "origin",
+        "checked_at"
+      ],
+      "title": "ImportPreview",
+      "type": "object"
+    },
+    "ParsedDocument": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "enum": [
+            "csv",
+            "xlsx",
+            "pdf",
+            "html"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "content_hash": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "verified": {
+          "const": false,
+          "default": false,
+          "title": "Verified",
+          "type": "boolean"
+        },
+        "blocks": {
+          "items": {
+            "$ref": "#/$defs/ImportBlock"
+          },
+          "maxItems": 2000,
+          "title": "Blocks",
+          "type": "array"
+        },
+        "limitations": {
+          "items": {
+            "enum": [
+              "unverified_import",
+              "formulas_not_evaluated",
+              "pdf_layout_not_verified",
+              "empty_pages",
+              "merged_cells_not_expanded"
+            ],
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "format",
+        "content_hash",
+        "blocks",
+        "limitations"
+      ],
+      "title": "ParsedDocument",
+      "type": "object"
+    },
     "ProviderLogin": {
       "additionalProperties": false,
       "description": "Ephemeral connection UI state. Never stored in the library or exports.",
@@ -1878,6 +2090,9 @@
     },
     "EvidenceBundle": {
       "$ref": "#/$defs/EvidenceBundle"
+    },
+    "ImportPreview": {
+      "$ref": "#/$defs/ImportPreview"
     },
     "ProviderLogin": {
       "$ref": "#/$defs/ProviderLogin"

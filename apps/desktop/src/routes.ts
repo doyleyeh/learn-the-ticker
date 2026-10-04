@@ -1,4 +1,4 @@
-export const pages = ["library", "saved", "conversations", "connections", "asset"];
+export const pages = ["library", "saved", "conversations", "connections", "imports", "asset"];
 export function routeFromHash(hash: string) {
   const [name, query = ""] = hash.replace(/^#/, "").split("?", 2);
   const params = new URLSearchParams(query);
